@@ -1,1 +1,0 @@
-("9.3" ta6le ("60635efdf101d3c114a9e8d24e379d864cb0d296" . "e66d90331c6a6264b13143b6bb6a582540fb9023") #"/home/lu96/Desktop/work/edit/content.rkt" #"/home/lu96/Desktop/work/edit/cursor.rkt" #"/home/lu96/Desktop/work/edit/marker.rkt" (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt") (collects #"rackunit" #"main.rkt"))

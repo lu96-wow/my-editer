@@ -1,0 +1,71 @@
+#lang racket
+
+;;; demo.rkt —— 手动测试用：在终端里跑起编辑器核心
+;;;
+;;; 运行：  racket demo.rkt          （需要 Linux 终端；非 tty 会报错）
+;;; 退出：  Ctrl+Q
+;;;
+;;; 可测：
+;;;   - 中英文混排 / emoji / 全角标点（宽字符显示与光标定位）
+;;;   - 直接打字、退格、回车、方向键、Home/End、PageUp/PageDown
+;;;   - 鼠标点击定位光标、滚轮滚动
+;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
+
+(require "buffer.rkt" "tui.rkt")
+
+(provide sample keyword-hl)
+
+;;; ---------- 演示用语法高亮插件（就地定义，属 demo 不属核心）----------
+
+(define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not)\\b")
+(define string-rx  #px"\"[^\"]*\"")
+(define comment-rx #px";[^\n]*")
+
+(define (matches->segs line rx face text)
+  (for/list ([m (in-list (regexp-match-positions* rx text))])
+    ;; regexp-match-positions* 返回 (start . end) 对（不含分组）
+    (list line (car m) (cdr m) 'face face)))
+
+(define (highlight-line b line)
+  (define text (buffer-line-ref b line))
+  (define n    (string-length text))
+  ;; 只清掉本插件负责的 'face，然后按 关键字 < 字符串 < 注释 依次写入
+  (define b1 (buffer-remove-text-property b line 0 n 'face))
+  (define segs
+    (append
+     (matches->segs line keyword-rx 'keyword text)
+     (matches->segs line string-rx  'string  text)
+     (matches->segs line comment-rx 'comment text)))
+  (buffer-put-text-properties b1 segs))
+
+(define (keyword-hl b)
+  (define d (buffer-dirty b))
+  (if (not d)
+      b
+      (for/fold ([b b])
+                ([line (in-range (dirty-desc-first-line d)
+                                 (add1 (dirty-desc-last-line d)))])
+        (highlight-line b line))))
+
+;;; ---------- 示例内容 ----------
+
+(define sample
+  (string-join
+   (list
+    ";; 编辑器核心 demo —— 中英文混排测试"
+    "你好世界 hello world 你好"
+    "(define (square x) (* x x))"
+    "(lambda (y) (if (> y 0) y 0))"
+    "中文测试：宽字符占两列，光标定位应正确。"
+    "emoji 测试：😀😃🎉 和全角标点，。！？"
+    "字符串测试 \"hello 你好 😀\" 注释 ; 这是注释"
+    ""
+    "方向键移动 / 直接打字 / 退格 / 回车"
+    "Ctrl+Q 退出")
+   "\n"))
+
+;;; ---------- 启动（仅当直接运行 demo.rkt 时）----------
+
+(module+ main
+  (displayln "启动 TUI demo（Ctrl+Q 退出）…")
+  (run-tui (buffer-open sample) (list keyword-hl)))

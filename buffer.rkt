@@ -38,11 +38,14 @@
  buffer-delete
  buffer-put-text-property
  buffer-get-text-property
+ buffer-remove-text-property
+ buffer-put-text-properties
  buffer-make-marker
  buffer-delete-marker
  buffer-marker-pos
  buffer-make-overlay
  buffer-delete-overlay
+ buffer-mark-dirty
  buffer-clean)
 
 ;;; ---------- 结构 ----------
@@ -158,6 +161,18 @@
                       (dirty-desc-old-count old)
                       (dirty-desc-new-count new))]))
 
+;; 扩大「重算/重渲染」范围到 [first, last]（新坐标系，含两端）。
+;; 供插件触及 dirty 之外的行时调用。不改行数（old=new），但 bump tick，
+;; 以确保即使本次编辑是 no-op 也能触发渲染。
+(define (buffer-mark-dirty b first last)
+  (define n (buffer-line-count b))
+  (define f (max 0 (min first (sub1 n))))
+  (define l (max 0 (min last (sub1 n))))
+  (struct-copy buffer b
+    [dirty (merge-dirty (buffer-dirty b)
+                        (dirty-desc (min f l) (max f l) n n))]
+    [tick (add1 (buffer-tick b))]))
+
 ;;; ---------- 编辑核心 ----------
 
 (define (buffer-edit b edit-fn)
@@ -197,6 +212,25 @@
 
 (define (buffer-get-text-property b line col prop)
   (props-get (buffer-properties b) line col prop))
+
+;; 只清掉 [start,end) 上某个 key。插件应只清「自己负责的 key」，避免互相清空。
+(define (buffer-remove-text-property b line start end prop)
+  (struct-copy buffer b
+    [properties (props-remove (buffer-properties b) line start end prop)]
+    [tick (add1 (buffer-tick b))]
+    [modified? #t]))
+
+;; 批量写属性，一次 tick：segs = (listof (list line start end prop val))
+(define (buffer-put-text-properties b segs)
+  (if (null? segs)
+      b
+      (let ([props* (for/fold ([p (buffer-properties b)]) ([s (in-list segs)])
+                      (match-define (list line start end prop val) s)
+                      (props-put p line start end prop val))])
+        (struct-copy buffer b
+          [properties props*]
+          [tick (add1 (buffer-tick b))]
+          [modified? #t]))))
 
 ;;; ---------- marker ----------
 
