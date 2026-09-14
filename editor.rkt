@@ -32,7 +32,7 @@
 (define (editor-window* e f)
   (struct-copy editor e [window (f (editor-window e))]))
 
-(define (editor-handle e ev)
+(define (handle-raw e ev)
   (match (ui-event-kind ev)
     ['insert-string
      (for/fold ([e e]) ([ch (in-string (car (ui-event-data ev)))])
@@ -55,6 +55,17 @@
     ['mouse-scroll (handle-mouse-scroll e (ui-event-data ev))]
     ['quit       (struct-copy editor e [done? #t])]
     [_ e]))
+
+;; 这些事件会移动光标 → 之后让窗口跟随（滚动/限位）
+(define ensure-visible-kinds
+  '(insert-string move-up move-down move-left move-right backspace delete
+    newline home end mouse-press ctrl-char))
+
+(define (editor-handle e ev)
+  (define e* (handle-raw e ev))
+  (if (memq (ui-event-kind ev) ensure-visible-kinds)
+      (struct-copy editor e* [window (window-ensure-point (editor-window e*))])
+      e*))
 
 (define (handle-ctrl e ch)
   (case ch

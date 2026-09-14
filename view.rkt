@@ -18,7 +18,8 @@
  window-vrows
  window-point->screen
  window-screen->point
- window-scroll-visual)
+ window-scroll-visual
+ window-ensure-point)
 
 (struct vrow (line start-col end-col) #:transparent)
 ;; line      : buffer 行号（-1 = 空白行）
@@ -201,6 +202,84 @@
             [else (struct-copy window w [top-line 0] [top-seg 0])])]))]
     [else w]))
 
+;;; ---------- 光标跟随滚动 ----------
+;;; 光标移出窗口边界时，调整窗口使其可见；左右按文本宽度限位。
+
+(define (segment-at segs target-col)
+  ;; segs 覆盖 [0, total)；返回 (values 段号 段起始列)
+  (define n (length segs))
+  (let loop ([i 0])
+    (cond
+      [(>= i (sub1 n))
+       (define s (list-ref segs (sub1 n)))
+       (values (sub1 n) (car s))]
+      [else
+       (define s (list-ref segs i))
+       (if (and (<= (car s) target-col) (< target-col (cdr s)))
+           (values i (car s))
+           (loop (add1 i)))])))
+
+(define (visual-distance b from-line from-seg to-line to-seg width)
+  ;; 从 (from-line, from-seg) 到 (to-line, to-seg) 的视觉行数（to >= from）
+  (cond
+    [(> from-line to-line) 0]
+    [(= from-line to-line) (- to-seg from-seg)]
+    [else
+     (+ (- (length (wrap-segments (buffer-line-ref b from-line) width)) from-seg)
+        (for/sum ([l (in-range (add1 from-line) to-line)])
+          (length (wrap-segments (buffer-line-ref b l) width)))
+        to-seg)]))
+
+(define (ensure-clip w line target-col)
+  (define b (window-buffer w))
+  (define height (window-height w))
+  (define width (window-width w))
+  (define line-width (string-display-width (buffer-line-ref b line)))
+  ;; 垂直
+  (define top
+    (cond [(< line (window-top-line w)) line]
+          [(>= line (+ (window-top-line w) height)) (+ (- line height) 1)]
+          [else (window-top-line w)]))
+  (define max-top (max 0 (- (buffer-line-count b) height)))
+  ;; 水平（按行宽限位）
+  (define left*
+    (cond [(< target-col (window-left-col w)) target-col]
+          [(>= target-col (+ (window-left-col w) width)) (+ (- target-col width) 1)]
+          [else (window-left-col w)]))
+  (define max-left (if (> line-width width) (+ (- line-width width) 1) 0))
+  (struct-copy window w
+    [top-line (min (max 0 top) max-top)]
+    [left-col (min (max 0 left*) max-left)]))
+
+(define (ensure-wrap w line target-col)
+  (define b (window-buffer w))
+  (define width (window-width w))
+  (define height (window-height w))
+  (define segs (wrap-segments (buffer-line-ref b line) width))
+  (define-values (seg _) (segment-at segs target-col))
+  (define top-line (window-top-line w))
+  (define top-seg (window-top-seg w))
+  (cond
+    [(< line top-line)
+     (struct-copy window w [top-line line] [top-seg 0])]
+    [(and (= line top-line) (< seg top-seg))
+     (struct-copy window w [top-seg seg])]
+    [else
+     (define dist (visual-distance b top-line top-seg line seg width))
+     (if (< dist height)
+         w
+         (window-scroll-visual w (+ (- dist height) 1)))]))
+
+(define (window-ensure-point w)
+  (define b (window-buffer w))
+  (define p (buffer-point b))
+  (define line (cursor-line p))
+  (define target-col (index->column (buffer-line-ref b line) (cursor-col p)))
+  (case (window-mode w)
+    ['clip (ensure-clip w line target-col)]
+    ['wrap (ensure-wrap w line target-col)]
+    [else (error 'window-ensure-point "unknown mode ~a" (window-mode w))]))
+
 (module+ test
   ;; line-range->runs：宽字符 + 裁剪
   (define b0 (buffer-open "a中b\nc"))
@@ -249,5 +328,27 @@
   (check-equal? (list (window-top-line ww3) (window-top-seg ww3)) '(1 0))
   (define ww4 (window-scroll-visual ww3 -1))
   (check-equal? (list (window-top-line ww4) (window-top-seg ww4)) '(0 1))
+
+  ;; 光标跟随（clip）：下方 → 窗口下移
+  (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
+  (define wf (window-open (buffer-goto b5 4 0) 2 10))
+  (check-equal? (window-top-line (window-ensure-point wf)) 3)   ; top = 4-2+1
+
+  ;; 上方 → 置顶
+  (define wf2 (window-set-top (window-open (buffer-goto b5 0 0) 2 10) 3))
+  (check-equal? (window-top-line (window-ensure-point wf2)) 0)
+
+  ;; 水平跟随 + 按行宽限位
+  (define b6 (buffer-open "abcdefgh"))
+  (define whe (window-ensure-point (window-open (buffer-goto b6 0 7) 1 4)))
+  (check-equal? (window-left-col whe) 4)    ; 7-4+1=4，光标在右端
+  (define wh2s (window-set-left (window-open (buffer-goto b6 0 0) 1 4) 4))
+  (check-equal? (window-left-col (window-ensure-point wh2s)) 0)
+
+  ;; 光标跟随（wrap）：下方 → 滚动一视觉行
+  (define b7 (buffer-open "中中中\nx"))
+  (define wg (window-set-mode (window-open (buffer-goto b7 1 0) 2 4) 'wrap))
+  (define wge (window-ensure-point wg))
+  (check-equal? (list (window-top-line wge) (window-top-seg wge)) '(0 1))
 
   (displayln "view.rkt: all tests passed"))
