@@ -4,17 +4,19 @@
 
 ;;; window.rkt —— 视图状态（纯视图，不持有文本）
 ;;;
-;;; 一个 buffer 可以显示在多个 window，每个 window 有独立的
-;;; 滚动位置（top-line / left-col）和渲染缓存。
-;;; buffer 是文档（含 point / dirty），window 只是「怎么看它」，
-;;; window 里的 buffer 字段是共享引用（持久化结构天然安全）。
+;;; buffer 是文档（含 point / dirty），window 只是「怎么看它」。
+;;; 两种显示方式由 mode 决定：
+;;;   'clip —— 硬裁剪：每 buffer 行 = 一条屏幕行，水平滚动用 left-col
+;;;   'wrap —— 折行：长行按 width 折成多段，滚动用 top-line + top-seg
 
 (provide
  (struct-out window)
  window-open
  window-set-buffer
+ window-set-mode
  window-set-top
  window-set-left
+ window-set-top-seg
  window-set-size
  window-scroll
  window-hscroll
@@ -24,8 +26,10 @@
 
 (struct window
   (buffer       ; buffer.rkt       只读引用，window 不改 buffer 内容
-   top-line     ; nat              顶行在 buffer 中的行号（0-based）
-   left-col     ; nat              左列（显示列，0-based，宽字符后）
+   mode         ; 'clip | 'wrap
+   top-line     ; nat              clip：顶 buffer 行；wrap：顶部所在 buffer 行
+   left-col     ; nat              clip：水平滚动列；wrap：恒 0
+   top-seg      ; nat              wrap：顶部行的第几个折行段；clip：恒 0
    height       ; nat              可见行数
    width        ; nat              可见列数
    render-cache ; (or/c vector? #f)
@@ -37,16 +41,16 @@
     (error 'window-open "height must be >= 1, got ~a" height))
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width must be >= 1, got ~a" width))
-  (window b 0 0 height width #f (buffer-tick b)))
+  (window b 'clip 0 0 0 height width #f (buffer-tick b)))
 
-(define (window-set-buffer w b) (struct-copy window w [buffer b]))
-(define (window-set-top w n)    (struct-copy window w [top-line (max 0 n)]))
-(define (window-set-left w n)   (struct-copy window w [left-col (max 0 n)]))
+(define (window-set-buffer w b)   (struct-copy window w [buffer b]))
+(define (window-set-mode w m)     (struct-copy window w [mode m]))
+(define (window-set-top w n)      (struct-copy window w [top-line (max 0 n)]))
+(define (window-set-left w n)     (struct-copy window w [left-col (max 0 n)]))
+(define (window-set-top-seg w n)  (struct-copy window w [top-seg (max 0 n)]))
 
 (define (window-set-size w height width)
-  (struct-copy window w
-    [height (max 1 height)]
-    [width  (max 1 width)]))
+  (struct-copy window w [height (max 1 height)] [width (max 1 width)]))
 
 (define (window-scroll w delta)
   (struct-copy window w [top-line (max 0 (+ (window-top-line w) delta))]))
@@ -57,7 +61,7 @@
 (define (window-set-render-cache w c) (struct-copy window w [render-cache c]))
 (define (window-set-last-tick w t)    (struct-copy window w [last-tick t]))
 
-;; 当前可见行号范围 [start, end)，end 夹到 buffer 末尾。
+;; 可见 buffer 行号范围 [start, end)（clip 语义；wrap 见 view.rkt）
 (define (window-visible-range w)
   (define n (buffer-line-count (window-buffer w)))
   (define start (min (window-top-line w) (sub1 n)))
@@ -68,8 +72,10 @@
   (define b (buffer-open "a\nb\nc\nd\ne"))
   (define w (window-open b 2))
 
+  (check-equal? (window-mode w) 'clip)
   (check-equal? (window-top-line w) 0)
   (check-equal? (window-left-col w) 0)
+  (check-equal? (window-top-seg w) 0)
   (check-equal? (window-height w) 2)
   (check-equal? (window-width w) 80)
   (check-equal? (window-last-tick w) 0)
@@ -92,12 +98,14 @@
   (check-equal? s3 4)
   (check-equal? e3 5)
 
-  ;; 水平滚动 + 尺寸
+  ;; 水平滚动 / 尺寸 / mode / top-seg
   (define w4 (window-hscroll (window-set-left w 3) 2))
   (check-equal? (window-left-col w4) 5)
   (check-equal? (window-hscroll w -10) (window-set-left w 0))
   (define w5 (window-set-size w 30 100))
   (check-equal? (window-height w5) 30)
   (check-equal? (window-width w5) 100)
+  (check-equal? (window-mode (window-set-mode w 'wrap)) 'wrap)
+  (check-equal? (window-top-seg (window-set-top-seg w 3)) 3)
 
   (displayln "window.rkt: all tests passed"))

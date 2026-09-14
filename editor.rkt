@@ -1,7 +1,7 @@
 #lang racket
 
 (require "events.rkt" "cursor.rkt" "buffer.rkt" "window.rkt"
-         "plugin.rkt" "width.rkt" rackunit)
+         "plugin.rkt" "view.rkt" rackunit)
 
 ;;; editor.rkt —— 应用层：编辑器状态 + 命令 + 事件处理
 ;;;
@@ -46,8 +46,8 @@
     ['newline    (editor-edit e buffer-newline)]
     ['home       (editor-edit e buffer-home)]
     ['end        (editor-edit e buffer-end)]
-    ['pageup     (editor-window* e (lambda (w) (window-scroll w (- (window-height w) 1))))]
-    ['pagedown   (editor-window* e (lambda (w) (window-scroll w (- (window-height w) 1))))]
+    ['pageup     (editor-window* e (lambda (w) (window-scroll-visual w (- (window-height w) 1))))]
+    ['pagedown   (editor-window* e (lambda (w) (window-scroll-visual w (- (window-height w) 1))))]
     ['ctrl-char  (handle-ctrl e (car (ui-event-data ev)))]
     ['resize     (match-define (list rows cols) (ui-event-data ev))
                  (editor-window* e (lambda (w) (window-set-size w rows cols)))]
@@ -59,20 +59,18 @@
 (define (handle-ctrl e ch)
   (case ch
     [(#\Q #\q) (struct-copy editor e [done? #t])]   ; Ctrl+Q 退出
+    [(#\W #\w) (editor-window* e (lambda (w)         ; Ctrl+W 切换折行
+                                   (window-set-mode w
+                                     (if (eq? (window-mode w) 'wrap) 'clip 'wrap))))]
     [else e]))
 
 ;; data = (button x y mods)，x/y 已是 0-based 显示坐标
 (define (handle-mouse-press e data)
   (match-define (list btn x y _mods) data)
-  (define w (editor-window e))
-  (define b (editor-buffer e))
   (if (eq? btn 'left)
-      (let* ([line (+ y (window-top-line w))]
-             [n    (buffer-line-count b)])
-        (if (< line n)
-            (let* ([text (buffer-line-ref b line)]
-                   [col  (column->index text (+ x (window-left-col w)))])
-              (editor-edit e (lambda (b) (buffer-goto b line col))))
+      (let-values ([(line col) (window-screen->point (editor-window e) y x)])
+        (if line
+            (editor-edit e (lambda (b) (buffer-goto b line col)))
             e))
       e))
 
@@ -80,7 +78,7 @@
 (define (handle-mouse-scroll e data)
   (match-define (list dir _x _y _mods) data)
   (editor-window* e (lambda (w)
-                      (window-scroll w (if (eq? dir 'up) -3 3)))))
+                      (window-scroll-visual w (if (eq? dir 'up) -3 3)))))
 
 (module+ test
   (define e0 (make-editor (buffer-open "hello\nworld") '() 24 80))
