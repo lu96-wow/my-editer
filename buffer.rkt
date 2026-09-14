@@ -46,6 +46,7 @@
  buffer-make-overlay
  buffer-delete-overlay
  buffer-mark-dirty
+ buffer-mark-dirty-all
  buffer-clean)
 
 ;;; ---------- 结构 ----------
@@ -172,6 +173,10 @@
     [dirty (merge-dirty (buffer-dirty b)
                         (dirty-desc (min f l) (max f l) n n))]
     [tick (add1 (buffer-tick b))]))
+
+;; 把整个 buffer 标成 dirty（首次挂载插件时全量扫描用）。
+(define (buffer-mark-dirty-all b)
+  (buffer-mark-dirty b 0 (sub1 (buffer-line-count b))))
 
 ;;; ---------- 编辑核心 ----------
 

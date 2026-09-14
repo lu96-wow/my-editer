@@ -17,7 +17,8 @@
 (struct editor (buffer window plugins done?) #:transparent)
 
 (define (make-editor b0 [plugins '()] [height 24] [width 80])
-  (editor b0 (window-open b0 height width) plugins #f))
+  (define b* (run-plugins-init b0 plugins))   ; 挂载时全量扫一遍插件
+  (editor b* (window-open b* height width) plugins #f))
 
 ;; 应用一个 buffer 编辑原语 + 跑插件，并把 window.buffer 同步到新值。
 (define (editor-edit e f)

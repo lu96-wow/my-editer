@@ -14,15 +14,27 @@
 
 (provide
  run-plugins
+ run-plugins-init
  compose-plugins
  with-plugins)
 
 ;;; ---------- 组合 ----------
 
 ;; 按列表顺序执行插件：前一个插件的输出是后一个的输入。
+;; 插件是 dirty 的唯一消费者：跑完清空 dirty。空列表时原样返回（eq?）。
 (define (run-plugins b plugins)
-  (for/fold ([b b]) ([p (in-list plugins)])
-    (p b)))
+  (if (null? plugins)
+      b
+      (buffer-clean
+       (for/fold ([b b]) ([p (in-list plugins)])
+         (p b)))))
+
+;; 首次挂载插件：把整个 buffer 标成 dirty 再跑一遍（初始化全量扫描），
+;; 跑完 dirty 被清空。无插件时原样返回。
+(define (run-plugins-init b plugins)
+  (if (null? plugins)
+      b
+      (run-plugins (buffer-mark-dirty-all b) plugins)))
 
 ;; 把多个插件合成一个插件。
 (define (compose-plugins . plugins)
@@ -56,11 +68,25 @@
   (define b2 (buffer-mark-dirty b0 1 1))
   (check-equal? (buffer-dirty b2) (dirty-desc 1 1 2 2))
 
-  ;; with-plugins：编辑之后插件运行，且 dirty 保留给渲染层
+  ;; with-plugins：编辑之后插件运行，且 dirty 被插件消费（清空）
   (define (dirty-widener b) (buffer-mark-dirty b 0 0))
   (define insert* (with-plugins (list dirty-widener) buffer-insert))
   (define b3 (insert* b0 #\X))
   (check-equal? (buffer->string b3) "Xhello\nworld")
-  (check-equal? (buffer-dirty b3) (dirty-desc 0 0 2 2))
+  (check-false (buffer-dirty b3))
+
+  ;; run-plugins-init：首次全量扫描（dirty 覆盖全部行）
+  (define (mark-dirty-lines b)
+    (define d (buffer-dirty b))
+    (if (not d) b
+        (for/fold ([b b])
+                  ([line (in-range (dirty-desc-first-line d)
+                                   (add1 (dirty-desc-last-line d)))])
+          (buffer-put-text-property b line 0 1 'scanned #t))))
+  (define b-init (run-plugins-init (buffer-open "a\nb\nc") (list mark-dirty-lines)))
+  (check-equal? (buffer-get-text-property b-init 0 0 'scanned) #t)
+  (check-equal? (buffer-get-text-property b-init 1 0 'scanned) #t)
+  (check-equal? (buffer-get-text-property b-init 2 0 'scanned) #t)
+  (check-false (buffer-dirty b-init))
 
   (displayln "plugin.rkt: all tests passed"))

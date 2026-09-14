@@ -14,7 +14,7 @@
  (struct-out run)
  (struct-out screen)
  make-screen
- screen-diff)
+ screen-diff-rows)
 
 (struct run (col text face) #:transparent)
 ;; col  : 显示列（0-based，已按宽字符换算）
@@ -29,13 +29,13 @@
 (define (make-screen rows cols)
   (screen rows cols (make-vector rows '()) 0 0))
 
-;; 两屏（同尺寸）之间的差异 run：(listof (list row run))。
-;; 简单实现：返回新屏中「与旧屏不同 / 新增」的 run，供增量绘制。
-(define (screen-diff old new)
-  (for*/list ([row (in-range (screen-rows new))]
-              [r (in-list (vector-ref (screen-row-runs new) row))]
-              #:unless (member r (vector-ref (screen-row-runs old) row)))
-    (list row r)))
+;; 两屏（同尺寸）之间发生变化的行号：(listof row)。
+;; 供增量绘制：后端只重画这些行（先清行再画）。
+(define (screen-diff-rows old new)
+  (for/list ([row (in-range (screen-rows new))]
+             #:unless (equal? (vector-ref (screen-row-runs old) row)
+                              (vector-ref (screen-row-runs new) row)))
+    row))
 
 (module+ test
   (define s0 (make-screen 2 10))
@@ -52,11 +52,9 @@
   (check-equal? (vector-ref (screen-row-runs s1) 0) (list r1 r2))
   (check-equal? (screen-cursor-col s1) 3)
 
-  ;; diff：变化的 run 会被挑出来
+  ;; diff：变化行的行号会被挑出来
   (define s2 (screen 2 10 (vector (list r1 (run 2 "文" (hash 'face 'keyword))) '()) 0 3))
-  (define d (screen-diff s1 s2))
-  (check-equal? (length d) 1)
-  (check-equal? (caar d) 0)                       ; 第 0 行
-  (check-equal? (run-text (cadar d)) "文")
+  (check-equal? (screen-diff-rows s1 s2) '(0))
+  (check-equal? (screen-diff-rows s1 s1) '())
 
   (displayln "screen.rkt: all tests passed"))
