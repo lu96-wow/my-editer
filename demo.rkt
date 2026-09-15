@@ -1,6 +1,6 @@
 #lang racket
 
-;;; demo.rkt —— 手动测试用：在终端里跑起编辑器核心（多窗口版）
+;;; demo.rkt —— 手动测试用：在终端里跑起编辑器（组装根）
 ;;;
 ;;; 运行：  racket demo.rkt          （需要 Linux 终端；非 tty 会报错）
 ;;; 按键：
@@ -13,10 +13,12 @@
 ;;;   - 直接打字、退格、回车、方向键、Home/End、PageUp/PageDown
 ;;;   - 鼠标点击定位光标、滚轮滚动
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
-;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步
+;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步；窗口间有 | / - 边框
 
 (require "core/text/buffer.rkt" "core/view/window.rkt" "core/text/cursor.rkt"
-         "plugin/view-plugin.rkt" "ui/tui/tui.rkt" "logic/event.rkt")
+         "framework/slots.rkt" "framework/framework.rkt"
+         "reference/layout-tree.rkt" "reference/compose-line.rkt"
+         "reference/commands.rkt" "ui/tui/tui.rkt")
 
 (provide sample keyword-hl rowcol-status)
 
@@ -28,13 +30,11 @@
 
 (define (matches->segs line rx face text)
   (for/list ([m (in-list (regexp-match-positions* rx text))])
-    ;; regexp-match-positions* 返回 (start . end) 对（不含分组）
     (list line (car m) (cdr m) 'face face)))
 
 (define (highlight-line b line)
   (define text (buffer-line-ref b line))
   (define n    (string-length text))
-  ;; 只清掉本插件负责的 'face，然后按 关键字 < 字符串 < 注释 依次写入
   (define b1 (buffer-remove-text-property b line 0 n 'face))
   (define segs
     (append
@@ -81,7 +81,7 @@
     "Ctrl+Q 退出 / Ctrl+W 切换折行")
    "\n"))
 
-;;; ---------- 主题（由外部组合时定义并传入，无默认颜色）----------
+;;; ---------- 主题（纯数据，外部组合时定义并传入）----------
 
 (define demo-theme
   (hash 'keyword '(97 175 239)        ; 蓝
@@ -89,12 +89,25 @@
         'comment '(128 128 128 dim)
         'number  '(198 120 221)       ; 紫
         'builtin '(86 182 194)        ; 青
-        'mode    '(229 192 123)))     ; 黄
+        'mode    '(229 192 123)       ; 黄
+        'border  '(92 99 112 dim)))   ; 边框灰
+
+;;; ---------- 组装（用户拼出界面）----------
+
+(define-values (wc fc) (make-default-commands))
+
+(define cfg
+  (make-config
+   #:window-commands wc
+   #:frame-commands  fc
+   #:layout          tree-layout
+   #:compose         line-compose
+   #:buffer-plugins  (list keyword-hl)
+   #:view-plugins    (list rowcol-status)
+   #:theme           demo-theme))
 
 ;;; ---------- 启动（仅当直接运行 demo.rkt 时）----------
 
 (module+ main
   (displayln "启动 TUI demo（Ctrl+Q 退出 / Ctrl+V|B 分屏 / Ctrl+O|P 切窗 / Ctrl+X 关窗）…")
-  (run-tui (buffer-open sample) demo-theme
-           (make-config default-keymap default-mgmt-keymap
-                        (list keyword-hl) (list rowcol-status))))
+  (run-tui (buffer-open sample) cfg))

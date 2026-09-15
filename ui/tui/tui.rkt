@@ -3,8 +3,8 @@
 (require tui)   ; racket-tui 包（Linux）
 (require "../../core/view/events.rkt" "../../core/view/screen.rkt"
          "../../core/view/frame.rkt" "../../core/text/buffer.rkt"
-         "../../plugin/buffer-plugin.rkt" "../../plugin/view-plugin.rkt"
-         "../../logic/event.rkt" rackunit)
+         "../../framework/framework.rkt" "../../framework/slots.rkt"
+         "../../reference/input-tui.rkt" rackunit)
 
 ;;; ui/tui/tui.rkt —— racket-tui 后端
 ;;;
@@ -129,39 +129,11 @@
    (status->bytes theme segs status-row (screen-cols s))
    (cursor-bytes s)))
 
-;;; ---------- 输入：build-input -> ui-event ----------
-
-(define (tui-input-handler emit)
-  (build-input
-   #:utf-char  (lambda (s)   (emit (ui-event 'insert-string (list s))))
-   #:char      (lambda (ch)  (emit (ui-event 'insert-string
-                                             (list (string (integer->char ch))))))
-   #:up        (lambda ()    (emit (ui-event 'move-up '())))
-   #:down      (lambda ()    (emit (ui-event 'move-down '())))
-   #:left      (lambda ()    (emit (ui-event 'move-left '())))
-   #:right     (lambda ()    (emit (ui-event 'move-right '())))
-   #:backspace (lambda ()    (emit (ui-event 'backspace '())))
-   #:enter     (lambda ()    (emit (ui-event 'newline '())))
-   #:delete    (lambda ()    (emit (ui-event 'delete '())))
-   #:home      (lambda ()    (emit (ui-event 'home '())))
-   #:end       (lambda ()    (emit (ui-event 'end '())))
-   #:pageup    (lambda ()    (emit (ui-event 'pageup '())))
-   #:pagedown  (lambda ()    (emit (ui-event 'pagedown '())))
-   #:ctrl      (lambda (ch)  (emit (ui-event 'ctrl-char (list ch))))
-   #:resize    (lambda (r c) (emit (ui-event 'resize (list (max 1 (sub1 r)) c))))
-   #:mouse-press
-   (lambda (btn x y mods) (emit (ui-event 'mouse-press
-                                          (list btn (sub1 x) (sub1 y) mods))))
-   #:mouse-scroll
-   (lambda (dir x y mods) (emit (ui-event 'mouse-scroll
-                                          (list dir (sub1 x) (sub1 y) mods))))
-   #:paste     (lambda (data) (emit (ui-event 'insert-string
-                                              (list (bytes->string/utf-8 data)))))
-   #:any       (lambda (t d m) (void))))
-
 ;;; ---------- 主循环 ----------
+;;; 后端只负责注入 read（raw→事件）与 output（screen→字节）；
+;;; 循环骨架、命令路由、布局/组合全在 framework + reference。
 
-(define (run-tui b0 theme [cfg (make-config)])
+(define (run-tui b0 cfg [input-handler tui-input-handler])
   (with-tui
    (lambda ()
      (define-values (rows cols) (get-window-size))
@@ -169,20 +141,19 @@
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
      (define area-rows (max 1 (sub1 r)))
-     (define b0* (run-plugins-init b0 (config-plugins cfg)))
+     (define b0* (run-plugins-init b0 (config-buffer-plugins cfg)))
      (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
-     (define handler (tui-input-handler (lambda (ev) (set-box! evt ev))))
-     (let loop ([f f0] [prev #f])
-       (define scr (frame-paint f))
-       (define segs (frame-status cfg f))
-       (put-bytes (frame->bytes theme scr segs prev))
-       (let-values ([(type data mods) (read-event)])
-         (set-box! evt #f)
-         (handler type data mods)
-         (define ev (unbox evt))
-         (define-values (f* _desc done?) (if ev (frame-handle cfg f ev) (values f #f #f)))
-         (unless done? (loop f* scr)))))))
+     (define handler (input-handler (lambda (ev) (set-box! evt ev))))
+     (editor-run
+      cfg f0
+      (lambda ()
+        (let-values ([(type data mods) (read-event)])
+          (set-box! evt #f)
+          (handler type data mods)
+          (unbox evt)))
+      (lambda (scr prev segs)
+        (put-bytes (frame->bytes (config-theme cfg) scr segs prev)))))))
 
 ;;; ---------- 测试（只测纯函数，不碰终端）----------
 
