@@ -89,7 +89,7 @@
   (match-define (mouse-press-event btn x y _m) ev)
   (if (eq? btn 'left)
       (let* ([rects ((layout-rects (config-layout cfg)) f)]
-             [id (window-at rects x y)])
+             [id (window-id-at rects x y)])
         (if (not id)
             (values f #f #f)
             (let* ([f1 (frame-set-active f id)]
@@ -110,7 +110,7 @@
 (define (on-mouse-wheel cfg f ev)
   (match-define (mouse-wheel-event dir x y _m) ev)
   (define rects ((layout-rects (config-layout cfg)) f))
-  (define id (or (window-at rects x y) (frame-active f)))
+  (define id (or (window-id-at rects x y) (frame-active f)))
   (if (not id)
       (values f #f #f)
       (values (frame-set-window f id
@@ -119,14 +119,18 @@
 
 (define (on-resize cfg f ev)
   (match-define (resize-event rows cols) ev)
-  (values (frame-resize f rows cols) #f #f))
+  (define f1 (frame-resize f rows cols))
+  ;; resize 也要立即同步各窗口尺寸（与 split/close 一致）：否则 frame 里的 window
+  ;; 尺寸保持旧值，只有等下一次渲染被 frame-pieces 就地修正，命令间读到的尺寸是错的。
+  (values (frame-sync-sizes f1 ((layout-rects (config-layout cfg)) f1)) #f #f))
 
 (define (on-quit cfg f ev)
   (values f #f #t))
 
 ;;; ---------- rects 命中辅助 ----------
 
-(define (window-at rects x y)
+;; 命中检测：返回 rects 里覆盖 (x,y) 的 window-id，未命中返回 #f。
+(define (window-id-at rects x y)
   (for/or ([r (in-list rects)])
     (match-define (list id rx ry rw rh) r)
     (and (<= rx x (+ rx rw -1)) (<= ry y (+ ry rh -1)) id)))
@@ -153,46 +157,51 @@
   (define f0 (frame-open (buffer-open "hello\nworld") 3 20))
 
   ;; 插入文本
-  (define-values (f1 d1 _) (editor-handle cfg f0 (text-event "X" (modifiers #f #f #f #f))))
+  (define-values (f1 d1 _) (framework-handle cfg f0 (text-event "X" (modifiers #f #f #f #f))))
   (check-equal? (buffer->string (window-buffer (frame-active-window f1))) "Xhello\nworld")
   (check-equal? d1 (edit-desc 0 0 0 0 "X"))
   (check-equal? (window-point (frame-active-window f1)) (cursor 0 1))
 
   ;; Ctrl+B 分屏 → linked 同步
-  (define-values (f2 _b1 _b2) (editor-handle cfg f1 (key-event #\B (modifiers #t #f #f #f))))
+  (define-values (f2 _b1 _b2) (framework-handle cfg f1 (key-event #\B (modifiers #t #f #f #f))))
   (check-equal? (frame-window-count f2) 2)
   (check-equal? (frame-active f2) 0)          ; 焦点留原窗口
-  (define-values (f3 _c1 _c2) (editor-handle cfg f2 (text-event "Y" (modifiers #f #f #f #f))))
+  (define-values (f3 _c1 _c2) (framework-handle cfg f2 (text-event "Y" (modifiers #f #f #f #f))))
   (check-equal? (buffer->string (window-buffer (frame-window f3 0)))
                 (buffer->string (window-buffer (frame-window f3 1))))
 
   ;; 导航
-  (define-values (f4 _d1 _d2) (editor-handle cfg f3 (key-event 'right (modifiers #f #f #f #f))))
+  (define-values (f4 _d1 _d2) (framework-handle cfg f3 (key-event 'right (modifiers #f #f #f #f))))
   (check-equal? (window-point (frame-active-window f4)) (cursor 0 3))
 
   ;; 切换焦点
-  (define-values (f5 _e1 _e2) (editor-handle cfg f4 (key-event #\O (modifiers #t #f #f #f))))
+  (define-values (f5 _e1 _e2) (framework-handle cfg f4 (key-event #\O (modifiers #t #f #f #f))))
   (check-equal? (frame-active f5) 1)
 
   ;; 退出
-  (define-values (_fq _dq done-q) (editor-handle cfg f5 (key-event #\Q (modifiers #t #f #f #f))))
+  (define-values (_fq _dq done-q) (framework-handle cfg f5 (key-event #\Q (modifiers #t #f #f #f))))
   (check-true done-q)
 
   ;; mouse-press：定位 point（曾有多余括号 bug）
   (define fm (frame-open (buffer-open "hello\nworld\nfoo") 3 11))
-  (define-values (fm1 _m1 _m2) (editor-handle cfg fm (mouse-press-event 'left 3 1 (modifiers #f #f #f #f))))
+  (define-values (fm1 _m1 _m2) (framework-handle cfg fm (mouse-press-event 'left 3 1 (modifiers #f #f #f #f))))
   (check-equal? (window-point (frame-active-window fm1)) (cursor 1 3))
-  (define-values (fm2 _m3 _m4) (editor-handle cfg fm1 (mouse-press-event 'left 0 5 (modifiers #f #f #f #f))))
+  (define-values (fm2 _m3 _m4) (framework-handle cfg fm1 (mouse-press-event 'left 0 5 (modifiers #f #f #f #f))))
   (check-equal? (window-point (frame-active-window fm2)) (cursor 1 3))  ; 越界不变
 
   ;; mouse-wheel：只滚动
   (define fw (frame-open (buffer-open "l1\nl2\nl3\nl4\nl5\nl6") 3 11))
-  (define-values (fw1 _w1 _w2) (editor-handle cfg fw (mouse-wheel-event 'down 0 0 (modifiers #f #f #f #f))))
+  (define-values (fw1 _w1 _w2) (framework-handle cfg fw (mouse-wheel-event 'down 0 0 (modifiers #f #f #f #f))))
   (check-equal? (window-top-line (frame-active-window fw1)) 3)
 
+  ;; resize：同步窗口尺寸
+  (define-values (fr1 _r1 _r2) (framework-handle cfg fw (resize-event 5 20)))
+  (check-equal? (window-width (frame-active-window fr1)) 20)
+  (check-equal? (window-height (frame-active-window fr1)) 5)
+
   ;; 分屏后点击右窗口 → focus + point 相对偏移
-  (define-values (fs _s1 _s2) (editor-handle cfg fm (key-event #\B (modifiers #t #f #f #f))))
-  (define-values (fs2 _s3 _s4) (editor-handle cfg fs (mouse-press-event 'left 7 0 (modifiers #f #f #f #f))))
+  (define-values (fs _s1 _s2) (framework-handle cfg fm (key-event #\B (modifiers #t #f #f #f))))
+  (define-values (fs2 _s3 _s4) (framework-handle cfg fs (mouse-press-event 'left 7 0 (modifiers #f #f #f #f))))
   (check-equal? (frame-active fs2) 1)
   (check-equal? (window-point (frame-active-window fs2)) (cursor 0 1))
 

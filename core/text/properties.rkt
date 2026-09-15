@@ -286,7 +286,7 @@
 (define (props-splice p s-line s-col e-line e-col new-text)
   (define rows (text-properties-rows p))
   (define rows1 (props-delete-range rows s-line s-col e-line e-col))
-  (define new-lines (string-split new-text "\n" #:trim? #f))
+  (define new-lines (string->lines new-text))
   (define p* (text-properties (props-insert-lines rows1 s-line s-col new-lines)))
   (when (props-debug?) (props-check p*))
   p*)

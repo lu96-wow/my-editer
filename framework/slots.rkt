@@ -16,10 +16,7 @@
  (struct-out frame-commands)
  run-plugins
  run-plugins-init
- compose-plugins
- with-plugins
- run-view-plugins
- status-segs->string)
+ run-view-plugins)
 
 ;;; ---------- 视口派生（window → status-seg） ----------
 
@@ -27,9 +24,6 @@
 
 (define (run-view-plugins w vps)
   (apply append (for/list ([p (in-list vps)]) (p w))))
-
-(define (status-segs->string segs)
-  (apply string-append (map status-seg-text segs)))
 
 ;;; ---------- buffer 派生（buffer → buffer，吃 dirty） ----------
 
@@ -42,14 +36,6 @@
   (if (null? plugins)
       b
       (run-plugins (buffer-mark-dirty-all b) plugins)))
-
-(define (compose-plugins . plugins)
-  (lambda (b) (run-plugins b plugins)))
-
-(define (with-plugins plugins edit-fn)
-  (lambda (b . args)
-    (define-values (b1 desc) (apply edit-fn b args))
-    (values (run-plugins b1 plugins) desc)))
 
 ;;; ---------- 布局（frame → 几何/顺序 + 布局变更） ----------
 
@@ -88,6 +74,7 @@
   ;; view 插件组合器
   (define (rowcol w)
     (list (status-seg (format "Ln ~a" (add1 (cursor-line (window-point w)))) #f)))
-  (check-equal? (status-segs->string (run-view-plugins (window-open b0) (list rowcol))) "Ln 1")
+  (check-equal? (map status-seg-text (run-view-plugins (window-open b0) (list rowcol)))
+                '("Ln 1"))
 
   (displayln "slots.rkt: all tests passed"))

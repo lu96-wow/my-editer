@@ -145,7 +145,7 @@
      (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
      (define handler (input-handler (lambda (ev) (set-box! evt ev))))
-     (editor-run
+     (framework-run
       cfg f0
       (lambda ()
         (let-values ([(type data mods) (read-event)])

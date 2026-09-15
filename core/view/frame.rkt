@@ -40,8 +40,8 @@
 
 ;;; ---------- 构造 ----------
 
-(define (frame-open b [rows 24] [cols 80] [layout #f])
-  (frame (hash 0 (window-open b rows cols)) 0 layout
+(define (frame-open b [rows 24] [cols 80])
+  (frame (hash 0 (window-open b rows cols)) 0 #f
          (max 1 rows) (max 1 cols) 1))
 
 ;;; ---------- 投影 ----------
@@ -104,10 +104,12 @@
      (for/hash ([(wid pw) (in-hash (frame-windows f))])
        (cond
          [(= wid id) (values wid (window-set-buffer pw new-b))]
-         [(eq? (window-buffer pw) old-b) (values wid (window-sync-buffer pw new-b desc))]
+         [(eq? (window-buffer pw) old-b) (values wid (window-rebase pw new-b desc))]
          [else (values wid pw)]))]))
 
-(define (window-sync-buffer w new-b desc)
+;; 让一个共享 old-b 的窗口「换底」到 new-b：point 按 edit-desc 映射到编辑后位置，
+;; 若原 point 落在被替换区间内则落到区间起点。
+(define (window-rebase w new-b desc)
   (define p (window-point w))
   (define p* (or (edit-desc-map-position desc (cursor-line p) (cursor-col p))
                  (cursor (edit-desc-s-line desc) (edit-desc-s-col desc))))

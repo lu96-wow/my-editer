@@ -3,7 +3,7 @@
 (require "../core/view/events.rkt" "../core/view/frame.rkt"
          "slots.rkt" rackunit)
 
-;;; framework.rkt —— 机械组合层：config + editor-handle/render/status/run
+;;; framework.rkt —— 机械组合层：config + framework-handle/render/status/run
 ;;;
 ;;; 只做路由与装配，不含任何具体命令/布局/边框行为：
 ;;;   - 事件按运行时类型分派到命令槽
@@ -14,10 +14,10 @@
 (provide
  (struct-out config)
  make-config
- editor-handle
- editor-render
- editor-status
- editor-run)
+ framework-handle
+ framework-render
+ framework-status
+ framework-run)
 
 ;;; ---------- 策略 bundle ----------
 
@@ -39,7 +39,7 @@
 
 ;;; ---------- 事件分派（机械，按运行时类型） ----------
 
-(define (editor-handle cfg f ev)
+(define (framework-handle cfg f ev)
   (define wc (config-window-commands cfg))
   (define fc (config-frame-commands cfg))
   (cond
@@ -54,7 +54,7 @@
 
 ;;; ---------- 渲染（机械装配） ----------
 
-(define (editor-render cfg f)
+(define (framework-render cfg f)
   (define lo (config-layout cfg))
   (define rects ((layout-rects lo) f))
   (define pieces (frame-pieces f rects))
@@ -63,18 +63,18 @@
 
 ;;; ---------- 状态行 ----------
 
-(define (editor-status cfg f)
+(define (framework-status cfg f)
   (run-view-plugins (frame-active-window f) (config-view-plugins cfg)))
 
 ;;; ---------- 循环（read 注入事件，output 注入绘制） ----------
 
 ;; read   : (-> (or/c #f event))
 ;; output : (-> screen (or/c #f screen) (listof status-seg) any)
-(define (editor-run cfg f0 read output)
+(define (framework-run cfg f0 read output)
   (let loop ([f f0] [prev #f])
-    (define scr (editor-render cfg f))
-    (output scr prev (editor-status cfg f))
-    (define-values (f* _desc done?) (editor-handle cfg f (read)))
+    (define scr (framework-render cfg f))
+    (output scr prev (framework-status cfg f))
+    (define-values (f* _desc done?) (framework-handle cfg f (read)))
     (unless done? (loop f* scr))))
 
 ;;; ---------- 测试 ----------
@@ -101,10 +101,10 @@
 
   (define f0 (frame-open (buffer-open "hello") 2 5))
   ;; 分派到 quit → done?
-  (define-values (_f1 _d1 done1) (editor-handle cfg f0 (quit-event)))
+  (define-values (_f1 _d1 done1) (framework-handle cfg f0 (quit-event)))
   (check-true done1)
   ;; 未处理事件 → 原样
-  (define-values (f2 d2 done2) (editor-handle cfg f0 #f))
+  (define-values (f2 d2 done2) (framework-handle cfg f0 #f))
   (check-eq? f2 f0)
   (check-false d2)
   (check-false done2)

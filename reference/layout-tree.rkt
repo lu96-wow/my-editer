@@ -19,17 +19,17 @@
 
 (define GUTTER 1)
 
-(define (rects f)
+(define (tree-rects f)
   (define lt (frame-layout f))
   (if lt
-      (tree-rects lt 0 0 (frame-cols f) (frame-rows f))
+      (tree-geometry lt 0 0 (frame-cols f) (frame-rows f))
       (list (list (frame-active f) 0 0 (frame-cols f) (frame-rows f)))))
 
-(define (order f)
+(define (tree-order f)
   (define lt (frame-layout f))
   (if lt (leaf-order lt) (list (frame-active f))))
 
-(define (split f dir)
+(define (tree-split f dir)
   (define id (frame-active f))
   (define-values (f1 nid) (frame-add-window f))
   (define lt (frame-layout f1))
@@ -37,9 +37,9 @@
   (define lt* (if lt (tree-replace lt id node) node))
   (frame-sync-sizes
    (struct-copy frame f1 [layout lt*])     ; active 不变（留在原窗口）
-   (tree-rects lt* 0 0 (frame-cols f1) (frame-rows f1))))
+   (tree-geometry lt* 0 0 (frame-cols f1) (frame-rows f1))))
 
-(define (close f)
+(define (tree-close f)
   (define id (frame-active f))
   (cond
     [(<= (frame-window-count f) 1) f]
@@ -48,10 +48,10 @@
      (define lt* (if lt (tree-remove lt id) #f))
      (define f1 (frame-remove-window f id))
      (define f2 (struct-copy frame f1 [layout lt*]))
-     (define f3 (frame-set-active f2 (car (order f2))))
-     (frame-sync-sizes f3 (rects f3))]))
+     (define f3 (frame-set-active f2 (car (tree-order f2))))
+     (frame-sync-sizes f3 (tree-rects f3))]))
 
-(define tree-layout (layout rects order split close))
+(define tree-layout (layout tree-rects tree-order tree-split tree-close))
 
 ;;; ---------- 树几何 ----------
 
@@ -61,17 +61,17 @@
     [(hsplit) (hsplit a b 1/2)]
     [else (error 'tree-layout "unknown dir ~a" dir)]))
 
-(define (tree-rects tree x y w h)
+(define (tree-geometry tree x y w h)
   (cond
     [(leaf? tree) (list (list (leaf-id tree) x y w h))]
     [(vsplit? tree)
      (define-values (th gutter) (split-dir h (vsplit-ratio tree)))
-     (append (tree-rects (vsplit-top tree) x y w th)
-             (tree-rects (vsplit-bottom tree) x (+ y th gutter) w (- h th gutter)))]
+     (append (tree-geometry (vsplit-top tree) x y w th)
+             (tree-geometry (vsplit-bottom tree) x (+ y th gutter) w (- h th gutter)))]
     [(hsplit? tree)
      (define-values (lw gutter) (split-dir w (hsplit-ratio tree)))
-     (append (tree-rects (hsplit-left tree) x y lw h)
-             (tree-rects (hsplit-right tree) (+ x lw gutter) y (- w lw gutter) h))]
+     (append (tree-geometry (hsplit-left tree) x y lw h)
+             (tree-geometry (hsplit-right tree) (+ x lw gutter) y (- w lw gutter) h))]
     [else (error 'tree-layout "bad layout ~a" tree)]))
 
 ;; 把 total 切成 first + gutter + rest：两个窗口至少各 1，空间不够时先缩分隔槽（可为 0），

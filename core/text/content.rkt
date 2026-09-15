@@ -17,6 +17,7 @@
  content-empty
  content-of-lines
  content-of-string
+ string->lines
  content->lines
  content->string
  content-current-line
@@ -70,10 +71,15 @@
     (error 'content-of-lines "expect non-empty list of strings, got ~a" lines))
   (content-check (content (list->vector lines) 0 0)))
 
+;; 把字符串拆成行（统一行尾）：\n、\r\n、孤立 \r 都视为一个换行。
+;; 结果至少一行；"a\n" => '("a" "")（保留尾部空行）。
+(define (string->lines s)
+  (define ls (string-split (regexp-replace* #rx"\r\n?" s "\n") "\n" #:trim? #f))
+  (if (null? ls) (list "") ls))
+
 (define (content-of-string s)
   (unless (string? s) (error 'content-of-string "expect string, got ~a" s))
-  (define lines (string-split s "\n" #:trim? #f))  ; 保留尾部空行
-  (content-check (content (list->vector (if (null? lines) (list "") lines)) 0 0)))
+  (content-check (content (list->vector (string->lines s)) 0 0)))
 
 ;;; ---------- 投影 ----------
 
@@ -122,7 +128,7 @@
   (define head (substring (vector-ref lines s-line) 0 s-col))
   (define tail (substring (vector-ref lines e-line) e-col
                           (string-length (vector-ref lines e-line))))
-  (define new-lines (list->vector (string-split new-text "\n" #:trim? #f)))
+  (define new-lines (list->vector (string->lines new-text)))
   (define k (vector-length new-lines))
   (define inserted (max 1 k))                       ; k=0 时是合并出的 1 行
   (define new-n (- (+ n inserted) (+ (- e-line s-line) 1)))
@@ -196,7 +202,7 @@
   (define s-col (edit-desc-s-col d))
   (define e-line (edit-desc-e-line d))
   (define e-col (edit-desc-e-col d))
-  (define new-lines (string-split (edit-desc-new-text d) "\n" #:trim? #f))
+  (define new-lines (string->lines (edit-desc-new-text d)))
   (define k (length new-lines))
   (define delta (- k (- e-line s-line) 1))           ; k - (e-line-s-line+1)
   (define last-len (if (zero? k) 0 (string-length (last new-lines))))
@@ -215,7 +221,7 @@
 
 ;; 插入点处「插入文本之后」的位置（'after' marker 用）
 (define (edit-desc-after-position d)
-  (define new-lines (string-split (edit-desc-new-text d) "\n" #:trim? #f))
+  (define new-lines (string->lines (edit-desc-new-text d)))
   (define k (length new-lines))
   (cond
     [(zero? k)   ; 纯删除：回到删除起点
@@ -246,6 +252,9 @@
   ;; 尾部换行保留空行
   (check-equal? (content-line-count (content-of-string "a\nb\n")) 3)
   (check-equal? (content->string (content-of-string "a\nb\n")) "a\nb\n")
+  ;; 统一行尾：\r\n / \r 都归一成 \n
+  (check-equal? (content->lines (content-of-string "a\r\nb\rc")) '("a" "b" "c"))
+  (check-equal? (content->string (content-of-string "a\r\nb")) "a\nb")
 
   (define c0 (content-of-string "hello\nworld"))
   (check-equal? (content-gap-line c0) 0)

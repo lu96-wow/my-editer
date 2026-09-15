@@ -86,7 +86,7 @@
 
 (define (dirty-of desc old-count new-count)
   (define s-line (edit-desc-s-line desc))
-  (define k (length (string-split (edit-desc-new-text desc) "\n" #:trim? #f)))
+  (define k (length (string->lines (edit-desc-new-text desc))))
   (define last (if (zero? k) s-line (+ s-line (sub1 k))))
   (dirty-desc s-line last old-count new-count))
 

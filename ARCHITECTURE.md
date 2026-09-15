@@ -15,7 +15,7 @@ edit/
 │                         #   frame = 窗口集合 + linked 同步（无布局，无边框）
 ├── framework/            # 框架（只定 slot 类型 + 组合器 + 机械循环）
 │   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins）
-│   └── framework.rkt     #   config + editor-handle/render/status/run
+│   └── framework.rkt     #   config + framework-handle/render/status/run
 ├── reference/            # 参考实现（用户 copy/替换，非默认）
 │   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
 │   ├── compose-line.rkt  #   边框拼帧
@@ -42,7 +42,7 @@ edit/
 ├──────────────────────────────────────────────────────────────┤
 │ reference/*          参考实现：树布局 / 边框 / 命令 / 输入解码  │
 ├──────────────────────────────────────────────────────────────┤
-│ framework/framework  框架：config + editor-handle/render/run   │
+│ framework/framework  框架：config + framework-handle/render/run   │
 │ framework/slots      slot 类型 + 组合器                        │
 ├──────────────────────────────────────────────────────────────┤
 │ core/view/*.rkt      视口（后端无关）：几何/渲染/屏幕/事件     │
@@ -63,7 +63,7 @@ edit/
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | slots | slot 类型定义 + 组合器（layout/compose/commands/run-plugins） | 具体策略 |
-| framework | 框架：config + 机械分派 + 机械循环（editor-handle/render/run） | 具体命令/布局/边框 |
+| framework | 框架：config + 机械分派 + 机械循环（framework-handle/render/run） | 具体命令/布局/边框 |
 | reference | 参考实现：树布局 / 边框 / 两层命令 / 输入解码 | — |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | width | 字符 ↔ 显示列 | 终端/GUI |
@@ -80,7 +80,7 @@ edit/
 ### 编辑流（一次按键）
 
 ```
-事件(text/key) ──editor-handle──▶ 命令表 ──edit-active──▶ window（用 window-point 驱动 buffer-*）
+事件(text/key) ──framework-handle──▶ 命令表 ──edit-active──▶ window（用 window-point 驱动 buffer-*）
                                                        │
                     buffer-* → 新 buffer + edit-desc
                                                        │
@@ -139,7 +139,7 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 都只是 splice 的特例。
 
 **desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
-原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`editor-handle` / `frame-sync-buffer`
+原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`framework-handle` / `frame-sync-buffer`
 同样透传与消费，供上层（语言层 / 跨 buffer 同步）使用。`core/text/buffer.rkt` 已重新导出 `edit-desc`。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
@@ -159,7 +159,7 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 | `*-apply-edit` | 解释 edit-desc | props-apply-edit, marker-table-apply-edit |
 | `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, frame-window-count |
 | `!` | 副作用（仅 tui 层，继承自 racket-tui） | put-at!, style-define! |
-| `run-*` / `with-*` | 组合器 | run-plugins, with-plugins, run-tui |
+| `run-*` / `with-*` | 组合器 | run-plugins, run-plugins-init, run-tui |
 
 **约定**：
 - 坐标：core 层全 0-based；tui 边界转 1-based（+1）。
