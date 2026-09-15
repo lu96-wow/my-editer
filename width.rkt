@@ -23,7 +23,8 @@
  char-display-width
  string-display-width
  index->column
- column->index)
+ column->index
+ snap-column-forward)
 
 ;;; ---------- 宽字符区间表（East Asian Wide/Fullwidth）----------
 ;; 排序 + 二分。覆盖 CJK 统一表意文字、假名、谚文、全角、表情、CJK 扩展。
@@ -87,6 +88,21 @@
       [else (loop (add1 j)
                   (+ col (char-display-width (string-ref s j))))])))
 
+;; 列吸附：把任意显示列 L 规范到「字符起点列」（即该列处的字符可被完整显示）。
+;; 规则：
+;;   L 恰在字符起点 → 原样返回；
+;;   L 落在宽字符右半格 → 前移到下一字符起点（保证左边界不丢字、无空格浮动）；
+;;   L 越界（>= 总列数）→ 返回总列数。
+(define (snap-column-forward s L)
+  (define n (string-length s))
+  (define i (column->index s L))
+  (cond
+    [(>= i n) (string-display-width s)]
+    [else
+     (define c (index->column s i))
+     (if (= c L) L
+         (+ c (char-display-width (string-ref s i))))]))
+
 ;; 显示列 col 落在哪个字符上，返回该字符的索引。
 ;; 约定：宽字符的右半格命中同一字符；0 宽字符附着在前一个基字符上；
 ;;       col 超出末尾时返回字符串长度。
@@ -149,5 +165,16 @@
   (check-equal? (index->column t 2) 1)   ; 组合字符后仍在第 1 列
   (check-equal? (column->index t 0) 0)
   (check-equal? (column->index t 1) 2)   ; 列 1 → x（跳过 0 宽组合）
+
+  ;; 列吸附：snap-column-forward
+  ;; "中a中" 的列：中[0,2) a[2,3) 中[3,5)；边界 0/2/3/5
+  (define sw "中a中")
+  (check-equal? (snap-column-forward sw 0) 0)    ; 边界，不变
+  (check-equal? (snap-column-forward sw 1) 2)    ; 右半格 → 下一字符起点
+  (check-equal? (snap-column-forward sw 2) 2)    ; 边界，不变
+  (check-equal? (snap-column-forward sw 3) 3)    ; 边界，不变
+  (check-equal? (snap-column-forward sw 4) 5)    ; 右半格 → 行尾
+  (check-equal? (snap-column-forward sw 5) 5)    ; 行尾
+  (check-equal? (snap-column-forward sw 99) 5)   ; 越界 → 总列数
 
   (displayln "width.rkt: all tests passed"))

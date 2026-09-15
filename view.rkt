@@ -39,13 +39,13 @@
          (define g (vector-ref glyphs i))
          (define ch (glyph-ch g))
          (define face (glyph-face g))
-         (define w (char-display-width ch))
-         (define cend (+ col w))
+         (define cend (+ col (char-display-width ch)))
          (cond
-           [(< cend start) (loop (add1 i) cend acc)]               ; 全在左外
-           [(>= col end) (reverse acc)]                            ; 已出右界
-           [(and (< col start) (> w 1)) (loop (add1 i) cend acc)]  ; 宽字符左切，丢弃
-           [(> cend end) (loop (add1 i) cend acc)]                 ; 宽字符右切，丢弃
+           [(< cend start) (loop (add1 i) cend acc)]      ; 全在左界外
+           [(>= col end) (reverse acc)]                    ; 已在右界外，停止
+           ;; 跨边界（左/右统一）：字符未完整落在 [start,end) → 整字丢弃。
+           ;; 绝不显示半个宽字符；左右边界同一规则，避免不一致。
+           [(or (< col start) (> cend end)) (loop (add1 i) cend acc)]
            [else
             (loop (add1 i) cend
                   (cons (list (- col start) ch face) acc))])])))
@@ -234,22 +234,33 @@
   (define b (window-buffer w))
   (define height (window-height w))
   (define width (window-width w))
-  (define line-width (string-display-width (buffer-line-ref b line)))
+  (define line-text (buffer-line-ref b line))
+  ;; 光标所在字符的显示宽度；光标在行尾时是插入点，占 0 列。
+  (define cw
+    (let ([ci (column->index line-text target-col)])
+      (if (= ci (string-length line-text)) 0
+          (char-display-width (string-ref line-text ci)))))
   ;; 垂直
   (define top
     (cond [(< line (window-top-line w)) line]
           [(>= line (+ (window-top-line w) height)) (+ (- line height) 1)]
           [else (window-top-line w)]))
   (define max-top (max 0 (- (buffer-line-count b) height)))
-  ;; 水平（按行宽限位）
-  (define left*
-    (cond [(< target-col (window-left-col w)) target-col]
-          [(>= target-col (+ (window-left-col w) width)) (+ (- target-col width) 1)]
-          [else (window-left-col w)]))
-  (define max-left (if (> line-width width) (+ (- line-width width) 1) 0))
+  ;; 水平：视口必须完整包含光标字符（左右边界都不切字）。
+  ;; 左界：光标列小于左界 → 左滚到光标列；
+  ;; 右界：光标字符右端超出右界 → 右滚使其完整可见（不再出现光标落在被丢弃字符上）；
+  ;; 否则保持。min(target, …) 防止字符宽 > 窗口宽时把光标滚出视野。
+  (define left-raw
+    (cond
+      [(< target-col (window-left-col w)) target-col]
+      [(> (+ target-col cw) (+ (window-left-col w) width))
+       (min target-col (+ target-col cw (- width)))]
+      [else (window-left-col w)]))
+  ;; 左边界吸附到字符起点：左边界的宽字符完整显示，消除空格浮动。
+  (define left (snap-column-forward line-text (max 0 left-raw)))
   (struct-copy window w
     [top-line (min (max 0 top) max-top)]
-    [left-col (min (max 0 left*) max-left)]))
+    [left-col left]))
 
 (define (ensure-wrap w line target-col)
   (define b (window-buffer w))
@@ -348,6 +359,20 @@
   (define-values (b6-b _6) (buffer-goto b6 0 0))
   (define wh2s (window-set-left (window-open b6-b 1 4) 4))
   (check-equal? (window-left-col (window-ensure-point wh2s)) 0)
+
+  ;; 左右边界统一：宽字符绝不切半，左边界吸附到字符起点
+  (define b8 (buffer-open "中中文中"))   ; 列：0,2,4,6
+  ;; 光标在第 2 个字符（文，col 2）：视口内，left 不变
+  (define-values (b8-a _8) (buffer-goto b8 0 2))
+  (check-equal? (window-left-col (window-ensure-point (window-open b8-a 1 4))) 0)
+  ;; 光标在第 3 个字符（中，col 4）：右滚到 left=2（旧逻辑会得 1 → 左边界空格浮动）
+  (define-values (b8-b _9) (buffer-goto b8 0 4))
+  (check-equal? (window-left-col (window-ensure-point (window-open b8-b 1 4))) 2)
+
+  ;; 右边界：光标字符不再被丢弃（旧逻辑光标落在被丢弃的宽字符上）
+  (define b9 (buffer-open "abcdef中"))   ; 列：a..f 0-5，中 [6,8)
+  (define-values (b9-a _10) (buffer-goto b9 0 6))
+  (check-equal? (window-left-col (window-ensure-point (window-open b9-a 1 7))) 1)
 
   ;; 光标跟随（wrap）：下方 → 滚动一视觉行
   (define b7 (buffer-open "中中中\nx"))

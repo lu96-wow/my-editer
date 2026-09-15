@@ -129,7 +129,9 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 
 ### 宽字符（width.rkt）
 - 宽字符 width=2；组合/零宽 width=0；Ambiguous 按 1
-- 宽字符跨窗口左/右裁剪边界 → 整字丢弃（留空列）
+- 宽字符**绝不显示半个**：跨视口左右边界的整字丢弃，左右边界同一规则（`line-range->runs`）
+- 左边界吸附：`left-col` 恒为字符起点列（`snap-column-forward`），左边界不出现「空格+字符」浮动
+- 光标跟随保证光标字符完整落在视口内（含右边界），光标不会落在被丢弃的字符上
 - 宽字符跨折行边界 → 整字移下一段
 - 单字符宽度 > 折行宽度 → 独占一段（保证进度）
 - 鼠标命中宽字符右半格 → 命中同一字符
@@ -148,7 +150,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 - 增量只重画变化行（先清行再画），文本变短不残留
 
 ### 滚动 / 光标跟随
-- 光标移出窗口边界 → 窗口跟随；水平滚动按行宽限位 `left ∈ [0, 行宽-width+1]`
+- 光标移出窗口边界 → 窗口跟随；水平滚动按行宽限位
 - 垂直夹紧 `top ∈ [0, 行数-height]`
 - 滚动命令（pageup/down/滚轮）**不**触发光标跟随，否则滚动会被拉回
 - wrap 模式视觉行滚动跨行；滚到末尾目前不夹紧（已知 TODO）
@@ -172,7 +174,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 | properties | 行内区间升序、不重叠、相邻同 plist 已合并、无空 plist |
 | marker/overlay | overlay 的 start/end id 可查；start ≤ end |
 | plugin | 插件跑完后 dirty 必为 #f（被消费） |
-| view | vrow 序列长度 = height；越界行用 line=-1 占位 |
+| view | vrow 序列长度 = height；越界行用 line=-1 占位；clip 模式 `left-col` 恒为光标行的字符起点列（`snap-column-forward`） |
 
 ## 7. 换后端只换 `tui.rkt`
 
