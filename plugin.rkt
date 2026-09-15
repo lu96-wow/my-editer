@@ -41,10 +41,12 @@
   (lambda (b) (run-plugins b plugins)))
 
 ;; 把插件列表织进一个编辑原语，得到新的编辑函数。
-;; edit-fn 形如 (lambda (b . args) new-buffer)，例如 buffer-insert / buffer-newline。
+;; edit-fn 形如 (lambda (b . args) (values new-buffer desc))，例如 buffer-insert。
+;; 返回值同样透传 desc：(values new-buffer desc)。
 (define (with-plugins plugins edit-fn)
   (lambda (b . args)
-    (run-plugins (apply edit-fn b args) plugins)))
+    (define-values (b1 desc) (apply edit-fn b args))
+    (values (run-plugins b1 plugins) desc)))
 
 ;;; ---------- 测试 ----------
 
@@ -68,12 +70,13 @@
   (define b2 (buffer-mark-dirty b0 1 1))
   (check-equal? (buffer-dirty b2) (dirty-desc 1 1 2 2))
 
-  ;; with-plugins：编辑之后插件运行，且 dirty 被插件消费（清空）
+  ;; with-plugins：编辑之后插件运行，且 dirty 被插件消费（清空），desc 透传
   (define (dirty-widener b) (buffer-mark-dirty b 0 0))
   (define insert* (with-plugins (list dirty-widener) buffer-insert))
-  (define b3 (insert* b0 #\X))
+  (define-values (b3 d3) (insert* b0 #\X))
   (check-equal? (buffer->string b3) "Xhello\nworld")
   (check-false (buffer-dirty b3))
+  (check-equal? d3 (edit-desc 0 0 0 0 "X"))
 
   ;; run-plugins-init：首次全量扫描（dirty 覆盖全部行）
   (define (mark-dirty-lines b)

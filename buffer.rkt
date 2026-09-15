@@ -18,6 +18,7 @@
 (provide
  (struct-out buffer)
  (struct-out dirty-desc)
+ (struct-out edit-desc)
  buffer-empty
  buffer-open
  buffer->string
@@ -101,43 +102,50 @@
 
 ;;; ---------- 导航（只动 point）----------
 
-(define (buffer-goto b l c) (buffer-keep b (cursor l c)))
+;; 导航只动 point，不产生编辑：统一返回 (values new-buffer #f)。
+;; 编辑原语返回 (values new-buffer edit-desc)；无操作时 desc = #f。
+
+(define (buffer-goto b l c) (values (buffer-keep b (cursor l c)) #f))
 
 (define (buffer-left b)
   (define p (buffer-point b))
   (define l (cursor-line p))
   (define o (cursor-col p))
-  (cond [(> o 0) (buffer-keep b (cursor l (sub1 o)))]
-        [(> l 0) (define pl (sub1 l))
-                 (define n (string-length (buffer-line-ref b pl)))
-                 (buffer-keep b (cursor pl n))]
-        [else b]))
+  (values
+   (cond [(> o 0) (buffer-keep b (cursor l (sub1 o)))]
+         [(> l 0) (define pl (sub1 l))
+                  (define n (string-length (buffer-line-ref b pl)))
+                  (buffer-keep b (cursor pl n))]
+         [else b])
+   #f))
 
 (define (buffer-right b)
   (define p (buffer-point b))
   (define l (cursor-line p))
   (define o (cursor-col p))
   (define n (buffer-line-count b))
-  (cond [(< o (string-length (buffer-line-ref b l))) (buffer-keep b (cursor l (add1 o)))]
-        [(< l (sub1 n))                              (buffer-keep b (cursor (add1 l) 0))]
-        [else b]))
+  (values
+   (cond [(< o (string-length (buffer-line-ref b l))) (buffer-keep b (cursor l (add1 o)))]
+         [(< l (sub1 n))                              (buffer-keep b (cursor (add1 l) 0))]
+         [else b])
+   #f))
 
 (define (buffer-up b)
   (define p (buffer-point b))
-  (buffer-keep b (cursor (sub1 (cursor-line p)) (cursor-col p))))
+  (values (buffer-keep b (cursor (sub1 (cursor-line p)) (cursor-col p))) #f))
 
 (define (buffer-down b)
   (define p (buffer-point b))
-  (buffer-keep b (cursor (add1 (cursor-line p)) (cursor-col p))))
+  (values (buffer-keep b (cursor (add1 (cursor-line p)) (cursor-col p))) #f))
 
 (define (buffer-home b)
   (define p (buffer-point b))
-  (buffer-keep b (cursor (cursor-line p) 0)))
+  (values (buffer-keep b (cursor (cursor-line p) 0)) #f))
 
 (define (buffer-end b)
   (define p (buffer-point b))
   (define l (cursor-line p))
-  (buffer-keep b (cursor l (string-length (buffer-line-ref b l)))))
+  (values (buffer-keep b (cursor l (string-length (buffer-line-ref b l)))) #f))
 
 ;;; ---------- dirty 计算 ----------
 ;;; dirty 用「新 buffer 坐标系」。渲染时直接用它索引新行表。
@@ -181,7 +189,7 @@
                                (cursor-col  (buffer-point b))))
   (define-values (c2 desc) (edit-fn c1))
   (cond
-    [(not desc) b]
+    [(not desc) (values b #f)]
     [else
      (define old-count (content-line-count c1))
      (define new-count (content-line-count c2))
@@ -189,13 +197,15 @@
      ;; overlay-table-apply-edit 内部先调 marker-table-apply-edit，再 prune evaporate
      (define-values (ot* mt*)
        (overlay-table-apply-edit (buffer-overlays b) (buffer-markers b) desc))
-     (buffer c2 np np
-             mt*
-             (props-apply-edit (buffer-properties b) desc)
-             ot*
-             (add1 (buffer-tick b))
-             (merge-dirty (buffer-dirty b) (dirty-of desc old-count new-count))
-             #t)]))
+     (values
+      (buffer c2 np np
+              mt*
+              (props-apply-edit (buffer-properties b) desc)
+              ot*
+              (add1 (buffer-tick b))
+              (merge-dirty (buffer-dirty b) (dirty-of desc old-count new-count))
+              #t)
+      desc)]))
 
 (define (buffer-insert    b ch) (buffer-edit b (lambda (c) (content-insert c ch))))
 
@@ -295,41 +305,56 @@
   (check-equal? (buffer-tick b0) 0)
   (check-false (buffer-dirty b0))
 
-  ;; insert
-  (define b1 (buffer-insert b0 #\X))
+  ;; insert：返回 (values buffer desc)
+  (define-values (b1 d1) (buffer-insert b0 #\X))
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? (buffer-point b1) (cursor 0 1))
   (check-equal? (buffer-tick b1) 1)
   (check-equal? (buffer-dirty b1) (dirty-desc 0 0 2 2))
+  (check-equal? d1 (edit-desc 0 0 0 0 "X"))
 
   ;; newline
-  (define b2 (buffer-newline b0))
+  (define-values (b2 d2) (buffer-newline b0))
   (check-equal? (buffer->string b2) "\nhello\nworld")
   (check-equal? (buffer-point b2) (cursor 1 0))
   (check-equal? (buffer-line-count b2) 3)
+  (check-equal? d2 (edit-desc 0 0 0 0 "\n"))
 
   ;; 之前崩的路径：down + home + backspace
-  (define b3 (buffer-backspace (buffer-home (buffer-down b0))))
+  (define-values (b0-down _1) (buffer-down b0))
+  (define-values (b0-home _2) (buffer-home b0-down))
+  (define-values (b3 d3) (buffer-backspace b0-home))
   (check-equal? (buffer->string b3) "helloworld")
   (check-equal? (buffer-point b3) (cursor 0 5))
+  (check-equal? d3 (edit-desc 0 5 1 0 ""))
 
   ;; delete 合并
-  (define b4 (buffer-delete (buffer-end b0)))
+  (define-values (b0-end _3) (buffer-end b0))
+  (define-values (b4 d4) (buffer-delete b0-end))
   (check-equal? (buffer->string b4) "helloworld")
   (check-equal? (buffer-point b4) (cursor 0 5))
+  (check-equal? d4 (edit-desc 0 5 1 0 ""))
 
-  ;; 导航：left / right 跨行
-  (define b5 (buffer-right (buffer-end b0)))
+  ;; 导航：left / right 跨行，desc 恒 #f
+  (define-values (b5 d5) (buffer-right b0-end))
   (check-equal? (buffer-point b5) (cursor 1 0))
-  (define b6 (buffer-left b5))
+  (check-false d5)
+  (define-values (b6 d6) (buffer-left b5))
   (check-equal? (buffer-point b6) (cursor 0 5))
+  (check-false d6)
+
+  ;; 无操作边界：desc = #f，且原 buffer 原样返回
+  (define-values (b-nop d-nop) (buffer-backspace b0))
+  (check-eq? b-nop b0)
+  (check-false d-nop)
 
   ;; 多行插入（paste）
-  (define bp (buffer-insert-text b0 "X\nY"))
+  (define-values (bp dp) (buffer-insert-text b0 "X\nY"))
   (check-equal? (buffer->string bp) "X\nYhello\nworld")
   (check-equal? (buffer-point bp) (cursor 1 1))
+  (check-equal? dp (edit-desc 0 0 0 0 "X\nY"))
   ;; 尾部换行保留空行
-  (define bp2 (buffer-insert-text b0 "A\n"))
+  (define-values (bp2 _4) (buffer-insert-text b0 "A\n"))
   (check-equal? (buffer->string bp2) "A\nhello\nworld")
 
   ;; 属性
@@ -339,7 +364,8 @@
   (check-equal? (buffer-get-text-property b7 0 4 'face) #f)
 
   ;; 属性随编辑移动：插在 bold 区间内，新区间扩张
-  (define b8 (buffer-insert (buffer-goto b7 0 2) #\Z))
+  (define-values (b7-goto _5) (buffer-goto b7 0 2))
+  (define-values (b8 _6) (buffer-insert b7-goto #\Z))
   (check-equal? (buffer->string b8) "heZllo\nworld")
   (check-equal? (buffer-get-text-property b8 0 2 'face) 'bold)  ; 新字符继承
 
@@ -347,16 +373,17 @@
   (define-values (b9 mid) (buffer-make-marker b0 (cursor 0 3)))
   (check-equal? (buffer-marker-pos b9 mid) (cursor 0 3))
   ;; 在 marker 前插入 → marker 右移
-  (define b10 (buffer-insert b9 #\a))
+  (define-values (b10 _7) (buffer-insert b9 #\a))
   (check-equal? (buffer-marker-pos b10 mid) (cursor 0 4))
   ;; 删除 marker 前字符 → marker 左移
-  (define b11 (buffer-delete (buffer-goto b10 0 0)))
+  (define-values (b10-goto _8) (buffer-goto b10 0 0))
+  (define-values (b11 _9) (buffer-delete b10-goto))
   (check-equal? (buffer-marker-pos b11 mid) (cursor 0 3))
 
   ;; overlay
   (define-values (b12 oid) (buffer-make-overlay b0 (cursor 0 1) (cursor 0 4)
                                                  (hash 'face 'region)))
-  (define b13 (buffer-insert b12 #\a))
+  (define-values (b13 _10) (buffer-insert b12 #\a))
   (define runs (overlay-table-runs (buffer-overlays b13) (buffer-markers b13) 0 10))
   (check-equal? (length runs) 1)
   (check-equal? (car  (car runs)) 2)   ; start 右移到 2
@@ -366,9 +393,12 @@
   (define-values (b14 oid2) (buffer-make-overlay b0 (cursor 0 1) (cursor 0 3)
                                                   (hash 'face 'region 'evaporate #t)))
   ;; 连续删 3 次，overlay 覆盖的字符全删光
-  (define b15 (buffer-delete (buffer-goto b14 0 1)))
-  (define b16 (buffer-delete (buffer-goto b15 0 1)))
-  (define b17 (buffer-delete (buffer-goto b16 0 1)))
+  (define-values (b14-goto _11) (buffer-goto b14 0 1))
+  (define-values (b15 _12) (buffer-delete b14-goto))
+  (define-values (b15-goto _13) (buffer-goto b15 0 1))
+  (define-values (b16 _14) (buffer-delete b15-goto))
+  (define-values (b16-goto _15) (buffer-goto b16 0 1))
+  (define-values (b17 _16) (buffer-delete b16-goto))
   (check-equal? (overlay-table-count (buffer-overlays b17)) 0)
 
   ;; clean

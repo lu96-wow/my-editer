@@ -128,7 +128,7 @@
          (set-box! evt #f)
          (handler type data mods)
          (define ev (unbox evt))
-         (define e* (if ev (editor-handle e ev) e))
+         (define-values (e* _desc) (if ev (editor-handle e ev) (values e #f)))
          (unless (editor-done? e*) (loop e* s)))))))
 
 ;;; ---------- 测试（只测纯函数，不碰终端）----------

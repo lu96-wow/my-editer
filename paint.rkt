@@ -33,7 +33,7 @@
   (check-equal? (screen-cursor-row s0) 0)
   (check-equal? (screen-cursor-col s0) 0)
 
-  (define b1 (buffer-goto b0 0 2))
+  (define-values (b1 _) (buffer-goto b0 0 2))
   (check-equal? (screen-cursor-col (paint (window-open b1 2 10))) 3)
 
   (define s2 (paint (window-set-left (window-open b0 2 10) 2)))

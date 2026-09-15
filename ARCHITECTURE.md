@@ -91,6 +91,10 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 **位置映射函数** `edit-desc-map-position` 调整。所有编辑（插入/删除/换行/合并/粘贴/剪切）
 都只是 splice 的特例。
 
+**desc 不再被丢弃**：`buffer-edit` 与所有编辑/导航原语统一返回 `(values new-buffer desc)`
+（导航 desc 恒 `#f`，无操作编辑 `#f`）；`editor-edit` / `editor-handle` 同样透传，供上层
+（语言层 / 跨 buffer 同步）消费。`buffer.rkt` 已重新导出 `edit-desc`。
+
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
 `dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。
 

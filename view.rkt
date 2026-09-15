@@ -308,12 +308,12 @@
                 '((0 0 4) (0 4 6) (1 0 1)))
 
   ;; 光标映射：clip
-  (define b3 (buffer-goto b1 1 1))
+  (define-values (b3 _1) (buffer-goto b1 1 1))
   (define-values (r c) (window-point->screen (window-open b3 2 80)))
   (check-equal? (list r c) '(1 1))
 
   ;; 光标映射：wrap，point 在第二段起点
-  (define b4 (buffer-goto b2 0 2))
+  (define-values (b4 _2) (buffer-goto b2 0 2))
   (define-values (r2 c2) (window-point->screen (window-set-buffer ww b4)))
   (check-equal? (list r2 c2) '(1 0))
 
@@ -331,23 +331,28 @@
 
   ;; 光标跟随（clip）：下方 → 窗口下移
   (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
-  (define wf (window-open (buffer-goto b5 4 0) 2 10))
+  (define-values (b5-a _3) (buffer-goto b5 4 0))
+  (define wf (window-open b5-a 2 10))
   (check-equal? (window-top-line (window-ensure-point wf)) 3)   ; top = 4-2+1
 
   ;; 上方 → 置顶
-  (define wf2 (window-set-top (window-open (buffer-goto b5 0 0) 2 10) 3))
+  (define-values (b5-b _4) (buffer-goto b5 0 0))
+  (define wf2 (window-set-top (window-open b5-b 2 10) 3))
   (check-equal? (window-top-line (window-ensure-point wf2)) 0)
 
   ;; 水平跟随 + 按行宽限位
   (define b6 (buffer-open "abcdefgh"))
-  (define whe (window-ensure-point (window-open (buffer-goto b6 0 7) 1 4)))
+  (define-values (b6-a _5) (buffer-goto b6 0 7))
+  (define whe (window-ensure-point (window-open b6-a 1 4)))
   (check-equal? (window-left-col whe) 4)    ; 7-4+1=4，光标在右端
-  (define wh2s (window-set-left (window-open (buffer-goto b6 0 0) 1 4) 4))
+  (define-values (b6-b _6) (buffer-goto b6 0 0))
+  (define wh2s (window-set-left (window-open b6-b 1 4) 4))
   (check-equal? (window-left-col (window-ensure-point wh2s)) 0)
 
   ;; 光标跟随（wrap）：下方 → 滚动一视觉行
   (define b7 (buffer-open "中中中\nx"))
-  (define wg (window-set-mode (window-open (buffer-goto b7 1 0) 2 4) 'wrap))
+  (define-values (b7-a _7) (buffer-goto b7 1 0))
+  (define wg (window-set-mode (window-open b7-a 2 4) 'wrap))
   (define wge (window-ensure-point wg))
   (check-equal? (list (window-top-line wge) (window-top-seg wge)) '(0 1))
 
