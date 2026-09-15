@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../core/view/events.rkt" "../core/view/frame.rkt"
-         "slots.rkt" rackunit)
+         "slots.rkt" "plugin-dag.rkt" rackunit)
 
 ;;; framework.rkt —— 机械组合层：config + framework-handle/render/status/run
 ;;;
@@ -68,13 +68,24 @@
 
 ;;; ---------- 循环（read 注入事件，output 注入绘制） ----------
 
-;; read   : (-> (or/c #f event))
+;; read : (-> (or/c #f event async-result))
+;;   #f            → 空闲（重渲染）
+;;   event         → 用户输入，分派给命令
+;;   async-result  → 异步插件算完，按内容版本应用到 frame（stale 自动 no-op）
 ;; output : (-> screen (or/c #f screen) (listof status-seg) any)
 (define (framework-run cfg f0 read output)
   (let loop ([f f0] [prev #f])
     (define scr (framework-render cfg f))
     (output scr prev (framework-status cfg f))
-    (define-values (f* _desc done?) (framework-handle cfg f (read)))
+    (define msg (read))
+    (define-values (f* done?)
+      (if (async-result? msg)
+          (values (frame-replace-buffer f
+                                        (async-result-base-buffer msg)
+                                        (async-result-buffer msg))
+                  #f)
+          (let-values ([(f2 _desc d?) (framework-handle cfg f msg)])
+            (values f2 d?))))
     (unless done? (loop f* scr))))
 
 ;;; ---------- 测试 ----------

@@ -18,8 +18,12 @@
 
 (provide
  (struct-out plugin-spec)
+ (struct-out plugin-async)
+ (struct-out async-result)
  run-plugin-dag-sync
  run-plugin-dag-async
+ run-plugin-dag-async-init
+ plugin-async-poll
  plugin-dag-collect)
 
 (struct plugin-spec (name plugin deps) #:transparent)
@@ -66,15 +70,33 @@
 
 ;; ── 异步：不等待。立即返回基线（先渲染）+ 结果句柄 ──
 
-(define (run-plugin-dag-async specs b0)
-  (define ch (make-channel))
-  (thread (lambda () (channel-put ch (run-plugin-dag-sync specs b0))))
-  (values b0 ch))
+;; 进行中的异步计算：base-buffer = 启动时的快照，ch = 结果通道。
+(struct plugin-async (base-buffer ch) #:transparent)
 
-;; 收结果：期间内容没变 → 应用；变了 → stale（丢投影，重算由调用者决定）。
-(define (plugin-dag-collect current-buffer b0 ch)
-  (define result (channel-get ch))
-  (if (buffer-content-same? b0 current-buffer)
+;; 回 UI 的消息：某次异步插件算完，base-buffer → buffer（内容不变，只加了标注）。
+(struct async-result (base-buffer buffer) #:transparent)
+
+(define (run-plugin-dag-async specs b0)
+  (if (null? specs)
+      (values b0 #f)
+      (let ([ch (make-channel)])
+        (thread (lambda () (channel-put ch (run-plugin-dag-sync specs b0))))
+        (values b0 (plugin-async b0 ch)))))
+
+;; 启用时全量扫描：先标全量 dirty，再异步跑（对应 run-plugins-init 的 async 版）。
+(define (run-plugin-dag-async-init specs b0)
+  (if (null? specs)
+      (values b0 #f)
+      (run-plugin-dag-async specs (buffer-mark-dirty-all b0))))
+
+;; 非阻塞：没算完 → #f；算完 → 结果 buffer。
+(define (plugin-async-poll a)
+  (channel-try-get (plugin-async-ch a)))
+
+;; 收结果（阻塞）：期间内容没变 → 应用；变了 → stale（丢投影，重算由调用者决定）。
+(define (plugin-dag-collect current-buffer a)
+  (define result (channel-get (plugin-async-ch a)))
+  (if (buffer-content-same? (plugin-async-base-buffer a) current-buffer)
       result
       'stale))
 
@@ -110,12 +132,24 @@
                          b0)))
 
   ;; async：无编辑 → 应用
-  (define-values (b-ui ch) (run-plugin-dag-async specs b0))
-  (check-equal? (buffer-get-text-property (plugin-dag-collect b-ui b0 ch) 0 0 'diag) "tok")
+  (define-values (b-ui async) (run-plugin-dag-async specs b0))
+  (check-equal? (buffer-get-text-property (plugin-dag-collect b-ui async) 0 0 'diag) "tok")
 
   ;; async：期间编辑 → stale
-  (define-values (b-ui2 ch2) (run-plugin-dag-async specs b0))
+  (define-values (b-ui2 async2) (run-plugin-dag-async specs b0))
   (define-values (b-edit _2) (buffer-insert b-ui2 0 0 #\Y))
-  (check-equal? (plugin-dag-collect b-edit b0 ch2) 'stale)
+  (check-equal? (plugin-dag-collect b-edit async2) 'stale)
+
+  ;; 空 specs：async 无句柄
+  (define-values (_b-empty a-empty) (run-plugin-dag-async '() b0))
+  (check-false a-empty)
+
+  ;; 启用时全量扫描：dirty 敏感的插件在 init 后仍产出（先 mark-dirty-all）
+  (define (dirty-hl b)
+    (if (buffer-dirty b) (list (patch 'face 0 0 (list (list 0 0 5 'bold)))) '()))
+  (define-values (b-init a-init)
+    (run-plugin-dag-async-init (list (plugin-spec 'hl dirty-hl '()))
+                               (buffer-open "hello world")))
+  (check-equal? (buffer-get-text-property (plugin-dag-collect b-init a-init) 0 0 'face) 'bold)
 
   (displayln "plugin-dag.rkt: all tests passed"))

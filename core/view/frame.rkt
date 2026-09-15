@@ -2,6 +2,7 @@
 
 (require racket/list
          "../text/cursor.rkt" "../text/buffer.rkt" "../text/content.rkt"
+         "../text/patch.rkt"
          "window.rkt" "view.rkt" "paint.rkt" rackunit)
 
 ;;; frame.rkt —— 多窗口视口机制（窗口集合 + linked 同步，布局无关）
@@ -24,6 +25,7 @@
  frame-resize
  frame-edit-active
  frame-sync-buffer
+ frame-replace-buffer
  frame-ensure-active
  frame-cycle-active
  frame-sync-sizes
@@ -115,6 +117,17 @@
                  (cursor (edit-desc-s-line desc) (edit-desc-s-col desc))))
   (window-set-point (struct-copy window w [buffer new-b]) p*))
 
+;; 把所有「内容与 base-b 相同」的窗口 buffer 换成 new-b（内容不变 → point 不变）。
+;; 用于异步插件结果/标注的延后应用；内容已变（stale）时没有窗口匹配 → 自然 no-op。
+(define (frame-replace-buffer f base-b new-b)
+  (struct-copy frame f
+    [windows
+     (for/hash ([(id w) (in-hash (frame-windows f))])
+       (values id
+               (if (buffer-content-same? (window-buffer w) base-b)
+                   (window-set-buffer w new-b)
+                   w)))]))
+
 ;; 光标跟随：让 active 窗口的 point 可见
 (define (frame-ensure-active f)
   (define id (frame-active f))
@@ -190,6 +203,14 @@
 
   ;; cycle-active
   (check-equal? (frame-active (frame-cycle-active f1 '(0 1) 'next)) 1)
+
+  ;; frame-replace-buffer：内容相同的窗口换 buffer（异步标注应用）；stale 时 no-op
+  (define b-ann (buffer-put-text-property b 0 0 1 'face 'bold))
+  (define fr (frame-replace-buffer f1 b b-ann))
+  (check-true (eq? (window-buffer (frame-window fr 0)) b-ann))
+  (check-true (eq? (window-buffer (frame-window fr 1)) b-ann))
+  (define b-other (buffer-open "different"))
+  (check-equal? (frame-replace-buffer f1 b-other b-ann) f1)   ; 内容不匹配 → 原样
 
   ;; sync-sizes + pieces
   (define rects (list (list 0 0 0 5 3) (list 1 5 0 5 3)))

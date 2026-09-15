@@ -4,6 +4,7 @@
 (require "../../core/view/events.rkt" "../../core/view/screen.rkt"
          "../../core/view/frame.rkt" "../../core/text/buffer.rkt"
          "../../framework/framework.rkt" "../../framework/slots.rkt"
+         "../../framework/plugin-dag.rkt"
          "../../reference/input-tui.rkt" rackunit)
 
 ;;; ui/tui/tui.rkt —— racket-tui 后端
@@ -141,17 +142,22 @@
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
      (define area-rows (max 1 (sub1 r)))
-     (define b0* (run-plugins-init b0 (config-buffer-plugins cfg)))
+     ;; 异步启动插件：先渲染未标注的基线，后台算完再应用（不阻塞 UI）
+     (define-values (b0* async) (run-plugin-dag-async-init (config-buffer-plugins cfg) b0))
      (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
      (define handler (input-handler (lambda (ev) (set-box! evt ev))))
      (framework-run
       cfg f0
       (lambda ()
-        (let-values ([(type data mods) (read-event)])
-          (set-box! evt #f)
-          (handler type data mods)
-          (unbox evt)))
+        ;; 多路复用：先收异步插件结果，再读终端（非阻塞）
+        (define res (and async (plugin-async-poll async)))
+        (if res
+            (async-result (plugin-async-base-buffer async) res)
+            (let-values ([(type data mods) (read-event-noblock)])
+              (set-box! evt #f)
+              (handler type data mods)
+              (unbox evt))))
       (lambda (scr prev segs)
         (put-bytes (frame->bytes (config-theme cfg) scr segs prev)))))))
 
