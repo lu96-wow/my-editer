@@ -1,6 +1,6 @@
 #lang racket
 
-(require "buffer.rkt" "window.rkt" "screen.rkt" "view.rkt" rackunit)
+(require "../doc/buffer.rkt" "window.rkt" "screen.rkt" "view.rkt" rackunit)
 
 ;;; paint.rkt —— 把 buffer + window 的可见区渲染成 screen
 ;;;

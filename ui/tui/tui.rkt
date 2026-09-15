@@ -1,7 +1,9 @@
 #lang racket
 
 (require tui)   ; racket-tui 包（Linux）
-(require "events.rkt" "screen.rkt" "editor.rkt" "slot.rkt" "paint.rkt" rackunit)
+(require "../../core/view/events.rkt" "../../core/view/screen.rkt"
+         "../../logic/event.rkt" "../../plugin/view-plugin.rkt"
+         "../../core/view/paint.rkt" rackunit)
 
 ;;; tui.rkt —— racket-tui 后端
 ;;;
@@ -9,7 +11,7 @@
 ;;;   输出：screen + 状态段 -> ANSI 字节（纯函数，可单测）
 ;;;   输入：build-input -> 中性 ui-event
 ;;;
-;;; 换 GUI/web 后端时，只替换本文件；editor/paint/screen/slot 都保持不变。
+;;; 换 GUI/web 后端时，只替换本文件；session/paint/screen/view-plugin 都保持不变。
 
 (provide screen->bytes screen->bytes-diff frame->bytes run-tui)
 
@@ -163,19 +165,19 @@
      (define r (or rows 24))
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
-     (define e0 (make-editor b0 plugins view-plugins (max 1 (sub1 r)) c))
+     (define s0 (make-session b0 plugins view-plugins (max 1 (sub1 r)) c))
      (define evt (box #f))
      (define handler (tui-input-handler (lambda (ev) (set-box! evt ev))))
-     (let loop ([e e0] [prev #f])
-       (define s (paint (editor-window e)))
-       (define segs (editor-status e))
-       (put-bytes (frame->bytes s segs prev))
+     (let loop ([s s0] [prev #f])
+       (define scr (paint (session-window s)))
+       (define segs (session-status s))
+       (put-bytes (frame->bytes scr segs prev))
        (let-values ([(type data mods) (read-event)])
          (set-box! evt #f)
          (handler type data mods)
          (define ev (unbox evt))
-         (define-values (e* _desc) (if ev (editor-handle e ev) (values e #f)))
-         (unless (editor-done? e*) (loop e* s)))))))
+         (define-values (s* _desc) (if ev (session-handle s ev) (values s #f)))
+         (unless (session-done? s*) (loop s* scr)))))))
 
 ;;; ---------- 测试（只测纯函数，不碰终端）----------
 

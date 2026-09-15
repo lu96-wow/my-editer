@@ -1,6 +1,6 @@
 #lang racket
 
-(require "cursor.rkt" "buffer.rkt" "window.rkt" "render.rkt"
+(require "../doc/cursor.rkt" "../doc/buffer.rkt" "window.rkt" "render.rkt"
          "width.rkt" "screen.rkt" rackunit)
 
 ;;; view.rkt —— 显示布局抽象

@@ -5,33 +5,47 @@
 > **数据 → lambda → 数据**：每个模块都是「输入数据 → 纯函数变换 → 输出新数据」，
 > 不修改输入、无全局可变状态。所有结构都是 `#:transparent` 的持久化结构。
 
+## 0. 目录结构
+
+```
+edit/
+├── core/                 # 机制（不变式）
+│   ├── doc/              #   文档：cursor content properties marker overlay buffer
+│   └── view/             #   视口（后端无关）：width render window view screen paint events
+├── plugin/               # 策略 slot（纯函数列表 + 组合器）
+│   ├── buffer-plugin.rkt #   buffer→buffer，吃 dirty
+│   └── view-plugin.rkt   #   window→status-seg，状态行
+├── logic/                # 事件逻辑（组合根）
+│   └── event.rkt         #   session 状态 + keymap + 事件处理
+├── ui/                   # 后端
+│   └── tui/              #   终端后端（未来 gui/ web/）
+│       └── tui.rkt
+├── demo.rkt              # 入口 + 演示插件
+└── ARCHITECTURE.md
+```
+
+依赖方向：`core ← plugin ← logic ← ui`（logic 也依赖 core）；`demo` 在最外层，依赖所有。
+
+**没有「editor」这一层**：`logic/event` 只提供事件逻辑（session）；真正的 editor（例如 `ui/tui` 的 `run-tui`）由使用者用 core / plugin / logic / ui 的接口自行拼装。
+
 ## 1. 分层与职责边界
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ demo.rkt        入口（手动测试）                              │
+│ demo.rkt             入口（手动测试）                         │
 ├──────────────────────────────────────────────────────────────┤
-│ tui.rkt         后端（racket-tui）：screen↔ANSI、raw输入↔事件 │  ← 后端相关
+│ ui/tui/tui.rkt       后端（racket-tui）：screen↔ANSI、输入↔事件 │ ← 后端相关
 ├──────────────────────────────────────────────────────────────┤
-│ editor.rkt      应用：命令 + 事件处理                          │
-│ events.rkt      中性输入事件 ui-event                          │
+│ logic/event.rkt      事件逻辑：session + keymap + 事件处理      │
 ├──────────────────────────────────────────────────────────────┤
-│ width.rkt       显示宽度（字符↔列换算）                       │  ← 后端无关
-│ render.rkt      行渲染：buffer 一行 → glyph（ch+face）        │
-│ window.rkt      视口：buffer 引用 + point + 滚动/尺寸 + 导航/编辑 │
-│ view.rkt        布局（clip/wrap）+ 光标/鼠标映射 + 滚动       │
-│ screen.rkt      屏幕帧缓冲 run / screen + 行级 diff           │
-│ paint.rkt       可见区 → screen                               │
+│ plugin/buffer-plugin  buffer 插件（buffer→buffer，吃 dirty）  │
+│ plugin/view-plugin    view 插件（window→status-seg，状态行）  │
 ├──────────────────────────────────────────────────────────────┤
-│ plugin.rkt      buffer 插件（buffer→buffer，吃 dirty）       │
-│ slot.rkt        view 插件（window→status-seg，状态行）        │
+│ core/view/*.rkt      视口（后端无关）：几何/布局/屏幕/事件     │
+│   width  render  window  view  screen  paint  events          │
 ├──────────────────────────────────────────────────────────────┤
-│ buffer.rkt      文档：content + gap + 属性/marker/overlay（无光标） │
-│ content.rkt     文本存储 + 编辑原语（产生 edit-desc）         │
-│ properties.rkt  文本属性（行内区间）                          │
-│ marker.rkt      随编辑移动的位置                              │
-│ overlay.rkt     独立装饰层（priority/evaporate）              │
-│ cursor.rkt      位置代数 (line, col)                          │
+│ core/doc/*.rkt       文档（无光标）：文本/属性/位置/装饰       │
+│   cursor  content  properties  marker  overlay  buffer        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,15 +58,15 @@
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
-| plugin | buffer 插件：组合 buffer→buffer 的函数，消费 dirty | 具体插件逻辑 |
-| slot | view 插件：window→status-seg 的组合（状态行） | 具体插件逻辑 |
+| buffer-plugin | buffer 插件：组合 buffer→buffer 的函数，消费 dirty | 具体插件逻辑 |
+| view-plugin | view 插件：window→status-seg 的组合（状态行） | 具体插件逻辑 |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | width | 字符 ↔ 显示列 | 终端/GUI |
 | window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 属性/marker/overlay 细节 |
 | view | vrow 布局 + 光标/鼠标映射 + 滚动 | 具体后端 |
 | screen | 屏幕帧（run 序列）+ diff | 具体后端 |
 | paint | 可见区 → screen | 具体后端 |
-| editor | 事件 → 命令（keymap）+ 组合 buffer/view 两个插件 slot | 具体后端 |
+| event | 事件层：session 状态 + keymap + 两个插件 slot 的组合 | 具体后端 |
 | tui | 唯一知道 racket-tui 的层 | 命令语义 |
 
 ## 2. 三条数据流
@@ -60,7 +74,7 @@
 ### 编辑流（一次按键）
 
 ```
-ui-event ──editor-handle──▶ 命令 ──window-*──▶ window（用 window-point 驱动 buffer-* 显式位置）
+ui-event ──session-handle──▶ 命令 ──window-*──▶ window（用 window-point 驱动 buffer-* 显式位置）
                                               │
                        buffer-* → 新 buffer + edit-desc
                                               │
@@ -70,18 +84,18 @@ ui-event ──editor-handle──▶ 命令 ──window-*──▶ window（�
 ### 渲染流（每帧）
 
 ```
-buffer ──render-line──▶ glyph(ch+face)            render.rkt
-       ──width──▶ 列坐标                          width.rkt
-       ──layout-clip/wrap──▶ vrow(line,列范围)    view.rkt
-       ──line-range->runs──▶ run(col,text,face)   view.rkt
-       ──paint──▶ screen(行runs+光标)             paint.rkt
-       ──screen->bytes-diff──▶ ANSI               tui.rkt
+buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
+       ──width──▶ 列坐标                          core/view/width.rkt
+       ──layout-clip/wrap──▶ vrow(line,列范围)    core/view/view.rkt
+       ──line-range->runs──▶ run(col,text,face)   core/view/view.rkt
+       ──paint──▶ screen(行runs+光标)             core/view/paint.rkt
+       ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 ```
 
 ### 输入流
 
 ```
-终端原始输入 ──build-input──▶ ui-event ──editor-handle──▶ 命令
+终端原始输入 ──build-input──▶ ui-event ──session-handle──▶ 命令
 ```
 
 ### 插件 slot（扩展点地图）
@@ -90,13 +104,13 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 
 | # | 位置 | 类型 | 增量依据 | 例子 | 现状 |
 |---|---|---|---|---|---|
-| 1 | 输入 → 命令 | `ui-event → editor`（keymap） | 事件 | 键位、vim 模式 | `editor-keymap` |
+| 1 | 输入 → 命令 | `ui-event → session`（keymap） | 事件 | 键位、vim 模式 | `session-keymap` |
 | 2 | 编辑策略 | `window → (values window desc)` | 无（事件直调） | 自动配对、snippet | `window-*` 命令 |
-| 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `plugin.rkt` |
-| 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `slot.rkt` |
+| 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `plugin/buffer-plugin.rkt` |
+| 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `plugin/view-plugin.rkt` |
 | 5 | 渲染主题 | `face → style` | 无 | 配色主题 | `face-theme`（tui） |
 | 6 | workspace 派生 | `workspace → workspace` | `edit-desc` + 来源 | 关联 buffer 同步、LSP、多窗口 | 待建 |
-| 7 | 后端 | `screen → bytes` / `raw-input → ui-event` | — | tui/gui/web | `tui.rkt` |
+| 7 | 后端 | `screen → bytes` / `raw-input → ui-event` | — | tui/gui/web | `ui/tui/tui.rkt` |
 
 已实现：#1 keymap（可 `hash-set` 扩展）、#2 命令、#3 buffer 插件、#4 view 插件、#5 主题表、#7 后端。
 待建：#6 workspace 层（多窗口/关联 buffer/LSP），是 core 之上的下一组合根。
@@ -113,8 +127,8 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 都只是 splice 的特例。
 
 **desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
-原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`editor-edit` / `editor-handle`
-同样透传，供上层（语言层 / 跨 buffer 同步）消费。`buffer.rkt` 已重新导出 `edit-desc`。
+原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`session-edit` / `session-handle`
+同样透传，供上层（语言层 / 跨 buffer 同步）消费。`core/doc/buffer.rkt` 已重新导出 `edit-desc`。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
 `dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。
@@ -123,7 +137,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 
 | 前缀/后缀 | 含义 | 例子 |
 |---|---|---|
-| `make-*` | 构造器（表/状态） | make-marker-table, make-screen, make-editor |
+| `make-*` | 构造器（表/状态） | make-marker-table, make-screen, make-session |
 | `*-open` / `*-empty` / `*-of-*` | 构造器 | buffer-open, props-empty, content-of-string |
 | `*->*` | 投影/换算 | content->string, index->column, window-point->screen |
 | `*-ref` / `*-count` / `*-line-count` | 访问/计数 | buffer-line-ref, marker-table-count |
@@ -131,7 +145,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 | `*-set-*` | 字段更新（返回新结构） | window-set-top, content-set-col |
 | 动词-名词 | 变换 | buffer-insert, props-put, window-scroll |
 | `*-apply-edit` | 解释 edit-desc | props-apply-edit, marker-table-apply-edit |
-| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, editor-done? |
+| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, session-done? |
 | `!` | 副作用（仅 tui 层，继承自 racket-tui） | put-at!, style-define! |
 | `run-*` / `with-*` | 组合器 | run-plugins, with-plugins, run-tui |
 
@@ -199,7 +213,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 | plugin | 插件跑完后 dirty 必为 #f（被消费） |
 | view | vrow 序列长度 = height；越界行用 line=-1 占位；clip 模式滚动时 `left-col` 吸附为字符起点列，视口内不重吸附 |
 
-## 7. 换后端只换 `tui.rkt`
+## 7. 换后端只换 `ui/tui/tui.rkt`
 
-`events`/`screen`/`editor`/`view`/`paint`/`render`/`width` 全部后端无关。
+`core/view/events`、`screen`、`logic/event`、`core/view/view`、`paint`、`render`、`width` 全部后端无关。
 GUI/Web 后端只需：把 `screen` 画出来 + 把原始输入翻译成 `ui-event`。

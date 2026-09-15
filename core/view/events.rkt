@@ -2,7 +2,7 @@
 
 ;;; events.rkt —— 后端无关的输入事件
 ;;;
-;;; 后端（tui/gui/web）把原始输入翻译成 ui-event，应用层（editor.rkt）
+;;; 后端（tui/gui/web）把原始输入翻译成 ui-event，事件层（app/event.rkt）
 ;;; 消费 ui-event。换后端时，这个结构完全不变。
 
 (provide (struct-out ui-event))

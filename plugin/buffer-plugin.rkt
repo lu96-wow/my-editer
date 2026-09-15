@@ -1,6 +1,6 @@
 #lang racket
 
-(require "buffer.rkt" rackunit)
+(require "../core/doc/buffer.rkt" rackunit)
 
 ;;; plugin.rkt —— 函数式插件系统：组合层
 ;;;
