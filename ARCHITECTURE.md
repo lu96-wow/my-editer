@@ -23,7 +23,8 @@
 │ screen.rkt      屏幕帧缓冲 run / screen + 行级 diff           │
 │ paint.rkt       可见区 → screen                               │
 ├──────────────────────────────────────────────────────────────┤
-│ plugin.rkt      插件组合（buffer→buffer 的纯函数序列）        │
+│ plugin.rkt      buffer 插件（buffer→buffer，吃 dirty）       │
+│ slot.rkt        view 插件（window→status-seg，状态行）        │
 ├──────────────────────────────────────────────────────────────┤
 │ buffer.rkt      文档：content + gap + 属性/marker/overlay（无光标） │
 │ content.rkt     文本存储 + 编辑原语（产生 edit-desc）         │
@@ -43,14 +44,15 @@
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
-| plugin | 组合 buffer→buffer 的函数，消费 dirty | 具体插件逻辑 |
+| plugin | buffer 插件：组合 buffer→buffer 的函数，消费 dirty | 具体插件逻辑 |
+| slot | view 插件：window→status-seg 的组合（状态行） | 具体插件逻辑 |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | width | 字符 ↔ 显示列 | 终端/GUI |
 | window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 属性/marker/overlay 细节 |
 | view | vrow 布局 + 光标/鼠标映射 + 滚动 | 具体后端 |
 | screen | 屏幕帧（run 序列）+ diff | 具体后端 |
 | paint | 可见区 → screen | 具体后端 |
-| editor | 事件 → 命令 | 具体后端 |
+| editor | 事件 → 命令（keymap）+ 组合 buffer/view 两个插件 slot | 具体后端 |
 | tui | 唯一知道 racket-tui 的层 | 命令语义 |
 
 ## 2. 三条数据流
@@ -81,6 +83,23 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 ```
 终端原始输入 ──build-input──▶ ui-event ──editor-handle──▶ 命令
 ```
+
+### 插件 slot（扩展点地图）
+
+插件不是「一个万能 Plugin」，而是每个数据派生位置一个**类型明确的 slot**（纯函数列表 + 组合器）。
+
+| # | 位置 | 类型 | 增量依据 | 例子 | 现状 |
+|---|---|---|---|---|---|
+| 1 | 输入 → 命令 | `ui-event → editor`（keymap） | 事件 | 键位、vim 模式 | `editor-keymap` |
+| 2 | 编辑策略 | `window → (values window desc)` | 无（事件直调） | 自动配对、snippet | `window-*` 命令 |
+| 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `plugin.rkt` |
+| 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `slot.rkt` |
+| 5 | 渲染主题 | `face → style` | 无 | 配色主题 | `face-theme`（tui） |
+| 6 | workspace 派生 | `workspace → workspace` | `edit-desc` + 来源 | 关联 buffer 同步、LSP、多窗口 | 待建 |
+| 7 | 后端 | `screen → bytes` / `raw-input → ui-event` | — | tui/gui/web | `tui.rkt` |
+
+已实现：#1 keymap（可 `hash-set` 扩展）、#2 命令、#3 buffer 插件、#4 view 插件、#5 主题表、#7 后端。
+待建：#6 workspace 层（多窗口/关联 buffer/LSP），是 core 之上的下一组合根。
 
 ## 3. 唯一跨层契约：`edit-desc`
 

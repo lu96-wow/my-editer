@@ -11,9 +11,9 @@
 ;;;   - 鼠标点击定位光标、滚轮滚动
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
 
-(require "buffer.rkt" "tui.rkt")
+(require "buffer.rkt" "window.rkt" "cursor.rkt" "slot.rkt" "tui.rkt")
 
-(provide sample keyword-hl)
+(provide sample keyword-hl rowcol-status)
 
 ;;; ---------- 演示用语法高亮插件（就地定义，属 demo 不属核心）----------
 
@@ -47,6 +47,17 @@
                                  (add1 (dirty-desc-last-line d)))])
         (highlight-line b line))))
 
+;;; ---------- 演示用 view 插件：状态行（行列 + 模式）----------
+
+(define (rowcol-status w)
+  (define p (window-point w))
+  (define line-count (buffer-line-count (window-buffer w)))
+  (list
+   (status-seg (format "Ln ~a, Col ~a" (add1 (cursor-line p)) (add1 (cursor-col p))) #f)
+   (status-seg "  " #f)
+   (status-seg (if (eq? (window-mode w) 'wrap) "wrap" "clip") 'mode)
+   (status-seg (format "  ~a 行" line-count) #f)))
+
 ;;; ---------- 示例内容 ----------
 
 (define sample
@@ -69,4 +80,4 @@
 
 (module+ main
   (displayln "启动 TUI demo（Ctrl+Q 退出）…")
-  (run-tui (buffer-open sample) (list keyword-hl)))
+  (run-tui (buffer-open sample) (list keyword-hl) (list rowcol-status)))

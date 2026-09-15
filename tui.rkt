@@ -1,36 +1,38 @@
 #lang racket
 
 (require tui)   ; racket-tui 包（Linux）
-(require "events.rkt" "screen.rkt" "editor.rkt" "paint.rkt" rackunit)
+(require "events.rkt" "screen.rkt" "editor.rkt" "slot.rkt" "paint.rkt" rackunit)
 
 ;;; tui.rkt —— racket-tui 后端
 ;;;
 ;;; 两个职责：
-;;;   输出：screen -> ANSI 字节（纯函数 screen->bytes，可单测）
+;;;   输出：screen + 状态段 -> ANSI 字节（纯函数，可单测）
 ;;;   输入：build-input -> 中性 ui-event
 ;;;
-;;; 换 GUI/web 后端时，只替换本文件；editor/paint/screen 都保持不变。
+;;; 换 GUI/web 后端时，只替换本文件；editor/paint/screen/slot 都保持不变。
 
-(provide screen->bytes screen->bytes-diff run-tui)
+(provide screen->bytes screen->bytes-diff frame->bytes run-tui)
 
-;;; ---------- 主题：语义 face -> TUI 样式 ----------
+;;; ---------- 主题：语义 face -> TUI 样式（数据表）----------
 
 (style-define! 'keyword clr-blue)
 (style-define! 'string  clr-green)
 (style-define! 'comment clr-white attr-dim)
 (style-define! 'number  clr-magenta)
 (style-define! 'builtin clr-cyan)
+(style-define! 'mode    clr-yellow)
+
+;; 语义 face → 样式名。换主题 = 换这张表。
+(define face-theme
+  (hash 'keyword 'keyword
+        'string  'string
+        'comment 'comment
+        'number  'number
+        'builtin 'builtin
+        'mode    'mode))
 
 (define (face->style-name face)
-  (match (hash-ref face 'face #f)
-    ['keyword   'keyword]
-    ['string    'string]
-    ['comment   'comment]
-    ['number    'number]
-    ['builtin   'builtin]
-    ['selection 'selection]
-    ['cursor    'cursor]
-    [_ #f]))
+  (hash-ref face-theme (hash-ref face 'face #f) #f))
 
 ;;; ---------- screen -> ANSI 字节 ----------
 
@@ -47,6 +49,19 @@
          (for/list ([r (in-list (vector-ref (screen-row-runs s) row))])
            (run->bytes row r))))
 
+(define (all-rows-bytes s)
+  (apply bytes-append
+         (for/list ([row (in-range (screen-rows s))])
+           (row->bytes s row))))
+
+(define (diff-rows-bytes old new)
+  (apply bytes-append
+         (for/list ([row (in-list (screen-diff-rows old new))])
+           (bytes-append
+            (format-cursor-move (add1 row) 1)
+            format-line-clear
+            (row->bytes new row)))))
+
 (define (cursor-bytes s)
   (if (and (<= 0 (screen-cursor-row s) (sub1 (screen-rows s)))
            (<= 0 (screen-cursor-col s) (sub1 (screen-cols s))))
@@ -58,23 +73,56 @@
 
 ;; 全量：清屏 + 画所有行 + 光标（首帧 / 尺寸变化时用）
 (define (screen->bytes s)
-  (apply bytes-append
-         (append (list format-cursor-hide format-screen-clear)
-                 (for/list ([row (in-range (screen-rows s))])
-                   (row->bytes s row))
-                 (list (cursor-bytes s)))))
+  (bytes-append
+   format-cursor-hide
+   format-screen-clear
+   (all-rows-bytes s)
+   (cursor-bytes s)))
 
 ;; 增量：只重画有变化的行（先清该行再画），最后定位光标。
 ;; 前提：old/new 同尺寸；尺寸变化时应走 screen->bytes。
 (define (screen->bytes-diff old new)
-  (apply bytes-append
-         (append (list format-cursor-hide)
-                 (for/list ([row (in-list (screen-diff-rows old new))])
-                   (bytes-append
-                    (format-cursor-move (add1 row) 1)
-                    format-line-clear
-                    (row->bytes new row)))
-                 (list (cursor-bytes new)))))
+  (bytes-append
+   format-cursor-hide
+   (diff-rows-bytes old new)
+   (cursor-bytes new)))
+
+;;; ---------- 状态行 ----------
+
+;; 状态段 → 底部一行 ANSI。逐段渲染（带各自 face），超长截断。
+(define (status->bytes segs row cols)
+  (define (seg->bytes seg col)
+    (define text (status-seg-text seg))
+    (define shown (substring text 0 (min (string-length text) (- cols col))))
+    (define style (face->style-name (if (status-seg-face seg)
+                                        (hash 'face (status-seg-face seg))
+                                        (hash))))
+    (values (if style (format-styled style shown) (format-content shown))
+            (+ col (string-length shown))))
+  (define-values (body _)
+    (for/fold ([acc #""] [col 0]) ([seg (in-list segs)])
+      #:break (>= col cols)
+      (define-values (bs c*) (seg->bytes seg col))
+      (values (bytes-append acc bs) c*)))
+  (bytes-append
+   (format-cursor-move row 1)
+   format-line-clear
+   body))
+
+;; 整帧：buffer 区（screen）+ 底部状态行 + 光标。
+;; prev 用于增量：尺寸没变只重画变化的 buffer 行，状态行与光标每帧重画。
+(define (frame->bytes s segs prev)
+  (define same-size? (and prev
+                          (= (screen-rows prev) (screen-rows s))
+                          (= (screen-cols prev) (screen-cols s))))
+  (define status-row (add1 (screen-rows s)))
+  (bytes-append
+   format-cursor-hide
+   (cond
+     [(not same-size?) (bytes-append format-screen-clear (all-rows-bytes s))]
+     [else (diff-rows-bytes prev s)])
+   (status->bytes segs status-row (screen-cols s))
+   (cursor-bytes s)))
 
 ;;; ---------- 输入：build-input -> ui-event ----------
 
@@ -108,22 +156,20 @@
 
 ;;; ---------- 主循环 ----------
 
-(define (run-tui b0 [plugins '()])
+(define (run-tui b0 [plugins '()] [view-plugins '()])
   (with-tui
    (lambda ()
      (define-values (rows cols) (get-window-size))
-     (define e0 (make-editor b0 plugins (or rows 24) (or cols 80)))
+     (define r (or rows 24))
+     (define c (or cols 80))
+     ;; buffer 区占 r-1 行，底部 1 行给状态栏
+     (define e0 (make-editor b0 plugins view-plugins (max 1 (sub1 r)) c))
      (define evt (box #f))
      (define handler (tui-input-handler (lambda (ev) (set-box! evt ev))))
      (let loop ([e e0] [prev #f])
        (define s (paint (editor-window e)))
-       ;; 尺寸没变 → 增量重画；否则全量（清屏）
-       (put-bytes
-        (if (and prev
-                 (= (screen-rows prev) (screen-rows s))
-                 (= (screen-cols prev) (screen-cols s)))
-            (screen->bytes-diff prev s)
-            (screen->bytes s)))
+       (define segs (editor-status e))
+       (put-bytes (frame->bytes s segs prev))
        (let-values ([(type data mods) (read-event)])
          (set-box! evt #f)
          (handler type data mods)
@@ -139,8 +185,8 @@
   (define bs (screen->bytes s))
   (define txt (bytes->string/utf-8 bs))
   (check-true (regexp-match? #rx"hi" txt))
-  (check-true (regexp-match? (regexp-quote "\x1b[1;1H") txt))   ; 光标移到 (1,1)
-  (check-true (regexp-match? (regexp-quote "\x1b[1;3H") txt))   ; 光标到 (1,3)
+  (check-true (regexp-match? (regexp-quote "\x1b[1;1H") txt))
+  (check-true (regexp-match? (regexp-quote "\x1b[1;3H") txt))
 
   ;; 无样式的 run 不含彩色转义
   (define s2 (screen 1 10 (vector (list (run 0 "x" (hash)))) 0 0))
@@ -151,8 +197,32 @@
   (define sa (screen 2 10 (vector (list (run 0 "aa" (hash))) (list (run 0 "bb" (hash)))) 0 0))
   (define sb (screen 2 10 (vector (list (run 0 "aa" (hash))) (list (run 0 "bc" (hash)))) 0 0))
   (define tdiff (bytes->string/utf-8 (screen->bytes-diff sa sb)))
-  (check-equal? (length (regexp-match* (regexp-quote "\x1b[2K") tdiff)) 1)  ; 只清 1 行
-  (check-true  (regexp-match? (regexp-quote "bc") tdiff))                     ; 变化的文本
-  (check-false (regexp-match? (regexp-quote "aa") tdiff))                     ; 未变文本不重画
+  (check-equal? (length (regexp-match* (regexp-quote "\x1b[2K") tdiff)) 1)
+  (check-true  (regexp-match? (regexp-quote "bc") tdiff))
+  (check-false (regexp-match? (regexp-quote "aa") tdiff))
+
+  ;; 状态行渲染：底部第 3 行，逐段带 face
+  (define st (bytes->string/utf-8
+              (status->bytes (list (status-seg "Ln 1 Col 1" #f)
+                                   (status-seg "  mode" 'mode))
+                             3 20)))
+  (check-true (regexp-match? (regexp-quote "Ln 1 Col 1") st))
+  (check-true (regexp-match? (regexp-quote "\x1b[3;1H") st))
+  (check-true (regexp-match? (regexp-quote "mode") st))
+
+  ;; 超长截断
+  (define st2 (bytes->string/utf-8
+               (status->bytes (list (status-seg "abcdefghijklmnop" #f)) 3 5)))
+  (check-true (regexp-match? (regexp-quote "abcde") st2))
+  (check-false (regexp-match? (regexp-quote "fgh") st2))
+
+  ;; 整帧：状态行在第 2 行（buffer 1 行 + 状态 1 行）
+  (define f (bytes->string/utf-8
+             (frame->bytes (screen 1 8 (vector (list (run 0 "hi" (hash)))) 0 0)
+                           (list (status-seg "STATUS" #f))
+                           #f)))
+  (check-true (regexp-match? (regexp-quote "hi") f))
+  (check-true (regexp-match? (regexp-quote "STATUS") f))
+  (check-true (regexp-match? (regexp-quote "\x1b[2;1H") f))
 
   (displayln "tui.rkt: all tests passed"))
