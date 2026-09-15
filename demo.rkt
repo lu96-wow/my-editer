@@ -11,7 +11,7 @@
 ;;;   - 鼠标点击定位光标、滚轮滚动
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
 
-(require "core/doc/buffer.rkt" "core/view/window.rkt" "core/doc/cursor.rkt"
+(require "core/text/buffer.rkt" "core/view/window.rkt" "core/text/cursor.rkt"
          "plugin/view-plugin.rkt" "ui/tui/tui.rkt")
 
 (provide sample keyword-hl rowcol-status)

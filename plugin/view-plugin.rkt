@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../core/view/window.rkt" "../core/doc/buffer.rkt" "../core/doc/cursor.rkt" rackunit)
+(require "../core/view/window.rkt" "../core/text/buffer.rkt" "../core/text/cursor.rkt" rackunit)
 
 ;;; slot.rkt —— 插件 slot：每个「数据派生位置」= 一组同类型纯函数 + 一个组合器。
 ;;;

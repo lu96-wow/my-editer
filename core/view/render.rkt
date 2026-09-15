@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../doc/cursor.rkt" "../doc/buffer.rkt" "../doc/properties.rkt" "../doc/overlay.rkt" rackunit)
+(require "../text/cursor.rkt" "../text/buffer.rkt" "../text/properties.rkt" "../text/overlay.rkt" rackunit)
 
 ;;; render.rkt —— 行渲染：buffer 一行 → glyph 向量
 ;;;

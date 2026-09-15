@@ -10,7 +10,7 @@
 ```
 edit/
 ├── core/                 # 机制（不变式）
-│   ├── doc/              #   文档：cursor content properties marker overlay buffer
+│   ├── text/             #   文本层：cursor content properties marker overlay buffer
 │   └── view/             #   视口（后端无关）：width render window view screen paint events
 ├── plugin/               # 策略 slot（纯函数列表 + 组合器）
 │   ├── buffer-plugin.rkt #   buffer→buffer，吃 dirty
@@ -44,7 +44,7 @@ edit/
 │ core/view/*.rkt      视口（后端无关）：几何/布局/屏幕/事件     │
 │   width  render  window  view  screen  paint  events          │
 ├──────────────────────────────────────────────────────────────┤
-│ core/doc/*.rkt       文档（无光标）：文本/属性/位置/装饰       │
+│ core/text/*.rkt      文本层（无光标）：文本/属性/位置/装饰       │
 │   cursor  content  properties  marker  overlay  buffer        │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -130,7 +130,7 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 
 **desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
 原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`session-edit` / `session-handle`
-同样透传，供上层（语言层 / 跨 buffer 同步）消费。`core/doc/buffer.rkt` 已重新导出 `edit-desc`。
+同样透传，供上层（语言层 / 跨 buffer 同步）消费。`core/text/buffer.rkt` 已重新导出 `edit-desc`。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
 `dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。

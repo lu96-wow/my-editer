@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../doc/cursor.rkt" "../doc/buffer.rkt" "../doc/content.rkt" rackunit)
+(require "../text/cursor.rkt" "../text/buffer.rkt" "../text/content.rkt" rackunit)
 
 ;;; window.rkt —— 视口：buffer 引用 + 本窗口光标 + 滚动位置 + 尺寸
 ;;;

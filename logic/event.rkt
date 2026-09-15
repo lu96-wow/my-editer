@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../core/view/events.rkt" "../core/doc/cursor.rkt" "../core/doc/buffer.rkt"
+(require "../core/view/events.rkt" "../core/text/cursor.rkt" "../core/text/buffer.rkt"
          "../core/view/window.rkt" "../plugin/buffer-plugin.rkt"
          "../core/view/view.rkt" "../plugin/view-plugin.rkt" rackunit)
 
