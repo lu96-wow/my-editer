@@ -151,7 +151,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 
 ### 滚动 / 光标跟随
 - 光标移出窗口边界 → 窗口跟随；水平滚动按行宽限位
-- 上下键按**视觉行**移动（`window-visual-move`）：wrap 跨折行段、clip 按 buffer 行，统一保持「视觉列」
+- 上下键按**视觉行**移动（`buffer-visual-move`）：wrap 跨折行段、clip 按 buffer 行，统一保持「视觉列」
 - 视觉列夹紧到更短的行尾时，停在段内最后一个字符，不溢出到下一视觉行
 - 垂直夹紧 `top ∈ [0, 行数-height]`
 - 滚动命令（pageup/down/滚轮）**不**触发光标跟随，否则滚动会被拉回

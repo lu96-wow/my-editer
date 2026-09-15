@@ -88,19 +88,20 @@
       [else (loop (add1 j)
                   (+ col (char-display-width (string-ref s j))))])))
 
-;; 列吸附：把任意显示列 L 规范到「字符起点列」（即该列处的字符可被完整显示）。
+;; 列吸附：把显示列 L 规范到「字符起点列」（即该列处的字符可被完整显示）。
 ;; 规则：
 ;;   L 恰在字符起点 → 原样返回；
 ;;   L 落在宽字符右半格 → 前移到下一字符起点（保证左边界不丢字、无空格浮动）；
-;;   L 越界（>= 总列数）→ 返回总列数。
+;;   L < 0 → 按 0 处理；L 越界（>= 总列数）→ 返回总列数。
 (define (snap-column-forward s L)
+  (define L* (max 0 L))
   (define n (string-length s))
-  (define i (column->index s L))
+  (define i (column->index s L*))
   (cond
     [(>= i n) (string-display-width s)]
     [else
      (define c (index->column s i))
-     (if (= c L) L
+     (if (= c L*) L*
          (+ c (char-display-width (string-ref s i))))]))
 
 ;; 显示列 col 落在哪个字符上，返回该字符的索引。
@@ -176,5 +177,6 @@
   (check-equal? (snap-column-forward sw 4) 5)    ; 右半格 → 行尾
   (check-equal? (snap-column-forward sw 5) 5)    ; 行尾
   (check-equal? (snap-column-forward sw 99) 5)   ; 越界 → 总列数
+  (check-equal? (snap-column-forward sw -1) 0)   ; 负数 → 按 0
 
   (displayln "width.rkt: all tests passed"))

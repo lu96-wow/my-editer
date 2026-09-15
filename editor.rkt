@@ -38,8 +38,12 @@
   (match (ui-event-kind ev)
     ['insert-string
      (editor-edit e (lambda (b) (buffer-insert-text b (car (ui-event-data ev)))))]
-    ['move-up    (editor-edit e (lambda (_b) (window-visual-move (editor-window e) -1)))]
-    ['move-down  (editor-edit e (lambda (_b) (window-visual-move (editor-window e) +1)))]
+    ['move-up    (editor-edit e (lambda (b)
+                                  (define w (editor-window e))
+                                  (buffer-visual-move b (window-width w) (window-mode w) -1)))]
+    ['move-down  (editor-edit e (lambda (b)
+                                  (define w (editor-window e))
+                                  (buffer-visual-move b (window-width w) (window-mode w) +1)))]
     ['move-left  (editor-edit e buffer-left)]
     ['move-right (editor-edit e buffer-right)]
     ['backspace  (editor-edit e buffer-backspace)]
