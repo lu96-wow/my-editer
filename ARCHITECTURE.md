@@ -108,11 +108,13 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 | 2 | 编辑策略 | `window → (values window desc)` | 无（事件直调） | 自动配对、snippet | `window-*` 命令 |
 | 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `plugin/buffer-plugin.rkt` |
 | 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `plugin/view-plugin.rkt` |
-| 5 | 渲染主题 | `face → style` | 无 | 配色主题 | `face-theme`（tui） |
+| 5 | 渲染主题 | `face → style-spec` | 无 | 配色主题 | 纯数据，**无默认**，组合时必传 `run-tui` |
 | 6 | workspace 派生 | `workspace → workspace` | `edit-desc` + 来源 | 关联 buffer 同步、LSP、多窗口 | 待建 |
 | 7 | 后端 | `screen → bytes` / `raw-input → ui-event` | — | tui/gui/web | `ui/tui/tui.rkt` |
 
-已实现：#1 keymap（可 `hash-set` 扩展）、#2 命令、#3 buffer 插件、#4 view 插件、#5 主题表、#7 后端。
+已实现：#1 keymap（可 `hash-set` 扩展）、#2 命令、#3 buffer 插件、#4 view 插件、#5 主题（纯数据，组合时传入）、#7 后端。
+
+**颜色归属**：插件只声明**语义 face**（`'keyword` / `'string` / …）；颜色由**主题**决定。主题是外部传入的纯 hash：`face → (list r g b [attr ...])`（如 `'keyword '(97 175 239)`、`'comment '(128 128 128 dim)`），无默认、无预定义标识；渲染时用 hash 查 face，查不到就纯文本。RGB/属性到 ANSI 真彩色转义的翻译隐藏在后端内部，外部不接触 racket-tui 细节。
 待建：#6 workspace 层（多窗口/关联 buffer/LSP），是 core 之上的下一组合根。
 
 ## 3. 唯一跨层契约：`edit-desc`

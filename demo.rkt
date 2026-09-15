@@ -77,8 +77,18 @@
     "Ctrl+Q 退出 / Ctrl+W 切换折行")
    "\n"))
 
+;;; ---------- 主题（由外部组合时定义并传入，无默认颜色）----------
+
+(define demo-theme
+  (hash 'keyword '(97 175 239)        ; 蓝
+        'string  '(152 195 121)       ; 绿
+        'comment '(128 128 128 dim)
+        'number  '(198 120 221)       ; 紫
+        'builtin '(86 182 194)        ; 青
+        'mode    '(229 192 123)))     ; 黄
+
 ;;; ---------- 启动（仅当直接运行 demo.rkt 时）----------
 
 (module+ main
   (displayln "启动 TUI demo（Ctrl+Q 退出）…")
-  (run-tui (buffer-open sample) (list keyword-hl) (list rowcol-status)))
+  (run-tui (buffer-open sample) demo-theme (list keyword-hl) (list rowcol-status)))
