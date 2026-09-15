@@ -216,10 +216,15 @@
 (define (edit-desc-after-position d)
   (define new-lines (string-split (edit-desc-new-text d) "\n" #:trim? #f))
   (define k (length new-lines))
-  (if (zero? k)
-      (cursor (edit-desc-s-line d) (edit-desc-s-col d))
-      (cursor (+ (edit-desc-s-line d) (sub1 k))
-              (string-length (last new-lines)))))
+  (cond
+    [(zero? k)   ; 纯删除：回到删除起点
+     (cursor (edit-desc-s-line d) (edit-desc-s-col d))]
+    [(= k 1)     ; 单行插入：起点 + 长度
+     (cursor (edit-desc-s-line d)
+             (+ (edit-desc-s-col d) (string-length (last new-lines))))]
+    [else        ; 多行插入：末行行尾（末行从列 0 开始）
+     (cursor (+ (edit-desc-s-line d) (sub1 k))
+             (string-length (last new-lines)))]))
 
 (define (pos<? l1 c1 l2 c2)
   (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
@@ -331,6 +336,12 @@
   (check-false (edit-desc-map-position d-sp 1 0))                 ; 被删
   (check-equal? (edit-desc-map-position d-sp 2 1) (cursor 1 1))   ; == end
   (check-equal? (edit-desc-map-position d-sp 2 3) (cursor 1 3))   ; > end，同行
-  (check-equal? (edit-desc-after-position d-sp) (cursor 1 1))     ; 插入文本之后
+  (check-equal? (edit-desc-after-position d-sp) (cursor 1 1))     ; 多行插入之后
+  ;; 单行插入在非零列：起点 + 长度（旧 bug 会丢掉 s-col）
+  (check-equal? (edit-desc-after-position (edit-desc 0 3 0 3 "XY")) (cursor 0 5))
+  ;; 宽字符插入：point 按字符数前进（中 = 1 字符，显示宽 2）
+  (check-equal? (edit-desc-after-position (edit-desc 2 4 2 4 "中")) (cursor 2 5))
+  ;; 纯删除：回到删除起点
+  (check-equal? (edit-desc-after-position (edit-desc 0 1 0 3 "")) (cursor 0 1))
 
   (displayln "content.rkt: all tests passed"))

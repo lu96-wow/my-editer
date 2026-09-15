@@ -73,7 +73,7 @@
   ;; with-plugins：编辑之后插件运行，且 dirty 被插件消费（清空），desc 透传
   (define (dirty-widener b) (buffer-mark-dirty b 0 0))
   (define insert* (with-plugins (list dirty-widener) buffer-insert))
-  (define-values (b3 d3) (insert* b0 #\X))
+  (define-values (b3 d3) (insert* b0 0 0 #\X))
   (check-equal? (buffer->string b3) "Xhello\nworld")
   (check-false (buffer-dirty b3))
   (check-equal? d3 (edit-desc 0 0 0 0 "X"))

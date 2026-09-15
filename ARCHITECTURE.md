@@ -18,14 +18,14 @@
 ├──────────────────────────────────────────────────────────────┤
 │ width.rkt       显示宽度（字符↔列换算）                       │  ← 后端无关
 │ render.rkt      行渲染：buffer 一行 → glyph（ch+face）        │
-│ window.rkt      视图状态（滚动位置、尺寸，不缓存渲染结果）     │
+│ window.rkt      视口：buffer 引用 + point + 滚动/尺寸 + 导航/编辑 │
 │ view.rkt        布局（clip/wrap）+ 光标/鼠标映射 + 滚动       │
 │ screen.rkt      屏幕帧缓冲 run / screen + 行级 diff           │
 │ paint.rkt       可见区 → screen                               │
 ├──────────────────────────────────────────────────────────────┤
 │ plugin.rkt      插件组合（buffer→buffer 的纯函数序列）        │
 ├──────────────────────────────────────────────────────────────┤
-│ buffer.rkt      组合根：content + point + 属性/marker/overlay │
+│ buffer.rkt      文档：content + gap + 属性/marker/overlay（无光标） │
 │ content.rkt     文本存储 + 编辑原语（产生 edit-desc）         │
 │ properties.rkt  文本属性（行内区间）                          │
 │ marker.rkt      随编辑移动的位置                              │
@@ -42,11 +42,11 @@
 | content | 文本存储 + 编辑，产出 `edit-desc` | 属性/marker/overlay 的存在 |
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
-| buffer | 把上面各层装配成「文档」；`dirty`/`tick`/`point` | 显示、输入 |
+| buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | plugin | 组合 buffer→buffer 的函数，消费 dirty | 具体插件逻辑 |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | width | 字符 ↔ 显示列 | 终端/GUI |
-| window | 滚动位置 + 尺寸（纯视图状态） | 文本内容 |
+| window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 属性/marker/overlay 细节 |
 | view | vrow 布局 + 光标/鼠标映射 + 滚动 | 具体后端 |
 | screen | 屏幕帧（run 序列）+ diff | 具体后端 |
 | paint | 可见区 → screen | 具体后端 |
@@ -58,7 +58,9 @@
 ### 编辑流（一次按键）
 
 ```
-ui-event ──editor-handle──▶ 命令 ──buffer-*──▶ 新 buffer
+ui-event ──editor-handle──▶ 命令 ──window-*──▶ window（用 window-point 驱动 buffer-* 显式位置）
+                                              │
+                       buffer-* → 新 buffer + edit-desc
                                               │
                               plugins 消费 dirty（run-plugins 末尾清空）
 ```
@@ -91,9 +93,9 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 **位置映射函数** `edit-desc-map-position` 调整。所有编辑（插入/删除/换行/合并/粘贴/剪切）
 都只是 splice 的特例。
 
-**desc 不再被丢弃**：`buffer-edit` 与所有编辑/导航原语统一返回 `(values new-buffer desc)`
-（导航 desc 恒 `#f`，无操作编辑 `#f`）；`editor-edit` / `editor-handle` 同样透传，供上层
-（语言层 / 跨 buffer 同步）消费。`buffer.rkt` 已重新导出 `edit-desc`。
+**desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
+原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`editor-edit` / `editor-handle`
+同样透传，供上层（语言层 / 跨 buffer 同步）消费。`buffer.rkt` 已重新导出 `edit-desc`。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
 `dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。
@@ -151,7 +153,7 @@ buffer ──render-line──▶ glyph(ch+face)            render.rkt
 
 ### 滚动 / 光标跟随
 - 光标移出窗口边界 → 窗口跟随；水平滚动按行宽限位
-- 上下键按**视觉行**移动（`buffer-visual-move`）：wrap 跨折行段、clip 按 buffer 行，统一保持「视觉列」
+- 上下键按**视觉行**移动（`window-visual-move`）：wrap 跨折行段、clip 按 buffer 行，统一保持「视觉列」
 - 视觉列夹紧到更短的行尾时，停在段内最后一个字符，不溢出到下一视觉行
 - 垂直夹紧 `top ∈ [0, 行数-height]`
 - 滚动命令（pageup/down/滚轮）**不**触发光标跟随，否则滚动会被拉回

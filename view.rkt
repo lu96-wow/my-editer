@@ -20,7 +20,7 @@
  window-screen->point
  window-scroll-visual
  window-ensure-point
- buffer-visual-move)
+ window-visual-move)
 
 (struct vrow (line start-col end-col) #:transparent)
 ;; line      : buffer 行号（-1 = 空白行）
@@ -135,7 +135,7 @@
 ;; point -> 屏幕 (row col)；不可见返回 (values #f #f)
 (define (window-point->screen w)
   (define b (window-buffer w))
-  (define p (buffer-point b))
+  (define p (window-point w))
   (define line (cursor-line p))
   (define target-col (index->column (buffer-line-ref b line) (cursor-col p)))
   (define vrows (window-vrows w))
@@ -283,7 +283,7 @@
 
 (define (window-ensure-point w)
   (define b (window-buffer w))
-  (define p (buffer-point b))
+  (define p (window-point w))
   (define line (cursor-line p))
   (define target-col (index->column (buffer-line-ref b line) (cursor-col p)))
   (case (window-mode w)
@@ -353,13 +353,14 @@
            (column->index ttext tdc)))
      (values tl tcol)]))
 
-;; 返回 point 已按视觉行移动的新 buffer（无操作时原样返回）。
-;; 名字用 buffer-*：输入 buffer + 几何参数，产出新 buffer（不是 window）。
-(define (buffer-visual-move b width mode delta)
-  (define p (buffer-point b))
+;; 返回 point 已按视觉行移动的新 window（无操作时原样返回）。
+(define (window-visual-move w delta)
+  (define b (window-buffer w))
+  (define p (window-point w))
   (define-values (l c)
-    (visual-move b (cursor-line p) (cursor-col p) width mode delta))
-  (if l (buffer-goto b l c) (values b #f)))
+    (visual-move b (cursor-line p) (cursor-col p)
+                 (window-width w) (window-mode w) delta))
+  (if l (values (window-set-point w (cursor l c)) #f) (values w #f)))
 
 (module+ test
   ;; line-range->runs：宽字符 + 裁剪
@@ -389,13 +390,13 @@
                 '((0 0 4) (0 4 6) (1 0 1)))
 
   ;; 光标映射：clip
-  (define-values (b3 _1) (buffer-goto b1 1 1))
-  (define-values (r c) (window-point->screen (window-open b3 2 80)))
+  (define-values (w3 _1) (window-goto (window-open b1 2 80) 1 1))
+  (define-values (r c) (window-point->screen w3))
   (check-equal? (list r c) '(1 1))
 
   ;; 光标映射：wrap，point 在第二段起点
-  (define-values (b4 _2) (buffer-goto b2 0 2))
-  (define-values (r2 c2) (window-point->screen (window-set-buffer ww b4)))
+  (define-values (w4 _2) (window-goto ww 0 2))
+  (define-values (r2 c2) (window-point->screen w4))
   (check-equal? (list r2 c2) '(1 0))
 
   ;; 鼠标映射：wrap，点第二段第 0 列 → 回到 line 0 col 2
@@ -412,77 +413,75 @@
 
   ;; 光标跟随（clip）：下方 → 窗口下移
   (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
-  (define-values (b5-a _3) (buffer-goto b5 4 0))
-  (define wf (window-open b5-a 2 10))
-  (check-equal? (window-top-line (window-ensure-point wf)) 3)   ; top = 4-2+1
+  (define-values (w5-a _3) (window-goto (window-open b5 2 10) 4 0))
+  (check-equal? (window-top-line (window-ensure-point w5-a)) 3)   ; top = 4-2+1
 
   ;; 上方 → 置顶
-  (define-values (b5-b _4) (buffer-goto b5 0 0))
-  (define wf2 (window-set-top (window-open b5-b 2 10) 3))
+  (define-values (w5-b _4) (window-goto (window-open b5 2 10) 0 0))
+  (define wf2 (window-set-top w5-b 3))
   (check-equal? (window-top-line (window-ensure-point wf2)) 0)
 
   ;; 水平跟随 + 按行宽限位
   (define b6 (buffer-open "abcdefgh"))
-  (define-values (b6-a _5) (buffer-goto b6 0 7))
-  (define whe (window-ensure-point (window-open b6-a 1 4)))
+  (define-values (w6-a _5) (window-goto (window-open b6 1 4) 0 7))
+  (define whe (window-ensure-point w6-a))
   (check-equal? (window-left-col whe) 4)    ; 7-4+1=4，光标在右端
-  (define-values (b6-b _6) (buffer-goto b6 0 0))
-  (define wh2s (window-set-left (window-open b6-b 1 4) 4))
+  (define-values (w6-b _6) (window-goto (window-open b6 1 4) 0 0))
+  (define wh2s (window-set-left w6-b 4))
   (check-equal? (window-left-col (window-ensure-point wh2s)) 0)
 
   ;; 左右边界统一：宽字符绝不切半，右滚时左边界吸附到字符起点
   (define b8 (buffer-open "中中文中"))   ; 中中文中：列 0,2,4,6
-  ;; 光标在文（index2，col4）：右滚到 left=2（旧逻辑得 1 → 左边界空格浮动）
-  (define-values (b8-a _8) (buffer-goto b8 0 2))
-  (check-equal? (window-left-col (window-ensure-point (window-open b8-a 1 4))) 2)
-  ;; 光标在第二个中（index1，col2）：视口内，left 不变
-  (define-values (b8-b _9) (buffer-goto b8 0 1))
-  (check-equal? (window-left-col (window-ensure-point (window-open b8-b 1 4))) 0)
+  (define-values (w8-a _8) (window-goto (window-open b8 1 4) 0 2))
+  (check-equal? (window-left-col (window-ensure-point w8-a)) 2)
+  (define-values (w8-b _9) (window-goto (window-open b8 1 4) 0 1))
+  (check-equal? (window-left-col (window-ensure-point w8-b)) 0)
 
   ;; 右边界：光标字符不再被丢弃（旧逻辑光标落在被丢弃的宽字符上）
   (define b9 (buffer-open "abcdef中"))   ; 列：a..f 0-5，中 [6,8)
-  (define-values (b9-a _10) (buffer-goto b9 0 6))
-  (check-equal? (window-left-col (window-ensure-point (window-open b9-a 1 7))) 1)
+  (define-values (w9-a _10) (window-goto (window-open b9 1 7) 0 6))
+  (check-equal? (window-left-col (window-ensure-point w9-a)) 1)
 
   ;; 光标跟随（wrap）：下方 → 滚动一视觉行
   (define b7 (buffer-open "中中中\nx"))
-  (define-values (b7-a _7) (buffer-goto b7 1 0))
-  (define wg (window-set-mode (window-open b7-a 2 4) 'wrap))
+  (define-values (w7-a _7) (window-goto (window-open b7 2 4) 1 0))
+  (define wg (window-set-mode w7-a 'wrap))
   (define wge (window-ensure-point wg))
   (check-equal? (list (window-top-line wge) (window-top-seg wge)) '(0 1))
 
   ;; 视觉行移动（wrap）：同 buffer 行内跨折行段
   (define bv (buffer-open "中中中\nx"))       ; line0 宽6 折宽4 → 两段 [0,4) [4,6)
-  (define-values (bv1 _11) (buffer-visual-move bv 4 'wrap +1))   ; 段0 列0 → 段1 列0
-  (check-equal? (buffer-point bv1) (cursor 0 2))
-  (define-values (bv2 _12) (buffer-visual-move bv1 4 'wrap +1))  ; → 下一行
-  (check-equal? (buffer-point bv2) (cursor 1 0))
+  (define wv (window-set-mode (window-open bv 3 4) 'wrap))
+  (define-values (wv1 _11) (window-visual-move wv +1))       ; 段0 列0 → 段1 列0
+  (check-equal? (window-point wv1) (cursor 0 2))
+  (define-values (wv2 _12) (window-visual-move wv1 +1))      ; → 下一行
+  (check-equal? (window-point wv2) (cursor 1 0))
 
   ;; 视觉列保持：段内列 1 → 目标行同列 1
   (define bv3 (buffer-open "abcd中\nxyz"))   ; line0 折宽3 → [0,3) [3,6)，中在段1列1
-  (define-values (bv3-g _13) (buffer-goto bv3 0 4))
-  (define-values (bv3-a _14) (buffer-visual-move bv3-g 3 'wrap +1))
-  (check-equal? (buffer-point bv3-a) (cursor 1 1))
+  (define-values (wv3 _13) (window-goto (window-set-mode (window-open bv3 2 3) 'wrap) 0 4))
+  (define-values (wv3-a _14) (window-visual-move wv3 +1))
+  (check-equal? (window-point wv3-a) (cursor 1 1))
 
   ;; 夹紧到段尾：目标段更短时不溢出到下一视觉行，停在段内最后一个字符
   (define bv4 (buffer-open "x\na中b"))        ; line1 折宽2 → [0,1) [1,3) [3,4)
-  (define-values (bv4-g _15) (buffer-goto bv4 0 1))      ; line0 "x" 末尾，段内列1
-  (define-values (bv4-a _16) (buffer-visual-move bv4-g 2 'wrap +1))
-  (check-equal? (buffer-point bv4-a) (cursor 1 0))        ; 停在 'a'，而非下一段 '中'
+  (define-values (wv4 _15) (window-goto (window-set-mode (window-open bv4 2 2) 'wrap) 0 1))
+  (define-values (wv4-a _16) (window-visual-move wv4 +1))
+  (check-equal? (window-point wv4-a) (cursor 1 0))        ; 停在 'a'，而非下一段 '中'
 
   ;; clip 模式也统一：按显示列（而非字符索引）保持视觉列
   (define bv5 (buffer-open "中ab\nabcd"))     ; 中占2列，'b' 在显示列3
-  (define-values (bv5-g _17) (buffer-goto bv5 0 2))
-  (define-values (bv5-a _18) (buffer-visual-move bv5-g 80 'clip +1))
-  (check-equal? (buffer-point bv5-a) (cursor 1 3))        ; 保持显示列3（旧逻辑会给字符列2）
+  (define-values (wv5 _17) (window-goto (window-open bv5 2 80) 0 2))
+  (define-values (wv5-a _18) (window-visual-move wv5 +1))
+  (check-equal? (window-point wv5-a) (cursor 1 3))        ; 保持显示列3（旧逻辑会给字符列2）
 
   ;; 视觉列落在宽字符右半格 → 右吸附到下一字符起点，不往左退、不引起窗口左平移
   (define bv6 (buffer-open "abcd\n中中"))      ; line1 中[0,2) 中[2,4)
-  (define-values (bv6-g _19) (buffer-goto bv6 0 1))       ; 光标 col1（窄字符，可视左边界）
-  (define-values (bv6-m _20) (buffer-visual-move bv6-g 4 'clip +1))
-  (check-equal? (buffer-point bv6-m) (cursor 1 1))        ; 吸附到 col2（第二中），而非 col0
-  (define wv6 (window-set-left (window-open bv6-g 2 4) 1))
-  (define wv6-e (window-ensure-point (window-set-buffer wv6 bv6-m)))
-  (check-equal? (window-left-col wv6-e) 1)                ; 窗口不左移
+  (define wv6-g (window-set-left (window-open bv6 2 4) 1))   ; left=1
+  (define-values (wv6-g2 _19) (window-goto wv6-g 0 1))       ; 光标 col1（窄字符，可视左边界）
+  (define-values (wv6-m _20) (window-visual-move wv6-g2 +1))
+  (check-equal? (window-point wv6-m) (cursor 1 1))           ; 吸附到 col2（第二中），而非 col0
+  (define wv6-e (window-ensure-point wv6-m))
+  (check-equal? (window-left-col wv6-e) 1)                   ; 窗口不左移
 
   (displayln "view.rkt: all tests passed"))

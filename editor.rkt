@@ -6,7 +6,8 @@
 ;;; editor.rkt —— 应用层：编辑器状态 + 命令 + 事件处理
 ;;;
 ;;; 与后端无关：只消费 ui-event，产出 screen（经 paint）。
-;;; 命令 = (-> editor editor)，内部走 buffer-* + 插件组合。
+;;; 状态 = 一个 window（含 buffer 引用 + point）+ 插件列表。
+;;; 命令操作 window（用 window-point 驱动编辑/导航），编辑后跑插件。
 
 (provide
  (struct-out editor)
@@ -14,43 +15,40 @@
  editor-handle
  editor-done?)
 
-(struct editor (buffer window plugins done?) #:transparent)
+(struct editor (window plugins done?) #:transparent)
+
+(define (editor-buffer e) (window-buffer (editor-window e)))
 
 (define (make-editor b0 [plugins '()] [height 24] [width 80])
   (define b* (run-plugins-init b0 plugins))   ; 挂载时全量扫一遍插件
-  (editor b* (window-open b* height width) plugins #f))
+  (editor (window-open b* height width) plugins #f))
 
-;; 应用一个 buffer 编辑原语 + 跑插件，并把 window.buffer 同步到新值。
+;; f : window -> (values window desc)。在 window 上执行命令，跑插件，desc 透传。
 (define (editor-edit e f)
-  (define b (editor-buffer e))
-  (define-values (b1 desc) (f b))
-  (define b* (run-plugins b1 (editor-plugins e)))
+  (define-values (w1 desc) (f (editor-window e)))
+  (define b* (run-plugins (window-buffer w1) (editor-plugins e)))
   (values (struct-copy editor e
-            [buffer b*]
-            [window (window-set-buffer (editor-window e) b*)])
+            [window (window-set-buffer w1 b*)])
           desc))
 
-;; 只改 window（滚动 / 尺寸等）。
+;; 只改 window（滚动 / 尺寸等）：无编辑，desc 恒 #f。
 (define (editor-window* e f)
   (values (struct-copy editor e [window (f (editor-window e))]) #f))
 
+;; 统一返回 (values editor desc)。desc = 本次编辑的 edit-desc；非编辑事件为 #f。
 (define (handle-raw e ev)
   (match (ui-event-kind ev)
     ['insert-string
-     (editor-edit e (lambda (b) (buffer-insert-text b (car (ui-event-data ev)))))]
-    ['move-up    (editor-edit e (lambda (b)
-                                  (define w (editor-window e))
-                                  (buffer-visual-move b (window-width w) (window-mode w) -1)))]
-    ['move-down  (editor-edit e (lambda (b)
-                                  (define w (editor-window e))
-                                  (buffer-visual-move b (window-width w) (window-mode w) +1)))]
-    ['move-left  (editor-edit e buffer-left)]
-    ['move-right (editor-edit e buffer-right)]
-    ['backspace  (editor-edit e buffer-backspace)]
-    ['delete     (editor-edit e buffer-delete)]
-    ['newline    (editor-edit e buffer-newline)]
-    ['home       (editor-edit e buffer-home)]
-    ['end        (editor-edit e buffer-end)]
+     (editor-edit e (lambda (w) (window-insert-text w (car (ui-event-data ev)))))]
+    ['move-up    (editor-edit e (lambda (w) (window-visual-move w -1)))]
+    ['move-down  (editor-edit e (lambda (w) (window-visual-move w +1)))]
+    ['move-left  (editor-edit e window-left)]
+    ['move-right (editor-edit e window-right)]
+    ['backspace  (editor-edit e window-backspace)]
+    ['delete     (editor-edit e window-delete)]
+    ['newline    (editor-edit e window-newline)]
+    ['home       (editor-edit e window-home)]
+    ['end        (editor-edit e window-end)]
     ['pageup     (editor-window* e (lambda (w) (window-scroll-visual w (- (window-height w) 1))))]
     ['pagedown   (editor-window* e (lambda (w) (window-scroll-visual w (- (window-height w) 1))))]
     ['ctrl-char  (handle-ctrl e (car (ui-event-data ev)))]
@@ -88,39 +86,58 @@
   (if (eq? btn 'left)
       (let-values ([(line col) (window-screen->point (editor-window e) y x)])
         (if line
-            (editor-edit e (lambda (b) (buffer-goto b line col)))
+            (editor-edit e (lambda (w) (window-goto w line col)))
             (values e #f)))
       (values e #f)))
 
 ;; data = (dir x y mods)
 (define (handle-mouse-scroll e data)
   (match-define (list dir _x _y _mods) data)
-  (values (editor-window* e (lambda (w)
-                              (window-scroll-visual w (if (eq? dir 'up) -3 3))))
-          #f))
+  (editor-window* e (lambda (w)
+                      (window-scroll-visual w (if (eq? dir 'up) -3 3)))))
 
 (module+ test
   (define e0 (make-editor (buffer-open "hello\nworld") '() 24 80))
   (check-false (editor-done? e0))
 
-  ;; insert-string：desc 透传
+  ;; insert-string：desc 透传，point 在 window
   (define-values (e1 d1) (editor-handle e0 (ui-event 'insert-string (list "X"))))
   (check-equal? (buffer->string (editor-buffer e1)) "Xhello\nworld")
+  (check-equal? (window-point (editor-window e1)) (cursor 0 1))
   (check-equal? d1 (edit-desc 0 0 0 0 "X"))
 
   ;; 移动：desc = #f
   (define-values (e-up d-up) (editor-handle e0 (ui-event 'move-up '())))
-  (check-equal? (buffer-point (editor-buffer e-up)) (cursor 0 0))
+  (check-equal? (window-point (editor-window e-up)) (cursor 0 0))
   (check-false d-up)
   (define-values (e-rt d-rt) (editor-handle e0 (ui-event 'move-right '())))
-  (check-equal? (buffer-point (editor-buffer e-rt)) (cursor 0 1))
+  (check-equal? (window-point (editor-window e-rt)) (cursor 0 1))
   (check-false d-rt)
+  (define-values (e-dn d-dn) (editor-handle e0 (ui-event 'move-down '())))
+  (check-equal? (window-point (editor-window e-dn)) (cursor 1 0))
+  (check-false d-dn)
+  (define-values (e-lf d-lf) (editor-handle e0 (ui-event 'move-left '())))
+  (check-equal? (window-point (editor-window e-lf)) (cursor 0 0))
+  (check-false d-lf)
+
+  ;; backspace / delete / newline 编辑
+  (define-values (e-bs d-bs) (editor-handle e0 (ui-event 'backspace '())))
+  (check-equal? (buffer->string (editor-buffer e-bs)) "hello\nworld")
+  (check-false d-bs)
+  (define-values (e-nl d-nl) (editor-handle e0 (ui-event 'newline '())))
+  (check-equal? (buffer->string (editor-buffer e-nl)) "\nhello\nworld")
+  (check-equal? d-nl (edit-desc 0 0 0 0 "\n"))
 
   ;; resize
   (define-values (e4 d4) (editor-handle e0 (ui-event 'resize (list 30 100))))
   (check-equal? (window-height (editor-window e4)) 30)
   (check-equal? (window-width  (editor-window e4)) 100)
   (check-false d4)
+
+  ;; mouse-scroll：只滚动，不动光标，desc = #f
+  (define-values (e-sc d-sc) (editor-handle e0 (ui-event 'mouse-scroll (list 'down 0 0 '()))))
+  (check-equal? (window-top-line (editor-window e-sc)) 3)
+  (check-false d-sc)
 
   ;; Ctrl+Q 退出
   (define-values (e-q d-q) (editor-handle e0 (ui-event 'ctrl-char (list #\Q))))
@@ -129,7 +146,7 @@
 
   ;; mouse-press：(2,1) → 第 1 行第 2 列
   (define-values (e6 d6) (editor-handle e0 (ui-event 'mouse-press (list 'left 2 1 '()))))
-  (check-equal? (buffer-point (editor-buffer e6)) (cursor 1 2))
+  (check-equal? (window-point (editor-window e6)) (cursor 1 2))
   (check-false d6)
 
   ;; 插件随编辑运行

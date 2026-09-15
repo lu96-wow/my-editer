@@ -33,8 +33,8 @@
   (check-equal? (screen-cursor-row s0) 0)
   (check-equal? (screen-cursor-col s0) 0)
 
-  (define-values (b1 _) (buffer-goto b0 0 2))
-  (check-equal? (screen-cursor-col (paint (window-open b1 2 10))) 3)
+  (define-values (w1 _) (window-goto (window-open b0 2 10) 0 2))
+  (check-equal? (screen-cursor-col (paint w1)) 3)
 
   (define s2 (paint (window-set-left (window-open b0 2 10) 2)))
   (check-equal? (vector-ref (screen-row-runs s2) 0) (list (run 1 "b" (hash))))
