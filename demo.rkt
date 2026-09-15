@@ -15,7 +15,8 @@
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
 ;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步；窗口间有 | / - 边框
 
-(require "core/text/buffer.rkt" "core/view/window.rkt" "core/text/cursor.rkt"
+(require "core/text/buffer.rkt" "core/text/patch.rkt"
+         "core/view/window.rkt" "core/text/cursor.rkt"
          "framework/slots.rkt" "framework/framework.rkt"
          "reference/layout-tree.rkt" "reference/compose-line.rkt"
          "reference/commands.rkt" "ui/tui/tui.rkt")
@@ -30,27 +31,22 @@
 
 (define (matches->segs line rx face text)
   (for/list ([m (in-list (regexp-match-positions* rx text))])
-    (list line (car m) (cdr m) 'face face)))
+    (list line (car m) (cdr m) face)))
 
-(define (highlight-line b line)
-  (define text (buffer-line-ref b line))
-  (define n    (string-length text))
-  (define b1 (buffer-remove-text-property b line 0 n 'face))
-  (define segs
-    (append
-     (matches->segs line keyword-rx 'keyword text)
-     (matches->segs line string-rx  'string  text)
-     (matches->segs line comment-rx 'comment text)))
-  (buffer-put-text-properties b1 segs))
-
+;; 语法高亮插件：buffer -> (listof patch)，纯、不知道线程。
+;; 每个 dirty 行产出一个 patch：先清该行 'face 旧值，再写新 segs。
 (define (keyword-hl b)
   (define d (buffer-dirty b))
   (if (not d)
-      b
-      (for/fold ([b b])
-                ([line (in-range (dirty-desc-first-line d)
+      '()
+      (for/list ([line (in-range (dirty-desc-first-line d)
                                  (add1 (dirty-desc-last-line d)))])
-        (highlight-line b line))))
+        (define text (buffer-line-ref b line))
+        (patch 'face line line
+               (append
+                (matches->segs line keyword-rx 'keyword text)
+                (matches->segs line string-rx  'string  text)
+                (matches->segs line comment-rx 'comment text))))))
 
 ;;; ---------- 演示用 view 插件：状态行（行列 + 模式）----------
 
@@ -102,7 +98,7 @@
    #:frame-commands  fc
    #:layout          tree-layout
    #:compose         line-compose
-   #:buffer-plugins  (list keyword-hl)
+   #:buffer-plugins  (list (plugin-spec 'keyword-hl keyword-hl '()))
    #:view-plugins    (list rowcol-status)
    #:theme           demo-theme))
 

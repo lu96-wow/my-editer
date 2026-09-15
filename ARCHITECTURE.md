@@ -10,11 +10,12 @@
 ```
 edit/
 ├── core/                 # 机制（不变式，只定契约）
-│   ├── text/             #   文本层：cursor content properties marker overlay buffer
+│   ├── text/             #   文本层：cursor content properties marker overlay buffer patch
 │   └── view/             #   视口（后端无关）：width render window view frame screen paint events
 │                         #   frame = 窗口集合 + linked 同步（无布局，无边框）
 ├── framework/            # 框架（只定 slot 类型 + 组合器 + 机械循环）
 │   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins）
+│   └── plugin-dag.rkt    #   插件 DAG 调度（依赖分层 + future 并行 + sync/async）
 │   └── framework.rkt     #   config + framework-handle/render/status/run
 ├── reference/            # 参考实现（用户 copy/替换，非默认）
 │   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
@@ -49,7 +50,7 @@ edit/
 │   width  render  window  view  frame  screen  paint  events   │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt      文本层（无光标）：文本/属性/位置/装饰       │
-│   cursor  content  properties  marker  overlay  buffer        │
+│   cursor  content  properties  marker  overlay  buffer  patch      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -63,6 +64,7 @@ edit/
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | slots | slot 类型定义 + 组合器（layout/compose/commands/run-plugins） | 具体策略 |
+| plugin-dag | 插件 DAG 调度：依赖分层 + future 并行 + sync/async（唯一知道线程处） | 具体插件/依赖 |
 | framework | 框架：config + 机械分派 + 机械循环（framework-handle/render/run） | 具体命令/布局/边框 |
 | reference | 参考实现：树布局 / 边框 / 两层命令 / 输入解码 | — |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
@@ -114,7 +116,7 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 |---|---|---|---|---|---|
 | 1 | 输入 → 命令 | `config frame 事件 → (values frame desc? done?)`（两层命令表） | 事件 | 键位、vim 模式 | `reference/commands.rkt` |
 | 2 | 编辑策略 | `window → (values window desc)` | 无（命令直调） | 自动配对、snippet | `window-*` 原语 |
-| 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `framework/slots.rkt` 的 `run-plugins` |
+| 3 | buffer 派生 | `buffer → (listof patch)`（补丁 = delta） | `dirty-desc` | 高亮、lint、折叠 | `framework/slots.rkt` 的 `run-plugins` + `plugin-dag.rkt` |
 | 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `run-view-plugins` |
 | 5 | 布局 | `layout = (rects order split close)` | frame 状态 | 树/tab/网格 | `reference/layout-tree.rkt` |
 | 6 | 组合/装饰 | `pieces → screen` | pieces | 边框、标签 | `reference/compose-line.rkt` |

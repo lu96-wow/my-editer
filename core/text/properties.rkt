@@ -26,6 +26,7 @@
  props-put
  props-put-many
  props-remove
+ props-replace-key
  props-apply-edit
  props-splice
  props-runs)
@@ -198,6 +199,27 @@
 (define (props-remove p line start end prop)
   (props-modify p line start end (lambda (h) (hash-remove h prop))))
 
+;; 清掉 [first-line,last-line] 各行内 prop 键的全部旧值，再写入 segs（同键）。
+;; segs = (listof (list line start end val))；一次拷贝 rows 向量，O(n + m log m)。
+(define (props-replace-key p first-line last-line prop segs)
+  (define rows (text-properties-rows p))
+  (define n (vector-length rows))
+  (define f (max 0 (min first-line (sub1 n))))
+  (define l (max 0 (min last-line (sub1 n))))
+  (define rows* (vector-copy rows))
+  (for ([line (in-range f (add1 l))])
+    (define row (vector-ref rows line))
+    (vector-set! rows* line
+      (merge-adjacent
+       (filter (lambda (iv) (positive? (hash-count (interval-plist iv))))
+               (for/list ([iv (in-list row)])
+                 (interval (interval-start iv) (interval-end iv)
+                           (hash-remove (interval-plist iv) prop)))))))
+  (props-put-many (text-properties rows*)
+                  (for/list ([s (in-list segs)])
+                    (match-define (list line start end val) s)
+                    (list line start end prop val))))
+
 ;;; ---------- 编辑调整：统一 splice ----------
 ;;; 编辑 desc 是「操作前坐标」。所有调整由两个行操作组合：
 ;;;   props-splice = props-insert-lines ∘ props-delete-range
@@ -339,5 +361,14 @@
   (check-equal? (props-get p6 1 0 'a) 1)
   (check-equal? (props-get p6 1 2 'b) 2)
   (check-equal? (props-get p6 0 1 'a) 9)
+
+  ;; props-replace-key：清旧写新（patch 应用原语）
+  (define pr0 (props-put (fresh) 1 0 5 'face 'bold))
+  (define pr1 (props-put pr0 1 7 9 'face 'bold))
+  (define pr2 (props-replace-key pr1 0 2 'face (list (list 1 0 2 'red))))
+  (check-equal? (props-get pr2 1 0 'face) 'red)
+  (check-equal? (props-get pr2 1 3 'face) #f)   ; 旧 [0,5) 被清
+  (check-equal? (props-get pr2 1 7 'face) #f)   ; 旧 [7,9) 被清
+  (check-equal? (props-get pr2 0 0 'face) #f)
 
   (displayln "properties.rkt: all tests passed"))
