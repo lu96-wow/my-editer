@@ -35,8 +35,7 @@
 (define (handle-raw e ev)
   (match (ui-event-kind ev)
     ['insert-string
-     (for/fold ([e e]) ([ch (in-string (car (ui-event-data ev)))])
-       (editor-edit e (lambda (b) (buffer-insert b ch))))]
+     (editor-edit e (lambda (b) (buffer-insert-text b (car (ui-event-data ev)))))]
     ['move-up    (editor-edit e buffer-up)]
     ['move-down  (editor-edit e buffer-down)]
     ['move-left  (editor-edit e buffer-left)]

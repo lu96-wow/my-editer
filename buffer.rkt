@@ -33,6 +33,7 @@
  buffer-home
  buffer-end
  buffer-insert
+ buffer-insert-text
  buffer-newline
  buffer-backspace
  buffer-delete
@@ -142,16 +143,10 @@
 ;;; dirty 用「新 buffer 坐标系」。渲染时直接用它索引新行表。
 
 (define (dirty-of desc old-count new-count)
-  (define line (edit-desc-line desc))
-  (match (edit-desc-kind desc)
-    ['insert-char     (dirty-desc line line old-count new-count)]
-    ['backspace-char  (dirty-desc line line old-count new-count)]
-    ['delete-char     (dirty-desc line line old-count new-count)]
-    ['newline         (dirty-desc line (add1 line) old-count new-count)]
-    ['backspace-merge (define L (sub1 line))
-                      (dirty-desc L L old-count new-count)]
-    ['delete-merge    (define L (sub1 line))
-                      (dirty-desc L L old-count new-count)]))
+  (define s-line (edit-desc-s-line desc))
+  (define k (length (string-split (edit-desc-new-text desc) "\n" #:trim? #f)))
+  (define last (if (zero? k) s-line (+ s-line (sub1 k))))
+  (dirty-desc s-line last old-count new-count))
 
 (define (merge-dirty old new)
   (cond
@@ -203,6 +198,11 @@
              #t)]))
 
 (define (buffer-insert    b ch) (buffer-edit b (lambda (c) (content-insert c ch))))
+
+;; 插入一段文本（可含 \n）：一次 splice 完成。
+(define (buffer-insert-text b s)
+  (buffer-edit b (lambda (c) (content-insert-text c s))))
+
 (define (buffer-newline   b)    (buffer-edit b content-newline))
 (define (buffer-backspace b)    (buffer-edit b content-backspace))
 (define (buffer-delete    b)    (buffer-edit b content-delete))
@@ -323,6 +323,14 @@
   (check-equal? (buffer-point b5) (cursor 1 0))
   (define b6 (buffer-left b5))
   (check-equal? (buffer-point b6) (cursor 0 5))
+
+  ;; 多行插入（paste）
+  (define bp (buffer-insert-text b0 "X\nY"))
+  (check-equal? (buffer->string bp) "X\nYhello\nworld")
+  (check-equal? (buffer-point bp) (cursor 1 1))
+  ;; 尾部换行保留空行
+  (define bp2 (buffer-insert-text b0 "A\n"))
+  (check-equal? (buffer->string bp2) "A\nhello\nworld")
 
   ;; 属性
   (define b7 (buffer-put-text-property b0 0 1 4 'face 'bold))

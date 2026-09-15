@@ -61,55 +61,18 @@
 ;;; ---------- 单 marker 调整 ----------
 
 (define (marker-apply-edit m desc)
-  (match-define (edit-desc kind line col) desc)
   (define p (marker-pos m))
   (define l (cursor-line p))
   (define c (cursor-col p))
   (define t (marker-insertion-type m))
+  (define at-start?
+    (and (= l (edit-desc-s-line desc)) (= c (edit-desc-s-col desc))))
   (define p*
-    (match kind
-      ;; 在 (line, col) 前插入一个字符。
-      ['insert-char
-       (cond [(< l line) p]
-             [(> l line) p]
-             [(< c col) p]
-             [(= c col) (if (eq? t 'after) (cursor l (add1 c)) p)]
-             [else (cursor l (add1 c))])]
-
-      ;; 在 (line, col) 处拆行。
-      ['newline
-       (cond [(< l line) p]
-             [(= l line)
-              (cond [(< c col) p]
-                    [(= c col) (if (eq? t 'after) (cursor (add1 l) 0) p)]
-                    [else (cursor (add1 l) (- c col))])]
-             [else (cursor (add1 l) c)])]
-
-      ;; 删除 (line, col) 处的字符。
-      ['backspace-char
-       (cond [(< l line) p]
-             [(> l line) p]
-             [(<= c col) p]
-             [else (cursor l (sub1 c))])]
-
-      ['delete-char
-       ;; 与 backspace-char 位置映射完全相同。
-       (cond [(< l line) p]
-             [(> l line) p]
-             [(<= c col) p]
-             [else (cursor l (sub1 c))])]
-
-      ;; merge：desc.line = 被合并行 L，拼接点在 (L-1, col)。
-      ;; 两种 merge 字面同构。
-      ['backspace-merge
-       (cond [(< l line) p]
-             [(= l line) (cursor (sub1 l) (+ col c))]
-             [else (cursor (sub1 l) c)])]
-
-      ['delete-merge
-       (cond [(< l line) p]
-             [(= l line) (cursor (sub1 l) (+ col c))]
-             [else (cursor (sub1 l) c)])]))
+    (cond
+      [(and at-start? (eq? t 'after)) (edit-desc-after-position desc)]
+      [at-start? (cursor l c)]
+      [else (or (edit-desc-map-position desc l c)
+                (cursor (edit-desc-s-line desc) (edit-desc-s-col desc)))]))
   (marker (marker-id m) p* t))
 
 ;;; ---------- 批量调整 ----------

@@ -26,6 +26,7 @@
  props-put
  props-remove
  props-apply-edit
+ props-splice
  props-runs)
 
 ;;; ---------- 内部结构 ----------
@@ -169,38 +170,9 @@
 (define (props-remove p line start end prop)
   (props-modify p line start end (lambda (h) (hash-remove h prop))))
 
-;;; ---------- 编辑调整：三条端点规则 ----------
-;;; 编辑 desc 是「操作前坐标」。继承左邻由端点移动规则直接实现。
-
-;; 在 col 处插入 1 个字符：
-;;   col <= s      → [s+1, e+1)   区间右移（不继承）
-;;   s <  col <= e → [s,   e+1)   区间扩张（继承左邻）
-;;   col >  e      → [s,   e)     不动
-(define (insert-adjust row col)
-  (for/list ([iv (in-list row)])
-    (define s (interval-start iv))
-    (define e (interval-end iv))
-    (cond [(<= col s)                (interval (add1 s) (add1 e) (interval-plist iv))]
-          [(and (< s col) (<= col e)) (interval s (add1 e) (interval-plist iv))]
-          [else iv])))
-
-;; 删除 col 处字符：
-;;   col >= e      → [s, e)     不动
-;;   col <  s      → [s-1, e-1) 左移
-;;   s <= col < e  → [s, e-1)   收缩（若变空则删）
-(define (delete-adjust row col)
-  (filter-map
-   (lambda (iv)
-     (define s (interval-start iv))
-     (define e (interval-end iv))
-     (cond [(>= col e) iv]
-           [(< col s) (interval (sub1 s) (sub1 e) (interval-plist iv))]
-           [else
-            (define e* (sub1 e))
-            (if (= s e*)
-                #f
-                (interval s e* (interval-plist iv)))]))
-   row))
+;;; ---------- 编辑调整：统一 splice ----------
+;;; 编辑 desc 是「操作前坐标」。所有调整由两个行操作组合：
+;;;   props-splice = props-insert-lines ∘ props-delete-range
 
 ;; 在 col 处拆分一行：区间按切点分成左右两半，右半 -col 平移。
 (define (split-row row col)
@@ -222,57 +194,82 @@
     (interval (+ n (interval-start iv)) (+ n (interval-end iv))
               (interval-plist iv))))
 
+;; 删除 [s-line,s-col)..[e-line,e-col)，返回新 rows。
+(define (props-delete-range rows s-line s-col e-line e-col)
+  (define n (vector-length rows))
+  (define-values (s-left s-right) (split-row (vector-ref rows s-line) s-col))
+  (define-values (e-left e-right) (split-row (vector-ref rows e-line) e-col))
+  ;; e-right 是相对 e-col 的，平移到合并行的 s-col 处
+  (define merged
+    (merge-adjacent (append s-left (shift-intervals e-right s-col))))
+  (define new-n (- (+ n s-line) e-line))   ; n - (e-line-s-line+1) + 1
+  (define v* (make-vector new-n '()))
+  (vector-copy! v* 0 rows 0 s-line)
+  (vector-set! v* s-line merged)
+  (vector-copy! v* (add1 s-line) rows (add1 e-line) n)
+  v*)
+
+;; 把 left 里「结束于 col」的区间扩到覆盖插入的首行（继承左邻）。
+(define (extend-last left inherit col first-len)
+  (if inherit
+      (let ([iv (last left)])
+        (append (drop-right left 1)
+                (list (interval (interval-start iv) (+ col first-len) inherit))))
+      left))
+
+;; 在 (line,col) 插入 k 行 new-lines，返回新 rows。
+(define (props-insert-lines rows line col new-lines)
+  (define n (vector-length rows))
+  (define k (length new-lines))
+  (cond
+    [(zero? k) rows]
+    [else
+     (define-values (left right) (split-row (vector-ref rows line) col))
+     (define inherit
+       (and (pair? left)
+            (= (interval-end (last left)) col)
+            (interval-plist (last left))))
+     (define first-len (string-length (car new-lines)))
+     (define last-len (string-length (last new-lines)))
+     (define new-n (+ n (sub1 k)))
+     (define v* (make-vector new-n '()))
+     (vector-copy! v* 0 rows 0 line)
+     (cond
+       [(= k 1)
+        (vector-set! v* line
+          (merge-adjacent
+           (append (extend-last left inherit col first-len)
+                   (shift-intervals right (+ col first-len)))))]
+       [else
+        (vector-set! v* line (merge-adjacent (extend-last left inherit col first-len)))
+        (for ([i (in-range 1 (sub1 k))])
+          (vector-set! v* (+ line i)
+            (if inherit
+                (list (interval 0 (string-length (list-ref new-lines i)) inherit))
+                '())))
+        (vector-set! v* (+ line (sub1 k))
+          (merge-adjacent
+           (append (if inherit (list (interval 0 last-len inherit)) '())
+                   (shift-intervals right last-len))))])
+     (vector-copy! v* (+ line k) rows (add1 line) n)
+     v*]))
+
+;; 统一 splice：删除 + 插入。
+(define (props-splice p s-line s-col e-line e-col new-text)
+  (define rows (text-properties-rows p))
+  (define rows1 (props-delete-range rows s-line s-col e-line e-col))
+  (define new-lines (string-split new-text "\n" #:trim? #f))
+  (define p* (text-properties (props-insert-lines rows1 s-line s-col new-lines)))
+  (when (props-debug?) (props-check p*))
+  p*)
+
 ;;; ---------- edit-desc 分派 ----------
 
 (define (props-apply-edit p desc)
-  (match-define (edit-desc kind line col) desc)
-  (define rows (text-properties-rows p))
-  (define n (vector-length rows))
-  (define new-rows
-    (match kind
-      ['insert-char
-       (vec-set rows line (insert-adjust (vector-ref rows line) col))]
-
-      ['backspace-char
-       (vec-set rows line (delete-adjust (vector-ref rows line) col))]
-
-      ['delete-char
-       (vec-set rows line (delete-adjust (vector-ref rows line) col))]
-
-      ['newline
-       (define-values (l r) (split-row (vector-ref rows line) col))
-       (define v* (make-vector (add1 n) '()))
-       (vector-copy! v* 0 rows 0 line)
-       (vector-set! v* line l)
-       (vector-set! v* (add1 line) r)
-       (vector-copy! v* (+ line 2) rows (add1 line) n)
-       v*]
-
-      ;; 两种 merge 字面同构：desc.line = 被合并行 L，拼接点在 (L-1, col)。
-      ['backspace-merge
-       (define L line)
-       (define merged
-         (merge-adjacent (append (vector-ref rows (sub1 L))
-                                 (shift-intervals (vector-ref rows L) col))))
-       (define v* (make-vector (sub1 n) '()))
-       (vector-copy! v* 0 rows 0 (sub1 L))
-       (vector-set! v* (sub1 L) merged)
-       (vector-copy! v* L rows (add1 L) n)
-       v*]
-
-      ['delete-merge
-       (define L line)
-       (define merged
-         (merge-adjacent (append (vector-ref rows (sub1 L))
-                                 (shift-intervals (vector-ref rows L) col))))
-       (define v* (make-vector (sub1 n) '()))
-       (vector-copy! v* 0 rows 0 (sub1 L))
-       (vector-set! v* (sub1 L) merged)
-       (vector-copy! v* L rows (add1 L) n)
-       v*]))
-  (define p* (text-properties new-rows))
-  (when (props-debug?) (props-check p*))
-  p*)
+  (props-splice p
+                (edit-desc-s-line desc) (edit-desc-s-col desc)
+                (edit-desc-e-line desc) (edit-desc-e-col desc)
+                (edit-desc-new-text desc)))
 
 ;;; ---------- 测试 ----------
 
@@ -291,10 +288,17 @@
   (define p2 (props-put p1 1 0 8 'face 'bold))
   (check-equal? (length (vector-ref (text-properties-rows p2) 1)) 1)
 
-  ;; 编辑调整：插在区间内 → 扩张；debug 打开时全量校验不变量
+  ;; 编辑调整：插在区间内 → 扩张
   (parameterize ([props-debug? #t])
-    (define p3 (props-apply-edit p2 (edit-desc 'insert-char 1 3)))
+    (define p3 (props-apply-edit p2 (edit-desc 1 3 1 3 "X")))
     (check-equal? (props-get p3 1 4 'face) 'bold)
     (props-check p3))
+
+  ;; splice：跨行删除 + 多行插入，继承左邻
+  (define p4 (props-put (fresh) 0 0 3 'face 'bold))
+  (define p5 (props-splice p4 0 1 1 1 "PQ\nR"))
+  (check-equal? (props-get p5 0 2 'face) 'bold)   ; 继承覆盖首行
+  (check-equal? (props-get p5 1 0 'face) 'bold)   ; 继承覆盖末行
+  (check-equal? (props-get p5 1 1 'face) #f)      ; 末行之后无属性
 
   (displayln "properties.rkt: all tests passed"))
