@@ -2,8 +2,9 @@
 
 (require tui)   ; racket-tui 包（Linux）
 (require "../../core/view/events.rkt" "../../core/view/screen.rkt"
-         "../../logic/event.rkt" "../../plugin/view-plugin.rkt"
-         "../../core/view/paint.rkt" rackunit)
+         "../../core/view/frame.rkt" "../../core/text/buffer.rkt"
+         "../../plugin/buffer-plugin.rkt" "../../plugin/view-plugin.rkt"
+         "../../logic/event.rkt" rackunit)
 
 ;;; ui/tui/tui.rkt —— racket-tui 后端
 ;;;
@@ -147,7 +148,7 @@
    #:pageup    (lambda ()    (emit (ui-event 'pageup '())))
    #:pagedown  (lambda ()    (emit (ui-event 'pagedown '())))
    #:ctrl      (lambda (ch)  (emit (ui-event 'ctrl-char (list ch))))
-   #:resize    (lambda (r c) (emit (ui-event 'resize (list r c))))
+   #:resize    (lambda (r c) (emit (ui-event 'resize (list (max 1 (sub1 r)) c))))
    #:mouse-press
    (lambda (btn x y mods) (emit (ui-event 'mouse-press
                                           (list btn (sub1 x) (sub1 y) mods))))
@@ -160,26 +161,28 @@
 
 ;;; ---------- 主循环 ----------
 
-(define (run-tui b0 theme [plugins '()] [view-plugins '()])
+(define (run-tui b0 theme [cfg (make-config)])
   (with-tui
    (lambda ()
      (define-values (rows cols) (get-window-size))
      (define r (or rows 24))
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
-     (define s0 (make-session b0 plugins view-plugins (max 1 (sub1 r)) c))
+     (define area-rows (max 1 (sub1 r)))
+     (define b0* (run-plugins-init b0 (config-plugins cfg)))
+     (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
      (define handler (tui-input-handler (lambda (ev) (set-box! evt ev))))
-     (let loop ([s s0] [prev #f])
-       (define scr (paint (session-window s)))
-       (define segs (session-status s))
+     (let loop ([f f0] [prev #f])
+       (define scr (frame-paint f))
+       (define segs (frame-status cfg f))
        (put-bytes (frame->bytes theme scr segs prev))
        (let-values ([(type data mods) (read-event)])
          (set-box! evt #f)
          (handler type data mods)
          (define ev (unbox evt))
-         (define-values (s* _desc) (if ev (session-handle s ev) (values s #f)))
-         (unless (session-done? s*) (loop s* scr)))))))
+         (define-values (f* _desc done?) (if ev (frame-handle cfg f ev) (values f #f #f)))
+         (unless done? (loop f* scr)))))))
 
 ;;; ---------- 测试（只测纯函数，不碰终端）----------
 

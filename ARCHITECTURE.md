@@ -11,12 +11,12 @@
 edit/
 ├── core/                 # 机制（不变式）
 │   ├── text/             #   文本层：cursor content properties marker overlay buffer
-│   └── view/             #   视口（后端无关）：width render window view screen paint events
+│   └── view/             #   视口（后端无关）：width render window view frame screen paint events
 ├── plugin/               # 策略 slot（纯函数列表 + 组合器）
 │   ├── buffer-plugin.rkt #   buffer→buffer，吃 dirty
 │   └── view-plugin.rkt   #   window→status-seg，状态行
 ├── logic/                # 事件逻辑（组合根）
-│   └── event.rkt         #   session 状态 + keymap + 事件处理
+│   └── event.rkt         #   config(keymap+插件) + frame 事件处理
 ├── ui/                   # 后端
 │   └── tui/              #   终端后端（未来 gui/ web/）
 │       └── tui.rkt
@@ -26,7 +26,7 @@ edit/
 
 依赖方向：`core ← plugin ← logic ← ui`（logic 也依赖 core）；`demo` 在最外层，依赖所有。
 
-**没有「editor」这一层**：`logic/event` 只提供事件逻辑（session）；真正的 editor（例如 `ui/tui` 的 `run-tui`）由使用者用 core / plugin / logic / ui 的接口自行拼装。
+**没有「editor」这一层**：`logic/event` 只提供事件逻辑（把 ui-event 翻译成 frame 状态转移）；真正的 editor（例如 `ui/tui` 的 `run-tui`）由使用者用 core / plugin / logic / ui 的接口自行拼装。
 
 ## 1. 分层与职责边界
 
@@ -36,13 +36,13 @@ edit/
 ├──────────────────────────────────────────────────────────────┤
 │ ui/tui/tui.rkt       后端（racket-tui）：screen↔ANSI、输入↔事件 │ ← 后端相关
 ├──────────────────────────────────────────────────────────────┤
-│ logic/event.rkt      事件逻辑：session + keymap + 事件处理      │
+│ logic/event.rkt      事件逻辑：config(keymap+插件) + frame 状态转移 │
 ├──────────────────────────────────────────────────────────────┤
 │ plugin/buffer-plugin  buffer 插件（buffer→buffer，吃 dirty）  │
 │ plugin/view-plugin    view 插件（window→status-seg，状态行）  │
 ├──────────────────────────────────────────────────────────────┤
 │ core/view/*.rkt      视口（后端无关）：几何/布局/屏幕/事件     │
-│   width  render  window  view  screen  paint  events          │
+│   width  render  window  view  frame  screen  paint  events   │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt      文本层（无光标）：文本/属性/位置/装饰       │
 │   cursor  content  properties  marker  overlay  buffer        │
@@ -64,9 +64,10 @@ edit/
 | width | 字符 ↔ 显示列 | 终端/GUI |
 | window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 属性/marker/overlay 细节 |
 | view | vrow 布局 + 光标/鼠标映射 + 滚动 | 具体后端 |
-| screen | 屏幕帧（run 序列）+ diff | 具体后端 |
+| frame | 多窗口：布局树 + 焦点 + linked-buffer 同步 + 拼帧（机制） | keymap / 插件 / 退出 |
+| screen | 屏幕帧（run 序列）+ diff + 拼帧 | 具体后端 |
 | paint | 可见区 → screen | 具体后端 |
-| event | 事件层：session 状态 + keymap + 两个插件 slot 的组合 | 具体后端 |
+| event | 事件层：config(keymap+插件) + frame 状态转移（组合根） | 具体后端 |
 | tui | 唯一知道 racket-tui 的层 | 命令语义 |
 
 ## 2. 三条数据流
@@ -74,7 +75,7 @@ edit/
 ### 编辑流（一次按键）
 
 ```
-ui-event ──session-handle──▶ 命令 ──window-*──▶ window（用 window-point 驱动 buffer-* 显式位置）
+ui-event ──frame-handle──▶ 命令 ──window-*──▶ window（用 window-point 驱动 buffer-* 显式位置）
                                               │
                        buffer-* → 新 buffer + edit-desc
                                               │
@@ -95,7 +96,7 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 ### 输入流
 
 ```
-终端原始输入 ──build-input──▶ ui-event ──session-handle──▶ 命令
+终端原始输入 ──build-input──▶ ui-event ──frame-handle──▶ 命令
 ```
 
 ### 插件 slot（扩展点地图）
@@ -104,18 +105,18 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 
 | # | 位置 | 类型 | 增量依据 | 例子 | 现状 |
 |---|---|---|---|---|---|
-| 1 | 输入 → 命令 | `ui-event → session`（keymap） | 事件 | 键位、vim 模式 | `session-keymap` |
+| 1 | 输入 → 命令 | `ui-event → frame`（keymap，分窗口级/mgmt 级两层） | 事件 | 键位、vim 模式 | `config-keymap` / `config-mgmt-keymap` |
 | 2 | 编辑策略 | `window → (values window desc)` | 无（事件直调） | 自动配对、snippet | `window-*` 命令 |
 | 3 | buffer 派生 | `buffer → buffer` | `dirty-desc` | 高亮、lint、折叠 | `plugin/buffer-plugin.rkt` |
 | 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `plugin/view-plugin.rkt` |
 | 5 | 渲染主题 | `face → style-spec` | 无 | 配色主题 | 纯数据，**无默认**，组合时必传 `run-tui` |
-| 6 | workspace 派生 | `workspace → workspace` | `edit-desc` + 来源 | 关联 buffer 同步、LSP、多窗口 | 待建 |
+| 6 | 项目/工作区派生 | `workspace → workspace` | `edit-desc` + 来源 | LSP、跨文件同步 | 待建（frame 之上的下一组合根） |
 | 7 | 后端 | `screen → bytes` / `raw-input → ui-event` | — | tui/gui/web | `ui/tui/tui.rkt` |
 
 已实现：#1 keymap（可 `hash-set` 扩展）、#2 命令、#3 buffer 插件、#4 view 插件、#5 主题（纯数据，组合时传入）、#7 后端。
 
 **颜色归属**：插件只声明**语义 face**（`'keyword` / `'string` / …）；颜色由**主题**决定。主题是外部传入的纯 hash：`face → (list r g b [attr ...])`（如 `'keyword '(97 175 239)`、`'comment '(128 128 128 dim)`），无默认、无预定义标识；渲染时用 hash 查 face，查不到就纯文本。RGB/属性到 ANSI 真彩色转义的翻译隐藏在后端内部，外部不接触 racket-tui 细节。
-待建：#6 workspace 层（多窗口/关联 buffer/LSP），是 core 之上的下一组合根。
+待建：#6 项目/工作区层（LSP/跨文件同步），是 frame 之上的下一组合根（不属于本层的多窗口/关联 buffer 已由 frame 实现）。
 
 ## 3. 唯一跨层契约：`edit-desc`
 
@@ -129,8 +130,8 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 都只是 splice 的特例。
 
 **desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
-原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`session-edit` / `session-handle`
-同样透传，供上层（语言层 / 跨 buffer 同步）消费。`core/text/buffer.rkt` 已重新导出 `edit-desc`。
+原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`frame-handle` / `frame-sync-buffer`
+同样透传与消费，供上层（语言层 / 跨 buffer 同步）使用。`core/text/buffer.rkt` 已重新导出 `edit-desc`。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
 `dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。
@@ -139,7 +140,7 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 
 | 前缀/后缀 | 含义 | 例子 |
 |---|---|---|
-| `make-*` | 构造器（表/状态） | make-marker-table, make-screen, make-session |
+| `make-*` | 构造器（表/状态） | make-marker-table, make-screen, make-config |
 | `*-open` / `*-empty` / `*-of-*` | 构造器 | buffer-open, props-empty, content-of-string |
 | `*->*` | 投影/换算 | content->string, index->column, window-point->screen |
 | `*-ref` / `*-count` / `*-line-count` | 访问/计数 | buffer-line-ref, marker-table-count |
@@ -147,7 +148,7 @@ buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
 | `*-set-*` | 字段更新（返回新结构） | window-set-top, content-set-col |
 | 动词-名词 | 变换 | buffer-insert, props-put, window-scroll |
 | `*-apply-edit` | 解释 edit-desc | props-apply-edit, marker-table-apply-edit |
-| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, session-done? |
+| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, frame-window-count |
 | `!` | 副作用（仅 tui 层，继承自 racket-tui） | put-at!, style-define! |
 | `run-*` / `with-*` | 组合器 | run-plugins, with-plugins, run-tui |
 

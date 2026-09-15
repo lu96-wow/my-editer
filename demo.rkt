@@ -1,18 +1,22 @@
 #lang racket
 
-;;; demo.rkt —— 手动测试用：在终端里跑起编辑器核心
+;;; demo.rkt —— 手动测试用：在终端里跑起编辑器核心（多窗口版）
 ;;;
 ;;; 运行：  racket demo.rkt          （需要 Linux 终端；非 tty 会报错）
-;;; 退出：  Ctrl+Q；切换折行：Ctrl+W
+;;; 按键：
+;;;   Ctrl+Q 退出 / Ctrl+W 切换折行
+;;;   Ctrl+V 上下分屏 / Ctrl+B 左右分屏 / Ctrl+X 关当前窗
+;;;   Ctrl+O 下一窗口 / Ctrl+P 上一窗口
 ;;;
 ;;; 可测：
 ;;;   - 中英文混排 / emoji / 全角标点（宽字符显示与光标定位）
 ;;;   - 直接打字、退格、回车、方向键、Home/End、PageUp/PageDown
 ;;;   - 鼠标点击定位光标、滚轮滚动
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
+;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步
 
 (require "core/text/buffer.rkt" "core/view/window.rkt" "core/text/cursor.rkt"
-         "plugin/view-plugin.rkt" "ui/tui/tui.rkt")
+         "plugin/view-plugin.rkt" "ui/tui/tui.rkt" "logic/event.rkt")
 
 (provide sample keyword-hl rowcol-status)
 
@@ -90,5 +94,7 @@
 ;;; ---------- 启动（仅当直接运行 demo.rkt 时）----------
 
 (module+ main
-  (displayln "启动 TUI demo（Ctrl+Q 退出）…")
-  (run-tui (buffer-open sample) demo-theme (list keyword-hl) (list rowcol-status)))
+  (displayln "启动 TUI demo（Ctrl+Q 退出 / Ctrl+V|B 分屏 / Ctrl+O|P 切窗 / Ctrl+X 关窗）…")
+  (run-tui (buffer-open sample) demo-theme
+           (make-config default-keymap default-mgmt-keymap
+                        (list keyword-hl) (list rowcol-status))))
