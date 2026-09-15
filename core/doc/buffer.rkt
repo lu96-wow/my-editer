@@ -184,9 +184,7 @@
 (define (buffer-put-text-properties b segs)
   (if (null? segs)
       b
-      (let ([props* (for/fold ([p (buffer-properties b)]) ([s (in-list segs)])
-                      (match-define (list line start end prop val) s)
-                      (props-put p line start end prop val))])
+      (let ([props* (props-put-many (buffer-properties b) segs)])
         (struct-copy buffer b
           [properties props*]
           [tick (add1 (buffer-tick b))]

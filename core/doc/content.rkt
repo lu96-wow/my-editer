@@ -122,26 +122,27 @@
   (define head (substring (vector-ref lines s-line) 0 s-col))
   (define tail (substring (vector-ref lines e-line) e-col
                           (string-length (vector-ref lines e-line))))
-  (define new-lines (string-split new-text "\n" #:trim? #f))
-  (define k (length new-lines))
+  (define new-lines (list->vector (string-split new-text "\n" #:trim? #f)))
+  (define k (vector-length new-lines))
   (define inserted (max 1 k))                       ; k=0 时是合并出的 1 行
   (define new-n (- (+ n inserted) (+ (- e-line s-line) 1)))
   (define v* (make-vector new-n #f))
   (vector-copy! v* 0 lines 0 s-line)
   (cond
     [(zero? k) (vector-set! v* s-line (string-append head tail))]
-    [(= k 1)   (vector-set! v* s-line (string-append head (car new-lines) tail))]
+    [(= k 1)   (vector-set! v* s-line (string-append head (vector-ref new-lines 0) tail))]
     [else
-     (vector-set! v* s-line (string-append head (car new-lines)))
+     (vector-set! v* s-line (string-append head (vector-ref new-lines 0)))
      (for ([i (in-range 1 (sub1 k))])
-       (vector-set! v* (+ s-line i) (list-ref new-lines i)))
-     (vector-set! v* (+ s-line (sub1 k)) (string-append (last new-lines) tail))])
+       (vector-set! v* (+ s-line i) (vector-ref new-lines i)))
+     (vector-set! v* (+ s-line (sub1 k))
+                  (string-append (vector-ref new-lines (sub1 k)) tail))])
   (vector-copy! v* (+ s-line inserted) lines (add1 e-line) n)
   (define gap-line (if (zero? k) s-line (+ s-line (sub1 k))))
   (define gap-col
     (cond [(zero? k) s-col]
-          [(= k 1)   (+ s-col (string-length (car new-lines)))]
-          [else      (string-length (last new-lines))]))
+          [(= k 1)   (+ s-col (string-length (vector-ref new-lines 0)))]
+          [else      (string-length (vector-ref new-lines (sub1 k)))]))
   (values (content-check (content v* gap-line gap-col))
           (edit-desc s-line s-col e-line e-col new-text)))
 

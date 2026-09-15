@@ -48,6 +48,17 @@
 
 ;;; ---------- 单行渲染 ----------
 
+;; 给定「按 start 升序」的 runs（每项 = (start end payload)）和一个单调递增的列 a，
+;; 返回 (values 覆盖 a 的 payload(#f 未覆盖) 及其后第一个 end > a 的 run 列表)。
+;; 避免 render-line 每段都全表扫描（O((P+O)²) → O(P+O)）。
+(define (run-cover-at runs a)
+  (let skip ([r runs])
+    (cond
+      [(null? r) (values #f r)]
+      [(<= (cadr (car r)) a) (skip (cdr r))]
+      [(<= (car (car r)) a) (values (caddr (car r)) r)]
+      [else (values #f r)])))
+
 (define (render-line b i)
   (define text (buffer-line-ref b i))
   (define n (string-length text))
@@ -62,21 +73,21 @@
                    (append-map (lambda (seg) (list (car seg) (cadr seg))) o-runs)))
           <))
   (define glyphs (make-vector n #f))
-  (for ([a (in-list (drop-right all-points 1))]
-        [b (in-list (rest all-points))])
-    (define p-plist
-      (or (for/first ([seg (in-list p-runs)]
-                      #:when (and (<= (car seg) a) (> (cadr seg) a)))
-            (caddr seg))
-          empty-plist))
-    (define ovs
-      (or (for/first ([seg (in-list o-runs)]
-                      #:when (and (<= (car seg) a) (> (cadr seg) a)))
-            (caddr seg))
-          '()))
-    (define face (compute-face p-plist ovs))
-    (for ([j (in-range a b)])
-      (vector-set! glyphs j (glyph (string-ref text j) face))))
+  (let loop ([pts (drop-right all-points 1)]
+             [bnd (rest all-points)]
+             [pi p-runs]
+             [oi o-runs])
+    (cond
+      [(null? pts) (void)]
+      [else
+       (define a (car pts))
+       (define b (car bnd))
+       (define-values (p-plist pi*) (run-cover-at pi a))
+       (define-values (ovs oi*)     (run-cover-at oi a))
+       (define face (compute-face (or p-plist empty-plist) (or ovs '())))
+       (for ([j (in-range a b)])
+         (vector-set! glyphs j (glyph (string-ref text j) face)))
+       (loop (cdr pts) (cdr bnd) pi* oi*)]))
   (rendered-line glyphs))
 
 (module+ test

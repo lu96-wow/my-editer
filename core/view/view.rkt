@@ -52,6 +52,12 @@
                   (cons (list (- col start) ch face) acc))])])))
   (cells->runs cells))
 
+;; 单元格累加器：chars 倒序累积 + width 缓存，避免逐字 string-append（O(L²)→O(L)）。
+(struct cellrun (col face chars width) #:transparent)
+
+(define (cellrun->run r)
+  (run (cellrun-col r) (list->string (reverse (cellrun-chars r))) (cellrun-face r)))
+
 (define (cells->runs cells)
   (define-values (runs cur)
     (for/fold ([runs '()] [cur #f])
@@ -59,14 +65,16 @@
       (match-define (list col ch face) c)
       (cond
         [(and cur
-              (equal? face (run-face cur))
-              (= (+ (run-col cur) (string-display-width (run-text cur))) col))
-         (values runs (struct-copy run cur
-                       [text (string-append (run-text cur) (string ch))]))]
+              (equal? face (cellrun-face cur))
+              (= (+ (cellrun-col cur) (cellrun-width cur)) col))
+         (values runs
+                 (struct-copy cellrun cur
+                   [chars (cons ch (cellrun-chars cur))]
+                   [width (+ (cellrun-width cur) (char-display-width ch))]))]
         [else
-         (values (if cur (cons cur runs) runs)
-                 (run col (string ch) face))])))
-  (reverse (if cur (cons cur runs) runs)))
+         (values (if cur (cons (cellrun->run cur) runs) runs)
+                 (cellrun col face (list ch) (char-display-width ch)))])))
+  (reverse (if cur (cons (cellrun->run cur) runs) runs)))
 
 ;;; ---------- 折行边界 ----------
 ;;; text -> (listof (cons start-col end-col))，每段宽 <= width，
@@ -101,7 +109,11 @@
         (vrow -1 0 0))))
 
 (define (layout-wrap b top-line top-seg width height)
-  (let loop ([line top-line] [seg top-seg] [row 0] [acc '()])
+  (let loop ([line top-line]
+             [segs (list->vector (wrap-segments (buffer-line-ref b top-line) width))]
+             [seg top-seg]
+             [row 0]
+             [acc '()])
     (cond
       [(>= row height)
        (list->vector (reverse acc))]
@@ -109,11 +121,19 @@
        (list->vector (append (reverse acc)
                              (for/list ([r (in-range row height)]) (vrow -1 0 0))))]
       [else
-       (define segs (wrap-segments (buffer-line-ref b line) width))
-       (define s (and (< seg (length segs)) (list-ref segs seg)))
-       (if s
-           (loop line (add1 seg) (add1 row) (cons (vrow line (car s) (cdr s)) acc))
-           (loop (add1 line) 0 row acc))])))
+       (cond
+         [(< seg (vector-length segs))
+          (define s (vector-ref segs seg))
+          (loop line segs (add1 seg) (add1 row)
+                (cons (vrow line (car s) (cdr s)) acc))]
+         [else
+          (define next (add1 line))
+          (if (>= next (buffer-line-count b))
+              (list->vector (append (reverse acc)
+                                    (for/list ([r (in-range row height)]) (vrow -1 0 0))))
+              (loop next
+                    (list->vector (wrap-segments (buffer-line-ref b next) width))
+                    0 row acc))])])))
 
 (define (window-vrows w)
   (define b (window-buffer w))

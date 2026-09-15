@@ -24,6 +24,7 @@
  props-at
  props-get
  props-put
+ props-put-many
  props-remove
  props-apply-edit
  props-splice
@@ -100,9 +101,8 @@
 
 ;; 对 [start, end) 范围内每一段调用 transform，重铺区间。
 ;; 单遍扫描：suffix 指针只向前走，整体 O(k log k)（排序主导）。
-(define (props-modify p line start end transform)
-  (define rows (text-properties-rows p))
-  (define row  (vector-ref rows line))
+;; 拆成 row-modify（只算一行）+ props-modify（拷贝 rows 写回），供批量写复用。
+(define (row-modify row start end transform)
   (define points
     (sort (remove-duplicates
            (append (list start end)
@@ -129,10 +129,13 @@
                [else                            (values empty-plist s)])))
          (define p* (if (and (<= start a) (<= b end)) (transform base) base))
          (loop (cdr pts) (cdr bnd) suffix* (cons (interval a b p*) acc))])))
-  (define merged
-    (merge-adjacent
-     (filter (lambda (iv) (positive? (hash-count (interval-plist iv))))
-             segments)))
+  (merge-adjacent
+   (filter (lambda (iv) (positive? (hash-count (interval-plist iv))))
+           segments)))
+
+(define (props-modify p line start end transform)
+  (define rows (text-properties-rows p))
+  (define merged (row-modify (vector-ref rows line) start end transform))
   (when (props-debug?) (props-check-line merged))
   (text-properties (vec-set rows line merged)))
 
@@ -166,6 +169,31 @@
 
 (define (props-put p line start end prop val)
   (props-modify p line start end (lambda (h) (hash-set h prop val))))
+
+;; 批量写：segs = (listof (list line start end prop val))。
+;; 只拷贝 rows 向量一次（否则 props-put 每个 seg 都 O(n) 拷贝 → O(m·n)）。
+;; 同一行内的多个段按出现顺序依次应用，与逐个 props-put 完全等价。
+(define (props-put-many p segs)
+  (cond
+    [(null? segs) p]
+    [else
+     (define rows (text-properties-rows p))
+     (define groups (make-hash))
+     (for ([s (in-list segs)])
+       (match-define (list line start end prop val) s)
+       (hash-update! groups line
+                     (lambda (gs) (cons (list start end prop val) gs))
+                     '()))
+     (define rows* (vector-copy rows))
+     (for ([(line gs) (in-hash groups)])
+       (define row* (for/fold ([row (vector-ref rows line)])
+                              ([g (in-list (reverse gs))])
+                      (match-define (list start end prop val) g)
+                      (row-modify row start end (lambda (h) (hash-set h prop val)))))
+       (vector-set! rows* line row*))
+     (when (props-debug?)
+       (for ([row (in-vector rows*)]) (props-check-line row)))
+     (text-properties rows*)]))
 
 (define (props-remove p line start end prop)
   (props-modify p line start end (lambda (h) (hash-remove h prop))))
@@ -300,5 +328,16 @@
   (check-equal? (props-get p5 0 2 'face) 'bold)   ; 继承覆盖首行
   (check-equal? (props-get p5 1 0 'face) 'bold)   ; 继承覆盖末行
   (check-equal? (props-get p5 1 1 'face) #f)      ; 末行之后无属性
+
+  ;; 批量写：与逐个 props-put 等价，且保持出现顺序（后写覆盖先写）
+  (define p6 (props-put-many (fresh)
+                             (list (list 1 0 5 'a 1)
+                                   (list 1 2 3 'b 2)
+                                   (list 0 0 2 'a 9))))
+  (define p7 (props-put (props-put (props-put (fresh) 1 0 5 'a 1) 1 2 3 'b 2) 0 0 2 'a 9))
+  (check-equal? p6 p7)
+  (check-equal? (props-get p6 1 0 'a) 1)
+  (check-equal? (props-get p6 1 2 'b) 2)
+  (check-equal? (props-get p6 0 1 'a) 9)
 
   (displayln "properties.rkt: all tests passed"))
