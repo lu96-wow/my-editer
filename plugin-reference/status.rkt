@@ -3,9 +3,9 @@
 ;;; plugin/status.rkt —— 示例 view 插件：状态行（window -> (listof status-seg)）
 ;;;
 ;;; view 插件是「视口投影」，每帧重算，与文档插件（buffer→patch，吃 dirty）不同。
-;;; 只 (require "../plugin/api.rkt")。
+;;; 只 (require "../plugin/annotate-api.rkt")。
 
-(require "../plugin/api.rkt")
+(require "../plugin/annotate-api.rkt")
 
 (provide rowcol-status)
 

@@ -2,7 +2,7 @@
 
 (require "../core/text/buffer.rkt"
          "../core/text/patch.rkt"
-         rackunit)
+         "deps.rkt" rackunit)
 
 ;;; plugin-dag.rkt —— 插件 DAG 调度器（组合层唯一知道线程的地方）
 ;;;
@@ -33,30 +33,7 @@
 ;; deps   : (listof name)              非空 = 串行链；空 = 独立可并行
 ;; mode   : 'sync（默认，内联无线程）| 'parallel（future 真并行）
 
-;; ── 依赖分层：最长依赖深度 ──
-
-(define (compute-levels specs)
-  (define depmap (for/hash ([s specs]) (values (plugin-spec-name s) (plugin-spec-deps s))))
-  (define memo (make-hash))
-  (define visiting (make-hash))          ; 环检测
-  (define (level name)
-    (when (hash-ref visiting name #f)
-      (error 'plugin-dag "依赖环: ~a" name))
-    (cond
-      [(hash-ref memo name #f) => identity]
-      [else
-       (hash-set! visiting name #t)
-       (define l
-         (if (null? (hash-ref depmap name '()))
-             0
-             (add1 (apply max (map level (hash-ref depmap name '()))))))
-       (hash-remove! visiting name)
-       (hash-set! memo name l)
-       l]))
-  (define lvls (for/hash ([s specs]) (values (plugin-spec-name s) (level (plugin-spec-name s)))))
-  (define maxlvl (apply max 0 (hash-values lvls)))
-  (for/list ([l (in-range (add1 maxlvl))])
-    (for/list ([s specs] #:when (= l (hash-ref lvls (plugin-spec-name s)))) s)))
+;; ── 依赖分层：最长依赖深度（见 deps.rkt） ──
 
 ;; ── 同步：阻塞到整张 DAG 算完，返回最终 buffer ──
 
@@ -72,7 +49,7 @@
                    (plugin-spec-name s) (plugin-spec-mode s))))
         (buffer-clean
          (for/fold ([b b0])
-                   ([lvl (in-list (compute-levels specs))] #:when (pair? lvl))
+                   ([lvl (in-list (compute-levels specs plugin-spec-name plugin-spec-deps))] #:when (pair? lvl))
            ;; 同层节点互不依赖。'parallel 用 future（先建好再统一 touch）；
            ;; 'sync 直接内联——线程是可选的，默认无线程开销。
            (define parallel (filter (lambda (s) (eq? (plugin-spec-mode s) 'parallel)) lvl))

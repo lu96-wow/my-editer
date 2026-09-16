@@ -46,7 +46,9 @@
 ;;; ---------- screen -> ANSI 字节 ----------
 
 (define (run->bytes theme row r)
-  (define face (hash-ref (run-face r) 'face #f))
+  ;; 诊断（'diag）优先于高亮（'face）：错误范围显示下划线，盖住普通颜色
+  (define face (or (hash-ref (run-face r) 'diag #f)
+                   (hash-ref (run-face r) 'face #f)))
   (define spec (and face (hash-ref theme face #f)))   ; 查不到 → #f → 纯文本
   (bytes-append
    (format-cursor-move (add1 row) (add1 (run-col r)))  ; 0-based -> 1-based
@@ -142,12 +144,14 @@
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
      (define area-rows (max 1 (sub1 r)))
-     ;; 同步初始化（默认，无线程）；#:async-plugins? #t 才异步：
-     ;;   先渲染未标注基线，后台算完再应用（不阻塞 UI）。
+     ;; 编辑插件先全量跑（trigger=#f，例如 format），产生 dirty 后标注插件再消费
+     (define-values (b0-e _)
+       (run-edit-plugins-init b0 (config-edit-plugins cfg)))
+     ;; 标注插件初始化（默认同步，无线程）；#:async-plugins? #t 才异步。
      (define-values (b0* async)
        (if async-plugins?
-           (run-plugins-async-init b0 (config-plugins cfg))
-           (values (run-plugins-init b0 (config-plugins cfg)) #f)))
+           (run-plugins-async-init b0-e (config-plugins cfg))
+           (values (run-plugins-init b0-e (config-plugins cfg)) #f)))
      (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
      (define handler (input-handler (lambda (ev) (set-box! evt ev))))

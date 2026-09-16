@@ -1,6 +1,6 @@
 #lang racket
 
-;;; plugin/api.rkt —— 插件作者 SDK 契约（只 re-export，无实现）
+;;; plugin/annotate-api.rkt —— 标注/只读面 SDK 契约（只 re-export，无实现）
 ;;;
 ;;; 插件只有两种：
 ;;;   文档插件 : buffer -> (listof patch)        （增量依据 buffer-dirty）
@@ -11,8 +11,10 @@
 ;;;   - 不导出底层 content / properties / marker / overlay 的裸操作
 ;;;   - 不导出 run-plugins / buffer-apply-patches（插件不该自己跑自己）
 ;;;
-;;; 用法：插件作者只需 (require "../plugin/api")，参考
+;;; 用法：插件作者只需 (require "../plugin/annotate-api")，参考
 ;;;       plugin-reference/racket-hl.rkt / status.rkt 的写法。
+;;; 注意：本面只能「读 buffer + 写标注（patch）」，不能改文本；
+;;;       改文本用编辑面 ../plugin/edit-api.rkt（编辑插件 / 编辑策略）。
 ;;;
 ;;; 坐标约定：所有行列都是 0-based 字符索引（列 = 字符数，非显示宽度）。
 

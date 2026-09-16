@@ -2,7 +2,7 @@
 
 (require racket/list
          "../text/cursor.rkt" "../text/buffer.rkt" "../text/content.rkt"
-         "../text/patch.rkt"
+         "../text/patch.rkt" "../text/edit.rkt"
          "window.rkt" "view.rkt" "paint.rkt" rackunit)
 
 ;;; frame.rkt —— 多窗口视口机制（窗口集合 + linked 同步，布局无关）
@@ -100,21 +100,24 @@
   (values (frame-set-window f id w1) desc))
 
 ;; 把 id 的 buffer 换成 new-b，并把所有「共享 old-b」的窗口一起换 + 映射 point。
-(define (frame-sync-buffer f id old-b new-b desc)
+;; descs = 从 old-b 到 new-b 的完整编辑序列（应用顺序）：首元素是用户编辑 desc0，
+;; 其余是编辑插件的编辑；可能只有 desc0（无编辑插件时）。
+(define (frame-sync-buffer f id old-b new-b descs)
   (struct-copy frame f
     [windows
      (for/hash ([(wid pw) (in-hash (frame-windows f))])
        (cond
-         [(= wid id) (values wid (window-set-buffer pw new-b))]
-         [(eq? (window-buffer pw) old-b) (values wid (window-rebase pw new-b desc))]
+         ;; active 窗口：point 已在 desc0 之后（window-edit 已推进），只需映射插件编辑
+         [(= wid id) (values wid (window-rebase pw new-b (cdr descs)))]
+         ;; 共享 old-b 的窗口：point 在 old-b 坐标系，映射完整 descs
+         [(eq? (window-buffer pw) old-b) (values wid (window-rebase pw new-b descs))]
          [else (values wid pw)]))]))
 
-;; 让一个共享 old-b 的窗口「换底」到 new-b：point 按 edit-desc 映射到编辑后位置，
-;; 若原 point 落在被替换区间内则落到区间起点。
-(define (window-rebase w new-b desc)
+;; 让一个共享 old-b 的窗口「换底」到 new-b：point 按一串编辑映射到编辑后位置，
+;; 若原 point 落在某次被替换区间内则落到该区间起点。
+(define (window-rebase w new-b descs)
   (define p (window-point w))
-  (define p* (or (edit-desc-map-position desc (cursor-line p) (cursor-col p))
-                 (cursor (edit-desc-s-line desc) (edit-desc-s-col desc))))
+  (define p* (edit-descs-map-position descs (cursor-line p) (cursor-col p)))
   (window-set-point (struct-copy window w [buffer new-b]) p*))
 
 ;; 把所有「内容与 base-b 相同」的窗口 buffer 换成 new-b（内容不变 → point 不变）。
@@ -196,7 +199,7 @@
   (define id (frame-active f1))
   (define old-b (window-buffer (frame-window f1 id)))
   (define-values (fe desc) (frame-edit-active f1 id (lambda (w) (window-insert w #\X))))
-  (define fs (frame-sync-buffer fe id old-b (window-buffer (frame-window fe id)) desc))
+  (define fs (frame-sync-buffer fe id old-b (window-buffer (frame-window fe id)) (list desc)))
   (check-equal? (buffer->string (window-buffer (frame-window fs 0))) "Xhello\nworld")
   (check-equal? (buffer->string (window-buffer (frame-window fs 1))) "Xhello\nworld")
   (check-true (eq? (window-buffer (frame-window fs 0)) (window-buffer (frame-window fs 1))))

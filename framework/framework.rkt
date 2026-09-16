@@ -26,9 +26,10 @@
 
 (struct config
   (window-commands frame-commands layout compose
-   plugins view-plugins theme)
+   edit-plugins plugins view-plugins theme)
   #:transparent)
-;; plugins      : (listof plugin-spec)            文档派生（buffer → patch，闭包可带状态）
+;; edit-plugins : (listof edit-plugin-spec)        文档编辑（buffer → edit-desc，改 content）
+;; plugins      : (listof plugin-spec)            文档标注（buffer → patch，写属性）
 ;; view-plugins : (listof (-> window status-seg))  视口投影（状态行，非文档插件）
 
 ;; 用户必须显式提供 window-commands / frame-commands / layout / compose；
@@ -37,10 +38,11 @@
                      #:frame-commands fc
                      #:layout lo
                      #:compose co
+                     #:edit-plugins [eps '()]
                      #:plugins [ps '()]
                      #:view-plugins [vps '()]
                      #:theme [theme (hash)])
-  (config wc fc lo co ps vps theme))
+  (config wc fc lo co eps ps vps theme))
 
 ;;; ---------- 事件分派（机械，按运行时类型） ----------
 

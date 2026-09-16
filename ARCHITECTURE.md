@@ -10,31 +10,43 @@
 ```
 edit/
 ├── core/                 # 机制（不变式，只定契约）
-│   ├── text/             #   文本层：cursor content properties marker overlay buffer patch
+│   ├── text/             #   文本层：cursor content properties marker overlay buffer patch edit
+│   │                     #   edit = 批量编辑应用（buffer-apply-edits / edit-descs-map-position）
 │   └── view/             #   视口（后端无关）：width render window view frame screen paint events
 │                         #   frame = 窗口集合 + linked 同步（无布局，无边框）
 ├── framework/            # 框架（只定 slot 类型 + 组合器 + 机械循环）
-│   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins）
-│   ├── plugin-dag.rkt    #   插件 DAG 调度（依赖分层 + future 并行 + sync/async）
+│   ├── deps.rkt          #   依赖分层（plugin-dag / edit-plugins 共用）
+│   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins/编辑）
+│   ├── plugin-dag.rkt    #   标注插件 DAG 调度（依赖分层 + future 并行 + sync/async）
+│   ├── edit-plugins.rkt  #   编辑插件调度（buffer → edit-desc，同层并行计算 + 串行应用）
 │   └── framework.rkt     #   config + framework-handle/render/status/run
 ├── plugin/               # 插件 SDK / 实现层（只定契约，与具体插件分开）
-│   └── api.rkt           #   插件最小合法面（只 re-export，无实现）
+│   ├── annotate-api.rkt  #   标注/只读面（只 re-export，无实现）
+│   └── edit-api.rkt      #   编辑面（编辑插件 + 编辑策略原语，只 re-export）
 ├── plugin-reference/     # 参考插件（用户 copy/替换，示例）
-│   ├── racket-hl.rkt     #   示例文档插件（buffer -> patch）
-│   └── status.rkt        #   示例 view 插件（window -> status-seg）
+│   ├── racket-hl.rkt     #   示例标注插件（buffer -> patch）
+│   ├── racket-diag.rkt   #   示例诊断标注插件（桥接 langserver 诊断 → 'diag patch）
+│   ├── status.rkt        #   示例 view 插件（window -> status-seg）
+│   ├── auto-pair.rkt     #   示例编辑策略（window-commands -> window-commands）
+│   └── indent.rkt        #   示例编辑插件（buffer -> edit-desc）
 ├── reference/            # 参考实现（用户 copy/替换，非默认）
 │   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
 │   ├── compose-line.rkt  #   边框拼帧
-│   ├── commands.rkt      #   默认两层命令
+│   ├── commands.rkt      #   默认两层命令（含 edit-active 编辑管线）
 │   └── input-tui.rkt     #   tui 的 raw→事件 解码
 ├── ui/                   # 后端
 │   └── tui/              #   终端后端（未来 gui/ web/）
 │       └── tui.rkt
+├── langserver/           # Racket 语言服务器（独立进程，S 表达式协议，非 JSON）
+│   ├── analysis.rkt      #   源码分析：诊断 / 定义清单 / 补全（纯函数）
+│   ├── protocol.rkt      #   线协议：一行一个 S 表达式（read/write）
+│   ├── server.rkt        #   请求分派 handle-request + stdio 循环 serve
+│   └── main.rkt          #   入口（racket langserver/main.rkt）
 ├── demo.rkt              # 组装根：把 slot 填进 config + 跑起来
 └── ARCHITECTURE.md
 ```
 
-依赖方向：`core ← framework ← plugin ← plugin-reference ← demo`；`reference` 与 `plugin-reference` 平行（只依赖 framework，不依赖 plugin）；`ui` 依赖 core/framework/reference；`demo` 在最外层，依赖所有。
+依赖方向：`core ← framework ← plugin ← plugin-reference ← demo`；`reference` 与 `plugin-reference` 平行（只依赖 framework/core，不依赖 plugin）；`ui` 依赖 core/framework/reference；`demo` 在最外层，依赖所有。
 
 **没有「editor」这一层**：`framework` 只提供框架（契约 + slot 类型 + 机械循环）；真正的 editor（例如 demo 里 `run-tui (buffer-open sample) cfg`）由使用者用 core / framework / reference / ui 的接口自行拼装。
 
@@ -122,8 +134,8 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 | # | 位置 | 类型 | 增量依据 | 例子 | 现状 |
 |---|---|---|---|---|---|
 | 1 | 输入 → 命令 | `config frame 事件 → (values frame desc? done?)`（两层命令表） | 事件 | 键位、vim 模式 | `reference/commands.rkt` |
-| 2 | 编辑策略 | `window → (values window desc)` | 无（命令直调） | 自动配对、snippet | `window-*` 原语 |
-| 3 | 插件（文档派生） | `buffer → (listof patch)`，闭包可带内部状态（stateful） | `dirty-desc` | 高亮、lint、折叠、LSP | `plugin-spec`（统一 mode：sync/parallel）+ `plugin-dag.rkt` |
+| 2 | 编辑（改 content） | 编辑策略 `window-commands → window-commands`；编辑插件 `buffer (or/c #f edit-desc) → (listof edit-desc)` | trigger edit-desc | 自动配对/缩进、snippet、format、LSP edit | `edit-plugin-spec` + `edit-plugins.rkt`；`compose-edit-strategies` |
+| 3 | 标注（写属性） | `buffer → (listof patch)`，闭包可带内部状态（stateful） | `dirty-desc` | 高亮、lint、折叠 | `plugin-spec`（统一 mode：sync/parallel）+ `plugin-dag.rkt` |
 | 4 | 视口投影 | `window → status-seg` | 每帧重算 | 状态行、行列、minimap | `run-view-plugins` |
 | 5 | 布局 | `layout = (rects order split close)` | frame 状态 | 树/tab/网格 | `reference/layout-tree.rkt` |
 | 6 | 组合/装饰 | `pieces → screen` | pieces | 边框、标签 | `reference/compose-line.rkt` |

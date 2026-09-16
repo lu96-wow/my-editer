@@ -3,7 +3,7 @@
 (require "../core/text/buffer.rkt" "../core/text/cursor.rkt"
          "../core/text/patch.rkt"
          "../core/view/window.rkt"
-         "plugin-dag.rkt" rackunit)
+         "plugin-dag.rkt" "edit-plugins.rkt" rackunit)
 
 ;;; slots.rkt —— 框架的 slot 类型定义 + 组合器
 ;;;
@@ -25,7 +25,12 @@
  run-plugins-async-init
  plugin-async-poll
  plugin-async-collect
- run-view-plugins)
+ run-view-plugins
+ ;; 编辑能力（slot #2）：编辑插件 + 编辑策略组合器
+ (struct-out edit-plugin-spec)
+ run-edit-plugins
+ run-edit-plugins-init
+ compose-edit-strategies)
 
 ;;; ---------- 视口派生（window → status-seg） ----------
 
@@ -33,6 +38,13 @@
 
 (define (run-view-plugins w vps)
   (apply append (for/list ([p (in-list vps)]) (p w))))
+
+;;; ---------- 编辑策略（window-commands 装饰器） ----------
+;;; 输入驱动、光标敏感的编辑（auto-pair/snippet/缩进）在命令层拦截事件，
+;;; 类型 = window-commands -> window-commands；compose-edit-strategies 按序包裹。
+(define (compose-edit-strategies . strategies)
+  (lambda (base)
+    (for/fold ([wc base]) ([s (in-list strategies)]) (s wc))))
 
 ;;; ---------- 文档插件（统一：buffer → patch，闭包可带状态，吃 dirty） ----------
 ;;; 插件只有一种：buffer -> (listof patch)。stateful = 闭包捕获内部状态，不是类型；

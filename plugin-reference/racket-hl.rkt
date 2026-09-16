@@ -5,9 +5,9 @@
 ;;; 说明：
 ;;;   - 纯函数，不知道线程（mode 由调用者在 plugin-spec 里声明）
 ;;;   - 增量依据 = buffer-dirty：每个 dirty 行产出一个 patch
-;;;   - 只 (require "../plugin/api.rkt")，证明契约面已足够
+;;;   - 只 (require "../plugin/annotate-api.rkt")，证明契约面已足够
 
-(require "../plugin/api.rkt")
+(require "../plugin/annotate-api.rkt")
 
 (provide keyword-hl)
 

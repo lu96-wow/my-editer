@@ -213,9 +213,12 @@
     [else                                            ; >= end
      (cond
        [(= l e-line)
-        (if (zero? k)
-            (cursor s-line (+ s-col (- c e-col)))
-            (cursor (+ s-line (sub1 k)) (+ last-len (- c e-col))))]
+        (cond
+          [(zero? k) (cursor s-line (+ s-col (- c e-col)))]
+          ;; 单行插入：after 接在 before + 插入文本之后，需加 s-col
+          [(= k 1)   (cursor s-line (+ s-col last-len (- c e-col)))]
+          ;; 多行插入：after 接到最后一行行首（新行），不加 s-col
+          [else      (cursor (+ s-line (sub1 k)) (+ last-len (- c e-col)))])]
        [else
         (cursor (+ l delta) c)])]))
 

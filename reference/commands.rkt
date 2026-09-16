@@ -8,10 +8,11 @@
 ;;; commands.rkt —— 默认两层命令（参考实现）
 ;;;
 ;;; 命令签名：(-> config frame 事件 (values frame desc? done?))
-;;; 编辑管线「自由」：命令作者显式调用 edit-active（编辑 → run-plugins → linked 同步 → 跟随）。
+;;; 编辑管线「自由」：命令作者显式调用 edit-active
+;;; （编辑 → 编辑插件 → 标注插件 → linked 同步 → 跟随）。
 ;;; 框架不自动跑管线——忘了 frame-sync-buffer 则共享窗口会分叉（自由的代价）。
 
-(provide make-default-commands)
+(provide make-default-commands edit-active)
 
 ;;; ---------- 手动编辑管线（插件 + linked 同步 + 跟随） ----------
 
@@ -22,8 +23,13 @@
   (cond
     [(not desc) (values (frame-ensure-active f1) #f #f)]
     [else
-     (define b* (run-plugins (window-buffer (frame-window f1 id)) (config-plugins cfg)))
-     (define f2 (frame-sync-buffer f1 id old-b b* desc))
+     ;; 1. 编辑插件（改 content → 产生 dirty），得到 old-b → b2 的完整编辑序列
+     (define b1 (window-buffer (frame-window f1 id)))
+     (define-values (b2 edit-descs) (run-edit-plugins b1 desc (config-edit-plugins cfg)))
+     ;; 2. 标注插件（消费 dirty → patch）
+     (define b3 (run-plugins b2 (config-plugins cfg)))
+     ;; 3. 共享窗口同步：用完整 desc 序列映射 point
+     (define f2 (frame-sync-buffer f1 id old-b b3 (cons desc edit-descs)))
      (values (frame-ensure-active f2) desc #f)]))
 
 ;;; ---------- 窗口级命令 ----------
@@ -204,5 +210,21 @@
   (define-values (fs2 _s3 _s4) (framework-handle cfg fs (mouse-press-event 'left 7 0 (modifiers #f #f #f #f))))
   (check-equal? (frame-active fs2) 1)
   (check-equal? (window-point (frame-active-window fs2)) (cursor 0 1))
+
+  ;; 编辑插件接入 edit-active：输入 X 自动追加 Y，且光标跟到 Y 之后
+  (define (append-y b trigger)
+    (if (and trigger (string=? (edit-desc-new-text trigger) "X"))
+        (list (edit-desc 0 1 0 1 "Y"))
+        '()))
+  (define cfg-edit
+    (make-config #:window-commands wc #:frame-commands fc
+                 #:layout tree-layout #:compose line-compose
+                 #:edit-plugins (list (edit-plugin-spec 'y append-y '() 'sync))
+                 #:plugins '() #:view-plugins '() #:theme (hash)))
+  (define-values (f1e _d1e _done1e)
+    (framework-handle cfg-edit (frame-open (buffer-open "hello") 3 20)
+                      (text-event "X" (modifiers #f #f #f #f))))
+  (check-equal? (buffer->string (window-buffer (frame-active-window f1e))) "XYhello")
+  (check-equal? (window-point (frame-active-window f1e)) (cursor 0 2))
 
   (displayln "commands.rkt: all tests passed"))

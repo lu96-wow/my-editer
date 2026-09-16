@@ -13,13 +13,16 @@
 ;;;   - 直接打字、退格、回车、方向键、Home/End、PageUp/PageDown
 ;;;   - 鼠标点击定位光标、滚轮滚动
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
+;;;   - 诊断标注：源码里故意留了一处语法错误 (define broken)，红字显示
 ;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步；窗口间有 | / - 边框
 
 (require "core/text/buffer.rkt"
          "framework/slots.rkt" "framework/framework.rkt"
          "reference/layout-tree.rkt" "reference/compose-line.rkt"
          "reference/commands.rkt" "ui/tui/tui.rkt"
-         "plugin-reference/racket-hl.rkt" "plugin-reference/status.rkt")
+         "plugin-reference/racket-hl.rkt" "plugin-reference/status.rkt"
+         "plugin-reference/auto-pair.rkt" "plugin-reference/indent.rkt"
+         "plugin-reference/racket-diag.rkt")
 
 (provide sample)
 
@@ -28,17 +31,18 @@
 (define sample
   (string-join
    (list
-    ";; 编辑器核心 demo —— 中英文混排测试"
-    "你好世界 hello world 你好"
+    "#lang racket"
+    ";; 编辑器 demo —— 中英文混排：你好世界 hello，宽字符 😀😃🎉，全角标点，。！？"
     "(define (square x) (* x x))"
+    "(define (double x) (* 2 x))"
     "(lambda (y) (if (> y 0) y 0))"
-    "中文测试：宽字符占两列，光标定位应正确。"
-    "emoji 测试：😀😃🎉 和全角标点，。！？"
-    "字符串测试 \"hello 你好 😀\" 注释 ; 这是注释"
-    "折行测试：这是一段很长很长的中文文本用来测试折行模式下的显示效果超过终端宽度时会被自动折成多行显示。"
+    "(define msg \"hello 你好 😀\") ; 字符串里的宽字符"
     ""
-    "方向键移动 / 直接打字 / 退格 / 回车"
-    "Ctrl+Q 退出 / Ctrl+W 切换折行")
+    ";; ↓ 故意留一个语法错误：define 缺表达式，应显示为红字"
+    "(define broken)"
+    ""
+    ";; 操作：方向键 / 打字 / 退格 / 回车；Ctrl+Q 退出 / Ctrl+W 切换折行"
+    ";; 折行：这段很长很长的中文文本用来测试 wrap 模式下自动折行的显示效果")
    "\n"))
 
 ;;; ---------- 主题（纯数据，外部组合时定义并传入）----------
@@ -50,19 +54,24 @@
         'number  '(198 120 221)       ; 紫
         'builtin '(86 182 194)        ; 青
         'mode    '(229 192 123)       ; 黄
-        'border  '(92 99 112 dim)))   ; 边框灰
+        'border  '(92 99 112 dim)     ; 边框灰
+        'error   '(255 100 100)        ; 诊断错误：红
+        'warning '(229 192 123)))
 
 ;;; ---------- 组装（用户拼出界面）----------
 
 (define-values (wc fc) (make-default-commands))
+(define ap-wc (auto-pair-strategy wc))
 
 (define cfg
   (make-config
-   #:window-commands wc
+   #:window-commands ap-wc
    #:frame-commands  fc
    #:layout          tree-layout
    #:compose         line-compose
-   #:plugins         (list (plugin-spec 'keyword-hl keyword-hl '() 'sync))
+   #:edit-plugins    (list (edit-plugin-spec 'indent indent-on-enter '() 'sync))
+   #:plugins         (list (plugin-spec 'keyword-hl keyword-hl '() 'sync)
+                           (plugin-spec 'racket-diag racket-diag '() 'sync))
    #:view-plugins    (list rowcol-status)
    #:theme           demo-theme))
 
