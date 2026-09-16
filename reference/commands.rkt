@@ -22,7 +22,7 @@
   (cond
     [(not desc) (values (frame-ensure-active f1) #f #f)]
     [else
-     (define b* (run-plugins (window-buffer (frame-window f1 id)) (config-buffer-plugins cfg)))
+     (define b* (run-plugins (window-buffer (frame-window f1 id)) (config-plugins cfg)))
      (define f2 (frame-sync-buffer f1 id old-b b* desc))
      (values (frame-ensure-active f2) desc #f)]))
 
@@ -152,7 +152,7 @@
   (define-values (wc fc) (make-default-commands))
   (define cfg (make-config #:window-commands wc #:frame-commands fc
                            #:layout tree-layout #:compose line-compose
-                           #:buffer-plugins '() #:view-plugins '()
+                           #:plugins '() #:view-plugins '()
                            #:theme (hash)))
   (define f0 (frame-open (buffer-open "hello\nworld") 3 20))
 

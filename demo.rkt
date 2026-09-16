@@ -17,7 +17,7 @@
 
 (require "core/text/buffer.rkt" "core/text/patch.rkt"
          "core/view/window.rkt" "core/text/cursor.rkt"
-         "framework/slots.rkt" "framework/framework.rkt" "framework/stateful.rkt"
+         "framework/slots.rkt" "framework/framework.rkt"
          "reference/layout-tree.rkt" "reference/compose-line.rkt"
          "reference/commands.rkt" "ui/tui/tui.rkt")
 
@@ -47,19 +47,6 @@
                 (matches->segs line keyword-rx 'keyword text)
                 (matches->segs line string-rx  'string  text)
                 (matches->segs line comment-rx 'comment text))))))
-
-;;; ---------- 演示用有状态插件：累计编辑次数 ----------
-;;; 状态 = 编辑次数（edit-desc 流上的 left-fold）；投影可丢、状态不可丢。
-;;; 首次编辑后给首字符打 'edited face（位置固定在 (0,0)，坐标无关，避开增量索引的
-;;; 位置维护——那正是 LSP 类插件的难点，不在本 demo 范围内）。
-
-(define edit-marker
-  (stateful-plugin
-   (lambda (b) 0)                          ; init：从全量 buffer 建状态（这里只需计数 0）
-   (lambda (n d) (add1 n))                 ; step：按序吃一个 edit-desc
-   (lambda (n) (if (zero? n)
-                   '()
-                   (list (patch 'edited 0 0 (list (list 0 0 1 'edited))))))))
 
 ;;; ---------- 演示用 view 插件：状态行（行列 + 模式）----------
 
@@ -99,8 +86,7 @@
         'number  '(198 120 221)       ; 紫
         'builtin '(86 182 194)        ; 青
         'mode    '(229 192 123)       ; 黄
-        'border  '(92 99 112 dim)     ; 边框灰
-        'edited  '(229 102 118)))     ; 有状态插件标记色（红）
+        'border  '(92 99 112 dim)))   ; 边框灰
 
 ;;; ---------- 组装（用户拼出界面）----------
 
@@ -112,9 +98,8 @@
    #:frame-commands  fc
    #:layout          tree-layout
    #:compose         line-compose
-   #:buffer-plugins   (list (plugin-spec 'keyword-hl keyword-hl '()))
-   #:stateful-plugins (list edit-marker)
-   #:view-plugins     (list rowcol-status)
+   #:plugins         (list (plugin-spec 'keyword-hl keyword-hl '() 'sync))
+   #:view-plugins    (list rowcol-status)
    #:theme           demo-theme))
 
 ;;; ---------- 启动（仅当直接运行 demo.rkt 时）----------

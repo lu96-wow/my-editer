@@ -4,7 +4,6 @@
 (require "../../core/view/events.rkt" "../../core/view/screen.rkt"
          "../../core/view/frame.rkt" "../../core/text/buffer.rkt"
          "../../framework/framework.rkt" "../../framework/slots.rkt"
-         "../../framework/plugin-dag.rkt"
          "../../reference/input-tui.rkt" rackunit)
 
 ;;; ui/tui/tui.rkt —— racket-tui 后端
@@ -134,7 +133,8 @@
 ;;; 后端只负责注入 read（raw→事件）与 output（screen→字节）；
 ;;; 循环骨架、命令路由、布局/组合全在 framework + reference。
 
-(define (run-tui b0 cfg [input-handler tui-input-handler])
+(define (run-tui b0 cfg [input-handler tui-input-handler]
+                 #:async-plugins? [async-plugins? #f])
   (with-tui
    (lambda ()
      (define-values (rows cols) (get-window-size))
@@ -142,19 +142,24 @@
      (define c (or cols 80))
      ;; buffer 区占 r-1 行，底部 1 行给状态栏
      (define area-rows (max 1 (sub1 r)))
-     ;; 异步启动插件：先渲染未标注的基线，后台算完再应用（不阻塞 UI）
-     (define-values (b0* async) (run-plugin-dag-async-init (config-buffer-plugins cfg) b0))
+     ;; 同步初始化（默认，无线程）；#:async-plugins? #t 才异步：
+     ;;   先渲染未标注基线，后台算完再应用（不阻塞 UI）。
+     (define-values (b0* async)
+       (if async-plugins?
+           (run-plugins-async-init b0 (config-plugins cfg))
+           (values (run-plugins-init b0 (config-plugins cfg)) #f)))
      (define f0 (frame-open b0* area-rows c))
      (define evt (box #f))
      (define handler (input-handler (lambda (ev) (set-box! evt ev))))
      (framework-run
       cfg f0
       (lambda ()
-        ;; 多路复用：先收异步插件结果，再读终端（非阻塞）
+        ;; 多路复用：异步开启时先收插件结果再非阻塞读终端；否则阻塞读终端。
         (define res (and async (plugin-async-poll async)))
         (if res
             (async-result (plugin-async-base-buffer async) res)
-            (let-values ([(type data mods) (read-event-noblock)])
+            (let-values ([(type data mods)
+                          (if async (read-event-noblock) (read-event))])
               (set-box! evt #f)
               (handler type data mods)
               (unbox evt))))

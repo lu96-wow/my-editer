@@ -16,9 +16,15 @@
  (struct-out compose)
  (struct-out window-commands)
  (struct-out frame-commands)
- (struct-out plugin-spec)   ; 重新导出：插件组合声明（见 plugin-dag.rkt）
+ (struct-out plugin-spec)    ; 插件组合声明
+ (struct-out plugin-async)   ; 异步句柄
+ (struct-out async-result)   ; 异步结果消息（回 UI 用）
  run-plugins
  run-plugins-init
+ run-plugins-async
+ run-plugins-async-init
+ plugin-async-poll
+ plugin-async-collect
  run-view-plugins)
 
 ;;; ---------- 视口派生（window → status-seg） ----------
@@ -28,9 +34,9 @@
 (define (run-view-plugins w vps)
   (apply append (for/list ([p (in-list vps)]) (p w))))
 
-;;; ---------- buffer 派生（插件 = buffer → patch，吃 dirty） ----------
-;;; 插件现在是纯函数 buffer -> (listof patch)；组合时用 plugin-spec 声明依赖。
-;;; 调度（依赖分层 + future 并行 + dirty 消费）在 plugin-dag.rkt。
+;;; ---------- 文档插件（统一：buffer → patch，闭包可带状态，吃 dirty） ----------
+;;; 插件只有一种：buffer -> (listof patch)。stateful = 闭包捕获内部状态，不是类型；
+;;; 线程 = plugin-spec 上统一的 mode（sync/parallel）。调度在 plugin-dag.rkt。
 
 (define (run-plugins b specs)
   (run-plugin-dag-sync specs b))
@@ -39,6 +45,13 @@
   (if (null? specs)
       b
       (run-plugin-dag-sync specs (buffer-mark-dirty-all b))))
+
+;; 非阻塞（整轮 async）：立即返回基线 + 结果句柄；算完用 plugin-async-poll/collect 收。
+(define (run-plugins-async b specs)
+  (run-plugin-dag-async specs b))
+
+(define (run-plugins-async-init b specs)
+  (run-plugin-dag-async-init specs b))
 
 ;;; ---------- 布局（frame → 几何/顺序 + 布局变更） ----------
 
@@ -70,7 +83,7 @@
   (define b0 (buffer-open "hello\nworld"))
   (check-eq? (run-plugins b0 '()) b0)
   (define (tag b) (list (patch 'face 0 0 (list (list 0 0 1 'bold)))))
-  (define b1 (run-plugins b0 (list (plugin-spec 'tag tag '()))))
+  (define b1 (run-plugins b0 (list (plugin-spec 'tag tag '() 'sync))))
   (check-equal? (buffer-get-text-property b1 0 0 'face) 'bold)
   (check-false (buffer-dirty b1))
 

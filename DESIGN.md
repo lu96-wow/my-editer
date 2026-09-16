@@ -143,69 +143,86 @@ I/O 型用 `thread` + channel（或 `subprocess` + 端口），结果回主循�
 tui 后端用 `read-event-noblock` + `sync`（channel / 定时器）实现；GUI/Web 后端
 本来就事件驱动，天然适配。
 
-### 2.4 插件 slot 的最终形态（建议）
+### 2.4 插件执行方式：两个正交维度（纠正「sync/parallel/async 三档」的模糊表述）
 
-保持「类型明确、不搞万能 Plugin」：
+插件只有**一种**：`buffer → (listof patch)`（闭包可带内部状态 = stateful，不是类型）。
+执行方式由**两个正交维度**决定：
+
+| 维度 | 选项 | 问题 |
+|---|---|---|
+| 等不等结果（阻塞/非阻塞） | 阻塞 `run-plugin-dag-sync`；非阻塞 `run-plugin-dag-async`（`run-tui #:async-plugins? #t`） | UI 卡不卡 |
+| 用几个核（单核/多核） | `'sync` 单核内联；`'parallel` 多核（future，touch 阻塞等结果） | 算得快不快 |
 
 ```racket
-;; 轻插件（现状，不变）
-buffer-plugin   : (-> buffer buffer)
-
-;; 重插件：限时分块（不阻塞，不并行）
-chunked-plugin  : (-> buffer (values buffer more?))
-
-;; 重 CPU 插件：future 真并行
-parallel-plugin : (-> buffer buffer)
-
-;; I/O 型插件：后台线程/子进程，结果按 tick 校验
-async-plugin    : (-> buffer buffer)
+(struct plugin-spec (name plugin deps mode))
+;; mode : 'sync（单核内联，默认）| 'parallel（多核 future）
+;; async 不是 mode，是「整轮非阻塞」：run-plugin-dag-async / run-tui #:async-plugins? #t
 ```
 
-组合器相应加 `run-chunked-plugins`（时间预算）、`run-parallel-plugins`（future）、
-`run-async-plugins`（channel 收集）。**demo 高亮保持同步轻插件不动**。
+代码级区别：
+
+```racket
+;; 'sync：直接调用，卡在当前线程
+((plugin-spec-plugin s) b)
+
+;; 'parallel：丢 future（多核），但 touch 阻塞等结果
+(touch (future (λ () ((plugin-spec-plugin s) b))))
+
+;; async：整张 DAG 丢后台线程，立即返回基线，不等
+(thread (λ () (channel-put ch (run-plugin-dag-sync specs b0))))
+(values b0 (plugin-async b0 ch))
+```
+
+| | 用几个核 | 等不等结果 | UI 表现 |
+|---|---|---|---|
+| `'sync` | 1（当前线程） | 等 | 卡，算完才渲染 |
+| `'parallel` | 多核 | **等**（touch） | 卡，但短（算得快） |
+| `async` | 1（后台线程） | **不等** | 不卡，先渲染旧结果，算完再更新 |
+
+两者正交，四种组合都成立：
+
+```racket
+(plugin-spec 'hl f '() 'sync)     + run-plugin-dag-sync   ; 阻塞单核（默认）
+(plugin-spec 'hl f '() 'parallel) + run-plugin-dag-sync   ; 阻塞多核
+(plugin-spec 'hl f '() 'sync)     + #:async-plugins? #t   ; 非阻塞单核
+(plugin-spec 'hl f '() 'parallel) + #:async-plugins? #t   ; 非阻塞多核
+```
+
+选择依据：插件便宜 → `'sync`；CPU 贵能忍短暂卡 → `'parallel`；慢/不想卡 UI → async。
+`'parallel`/async 要求插件纯（不写共享可变 box）；带状态的闭包用 `'sync`。
 
 **future-safety 提醒**：纯数据变换没问题；但插件若内部碰到 future-unsafe 操作
 （I/O、部分带缓存的 regexp、FFI）会**静默退化为同步执行**。上 future 前要对
  demo 的 regexp 高亮做个基准确认。
 
-### 2.5 两类插件：无状态 map vs 有状态 fold+view（重要补充）
+### 2.5 stateful = 闭包，不是类型（纠正「M/F 两类插件」的旧分类）
 
-「丢弃重算」只对**无状态**插件成立。语言服务器这类**累计型**插件要换一套规则。
+早期把插件分成「无状态 map（M）/ 有状态 fold+view（F）」两类——**这是错的分类，已废除**。
 
-| | M 类：无状态 map | F 类：有状态 fold+view |
-|---|---|---|
-| 例子 | 高亮、lint 规则 | LSP、增量索引、符号表 |
-| 本质 | `f : Buffer → Buffer`，只依赖当前 buffer | `State` 是 edit 流上的 left-fold |
-| 可丢 | 结果可丢、可整体重算 | **状态不可丢、不可跳步**；只有投影可丢 |
-| 顺序 | 无关 | **必须按序**消费 edit-desc |
-
-F 类的精确描述：
-
-```
-S_i        = step(S_{i-1}, edit_i)   ; 累计状态（不可交换，按序消费）
-patches_i  = view(S_i)                ; 投影（渲染图），可丢、可重算
-```
-
-- 只能丢 `view(S_i)`（渲染图）；`S_i` 是事件日志上的 scan，丢了只能从头重放。
-- 按序消费发生在插件自己的 worker 队列里，不阻塞 UI。
-- 接入已有 `edit-desc` 流（架构里 desc 本就透传、不丢弃）。
-
-合并与失效：
-
-- M 类：独立并行（写集不相交）+ 可丢弃重算（前文 R4 原样）。
-- F 类：对 UI 永远串行，合并 =「该插件最新投影覆盖自己的 key」；不「失效」，只是投影**滞后**。
-  - 版本匹配：投影带版本号，版本不符先丢这条投影等下一版（状态照常前进）。
-  - 位置映射：用 `edit-desc-map-position` 把投影坐标从 i 版映射到 m 版（进阶）。
-  - full resync：队列追不上 / 文档被整体替换时兑底。
-
-类型草图：
+正确模型：插件只有 `buffer → (listof patch)` 一种，**stateful 是闭包是否带内部状态**：
 
 ```racket
-(struct stateful-plugin (init step view) #:transparent)
-;; init : -> State
-;; step : State edit-desc -> State
-;; view : State -> (listof patch)
+;; stateless：纯函数
+(define (keyword-hl b) ...)
+
+;; stateful：带 box 的闭包（同一闭包跨调用累计状态）
+(define counter
+  (let ([n (box 0)])
+    (lambda (b) (set-box! n (add1 (unbox n)))
+                (list (patch 'count 0 0 (list (list 0 0 1 (unbox n))))))))
 ```
+
+两者声明方式完全相同，框架不区分：
+
+```racket
+#:plugins (list (plugin-spec 'hl    keyword-hl '() 'sync)   ; stateless
+                (plugin-spec 'lsp   lsp-client '() 'sync))  ; stateful，一样
+```
+
+- 状态在闭包内部（box），框架看不见、也不该看见。
+- 带 box 的插件必须 `'sync`（主线程串行写 box）；`'parallel`/async 要求纯。
+- LSP 要精确增量（didChange）时：从 `buffer-dirty` 拿变化行范围，或未来把
+  `edit-desc` 一并传给插件（签名 `buffer edit-desc? → patch`）——LSP 落地待办。
 
 ---
 
@@ -337,35 +354,34 @@ async 失效要区分「用户改了内容」与「插件只写了标注」。�
 (buffer-apply-patches buffer patches) -> buffer
 ```
 
-### 5.4 插件两形（输入边界）
+### 5.4 插件（统一一种类型）
 
-- **M 类（无状态）**：`buffer -> (listof patch)`，只读 buffer + dirty，返回自己的 delta。不知道线程。
-- **F 类（有状态）**：`(struct stateful-plugin (init step view))`
-  - `init : -> State`
-  - `step : State edit-desc -> State`（按序消费 edit-desc，不可跳）
-  - `view : State -> (listof patch)`（投影，可丢）
+- **插件只有一种**：`buffer -> (listof patch)`。stateful = 闭包带内部状态（box），不是类型。
+- 插件不知道线程；线程 = 组合时的 `mode`（`'sync` | `'parallel`）与整轮 async（见 2.4）。
 
 ### 5.5 组合声明（spec）
 
 ```racket
 (struct plugin-spec (name plugin deps mode) #:transparent)
-;; deps : (listof name)   非空=串行链；空=独立可并行
-;; mode : 'sync | 'async
+;; plugin : buffer -> (listof patch)   （闭包可带内部状态 = stateful）
+;; deps   : (listof name)   非空=串行链；空=独立可并行
+;; mode   : 'sync（单核内联）| 'parallel（多核 future）
 ```
 
 - 依赖 = 串行；无依赖 = 独立（并行）。
 - 「独立」的前提 = 写集不相交（不同 key），用 debug 断言可查，不硬性强制。
+- async 不是 mode，是「整轮非阻塞」（`run-plugin-dag-async` / `run-tui #:async-plugins? #t`）。
 
 ### 5.6 调度器（唯一知道线程的地方）
 
 - 输入 `(listof plugin-spec) + buffer`；
-- 按「最长依赖深度」分层，同层用 `future` 并行，层间串行（见 `plugin-pipeline-demo.rkt`）；
+- 按「最长依赖深度」分层，同层用 `future` 并行，层间串行（见 `framework/plugin-dag.rkt`）；
 - `sync`：阻塞返回最终 buffer；`async`：立即返回基线 buffer + 结果句柄（channel）。
 
 ### 5.7 失效判定（async）
 
-- **M 类**：结果携带启动时的 content 引用；应用 iff `buffer-content-same?`，否则丢弃重算。
-- **F 类**：不丢状态、只丢投影；投影带版本号，版本不符可丢或 `edit-desc-map-position` 映射（进阶）。
+- async 结果携带启动时的 content 引用；应用 iff `buffer-content-same?`，否则丢弃重算。
+- 带状态的闭包插件用 `'sync`（主线程串行写 box），不参与 async 的失效判定。
 
 ### 5.8 事件循环边界（framework/tui 改造）
 
@@ -373,10 +389,10 @@ async 失效要区分「用户改了内容」与「插件只写了标注」。�
 tui 用 `read-event-noblock` + `sync`；异步插件结果作为「结果事件」回循环，通过
 `buffer-content-same?` 后应用 → 触发重渲染。
 
-### 5.9 实现顺序建议
+### 5.9 实现顺序（已全部完成）
 
 1. `core/text/patch.rkt`：`patch` + `buffer-apply-patches` + `buffer-content-same?`。
-2. `framework/` 调度器：`run-plugins-spec`（依赖分层 + future + sync/async + 失效校验，M 类）。
-3. 把 demo 的 `keyword-hl` 改成返回 patch，接入验证。
+2. `framework/plugin-dag.rkt`：`plugin-spec`（deps + mode）+ 依赖分层 + future/async + 失效校验。
+3. demo 的 `keyword-hl` 迁 patch 接入。
 4. 事件循环多路复用（async 结果回 UI）。
-5. F 类（edit-desc 队列 + step/view）最后做。
+5. 统一插件模型：删掉 M/F 分类，stateful = 闭包。
