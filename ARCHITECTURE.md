@@ -17,6 +17,11 @@ edit/
 │   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins）
 │   ├── plugin-dag.rkt    #   插件 DAG 调度（依赖分层 + future 并行 + sync/async）
 │   └── framework.rkt     #   config + framework-handle/render/status/run
+├── plugin/               # 插件 SDK / 实现层（只定契约，与具体插件分开）
+│   └── api.rkt           #   插件最小合法面（只 re-export，无实现）
+├── plugin-reference/     # 参考插件（用户 copy/替换，示例）
+│   ├── racket-hl.rkt     #   示例文档插件（buffer -> patch）
+│   └── status.rkt        #   示例 view 插件（window -> status-seg）
 ├── reference/            # 参考实现（用户 copy/替换，非默认）
 │   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
 │   ├── compose-line.rkt  #   边框拼帧
@@ -29,7 +34,7 @@ edit/
 └── ARCHITECTURE.md
 ```
 
-依赖方向：`core ← framework ← reference ← ui`；`demo` 在最外层，依赖所有。
+依赖方向：`core ← framework ← plugin ← plugin-reference ← demo`；`reference` 与 `plugin-reference` 平行（只依赖 framework，不依赖 plugin）；`ui` 依赖 core/framework/reference；`demo` 在最外层，依赖所有。
 
 **没有「editor」这一层**：`framework` 只提供框架（契约 + slot 类型 + 机械循环）；真正的 editor（例如 demo 里 `run-tui (buffer-open sample) cfg`）由使用者用 core / framework / reference / ui 的接口自行拼装。
 
@@ -41,7 +46,9 @@ edit/
 ├──────────────────────────────────────────────────────────────┤
 │ ui/tui/tui.rkt       后端（racket-tui）：screen↔ANSI、read/output │ ← 后端相关
 ├──────────────────────────────────────────────────────────────┤
+│ plugin-reference/*   参考插件：示例文档插件 / view 插件         │
 │ reference/*          参考实现：树布局 / 边框 / 命令 / 输入解码  │
+│ plugin/*             插件 SDK：api 契约（只 re-export）        │
 ├──────────────────────────────────────────────────────────────┤
 │ framework/framework  框架：config + framework-handle/render/run   │
 │ framework/slots      slot 类型 + 组合器                        │

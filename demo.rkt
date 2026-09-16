@@ -15,49 +15,13 @@
 ;;;   - 语法高亮（关键字蓝 / 字符串绿 / 注释灰），随编辑实时刷新
 ;;;   - 分屏后两个窗口共享同一 buffer，一处编辑两处同步；窗口间有 | / - 边框
 
-(require "core/text/buffer.rkt" "core/text/patch.rkt"
-         "core/view/window.rkt" "core/text/cursor.rkt"
+(require "core/text/buffer.rkt"
          "framework/slots.rkt" "framework/framework.rkt"
          "reference/layout-tree.rkt" "reference/compose-line.rkt"
-         "reference/commands.rkt" "ui/tui/tui.rkt")
+         "reference/commands.rkt" "ui/tui/tui.rkt"
+         "plugin-reference/racket-hl.rkt" "plugin-reference/status.rkt")
 
-(provide sample keyword-hl rowcol-status)
-
-;;; ---------- 演示用语法高亮插件（就地定义，属 demo 不属核心）----------
-
-(define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not)\\b")
-(define string-rx  #px"\"[^\"]*\"")
-(define comment-rx #px";[^\n]*")
-
-(define (matches->segs line rx face text)
-  (for/list ([m (in-list (regexp-match-positions* rx text))])
-    (list line (car m) (cdr m) face)))
-
-;; 语法高亮插件：buffer -> (listof patch)，纯、不知道线程。
-;; 每个 dirty 行产出一个 patch：先清该行 'face 旧值，再写新 segs。
-(define (keyword-hl b)
-  (define d (buffer-dirty b))
-  (if (not d)
-      '()
-      (for/list ([line (in-range (dirty-desc-first-line d)
-                                 (add1 (dirty-desc-last-line d)))])
-        (define text (buffer-line-ref b line))
-        (patch 'face line line
-               (append
-                (matches->segs line keyword-rx 'keyword text)
-                (matches->segs line string-rx  'string  text)
-                (matches->segs line comment-rx 'comment text))))))
-
-;;; ---------- 演示用 view 插件：状态行（行列 + 模式）----------
-
-(define (rowcol-status w)
-  (define p (window-point w))
-  (define line-count (buffer-line-count (window-buffer w)))
-  (list
-   (status-seg (format "Ln ~a, Col ~a" (add1 (cursor-line p)) (add1 (cursor-col p))) #f)
-   (status-seg "  " #f)
-   (status-seg (if (eq? (window-mode w) 'wrap) "wrap" "clip") 'mode)
-   (status-seg (format "  ~a 行" line-count) #f)))
+(provide sample)
 
 ;;; ---------- 示例内容 ----------
 
