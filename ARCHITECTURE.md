@@ -15,7 +15,8 @@ edit/
 │                         #   frame = 窗口集合 + linked 同步（无布局，无边框）
 ├── framework/            # 框架（只定 slot 类型 + 组合器 + 机械循环）
 │   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins）
-│   └── plugin-dag.rkt    #   插件 DAG 调度（依赖分层 + future 并行 + sync/async）
+│   ├── plugin-dag.rkt    #   插件 DAG 调度（依赖分层 + future 并行 + sync/async）
+│   └── stateful.rkt      #   有状态插件（fold + view，edit-desc 流，不可丢状态）
 │   └── framework.rkt     #   config + framework-handle/render/status/run
 ├── reference/            # 参考实现（用户 copy/替换，非默认）
 │   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
@@ -117,12 +118,13 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 | 1 | 输入 → 命令 | `config frame 事件 → (values frame desc? done?)`（两层命令表） | 事件 | 键位、vim 模式 | `reference/commands.rkt` |
 | 2 | 编辑策略 | `window → (values window desc)` | 无（命令直调） | 自动配对、snippet | `window-*` 原语 |
 | 3 | buffer 派生 | `buffer → (listof patch)`（补丁 = delta） | `dirty-desc` | 高亮、lint、折叠 | `framework/slots.rkt` 的 `run-plugins` + `plugin-dag.rkt` |
-| 4 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `run-view-plugins` |
-| 5 | 布局 | `layout = (rects order split close)` | frame 状态 | 树/tab/网格 | `reference/layout-tree.rkt` |
-| 6 | 组合/装饰 | `pieces → screen` | pieces | 边框、标签 | `reference/compose-line.rkt` |
-| 7 | 渲染主题 | `face → style-spec` | 无 | 配色主题 | 纯数据，**无默认** |
-| 8 | 后端 | `screen → bytes` / `raw → 事件` | — | tui/gui/web | `ui/tui/tui.rkt` + `input-tui.rkt` |
-| 9 | 项目/工作区派生 | `workspace → workspace` | `edit-desc` + 来源 | LSP、跨文件同步 | 待建（frame 之上的下一组合根） |
+| 4 | buffer 状态派生 | `stateful-plugin (init step view)` | `edit-desc` 流 | LSP、增量索引、符号表 | `framework/stateful.rkt`（fold+view，状态不可丢） |
+| 5 | 视口派生 | `window → status-seg` | 每帧重算 | 行列、模式行、minimap | `run-view-plugins` |
+| 6 | 布局 | `layout = (rects order split close)` | frame 状态 | 树/tab/网格 | `reference/layout-tree.rkt` |
+| 7 | 组合/装饰 | `pieces → screen` | pieces | 边框、标签 | `reference/compose-line.rkt` |
+| 8 | 渲染主题 | `face → style-spec` | 无 | 配色主题 | 纯数据，**无默认** |
+| 9 | 后端 | `screen → bytes` / `raw → 事件` | — | tui/gui/web | `ui/tui/tui.rkt` + `input-tui.rkt` |
+| 10 | 项目/工作区派生 | `workspace → workspace` | `edit-desc` + 来源 | 跨文件同步 | 待建（frame 之上的下一组合根） |
 
 已实现：#1~#8；#9 待建。
 

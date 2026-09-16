@@ -1,7 +1,8 @@
 #lang racket
 
 (require "../core/view/events.rkt" "../core/view/frame.rkt"
-         "slots.rkt" "plugin-dag.rkt" rackunit)
+         "../core/view/window.rkt" "../core/text/patch.rkt"
+         "slots.rkt" "plugin-dag.rkt" "stateful.rkt" rackunit)
 
 ;;; framework.rkt —— 机械组合层：config + framework-handle/render/status/run
 ;;;
@@ -23,7 +24,7 @@
 
 (struct config
   (window-commands frame-commands layout compose
-   buffer-plugins view-plugins theme)
+   buffer-plugins stateful-plugins view-plugins theme)
   #:transparent)
 
 ;; 用户必须显式提供 window-commands / frame-commands / layout / compose；
@@ -33,9 +34,10 @@
                      #:layout lo
                      #:compose co
                      #:buffer-plugins [bps '()]
+                     #:stateful-plugins [sps '()]
                      #:view-plugins [vps '()]
                      #:theme [theme (hash)])
-  (config wc fc lo co bps vps theme))
+  (config wc fc lo co bps sps vps theme))
 
 ;;; ---------- 事件分派（机械，按运行时类型） ----------
 
@@ -74,19 +76,40 @@
 ;;   async-result  → 异步插件算完，按内容版本应用到 frame（stale 自动 no-op）
 ;; output : (-> screen (or/c #f screen) (listof status-seg) any)
 (define (framework-run cfg f0 read output)
-  (let loop ([f f0] [prev #f])
+  ;; 有状态插件实例：启用时从全量 buffer 建初始状态，之后每 edit-desc 按序 fold。
+  (define insts0
+    (map (lambda (sp) (stateful-start sp (window-buffer (frame-active-window f0))))
+         (config-stateful-plugins cfg)))
+  (let loop ([f f0] [prev #f] [insts insts0])
     (define scr (framework-render cfg f))
     (output scr prev (framework-status cfg f))
     (define msg (read))
-    (define-values (f* done?)
-      (if (async-result? msg)
-          (values (frame-replace-buffer f
-                                        (async-result-base-buffer msg)
-                                        (async-result-buffer msg))
-                  #f)
-          (let-values ([(f2 _desc d?) (framework-handle cfg f msg)])
-            (values f2 d?))))
-    (unless done? (loop f* scr))))
+    (cond
+      [(async-result? msg)
+       (loop (frame-replace-buffer f
+                                   (async-result-base-buffer msg)
+                                   (async-result-buffer msg))
+             scr insts)]
+      [else
+       (define-values (f* desc done?) (framework-handle cfg f msg))
+       (cond
+         [done? (void)]
+         [desc
+          ;; 编辑发生：把 desc 喂给有状态插件（不可跳步），再应用它们的投影。
+          (define insts* (map (lambda (i) (stateful-feed i desc)) insts))
+          (loop (statefuls-apply f* insts*) scr insts*)]
+         [else (loop f* scr insts)])])))
+
+;; 应用所有有状态插件的投影（补丁）到 active buffer；无状态插件时原样返回。
+(define (statefuls-apply f insts)
+  (define patches (apply append (map stateful-view insts)))
+  (if (null? patches)
+      f
+      (let ([w (frame-active-window f)])
+        (if (not w)
+            f
+            (let ([b (window-buffer w)])
+              (frame-replace-buffer f b (buffer-apply-patches b patches)))))))
 
 ;;; ---------- 测试 ----------
 
@@ -119,5 +142,18 @@
   (check-eq? f2 f0)
   (check-false d2)
   (check-false done2)
+
+  ;; 有状态插件投影应用：statefuls-apply 把投影补丁写到 active buffer
+  (define sp
+    (stateful-plugin
+     (lambda (b) 0)
+     (lambda (n d) (add1 n))
+     (lambda (n) (if (zero? n) '() (list (patch 'edited 0 0 (list (list 0 0 1 'edited))))))))
+  (define inst (stateful-feed (stateful-start sp (buffer-open "hello")) (edit-desc 0 0 0 0 "X")))
+  (define f-ann (statefuls-apply f0 (list inst)))
+  (check-equal? (buffer-get-text-property (window-buffer (frame-active-window f-ann)) 0 0 'edited)
+                'edited)
+  ;; 无投影（0 次编辑）→ 原样
+  (check-eq? (statefuls-apply f0 (list (stateful-start sp (buffer-open "hello")))) f0)
 
   (displayln "framework.rkt: all tests passed"))
