@@ -43,6 +43,8 @@
  buffer-mark-dirty
  buffer-mark-dirty-all
  buffer-clean
+ inhibit-read-only
+ with-read-only-inhibited
  edit-desc-after-position)
 
 ;;; ---------- 结构 ----------
@@ -112,15 +114,57 @@
 (define (buffer-mark-dirty-all b)
   (buffer-mark-dirty b 0 (sub1 (buffer-line-count b))))
 
+;;; ---------- read-only 守卫 ----------
+;;; 'read-only 文本属性：标了它的区间用户不可编辑。
+;;; 规则：零宽插入 → 插入点严格在 read-only 区间内部则拒绝；
+;;;       非零宽删除 → 删除区间 [s..e) 与任何 read-only 重叠则拒绝。
+;;;
+;;; 程序要编辑 read-only 内容时，用 with-read-only-inhibited 暂时绕过守卫。
+
+(define inhibit-read-only (make-parameter #f))
+
+;; 在 body 内暂时抑制 read-only 守卫（允许编辑 read-only 内容），退出后自动恢复。
+(define-syntax-rule (with-read-only-inhibited body ...)
+  (parameterize ([inhibit-read-only #t])
+    body ...))
+
+(define (read-only-at? b line col)
+  (buffer-get-property b line col 'read-only))
+
+;; [s..e) 半开区间内是否有 read-only 字符
+(define (range-read-only? b s-line s-col e-line e-col)
+  (cond
+    [(= s-line e-line)
+     (for/or ([c (in-range s-col e-col)])
+       (read-only-at? b s-line c))]
+    [else
+     (or (for/or ([c (in-range s-col (string-length (buffer-line-ref b s-line)))])
+           (read-only-at? b s-line c))
+         (for/or ([l (in-range (add1 s-line) e-line)])
+           (for/or ([c (in-range (string-length (buffer-line-ref b l)))])
+             (read-only-at? b l c)))
+         (for/or ([c (in-range e-col)])
+           (read-only-at? b e-line c)))]))
+
+(define (edit-read-only? b desc)
+  (define s-line (edit-desc-s-line desc))
+  (define s-col (edit-desc-s-col desc))
+  (define e-line (edit-desc-e-line desc))
+  (define e-col (edit-desc-e-col desc))
+  (if (and (= s-line e-line) (= s-col e-col))
+      (read-only-at? b s-line s-col)
+      (range-read-only? b s-line s-col e-line e-col)))
+
 ;;; ---------- 编辑核心 ----------
 
 ;; 在显式位置 (line, col) 执行一个 gap 编辑原语，返回 (values new-buffer desc)。
-;; 无操作时 desc = #f，原 buffer 原样返回。
+;; 无操作或触碰 read-only 时 desc = #f，原 buffer 原样返回。
 (define (buffer-edit-at b line col edit-fn)
   (define c1 (content-gap-goto (buffer-content b) line col))
   (define-values (c2 desc) (edit-fn c1))
   (cond
     [(not desc) (values b #f)]
+    [(and (not (inhibit-read-only)) (edit-read-only? b desc)) (values b #f)]   ; 触碰 read-only → 拒绝（除非程序绕过）
     [else
      (define old-count (content-line-count c1))
      (define new-count (content-line-count c2))
@@ -335,5 +379,31 @@
   ;; tick 单调递增
   (check-equal? (buffer-tick b17)
                 (+ (buffer-tick b14) 3))   ; 3 次 delete（overlay 建立的 +3 已在 b14 里）
+
+  ;; read-only 守卫：标了 'read-only 的区间不可编辑
+  (define rb (buffer-put-property b0 0 1 4 'read-only #t))   ; "ell"（col 1~3）不可编辑
+  ;; 区间内部插入 → 拒绝（原 buffer 原样返回）
+  (define-values (rb1 rd1) (buffer-insert-char rb 0 2 #\X))
+  (check-eq? rb1 rb)
+  (check-false rd1)
+  ;; 区间末尾边界（col 4）插入 → 允许，且新字符不继承 read-only（非粘性）
+  (define-values (rb2 rd2) (buffer-insert-char rb 0 4 #\X))
+  (check-equal? (buffer->string rb2) "hellXo\nworld")
+  (check-equal? (buffer-get-property rb2 0 4 'read-only) #f)
+  (check-equal? (buffer-get-property rb2 0 2 'read-only) #t)   ; 原区间仍在
+  ;; 删除跨进 read-only → 拒绝
+  (define-values (rb3 rd3) (buffer-backspace rb 0 4))   ; 删 [3,4) ∈ [1,4)
+  (check-eq? rb3 rb)
+  (check-false rd3)
+  ;; 删除 read-only 之外 → 允许
+  (define-values (rb4 rd4) (buffer-backspace rb 0 5))   ; 删 [4,5)（"o"，不在 read-only）
+  (check-equal? (buffer->string rb4) "hell\nworld")
+
+  ;; with-read-only-inhibited：程序编辑 read-only 内容
+  (define-values (rb5 rd5)
+    (with-read-only-inhibited
+      (buffer-insert-char rb 0 2 #\X)))          ; 在 read-only 区间内插入
+  (check-equal? (buffer->string rb5) "heXllo\nworld")
+  (check-equal? rd5 (edit-desc 0 2 0 2 "X"))
 
   (displayln "buffer.rkt: all tests passed"))

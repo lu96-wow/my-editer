@@ -361,6 +361,34 @@ gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `c
 ;; 3) window-screen->point w row col → (line col)
 ```
 
+### 7.5 read-only 区域（显示 + 输入）
+
+`'read-only #t` 属性标出用户不可编辑的区间（如提示区）。编辑守卫在 splice 层拦截，
+且 read-only 是**硬边界**：在边界插入什么都不继承，新输入保持干净。
+
+```racket
+(define b  (buffer-open "> _"))
+(define b1 (buffer-put-property b  0 0 2 'read-only #t))   ; "> " 不可编辑
+(define b2 (buffer-put-property b1 0 0 2 'face 'prompt))   ; 顺带提示色
+(define w  (window-set-point (window-open b2 1 40) (point 0 3)))  ; 光标放输入区
+
+;; 打字在输入区（col 3）→ 允许；打字在提示区（col 0~1）→ 拒绝（no-op）
+;; backspace 到边界 → 拒绝（不能删进提示区）
+```
+
+规则：零宽插入在 read-only 区间「内部」→ 拒绝，在边界 → 允许；
+非零宽删除与 read-only 区间「重叠」→ 拒绝。
+
+**程序要编辑 read-only 内容**：用宏暂时绕过守卫（不需要手动解锁/上锁）：
+
+```racket
+(with-read-only-inhibited
+  (buffer-splice b ...))   ; 这段作用域内可改 read-only，退出后自动恢复
+```
+
+注意：`inhibit-read-only` 只绕过编辑守卫，不改变硬边界继承——程序编辑 read-only
+内容后，新增部分若要继续 read-only，需自行重新标记（这本来就是构造字段的职责）。
+
 ---
 
 ## 8. 最小编辑器骨架

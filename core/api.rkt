@@ -53,6 +53,14 @@
 ;;;   你只需要一个写入口 buffer-put-property / buffer-put-properties-many；
 ;;;   之后全是自动的。
 ;;;
+;;; ── read-only 区域（显示 + 输入）──────────────────────────────
+;;;   'read-only #t 标成用户不可编辑（如提示区）；编辑在 splice 层被拦截，
+;;;   且 read-only 是「硬边界」：边界插入什么都不继承，新输入保持干净。
+;;;   程序要编辑 read-only 内容：with-read-only-inhibited 绕过。
+;;;
+;;;     (buffer-put-property b 0 0 2 'read-only #t)   ; "> " 不可编辑
+;;;     ;; 光标放输入区，打字只落在可编辑处；backspace 到边界就删不动
+;;;
 ;;; ── 最小编辑器骨架 ──────────────────────────────────────────
 ;;;
 ;;;   (define b (buffer-open "hello"))            ; 开文档

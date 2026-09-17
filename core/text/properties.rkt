@@ -259,6 +259,15 @@
   (vector-copy! v* (add1 s-line) rows (add1 e-line) n)
   v*)
 
+;; 非粘性 key：在插入边界不继承（read-only 是第一个——提示/输入区的边界）。
+;; 继承左邻：取「结束于 col 的区间」的 plist。
+;; read-only 区间是字段边界（硬边界）：什么都不继承，返回 #f。
+(define (inherit-plist left col)
+  (and (pair? left)
+       (= (interval-end (last left)) col)
+       (not (hash-ref (interval-plist (last left)) 'read-only #f))
+       (interval-plist (last left))))
+
 ;; 把 left 里「结束于 col」的区间扩到覆盖插入的首行（继承左邻）。
 (define (extend-last left inherit col first-len)
   (if inherit
@@ -275,10 +284,7 @@
     [(zero? k) rows]
     [else
      (define-values (left right) (split-row (vector-ref rows line) col))
-     (define inherit
-       (and (pair? left)
-            (= (interval-end (last left)) col)
-            (interval-plist (last left))))
+     (define inherit (inherit-plist left col))
      (define first-len (string-length (car new-lines)))
      (define last-len (string-length (last new-lines)))
      (define new-n (+ n (sub1 k)))
@@ -370,5 +376,19 @@
   (check-equal? (properties-get pr2 1 3 'face) #f)   ; 旧 [0,5) 被清
   (check-equal? (properties-get pr2 1 7 'face) #f)   ; 旧 [7,9) 被清
   (check-equal? (properties-get pr2 0 0 'face) #f)
+
+  ;; read-only 非粘性：在区间末尾边界插入，新字符不继承 read-only，原区间保留
+  (define pr (properties-put (fresh) 0 0 5 'read-only #t))
+  (define pr* (properties-apply-edit pr (edit-desc 0 5 0 5 "x")))
+  (check-equal? (properties-get pr* 0 3 'read-only) #t)   ; 原区间仍在
+  (check-equal? (properties-get pr* 0 4 'read-only) #t)   ; 原区间末尾仍 read-only
+  (check-equal? (properties-get pr* 0 5 'read-only) #f)   ; 新字符不继承
+
+  ;; 硬边界：read-only 区间的边界，整个 plist 都不继承（含 face）
+  (define pm (properties-put (properties-put (fresh) 0 0 5 'read-only #t) 0 0 5 'face 'prompt))
+  (define pm2 (properties-apply-edit pm (edit-desc 0 5 0 5 "x")))
+  (check-equal? (properties-get pm2 0 5 'read-only) #f)    ; 不粘
+  (check-equal? (properties-get pm2 0 5 'face) #f)         ; 硬边界：face 也不粘
+  (check-equal? (properties-get pm2 0 3 'face) 'prompt)     ; 原提示区 face 保留
 
   (displayln "properties.rkt: all tests passed"))
