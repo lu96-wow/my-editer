@@ -38,9 +38,9 @@
                               (vector-ref (screen-row-runs new) row)))
     row))
 
-;; 拼帧：把若干块 (list window-id x y screen) 贴到一张 (rows cols) 大屏。
-;; 每块的 runs 按 x 平移（裁剪在 frame 布局层保证不越界，这里也兜底），
-;; 只透出 active-id 块的光标（平移后坐标）。后端无关：tui/gui/web 只见一张合成屏。
+;; 拼屏：把若干块 (list id x y screen) 贴到一张 (rows cols) 大屏。
+;; 每块的 runs 按 x 平移（越界由调用方保证不越界，这里也兜底），
+;; 只透出 active-id 块的光标（平移后坐标）。后端无关：只见一张合成屏。
 (define (screen-compose rows cols pieces active-id)
   (define row-runs (make-vector rows '()))
   (for ([piece (in-list pieces)])

@@ -5,71 +5,41 @@
 > **数据 → lambda → 数据**：每个模块都是「输入数据 → 纯函数变换 → 输出新数据」，
 > 不修改输入、无全局可变状态。所有结构都是 `#:transparent` 的持久化结构。
 
+核心只提供**底层数据原子 + 它们的原语变换**，不提供任何「组合层」：
+多窗口、布局、命令、插件、后端、组装根都不在 core 里，由使用方自行拼装。
+core 里的 `window`/`buffer` 是原子，`window->screen`/`screen-compose` 只是把原子投影成
+数据的原语，谁去「组合」它们、怎么组合，是使用方的事。
+
 ## 0. 目录结构
 
 ```
 edit/
-├── core/                 # 机制（不变式，只定契约）
-│   ├── text/             #   文本层：cursor content properties marker overlay buffer patch edit
-│   │                     #   edit = 批量编辑应用（buffer-apply-edits / edit-descs-map-position）
-│   └── view/             #   视口（后端无关）：width render window view frame screen paint events
-│                         #   frame = 窗口集合 + linked 同步（无布局，无边框）
-├── framework/            # 框架（只定 slot 类型 + 组合器 + 机械循环）
-│   ├── deps.rkt          #   依赖分层（plugin-dag / edit-plugins 共用）
-│   ├── slots.rkt         #   slot 类型 + 组合器（layout/compose/commands/run-plugins/编辑）
-│   ├── plugin-dag.rkt    #   标注插件 DAG 调度（依赖分层 + future 并行 + sync/async）
-│   ├── edit-plugins.rkt  #   编辑插件调度（buffer → edit-desc，同层并行计算 + 串行应用）
-│   └── framework.rkt     #   config + framework-handle/render/status/run
-├── plugin/               # 插件 SDK / 实现层（只定契约，与具体插件分开）
-│   ├── annotate-api.rkt  #   标注/只读面（只 re-export，无实现）
-│   └── edit-api.rkt      #   编辑面（编辑插件 + 编辑策略原语，只 re-export）
-├── plugin-reference/     # 参考插件（用户 copy/替换，示例）
-│   ├── racket-hl.rkt     #   示例标注插件（buffer -> patch）
-│   ├── racket-diag.rkt   #   示例诊断标注插件（桥接 langserver 诊断 → 'diag patch）
-│   ├── status.rkt        #   示例 view 插件（window -> status-seg）
-│   ├── auto-pair.rkt     #   示例编辑策略（window-commands -> window-commands）
-│   └── indent.rkt        #   示例编辑插件（buffer -> edit-desc）
-├── reference/            # 参考实现（用户 copy/替换，非默认）
-│   ├── layout-tree.rkt   #   树布局（含 | - 分隔槽）
-│   ├── compose-line.rkt  #   边框拼帧
-│   ├── commands.rkt      #   默认两层命令（含 edit-active 编辑管线）
-│   └── input-tui.rkt     #   tui 的 raw→事件 解码
-├── ui/                   # 后端
-│   └── tui/              #   终端后端（未来 gui/ web/）
-│       └── tui.rkt
-├── langserver/           # Racket 语言服务器（独立进程，S 表达式协议，非 JSON）
-│   ├── analysis.rkt      #   源码分析：诊断 / 定义清单 / 补全（纯函数）
-│   ├── protocol.rkt      #   线协议：一行一个 S 表达式（read/write）
-│   ├── server.rkt        #   请求分派 handle-request + stdio 循环 serve
-│   └── main.rkt          #   入口（racket langserver/main.rkt）
-├── demo.rkt              # 组装根：把 slot 填进 config + 跑起来
-└── ARCHITECTURE.md
+└── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
+    ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
+    ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
+    │                     #     cursor content properties marker overlay buffer patch edit
+    └── view/             #   视口层（后端无关，单窗口）：宽度/渲染/窗口/视觉行/屏幕/事件
+                          #     width render window view screen project events
 ```
 
-依赖方向：`core ← framework ← plugin ← plugin-reference ← demo`；`reference` 与 `plugin-reference` 平行（只依赖 framework/core，不依赖 plugin）；`ui` 依赖 core/framework/reference；`demo` 在最外层，依赖所有。
+依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
 
-**没有「editor」这一层**：`framework` 只提供框架（契约 + slot 类型 + 机械循环）；真正的 editor（例如 demo 里 `run-tui (buffer-open sample) cfg`）由使用者用 core / framework / reference / ui 的接口自行拼装。
+**对外只暴露 `core/api.rkt`**：使用方一律 `(require "core/api.rkt")`，不要直接
+`require core/text/*` 或 `core/view/*`。core 内部各模块按依赖互相 require 属于
+实现细节，外部不接触。
 
 ## 1. 分层与职责边界
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ demo.rkt             组装根：把 slot 填进 config + 跑起来      │
+│ core/api.rkt      对外门面：require + all-from-out 转发（零逻辑） │
 ├──────────────────────────────────────────────────────────────┤
-│ ui/tui/tui.rkt       后端（racket-tui）：screen↔ANSI、read/output │ ← 后端相关
+│ core/view/*.rkt   视口（后端无关，单窗口）：几何/渲染/屏幕/事件    │
+│   width  render  window  view  screen  project  events         │
 ├──────────────────────────────────────────────────────────────┤
-│ plugin-reference/*   参考插件：示例文档插件 / view 插件         │
-│ reference/*          参考实现：树布局 / 边框 / 命令 / 输入解码  │
-│ plugin/*             插件 SDK：api 契约（只 re-export）        │
-├──────────────────────────────────────────────────────────────┤
-│ framework/framework  框架：config + framework-handle/render/run   │
-│ framework/slots      slot 类型 + 组合器                        │
-├──────────────────────────────────────────────────────────────┤
-│ core/view/*.rkt      视口（后端无关）：几何/渲染/屏幕/事件     │
-│   width  render  window  view  frame  screen  paint  events   │
-├──────────────────────────────────────────────────────────────┤
-│ core/text/*.rkt      文本层（无光标）：文本/属性/位置/装饰       │
-│   cursor  content  properties  marker  overlay  buffer  patch      │
+│ core/text/*.rkt   文本层（无光标）：文本/属性/位置/装饰/文档       │
+│   cursor  content  properties  marker  overlay  buffer  patch  │
+│   edit                                                         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,71 +52,42 @@ edit/
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
-| slots | slot 类型定义 + 组合器（layout/compose/commands/run-plugins） | 具体策略 |
-| plugin-dag | 插件 DAG 调度：依赖分层 + future 并行 + sync/async（唯一知道线程处） | 具体插件/依赖 |
-| framework | 框架：config + 机械分派 + 机械循环（framework-handle/render/run） | 具体命令/布局/边框 |
-| reference | 参考实现：树布局 / 边框 / 两层命令 / 输入解码 | — |
+| patch | 补丁（delta）：按 key 清旧写新 | 谁在消费 |
+| edit | 批量编辑应用：`buffer-apply-edits` / `edit-descs-map-position` | 单条编辑语义 |
+| width | 字符 ↔ 显示列（wcwidth 语义，确定性 Unicode 表） | 终端/GUI |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
-| width | 字符 ↔ 显示列 | 终端/GUI |
-| window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 属性/marker/overlay 细节 |
-| view | vrow 布局 + 光标/鼠标映射 + 滚动 | 具体后端 |
-| frame | 窗口集合 + 焦点 + linked-buffer 同步 + 逐窗口渲染（机制，布局无关） | 布局几何、keymap |
-| screen | 屏幕帧（run 序列）+ diff + 拼帧原语 | 具体后端 |
-| paint | 可见区 → screen | 具体后端 |
+| window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 其他窗口、几何位置 |
+| view | 单窗口 vrow 布局 + 光标/鼠标映射 + 滚动（clip/wrap） | 具体后端、多窗口 |
+| screen | 屏幕帧（run 序列）+ diff + 拼屏原语 | 具体后端 |
+| project | 单窗口可见区 → screen（`window->screen`） | 具体后端、多窗口 |
 | events | 类型化输入事件（text/key/mouse/resize/quit，参考 racket/gui） | 具体后端 |
-| tui | 唯一知道 racket-tui 的层 | 命令语义 |
+| api | 门面：把上面所有公开 API 转发出去 | 任何实现 |
 
-## 2. 三条数据流
+## 2. 两条数据流
 
 ### 编辑流（一次按键）
 
 ```
-事件(text/key) ──framework-handle──▶ 命令表 ──edit-active──▶ window（用 window-point 驱动 buffer-*）
-                                                       │
-                    buffer-* → 新 buffer + edit-desc
-                                                       │
-               命令作者手动：run-plugins（消费 dirty）→ frame-sync-buffer（linked 同步）
+事件(text/key) 由使用方翻译（events.rkt 只定义类型）
+  → window-* 原语（用 window-point 驱动 buffer-* 的显式位置原语）
+  → buffer-* → 新 buffer + edit-desc
+  → desc 透传给使用方（多窗口同步 / 撤销 / 语言层，由使用方自行决定）
 ```
 
-### 渲染流（每帧）
+### 渲染流（单窗口）
 
 ```
 buffer ──render-line──▶ glyph(ch+face)            core/view/render.rkt
        ──width──▶ 列坐标                          core/view/width.rkt
        ──layout-clip/wrap──▶ vrow(line,列范围)    core/view/view.rkt
-       ──paint──▶ screen(行runs+光标)             core/view/paint.rkt
-frame ──layout-rects──▶ rects ──frame-pieces──▶ pieces
-pieces ──compose──▶ 合成 screen（含边框）         reference/compose-line.rkt
-screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
+       ──window->screen──▶ screen(行runs+光标)      core/view/project.rkt
 ```
 
-### 输入流（两层，都可替换）
+多窗口 / 状态行等「拼一块大屏」的需求，使用方用 `screen-compose` 自己拼——
+core 只给原语，不预设「怎么组织窗口」。
 
-```
-终端原始输入 ──input 解码(raw→事件)──▶ text/key/mouse 事件 ──命令表──▶ 命令
-（reference/input-tui.rkt）            （reference/commands.rkt）
-```
-
-### 插件 slot（扩展点地图）
-
-插件不是「一个万能 Plugin」，而是每个数据派生位置一个**类型明确的 slot**（纯函数 + 组合器）。
-
-| # | 位置 | 类型 | 增量依据 | 例子 | 现状 |
-|---|---|---|---|---|---|
-| 1 | 输入 → 命令 | `config frame 事件 → (values frame desc? done?)`（两层命令表） | 事件 | 键位、vim 模式 | `reference/commands.rkt` |
-| 2 | 编辑（改 content） | 编辑策略 `window-commands → window-commands`；编辑插件 `buffer (or/c #f edit-desc) → (listof edit-desc)` | trigger edit-desc | 自动配对/缩进、snippet、format、LSP edit | `edit-plugin-spec` + `edit-plugins.rkt`；`compose-edit-strategies` |
-| 3 | 标注（写属性） | `buffer → (listof patch)`，闭包可带内部状态（stateful） | `dirty-desc` | 高亮、lint、折叠 | `plugin-spec`（统一 mode：sync/parallel）+ `plugin-dag.rkt` |
-| 4 | 视口投影 | `window → status-seg` | 每帧重算 | 状态行、行列、minimap | `run-view-plugins` |
-| 5 | 布局 | `layout = (rects order split close)` | frame 状态 | 树/tab/网格 | `reference/layout-tree.rkt` |
-| 6 | 组合/装饰 | `pieces → screen` | pieces | 边框、标签 | `reference/compose-line.rkt` |
-| 7 | 渲染主题 | `face → style-spec` | 无 | 配色主题 | 纯数据，**无默认** |
-| 8 | 后端 | `screen → bytes` / `raw → 事件` | — | tui/gui/web | `ui/tui/tui.rkt` + `input-tui.rkt` |
-| 9 | 项目/工作区派生 | `workspace → workspace` | `edit-desc` + 来源 | 跨文件同步 | 待建（frame 之上的下一组合根） |
-
-已实现：#1~#8；#9 待建。
-
-**颜色归属**：插件只声明**语义 face**（`'keyword` / `'string` / …）；颜色由**主题**决定。主题是外部传入的纯 hash：`face → (list r g b [attr ...])`（如 `'keyword '(97 175 239)`、`'comment '(128 128 128 dim)`），无默认、无预定义标识；渲染时用 hash 查 face，查不到就纯文本。RGB/属性到 ANSI 真彩色转义的翻译隐藏在后端内部，外部不接触 racket-tui 细节。
-待建：#6 项目/工作区层（LSP/跨文件同步），是 frame 之上的下一组合根（不属于本层的多窗口/关联 buffer 已由 frame 实现）。
+`screen` 与 `events` 就是 core 与后端的边界：后端负责把 `screen` 画出来、把原始
+输入翻译成类型化事件；core 内部全部后端无关。
 
 ## 3. 唯一跨层契约：`edit-desc`
 
@@ -160,17 +101,18 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 都只是 splice 的特例。
 
 **desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
-原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`）；`framework-handle` / `frame-sync-buffer`
-同样透传与消费，供上层（语言层 / 跨 buffer 同步）使用。`core/text/buffer.rkt` 已重新导出 `edit-desc`。
+原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`），供上层（多窗口同步 /
+撤销 / 语言层）使用。`buffer.rkt` 已重新导出 `edit-desc`（`api.rkt` 里以
+`content.rkt` 为唯一来源去重）。
 
 `dirty-desc`（`first-line last-line old-count new-count`）是新坐标系下的变化行范围，由
-`dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是**插件唯一的增量依据**。
+`dirty-of` 从 splice 的行范围折算、`merge-dirty` 累加，是上层做**增量推导**的线索。
 
 ## 4. 命名规范
 
 | 前缀/后缀 | 含义 | 例子 |
 |---|---|---|
-| `make-*` | 构造器（表/状态） | make-marker-table, make-screen, make-config |
+| `make-*` | 构造器（表/状态） | make-marker-table, make-screen |
 | `*-open` / `*-empty` / `*-of-*` | 构造器 | buffer-open, props-empty, content-of-string |
 | `*->*` | 投影/换算 | content->string, index->column, window-point->screen |
 | `*-ref` / `*-count` / `*-line-count` | 访问/计数 | buffer-line-ref, marker-table-count |
@@ -178,14 +120,12 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 | `*-set-*` | 字段更新（返回新结构） | window-set-top, content-set-col |
 | 动词-名词 | 变换 | buffer-insert, props-put, window-scroll |
 | `*-apply-edit` | 解释 edit-desc | props-apply-edit, marker-table-apply-edit |
-| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, frame-window-count |
-| `!` | 副作用（仅 tui 层，继承自 racket-tui） | put-at!, style-define! |
-| `run-*` / `with-*` | 组合器 | run-plugins, run-plugins-init, run-tui |
+| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, window-count |
 
 **约定**：
-- 坐标：core 层全 0-based；tui 边界转 1-based（+1）。
+- 坐标：core 层全 0-based。
 - 列有两种：**字符索引**（buffer 的 col）与**显示列**（width 换算后），函数名用 `index`/`column` 区分。
-- 所有「更新」函数返回新值，绝不原地修改（唯一例外是 tui 的终端状态）。
+- 所有「更新」函数返回新值，绝不原地修改。
 
 ## 5. 边界情况清单
 
@@ -214,27 +154,14 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 
 ### 渲染 / 屏幕
 - face 分段：同 face 相邻列合并成 run
-- resize 尺寸变化 → 全量重画；首帧无 prev → 全量
-- 增量只重画变化行（先清行再画），文本变短不残留
+- `screen-diff-rows` 只挑变化行（增量绘制的依据）
 
 ### 滚动 / 光标跟随
 - 光标移出窗口边界 → 窗口跟随；水平滚动按行宽限位
 - 上下键按**视觉行**移动（`window-visual-move`）：wrap 跨折行段、clip 按 buffer 行，统一保持「视觉列」
 - 视觉列夹紧到更短的行尾时，停在段内最后一个字符，不溢出到下一视觉行
 - 垂直夹紧 `top ∈ [0, 行数-height]`
-- 滚动命令（pageup/down/滚轮）**不**触发光标跟随，否则滚动会被拉回
 - wrap 模式视觉行滚动跨行；滚到末尾目前不夹紧（已知 TODO）
-
-### 插件
-- 初始化全量扫描（`run-plugins-init` 标全量 dirty）；多插件各自全量扫一遍
-- dirty 只增不减 → 插件是唯一消费者，`run-plugins` 末尾 `buffer-clean`
-- 空插件列表原样返回（eq?）
-
-### 输入 / 后端
-- 鼠标坐标 1-based → 0-based（tui 边界 -1）
-- 点击窗口外 → 不移动光标
-- Ctrl+Q 退出 / Ctrl+W 切换折行
-- paste 逐字符插入（已知 TODO：批量插入）
 
 ## 6. 关键不变量
 
@@ -243,11 +170,12 @@ screen ──screen->bytes-diff──▶ ANSI               ui/tui/tui.rkt
 | content | lines 非空；gap-line ∈ [0,n)；gap-col ≤ 行长 |
 | properties | 行内区间升序、不重叠、相邻同 plist 已合并、无空 plist |
 | marker/overlay | overlay 的 start/end id 可查；start ≤ end |
-| plugin | 插件跑完后 dirty 必为 #f（被消费） |
-| frame | 共享 buffer（eq?）的窗口在编辑后一起换新 buffer，point 按 edit-desc 映射；窗口至少 1 个 |
 | view | vrow 序列长度 = height；越界行用 line=-1 占位；clip 模式滚动时 `left-col` 吸附为字符起点列，视口内不重吸附 |
 
-## 7. 换后端只换 `ui/tui/tui.rkt`
+## 7. 后端无关
 
-`core/view/events`（类型化事件）、`screen`、`framework`、`core/view/view`、`paint`、`render`、`width` 全部后端无关。
-GUI/Web 后端只需：把 `screen` 画出来 + 把原始输入翻译成类型化事件（text/key/mouse/resize/quit，参考 racket/gui 的 key-event%/mouse-event% 模型）。
+core 不含任何后端，也不含多窗口组合。`events`（类型化事件）、`screen`、`window->screen`、
+`render`、`width`、`view` 全部后端无关。GUI/Web/TUI 后端只需两件事：
+
+1. 把 `screen` 画出来；
+2. 把原始输入翻译成类型化事件（text/key/mouse/resize/quit，参考 racket/gui 的 key-event%/mouse-event% 模型）。

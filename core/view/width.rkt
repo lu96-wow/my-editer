@@ -14,7 +14,7 @@
 ;;; 宽度判定：
 ;;;   2 : East Asian Wide/Fullwidth（下表区间）
 ;;;   0 : 组合字符（Mn/Me）与零宽格式符（Cf）
-;;;   1 : 其余（含 tab——tab 展开由 paint 层负责，这里按 1 计）
+;;;   1 : 其余（含 tab——tab 这里按 1 计，展开由使用方处理）
 ;;;
 ;;; 注意：Ambiguous（A）按 1 列处理（与 xterm/qterminal 默认一致）。
 ;;;       组合字符 width=0，不占列，column->index 会把它附到前一个基字符上。

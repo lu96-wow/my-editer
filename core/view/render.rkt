@@ -6,7 +6,7 @@
 ;;;
 ;;; 只做「语义合成」：合并一行上 props-runs 与 overlay-runs 的边界，
 ;;; 逐段合成 face，产出 (ch, face) 的 glyph 向量。
-;;; 布局（折行/裁剪）、屏幕帧缓冲、滚动都在 view / paint 层，与本层无关。
+;;; 布局（折行/裁剪）、屏幕帧缓冲、滚动都在 view / project 层，与本层无关。
 
 (provide
  (struct-out glyph)
