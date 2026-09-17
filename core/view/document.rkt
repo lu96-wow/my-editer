@@ -1,0 +1,274 @@
+#lang racket
+
+(require "../text/point.rkt"
+         "../text/content.rkt"
+         "../text/buffer.rkt"
+         "window.rkt"
+         "view.rkt"
+         rackunit)
+
+;;; document.rkt —— 共享 buffer 的多窗口同步
+;;;
+;;; 背景：buffer 是不可变快照；window 持有「buffer 引用 + 自己的光标」。
+;;; 多个 window 共享同一 buffer 时，直接让它们各自编辑会出三类问题：
+;;;
+;;;   P1 分叉      A 编辑后 B 仍引用旧 buffer —— 文档被悄悄分成两份
+;;;   P2 光标失效  A 在 B 光标之前增删，B 的 point 不再指向原文本
+;;;   P3 丢失更新  B 基于旧 buffer 编辑，覆盖 A 的结果
+;;;
+;;; document 是「单一事实源」：一个 buffer + 一组视图（window），
+;;; 所有编辑都经 document-edit 串行化，编辑后所有视图统一 rebase。
+;;;
+;;; 每个视图带一个同步策略（sync），决定「别的视图编辑后，我的滚动状态怎么变」：
+;;;
+;;;   'free   视口独立（top-line/left-col/top-seg 钉住不动），光标随文本修正。
+;;;           适合「看 API 签名写代码」这类参考视图：编辑发生在参考区之外，视口不漂。
+;;;   'follow 镜像编辑视图：视口 + 光标都复制自「正在编辑的那个视图」。
+;;;           适合两个窗口一起编辑同一处，一方始终跟随另一方。
+;;;
+;;; 编辑发生所在的那个视图永远是固定行为：光标推进到插入后、滚动保留，
+;;; 之后由调用方 window-ensure-point 保证光标可见。
+;;;
+;;; 纯函数式：document 本身不可变，随调用方状态一起 threading。
+;;; 不变量：任一 document 内，所有 (window-buffer v) 都 eq? 于 (document-buffer doc)。
+
+(provide
+ (struct-out view)
+ (struct-out document)
+ document-open
+ document-of-buffer
+ document-view-count
+ document-add-view
+ document-view
+ document-window
+ document-view-sync
+ document-set-view-sync
+ document-update-view
+ document-sync-followers
+ document-edit
+ document-insert-char
+ document-insert-string
+ document-newline
+ document-backspace
+ document-delete)
+
+;; 一个视图 = 窗口快照 + 同步策略
+(struct view (window sync) #:transparent)
+;; sync : 'free | 'follow
+
+;; buffer : buffer         当前共享 buffer（唯一事实源）
+;; views  : (listof view)  视图，顺序稳定，靠下标索引
+(struct document (buffer views) #:transparent)
+
+(define (document-open s) (document (buffer-open s) '()))
+
+;; 从已配置好的 buffer 构造（如已做语法高亮 / read-only 标记的 buffer）
+(define (document-of-buffer b) (document b '()))
+
+(define (document-view-count doc) (length (document-views doc)))
+
+;; 注册一个视图。w 的 buffer 字段被替换成共享 buffer（丢弃 w 原来带的 buffer）。
+;; p    = 初始光标（不传则用 w 自己的 point，但会被共享 buffer 夹紧）
+;; sync = 该视图的同步策略，默认 'free
+;; 返回 (values document index)。
+;; 注意顺序：先换 buffer 再设 point，避免 point 被 w 原带的 buffer 提前夹紧。
+(define (document-add-view doc w [p #f] #:sync [sync 'free])
+  (unless (memq sync '(free follow))
+    (error 'document-add-view "sync must be 'free or 'follow, got ~a" sync))
+  (define w* (window-set-buffer w (document-buffer doc)))
+  (define w+ (if p (window-set-point w* p) w*))
+  (values
+   (struct-copy document doc
+     [views (append (document-views doc) (list (view w+ sync)))])
+   (document-view-count doc)))   ; 新下标 = 旧数量
+
+;; 取第 i 个视图（完整 view：window + sync）
+(define (document-view doc i) (list-ref (document-views doc) i))
+
+;; 便捷：取第 i 个视图的 window（已与共享 buffer 同步）
+(define (document-window doc i) (view-window (document-view doc i)))
+
+(define (document-view-sync doc i) (view-sync (document-view doc i)))
+
+;; 运行时改第 i 个视图的策略
+(define (document-set-view-sync doc i sync)
+  (unless (memq sync '(free follow))
+    (error 'document-set-view-sync "sync must be 'free or 'follow, got ~a" sync))
+  (struct-copy document doc
+    [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
+             (if (= j i) (struct-copy view v [sync sync]) v))]))
+
+;; 更新第 i 个视图的 window（导航/滚动等纯 window 变换 f : window -> window），策略不动
+(define (document-update-view doc i f)
+  (struct-copy document doc
+    [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
+             (if (= j i) (struct-copy view v [window (f (view-window v))]) v))]))
+
+;; 把第 i 视图的 point+viewport 对齐到所有 'follow 视图（编辑后的导航/滚动后调用）。
+;; 编辑路径在 document-edit 内部已同步 follow，这里用于导航/滚动等非编辑变化。
+(define (document-sync-followers doc i)
+  (define lead (document-window doc i))
+  (struct-copy document doc
+    [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
+             (if (and (not (= j i)) (eq? (view-sync v) 'follow))
+                 (view (rebase-follow (view-window v) lead) 'follow)
+                 v))]))
+
+;;; ---------- rebase 策略 ----------
+
+;; 'free：光标随文本映射（落在删除区 → 吸附起点），视口三个字段完全不动
+(define (rebase-free w new-buffer desc)
+  (define p (window-point w))
+  (define p* (or (edit-desc-map-position desc (point-line p) (point-col p))
+                 (point (edit-desc-s-line desc) (edit-desc-s-col desc))))
+  (window-set-point (window-set-buffer w new-buffer) p*))
+
+;; 'follow：视口 + 光标都复制自编辑视图（height/width/mode 是视图自身的，不复制）
+(define (rebase-follow w editing)
+  (struct-copy window w
+    [buffer   (window-buffer   editing)]
+    [point    (window-point    editing)]
+    [top-line (window-top-line editing)]
+    [left-col (window-left-col editing)]
+    [top-seg  (window-top-seg  editing)]))
+
+;;; ---------- 编辑 ----------
+
+;; 在第 i 个视图的光标处做一次编辑，返回 (values document desc)。
+;; edit-fn : buffer line col -> (values buffer desc)（如 buffer-insert-char 的柯里化）
+(define (document-edit doc i edit-fn)
+  (define b (document-buffer doc))
+  (define w (document-window doc i))
+  (define p (window-point w))
+  (define-values (b* desc) (edit-fn b (point-line p) (point-col p)))
+  (cond
+    [(not desc) (values doc #f)]     ; no-op / read-only 拒绝
+    [else
+     ;; 编辑视图：光标推进到插入后，并 ensure-point 让光标可见。
+     ;; 必须先 settle 编辑视图的最终 top-line，再让 'follow 复制——
+     ;; 否则 follow 复制的是滚动前的旧 top-line，会差一行 / 只跟下滚不跟上滚。
+     (define editing
+       (window-ensure-point
+        (struct-copy window w [buffer b*] [point (edit-desc-after-position desc)])))
+     ;; 重建视图列表：每个视图保留自己的 sync，只换 window
+     (define views*
+       (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
+         (define sync (view-sync v))
+         (define w*
+           (if (= j i)
+               editing
+               (case sync
+                 [(free)   (rebase-free   (view-window v) b* desc)]
+                 [(follow) (rebase-follow (view-window v) editing)]
+                 [else (error 'document-edit "unknown sync ~a" sync)])))
+         (view w* sync)))
+     (values (document b* views*) desc)]))
+
+;; 常用编辑原语的便捷包装（柯里化到 buffer-* 的显式位置签名）
+(define (document-insert-char doc i ch)
+  (document-edit doc i (lambda (b l c) (buffer-insert-char b l c ch))))
+
+(define (document-insert-string doc i s)
+  (document-edit doc i (lambda (b l c) (buffer-insert-string b l c s))))
+
+(define (document-newline doc i)
+  (document-edit doc i buffer-newline))
+
+(define (document-backspace doc i)
+  (document-edit doc i buffer-backspace))
+
+(define (document-delete doc i)
+  (document-edit doc i buffer-delete))
+
+;;; ---------- 测试 ----------
+
+(module+ test
+  (define (w doc i) (document-window doc i))
+  (define (blank-w) (window-open (buffer-open "") 10 40))
+
+  ;; P1 + 默认策略：两个视图共享同一 buffer，默认 'free
+  (define d0 (document-open "hello\nworld"))
+  (define-values (d1 i0) (document-add-view d0 (blank-w)))
+  (define-values (d2 i1) (document-add-view d1 (blank-w) (point 0 3)))
+  (check-equal? i0 0)
+  (check-equal? i1 1)
+  (check-eq? (document-buffer d2) (window-buffer (w d2 0)))
+  (check-eq? (window-buffer (w d2 0)) (window-buffer (w d2 1)))
+  (check-equal? (window-point (w d2 1)) (point 0 3))
+  (check-equal? (document-view-sync d2 0) 'free)
+  (check-equal? (document-view-sync d2 1) 'free)
+
+  ;; free：视图 0 插入后，视图 1 的 buffer 更新、光标跟随右移、视口不动
+  (define-values (d3 dd) (document-insert-char d2 0 #\X))
+  (check-equal? dd (edit-desc 0 0 0 0 "X"))
+  (check-equal? (window-point (w d3 0)) (point 0 1))                     ; 编辑视图光标推进
+  (check-equal? (buffer->string (window-buffer (w d3 1))) "Xhello\nworld") ; 不分叉
+  (check-equal? (window-point (w d3 1)) (point 0 4))                     ; 3 → 4 光标随文本
+  (check-equal? (window-top-line (w d3 1)) 0)                            ; 视口钉住不动
+
+  ;; free：视图 1 接着编辑，看到视图 0 的最新结果（不丢更新）
+  (define-values (d4 _d4) (document-insert-char d3 1 #\Y))
+  (check-equal? (buffer->string (document-buffer d4)) "XhelYlo\nworld")
+  (check-equal? (window-point (w d4 1)) (point 0 5))
+  (check-equal? (window-point (w d4 0)) (point 0 1))                     ; 另一视图光标不动
+
+  ;; 光标落在被删区间内 → 吸附到区间起点
+  (define e0 (document-open "abcdef"))
+  (define-values (e1 _e1) (document-add-view e0 (blank-w)))
+  (define-values (e2 _e2) (document-add-view e1 (blank-w) (point 0 3)))
+  (define-values (e3 _e3)
+    (document-edit e2 0 (lambda (b l c) (buffer-splice b 0 0 0 5 ""))))  ; 删 [0,5)
+  (check-equal? (buffer->string (document-buffer e3)) "f")
+  (check-equal? (window-point (w e3 1)) (point 0 0))                     ; 被删 → 吸附起点
+
+  ;; follow：视图 1 镜像视图 0 的「最终」视口（含 ensure-point 滚动），不差行
+  ;; 视图 0：高 3，光标在底行 (6,0)，滚到 top-line 4（光标恰在视口底行）
+  (define f0 (document-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
+  (define-values (f1 _f1)
+    (document-add-view f0 (window-open (buffer-open "") 3 10) (point 6 0)))
+  (define f1b (document-update-view f1 0 (lambda (w) (window-set-top w 4))))
+  (define-values (f2 _f2)
+    (document-add-view f1b (window-open (buffer-open "") 3 10) (point 6 0) #:sync 'follow))
+  (check-equal? (document-view-sync f2 1) 'follow)
+  (check-equal? (window-top-line (w f2 0)) 4)
+  ;; 底行回车 → 光标到 (7,0)，视口下滚 → top-line 5；follow 必须对齐到 5（不差行）
+  (define-values (f3 _f3) (document-newline f2 0))
+  (check-equal? (window-point (w f3 0)) (point 7 0))
+  (check-equal? (window-top-line (w f3 0)) 5)     ; 编辑视图下滚一行
+  (check-equal? (window-top-line (w f3 1)) 5)     ; follow 同步下滚，不差行
+  (check-equal? (window-point (w f3 1)) (point 7 0))
+  ;; 向上滚：把视图 0 光标挪到顶行 (5,0)（导航后同步 follow），backspace 合并到上一行
+  ;; → 光标到 (4,2)，视口上滚 → top-line 4；follow 同步上滚
+  (define f4 (document-update-view f3 0 (lambda (w) (window-set-point w (point 5 0)))))
+  (define f5 (document-sync-followers f4 0))       ; 导航后同步 follow
+  (check-equal? (window-point (w f5 0)) (point 5 0))
+  (check-equal? (window-point (w f5 1)) (point 5 0))
+  (define-values (f6 _f6) (document-backspace f5 0))
+  (check-equal? (window-point (w f6 0)) (point 4 2))   ; 合并到 line4 行尾
+  (check-equal? (window-top-line (w f6 0)) 4)          ; 编辑视图上滚一行
+  (check-equal? (window-top-line (w f6 1)) 4)          ; follow 同步上滚
+  (check-equal? (window-point (w f6 1)) (point 4 2))
+
+  ;; 运行时改策略
+  (define-values (g0 _g0) (document-add-view (document-open "hello\nworld") (blank-w)))
+  (define-values (g1 _g1) (document-add-view g0 (blank-w)))
+  (check-equal? (document-view-sync g1 1) 'free)
+  (define g2 (document-set-view-sync g1 1 'follow))
+  (check-equal? (document-view-sync g2 1) 'follow)
+
+  ;; no-op：desc #f，document 原样返回
+  (define-values (h0 _h0) (document-add-view (document-open "hello") (blank-w)))
+  (define-values (h1 nd) (document-backspace h0 0))   ; 视图 0 在 (0,0)，backspace 无操作
+  (check-false nd)
+  (check-eq? h1 h0)
+
+  ;; 导航经 document-update-view：光标变化只在目标视图，且策略保留
+  (define-values (k0 _k0) (document-add-view (document-open "hello\nworld") (blank-w)))
+  (define-values (k1 _k1) (document-add-view k0 (blank-w) (point 0 0) #:sync 'follow))
+  (define k2 (document-update-view k1 1 window-right))
+  (check-equal? (window-point (w k2 1)) (point 0 1))
+  (check-equal? (window-point (w k2 0)) (point 0 0))
+  (check-equal? (document-view-sync k2 1) 'follow)
+  (check-eq? (window-buffer (w k2 0)) (window-buffer (w k2 1)))
+
+  (displayln "document.rkt: all tests passed"))

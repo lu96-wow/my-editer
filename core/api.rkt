@@ -90,10 +90,12 @@
          "text/edit.rkt"
          "text/patch.rkt"
          "view/events.rkt"
+         "view/width.rkt"
          "view/screen.rkt"
          "view/window.rkt"
          "view/view.rkt"
-         "view/project.rkt")
+         "view/project.rkt"
+         "view/document.rkt")
 
 (provide
  ;; ---- 消费者层：写编辑器就用这些 ----
@@ -114,13 +116,15 @@
  (all-from-out "text/patch.rkt")       ; patch —— 补丁 delta（机制）
  ;; ---- 视口层 ----
  (all-from-out "view/events.rkt")      ; 类型化输入事件
+ (all-from-out "view/width.rkt")       ; 字符 ↔ 显示列（宽字符宽度，供上层截断/量宽）
  (all-from-out "view/screen.rkt")      ; run + screen + diff + compose（输出）
  (all-from-out "view/window.rkt")      ; window —— 视口 + 编辑/导航
  ;; view.rkt 只露窗口级操作，布局内部（含 struct:vrow）藏起来
  (except-out (all-from-out "view/view.rkt")
              vrow vrow? struct:vrow vrow-line vrow-start-col vrow-end-col
              line-range->runs wrap-segments layout-clip layout-wrap window-vrows)
- (all-from-out "view/project.rkt"))    ; window->screen —— 投影成画面
+ (all-from-out "view/project.rkt")    ; window->screen —— 投影成画面
+ (all-from-out "view/document.rkt"))  ; document —— 共享 buffer 的多窗口同步
 
 ;;; ============================================================================
 ;;; 冒烟测试：验证门面 + 一条完整的「属性 → 画面」链
