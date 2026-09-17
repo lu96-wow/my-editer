@@ -1,18 +1,18 @@
 #lang racket
 
-(require "cursor.rkt" "content.rkt" "buffer.rkt" rackunit)
+(require "point.rkt" "content.rkt" "buffer.rkt" rackunit)
 
 ;;; edit.rkt —— 批量编辑应用原语（编辑插件的 core 侧机制）
 ;;;
 ;;; 一次编辑 = 一个 edit-desc（统一 splice）。本模块提供：
 ;;;   - buffer-apply-edits   : 把一批「同一坐标系」的编辑原子应用到 buffer
-;;;   - edit-descs-map-position : 把一个点依次映射过一串「应用顺序」的编辑
+;;;   - edits-map-position : 把一个点依次映射过一串「应用顺序」的编辑
 ;;;
 ;;; 纯函数，数据 -> lambda -> 数据，无任何副作用/线程。
 
 (provide
  buffer-apply-edits
- edit-descs-map-position)
+ edits-map-position)
 
 ;;; ---------- 位置比较（(line col) 字典序，0-based）----------
 
@@ -31,7 +31,7 @@
 ;; 按起点倒序应用：先改后面的位置，不移动前面未处理位置的坐标，免去逐个重定位。
 ;; 重叠（含跨行）→ 报错；同起点零宽插入按原列表顺序确定性地应用。
 ;; 返回 (values 新 buffer (listof edit-desc))，descs 为「应用顺序」（倒序位置），
-;; 供上层按序映射 point（见 edit-descs-map-position）。
+;; 供上层按序映射 point（见 edits-map-position）。
 (define (buffer-apply-edits b edits)
   (cond
     [(null? edits) (values b '())]
@@ -66,10 +66,10 @@
 ;;; ---------- 点映射（跨一串应用顺序的编辑）----------
 
 ;; 把 (line col) 依次映射过 descs（应用顺序）。落在某次删除区间内 → 落到该区间起点。
-(define (edit-descs-map-position descs line col)
+(define (edits-map-position descs line col)
   (let loop ([l line] [c col] [ds descs])
     (cond
-      [(null? ds) (cursor l c)]
+      [(null? ds) (point l c)]
       [else
        (define d (car ds))
        ;; 点恰在零宽插入点 → 落到插入文本之后（window point 的 after 语义：跟随原字符）
@@ -78,12 +78,12 @@
                (= (edit-desc-s-line d) (edit-desc-e-line d))
                (= (edit-desc-s-col d) (edit-desc-e-col d)))
           (define ap (edit-desc-after-position d))
-          (loop (cursor-line ap) (cursor-col ap) (cdr ds))]
+          (loop (point-line ap) (point-col ap) (cdr ds))]
          [else
           (define m (edit-desc-map-position d l c))
           (if m
-              (loop (cursor-line m) (cursor-col m) (cdr ds))
-              (cursor (edit-desc-s-line d) (edit-desc-s-col d)))])])))
+              (loop (point-line m) (point-col m) (cdr ds))
+              (point (edit-desc-s-line d) (edit-desc-s-col d)))])])))
 
 ;;; ---------- 测试 ----------
 
@@ -103,9 +103,9 @@
   (check-equal? (buffer->string b1) "aXbcd\nefYgh")
 
   ;; 点映射：原 (0,2) 的 'c' 经过「0,1 插入 X」后应到 (0,3)
-  (check-equal? (edit-descs-map-position d1s 0 2) (cursor 0 3))
+  (check-equal? (edits-map-position d1s 0 2) (point 0 3))
   ;; 原 (1,2) 的 'g' 经过两个插入后应到 (1,3)
-  (check-equal? (edit-descs-map-position d1s 1 2) (cursor 1 3))
+  (check-equal? (edits-map-position d1s 1 2) (point 1 3))
 
   ;; 跨行删除 + 插入
   (define-values (b2 d2s)

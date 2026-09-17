@@ -17,7 +17,7 @@ edit/
 └── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
     ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
     ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
-    │                     #     cursor content properties marker overlay buffer patch edit
+    │                     #     point content properties marker overlay buffer patch edit
     └── view/             #   视口层（后端无关，单窗口）：宽度/渲染/窗口/视觉行/屏幕/事件
                           #     width render window view screen project events
 ```
@@ -38,7 +38,7 @@ edit/
 │   width  render  window  view  screen  project  events         │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt   文本层（无光标）：文本/属性/位置/装饰/文档       │
-│   cursor  content  properties  marker  overlay  buffer  patch  │
+│   point  content  properties  marker  overlay  buffer  patch  │
 │   edit                                                         │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -47,13 +47,13 @@ edit/
 
 | 模块 | 唯一职责 | 不知道的事 |
 |---|---|---|
-| cursor | (line,col) 位置代数 | 行有多长、有没有文本 |
+| point | (line,col) 位置代数 | 行有多长、有没有文本 |
 | content | 文本存储 + 编辑，产出 `edit-desc` | 属性/marker/overlay 的存在 |
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | patch | 补丁（delta）：按 key 清旧写新 | 谁在消费 |
-| edit | 批量编辑应用：`buffer-apply-edits` / `edit-descs-map-position` | 单条编辑语义 |
+| edit | 批量编辑应用：`buffer-apply-edits` / `edits-map-position` | 单条编辑语义 |
 | width | 字符 ↔ 显示列（wcwidth 语义，确定性 Unicode 表） | 终端/GUI |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 其他窗口、几何位置 |
@@ -96,11 +96,11 @@ core 只给原语，不预设「怎么组织窗口」。
 ;; 删除 [s-line,s-col)..[e-line,e-col)，插入 new-text（可含 \n）
 ```
 
-一次编辑 = **一个 splice**（替换区间）。content 产生它，marker/props/overlay 各自用同一个
+一次编辑 = **一个 splice**（替换区间）。content 产生它，marker/properties/overlay 各自用同一个
 **位置映射函数** `edit-desc-map-position` 调整。所有编辑（插入/删除/换行/合并/粘贴/剪切）
 都只是 splice 的特例。
 
-**desc 不再被丢弃**：`buffer-splice` / `buffer-insert` / …（显式位置）与 `window-*` 编辑/导航
+**desc 不再被丢弃**：`buffer-splice` / `buffer-insert-char` / …（显式位置）与 `window-*` 编辑/导航
 原语统一返回 `(values new desc)`（导航/无操作 desc 恒 `#f`），供上层（多窗口同步 /
 撤销 / 语言层）使用。`buffer.rkt` 已重新导出 `edit-desc`（`api.rkt` 里以
 `content.rkt` 为唯一来源去重）。
@@ -112,15 +112,15 @@ core 只给原语，不预设「怎么组织窗口」。
 
 | 前缀/后缀 | 含义 | 例子 |
 |---|---|---|
-| `make-*` | 构造器（表/状态） | make-marker-table, make-screen |
-| `*-open` / `*-empty` / `*-of-*` | 构造器 | buffer-open, props-empty, content-of-string |
+| `make-*` | 空构造器（表/状态/默认实例） | make-content, make-marker-table, make-overlay-table, make-properties, make-screen |
+| `*-open` / `*-of-*` | 从数据构造 | buffer-open, window-open, content-of-string, content-of-lines |
 | `*->*` | 投影/换算 | content->string, index->column, window-point->screen |
 | `*-ref` / `*-count` / `*-line-count` | 访问/计数 | buffer-line-ref, marker-table-count |
-| `*-get` / `*-at` | 查询 | props-get, props-at, overlay-table-at |
+| `*-get` / `*-at` | 查询 | properties-get, properties-at, overlay-table-at |
 | `*-set-*` | 字段更新（返回新结构） | window-set-top, content-set-col |
-| 动词-名词 | 变换 | buffer-insert, props-put, window-scroll |
-| `*-apply-edit` | 解释 edit-desc | props-apply-edit, marker-table-apply-edit |
-| `*-check` / `*?` | 断言 / 谓词 | content-check, props-check, window-count |
+| 动词-名词 | 变换 | buffer-insert-char, properties-put, window-scroll |
+| `*-apply-edit` | 解释 edit-desc | properties-apply-edit, marker-table-apply-edit |
+| `*-check` / `*?` | 断言 / 谓词 | content-check, properties-check, window-count |
 
 **约定**：
 - 坐标：core 层全 0-based。
@@ -149,7 +149,7 @@ core 只给原语，不预设「怎么组织窗口」。
 - 空 plist 区间不保留；相邻同 plist 合并；行内升序不重叠
 - marker 插入类型 before/after 只在插入点生效
 - overlay 两端重合时蒸发（evaporate）
-- overlay priority：≤0 在 props 之下，>0 在 props 之上
+- overlay priority：≤0 在 properties 之下，>0 在 properties 之上
 - `priority`/`evaporate` 是控制键，不进 face
 
 ### 渲染 / 屏幕

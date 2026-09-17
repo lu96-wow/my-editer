@@ -1,10 +1,10 @@
 #lang racket
 
-(require "cursor.rkt" "content.rkt" rackunit)
+(require "point.rkt" "content.rkt" rackunit)
 
 ;;; properties.rkt —— 区间文本属性
 ;;;
-;;; 不变量（由 props-check 强制）：
+;;; 不变量（由 properties-check 强制）：
 ;;;   P1  每行内区间按 start 升序、互不重叠
 ;;;   P2  相邻且 plist 相同的区间已合并
 ;;;   P3  空 plist 的区间不保留
@@ -13,63 +13,63 @@
 ;;; 行号由 rows 向量的下标隐式表达，不重复存储。
 ;;;
 ;;; 对外不暴露 interval 的内部结构。所有查询走
-;;; props-at / props-get / props-runs。
+;;; properties-at / properties-get / properties-runs。
 
 (provide
- (struct-out text-properties)
- props-empty
- props-check
- props-debug?
- props-line-count
- props-at
- props-get
- props-put
- props-put-many
- props-remove
- props-replace-key
- props-apply-edit
- props-splice
- props-runs)
+ (struct-out properties)
+ make-properties
+ properties-check
+ properties-debug?
+ properties-line-count
+ properties-at
+ properties-get
+ properties-put
+ properties-put-many
+ properties-remove
+ properties-replace-key
+ properties-apply-edit
+ properties-splice
+ properties-runs)
 
 ;;; ---------- 内部结构 ----------
 
 (struct interval (start end plist) #:transparent)
 ;; plist : immutable hash
 
-(struct text-properties (rows) #:transparent)
+(struct properties (rows) #:transparent)
 ;; rows : (vectorof (listof interval))
 
 (define empty-plist (hash))
 
 ;;; ---------- 构造 & 不变量 ----------
 
-(define (props-empty line-count)
+(define (make-properties line-count)
   (unless (and (exact-nonnegative-integer? line-count) (>= line-count 1))
-    (error 'props-empty "line-count must be >= 1, got ~a" line-count))
-  (text-properties (make-vector line-count '())))
+    (error 'make-properties "line-count must be >= 1, got ~a" line-count))
+  (properties (make-vector line-count '())))
 
-(define (props-line-count p)
-  (vector-length (text-properties-rows p)))
+(define (properties-line-count p)
+  (vector-length (properties-rows p)))
 
-;; 热路径只校验受影响行；全量校验走 props-check（测试/诊断用）。
-;; props-debug? 默认 #f，测试里可 parameterize 打开。
-(define props-debug? (make-parameter #f))
+;; 热路径只校验受影响行；全量校验走 properties-check（测试/诊断用）。
+;; properties-debug? 默认 #f，测试里可 parameterize 打开。
+(define properties-debug? (make-parameter #f))
 
-(define (props-check-line row)
+(define (properties-check-line row)
   (let loop ([prev-end -1] [rest row])
     (unless (null? rest)
       (define iv (car rest))
       (unless (< (interval-start iv) (interval-end iv))
-        (error 'props-check-line "interval start >= end: ~a" iv))
+        (error 'properties-check-line "interval start >= end: ~a" iv))
       (unless (>= (interval-start iv) prev-end)
-        (error 'props-check-line "overlapping or unordered intervals in row: ~a" row))
+        (error 'properties-check-line "overlapping or unordered intervals in row: ~a" row))
       (unless (positive? (hash-count (interval-plist iv)))
-        (error 'props-check-line "empty-plist interval should not exist: ~a" iv))
+        (error 'properties-check-line "empty-plist interval should not exist: ~a" iv))
       (loop (interval-end iv) (cdr rest)))))
 
-(define (props-check p)
-  (for ([row (in-vector (text-properties-rows p))])
-    (props-check-line row))
+(define (properties-check p)
+  (for ([row (in-vector (properties-rows p))])
+    (properties-check-line row))
   p)
 
 ;;; ---------- 内部工具 ----------
@@ -102,7 +102,7 @@
 
 ;; 对 [start, end) 范围内每一段调用 transform，重铺区间。
 ;; 单遍扫描：suffix 指针只向前走，整体 O(k log k)（排序主导）。
-;; 拆成 row-modify（只算一行）+ props-modify（拷贝 rows 写回），供批量写复用。
+;; 拆成 row-modify（只算一行）+ properties-modify（拷贝 rows 写回），供批量写复用。
 (define (row-modify row start end transform)
   (define points
     (sort (remove-duplicates
@@ -134,25 +134,25 @@
    (filter (lambda (iv) (positive? (hash-count (interval-plist iv))))
            segments)))
 
-(define (props-modify p line start end transform)
-  (define rows (text-properties-rows p))
+(define (properties-modify p line start end transform)
+  (define rows (properties-rows p))
   (define merged (row-modify (vector-ref rows line) start end transform))
-  (when (props-debug?) (props-check-line merged))
-  (text-properties (vec-set rows line merged)))
+  (when (properties-debug?) (properties-check-line merged))
+  (properties (vec-set rows line merged)))
 
 ;;; ---------- 查询 ----------
 
-(define (props-at p line col)
-  (plist-at (vector-ref (text-properties-rows p) line) col))
+(define (properties-at p line col)
+  (plist-at (vector-ref (properties-rows p) line) col))
 
-(define (props-get p line col prop)
-  (hash-ref (props-at p line col) prop #f))
+(define (properties-get p line col prop)
+  (hash-ref (properties-at p line col) prop #f))
 
 ;;; 渲染扫描：一行内所有属性段，覆盖 [0, line-length)。
 ;;; 返回 (listof (list start end plist))，按 start 升序；
 ;;; 相邻段的 plist 必不同（P2）；无属性位置用 empty-plist 段填补。
-(define (props-runs p line line-length)
-  (define row (vector-ref (text-properties-rows p) line))
+(define (properties-runs p line line-length)
+  (define row (vector-ref (properties-rows p) line))
   (define out '())
   (define pos 0)
   (for ([iv (in-list row)])
@@ -166,19 +166,19 @@
     (set! out (cons (list pos line-length empty-plist) out)))
   (reverse out))
 
-;;; ---------- 行内写入（put / remove 共享 props-modify）----------
+;;; ---------- 行内写入（put / remove 共享 properties-modify）----------
 
-(define (props-put p line start end prop val)
-  (props-modify p line start end (lambda (h) (hash-set h prop val))))
+(define (properties-put p line start end prop val)
+  (properties-modify p line start end (lambda (h) (hash-set h prop val))))
 
 ;; 批量写：segs = (listof (list line start end prop val))。
-;; 只拷贝 rows 向量一次（否则 props-put 每个 seg 都 O(n) 拷贝 → O(m·n)）。
-;; 同一行内的多个段按出现顺序依次应用，与逐个 props-put 完全等价。
-(define (props-put-many p segs)
+;; 只拷贝 rows 向量一次（否则 properties-put 每个 seg 都 O(n) 拷贝 → O(m·n)）。
+;; 同一行内的多个段按出现顺序依次应用，与逐个 properties-put 完全等价。
+(define (properties-put-many p segs)
   (cond
     [(null? segs) p]
     [else
-     (define rows (text-properties-rows p))
+     (define rows (properties-rows p))
      (define groups (make-hash))
      (for ([s (in-list segs)])
        (match-define (list line start end prop val) s)
@@ -192,17 +192,17 @@
                       (match-define (list start end prop val) g)
                       (row-modify row start end (lambda (h) (hash-set h prop val)))))
        (vector-set! rows* line row*))
-     (when (props-debug?)
-       (for ([row (in-vector rows*)]) (props-check-line row)))
-     (text-properties rows*)]))
+     (when (properties-debug?)
+       (for ([row (in-vector rows*)]) (properties-check-line row)))
+     (properties rows*)]))
 
-(define (props-remove p line start end prop)
-  (props-modify p line start end (lambda (h) (hash-remove h prop))))
+(define (properties-remove p line start end prop)
+  (properties-modify p line start end (lambda (h) (hash-remove h prop))))
 
 ;; 清掉 [first-line,last-line] 各行内 prop 键的全部旧值，再写入 segs（同键）。
 ;; segs = (listof (list line start end val))；一次拷贝 rows 向量，O(n + m log m)。
-(define (props-replace-key p first-line last-line prop segs)
-  (define rows (text-properties-rows p))
+(define (properties-replace-key p first-line last-line prop segs)
+  (define rows (properties-rows p))
   (define n (vector-length rows))
   (define f (max 0 (min first-line (sub1 n))))
   (define l (max 0 (min last-line (sub1 n))))
@@ -215,14 +215,14 @@
                (for/list ([iv (in-list row)])
                  (interval (interval-start iv) (interval-end iv)
                            (hash-remove (interval-plist iv) prop)))))))
-  (props-put-many (text-properties rows*)
+  (properties-put-many (properties rows*)
                   (for/list ([s (in-list segs)])
                     (match-define (list line start end val) s)
                     (list line start end prop val))))
 
 ;;; ---------- 编辑调整：统一 splice ----------
 ;;; 编辑 desc 是「操作前坐标」。所有调整由两个行操作组合：
-;;;   props-splice = props-insert-lines ∘ props-delete-range
+;;;   properties-splice = properties-insert-lines ∘ properties-delete-range
 
 ;; 在 col 处拆分一行：区间按切点分成左右两半，右半 -col 平移。
 (define (split-row row col)
@@ -245,7 +245,7 @@
               (interval-plist iv))))
 
 ;; 删除 [s-line,s-col)..[e-line,e-col)，返回新 rows。
-(define (props-delete-range rows s-line s-col e-line e-col)
+(define (properties-delete-range rows s-line s-col e-line e-col)
   (define n (vector-length rows))
   (define-values (s-left s-right) (split-row (vector-ref rows s-line) s-col))
   (define-values (e-left e-right) (split-row (vector-ref rows e-line) e-col))
@@ -268,7 +268,7 @@
       left))
 
 ;; 在 (line,col) 插入 k 行 new-lines，返回新 rows。
-(define (props-insert-lines rows line col new-lines)
+(define (properties-insert-lines rows line col new-lines)
   (define n (vector-length rows))
   (define k (length new-lines))
   (cond
@@ -305,18 +305,18 @@
      v*]))
 
 ;; 统一 splice：删除 + 插入。
-(define (props-splice p s-line s-col e-line e-col new-text)
-  (define rows (text-properties-rows p))
-  (define rows1 (props-delete-range rows s-line s-col e-line e-col))
+(define (properties-splice p s-line s-col e-line e-col new-text)
+  (define rows (properties-rows p))
+  (define rows1 (properties-delete-range rows s-line s-col e-line e-col))
   (define new-lines (string->lines new-text))
-  (define p* (text-properties (props-insert-lines rows1 s-line s-col new-lines)))
-  (when (props-debug?) (props-check p*))
+  (define p* (properties (properties-insert-lines rows1 s-line s-col new-lines)))
+  (when (properties-debug?) (properties-check p*))
   p*)
 
 ;;; ---------- edit-desc 分派 ----------
 
-(define (props-apply-edit p desc)
-  (props-splice p
+(define (properties-apply-edit p desc)
+  (properties-splice p
                 (edit-desc-s-line desc) (edit-desc-s-col desc)
                 (edit-desc-e-line desc) (edit-desc-e-col desc)
                 (edit-desc-new-text desc)))
@@ -324,51 +324,51 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define (fresh) (props-empty 3))
+  (define (fresh) (make-properties 3))
 
   ;; 点查询 & 半开区间
-  (define p0 (props-put (fresh) 1 0 5 'face 'bold))
-  (check-equal? (props-get p0 1 2 'face) 'bold)
-  (check-equal? (props-get p0 1 0 'face) 'bold)
-  (check-equal? (props-get p0 1 5 'face) #f)
-  (check-equal? (props-get p0 0 0 'face) #f)
+  (define p0 (properties-put (fresh) 1 0 5 'face 'bold))
+  (check-equal? (properties-get p0 1 2 'face) 'bold)
+  (check-equal? (properties-get p0 1 0 'face) 'bold)
+  (check-equal? (properties-get p0 1 5 'face) #f)
+  (check-equal? (properties-get p0 0 0 'face) #f)
 
   ;; 相邻同 plist 合并（P2）
-  (define p1 (props-put p0 1 5 8 'face 'bold))
-  (define p2 (props-put p1 1 0 8 'face 'bold))
-  (check-equal? (length (vector-ref (text-properties-rows p2) 1)) 1)
+  (define p1 (properties-put p0 1 5 8 'face 'bold))
+  (define p2 (properties-put p1 1 0 8 'face 'bold))
+  (check-equal? (length (vector-ref (properties-rows p2) 1)) 1)
 
   ;; 编辑调整：插在区间内 → 扩张
-  (parameterize ([props-debug? #t])
-    (define p3 (props-apply-edit p2 (edit-desc 1 3 1 3 "X")))
-    (check-equal? (props-get p3 1 4 'face) 'bold)
-    (props-check p3))
+  (parameterize ([properties-debug? #t])
+    (define p3 (properties-apply-edit p2 (edit-desc 1 3 1 3 "X")))
+    (check-equal? (properties-get p3 1 4 'face) 'bold)
+    (properties-check p3))
 
   ;; splice：跨行删除 + 多行插入，继承左邻
-  (define p4 (props-put (fresh) 0 0 3 'face 'bold))
-  (define p5 (props-splice p4 0 1 1 1 "PQ\nR"))
-  (check-equal? (props-get p5 0 2 'face) 'bold)   ; 继承覆盖首行
-  (check-equal? (props-get p5 1 0 'face) 'bold)   ; 继承覆盖末行
-  (check-equal? (props-get p5 1 1 'face) #f)      ; 末行之后无属性
+  (define p4 (properties-put (fresh) 0 0 3 'face 'bold))
+  (define p5 (properties-splice p4 0 1 1 1 "PQ\nR"))
+  (check-equal? (properties-get p5 0 2 'face) 'bold)   ; 继承覆盖首行
+  (check-equal? (properties-get p5 1 0 'face) 'bold)   ; 继承覆盖末行
+  (check-equal? (properties-get p5 1 1 'face) #f)      ; 末行之后无属性
 
-  ;; 批量写：与逐个 props-put 等价，且保持出现顺序（后写覆盖先写）
-  (define p6 (props-put-many (fresh)
+  ;; 批量写：与逐个 properties-put 等价，且保持出现顺序（后写覆盖先写）
+  (define p6 (properties-put-many (fresh)
                              (list (list 1 0 5 'a 1)
                                    (list 1 2 3 'b 2)
                                    (list 0 0 2 'a 9))))
-  (define p7 (props-put (props-put (props-put (fresh) 1 0 5 'a 1) 1 2 3 'b 2) 0 0 2 'a 9))
+  (define p7 (properties-put (properties-put (properties-put (fresh) 1 0 5 'a 1) 1 2 3 'b 2) 0 0 2 'a 9))
   (check-equal? p6 p7)
-  (check-equal? (props-get p6 1 0 'a) 1)
-  (check-equal? (props-get p6 1 2 'b) 2)
-  (check-equal? (props-get p6 0 1 'a) 9)
+  (check-equal? (properties-get p6 1 0 'a) 1)
+  (check-equal? (properties-get p6 1 2 'b) 2)
+  (check-equal? (properties-get p6 0 1 'a) 9)
 
-  ;; props-replace-key：清旧写新（patch 应用原语）
-  (define pr0 (props-put (fresh) 1 0 5 'face 'bold))
-  (define pr1 (props-put pr0 1 7 9 'face 'bold))
-  (define pr2 (props-replace-key pr1 0 2 'face (list (list 1 0 2 'red))))
-  (check-equal? (props-get pr2 1 0 'face) 'red)
-  (check-equal? (props-get pr2 1 3 'face) #f)   ; 旧 [0,5) 被清
-  (check-equal? (props-get pr2 1 7 'face) #f)   ; 旧 [7,9) 被清
-  (check-equal? (props-get pr2 0 0 'face) #f)
+  ;; properties-replace-key：清旧写新（patch 应用原语）
+  (define pr0 (properties-put (fresh) 1 0 5 'face 'bold))
+  (define pr1 (properties-put pr0 1 7 9 'face 'bold))
+  (define pr2 (properties-replace-key pr1 0 2 'face (list (list 1 0 2 'red))))
+  (check-equal? (properties-get pr2 1 0 'face) 'red)
+  (check-equal? (properties-get pr2 1 3 'face) #f)   ; 旧 [0,5) 被清
+  (check-equal? (properties-get pr2 1 7 'face) #f)   ; 旧 [7,9) 被清
+  (check-equal? (properties-get pr2 0 0 'face) #f)
 
   (displayln "properties.rkt: all tests passed"))

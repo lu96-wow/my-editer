@@ -1,6 +1,6 @@
 #lang racket
 
-(require "cursor.rkt" "content.rkt" "marker.rkt"
+(require "point.rkt" "content.rkt" "marker.rkt"
          "properties.rkt" "overlay.rkt" rackunit)
 
 ;;; buffer.rkt —— 文档：文本 + 元数据 + 脏范围（无光标）
@@ -10,7 +10,7 @@
 ;;;   2. content-edit → (content', desc)
 ;;;   3. overlay-table-apply-edit ot mt desc → (ot', mt')
 ;;;      （内部先调 marker-table-apply-edit，再判 evaporate）
-;;;   4. props-apply-edit props desc → props'
+;;;   4. properties-apply-edit props desc → props'
 ;;;   5. 更新 tick / dirty
 ;;;
 ;;; 光标（point）不属于文档，属于 window：一个 buffer 可被多个 window 绑定，
@@ -20,22 +20,21 @@
  (struct-out buffer)
  (struct-out dirty-desc)
  (struct-out edit-desc)
- buffer-empty
  buffer-open
  buffer->string
  buffer->lines
  buffer-line-count
  buffer-line-ref
  buffer-splice
- buffer-insert
- buffer-insert-text
+ buffer-insert-char
+ buffer-insert-string
  buffer-newline
  buffer-backspace
  buffer-delete
- buffer-put-text-property
- buffer-get-text-property
- buffer-remove-text-property
- buffer-put-text-properties
+ buffer-put-property
+ buffer-get-property
+ buffer-remove-property
+ buffer-put-properties
  buffer-make-marker
  buffer-delete-marker
  buffer-marker-pos
@@ -52,9 +51,9 @@
 
 (struct buffer
   (content      ; content.rkt
-   gap          ; cursor.rkt       物理编辑位置（content.gap 的镜像，方便断言）
+   gap          ; point.rkt       物理编辑位置（content.gap 的镜像，方便断言）
    markers      ; marker-table
-   properties   ; text-properties
+   properties   ; properties
    overlays     ; overlay-table
    tick         ; nat
    dirty        ; (or/c #f dirty-desc)
@@ -63,15 +62,13 @@
 
 ;;; ---------- 构造 ----------
 
-(define (buffer-empty) (buffer-open ""))
-
 (define (buffer-open s)
   (define c (content-of-string s))
   (buffer c
-          (cursor (content-gap-line c) (content-gap-col c))
+          (point (content-gap-line c) (content-gap-col c))
           (make-marker-table)
-          (props-empty (content-line-count c))
-          (overlay-table-empty)
+          (make-properties (content-line-count c))
+          (make-overlay-table)
           0 #f #f))
 
 ;;; ---------- 投影 ----------
@@ -127,14 +124,14 @@
     [else
      (define old-count (content-line-count c1))
      (define new-count (content-line-count c2))
-     (define ng (cursor (content-gap-line c2) (content-gap-col c2)))
+     (define ng (point (content-gap-line c2) (content-gap-col c2)))
      ;; overlay-table-apply-edit 内部先调 marker-table-apply-edit，再 prune evaporate
      (define-values (ot* mt*)
        (overlay-table-apply-edit (buffer-overlays b) (buffer-markers b) desc))
      (values
       (buffer c2 ng
               mt*
-              (props-apply-edit (buffer-properties b) desc)
+              (properties-apply-edit (buffer-properties b) desc)
               ot*
               (add1 (buffer-tick b))
               (merge-dirty (buffer-dirty b) (dirty-of desc old-count new-count))
@@ -146,12 +143,12 @@
   (buffer-edit-at b s-line s-col
                   (lambda (c) (content-splice c s-line s-col e-line e-col new-text))))
 
-(define (buffer-insert b line col ch)
-  (buffer-edit-at b line col (lambda (c) (content-insert c ch))))
+(define (buffer-insert-char b line col ch)
+  (buffer-edit-at b line col (lambda (c) (content-insert-char c ch))))
 
 ;; 插入一段文本（可含 \n）：一次 splice 完成。
-(define (buffer-insert-text b line col s)
-  (buffer-edit-at b line col (lambda (c) (content-insert-text c s))))
+(define (buffer-insert-string b line col s)
+  (buffer-edit-at b line col (lambda (c) (content-insert-string c s))))
 
 (define (buffer-newline b line col)
   (buffer-edit-at b line col content-newline))
@@ -164,29 +161,29 @@
 
 ;;; ---------- 属性 ----------
 
-(define (buffer-put-text-property b line start end prop val)
+(define (buffer-put-property b line start end prop val)
   (struct-copy buffer b
-    [properties (props-put (buffer-properties b) line start end prop val)]
+    [properties (properties-put (buffer-properties b) line start end prop val)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
 
-(define (buffer-get-text-property b line col prop)
-  (props-get (buffer-properties b) line col prop))
+(define (buffer-get-property b line col prop)
+  (properties-get (buffer-properties b) line col prop))
 
 ;; 只清掉 [start,end) 上某个 key。插件应只清「自己负责的 key」，避免互相清空。
-(define (buffer-remove-text-property b line start end prop)
+(define (buffer-remove-property b line start end prop)
   (struct-copy buffer b
-    [properties (props-remove (buffer-properties b) line start end prop)]
+    [properties (properties-remove (buffer-properties b) line start end prop)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
 
 ;; 批量写属性，一次 tick：segs = (listof (list line start end prop val))
-(define (buffer-put-text-properties b segs)
+(define (buffer-put-properties b segs)
   (if (null? segs)
       b
-      (let ([props* (props-put-many (buffer-properties b) segs)])
+      (let ([properties* (properties-put-many (buffer-properties b) segs)])
         (struct-copy buffer b
-          [properties props*]
+          [properties properties*]
           [tick (add1 (buffer-tick b))]
           [modified? #t]))))
 
@@ -247,25 +244,25 @@
   (check-false (buffer-dirty b0))
 
   ;; insert（显式位置）：返回 (values buffer desc)
-  (define-values (b1 d1) (buffer-insert b0 0 0 #\X))
+  (define-values (b1 d1) (buffer-insert-char b0 0 0 #\X))
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? (buffer-tick b1) 1)
   (check-equal? (buffer-dirty b1) (dirty-desc 0 0 2 2))
   (check-equal? d1 (edit-desc 0 0 0 0 "X"))
-  (check-equal? (edit-desc-after-position d1) (cursor 0 1))
+  (check-equal? (edit-desc-after-position d1) (point 0 1))
 
   ;; newline
   (define-values (b2 d2) (buffer-newline b0 0 0))
   (check-equal? (buffer->string b2) "\nhello\nworld")
   (check-equal? (buffer-line-count b2) 3)
   (check-equal? d2 (edit-desc 0 0 0 0 "\n"))
-  (check-equal? (edit-desc-after-position d2) (cursor 1 0))
+  (check-equal? (edit-desc-after-position d2) (point 1 0))
 
   ;; backspace 合并（第 2 行行首）
   (define-values (b3 d3) (buffer-backspace b0 1 0))
   (check-equal? (buffer->string b3) "helloworld")
   (check-equal? d3 (edit-desc 0 5 1 0 ""))
-  (check-equal? (edit-desc-after-position d3) (cursor 0 5))
+  (check-equal? (edit-desc-after-position d3) (point 0 5))
 
   ;; delete 合并（第 1 行行尾）
   (define-values (b4 d4) (buffer-delete b0 0 5))
@@ -278,12 +275,12 @@
   (check-false d-nop)
 
   ;; 多行插入（paste）
-  (define-values (bp dp) (buffer-insert-text b0 0 0 "X\nY"))
+  (define-values (bp dp) (buffer-insert-string b0 0 0 "X\nY"))
   (check-equal? (buffer->string bp) "X\nYhello\nworld")
   (check-equal? dp (edit-desc 0 0 0 0 "X\nY"))
-  (check-equal? (edit-desc-after-position dp) (cursor 1 1))
+  (check-equal? (edit-desc-after-position dp) (point 1 1))
   ;; 尾部换行保留空行
-  (define-values (bp2 _1) (buffer-insert-text b0 0 0 "A\n"))
+  (define-values (bp2 _1) (buffer-insert-string b0 0 0 "A\n"))
   (check-equal? (buffer->string bp2) "A\nhello\nworld")
 
   ;; splice：跨行删除 + 多行插入
@@ -293,37 +290,37 @@
   (check-equal? dsp (edit-desc 0 1 2 1 "XY\nZ"))
 
   ;; 属性
-  (define b7 (buffer-put-text-property b0 0 1 4 'face 'bold))
-  (check-equal? (buffer-get-text-property b7 0 0 'face) #f)
-  (check-equal? (buffer-get-text-property b7 0 2 'face) 'bold)
-  (check-equal? (buffer-get-text-property b7 0 4 'face) #f)
+  (define b7 (buffer-put-property b0 0 1 4 'face 'bold))
+  (check-equal? (buffer-get-property b7 0 0 'face) #f)
+  (check-equal? (buffer-get-property b7 0 2 'face) 'bold)
+  (check-equal? (buffer-get-property b7 0 4 'face) #f)
 
   ;; 属性随编辑移动：插在 bold 区间内，新区间扩张
-  (define-values (b8 _2) (buffer-insert b7 0 2 #\Z))
+  (define-values (b8 _2) (buffer-insert-char b7 0 2 #\Z))
   (check-equal? (buffer->string b8) "heZllo\nworld")
-  (check-equal? (buffer-get-text-property b8 0 2 'face) 'bold)  ; 新字符继承
+  (check-equal? (buffer-get-property b8 0 2 'face) 'bold)  ; 新字符继承
 
   ;; marker
-  (define-values (b9 mid) (buffer-make-marker b0 (cursor 0 3)))
-  (check-equal? (buffer-marker-pos b9 mid) (cursor 0 3))
+  (define-values (b9 mid) (buffer-make-marker b0 (point 0 3)))
+  (check-equal? (buffer-marker-pos b9 mid) (point 0 3))
   ;; 在 marker 前插入 → marker 右移
-  (define-values (b10 _3) (buffer-insert b9 0 0 #\a))
-  (check-equal? (buffer-marker-pos b10 mid) (cursor 0 4))
+  (define-values (b10 _3) (buffer-insert-char b9 0 0 #\a))
+  (check-equal? (buffer-marker-pos b10 mid) (point 0 4))
   ;; 删除 marker 前字符 → marker 左移
   (define-values (b11 _4) (buffer-delete b10 0 0))
-  (check-equal? (buffer-marker-pos b11 mid) (cursor 0 3))
+  (check-equal? (buffer-marker-pos b11 mid) (point 0 3))
 
   ;; overlay
-  (define-values (b12 oid) (buffer-make-overlay b0 (cursor 0 1) (cursor 0 4)
+  (define-values (b12 oid) (buffer-make-overlay b0 (point 0 1) (point 0 4)
                                                  (hash 'face 'region)))
-  (define-values (b13 _5) (buffer-insert b12 0 0 #\a))
+  (define-values (b13 _5) (buffer-insert-char b12 0 0 #\a))
   (define runs (overlay-table-runs (buffer-overlays b13) (buffer-markers b13) 0 10))
   (check-equal? (length runs) 1)
   (check-equal? (car  (car runs)) 2)   ; start 右移到 2
   (check-equal? (cadr (car runs)) 5)   ; end 右移到 5
 
   ;; overlay evaporate
-  (define-values (b14 oid2) (buffer-make-overlay b0 (cursor 0 1) (cursor 0 3)
+  (define-values (b14 oid2) (buffer-make-overlay b0 (point 0 1) (point 0 3)
                                                   (hash 'face 'region 'evaporate #t)))
   ;; 连续删 3 次，overlay 覆盖的字符全删光
   (define-values (b15 _6) (buffer-delete b14 0 1))

@@ -1,6 +1,6 @@
 #lang racket
 
-(require "cursor.rkt" "content.rkt" rackunit)
+(require "point.rkt" "content.rkt" rackunit)
 
 ;;; marker.rkt —— 随编辑自动移动的位置
 ;;;
@@ -26,7 +26,7 @@
  marker-table-apply-edit)
 
 (struct marker (id pos insertion-type) #:transparent)
-;; pos : cursor
+;; pos : point
 
 (struct marker-table (next-id markers by-id) #:transparent)
 ;; markers : (listof marker)     迭代顺序（创建顺序）
@@ -62,17 +62,17 @@
 
 (define (marker-apply-edit m desc)
   (define p (marker-pos m))
-  (define l (cursor-line p))
-  (define c (cursor-col p))
+  (define l (point-line p))
+  (define c (point-col p))
   (define t (marker-insertion-type m))
   (define at-start?
     (and (= l (edit-desc-s-line desc)) (= c (edit-desc-s-col desc))))
   (define p*
     (cond
       [(and at-start? (eq? t 'after)) (edit-desc-after-position desc)]
-      [at-start? (cursor l c)]
+      [at-start? (point l c)]
       [else (or (edit-desc-map-position desc l c)
-                (cursor (edit-desc-s-line desc) (edit-desc-s-col desc)))]))
+                (point (edit-desc-s-line desc) (edit-desc-s-col desc)))]))
   (marker (marker-id m) p* t))
 
 ;;; ---------- 批量调整 ----------

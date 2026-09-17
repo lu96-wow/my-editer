@@ -37,7 +37,7 @@
   (check-equal? (screen-cursor-row s0) 0)
   (check-equal? (screen-cursor-col s0) 0)
 
-  (define-values (w1 _) (window-goto (window-open b0 2 10) 0 2))
+  (define w1 (window-goto (window-open b0 2 10) 0 2))
   (check-equal? (screen-cursor-col (window->screen w1)) 3)
 
   (define s2 (window->screen (window-set-left (window-open b0 2 10) 2)))
@@ -47,7 +47,7 @@
   (check-equal? (vector-ref (screen-row-runs s3) 0) (list (run 0 "a中" (hash))))
 
   ;; 属性分段
-  (define b2 (buffer-put-text-property b0 0 0 1 'face 'bold))
+  (define b2 (buffer-put-property b0 0 0 1 'face 'bold))
   (define s4 (window->screen (window-open b2 2 10)))
   (check-equal? (vector-ref (screen-row-runs s4) 0)
                 (list (run 0 "a" (hash 'face 'bold))

@@ -1,10 +1,10 @@
 #lang racket
 
-(require "../text/cursor.rkt" "../text/buffer.rkt" "../text/properties.rkt" "../text/overlay.rkt" rackunit)
+(require "../text/point.rkt" "../text/buffer.rkt" "../text/properties.rkt" "../text/overlay.rkt" rackunit)
 
 ;;; render.rkt —— 行渲染：buffer 一行 → glyph 向量
 ;;;
-;;; 只做「语义合成」：合并一行上 props-runs 与 overlay-runs 的边界，
+;;; 只做「语义合成」：合并一行上 properties-runs 与 overlay-runs 的边界，
 ;;; 逐段合成 face，产出 (ch, face) 的 glyph 向量。
 ;;; 布局（折行/裁剪）、屏幕帧缓冲、滚动都在 view / project 层，与本层无关。
 
@@ -62,7 +62,7 @@
 (define (render-line b i)
   (define text (buffer-line-ref b i))
   (define n (string-length text))
-  (define p-runs (props-runs (buffer-properties b) i n))
+  (define p-runs (properties-runs (buffer-properties b) i n))
   (define o-runs (overlay-table-runs (buffer-overlays b)
                                      (buffer-markers b)
                                      i n))
@@ -100,7 +100,7 @@
   (check-equal? (rline->string b0 1) "world")
 
   ;; 属性
-  (define b1 (buffer-put-text-property b0 0 1 4 'face 'bold))
+  (define b1 (buffer-put-property b0 0 1 4 'face 'bold))
   (define g1 (rendered-line-glyphs (render-line b1 0)))
   (check-equal? (glyph-face (vector-ref g1 0)) (hash))
   (check-equal? (glyph-face (vector-ref g1 1)) (hash 'face 'bold))
@@ -108,12 +108,12 @@
   (check-equal? (glyph-face (vector-ref g1 4)) (hash))
 
   ;; overlay + priority（priority>0 覆盖 props；priority=0 在 props 之下）
-  (define-values (b2 oid2) (buffer-make-overlay b0 (cursor 0 1) (cursor 0 4)
+  (define-values (b2 oid2) (buffer-make-overlay b0 (point 0 1) (point 0 4)
                                               (hash 'face 'region)))
   (define g2 (rendered-line-glyphs (render-line b2 0)))
   (check-equal? (glyph-face (vector-ref g2 1)) (hash 'face 'region))
-  (define b3 (buffer-put-text-property b2 0 1 4 'face 'bold))
-  (define-values (b4 oid4) (buffer-make-overlay b3 (cursor 0 2) (cursor 0 3)
+  (define b3 (buffer-put-property b2 0 1 4 'face 'bold))
+  (define-values (b4 oid4) (buffer-make-overlay b3 (point 0 2) (point 0 3)
                                               (hash 'face 'highlight 'priority 5)))
   (define g4 (rendered-line-glyphs (render-line b4 0)))
   (check-equal? (glyph-face (vector-ref g4 1)) (hash 'face 'bold))        ; p0 overlay < props

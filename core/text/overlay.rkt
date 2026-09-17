@@ -1,6 +1,6 @@
 #lang racket
 
-(require "cursor.rkt" "content.rkt" "marker.rkt" rackunit)
+(require "point.rkt" "content.rkt" "marker.rkt" rackunit)
 
 ;;; overlay.rkt —— 独立装饰层
 ;;;
@@ -19,7 +19,7 @@
 (provide
  (struct-out overlay)
  (struct-out overlay-table)
- overlay-table-empty
+ make-overlay-table
  overlay-table-make
  overlay-table-delete
  overlay-table-get
@@ -40,7 +40,7 @@
 
 ;;; ---------- 构造 ----------
 
-(define (overlay-table-empty) (overlay-table 0 '() (hash)))
+(define (make-overlay-table) (overlay-table 0 '() (hash)))
 
 ;; 需要调用者先给 start / end 建 marker，再传入它们的 id。
 (define (overlay-table-make ot start-id end-id [plist (hash)])
@@ -68,26 +68,26 @@
 (define (overlay-priority ov)
   (hash-ref (overlay-plist ov) 'priority 0))
 
-;; 把 overlay 的 id 对解析成 cursor 对
-(define (overlay-cursors ov mt)
+;; 把 overlay 的 id 对解析成 point 对
+(define (overlay-points ov mt)
   (define s (marker-table-get mt (overlay-start-id ov)))
   (define e (marker-table-get mt (overlay-end-id ov)))
   (unless (and s e)
-    (error 'overlay-cursors
+    (error 'overlay-points
            "overlay ~a references missing marker(s) ~a / ~a"
            (overlay-id ov) (overlay-start-id ov) (overlay-end-id ov)))
   (values (marker-pos s) (marker-pos e)))
 
-(define (overlay-contains-cursor? ov mt pos)
-  (define-values (s e) (overlay-cursors ov mt))
-  (and (cursor<=? s pos) (cursor<? pos e)))
+(define (overlay-contains-point? ov mt pos)
+  (define-values (s e) (overlay-points ov mt))
+  (and (point<=? s pos) (point<? pos e)))
 
 ;; 返回覆盖 (line, col) 的所有 overlay，按 priority 降序（高 priority 在前）。
 ;; 同 priority 时 id 小的在前（先创建的在前）。
 (define (overlay-table-at ot mt line col)
-  (define pos (cursor line col))
+  (define pos (point line col))
   (sort (for/list ([ov (in-list (overlay-table-overlays ot))]
-                   #:when (overlay-contains-cursor? ov mt pos))
+                   #:when (overlay-contains-point? ov mt pos))
           ov)
         (lambda (a b)
           (define pa (overlay-priority a))
@@ -103,17 +103,17 @@
 (define (overlay-table-runs ot mt line line-length)
   (define ovs-with-span
     (for/list ([ov (in-list (overlay-table-overlays ot))])
-      (define-values (s e) (overlay-cursors ov mt))
-      (define sl (cursor-line s))
-      (define el (cursor-line e))
+      (define-values (s e) (overlay-points ov mt))
+      (define sl (point-line s))
+      (define el (point-line e))
       ;; 只保留与本行有交集的
       (cond
         [(and (= sl line) (= el line))
-         (list (cursor-col s) (cursor-col e) ov)]
+         (list (point-col s) (point-col e) ov)]
         [(and (= sl line) (> el line))
-         (list (cursor-col s) line-length ov)]
+         (list (point-col s) line-length ov)]
         [(and (< sl line) (= el line))
-         (list 0 (cursor-col e) ov)]
+         (list 0 (point-col e) ov)]
         [(and (< sl line) (> el line))
          (list 0 line-length ov)]
         [else #f])))
@@ -156,8 +156,8 @@
 
 (define (overlay-evaporates? ov mt)
   (and (hash-ref (overlay-plist ov) 'evaporate #f)
-       (let-values ([(s e) (overlay-cursors ov mt)])
-         (cursor=? s e))))
+       (let-values ([(s e) (overlay-points ov mt)])
+         (point=? s e))))
 
 (define (overlay-table-apply-edit ot mt desc)
   ;; 1. marker-table 一次性调整

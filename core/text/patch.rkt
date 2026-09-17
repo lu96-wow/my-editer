@@ -36,14 +36,14 @@
 (define (buffer-apply-patches b patches)
   (if (null? patches)
       b
-      (let ([props*
+      (let ([properties*
              (for/fold ([p (buffer-properties b)])
                        ([pt (in-list patches)])
-               (props-replace-key p
+               (properties-replace-key p
                                   (patch-first-line pt) (patch-last-line pt)
                                   (patch-key pt) (patch-segs pt)))])
         (struct-copy buffer b
-          [properties props*]
+          [properties properties*]
           [tick (add1 (buffer-tick b))]))))
 
 (module+ test
@@ -51,24 +51,24 @@
 
   ;; 内容版本：同 buffer / 编辑后 / 应用补丁后
   (check-true (buffer-content-same? b0 b0))
-  (define-values (b1 _) (buffer-insert b0 0 0 #\X))
+  (define-values (b1 _) (buffer-insert-char b0 0 0 #\X))
   (check-false (buffer-content-same? b0 b1))
   (define b2 (buffer-apply-patches b0 (list (patch 'face 0 0 (list (list 0 0 5 'bold))))))
   (check-true (buffer-content-same? b0 b2))          ; 写标注不改内容
-  (check-equal? (buffer-get-text-property b2 0 2 'face) 'bold)
+  (check-equal? (buffer-get-property b2 0 2 'face) 'bold)
 
   ;; 清旧写新：同 key 覆盖（旧段被清掉）
-  (define b3 (buffer-put-text-property b0 1 0 5 'face 'bold))
+  (define b3 (buffer-put-property b0 1 0 5 'face 'bold))
   (define b4 (buffer-apply-patches b3 (list (patch 'face 1 1 (list (list 1 1 3 'red))))))
-  (check-equal? (buffer-get-text-property b4 1 0 'face) #f)   ; 旧 [0,5) 已清
-  (check-equal? (buffer-get-text-property b4 1 2 'face) 'red)
+  (check-equal? (buffer-get-property b4 1 0 'face) #f)   ; 旧 [0,5) 已清
+  (check-equal? (buffer-get-property b4 1 2 'face) 'red)
 
   ;; 多 patch 不同 key → 并集合并
   (define b5 (buffer-apply-patches b0
                (list (patch 'face 0 0 (list (list 0 0 5 'bold)))
                      (patch 'diag 0 0 (list (list 0 0 5 "err"))))))
-  (check-equal? (buffer-get-text-property b5 0 1 'face) 'bold)
-  (check-equal? (buffer-get-text-property b5 0 1 'diag) "err")
+  (check-equal? (buffer-get-property b5 0 1 'face) 'bold)
+  (check-equal? (buffer-get-property b5 0 1 'diag) "err")
 
   ;; 空补丁 → 原样返回
   (check-eq? (buffer-apply-patches b0 '()) b0)

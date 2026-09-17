@@ -1,6 +1,6 @@
 #lang racket
 
-(require "cursor.rkt" rackunit)
+(require "point.rkt" rackunit)
 
 ;;; content.rkt —— 行向量 + gap 游标文本存储
 ;;;
@@ -14,7 +14,7 @@
 (provide
  (struct-out content)
  (struct-out edit-desc)
- content-empty
+ make-content
  content-of-lines
  content-of-string
  string->lines
@@ -29,8 +29,8 @@
  content-gap-down
  content-gap-goto
  content-splice
- content-insert
- content-insert-text
+ content-insert-char
+ content-insert-string
  content-newline
  content-backspace
  content-delete
@@ -64,7 +64,7 @@
 
 ;;; ---------- 构造 ----------
 
-(define (content-empty) (content (vector "") 0 0))
+(define (make-content) (content (vector "") 0 0))
 
 (define (content-of-lines lines)
   (unless (and (pair? lines) (andmap string? lines))
@@ -154,12 +154,12 @@
 
 ;;; ---------- 编辑原语（都是 splice 的特例）----------
 
-(define (content-insert c ch)
+(define (content-insert-char c ch)
   (define l (content-gap-line c))
   (define col (content-gap-col c))
   (content-splice c l col l col (string ch)))
 
-(define (content-insert-text c s)
+(define (content-insert-string c s)
   (define l (content-gap-line c))
   (define col (content-gap-col c))
   (if (zero? (string-length s))
@@ -196,7 +196,7 @@
 
 ;;; ---------- 位置映射（marker/props 共用的唯一调整机制）----------
 
-;; 编辑前位置 -> 编辑后位置；返回 cursor 或 #f（#f = 落在被删区间内）
+;; 编辑前位置 -> 编辑后位置；返回 point 或 #f（#f = 落在被删区间内）
 (define (edit-desc-map-position d l c)
   (define s-line (edit-desc-s-line d))
   (define s-col (edit-desc-s-col d))
@@ -207,20 +207,20 @@
   (define delta (- k (- e-line s-line) 1))           ; k - (e-line-s-line+1)
   (define last-len (if (zero? k) 0 (string-length (last new-lines))))
   (cond
-    [(pos<? l c s-line s-col)   (cursor l c)]        ; 在起点之前
-    [(pos=? l c s-line s-col)   (cursor l c)]        ; 插入点（before/after 由调用者处理）
+    [(pos<? l c s-line s-col)   (point l c)]        ; 在起点之前
+    [(pos=? l c s-line s-col)   (point l c)]        ; 插入点（before/after 由调用者处理）
     [(pos<? l c e-line e-col)   #f]                  ; 在 [start,end) 内 → 被删
     [else                                            ; >= end
      (cond
        [(= l e-line)
         (cond
-          [(zero? k) (cursor s-line (+ s-col (- c e-col)))]
+          [(zero? k) (point s-line (+ s-col (- c e-col)))]
           ;; 单行插入：after 接在 before + 插入文本之后，需加 s-col
-          [(= k 1)   (cursor s-line (+ s-col last-len (- c e-col)))]
+          [(= k 1)   (point s-line (+ s-col last-len (- c e-col)))]
           ;; 多行插入：after 接到最后一行行首（新行），不加 s-col
-          [else      (cursor (+ s-line (sub1 k)) (+ last-len (- c e-col)))])]
+          [else      (point (+ s-line (sub1 k)) (+ last-len (- c e-col)))])]
        [else
-        (cursor (+ l delta) c)])]))
+        (point (+ l delta) c)])]))
 
 ;; 插入点处「插入文本之后」的位置（'after' marker 用）
 (define (edit-desc-after-position d)
@@ -228,12 +228,12 @@
   (define k (length new-lines))
   (cond
     [(zero? k)   ; 纯删除：回到删除起点
-     (cursor (edit-desc-s-line d) (edit-desc-s-col d))]
+     (point (edit-desc-s-line d) (edit-desc-s-col d))]
     [(= k 1)     ; 单行插入：起点 + 长度
-     (cursor (edit-desc-s-line d)
+     (point (edit-desc-s-line d)
              (+ (edit-desc-s-col d) (string-length (last new-lines))))]
     [else        ; 多行插入：末行行尾（末行从列 0 开始）
-     (cursor (+ (edit-desc-s-line d) (sub1 k))
+     (point (+ (edit-desc-s-line d) (sub1 k))
              (string-length (last new-lines)))]))
 
 (define (pos<? l1 c1 l2 c2)
@@ -246,7 +246,7 @@
 
 (module+ test
   ;; 构造 & 投影
-  (check-equal? (content->string (content-empty)) "")
+  (check-equal? (content->string (make-content)) "")
   (check-equal? (content->string (content-of-string "hello\nworld")) "hello\nworld")
   (check-equal? (content->lines  (content-of-string "hello\nworld"))
                 (list "hello" "world"))
@@ -277,20 +277,20 @@
   (check-equal? (content-gap-col (content-gap-goto c0 0 -5)) 0)
 
   ;; insert
-  (define-values (c-i d-i) (content-insert c0 #\X))
+  (define-values (c-i d-i) (content-insert-char c0 #\X))
   (check-equal? (content->string c-i) "Xhello\nworld")
   (check-equal? (content-gap-col c-i) 1)
   (check-equal? d-i (edit-desc 0 0 0 0 "X"))
 
   ;; insert（在非零列插入，光标也要正确推进）
   (define c-mid (content-set-col c0 2))
-  (define-values (c-mid2 d-mid) (content-insert c-mid #\X))
+  (define-values (c-mid2 d-mid) (content-insert-char c-mid #\X))
   (check-equal? (content->string c-mid2) "heXllo\nworld")
   (check-equal? (content-gap-col c-mid2) 3)
   (check-equal? d-mid (edit-desc 0 2 0 2 "X"))
 
   ;; insert-text（多字符）
-  (define-values (c-it d-it) (content-insert-text c0 "XYZ"))
+  (define-values (c-it d-it) (content-insert-string c0 "XYZ"))
   (check-equal? (content->string c-it) "XYZhello\nworld")
   (check-equal? (content-gap-col c-it) 3)
   (check-equal? d-it (edit-desc 0 0 0 0 "XYZ"))
@@ -343,18 +343,18 @@
   (check-equal? (content-gap-col c-sp) 1)
 
   ;; 位置映射：对照上面 splice 的各个位置
-  (check-equal? (edit-desc-map-position d-sp 0 0) (cursor 0 0))   ; 起点前不变
-  (check-equal? (edit-desc-map-position d-sp 0 1) (cursor 0 1))   ; 插入点
+  (check-equal? (edit-desc-map-position d-sp 0 0) (point 0 0))   ; 起点前不变
+  (check-equal? (edit-desc-map-position d-sp 0 1) (point 0 1))   ; 插入点
   (check-false (edit-desc-map-position d-sp 0 2))                 ; 被删
   (check-false (edit-desc-map-position d-sp 1 0))                 ; 被删
-  (check-equal? (edit-desc-map-position d-sp 2 1) (cursor 1 1))   ; == end
-  (check-equal? (edit-desc-map-position d-sp 2 3) (cursor 1 3))   ; > end，同行
-  (check-equal? (edit-desc-after-position d-sp) (cursor 1 1))     ; 多行插入之后
+  (check-equal? (edit-desc-map-position d-sp 2 1) (point 1 1))   ; == end
+  (check-equal? (edit-desc-map-position d-sp 2 3) (point 1 3))   ; > end，同行
+  (check-equal? (edit-desc-after-position d-sp) (point 1 1))     ; 多行插入之后
   ;; 单行插入在非零列：起点 + 长度（旧 bug 会丢掉 s-col）
-  (check-equal? (edit-desc-after-position (edit-desc 0 3 0 3 "XY")) (cursor 0 5))
+  (check-equal? (edit-desc-after-position (edit-desc 0 3 0 3 "XY")) (point 0 5))
   ;; 宽字符插入：point 按字符数前进（中 = 1 字符，显示宽 2）
-  (check-equal? (edit-desc-after-position (edit-desc 2 4 2 4 "中")) (cursor 2 5))
+  (check-equal? (edit-desc-after-position (edit-desc 2 4 2 4 "中")) (point 2 5))
   ;; 纯删除：回到删除起点
-  (check-equal? (edit-desc-after-position (edit-desc 0 1 0 3 "")) (cursor 0 1))
+  (check-equal? (edit-desc-after-position (edit-desc 0 1 0 3 "")) (point 0 1))
 
   (displayln "content.rkt: all tests passed"))
