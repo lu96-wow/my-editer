@@ -34,7 +34,7 @@
  buffer-put-property
  buffer-get-property
  buffer-remove-property
- buffer-put-properties
+ buffer-put-properties-many
  buffer-make-marker
  buffer-delete-marker
  buffer-marker-pos
@@ -178,7 +178,7 @@
     [modified? #t]))
 
 ;; 批量写属性，一次 tick：segs = (listof (list line start end prop val))
-(define (buffer-put-properties b segs)
+(define (buffer-put-properties-many b segs)
   (if (null? segs)
       b
       (let ([properties* (properties-put-many (buffer-properties b) segs)])
