@@ -76,58 +76,50 @@
 ;;;   编辑原语返回 (values 新值 desc)，无操作 desc = #f；
 ;;;   导航/状态原语直接返回 window。
 ;;;
-;;; ── 完整导出地图（按角色）────────────────────────────────────
-;;;   文本原子：point content properties marker overlay buffer patch edit
-;;;   视口原子：window view width render screen project events
-;;;   关键结构：buffer point content edit-desc dirty-desc patch
-;;;            properties marker(+table) overlay(+table)
-;;;            window vrow glyph rendered-line run screen
-;;;            modifiers text-event key-event mouse-* resize quit
+;;; ── 导出边界（内部实现不对外）────────────────────────────────
+;;;   对外（消费者层）：point buffer window screen events edit-desc patch
+;;;   对外（机制层）：buffer-splice / buffer-apply-edits、marker/overlay 的 buffer 级入口、
+;;;                dirty-desc、with-read-only-inhibited
+;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
+;;;                     width-* render-* vrow/layout/wrap/window-vrows
 ;;; ============================================================================
 
 (require "text/point.rkt"
          "text/content.rkt"
          "text/buffer.rkt"
          "text/edit.rkt"
-         "text/marker.rkt"
-         "text/overlay.rkt"
          "text/patch.rkt"
-         "text/properties.rkt"
          "view/events.rkt"
-         "view/width.rkt"
-         "view/render.rkt"
          "view/screen.rkt"
          "view/window.rkt"
          "view/view.rkt"
          "view/project.rkt")
 
 (provide
- ;; ---- 文本层：文档原子 ----
- (all-from-out "text/point.rkt")      ; point —— (line,col) 位置
- (all-from-out "text/content.rkt")     ; content + edit-desc —— 文本存储 + splice
- ;; buffer.rkt 与 content.rkt 都导出 edit-desc（buffer 只是转发）。
- ;; 去重：edit-desc 及其访问器 / 位置映射以 content.rkt（结构定义处）为唯一来源。
+ ;; ---- 消费者层：写编辑器就用这些 ----
+ (all-from-out "text/point.rkt")       ; point —— (line,col) 位置
+ ;; content.rkt 只露 edit-desc 契约，文本存储本身（含 struct:content）是内部实现
+ (except-out (all-from-out "text/content.rkt")
+             content content? struct:content content-lines content-gap-line content-gap-col
+             make-content content-of-lines content-of-string string->lines
+             content->lines content->string content-current-line content-line-count
+             content-line-ref content-check content-set-col content-gap-up
+             content-gap-down content-gap-goto content-splice content-insert-char
+             content-insert-string content-newline content-backspace content-delete)
+ ;; buffer.rkt：文档原子；去重 edit-desc（以 content.rkt 为唯一来源）
  (except-out (all-from-out "text/buffer.rkt")
-             edit-desc
-             edit-desc?
-             edit-desc-s-line
-             edit-desc-s-col
-             edit-desc-e-line
-             edit-desc-e-col
-             edit-desc-new-text
-             edit-desc-after-position)
- (all-from-out "text/edit.rkt")        ; 批量编辑应用 + 点映射
- (all-from-out "text/marker.rkt")      ; marker —— 会跟着文本移动的点
- (all-from-out "text/overlay.rkt")     ; overlay —— 会蒸发的装饰区
- (all-from-out "text/patch.rkt")       ; patch —— 补丁 delta
- (all-from-out "text/properties.rkt")  ; 行内属性区间（'face 由此进画面）
- ;; ---- 视口层：视口 + 投影 + 输入输出 ----
+             edit-desc edit-desc? edit-desc-s-line edit-desc-s-col
+             edit-desc-e-line edit-desc-e-col edit-desc-new-text edit-desc-after-position)
+ (all-from-out "text/edit.rkt")        ; 批量编辑应用 + 点映射（机制）
+ (all-from-out "text/patch.rkt")       ; patch —— 补丁 delta（机制）
+ ;; ---- 视口层 ----
  (all-from-out "view/events.rkt")      ; 类型化输入事件
- (all-from-out "view/width.rkt")       ; 字符 ↔ 显示列（宽字符）
- (all-from-out "view/render.rkt")      ; 行 → glyph（属性变 face 的地方）
- (all-from-out "view/screen.rkt")      ; run + screen + diff + compose
+ (all-from-out "view/screen.rkt")      ; run + screen + diff + compose（输出）
  (all-from-out "view/window.rkt")      ; window —— 视口 + 编辑/导航
- (all-from-out "view/view.rkt")        ; vrow 布局 + 光标/鼠标映射 + 滚动
+ ;; view.rkt 只露窗口级操作，布局内部（含 struct:vrow）藏起来
+ (except-out (all-from-out "view/view.rkt")
+             vrow vrow? struct:vrow vrow-line vrow-start-col vrow-end-col
+             line-range->runs wrap-segments layout-clip layout-wrap window-vrows)
  (all-from-out "view/project.rkt"))    ; window->screen —— 投影成画面
 
 ;;; ============================================================================
