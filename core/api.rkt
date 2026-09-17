@@ -1,12 +1,79 @@
 #lang racket
 
-;;; api.rkt —— core 层对外的唯一入口（门面 / 纯转发层）
+;;; ============================================================================
+;;; api.rkt —— core 层对外的唯一入口
+;;; ============================================================================
 ;;;
-;;; core 内部各模块按依赖互相 require，属于「实现细节」；对外只暴露这一个模块。
-;;; 使用方一律 (require "core/api.rkt")，不要直接 require core/text/* 或 core/view/*。
+;;; 一个纯函数式的编辑器核心：只有「底层数据原子 + 它们的纯函数变换」。
+;;; 不含多窗口组合 / 布局 / 命令 / 插件 / 后端。所有结构 #:transparent、不可变。
 ;;;
-;;; 本文件只做转发（require + all-from-out / except-out），不引入任何实现：
-;;; 与「数据 → lambda → 数据」一致，门面本身零逻辑。
+;;; ── 唯一约定 ────────────────────────────────────────────────
+;;;   使用方一律 (require "core/api.rkt")，
+;;;   不要直接 require core/text/* 或 core/view/*。
+;;;   内部模块按依赖互相 require，是「实现细节」，外部不接触。
+;;;
+;;; ── 最小原子（组合出一个编辑器只需要这些）──────────────────────
+;;;
+;;;   【数据：来回传的「东西」】
+;;;   buffer      文档：文本 + 属性 + 标记 + 装饰（无光标）
+;;;   events      输入：text/key/mouse/resize/quit（后端喂进来）
+;;;   screen      输出：一帧画面（每行几段 run + 一个光标，交给后端画）
+;;;
+;;;   【操作：真正的「API」只有这两个】
+;;;   window      视口：buffer 引用 + 光标 + 滚动 + 尺寸
+;;;               · 编辑：window-insert/newline/backspace/delete
+;;;               · 导航：window-goto/left/right/home/end + window-visual-move
+;;;               · 状态：window-set-* / window-scroll / window-ensure-point
+;;;   window->screen  投影：window 可见区 → screen（纯函数，无副作用）
+;;;
+;;; ── 两条数据流 ──────────────────────────────────────────────
+;;;
+;;;   编辑流：
+;;;     events → window-* 原语 → buffer-* → 新 buffer + edit-desc
+;;;     （window-* 会自动换新 buffer、把光标推到编辑后位置）
+;;;
+;;;   渲染流：
+;;;     buffer → render-line → glyph → line-range->runs → run
+;;;            → window->screen → screen → 后端画出来
+;;;
+;;; ── 属性怎么参与（关键）──────────────────────────────────────
+;;;   属性不是和 screen 拼的，是「存在 buffer 里」的：
+;;;
+;;;     buffer-put-text-property b 0 1 7 'face 'keyword   ; 写一次
+;;;       │  编辑时 props-apply-edit 让属性跟着文本自动移动
+;;;       ▼
+;;;     window->screen 投影时，render-line 把该位置的属性读出来
+;;;       │  变成 glyph 的 face
+;;;       ▼
+;;;     screen 里的 run.face = (hash 'face 'keyword)
+;;;       │  后端 (hash-ref (run-face r) 'face) → 主题 → 颜色
+;;;       ▼
+;;;     终端显示蓝色
+;;;
+;;;   你只需要一个写入口 buffer-put-text-properties；之后全是自动的。
+;;;
+;;; ── 最小编辑器骨架 ──────────────────────────────────────────
+;;;
+;;;   (define b (buffer-open "hello"))            ; 开文档
+;;;   (define w (window-open b 24 80))            ; 开视口
+;;;   (define s (window->screen w))               ; 投影成画面
+;;;   ;; 后端画 s；后端喂入一个 event：
+;;;   (define-values (w* desc) (window-insert w #\X))  ; 处理 text-event
+;;;   ;; w* 的 buffer 已换新、光标已推进；desc 给上层做同步/撤销
+;;;
+;;; ── 唯一跨层契约 ────────────────────────────────────────────
+;;;   edit-desc (s-line s-col e-line e-col new-text)
+;;;   一次编辑 = 删除 [s..e) + 插入 new-text（所有编辑都是它的特例）。
+;;;   每个编辑原语都返回 (values 新值 desc)；导航/无操作 desc = #f。
+;;;
+;;; ── 完整导出地图（按角色）────────────────────────────────────
+;;;   文本原子：cursor content properties marker overlay buffer patch edit
+;;;   视口原子：window view width render screen project events
+;;;   关键结构：buffer cursor content edit-desc dirty-desc patch
+;;;            text-properties marker(+table) overlay(+table)
+;;;            window vrow glyph rendered-line run screen
+;;;            modifiers text-event key-event mouse-* resize quit
+;;; ============================================================================
 
 (require "text/cursor.rkt"
          "text/content.rkt"
@@ -25,9 +92,9 @@
          "view/project.rkt")
 
 (provide
- ;; ---- text 层 ----
- (all-from-out "text/cursor.rkt")
- (all-from-out "text/content.rkt")
+ ;; ---- 文本层：文档原子 ----
+ (all-from-out "text/cursor.rkt")      ; cursor —— (line,col) 位置
+ (all-from-out "text/content.rkt")     ; content + edit-desc —— 文本存储 + splice
  ;; buffer.rkt 与 content.rkt 都导出 edit-desc（buffer 只是转发）。
  ;; 去重：edit-desc 及其访问器 / 位置映射以 content.rkt（结构定义处）为唯一来源。
  (except-out (all-from-out "text/buffer.rkt")
@@ -39,37 +106,53 @@
              edit-desc-e-col
              edit-desc-new-text
              edit-desc-after-position)
- (all-from-out "text/edit.rkt")
- (all-from-out "text/marker.rkt")
- (all-from-out "text/overlay.rkt")
- (all-from-out "text/patch.rkt")
- (all-from-out "text/properties.rkt")
- ;; ---- view 层 ----
- (all-from-out "view/events.rkt")
- (all-from-out "view/width.rkt")
- (all-from-out "view/render.rkt")
- (all-from-out "view/screen.rkt")
- (all-from-out "view/window.rkt")
- (all-from-out "view/view.rkt")
- (all-from-out "view/project.rkt"))
+ (all-from-out "text/edit.rkt")        ; 批量编辑应用 + 点映射
+ (all-from-out "text/marker.rkt")      ; marker —— 会跟着文本移动的点
+ (all-from-out "text/overlay.rkt")     ; overlay —— 会蒸发的装饰区
+ (all-from-out "text/patch.rkt")       ; patch —— 补丁 delta
+ (all-from-out "text/properties.rkt")  ; 行内属性区间（'face 由此进画面）
+ ;; ---- 视口层：视口 + 投影 + 输入输出 ----
+ (all-from-out "view/events.rkt")      ; 类型化输入事件
+ (all-from-out "view/width.rkt")       ; 字符 ↔ 显示列（宽字符）
+ (all-from-out "view/render.rkt")      ; 行 → glyph（属性变 face 的地方）
+ (all-from-out "view/screen.rkt")      ; run + screen + diff + compose
+ (all-from-out "view/window.rkt")      ; window —— 视口 + 编辑/导航
+ (all-from-out "view/view.rkt")        ; vrow 布局 + 光标/鼠标映射 + 滚动
+ (all-from-out "view/project.rkt"))    ; window->screen —— 投影成画面
 
-;;; ---------- 冒烟测试 ----------
+;;; ============================================================================
+;;; 冒烟测试：验证门面 + 一条完整的「属性 → 画面」链
+;;; ============================================================================
 
 (module+ test
   (require rackunit)
-  ;; 门面转发后，跨 text / view 的核心绑定应可直接使用。
+
+  ;; 门面转发后，核心绑定可用
   (define b (buffer-open "hello\nworld"))
   (check-equal? (buffer->string b) "hello\nworld")
   (check-equal? (buffer-line-count b) 2)
 
+  ;; 编辑闭环：插入字符 → 窗口光标推进 → 渲染出新文本
   (define w (window-open b 2 10))
   (check-equal? (window-point w) (cursor 0 0))
-  (check-equal? (screen-rows (window->screen w)) 2)
-
-  ;; 一个跨层编辑闭环：插入字符 → 窗口光标推进 → 渲染出新文本
   (define-values (w2 desc) (window-insert w #\X))
   (check-equal? (buffer->string (window-buffer w2)) "Xhello\nworld")
   (check-equal? desc (edit-desc 0 0 0 0 "X"))
   (check-equal? (window-point w2) (cursor 0 1))
+  (check-equal? (screen-rows (window->screen w2)) 2)
+
+  ;; 属性链：写进 buffer → 自动流进 screen 的 run.face
+  (define b3 (buffer-put-text-property b 0 0 5 'face 'keyword))
+  (define s3 (window->screen (window-open b3 2 10)))
+  (define row0 (vector-ref (screen-row-runs s3) 0))
+  (check-equal? (car row0) (run 0 "hello" (hash 'face 'keyword)))
+
+  ;; 属性随编辑移动：在属性区间前插一个字符 → 区间整体右移。
+  ;; 插入点在左邻为空处，新字符不继承（继承左邻规则）；"hello" 仍带 keyword。
+  (define-values (w4 _) (window-insert (window-open b3 2 10) #\Z))
+  (define s4 (window->screen w4))
+  (check-equal? (vector-ref (screen-row-runs s4) 0)
+                (list (run 0 "Z" (hash))
+                      (run 1 "hello" (hash 'face 'keyword))))
 
   (displayln "api.rkt: all tests passed"))
