@@ -13,6 +13,7 @@
 (provide
  (struct-out window)
  window-open
+ make-window
  check-mode
  snap-left-col
  window-set-buffer
@@ -52,6 +53,12 @@
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width must be >= 1, got ~a" width))
   (window b (point 0 0) 'clip 0 0 0 height width))
+
+;; 空构造器（§4 的 make-* 家族：make-content / make-marker-table / make-screen）：带**空 buffer**
+;; 的窗口。用途：从 document 起步的消费方不该被迫造一个立刻被丢弃的 buffer —— `document-add-view`
+;; 会用共享 buffer 替换窗口自带的那个（ARCHITECTURE §11.2 ①）。
+(define (make-window [height 24] [width 80])
+  (window-open (buffer-open "") height width))
 
 ;;; ---------- point 夹紧 ----------
 

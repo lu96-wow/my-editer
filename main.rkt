@@ -160,24 +160,20 @@
 
 ;; 导航（只动 active 视图的 window，然后把 active 的最终视口对齐到 follow 视图）
 (define (on-nav a thunk)
-  (define doc* (document-update-view (app-doc a) (app-active a)
-                 (lambda (w) (window-ensure-point (thunk w)))))
   (struct-copy app a
-    [doc (document-sync-followers doc* (app-active a))]))
+    [doc (document-update-view-synced (app-doc a) (app-active a)
+           (lambda (w) (window-ensure-point (thunk w))))]))
 
 ;; 编辑：document-edit 内部已经 ensure-point + 同步 follow，这里只需换 doc + 记一步撤回。
-;; 唯一的记录点：编辑前的 buffer 与光标都在手边，逆在这里捕获（ARCHITECTURE §9.3）。
+;; 逆与「编辑前的光标」由 document-edit-reversible 一并给出 —— 消费者不再自己求逆，
+;; §9.3 那个静默坑（用后态 buffer 求逆不报错）不可达（ARCHITECTURE §11.2 ③）。
 (define (on-edit a do-edit)
-  (define b0 (document-buffer (app-doc a)))        ; 编辑前 buffer（不可变引用，不复制）
-  (define-values (doc* desc) (do-edit (app-doc a) (app-active a)))
+  ;; do-edit 直接用 document-edit 的 edit-fn 形状：(buffer, line, col) → (values buffer desc)。
+  (define-values (doc* desc inv p0)
+    (document-edit-reversible (app-doc a) (app-active a) do-edit))
   (cond
     [(not desc) (struct-copy app a [doc doc*])]    ; no-op / 被 read-only 拒 → 不入栈
-    [else
-     (struct-copy app a
-       [doc doc*]
-       [hist (history-record (app-hist a) desc
-                             (buffer-edit-desc-inverse b0 desc)
-                             (window-point (active-window a)))])]))
+    [else (struct-copy app a [doc doc*] [hist (history-record (app-hist a) desc inv p0)])]))
 
 ;;; ---------- 撤销 / 重放（账本在 history.rkt；落回视图必须经 document）----------
 
@@ -198,10 +194,8 @@
      (define i (app-active a))
      (define doc* (apply-descs (app-doc a) i (step-undo-descs st)))
      (struct-copy app a
-       [doc (document-sync-followers
-             (document-update-view doc* i
-               (lambda (w) (window-ensure-point (window-set-point w (step-point st)))))
-             i)]
+       [doc (document-update-view-synced doc* i
+              (lambda (w) (window-ensure-point (window-set-point w (step-point st)))))]
        [hist h*])]))
 
 ;; 重放一步：正序应用原 desc；光标由 document-edit 落到「插入之后」，与原来一致。
@@ -218,7 +212,7 @@
   (cond
     [(quit-event? ev) (values a #t)]
     [(text-event? ev)
-     (values (on-edit a (lambda (doc i) (document-insert-string doc i (text-event-text ev)))) #f)]
+     (values (on-edit a (lambda (b l c) (buffer-insert-string b l c (text-event-text ev)))) #f)]
     [(key-event? ev)
      (define k (key-event-key ev))
      (define mods (key-event-modifiers ev))
@@ -235,13 +229,13 @@
        [else
         (case k
           [(tab)       (values (switch-active a) #f)]
-          [(enter)     (values (on-edit a (lambda (doc i) (document-newline doc i))) #f)]
-          [(backspace) (values (on-edit a (lambda (doc i) (document-backspace doc i))) #f)]
-          [(delete)    (values (on-edit a (lambda (doc i) (document-delete doc i))) #f)]
+          [(enter)     (values (on-edit a buffer-newline) #f)]
+          [(backspace) (values (on-edit a buffer-backspace) #f)]
+          [(delete)    (values (on-edit a buffer-delete) #f)]
           [(left)      (values (on-nav a window-left) #f)]
           [(right)     (values (on-nav a window-right) #f)]
-          [(up)        (values (on-nav a (lambda (w) (window-visual-move w -1))) #f)]
-          [(down)      (values (on-nav a (lambda (w) (window-visual-move w +1))) #f)]
+          [(up)        (values (on-nav a window-up) #f)]
+          [(down)      (values (on-nav a window-down) #f)]
           [(home)      (values (on-nav a window-home) #f)]
           [(end)       (values (on-nav a window-end) #f)]
           [else        (values a #f)])])]

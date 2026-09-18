@@ -1,6 +1,6 @@
 #lang racket
 
-(require rackunit)
+(require "width.rkt" rackunit)
 
 ;;; screen.rkt —— 后端无关的屏幕帧缓冲
 ;;;
@@ -15,7 +15,8 @@
  (struct-out screen)
  make-screen
  screen-diff-rows
- screen-compose)
+ screen-compose
+ screen->text)
 
 (struct run (col text face) #:transparent)
 ;; col  : 显示列（0-based，已按宽字符换算）
@@ -29,6 +30,21 @@
 
 (define (make-screen rows cols)
   (screen rows cols (make-vector rows '()) 0 0))
+
+;; 把一帧摊平成纯文本（**朴素投影**，与 screen-diff-rows 同类：给测试与无前端驱动用）：
+;; 按 run-col 定位、缺口补空格、宽字符按**显示宽度**占位。
+;; **不画光标、不加颜色/ANSI** —— 那是后端的事（ARCHITECTURE §11.2 ④b）。
+(define (screen->text s)
+  (string-join
+   (for/list ([runs (in-vector (screen-row-runs s))])
+     (define out (open-output-string))
+     (define col 0)
+     (for ([r (in-list runs)])
+       (when (> (run-col r) col) (display (make-string (- (run-col r) col) #\space) out))
+       (display (run-text r) out)
+       (set! col (+ (run-col r) (string-display-width (run-text r)))))
+     (get-output-string out))
+   "\n"))
 
 ;; 两屏（同尺寸）之间发生变化的行号：(listof row)。
 ;; 供增量绘制：后端只重画这些行（先清行再画）。

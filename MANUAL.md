@@ -61,6 +61,8 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
 | **撤销 / 重放** | **不在 core**：逆编辑代数用 `buffer-edit-desc-inverse` + `buffer-apply-edit-trusted`，账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
+| 看一台编辑器怎么拼 | `skeleton.rkt`（**无前端骨架**，不 require `io/`）：状态 + 三类操作 + 投影，用到 core 的 51 个名字（白名单的 24%） |
+| 看「捕获 ≠ 记账」 | `document-layer.rkt`：只调 document 层 vs 加一行 `history-record` 的对照——**record 前后 document 的值完全相同**（`document` 里没有 undo） |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
 
 ---
@@ -321,6 +323,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | 函数 | 输入 | 输出 |
 |---|---|---|
 | `window-open` | b [height 24] [width 80] | window |
+| `make-window` | [height 24] [width 80] | window（空构造器：带空 buffer；从 document 起步时用，省掉占位 buffer） |
 | `window-set-buffer` | w b | window（point 夹紧） |
 | `window-set-point` | w p | window |
 | `window-set-mode` | w 'clip\|'wrap | window |
@@ -353,6 +356,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `window-clamp-view` | w | window（把视口夹回合法域：mode-aware 夹 `top`/`top-seg`、`left-col` 吸附到字符起点） |
 | `window-ensure-point` | w | window（光标跟随滚动） |
 | `window-visual-move` | w delta | window（上下按视觉行移动） |
+| `window-up` / `window-down` | w | window（= `window-visual-move` ∓1；按**视觉行**，不是 buffer 行） |
 
 ### 6.3 width / render —— 宽度与渲染
 
@@ -373,6 +377,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 |---|---|---|
 | `make-screen` | rows cols | 空 screen |
 | `screen-diff-rows` | old new | (listof row)（变化行） |
+| `screen->text` | s | string（朴素文本投影：按 `run-col` 定位、缺口补空格、宽字符按显示宽度；**不画光标/颜色**，给测试与无前端驱动用） |
 | `screen-compose` | rows cols pieces active-id | screen（拼好的大屏） |
 | `window->screen` | w | screen（单窗口投影） |
 
@@ -393,8 +398,10 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `document-window` | doc i | window |
 | `document-view-sync` / `document-set-view-sync` | doc i [sync] | 'free\|'follow / document |
 | `document-update-view` | doc i f | document（f : window → window） |
+| `document-update-view-synced` | doc i f | document（同上 + 保持 follow 一致；改尺寸等「不镜像」的场合仍用上面那个） |
 | `document-sync-followers` | doc i | document（把 follow 视图对齐到 i） |
 | `document-edit` | doc i edit-fn | (values document desc) |
+| `document-edit-reversible` | doc i edit-fn | (values document desc inv pre-point)（逆用**编辑前**的 buffer 求出；no-op 时 desc/inv 为 #f；**不记历史**） |
 | `document-apply-edit` | doc i desc | (values document desc)（施加一条**自带坐标**的 desc；与 `document-edit` 同一漏斗） |
 | `document-apply-edit-trusted` | doc i desc | 同上，但跳过 read-only 守卫（撤销/重放专用，ARCHITECTURE §9.6） |
 | `document-insert-char` / `-insert-string` / `-newline` / `-backspace` / `-delete` | doc i … | (values document desc) |
@@ -507,6 +514,10 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
+>
+> **更完整的骨架**见 `skeleton.rkt`（**无前端**：不 require 任何 `io/`，事件手搓、输出只读
+> `screen` 的数据）——它把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开成三个函数，
+> 并列出实际用到的 core API：**52 个名字，占白名单 211 的 25%**。
 
 ---
 

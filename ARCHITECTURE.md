@@ -31,12 +31,14 @@ edit/
 │   └── view/             #   视口层（后端无关）：宽度/渲染/窗口/视觉行/屏幕/事件/多视图容器
 │                         #     width render window view screen project events document
 ├── history.rkt           # 消费层：撤销/重放账本（不 require document；归属见 §9.4）
-├── main.rkt              # 消费层：组装根（布局 / 输入路由 / 拼屏 / 键盘命令）
+├── skeleton.rkt          # 消费层：**无前端骨架**（状态 + 三类操作 + 投影；用 core 拼编辑器）
+├── document-layer.rkt    # 消费层：**document 层机制示例**（把"捕获 ≠ 记账"这条边界跑出来）
+├── main.rkt              # 消费层：完整示范（布局 / 输入路由 / 拼屏 / 键盘命令 + racket-tui 前端）
 └── tools/reconcile.rkt   # 文档 ↔ 可达面对账（§10.3 C/E）；racket tools/reconcile.rkt
 ```
 
-`core/` 之外的这两个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
-它们是「core 只给机制」这句话的示范。
+`core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
+它们是「core 只给机制」这句话的示范：`skeleton.rkt` 是无前端的最小拼装，`main.rkt` 是完整示范。
 
 依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
 
@@ -429,6 +431,9 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 所以 `buffer-edit-desc-inverse` 那句「b 须是 desc 生效前的 buffer」是**约定级**防护，没有机制
 拦你——这正是 §9.4 缝 1 的触发条件被收紧的原因。
 
+> **§11 之后（2026-09-18）**：这段的 `b0` / 求逆已由 `document-edit-reversible` 一句替代——
+> 消费者不再自己调 `buffer-edit-desc-inverse`，这个坑不再可达（见 §11.2 ③）。
+
 **core 零改动**：逆代数、`document-edit`（把一条 desc 当一次编辑落回视图）、
 `document-update-view` / `document-sync-followers`（收尾光标）全是现成公开 API。
 若 history 真是容器语义，core 里应该缺一块——它不缺，这是 §9.4 判据的实测依据。
@@ -459,14 +464,12 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 
 **两条缝（加法，不是"留坑"）**：
 
-- **缝 1**：出现**除本节示范（`main.rkt`）之外任何**要历史的消费者（多文档、宏录制、
-  可撤销的格式化器、插件侧可撤销编辑）→ 把"捕获"下沉成 document 的第二个显式入口
-  `document-edit-reversible` → `(values doc desc inv pre-point)`
-  （flag-free，形状同 `buffer-splice-trusted` 之于 `buffer-splice`）。**栈仍在外面**。
+- **缝 1**（**2026-09-18 已下沉**）：出现**除本节示范（`main.rkt`）之外任何**要历史的消费者
+  → 把"捕获"下沉成 document 的第二个显式入口 `document-edit-reversible` →
+  `(values doc desc inv pre-point)`（flag-free，形状同 `buffer-splice-trusted` 之于
+  `buffer-splice`）。**栈仍在外面**。触发它的正是 §11 的 `skeleton.rkt`（第二个消费​者）。
   > 触发线为什么收得这么紧：§9.3 那个坑是**静默**的（用后态 buffer 求逆不报错，只在删除
-  > 路径写坏历史）。示范之所以能自己捕获，是因为它只有一个编辑漏斗、位置明确；再多一个
-  > 消费者，就是"每个消费者各自重写那 3 行、并各自可能踩同一个静默坑"。所以不是等第二个，
-  > 是**不等**——但今天仍不实现（只有一个消费者，且有测试兜住）。
+  > 路径写坏历史）。所以不是等第二个消费者，是**不等**——等到了就做（见 §11.2 ③）。
 - **缝 2**：出现**多 splice 的单步动作** → 需要 `document-edit-batch`（原子落回视图、只
   rebase 一遍）；但**记录仍在外面**（动作层自己持有那几条 desc/inv，压成一步）。
 
@@ -716,3 +719,87 @@ fail-open 就会自动泄漏。
   `line start end prop val` 五元，多丢一个就把 `prop` 也丢了。
 - 测试里连踩两次「双值函数当单值用」（`document-apply-edit`）；这恰好**正面证明**了
   §10.4 的判断：形状误用是 arity 错（loud），不是静默错。
+
+## 11. 用起来别扭的 API：第二个消费者（骨架）暴露的四条
+
+> **状态**：设计定稿，分 4 步实施（见 §11.4）。证据来自 `skeleton.rkt` —— §10 之后加入的
+> **第二个消费者**（不接前端，只拼装），所以这里的判断第一次有了「不止一个消费方」的依据。
+> **全部是加法**：不动既有签名，也不动 §10.4 的决定。
+
+### 11.1 证据
+
+| # | 别扭 | 证据 | 为什么算问题 |
+|---|---|---|---|
+| ① | `window-open` 要一个**占位 buffer**（`document-add-view` 随即把它丢掉） | `skeleton.rkt:53,58`；core 自己的测试为此封了个具名 workaround `(define (blank-w) (window-open (buffer-open "") 10 40))` | 「为了被丢弃而存在」的实参 |
+| ② | 「改一个视图 → 对齐 follow」每次自己拼 | **2 消费者 4 处**：`main.rkt:166`（导航）/`:201`（撤销收光标）、`skeleton.rkt:84`/`:100` | 这是**容器不变量**（视图间一致性），该由容器的事务性入口承担 |
+| ③ | 账本只给「取出 step」；**捕获逆**要消费者自己写 | 捕获那段在 `main.rkt:179` 与 `skeleton.rkt:77` **逐字重复**；§9.3 的坑是**静默**的 | §9.4 缝 1 的触发条件（"除示范之外任何要历史的消费者"）**已满足** |
+| ④ | 左右是 `window-left/-right`，上下却要写 `(window-visual-move w ∓1)` | `skeleton.rkt` 键位表 | §4 约定「名字与键名同形」对上下不成立 |
+| ④b | 没有 `screen` 的朴素文本投影 | `skeleton.rkt` 自己写了 10 行 `screen->text` | 与 `screen-diff-rows` 同类（后端辅助/诊断），测试与无前端驱动反复需要 |
+
+### 11.2 目标态（四处新增）
+
+```racket
+;; ① 空构造器（§4 的 make-* 家族：make-content / make-marker-table / make-screen）
+(define (make-window [height 24] [width 80]) (window-open (buffer-open "") height width))
+
+;; ② 改第 i 个视图并**保持 follow 一致**（= 老的两步一次做完）
+;;    语义平行于 document-edit：这次变化由视图 i 发起，follow 视图必须跟它一致。
+(define (document-update-view-synced doc i f)
+  (document-sync-followers (document-update-view doc i f) i))
+
+;; ③ 与 document-edit 同一次编辑，外加：逆 desc（用**编辑前**的 buffer 求；no-op 时 #f）
+;;    与视图 i 编辑前的光标。**不记任何历史**——栈仍在消费层。
+(document-edit-reversible doc i edit-fn) → (values doc desc inv pre-point)
+
+;; ④ 方向名词一族（上下是**视觉行** = window-visual-move ∓1，不是 buffer 行）
+(define (window-up w)   (window-visual-move w -1))
+(define (window-down w) (window-visual-move w +1))
+
+;; ④b 朴素投影（与 screen-diff-rows 同类）：按 run-col 定位、缺口补空格、宽字符按显示宽度占位
+(screen->text s) → string
+```
+
+**为什么这样定形**：
+
+- ① 用 `make-*` 而不是给 `window-open` 加可选参数——可选参数在 Racket 只能**尾随**，`b` 在最前面
+  → 省不掉 `(buffer-open "")`；而 `make-*` 是既有约定。
+- ② 单独入口而不是改 `document-update-view`——**`resize-app` 需要「改视图但不镜像」**
+  （改尺寸不该重新镜像，`main.rkt:120-125`）；也不是 keyword flag（§8.8 判据）。
+- ③ 只做**捕获**，不做入栈判断（那是消费层的）；不做 batch 形态（§9.4 缝 2）。
+  它买到的：`buffer-edit-desc-inverse` 从消费者里归零 → §9.3 的静默坑**不可达**。
+- ④b 只做朴素文本（不画光标、不加颜色）——颜色/ANSI 是后端的事。
+
+### 11.3 明确不做
+
+1. 不改 `document-update-view` / `window-open` 的既有语义（理由见 §11.2）。
+2. 不加 `document-set-point-synced`（"设光标 + ensure + sync" 里那个 λ 只剩 1 行；
+   **触发条件**：第三个消费者也写它）。
+3. 不给 ② 加 keyword flag（§8.8）。
+4. `screen->text` 不做 ANSI / 颜色 / 光标 / 超宽截断。
+5. 不碰 §10.4 的决定；不把命令/键位/账本搬进 core。
+
+### 11.4 分步实施
+
+| 步 | 内容 | 验证 |
+|---|---|---|
+| 0 | ✅ 本节（设计定稿） | 文档自洽 |
+| 1 | ✅ ① `make-window`；`blank-w` workaround 删掉（改用 `(make-window 10 40)`） | 全绿 ＋ 消费者改用 |
+| 2 | ✅ ② `document-update-view-synced` ＋ 两个消费者 4 处改用 | 全绿 ＋ `'follow` 回归仍过 |
+| 3 | ✅ ③ `document-edit-reversible` ＋ 两个消费者改用 | 全绿 ＋ **消费者里 `buffer-edit-desc-inverse` 归零** ＋ 撤销仍精确 |
+| 4 | ✅ ④ `window-up`/`-down` ＋ `screen->text` ＋ 骨架/示范改用；白名单与 MANUAL 同步 | 全绿 ＋ 对账 0 漂移 |
+
+**结果（2026-09-18）**：测试 **552 → 563**；白名单 **211 → 217**（+6：`make-window`、
+`document-update-view-synced`、`document-edit-reversible`、`window-up`、`window-down`、`screen->text`）。
+骨架用到的 core 名字 **52/211 → 51/217（24%）**——净减 1，但构成变了：
+`document-update-view` + `document-sync-followers` 合成一个、`document-insert-*` 换成 buffer 级
+edit-fn、`run-col`/`run-text` 由 `screen->text` 取代。**消费者里 `buffer-edit-desc-inverse` 归零**
+——§9.3 那个静默坑不再可达。
+
+**实施期踩坑（有信息量的一条）**：
+
+- `on-edit` 原来转的是**整次 document 编辑**（消费者协议 `do-edit : doc → i → …`），而
+  `document-edit-reversible` 要的是 `document-edit` 的 **buffer 级 edit-fn**。第一次改写漏了这层
+  差异 → 两个消费者一起 arity 错。最终**改调用点**（把 `buffer-insert-string` / `buffer-newline`…
+  直接当 edit-fn），于是 `on-edit` 反而更短、也不需要适配层。
+  顺带说明一件事：**`document-edit` 的 `(buffer, line, col)` 就是"编辑"在 core 里的规范形状**；
+  消费层用 `document-insert-*` 虽顺手，却正好挡住了可逆入口——这也是 §10.4「形状差异」的一个实例。

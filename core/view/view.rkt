@@ -21,7 +21,9 @@
  window-scroll-visual
  window-ensure-point
  window-clamp-view
- window-visual-move)
+ window-visual-move
+ window-up
+ window-down)
 
 (struct vrow (line start-col end-col) #:transparent)
 ;; line      : buffer 行号（-1 = 空白行）
@@ -415,6 +417,11 @@
     (visual-move b (point-line p) (point-col p)
                  (window-width w) (window-mode w) delta))
   (if l (window-set-point w (point l c)) w))
+
+;; 方向名词一族（§4：名字与键名同形）。**按视觉行**移动（= window-visual-move ∓1），
+;; 不是 buffer 行 —— wrap 模式下两者不同；window-visual-move 留给 delta 用法（§11.2 ④）。
+(define (window-up w)   (window-visual-move w -1))
+(define (window-down w) (window-visual-move w +1))
 
 (module+ test
   ;; line-range->runs：宽字符 + 裁剪

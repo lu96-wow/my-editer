@@ -151,17 +151,17 @@
  ;; screen —— 输出契约
  screen screen? struct:screen screen-rows screen-cols screen-row-runs
  screen-cursor-row screen-cursor-col
- make-screen screen-diff-rows screen-compose
+ make-screen screen-diff-rows screen-compose screen->text
  run run? struct:run run-col run-text run-face
  ;; window —— 视口 + 编辑/导航
- window window? struct:window window-open window-buffer window-point
+ window window? struct:window window-open make-window window-buffer window-point
  window-height window-width window-mode window-top-line window-left-col window-top-seg
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
  window-set-top-seg window-set-size window-scroll window-hscroll window-goto
  window-left window-right window-home window-end
  window-insert-char window-insert-string window-newline window-backspace window-delete
  ;; 窗口级操作（vrow 布局内部藏起来）
- window-ensure-point window-clamp-view window-visual-move
+ window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual
  ;; window->screen —— 投影成画面
  window->screen
@@ -169,8 +169,9 @@
  view view? struct:view view-window view-sync
  document document? struct:document document-open document-of-buffer
  document-add-view document-view-count document-view-ref document-window
- document-view-sync document-set-view-sync document-update-view document-sync-followers
- document-edit document-apply-edit document-apply-edit-trusted
+ document-view-sync document-set-view-sync document-update-view document-update-view-synced
+ document-sync-followers
+ document-edit document-edit-reversible document-apply-edit document-apply-edit-trusted
  document-insert-char document-insert-string document-newline document-backspace document-delete
  document-buffer document-views)
 
