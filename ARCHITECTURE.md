@@ -795,11 +795,91 @@ fail-open 就会自动泄漏。
 edit-fn、`run-col`/`run-text` 由 `screen->text` 取代。**消费者里 `buffer-edit-desc-inverse` 归零**
 ——§9.3 那个静默坑不再可达。
 
-**实施期踩坑（有信息量的一条）**：
+**实施期踩坑（有信息量的一条，它正是 §12 的动机）**：
 
 - `on-edit` 原来转的是**整次 document 编辑**（消费者协议 `do-edit : doc → i → …`），而
   `document-edit-reversible` 要的是 `document-edit` 的 **buffer 级 edit-fn**。第一次改写漏了这层
   差异 → 两个消费者一起 arity 错。最终**改调用点**（把 `buffer-insert-string` / `buffer-newline`…
   直接当 edit-fn），于是 `on-edit` 反而更短、也不需要适配层。
   顺带说明一件事：**`document-edit` 的 `(buffer, line, col)` 就是"编辑"在 core 里的规范形状**；
-  消费层用 `document-insert-*` 虽顺手，却正好挡住了可逆入口——这也是 §10.4「形状差异」的一个实例。
+  消费层用 `document-insert-*` 虽顺手，却正好挡住了可逆入口。**这条痛点由 §12 治**（把"编辑"
+  补成可传的规范函数，消费者不必再写 buffer 级 λ）。
+
+## 12. 让编辑路径不再下探 `buffer-*`：动作的规范函数
+
+> **状态**：设计定稿，分 4 步实施（§12.4）。
+> **问题（读代码得出，不靠文档）**：写一台带撤销的编辑器，生产代码里必须同时出现
+> `document-*`、`window-*`、`buffer-*`、`history-*`/`step-*` **四套前缀**；其中只有
+> **"编辑"** 那一条是设计造出来的：可逆入口（§11 ③）要求 edit-fn 是 buffer 级，
+> 而 `document-insert-*` 那套便利包装拿不到 `inv` ⇒ **顺手的层不可记账，可记账的层不顺手**。
+> 几何（window）、属性（buffer）、账本（history）那三条是真实分工，不在本节范围。
+
+### 12.1 目标态（加法，5 + 2 个）
+
+```racket
+;; ① 编辑动作的"规范函数"（buffer.rkt，紧挨原语）：把常用编辑变成可传的值
+(define (edit-insert s)    (lambda (b l c) (buffer-insert-string b l c s)))
+(define (edit-newline)     buffer-newline)      ; 形状本来就一致，就是它
+(define (edit-backspace)   buffer-backspace)
+(define (edit-delete)      buffer-delete)
+(define (edit-splice s-line s-col e-line e-col new-text)   ; 通用逃生门
+  (lambda (b _l _c) (buffer-splice b s-line s-col e-line e-col new-text)))
+
+;; ② 文档的读入口（补全"读也在 document 层"）
+(document->string doc) → string
+(document->lines doc)  → (listof string)
+```
+
+**消费者代码的前后**：
+
+```racket
+前  (on-edit a (lambda (b l c) (buffer-insert-string b l c (text-event-text ev))))
+后  (on-edit a (edit-insert (text-event-text ev)))
+前  [(enter) (on-edit a buffer-newline)]       后  [(enter) (on-edit a (edit-newline))]
+前  (document-of-buffer (buffer-open text))    后  (document-open text)
+前  (buffer->string (document-buffer doc))     后  (document->string doc)
+```
+
+### 12.2 为什么是"构造器"而不是 `edit-op` 结构体 + core 里 `case`
+
+| | 构造器（本节） | 结构体 + 解释 |
+|---|---|---|
+| document 入口数 | **不变**（仍是 `document-edit` / `-reversible`） | +1，还要决定是否配 `-reversible` 孪生 |
+| 扩展性 | 不关闭：自定义 λ 依然合法 | 封闭词表，加一种编辑 = 加分支 |
+| core 里的重复 | 无（就是给已有原语起名） | 把同一份编辑词表**再枚举一遍** |
+| 将来"动作即数据" | 可叠加：一行 `op->edit-fn` 就能接上 | 就是它 |
+
+**命名**：`edit-*`（与 `edit-desc` 同族——一个描述一次编辑，一个就是那次编辑）；不用 `*-op`
+（后缀会读成数据，而它们是函数）。
+
+### 12.3 边界与明确不做
+
+1. **不动** `document-edit` / `document-edit-reversible` 的签名（仍收 edit-fn；`edit-*` 只是
+   规范填充物，消费者随时可传自己的 λ）。
+2. **不把账本收进 document**（§9.4 归属不变）；`history-*`/`step-*` 仍在消费层。
+3. **不做** `edit-op` 结构体 / core 里的 `case` 解释（留作宏录制/命令面板出现时的加分项）。
+4. **不给 document 造几何入口**（`document-left` 之类）——视图几何属 window。
+5. **不删** `document-buffer` / `buffer-*`：`buffer-*` 只从**编辑路径**消失；属性/只读
+   （`buffer-put-properties-many` / `buffer-put-restrict`）、建文档前的 setup 仍在 buffer 层，
+   这是合理的层次分工（§10.1）。
+6. 不加 `document-line-count` 之类（`document->lines` 够；要就自己数）。
+
+### 12.4 分步实施
+
+| 步 | 内容 | 验证 |
+|---|---|---|
+| 0 | ✅ 本节（设计定稿） | 文档自洽 |
+| 1 | ✅ ① `edit-*` 家族 ＋ 测试（与手写 λ 逐字等价） | 全绿 |
+| 2 | ✅ ② `document->string` / `document->lines` ＋ 测试 | 全绿 |
+| 3 | ✅ 两个消费者改用（`edit-*` / `document-open` / `document->string`） | 全绿 ＋ **`grep buffer- skeleton.rkt` = 空**（连测试都没有） |
+| 4 | ✅ 白名单（217 → 224）、MANUAL 行、本节状态、对账 | 对账 0 漂移 |
+
+**结果（2026-09-18）**：测试 **563 → 586**；白名单 **217 → 224**（+7：5 个 `edit-*` ＋
+`document->string` / `document->lines`）。`skeleton.rkt` 用到的 core 名字 **51/217 → 50/224（22%）**，
+而**编辑路径上 `buffer-*` 归零**（机器可测：`grep buffer- skeleton.rkt` 为空）。
+`main.rkt` 里残留的 `buffer-*` 只剩**属性/约束域**：`highlight` / `mark-prompt`（建文档前往 buffer
+写 face 与 read-only）、以及测试里的 `buffer-read-only-at?` / `buffer-get-property`。
+**这正是"分工 vs 缺陷"的判据**：编辑（含记账）不该下探 → 已归零；属性/只读本属 buffer 层 → 保留。
+
+**踩坑**：新测试里两次把双值函数塞进单值位置（`(buffer->string (run-op …))`）→ 又是那个 arity 错。
+`edit-*` 的返回是"函数"，调用时要 `((edit-insert "XY") b l c)` 或先绑成变量——这也是它不关扩展性的代价。

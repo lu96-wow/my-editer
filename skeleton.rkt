@@ -18,9 +18,9 @@
 ;;;   3. 鼠标屏幕坐标 → (窗口, 行列)：命中哪个窗口是布局知识（`window-screen->point` 负责后半段）。
 ;;;
 ;;; ── 这台编辑器用到的 core API（按角色分组；tools/ 可对账）──────────────
-;;;   状态与装配   buffer-open make-window document-of-buffer document-add-view
-;;;   编辑         buffer-insert-string buffer-newline buffer-backspace buffer-delete
-;;;                （**buffer 级 edit-fn 形状** —— 这是 document-edit 的契约形状）
+;;;   状态与装配   document-open make-window document-add-view
+;;;   编辑         edit-insert edit-newline edit-backspace edit-delete
+;;;                （"编辑动作的规范函数" —— 消费者不必写 buffer 级 λ，见 ARCHITECTURE §12）
 ;;;   记账（逆）    document-edit-reversible（逆与「编辑前光标」一次给出；账本在 history.rkt）
 ;;;   导航/滚动     window-left window-right window-home window-end window-up window-down
 ;;;                window-scroll window-set-point window-ensure-point
@@ -28,16 +28,18 @@
 ;;;   视图管理     document-view-count document-window document-view-sync document-set-view-sync
 ;;;   撤销/重放     document-apply-edit-trusted（＋ history 消费层的 pop）
 ;;;   渲染         window->screen screen-compose screen
+;;;   读文档       document->string（消费者读文本也不下探 buffer）
 ;;;   纯文本驱动    screen->text screen-cursor-row screen-cursor-col（仅用于打印）
 ;;;   事件类型     text-event key-event modifiers（这里手搓；真前端负责解码）
 ;;;
 ;;; ── 实测：拼一台编辑器用到多少 core？──────────────────────────────
-;;; 扫描本文件（去注释后）∩ `core/api.rkt` 白名单：**51 个名字 = 白名单 217 的 24%**
-;;; （另加消费层 `history.rkt` 的 10 个）。没用到的 156 个集中在**骨架没实现的功能**：
-;;; 属性/语法高亮、只读约束、marker/overlay、patch、鼠标事件、增量绘制
-;;; （`screen-diff-rows`）、wrap / 水平滚动细节，以及 `window-*` / `document-*` 的现成编辑
-;;; 包装（编辑走「buffer 级 edit-fn + document 漏斗」，所以那些不用）……
-;;; 结论：**能编辑、能撤销、能分屏的编辑器，只用到 core 的四分之一。**
+;;; 扫描本文件（去注释后）∩ `core/api.rkt` 白名单：**50 个名字 = 白名单 224 的 22%**
+;;; （另加消费层 `history.rkt` 的 10 个）。**编辑路径上 `buffer-*` 一个都不出现**——
+;;; 编辑走 `edit-*`（§12），读文本走 `document->string`。
+;;; 没用到的 174 个集中在骨架没实现的功能：属性/语法高亮、只读约束、marker/overlay、patch、
+;;; 鼠标事件、增量绘制（`screen-diff-rows`）、wrap / 水平滚动细节，以及 `window-*` /
+;;; `document-*` 的现成编辑包装（编辑已走 `edit-*` + document 漏斗，所以那些不用）……
+;;; 结论：**能编辑、能撤销、能分屏的编辑器，只用到 core 的五分之一多一点。**
 ;;; ────────────────────────────────────────────────────────────────
 
 ;;; ---------- ① 状态：一台编辑器只有三样东西 ----------
@@ -50,7 +52,7 @@
 (define (make-editor text [height 8] [width 40] #:views [nviews 1])
   ;; buffer 是文档（无光标）；window 是"怎么看它"（有光标）。
   ;; 两样都装进 document：document 保证所有视图共享同一 buffer。
-  (define doc0 (document-of-buffer (buffer-open text)))
+  (define doc0 (document-open text))
   (define-values (doc1 i0) (document-add-view doc0 (make-window height width)))
   (define docn
     (for/fold ([d doc1]) ([i (in-range 1 nviews)])
@@ -117,7 +119,7 @@
 (define (handle a ev)
   (cond
     [(text-event? ev)
-     (on-edit a (lambda (b l c) (buffer-insert-string b l c (text-event-text ev))))]
+     (on-edit a (edit-insert (text-event-text ev)))]
     [(key-event? ev)
      (define k (key-event-key ev))
      (define mods (key-event-modifiers ev))
@@ -129,9 +131,9 @@
           [else a])]
        [(symbol? k)
         (case k
-          [(enter)     (on-edit a buffer-newline)]
-          [(backspace) (on-edit a buffer-backspace)]
-          [(delete)    (on-edit a buffer-delete)]
+          [(enter)     (on-edit a (edit-newline))]
+          [(backspace) (on-edit a (edit-backspace))]
+          [(delete)    (on-edit a (edit-delete))]
           [(left)      (on-nav a window-left)]
           [(right)     (on-nav a window-right)]
           [(up)        (on-nav a window-up)]
@@ -204,8 +206,7 @@
 ;;; ---------- 测试（这台骨架确实是一台能用的编辑器）----------
 
 (module+ test
-  (define (buf a) (document-buffer (ed-doc a)))
-  (define (text-of a) (buffer->string (buf a)))
+  (define (text-of a) (document->string (ed-doc a)))
   (define (keys . ks) (for/list ([k (in-list ks)]) (key-event k (modifiers #f #f #f #f))))
   (define (texts . ts) (for/list ([t (in-list ts)]) (text-event t (modifiers #f #f #f #f))))
   (define (feed a evs) (for/fold ([x a]) ([ev (in-list evs)]) (handle x ev)))
@@ -245,7 +246,7 @@
   (check-eq? (document-buffer (ed-doc m0))
              (window-buffer (document-window (ed-doc m0) 1)))
   (define m1 (feed m0 (texts "X")))
-  (check-equal? (buffer->string (document-buffer (ed-doc m1))) "Xhello")
+  (check-equal? (document->string (ed-doc m1)) "Xhello")
   (check-equal? (window-point (document-window (ed-doc m1) 1))
                 (window-point (document-window (ed-doc m1) 0)))
   ;; 切 active 视图后，编辑作用在视图 1 上

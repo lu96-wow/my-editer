@@ -34,6 +34,11 @@
  buffer-newline
  buffer-backspace
  buffer-delete
+ edit-insert
+ edit-newline
+ edit-backspace
+ edit-delete
+ edit-splice
  buffer-apply-edit
  buffer-apply-edit-trusted
  buffer-edit-desc-inverse
@@ -203,6 +208,20 @@
 
 (define (buffer-delete b line col)
   (buffer-edit-at b line col content-delete))
+
+;;; ---------- 编辑动作的规范函数（ARCHITECTURE §12）----------
+;;; 把常用编辑变成**可传的值**，消费者不必再写 buffer 级 λ：
+;;;     (on-edit a (edit-insert s))   而不是   (on-edit a (lambda (b l c) (buffer-insert-string b l c s)))
+;;; 与 `edit-desc` 同族：一个**描述**一次编辑，一个**就是**那次编辑。
+;;; 不关扩展性：自定义 λ 依然合法（document-edit 收的仍是函数）。
+
+(define (edit-insert s)   (lambda (b l c) (buffer-insert-string b l c s)))
+(define (edit-newline)    buffer-newline)     ; 形状本来就一致，就是它
+(define (edit-backspace)  buffer-backspace)
+(define (edit-delete)     buffer-delete)
+;; 通用逃生门：显式坐标的替换（程序化编辑，如"把选区换成这段文本"）
+(define (edit-splice s-line s-col e-line e-col new-text)
+  (lambda (b _l _c) (buffer-splice b s-line s-col e-line e-col new-text)))
 
 ;; 应用单个 edit-desc（buffer-splice 的 desc 版），返回 (values buffer desc)（desc 即 d）。
 ;; 与 edit.rkt 的 buffer-apply-edit-batch 不同：不批量、不重排、不查重叠。撤销/重放的落点。
@@ -585,5 +604,23 @@
              (lambda () (buffer-make-overlay (buffer-open "abc\ndef") (point 1 0) (point 0 1))))
   ;; A5：边界合法（行尾 = 行长）
   (check-true (let-values ([(b* _) (buffer-make-marker (buffer-open "abc") (point 0 3))]) (buffer? b*)))
+
+  ;; ---- §12：编辑动作的规范函数 ----
+  (define (run-op op b l c) (let-values ([(b* d) (op b l c)]) (values b* d)))
+  (define (op-b op b l c) (let-values ([(b* _) (op b l c)]) b*))
+  (define edop-b (buffer-open "abc"))
+  (check-equal? (buffer->string (op-b (edit-insert "XY") edop-b 0 1)) "aXYbc")
+  (check-equal? (buffer->string (op-b (edit-newline) edop-b 0 1)) "a\nbc")
+  (check-equal? (buffer->string (op-b (edit-backspace) edop-b 0 2)) "ac")
+  (check-equal? (buffer->string (op-b (edit-delete) edop-b 0 1)) "ac")
+  (check-equal? (buffer->string (op-b (edit-splice 0 0 0 1 "Z") edop-b 0 0)) "Zbc")
+  ;; 与手写 λ 逐字等价（含 desc）
+  (check-equal? (let-values ([(b* d) (run-op (edit-insert "XY") edop-b 0 1)]) (list (buffer->string b*) d))
+                (let-values ([(b* d) ((lambda (bb l c) (buffer-insert-string bb l c "XY")) edop-b 0 1)])
+                  (list (buffer->string b*) d)))
+  ;; 那几个"直接就是原语"的（同一过程对象），插入那个是构造器（每次新闭包）
+  (check-eq? (edit-newline) buffer-newline)
+  (check-eq? (edit-backspace) buffer-backspace)
+  (check-false (eq? (edit-insert "x") (edit-insert "x")))
 
   (displayln "buffer.rkt: all tests passed"))

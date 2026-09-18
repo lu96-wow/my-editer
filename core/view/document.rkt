@@ -37,6 +37,8 @@
  (struct-out document)
  document-open
  document-of-buffer
+ document->string
+ document->lines
  document-view-count
  document-view-ref
  document-add-view
@@ -73,6 +75,11 @@
 
 ;; 从已配置好的 buffer 构造（如已做语法高亮 / read-only 标记的 buffer）
 (define (document-of-buffer b) (document b '()))
+
+;; 文档的读入口（ARCHITECTURE §12）：消费者读文本不必再下探 buffer-*。
+;; 想拿真正的 buffer（插件/属性等）仍走 document-buffer 这个访问器。
+(define (document->string doc) (buffer->string (document-buffer doc)))
+(define (document->lines doc) (buffer->lines (document-buffer doc)))
 
 (define (document-view-count doc) (length (document-views doc)))
 
@@ -402,5 +409,10 @@
   (check-equal? (buffer->string (document-buffer erg)) "hello")   ; 守卫拒绝：文本未变
   (define-values (er1 _er1d) (document-apply-edit-trusted er0 0 er-desc))
   (check-equal? (buffer->string (document-buffer er1)) "heZllo")
+
+  ;; §12：文档读入口
+  (check-equal? (document->string (document-open "a\nb")) "a\nb")
+  (check-equal? (document->lines (document-open "a\nb")) '("a" "b"))
+  (check-equal? (document->lines (document-open "")) '(""))
 
   (displayln "document.rkt: all tests passed"))

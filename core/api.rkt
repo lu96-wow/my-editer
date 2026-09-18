@@ -117,6 +117,7 @@
  buffer-line-count buffer-line-ref
  buffer-splice buffer-splice-trusted buffer-insert-char buffer-insert-string
  buffer-newline buffer-backspace buffer-delete
+ edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit-desc-inverse
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-read-only-at?
@@ -167,7 +168,7 @@
  window->screen
  ;; document —— 共享 buffer 的多窗口同步
  view view? struct:view view-window view-sync
- document document? struct:document document-open document-of-buffer
+ document document? struct:document document-open document-of-buffer document->string document->lines
  document-add-view document-view-count document-view-ref document-window
  document-view-sync document-set-view-sync document-update-view document-update-view-synced
  document-sync-followers

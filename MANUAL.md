@@ -51,7 +51,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 
 | 我要做 | 用这些 |
 |---|---|
-| 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`） |
+| 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`）；**配合 document 用** `edit-insert` / `edit-newline` / `edit-backspace` / `edit-delete` / `edit-splice`（可传的值，§12） |
 | 程序化编辑（自带坐标） | 构造 `edit-desc` → `buffer-apply-edit`（或 `buffer-apply-edit-trusted`） |
 | 部分只读 | `buffer-put-restrict` + `restrict`（守卫规则见 §7.5） |
 | 语法高亮 / 标注 | `buffer-put-properties-many`（一次 tick） |
@@ -60,8 +60,8 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position` |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
-| **撤销 / 重放** | **不在 core**：逆编辑代数用 `buffer-edit-desc-inverse` + `buffer-apply-edit-trusted`，账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
-| 看一台编辑器怎么拼 | `skeleton.rkt`（**无前端骨架**，不 require `io/`）：状态 + 三类操作 + 投影，用到 core 的 51 个名字（白名单的 24%） |
+| **撤销 / 重放** | **不在 core**：配合 document 用 `document-edit-reversible`（逆与编辑前光标一次给出，§11/§12）；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
+| 看一台编辑器怎么拼 | `skeleton.rkt`（**无前端骨架**，不 require `io/`）：状态 + 三类操作 + 投影，用到 core 的 50 个名字（白名单的 22%）；**编辑路径上不出现一个 `buffer-*`**（§12） |
 | 看「捕获 ≠ 记账」 | `document-layer.rkt`：只调 document 层 vs 加一行 `history-record` 的对照——**record 前后 document 的值完全相同**（`document` 里没有 undo） |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
 
@@ -276,6 +276,9 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-newline` | b line col | (values buffer edit-desc) |
 | `buffer-backspace` | b line col | (values buffer edit-desc) |
 | `buffer-delete` | b line col | (values buffer edit-desc) |
+| `edit-insert` | s | buffer line col → (values buffer edit-desc)（把「插入」变成**可传的值**；见 §12） |
+| `edit-newline` / `edit-backspace` / `edit-delete` | — | 同上（就是那几个原语；形状本来就一致） |
+| `edit-splice` | s-line s-col e-line e-col new-text | 同上（通用：替换区间 —— 程序化编辑的逃生门） |
 | `buffer-apply-edit` | b desc | (values buffer edit-desc)（应用单个 desc，不重排/不查重叠） |
 | `buffer-apply-edit-trusted` | b desc | (values buffer edit-desc)（同上，但跳过 read-only 守卫；撤销/重放用） |
 | `buffer-edit-desc-inverse` | b desc | edit-desc（逆编辑；b 须是 desc 生效前的 buffer） |
@@ -393,6 +396,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 |---|---|---|
 | `document-open` | s | document |
 | `document-of-buffer` | b | document（从已配置的 buffer 构造） |
+| `document->string` / `document->lines` | doc | string / (listof string)（读文本的 document 层入口；要真 buffer 用 `document-buffer`） |
 | `document-add-view` | doc w [p] [#:sync 'free\|'follow] | (values document index) |
 | `document-view-count` / `document-view-ref` | doc [i] | nat / view |
 | `document-window` | doc i | window |

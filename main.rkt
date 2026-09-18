@@ -212,7 +212,7 @@
   (cond
     [(quit-event? ev) (values a #t)]
     [(text-event? ev)
-     (values (on-edit a (lambda (b l c) (buffer-insert-string b l c (text-event-text ev)))) #f)]
+     (values (on-edit a (edit-insert (text-event-text ev))) #f)]
     [(key-event? ev)
      (define k (key-event-key ev))
      (define mods (key-event-modifiers ev))
@@ -229,9 +229,9 @@
        [else
         (case k
           [(tab)       (values (switch-active a) #f)]
-          [(enter)     (values (on-edit a buffer-newline) #f)]
-          [(backspace) (values (on-edit a buffer-backspace) #f)]
-          [(delete)    (values (on-edit a buffer-delete) #f)]
+          [(enter)     (values (on-edit a (edit-newline)) #f)]
+          [(backspace) (values (on-edit a (edit-backspace)) #f)]
+          [(delete)    (values (on-edit a (edit-delete)) #f)]
           [(left)      (values (on-nav a window-left) #f)]
           [(right)     (values (on-nav a window-right) #f)]
           [(up)        (values (on-nav a window-up) #f)]
@@ -257,6 +257,7 @@
   (define a (make-app 10 40))
   (define (w0 a) (document-window (app-doc a) 0))
   (define (w1 a) (document-window (app-doc a) 1))
+  (define (line0 ap) (list-ref (document->lines (app-doc ap)) 0))   ; 读文本走 document 层（§12）
 
   ;; 布局：左右各 20 列，高 9（10-1 状态行）
   (check-equal? (window-width (w0 a)) 20)
@@ -281,8 +282,8 @@
 
   ;; 核心同步：左窗打字 → 右窗（同一 buffer）实时看到；右窗 follow 镜像左窗光标
   (define-values (a2 _1) (handle a (text-event "X" (modifiers #f #f #f #f))))
-  (check-equal? (buffer-line-ref (window-buffer (w0 a2)) 0) "❯ X输入区 hello 你好")
-  (check-equal? (buffer-line-ref (window-buffer (w1 a2)) 0) "❯ X输入区 hello 你好")  ; 右窗同步
+  (check-equal? (line0 a2) "❯ X输入区 hello 你好")
+  (check-equal? (line0 a2) "❯ X输入区 hello 你好")  ; 右窗同步（同一 buffer）
   (check-eq? (window-buffer (w0 a2)) (window-buffer (w1 a2)))                        ; 仍不分叉
   (check-equal? (window-point (w0 a2)) (point 0 3))   ; 编辑视图光标推进
   (check-equal? (window-point (w1 a2)) (point 0 3))   ; follow 镜像
@@ -291,8 +292,8 @@
   (define-values (a3 _2) (handle a2 (key-event 'tab (modifiers #f #f #f #f))))
   (check-equal? (app-active a3) 1)
   (define-values (a4 _3) (handle a3 (text-event "Y" (modifiers #f #f #f #f))))
-  (check-equal? (buffer-line-ref (window-buffer (w1 a4)) 0) "❯ XY输入区 hello 你好")
-  (check-equal? (buffer-line-ref (window-buffer (w0 a4)) 0) "❯ XY输入区 hello 你好")  ; 左窗同步
+  (check-equal? (line0 a4) "❯ XY输入区 hello 你好")
+  (check-equal? (line0 a4) "❯ XY输入区 hello 你好")  ; 左窗同步（同一 buffer）
   (check-eq? (window-buffer (w0 a4)) (window-buffer (w1 a4)))
   (check-equal? (window-point (w1 a4)) (point 0 4))   ; 右窗（编辑）光标推进
   (check-equal? (window-point (w0 a4)) (point 0 3))   ; 左窗（free）光标不动
@@ -313,7 +314,6 @@
   ;; ---- 撤销 / 重放（端到端；账本在 history.rkt）----
   (define ctrl-z (key-event #\z (modifiers #t #f #f #f)))
   (define ctrl-y (key-event #\y (modifiers #t #f #f #f)))
-  (define (line0 ap) (buffer-line-ref (window-buffer (document-window (app-doc ap) 0)) 0))
 
   ;; 连续打字 = 一步（段合并）
   (define ua (make-app 10 40))
