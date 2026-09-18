@@ -79,8 +79,9 @@
 ;;;
 ;;; ── 导出边界（内部实现不对外）────────────────────────────────
 ;;;   对外（消费者层）：point buffer window screen events edit-desc patch width document
-;;;   对外（机制层）：buffer-splice / buffer-apply-edits、marker/overlay 的 buffer 级入口、
-;;;                dirty-desc、with-read-only-inhibited
+;;;   对外（机制层）：buffer-splice / buffer-apply-edit-batch、buffer-apply-edit、
+;;;                buffer-edit-desc-inverse / edit-desc-inverse（撤销原语）、
+;;;                marker/overlay 的 buffer 级入口、dirty-desc、with-read-only-inhibited
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
 ;;;                     render-* vrow/layout/wrap/window-vrows
 ;;; ============================================================================
@@ -106,8 +107,8 @@
              content content? struct:content content-lines content-gap-line content-gap-col
              make-content content-of-lines content-of-string string->lines
              content->lines content->string content-current-line content-line-count
-             content-line-ref content-check content-set-col content-gap-up
-             content-gap-down content-gap-goto content-splice content-insert-char
+             content-line-ref content-check content-gap-goto
+             content-splice content-insert-char
              content-insert-string content-newline content-backspace content-delete)
  ;; buffer.rkt：文档原子；去重 edit-desc（以 content.rkt 为唯一来源）
  (except-out (all-from-out "text/buffer.rkt")

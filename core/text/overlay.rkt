@@ -20,8 +20,8 @@
  (struct-out overlay)
  (struct-out overlay-table)
  make-overlay-table
- overlay-table-make
- overlay-table-delete
+ overlay-table-add
+ overlay-table-remove
  overlay-table-get
  overlay-table-all
  overlay-table-count
@@ -43,7 +43,7 @@
 (define (make-overlay-table) (overlay-table 0 '() (hash)))
 
 ;; 需要调用者先给 start / end 建 marker，再传入它们的 id。
-(define (overlay-table-make ot start-id end-id [plist (hash)])
+(define (overlay-table-add ot start-id end-id [plist (hash)])
   (define id (overlay-table-next-id ot))
   (define ov (overlay id start-id end-id plist))
   (values (overlay-table (add1 id)
@@ -51,7 +51,7 @@
                          (hash-set (overlay-table-by-id ot) id ov))
           id))
 
-(define (overlay-table-delete ot id)
+(define (overlay-table-remove ot id)
   (overlay-table (overlay-table-next-id ot)
                  (filter (lambda (ov) (not (= (overlay-id ov) id)))
                          (overlay-table-overlays ot))

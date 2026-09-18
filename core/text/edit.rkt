@@ -5,19 +5,17 @@
 ;;; edit.rkt —— 批量编辑应用原语（编辑插件的 core 侧机制）
 ;;;
 ;;; 一次编辑 = 一个 edit-desc（统一 splice）。本模块提供：
-;;;   - buffer-apply-edits   : 把一批「同一坐标系」的编辑原子应用到 buffer
+;;;   - buffer-apply-edit-batch   : 把一批「同一坐标系」的编辑原子应用到 buffer
 ;;;   - edits-map-position : 把一个点依次映射过一串「应用顺序」的编辑
 ;;;
 ;;; 纯函数，数据 -> lambda -> 数据，无任何副作用/线程。
 
 (provide
- buffer-apply-edits
+ buffer-apply-edit-batch
  edits-map-position)
 
-;;; ---------- 位置比较（(line col) 字典序，0-based）----------
-
-(define (pos<? l1 c1 l2 c2)
-  (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
+;;; ---------- 位置比较 ----------
+;; pos<? / pos=? 的唯一实现在 point.rkt（本模块 require 它）。
 
 ;; edit-desc 按起点 (s-line s-col) 字典序比较
 (define (edit-start<? a b)
@@ -32,7 +30,7 @@
 ;; 重叠（含跨行）→ 报错；同起点零宽插入按原列表顺序确定性地应用。
 ;; 返回 (values 新 buffer (listof edit-desc))，descs 为「应用顺序」（倒序位置），
 ;; 供上层按序映射 point（见 edits-map-position）。
-(define (buffer-apply-edits b edits)
+(define (buffer-apply-edit-batch b edits)
   (cond
     [(null? edits) (values b '())]
     [else
@@ -52,16 +50,20 @@
            [d (in-list (rest sorted))])
        (when (pos<? (edit-desc-s-line d) (edit-desc-s-col d)
                     (edit-desc-e-line a) (edit-desc-e-col a))
-         (error 'buffer-apply-edits "编辑重叠: ~a 与 ~a" a d)))
-     ;; 倒序应用，按应用顺序收集 desc（供上层按序映射 point）
-     (for/fold ([b b] [descs '()])
-               ([d (in-list (reverse sorted))])
-       (define-values (b2 dd)
-         (buffer-splice b
-                        (edit-desc-s-line d) (edit-desc-s-col d)
-                        (edit-desc-e-line d) (edit-desc-e-col d)
-                        (edit-desc-new-text d)))
-       (values b2 (append descs (list dd))))]))
+         (error 'buffer-apply-edit-batch "编辑重叠: ~a 与 ~a" a d)))
+     ;; 倒序应用。descs 用 cons 累积（每次 O(1)，避免 append 的 O(n²)），
+     ;; 最后 reverse 回「应用顺序」供上层按序映射 point。
+     ;; desc=#f（no-op / 被 read-only 拒绝）的编辑没有发生，不参与映射。
+     (let-values ([(b* descs)
+                   (for/fold ([b b] [acc '()])
+                             ([d (in-list (reverse sorted))])
+                     (define-values (b2 dd)
+                       (buffer-splice b
+                                      (edit-desc-s-line d) (edit-desc-s-col d)
+                                      (edit-desc-e-line d) (edit-desc-e-col d)
+                                      (edit-desc-new-text d)))
+                     (values b2 (if dd (cons dd acc) acc)))])
+       (values b* (reverse descs)))]))
 
 ;;; ---------- 点映射（跨一串应用顺序的编辑）----------
 
@@ -91,13 +93,13 @@
   (define b0 (buffer-open "abcd\nefgh"))
 
   ;; 空批 → 原样
-  (define-values (be de) (buffer-apply-edits b0 '()))
+  (define-values (be de) (buffer-apply-edit-batch b0 '()))
   (check-eq? be b0)
   (check-equal? de '())
 
   ;; 两个不相交插入：倒序应用，坐标互不干扰
   (define-values (b1 d1s)
-    (buffer-apply-edits b0
+    (buffer-apply-edit-batch b0
       (list (edit-desc 0 1 0 1 "X")   ; aXbcd
             (edit-desc 1 2 1 2 "Y")))) ; efYgh
   (check-equal? (buffer->string b1) "aXbcd\nefYgh")
@@ -109,19 +111,27 @@
 
   ;; 跨行删除 + 插入
   (define-values (b2 d2s)
-    (buffer-apply-edits b0 (list (edit-desc 0 1 1 2 "Z\nW"))))
+    (buffer-apply-edit-batch b0 (list (edit-desc 0 1 1 2 "Z\nW"))))
   (check-equal? (buffer->string b2) "aZ\nWgh")
 
   ;; 重叠 → 报错
   (check-exn exn:fail?
-             (lambda () (buffer-apply-edits b0
+             (lambda () (buffer-apply-edit-batch b0
                           (list (edit-desc 0 1 0 3 "X")
                                 (edit-desc 0 2 0 4 "Y")))))
 
   ;; 同起点零宽插入：按列表顺序确定
   (define-values (b3 _d3)
-    (buffer-apply-edits b0 (list (edit-desc 0 0 0 0 "A")
+    (buffer-apply-edit-batch b0 (list (edit-desc 0 0 0 0 "A")
                                  (edit-desc 0 0 0 0 "B"))))
   (check-equal? (buffer->string b3) "ABabcd\nefgh")
+
+  ;; 被 read-only 拒绝的编辑没发生：desc=#f 不进结果，不污染后续点映射
+  (define rbd (buffer-put-property (buffer-open "abcd") 0 0 2 'read-only #t))
+  (define-values (rb* rdescs)
+    (buffer-apply-edit-batch rbd (list (edit-desc 0 1 0 1 "X")     ; 在 read-only 内 → 拒绝
+                                  (edit-desc 0 3 0 3 "Y"))))  ; 允许
+  (check-equal? (buffer->string rb*) "abcYd")
+  (check-equal? rdescs (list (edit-desc 0 3 0 3 "Y")))
 
   (displayln "edit.rkt: all tests passed"))

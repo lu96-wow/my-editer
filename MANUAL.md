@@ -117,6 +117,9 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 - **编辑原语返回 `(values 新值 desc)`；无操作 desc = `#f`。**
 - 导航/状态原语直接返回 `window`（单值）。
 - `edit-desc-map-position` / `edit-desc-after-position`：把位置映射过编辑。
+- **撤销**：`buffer-edit-desc-inverse`（用「编辑前的 buffer」取回被删文本，得逆编辑）
+  + `buffer-apply-edit`（应用单个 desc）。注意 desc 不含旧文本，逆只能由编辑前内容导出。
+  底层纯代数：`edit-desc-inverse d old-text`。
 
 ### 4.2 `events`（输入）
 
@@ -181,7 +184,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | `edit-desc-map-position` | d l c | point \| #f（落在被删区间） |
 | `edit-desc-after-position` | d | point（插入后位置） |
 
-gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `content-gap-down` / `content-gap-goto`。
+gap 定位（返回新 content）：`content-gap-goto`。
 
 ### 5.3 properties —— 行内属性
 
@@ -211,8 +214,8 @@ gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `c
 | `marker-apply-edit` | m desc | marker |
 | `marker-table-apply-edit` | mt desc | marker-table |
 | `make-overlay-table` | — | overlay-table |
-| `overlay-table-make` | ot start-id end-id [plist (hash)] | (values overlay-table id) |
-| `overlay-table-delete` | ot id | overlay-table |
+| `overlay-table-add` | ot start-id end-id [plist (hash)] | (values overlay-table id) |
+| `overlay-table-remove` | ot id | overlay-table |
 | `overlay-table-at` | ot mt line col | (listof overlay)（按 priority 降序） |
 | `overlay-table-runs` | ot mt line line-length | (listof (list start end ovs)) |
 | `overlay-table-apply-edit` | ot mt desc | (values overlay-table marker-table) |
@@ -230,17 +233,18 @@ gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `c
 | `buffer-newline` | b line col | (values buffer edit-desc) |
 | `buffer-backspace` | b line col | (values buffer edit-desc) |
 | `buffer-delete` | b line col | (values buffer edit-desc) |
+| `buffer-apply-edit` | b desc | (values buffer edit-desc)（应用单个 desc，不重排/不查重叠） |
+| `buffer-edit-desc-inverse` | b desc | edit-desc（逆编辑；b 须是 desc 生效前的 buffer） |
 | `buffer-put-property` | b line start end prop val | buffer |
 | `buffer-get-property` | b line col prop | any \| #f |
 | `buffer-remove-property` | b line start end prop | buffer |
 | `buffer-put-properties-many` | b segs | buffer（一次 tick） |
 | `buffer-make-marker` | b pos [type 'before] | (values buffer id) |
-| `buffer-delete-marker` | b id | buffer |
+| `buffer-remove-marker` | b id | buffer |
 | `buffer-marker-pos` | b id | point \| #f |
 | `buffer-make-overlay` | b start-pos end-pos [plist (hash)] | (values buffer id) |
-| `buffer-delete-overlay` | b oid | buffer |
-| `buffer-mark-dirty` / `buffer-mark-dirty-all` | b [first last] | buffer |
-| `buffer-clean` | b | buffer（清 dirty） |
+| `buffer-remove-overlay` | b oid | buffer |
+| `buffer-mark-dirty` / `buffer-mark-dirty-all` | b [first last] | buffer（把该范围标为「刚变过」，bump tick） |
 
 ### 5.6 patch / edit —— 批量与补丁
 
@@ -248,8 +252,11 @@ gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `c
 |---|---|---|
 | `buffer-apply-patches` | b (listof patch) | buffer（按 key 清旧写新） |
 | `buffer-content-same?` | a b | boolean（eq? content） |
-| `buffer-apply-edits` | b (listof edit-desc) | (values buffer (listof edit-desc)) |
+| `buffer-apply-edit-batch` | b (listof edit-desc) | (values buffer (listof edit-desc)) |
 | `edits-map-position` | descs line col | point（跨一串编辑映射） |
+
+> `buffer-apply-edit-batch` 的返回 descs 只含**真正应用**的编辑：no-op 或被 read-only 拒绝的
+> （desc = `#f`）不含在内，故可直接喂给 `edits-map-position`。
 
 ---
 

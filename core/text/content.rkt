@@ -24,9 +24,6 @@
  content-line-count
  content-line-ref
  content-check
- content-set-col
- content-gap-up
- content-gap-down
  content-gap-goto
  content-splice
  content-insert-char
@@ -35,7 +32,8 @@
  content-backspace
  content-delete
  edit-desc-map-position
- edit-desc-after-position)
+ edit-desc-after-position
+ edit-desc-inverse)
 
 (struct content (lines gap-line gap-col) #:transparent)
 ;; lines    : (vectorof string)   至少一行
@@ -90,29 +88,6 @@
 (define (content-line-ref c i)   (vector-ref (content-lines c) i))
 
 ;;; ---------- gap 定位（全部 O(1)）----------
-
-(define (content-set-col c col)
-  (define l (content-gap-line c))
-  (struct-copy content c
-    [gap-col (max 0 (min col (string-length (content-line-ref c l))))]))
-
-(define (content-gap-up c)
-  (define l (content-gap-line c))
-  (if (> l 0)
-      (struct-copy content c
-        [gap-line (sub1 l)]
-        [gap-col (min (content-gap-col c)
-                      (string-length (content-line-ref c (sub1 l))))])
-      c))
-
-(define (content-gap-down c)
-  (define l (content-gap-line c))
-  (if (< l (sub1 (content-line-count c)))
-      (struct-copy content c
-        [gap-line (add1 l)]
-        [gap-col (min (content-gap-col c)
-                      (string-length (content-line-ref c (add1 l))))])
-      c))
 
 (define (content-gap-goto c line col)
   (define n (content-line-count c))
@@ -236,11 +211,19 @@
      (point (+ (edit-desc-s-line d) (sub1 k))
              (string-length (last new-lines)))]))
 
-(define (pos<? l1 c1 l2 c2)
-  (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
-
-(define (pos=? l1 c1 l2 c2)
-  (and (= l1 l2) (= c1 c2)))
+;; 逆编辑：把「抵消 d 的编辑」表示成「应用 d 之后的新坐标系」下的 edit-desc。
+;;   d⁻¹.s        = d.s（起点之前的坐标在两种坐标系里相同）
+;;   d⁻¹.e        = 插入文本之后的端点（edit-desc-after-position）
+;;   d⁻¹.new-text = d 删掉的旧文本（调用者给——edit-desc 本身不含旧文本）
+;; 三种情形的逆都成立：
+;;   纯插入（删除区间为空）→ 逆 = 删除插入的文本
+;;   纯删除（new-text 为空）→ 逆 = 在起点插回旧文本
+;;   替换                   → 逆 = 删除插入的文本 + 插回旧文本
+(define (edit-desc-inverse d old-text)
+  (define p (edit-desc-after-position d))
+  (edit-desc (edit-desc-s-line d) (edit-desc-s-col d)
+             (point-line p) (point-col p)
+             old-text))
 
 ;;; ---------- 测试 ----------
 
@@ -264,12 +247,6 @@
   (check-equal? (content-gap-col  c0) 0)
 
   ;; gap 定位
-  (define c-r3 (content-set-col c0 3))
-  (check-equal? (content-gap-col c-r3) 3)
-  (define c-dn (content-gap-down c0))
-  (check-equal? (content-gap-line c-dn) 1)
-  (define c-up (content-gap-up c-dn))
-  (check-equal? (content-gap-line c-up) 0)
   (define c-g (content-gap-goto c0 1 3))
   (check-equal? (content-gap-line c-g) 1)
   (check-equal? (content-gap-col  c-g) 3)
@@ -283,7 +260,7 @@
   (check-equal? d-i (edit-desc 0 0 0 0 "X"))
 
   ;; insert（在非零列插入，光标也要正确推进）
-  (define c-mid (content-set-col c0 2))
+  (define c-mid (content-gap-goto c0 0 2))
   (define-values (c-mid2 d-mid) (content-insert-char c-mid #\X))
   (check-equal? (content->string c-mid2) "heXllo\nworld")
   (check-equal? (content-gap-col c-mid2) 3)
@@ -296,7 +273,7 @@
   (check-equal? d-it (edit-desc 0 0 0 0 "XYZ"))
 
   ;; newline
-  (define c-n (content-set-col c0 2))
+  (define c-n (content-gap-goto c0 0 2))
   (define-values (c-n2 d-n) (content-newline c-n))
   (check-equal? (content->string c-n2) "he\nllo\nworld")
   (check-equal? (content-gap-line c-n2) 1)
@@ -356,5 +333,13 @@
   (check-equal? (edit-desc-after-position (edit-desc 2 4 2 4 "中")) (point 2 5))
   ;; 纯删除：回到删除起点
   (check-equal? (edit-desc-after-position (edit-desc 0 1 0 3 "")) (point 0 1))
+
+  ;; 逆编辑（纯 desc 代数）：给「被删文本」→ 逆 desc（新坐标系）
+  (check-equal? (edit-desc-inverse (edit-desc 0 2 0 5 "XY") "cde")   ; 替换
+                (edit-desc 0 2 0 4 "cde"))
+  (check-equal? (edit-desc-inverse (edit-desc 1 0 2 3 "") "l1\nl2")  ; 纯删除（跨行）
+                (edit-desc 1 0 1 0 "l1\nl2"))
+  (check-equal? (edit-desc-inverse (edit-desc 0 0 0 0 "X") "")       ; 纯插入
+                (edit-desc 0 0 0 1 ""))
 
   (displayln "content.rkt: all tests passed"))

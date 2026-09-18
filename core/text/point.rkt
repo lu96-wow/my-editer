@@ -8,6 +8,8 @@
 
 (provide
  (struct-out point)
+ pos<?
+ pos=?
  point<?
  point=?
  point<=?
@@ -15,15 +17,20 @@
 
 (struct point (line col) #:transparent)
 
+;; 位置比较的**唯一实现**（4 参数形式，避免构造 point）：
+;; 其余模块（content / edit）一律用 pos<? / pos=?，不要各写一份。
+(define (pos<? l1 c1 l2 c2)
+  (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
+
+(define (pos=? l1 c1 l2 c2)
+  (and (= l1 l2) (= c1 c2)))
+
 ;; 字典序：先行后列
 (define (point<? a b)
-  (or (< (point-line a) (point-line b))
-      (and (= (point-line a) (point-line b))
-           (< (point-col a) (point-col b)))))
+  (pos<? (point-line a) (point-col a) (point-line b) (point-col b)))
 
 (define (point=? a b)
-  (and (= (point-line a) (point-line b))
-       (= (point-col a) (point-col b))))
+  (pos=? (point-line a) (point-col a) (point-line b) (point-col b)))
 
 (define (point<=? a b)
   (or (point<? a b) (point=? a b)))

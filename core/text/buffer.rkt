@@ -31,18 +31,19 @@
  buffer-newline
  buffer-backspace
  buffer-delete
+ buffer-apply-edit
+ buffer-edit-desc-inverse
  buffer-put-property
  buffer-get-property
  buffer-remove-property
  buffer-put-properties-many
  buffer-make-marker
- buffer-delete-marker
+ buffer-remove-marker
  buffer-marker-pos
  buffer-make-overlay
- buffer-delete-overlay
+ buffer-remove-overlay
  buffer-mark-dirty
  buffer-mark-dirty-all
- buffer-clean
  inhibit-read-only
  with-read-only-inhibited
  edit-desc-after-position)
@@ -80,8 +81,11 @@
 (define (buffer-line-count b) (content-line-count (buffer-content b)))
 (define (buffer-line-ref b i) (content-line-ref (buffer-content b) i))
 
-;;; ---------- dirty 计算 ----------
-;;; dirty 用「新 buffer 坐标系」。渲染时直接用它索引新行表。
+;;; ---------- dirty：最近一次改动触及的行范围 ----------
+;;; 语义（per-operation）：dirty = 「刚刚那一次改动」改到的行，用「新 buffer 坐标系」。
+;;; 每次改动**整体覆盖**，不跨改动累加——跨改动累加必须把旧范围映射过新编辑
+;;; （否则行数一变就漏行），而消费方本就是改动的发起者，自己累积更直接、也永不出错。
+;;; 消费方式：改一次、读一次。
 
 (define (dirty-of desc old-count new-count)
   (define s-line (edit-desc-s-line desc))
@@ -89,25 +93,15 @@
   (define last (if (zero? k) s-line (+ s-line (sub1 k))))
   (dirty-desc s-line last old-count new-count))
 
-(define (merge-dirty old new)
-  (cond
-    [(not old) new]
-    [(not new) old]
-    [else (dirty-desc (min (dirty-desc-first-line old) (dirty-desc-first-line new))
-                      (max (dirty-desc-last-line  old) (dirty-desc-last-line  new))
-                      (dirty-desc-old-count old)
-                      (dirty-desc-new-count new))]))
-
-;; 扩大「重算/重渲染」范围到 [first, last]（新坐标系，含两端）。
-;; 供插件触及 dirty 之外的行时调用。不改行数（old=new），但 bump tick，
-;; 以确保即使本次编辑是 no-op 也能触发渲染。
+;; 把「这些行变了」告诉上层：供插件触及编辑范围之外的行时调用。
+;; 直接设定为该范围（不改行数，old=new），并 bump tick——即使本次没有真正编辑，
+;; 也要触发重渲染。
 (define (buffer-mark-dirty b first last)
   (define n (buffer-line-count b))
   (define f (max 0 (min first (sub1 n))))
   (define l (max 0 (min last (sub1 n))))
   (struct-copy buffer b
-    [dirty (merge-dirty (buffer-dirty b)
-                        (dirty-desc (min f l) (max f l) n n))]
+    [dirty (dirty-desc (min f l) (max f l) n n)]
     [tick (add1 (buffer-tick b))]))
 
 ;; 把整个 buffer 标成 dirty（首次挂载插件时全量扫描用）。
@@ -178,7 +172,7 @@
               (properties-apply-edit (buffer-properties b) desc)
               ot*
               (add1 (buffer-tick b))
-              (merge-dirty (buffer-dirty b) (dirty-of desc old-count new-count))
+              (dirty-of desc old-count new-count)
               #t)
       desc)]))
 
@@ -202,6 +196,37 @@
 
 (define (buffer-delete b line col)
   (buffer-edit-at b line col content-delete))
+
+;; 应用单个 edit-desc（buffer-splice 的 desc 版），返回 (values buffer desc)（desc 即 d）。
+;; 与 edit.rkt 的 buffer-apply-edit-batch 不同：不批量、不重排、不查重叠。撤销/重放的落点。
+(define (buffer-apply-edit b d)
+  (buffer-splice b
+                 (edit-desc-s-line d) (edit-desc-s-col d)
+                 (edit-desc-e-line d) (edit-desc-e-col d)
+                 (edit-desc-new-text d)))
+
+;; [s..e) 的文本（行间换行按 "\n" 归一，与 content 的规范形一致）
+(define (buffer-range-text b s-line s-col e-line e-col)
+  (cond
+    [(= s-line e-line)
+     (substring (buffer-line-ref b s-line) s-col e-col)]
+    [else
+     (string-join
+      (append (list (substring (buffer-line-ref b s-line)
+                               s-col (string-length (buffer-line-ref b s-line))))
+              (for/list ([l (in-range (add1 s-line) e-line)])
+                (buffer-line-ref b l))
+              (list (substring (buffer-line-ref b e-line) 0 e-col)))
+      "\n")]))
+
+;; 逆编辑（文档级）：从「编辑前的 buffer」取回 d 删掉的文本，再求逆。
+;; edit-desc 不含旧文本，所以 b 必须是 d 生效前的那一刻（不可变快照，留引用即可）。
+;; 撤销用法：编辑时 (buffer-edit-desc-inverse b d) 压栈，撤销时 (buffer-apply-edit b* inv)。
+(define (buffer-edit-desc-inverse b d)
+  (edit-desc-inverse d
+                     (buffer-range-text b
+                                        (edit-desc-s-line d) (edit-desc-s-col d)
+                                        (edit-desc-e-line d) (edit-desc-e-col d))))
 
 ;;; ---------- 属性 ----------
 
@@ -241,7 +266,7 @@
             [modified? #t])
           id))
 
-(define (buffer-delete-marker b id)
+(define (buffer-remove-marker b id)
   (struct-copy buffer b
     [markers (marker-table-remove (buffer-markers b) id)]
     [tick (add1 (buffer-tick b))]
@@ -257,23 +282,18 @@
   (define-values (b1 sid) (buffer-make-marker b start-pos 'before))
   (define-values (b2 eid) (buffer-make-marker b1 end-pos 'after))
   (define-values (ot oid)
-    (overlay-table-make (buffer-overlays b2) sid eid plist))
+    (overlay-table-add (buffer-overlays b2) sid eid plist))
   (values (struct-copy buffer b2
             [overlays ot]
             [tick (add1 (buffer-tick b2))]
             [modified? #t])
           oid))
 
-(define (buffer-delete-overlay b oid)
+(define (buffer-remove-overlay b oid)
   (struct-copy buffer b
-    [overlays (overlay-table-delete (buffer-overlays b) oid)]
+    [overlays (overlay-table-remove (buffer-overlays b) oid)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
-
-;;; ---------- 显示层清脏 ----------
-
-(define (buffer-clean b)
-  (struct-copy buffer b [dirty #f]))
 
 ;;; ---------- 测试 ----------
 
@@ -372,9 +392,17 @@
   (define-values (b17 _8) (buffer-delete b16 0 1))
   (check-equal? (overlay-table-count (buffer-overlays b17)) 0)
 
-  ;; clean
-  (check-false (buffer-dirty (buffer-clean b1)))
-  (check-equal? (buffer-tick (buffer-clean b1)) 1)  ; tick 不变
+  ;; dirty 是 per-operation：整体覆盖，不跨改动累加
+  ;; （旧实现做数值并集、不把旧范围映射过新编辑 → 行数一变就漏行）
+  (define db0 (buffer-open "l0\nl1\nl2\nl3"))
+  (define-values (db1 _dbd1) (buffer-insert-char db0 1 0 #\x))
+  (check-equal? (buffer-dirty db1) (dirty-desc 1 1 4 4))
+  (define-values (db2 _dbd2) (buffer-insert-char db1 3 0 #\y))
+  (check-equal? (buffer-dirty db2) (dirty-desc 3 3 4 4))   ; 覆盖为最近一次，而非并集 (1 3)
+  ;; mark-dirty：直接设定范围（供插件），不改行数、bump tick
+  (check-equal? (buffer-dirty (buffer-mark-dirty db2 0 2)) (dirty-desc 0 2 4 4))
+  (check-equal? (buffer-tick (buffer-mark-dirty db2 0 2)) (add1 (buffer-tick db2)))
+  (check-equal? (buffer-dirty (buffer-mark-dirty-all db2)) (dirty-desc 0 3 4 4))
 
   ;; tick 单调递增
   (check-equal? (buffer-tick b17)
@@ -405,5 +433,35 @@
       (buffer-insert-char rb 0 2 #\X)))          ; 在 read-only 区间内插入
   (check-equal? (buffer->string rb5) "heXllo\nworld")
   (check-equal? rd5 (edit-desc 0 2 0 2 "X"))
+
+  ;; ---- undo 原语：edit-desc 的逆（需编辑前的 buffer 取回被删文本）----
+  ;; 便于测试：应用 desc 只看 buffer（buffer-apply-edit 返回 (values buffer desc)）
+  (define (apply1 b d) (let-values ([(b* _) (buffer-apply-edit b d)]) b*))
+  (define u0 (buffer-open "abcd\nefgh"))
+  ;; buffer-apply-edit 与产生该 desc 的编辑等价
+  (define-values (u1 du1) (buffer-insert-string u0 0 1 "XY\nZ"))
+  (check-equal? (buffer->string u1) "aXY\nZbcd\nefgh")     ; 纯插入，旧文本整段保留
+  (check-equal? (buffer->string (apply1 u0 du1)) (buffer->string u1))
+  ;; 纯插入（跨行）的逆 = 删掉插入的文本
+  (define inv1 (buffer-edit-desc-inverse u0 du1))
+  (check-equal? (buffer->string (apply1 u1 inv1)) "abcd\nefgh")
+  ;; 逆的逆：inv1 相对 u1，其逆相对 u0 —— 应用到 u0 得回 u1（纯插入时 == 原 desc）
+  (check-equal? (buffer->string (apply1 u0 (buffer-edit-desc-inverse u1 inv1)))
+                (buffer->string u1))
+  ;; 纯删除（跨行）的逆 = 在起点插回被删文本
+  (define-values (u2 du2) (buffer-splice u0 0 1 1 2 ""))
+  (check-equal? (buffer->string u2) "agh")
+  (check-equal? (buffer->string (apply1 u2 (buffer-edit-desc-inverse u0 du2)))
+                "abcd\nefgh")
+  ;; 单字符删除的逆
+  (define u3 (buffer-open "hello"))
+  (define-values (u4 du4) (buffer-delete u3 0 0))
+  (check-equal? (buffer->string (apply1 u4 (buffer-edit-desc-inverse u3 du4)))
+                "hello")
+  ;; 替换（删+插）的逆
+  (define-values (u5 du5) (buffer-splice u0 0 0 0 2 "Z"))
+  (check-equal? (buffer->string u5) "Zcd\nefgh")
+  (check-equal? (buffer->string (apply1 u5 (buffer-edit-desc-inverse u0 du5)))
+                "abcd\nefgh")
 
   (displayln "buffer.rkt: all tests passed"))
