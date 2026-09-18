@@ -165,48 +165,38 @@
            (lambda (w) (window-ensure-point (thunk w))))]))
 
 ;; 编辑：document-edit 内部已经 ensure-point + 同步 follow，这里只需换 doc + 记一步撤回。
-;; 逆与「编辑前的光标」由 document-edit-reversible 一并给出 —— 消费者不再自己求逆，
-;; §9.3 那个静默坑（用后态 buffer 求逆不报错）不可达（ARCHITECTURE §11.2 ③）。
+;; 一次编辑的完整材料（desc / inv / 编辑前光标）由它一并给出——要不要撤销只改变你对
+;; 第二值的处理；§9.3 那个静默坑（用后态 buffer 求逆不报错）不可达（ARCHITECTURE §11.2 ③）。
 (define (on-edit a do-edit)
   ;; do-edit 直接用 document-edit 的 edit-fn 形状：(buffer, line, col) → (values buffer desc)。
-  (define-values (doc* desc inv p0)
-    (document-edit-reversible (app-doc a) (app-active a) do-edit))
-  (cond
-    [(not desc) (struct-copy app a [doc doc*])]    ; no-op / 被 read-only 拒 → 不入栈
-    [else (struct-copy app a [doc doc*] [hist (history-record (app-hist a) desc inv p0)])]))
+  (define-values (doc* ch) (document-edit (app-doc a) (app-active a) do-edit))
+  (struct-copy app a
+    [doc doc*]
+    ;; no-op / 被 read-only 拒 → 整个 change 是 #f → 不入栈
+    [hist (if ch (history-record (app-hist a) ch) (app-hist a))]))
 
-;;; ---------- 撤销 / 重放（账本在 history.rkt；落回视图必须经 document）----------
+;;; ---------- 撤销 / 重放（账本在 history.rkt；落回必须经 document）----------
 
-;; 依次应用一组 desc（撤销传 undo-descs、重放传 replay-descs）：
-;; 每条都走 desc 形状的 document 入口，且是 trusted —— 记录在案的编辑当年都过了守卫，
-;; 不该被**事后**才加的约束挡住（§9.6）。
-(define (apply-descs doc i descs)
-  (for/fold ([d doc]) ([x (in-list descs)])
-    (define-values (d* _) (document-apply-edit-trusted d i x))
-    d*))
-
-;; 撤销一步：应用逆编辑，再把光标放回该步之前的位置，最后让 follow 视图重新镜像。
+;; 撤销一步：该步的逆 desc 依次落回，再把光标放回该步**之前**的位置，follow 视图随之对齐。
+;; 落回入口一次做完这两件事（trusted：记录在案的编辑当年都过了守卫，§9.6）。
 (define (on-undo a)
   (define-values (st h*) (history-pop-undo (app-hist a)))
-  (cond
-    [(not st) a]                                   ; 空栈：什么都不做
-    [else
-     (define i (app-active a))
-     (define doc* (apply-descs (app-doc a) i (step-undo-descs st)))
-     (struct-copy app a
-       [doc (document-update-view-synced doc* i
-              (lambda (w) (window-ensure-point (window-set-point w (step-point st)))))]
-       [hist h*])]))
+  (if st
+      (struct-copy app a
+        [doc (document-apply-descs-trusted (app-doc a) (app-active a)
+                                           (step-undo-descs st) (step-point st))]
+        [hist h*])
+      a))                                            ; 空栈：什么都不做
 
-;; 重放一步：正序应用原 desc；光标由 document-edit 落到「插入之后」，与原来一致。
+;; 重放一步：原 desc 依次落回；光标由最后一条 desc 落脚（= 该步之后的位置，与原来一致）。
 (define (on-redo a)
   (define-values (st h*) (history-pop-redo (app-hist a)))
-  (cond
-    [(not st) a]
-    [else
-     (struct-copy app a
-       [doc (apply-descs (app-doc a) (app-active a) (step-replay-descs st))]
-       [hist h*])]))
+  (if st
+      (struct-copy app a
+        [doc (document-apply-descs-trusted (app-doc a) (app-active a)
+                                           (step-replay-descs st))]
+        [hist h*])
+      a))
 
 (define (handle a ev)
   (cond

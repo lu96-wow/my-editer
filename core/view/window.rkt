@@ -30,11 +30,7 @@
  window-right
  window-home
  window-end
- window-insert-char
- window-insert-string
- window-newline
- window-backspace
- window-delete)
+ window-edit)
 
 (struct window
   (buffer   ; buffer.rkt     文档（编辑时换成新 buffer）
@@ -147,33 +143,21 @@
 
 ;;; ---------- 编辑（用本窗口 point 驱动 buffer 显式位置原语）----------
 
-;; edit-fn : (lambda (b line col) (values new-buffer desc))
-;; 编辑成功后，把新 buffer 写回 window，并把光标设到 post-edit 位置。
+;; edit-fn : (lambda (b line col) (values new-buffer edit-desc))
+;; 编辑成功后，把新 buffer 写回 window、光标设到 post-edit 位置，并把**这次编辑的
+;; 完整材料**（edit-change）交回调用方；no-op / 被 read-only 拒 → 整个 change 是 #f。
+;; 与 document-edit 同形，差别只有光标来源（本窗口 vs 视图 i）与是否 rebase 其他视图。
+;; 多窗口共享 buffer 时必须走 document-edit —— 直接编辑 window 会让文档分叉。
 (define (window-edit w edit-fn)
-  (define b (window-buffer w))
-  (define p (window-point w))
-  (define-values (b* d) (edit-fn b (point-line p) (point-col p)))
-  (if d
+  (define b0 (window-buffer w))
+  (define p0 (window-point w))
+  (define-values (b* desc) (edit-fn b0 (point-line p0) (point-col p0)))
+  (if desc
       (values (struct-copy window w
                 [buffer b*]
-                [point (edit-desc-after-position d)])
-              d)
+                [point (edit-desc-after-position desc)])
+              (edit-change desc (buffer-edit-desc-inverse b0 desc) p0))
       (values w #f)))
-
-(define (window-insert-char w ch)
-  (window-edit w (lambda (b l c) (buffer-insert-char b l c ch))))
-
-(define (window-insert-string w s)
-  (window-edit w (lambda (b l c) (buffer-insert-string b l c s))))
-
-(define (window-newline w)
-  (window-edit w (lambda (b l c) (buffer-newline b l c))))
-
-(define (window-backspace w)
-  (window-edit w (lambda (b l c) (buffer-backspace b l c))))
-
-(define (window-delete w)
-  (window-edit w (lambda (b l c) (buffer-delete b l c))))
 
 ;;; ---------- 测试 ----------
 
@@ -219,48 +203,56 @@
   (define w8 (window-home w7))
   (check-equal? (window-point w8) (point 2 0))
 
-  ;; 编辑：point 随编辑跟进
+  ;; 编辑：point 随编辑跟进；材料（desc/inv/pre-point）一次给全
   (define b0 (buffer-open "hello\nworld"))
   (define w0 (window-open b0))
-  (define-values (wi di) (window-insert-char w0 #\X))
+  (define-values (wi di) (window-edit w0 (edit-char #\X)))
   (check-equal? (buffer->string (window-buffer wi)) "Xhello\nworld")
   (check-equal? (window-point wi) (point 0 1))
-  (check-equal? di (edit-desc 0 0 0 0 "X"))
+  (check-equal? (edit-change-desc di) (edit-desc 0 0 0 0 "X"))
+  (check-equal? (edit-change-inv  di) (edit-desc 0 0 0 1 ""))
+  (check-equal? (edit-change-pre-point di) (point 0 0))
 
   ;; 在非零列插入，point 正确前进（旧 bug：丢掉 s-col）
   (define wg1 (window-goto w0 0 2))
-  (define-values (wi2 di2) (window-insert-char wg1 #\Y))
+  (define-values (wi2 di2) (window-edit wg1 (edit-char #\Y)))
   (check-equal? (buffer->string (window-buffer wi2)) "heYllo\nworld")
   (check-equal? (window-point wi2) (point 0 3))
-  (check-equal? di2 (edit-desc 0 2 0 2 "Y"))
+  (check-equal? (edit-change-desc di2) (edit-desc 0 2 0 2 "Y"))
+  (check-equal? (edit-change-inv  di2) (edit-desc 0 2 0 3 ""))
+  (check-equal? (edit-change-pre-point di2) (point 0 2))
 
-  (define-values (wn dn) (window-newline w0))
+  (define-values (wn dn) (window-edit w0 (edit-newline)))
   (check-equal? (buffer->string (window-buffer wn)) "\nhello\nworld")
   (check-equal? (window-point wn) (point 1 0))
-  (check-equal? dn (edit-desc 0 0 0 0 "\n"))
+  (check-equal? (edit-change-desc dn) (edit-desc 0 0 0 0 "\n"))
 
   ;; backspace 合并
   (define wd1 (window-goto w0 1 0))
-  (define-values (wb db) (window-backspace wd1))
+  (define-values (wb db) (window-edit wd1 (edit-backspace)))
   (check-equal? (buffer->string (window-buffer wb)) "helloworld")
   (check-equal? (window-point wb) (point 0 5))
-  (check-equal? db (edit-desc 0 5 1 0 ""))
+  (check-equal? (edit-change-desc db) (edit-desc 0 5 1 0 ""))
+  ;; 删除的逆带回了被删文本（这里是行间的 "\n"），这是撤销的全部依据
+  (check-equal? (edit-change-inv db) (edit-desc 0 5 0 5 "\n"))
 
   ;; delete 合并
   (define wd2 (window-goto w0 0 5))
-  (define-values (wdel dd) (window-delete wd2))
+  (define-values (wdel dd) (window-edit wd2 (edit-delete)))
   (check-equal? (buffer->string (window-buffer wdel)) "helloworld")
   (check-equal? (window-point wdel) (point 0 5))
+  (check-equal? (edit-change-desc dd) (edit-desc 0 5 1 0 ""))
 
-  ;; 无操作：原样返回
-  (define-values (wnop dnop) (window-backspace w0))
+  ;; 无操作：window 原样返回，整个 change 是 #f
+  (define-values (wnop dnop) (window-edit w0 (edit-backspace)))
   (check-eq? wnop w0)
   (check-false dnop)
 
   ;; 多行插入
-  (define-values (wp dp) (window-insert-string w0 "X\nY"))
+  (define-values (wp dp) (window-edit w0 (edit-insert "X\nY")))
   (check-equal? (buffer->string (window-buffer wp)) "X\nYhello\nworld")
   (check-equal? (window-point wp) (point 1 1))
+  (check-equal? (edit-change-desc dp) (edit-desc 0 0 0 0 "X\nY"))
 
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-scroll w 2)) 2)

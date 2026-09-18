@@ -6,8 +6,8 @@
 ;;;
 ;;; 这个文件只为摆清一条边界：**document 不自动记 history**。
 ;;;
-;;; document 层会给你（`document-edit-reversible`）：
-;;;     新 document ＋ 这次编辑的 desc ＋ 逆 inv ＋ 编辑前光标 pre-point
+;;; document 层会给你（`document-edit`）：
+;;;     新 document ＋ 这次编辑的完整材料 edit-change（desc ＋ 逆 inv ＋ 编辑前光标）
 ;;;   —— 即"把捕获的材料**备齐**"，但它**不**决定入不入栈、**不**知道"什么算一步"，
 ;;;      更**没有** undo 这个操作。
 ;;; 记账（栈、分组、撤销/重放）在消费层 `history.rkt`：它不认识 document，只认识 desc 和 point。
@@ -29,8 +29,10 @@
 ;;; ---------- A) 只调 document 层：编辑生效，但没有账本 ----------
 
 (define-values (a0 ai) (fresh "abc" 1))
-(define-values (a1 a-desc a-inv a-p0)
-  (document-edit-reversible a0 ai (ins-fn "XY")))
+(define-values (a1 a-ch) (document-edit a0 ai (ins-fn "XY")))
+(define a-desc (edit-change-desc a-ch))
+(define a-inv  (edit-change-inv a-ch))
+(define a-p0   (edit-change-pre-point a-ch))
 
 (displayln "A) 只调 document 层")
 (displayln (format "   文本      ~a" (buffer->string (document-buffer a1))))
@@ -43,22 +45,18 @@
 
 (define-values (b0 bi) (fresh "abc" 1))
 (define b-hist0 (make-history))
-(define-values (b1 b-desc b-inv b-p0)
-  (document-edit-reversible b0 bi (ins-fn "XY")))
+(define-values (b1 b-ch) (document-edit b0 bi (ins-fn "XY")))
 ;; ↓↓↓ 记账：**消费层的动作**（document 层不知道有这一步）
-(define b-hist1 (history-record b-hist0 b-desc b-inv b-p0))
+(define b-hist1 (history-record b-hist0 b-ch))
 
-;; 撤销：账本给 step；desc 通过 document 的 desc 形状入口落回视图，再收光标/对齐 follow
+;; 撤销：账本给 step；整组逆 desc 由落回入口依次施加，光标也由它放回该步之前（一步完成）
 (define-values (b-step b-hist2) (history-pop-undo b-hist1))
-(define b2 (for/fold ([d b1]) ([x (in-list (step-undo-descs b-step))])
-             (define-values (d* _) (document-apply-edit-trusted d bi x)) d*))
-(define b3 (document-update-view-synced b2 bi
-             (lambda (w) (window-ensure-point (window-set-point w (step-point b-step))))))
+(define b2 (document-apply-descs-trusted b1 bi (step-undo-descs b-step) (step-point b-step)))
 
 (displayln "\nB) 同一段 document 调用 ＋ 一行 history-record")
 (displayln (format "   编辑后    ~a" (buffer->string (document-buffer b1))))
 (displayln (format "   撤销后    ~a      ← 文本回来了，光标也回到 ~a"
-                   (buffer->string (document-buffer b3)) (window-point (document-window b3 bi))))
+                   (buffer->string (document-buffer b2)) (window-point (document-window b2 bi))))
 (displayln (format "   账本深度  撤销 ~a → ~a" (history-undo-depth b-hist1) (history-undo-depth b-hist2)))
 (displayln "   → 差别只有那一行；document 层两段完全一样。")
 
@@ -76,13 +74,16 @@
   (check-equal? a1 b1)
 
   ;; B 段：记账后才有撤销；撤销精确回到编辑前（文本 + 光标）
-  (check-equal? (buffer->string (document-buffer b3)) "abc")
-  (check-equal? (window-point (document-window b3 bi)) a-p0)
+  (check-equal? (buffer->string (document-buffer b2)) "abc")
+  (check-equal? (window-point (document-window b2 bi)) a-p0)
   (check-equal? (history-undo-depth b-hist1) 1)
   (check-equal? (history-undo-depth b-hist2) 0)
   (check-equal? (history-redo-depth b-hist2) 1)
 
-  ;; 逆 desc 与 document 的 desc 形状入口配合：撤销就是"把 inv 当 desc 施加"
-  (check-equal? (buffer->string (document-buffer b2)) "abc")
+  ;; 同一条逆 desc 也可以走 desc 形状的单条入口（程序编辑那条路，过守卫）
+  (check-equal? (buffer->string
+                 (document-buffer
+                  (let-values ([(d* _) (document-apply-edit b1 bi a-inv)]) d*)))
+                "abc")
 
   (displayln "document-layer.rkt: all tests passed"))

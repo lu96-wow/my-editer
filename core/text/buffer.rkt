@@ -20,6 +20,7 @@
  (struct-out buffer)
  (struct-out dirty-desc)
  (struct-out edit-desc)
+ (struct-out edit-change)
  (struct-out restrict)
  make-restrict
  buffer-open
@@ -34,6 +35,7 @@
  buffer-newline
  buffer-backspace
  buffer-delete
+ edit-char
  edit-insert
  edit-newline
  edit-backspace
@@ -215,6 +217,7 @@
 ;;; 与 `edit-desc` 同族：一个**描述**一次编辑，一个**就是**那次编辑。
 ;;; 不关扩展性：自定义 λ 依然合法（document-edit 收的仍是函数）。
 
+(define (edit-char ch)    (lambda (b l c) (buffer-insert-char b l c ch)))
 (define (edit-insert s)   (lambda (b l c) (buffer-insert-string b l c s)))
 (define (edit-newline)    buffer-newline)     ; 形状本来就一致，就是它
 (define (edit-backspace)  buffer-backspace)
@@ -262,6 +265,16 @@
                      (buffer-range-text b
                                         (edit-desc-s-line d) (edit-desc-s-col d)
                                         (edit-desc-e-line d) (edit-desc-e-col d))))
+
+;;; ---------- 一次编辑的完整材料 ----------
+;;; desc 与 inv 都是 edit-desc（同类型、字段相邻），散着传时写反不报错、只静默写坏
+;;; 历史——所以打成 struct：以数据表达「这三样属于同一次编辑」。
+;;; pre-point 只由**持有光标**的层（window / document）填——buffer 层没有光标，
+;;; 也就不产出 edit-change。
+(struct edit-change (desc inv pre-point) #:transparent)
+;; desc      : edit-desc  这次编辑（操作前坐标）—— 重放用它
+;; inv       : edit-desc  逆（操作后坐标，由**编辑前**的 buffer 导出）—— 撤销用它
+;; pre-point : point      编辑视图在编辑前的光标 —— 撤销后回到这里
 
 ;;; ---------- 输入夹紧与校验（ARCHITECTURE §10.2 R1/R2）----------
 ;;; 两类违约分开处理：
@@ -622,5 +635,21 @@
   (check-eq? (edit-newline) buffer-newline)
   (check-eq? (edit-backspace) buffer-backspace)
   (check-false (eq? (edit-insert "x") (edit-insert "x")))
+
+  ;; edit-char ≡ (edit-insert (string ch))，含 desc
+  (check-equal? (buffer->string (op-b (edit-char #\X) edop-b 0 1)) "aXbc")
+  (check-equal? (let-values ([(b* d) (run-op (edit-char #\X) edop-b 0 1)]) (list (buffer->string b*) d))
+                (let-values ([(b* d) (run-op (edit-insert "X") edop-b 0 1)]) (list (buffer->string b*) d)))
+
+  ;; ---- edit-change：一次编辑的完整材料（纯数据，由**持有光标**的层组装）----
+  (define ec0 (buffer-open "abcdef"))
+  (define-values (ec1 ec-d) (buffer-delete ec0 0 2))      ; 删 'c'（[2,3)）
+  (define ec-ch (edit-change ec-d (buffer-edit-desc-inverse ec0 ec-d) (point 0 2)))
+  (check-true (edit-change? ec-ch))
+  (check-equal? (edit-change-desc ec-ch) (edit-desc 0 2 0 3 ""))
+  (check-equal? (edit-change-inv ec-ch) (edit-desc 0 2 0 2 "c"))   ; 逆 = 在起点插回 'c'
+  (check-equal? (edit-change-pre-point ec-ch) (point 0 2))
+  ;; 撤销 = 施加逆，回到原状
+  (check-equal? (buffer->string (apply1 ec1 (edit-change-inv ec-ch))) "abcdef")
 
   (displayln "buffer.rkt: all tests passed"))

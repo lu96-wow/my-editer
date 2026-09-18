@@ -6,9 +6,9 @@
 
 ;;; history.rkt —— 撤销/重放账本（**消费层**，不是 core，见 ARCHITECTURE §9）
 ;;;
-;;; 归属（§9.4）：文本变更走 document（撤销/重放都是 document-edit，只有它能 rebase
-;;; 所有视图）；本模块只管账本——记不记、和谁并、几步。所以它是纯数据：不 require
-;;; document、不碰 window，只认识 edit-desc 和 point。
+;;; 归属（§9.4）：文本变更走 document（撤销/重放都是 `document-apply-descs-trusted`，
+;;; 只有它能 rebase 所有视图）；本模块只管账本——记不记、和谁并、几步。所以它是纯数据：
+;;; 不碰 window、不 require document 的实现，只认识 edit-change / edit-desc 和 point。
 ;;;
 ;;; 一步必须**自含正反两向**（§9.2）——撤销不许留快照（快照式每步 8MB×3）：
 ;;;   replay-descs 重放用（desc 自带 new-text，不需旧文本）
@@ -21,8 +21,8 @@
 ;;; → 撤销出 "accdef"，不报任何错；而**纯插入时两态恰好相同**，所以打字路径看不出错，
 ;;; 只在删除路径爆（探针见 §9.3）。
 ;;;
-;;; 本模块不 require document，所以它也不能替调用方「应用」——`main.rkt` 拿到 step
-;;; 后用 `document-edit` 逐条落回视图（§9.6）。
+;;; 本模块不替调用方「应用」——`main.rkt` 拿到 step 后用 `document-apply-descs-trusted`
+;;; 一次落回整组 desc（§9.6）。
 
 (provide
  (struct-out step)
@@ -89,9 +89,15 @@
 
 ;;; ---------- 记录 / 取出 ----------
 
-;; 记一步。与栈顶可并（同一段连续打字 / 连续删除）则并进去，保留**较早**的 point
-;; （撤销回到整段之前）。任何记录都清空 redo 栈——分叉已被丢弃。
-(define (history-record h desc inv point)
+;; 记一步。参数就是 `document-edit` 交回的 `edit-change`（由它拆出 desc / inv / point）。
+;; 收 struct 而非三个散值：desc 与 inv 同为 edit-desc，散着传写反了不报错、只静默写坏
+;; 历史——打包让这个错变成编译错。
+;; 与栈顶可并（同一段连续打字 / 连续删除）则并进去，保留**较早**的 point（撤销回到
+;; 整段之前）。任何记录都清空 redo 栈——分叉已被丢弃。
+(define (history-record h ch)
+  (define desc (edit-change-desc ch))
+  (define inv  (edit-change-inv ch))
+  (define point (edit-change-pre-point ch))
   (define top (if (pair? (history-undo h)) (car (history-undo h)) #f))
   (cond
     [(and top (step-merge? top desc))
@@ -137,7 +143,7 @@
     (define-values (b* desc) (edit-fn b))
     (if (not desc)
         (values h b)
-        (values (history-record h desc (buffer-edit-desc-inverse b desc) p) b*)))
+        (values (history-record h (edit-change desc (buffer-edit-desc-inverse b desc) p)) b*)))
 
   ;; 1. 打字连续段：3 次插入并成 1 步
   (define-values (t1 b1) (rec (make-history) (buffer-open "")

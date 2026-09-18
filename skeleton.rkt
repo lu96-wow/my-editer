@@ -19,27 +19,28 @@
 ;;;
 ;;; ── 这台编辑器用到的 core API（按角色分组；tools/ 可对账）──────────────
 ;;;   状态与装配   document-open make-window document-add-view
-;;;   编辑         edit-insert edit-newline edit-backspace edit-delete
+;;;   编辑         edit-char edit-insert edit-newline edit-backspace edit-delete
 ;;;                （"编辑动作的规范函数" —— 消费者不必写 buffer 级 λ，见 ARCHITECTURE §12）
-;;;   记账（逆）    document-edit-reversible（逆与「编辑前光标」一次给出；账本在 history.rkt）
+;;;   记账（逆）    document-edit（一次给出「新 document + edit-change」，逆与编辑前光标都在里面；
+;;;                账本在 history.rkt，**要不要撤销只决定你怎么处理第二值**）
 ;;;   导航/滚动     window-left window-right window-home window-end window-up window-down
 ;;;                window-scroll window-set-point window-ensure-point
 ;;;                document-update-view-synced（改视图 + 保持 follow 一致）
 ;;;   视图管理     document-view-count document-window document-view-sync document-set-view-sync
-;;;   撤销/重放     document-apply-edit-trusted（＋ history 消费层的 pop）
+;;;   撤销/重放     document-apply-descs-trusted（＋ history 消费层的 pop）
 ;;;   渲染         window->screen screen-compose screen
 ;;;   读文档       document->string（消费者读文本也不下探 buffer）
 ;;;   纯文本驱动    screen->text screen-cursor-row screen-cursor-col（仅用于打印）
 ;;;   事件类型     text-event key-event modifiers（这里手搓；真前端负责解码）
 ;;;
 ;;; ── 实测：拼一台编辑器用到多少 core？──────────────────────────────
-;;; 扫描本文件（去注释后）∩ `core/api.rkt` 白名单：**50 个名字 = 白名单 224 的 22%**
+;;; 扫描本文件（去注释后）∩ `core/api.rkt` 白名单：**48 个名字 = 白名单 221 的 22%**
 ;;; （另加消费层 `history.rkt` 的 10 个）。**编辑路径上 `buffer-*` 一个都不出现**——
 ;;; 编辑走 `edit-*`（§12），读文本走 `document->string`。
-;;; 没用到的 174 个集中在骨架没实现的功能：属性/语法高亮、只读约束、marker/overlay、patch、
-;;; 鼠标事件、增量绘制（`screen-diff-rows`）、wrap / 水平滚动细节，以及 `window-*` /
-;;; `document-*` 的现成编辑包装（编辑已走 `edit-*` + document 漏斗，所以那些不用）……
-;;; 结论：**能编辑、能撤销、能分屏的编辑器，只用到 core 的五分之一多一点。**
+;;; 没用到的 173 个集中在骨架没实现的功能：属性/语法高亮、只读约束、marker/overlay、patch、
+;;; 鼠标事件、增量绘制（`screen-diff-rows`）、wrap / 水平滚动细节，以及 `buffer-*` 的
+;;; 显式坐标原语（编辑已走 `edit-*` + window/document 入口）……
+;;; 结论：**能编辑、能撤销、能分屏的编辑器，只用到 core 的五分之一多。**
 ;;; ────────────────────────────────────────────────────────────────
 
 ;;; ---------- ① 状态：一台编辑器只有三样东西 ----------
@@ -67,15 +68,15 @@
 ;;; ---------- ② 变换：三类操作，各自只用一小组 core API ----------
 
 ;; 编辑（改**共享文本**）：走 document 的编辑漏斗 → 所有视图按自己的 sync rebase。
-;; 逆与「编辑前的光标」由 document-edit-reversible 一并给出（消费者不再自己求逆，
-;; §9.3 的静默坑不可达，见 ARCHITECTURE §11.2 ③）。
+;; 一次编辑的完整材料（desc / inv / 编辑前光标）由 document-edit 一并给出；要不要撤销
+;; 只改变你对第二值的处理——收下就入账，丢掉就完事（不再有第二个编辑入口）。
 (define (on-edit a do-edit)
   ;; do-edit 直接用 document-edit 的 edit-fn 形状：(buffer, line, col) → (values buffer desc)
-  (define-values (doc* desc inv p0)
-    (document-edit-reversible (ed-doc a) (ed-active a) do-edit))
-  (if (not desc)
-      (struct-copy ed a [doc doc*])                  ; no-op / 被 read-only 拒 → 不入栈
-      (struct-copy ed a [doc doc*] [hist (history-record (ed-hist a) desc inv p0)])))
+  (define-values (doc* ch) (document-edit (ed-doc a) (ed-active a) do-edit))
+  (struct-copy ed a
+    [doc doc*]
+    ;; no-op / 被 read-only 拒 → 整个 change 是 #f → 不入栈
+    [hist (if ch (history-record (ed-hist a) ch) (ed-hist a))]))
 
 ;; 导航/滚动（只动**一个视图**）：改完自动对齐 follow 视图。
 ;; 视口自洽（top/left 越界）由 document 保证（ARCHITECTURE §10.3 D1），这里不用手动夹。
@@ -83,35 +84,25 @@
   (struct-copy ed a
     [doc (document-update-view-synced (ed-doc a) (ed-active a) win-fn)]))
 
-;; 撤销/重放：账本给一步（step），把它的 descs 依次**落回视图**，再收光标/同步 follow。
-;; trusted 入口：记录在案的编辑当年都过了守卫，不该被事后才加的约束挡住（§9.6）。
-(define (on-step a pop)
-  (define-values (st h*) (pop (ed-hist a)))
-  (cond
-    [(not st) a]
-    [else
-     (define i (ed-active a))
-     (define doc* (for/fold ([d (ed-doc a)]) ([x (in-list (step-descs* st))])
-                    (define-values (d* _) (document-apply-edit-trusted d i x))
-                    d*))
-     (struct-copy ed a
-       [doc (document-update-view-synced doc* i (step-settle st))]
-       [hist h*])]))
+;; 撤销：把账本那一步的逆 desc 依次落回，并把光标放回该步**之前**的位置。
+(define (on-undo a)
+  (define-values (st h*) (history-pop-undo (ed-hist a)))
+  (if st
+      (struct-copy ed a
+        [doc (document-apply-descs-trusted (ed-doc a) (ed-active a)
+                                           (step-undo-descs st) (step-point st))]
+        [hist h*])
+      a))
 
-;; 撤销用 undo-descs（存成撤销次序）；重放用 replay-descs。
-(define (step-descs* st) (step-undo-descs st))
-(define (step-settle st) (lambda (w) (window-ensure-point (window-set-point w (step-point st)))))
-
+;; 重放：把该步的原 desc 依次落回；光标由最后一条 desc 落脚（= 该步之后的位置）。
 (define (on-redo a)
   (define-values (st h*) (history-pop-redo (ed-hist a)))
-  (cond
-    [(not st) a]
-    [else
-     (struct-copy ed a
-       [doc (for/fold ([d (ed-doc a)]) ([x (in-list (step-replay-descs st))])
-              (define-values (d* _) (document-apply-edit-trusted d (ed-active a) x))
-              d*)]
-       [hist h*])]))
+  (if st
+      (struct-copy ed a
+        [doc (document-apply-descs-trusted (ed-doc a) (ed-active a)
+                                           (step-replay-descs st))]
+        [hist h*])
+      a))
 
 ;;; ---------- 输入路由：事件 → 上面三类操作 ----------
 ;;; 真前端在这里之前先把原始输入解码成 core 事件；骨架里的事件是手搓的。
@@ -126,7 +117,7 @@
      (cond
        [(and (char? k) (modifiers-control mods))
         (case (char-downcase k)
-          [(#\z) (on-step a history-pop-undo)]
+          [(#\z) (on-undo a)]
           [(#\y) (on-redo a)]
           [else a])]
        [(symbol? k)

@@ -21,7 +21,7 @@
 ;;;
 ;;;   【操作：真正的「API」只有这两个】
 ;;;   window      视口：buffer 引用 + 光标 + 滚动 + 尺寸
-;;;               · 编辑：window-insert-char/newline/backspace/delete
+;;;               · 编辑：window-edit（收一个 edit-fn；构造器见 §12 的 edit-*）
 ;;;               · 导航：window-goto/left/right/home/end + window-visual-move
 ;;;               · 状态：window-set-* / window-scroll / window-ensure-point
 ;;;   window->screen  投影：window 可见区 → screen（纯函数，无副作用）
@@ -29,8 +29,8 @@
 ;;; ── 两条数据流 ──────────────────────────────────────────────
 ;;;
 ;;;   编辑流：
-;;;     events → window-* 原语 → buffer-* → 新 buffer + edit-desc
-;;;     （window-* 会自动换新 buffer、把光标推到编辑后位置）
+;;;     events → window-edit / document-edit（收 edit-fn：§12 的 edit-*）→ buffer-* → 新 buffer + edit-change
+;;;     （入口会自动换新 buffer、把光标推到编辑后位置；document-edit 还会 rebase 其余视图）
 ;;;
 ;;;   渲染流：
 ;;;     buffer → render-line → glyph → line-range->runs → run
@@ -69,24 +69,29 @@
 ;;;   (define w (window-open b 24 80))            ; 开视口
 ;;;   (define s (window->screen w))               ; 投影成画面
 ;;;   ;; 后端画 s；后端喂入一个 event：
-;;;   (define-values (w* desc) (window-insert-char w #\X))  ; 处理 text-event
-;;;   ;; w* 的 buffer 已换新、光标已推进；desc 给上层做同步/撤销
+;;;   (define-values (w* ch) (window-edit w (edit-char #\X)))  ; 处理 text-event
+;;;   ;; w* 的 buffer 已换新、光标已推进；ch 是 (or/c #f edit-change)，
+;;;   ;; #f = 什么都没发生，非 #f 时上层拿它做同步/记账（多视图请改用 document-edit）
 ;;;
 ;;; ── 唯一跨层契约 ────────────────────────────────────────────
-;;;   edit-desc (s-line s-col e-line e-col new-text)
+;;;   edit-desc   (s-line s-col e-line e-col new-text)
 ;;;   一次编辑 = 删除 [s..e) + 插入 new-text（所有编辑都是它的特例）。
-;;;   编辑原语返回 (values 新值 desc)，无操作 desc = #f；
-;;;   导航/状态原语直接返回 window。
+;;;   edit-change (desc inv pre-point)
+;;;   一次编辑的**完整材料**：desc（重放用）+ inv（撤销用，从编辑前的 buffer 导出）
+;;;   + pre-point（编辑前光标）。缓冲区层没有光标，故只有 window-edit / document-edit 产出它。
+;;;
+;;;   编辑入口返回 (values 新值 (or/c #f edit-change))，没发生就是 #f；
+;;;   导航/状态原语直接返回新值。
 ;;;
 ;;; ── 导出边界：**显式白名单**（ARCHITECTURE §10.3 C）────────────────────
 ;;; 对外名字**逐个列出**：新增内部函数**不会**自动泄漏（原来是 `except-out all-from-out`，
 ;;; fail-open —— 加个内部助手就默认对外）。白名单与 MANUAL 的「消费者 API」栏目一一对应，
 ;;; 可用 `tools/reconcile.rkt` 对账。
-;;;   对外（消费者层）：point buffer window screen events edit-desc patch width document
+;;;   对外（消费者层）：point buffer window screen events edit-desc edit-change patch width document
 ;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
 ;;;                buffer-apply-edit(-trusted)、buffer-edit-desc-inverse / edit-desc-inverse、
 ;;;                marker/overlay 的 buffer 级入口、dirty-desc、restrict / make-restrict、
-;;;                document-apply-edit(-trusted)
+;;;                document-apply-edit / document-apply-descs-trusted
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
 ;;;                     render-* vrow/layout/wrap/window-vrows、check-mode、snap-left-col
 ;;; ============================================================================
@@ -112,12 +117,15 @@
  edit-desc edit-desc? struct:edit-desc edit-desc-s-line edit-desc-s-col
  edit-desc-e-line edit-desc-e-col edit-desc-new-text edit-desc-after-position
  edit-desc-map-position edit-desc-inverse
+ ;; edit-change —— 一次编辑的完整材料（新 document + 它，就是编辑入口的全部产出）
+ edit-change edit-change? struct:edit-change
+ edit-change-desc edit-change-inv edit-change-pre-point
  ;; buffer —— 文档原子（装配根）
  buffer buffer? struct:buffer buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
  buffer-splice buffer-splice-trusted buffer-insert-char buffer-insert-string
  buffer-newline buffer-backspace buffer-delete
- edit-insert edit-newline edit-backspace edit-delete edit-splice
+ edit-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit-desc-inverse
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-read-only-at?
@@ -160,7 +168,7 @@
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
  window-set-top-seg window-set-size window-scroll window-hscroll window-goto
  window-left window-right window-home window-end
- window-insert-char window-insert-string window-newline window-backspace window-delete
+ window-edit
  ;; 窗口级操作（vrow 布局内部藏起来）
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual
@@ -172,8 +180,7 @@
  document-add-view document-view-count document-view-ref document-window
  document-view-sync document-set-view-sync document-update-view document-update-view-synced
  document-sync-followers
- document-edit document-edit-reversible document-apply-edit document-apply-edit-trusted
- document-insert-char document-insert-string document-newline document-backspace document-delete
+ document-edit document-apply-edit document-apply-descs-trusted
  document-buffer document-views)
 
 ;;; ============================================================================
@@ -191,9 +198,9 @@
   ;; 编辑闭环：插入字符 → 窗口光标推进 → 渲染出新文本
   (define w (window-open b 2 10))
   (check-equal? (window-point w) (point 0 0))
-  (define-values (w2 desc) (window-insert-char w #\X))
+  (define-values (w2 ch) (window-edit w (edit-char #\X)))
   (check-equal? (buffer->string (window-buffer w2)) "Xhello\nworld")
-  (check-equal? desc (edit-desc 0 0 0 0 "X"))
+  (check-equal? (edit-change-desc ch) (edit-desc 0 0 0 0 "X"))
   (check-equal? (window-point w2) (point 0 1))
   (check-equal? (screen-rows (window->screen w2)) 2)
 
@@ -205,7 +212,7 @@
 
   ;; 属性随编辑移动：在属性区间前插一个字符 → 区间整体右移。
   ;; 插入点在左邻为空处，新字符不继承（继承左邻规则）；"hello" 仍带 keyword。
-  (define-values (w4 _) (window-insert-char (window-open b3 2 10) #\Z))
+  (define-values (w4 _) (window-edit (window-open b3 2 10) (edit-char #\Z)))
   (define s4 (window->screen w4))
   (check-equal? (vector-ref (screen-row-runs s4) 0)
                 (list (run 0 "Z" (hash))

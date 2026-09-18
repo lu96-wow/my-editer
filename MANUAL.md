@@ -60,7 +60,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position` |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
-| **撤销 / 重放** | **不在 core**：配合 document 用 `document-edit-reversible`（逆与编辑前光标一次给出，§11/§12）；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
+| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
 | 看一台编辑器怎么拼 | `skeleton.rkt`（**无前端骨架**，不 require `io/`）：状态 + 三类操作 + 投影，用到 core 的 50 个名字（白名单的 22%）；**编辑路径上不出现一个 `buffer-*`**（§12） |
 | 看「捕获 ≠ 记账」 | `document-layer.rkt`：只调 document 层 vs 加一行 `history-record` 的对照——**record 前后 document 的值完全相同**（`document` 里没有 undo） |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
@@ -335,13 +335,9 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `window-scroll` / `window-hscroll` | w delta | window |
 | `window-goto` | w l c | window |
 | `window-left` / `window-right` / `window-home` / `window-end` | w | window |
-| `window-insert-char` | w ch | (values window edit-desc) |
-| `window-insert-string` | w s | (values window edit-desc) |
-| `window-newline` | w | (values window edit-desc) |
-| `window-backspace` | w | (values window edit-desc) |
-| `window-delete` | w | (values window edit-desc) |
+| `window-edit` | w edit-fn | (values window (or/c #f edit-change))（本窗口的编辑入口；`edit-fn` 见 §12 的 `edit-*`。多窗口共享 buffer 时必须走 document，否则文档分叉） |
 
-> **返回值规则**：编辑原语返回 `(values window desc)`；导航/状态原语直接返回 `window`。
+> **返回值规则**：编辑原语返回 `(values 新值 事实-or-#f)`（`#f` = no-op / 被 read-only 拒）；导航/状态原语直接返回新值。
 
 ### 6.2 view —— vrow 布局 + 映射 + 滚动
 
@@ -404,11 +400,9 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `document-update-view` | doc i f | document（f : window → window） |
 | `document-update-view-synced` | doc i f | document（同上 + 保持 follow 一致；改尺寸等「不镜像」的场合仍用上面那个） |
 | `document-sync-followers` | doc i | document（把 follow 视图对齐到 i） |
-| `document-edit` | doc i edit-fn | (values document desc) |
-| `document-edit-reversible` | doc i edit-fn | (values document desc inv pre-point)（逆用**编辑前**的 buffer 求出；no-op 时 desc/inv 为 #f；**不记历史**） |
-| `document-apply-edit` | doc i desc | (values document desc)（施加一条**自带坐标**的 desc；与 `document-edit` 同一漏斗） |
-| `document-apply-edit-trusted` | doc i desc | 同上，但跳过 read-only 守卫（撤销/重放专用，ARCHITECTURE §9.6） |
-| `document-insert-char` / `-insert-string` / `-newline` / `-backspace` / `-delete` | doc i … | (values document desc) |
+| `document-edit` | doc i edit-fn | (values document (or/c #f edit-change))（**唯一的编辑入口**；`#f` = no-op/被拒；`edit-change` = desc + 逆（用**编辑前** buffer 求出）+ 编辑前光标；**不记历史**） |
+| `document-apply-edit` | doc i desc | (values document (or/c #f edit-change))（施加一条**自带坐标**的 desc，**过守卫**；程序编辑用；与 `document-edit` 同一漏斗） |
+| `document-apply-descs-trusted` | doc i descs [pre-point] | document（依次施加 descs，**跳过守卫**；给了 `pre-point` 就把视图 i 的光标放回那里并 `ensure-point`。撤销/重放**唯一**的落回入口） |
 
 两条 rebase 模式是**容器语义**（类比 `window.mode` 的 `'clip`/`'wrap`）：
 
@@ -434,9 +428,11 @@ gap 定位（返回新 content）：`content-gap-goto`。
 (define w  (window-open b 10 40))
 
 ;; 一个 text-event 进来：
-(define-values (w* desc) (window-insert-char w #\X))
-;;   w*   : buffer 已换新、point 已推到编辑后位置（window 自动做）
-;;   desc : edit-desc，交给上层做多窗口同步/撤销/语言层
+(define-values (w* ch) (window-edit w (edit-char #\X)))
+;;   w* : buffer 已换新、point 已推到编辑后位置（window-edit 自动做）
+;;   ch : (or/c #f edit-change)；#f = 什么都没发生。
+;;        要撤销就收下它；配合 document 时改用 document-edit（同形，另加多视图 rebase）。
+;;        多窗口共享一个 buffer 时**必须**走 document —— 直接编辑 window 会让文档分叉。
 ```
 
 ### 7.2 渲染链
@@ -512,7 +508,7 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 (define s (window->screen w))               ; 投影成画面，后端画 s
 
 ;; 后端喂入 event 后：
-(define-values (w* desc) (window-insert-char w #\X))  ; 处理 text-event
+(define-values (w* ch) (window-edit w (edit-char #\X)))  ; 处理 text-event
 (define w2 (window-right w*))               ; 处理 key-event 'right（直接返回 window）
 ```
 

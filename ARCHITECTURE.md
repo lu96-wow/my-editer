@@ -433,6 +433,8 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 
 > **§11 之后（2026-09-18）**：这段的 `b0` / 求逆已由 `document-edit-reversible` 一句替代——
 > 消费者不再自己调 `buffer-edit-desc-inverse`，这个坑不再可达（见 §11.2 ③）。
+> **2026-09-19 再修订**：那个"第二个入口"已并入 `document-edit` 的返回值（`edit-change`）；
+> 防护本身不变（求逆仍由 document 用**编辑前**的 buffer 做），见 §12.5。
 
 **core 零改动**：逆代数、`document-edit`（把一条 desc 当一次编辑落回视图）、
 `document-update-view` / `document-sync-followers`（收尾光标）全是现成公开 API。
@@ -456,6 +458,8 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
    **数据**，容器解释它很自然；「这次编辑要不要进历史」挂在**调用**上，不挂在任何对象上。
    进容器就只剩两条路：给 `document-edit` 加 flag（§8.8 已否），或加第二个入口。
    放在外层，"记不记" 就是**调不调 `on-edit`**——策略免费表达。
+   > **2026-09-19 补第三条**：单入口 + **总是捕获**——因为实际消费者全部都要捕获（见 §12.5）。
+   > 本条的判据（策略不挂对象、挂调用）不受影响。
 4. **改动面**。容器方案要动 `struct document` 字段、每个构造点、不变量文档、MANUAL §3.1/§6.5
    表；外层方案是**纯加法**。
 5. **防忘记不成立**。容器方案唯一的收益是"不可能忘记记录"，但这里的暴露面只有
@@ -464,10 +468,13 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 
 **两条缝（加法，不是"留坑"）**：
 
-- **缝 1**（**2026-09-18 已下沉**）：出现**除本节示范（`main.rkt`）之外任何**要历史的消费者
+- **缝 1**（**2026-09-18 已下沉；2026-09-19 改形状，见 §12.5**）：出现**除本节示范（`main.rkt`）之外任何**要历史的消费者
   → 把"捕获"下沉成 document 的第二个显式入口 `document-edit-reversible` →
   `(values doc desc inv pre-point)`（flag-free，形状同 `buffer-splice-trusted` 之于
   `buffer-splice`）。**栈仍在外面**。触发它的正是 §11 的 `skeleton.rkt`（第二个消费​者）。
+  > **2026-09-19**：形状改为**唯一入口的返回值**——`document-edit` → `(values doc (or/c #f edit-change))`，
+  > `document-edit-reversible` 已删。判据（捕获必须在 document）不变；§12.5 还补了第 3 条路
+  > （单入口 + 总是捕获），因为"无 undo 的消费者"实际是 0 个。
   > 触发线为什么收得这么紧：§9.3 那个坑是**静默**的（用后态 buffer 求逆不报错，只在删除
   > 路径写坏历史）。所以不是等第二个消费者，是**不等**——等到了就做（见 §11.2 ③）。
 - **缝 2**：出现**多 splice 的单步动作** → 需要 `document-edit-batch`（原子落回视图、只
@@ -494,17 +501,14 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 ### 9.6 应用：撤销 / 重放
 
 ```racket
-;; 依次应用一组 desc（撤销传 step-undo-descs、重放传 step-replay-descs）：每条都是一次 document-edit
-(define (apply-descs doc i descs)
-  (for/fold ([d doc]) ([x (in-list descs)])
-    (define-values (d* _) (document-edit d i (lambda (b _l _c) (buffer-apply-edit-trusted b x))))
-    d*))
+;; 依次应用一组 desc（撤销传 step-undo-descs、重放传 step-replay-descs）——2026-09-19 起是
+;; document 的一个入口（§12.5）；旧的消费者样板（for/fold + 丢 `_` + 单独收光标）已消失：
+(document-apply-descs-trusted doc i descs [pre-point]) → document
 ```
 
-- **撤销**：`apply-descs` 传 `step-undo-descs`，然后把光标放回 `step-point`（`document-update-view` +
-  `window-ensure-point`），再 `document-sync-followers` 让 follow 视图重新镜像。
-- **重放**：传 `step-replay-descs`；光标由 `document-edit` 天然落到「插入之后」，与原操作完全一致，
-  **不需要额外状态**。
+- **撤销**：传 `step-undo-descs` 与 `step-point`（该入口把光标放回那里并 `ensure-point`）。
+- **重放**：传 `step-replay-descs`，**不给** `pre-point`；光标由 desc 天然落到「插入之后」，
+  与原操作一致，不需要额外状态。
 - **撤销后光标为什么存而不用推**：纯删除的逆其 `edit-desc-after-position` 只剩删除起点，
   对前向删除会差一个字符；存「该步之前的光标」则退格/前向删除/替换/整段打字全部与 Emacs 一致。
 - **free 视图光标自动还原**（实测）：位置映射可逆，free 视图的光标随逆编辑映射回原位；
@@ -747,9 +751,9 @@ fail-open 就会自动泄漏。
 (define (document-update-view-synced doc i f)
   (document-sync-followers (document-update-view doc i f) i))
 
-;; ③ 与 document-edit 同一次编辑，外加：逆 desc（用**编辑前**的 buffer 求；no-op 时 #f）
-;;    与视图 i 编辑前的光标。**不记任何历史**——栈仍在消费层。
-(document-edit-reversible doc i edit-fn) → (values doc desc inv pre-point)
+;; ③ 编辑入口直接给出「新 document + 一次编辑的完整材料」。**不记任何历史**——栈仍在消费层。
+;;    2026-09-19：原为第二个入口 document-edit-reversible；现并入唯一入口的返回值（§12.5）
+(document-edit doc i edit-fn) → (values doc (or/c #f edit-change))
 
 ;; ④ 方向名词一族（上下是**视觉行** = window-visual-move ∓1，不是 buffer 行）
 (define (window-up w)   (window-visual-move w -1))
@@ -774,6 +778,8 @@ fail-open 就会自动泄漏。
 1. 不改 `document-update-view` / `window-open` 的既有语义（理由见 §11.2）。
 2. 不加 `document-set-point-synced`（"设光标 + ensure + sync" 里那个 λ 只剩 1 行；
    **触发条件**：第三个消费者也写它）。
+   > **2026-09-19：触发条件已满足**（`document-layer.rkt` 是第三个），但解法不是加这个方法——
+   > 它被折进了落回入口的 `pre-point` 参数（§12.5），三处 λ 一并消失。
 3. 不给 ② 加 keyword flag（§8.8）。
 4. `screen->text` 不做 ANSI / 颜色 / 光标 / 超宽截断。
 5. 不碰 §10.4 的决定；不把命令/键位/账本搬进 core。
@@ -785,7 +791,7 @@ fail-open 就会自动泄漏。
 | 0 | ✅ 本节（设计定稿） | 文档自洽 |
 | 1 | ✅ ① `make-window`；`blank-w` workaround 删掉（改用 `(make-window 10 40)`） | 全绿 ＋ 消费者改用 |
 | 2 | ✅ ② `document-update-view-synced` ＋ 两个消费者 4 处改用 | 全绿 ＋ `'follow` 回归仍过 |
-| 3 | ✅ ③ `document-edit-reversible` ＋ 两个消费者改用 | 全绿 ＋ **消费者里 `buffer-edit-desc-inverse` 归零** ＋ 撤销仍精确 |
+| 3 | ✅ ③ `document-edit-reversible` ＋ 两个消费者改用（**2026-09-19 已并入 `document-edit` 的返回值，见 §12.5**） | 全绿 ＋ **消费者里 `buffer-edit-desc-inverse` 归零** ＋ 撤销仍精确 |
 | 4 | ✅ ④ `window-up`/`-down` ＋ `screen->text` ＋ 骨架/示范改用；白名单与 MANUAL 同步 | 全绿 ＋ 对账 0 漂移 |
 
 **结果（2026-09-18）**：测试 **552 → 563**；白名单 **211 → 217**（+6：`make-window`、
@@ -844,7 +850,7 @@ edit-fn、`run-col`/`run-text` 由 `screen->text` 取代。**消费者里 `buffe
 
 | | 构造器（本节） | 结构体 + 解释 |
 |---|---|---|
-| document 入口数 | **不变**（仍是 `document-edit` / `-reversible`） | +1，还要决定是否配 `-reversible` 孪生 |
+| document 入口数 | **不变**（仍是 `document-edit` / `-reversible`）｜**2026-09-19 修订：入口数 9 → 3**，见 §12.5 | +1，还要决定是否配 `-reversible` 孪生 |
 | 扩展性 | 不关闭：自定义 λ 依然合法 | 封闭词表，加一种编辑 = 加分支 |
 | core 里的重复 | 无（就是给已有原语起名） | 把同一份编辑词表**再枚举一遍** |
 | 将来"动作即数据" | 可叠加：一行 `op->edit-fn` 就能接上 | 就是它 |
@@ -854,8 +860,9 @@ edit-fn、`run-col`/`run-text` 由 `screen->text` 取代。**消费者里 `buffe
 
 ### 12.3 边界与明确不做
 
-1. **不动** `document-edit` / `document-edit-reversible` 的签名（仍收 edit-fn；`edit-*` 只是
-   规范填充物，消费者随时可传自己的 λ）。
+1. ~~**不动** `document-edit` / `document-edit-reversible` 的签名（仍收 edit-fn；`edit-*` 只是
+   规范填充物，消费者随时可传自己的 λ）。~~ → **2026-09-19 修订**：参数形状（仍收 edit-fn）不变，
+   但**返回值**改为 `(values doc (or/c #f edit-change))`，`-reversible` 删除（§12.5）。
 2. **不把账本收进 document**（§9.4 归属不变）；`history-*`/`step-*` 仍在消费层。
 3. **不做** `edit-op` 结构体 / core 里的 `case` 解释（留作宏录制/命令面板出现时的加分项）。
 4. **不给 document 造几何入口**（`document-left` 之类）——视图几何属 window。
@@ -883,3 +890,100 @@ edit-fn、`run-col`/`run-text` 由 `screen->text` 取代。**消费者里 `buffe
 
 **踩坑**：新测试里两次把双值函数塞进单值位置（`(buffer->string (run-op …))`）→ 又是那个 arity 错。
 `edit-*` 的返回是"函数"，调用时要 `((edit-insert "XY") b l c)` 或先绑成变量——这也是它不关扩展性的代价。
+
+### 12.5 编辑路径统一（2026-09-19）：把"可撤销"从入口的选择降为返回值的处理
+
+> **取代关系**：本节取代 §11.2 ③ 的 `document-edit-reversible` 形状、§12.2 表格「document 入口数
+> 不变」、§12.3 第 1 条「不动 `document-edit` / `-reversible` 的签名」、§9.6 的 `apply-descs` 样板。
+> **§9.4 的归属判据不变**（捕获必须在 document——只有它同时持有「编辑前的 buffer」与「视图光标」）；
+> 变的是它的**形状**：从"第二个显式入口"改成"唯一入口的返回值"。
+
+**问题（代码取证，不靠文档）**：以 undo/redo 为边界，编辑的使用逻辑分了叉：
+
+1. **入口按"要不要撤销"二选一**（`document-edit` 2 值 vs `document-edit-reversible` 4 值），
+   而便捷包装 `document-insert-*` 只覆盖**没人用**的那一支。生产代码（排除 `module+ test`）：
+   `document-edit`（非 reversible）**0 次**、`document-insert-*` **0 次**、`window-insert-*` **0 次**；
+   实际全走 `document-edit-reversible`(4) + `document-apply-edit-trusted`(4) + `edit-*`(8)。
+2. **no-op 用 `desc = #f` 与真 desc 同槽位**（同一值域既当数据又当控制流）。
+3. **光标三个权威来源**（编辑 = core 的 after-position / 撤销 = 账本 point / 导航 = window 原语）；
+   撤销要**借用导航入口** `document-update-view-synced` 去恢复编辑状态。
+4. **`(values doc desc)` 同形状两处含义相反**：编辑时是新事实（要入账），落回时是回声
+   （`content-splice` 归一后的入参）——4 个调用点 100% 写 `_`。
+5. **undo 显式 point vs redo 靠推导**（"最后一条 desc 的 after-position"），不对称且无签名/断言保护。
+6. **终局样板三处逐字重复**（记账 / 落回 / 收光标），见 §9.6 与 §11.2 ③ 的旧代码。
+
+**目标态**：
+
+```racket
+;; 编辑动作：唯一的编辑词表（buffer.rkt §12；新增 edit-char）
+(edit-char ch) (edit-insert s) (edit-newline) (edit-backspace) (edit-delete)
+(edit-splice s-line s-col e-line e-col new-text)
+
+;; 一次编辑的完整材料（buffer.rkt，紧挨 buffer-edit-desc-inverse）
+(struct edit-change (desc inv pre-point) #:transparent)
+
+;; 入口：三层同形，差别只有「光标从哪来」
+(buffer-splice  b s-line s-col e-line e-col text) → (values buffer   edit-desc)
+(window-edit    w edit-fn)                        → (values window   (or/c #f edit-change))
+(document-edit  doc i edit-fn)                    → (values document (or/c #f edit-change))
+
+;; 落回：施加「已记录」的 desc
+(document-apply-edit          doc i desc)                     ; 单条，过守卫（程序编辑）
+(document-apply-descs-trusted doc i descs [pre-point])        ; 批量，跳过守卫（撤销/重放）
+```
+
+document.rkt 内部拆成 **`edit-and-rebase`（私有机制）** + 三个入口：rebase 是机制，
+change 是「编辑入口」的职责——落回路径没有新事实要捕捉，也就不该为它多算一次逆。
+
+**规则**：
+- R1 **`#f` 的位置上移**：从「desc 这个值的失败标记」变成「整个 change 槽为空」。
+- R2 **求逆零成本**：生产代码每次编辑**已经**在调 reversible（4/4 调用点），统一不新增开销。
+- R3 **落回永远 trusted、编辑永远 guarded**（记录在案的编辑当年都过了守卫）。
+- R4 **光标覆盖只属于落回**（`pre-point` 参数），不在 `document-edit` 上。
+- R5 **redo 的光标仍由推导给出**（`pre-point` 缺省）；触发线见「明确不做 3」。
+
+**归属判据**：
+
+| 新东西 | 归属 | 判据 |
+|---|---|---|
+| `edit-change` | text 层（`buffer.rkt`） | 纯 text 层数据：`edit-desc` ×2 + `point`，零 view 依赖 |
+| 产出 `edit-change` | window / document | **只有持光标的层**能填 `pre-point`（buffer 层不产出它） |
+| `document-apply-descs-trusted` | document | 组合里没有消费者知识；且只有 document 能 rebase 所有视图 |
+| `window-edit` 导出 | window | window 自洽需要它（否则单窗口模式连 splice 都做不了） |
+| `history-record h ch` | 消费层 | 记不记 / 怎么并 / 栈，core 里不出现 undo 概念 |
+
+**与 §9.4 第 3 条的关系**：那里说「记不记是 per-call 策略，进容器只剩两条路：加 flag（§8.8 已否）
+或加第二个入口」。本次找到**第三条**：**单入口 + 总是捕获**——因为实际消费者**全部**都要捕获
+（reversible 占 4/4），而"无 undo 的消费者"在生产代码里是 **0**。所以不为它优化：
+`(values doc (or/c #f edit-change))` 里那个 `#f` 槽就是它的位置，`_` 就是它的代价。
+
+**明确不做**：
+
+1. **不引入 `edit-op` 结构体**（§12.2 的判决不变）：`edit-fn` 保持 λ。
+   触发线：出现需要「比较 / 命名 / 序列化编辑」的消费者（命令面板、宏录制）。
+2. **不给 `document-edit` 加 `#:point`**：光标覆盖只属于落回动作。
+3. **不把 after-point 存进 `step`**：它是 `edit-desc-after-position` 的导出值（第二事实源）。
+   触发线：出现「一步内 desc 排布不是单一方向」的消费者（`step-merge?` 只并同类段，当前恒成立）。
+4. **core 里不出现 undo / redo 词**：落回入口叫 `-apply-descs-`（机制中性），不叫 `document-undo`。
+5. **不动属性 / restrict 路径**（`buffer-put-*` 与编辑无关）。
+6. **不动 `core/text/edit.rkt` 的 batch**（0 消费者，但已是白名单里的机制层；是 §9.4 缝 2 的
+   独立目标态）。
+7. **保留 `buffer-insert-*` 等显式坐标原语**（与 §12.3 第 5 条一致）：它们是「文档原子」层的
+   **调用形式**，与 `edit-*`（动作的**值**）分工不同，且不在 undo 边界上——为词表整齐而删掉
+   会把「对裸 buffer 做退格」逼成 `((edit-backspace) b l c)`。**只删同层隐藏了通用入口的那些**
+   （`window-insert-*` 隐藏 `window-edit`、`document-insert-*` 隐藏 `document-edit`）。
+
+**分步实施**（每步独立可测，且恰好落在目标态上）：
+
+| 步 | 内容 | 验证 |
+|---|---|---|
+| 1 | ✅ text 层：`edit-change` ＋ `edit-char`（纯加法，不改签名） | `raco test core/text/buffer.rkt` 绿（102） |
+| 2 | ✅ **一次原子改**：`window-edit` 导出并返回 change、删 5 个 `window-insert-*`；`document-edit` 返回 change、删 `-reversible` / `-trusted` / 5 个 `-insert-*`、加 `document-apply-descs-trusted`；`history-record` 收 change；三个消费者（main / skeleton / document-layer）迁到新形状 | 各文件全绿 |
+| 3 | ✅ 白名单 ＋ MANUAL 表格对账 | `racket tools/reconcile.rkt` 0 漂移 |
+| 4 | ✅ api 头注 / `skeleton.rkt` 头注 / 本节 | 全绿 |
+
+**结果（2026-09-19）**：白名单 **224 → 221**（删 12、加 9）；`document` 层编辑面 **9 → 3**
+（`document-edit` / `document-apply-edit` / `document-apply-descs-trusted`），`window` 层 **5 → 1**
+（`window-edit`）；3 处逐字重复的样板 → 每个消费者的 undo / redo 各 2 行、**完全对称**；
+`skeleton.rkt` 用到 core **48/221（22%）**。**撤销/重放不再借用导航入口**，`desc`/`inv` 的交换
+从"静默写坏历史"变成编译错（`history-record` 收 struct）。
