@@ -36,6 +36,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 命令/键位 | 哪个键干什么不是核心 |
 | 主题/配色 | face 是语义符号，颜色是外部策略 |
 | 后端 | core 只产 `screen`、只收 `events` |
+| 撤销账本 | core 只给**可逆编辑代数**（逆 desc + 应用）；「记几步 / 怎么分组 / 撤销后光标回哪」是使用方策略（ARCHITECTURE §9） |
 
 ### 1.3 三条边界契约
 
@@ -45,6 +46,22 @@ core 只给**机制**（原子 + 变换），不给**策略**：
                          ▲
                  edit-desc（文本变更契约，内部串起所有层）
 ```
+
+### 1.4 任务索引（我要做 X → 用这些）
+
+| 我要做 | 用这些 |
+|---|---|
+| 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`） |
+| 程序化编辑（自带坐标） | 构造 `edit-desc` → `buffer-apply-edit`（或 `buffer-apply-edit-trusted`） |
+| 部分只读 | `buffer-put-restrict` + `restrict`（守卫规则见 §7.5） |
+| 语法高亮 / 标注 | `buffer-put-properties-many`（一次 tick） |
+| 插件输出（可合并 / 异步） | `patch` + `buffer-apply-patches` |
+| 一个文档、多个视图 | `document-*`（§6.5） |
+| 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position` |
+| 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
+| 拼一块大屏 | `window->screen` + `screen-compose` |
+| **撤销 / 重放** | **不在 core**：逆编辑代数用 `buffer-edit-desc-inverse` + `buffer-apply-edit-trusted`，账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
+| 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
 
 ---
 
@@ -120,8 +137,12 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 - 导航/状态原语直接返回 `window`（单值）。
 - `edit-desc-map-position` / `edit-desc-after-position`：把位置映射过编辑。
 - **撤销**：`buffer-edit-desc-inverse`（用「编辑前的 buffer」取回被删文本，得逆编辑）
-  + `buffer-apply-edit`（应用单个 desc）。注意 desc 不含旧文本，逆只能由编辑前内容导出。
+  + `buffer-apply-edit`（应用单个 desc）；**重放**（撤销后再做一遍）用
+  `buffer-apply-edit-trusted`——记录在案的编辑当年都过了 read-only 守卫，不该被**事后**才加
+  的约束挡住。注意 desc 不含旧文本，逆只能由编辑前内容导出。
   底层纯代数：`edit-desc-inverse d old-text`。
+- core 只给上面这组**可逆编辑代数**；**账本**（记几步、连续打字并成一步、撤销后光标回哪）
+  是消费层的事，见 ARCHITECTURE §9（示范在 `history.rkt` + `main.rkt`）。
 
 ### 4.2 `events`（输入）
 
@@ -155,6 +176,10 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 ---
 
 ## 5. 文本层 API（详细签名）
+
+> **哪些是消费者 API**：§5.2 / §5.3 / §5.4 三节整节都是**模块内部**（`(require "core/api.rkt")`
+> 拿不到——只能读、不能用）；消费者要的文本层入口在 §4.1 / §5.1 / §5.5 / §5.6。
+> 消费者 API 的白名单就是 `core/api.rkt` 的 `provide`（211 个名字），可用 `tools/reconcile.rkt` 对账。
 
 ### 5.1 point —— 位置
 
@@ -250,6 +275,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-backspace` | b line col | (values buffer edit-desc) |
 | `buffer-delete` | b line col | (values buffer edit-desc) |
 | `buffer-apply-edit` | b desc | (values buffer edit-desc)（应用单个 desc，不重排/不查重叠） |
+| `buffer-apply-edit-trusted` | b desc | (values buffer edit-desc)（同上，但跳过 read-only 守卫；撤销/重放用） |
 | `buffer-edit-desc-inverse` | b desc | edit-desc（逆编辑；b 须是 desc 生效前的 buffer） |
 | `buffer-put-property` | b line start end prop val | buffer |
 | `buffer-get-property` | b line col prop | any \| #f |
@@ -285,6 +311,11 @@ gap 定位（返回新 content）：`content-gap-goto`。
 
 ## 6. 视口层 API（详细签名）
 
+> **哪些是消费者 API**：§6.2 的 `vrow` / `window-vrows` / `layout-clip` / `layout-wrap` /
+> `wrap-segments` / `line-range->runs` 与 §6.3 的 `glyph` / `render-line` / `rendered-line`
+> 是**模块内部**；其余是消费者 API。`window-clamp-view` 也在白名单里——直接摆 window 的
+> 消费方用它把视口夹回合法域（经 `document` 的路径会自动夹）。
+
 ### 6.1 window —— 视口
 
 | 函数 | 输入 | 输出 |
@@ -319,6 +350,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `window-point->screen` | w | (values row col) \| (values #f #f) |
 | `window-screen->point` | w row col | (values line col) \| (values #f #f) |
 | `window-scroll-visual` | w delta | window（按视觉行滚） |
+| `window-clamp-view` | w | window（把视口夹回合法域：mode-aware 夹 `top`/`top-seg`、`left-col` 吸附到字符起点） |
 | `window-ensure-point` | w | window（光标跟随滚动） |
 | `window-visual-move` | w delta | window（上下按视觉行移动） |
 
@@ -363,6 +395,8 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `document-update-view` | doc i f | document（f : window → window） |
 | `document-sync-followers` | doc i | document（把 follow 视图对齐到 i） |
 | `document-edit` | doc i edit-fn | (values document desc) |
+| `document-apply-edit` | doc i desc | (values document desc)（施加一条**自带坐标**的 desc；与 `document-edit` 同一漏斗） |
+| `document-apply-edit-trusted` | doc i desc | 同上，但跳过 read-only 守卫（撤销/重放专用，ARCHITECTURE §9.6） |
 | `document-insert-char` / `-insert-string` / `-newline` / `-backspace` / `-delete` | doc i … | (values document desc) |
 
 两条 rebase 模式是**容器语义**（类比 `window.mode` 的 `'clip`/`'wrap`）：
@@ -473,3 +507,31 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
+
+---
+
+## 9. 立场：core 不解释的东西
+
+「不做」也是设计的一部分。以下这些 core **明确不解释**，消费方按这里的说法自己处理：
+
+| 立场 | 说明 |
+|---|---|
+| **tab / Ambiguous 宽度** | core 一律按 **1 列**（`char-display-width #\tab` = 1，`string-display-width` / `index->column` 同口径）。终端把 tab 画成多列是**后端的事**：要对齐就自己先展开成空格 |
+| **`modified?` 谁置位** | splice 与属性/约束/marker/overlay 写入都置 `#t`；只有 `buffer-apply-patches`（插件标注）不置 —— 用它判断「有没有未保存改动」时要知道这一点 |
+| **`dirty` 是 per-operation** | 「最近一次改动」的行范围（新坐标系），改一次读一次；跨改动累积由消费方自己做（它本就是改动的发起者） |
+| **`left-col` 大于行宽** | **合法状态**（「滚过短行尾部」，该行显示空），不是错误；但**落在宽字符右半**会被吸附到字符起点 |
+| **`modified?` 的回退 / 保存点** | core 不做（`modified?` 只是「约定」，见 ARCHITECTURE §8.6） |
+| **撤销 / 重放账本** | 不在 core：core 只给**可逆编辑代数**；账本与分组是消费层策略（ARCHITECTURE §9） |
+| **命令 / 键位 / 主题 / 布局** | 不在 core（§1.2） |
+
+## 10. 契约与违约行为
+
+core 的契约分两类（完整规则、依据与实测见 ARCHITECTURE §10.2）：
+
+- **没有唯一合法解释的输入 → 报错**（抛 `exn:fail?`）：编辑区间反向（`s > e`）、属性/约束区间
+  为空或反向、视图索引越界、`window-set-mode` 未知 mode、marker/overlay 位置不在 buffer 内、
+  overlay 区间反向、patch 行范围越界（过期 patch）。
+- **有唯一合法解释的输入 → 夹紧**：越界行列、属性端点超出行长、视口 `top`/`left` 越界
+  （经 `document` 的路径自动夹，`window-clamp-view` 供直接摆 window 的消费方手动夹）。
+
+夹紧类的实际结果（含 `edit-desc` 里的坐标）反映**夹紧后**的值——想确认发生了什么，看返回的 `desc`。

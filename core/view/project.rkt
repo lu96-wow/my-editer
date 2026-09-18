@@ -40,8 +40,10 @@
   (define w1 (window-goto (window-open b0 2 10) 0 2))
   (check-equal? (screen-cursor-col (window->screen w1)) 3)
 
+  ;; 水平滚动吸附到字符起点：left=2 落在「中」的右半 → 吸附到 3（'b' 的起点），
+  ;; 于是 'b' 落在屏幕第 0 列。旧行为是从列 2 起渲染 → 丢掉「中」、行首留一格空白。
   (define s2 (window->screen (window-set-left (window-open b0 2 10) 2)))
-  (check-equal? (vector-ref (screen-row-runs s2) 0) (list (run 1 "b" (hash))))
+  (check-equal? (vector-ref (screen-row-runs s2) 0) (list (run 0 "b" (hash))))
 
   (define s3 (window->screen (window-open b0 2 3)))
   (check-equal? (vector-ref (screen-row-runs s3) 0) (list (run 0 "a中" (hash))))

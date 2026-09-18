@@ -100,32 +100,41 @@
 (define (content-splice c s-line s-col e-line e-col new-text)
   (define lines (content-lines c))
   (define n (vector-length lines))
-  (define head (substring (vector-ref lines s-line) 0 s-col))
-  (define tail (substring (vector-ref lines e-line) e-col
-                          (string-length (vector-ref lines e-line))))
+  ;; 端点夹紧：越界行列有唯一合法解释（与 content-gap-goto 同规则，ARCHITECTURE §10.2 R1）
+  (define sl (max 0 (min s-line (sub1 n))))
+  (define el (max 0 (min e-line (sub1 n))))
+  (define sc (max 0 (min s-col (string-length (vector-ref lines sl)))))
+  (define ec (max 0 (min e-col (string-length (vector-ref lines el)))))
+  ;; 夹紧后仍反向 → 没有合法解释，报错。否则下面的「head + tail 拼接」会**静默复制**文本
+  ;; （"abcdef" 上 (0,3)-(0,1) → "abcbcdef"），见 ARCHITECTURE §10.3 A1。
+  (when (pos<? el ec sl sc)
+    (error 'content-splice "编辑区间反向: [~a,~a)..[~a,~a)" sl sc el ec))
+  (define head (substring (vector-ref lines sl) 0 sc))
+  (define tail (substring (vector-ref lines el) ec
+                          (string-length (vector-ref lines el))))
   (define new-lines (list->vector (string->lines new-text)))
   (define k (vector-length new-lines))
   (define inserted (max 1 k))                       ; k=0 时是合并出的 1 行
-  (define new-n (- (+ n inserted) (+ (- e-line s-line) 1)))
+  (define new-n (- (+ n inserted) (+ (- el sl) 1)))
   (define v* (make-vector new-n #f))
-  (vector-copy! v* 0 lines 0 s-line)
+  (vector-copy! v* 0 lines 0 sl)
   (cond
-    [(zero? k) (vector-set! v* s-line (string-append head tail))]
-    [(= k 1)   (vector-set! v* s-line (string-append head (vector-ref new-lines 0) tail))]
+    [(zero? k) (vector-set! v* sl (string-append head tail))]
+    [(= k 1)   (vector-set! v* sl (string-append head (vector-ref new-lines 0) tail))]
     [else
-     (vector-set! v* s-line (string-append head (vector-ref new-lines 0)))
+     (vector-set! v* sl (string-append head (vector-ref new-lines 0)))
      (for ([i (in-range 1 (sub1 k))])
-       (vector-set! v* (+ s-line i) (vector-ref new-lines i)))
-     (vector-set! v* (+ s-line (sub1 k))
+       (vector-set! v* (+ sl i) (vector-ref new-lines i)))
+     (vector-set! v* (+ sl (sub1 k))
                   (string-append (vector-ref new-lines (sub1 k)) tail))])
-  (vector-copy! v* (+ s-line inserted) lines (add1 e-line) n)
-  (define gap-line (if (zero? k) s-line (+ s-line (sub1 k))))
+  (vector-copy! v* (+ sl inserted) lines (add1 el) n)
+  (define gap-line (if (zero? k) sl (+ sl (sub1 k))))
   (define gap-col
-    (cond [(zero? k) s-col]
-          [(= k 1)   (+ s-col (string-length (vector-ref new-lines 0)))]
+    (cond [(zero? k) sc]
+          [(= k 1)   (+ sc (string-length (vector-ref new-lines 0)))]
           [else      (string-length (vector-ref new-lines (sub1 k)))]))
   (values (content-check (content v* gap-line gap-col))
-          (edit-desc s-line s-col e-line e-col new-text)))
+          (edit-desc sl sc el ec new-text)))
 
 ;;; ---------- 编辑原语（都是 splice 的特例）----------
 

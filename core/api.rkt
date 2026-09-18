@@ -78,13 +78,17 @@
 ;;;   编辑原语返回 (values 新值 desc)，无操作 desc = #f；
 ;;;   导航/状态原语直接返回 window。
 ;;;
-;;; ── 导出边界（内部实现不对外）────────────────────────────────
+;;; ── 导出边界：**显式白名单**（ARCHITECTURE §10.3 C）────────────────────
+;;; 对外名字**逐个列出**：新增内部函数**不会**自动泄漏（原来是 `except-out all-from-out`，
+;;; fail-open —— 加个内部助手就默认对外）。白名单与 MANUAL 的「消费者 API」栏目一一对应，
+;;; 可用 `tools/reconcile.rkt` 对账。
 ;;;   对外（消费者层）：point buffer window screen events edit-desc patch width document
 ;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
-;;;                buffer-apply-edit、buffer-edit-desc-inverse / edit-desc-inverse（撤销原语）、
-;;;                marker/overlay 的 buffer 级入口、dirty-desc、restrict / make-restrict
+;;;                buffer-apply-edit(-trusted)、buffer-edit-desc-inverse / edit-desc-inverse、
+;;;                marker/overlay 的 buffer 级入口、dirty-desc、restrict / make-restrict、
+;;;                document-apply-edit(-trusted)
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
-;;;                     render-* vrow/layout/wrap/window-vrows
+;;;                     render-* vrow/layout/wrap/window-vrows、check-mode、snap-left-col
 ;;; ============================================================================
 
 (require "text/point.rkt"
@@ -101,33 +105,74 @@
          "view/document.rkt")
 
 (provide
- ;; ---- 消费者层：写编辑器就用这些 ----
- (all-from-out "text/point.rkt")       ; point —— (line,col) 位置
- ;; content.rkt 只露 edit-desc 契约，文本存储本身（含 struct:content）是内部实现
- (except-out (all-from-out "text/content.rkt")
-             content content? struct:content content-lines content-gap-line content-gap-col
-             make-content content-of-lines content-of-string string->lines
-             content->lines content->string content-current-line content-line-count
-             content-line-ref content-check content-gap-goto
-             content-splice content-insert-char
-             content-insert-string content-newline content-backspace content-delete)
- ;; buffer.rkt：文档原子；去重 edit-desc（以 content.rkt 为唯一来源）
- (except-out (all-from-out "text/buffer.rkt")
-             edit-desc edit-desc? edit-desc-s-line edit-desc-s-col
-             edit-desc-e-line edit-desc-e-col edit-desc-new-text edit-desc-after-position)
- (all-from-out "text/edit.rkt")        ; 批量编辑应用 + 点映射（机制）
- (all-from-out "text/patch.rkt")       ; patch —— 补丁 delta（机制）
+ ;; ---- 消费者层（显式白名单）----
+ ;; point —— 位置 (line,col)
+ point point-clamp point-col point-line point<=? point<? point=? point? pos<? pos=? struct:point
+ ;; edit-desc —— 唯一跨层契约（文本存储本身是内部实现）
+ edit-desc edit-desc? struct:edit-desc edit-desc-s-line edit-desc-s-col
+ edit-desc-e-line edit-desc-e-col edit-desc-new-text edit-desc-after-position
+ edit-desc-map-position edit-desc-inverse
+ ;; buffer —— 文档原子（装配根）
+ buffer buffer? struct:buffer buffer-open buffer->string buffer->lines
+ buffer-line-count buffer-line-ref
+ buffer-splice buffer-splice-trusted buffer-insert-char buffer-insert-string
+ buffer-newline buffer-backspace buffer-delete
+ buffer-apply-edit buffer-apply-edit-trusted buffer-edit-desc-inverse
+ buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
+ buffer-put-restrict buffer-read-only-at?
+ restrict restrict? struct:restrict make-restrict restrict-read-only?
+ buffer-make-marker buffer-remove-marker buffer-marker-pos
+ buffer-make-overlay buffer-remove-overlay
+ buffer-mark-dirty buffer-mark-dirty-all
+ dirty-desc dirty-desc? struct:dirty-desc
+ dirty-desc-first-line dirty-desc-last-line dirty-desc-old-count dirty-desc-new-count
+ ;; 装配层访问器（一般用不到）
+ buffer-content buffer-properties buffer-markers buffer-overlays
+ buffer-tick buffer-dirty buffer-modified? buffer-gap
+ ;; 批量编辑应用 + 点映射（机制）
+ buffer-apply-edit-batch edits-map-position
+ ;; patch —— 补丁 delta（机制）
+ patch patch? struct:patch patch-key patch-first-line patch-last-line patch-segs
+ buffer-apply-patches buffer-content-same?
  ;; ---- 视口层 ----
- (all-from-out "view/events.rkt")      ; 类型化输入事件
- (all-from-out "view/width.rkt")       ; 字符 ↔ 显示列（宽字符宽度，供上层截断/量宽）
- (all-from-out "view/screen.rkt")      ; run + screen + diff + compose（输出）
- (all-from-out "view/window.rkt")      ; window —— 视口 + 编辑/导航
- ;; view.rkt 只露窗口级操作，布局内部（含 struct:vrow）藏起来
- (except-out (all-from-out "view/view.rkt")
-             vrow vrow? struct:vrow vrow-line vrow-start-col vrow-end-col
-             line-range->runs wrap-segments layout-clip layout-wrap window-vrows)
- (all-from-out "view/project.rkt")    ; window->screen —— 投影成画面
- (all-from-out "view/document.rkt"))  ; document —— 共享 buffer 的多窗口同步
+ ;; 类型化输入事件
+ modifiers modifiers? struct:modifiers
+ modifiers-control modifiers-alt modifiers-shift modifiers-meta
+ text-event text-event? struct:text-event text-event-text text-event-modifiers
+ key-event key-event? struct:key-event key-event-key key-event-modifiers
+ mouse-press-event mouse-press-event? struct:mouse-press-event
+ mouse-press-event-button mouse-press-event-x mouse-press-event-y mouse-press-event-modifiers
+ mouse-wheel-event mouse-wheel-event? struct:mouse-wheel-event
+ mouse-wheel-event-direction mouse-wheel-event-x mouse-wheel-event-y mouse-wheel-event-modifiers
+ resize-event resize-event? struct:resize-event resize-event-rows resize-event-cols
+ quit-event quit-event? struct:quit-event
+ ;; 字符 ↔ 显示列（宽字符宽度，供上层截断/量宽）
+ char-display-width string-display-width index->column column->index snap-column-forward
+ ;; screen —— 输出契约
+ screen screen? struct:screen screen-rows screen-cols screen-row-runs
+ screen-cursor-row screen-cursor-col
+ make-screen screen-diff-rows screen-compose
+ run run? struct:run run-col run-text run-face
+ ;; window —— 视口 + 编辑/导航
+ window window? struct:window window-open window-buffer window-point
+ window-height window-width window-mode window-top-line window-left-col window-top-seg
+ window-set-buffer window-set-point window-set-mode window-set-top window-set-left
+ window-set-top-seg window-set-size window-scroll window-hscroll window-goto
+ window-left window-right window-home window-end
+ window-insert-char window-insert-string window-newline window-backspace window-delete
+ ;; 窗口级操作（vrow 布局内部藏起来）
+ window-ensure-point window-clamp-view window-visual-move
+ window-point->screen window-screen->point window-scroll-visual
+ ;; window->screen —— 投影成画面
+ window->screen
+ ;; document —— 共享 buffer 的多窗口同步
+ view view? struct:view view-window view-sync
+ document document? struct:document document-open document-of-buffer
+ document-add-view document-view-count document-view-ref document-window
+ document-view-sync document-set-view-sync document-update-view document-sync-followers
+ document-edit document-apply-edit document-apply-edit-trusted
+ document-insert-char document-insert-string document-newline document-backspace document-delete
+ document-buffer document-views)
 
 ;;; ============================================================================
 ;;; 冒烟测试：验证门面 + 一条完整的「属性 → 画面」链

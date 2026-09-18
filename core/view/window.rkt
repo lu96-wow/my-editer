@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../text/point.rkt" "../text/buffer.rkt" rackunit)
+(require "../text/point.rkt" "../text/buffer.rkt" "width.rkt" rackunit)
 
 ;;; window.rkt —— 视口：buffer 引用 + 本窗口光标 + 滚动位置 + 尺寸
 ;;;
@@ -13,6 +13,8 @@
 (provide
  (struct-out window)
  window-open
+ check-mode
+ snap-left-col
  window-set-buffer
  window-set-point
  window-set-mode
@@ -67,18 +69,40 @@
 
 ;;; ---------- 视图状态 ----------
 
-(define (window-set-mode w m)     (struct-copy window w [mode m]))
+;; mode 枚举检查。`window-set-mode` 立即查（报错点与设置点合一，见 ARCHITECTURE §10.3 A4）；
+;; view.rkt 的渲染/跟随路径复用它做**延迟兜底** —— `window` 的构造器是公开的，
+;; 仍可能被绕过造出非法 mode。
+(define (check-mode who m)
+  (unless (memq m '(clip wrap))
+    (error who "mode 必须是 'clip 或 'wrap，得到 ~a" m)))
+
+(define (window-set-mode w m)     (check-mode 'window-set-mode m) (struct-copy window w [mode m]))
 (define (window-set-top w n)      (struct-copy window w [top-line (max 0 n)]))
-(define (window-set-left w n)     (struct-copy window w [left-col (max 0 n)]))
+;; 水平滚动的参考行：顶行（`left-col` 作用于整个可见区，顶行是它的代表）。
+(define (left-ref-text w)
+  (define b (window-buffer w))
+  (define n (buffer-line-count b))
+  (buffer-line-ref b (max 0 (min (window-top-line w) (sub1 n)))))
+
+;; 把水平列吸附到**字符起点**：落在宽字符右半会画出半格空白（ARCHITECTURE §10.3 D2）。
+;; 与 `snap-column-forward` 的区别：**不夹到行尾** —— 超过行宽的列原样保留，那是
+;; 「滚过短行尾部」的合法状态（短行显示空、更长的行显示尾部）。
+(define (snap-left-col text col)
+  (if (<= col (string-display-width text))
+      (snap-column-forward text col)
+      col))
+
+;; 水平滚动/设置一律吸附到字符起点（与 `window-ensure-point` 的右界吸附一致）。
+(define (window-set-left w n)
+  (struct-copy window w [left-col (snap-left-col (left-ref-text w) (max 0 n))]))
+(define (window-hscroll w delta)
+  (window-set-left w (+ (window-left-col w) delta)))
 (define (window-set-top-seg w n)  (struct-copy window w [top-seg (max 0 n)]))
 (define (window-set-size w height width)
   (struct-copy window w [height (max 1 height)] [width (max 1 width)]))
 
 (define (window-scroll w delta)
   (struct-copy window w [top-line (max 0 (+ (window-top-line w) delta))]))
-
-(define (window-hscroll w delta)
-  (struct-copy window w [left-col (max 0 (+ (window-left-col w) delta))]))
 
 ;;; ---------- 光标导航（只动 point，直接返回 window）----------
 
@@ -243,5 +267,17 @@
   (check-equal? (window-width ws) 100)
   (check-equal? (window-mode (window-set-mode w 'wrap)) 'wrap)
   (check-equal? (window-top-seg (window-set-top-seg w 3)) 3)
+
+  ;; D2 回归：水平滚动吸附到字符起点，但**不夹到行尾**（滚过短行尾部是合法状态）
+  (define bd (buffer-open "中abc"))                 ; 中占显示列 0-1，'a' 在 2
+  (define wd (window-open bd 2 4))
+  (check-equal? (window-left-col (window-set-left wd 0)) 0)     ; 边界不动
+  (check-equal? (window-left-col (window-set-left wd 1)) 2)     ; 右半格 → 下一字符起点
+  (check-equal? (window-left-col (window-set-left wd 2)) 2)     ; 已是字符起点
+  (check-equal? (window-left-col (window-hscroll wd 1)) 2)      ; hscroll 同样吸附
+  (check-equal? (window-left-col (window-set-left wd 99)) 99)   ; 滚过行尾：原样保留
+
+  ;; A4 回归：未知 mode 立即报错（原来 set-mode 收下任意值，只在渲染路径延迟报错/静默当 wrap）
+  (check-exn exn:fail? (lambda () (window-set-mode (window-open (buffer-open "abc") 3 10) 'C)))
 
   (displayln "window.rkt: all tests passed"))

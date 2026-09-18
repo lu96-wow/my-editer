@@ -46,6 +46,8 @@
  document-update-view
  document-sync-followers
  document-edit
+ document-apply-edit
+ document-apply-edit-trusted
  document-insert-char
  document-insert-string
  document-newline
@@ -80,15 +82,23 @@
 (define (document-add-view doc w [p #f] #:sync [sync 'free])
   (check-sync 'document-add-view sync)
   (define w* (window-set-buffer w (document-buffer doc)))
-  (define w+ (if p (window-set-point w* p) w*))
+  (define w+ (window-clamp-view (if p (window-set-point w* p) w*)))
   (define idx (document-view-count doc))   ; 新下标 = 旧数量
   (values
    (struct-copy document doc
      [views (append (document-views doc) (list (view w+ sync)))])
    idx))
 
+;; 视图索引校验：取/改视图的函数都经这里，越界一律报错（原来 update-view/set-view-sync
+;; 静默返回原 doc，而 document-window 是 list-ref 抛 —— 同类操作两副面孔，见 §10.3 A3）。
+(define (check-view-index who doc i)
+  (unless (and (exact-nonnegative-integer? i) (< i (document-view-count doc)))
+    (error who "视图下标越界: ~a（该 document 有 ~a 个视图）" i (document-view-count doc))))
+
 ;; 取第 i 个视图（完整 view：window + sync）。命名同 buffer-line-ref：按 index 取。
-(define (document-view-ref doc i) (list-ref (document-views doc) i))
+(define (document-view-ref doc i)
+  (check-view-index 'document-view-ref doc i)
+  (list-ref (document-views doc) i))
 
 ;; 便捷：取第 i 个视图的 window（已与共享 buffer 同步），最常用
 (define (document-window doc i) (view-window (document-view-ref doc i)))
@@ -98,15 +108,18 @@
 ;; 运行时改第 i 个视图的策略
 (define (document-set-view-sync doc i sync)
   (check-sync 'document-set-view-sync sync)
+  (check-view-index 'document-set-view-sync doc i)
   (struct-copy document doc
     [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
              (if (= j i) (struct-copy view v [sync sync]) v))]))
 
-;; 更新第 i 个视图的 window（导航/滚动等纯 window 变换 f : window -> window），策略不动
+;; 更新第 i 个视图的 window（导航/滚动等纯 window 变换 f : window -> window），策略不动。
+;; 结果一律夹回合法域（视口不变量，见 view.rkt window-clamp-view / ARCHITECTURE §10.3 D1）。
 (define (document-update-view doc i f)
+  (check-view-index 'document-update-view doc i)
   (struct-copy document doc
     [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
-             (if (= j i) (struct-copy view v [window (f (view-window v))]) v))]))
+             (if (= j i) (struct-copy view v [window (window-clamp-view (f (view-window v)))]) v))]))
 
 ;; 把第 i 视图的 point+viewport 对齐到所有 'follow 视图（编辑后的导航/滚动后调用）。
 ;; 编辑路径在 document-edit 内部已同步 follow，这里用于导航/滚动等非编辑变化。
@@ -163,14 +176,26 @@
        (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
          (define sync (view-sync v))
          (define w*
-           (if (= j i)
-               editing
-               (case sync
-                 [(free)   (rebase-free   (view-window v) b* desc)]
-                 [(follow) (rebase-follow (view-window v) editing)]
-                 [else (error 'document-edit "unknown sync ~a" sync)])))
+           (window-clamp-view
+            (if (= j i)
+                editing
+                (case sync
+                  [(free)   (rebase-free   (view-window v) b* desc)]
+                  [(follow) (rebase-follow (view-window v) editing)]
+                  [else (error 'document-edit "unknown sync ~a" sync)]))))
          (view w* sync)))
      (values (document b* views*) desc)]))
+
+;; desc 形状的编辑入口：施加一条**自带坐标**的 desc（撤销/重放/程序编辑的落点）。
+;; 与 document-edit 的分工：后者是「在光标处编辑」，本函数是「照 desc 施加」——
+;; 两者走同一个漏斗（编辑视图推进光标 + ensure-point，其余视图按自己的 sync rebase）。
+(define (document-apply-edit doc i desc)
+  (document-edit doc i (lambda (b _l _c) (buffer-apply-edit b desc))))
+
+;; 同上，但跳过 read-only 守卫：撤销/重放专用（§9.6：记录在案的编辑当年都过了守卫，
+;; 不该被**事后**才加的约束挡住）
+(define (document-apply-edit-trusted doc i desc)
+  (document-edit doc i (lambda (b _l _c) (buffer-apply-edit-trusted b desc))))
 
 ;; 常用编辑原语的便捷包装（柯里化到 buffer-* 的显式位置签名）
 (define (document-insert-char doc i ch)
@@ -292,5 +317,49 @@
   (check-equal? (window-point (w k2 0)) (point 0 0))
   (check-equal? (document-view-sync k2 1) 'follow)
   (check-eq? (window-buffer (w k2 0)) (window-buffer (w k2 1)))
+
+  ;; A3 回归：视图索引越界 → 统一报错（原来 update-view/set-view-sync 静默返回原 doc）
+  (define va (document-open "hello"))
+  (define-values (vb _vi) (document-add-view va (blank-w)))
+  (check-exn exn:fail? (lambda () (document-update-view vb 99 window-right)))
+  (check-exn exn:fail? (lambda () (document-set-view-sync vb 99 'follow)))
+  (check-exn exn:fail? (lambda () (document-window vb 99)))
+
+  ;; D1 回归：free 视图 top 越界后不空白、不崩
+  ;; （原来：wrap → window->screen 抛 vector-ref；clip → 静默全空白）
+  (define big (document-open (string-join (map number->string (range 20)) "\n")))
+  (define-values (dv0 _dv0) (document-add-view big (window-open (buffer-open "") 3 20) (point 0 0)))
+  (define-values (dv1 _dv1) (document-add-view dv0 (window-open (buffer-open "") 3 20) (point 0 0)))
+  ;; wrap：先把 free 视图滚到 top 15，再由视图 0 删掉 19 行
+  (define dv2 (document-update-view dv1 1 (lambda (w) (window-set-mode (window-set-top w 15) 'wrap))))
+  (check-equal? (window-top-line (document-window dv2 1)) 15)      ; 没越界时不动
+  (define-values (dv3 _dd) (document-edit dv2 0 (lambda (b _l _c) (buffer-splice b 0 0 19 0 ""))))
+  (check-equal? (buffer-line-count (document-buffer dv3)) 1)
+  (check-equal? (window-top-line (document-window dv3 1)) 0)       ; 夹回合法域
+  (check-true (vector? (window-vrows (document-window dv3 1))))    ; 不再抛 vector-ref
+  ;; clip：同样越界 → 原来静默全空白
+  (define dc2 (document-update-view dv1 1 (lambda (w) (window-set-top w 15))))
+  (define-values (dc3 _dc) (document-edit dc2 0 (lambda (b _l _c) (buffer-splice b 0 0 19 0 ""))))
+  (check-equal? (window-top-line (document-window dc3 1)) 0)
+  (check-equal? (vrow-line (vector-ref (window-vrows (document-window dc3 1)) 0)) 0)
+
+  ;; B 组：desc 形状入口（document-apply-edit / -trusted）
+  (define ea (document-open "hello\nworld"))
+  (define-values (eb _eb) (document-add-view ea (blank-w) (point 0 1)))
+  (define-values (ec ec-desc) (document-insert-string eb 0 "XY"))
+  (check-equal? (buffer->string (document-buffer ec)) "hXYello\nworld")   ; 插在光标 (0,1) 处
+  ;; 用同一条 desc 再施加一次 → 与 document-edit 等价（光标落点也一致）
+  (define-values (ed ed-d2) (document-apply-edit ec 0 ec-desc))
+  (check-equal? ed-d2 ec-desc)
+  (check-equal? (buffer->string (document-buffer ed)) "hXYXYello\nworld")
+  (check-equal? (window-point (document-window ed 0)) (window-point (document-window ec 0)))
+  ;; 对照：守卫版拒绝 read-only 内的 desc，trusted 版施加（撤销/重放靠它）
+  (define ert (buffer-put-restrict (buffer-open "hello") 0 1 3 (restrict #t)))
+  (define-values (er0 _er0) (document-add-view (document-of-buffer ert) (blank-w) (point 0 2)))
+  (define er-desc (edit-desc 0 2 0 2 "Z"))
+  (define-values (erg _erg) (document-apply-edit er0 0 er-desc))
+  (check-equal? (buffer->string (document-buffer erg)) "hello")   ; 守卫拒绝：文本未变
+  (define-values (er1 _er1d) (document-apply-edit-trusted er0 0 er-desc))
+  (check-equal? (buffer->string (document-buffer er1)) "heZllo")
 
   (displayln "document.rkt: all tests passed"))

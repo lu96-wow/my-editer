@@ -35,6 +35,7 @@
  buffer-backspace
  buffer-delete
  buffer-apply-edit
+ buffer-apply-edit-trusted
  buffer-edit-desc-inverse
  buffer-put-property
  buffer-get-property
@@ -211,6 +212,15 @@
                  (edit-desc-e-line d) (edit-desc-e-col d)
                  (edit-desc-new-text d)))
 
+;; 应用单个 edit-desc 的 trusted 版（跳过 read-only 守卫）：撤销/重放的落点。
+;; 记录在案的编辑在当时都过了守卫（被拒的 desc=#f 不会被记录），所以重放不该被
+;; **事后**才加的约束挡住——否则撤销会静默失灵（见 ARCHITECTURE §9.6）。
+(define (buffer-apply-edit-trusted b d)
+  (buffer-splice-trusted b
+                         (edit-desc-s-line d) (edit-desc-s-col d)
+                         (edit-desc-e-line d) (edit-desc-e-col d)
+                         (edit-desc-new-text d)))
+
 ;; [s..e) 的文本（行间换行按 "\n" 归一，与 content 的规范形一致）
 (define (buffer-range-text b s-line s-col e-line e-col)
   (cond
@@ -234,11 +244,38 @@
                                         (edit-desc-s-line d) (edit-desc-s-col d)
                                         (edit-desc-e-line d) (edit-desc-e-col d))))
 
+;;; ---------- 输入夹紧与校验（ARCHITECTURE §10.2 R1/R2）----------
+;;; 两类违约分开处理：
+;;;   有唯一合法解释 → 夹紧（越界行列、超出行长的属性端点）
+;;;   没有合法解释   → 报错（区间反向/为空、位置不在 buffer 内）
+
+;; 把属性/约束的 (line start end) 夹到合法域：行号夹到行界内、端点夹到该行长度。
+;; 空区间/反向由 properties 层报错（见 properties.rkt row-modify）。
+(define (clamp-prop-range b line start end)
+  (define n (buffer-line-count b))
+  (define l (max 0 (min line (sub1 n))))
+  (define len (string-length (buffer-line-ref b l)))
+  (values l (max 0 (min start len)) (max 0 (min end len))))
+
+;; marker/overlay 的位置必须能在 buffer 里解释：越界位置永远不会被编辑修正、
+;; 由它构成的 overlay 永不显示（见 ARCHITECTURE §10.3 A5）。
+(define (check-buffer-position who b pos)
+  (define n (buffer-line-count b))
+  (define l (point-line pos))
+  (define c (point-col pos))
+  (define len (and (exact-nonnegative-integer? l)
+                   (< l n)
+                   (string-length (buffer-line-ref b l))))
+  (unless (and len (exact-nonnegative-integer? c) (<= c len))
+    (error who "位置不在 buffer 内: (line col) = (~a ~a)；共 ~a 行~a" l c n
+           (if len (format "，第 ~a 行 ~a 列" l len) ""))))
+
 ;;; ---------- 属性 ----------
 
 (define (buffer-put-property b line start end prop val)
+  (define-values (l s e) (clamp-prop-range b line start end))
   (struct-copy buffer b
-    [properties (properties-put (buffer-properties b) line start end prop val)]
+    [properties (properties-put (buffer-properties b) l s e prop val)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
 
@@ -247,8 +284,9 @@
 
 ;; 只清掉 [start,end) 上某个 key。插件应只清「自己负责的 key」，避免互相清空。
 (define (buffer-remove-property b line start end prop)
+  (define-values (l s e) (clamp-prop-range b line start end))
   (struct-copy buffer b
-    [properties (properties-remove (buffer-properties b) line start end prop)]
+    [properties (properties-remove (buffer-properties b) l s e prop)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
 
@@ -256,7 +294,10 @@
 (define (buffer-put-properties-many b segs)
   (if (null? segs)
       b
-      (let ([properties* (properties-put-many (buffer-properties b) segs)])
+      (let* ([segs* (for/list ([s (in-list segs)])
+                      (define-values (l a z) (clamp-prop-range b (car s) (cadr s) (caddr s)))
+                      (list* l a z (cdddr s)))]
+             [properties* (properties-put-many (buffer-properties b) segs*)])
         (struct-copy buffer b
           [properties properties*]
           [tick (add1 (buffer-tick b))]
@@ -264,14 +305,16 @@
 
 ;; 写约束槽（只动约束，不碰表现层）。传 (make-restrict) 即清除该区间的约束。
 (define (buffer-put-restrict b line start end rs)
+  (define-values (l s e) (clamp-prop-range b line start end))
   (struct-copy buffer b
-    [properties (properties-put-restrict (buffer-properties b) line start end rs)]
+    [properties (properties-put-restrict (buffer-properties b) l s e rs)]
     [tick (add1 (buffer-tick b))]
     [modified? #t]))
 
 ;;; ---------- marker ----------
 
 (define (buffer-make-marker b pos [type 'before])
+  (check-buffer-position 'buffer-make-marker b pos)
   (define-values (mt id) (marker-table-add (buffer-markers b) pos type))
   (values (struct-copy buffer b
             [markers mt]
@@ -294,6 +337,13 @@
 (define (buffer-make-overlay b start-pos end-pos [presentation (hash)]
                              #:priority [priority 0]
                              #:evaporate? [evaporate? #f])
+  (check-buffer-position 'buffer-make-overlay b start-pos)
+  (check-buffer-position 'buffer-make-overlay b end-pos)
+  (when (pos<? (point-line end-pos) (point-col end-pos)
+               (point-line start-pos) (point-col start-pos))
+    (error 'buffer-make-overlay "overlay 区间反向: (~a ~a)..(~a ~a)"
+           (point-line start-pos) (point-col start-pos)
+           (point-line end-pos) (point-col end-pos)))
   (define-values (b1 sid) (buffer-make-marker b start-pos 'before))
   (define-values (b2 eid) (buffer-make-marker b1 end-pos 'after))
   (define-values (ot oid)
@@ -459,6 +509,8 @@
   ;; ---- undo 原语：edit-desc 的逆（需编辑前的 buffer 取回被删文本）----
   ;; 便于测试：应用 desc 只看 buffer（buffer-apply-edit 返回 (values buffer desc)）
   (define (apply1 b d) (let-values ([(b* _) (buffer-apply-edit b d)]) b*))
+  (define (apply1-trusted b d)
+    (let-values ([(b* _) (buffer-apply-edit-trusted b d)]) b*))
   (define u0 (buffer-open "abcd\nefgh"))
   ;; buffer-apply-edit 与产生该 desc 的编辑等价
   (define-values (u1 du1) (buffer-insert-string u0 0 1 "XY\nZ"))
@@ -485,5 +537,53 @@
   (check-equal? (buffer->string u5) "Zcd\nefgh")
   (check-equal? (buffer->string (apply1 u5 (buffer-edit-desc-inverse u0 du5)))
                 "abcd\nefgh")
+
+  ;; ---- buffer-apply-edit-trusted：撤销/重放走 trusted ----
+  ;; 对照：编辑之后才加的 read-only —— 守卫版拒绝（撤销会静默失灵），trusted 版通过
+  (define v0 (buffer-open "hello"))
+  (define-values (v1 vd) (buffer-insert-string v0 0 1 "X"))   ; "hXello"
+  (define vinv (buffer-edit-desc-inverse v0 vd))
+  (define vr (buffer-put-restrict v1 0 1 2 (restrict #t)))     ; 事后把 "X" 标成 read-only
+  (check-eq? (apply1 vr vinv) vr)                              ; 守卫版：原样返回（desc=#f）
+  (check-equal? (buffer->string (apply1 vr vinv)) "hXello")
+  (check-equal? (buffer->string (apply1-trusted vr vinv)) "hello")   ; trusted 版：撤销生效
+  ;; 被恢复的文本不带它被删时的约束/表现（区间随删除塌缩）
+  (check-false (buffer-read-only-at? (apply1-trusted vr vinv) 0 1))
+  ;; 无约束时两版等价
+  (check-equal? (buffer->string (apply1-trusted v1 vinv))
+                (buffer->string (apply1 v1 vinv)))
+
+  ;; ---- A 组回归：曾经的静默行为现在报错 / 夹紧（ARCHITECTURE §10.3）----
+
+  ;; A1：区间反向 → 报错（原来会静默复制文本："abcdef" → "abcbcdef"）
+  (check-exn exn:fail?
+             (lambda () (buffer-splice (buffer-open "abcdef") 0 3 0 1 "")))
+  (check-exn exn:fail?
+             (lambda () (buffer-splice (buffer-open "abc\ndef") 1 0 0 1 "")))
+  ;; A1：越界端点仍**夹紧**（有唯一合法解释），且 desc 报夹紧后的坐标
+  (define-values (oob od) (buffer-splice (buffer-open "abc") 0 1 0 99 ""))
+  (check-equal? (buffer->string oob) "a")            ; 删 [1,3)
+  (check-equal? od (edit-desc 0 1 0 3 ""))
+  (check-equal? (buffer->string
+                 (let-values ([(b* _) (buffer-splice (buffer-open "abc") 0 99 0 99 "X")]) b*))
+                "abcX")
+
+  ;; A2：属性/约束区间为空或反向 → 报错（原来静默不写，写只读区"以为锁住了没锁"）
+  (check-exn exn:fail?
+             (lambda () (buffer-put-restrict (buffer-open "abcdef") 0 2 2 (restrict #t))))
+  (check-exn exn:fail?
+             (lambda () (buffer-put-property (buffer-open "abcdef") 0 4 2 'face 'x)))
+  ;; A2：端点超出行长 → 夹到行长（不是报错）
+  (define clamped (buffer-put-property (buffer-open "abc") 0 1 99 'face 'x))
+  (check-equal? (buffer-get-property clamped 0 2 'face) 'x)
+  (check-equal? (buffer-get-property (buffer-put-property (buffer-open "abc") 0 1 99 'face 'x) 0 0 'face) #f)
+
+  ;; A5：marker/overlay 位置必须在 buffer 内；overlay 不能反向
+  (check-exn exn:fail? (lambda () (buffer-make-marker (buffer-open "abc") (point 9 0))))
+  (check-exn exn:fail? (lambda () (buffer-make-marker (buffer-open "abc") (point 0 9))))
+  (check-exn exn:fail?
+             (lambda () (buffer-make-overlay (buffer-open "abc\ndef") (point 1 0) (point 0 1))))
+  ;; A5：边界合法（行尾 = 行长）
+  (check-true (let-values ([(b* _) (buffer-make-marker (buffer-open "abc") (point 0 3))]) (buffer? b*)))
 
   (displayln "buffer.rkt: all tests passed"))

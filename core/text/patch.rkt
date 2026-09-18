@@ -36,15 +36,27 @@
 (define (buffer-apply-patches b patches)
   (if (null? patches)
       b
-      (let ([properties*
-             (for/fold ([p (buffer-properties b)])
-                       ([pt (in-list patches)])
-               (properties-replace-key p
+      (begin
+        ;; 行范围越界 = 过期 patch（它的行号属于旧文档）→ 报错，绝不静默夹到**别的行**
+        ;; 去清旧写新。"过期就丢弃"仍是消费方的责任（见 ARCHITECTURE §10.3 A6）。
+        (for ([pt (in-list patches)])
+          (define n (buffer-line-count b))
+          (define f (patch-first-line pt))
+          (define l (patch-last-line pt))
+          (unless (and (exact-nonnegative-integer? f) (exact-nonnegative-integer? l)
+                       (<= f l) (< l n))
+            (error 'buffer-apply-patches
+                   "patch 行范围越界: [~a,~a]（buffer 有 ~a 行；过期 patch 应由消费方丢弃）"
+                   f l n)))
+        (let ([properties*
+               (for/fold ([p (buffer-properties b)])
+                         ([pt (in-list patches)])
+                 (properties-replace-key p
                                   (patch-first-line pt) (patch-last-line pt)
                                   (patch-key pt) (patch-segs pt)))])
-        (struct-copy buffer b
-          [properties properties*]
-          [tick (add1 (buffer-tick b))]))))
+          (struct-copy buffer b
+            [properties properties*]
+            [tick (add1 (buffer-tick b))])))))
 
 (module+ test
   (define b0 (buffer-open "hello\nworld\nfoo"))
@@ -72,5 +84,11 @@
 
   ;; 空补丁 → 原样返回
   (check-eq? (buffer-apply-patches b0 '()) b0)
+
+  ;; A6 回归：过期 patch 的行范围越界 → 报错（原来静默夹到别的行去清旧写新）
+  (check-exn exn:fail?
+             (lambda () (buffer-apply-patches b0 (list (patch 'face 0 99 '())))))
+  (check-exn exn:fail?
+             (lambda () (buffer-apply-patches b0 (list (patch 'face 2 0 '())))))   ; 反向
 
   (displayln "patch.rkt: all tests passed"))

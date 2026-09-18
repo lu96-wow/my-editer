@@ -20,6 +20,7 @@
  window-screen->point
  window-scroll-visual
  window-ensure-point
+ window-clamp-view
  window-visual-move)
 
 (struct vrow (line start-col end-col) #:transparent)
@@ -135,6 +136,38 @@
                     (list->vector (wrap-segments (buffer-line-ref b next) width))
                     0 row acc))])])))
 
+;;; ---------- 视口自洽（夹紧）----------
+
+;; 视口视觉行数（mode-aware）：clip = buffer 行数；wrap = 折行段总数。
+(define (visual-line-count w)
+  (define b (window-buffer w))
+  (case (window-mode w)
+    ['clip (buffer-line-count b)]
+    ['wrap (for/sum ([l (in-range (buffer-line-count b))])
+             (length (wrap-segments (buffer-line-ref b l) (window-width w))))]
+    [else (check-mode 'visual-line-count (window-mode w))]))
+
+;; 把视口夹回合法域：`top`/`top-seg` 夹到范围内、`left-col` 吸附到字符起点。
+;; **为什么必须有**：`rebase-free` 只改 point、`set-top/set-left/set-size` 只做 `max 0` ——
+;; 另一个视图把内容删短（或几何变化）后，本视图的 top 会越界，实测后果是
+;; clip 静默全空白 / wrap 在 `window->screen` 抛 vector-ref（ARCHITECTURE §10.3 D1）。
+;; 语义修正：`free` 视图「视口钉住不动」= 钉住**但仍在合法域内**。
+(define (window-clamp-view w)
+  (define b (window-buffer w))
+  (define n (buffer-line-count b))
+  (define max-top (max 0 (- (visual-line-count w) (window-height w))))
+  (define top (max 0 (min (window-top-line w) max-top)))
+  (define tline (max 0 (min top (sub1 n))))
+  (define ttext (buffer-line-ref b tline))
+  (define max-seg (case (window-mode w)
+                    ['clip 0]
+                    ['wrap (max 0 (sub1 (length (wrap-segments ttext (window-width w)))))]
+                    [else (check-mode 'window-clamp-view (window-mode w))]))
+  (struct-copy window w
+    [top-line top]
+    [top-seg (max 0 (min (window-top-seg w) max-seg))]
+    [left-col (snap-left-col ttext (window-left-col w))]))
+
 (define (window-vrows w)
   (define b (window-buffer w))
   (case (window-mode w)
@@ -142,7 +175,7 @@
                         (window-width w) (window-height w))]
     ['wrap (layout-wrap b (window-top-line w) (window-top-seg w)
                         (window-width w) (window-height w))]
-    [else (error 'window-vrows "unknown mode ~a" (window-mode w))]))
+    [else (check-mode 'window-vrows (window-mode w))]))
 
 ;;; ---------- 光标 / 鼠标映射（共用 vrow 抽象）----------
 
@@ -191,9 +224,10 @@
 ;;; ---------- 视觉行滚动 ----------
 
 (define (window-scroll-visual w delta)
-  (if (eq? (window-mode w) 'clip)
-      (window-scroll w delta)
-      (window-scroll-wrap w delta)))
+  (case (window-mode w)
+    ['clip (window-scroll w delta)]
+    ['wrap (window-scroll-wrap w delta)]
+    [else (check-mode 'window-scroll-visual (window-mode w))]))
 
 (define (window-scroll-wrap w delta)
   (define b (window-buffer w))
@@ -309,7 +343,7 @@
   (case (window-mode w)
     ['clip (ensure-clip w line target-col)]
     ['wrap (ensure-wrap w line target-col)]
-    [else (error 'window-ensure-point "unknown mode ~a" (window-mode w))]))
+    [else (check-mode 'window-ensure-point (window-mode w))]))
 
 ;;; ---------- 视觉行移动 ----------
 ;;; 上下键按「视觉行」移动：wrap 按折行段、clip 按 buffer 行，统一保持「视觉列」。
@@ -321,7 +355,7 @@
   (case mode
     ['clip (list (cons 0 (string-display-width text)))]
     ['wrap (wrap-segments text width)]
-    [else (error 'line-segments "unknown mode ~a" mode)]))
+    [else (check-mode 'line-segments mode)]))
 
 ;; 把 (line, col) 沿视觉行移动 delta（-1 上 / +1 下），返回 (values 目标行 目标列)；
 ;; 无操作（已在首/末视觉行）返回 (values #f #f)。
@@ -503,5 +537,21 @@
   (check-equal? (window-point wv6-m) (point 1 1))           ; 吸附到 col2（第二中），而非 col0
   (define wv6-e (window-ensure-point wv6-m))
   (check-equal? (window-left-col wv6-e) 1)                   ; 窗口不左移
+
+  ;; D1 回归：top 越界时 window-clamp-view 把视口夹回合法域
+  ;; （原来 clip 静默全空白、wrap 在 window-vrows 抛 vector-ref）
+  (define cv-b (buffer-open "l0\nl1\nl2\nl3"))
+  (define cv-w (window-set-top (window-open cv-b 2 10) 50))
+  (check-equal? (window-top-line cv-w) 50)          ; set-* 只做 max 0：夹紧时机在 document/投影前
+  (define cv-c (window-clamp-view cv-w))
+  (check-equal? (window-top-line cv-c) 2)           ; 4 行、高 2 → max-top = 2
+  (check-equal? (vector-ref (window-vrows cv-c) 0) (vrow 2 0 10))   ; clip 的列范围 = 窗口宽度
+  (define cv-cw (window-clamp-view (window-set-mode cv-w 'wrap)))
+  (check-equal? (window-top-line cv-cw) 2)
+  (check-true (vector? (window-vrows cv-cw)))
+  ;; 未越界时不动；left-col 吸附到字符起点（宽字符右半 → 下一字符起点）
+  (define cv-wb (window-open (buffer-open "中abc") 3 4))
+  (check-equal? (window-clamp-view (window-set-top cv-wb 0)) (window-set-left cv-wb 0))
+  (check-equal? (window-left-col (window-clamp-view (window-set-left cv-wb 1))) 2)
 
   (displayln "view.rkt: all tests passed"))

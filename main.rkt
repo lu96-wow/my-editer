@@ -1,26 +1,30 @@
 #lang racket
 
-(require "core/api.rkt" "io/tui.rkt")
+(require "core/api.rkt" "history.rkt" "io/tui.rkt")
 
 ;;; main.rkt —— 两个 window 共享同一 buffer 的编辑器（document 同步演示）
 ;;;
 ;;; 这层是「组装层」：core 只给 buffer/window/screen/events/document 原子，
 ;;; 怎么摆窗口、怎么路由输入、怎么拼屏，全在这里自己写。
+;;; 撤销/重放的账本也属于组装层（history.rkt）——core 只提供逆编辑代数，见 ARCHITECTURE §9。
 ;;;
 ;;;   布局：左窗 + 右窗 + 底部状态行
 ;;;   同步：左/右两窗是同一 document 的两个视图（view 0 / view 1），
 ;;;         一个窗打字，另一个实时看到（document-edit 统一 rebase）
 ;;;   输入：racket-tui raw → core event → handle → active 视图的编辑/导航
+;;;   撤销：每次编辑经 on-edit 记一步（逆在编辑时捕获）；连续打字 / 连续删除并成一步
 ;;;   渲染：两个 window->screen → screen-compose → 一张大屏 → ANSI
 ;;;
 ;;; 运行：racket main.rkt（需要真实 Linux 终端）
-;;; 按键：Tab / Ctrl+O 切窗口；Ctrl+F 切换 active 视图同步策略；Ctrl+Q 退出
+;;; 按键：Tab / Ctrl+O 切窗口；Ctrl+Z 撤销、Ctrl+Y 重放；
+;;;       Ctrl+F 切换 active 视图同步策略；Ctrl+Q 退出
 
-;;; ---------- 应用状态：一个 document（两个视图）+ 哪个 active ----------
+;;; ---------- 应用状态：一个 document（两个视图）+ 哪个 active + 撤销账本 ----------
 
-(struct app (doc active) #:transparent)
+(struct app (doc active hist) #:transparent)
 ;; doc    : document   两个视图共享同一 buffer（单一事实源）
 ;; active : 0 | 1      当前 active 视图下标
+;; hist   : history    撤销/重放账本（消费层，见 history.rkt）
 
 (define (active-window a)
   (document-window (app-doc a) (app-active a)))
@@ -111,7 +115,7 @@
   ;; 两个视图共享 b；左 'free（参考视图），右 'follow（跟手），光标都在提示后
   (define-values (doc1 _v0) (document-add-view doc0 (window-open b area-h left-w)  (point 0 2)))
   (define-values (doc2 _v1) (document-add-view doc1 (window-open b area-h right-w) (point 0 2) #:sync 'follow))
-  (app doc2 0))
+  (app doc2 0 (make-history)))
 
 (define (resize-app a rows cols)
   (define-values (area-h left-w right-w) (split-size rows cols))
@@ -123,10 +127,12 @@
 (define (status-screen a cols)
   (define w (active-window a))
   (define p (window-point w))
-  (define text (format "左[~a] 右[~a] | 视图 ~a | Ln ~a, Col ~a | Tab 切窗 | Ctrl+F 同步 | Ctrl+Q 退出"
+  (define text (format "左[~a] 右[~a] | 视图 ~a | 撤销 ~a 重放 ~a | Ln ~a, Col ~a | Tab 切窗 | Ctrl+Z/Y | Ctrl+F 同步 | Ctrl+Q 退出"
                        (sync-name (document-view-sync (app-doc a) 0))
                        (sync-name (document-view-sync (app-doc a) 1))
                        (if (zero? (app-active a)) "左" "右")
+                       (history-undo-depth (app-hist a))
+                       (history-redo-depth (app-hist a))
                        (add1 (point-line p))
                        (add1 (point-col p))))
   ;; 按显示宽度截断（宽字符占 2 列）。绝不能用 substring 按字符数截——
@@ -159,10 +165,54 @@
   (struct-copy app a
     [doc (document-sync-followers doc* (app-active a))]))
 
-;; 编辑：document-edit 内部已经 ensure-point + 同步 follow，这里只需换 doc
+;; 编辑：document-edit 内部已经 ensure-point + 同步 follow，这里只需换 doc + 记一步撤回。
+;; 唯一的记录点：编辑前的 buffer 与光标都在手边，逆在这里捕获（ARCHITECTURE §9.3）。
 (define (on-edit a do-edit)
-  (define-values (doc* _desc) (do-edit (app-doc a) (app-active a)))
-  (struct-copy app a [doc doc*]))
+  (define b0 (document-buffer (app-doc a)))        ; 编辑前 buffer（不可变引用，不复制）
+  (define-values (doc* desc) (do-edit (app-doc a) (app-active a)))
+  (cond
+    [(not desc) (struct-copy app a [doc doc*])]    ; no-op / 被 read-only 拒 → 不入栈
+    [else
+     (struct-copy app a
+       [doc doc*]
+       [hist (history-record (app-hist a) desc
+                             (buffer-edit-desc-inverse b0 desc)
+                             (window-point (active-window a)))])]))
+
+;;; ---------- 撤销 / 重放（账本在 history.rkt；落回视图必须经 document）----------
+
+;; 依次应用一组 desc（撤销传 undo-descs、重放传 replay-descs）：
+;; 每条都走 desc 形状的 document 入口，且是 trusted —— 记录在案的编辑当年都过了守卫，
+;; 不该被**事后**才加的约束挡住（§9.6）。
+(define (apply-descs doc i descs)
+  (for/fold ([d doc]) ([x (in-list descs)])
+    (define-values (d* _) (document-apply-edit-trusted d i x))
+    d*))
+
+;; 撤销一步：应用逆编辑，再把光标放回该步之前的位置，最后让 follow 视图重新镜像。
+(define (on-undo a)
+  (define-values (st h*) (history-pop-undo (app-hist a)))
+  (cond
+    [(not st) a]                                   ; 空栈：什么都不做
+    [else
+     (define i (app-active a))
+     (define doc* (apply-descs (app-doc a) i (step-undo-descs st)))
+     (struct-copy app a
+       [doc (document-sync-followers
+             (document-update-view doc* i
+               (lambda (w) (window-ensure-point (window-set-point w (step-point st)))))
+             i)]
+       [hist h*])]))
+
+;; 重放一步：正序应用原 desc；光标由 document-edit 落到「插入之后」，与原来一致。
+(define (on-redo a)
+  (define-values (st h*) (history-pop-redo (app-hist a)))
+  (cond
+    [(not st) a]
+    [else
+     (struct-copy app a
+       [doc (apply-descs (app-doc a) (app-active a) (step-replay-descs st))]
+       [hist h*])]))
 
 (define (handle a ev)
   (cond
@@ -179,6 +229,8 @@
           [(and (modifiers-control mods) (char-ci=? k #\q)) (values a #t)]
           [(and (modifiers-control mods) (char-ci=? k #\o)) (values (switch-active a) #f)]
           [(and (modifiers-control mods) (char-ci=? k #\f)) (values (cycle-sync a) #f)]
+          [(and (modifiers-control mods) (char-ci=? k #\z)) (values (on-undo a) #f)]
+          [(and (modifiers-control mods) (char-ci=? k #\y)) (values (on-redo a) #f)]
           [else (values a #f)])]
        [else
         (case k
@@ -200,7 +252,7 @@
 ;;; ---------- 启动 ----------
 
 (module+ main
-  (displayln "左右两窗共享同一 buffer：左边打字右边实时同步 | Tab/Ctrl+O 切窗 | Ctrl+Q 退出")
+  (displayln "左右两窗共享同一 buffer：左边打字右边实时同步 | Tab/Ctrl+O 切窗 | Ctrl+Z 撤销 / Ctrl+Y 重放 | Ctrl+Q 退出")
   (tui-run theme make-app render handle))
 
 ;;; ---------- 测试（纯函数，不碰终端）----------
@@ -263,5 +315,69 @@
   ;; Ctrl+Q → done
   (define-values (_w done?) (handle a (key-event #\q (modifiers #t #f #f #f))))
   (check-true done?)
+
+  ;; ---- 撤销 / 重放（端到端；账本在 history.rkt）----
+  (define ctrl-z (key-event #\z (modifiers #t #f #f #f)))
+  (define ctrl-y (key-event #\y (modifiers #t #f #f #f)))
+  (define (line0 ap) (buffer-line-ref (window-buffer (document-window (app-doc ap) 0)) 0))
+
+  ;; 连续打字 = 一步（段合并）
+  (define ua (make-app 10 40))
+  (define-values (u1 _u1) (handle ua (text-event "X" (modifiers #f #f #f #f))))
+  (define-values (u2 _u2) (handle u1 (text-event "Y" (modifiers #f #f #f #f))))
+  (check-equal? (line0 u2) "❯ XY输入区 hello 你好")
+  (check-equal? (history-undo-depth (app-hist u2)) 1)
+  (check-equal? (window-point (w0 u2)) (point 0 4))       ; 编辑视图光标在插入后
+  (check-equal? (window-point (w1 u2)) (point 0 4))       ; follow 视图镜像
+
+  ;; Ctrl+Z → 一次撤到底，光标回到该步**之前**的位置，follow 视图跟上
+  (define-values (u3 _u3) (handle u2 ctrl-z))
+  (check-equal? (line0 u3) "❯ 输入区 hello 你好")
+  (check-equal? (window-point (w0 u3)) (point 0 2))
+  (check-equal? (window-point (w1 u3)) (point 0 2))
+  (check-equal? (history-undo-depth (app-hist u3)) 0)
+  (check-equal? (history-redo-depth (app-hist u3)) 1)
+
+  ;; Ctrl+Y → 重放，光标回到插入之后
+  (define-values (u4 _u4) (handle u3 ctrl-y))
+  (check-equal? (line0 u4) "❯ XY输入区 hello 你好")
+  (check-equal? (window-point (w0 u4)) (point 0 4))
+  (check-equal? (history-undo-depth (app-hist u4)) 1)
+  (check-equal? (history-redo-depth (app-hist u4)) 0)
+
+  ;; 撤销后新编辑 → redo 栈清空（分叉丢弃）
+  (define-values (u5 _u5) (handle u4 ctrl-z))
+  (define-values (u6 _u6) (handle u5 (text-event "Z" (modifiers #f #f #f #f))))
+  (check-equal? (line0 u6) "❯ Z输入区 hello 你好")
+  (check-equal? (history-redo-depth (app-hist u6)) 0)
+
+  ;; 空栈：Ctrl+Z / Ctrl+Y 什么都不做
+  (define ue (make-app 10 40))
+  (define-values (ue1 _ue1) (handle ue ctrl-z))
+  (check-equal? (line0 ue1) "❯ 输入区 hello 你好")
+  (check-false (history-can-undo? (app-hist ue1)))
+  (define-values (ue2 _ue2) (handle ue ctrl-y))
+  (check-false (history-can-redo? (app-hist ue2)))
+
+  ;; 被 read-only 拒绝的编辑不入栈（提示区 [0,2) 内打字 → no-op）
+  (define ra (make-app 10 40))
+  (define ra1 (struct-copy app ra
+                [doc (document-update-view (app-doc ra) 0
+                       (lambda (w) (window-set-point w (point 0 1))))]))
+  (define-values (ra2 _ra2) (handle ra1 (text-event "N" (modifiers #f #f #f #f))))
+  (check-equal? (line0 ra2) "❯ 输入区 hello 你好")
+  (check-equal? (history-undo-depth (app-hist ra2)) 0)
+
+  ;; 删除也记一步：退格删掉 (0,2) 的「输」→ 撤销回原样
+  (define da (make-app 10 40))
+  (define da1 (struct-copy app da
+                [doc (document-update-view (app-doc da) 0
+                       (lambda (w) (window-set-point w (point 0 3))))]))
+  (define-values (da2 _da2) (handle da1 (key-event 'backspace (modifiers #f #f #f #f))))
+  (check-equal? (line0 da2) "❯ 入区 hello 你好")
+  (check-equal? (history-undo-depth (app-hist da2)) 1)
+  (define-values (da3 _da3) (handle da2 ctrl-z))
+  (check-equal? (line0 da3) "❯ 输入区 hello 你好")
+  (check-equal? (window-point (w0 da3)) (point 0 3))       ; 回到退格前的位置
 
   (displayln "main.rkt: all tests passed"))

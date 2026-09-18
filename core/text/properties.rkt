@@ -136,6 +136,10 @@
 ;; transform : plist restrict -> (values plist restrict)
 ;; 单遍扫描：suffix 指针只向前走，整体 O(k log k)（排序主导）。
 (define (row-modify row start end transform)
+  ;; 空区间/反向没有合法解释 → 报错。否则静默什么都不写，而调用方以为设上了
+  ;; （写只读区时"以为锁住了没锁"）。清除约束请传 (make-restrict)。见 ARCHITECTURE §10.3 A2。
+  (when (>= start end)
+    (error 'properties "属性/约束区间必须 start < end，得到 [~a,~a)" start end))
   (define points
     (sort (remove-duplicates
            (append (list start end)
@@ -510,5 +514,9 @@
   (define r0 (properties-put-restrict (properties-put (fresh) 1 0 2 'face 'bold) 1 3 6 ro))
   (check-equal? (properties-runs r0 1 8)
                 (list (list 0 2 (hash 'face 'bold)) (list 2 8 empty-plist)))
+
+  ;; A2 回归：空区间/反向区间 → 报错（原来静默什么都不写）
+  (check-exn exn:fail? (lambda () (properties-put (fresh) 1 2 2 'face 'bold)))
+  (check-exn exn:fail? (lambda () (properties-put-restrict (fresh) 1 3 1 (restrict #t))))
 
   (displayln "properties.rkt: all tests passed"))
