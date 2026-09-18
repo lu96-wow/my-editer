@@ -71,7 +71,7 @@
 
 ;; 把第 0 行的 "❯ "（[0,2)）标成 read-only 提示（不可编辑 + 提示色）。
 ;; 注意：这是 buffer 级属性，所以两个视图里都 read-only —— 共享文档的自然结果。
-(define (prompt-left b)
+(define (mark-prompt b)
   (buffer-put-properties-many b
     (list (list 0 0 2 'read-only #t)
           (list 0 0 2 'face 'prompt))))
@@ -106,7 +106,7 @@
 
 (define (make-app rows cols)
   (define-values (area-h left-w right-w) (split-size rows cols))
-  (define b (prompt-left (highlight (buffer-open sample))))
+  (define b (mark-prompt (highlight (buffer-open sample))))
   (define doc0 (document-of-buffer b))
   ;; 两个视图共享 b；左 'free（参考视图），右 'follow（跟手），光标都在提示后
   (define-values (doc1 _v0) (document-add-view doc0 (window-open b area-h left-w)  (point 0 2)))

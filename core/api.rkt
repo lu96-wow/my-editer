@@ -77,11 +77,11 @@
 ;;;   导航/状态原语直接返回 window。
 ;;;
 ;;; ── 导出边界（内部实现不对外）────────────────────────────────
-;;;   对外（消费者层）：point buffer window screen events edit-desc patch
+;;;   对外（消费者层）：point buffer window screen events edit-desc patch width document
 ;;;   对外（机制层）：buffer-splice / buffer-apply-edits、marker/overlay 的 buffer 级入口、
 ;;;                dirty-desc、with-read-only-inhibited
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
-;;;                     width-* render-* vrow/layout/wrap/window-vrows
+;;;                     render-* vrow/layout/wrap/window-vrows
 ;;; ============================================================================
 
 (require "text/point.rkt"

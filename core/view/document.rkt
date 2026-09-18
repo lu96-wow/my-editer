@@ -26,8 +26,8 @@
 ;;;   'follow 镜像编辑视图：视口 + 光标都复制自「正在编辑的那个视图」。
 ;;;           适合两个窗口一起编辑同一处，一方始终跟随另一方。
 ;;;
-;;; 编辑发生所在的那个视图永远是固定行为：光标推进到插入后、滚动保留，
-;;; 之后由调用方 window-ensure-point 保证光标可见。
+;;; 编辑发生所在的那个视图永远是固定行为：光标推进到插入后，document-edit 内部
+;;; 调用 window-ensure-point 让光标可见（这也是 follow 能对齐最终 top-line 的前提）。
 ;;;
 ;;; 纯函数式：document 本身不可变，随调用方状态一起 threading。
 ;;; 不变量：任一 document 内，所有 (window-buffer v) 都 eq? 于 (document-buffer doc)。
@@ -38,8 +38,8 @@
  document-open
  document-of-buffer
  document-view-count
+ document-view-ref
  document-add-view
- document-view
  document-window
  document-view-sync
  document-set-view-sync
@@ -60,6 +60,11 @@
 ;; views  : (listof view)  视图，顺序稳定，靠下标索引
 (struct document (buffer views) #:transparent)
 
+;; sync 取值校验（'free | 'follow）
+(define (check-sync who s)
+  (unless (memq s '(free follow))
+    (error who "sync must be 'free or 'follow, got ~a" s)))
+
 (define (document-open s) (document (buffer-open s) '()))
 
 ;; 从已配置好的 buffer 构造（如已做语法高亮 / read-only 标记的 buffer）
@@ -73,27 +78,26 @@
 ;; 返回 (values document index)。
 ;; 注意顺序：先换 buffer 再设 point，避免 point 被 w 原带的 buffer 提前夹紧。
 (define (document-add-view doc w [p #f] #:sync [sync 'free])
-  (unless (memq sync '(free follow))
-    (error 'document-add-view "sync must be 'free or 'follow, got ~a" sync))
+  (check-sync 'document-add-view sync)
   (define w* (window-set-buffer w (document-buffer doc)))
   (define w+ (if p (window-set-point w* p) w*))
+  (define idx (document-view-count doc))   ; 新下标 = 旧数量
   (values
    (struct-copy document doc
      [views (append (document-views doc) (list (view w+ sync)))])
-   (document-view-count doc)))   ; 新下标 = 旧数量
+   idx))
 
-;; 取第 i 个视图（完整 view：window + sync）
-(define (document-view doc i) (list-ref (document-views doc) i))
+;; 取第 i 个视图（完整 view：window + sync）。命名同 buffer-line-ref：按 index 取。
+(define (document-view-ref doc i) (list-ref (document-views doc) i))
 
-;; 便捷：取第 i 个视图的 window（已与共享 buffer 同步）
-(define (document-window doc i) (view-window (document-view doc i)))
+;; 便捷：取第 i 个视图的 window（已与共享 buffer 同步），最常用
+(define (document-window doc i) (view-window (document-view-ref doc i)))
 
-(define (document-view-sync doc i) (view-sync (document-view doc i)))
+(define (document-view-sync doc i) (view-sync (document-view-ref doc i)))
 
 ;; 运行时改第 i 个视图的策略
 (define (document-set-view-sync doc i sync)
-  (unless (memq sync '(free follow))
-    (error 'document-set-view-sync "sync must be 'free or 'follow, got ~a" sync))
+  (check-sync 'document-set-view-sync sync)
   (struct-copy document doc
     [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
              (if (= j i) (struct-copy view v [sync sync]) v))]))
