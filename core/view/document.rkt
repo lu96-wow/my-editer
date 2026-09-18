@@ -127,14 +127,18 @@
                  (point (edit-desc-s-line desc) (edit-desc-s-col desc))))
   (window-set-point (window-set-buffer w new-buffer) p*))
 
-;; 'follow：视口 + 光标都复制自编辑视图（height/width/mode 是视图自身的，不复制）
+;; 'follow：光标 + 视口锚点复制自编辑视图，**然后按自己的几何 ensure-point**。
+;;   几何相同时 ensure-point 无事可做（编辑视图的 point 本就在其几何内可见）→ 行为不变；
+;;   几何不同（如 follower 更矮）或 mode 不同时，自动退化为「跟着光标，视口自己夹紧」，
+;;   不会把光标丢到自己的可见区之外。height/width/mode 始终是视图自身的，不复制。
 (define (rebase-follow w editing)
-  (struct-copy window w
-    [buffer   (window-buffer   editing)]
-    [point    (window-point    editing)]
-    [top-line (window-top-line editing)]
-    [left-col (window-left-col editing)]
-    [top-seg  (window-top-seg  editing)]))
+  (window-ensure-point
+   (struct-copy window w
+     [buffer   (window-buffer   editing)]
+     [point    (window-point    editing)]
+     [top-line (window-top-line editing)]
+     [left-col (window-left-col editing)]
+     [top-seg  (window-top-seg  editing)])))
 
 ;;; ---------- 编辑 ----------
 
@@ -259,6 +263,20 @@
   (check-equal? (document-view-sync g1 1) 'free)
   (define g2 (document-set-view-sync g1 1 'follow))
   (check-equal? (document-view-sync g2 1) 'follow)
+
+  ;; follow 的几何独立性：两个视图几何**不同**时，镜像后光标仍在自己可见区内
+  (define geo (document-open "l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9"))
+  (define-values (geo1 _gi0) (document-add-view geo (window-open (buffer-open "") 10 40) (point 0 0)))
+  (define-values (geo2 _gi1) (document-add-view geo1 (window-open (buffer-open "") 3 40)
+                                                (point 0 0) #:sync 'follow))
+  ;; 编辑视图光标移到最底行，再编辑（它的视口不会滚：line 9 在 10 行内可见）
+  (define geo3 (document-update-view geo2 0 (lambda (w) (window-set-point w (point 9 0)))))
+  (define-values (geo4 _gd) (document-insert-char geo3 0 #\X))
+  (check-equal? (window-top-line (document-window geo4 0)) 0)
+  (define w-follow (document-window geo4 1))
+  (check-equal? (point-line (window-point w-follow)) 9)          ; 光标跟上了
+  (check-true (<= (window-top-line w-follow) 9                    ; 且在自己 3 行可见区内
+                  (+ (window-top-line w-follow) (sub1 (window-height w-follow)))))
 
   ;; no-op：desc #f，document 原样返回
   (define-values (h0 _h0) (document-add-view (document-open "hello") (blank-w)))

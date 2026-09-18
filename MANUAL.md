@@ -53,7 +53,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 词 | 含义 | 出现处 |
 |---|---|---|
 | `point` | 文档位置 (line col)，0-based | `point` 结构、`window-point` |
-| `cursor` | 屏幕上的可见光标（caret） | 仅 `screen-cursor-row/col` |
+| `cursor` | 屏幕上的可见光标（caret） | 仅 `screen-cursor-row` / `screen-cursor-col` |
 | 字符索引 | buffer 里的 col（按字符数） | `point-col` |
 | 显示列 | width 换算后的列（宽字符=2） | `run-col`、`vrow` 的列 |
 | `face` | 语义 face 符号（`'keyword` 等） | glyph/run 的 face |
@@ -163,6 +163,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | `point<?` / `point=?` / `point<=?` | a b | boolean（字典序） |
 | `point-clamp` | c line-count line-length | 夹紧后的 point |
 | `point-line` / `point-col` | p | nat |
+| `pos<?` / `pos=?` | l1 c1 l2 c2 | boolean（直接在行列上比较，不构造 point） |
 
 ### 5.2 content —— 文本 + splice
 
@@ -184,6 +185,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | `content-delete` | c | (values content edit-desc) |
 | `edit-desc-map-position` | d l c | point \| #f（落在被删区间） |
 | `edit-desc-after-position` | d | point（插入后位置） |
+| `edit-desc-inverse` | d old-text | edit-desc（逆编辑；见 §4.1） |
 
 gap 定位（返回新 content）：`content-gap-goto`。
 
@@ -206,6 +208,9 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `properties-replace-key` | p first last prop segs | properties（清旧写新） |
 | `properties-runs` | p line line-length | (listof (list start end plist)) |
 | `properties-apply-edit` | p desc | properties（随编辑调整） |
+| `properties-splice` | p s-line s-col e-line e-col new-text | properties |
+| `properties-line-count` | p | nat |
+| `properties-check` | p | properties（诊断：校验不变量） |
 
 `segs = (listof (list line start end prop val))`。
 
@@ -223,6 +228,8 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `make-overlay-table` | — | overlay-table |
 | `overlay-table-add` | ot start-id end-id [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values overlay-table id) |
 | `overlay-table-remove` | ot id | overlay-table |
+| `overlay-table-get` | ot id | overlay \| #f |
+| `overlay-table-all` / `overlay-table-count` | ot | (listof overlay) / nat |
 | `overlay-table-at` | ot mt line col | (listof overlay)（按 priority 降序） |
 | `overlay-table-runs` | ot mt line line-length | (listof (list start end ovs)) |
 | `overlay-table-apply-edit` | ot mt desc | (values overlay-table marker-table) |
@@ -255,6 +262,11 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-make-overlay` | b start-pos end-pos [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values buffer id) |
 | `buffer-remove-overlay` | b oid | buffer |
 | `buffer-mark-dirty` / `buffer-mark-dirty-all` | b [first last] | buffer（把该范围标为「刚变过」，bump tick） |
+
+> 另有装配层的 struct 访问器（一般用不到）：
+> `buffer-content` / `buffer-properties` / `buffer-markers` / `buffer-overlays` /
+> `buffer-tick` / `buffer-dirty` / `buffer-modified?` / `buffer-gap`，以及 `restrict` /
+> `make-restrict` / `restrict-read-only?`（约束槽，见 §5.3）。
 
 ### 5.6 patch / edit —— 批量与补丁
 

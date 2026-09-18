@@ -28,8 +28,8 @@ edit/
     ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
     ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
     │                     #     point content properties marker overlay buffer patch edit
-    └── view/             #   视口层（后端无关，单窗口）：宽度/渲染/窗口/视觉行/屏幕/事件
-                          #     width render window view screen project events
+    └── view/             #   视口层（后端无关）：宽度/渲染/窗口/视觉行/屏幕/事件/多视图容器
+                          #     width render window view screen project events document
 ```
 
 依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
@@ -47,8 +47,8 @@ edit/
 ┌──────────────────────────────────────────────────────────────┐
 │ core/api.rkt      对外门面：require + all-from-out 转发（零逻辑） │
 ├──────────────────────────────────────────────────────────────┤
-│ core/view/*.rkt   视口（后端无关，单窗口）：几何/渲染/屏幕/事件    │
-│   width  render  window  view  screen  project  events         │
+│ core/view/*.rkt   视口（后端无关）：几何/渲染/屏幕/事件/多视图容器 │
+│   width  render  window  view  screen  project  events document │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt   文本层（无光标）：文本/属性/位置/装饰/文档       │
 │   point  content  properties  marker  overlay  buffer  patch  │
@@ -74,6 +74,7 @@ edit/
 | screen | 屏幕帧（run 序列）+ diff + 拼屏原语 | 具体后端 |
 | project | 单窗口可见区 → screen（`window->screen`） | 具体后端、多窗口 |
 | events | 类型化输入事件（text/key/mouse/resize/quit，参考 racket/gui） | 具体后端 |
+| document | 多视图容器：单一事实源 + 编辑漏斗 + 每视图 rebase 模式（`'free`/`'follow`） | 具体布局、窗口个数、命令 |
 | api | 门面：把上面所有公开 API 转发出去 | 任何实现 |
 
 ## 2. 两条数据流
@@ -139,6 +140,7 @@ per-operation：每次改动整体覆盖，消费方「改一次、读一次」�
 | `*-set-*` | 字段更新（返回新结构） | window-set-top, window-set-size |
 | `add` / `remove` / `delete` | `add` 建实体；`remove` 移除实体或键；`delete` 专指**文本删除操作**（delete 键语义） | marker-table-add / overlay-table-add；marker-table-remove / buffer-remove-property；buffer-delete / content-delete |
 | `*-many` / `*-batch` | 批量形态 | properties-put-many, buffer-apply-edit-batch |
+| `*-trusted` | 跳过守卫/校验的**显式**入口（不留全局开关） | buffer-splice-trusted |
 | 方向/位置名词 | 光标单步移动（名字与键名同形） | window-left, window-right, window-home, window-end |
 | 动词-名词 | 变换 | buffer-insert-char, properties-put, window-scroll |
 | `*-apply-edit` | 解释 edit-desc | properties-apply-edit, marker-table-apply-edit |
@@ -267,19 +269,28 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 > **Seam（设计的一部分）**：若将来某个约束**不该**截断表现继承，规则改为「该约束自己声明
 > 是否成边界」。当前只有 `read-only` 一种，不实现。
 
-### 8.5 `document`：纯机制，零策略
+### 8.5 `document`：容器机制（含两条固定的 rebase 模式）
+
+> **2026-09-18 修正（撤回原主张）**：本节原来主张「删掉 `view.sync` 与 `'free|'follow`
+> 枚举、core 零策略」。复查后**撤回**——`document` 的职责是「N 个视图共享 1 个 buffer 且
+> 始终一致」；**定义「每个视图被别处编辑后怎么重新基准」是这个容器的语义**，不是像配色
+> 那样的任意策略。它与 core 里既有的 `window.mode ∈ {'clip,'wrap}`（同样是枚举 + `case`
+> + 未知值报错）是同一性质。自动执行还让不变量**被强制**，而不是靠消费方记得调用。
+> 另：「枚举封死扩展性」也不成立——消费方编辑前用 `document-window` 拿到旧 window
+> （不可变快照）+ 编辑返回的 `desc`，编辑后用 `document-update-view` 可表达任意第三种策略。
 
 - **机制（core 拥有）**：单一事实源（任一 document 内所有视图的 `buffer` `eq?` 同一个）
-  ＋ 编辑**漏斗**（所有编辑经 `document-edit`）＋ 正确性下限 rebase（＝ 现在的 `'free`：
-  光标随文本映射、视口不动）＋ **镜像原语** `document-sync-followers`。
-- **策略（使用方拥有）**：**何时**镜像、镜像谁给谁。core **不放任何策略**——删掉
-  `view.sync` 与 `'free | 'follow` 枚举（枚举就是写死的策略；`view` 结构只为携带 `sync`
-  而存在，随之折叠回 `window`）。
-- 不变量（单一事实源）只由漏斗保证；视图状态调整发生在不变量成立**之后**，消费方用已导出的
-  `document-window` / `document-update-view` / `document-sync-followers` 就能表达任意策略
-  （导航路径本来就这么做）。
-- **明确否决「策略注入」**（把 rebase 做成函数放进 `view`）：那只是把写死的策略换成可替换的
-  策略，而这里根本不该有策略；且代价是 `document` 不再是纯数据。
+  ＋ 编辑**漏斗**（所有编辑经 `document-edit`）＋ 每视图的 rebase **模式**（两档）：
+  - `'free`：光标随文本映射、视口不动（正确性下限）。
+  - `'follow`：光标 + 视口锚点复制自编辑视图，**随后按自己的几何 `window-ensure-point`**。
+  ＋ **镜像原语** `document-sync-followers`（消费方在导航等路径上复用）。
+- **已修（实测 bug）**：原 `rebase-follow` 只复制编辑视图的 `point`/`top-line`/`top-seg`，
+  **等于假设两个视图几何相同**——编辑视图高 10、follow 视图高 3 时，follow 的光标落在第 9 行
+  而它自己的可见区只有 0..2（实测越界）。修法是镜像后追加 `window-ensure-point`：
+  几何相同时行为**逐字不变**（编辑视图的 point 本来就在其几何内可见），不同时自动退化为
+  「跟着光标，视口自己夹紧」；mode 不同的情形也一并修好。
+- **`view` 一词负重**（`view.rkt` 是视口层模块；document 的 `view` = window + rebase 模式）：
+  文档里说清即可。
 
 ### 8.6 明确不做（设计的一部分）
 
@@ -331,7 +342,7 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 | 2a | ✅ `properties` 两槽化（`span` = presentation + restrict）；`properties-put` 只写表现；新增 `buffer-put-restrict` / `buffer-read-only-at?` / `make-restrict`；编辑守卫改读 typed 槽；传播规则显式化；**删除 `text/key.rkt`**；`render` 不再过滤；`main.rkt` 改用新入口 | 全绿 ＋ 复现「face 纯净、run 不断裂、硬边界语义不变」 |
 | 2b | ✅ 删 `inhibit-read-only` + `with-read-only-inhibited`，加 `buffer-splice-trusted`（§8.8）；MANUAL §7.5 与 api 头注释紧跟改 | 全绿 ＋ 可信入口能编辑 read-only |
 | 3 | 命名与 MANUAL §5 / §7.5 收尾 | 全绿 |
-| 4 | 删 `view.sync` 与枚举；`view` 折叠回 `window`；core 只留漏斗 ＋ 默认 rebase ＋ 镜像原语；`main.rkt` 在 `on-edit` 显式镜像 | 全绿 ＋ 两个策略行为不变 |
-| 5 | 文档定稿：§0/§1 模块表补 `document`，§8.2 的三分表并入 §1 | 文档与代码一致 |
+| 4 | ✅ **保留** `view.sync`（容器语义，类比 `window.mode`）；**修 `rebase-follow` 的几何耦合**（镜像后 `window-ensure-point`）；§8.5 撤回原主张并留修正记录 | 全绿 ＋ 等几何行为不变 ＋ 不等几何光标可见 |
+| 5 | 文档定稿：§8.2 的三分表并入 §1；删掉 §8 的「状态」注记，把本节内容并入 §0/§1/§5 | 文档与代码一致 |
 
 > 第 5 步之后，删掉本节的「状态」注记，并把本节内容并入 §0/§1/§5。
