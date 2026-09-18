@@ -77,7 +77,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
   patch         补丁 delta
   edit          批量编辑应用
 
-视口层（单窗口）
+视口层（后端无关）
   events        类型化输入事件
   width         字符 ↔ 显示列（宽字符）
   render        行 → glyph（属性变 face 的地方）
@@ -85,6 +85,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
   view          vrow 布局 + 光标/鼠标映射 + 滚动
   screen        一帧画面（run 序列）+ diff + compose
   project       window->screen 投影
+  document      多视图容器（单一事实源 + 编辑漏斗 + rebase 模式）
 ```
 
 ### 3.2 关联总图
@@ -344,6 +345,38 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `window->screen` | w | screen（单窗口投影） |
 
 `pieces = (listof (list id x y screen))`；`active-id` 决定谁的光标透出。
+
+### 6.5 document —— 多视图容器（机制）
+
+一个 buffer + 一组视图（`view` = window + rebase 模式），所有编辑经 `document-edit`
+串行化，编辑后每个视图按**自己的模式**重新基准。
+**不变量**：任一 document 内，所有视图的 buffer 都 `eq?` 同一个（不分叉）。
+
+| 函数 | 输入 | 输出 |
+|---|---|---|
+| `document-open` | s | document |
+| `document-of-buffer` | b | document（从已配置的 buffer 构造） |
+| `document-add-view` | doc w [p] [#:sync 'free\|'follow] | (values document index) |
+| `document-view-count` / `document-view-ref` | doc [i] | nat / view |
+| `document-window` | doc i | window |
+| `document-view-sync` / `document-set-view-sync` | doc i [sync] | 'free\|'follow / document |
+| `document-update-view` | doc i f | document（f : window → window） |
+| `document-sync-followers` | doc i | document（把 follow 视图对齐到 i） |
+| `document-edit` | doc i edit-fn | (values document desc) |
+| `document-insert-char` / `-insert-string` / `-newline` / `-backspace` / `-delete` | doc i … | (values document desc) |
+
+两条 rebase 模式是**容器语义**（类比 `window.mode` 的 `'clip`/`'wrap`）：
+
+- **`'free`**：别人编辑后，我的**光标随文本映射**（落在被删区间 → 吸附起点），**视口不动**。
+  正确性下限：光标不会指向别的文本，参考视图也不会因别处编辑而漂移。
+- **`'follow`**：我的**光标 + 视口锚点复制自编辑视图**，然后**按我自己的几何
+  `window-ensure-point`**。几何（与 mode）相同 → 与编辑视图 lockstep；不同 → 跟着光标、
+  视口自己夹紧，不会把光标丢到自己可见区之外。
+
+正在被编辑的那个视图（`i`）总是「光标推进到插入后 + `ensure-point`」。
+
+**第三种策略**：编辑前用 `document-window` 取到旧 window（不可变快照），编辑后用
+`document-update-view` 任意调整即可——不需要把策略做成函数塞进 core。
 
 ---
 
