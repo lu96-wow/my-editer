@@ -8,6 +8,9 @@
 「持久化」在这里要精确理解：**叶共享**（文本字符串、区间表在编辑后可被旧快照共享）＋
 **骨架是「按行索引的平数组」，每次编辑 O(#行) 重建**。设计目标 ≤ ~20 万行（见 §8.6）。
 
+core 里唯一的动态参数是测试开关 `properties-debug?`（只影响诊断，不改语义）；
+守卫绕行走显式入口 `buffer-splice-trusted`，不用参数（见 §8.8）。
+
 核心只提供**底层数据原子 + 它们的原语变换**，不提供任何「组合层」：
 多窗口、布局、命令、插件、后端、组装根都不在 core 里，由使用方自行拼装。
 core 里的 `window`/`buffer` 是原子，`window->screen`/`screen-compose` 只是把原子投影成
@@ -316,6 +319,9 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 **与第 2 步的关系**：第 2 步把守卫改为读 typed `restrict` 槽时，`buffer-splice-trusted`
 就是那个「跳过该检查」的入口（不再查任何参数）。
 
+**已实施（第 2b 步）**：`buffer-edit-at` 多了内部参数 `guard?`（默认 #t）；
+`buffer-splice-trusted` 传 #f。参数与宏已删除。
+
 ### 8.7 分步实施
 
 | 步 | 内容 | 验证 |
@@ -323,7 +329,7 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 | 0 | ✅ 本节（设计定稿写进文档）。**无代码** | 文档自洽 |
 | 1 | ✅ `overlay` 拿真字段：`priority`/`evaporate?` 进 struct；`key.rkt` 去掉这两项 | 全绿 ＋ overlay 层叠/蒸发行为不变 |
 | 2a | ✅ `properties` 两槽化（`span` = presentation + restrict）；`properties-put` 只写表现；新增 `buffer-put-restrict` / `buffer-read-only-at?` / `make-restrict`；编辑守卫改读 typed 槽；传播规则显式化；**删除 `text/key.rkt`**；`render` 不再过滤；`main.rkt` 改用新入口 | 全绿 ＋ 复现「face 纯净、run 不断裂、硬边界语义不变」 |
-| 2b | 删 `inhibit-read-only` + `with-read-only-inhibited`，加 `buffer-splice-trusted`（§8.8）；MANUAL §7.5 紧跟改 | 全绿 ＋ 可信入口能编辑 read-only |
+| 2b | ✅ 删 `inhibit-read-only` + `with-read-only-inhibited`，加 `buffer-splice-trusted`（§8.8）；MANUAL §7.5 与 api 头注释紧跟改 | 全绿 ＋ 可信入口能编辑 read-only |
 | 3 | 命名与 MANUAL §5 / §7.5 收尾 | 全绿 |
 | 4 | 删 `view.sync` 与枚举；`view` 折叠回 `window`；core 只留漏斗 ＋ 默认 rebase ＋ 镜像原语；`main.rkt` 在 `on-edit` 显式镜像 | 全绿 ＋ 两个策略行为不变 |
 | 5 | 文档定稿：§0/§1 模块表补 `document`，§8.2 的三分表并入 §1 | 文档与代码一致 |

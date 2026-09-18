@@ -28,6 +28,7 @@
  buffer-line-count
  buffer-line-ref
  buffer-splice
+ buffer-splice-trusted
  buffer-insert-char
  buffer-insert-string
  buffer-newline
@@ -48,8 +49,6 @@
  buffer-remove-overlay
  buffer-mark-dirty
  buffer-mark-dirty-all
- inhibit-read-only
- with-read-only-inhibited
  edit-desc-after-position)
 
 ;;; ---------- 结构 ----------
@@ -117,15 +116,8 @@
 ;;; 规则：零宽插入 → 插入点严格在 read-only 区间内部则拒绝；
 ;;;       非零宽删除 → 删除区间 [s..e) 与任何 read-only 重叠则拒绝。
 ;;;
-;;; 程序要编辑 read-only 内容时，用 with-read-only-inhibited 暂时绕过守卫
-;;; （第 2b 步会把它换成显式的 buffer-splice-trusted，见 ARCHITECTURE §8.8）。
-
-(define inhibit-read-only (make-parameter #f))
-
-;; 在 body 内暂时抑制 read-only 守卫（允许编辑 read-only 内容），退出后自动恢复。
-(define-syntax-rule (with-read-only-inhibited body ...)
-  (parameterize ([inhibit-read-only #t])
-    body ...))
+;;; 程序要编辑 read-only 内容时走**显式入口** buffer-splice-trusted——
+;;; 不给守卫留任何隐式/全局开关（见 ARCHITECTURE §8.8）。
 
 ;; 该位置的约束是否含 read-only
 (define (buffer-read-only-at? b line col)
@@ -158,13 +150,14 @@
 ;;; ---------- 编辑核心 ----------
 
 ;; 在显式位置 (line, col) 执行一个 gap 编辑原语，返回 (values new-buffer desc)。
+;; guard? = #f 时跳过 read-only 守卫（只有 buffer-splice-trusted 这么用）。
 ;; 无操作或触碰 read-only 时 desc = #f，原 buffer 原样返回。
-(define (buffer-edit-at b line col edit-fn)
+(define (buffer-edit-at b line col edit-fn [guard? #t])
   (define c1 (content-gap-goto (buffer-content b) line col))
   (define-values (c2 desc) (edit-fn c1))
   (cond
     [(not desc) (values b #f)]
-    [(and (not (inhibit-read-only)) (edit-read-only? b desc)) (values b #f)]   ; 触碰 read-only → 拒绝（除非程序绕过）
+    [(and guard? (edit-read-only? b desc)) (values b #f)]   ; 触碰 read-only → 拒绝
     [else
      (define old-count (content-line-count c1))
      (define new-count (content-line-count c2))
@@ -186,6 +179,13 @@
 (define (buffer-splice b s-line s-col e-line e-col new-text)
   (buffer-edit-at b s-line s-col
                   (lambda (c) (content-splice c s-line s-col e-line e-col new-text))))
+
+;; 与 buffer-splice 同形，但**跳过 read-only 守卫**：程序编辑 read-only 内容走这条。
+;; 这是唯一的绕行入口（无全局开关）——见 ARCHITECTURE §8.8。
+(define (buffer-splice-trusted b s-line s-col e-line e-col new-text)
+  (buffer-edit-at b s-line s-col
+                  (lambda (c) (content-splice c s-line s-col e-line e-col new-text))
+                  #f))
 
 (define (buffer-insert-char b line col ch)
   (buffer-edit-at b line col (lambda (c) (content-insert-char c ch))))
@@ -449,12 +449,12 @@
   (define-values (rb4 rd4) (buffer-backspace rb 0 5))   ; 删 [4,5)（"o"，不在 read-only）
   (check-equal? (buffer->string rb4) "hell\nworld")
 
-  ;; with-read-only-inhibited：程序编辑 read-only 内容
-  (define-values (rb5 rd5)
-    (with-read-only-inhibited
-      (buffer-insert-char rb 0 2 #\X)))          ; 在 read-only 区间内插入
+  ;; buffer-splice-trusted：程序编辑 read-only 内容的**唯一显式入口**
+  (define-values (rb5 rd5) (buffer-splice-trusted rb 0 2 0 2 "X"))
   (check-equal? (buffer->string rb5) "heXllo\nworld")
   (check-equal? rd5 (edit-desc 0 2 0 2 "X"))
+  ;; 对照：带守卫的 buffer-splice 在同一位置被拒
+  (check-eq? (let-values ([(b* _d) (buffer-splice rb 0 2 0 2 "X")]) b*) rb)
 
   ;; ---- undo 原语：edit-desc 的逆（需编辑前的 buffer 取回被删文本）----
   ;; 便于测试：应用 desc 只看 buffer（buffer-apply-edit 返回 (values buffer desc)）

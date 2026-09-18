@@ -24,6 +24,7 @@ buffer（文档） + window（视口） + window->screen（投影）
 ### 1.1 哲学：数据 → lambda → 数据
 
 每个函数都是「输入值 → 纯函数 → 输出新值」，不修改输入、无全局可变状态。
+core 里唯一的动态参数是测试开关 `properties-debug?`，只影响诊断、不改变语义。
 
 ### 1.2 机制 vs 策略
 
@@ -234,6 +235,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer->string` / `buffer->lines` | b | string / (listof string) |
 | `buffer-line-count` / `buffer-line-ref` | b [i] | nat / string |
 | `buffer-splice` | b s-line s-col e-line e-col new-text | (values buffer edit-desc) |
+| `buffer-splice-trusted` | b s-line s-col e-line e-col new-text | (values buffer edit-desc)（跳过 read-only 守卫） |
 | `buffer-insert-char` | b line col ch | (values buffer edit-desc) |
 | `buffer-insert-string` | b line col s | (values buffer edit-desc) |
 | `buffer-newline` | b line col | (values buffer edit-desc) |
@@ -397,15 +399,14 @@ read-only 是**约束槽**（`restrict`，typed）里的语义，不是表现层
 read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继承**（新输入既不带约束，
 也不带提示色）。两个槽彼此独立：写约束不影响表现层，反之亦然。
 
-**程序要编辑 read-only 内容**：用宏暂时绕过守卫（不需要手动解锁/上锁）：
+**程序要编辑 read-only 内容**：走**显式入口** `buffer-splice-trusted`（没有全局开关）：
 
 ```racket
-(with-read-only-inhibited
-  (buffer-splice b ...))   ; 这段作用域内可改 read-only，退出后自动恢复
+(buffer-splice-trusted b 0 2 0 2 "X")   ; 在 read-only 区间内插入一个字符
 ```
 
-注意：`inhibit-read-only` 只绕过编辑守卫，不改变硬边界继承——程序编辑 read-only
-内容后，新增部分若要继续 read-only，需自行重新标记（这本来就是构造字段的职责）。
+注意：它只绕过编辑守卫，不改变硬边界继承——程序编辑 read-only 内容后，
+新增部分若要继续 read-only，需自行重新标记（这本来就是构造字段的职责）。
 
 ---
 

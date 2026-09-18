@@ -58,8 +58,7 @@
 ;;;   (buffer-put-restrict b 0 0 2 (restrict #t))  ; "> " 不可编辑
 ;;;   编辑在 splice 层被拦截；且它是「硬边界」：边界插入什么都不继承。
 ;;;   约束不进 screen 的 face；配色另写表现层键（如 'face 'prompt）。
-;;;   程序要编辑 read-only 内容：with-read-only-inhibited 绕过（§8.8 将换成
-;;;   显式的 buffer-splice-trusted）。
+;;;   程序要编辑 read-only 内容：走显式入口 buffer-splice-trusted（无全局开关）。
 ;;;
 ;;;     (buffer-put-restrict b 0 0 2 (restrict #t))    ; "> " 不可编辑
 ;;;     ;; 光标放输入区，打字只落在可编辑处；backspace 到边界就删不动
@@ -81,9 +80,9 @@
 ;;;
 ;;; ── 导出边界（内部实现不对外）────────────────────────────────
 ;;;   对外（消费者层）：point buffer window screen events edit-desc patch width document
-;;;   对外（机制层）：buffer-splice / buffer-apply-edit-batch、buffer-apply-edit、
-;;;                buffer-edit-desc-inverse / edit-desc-inverse（撤销原语）、
-;;;                marker/overlay 的 buffer 级入口、dirty-desc、with-read-only-inhibited
+;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
+;;;                buffer-apply-edit、buffer-edit-desc-inverse / edit-desc-inverse（撤销原语）、
+;;;                marker/overlay 的 buffer 级入口、dirty-desc、restrict / make-restrict
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
 ;;;                     render-* vrow/layout/wrap/window-vrows
 ;;; ============================================================================
