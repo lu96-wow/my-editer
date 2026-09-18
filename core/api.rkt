@@ -56,6 +56,7 @@
 ;;; ── read-only 区域（显示 + 输入）──────────────────────────────
 ;;;   'read-only #t 标成用户不可编辑（如提示区）；编辑在 splice 层被拦截，
 ;;;   且 read-only 是「硬边界」：边界插入什么都不继承，新输入保持干净。
+;;;   read-only 是控制键，投影时不进 screen 的 face（配色另用 'face）。
 ;;;   程序要编辑 read-only 内容：with-read-only-inhibited 绕过。
 ;;;
 ;;;     (buffer-put-property b 0 0 2 'read-only #t)   ; "> " 不可编辑

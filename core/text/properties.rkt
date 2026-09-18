@@ -1,6 +1,6 @@
 #lang racket
 
-(require "point.rkt" "content.rkt" rackunit)
+(require "point.rkt" "content.rkt" "key.rkt" rackunit)
 
 ;;; properties.rkt —— 区间文本属性
 ;;;
@@ -259,13 +259,15 @@
   (vector-copy! v* (add1 s-line) rows (add1 e-line) n)
   v*)
 
-;; 非粘性 key：在插入边界不继承（read-only 是第一个——提示/输入区的边界）。
 ;; 继承左邻：取「结束于 col 的区间」的 plist。
-;; read-only 区间是字段边界（硬边界）：什么都不继承，返回 #f。
+;; 硬边界：左邻区间含控制键（词表见 key.rkt）时整段不继承，返回 #f——
+;; 控制键标出的是区域语义的起点（read-only 分隔提示区/输入区），
+;; 不是一段可以延续到新输入上的样式。表现层键（'face 等）照常继承。
 (define (inherit-plist left col)
   (and (pair? left)
        (= (interval-end (last left)) col)
-       (not (hash-ref (interval-plist (last left)) 'read-only #f))
+       (let ([h (interval-plist (last left))])
+         (not (ormap (lambda (k) (hash-has-key? h k)) control-keys)))
        (interval-plist (last left))))
 
 ;; 把 left 里「结束于 col」的区间扩到覆盖插入的首行（继承左邻）。

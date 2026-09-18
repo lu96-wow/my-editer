@@ -17,7 +17,7 @@ edit/
 └── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
     ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
     ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
-    │                     #     point content properties marker overlay buffer patch edit
+    │                     #     point content key properties marker overlay buffer patch edit
     └── view/             #   视口层（后端无关，单窗口）：宽度/渲染/窗口/视觉行/屏幕/事件
                           #     width render window view screen project events
 ```
@@ -38,8 +38,8 @@ edit/
 │   width  render  window  view  screen  project  events         │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt   文本层（无光标）：文本/属性/位置/装饰/文档       │
-│   point  content  properties  marker  overlay  buffer  patch  │
-│   edit                                                         │
+│   point  content  key  properties  marker  overlay  buffer     │
+│   patch  edit                                                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -50,6 +50,7 @@ edit/
 | point | (line,col) 位置代数 | 行有多长、有没有文本 |
 | content | 文本存储 + 编辑，产出 `edit-desc` | 属性/marker/overlay 的存在 |
 | properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
+| key | core 解释的属性键（控制键）词表 | 属性的值、文本内容 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | patch | 补丁（delta）：按 key 清旧写新 | 谁在消费 |
@@ -150,7 +151,7 @@ core 只给原语，不预设「怎么组织窗口」。
 - marker 插入类型 before/after 只在插入点生效
 - overlay 两端重合时蒸发（evaporate）
 - overlay priority：≤0 在 properties 之下，>0 在 properties 之上
-- `priority`/`evaporate` 是控制键，不进 face
+- `priority`/`evaporate`/`read-only` 是控制键（词表见 `text/key.rkt`）：投影时被滤掉，不进 face；插入时也不继承（硬边界）
 
 ### 渲染 / 屏幕
 - face 分段：同 face 相邻列合并成 run

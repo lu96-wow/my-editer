@@ -365,6 +365,8 @@ gap 定位（都返回新 content）：`content-set-col` / `content-gap-up` / `c
 
 `'read-only #t` 属性标出用户不可编辑的区间（如提示区）。编辑守卫在 splice 层拦截，
 且 read-only 是**硬边界**：在边界插入什么都不继承，新输入保持干净。
+read-only 是**控制键**（词表见 `core/text/key.rkt`），不会进入 `screen` 的 `run.face`；
+要给它配色，另写一个表现层键即可（如 `'face 'prompt`）。
 
 ```racket
 (define b  (buffer-open "> _"))

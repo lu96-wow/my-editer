@@ -61,4 +61,11 @@
   (check-equal? (vector-ref (screen-row-runs sw) 1) (list (run 0 "中" (hash))))
   (check-equal? (vector-ref (screen-row-runs sw) 2) (list (run 0 "x" (hash))))
 
+  ;; 控制键不切碎 face run：face 相同的相邻区间仅因 read-only 不同，
+  ;; 投影后应合成一个 run，且 face 里不含 read-only
+  (define b4 (buffer-put-property (buffer-open "abcdef") 0 0 6 'face 'bold))
+  (define b5 (buffer-put-property b4 0 3 6 'read-only #t))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
+                (list (run 0 "abcdef" (hash 'face 'bold))))
+
   (displayln "project.rkt: all tests passed"))

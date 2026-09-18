@@ -1,6 +1,7 @@
 #lang racket
 
-(require "../text/point.rkt" "../text/buffer.rkt" "../text/properties.rkt" "../text/overlay.rkt" rackunit)
+(require "../text/point.rkt" "../text/buffer.rkt" "../text/properties.rkt"
+         "../text/overlay.rkt" "../text/key.rkt" rackunit)
 
 ;;; render.rkt —— 行渲染：buffer 一行 → glyph 向量
 ;;;
@@ -27,11 +28,11 @@
   (for/fold ([h base]) ([(k v) (in-hash extras)])
     (hash-set h k v)))
 
-;; overlay 的控制键：进入 plist 但不属于 face
-(define overlay-control-keys '(priority evaporate))
-
+;; 投影：plist 里的控制键（词表见 text/key.rkt）不进 face。
+;; 若不滤掉，控制键会（a）污染 run.face 契约，（b）让「仅控制键不同」的相邻
+;; 区间因 face 不等而被切成两个 run——所以滤掉既是契约要求，也是分段正确性要求。
 (define (face-plist p)
-  (for/hash ([(k v) (in-hash p)] #:unless (memq k overlay-control-keys))
+  (for/hash ([(k v) (in-hash p)] #:unless (control-key? k))
     (values k v)))
 
 ;; 给定位置的 props plist 和 overlay 列表（按 priority 降序）。
@@ -119,5 +120,14 @@
   (check-equal? (glyph-face (vector-ref g4 1)) (hash 'face 'bold))        ; p0 overlay < props
   (check-equal? (glyph-face (vector-ref g4 2)) (hash 'face 'highlight))   ; p5 > 一切
   (check-equal? (glyph-face (vector-ref g4 3)) (hash 'face 'bold))
+
+  ;; 控制键不进 face：read-only 是机制键（编辑守卫），投影后消失；
+  ;; 同一区间上并存的 'face 照常保留（机制层仍在，只是不表现）
+  (define b5 (buffer-put-properties-many b0
+               (list (list 0 1 4 'face 'bold)
+                     (list 0 1 4 'read-only #t))))
+  (define g5 (rendered-line-glyphs (render-line b5 0)))
+  (check-equal? (glyph-face (vector-ref g5 2)) (hash 'face 'bold))
+  (check-equal? (buffer-get-property b5 0 2 'read-only) #t)
 
   (displayln "render.rkt: all tests passed"))
