@@ -127,7 +127,7 @@
   (check-equal? (buffer->string b3) "ABabcd\nefgh")
 
   ;; 被 read-only 拒绝的编辑没发生：desc=#f 不进结果，不污染后续点映射
-  (define rbd (buffer-put-property (buffer-open "abcd") 0 0 2 'read-only #t))
+  (define rbd (buffer-put-restrict (buffer-open "abcd") 0 0 2 (restrict #t)))
   (define-values (rb* rdescs)
     (buffer-apply-edit-batch rbd (list (edit-desc 0 1 0 1 "X")     ; 在 read-only 内 → 拒绝
                                   (edit-desc 0 3 0 3 "Y"))))  ; 允许

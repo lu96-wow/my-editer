@@ -72,9 +72,9 @@
 ;; 把第 0 行的 "❯ "（[0,2)）标成 read-only 提示（不可编辑 + 提示色）。
 ;; 注意：这是 buffer 级属性，所以两个视图里都 read-only —— 共享文档的自然结果。
 (define (mark-prompt b)
-  (buffer-put-properties-many b
-    (list (list 0 0 2 'read-only #t)
-          (list 0 0 2 'face 'prompt))))
+  (buffer-put-restrict
+   (buffer-put-properties-many b (list (list 0 0 2 'face 'prompt)))
+   0 0 2 (restrict #t)))
 
 ;;; ---------- 主题（face → 中性样式，后端翻译）----------
 
@@ -229,8 +229,8 @@
   (check-equal? (document-view-sync (app-doc a) 0) 'free)
   (check-equal? (document-view-sync (app-doc a) 1) 'follow)
 
-  ;; read-only 提示是 buffer 级属性 → 两个视图里都不可编辑
-  (check-equal? (buffer-get-property (window-buffer (w0 a)) 0 1 'read-only) #t)
+  ;; read-only 提示是 buffer 级约束 → 两个视图里都不可编辑
+  (check-true (buffer-read-only-at? (window-buffer (w0 a)) 0 1))
   (check-equal? (buffer-get-property (window-buffer (w1 a)) 0 1 'face) 'prompt)
 
   ;; 核心同步：左窗打字 → 右窗（同一 buffer）实时看到；右窗 follow 镜像左窗光标

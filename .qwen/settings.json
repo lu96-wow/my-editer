@@ -20,7 +20,8 @@
       "Bash(eof)",
       "Bash(racket *)",
       "Bash(sed *)",
-      "Bash(rm *)"
+      "Bash(rm *)",
+      "Bash(grep *)"
     ]
   },
   "$version": 4

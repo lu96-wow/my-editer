@@ -186,14 +186,20 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 
 gap 定位（返回新 content）：`content-gap-goto`。
 
-### 5.3 properties —— 行内属性
+### 5.3 properties —— 行内属性（两个槽）
+
+每个区间带两个槽：`presentation`（开放的表现层 plist）与 `restrict`（typed 约束）。
+下表前一组是表现层，`*-restrict*` 是约束槽。
 
 | 函数 | 输入 | 输出 |
 |---|---|---|
 | `make-properties` | line-count | properties |
+| `make-restrict` | — | restrict（空约束） |
 | `properties-get` | p line col prop | any \| #f |
-| `properties-at` | p line col | hash（该位置全部属性） |
-| `properties-put` | p line start end prop val | properties |
+| `properties-at` | p line col | hash（该位置的表现层属性） |
+| `properties-restrict-at` | p line col | restrict（该位置的约束；空 = 无约束） |
+| `properties-put` | p line start end prop val | properties（写表现层） |
+| `properties-put-restrict` | p line start end restrict | properties（写约束槽；传空约束即清除） |
 | `properties-put-many` | p segs | properties |
 | `properties-remove` | p line start end prop | properties |
 | `properties-replace-key` | p first last prop segs | properties（清旧写新） |
@@ -214,7 +220,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `marker-apply-edit` | m desc | marker |
 | `marker-table-apply-edit` | mt desc | marker-table |
 | `make-overlay-table` | — | overlay-table |
-| `overlay-table-add` | ot start-id end-id [plist (hash)] | (values overlay-table id) |
+| `overlay-table-add` | ot start-id end-id [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values overlay-table id) |
 | `overlay-table-remove` | ot id | overlay-table |
 | `overlay-table-at` | ot mt line col | (listof overlay)（按 priority 降序） |
 | `overlay-table-runs` | ot mt line line-length | (listof (list start end ovs)) |
@@ -239,10 +245,12 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-get-property` | b line col prop | any \| #f |
 | `buffer-remove-property` | b line start end prop | buffer |
 | `buffer-put-properties-many` | b segs | buffer（一次 tick） |
+| `buffer-put-restrict` | b line start end restrict | buffer（写约束槽；(make-restrict) 清除） |
+| `buffer-read-only-at?` | b line col | boolean（该位置的约束是否含 read-only） |
 | `buffer-make-marker` | b pos [type 'before] | (values buffer id) |
 | `buffer-remove-marker` | b id | buffer |
 | `buffer-marker-pos` | b id | point \| #f |
-| `buffer-make-overlay` | b start-pos end-pos [plist (hash)] | (values buffer id) |
+| `buffer-make-overlay` | b start-pos end-pos [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values buffer id) |
 | `buffer-remove-overlay` | b oid | buffer |
 | `buffer-mark-dirty` / `buffer-mark-dirty-all` | b [first last] | buffer（把该范围标为「刚变过」，bump tick） |
 
@@ -370,15 +378,13 @@ gap 定位（返回新 content）：`content-gap-goto`。
 
 ### 7.5 read-only 区域（显示 + 输入）
 
-`'read-only #t` 属性标出用户不可编辑的区间（如提示区）。编辑守卫在 splice 层拦截，
-且 read-only 是**硬边界**：在边界插入什么都不继承，新输入保持干净。
-read-only 是**控制键**（词表见 `core/text/key.rkt`），不会进入 `screen` 的 `run.face`；
-要给它配色，另写一个表现层键即可（如 `'face 'prompt`）。
+read-only 是**约束槽**（`restrict`，typed）里的语义，不是表现层属性：它由 core 解释
+（编辑守卫），不进 `screen` 的 `run.face`——要给它配色，另写一个表现层键即可。
 
 ```racket
 (define b  (buffer-open "> _"))
-(define b1 (buffer-put-property b  0 0 2 'read-only #t))   ; "> " 不可编辑
-(define b2 (buffer-put-property b1 0 0 2 'face 'prompt))   ; 顺带提示色
+(define b1 (buffer-put-restrict  b  0 0 2 (restrict #t)))   ; "> " 不可编辑
+(define b2 (buffer-put-property  b1 0 0 2 'face 'prompt))   ; 顺带提示色
 (define w  (window-set-point (window-open b2 1 40) (point 0 3)))  ; 光标放输入区
 
 ;; 打字在输入区（col 3）→ 允许；打字在提示区（col 0~1）→ 拒绝（no-op）
@@ -387,6 +393,9 @@ read-only 是**控制键**（词表见 `core/text/key.rkt`），不会进入 `sc
 
 规则：零宽插入在 read-only 区间「内部」→ 拒绝，在边界 → 允许；
 非零宽删除与 read-only 区间「重叠」→ 拒绝。
+
+read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继承**（新输入既不带约束，
+也不带提示色）。两个槽彼此独立：写约束不影响表现层，反之亦然。
 
 **程序要编辑 read-only 内容**：用宏暂时绕过守卫（不需要手动解锁/上锁）：
 

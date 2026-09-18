@@ -24,7 +24,7 @@ edit/
 └── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
     ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
     ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
-    │                     #     point content key properties marker overlay buffer patch edit
+    │                     #     point content properties marker overlay buffer patch edit
     └── view/             #   视口层（后端无关，单窗口）：宽度/渲染/窗口/视觉行/屏幕/事件
                           #     width render window view screen project events
 ```
@@ -48,8 +48,8 @@ edit/
 │   width  render  window  view  screen  project  events         │
 ├──────────────────────────────────────────────────────────────┤
 │ core/text/*.rkt   文本层（无光标）：文本/属性/位置/装饰/文档       │
-│   point  content  key  properties  marker  overlay  buffer     │
-│   patch  edit                                                  │
+│   point  content  properties  marker  overlay  buffer  patch  │
+│   edit                                                         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -59,8 +59,7 @@ edit/
 |---|---|---|
 | point | (line,col) 位置代数 | 行有多长、有没有文本 |
 | content | 文本存储 + 编辑，产出 `edit-desc` | 属性/marker/overlay 的存在 |
-| properties | 行内属性区间的读写与随编辑调整 | 文本内容 |
-| key | core 解释的属性键（控制键）词表 | 属性的值、文本内容 |
+| properties | 行内属性区间（两槽：presentation + restrict）的读写与随编辑调整 | 文本内容、具体的键值含义 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
 | buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
 | patch | 补丁（delta）：按 key 清旧写新 | 谁在消费 |
@@ -167,11 +166,11 @@ per-operation：每次改动整体覆盖，消费方「改一次、读一次」�
 - 光标不落在组合字符前（column->index 跳过 0 宽）
 
 ### 属性 / 装饰
-- 空 plist 区间不保留；相邻同 plist 合并；行内升序不重叠
 - marker 插入类型 before/after 只在插入点生效
-- overlay 两端重合时蒸发（evaporate）
-- overlay priority：≤0 在 properties 之下，>0 在 properties 之上
-- `priority`/`evaporate`/`read-only` 是控制键（词表见 `text/key.rkt`）：投影时被滤掉，不进 face；插入时也不继承（硬边界）
+- 区间带**两个槽**：`presentation`（开放 plist，core 不解释）+ `restrict`（typed 约束，core 解释）
+- 相邻区间合并 / 编辑调整 / 插入继承：两槽一起判定；两槽都空的区间不保留
+- 插入继承规则：`presentation` 继承左邻；`restrict` 不继承；左邻带 `restrict` ⇒ 表现也不继承（硬边界）
+- overlay 的 `priority`/`evaporate?` 是 **struct 字段**（不是 plist 键）：两端重合时蒸发；priority ≤0 在 presentation 之下、>0 在之上
 
 ### 渲染 / 屏幕
 - face 分段：同 face 相邻列合并成 run
@@ -189,7 +188,7 @@ per-operation：每次改动整体覆盖，消费方「改一次、读一次」�
 | 层 | 不变量 |
 |---|---|
 | content | lines 非空；gap-line ∈ [0,n)；gap-col ≤ 行长 |
-| properties | 行内区间升序、不重叠、相邻同 plist 已合并、无空 plist |
+| properties | 行内区间升序、不重叠；相邻且 (presentation, restrict) 都相同已合并；两槽都空的区间不保留 |
 | marker/overlay | overlay 的 start/end id 可查；start ≤ end |
 | view | vrow 序列长度 = height；越界行用 line=-1 占位；clip 模式滚动时 `left-col` 吸附为字符起点列，视口内不重吸附 |
 
@@ -289,13 +288,42 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 - 不动 `edit-desc`（唯一跨层契约不变）。
 - `modified?` 保留为**约定**（编辑置位、`patch` 不置位），不假装是机制。
 
-### 8.7 分步实施（每步独立可测，且恰好落在目标态）
+### 8.8 守卫抑制：去全局状态（决定 A）
+
+**问题**：`inhibit-read-only` 是 `make-parameter`（buffer.rkt），而两份文档都声称「无全局可变状态」。
+它让**同一个编辑函数的语义取决于隐式动态上下文**：
+
+```racket
+(buffer-insert-char rb 0 2 #\X)                      ; 拒绝（read-only）
+(parameterize ([inhibit-read-only #t])
+  (buffer-insert-char rb 0 2 #\X))                   ; 允许
+```
+
+同一个调用行为不同，差别不在参数里 —— 这是 ambient state，不是「数据 → lambda → 数据」。
+
+**决定（A）：把「可信编辑」变成显式入口**
+
+- 新增 `buffer-splice-trusted`：与 `buffer-splice` 同形，但**跳过守卫**。
+- 删除参数 `inhibit-read-only` 与宏 `with-read-only-inhibited`。
+- 程序编辑 read-only 内容一律走它；要「在 read-only 里插一个字符」写成零宽 splice：
+  `(buffer-splice-trusted b 0 2 0 2 "X")`。
+- `properties-debug?` 是**测试开关**，保留；并在文档里明确它是 core 仅有的动态参数，
+  且只影响诊断、不改变语义。
+
+**为什么不是「给每个原语加 `#:trusted?`」**：那是把同一个开关复制到 6 个原语上，噪声大于收益；
+「程序编辑」本身就是 splice 语义，一个入口足够。
+
+**与第 2 步的关系**：第 2 步把守卫改为读 typed `restrict` 槽时，`buffer-splice-trusted`
+就是那个「跳过该检查」的入口（不再查任何参数）。
+
+### 8.7 分步实施
 
 | 步 | 内容 | 验证 |
 |---|---|---|
-| 0 | 本节（设计定稿写进文档）。**无代码** | 文档自洽 |
-| 1 | `overlay` 拿真字段：`priority`/`evaporate?` 进 struct；`key.rkt` 去掉这两项 | 全绿 ＋ overlay 层叠/蒸发行为不变 |
-| 2 | `properties` 两槽化；`properties-put` 只写表现；新增 `buffer-put-restrict` / `buffer-read-only-at?`；编辑守卫改读 typed 槽；传播规则显式化；**删除 `text/key.rkt`**；`render` 不再过滤；`main.rkt` 与 MANUAL §7.5 改用新入口 | 全绿 ＋ 复现「face 纯净、run 不断裂、硬边界语义不变」 |
+| 0 | ✅ 本节（设计定稿写进文档）。**无代码** | 文档自洽 |
+| 1 | ✅ `overlay` 拿真字段：`priority`/`evaporate?` 进 struct；`key.rkt` 去掉这两项 | 全绿 ＋ overlay 层叠/蒸发行为不变 |
+| 2a | ✅ `properties` 两槽化（`span` = presentation + restrict）；`properties-put` 只写表现；新增 `buffer-put-restrict` / `buffer-read-only-at?` / `make-restrict`；编辑守卫改读 typed 槽；传播规则显式化；**删除 `text/key.rkt`**；`render` 不再过滤；`main.rkt` 改用新入口 | 全绿 ＋ 复现「face 纯净、run 不断裂、硬边界语义不变」 |
+| 2b | 删 `inhibit-read-only` + `with-read-only-inhibited`，加 `buffer-splice-trusted`（§8.8）；MANUAL §7.5 紧跟改 | 全绿 ＋ 可信入口能编辑 read-only |
 | 3 | 命名与 MANUAL §5 / §7.5 收尾 | 全绿 |
 | 4 | 删 `view.sync` 与枚举；`view` 折叠回 `window`；core 只留漏斗 ＋ 默认 rebase ＋ 镜像原语；`main.rkt` 在 `on-edit` 显式镜像 | 全绿 ＋ 两个策略行为不变 |
 | 5 | 文档定稿：§0/§1 模块表补 `document`，§8.2 的三分表并入 §1 | 文档与代码一致 |

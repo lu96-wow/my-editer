@@ -20,6 +20,8 @@
  (struct-out buffer)
  (struct-out dirty-desc)
  (struct-out edit-desc)
+ (struct-out restrict)
+ make-restrict
  buffer-open
  buffer->string
  buffer->lines
@@ -37,6 +39,8 @@
  buffer-get-property
  buffer-remove-property
  buffer-put-properties-many
+ buffer-put-restrict
+ buffer-read-only-at?
  buffer-make-marker
  buffer-remove-marker
  buffer-marker-pos
@@ -109,11 +113,12 @@
   (buffer-mark-dirty b 0 (sub1 (buffer-line-count b))))
 
 ;;; ---------- read-only 守卫 ----------
-;;; 'read-only 文本属性：标了它的区间用户不可编辑。
+;;; read-only 是**约束槽**（restrict）里的语义，不是表现层属性。
 ;;; 规则：零宽插入 → 插入点严格在 read-only 区间内部则拒绝；
 ;;;       非零宽删除 → 删除区间 [s..e) 与任何 read-only 重叠则拒绝。
 ;;;
-;;; 程序要编辑 read-only 内容时，用 with-read-only-inhibited 暂时绕过守卫。
+;;; 程序要编辑 read-only 内容时，用 with-read-only-inhibited 暂时绕过守卫
+;;; （第 2b 步会把它换成显式的 buffer-splice-trusted，见 ARCHITECTURE §8.8）。
 
 (define inhibit-read-only (make-parameter #f))
 
@@ -122,23 +127,24 @@
   (parameterize ([inhibit-read-only #t])
     body ...))
 
-(define (read-only-at? b line col)
-  (buffer-get-property b line col 'read-only))
+;; 该位置的约束是否含 read-only
+(define (buffer-read-only-at? b line col)
+  (restrict-read-only? (properties-restrict-at (buffer-properties b) line col)))
 
 ;; [s..e) 半开区间内是否有 read-only 字符
 (define (range-read-only? b s-line s-col e-line e-col)
   (cond
     [(= s-line e-line)
      (for/or ([c (in-range s-col e-col)])
-       (read-only-at? b s-line c))]
+       (buffer-read-only-at? b s-line c))]
     [else
      (or (for/or ([c (in-range s-col (string-length (buffer-line-ref b s-line)))])
-           (read-only-at? b s-line c))
+           (buffer-read-only-at? b s-line c))
          (for/or ([l (in-range (add1 s-line) e-line)])
            (for/or ([c (in-range (string-length (buffer-line-ref b l)))])
-             (read-only-at? b l c)))
+             (buffer-read-only-at? b l c)))
          (for/or ([c (in-range e-col)])
-           (read-only-at? b e-line c)))]))
+           (buffer-read-only-at? b e-line c)))]))
 
 (define (edit-read-only? b desc)
   (define s-line (edit-desc-s-line desc))
@@ -146,7 +152,7 @@
   (define e-line (edit-desc-e-line desc))
   (define e-col (edit-desc-e-col desc))
   (if (and (= s-line e-line) (= s-col e-col))
-      (read-only-at? b s-line s-col)
+      (buffer-read-only-at? b s-line s-col)
       (range-read-only? b s-line s-col e-line e-col)))
 
 ;;; ---------- 编辑核心 ----------
@@ -256,6 +262,13 @@
           [tick (add1 (buffer-tick b))]
           [modified? #t]))))
 
+;; 写约束槽（只动约束，不碰表现层）。传 (make-restrict) 即清除该区间的约束。
+(define (buffer-put-restrict b line start end rs)
+  (struct-copy buffer b
+    [properties (properties-put-restrict (buffer-properties b) line start end rs)]
+    [tick (add1 (buffer-tick b))]
+    [modified? #t]))
+
 ;;; ---------- marker ----------
 
 (define (buffer-make-marker b pos [type 'before])
@@ -278,11 +291,14 @@
 
 ;;; ---------- overlay ----------
 
-(define (buffer-make-overlay b start-pos end-pos [plist (hash)])
+(define (buffer-make-overlay b start-pos end-pos [presentation (hash)]
+                             #:priority [priority 0]
+                             #:evaporate? [evaporate? #f])
   (define-values (b1 sid) (buffer-make-marker b start-pos 'before))
   (define-values (b2 eid) (buffer-make-marker b1 end-pos 'after))
   (define-values (ot oid)
-    (overlay-table-add (buffer-overlays b2) sid eid plist))
+    (overlay-table-add (buffer-overlays b2) sid eid presentation
+                       #:priority priority #:evaporate? evaporate?))
   (values (struct-copy buffer b2
             [overlays ot]
             [tick (add1 (buffer-tick b2))]
@@ -385,7 +401,7 @@
 
   ;; overlay evaporate
   (define-values (b14 oid2) (buffer-make-overlay b0 (point 0 1) (point 0 3)
-                                                  (hash 'face 'region 'evaporate #t)))
+                                                  (hash 'face 'region) #:evaporate? #t))
   ;; 连续删 3 次，overlay 覆盖的字符全删光
   (define-values (b15 _6) (buffer-delete b14 0 1))
   (define-values (b16 _7) (buffer-delete b15 0 1))
@@ -408,8 +424,8 @@
   (check-equal? (buffer-tick b17)
                 (+ (buffer-tick b14) 3))   ; 3 次 delete（overlay 建立的 +3 已在 b14 里）
 
-  ;; read-only 守卫：标了 'read-only 的区间不可编辑
-  (define rb (buffer-put-property b0 0 1 4 'read-only #t))   ; "ell"（col 1~3）不可编辑
+  ;; read-only 守卫：约束槽里标了 read-only 的区间不可编辑
+  (define rb (buffer-put-restrict b0 0 1 4 (restrict #t)))   ; "ell"（col 1~3）不可编辑
   ;; 区间内部插入 → 拒绝（原 buffer 原样返回）
   (define-values (rb1 rd1) (buffer-insert-char rb 0 2 #\X))
   (check-eq? rb1 rb)
@@ -417,8 +433,14 @@
   ;; 区间末尾边界（col 4）插入 → 允许，且新字符不继承 read-only（非粘性）
   (define-values (rb2 rd2) (buffer-insert-char rb 0 4 #\X))
   (check-equal? (buffer->string rb2) "hellXo\nworld")
-  (check-equal? (buffer-get-property rb2 0 4 'read-only) #f)
-  (check-equal? (buffer-get-property rb2 0 2 'read-only) #t)   ; 原区间仍在
+  (check-false (buffer-read-only-at? rb2 0 4))
+  (check-true  (buffer-read-only-at? rb2 0 2))   ; 原区间仍在
+  ;; 约束与表现互不干扰
+  (define rb-f (buffer-put-property rb 0 1 4 'face 'prompt))
+  (check-equal? (buffer-get-property rb-f 0 2 'face) 'prompt)
+  (check-true (buffer-read-only-at? rb-f 0 2))
+  ;; 清除约束（传空约束）
+  (check-false (buffer-read-only-at? (buffer-put-restrict rb 0 1 4 (make-restrict)) 0 2))
   ;; 删除跨进 read-only → 拒绝
   (define-values (rb3 rd3) (buffer-backspace rb 0 4))   ; 删 [3,4) ∈ [1,4)
   (check-eq? rb3 rb)

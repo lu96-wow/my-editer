@@ -54,12 +54,14 @@
 ;;;   之后全是自动的。
 ;;;
 ;;; ── read-only 区域（显示 + 输入）──────────────────────────────
-;;;   'read-only #t 标成用户不可编辑（如提示区）；编辑在 splice 层被拦截，
-;;;   且 read-only 是「硬边界」：边界插入什么都不继承，新输入保持干净。
-;;;   read-only 是控制键，投影时不进 screen 的 face（配色另用 'face）。
-;;;   程序要编辑 read-only 内容：with-read-only-inhibited 绕过。
+;;;   read-only 是**约束槽**（restrict，typed），不是表现层属性：
+;;;   (buffer-put-restrict b 0 0 2 (restrict #t))  ; "> " 不可编辑
+;;;   编辑在 splice 层被拦截；且它是「硬边界」：边界插入什么都不继承。
+;;;   约束不进 screen 的 face；配色另写表现层键（如 'face 'prompt）。
+;;;   程序要编辑 read-only 内容：with-read-only-inhibited 绕过（§8.8 将换成
+;;;   显式的 buffer-splice-trusted）。
 ;;;
-;;;     (buffer-put-property b 0 0 2 'read-only #t)   ; "> " 不可编辑
+;;;     (buffer-put-restrict b 0 0 2 (restrict #t))    ; "> " 不可编辑
 ;;;     ;; 光标放输入区，打字只落在可编辑处；backspace 到边界就删不动
 ;;;
 ;;; ── 最小编辑器骨架 ──────────────────────────────────────────

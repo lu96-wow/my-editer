@@ -25,14 +25,15 @@
  overlay-table-get
  overlay-table-all
  overlay-table-count
- overlay-priority
  overlay-table-at
  overlay-table-runs
  overlay-table-apply-edit)
 
-(struct overlay (id start-id end-id plist) #:transparent)
+(struct overlay (id start-id end-id presentation priority evaporate?) #:transparent)
 ;; start-id, end-id : marker-id
-;; plist : immutable hash
+;; presentation : immutable hash   表现层（core 不解释，只搬运）
+;; priority     : int              层叠顺序：≤0 在 properties 之下，>0 在之上
+;; evaporate?   : boolean          覆盖文本被删光（两端重合）时自动消亡
 
 (struct overlay-table (next-id overlays by-id) #:transparent)
 ;; overlays : (listof overlay)     迭代顺序
@@ -43,9 +44,12 @@
 (define (make-overlay-table) (overlay-table 0 '() (hash)))
 
 ;; 需要调用者先给 start / end 建 marker，再传入它们的 id。
-(define (overlay-table-add ot start-id end-id [plist (hash)])
+;; priority / evaporate? 是**行为字段**，不是表现层键（不进 face）。
+(define (overlay-table-add ot start-id end-id [presentation (hash)]
+                           #:priority [priority 0]
+                           #:evaporate? [evaporate? #f])
   (define id (overlay-table-next-id ot))
-  (define ov (overlay id start-id end-id plist))
+  (define ov (overlay id start-id end-id presentation priority evaporate?))
   (values (overlay-table (add1 id)
                          (cons ov (overlay-table-overlays ot))
                          (hash-set (overlay-table-by-id ot) id ov))
@@ -65,8 +69,14 @@
 
 ;;; ---------- 查询 ----------
 
-(define (overlay-priority ov)
-  (hash-ref (overlay-plist ov) 'priority 0))
+;; 层叠顺序：priority 降序；同 priority 时 id 小的在前（先创建的在前）。
+;; （唯一的比较器实现，overlay-table-at / overlay-table-runs 共用）
+(define (priority-descending<? a b)
+  (define pa (overlay-priority a))
+  (define pb (overlay-priority b))
+  (cond [(> pa pb) #t]
+        [(< pa pb) #f]
+        [else (< (overlay-id a) (overlay-id b))]))
 
 ;; 把 overlay 的 id 对解析成 point 对
 (define (overlay-points ov mt)
@@ -89,12 +99,7 @@
   (sort (for/list ([ov (in-list (overlay-table-overlays ot))]
                    #:when (overlay-contains-point? ov mt pos))
           ov)
-        (lambda (a b)
-          (define pa (overlay-priority a))
-          (define pb (overlay-priority b))
-          (cond [(> pa pb) #t]
-                [(< pa pb) #f]
-                [else (< (overlay-id a) (overlay-id b))]))))
+        priority-descending<?))
 
 ;; 渲染扫描：某行内所有 overlay 段，返回
 ;; (listof (list start-col end-col (listof overlay)))
@@ -124,8 +129,7 @@
           (lambda (a b)
             (cond [(< (car a) (car b)) #t]
                   [(> (car a) (car b)) #f]
-                  [else (> (overlay-priority (caddr a))
-                           (overlay-priority (caddr b)))]))))
+                  [else (priority-descending<? (caddr a) (caddr b))]))))
   ;; 按边界切成 runs
   (cond
     [(null? ordered) '()]
@@ -140,12 +144,7 @@
          (sort (for/list ([sp (in-list ordered)]
                           #:when (and (<= (car sp) a) (>= (cadr sp) b)))
                  (caddr sp))
-               (lambda (x y)
-                 (define px (overlay-priority x))
-                 (define py (overlay-priority y))
-                 (cond [(> px py) #t]
-                       [(< px py) #f]
-                       [else (< (overlay-id x) (overlay-id y))]))))
+               priority-descending<?))
        ;; covering 已按 priority 降序（同 priority 时 id 小的在前）
        (list a b covering))]))
 
@@ -154,8 +153,10 @@
 ;;; 位置调整 100% 委托给 marker-table-apply-edit。
 ;;; 本函数只负责：evaporate 判定 + marker-table 的搬运。
 
-(define (overlay-evaporates? ov mt)
-  (and (hash-ref (overlay-plist ov) 'evaporate #f)
+;; 是否已经「塌缩」：带 evaporate? 且两端已重合 → 该消亡。
+;; （与字段 overlay-evaporate? 区分：前者看当前位置，后者看是否启用该行为）
+(define (overlay-collapsed? ov mt)
+  (and (overlay-evaporate? ov)
        (let-values ([(s e) (overlay-points ov mt)])
          (point=? s e))))
 
@@ -164,7 +165,7 @@
   (define mt* (marker-table-apply-edit mt desc))
   ;; 2. 检查 evaporate
   (define kept
-    (filter (lambda (ov) (not (overlay-evaporates? ov mt*)))
+    (filter (lambda (ov) (not (overlay-collapsed? ov mt*)))
             (overlay-table-overlays ot)))
   (values (overlay-table (overlay-table-next-id ot)
                          kept
