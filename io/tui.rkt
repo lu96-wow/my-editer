@@ -57,7 +57,6 @@
 ;; 把一帧 screen 变成要写出的字节。
 ;; 我们把光标移到「屏幕上第 row 行第 col 列」（0-based）——终端 CUP 是 1-based，故 +1。
 (define (render-frame s rows cols [name "*scratch*"])
-  (define w (editor-window s))
   (define scr (editor->screen s))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
@@ -67,7 +66,7 @@
       (define st (face-style (run-face r)))
       (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
   ;; 状态行（最后一行）
-  (define p (window-point w))
+  (define p (editor-point s))
   (define status
     (format " ~a  L~a:C~a  ~a   ^Z undo ^Y redo ^Q quit"
             name
@@ -104,8 +103,6 @@
 
      (define (edit-op op)
        (set! s (let-values ([(s* report) (editor-edit s op)]) (apply-report s* report))))
-     (define (navigate f) (set! s (editor-update-active s f)))
-     (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
      (define (undo) (set! s (let-values ([(s* report) (editor-undo s)]) (apply-report s* report))))
      (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
      (define (resize-editor! nr nc)
@@ -122,14 +119,14 @@
         #:backspace (lambda ()   (edit-op (edit-backspace)))
         #:delete   (lambda ()    (edit-op (edit-delete)))
         #:tab      (lambda ()    (edit-op (edit-insert "  ")))
-        #:left (lambda () (move window-left))
-        #:right (lambda () (move window-right))
-        #:up (lambda () (move window-up))
-        #:down (lambda () (move window-down))
-        #:home (lambda () (move window-home))
-        #:end (lambda () (move window-end))
-        #:pageup   (lambda ()    (navigate (lambda (w) (window-scroll-visual w (- (window-height w))))))
-        #:pagedown (lambda ()    (navigate (lambda (w) (window-scroll-visual w (window-height w)))))
+        #:left (lambda () (set! s (editor-left s)))
+        #:right (lambda () (set! s (editor-right s)))
+        #:up (lambda () (set! s (editor-up s)))
+        #:down (lambda () (set! s (editor-down s)))
+        #:home (lambda () (set! s (editor-home s)))
+        #:end (lambda () (set! s (editor-end s)))
+        #:pageup   (lambda ()    (set! s (editor-scroll s (- (editor-height s)))))
+        #:pagedown (lambda ()    (set! s (editor-scroll s (editor-height s))))
         #:ctrl     (lambda (ch)
                      (case ch
                        [(#\Z) (undo)]
@@ -140,10 +137,10 @@
         #:paste    (lambda (data) (edit-op (edit-insert (bytes->string/utf-8 data))))
         #:mouse-press (lambda (_button x y _mods)
                         (when (< y (sub1 rows))
-                          (define-values (l c) (window-screen->point (editor-window s) y x))
-                          (when l (navigate (lambda (w) (window-set-point w (point l c)))))))
+                          (define-values (l c) (editor-screen->point s y x))
+                          (when l (set! s (editor-set-point s (point l c))))))
         #:mouse-scroll (lambda (dir _x _y _mods)
-                         (navigate (lambda (w) (window-scroll-visual w (if (eq? dir 'up) -3 3)))))
+                         (set! s (editor-scroll s (if (eq? dir 'up) -3 3))))
         #:resize   (lambda (nr nc) (resize-editor! nr nc))))
 
      (define (step type data mods)

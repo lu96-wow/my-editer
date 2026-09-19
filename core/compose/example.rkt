@@ -84,9 +84,8 @@
 
 (define (layout e)
   (define ed (file-editor (current-file e)))
-  (define main (editor-window ed))
-  (define h (window-height main))
-  (define mw (window-width main))
+  (define h (editor-height ed))
+  (define mw (editor-width ed))
   (if (app-sidebar-open? e)
       (editor-screen-compose h (+ sidebar-width mw)
                       (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
@@ -94,7 +93,7 @@
                       'main)
       (editor->screen ed)))
 
-(define (render e) (screen->text (layout e)))
+(define (render e) (editor-screen->text (layout e)))
 
 ;;; ---------- 走一遍 ----------
 

@@ -1,7 +1,8 @@
 #lang racket
 
 (require "../text/point.rkt" "../text/buffer.rkt" "../text/edit.rkt"
-         "../view/window.rkt" "../view/document.rkt" "../view/screen.rkt" "../view/project.rkt"
+         "../view/window.rkt" "../view/view.rkt" "../view/document.rkt"
+         "../view/screen.rkt" "../view/project.rkt"
          "../tool/history.rkt" rackunit)
 
 ;;; core/compose/editor.rkt —— 统一的编辑平台：editor
@@ -35,12 +36,41 @@
  editor-update-view
  editor-update-active
  editor-set-view-size
+ editor-set-mode
  editor-view-sync
  editor-set-view-sync
+ ;; 光标 / 尺寸
+ editor-point
+ editor-view-point
+ editor-height
+ editor-width
+ editor-view-height
+ editor-view-width
+ editor-top-line
+ editor-view-top-line
+ editor-set-point
+ editor-view-set-point
+ ;; 光标 / 鼠标映射
+ editor-point->screen
+ editor-view-point->screen
+ editor-screen->point
+ editor-view-screen->point
+ ;; 导航（活动视图）
+ editor-left
+ editor-right
+ editor-up
+ editor-down
+ editor-home
+ editor-end
+ editor-goto
+ editor-scroll
  ;; 投影
  editor->screen
  editor-view->screen
- ;; 拼屏（别名：与 screen-compose 同一个过程对象）
+ ;; 屏幕工具（别名：与同名原子是同一个过程对象）
+ editor-make-screen
+ editor-screen->text
+ editor-screen-diff-rows
  editor-screen-compose
  ;; 读
  editor->string
@@ -126,6 +156,50 @@
 (define (editor-set-view-sync ed i sync)
   (with-document ed (lambda (doc) (document-set-view-sync doc i sync))))
 
+(define (editor-set-mode ed mode)
+  (editor-update-active ed (lambda (w) (window-set-mode w mode))))
+
+;;; ---------- 光标 / 尺寸 ----------
+
+(define (editor-point ed) (window-point (editor-window ed)))
+(define (editor-view-point ed i) (window-point (editor-view-window ed i)))
+(define (editor-height ed) (window-height (editor-window ed)))
+(define (editor-width ed) (window-width (editor-window ed)))
+(define (editor-view-height ed i) (window-height (editor-view-window ed i)))
+(define (editor-view-width ed i) (window-width (editor-view-window ed i)))
+(define (editor-top-line ed) (window-top-line (editor-window ed)))
+(define (editor-view-top-line ed i) (window-top-line (editor-view-window ed i)))
+
+(define (editor-set-point ed p)
+  (editor-update-active ed (lambda (w) (window-set-point w p))))
+(define (editor-view-set-point ed i p)
+  (editor-update-view ed i (lambda (w) (window-set-point w p))))
+
+;;; ---------- 光标 / 鼠标映射 ----------
+
+(define (editor-point->screen ed) (window-point->screen (editor-window ed)))
+(define (editor-view-point->screen ed i) (window-point->screen (editor-view-window ed i)))
+(define (editor-screen->point ed row col) (window-screen->point (editor-window ed) row col))
+(define (editor-view-screen->point ed i row col)
+  (window-screen->point (editor-view-window ed i) row col))
+
+;;; ---------- 导航（活动视图；移动后 ensure 光标可见）----------
+
+(define (editor-move ed f)
+  (editor-update-active ed (lambda (w) (window-ensure-point (f w)))))
+
+(define (editor-left ed)  (editor-move ed window-left))
+(define (editor-right ed) (editor-move ed window-right))
+(define (editor-up ed)    (editor-move ed window-up))
+(define (editor-down ed)  (editor-move ed window-down))
+(define (editor-home ed)  (editor-move ed window-home))
+(define (editor-end ed)   (editor-move ed window-end))
+(define (editor-goto ed line col) (editor-move ed (lambda (w) (window-goto w line col))))
+
+;; 显式滚视口（不 ensure；按视觉行，clip/wrap 都行）
+(define (editor-scroll ed delta)
+  (editor-update-active ed (lambda (w) (window-scroll-visual w delta))))
+
 ;;; ---------- 投影（window → screen）----------
 
 ;; 活动视图投影成 screen（= window->screen (editor-window ed)）
@@ -139,6 +213,9 @@
 ;; 拼屏：多窗格用 editor-view->screen 拼成整屏。与 screen-compose 同一个过程对象，
 ;; 提供 editor-* 前缀只是为了让使用者的平台面统一。
 (define editor-screen-compose screen-compose)
+(define editor-make-screen make-screen)
+(define editor-screen->text screen->text)
+(define editor-screen-diff-rows screen-diff-rows)
 
 ;;; ---------- 读 ----------
 
@@ -273,5 +350,24 @@
   (check-true (screen? (editor->screen e3)))
   (check-true (screen? (editor-view->screen ed2 0)))
   (check-eq? editor-screen-compose screen-compose)      ; 与原子是同一个过程对象
+
+  ;; 光标 / 尺寸 / 映射
+  (check-equal? (editor-point e3) (point 0 3))
+  (check-equal? (editor-height e3) 24)
+  (check-equal? (editor-width e3) 80)
+  (check-equal? (call-with-values (lambda () (editor-point->screen e3)) list) '(0 3))
+  (check-equal? (call-with-values (lambda () (editor-screen->point e3 0 1)) list) '(0 1))
+
+  ;; 导航（活动视图）
+  (define nv (editor-open "hello\nworld"))
+  (check-equal? (editor-point (editor-right nv)) (point 0 1))
+  (check-equal? (editor-point (editor-down (editor-right nv))) (point 1 1))
+  (check-equal? (editor-point (editor-goto nv 1 5)) (point 1 5))
+  (check-equal? (editor-point (editor-scroll (editor-goto nv 1 5) 0)) (point 1 5))
+
+  ;; 屏幕工具与同名原子是同一过程对象
+  (check-eq? editor-make-screen make-screen)
+  (check-eq? editor-screen->text screen->text)
+  (check-eq? editor-screen-diff-rows screen-diff-rows)
 
   (displayln "editor.rkt: all tests passed"))
