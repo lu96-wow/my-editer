@@ -35,7 +35,7 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 (define (rehighlight s)
-  (define doc (session-document s))
+  (define doc (editor-document s))
   (define n (document-line-count doc))
   (define segs
     (append*
@@ -43,7 +43,7 @@
        (define text (document-line-ref doc line))
        (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
          (list line (car m) (cdr m) 'keyword)))))
-  (struct-copy session s
+  (struct-copy editor s
     [document (document-apply-patches doc (list (patch 'face 0 (sub1 n) segs)))]))
 
 ;;; ---------- 布局（都 0-based，单位是屏幕行列）----------
@@ -62,13 +62,13 @@
 ;; name : 状态栏显示；tops : 三个视图各自 top-line（用来肉眼验证 follow/free）
 (define (render-frame s rows cols name)
   (define-values (H leftW rightW topH botH) (layout rows cols))
-  (define doc (session-document s))
+  (define doc (editor-document s))
   (define scr (screen-compose
                H cols
                (list (list 0 0 0 (window->screen (document-window doc 0)))
                      (list 1 (add1 leftW) 0 (window->screen (document-window doc 1)))
                      (list 2 (add1 leftW) (+ topH 1) (window->screen (document-window doc 2))))
-               (session-active s)))
+               (editor-active s)))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
   (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])
@@ -86,14 +86,14 @@
   (emit! (format-cursor-move (add1 topH) (add1 leftW)))
   (emit! (format-content "├"))
   ;; 状态行：三个 top 行号 + 活动窗格
-  (define p (window-point (session-window s)))
-  (define doc* (session-document s))
+  (define p (window-point (editor-window s)))
+  (define doc* (editor-document s))
   (define (top i) (window-top-line (document-window doc* i)))
   (define status
     (format " ~a  L~a:C~a  tops(~a,~a,~a)  active=~a   Tab pane  ^Z ^Y  ^Q"
             name
             (add1 (point-line p)) (add1 (point-col p))
-            (top 0) (top 1) (top 2) (session-active s)))
+            (top 0) (top 1) (top 2) (editor-active s)))
   (emit! (format-cursor-move rows 1))
   (emit! (format-styled 'status-bar
                         (if (>= (string-length status) cols)
@@ -125,28 +125,28 @@
      (define-values (doc1 _i0) (document-add-view doc0 H leftW))
      (define-values (doc2 _i1) (document-add-view doc1 topH rightW #:sync 'follow))
      (define-values (doc3 _i2) (document-add-view doc2 botH rightW))
-     (define s (rehighlight (session-of-document doc3 0)))
+     (define s (rehighlight (editor-of-document doc3 0)))
      (define running? #t)
 
-     (define (active) (session-active s))
+     (define (active) (editor-active s))
      (define (edit-op op)
        (set! s (let-values ([(s* report) (compose-edit s op)])
                  (if report (rehighlight s*) s*))))
      (define (navigate f)
-       (set! s (struct-copy session s
-                 [document (document-update-view (session-document s) (active) f)])))
+       (set! s (struct-copy editor s
+                 [document (document-update-view (editor-document s) (active) f)])))
      (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
      (define (undo) (set! s (let-values ([(s* _) (compose-undo s)]) (rehighlight s*))))
      (define (redo) (set! s (let-values ([(s* _) (compose-redo s)]) (rehighlight s*))))
      (define (set-point! i pt)
-       (set! s (struct-copy session s
-                 [document (document-update-view (session-document s) i
+       (set! s (struct-copy editor s
+                 [document (document-update-view (editor-document s) i
                                                  (lambda (w) (window-set-point w pt)))])))
      (define (resize! nr nc)
        (set! rows (max 4 nr)) (set! cols (max 6 nc))
        (define-values (H leftW rightW topH botH) (layout rows cols))
-       (define doc* (session-document s))
-       (set! s (struct-copy session s
+       (define doc* (editor-document s))
+       (set! s (struct-copy editor s
                  [document (document-set-view-size
                             (document-set-view-size
                              (document-set-view-size doc* 0 H leftW) 1 topH rightW)
@@ -168,7 +168,7 @@
         #:enter    (lambda ()    (edit-op (edit-newline)))
         #:backspace (lambda ()   (edit-op (edit-backspace)))
         #:delete   (lambda ()    (edit-op (edit-delete)))
-        #:tab      (lambda ()    (set! s (session-set-active s (modulo (add1 (active)) 3))))
+        #:tab      (lambda ()    (set! s (editor-set-active s (modulo (add1 (active)) 3))))
         #:left (lambda () (move window-left))
         #:right (lambda () (move window-right))
         #:up (lambda () (move window-up))
@@ -188,12 +188,12 @@
         #:mouse-press (lambda (_b x y _m)
                         (define pane (pane-at x y))
                         (when pane
-                          (set! s (session-set-active s pane))
+                          (set! s (editor-set-active s pane))
                           (define-values (H leftW rightW topH botH) (layout rows cols))
                           (define ox (if (= pane 0) 0 (add1 leftW)))
                           (define oy (cond [(= pane 2) (+ topH 1)] [else 0]))
                           (define-values (l c)
-                            (window-screen->point (document-window (session-document s) pane)
+                            (window-screen->point (document-window (editor-document s) pane)
                                                   (- y oy) (- x ox)))
                           (when l (set-point! pane (point l c)))))
         #:mouse-scroll (lambda (dir _x _y _m)
@@ -211,7 +211,7 @@
   (define-values (doc0 _t0) (document-add-view (document-open "l0\nl1\nl2\nl3\nl4") 4 10))
   (define-values (doc1 _t1) (document-add-view doc0 2 8 #:sync 'follow))
   (define-values (doc2 _t2) (document-add-view doc1 2 8))
-  (define s (rehighlight (session-of-document doc2 0)))
+  (define s (rehighlight (editor-of-document doc2 0)))
   (define frame (render-frame s 10 24 "demo"))
   (check-true (bytes? frame))
   (check-true (regexp-match? #rx"l0" frame))

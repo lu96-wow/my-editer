@@ -11,7 +11,7 @@
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Ctrl+Z 撤销   Ctrl+Y 重做
 ;;;         鼠标点击定位   Ctrl+Q / Esc 退出
 ;;;
-;;; 只用 core/api.rkt（原子）+ core/compose/editor.rkt（session/命令）。
+;;; 只用 core/api.rkt（原子）+ core/compose/editor.rkt（editor/命令）。
 
 (require "../core/api.rkt"
          "../core/compose/editor.rkt"
@@ -34,7 +34,7 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 (define (rehighlight s)
-  (define doc (session-document s))
+  (define doc (editor-document s))
   (define n (document-line-count doc))
   (define segs
     (append*
@@ -42,13 +42,13 @@
        (define text (document-line-ref doc line))
        (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
          (list line (car m) (cdr m) 'keyword)))))
-  (struct-copy session s
+  (struct-copy editor s
     [document (document-apply-patches doc (list (patch 'face 0 (sub1 n) segs)))]))
 
 ;; 把一帧 screen 变成要写出的字节。
 ;; 我们把光标移到「屏幕上第 row 行第 col 列」（0-based）——终端 CUP 是 1-based，故 +1。
 (define (render-frame s rows cols [name "*scratch*"])
-  (define w (session-window s))
+  (define w (editor-window s))
   (define scr (window->screen w))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
@@ -59,7 +59,7 @@
       (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
   ;; 状态行（最后一行）
   (define p (window-point w))
-  (define doc (session-document s))
+  (define doc (editor-document s))
   (define status
     (format " ~a  L~a:C~a  ~a   ^Z undo ^Y redo ^Q quit"
             name
@@ -90,7 +90,7 @@
      (define rows (max 2 rows0))
      (define cols (max 1 cols0))
      (define text (if (and path (file-exists? path)) (file->string path) ""))
-     (define s0 (session-open text (max 1 (- rows 1)) cols))
+     (define s0 (editor-open text (max 1 (- rows 1)) cols))
      (define s (rehighlight s0))
      (define running? #t)
 
@@ -98,15 +98,15 @@
        (set! s (let-values ([(s* report) (compose-edit s op)])
                  (if report (rehighlight s*) s*))))
      (define (navigate f)
-       (set! s (struct-copy session s
-                 [document (document-update-view (session-document s) (session-active s) f)])))
+       (set! s (struct-copy editor s
+                 [document (document-update-view (editor-document s) (editor-active s) f)])))
      (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
      (define (undo) (set! s (let-values ([(s* _) (compose-undo s)]) (rehighlight s*))))
      (define (redo) (set! s (let-values ([(s* _) (compose-redo s)]) (rehighlight s*))))
      (define (resize-editor! nr nc)
        (set! rows (max 2 nr)) (set! cols (max 1 nc))
-       (set! s (struct-copy session s
-                 [document (document-update-view (session-document s) 0
+       (set! s (struct-copy editor s
+                 [document (document-update-view (editor-document s) 0
                                                  (lambda (w) (window-set-size w (sub1 rows) cols)))])))
      (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
@@ -137,7 +137,7 @@
         #:paste    (lambda (data) (edit-op (edit-insert (bytes->string/utf-8 data))))
         #:mouse-press (lambda (_button x y _mods)
                         (when (< y (sub1 rows))
-                          (define-values (l c) (window-screen->point (session-window s) y x))
+                          (define-values (l c) (window-screen->point (editor-window s) y x))
                           (when l (navigate (lambda (w) (window-set-point w (point l c)))))))
         #:mouse-scroll (lambda (dir _x _y _mods)
                          (navigate (lambda (w) (window-scroll-visual w (if (eq? dir 'up) -3 3)))))
@@ -154,7 +154,7 @@
 
 (module+ test
   (require rackunit)
-  (define s (rehighlight (session-open "hello\n(define x 42)\nworld" 3 20)))
+  (define s (rehighlight (editor-open "hello\n(define x 42)\nworld" 3 20)))
   (define frame (render-frame s 4 20))
   (check-true (bytes? frame))
   (check-true (regexp-match? #rx"hello" frame))

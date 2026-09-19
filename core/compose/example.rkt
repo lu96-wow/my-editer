@@ -2,7 +2,7 @@
 
 ;;; core/compose/example.rkt —— 使用方示范：自己拼一个多文件编辑器
 ;;;
-;;; 组合层只给 session（document+账本+活动视图）与 compose-edit/undo/redo。
+;;; 组合层只给 editor（document+账本+活动视图）与 compose-edit/undo/redo。
 ;;; 多文件状态、侧边栏布局、语法高亮全是使用方自己拼的。
 ;;;
 ;;; 看看现在接一个命令有多直白（不用记参数/返回值顺序）：
@@ -13,24 +13,24 @@
 
 ;;; ---------- 使用方自己的状态 ----------
 
-(struct file (session name) #:transparent)     ; 每个文件一个 session（含自己的账本）
-(struct editor (files active sidebar-open?) #:transparent)
+(struct file (editor name) #:transparent)     ; 每个文件一个 editor（含自己的账本）
+(struct app (files active sidebar-open?) #:transparent)
 
 (define (open-file name [text ""] [height 24] [width 60])
-  (file (session-open text height width) name))
+  (file (editor-open text height width) name))
 
-(define (make-editor . files)
-  (editor (if (null? files) (list (open-file "*scratch*")) files) 0 #t))
+(define (make-app . files)
+  (app (if (null? files) (list (open-file "*scratch*")) files) 0 #t))
 
-(define (current-file e) (list-ref (editor-files e) (editor-active e)))
+(define (current-file e) (list-ref (app-files e) (app-active e)))
 (define (put-file e f)
-  (struct-copy editor e [files (list-set (editor-files e) (editor-active e) f)]))
+  (struct-copy app e [files (list-set (app-files e) (app-active e) f)]))
 
 ;;; ---------- 命令：把 compose-* 接进自己的状态 ----------
 
 (define (run-command e cmd)
   (define fv (current-file e))
-  (define-values (s* report) (cmd (file-session fv)))
+  (define-values (s* report) (cmd (file-editor fv)))
   (define e* (put-file e (file s* (file-name fv))))
   (values (highlight! e* report) report))
 
@@ -38,8 +38,8 @@
 (define (undo! e) (run-command e compose-undo))
 (define (redo! e) (run-command e compose-redo))
 
-(define (switch-file! e i) (struct-copy editor e [active i]))
-(define (toggle-sidebar! e) (struct-copy editor e [sidebar-open? (not (editor-sidebar-open? e))]))
+(define (switch-file! e i) (struct-copy app e [active i]))
+(define (toggle-sidebar! e) (struct-copy app e [sidebar-open? (not (app-sidebar-open? e))]))
 
 ;;; ---------- 装饰：语法高亮（使用方策略）----------
 
@@ -58,18 +58,18 @@
     [(not report) e]
     [else
      (define fv (current-file e))
-     (define s (file-session fv))
-     (define doc (session-document s))
+     (define s (file-editor fv))
+     (define doc (editor-document s))
      (define fl (change-report-first-line report))
      (define ll (change-report-last-line report))
      (define doc* (document-apply-patches doc (list (patch 'face fl ll (syntax-segs doc fl ll)))))
-     (put-file e (file (struct-copy session s [document doc*]) (file-name fv)))]))
+     (put-file e (file (struct-copy editor s [document doc*]) (file-name fv)))]))
 
 ;;; ---------- 观察 ----------
 
-(define (text-of e) (document->string (session-document (file-session (current-file e)))))
+(define (text-of e) (document->string (editor-document (file-editor (current-file e)))))
 (define (face-of e line col)
-  (document-get-property (session-document (file-session (current-file e))) line col 'face))
+  (document-get-property (editor-document (file-editor (current-file e))) line col 'face))
 
 ;;; ---------- 布局：侧边栏 + 主编辑区 ----------
 
@@ -78,16 +78,16 @@
 (define (sidebar-window e height)
   (window-open
    (buffer-open
-    (string-join (for/list ([i (in-naturals)] [f (in-list (editor-files e))])
-                   (string-append (if (= i (editor-active e)) "* " "  ") (file-name f)))
+    (string-join (for/list ([i (in-naturals)] [f (in-list (app-files e))])
+                   (string-append (if (= i (app-active e)) "* " "  ") (file-name f)))
                  "\n"))
    height sidebar-width))
 
 (define (layout e)
-  (define main (session-window (file-session (current-file e))))
+  (define main (editor-window (file-editor (current-file e))))
   (define h (window-height main))
   (define mw (window-width main))
-  (if (editor-sidebar-open? e)
+  (if (app-sidebar-open? e)
       (screen-compose h (+ sidebar-width mw)
                       (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
                             (list 'main sidebar-width 0 (window->screen main)))
@@ -99,7 +99,7 @@
 ;;; ---------- 走一遍 ----------
 
 (module+ main
-  (define e0 (make-editor (open-file "a.rkt" "hi" 4 20)
+  (define e0 (make-app (open-file "a.rkt" "hi" 4 20)
                           (open-file "b.rkt" "bye" 4 20)))
   (define-values (e1 _u1) (edit! e0 (edit-insert "define ")))
   (printf "编辑 a.rkt（含侧边栏）:\n~a\n" (render e1))
@@ -110,7 +110,7 @@
 
 (module+ test
   ;; 多文件：撤销按文件独立
-  (define e0 (make-editor (open-file "a" "abc") (open-file "b" "xyz")))
+  (define e0 (make-app (open-file "a" "abc") (open-file "b" "xyz")))
   (define-values (e1 _u2) (edit! e0 (edit-insert-char #\X)))
   (check-equal? (text-of e1) "Xabc")
   (define e2 (switch-file! e1 1))
@@ -120,11 +120,11 @@
   (check-equal? (text-of e4) "abc")
 
   ;; 高亮：edit! 自动重标
-  (define h1 (let-values ([(e _) (edit! (make-editor (open-file "a" "")) (edit-insert "define "))]) e))
+  (define h1 (let-values ([(e _) (edit! (make-app (open-file "a" "")) (edit-insert "define "))]) e))
   (check-equal? (face-of h1 0 1) 'keyword)
 
   ;; 布局：侧边栏开关
-  (define l0 (make-editor (open-file "a" "hi" 1 20) (open-file "b" "yo" 1 20)))
+  (define l0 (make-app (open-file "a" "hi" 1 20) (open-file "b" "yo" 1 20)))
   (check-equal? (screen-cols (layout l0)) (+ 20 sidebar-width))
   (check-equal? (screen-cols (layout (toggle-sidebar! l0))) 20)
 
