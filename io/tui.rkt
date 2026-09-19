@@ -33,26 +33,28 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 ;; 只扫 [fl,ll] 这些行
-(define (syntax-segs ed fl ll)
+(define (syntax-segs ed bid fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (editor-line-ref ed line))
+     (define text (editor-buffer-line-ref ed bid line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
-;; 局部重标：只在这几行上清旧写新（key='face）
-(define (highlight-range ed fl ll)
-  (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll)))))
+;; 局部重标：只在焦点 buffer 的这几行上清旧写新（key='face）
+(define (highlight-range ed bid fl ll)
+  (editor-apply-patches ed bid (list (patch 'face fl ll (syntax-segs ed bid fl ll)))))
 
 ;; 打开时全量标一遍
 (define (rehighlight ed)
-  (highlight-range ed 0 (sub1 (editor-line-count ed))))
+  (define bid (editor-focused-buffer-id ed))
+  (highlight-range ed bid 0 (sub1 (editor-buffer-line-count ed bid))))
 
-;; 命令的第二返回值就是 change-report；有变化就按它给的行区间局部重标
-(define (apply-report s report)
+;; 命令的第二返回值就是 change-report；有变化就按它给的行区间在焦点 buffer 上局部重标
+(define (apply-report ed report)
   (if report
-      (highlight-range s (change-report-first-line report) (change-report-last-line report))
-      s))
+      (highlight-range ed (editor-focused-buffer-id ed)
+                       (change-report-first-line report) (change-report-last-line report))
+      ed))
 
 ;; 把一帧 screen 变成要写出的字节。
 ;; 我们把光标移到「屏幕上第 row 行第 col 列」（0-based）——终端 CUP 是 1-based，故 +1。
@@ -71,7 +73,7 @@
     (format " ~a  L~a:C~a  ~a   ^Z undo ^Y redo ^Q quit"
             name
             (add1 (point-line p)) (add1 (point-col p))
-            (if (editor-modified? s) "modified" "saved")))
+            (if (editor-buffer-modified? s (editor-focused-buffer-id s)) "modified" "saved")))
   (emit! (format-cursor-move rows 1))
   (emit! (format-styled 'status-bar
                         (let ([s status])
@@ -107,8 +109,7 @@
      (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
      (define (resize-editor! nr nc)
        (set! rows (max 2 nr)) (set! cols (max 1 nc))
-       (set! s (editor-set-view-size s 0 (sub1 rows) cols)))
-     (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
+       (set! s (editor-set-view-size s 0 (sub1 rows) cols)))     (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
 
      (define handler
@@ -160,10 +161,10 @@
   (check-true (regexp-match? #rx"hello" frame))
   (check-true (regexp-match? #rx"world" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
-  (check-equal? (editor-get-property s 1 1 'face) 'keyword)
+  (check-equal? (editor-get-property s (editor-focused-buffer-id s) 1 1 'face) 'keyword)
   (define-values (s2 report) (editor-edit s (edit-splice (point 1 0) (point 1 7) "print  ")))
   (define s3 (apply-report s2 report))
-  (check-equal? (editor-get-property s3 1 1 'face) #f)
+  (check-equal? (editor-get-property s3 (editor-focused-buffer-id s3) 1 1 'face) #f)
   (check-equal? (change-report-first-line report) 1)
   (displayln "tui.rkt: render smoke test passed"))
 

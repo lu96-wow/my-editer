@@ -1,96 +1,106 @@
 #lang racket
 
-;;; core/compose/example.rkt —— 使用方示范：自己拼一个多文件编辑器
+;;; core/compose/example.rkt —— 使用方示范：多 buffer + 侧边栏 + 局部高亮
 ;;;
-;;; 组合层只给 editor（document+账本+活动视图）与 editor-edit/undo/redo。
-;;; 多文件状态、侧边栏布局、语法高亮全是使用方自己拼的。
+;;; editor 现在是多 buffer 平台：每个打开的「文件」是一个 buffer-entry（id + name + buffer + 账本），
+;;; 焦点决定当前编辑哪个 buffer。本文件只加「使用方自己的状态」：侧边栏开关、布局。
 ;;;
-;;; 看看现在接一个命令有多直白（不用记参数/返回值顺序）：
-;;;   (define-values (s report) (editor-edit s (edit-insert-char #\a)))
-;;;   ;; report 是 (or/c #f change-report)；要重绘就 (change-report-first-line report)…
+;;; 命令形状：
+;;;   (define-values (ed report) (editor-edit ed (edit-insert-char #\a)))
+;;;   report 是 (or/c #f change-report)；要重绘就 (change-report-first-line report)。
 
 (require "../editor.rkt" racket/list rackunit)
 
 ;;; ---------- 使用方自己的状态 ----------
 
-(struct file (editor name) #:transparent)     ; 每个文件一个 editor（含自己的账本）
-(struct app (files active sidebar-open?) #:transparent)
+(struct file-spec (name text height width) #:transparent)
+(struct app (editor sidebar-open?) #:transparent)
 
 (define (open-file name [text ""] [height 24] [width 60])
-  (file (editor-open text height width) name))
+  (file-spec name text height width))
 
-(define (make-app . files)
-  (app (if (null? files) (list (open-file "*scratch*")) files) 0 #t))
+(define (make-app . specs)
+  (define fs (if (null? specs) (list (open-file "*scratch*")) specs))
+  (define f0 (car fs))
+  (define ed0 (editor-open (file-spec-text f0) (file-spec-height f0) (file-spec-width f0)
+                           #:name (file-spec-name f0)))
+  (define ed (for/fold ([e ed0]) ([f (in-list (cdr fs))])
+               (define-values (e* _bid)
+                 (editor-open-buffer e (file-spec-name f) (file-spec-text f)
+                                     (file-spec-height f) (file-spec-width f)))
+               e*))
+  (app (editor-focus-buffer ed 0) #t))
 
-(define (current-file e) (list-ref (app-files e) (app-active e)))
-(define (put-file e f)
-  (struct-copy app e [files (list-set (app-files e) (app-active e) f)]))
+(define (current-buffer-id e) (editor-focused-buffer-id (app-editor e)))
+(define (toggle-sidebar! e)
+  (struct-copy app e [sidebar-open? (not (app-sidebar-open? e))]))
 
 ;;; ---------- 命令：把 editor-* 接进自己的状态 ----------
 
 (define (run-command e cmd)
-  (define fv (current-file e))
-  (define-values (s* report) (cmd (file-editor fv)))
-  (define e* (put-file e (file s* (file-name fv))))
-  (values (highlight! e* report) report))
+  (define-values (ed* report) (cmd (app-editor e)))
+  (values (highlight! (struct-copy app e [editor ed*]) report) report))
 
-(define (edit! e op) (run-command e (lambda (s) (editor-edit s op))))
+(define (edit! e op) (run-command e (lambda (ed) (editor-edit ed op))))
 (define (undo! e) (run-command e editor-undo))
 (define (redo! e) (run-command e editor-redo))
 
-(define (switch-file! e i) (struct-copy app e [active i]))
-(define (toggle-sidebar! e) (struct-copy app e [sidebar-open? (not (app-sidebar-open? e))]))
+;; 切换当前 buffer（焦点）——多 buffer 的「切文件」
+(define (switch-file! e bid)
+  (struct-copy app e [editor (editor-focus-buffer (app-editor e) bid)]))
 
-;;; ---------- 装饰：语法高亮（使用方策略）----------
+;;; ---------- 装饰：语法高亮（使用方策略，按焦点 buffer 局部重标）----------
 
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-(define (syntax-segs ed fl ll)
+(define (syntax-segs ed bid fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (editor-line-ref ed line))
+     (define text (editor-buffer-line-ref ed bid line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
-;; 只重标高亮**变更行**（report 给的区间）；report #f 表示无事发生。
 (define (highlight! e report)
   (cond
     [(not report) e]
     [else
-     (define fv (current-file e))
-     (define ed (file-editor fv))
+     (define ed (app-editor e))
+     (define bid (current-buffer-id e))
      (define fl (change-report-first-line report))
      (define ll (change-report-last-line report))
-     (put-file e (file (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll))))
-                       (file-name fv)))]))
+     (struct-copy app e
+       [editor (editor-apply-patches ed bid (list (patch 'face fl ll (syntax-segs ed bid fl ll))))])]))
 
 ;;; ---------- 观察 ----------
 
-(define (text-of e) (editor->string (file-editor (current-file e))))
+(define (text-of e) (editor-buffer->string (app-editor e) (current-buffer-id e)))
 (define (face-of e line col)
-  (editor-get-property (file-editor (current-file e)) line col 'face))
+  (editor-get-property (app-editor e) (current-buffer-id e) line col 'face))
 
 ;;; ---------- 布局：侧边栏 + 主编辑区 ----------
 
 (define sidebar-width 15)
 
 (define (sidebar-window e height)
+  (define ed (app-editor e))
+  (define cur (current-buffer-id e))
   (window-open
    (buffer-open
-    (string-join (for/list ([i (in-naturals)] [f (in-list (app-files e))])
-                   (string-append (if (= i (app-active e)) "* " "  ") (file-name f)))
+    (string-join (for/list ([b (in-list (editor-buffers ed))])
+                   (string-append (if (= (buffer-entry-id b) cur) "* " "  ")
+                                  (buffer-entry-name b)))
                  "\n"))
    height sidebar-width))
 
 (define (layout e)
-  (define ed (file-editor (current-file e)))
+  (define ed (app-editor e))
   (define h (editor-height ed))
   (define mw (editor-width ed))
   (if (app-sidebar-open? e)
       (editor-screen-compose h (+ sidebar-width mw)
-                      (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
-                            (list 'main sidebar-width 0 (editor->screen ed)))
-                      'main)
+                             (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
+                                   (list 'main sidebar-width 0 (editor->screen ed)))
+                             'main)
       (editor->screen ed)))
 
 (define (render e) (editor-screen->text (layout e)))
@@ -99,16 +109,16 @@
 
 (module+ main
   (define e0 (make-app (open-file "a.rkt" "hi" 4 20)
-                          (open-file "b.rkt" "bye" 4 20)))
+                       (open-file "b.rkt" "bye" 4 20)))
   (define-values (e1 _u1) (edit! e0 (edit-insert "define ")))
   (printf "编辑 a.rkt（含侧边栏）:\n~a\n" (render e1))
-  (printf "切到 b.rkt:\n~a\n" (render (switch-file! e1 1)))
+  (printf "把焦点切到 buffer id=1:\n~a\n" (render (switch-file! e1 1)))
   (printf "关掉侧边栏:\n~a\n" (render (toggle-sidebar! (switch-file! e1 1)))))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
-  ;; 多文件：撤销按文件独立
+  ;; 多 buffer：撤销按 buffer 独立
   (define e0 (make-app (open-file "a" "abc") (open-file "b" "xyz")))
   (define-values (e1 _u2) (edit! e0 (edit-insert-char #\X)))
   (check-equal? (text-of e1) "Xabc")
@@ -118,8 +128,8 @@
   (define-values (e4 _u4) (undo! (switch-file! e3 0)))
   (check-equal? (text-of e4) "abc")
 
-  ;; 高亮：edit! 自动重标
-  (define h1 (let-values ([(e _) (edit! (make-app (open-file "a" "")) (edit-insert "define "))]) e))
+  ;; 高亮：edit! 自动按焦点 buffer 局部重标
+  (define h1 (let-values ([(e _u5) (edit! (make-app (open-file "a" "")) (edit-insert "define "))]) e))
   (check-equal? (face-of h1 0 1) 'keyword)
 
   ;; 布局：侧边栏开关

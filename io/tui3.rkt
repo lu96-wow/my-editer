@@ -34,26 +34,28 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 ;; 只扫 [fl,ll] 这些行
-(define (syntax-segs ed fl ll)
+(define (syntax-segs ed bid fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (editor-line-ref ed line))
+     (define text (editor-buffer-line-ref ed bid line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
-;; 局部重标：只在这几行上清旧写新（key='face）
-(define (highlight-range ed fl ll)
-  (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll)))))
+;; 局部重标：只在焦点 buffer 的这几行上清旧写新（key='face）
+(define (highlight-range ed bid fl ll)
+  (editor-apply-patches ed bid (list (patch 'face fl ll (syntax-segs ed bid fl ll)))))
 
 ;; 打开时全量标一遍
 (define (rehighlight ed)
-  (highlight-range ed 0 (sub1 (editor-line-count ed))))
+  (define bid (editor-focused-buffer-id ed))
+  (highlight-range ed bid 0 (sub1 (editor-buffer-line-count ed bid))))
 
-;; 命令的第二返回值就是 change-report；有变化就按它给的行区间局部重标
-(define (apply-report s report)
+;; 命令的第二返回值就是 change-report；有变化就按它给的行区间在焦点 buffer 上局部重标
+(define (apply-report ed report)
   (if report
-      (highlight-range s (change-report-first-line report) (change-report-last-line report))
-      s))
+      (highlight-range ed (editor-focused-buffer-id ed)
+                       (change-report-first-line report) (change-report-last-line report))
+      ed))
 
 ;;; ---------- 布局（都 0-based，单位是屏幕行列）----------
 ;; 预算出各窗格尺寸，并保留 1 列 + 1 行分隔线。
@@ -76,7 +78,7 @@
                (list (list 0 0 0 (editor-view->screen s 0))
                      (list 1 (add1 leftW) 0 (editor-view->screen s 1))
                      (list 2 (add1 leftW) (+ topH 1) (editor-view->screen s 2)))
-               (editor-active s)))
+               (editor-focus s)))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
   (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])
@@ -100,7 +102,7 @@
     (format " ~a  L~a:C~a  tops(~a,~a,~a)  active=~a   Tab pane  ^Z ^Y  ^Q"
             name
             (add1 (point-line p)) (add1 (point-col p))
-            (top 0) (top 1) (top 2) (editor-active s)))
+            (top 0) (top 1) (top 2) (editor-focus s)))
   (emit! (format-cursor-move rows 1))
   (emit! (format-styled 'status-bar
                         (if (>= (string-length status) cols)
@@ -127,14 +129,14 @@
      (define text (if (and path (file-exists? path)) (file->string path) ""))
      (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define-values (H leftW rightW topH botH) (layout rows cols))
-     ;; 三个视图：0=free（主），1=follow（右上），2=free（右下）
-     (define ed0 (editor-open text H leftW))
-     (define-values (ed1 _a0) (editor-add-view ed0 topH rightW #:sync 'follow))
-     (define-values (ed2 _a1) (editor-add-view ed1 botH rightW))
-     (define s (rehighlight (editor-set-active ed2 0)))
+     ;; 三个视图：0=free（主），1=follow（右上），2=free（右下）；同一 buffer（id 0）
+     (define ed0 (editor-open text H leftW #:name name))
+     (define-values (ed1 _a0) (editor-add-view ed0 0 topH rightW #:sync 'follow))
+     (define-values (ed2 _a1) (editor-add-view ed1 0 botH rightW))
+     (define s (rehighlight (editor-focus-view ed2 0)))
      (define running? #t)
 
-     (define (active) (editor-active s))
+     (define (active) (editor-focus s))
      (define (edit-op op)
        (set! s (let-values ([(s* report) (editor-edit s op)]) (apply-report s* report))))
      (define (undo) (set! s (let-values ([(s* report) (editor-undo s)]) (apply-report s* report))))
@@ -163,7 +165,7 @@
         #:enter    (lambda ()    (edit-op (edit-newline)))
         #:backspace (lambda ()   (edit-op (edit-backspace)))
         #:delete   (lambda ()    (edit-op (edit-delete)))
-        #:tab      (lambda ()    (set! s (editor-set-active s (modulo (add1 (active)) 3))))
+        #:tab      (lambda ()    (set! s (editor-focus-view s (modulo (add1 (editor-focus s)) 3))))
         #:left (lambda () (set! s (editor-left s)))
         #:right (lambda () (set! s (editor-right s)))
         #:up (lambda () (set! s (editor-up s)))
@@ -183,7 +185,7 @@
         #:mouse-press (lambda (_b x y _m)
                         (define pane (pane-at x y))
                         (when pane
-                          (set! s (editor-set-active s pane))
+                          (set! s (editor-focus-view s pane))
                           (define-values (H leftW rightW topH botH) (layout rows cols))
                           (define ox (if (= pane 0) 0 (add1 leftW)))
                           (define oy (cond [(= pane 2) (+ topH 1)] [else 0]))
@@ -203,19 +205,19 @@
 (module+ test
   (require rackunit)
   (define ed0 (editor-open "l0\nl1\nl2\nl3\nl4" 4 10))
-  (define-values (ed1 _t1) (editor-add-view ed0 2 8 #:sync 'follow))
-  (define-values (ed2 _t2) (editor-add-view ed1 2 8))
-  (define s (rehighlight (editor-set-active ed2 0)))
+  (define-values (ed1 _t1) (editor-add-view ed0 0 2 8 #:sync 'follow))
+  (define-values (ed2 _t2) (editor-add-view ed1 0 2 8))
+  (define s (rehighlight (editor-focus-view ed2 0)))
   (define frame (render-frame s 10 24 "demo"))
   (check-true (bytes? frame))
   (check-true (regexp-match? #rx"l0" frame))
   (check-true (regexp-match? #rx"tops" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
   (define sh (rehighlight (editor-open "(define x 42)" 4 20)))
-  (check-equal? (editor-get-property sh 0 1 'face) 'keyword)
+  (check-equal? (editor-get-property sh (editor-focused-buffer-id sh) 0 1 'face) 'keyword)
   (define-values (sh2 report) (editor-edit sh (edit-splice (point 0 0) (point 0 7) "print  ")))
   (define sh3 (apply-report sh2 report))
-  (check-equal? (editor-get-property sh3 0 1 'face) #f)
+  (check-equal? (editor-get-property sh3 (editor-focused-buffer-id sh3) 0 1 'face) #f)
   (check-equal? (change-report-first-line report) 0)
   (displayln "tui3.rkt: render smoke test passed"))
 

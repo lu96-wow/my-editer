@@ -34,8 +34,7 @@
          "view/screen.rkt"
          "view/window.rkt"
          "view/view.rkt"
-         "view/project.rkt"
-         "view/document.rkt")
+         "view/project.rkt")
 
 (provide
  ;; ---- point ----
@@ -96,17 +95,7 @@
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual
  ;; ---- project ----
- window->screen
- ;; ---- document —— 多视图容器 + 唯一编辑入口 ----
- document document? struct:document document-open document-of-buffer
- document->string document->lines document-line-count document-line-ref
- document-get-property document-read-only-at? document-restrict-runs document-range-text
- document-add-view document-view-count document-window
- document-view-sync document-set-view-sync document-update-view document-set-view-size
- document-sync-followers
- document-update-buffer document-put-property document-remove-property
- document-put-properties-many document-put-restrict document-apply-patches
- document-edit document-apply-descs-trusted document-buffer)
+ window->screen)
 
 ;;; ============================================================================
 ;;; 冒烟测试：门面 + 一条完整「属性 → 画面」链
@@ -119,24 +108,22 @@
   (check-equal? (buffer->string b) "hello\nworld")
   (check-equal? (buffer-line-count b) 2)
 
-  ;; 编辑闭环：document-edit（唯一入口）→ edit-change → 渲染
-  (define-values (d0 _i0) (document-add-view (document-open (buffer->string b)) 2 10))
-  (check-equal? (window-point (document-window d0 0)) (point 0 0))
-  (define-values (d1 ch) (document-edit d0 0 (edit-insert-char #\X)))
-  (check-equal? (document->string d1) "Xhello\nworld")
-  (check-equal? (edit-change-desc ch) (edit-desc (point 0 0) (point 0 0) "X"))
-  (check-equal? (window-point (document-window d1 0)) (point 0 1))
-  (check-equal? (screen-rows (window->screen (document-window d1 0))) 2)
+  ;; 原子链：buffer → 编辑 → window → screen
+  (define-values (b1 d1) (buffer-edit b (point 0 0) (edit-insert-char #\X)))
+  (check-equal? (buffer->string b1) "Xhello\nworld")
+  (check-equal? d1 (edit-desc (point 0 0) (point 0 0) "X"))
+  (check-equal? (screen-rows (window->screen (window-open b1 2 10))) 2)
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b1 2 10))) 0)
+                (list (run 0 "Xhello" (hash))))
 
   ;; 属性 → run.face
   (define b3 (buffer-put-property b 0 0 5 'face 'keyword))
-  (define s3 (window->screen (window-open b3 2 10)))
-  (check-equal? (vector-ref (screen-row-runs s3) 0) (list (run 0 "hello" (hash 'face 'keyword))))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b3 2 10))) 0)
+                (list (run 0 "hello" (hash 'face 'keyword))))
 
   ;; 编辑后属性随文本移动
-  (define-values (d3 _i3) (document-add-view (document-of-buffer b3) 2 10))
-  (define-values (d4 _) (document-edit d3 0 (edit-insert-char #\Z)))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (document-window d4 0))) 0)
+  (define-values (b4 _d4) (buffer-edit b3 (point 0 0) (edit-insert-char #\Z)))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b4 2 10))) 0)
                 (list (run 0 "Z" (hash)) (run 1 "hello" (hash 'face 'keyword))))
 
   (displayln "api.rkt: all tests passed"))
