@@ -56,19 +56,19 @@
   (check-false (buffer-content-eq? b0 (let-values ([(b _) (buffer-edit b0 (point 0 0) (edit-insert-char #\X))]) b)))
   (define b2 (buffer-apply-patches b0 (list (patch 'face 0 0 (list (list 0 0 5 'bold))))))
   (check-true (buffer-content-eq? b0 b2))
-  (check-equal? (buffer-get-property b2 0 2 'face) 'bold)
+  (check-equal? (buffer-get-property b2 (point 0 2) 'face) 'bold)
 
   ;; 清旧写新：同 key 的旧段被清掉
-  (define b3 (buffer-put-property b0 1 0 5 'face 'bold))
+  (define b3 (buffer-put-property b0 (point 1 0) (point 1 5) 'face 'bold))
   (define b4 (buffer-apply-patches b3 (list (patch 'face 1 1 (list (list 1 1 3 'red))))))
-  (check-equal? (buffer-get-property b4 1 0 'face) #f)
-  (check-equal? (buffer-get-property b4 1 2 'face) 'red)
+  (check-equal? (buffer-get-property b4 (point 1 0) 'face) #f)
+  (check-equal? (buffer-get-property b4 (point 1 2) 'face) 'red)
 
   ;; 多 patch 不同 key → 并集
   (define b5 (buffer-apply-patches b0 (list (patch 'face 0 0 (list (list 0 0 5 'bold)))
                                             (patch 'diag 0 0 (list (list 0 0 5 "err"))))))
-  (check-equal? (buffer-get-property b5 0 1 'face) 'bold)
-  (check-equal? (buffer-get-property b5 0 1 'diag) "err")
+  (check-equal? (buffer-get-property b5 (point 0 1) 'face) 'bold)
+  (check-equal? (buffer-get-property b5 (point 0 1) 'diag) "err")
 
   ;; 空补丁 → 原样
   (check-eq? (buffer-apply-patches b0 '()) b0)

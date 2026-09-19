@@ -86,7 +86,7 @@
   (check-equal? (face-at b0 0 0) (hash))
 
   ;; 属性 → face
-  (define b1 (buffer-put-property b0 0 1 4 'face 'bold))
+  (define b1 (buffer-put-property b0 (point 0 1) (point 0 4) 'face 'bold))
   (check-equal? (face-at b1 0 0) (hash))
   (check-equal? (face-at b1 0 1) (hash 'face 'bold))
   (check-equal? (face-at b1 0 3) (hash 'face 'bold))
@@ -95,7 +95,7 @@
   ;; overlay priority：≤0 在 properties 之下，>0 之上
   (define-values (b2 _oid2) (buffer-add-overlay b0 (point 0 1) (point 0 4) (hash 'face 'region)))
   (check-equal? (face-at b2 0 1) (hash 'face 'region))
-  (define b3 (buffer-put-property b2 0 1 4 'face 'bold))
+  (define b3 (buffer-put-property b2 (point 0 1) (point 0 4) 'face 'bold))
   (define-values (b4 _oid4) (buffer-add-overlay b3 (point 0 2) (point 0 3)
                                             (hash 'face 'highlight) #:priority 5))
   (check-equal? (face-at b4 0 1) (hash 'face 'bold))        ; p0 overlay < props
@@ -103,7 +103,7 @@
   (check-equal? (face-at b4 0 3) (hash 'face 'bold))
 
   ;; 约束不进 face
-  (define b5 (buffer-put-restrict b3 0 1 4 (restrict #t)))
+  (define b5 (buffer-put-restrict b3 (point 0 1) (point 0 4) (restrict #t)))
   (check-equal? (face-at b5 0 2) (hash 'face 'bold))
 
   (displayln "render.rkt: all tests passed"))

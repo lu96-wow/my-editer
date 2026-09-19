@@ -26,7 +26,6 @@
  window-set-size
  window-scroll
  window-hscroll
- window-goto
  window-left
  window-right
  window-home
@@ -51,17 +50,13 @@
   (window b (point 0 0) 'clip 0 0 0 height width))
 
 ;;; ---------- 光标夹紧 ----------
-
-(define (clamp-point b p)
-  (define n (buffer-line-count b))
-  (define l (max 0 (min (point-line p) (sub1 n))))
-  (point l (max 0 (min (point-col p) (string-length (buffer-line-ref b l))))))
+;; 夹紧只取决于 buffer（content），实现唯一一份在 buffer-clamp-point。
 
 (define (window-set-buffer w b)
-  (struct-copy window w [buffer b] [point (clamp-point b (window-point w))]))
+  (struct-copy window w [buffer b] [point (buffer-clamp-point b (window-point w))]))
 
 (define (window-set-point w p)
-  (struct-copy window w [point (clamp-point (window-buffer w) p)]))
+  (struct-copy window w [point (buffer-clamp-point (window-buffer w) p)]))
 
 ;;; ---------- 视图状态 ----------
 
@@ -97,9 +92,6 @@
   (window-set-left w (+ (window-left-col w) delta)))
 
 ;;; ---------- 导航（纯 point 操作）----------
-
-(define (window-goto w l c)
-  (window-set-point w (point l c)))
 
 (define (window-left w)
   (define p (window-point w))
@@ -152,7 +144,7 @@
   (check-equal? (window-point (window-left w)) (point 0 0))          ; 行首不动
   (check-equal? (window-point (window-right (window-end w))) (point 1 0))
   (check-equal? (window-point (window-left (window-right (window-end w)))) (point 0 1))
-  (check-equal? (window-point (window-home (window-goto w 2 0))) (point 2 0))
+  (check-equal? (window-point (window-home (window-set-point w (point 2 0)))) (point 2 0))
 
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-scroll w 2)) 2)

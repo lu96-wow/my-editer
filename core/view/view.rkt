@@ -389,9 +389,9 @@
                 '((0 0 4) (0 4 6) (1 0 1)))
 
   ;; 光标映射
-  (check-equal? (call-with-values (lambda () (window-point->screen (window-goto (window-open b1 2 80) 1 1))) list)
+  (check-equal? (call-with-values (lambda () (window-point->screen (window-set-point (window-open b1 2 80) (point 1 1)))) list)
                 '(1 1))
-  (check-equal? (call-with-values (lambda () (window-point->screen (window-goto ww 0 2))) list)
+  (check-equal? (call-with-values (lambda () (window-point->screen (window-set-point ww (point 0 2)))) list)
                 '(1 0))
   (check-equal? (call-with-values (lambda () (window-screen->point ww 1 0)) list)
                 '(0 2))
@@ -405,18 +405,18 @@
 
   ;; 光标跟随（clip）
   (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
-  (check-equal? (window-top-line (window-ensure-point (window-goto (window-open b5 2 10) 4 0))) 3)
-  (check-equal? (window-top-line (window-ensure-point (window-set-top (window-goto (window-open b5 2 10) 0 0) 3))) 0)
+  (check-equal? (window-top-line (window-ensure-point (window-set-point (window-open b5 2 10) (point 4 0)))) 3)
+  (check-equal? (window-top-line (window-ensure-point (window-set-top (window-set-point (window-open b5 2 10) (point 0 0)) 3))) 0)
   ;; 水平跟随
-  (check-equal? (window-left-col (window-ensure-point (window-goto (window-open (buffer-open "abcdefgh") 1 4) 0 7))) 4)
-  (check-equal? (window-left-col (window-ensure-point (window-set-left (window-goto (window-open (buffer-open "abcdefgh") 1 4) 0 0) 4))) 0)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 7)))) 4)
+  (check-equal? (window-left-col (window-ensure-point (window-set-left (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 0)) 4))) 0)
 
   ;; 宽字符边界：绝不切半
-  (check-equal? (window-left-col (window-ensure-point (window-goto (window-open (buffer-open "中中文中") 1 4) 0 2))) 2)
-  (check-equal? (window-left-col (window-ensure-point (window-goto (window-open (buffer-open "abcdef中") 1 7) 0 6))) 1)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "中中文中") 1 4) (point 0 2)))) 2)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "abcdef中") 1 7) (point 0 6)))) 1)
 
   ;; 光标跟随（wrap）
-  (define w7 (window-set-mode (window-goto (window-open (buffer-open "中中中\nx") 2 4) 1 0) 'wrap))
+  (define w7 (window-set-mode (window-set-point (window-open (buffer-open "中中中\nx") 2 4) (point 1 0)) 'wrap))
   (check-equal? (let ([w (window-ensure-point w7)]) (list (window-top-line w) (window-top-seg w))) '(0 1))
 
   ;; 视觉行移动（wrap 跨段）
@@ -424,10 +424,10 @@
   (check-equal? (window-point (window-visual-move wv +1)) (point 0 2))
   (check-equal? (window-point (window-visual-move (window-visual-move wv +1) +1)) (point 1 0))
   ;; 视觉列保持（clip 按显示列）
-  (check-equal? (window-point (window-visual-move (window-goto (window-open (buffer-open "中ab\nabcd") 2 80) 0 2) +1))
+  (check-equal? (window-point (window-visual-move (window-set-point (window-open (buffer-open "中ab\nabcd") 2 80) (point 0 2)) +1))
                 (point 1 3))
   ;; 夹到段尾不溢出
-  (check-equal? (window-point (window-visual-move (window-goto (window-set-mode (window-open (buffer-open "x\na中b") 2 2) 'wrap) 0 1) +1))
+  (check-equal? (window-point (window-visual-move (window-set-point (window-set-mode (window-open (buffer-open "x\na中b") 2 2) 'wrap) (point 0 1)) +1))
                 (point 1 0))
 
   ;; clamp-view

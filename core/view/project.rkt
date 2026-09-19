@@ -32,14 +32,14 @@
   (check-equal? (screen-cursor-col s0) 0)
 
   ;; 光标显示列
-  (check-equal? (screen-cursor-col (window->screen (window-goto (window-open b0 2 10) 0 2))) 3)
+  (check-equal? (screen-cursor-col (window->screen (window-set-point (window-open b0 2 10) (point 0 2)))) 3)
 
   ;; 水平吸附：left=2 落在「中」右半 → 吸附到 3（'b' 的起点）
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-set-left (window-open b0 2 10) 2))) 0)
                 (list (run 0 "b" (hash))))
 
   ;; 属性分段
-  (define b2 (buffer-put-property b0 0 0 1 'face 'bold))
+  (define b2 (buffer-put-property b0 (point 0 0) (point 0 1) 'face 'bold))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b2 2 10))) 0)
                 (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
 
@@ -50,8 +50,8 @@
   (check-equal? (vector-ref (screen-row-runs sw) 2) (list (run 0 "x" (hash))))
 
   ;; 约束不进 face
-  (define b5 (buffer-put-restrict (buffer-put-property (buffer-open "abcdef") 0 0 6 'face 'bold)
-                                  0 3 6 (restrict #t)))
+  (define b5 (buffer-put-restrict (buffer-put-property (buffer-open "abcdef") (point 0 0) (point 0 6) 'face 'bold)
+                                  (point 0 3) (point 0 6) (restrict #t)))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
                 (list (run 0 "abcdef" (hash 'face 'bold))))
 

@@ -52,6 +52,7 @@
  ;; ---- buffer —— 文档原子 ----
  buffer buffer? struct:buffer buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
+ buffer-line-length buffer-clamp-point buffer-point->offset buffer-offset->point
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit
  edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-edit-desc-inverse
@@ -90,7 +91,7 @@
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
- window-set-top-seg window-set-size window-scroll window-hscroll window-goto
+ window-set-top-seg window-set-size window-scroll window-hscroll
  window-left window-right window-home window-end
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual
@@ -117,7 +118,7 @@
                 (list (run 0 "Xhello" (hash))))
 
   ;; 属性 → run.face
-  (define b3 (buffer-put-property b 0 0 5 'face 'keyword))
+  (define b3 (buffer-put-property b (point 0 0) (point 0 5) 'face 'keyword))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b3 2 10))) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
 

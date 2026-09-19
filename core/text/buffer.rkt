@@ -29,6 +29,10 @@
  buffer->lines
  buffer-line-count
  buffer-line-ref
+ buffer-line-length
+ buffer-clamp-point
+ buffer-point->offset
+ buffer-offset->point
  buffer-apply-edit
  buffer-apply-edit-trusted
  buffer-edit
@@ -88,6 +92,11 @@
 (define (buffer->lines b)  (content->lines  (buffer-content b)))
 (define (buffer-line-count b) (content-line-count (buffer-content b)))
 (define (buffer-line-ref b i) (content-line-ref (buffer-content b) i))
+(define (buffer-line-length b i) (content-line-length (buffer-content b) i))
+;; 位置解析只取决于 buffer（content），与任何 window/光标无关。
+(define (buffer-clamp-point b p) (content-clamp-point (buffer-content b) p))
+(define (buffer-point->offset b p) (content-point->offset (buffer-content b) p))
+(define (buffer-offset->point b off) (content-offset->point (buffer-content b) off))
 
 ;;; ---------- read-only 守卫 ----------
 ;; 规则（显式契约）：
@@ -95,8 +104,9 @@
 ;;   · 非零宽删除：删除区间 [s,e) 与任一 read-only 段有交集 → 拒绝
 ;; 程序要编辑 read-only 内容，走显式入口 buffer-apply-edit-trusted / buffer-splice 的 trusted 版。
 
-(define (buffer-read-only-at? b line col)
-  (restrict-read-only? (properties-restrict-at (buffer-properties b) line col)))
+(define (buffer-read-only-at? b p)
+  (restrict-read-only? (properties-restrict-at (buffer-properties b)
+                                               (point-line p) (point-col p))))
 
 ;; 一行内约束槽的段：(listof (list start end restrict))，恰好覆盖整行。
 ;; 枚举只读区间用（O(段数)）。
@@ -125,7 +135,7 @@
   (define s (edit-desc-start d))
   (define e (edit-desc-end d))
   (if (point=? s e)
-      (buffer-read-only-at? b (point-line s) (point-col s))
+      (buffer-read-only-at? b s)
       (range-read-only? b s e)))
 
 ;;; ---------- 编辑：唯一传播点 ----------
@@ -187,43 +197,46 @@
 
 ;;; ---------- 属性 ----------
 
-;; 把 (line start end) 夹到合法域：行号夹到行界内、端点夹到该行长。
-(define (clamp-prop-range b line start end)
-  (define n (buffer-line-count b))
-  (define l (max 0 (min line (sub1 n))))
-  (define len (string-length (buffer-line-ref b l)))
-  (values l (max 0 (min start len)) (max 0 (min end len))))
+;; 把区间 [start,end) 夹到合法域：两端先各自夹紧，再要求**同一行**。
+;; 属性是行内区间；跨行没有唯一合法解释 → 报错（与 patch 越界即错同一态度）。
+(define (clamp-prop-range who b start end)
+  (define s (buffer-clamp-point b start))
+  (define e (buffer-clamp-point b end))
+  (unless (= (point-line s) (point-line e))
+    (error who "属性区间必须在同一行内: ~a..~a" start end))
+  (values (point-line s) (point-col s) (point-col e)))
 
 (define (touch b) (struct-copy buffer b [tick (add1 (buffer-tick b))] [modified? #t]))
 
-(define (buffer-put-property b line start end key val)
-  (define-values (l s e) (clamp-prop-range b line start end))
+(define (buffer-put-property b start end key val)
+  (define-values (l s e) (clamp-prop-range 'buffer-put-property b start end))
   (touch (struct-copy buffer b
            [properties (properties-put (buffer-properties b) l s e key val)])))
 
-(define (buffer-get-property b line col key)
-  (properties-get (buffer-properties b) line col key))
+;; 单点查询收 point（区间查询收两端 point）。
+(define (buffer-get-property b p key)
+  (properties-get (buffer-properties b) (point-line p) (point-col p) key))
 
-(define (buffer-remove-property b line start end key)
-  (define-values (l s e) (clamp-prop-range b line start end))
+(define (buffer-remove-property b start end key)
+  (define-values (l s e) (clamp-prop-range 'buffer-remove-property b start end))
   (touch (struct-copy buffer b
            [properties (properties-remove (buffer-properties b) l s e key)])))
 
-;; segs = (listof (list line start end key val))，一次 tick。
+;; segs = (listof (list start end key val))，两端皆为 point；一次 tick。
 (define (buffer-put-properties-many b segs)
   (cond
     [(null? segs) b]
     [else
      (define clamped
        (for/list ([sg (in-list segs)])
-         (define-values (l s e) (clamp-prop-range b (car sg) (cadr sg) (caddr sg)))
-         (list* l s e (cdddr sg))))
+         (define-values (l s e) (clamp-prop-range 'buffer-put-properties-many b (car sg) (cadr sg)))
+         (list* l s e (cddr sg))))
      (touch (struct-copy buffer b
               [properties (properties-put-many (buffer-properties b) clamped)]))]))
 
 ;; 写约束槽（传 (make-restrict) 即清除）。只动约束，不碰表现层。
-(define (buffer-put-restrict b line start end rs)
-  (define-values (l s e) (clamp-prop-range b line start end))
+(define (buffer-put-restrict b start end rs)
+  (define-values (l s e) (clamp-prop-range 'buffer-put-restrict b start end))
   (touch (struct-copy buffer b
            [properties (properties-put-restrict (buffer-properties b) l s e rs)])))
 
@@ -279,6 +292,13 @@
   (check-equal? (buffer-tick b0) 0)
   (check-false (buffer-modified? b0))
 
+  ;; 位置解析（不依赖光标）：行长度 / 夹紧 / 行列 ↔ 偏移
+  (check-equal? (buffer-line-length b0 0) 5)
+  (check-equal? (buffer-line-length b0 99) 5)
+  (check-equal? (buffer-clamp-point b0 (point 9 9)) (point 1 5))
+  (check-equal? (buffer-point->offset b0 (point 1 0)) 6)
+  (check-equal? (buffer-offset->point b0 11) (point 1 5))
+
   ;; 编辑入口：buffer-edit + 可传的 op
   (define-values (b1 d1) (buffer-edit b0 (point 0 0) (edit-insert-char #\X)))
   (check-equal? (buffer->string b1) "Xhello\nworld")
@@ -304,21 +324,26 @@
   (check-equal? (buffer->string b2) "hXYello\nworld")
 
   ;; 属性：随编辑移动 + 插入继承
-  (define b3 (buffer-put-property b0 0 1 4 'face 'bold))
-  (check-equal? (buffer-get-property b3 0 2 'face) 'bold)
+  (define b3 (buffer-put-property b0 (point 0 1) (point 0 4) 'face 'bold))
+  (check-equal? (buffer-get-property b3 (point 0 2) 'face) 'bold)
   (define-values (b4 _d4) (buffer-edit b3 (point 0 2) (edit-insert-char #\Z)))
   (check-equal? (buffer->string b4) "heZllo\nworld")
-  (check-equal? (buffer-get-property b4 0 2 'face) 'bold)   ; 新字符继承
+  (check-equal? (buffer-get-property b4 (point 0 2) 'face) 'bold)   ; 新字符继承
+  (check-false (buffer-get-property (buffer-remove-property b3 (point 0 1) (point 0 4) 'face)
+                                    (point 0 2) 'face))
+  ;; 区间跨行 → 报错（属性是行内区间）
+  (check-exn exn:fail?
+             (lambda () (buffer-put-property b0 (point 0 0) (point 1 0) 'face 'bold)))
 
   ;; read-only 守卫：区间内部插入被拒；右端点允许且不继承
-  (define rb (buffer-put-restrict b0 0 1 4 (restrict #t)))
-  (check-true (buffer-read-only-at? rb 0 2))
+  (define rb (buffer-put-restrict b0 (point 0 1) (point 0 4) (restrict #t)))
+  (check-true (buffer-read-only-at? rb (point 0 2)))
   (define-values (rb1 rd1) (buffer-edit rb (point 0 2) (edit-insert-char #\X)))
   (check-eq? rb1 rb)
   (check-false rd1)
   (define-values (rb2 _rd2) (buffer-edit rb (point 0 4) (edit-insert-char #\X)))
   (check-equal? (buffer->string rb2) "hellXo\nworld")
-  (check-false (buffer-read-only-at? rb2 0 4))
+  (check-false (buffer-read-only-at? rb2 (point 0 4)))
   ;; 删除跨进 read-only → 拒绝
   (define-values (rb3 rd3) (buffer-edit rb (point 0 4) (edit-backspace)))
   (check-eq? rb3 rb)
@@ -363,7 +388,7 @@
   (define v0 (buffer-open "hello"))
   (define-values (v1 vd) (buffer-edit v0 (point 0 1) (edit-insert "X")))
   (define vinv (buffer-edit-desc-inverse v0 vd))
-  (define vr (buffer-put-restrict v1 0 1 2 (restrict #t)))
+  (define vr (buffer-put-restrict v1 (point 0 1) (point 0 2) (restrict #t)))
   (check-eq? (let-values ([(b _) (buffer-apply-edit vr vinv)]) b) vr)
   (check-equal? (buffer->string (let-values ([(b _) (buffer-apply-edit-trusted vr vinv)]) b)) "hello")
 

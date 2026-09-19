@@ -103,7 +103,7 @@
   (check-equal? (buffer->string b3) "ABabcd\nefgh")
 
   ;; 被 read-only 拒绝的编辑没发生，不污染点映射
-  (define rbd (buffer-put-restrict (buffer-open "abcd") 0 0 2 (restrict #t)))
+  (define rbd (buffer-put-restrict (buffer-open "abcd") (point 0 0) (point 0 2) (restrict #t)))
   (define-values (rb* rdescs)
     (buffer-apply-edit-batch rbd (list (edit-desc (point 0 1) (point 0 1) "X")   ; 只读内 → 拒
                                        (edit-desc (point 0 3) (point 0 3) "Y"))))

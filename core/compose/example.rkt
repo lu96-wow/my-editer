@@ -75,7 +75,7 @@
 
 (define (text-of e) (editor-buffer->string (app-editor e) (current-buffer-id e)))
 (define (face-of e line col)
-  (editor-get-property (app-editor e) (current-buffer-id e) line col 'face))
+  (editor-get-property (app-editor e) (current-buffer-id e) (point line col) 'face))
 
 ;;; ---------- 布局：侧边栏 + 主编辑区 ----------
 

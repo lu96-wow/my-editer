@@ -22,6 +22,8 @@
 ;;;     **所有**同 buffer view 都换成新 buffer 值（单一事实源）。
 ;;;   · 导航/滚动：被更新的 view 成为 leader，同 buffer 的 follow 镜像它。
 ;;;   · 只写标注：只换 buffer 值，不 rebase 光标（文本没变）。
+;;;   · 程序化编辑（editor-edit-at）：调用方给显式点，不设 leader；同 buffer 的
+;;;     每个 view 各自 free 映射光标，不滚动、不复制视口（不惊动任何用户光标）。
 ;;;   · set-view-buffer：换属主，不触发同步。
 ;;; 次序硬约束：leader 必须**先 ensure 定稿**，follower 再复制（否则差一行）。
 
@@ -94,6 +96,10 @@
  editor-buffer->lines
  editor-buffer-line-count
  editor-buffer-line-ref
+ editor-buffer-line-length
+ editor-buffer-clamp-point
+ editor-buffer-point->offset
+ editor-buffer-offset->point
  editor-buffer-range-text
  editor-get-property
  editor-read-only-at?
@@ -106,6 +112,7 @@
  editor-apply-patches
  ;; 编辑 / 撤销 / 重做
  editor-edit
+ editor-edit-at
  editor-undo
  editor-redo
  ;; 账本查询
@@ -248,6 +255,13 @@
                  (struct-copy view v [window (window-set-buffer (view-window v) b*)])
                  v))]))
 
+;; 把改好的 buffer 值与各 view 写回 editor（文本编辑的唯一提交点）。
+(define (commit-buffer-edit ed bid b* views*)
+  (struct-copy editor ed
+    [buffers (for/list ([e (in-list (editor-buffers ed))])
+               (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [buffer b*]) e))]
+    [views views*]))
+
 ;; 施加一条 desc 到 vid 所属 buffer，并 rebase **同 buffer 的所有 view**。
 ;; leader = vid。返回 (values editor 生效desc/#f)。
 (define (apply-one ed vid d guard?)
@@ -275,10 +289,7 @@
                         [(follow) (rebase-follow (view-window x) editing)]))
             (struct-copy view x [window (window-clamp-view w)])])))
      ;; 3) entry 的 buffer 换成新值
-     (define entries*
-       (for/list ([e (in-list (editor-buffers ed))])
-         (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [buffer b*]) e)))
-     (values (struct-copy editor ed [buffers entries*] [views views*]) d*)]))
+     (values (commit-buffer-edit ed bid b* views*) d*)]))
 
 ;;; ---------- 导航：更新一个 view，然后同 buffer 的 follow 镜像它 ----------
 
@@ -332,7 +343,7 @@
 (define (editor-down ed)  (editor-move ed window-down))
 (define (editor-home ed)  (editor-move ed window-home))
 (define (editor-end ed)   (editor-move ed window-end))
-(define (editor-goto ed line col) (editor-move ed (lambda (w) (window-goto w line col))))
+(define (editor-goto ed p) (editor-move ed (lambda (w) (window-set-point w p))))
 (define (editor-scroll ed delta)
   (editor-update-focused ed (lambda (w) (window-scroll-visual w delta))))
 
@@ -354,9 +365,14 @@
 (define (editor-buffer->lines ed bid) (buffer->lines (editor-buffer ed bid)))
 (define (editor-buffer-line-count ed bid) (buffer-line-count (editor-buffer ed bid)))
 (define (editor-buffer-line-ref ed bid i) (buffer-line-ref (editor-buffer ed bid) i))
+(define (editor-buffer-line-length ed bid i) (buffer-line-length (editor-buffer ed bid) i))
+;; 位置解析：只依赖 bid 指向的 buffer，与任何 view/光标无关。插件入口。
+(define (editor-buffer-clamp-point ed bid p) (buffer-clamp-point (editor-buffer ed bid) p))
+(define (editor-buffer-point->offset ed bid p) (buffer-point->offset (editor-buffer ed bid) p))
+(define (editor-buffer-offset->point ed bid off) (buffer-offset->point (editor-buffer ed bid) off))
 (define (editor-buffer-range-text ed bid s e) (buffer-range-text (editor-buffer ed bid) s e))
-(define (editor-get-property ed bid line col key) (buffer-get-property (editor-buffer ed bid) line col key))
-(define (editor-read-only-at? ed bid line col) (buffer-read-only-at? (editor-buffer ed bid) line col))
+(define (editor-get-property ed bid p key) (buffer-get-property (editor-buffer ed bid) p key))
+(define (editor-read-only-at? ed bid p) (buffer-read-only-at? (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
 (define (editor-buffer-modified? ed bid) (buffer-modified? (editor-buffer ed bid)))
 
@@ -367,14 +383,14 @@
       (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [buffer b*]) e)))
   (update-buffer-refs (struct-copy editor ed [buffers entries*]) bid b*))
 
-(define (editor-put-property ed bid line start end key val)
-  (editor-update-buffer ed bid (lambda (b) (buffer-put-property b line start end key val))))
-(define (editor-remove-property ed bid line start end key)
-  (editor-update-buffer ed bid (lambda (b) (buffer-remove-property b line start end key))))
+(define (editor-put-property ed bid start end key val)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-property b start end key val))))
+(define (editor-remove-property ed bid start end key)
+  (editor-update-buffer ed bid (lambda (b) (buffer-remove-property b start end key))))
 (define (editor-put-properties-many ed bid segs)
   (editor-update-buffer ed bid (lambda (b) (buffer-put-properties-many b segs))))
-(define (editor-put-restrict ed bid line start end rs)
-  (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b line start end rs))))
+(define (editor-put-restrict ed bid start end rs)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
 (define (editor-apply-patches ed bid patches)
   (editor-update-buffer ed bid (lambda (b) (buffer-apply-patches b patches))))
 
@@ -409,6 +425,34 @@
        [(not d*) (values ed #f)]
        [else
         (define ch (edit-change d* (buffer-edit-desc-inverse b0 d*) p0))
+        (define-values (f l) (edits-span (list d*)))
+        (values (editor-record-history ed* bid ch) (change-report f l))])]))
+
+;; 在指定 buffer 的显式位置编辑，**不依赖也不移动任何光标**。插件入口。
+;; 同步契约（第三种，区别于用户编辑/撤销）：不设 leader；同 buffer 的每个 view
+;; 各自 free 映射光标，不滚动、不复制视口；别的 buffer 不动。返回同 editor-edit。
+;; op : buffer point → (or/c #f edit-desc)。#:trusted? 跳过 read-only 守卫（格式化）。
+(define (editor-edit-at ed bid p op #:trusted? [trusted? #f])
+  (define b0 (editor-buffer ed bid))
+  (define d (op b0 p))
+  (cond
+    [(not d) (values ed #f)]
+    [else
+     (define-values (b* d*)
+       ((if trusted? buffer-apply-edit-trusted buffer-apply-edit) b0 d))
+     (cond
+       [(not d*) (values ed #f)]
+       [else
+        (define views*
+          (for/list ([x (in-list (editor-views ed))])
+            (if (= (view-buffer-id x) bid)
+                (struct-copy view x
+                  [window (window-clamp-view (rebase-free (view-window x) b* d*))])
+                x)))
+        (define ed* (commit-buffer-edit ed bid b* views*))
+        ;; 程序化编辑没有「编辑前的光标」，pre-point 取夹紧后的编辑点：
+        ;; 撤销时焦点若在该 buffer，光标会落到这里（= 变更发生处）。
+        (define ch (edit-change d* (buffer-edit-desc-inverse b0 d*) (edit-desc-start d*)))
         (define-values (f l) (edits-span (list d*)))
         (values (editor-record-history ed* bid ch) (change-report f l))])]))
 
@@ -486,7 +530,7 @@
   ;; m0 的 view0 是原 view；m1 现在有两个 view。把它们摆好：
   ;; 重新聚焦原 view(0)，设 v0 为 follow
   (define m2 (editor-focus-view (editor-set-view-sync m1 v0 'follow) 0))
-  (define m3 (editor-goto m2 0 0))
+  (define m3 (editor-goto m2 (point 0 0)))
   ;; 编辑：v0 是 follow，应镜像 leader 的最终视口
   (define-values (m4 _u6) (editor-edit m3 (edit-insert "XY")))
   (check-equal? (editor-buffer->string m4 0) "XYl0\nl1\nl2\nl3\nl4\nl5\nl6")
@@ -505,8 +549,8 @@
   (define q0 (editor-open "hello"))
   (define-values (q1 qv) (editor-add-view q0 0 3 10))
   (define q2 (editor-focus-view q1 0))
-  (define q3 (editor-put-properties-many q2 0 (list (list 0 0 5 'face 'bold))))
-  (check-equal? (editor-get-property q3 0 0 2 'face) 'bold)
+  (define q3 (editor-put-properties-many q2 0 (list (list (point 0 0) (point 0 5) 'face 'bold))))
+  (check-equal? (editor-get-property q3 0 (point 0 2) 'face) 'bold)
   (check-equal? (editor-buffer->string q3 0) "hello")
   (check-eq? (editor-buffer q3 0) (window-buffer (view-window (editor-view-ref q3 0))))
   (check-eq? (editor-buffer q3 0) (window-buffer (view-window (editor-view-ref q3 qv))))
@@ -517,7 +561,7 @@
   (define-values (g2 vfollow) (editor-add-view g1 0 5 20 #:sync 'follow))
   (define-values (g3 other) (editor-open-buffer g2 "other" "OTHER"))   ; 另一个 buffer
   (define g4 (editor-focus-view g3 0))
-  (define g5 (editor-goto g4 20 0))          ; leader 光标到第 20 行 → ensure 滚屏
+  (define g5 (editor-goto g4 (point 20 0)))  ; leader 光标到第 20 行 → ensure 滚屏
   (check-equal? (editor-top-line g5) 16)     ; height 5 → top = 20-5+1
   (check-equal? (editor-view-top-line g5 vfree) 0)                       ; free：视口钉住
   (check-equal? (editor-view-top-line g5 vfollow) (editor-top-line g5))  ; follow：镜像
@@ -525,6 +569,44 @@
   (check-equal? (editor-buffer->string g6 other) "OTHER")                ; 别的 buffer 不动
   (check-equal? (editor-view-top-line g6 vfollow) (editor-view-top-line g6 0))
   (check-eq? (editor-buffer g6 0) (window-buffer (view-window (editor-view-ref g6 vfollow))))
+
+  ;; 位置解析（不依赖光标）：行长度 / 夹紧 / 偏移，keyed by bid
+  (check-equal? (editor-buffer-line-length e3 0 0) 3)                  ; e3 = "abc"
+  (check-equal? (editor-buffer-clamp-point e3 0 (point 9 9)) (point 0 3))
+  (check-equal? (editor-buffer-point->offset e3 0 (point 0 2)) 2)
+  (check-equal? (editor-buffer-offset->point e3 0 1) (point 0 1))
+
+  ;; editor-edit-at：显式位置编辑，不惊动任何光标；同 buffer 所有 view 换新值
+  (define at0 (editor-open "hello"))
+  (define-values (at1 atv) (editor-add-view at0 0 5 20))    ; atv 被 focus
+  (define at2 (editor-focus-view at1 0))                     ; focus 回 view0
+  (define at3 (editor-view-set-point at2 atv (point 0 4)))   ; atv 光标挪到 (0,4)
+  (define-values (at4 _rat) (editor-edit-at at3 0 (point 0 1) (edit-insert "XY")))
+  (check-equal? (editor-buffer->string at4 0) "hXYello")
+  (check-equal? (editor-point at4) (point 0 0))              ; 焦点光标不动
+  (check-equal? (editor-view-point at4 atv) (point 0 6))     ; 其它 view free 映射
+  (check-eq? (editor-buffer at4 0) (window-buffer (view-window (editor-view-ref at4 atv))))
+  (check-true (editor-can-undo? at4 0))                      ; 程序化编辑也进账本
+  (define-values (at5 _rat2) (editor-undo at4))
+  (check-equal? (editor-buffer->string at5 0) "hello")
+  (check-equal? (editor-point at5) (point 0 1))              ; pre-point = 编辑点
+
+  ;; editor-edit-at 可编辑非焦点 buffer，焦点不变
+  (define ab0 (editor-open "AAA"))
+  (define-values (ab1 bb) (editor-open-buffer ab0 "b" "BBB"))  ; focus 变到 bb
+  (define ab2 (editor-focus-buffer ab1 0))                       ; focus 回 0
+  (define-values (ab3 _rab) (editor-edit-at ab2 bb (point 0 0) (edit-insert-char #\x)))
+  (check-equal? (editor-buffer->string ab3 bb) "xBBB")
+  (check-equal? (editor-buffer->string ab3 0) "AAA")
+  (check-equal? (editor-focused-buffer-id ab3) 0)               ; 焦点未被抢
+
+  ;; editor-edit-at #:trusted? 跳过 read-only 守卫
+  (define tr0 (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
+  (define-values (tr1 rtr1) (editor-edit-at tr0 0 (point 0 1) (edit-insert-char #\X)))
+  (check-false rtr1)                                            ; 守卫版被拒
+  (check-equal? (editor-buffer->string tr1 0) "abc")
+  (define-values (tr2 _rtr2) (editor-edit-at tr0 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
+  (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
   ;; 投影 / 映射
   (check-true (screen? (editor->screen e3)))

@@ -161,10 +161,10 @@
   (check-true (regexp-match? #rx"hello" frame))
   (check-true (regexp-match? #rx"world" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
-  (check-equal? (editor-get-property s (editor-focused-buffer-id s) 1 1 'face) 'keyword)
+  (check-equal? (editor-get-property s (editor-focused-buffer-id s) (point 1 1) 'face) 'keyword)
   (define-values (s2 report) (editor-edit s (edit-splice (point 1 0) (point 1 7) "print  ")))
   (define s3 (apply-report s2 report))
-  (check-equal? (editor-get-property s3 (editor-focused-buffer-id s3) 1 1 'face) #f)
+  (check-equal? (editor-get-property s3 (editor-focused-buffer-id s3) (point 1 1) 'face) #f)
   (check-equal? (change-report-first-line report) 1)
   (displayln "tui.rkt: render smoke test passed"))
 

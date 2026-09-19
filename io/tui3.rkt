@@ -214,10 +214,10 @@
   (check-true (regexp-match? #rx"tops" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
   (define sh (rehighlight (editor-open "(define x 42)" 4 20)))
-  (check-equal? (editor-get-property sh (editor-focused-buffer-id sh) 0 1 'face) 'keyword)
+  (check-equal? (editor-get-property sh (editor-focused-buffer-id sh) (point 0 1) 'face) 'keyword)
   (define-values (sh2 report) (editor-edit sh (edit-splice (point 0 0) (point 0 7) "print  ")))
   (define sh3 (apply-report sh2 report))
-  (check-equal? (editor-get-property sh3 (editor-focused-buffer-id sh3) 0 1 'face) #f)
+  (check-equal? (editor-get-property sh3 (editor-focused-buffer-id sh3) (point 0 1) 'face) #f)
   (check-equal? (change-report-first-line report) 0)
   (displayln "tui3.rkt: render smoke test passed"))
 

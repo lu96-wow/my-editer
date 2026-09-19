@@ -28,6 +28,9 @@
  content-line-ref
  content-check
  content-clamp-point
+ content-line-length
+ content-point->offset
+ content-offset->point
  content-apply
  content-backspace-desc
  content-delete-desc
@@ -82,6 +85,33 @@
   (define n (content-line-count c))
   (define l (max 0 (min (point-line p) (sub1 n))))
   (point l (max 0 (min (point-col p) (string-length (content-line-ref c l))))))
+
+(define (content-line-length c line)
+  (define n (content-line-count c))
+  (define l (max 0 (min line (sub1 n))))
+  (string-length (content-line-ref c l)))
+
+;;; ---------- 行列 ↔ 绝对偏移 ----------
+;; 偏移以 content->string 为坐标系：行内字符各占 1，行间 \n 占 1；末行无尾 \n。
+;; 因此第 i 行行首偏移 = Σ_{j<i} (行长_j + 1)，最大偏移 = 字符串长度。
+;; 输入先夹紧，故两个方向对任意输入都有定义，且互为逆（在合法域内）。
+
+(define (content-point->offset c p)
+  (define q (content-clamp-point c p))
+  (+ (for/sum ([i (in-range (point-line q))])
+       (+ (string-length (content-line-ref c i)) 1))
+     (point-col q)))
+
+(define (content-offset->point c off)
+  (define n (content-line-count c))
+  (define max-off
+    (sub1 (for/sum ([i (in-range n)]) (+ (string-length (content-line-ref c i)) 1))))
+  (define o (max 0 (min off max-off)))
+  (let loop ([i 0] [rest o])
+    (define len (string-length (content-line-ref c i)))
+    (cond
+      [(and (< i (sub1 n)) (> rest len)) (loop (add1 i) (- rest (add1 len)))]
+      [else (point i (min rest len))])))
 
 ;;; ---------- 施加：唯一原语 ----------
 
@@ -199,6 +229,23 @@
   (check-equal? (content->lines (content-of-string "a\r\nb\rc")) '("a" "b" "c"))
 
   (define c0 (content-of-string "hello\nworld"))
+
+  ;; 行长度 / 行列 ↔ 偏移（坐标系 = content->string）
+  (check-equal? (content-line-length c0 0) 5)
+  (check-equal? (content-line-length c0 9) 5)                    ; 行越界夹紧
+  (check-equal? (content-point->offset c0 (point 0 0)) 0)
+  (check-equal? (content-point->offset c0 (point 0 5)) 5)        ; 行尾 = 换行前
+  (check-equal? (content-point->offset c0 (point 1 0)) 6)
+  (check-equal? (content-point->offset c0 (point 1 5)) 11)
+  (check-equal? (content-point->offset c0 (point 9 9)) 11)       ; 越界先夹紧
+  (check-equal? (content-offset->point c0 0) (point 0 0))
+  (check-equal? (content-offset->point c0 5) (point 0 5))
+  (check-equal? (content-offset->point c0 6) (point 1 0))
+  (check-equal? (content-offset->point c0 11) (point 1 5))
+  (check-equal? (content-offset->point c0 99) (point 1 5))      ; 夹紧
+  ;; 互为逆（合法域内）
+  (for ([off (in-range 0 12)])
+    (check-equal? (content-point->offset c0 (content-offset->point c0 off)) off))
 
   ;; 插入（start = end）
   (check-equal? (content->string (apply* c0 (edit-desc (point 0 0) (point 0 0) "X")))

@@ -41,17 +41,17 @@
   ;; free：光标随编辑右移（插入点之后的字符）
   (define d-ins (edit-desc (point 0 0) (point 0 0) "XX"))
   (define b1 (let-values ([(b _) (buffer-apply-edit b0 d-ins)]) b))
-  (define wf (window-goto (window-open b0 3 10) 0 1))
+  (define wf (window-set-point (window-open b0 3 10) (point 0 1)))
   (check-equal? (window-point (rebase-free wf b1 d-ins)) (point 0 3))
 
   ;; free：光标落在被删区间 → 吸附删除起点
   (define d-del (edit-desc (point 0 0) (point 1 0) ""))
   (define b2 (let-values ([(b _) (buffer-apply-edit b0 d-del)]) b))
-  (check-equal? (window-point (rebase-free (window-goto (window-open b0 3 10) 0 1) b2 d-del))
+  (check-equal? (window-point (rebase-free (window-set-point (window-open b0 3 10) (point 0 1)) b2 d-del))
                 (point 0 0))
 
   ;; follow：几何不同的视图，镜像 leader 光标后按自己几何 ensure
-  (define leader (window-goto (window-open b1 5 10) 4 0))
+  (define leader (window-set-point (window-open b1 5 10) (point 4 0)))
   (define leader* (window-ensure-point leader))
   (define foll (rebase-follow (window-open b1 2 10) leader*))
   (check-equal? (window-point foll) (window-point leader*))
