@@ -34,6 +34,7 @@
  document-view-sync
  document-set-view-sync
  document-update-view
+ document-set-view-size
  document-sync-followers
  document-update-buffer
  document-put-property
@@ -110,6 +111,16 @@
   (struct-copy document doc
     [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
              (if (= j i) (struct-copy view v [sync sync]) v))]))
+
+;; 只改第 i 个视图的尺寸（纯几何，**不触发 follow 同步**）。布局/resize 用。
+(define (document-set-view-size doc i height width)
+  (check-view-index 'document-set-view-size doc i)
+  (struct-copy document doc
+    [views (for/list ([j (in-naturals)] [v (in-list (document-views doc))])
+             (if (= j i)
+                 (struct-copy view v
+                   [window (window-clamp-view (window-set-size (view-window v) height width))])
+                 v))]))
 
 ;; 更新第 i 个视图的 window（导航/滚动/尺寸），夹回合法域后把 follow 视图对齐到它。
 (define (document-update-view doc i f)

@@ -97,7 +97,8 @@
  document->string document->lines document-line-count document-line-ref
  document-get-property document-read-only-at? document-restrict-runs
  document-add-view document-view-count document-window
- document-view-sync document-set-view-sync document-update-view document-sync-followers
+ document-view-sync document-set-view-sync document-update-view document-set-view-size
+ document-sync-followers
  document-update-buffer document-put-property document-remove-property
  document-put-properties-many document-put-restrict document-apply-patches
  document-edit document-apply-descs-trusted document-buffer)
