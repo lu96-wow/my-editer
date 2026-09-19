@@ -139,7 +139,7 @@
         #:mouse-press (lambda (_button x y _mods)
                         (when (< y (sub1 rows))
                           (define-values (l c) (editor-screen->point s y x))
-                          (when l (set! s (editor-set-point s (point l c))))))
+                          (when l (set! s (editor-goto s (point l c))))))
         #:mouse-scroll (lambda (dir _x _y _mods)
                          (set! s (editor-scroll s (if (eq? dir 'up) -3 3))))
         #:resize   (lambda (nr nc) (resize-editor! nr nc))))
