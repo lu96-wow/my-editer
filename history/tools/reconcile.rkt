@@ -11,7 +11,8 @@
 ;;       同时是 `raco test .` 的一个检查（`module+ test`：安静，有漂移才失败）。
 ;; 要点（踩过的坑）：① 只取**第一格**——行内其它反引号多是概念词、字段名、局部变量
 ;; （`cursor`、`left-col`、`pl`…），用「行内首个反引号」会误报一堆；
-;; ② 比对集合要含消费层模块（`history.rkt`/`main.rkt`），否则 §8.5 的账本名字会误报。
+;; ② 比对集合要含工具层/组合层模块（`core/tool/history.rkt` / `core/compose/editor.rkt`），
+;; 否则 §8.5 的账本名字会误报（`rkt-files` 递归扫 core/，已自动包含它们）。
 
 (require racket/list racket/runtime-path)
 
@@ -29,7 +30,7 @@
 (define api-syms
   (set-subtract (syms-of (list `(file ,(string-append root "core/api.rkt")))) base-syms))
 
-;; 模块内部（含消费层）：用来把 "internal" 与 "nowhere" 分开。
+;; 模块内部（含工具层/组合层）：用来把 "internal" 与 "nowhere" 分开。
 ;; 注意排除 `tools/` —— 否则会把本脚本自己当模块 require（无限递归）。
 (define (rkt-files dir)
   (for/fold ([acc '()]) ([p (in-list (directory-list dir))])

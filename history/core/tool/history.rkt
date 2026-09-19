@@ -1,10 +1,10 @@
 #lang racket
 
 (require racket/list
-         "core/api.rkt"
+         "../api.rkt"
          rackunit)
 
-;;; history.rkt —— 撤销/重放账本（**消费层**，不是 core，见 ARCHITECTURE §8.5）
+;;; core/tool/history.rkt —— 撤销/重放账本（工具层，不经 core/api.rkt 门面，见 ARCHITECTURE §8.5）
 ;;;
 ;;; 归属（§8.5）：文本变更走 document（撤销/重放都是 `document-apply-descs-trusted`，
 ;;; 只有它能 rebase 所有视图）；本模块只管账本——记不记、和谁并、几步。所以它是纯数据：
@@ -21,8 +21,8 @@
 ;;; → 撤销出 "accdef"，不报任何错；而**纯插入时两态恰好相同**，所以打字路径看不出错，
 ;;; 只在删除路径爆（探针见 §8.5）。
 ;;;
-;;; 本模块不替调用方「应用」——`main.rkt` 拿到 step 后用 `document-apply-descs-trusted`
-;;; 一次落回整组 desc（§8.5）。
+;;; 本模块不替调用方「应用」——`core/compose/editor.rkt` 拿到 step 后用
+;;; `document-apply-descs-trusted` 一次落回整组 desc（§8.5）。
 
 (provide
  (struct-out step)

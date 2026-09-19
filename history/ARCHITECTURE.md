@@ -11,37 +11,45 @@
 core 里唯一的动态参数是测试开关 `properties-debug?`（只影响诊断，不改语义）；
 守卫绕行走显式入口 `buffer-splice-trusted`，不用参数（§8.4）。
 
-core 只提供**底层数据原子 + 它们的原语变换**，不提供任何「组合层」：
-多窗口、布局、命令、插件、后端、组装根都不在 core 里，由使用方自行拼装。
+core 的**原子门面**（`api.rkt`）只提供**底层数据原子 + 它们的原语变换**，不提供任何「组合层」：
+多窗口、布局、命令、插件、后端、组装根都不在门面里，由使用方自行拼装。
+（`core/tool/` 工具层与 `core/compose/` 组合层在 core 目录内，但不经门面——见 §0。）
 
 ## 0. 目录结构
 
 ```
 edit/
-├── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
-│   ├── api.rkt           #   对外唯一入口：显式白名单转发（零逻辑）
+├── core/                 # 编辑器核心（纯函数、持久化、后端无关）
+│   ├── api.rkt           #   原子门面：对外唯一入口，显式白名单转发（零逻辑，213 个名字）
 │   ├── text/             #   文本层（无光标）：point content properties marker overlay buffer patch edit
-│   └── view/             #   视口层（后端无关）：width render window view screen project events document
-├── history.rkt           # 消费层：撤销/重放账本（不 require document；归属见 §8.5）
-├── editor.rkt            # 消费层：最小无前端编辑器（依赖清单见文件头；编辑/导航/撤销/标注/渲染闭环）
+│   ├── view/             #   视口层（后端无关）：width render window view screen project events document
+│   ├── tool/             #   工具层：history.rkt 撤销/重放账本（不经门面；归属见 §8.5）
+│   └── compose/          #   组合层：editor.rkt compose-edit/undo/redo + example.rkt 使用方示范
 ├── io/                   # 空：前端/后端由使用方自己接（core 只产 screen、只收 events）
 └── tools/reconcile.rkt   # 文档 ↔ 可达面对账（§8.8）；racket tools/reconcile.rkt
 ```
 
-`core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
-`editor.rkt` 是最小无前端编辑器示例（文件头列出它用到的全部 core 名字），
-`history.rkt` 是撤销账本。
+`core/tool/` 与 `core/compose/` 在 core 目录内，但**不经 `api` 门面**：它们依赖 `api` 的
+原子，`api` 不反过来依赖它们。`core/compose/editor.rkt` 是**组合原语**（compose-edit/undo/redo
+三个纯函数，doc/hist/视图索引显式传参，不定义状态结构），`core/compose/example.rkt` 是使用方
+视角的示范（多文件/侧边栏布局/装饰/颜色都在这里注入），`core/tool/history.rkt` 是撤销账本。
 
-依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
+依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西；
+`tool`/`compose` 在 `api` 之上（`api ← tool ← compose`）。
 
-**对外只暴露 `core/api.rkt`**：使用方一律 `(require "core/api.rkt")`，不要直接
-`require core/text/*` 或 `core/view/*`。
+**原子层的唯一入口是 `core/api.rkt`**：使用方拿原子一律 `(require "core/api.rkt")`，
+不要直接 `require core/text/*` 或 `core/view/*`。工具层/组合层按需直接 require
+（`core/tool/history.rkt`、`core/compose/editor.rkt`），它们不经门面。
 
 ## 1. 分层与职责边界
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ core/api.rkt      对外门面：显式白名单转发（零逻辑，213 个名字） │
+│ core/compose/*.rkt 组合层：editor（compose-edit/undo/redo）+ example（示范）│
+├──────────────────────────────────────────────────────────────┤
+│ core/tool/*.rkt    工具层：history（撤销账本；不经门面）         │
+├──────────────────────────────────────────────────────────────┤
+│ core/api.rkt      原子门面：显式白名单转发（零逻辑，213 个名字）  │
 ├──────────────────────────────────────────────────────────────┤
 │ core/view/*.rkt   视口（后端无关）：几何/渲染/屏幕/事件/多视图容器 │
 │   width  render  window  view  screen  project  events document │
@@ -71,7 +79,9 @@ edit/
 | project | 单窗口可见区 → screen（`window->screen`） | 具体后端、多窗口 |
 | events | 类型化输入事件（text/key/mouse/resize/quit，参考 racket/gui） | 具体后端 |
 | document | 多视图容器：单一事实源 + 编辑漏斗 + 每视图 rebase 模式（`'free`/`'follow`） | 具体布局、窗口个数、命令 |
-| api | 门面：把上面所有公开 API 转发出去 | 任何实现 |
+| api | 原子门面：把上面所有公开原子 API 转发出去（白名单，213 个名字） | 组合层、工具层 |
+| tool/history | 撤销账本：`step`/`history`/合并规则（纯数据，只认 edit-change/point） | document 的实现、window |
+| compose/editor | 组合层：compose-edit/undo/redo 三个纯函数（编辑+记账+报行、撤销/重做+trusted 落回），不定义状态结构 | 编辑器状态、布局、装饰、颜色（使用方自己拼） |
 
 ## 2. 两条数据流
 
@@ -135,8 +145,8 @@ core 只给原语，不预设「怎么组织窗口」。
 
 **撤销**：`buffer-edit-desc-inverse`（b 须是 desc 生效前的 buffer）取回被删文本、求出逆编辑，
 再用 `document-apply-descs-trusted` 落回；**重放**走同一入口、传 `replay-descs`。
-**账本不在 core**（§8.5）：core 只给这组可逆编辑代数，「记几步、怎么分组」是消费层策略
-（`history.rkt`，与 `editor.rkt` 并列，不在 `core/` 下）。
+**账本不在原子层**（§8.5）：core 只给这组可逆编辑代数，「记几步、怎么分组」是工具层策略
+（`core/tool/history.rkt`，与 `core/compose/editor.rkt` 并列，不经 `api` 门面）。
 
 ## 4. 命名规范
 
@@ -210,7 +220,7 @@ core 只给原语，不预设「怎么组织窗口」。
 
 ## 7. 后端无关
 
-core 不含任何后端，也不含多窗口组合。`events`（类型化事件）、`screen`、`window->screen`、
+core 的原子门面不含任何后端，也不含多窗口组合。`events`（类型化事件）、`screen`、`window->screen`、
 `render`、`width`、`view` 全部后端无关。GUI/Web/TUI 后端只需两件事：
 
 1. 把 `screen` 画出来；
@@ -278,14 +288,14 @@ core 不含任何后端，也不含多窗口组合。`events`（类型化事件�
 (buffer-splice-trusted b 0 2 0 2 "X")
 ```
 
-### 8.5 撤销 / 重放（账本在消费层）
+### 8.5 撤销 / 重放（账本在工具层）
 
 - **core 给的机制**：`edit-desc-inverse`（纯代数）、`buffer-edit-desc-inverse`（用编辑前的
   buffer 取回被删文本）、`buffer-apply-edit(-trusted)`、`document-apply-descs-trusted`
   （批量落回，跳过守卫；可选 `pre-point` 把光标放回并 `ensure-point`）。
 - **`edit-change` 由 document 产出**：只有持光标的层能填 `pre-point`。求逆用**编辑前**
   的 buffer（desc 不含旧文本，用后态 buffer 求逆会静默写坏历史，只在删除路径爆）。
-- **账本 `history.rkt`（消费层）**：`step` = `(replay-descs undo-descs pre-point)`，
+- **账本 `core/tool/history.rkt`（工具层）**：`step` = `(replay-descs undo-descs pre-point)`，
   `history` = `(undo redo)`。`history-record` 收 `edit-change`；撤销/重放各把对应的 desc 组
   交给 `document-apply-descs-trusted`。
 

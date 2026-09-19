@@ -2,19 +2,14 @@
 
 (require "point.rkt" "content.rkt" "marker.rkt" rackunit)
 
-;;; overlay.rkt —— 独立装饰层
+;;; overlay.rkt —— 独立装饰层（区间两端由 marker 锚定）
 ;;;
 ;;; 与 properties 的区别：
-;;;   - 边界是 marker id，位置调整委托给 marker-table
-;;;   - 全局 id 索引，不按行组织
-;;;   - 有 priority，渲染时决定覆盖顺序
-;;;   - 有 evaporate，覆盖文本被删光时自动消亡
+;;;   · 边界是 marker id（位置调整 100% 委托给 marker-table），不按行组织
+;;;   · 有 priority：≤0 在 properties 之下，>0 在之上（渲染时合成 face）
+;;;   · 有 evaporate?：覆盖的文本被删光（两端重合）时自动消亡
 ;;;
-;;; 不变量：
-;;;   O1  每个 overlay 的 start-id / end-id 都能在 marker-table 里找到
-;;;   O2  start 位置 <= end 位置（基于当前 marker 位置）
-;;;
-;;; 本文件不直接持有 marker-table；调用者传入。
+;;; 本文件不持有 marker-table，调用方传入。
 
 (provide
  (struct-out overlay)
@@ -29,22 +24,23 @@
  overlay-table-runs
  overlay-table-apply-edit)
 
+;;; ---------- 数据 ----------
+
 (struct overlay (id start-id end-id presentation priority evaporate?) #:transparent)
-;; start-id, end-id : marker-id
-;; presentation : immutable hash   表现层（core 不解释，只搬运）
-;; priority     : int              层叠顺序：≤0 在 properties 之下，>0 在之上
-;; evaporate?   : boolean          覆盖文本被删光（两端重合）时自动消亡
+;; start-id / end-id : marker id
+;; presentation      : hash     表现层（core 不解释）
+;; priority          : int      层叠顺序
+;; evaporate?        : boolean  两端重合时是否消亡
 
 (struct overlay-table (next-id overlays by-id) #:transparent)
-;; overlays : (listof overlay)     迭代顺序
-;; by-id    : (hashof id overlay)  O(1) 查找
+;; overlays : (listof overlay)    迭代顺序（创建顺序）
+;; by-id    : (hashof id overlay)
 
-;;; ---------- 构造 ----------
+;;; ---------- 表管理 ----------
 
 (define (make-overlay-table) (overlay-table 0 '() (hash)))
 
-;; 需要调用者先给 start / end 建 marker，再传入它们的 id。
-;; priority / evaporate? 是**行为字段**，不是表现层键（不进 face）。
+;; 调用方先建好 start / end 两个 marker，再传入 id。
 (define (overlay-table-add ot start-id end-id [presentation (hash)]
                            #:priority [priority 0]
                            #:evaporate? [evaporate? #f])
@@ -61,114 +57,138 @@
                          (overlay-table-overlays ot))
                  (hash-remove (overlay-table-by-id ot) id)))
 
-(define (overlay-table-get ot id)
-  (hash-ref (overlay-table-by-id ot) id #f))
-
+(define (overlay-table-get ot id) (hash-ref (overlay-table-by-id ot) id #f))
 (define (overlay-table-all ot) (overlay-table-overlays ot))
 (define (overlay-table-count ot) (length (overlay-table-overlays ot)))
 
-;;; ---------- 查询 ----------
+;;; ---------- 解析 / 排序 ----------
 
-;; 层叠顺序：priority 降序；同 priority 时 id 小的在前（先创建的在前）。
-;; （唯一的比较器实现，overlay-table-at / overlay-table-runs 共用）
-(define (priority-descending<? a b)
-  (define pa (overlay-priority a))
-  (define pb (overlay-priority b))
-  (cond [(> pa pb) #t]
-        [(< pa pb) #f]
-        [else (< (overlay-id a) (overlay-id b))]))
-
-;; 把 overlay 的 id 对解析成 point 对
 (define (overlay-points ov mt)
   (define s (marker-table-get mt (overlay-start-id ov)))
   (define e (marker-table-get mt (overlay-end-id ov)))
   (unless (and s e)
-    (error 'overlay-points
-           "overlay ~a references missing marker(s) ~a / ~a"
+    (error 'overlay-points "overlay ~a 引用了不存在的 marker: ~a / ~a"
            (overlay-id ov) (overlay-start-id ov) (overlay-end-id ov)))
   (values (marker-pos s) (marker-pos e)))
 
-(define (overlay-contains-point? ov mt pos)
-  (define-values (s e) (overlay-points ov mt))
-  (and (point<=? s pos) (point<? pos e)))
+;; 层叠顺序：priority 降序；同 priority 时 id 小的在前（先创建的在前）。
+(define (priority-descending<? a b)
+  (define pa (overlay-priority a)) (define pb (overlay-priority b))
+  (cond [(> pa pb) #t] [(< pa pb) #f] [else (< (overlay-id a) (overlay-id b))]))
 
-;; 返回覆盖 (line, col) 的所有 overlay，按 priority 降序（高 priority 在前）。
-;; 同 priority 时 id 小的在前（先创建的在前）。
-(define (overlay-table-at ot mt line col)
-  (define pos (point line col))
+(define (overlay-contains-point? ov mt p)
+  (define-values (s e) (overlay-points ov mt))
+  (and (point<=? s p) (point<? p e)))
+
+;;; ---------- 查询 ----------
+
+;; 覆盖 p 的所有 overlay，priority 降序（同 priority 时 id 升序）。
+(define (overlay-table-at ot mt p)
   (sort (for/list ([ov (in-list (overlay-table-overlays ot))]
-                   #:when (overlay-contains-point? ov mt pos))
+                   #:when (overlay-contains-point? ov mt p))
           ov)
         priority-descending<?))
 
-;; 渲染扫描：某行内所有 overlay 段，返回
-;; (listof (list start-col end-col (listof overlay)))
-;; 按 start 升序；同段内 overlay 已按 priority 降序排好。
-;; 空白位置不出现在结果里（properties-runs 会填 empty-plist）。
+;; 某行内所有 overlay 段：(listof (list start-col end-col (listof overlay)))。
+;; 按 start 升序；段内 overlay 按 priority 降序。空白不出现在结果里。
 (define (overlay-table-runs ot mt line line-length)
-  (define ovs-with-span
+  (define spans
     (for/list ([ov (in-list (overlay-table-overlays ot))])
       (define-values (s e) (overlay-points ov mt))
-      (define sl (point-line s))
-      (define el (point-line e))
-      ;; 只保留与本行有交集的
+      (define sl (point-line s)) (define el (point-line e))
       (cond
-        [(and (= sl line) (= el line))
-         (list (point-col s) (point-col e) ov)]
-        [(and (= sl line) (> el line))
-         (list (point-col s) line-length ov)]
-        [(and (< sl line) (= el line))
-         (list 0 (point-col e) ov)]
-        [(and (< sl line) (> el line))
-         (list 0 line-length ov)]
+        [(and (= sl line) (= el line)) (list (point-col s) (point-col e) ov)]
+        [(and (= sl line) (> el line)) (list (point-col s) line-length ov)]
+        [(and (< sl line) (= el line)) (list 0 (point-col e) ov)]
+        [(and (< sl line) (> el line)) (list 0 line-length ov)]
         [else #f])))
-  (define spans (filter values ovs-with-span))
-  ;; 按 start 升序；同 start 按 priority 降序
   (define ordered
-    (sort spans
+    (sort (filter values spans)
           (lambda (a b)
             (cond [(< (car a) (car b)) #t]
                   [(> (car a) (car b)) #f]
                   [else (priority-descending<? (caddr a) (caddr b))]))))
-  ;; 按边界切成 runs
   (cond
     [(null? ordered) '()]
     [else
-     (define points
-       (sort (remove-duplicates
-              (append-map (lambda (sp) (list (car sp) (cadr sp))) ordered))
-             <))
-     (for/list ([a (in-list (drop-right points 1))]
-                [b (in-list (rest points))])
-       (define covering
-         (sort (for/list ([sp (in-list ordered)]
-                          #:when (and (<= (car sp) a) (>= (cadr sp) b)))
-                 (caddr sp))
-               priority-descending<?))
-       ;; covering 已按 priority 降序（同 priority 时 id 小的在前）
-       (list a b covering))]))
+     (define pts (sort (remove-duplicates
+                        (append-map (lambda (sp) (list (car sp) (cadr sp))) ordered))
+                       <))
+     (for/list ([a (in-list (drop-right pts 1))] [b (in-list (rest pts))])
+       (list a b
+             (sort (for/list ([sp (in-list ordered)]
+                              #:when (and (<= (car sp) a) (>= (cadr sp) b)))
+                     (caddr sp))
+                   priority-descending<?)))]))
 
 ;;; ---------- 编辑调整 ----------
-;;;
-;;; 位置调整 100% 委托给 marker-table-apply-edit。
-;;; 本函数只负责：evaporate 判定 + marker-table 的搬运。
 
-;; 是否已经「塌缩」：带 evaporate? 且两端已重合 → 该消亡。
-;; （与字段 overlay-evaporate? 区分：前者看当前位置，后者看是否启用该行为）
 (define (overlay-collapsed? ov mt)
   (and (overlay-evaporate? ov)
-       (let-values ([(s e) (overlay-points ov mt)])
-         (point=? s e))))
+       (let-values ([(s e) (overlay-points ov mt)]) (point=? s e))))
 
-(define (overlay-table-apply-edit ot mt desc)
-  ;; 1. marker-table 一次性调整
-  (define mt* (marker-table-apply-edit mt desc))
-  ;; 2. 检查 evaporate
-  (define kept
-    (filter (lambda (ov) (not (overlay-collapsed? ov mt*)))
-            (overlay-table-overlays ot)))
+;; 位置调整委托给 marker-table；随后 prune 已塌缩（evaporate）的 overlay。
+;; 返回 (values overlay-table marker-table)。
+(define (overlay-table-apply-edit ot mt d)
+  (define mt* (marker-table-apply-edit mt d))
+  (define kept (filter (lambda (ov) (not (overlay-collapsed? ov mt*)))
+                       (overlay-table-overlays ot)))
   (values (overlay-table (overlay-table-next-id ot)
                          kept
-                         (for/hash ([ov (in-list kept)])
-                           (values (overlay-id ov) ov)))
+                         (for/hash ([ov (in-list kept)]) (values (overlay-id ov) ov)))
           mt*))
+
+;;; ---------- 测试 ----------
+
+(module+ test
+  ;; 在给定位置对建一个 overlay，返回 (values overlay-table 新 marker-table id)
+  (define (add-overlay ot mt s e #:priority [pr 0] #:evaporate? [ev? #f]
+                       #:presentation [pres (hash 'face 'region)])
+    (define-values (mt1 sid) (marker-table-add mt s 'before))
+    (define-values (mt2 eid) (marker-table-add mt1 e 'after))
+    (define-values (ot* oid) (overlay-table-add ot sid eid pres
+                                                #:priority pr #:evaporate? ev?))
+    (values ot* mt2 oid))
+
+  ;; at 命中 / 半开区间
+  (define-values (ot1 mt1 id1) (add-overlay (make-overlay-table) (make-marker-table)
+                                          (point 0 1) (point 0 4)))
+  (check-equal? (length (overlay-table-at ot1 mt1 (point 0 2))) 1)
+  (check-equal? (length (overlay-table-at ot1 mt1 (point 0 1))) 1)
+  (check-equal? (length (overlay-table-at ot1 mt1 (point 0 4))) 0)   ; 半开
+  (check-equal? (overlay-table-count ot1) 1)
+
+  ;; runs：一行内的段
+  (define runs (overlay-table-runs ot1 mt1 0 6))
+  (check-equal? (length runs) 1)
+  (check-equal? (list (caar runs) (cadar runs)) '(1 4))
+
+  ;; priority 降序（同 priority 时 id 升序）
+  (define-values (ot2 mt2 id2) (add-overlay (make-overlay-table) (make-marker-table)
+                                          (point 0 1) (point 0 4)
+                                          #:priority 0 #:presentation (hash 'k 'low)))
+  (define-values (ot3 mt3 id3) (add-overlay ot2 mt2 (point 0 1) (point 0 4)
+                                          #:priority 5 #:presentation (hash 'k 'high)))
+  (define ats (overlay-table-at ot3 mt3 (point 0 2)))
+  (check-equal? (map (lambda (o) (hash-ref (overlay-presentation o) 'k)) ats) '(high low))
+
+  ;; 编辑：插入使 overlay 右移
+  (define d-insert (edit-desc (point 0 0) (point 0 0) "XY"))
+  (define-values (ot4 mt4) (overlay-table-apply-edit ot1 mt1 d-insert))
+  (define rs4 (overlay-table-runs ot4 mt4 0 8))
+  (check-equal? (list (caar rs4) (cadar rs4)) '(3 6))
+
+  ;; evaporate：覆盖文本被删光 → 消亡
+  (define-values (ot5 mt5 id5) (add-overlay (make-overlay-table) (make-marker-table)
+                                          (point 0 1) (point 0 3) #:evaporate? #t))
+  (define d-del (edit-desc (point 0 1) (point 0 3) ""))
+  (define-values (ot6 mt6b) (overlay-table-apply-edit ot5 mt5 d-del))
+  (check-equal? (overlay-table-count ot6) 0)
+
+  ;; 不 evaporate 的 overlay 塌缩后保留（两端重合）
+  (define-values (ot7 mt7 id7) (add-overlay (make-overlay-table) (make-marker-table)
+                                          (point 0 1) (point 0 3)))
+  (define-values (ot8 mt8b) (overlay-table-apply-edit ot7 mt7 d-del))
+  (check-equal? (overlay-table-count ot8) 1)
+
+  (displayln "overlay.rkt: all tests passed"))

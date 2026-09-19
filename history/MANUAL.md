@@ -1,14 +1,15 @@
 # core 使用手册
 
-> 唯一入口：`(require "core/api.rkt")`。
+> 原子唯一入口：`(require "core/api.rkt")`（工具层/组合层不经门面，见 ARCHITECTURE §0）。
 > 本文档是 core 的完整 API 手册：设计思路、每个原子的输入输出、以及它们怎么串起来。
 
 ---
 
 ## 0. 一句话
 
-core 是一个**纯函数式编辑器核心**：只有底层数据原子 + 它们的纯函数变换。
-不含多窗口组合 / 布局 / 命令 / 插件 / 后端。所有结构 `#:transparent`、不可变。
+core 是一个**纯函数式编辑器核心**：原子门面（`api.rkt`）只有底层数据原子 + 它们的纯函数变换。
+门面不含多窗口组合 / 布局 / 命令 / 插件 / 后端。所有结构 `#:transparent`、不可变。
+（工具层 `core/tool/`、组合层 `core/compose/` 在 core 目录内但不经门面，见 ARCHITECTURE §0。）
 
 组合出一个编辑器，你只需要五样东西：
 
@@ -30,13 +31,13 @@ core 里唯一的动态参数是测试开关 `properties-debug?`，只影响诊�
 
 core 只给**机制**（原子 + 变换），不给**策略**：
 
-| 不在 core 里 | 为什么 |
+| 不在原子门面里 | 为什么 |
 |---|---|
 | 多窗口布局 | 窗口怎么摆是使用方的策略 |
 | 命令/键位 | 哪个键干什么不是核心 |
 | 主题/配色 | face 是语义符号，颜色是外部策略 |
 | 后端 | core 只产 `screen`、只收 `events` |
-| 撤销账本 | core 只给**可逆编辑代数**（逆 desc + 应用）；「记几步 / 怎么分组 / 撤销后光标回哪」是使用方策略（ARCHITECTURE §8.5） |
+| 撤销账本 | core 只给**可逆编辑代数**（逆 desc + 应用）；「记几步 / 怎么分组 / 撤销后光标回哪」在工具层 `core/tool/history.rkt`（ARCHITECTURE §8.5） |
 
 ### 1.3 三条边界契约
 
@@ -60,8 +61,9 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position`（一组编辑的行区间并集 → `edits-span`） |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
-| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §8.5；示范在 `history.rkt` + `editor.rkt`） |
-| 看「一个编辑器长啥样」 | `editor.rkt`：最小无前端编辑器（依赖清单见文件头）——打开 → 编辑 → 导航 → 撤销/重做 → 高亮 → 只读 → 渲染成纯文本，**只含必要调用** |
+| **撤销 / 重放** | **不在原子门面**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本现成可用（ARCHITECTURE §8.5；工具层 `core/tool/history.rkt`，示范在 `core/compose/example.rkt`） |
+| 看「组合原语」 | `core/compose/editor.rkt`：compose-edit / compose-undo / compose-redo 三个纯函数（不定义状态结构），接缝坑都封在里面（依赖清单见文件头） |
+| 看「一个编辑器长啥样」 | `core/compose/example.rkt`：使用方视角的完整示范——多文件 / 侧边栏布局 / 高亮 / 渲染，展示编辑器状态与布局怎么自己拼 |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §9 |
 
 ---
@@ -143,7 +145,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
   的约束挡住。注意 desc 不含旧文本，逆只能由编辑前内容导出。
   底层纯代数：`edit-desc-inverse d old-text`。
 - core 只给上面这组**可逆编辑代数**；**账本**（记几步、连续打字并成一步、撤销后光标回哪）
-  是消费层的事，见 ARCHITECTURE §8.5（示范在 `history.rkt` + `editor.rkt`）。
+  是工具层的事，见 ARCHITECTURE §8.5（账本 `core/tool/history.rkt`，示范在 `core/compose/example.rkt`）。
 
 ### 4.2 `events`（输入）
 
@@ -522,10 +524,12 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
 >
-> **无前端示例**见 `editor.rkt`——一个不碰终端的完整编辑器（打开 / 编辑 / 导航 / 撤销 /
-> 高亮 / 只读 / 渲染成纯文本），文件头列出它用到的全部 core 名字。
+> **组合原语**见 `core/compose/editor.rkt`——compose-edit/undo/redo 三个纯函数（doc、hist、视图索引
+> 都显式传参，不定义任何状态结构），把「编辑→记账→报变更行」「撤销→trusted 落回」这些接缝坑封掉。
+> **使用方示范**见 `core/compose/example.rkt`——多文件、侧边栏布局、语法高亮、纯文本渲染，
+> 展示「编辑器状态与布局都是使用方自己拼的」。
 >
-> **撤销账本**在 `history.rkt`（消费层）：`step`/`history`/合并规则，见 ARCHITECTURE §8.5。
+> **撤销账本**在 `core/tool/history.rkt`（工具层，不经门面）：`step`/`history`/合并规则，见 ARCHITECTURE §8.5。
 
 ---
 
@@ -540,8 +544,8 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 | **没有 `dirty` 槽** | 增量信息**归操作、不归文档**：要「这次/这一步改到哪几行」用 `edits-span`（传一条 desc 或整组）；`buffer-tick` 只回答「有没有变」（ARCHITECTURE §8.7） |
 | **`left-col` 大于行宽** | **合法状态**（「滚过短行尾部」，该行显示空），不是错误；但**落在宽字符右半**会被吸附到字符起点 |
 | **`modified?` 的回退 / 保存点** | core 不做（`modified?` 只是「约定」，见 ARCHITECTURE §8.5） |
-| **撤销 / 重放账本** | 不在 core：core 只给**可逆编辑代数**；账本与分组是消费层策略（ARCHITECTURE §8.5） |
-| **命令 / 键位 / 主题 / 布局** | 不在 core（§1.2） |
+| **撤销 / 重放账本** | 不在原子门面：core 只给**可逆编辑代数**；账本与分组是工具层策略（`core/tool/history.rkt`，ARCHITECTURE §8.5） |
+| **命令 / 键位 / 主题 / 布局** | 不在原子门面（§1.2） |
 
 ## 10. 契约与违约行为
 
