@@ -90,7 +90,12 @@
            [(and (> col seg-start) (> (+ (- col seg-start) w) width))
             (loop i col col (cons (cons seg-start col) acc))]     ; 放不下 → 换段
            [else (loop (add1 i) (+ col w) seg-start acc)])])))    ; 空段总接受（单字>width也放）
-  (if (null? segs) (list (cons 0 0)) segs))
+  (cond
+    [(null? segs) (list (cons 0 0))]
+    ;; 末段正好填满 width：行尾插入点需要单独一个视觉行（否则光标落在窗口右边界之外）
+    [(= (- (cdr (last segs)) (car (last segs))) width)
+     (append segs (list (cons (cdr (last segs)) (cdr (last segs)))))]
+    [else segs]))
 
 ;;; ---------- 布局 ----------
 
@@ -185,6 +190,8 @@
        (define hit? (and (= (vrow-line vr) line)
                          (or (and (<= (vrow-start-col vr) target) (< target (vrow-end-col vr)))
                              (and (= target (vrow-end-col vr))
+                                  ;; 行尾插入点：只有落在窗口宽度内才算可见（否则宁可不画）
+                                  (< (- target (vrow-start-col vr)) (window-width w))
                                   (vrow-last-for-line? vrows row)))))
        (if hit? (values row (- target (vrow-start-col vr))) (loop (add1 row)))])))
 
@@ -261,8 +268,10 @@
   (define b (window-buffer w))
   (define height (window-height w)) (define width (window-width w))
   (define text (buffer-line-ref b line))
+  ;; 行尾插入点也**占一格**：否则 target = left+width 时右滚条件不成立，
+  ;; 光标会停到窗口右边界之外（point->screen 返回 col = width）。
   (define cw (let ([ci (column->index text target-col)])
-               (if (= ci (string-length text)) 0
+               (if (= ci (string-length text)) 1
                    (char-display-width (string-ref text ci)))))
   (define top (cond [(< line (window-top-line w)) line]
                     [(>= line (+ (window-top-line w) height)) (+ (- line height) 1)]
@@ -428,5 +437,33 @@
   (check-equal? (vector-ref (window-vrows (window-clamp-view cv)) 0) (vrow 2 0 10))
   (check-true (vector? (window-vrows (window-clamp-view (window-set-mode cv 'wrap)))))
   (check-equal? (window-left-col (window-clamp-view (window-set-left (window-open (buffer-open "中abc") 3 4) 1))) 2)
+
+  ;; 行尾插入点占一格：光标不许落到窗口右边界之外
+  ;; clip：行宽 == 窗口宽，光标在行尾 → 右滚一格，光标落到最后一列
+  (define eol-clip (window-ensure-point (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 10))))
+  (check-equal? (window-left-col eol-clip) 1)
+  (check-equal? (call-with-values (lambda () (window-point->screen eol-clip)) list) '(0 9))
+  ;; clip：行尾但行没填满 → 视口不动，光标就在行尾
+  (define eol-short (window-ensure-point (window-set-point (window-open (buffer-open "abc") 1 10) (point 0 3))))
+  (check-equal? (window-left-col eol-short) 0)
+  (check-equal? (call-with-values (lambda () (window-point->screen eol-short)) list) '(0 3))
+  ;; clip：光标在最后一列（不是行尾，下面还有字符）→ 不误滚
+  (define lastcol (window-ensure-point (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 9))))
+  (check-equal? (window-left-col lastcol) 0)
+  (check-equal? (call-with-values (lambda () (window-point->screen lastcol)) list) '(0 9))
+  ;; wrap：一行正好填满一段 → 行尾插入点占下一视觉行
+  (check-equal? (wrap-segments "aaaa" 4) '((0 . 4) (4 . 4)))
+  (check-equal? (wrap-segments "aaaaaaaa" 4) '((0 . 4) (4 . 8) (8 . 8)))
+  (check-equal? (wrap-segments "aaa" 4) '((0 . 3)))          ; 没填满 → 不补空段
+  (check-equal? (wrap-segments "" 4) '((0 . 0)))
+  (define eol-wrap (window-ensure-point (window-set-mode (window-set-point (window-open (buffer-open "aaaa") 2 4) (point 0 4)) 'wrap)))
+  (check-equal? (call-with-values (lambda () (window-point->screen eol-wrap)) list) '(1 0))
+  ;; wrap 高度 1：ensure 把视口滚到行尾那一段
+  (define eol-wrap1 (window-ensure-point (window-set-mode (window-set-point (window-open (buffer-open "aaaa") 1 4) (point 0 4)) 'wrap)))
+  (check-equal? (list (window-top-line eol-wrap1) (window-top-seg eol-wrap1)) '(0 1))
+  (check-equal? (call-with-values (lambda () (window-point->screen eol-wrap1)) list) '(0 0))
+  ;; 未 ensure 时也不返回越界列：宁可不出光标，也不画到窗口外
+  (check-false (let-values ([(r c) (window-point->screen (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 10)))])
+                 (or r c)))
 
   (displayln "view.rkt: all tests passed"))
