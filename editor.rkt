@@ -14,7 +14,7 @@
 ;; ── 依赖清单（core 侧，按用途）────────────────────────────
 ;;   文档   document-open  document-add-view  document-window  document->string
 ;;          document-line-count  document-line-ref
-;;   编辑   document-edit  edit-char  edit-insert  edit-newline  edit-backspace
+;;   编辑   document-edit  edit-insert-char  edit-insert  edit-newline  edit-backspace
 ;;   导航   document-update-view  window-ensure-point
 ;;          window-goto  window-left  window-end  window-home
 ;;   撤销   document-apply-descs-trusted
@@ -24,7 +24,7 @@
 ;;   观察   window-point  point  document-get-property  document-read-only-at?
 ;;   渲染   window->screen  screen->text
 ;;   账本   history.rkt（消费层）：make-history  history-record
-;;          history-pop-undo  history-pop-redo  step-undo-descs  step-replay-descs  step-point
+;;          history-pop-undo  history-pop-redo  step-undo-descs  step-replay-descs  step-pre-point
 ;; ──────────────────────────────────────────────────────────
 
 ;;; ============ 状态 ============
@@ -63,7 +63,7 @@
      (define-values (f l) (edits-span (step-undo-descs st)))
      (values (struct-copy ed a
                [doc (document-apply-descs-trusted (ed-doc a) (ed-active a)
-                                                  (step-undo-descs st) (step-point st))]
+                                                  (step-undo-descs st) (step-pre-point st))]
                [hist h*])
              f l)]))
 
@@ -146,9 +146,9 @@
   (check-equal? (cursor a0) (point 0 0))
 
   ;; 编辑：连续单字符打字并成一步；粘贴（多字符）自成一步
-  (define-values (a1 f1 l1) (edit! a0 (edit-char #\a)))
-  (define-values (a2 _1 _2)  (edit! a1 (edit-char #\b)))
-  (define-values (a3 _3 _4)  (edit! a2 (edit-char #\c)))
+  (define-values (a1 f1 l1) (edit! a0 (edit-insert-char #\a)))
+  (define-values (a2 _1 _2)  (edit! a1 (edit-insert-char #\b)))
+  (define-values (a3 _3 _4)  (edit! a2 (edit-insert-char #\c)))
   (check-equal? (text a3) "abc")
   (check-equal? (list f1 l1) (list 0 0))                ; 单字符插入 → 变更 [0,0]
   (check-equal? (history-undo-depth (ed-hist a3)) 1)    ; 三个单字符并成一步
@@ -207,7 +207,7 @@
   (define a10 (read-only! a9 0 0 2))
   (check-true (read-only? a10 0 1))
   (define a11 (nav! a10 (lambda (w) (window-goto w 0 1))))
-  (define-values (a12 rf2 rl2) (edit! a11 (edit-char #\X)))
+  (define-values (a12 rf2 rl2) (edit! a11 (edit-insert-char #\X)))
   (check-equal? (text a12) "abc")                        ; 没改
   (check-false rf2)
   (check-false rl2)
@@ -215,7 +215,7 @@
   ;; 渲染 + 局部重画（两屏 diff）
   (define ra (open-editor "abcd" 1 10))
   (check-equal? (render ra) "abcd")
-  (define-values (rb _9 _10) (edit! ra (edit-char #\X)))
+  (define-values (rb _9 _10) (edit! ra (edit-insert-char #\X)))
   (define old-screen (window->screen (document-window (ed-doc ra) 0)))
   (define new-screen (window->screen (document-window (ed-doc rb) 0)))
   (check-equal? (changed-rows old-screen new-screen) (list 0))  ; 只有第 0 行变了

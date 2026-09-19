@@ -203,7 +203,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | `content->lines` | c | (listof string) |
 | `content-line-count` | c | nat |
 | `content-line-ref` | c i | string |
-| `content-current-line` | c | string |
+| `content-gap-line-ref` | c | string |
 | `content-splice` | c s-line s-col e-line e-col new-text | (values content edit-desc) |
 | `content-insert-char` | c ch | (values content edit-desc) |
 | `content-insert-string` | c s | (values content edit-desc) |
@@ -288,10 +288,10 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-put-restrict` | b line start end restrict | buffer（写约束槽；(make-restrict) 清除） |
 | `buffer-read-only-at?` | b line col | boolean（该位置的约束是否含 read-only） |
 | `buffer-restrict-runs` | b line | (listof (list start end restrict))（该行**约束槽**的段，恰好覆盖整行、相邻段必不同；**枚举**只读区间用——逐点问是 O(列数)，这是 O(段数)） |
-| `buffer-make-marker` | b pos [type 'before] | (values buffer id) |
+| `buffer-add-marker` | b pos [type 'before] | (values buffer id) |
 | `buffer-remove-marker` | b id | buffer |
 | `buffer-marker-pos` | b id | point \| #f |
-| `buffer-make-overlay` | b start-pos end-pos [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values buffer id) |
+| `buffer-add-overlay` | b start-pos end-pos [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values buffer id) |
 | `buffer-remove-overlay` | b oid | buffer |
 
 > 另有装配层的 struct 访问器（一般用不到）：
@@ -304,7 +304,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | 函数 | 输入 | 输出 |
 |---|---|---|
 | `buffer-apply-patches` | b (listof patch) | buffer（按 key 清旧写新） |
-| `buffer-content-same?` | a b | boolean（eq? content） |
+| `buffer-content-eq?` | a b | boolean（eq? content） |
 | `buffer-apply-edit-batch` | b (listof edit-desc) | (values buffer (listof edit-desc)) |
 | `edits-map-position` | descs line col | point（跨一串编辑映射） |
 | `edits-span` | descs | (values first-line last-line)（一组编辑影响到的**行区间并集**，新坐标系；空 → `(values #f #f)`） |
@@ -314,7 +314,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 >
 > **增量重绘**：用 `edits-span` 取「这次要重画哪几行」——单次编辑传一条 desc，整步撤销/重放
 > 传整组 desc（取并集）。`buffer-tick` 只回答「有没有变」（编辑、写属性、补丁都让它涨），
-> `buffer-content-same?` 只回答「内容变没变」（不受标注影响）。
+> `buffer-content-eq?` 只回答「内容变没变」（不受标注影响）。
 
 ---
 
@@ -437,7 +437,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 (define-values (doc _) (document-add-view (document-open "hello\nworld") 10 40))
 
 ;; 一个 text-event 进来：
-(define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))
+(define-values (doc* ch) (document-edit doc 0 (edit-insert-char #\X)))
 ;;   doc* : buffer 已换新、point 已推到编辑后位置（document-edit 自动做）
 ;;   ch   : (or/c #f edit-change)；#f = 什么都没发生。要撤销就收下它。
 ;;          document-edit 是**唯一**编辑入口——单窗口就是「一个视图的 document」。
@@ -515,7 +515,7 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 (define s (window->screen (document-window doc 0)))   ; 投影成画面，后端画 s
 
 ;; 后端喂入 event 后：
-(define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))  ; 处理 text-event
+(define-values (doc* ch) (document-edit doc 0 (edit-insert-char #\X)))  ; 处理 text-event
 (define doc2 (document-update-view doc* 0 window-right))          ; 处理 key-event 'right
 ```
 

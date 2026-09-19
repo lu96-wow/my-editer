@@ -260,7 +260,7 @@
 ;; 批量落回：依次施加 descs（**跳过 read-only 守卫** —— 记录在案的编辑当年都过了守卫，
 ;; 不该被**事后**才加的约束挡住）。给了 pre-point 就把视图 i 的光标放回那里并
 ;; ensure-point，最后对齐 follow 视图。**撤销/重放的唯一落回入口**：
-;;   撤销 → (document-apply-descs-trusted doc i (step-undo-descs st) (step-point st))
+;;   撤销 → (document-apply-descs-trusted doc i (step-undo-descs st) (step-pre-point st))
 ;;   重放 → (document-apply-descs-trusted doc i (step-replay-descs st))
 ;; 不产出 change：落回不是编辑，没有新事实要捕捉（用 edit-and-rebase 而非 document-edit）。
 (define (document-apply-descs-trusted doc i descs [pre-point #f])
@@ -292,7 +292,7 @@
   (check-equal? (document-view-sync d2 1) 'free)
 
   ;; free：视图 0 插入后，视图 1 的 buffer 更新、光标跟随右移、视口不动
-  (define-values (d3 dd) (document-edit d2 0 (edit-char #\X)))
+  (define-values (d3 dd) (document-edit d2 0 (edit-insert-char #\X)))
   (check-equal? (edit-change-desc dd) (edit-desc 0 0 0 0 "X"))
   (check-equal? (edit-change-inv dd) (edit-desc 0 0 0 1 ""))
   (check-equal? (edit-change-pre-point dd) (point 0 0))
@@ -302,7 +302,7 @@
   (check-equal? (window-top-line (w d3 1)) 0)                            ; 视口钉住不动
 
   ;; free：视图 1 接着编辑，看到视图 0 的最新结果（不丢更新）
-  (define-values (d4 _d4) (document-edit d3 1 (edit-char #\Y)))
+  (define-values (d4 _d4) (document-edit d3 1 (edit-insert-char #\Y)))
   (check-equal? (buffer->string (document-buffer d4)) "XhelYlo\nworld")
   (check-equal? (window-point (w d4 1)) (point 0 5))
   (check-equal? (window-point (w d4 0)) (point 0 1))                     ; 另一视图光标不动
@@ -358,7 +358,7 @@
                                                 (point 0 0) #:sync 'follow))
   ;; 编辑视图光标移到最底行，再编辑（它的视口不会滚：line 9 在 10 行内可见）
   (define geo3 (document-update-view geo2 0 (lambda (w) (window-set-point w (point 9 0)))))
-  (define-values (geo4 _gd) (document-edit geo3 0 (edit-char #\X)))
+  (define-values (geo4 _gd) (document-edit geo3 0 (edit-insert-char #\X)))
   (check-equal? (window-top-line (document-window geo4 0)) 0)
   (define w-follow (document-window geo4 1))
   (check-equal? (point-line (window-point w-follow)) 9)          ; 光标跟上了
@@ -492,7 +492,7 @@
   ;; patch：插件 delta 也能落回活文档
   (define dec4 (document-apply-patches dec3 (list (patch 'diag 0 0 (list (list 0 0 5 "err"))))))
   (check-equal? (buffer-get-property (document-buffer dec4) 0 1 'diag) "err")
-  (check-true (buffer-content-same? (document-buffer dec3) (document-buffer dec4)))  ; 标注不改内容
+  (check-true (buffer-content-eq? (document-buffer dec3) (document-buffer dec4)))  ; 标注不改内容
   ;; document-update-buffer 通用入口：任意 buffer 级装饰操作
   (define dec5 (document-update-buffer dec4 (lambda (b) (buffer-put-property b 1 0 5 'face 'italic))))
   (check-equal? (buffer-get-property (document-buffer dec5) 1 3 'face) 'italic)

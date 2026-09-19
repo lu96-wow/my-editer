@@ -38,10 +38,10 @@
 
 ;; 字段名自带方向与次序：两个列表存的是**相反次序**，而单元素 step（绝大多数）看不出
 ;; 差别 —— 所以不许用中性名字（原名 `descs`/`invs`，见 ARCHITECTURE §8.5）。
-(struct step (replay-descs undo-descs point) #:transparent)
+(struct step (replay-descs undo-descs pre-point) #:transparent)
 ;; replay-descs : (listof edit-desc)  重放：正序依次 apply（desc 自带 new-text，不需旧文本）
 ;; undo-descs   : (listof edit-desc)  撤销：正序依次 apply（与 replay-descs 相反次序）
-;; point        : point               该步开始前 active 视图的光标（撤销后回到这里）
+;; pre-point    : point               该步开始前 active 视图的光标（撤销后回到这里）
 
 (struct history (undo redo) #:transparent)
 ;; undo / redo : (listof step)  栈顶在前
@@ -104,7 +104,7 @@
      (struct-copy history h
        [undo (cons (step (append (step-replay-descs top) (list desc))
                          (cons inv (step-undo-descs top))
-                         (step-point top))
+                         (step-pre-point top))
                    (cdr (history-undo h)))]
        [redo '()])]
     [else
@@ -156,7 +156,7 @@
   ;; 撤销：正序应用 undo-descs（它们本就存成撤销次序）→ 回到 ""；point 取**较早**的
   (define-values (s1 t4) (history-pop-undo t3))
   (check-equal? (buffer->string (ap-all b3 (step-undo-descs s1))) "")
-  (check-equal? (step-point s1) (point 0 0))
+  (check-equal? (step-pre-point s1) (point 0 0))
   (check-equal? (history-undo-depth t4) 0)
   (check-equal? (history-redo-depth t4) 1)
   ;; 重放：正序应用 replay-descs → 回到 "abc"
@@ -195,7 +195,7 @@
   (check-equal? (history-undo-depth k2) 1)
   (define-values (ks1 _ku1) (history-pop-undo k2))
   (check-equal? (buffer->string (ap-all kb2 (step-undo-descs ks1))) "abc")
-  (check-equal? (step-point ks1) (point 0 3))
+  (check-equal? (step-pre-point ks1) (point 0 3))
 
   ;; 4. 前向删除连续段：同点继续删，并成 1 步
   (define-values (f1 fb1) (rec (make-history) (buffer-open "abcde")

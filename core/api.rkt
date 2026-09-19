@@ -70,7 +70,7 @@
 ;;;   (define-values (doc _) (document-add-view (document-open "hello") 24 80))  ; 开文档 + 开视口
 ;;;   (define s (window->screen (document-window doc 0)))   ; 投影成画面
 ;;;   ;; 后端画 s；后端喂入一个 event：
-;;;   (define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))  ; 处理 text-event
+;;;   (define-values (doc* ch) (document-edit doc 0 (edit-insert-char #\X)))  ; 处理 text-event
 ;;;   ;; doc* 的 buffer 已换新、光标已推进；ch 是 (or/c #f edit-change)，
 ;;;   ;; #f = 什么都没发生，非 #f 时上层拿它做记账（要撤销就收下 ch）
 ;;;
@@ -126,13 +126,13 @@
  buffer-line-count buffer-line-ref
  buffer-splice buffer-splice-trusted buffer-insert-char buffer-insert-string
  buffer-newline buffer-backspace buffer-delete
- edit-char edit-insert edit-newline edit-backspace edit-delete edit-splice
+ edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit-desc-inverse
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-read-only-at? buffer-restrict-runs
  restrict restrict? struct:restrict make-restrict restrict-read-only?
- buffer-make-marker buffer-remove-marker buffer-marker-pos
- buffer-make-overlay buffer-remove-overlay
+ buffer-add-marker buffer-remove-marker buffer-marker-pos
+ buffer-add-overlay buffer-remove-overlay
  ;; 装配层访问器（一般用不到）
  buffer-content buffer-properties buffer-markers buffer-overlays
  buffer-tick buffer-modified? buffer-gap
@@ -140,7 +140,7 @@
  buffer-apply-edit-batch edits-map-position edits-span
  ;; patch —— 补丁 delta（机制）
  patch patch? struct:patch patch-key patch-first-line patch-last-line patch-segs
- buffer-apply-patches buffer-content-same?
+ buffer-apply-patches buffer-content-eq?
  ;; ---- 视口层 ----
  ;; 类型化输入事件
  modifiers modifiers? struct:modifiers
@@ -181,7 +181,7 @@
  document-update-buffer document-put-property document-put-properties-many
  document-remove-property document-put-restrict document-apply-patches
  document-edit document-apply-descs-trusted
- document-buffer document-views)
+ document-buffer)
 
 ;;; ============================================================================
 ;;; 冒烟测试：验证门面 + 一条完整的「属性 → 画面」链
@@ -198,7 +198,7 @@
   ;; 编辑闭环：document-edit（唯一编辑入口）→ 光标推进 → 渲染出新文本
   (define-values (d0 _i0) (document-add-view (document-open (buffer->string b)) 2 10))
   (check-equal? (window-point (document-window d0 0)) (point 0 0))
-  (define-values (d1 ch) (document-edit d0 0 (edit-char #\X)))
+  (define-values (d1 ch) (document-edit d0 0 (edit-insert-char #\X)))
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? (edit-change-desc ch) (edit-desc 0 0 0 0 "X"))
   (check-equal? (window-point (document-window d1 0)) (point 0 1))
@@ -213,7 +213,7 @@
   ;; 属性随编辑移动：在属性区间前插一个字符 → 区间整体右移。
   ;; 插入点在左邻为空处，新字符不继承（继承左邻规则）；"hello" 仍带 keyword。
   (define-values (d3 _d3i) (document-add-view (document-of-buffer b3) 2 10))
-  (define-values (d4 _) (document-edit d3 0 (edit-char #\Z)))
+  (define-values (d4 _) (document-edit d3 0 (edit-insert-char #\Z)))
   (define s4 (window->screen (document-window d4 0)))
   (check-equal? (vector-ref (screen-row-runs s4) 0)
                 (list (run 0 "Z" (hash))

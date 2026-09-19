@@ -20,7 +20,7 @@
  string->lines
  content->lines
  content->string
- content-current-line
+ content-gap-line-ref
  content-line-count
  content-line-ref
  content-check
@@ -83,7 +83,7 @@
 
 (define (content->lines c)       (vector->list (content-lines c)))
 (define (content->string c)      (string-join (content->lines c) "\n"))
-(define (content-current-line c) (vector-ref (content-lines c) (content-gap-line c)))
+(define (content-gap-line-ref c) (vector-ref (content-lines c) (content-gap-line c)))
 (define (content-line-count c)   (vector-length (content-lines c)))
 (define (content-line-ref c i)   (vector-ref (content-lines c) i))
 
@@ -243,7 +243,7 @@
   (check-equal? (content->lines  (content-of-string "hello\nworld"))
                 (list "hello" "world"))
   (check-equal? (content-line-count (content-of-string "a\nb\nc")) 3)
-  (check-equal? (content-current-line (content-of-string "hello\nworld")) "hello")
+  (check-equal? (content-gap-line-ref (content-of-string "hello\nworld")) "hello")
   ;; 尾部换行保留空行
   (check-equal? (content-line-count (content-of-string "a\nb\n")) 3)
   (check-equal? (content->string (content-of-string "a\nb\n")) "a\nb\n")

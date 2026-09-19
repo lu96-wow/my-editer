@@ -154,7 +154,7 @@ core 只给原语，不预设「怎么组织窗口」。
 | 方向/位置名词 | 光标单步移动（名字与键名同形） | window-left, window-right, window-up, window-down, window-home, window-end |
 | 动词-名词 | 变换 | buffer-insert-char, properties-put, window-scroll |
 | `*-apply-edit` | 解释 edit-desc | properties-apply-edit, marker-table-apply-edit, buffer-apply-edit |
-| `*-check` / `*?` | 断言 / 谓词 | content-check, properties-check, restrict-read-only?, buffer-content-same? |
+| `*-check` / `*?` | 断言 / 谓词 | content-check, properties-check, restrict-read-only?, buffer-content-eq? |
 
 **约定**：
 - 坐标：core 层全 0-based。
@@ -285,7 +285,7 @@ core 不含任何后端，也不含多窗口组合。`events`（类型化事件�
   （批量落回，跳过守卫；可选 `pre-point` 把光标放回并 `ensure-point`）。
 - **`edit-change` 由 document 产出**：只有持光标的层能填 `pre-point`。求逆用**编辑前**
   的 buffer（desc 不含旧文本，用后态 buffer 求逆会静默写坏历史，只在删除路径爆）。
-- **账本 `history.rkt`（消费层）**：`step` = `(replay-descs undo-descs point)`，
+- **账本 `history.rkt`（消费层）**：`step` = `(replay-descs undo-descs pre-point)`，
   `history` = `(undo redo)`。`history-record` 收 `edit-change`；撤销/重放各把对应的 desc 组
   交给 `document-apply-descs-trusted`。
 
@@ -309,11 +309,11 @@ core 不含任何后端，也不含多窗口组合。`events`（类型化事件�
 把常用编辑变成**可传的值**（buffer.rkt），消费者不必再写 buffer 级 λ：
 
 ```racket
-(edit-char ch) (edit-insert s) (edit-newline) (edit-backspace) (edit-delete)
+(edit-insert-char ch) (edit-insert s) (edit-newline) (edit-backspace) (edit-delete)
 (edit-splice s-line s-col e-line e-col new-text)   ; 通用逃生门
 ```
 
-- `edit-char ch` / `edit-insert s` 是构造器（返回新闭包）；`edit-newline` / `edit-backspace` /
+- `edit-insert-char ch` / `edit-insert s` 是构造器（返回新闭包）；`edit-newline` / `edit-backspace` /
   `edit-delete` 形状本来就一致，就是那几个原语本身。
 - 自定义 λ 依然合法（`document-edit` 收的仍是函数）。
 - 配套读入口 `document->string` / `document->lines`。

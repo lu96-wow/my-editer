@@ -103,12 +103,12 @@
   (check-equal? (glyph-face (vector-ref g1 4)) (hash))
 
   ;; overlay + priority（priority>0 覆盖 props；priority=0 在 props 之下）
-  (define-values (b2 oid2) (buffer-make-overlay b0 (point 0 1) (point 0 4)
+  (define-values (b2 oid2) (buffer-add-overlay b0 (point 0 1) (point 0 4)
                                               (hash 'face 'region)))
   (define g2 (rendered-line-glyphs (render-line b2 0)))
   (check-equal? (glyph-face (vector-ref g2 1)) (hash 'face 'region))
   (define b3 (buffer-put-property b2 0 1 4 'face 'bold))
-  (define-values (b4 oid4) (buffer-make-overlay b3 (point 0 2) (point 0 3)
+  (define-values (b4 oid4) (buffer-add-overlay b3 (point 0 2) (point 0 3)
                                               (hash 'face 'highlight) #:priority 5))
   (define g4 (rendered-line-glyphs (render-line b4 0)))
   (check-equal? (glyph-face (vector-ref g4 1)) (hash 'face 'bold))        ; p0 overlay < props

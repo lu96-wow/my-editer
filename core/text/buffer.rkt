@@ -34,7 +34,7 @@
  buffer-newline
  buffer-backspace
  buffer-delete
- edit-char
+ edit-insert-char
  edit-insert
  edit-newline
  edit-backspace
@@ -50,10 +50,10 @@
  buffer-put-restrict
  buffer-read-only-at?
  buffer-restrict-runs
- buffer-make-marker
+ buffer-add-marker
  buffer-remove-marker
  buffer-marker-pos
- buffer-make-overlay
+ buffer-add-overlay
  buffer-remove-overlay
  edit-desc-after-position)
 
@@ -190,7 +190,7 @@
 ;;; 与 `edit-desc` 同族：一个**描述**一次编辑，一个**就是**那次编辑。
 ;;; 不关扩展性：自定义 λ 依然合法（document-edit 收的仍是函数）。
 
-(define (edit-char ch)    (lambda (b l c) (buffer-insert-char b l c ch)))
+(define (edit-insert-char ch)    (lambda (b l c) (buffer-insert-char b l c ch)))
 (define (edit-insert s)   (lambda (b l c) (buffer-insert-string b l c s)))
 (define (edit-newline)    buffer-newline)     ; 形状本来就一致，就是它
 (define (edit-backspace)  buffer-backspace)
@@ -318,8 +318,8 @@
 
 ;;; ---------- marker ----------
 
-(define (buffer-make-marker b pos [type 'before])
-  (check-buffer-position 'buffer-make-marker b pos)
+(define (buffer-add-marker b pos [type 'before])
+  (check-buffer-position 'buffer-add-marker b pos)
   (define-values (mt id) (marker-table-add (buffer-markers b) pos type))
   (values (struct-copy buffer b
             [markers mt]
@@ -339,18 +339,18 @@
 
 ;;; ---------- overlay ----------
 
-(define (buffer-make-overlay b start-pos end-pos [presentation (hash)]
+(define (buffer-add-overlay b start-pos end-pos [presentation (hash)]
                              #:priority [priority 0]
                              #:evaporate? [evaporate? #f])
-  (check-buffer-position 'buffer-make-overlay b start-pos)
-  (check-buffer-position 'buffer-make-overlay b end-pos)
+  (check-buffer-position 'buffer-add-overlay b start-pos)
+  (check-buffer-position 'buffer-add-overlay b end-pos)
   (when (pos<? (point-line end-pos) (point-col end-pos)
                (point-line start-pos) (point-col start-pos))
-    (error 'buffer-make-overlay "overlay 区间反向: (~a ~a)..(~a ~a)"
+    (error 'buffer-add-overlay "overlay 区间反向: (~a ~a)..(~a ~a)"
            (point-line start-pos) (point-col start-pos)
            (point-line end-pos) (point-col end-pos)))
-  (define-values (b1 sid) (buffer-make-marker b start-pos 'before))
-  (define-values (b2 eid) (buffer-make-marker b1 end-pos 'after))
+  (define-values (b1 sid) (buffer-add-marker b start-pos 'before))
+  (define-values (b2 eid) (buffer-add-marker b1 end-pos 'after))
   (define-values (ot oid)
     (overlay-table-add (buffer-overlays b2) sid eid presentation
                        #:priority priority #:evaporate? evaporate?))
@@ -434,7 +434,7 @@
   (check-equal? (buffer-get-property b8 0 2 'face) 'bold)  ; 新字符继承
 
   ;; marker
-  (define-values (b9 mid) (buffer-make-marker b0 (point 0 3)))
+  (define-values (b9 mid) (buffer-add-marker b0 (point 0 3)))
   (check-equal? (buffer-marker-pos b9 mid) (point 0 3))
   ;; 在 marker 前插入 → marker 右移
   (define-values (b10 _3) (buffer-insert-char b9 0 0 #\a))
@@ -444,7 +444,7 @@
   (check-equal? (buffer-marker-pos b11 mid) (point 0 3))
 
   ;; overlay
-  (define-values (b12 oid) (buffer-make-overlay b0 (point 0 1) (point 0 4)
+  (define-values (b12 oid) (buffer-add-overlay b0 (point 0 1) (point 0 4)
                                                  (hash 'face 'region)))
   (define-values (b13 _5) (buffer-insert-char b12 0 0 #\a))
   (define runs (overlay-table-runs (buffer-overlays b13) (buffer-markers b13) 0 10))
@@ -453,7 +453,7 @@
   (check-equal? (cadr (car runs)) 5)   ; end 右移到 5
 
   ;; overlay evaporate
-  (define-values (b14 oid2) (buffer-make-overlay b0 (point 0 1) (point 0 3)
+  (define-values (b14 oid2) (buffer-add-overlay b0 (point 0 1) (point 0 3)
                                                   (hash 'face 'region) #:evaporate? #t))
   ;; 连续删 3 次，overlay 覆盖的字符全删光
   (define-values (b15 _6) (buffer-delete b14 0 1))
@@ -587,12 +587,12 @@
   (check-equal? (buffer-get-property (buffer-put-property (buffer-open "abc") 0 1 99 'face 'x) 0 0 'face) #f)
 
   ;; A5：marker/overlay 位置必须在 buffer 内；overlay 不能反向
-  (check-exn exn:fail? (lambda () (buffer-make-marker (buffer-open "abc") (point 9 0))))
-  (check-exn exn:fail? (lambda () (buffer-make-marker (buffer-open "abc") (point 0 9))))
+  (check-exn exn:fail? (lambda () (buffer-add-marker (buffer-open "abc") (point 9 0))))
+  (check-exn exn:fail? (lambda () (buffer-add-marker (buffer-open "abc") (point 0 9))))
   (check-exn exn:fail?
-             (lambda () (buffer-make-overlay (buffer-open "abc\ndef") (point 1 0) (point 0 1))))
+             (lambda () (buffer-add-overlay (buffer-open "abc\ndef") (point 1 0) (point 0 1))))
   ;; A5：边界合法（行尾 = 行长）
-  (check-true (let-values ([(b* _) (buffer-make-marker (buffer-open "abc") (point 0 3))]) (buffer? b*)))
+  (check-true (let-values ([(b* _) (buffer-add-marker (buffer-open "abc") (point 0 3))]) (buffer? b*)))
 
   ;; ---- §8.6：编辑动作的规范函数 ----
   (define (run-op op b l c) (let-values ([(b* d) (op b l c)]) (values b* d)))
@@ -612,9 +612,9 @@
   (check-eq? (edit-backspace) buffer-backspace)
   (check-false (eq? (edit-insert "x") (edit-insert "x")))
 
-  ;; edit-char ≡ (edit-insert (string ch))，含 desc
-  (check-equal? (buffer->string (op-b (edit-char #\X) edop-b 0 1)) "aXbc")
-  (check-equal? (let-values ([(b* d) (run-op (edit-char #\X) edop-b 0 1)]) (list (buffer->string b*) d))
+  ;; edit-insert-char ≡ (edit-insert (string ch))，含 desc
+  (check-equal? (buffer->string (op-b (edit-insert-char #\X) edop-b 0 1)) "aXbc")
+  (check-equal? (let-values ([(b* d) (run-op (edit-insert-char #\X) edop-b 0 1)]) (list (buffer->string b*) d))
                 (let-values ([(b* d) (run-op (edit-insert "X") edop-b 0 1)]) (list (buffer->string b*) d)))
 
   ;; ---- edit-change：一次编辑的完整材料（纯数据，由**持有光标**的层组装）----

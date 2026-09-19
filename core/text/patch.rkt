@@ -16,7 +16,7 @@
 (provide
  (struct-out patch)
  buffer-apply-patches
- buffer-content-same?)
+ buffer-content-eq?)
 
 ;; key        : 归属键（不同插件写不同 key）
 ;; first-line : 本次重新推导的起始行（含）
@@ -28,7 +28,7 @@
 ;; 插件应用标注不改 content；只有 splice 编辑才换新 content（不可变 struct）。
 ;; 所以 (eq? content) 精确地区分「用户改了内容」与「插件只写了标注」，
 ;; 而现有 tick 两者都涨，不能当版本号用。
-(define (buffer-content-same? a b)
+(define (buffer-content-eq? a b)
   (eq? (buffer-content a) (buffer-content b)))
 
 ;; 应用一批补丁：按 key 清旧写新。只 bump tick（触发重渲染），
@@ -62,11 +62,11 @@
   (define b0 (buffer-open "hello\nworld\nfoo"))
 
   ;; 内容版本：同 buffer / 编辑后 / 应用补丁后
-  (check-true (buffer-content-same? b0 b0))
+  (check-true (buffer-content-eq? b0 b0))
   (define-values (b1 _) (buffer-insert-char b0 0 0 #\X))
-  (check-false (buffer-content-same? b0 b1))
+  (check-false (buffer-content-eq? b0 b1))
   (define b2 (buffer-apply-patches b0 (list (patch 'face 0 0 (list (list 0 0 5 'bold))))))
-  (check-true (buffer-content-same? b0 b2))          ; 写标注不改内容
+  (check-true (buffer-content-eq? b0 b2))          ; 写标注不改内容
   (check-equal? (buffer-get-property b2 0 2 'face) 'bold)
 
   ;; 清旧写新：同 key 覆盖（旧段被清掉）
