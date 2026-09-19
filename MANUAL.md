@@ -53,16 +53,15 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 |---|---|
 | 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`）；**配合 document 用** `edit-insert` / `edit-newline` / `edit-backspace` / `edit-delete` / `edit-splice`（可传的值，ARCHITECTURE §8.6） |
 | 程序化编辑（自带坐标） | 构造 `edit-desc` → `buffer-apply-edit`（或 `buffer-apply-edit-trusted`） |
-| 部分只读 | `buffer-put-restrict` + `restrict`（守卫规则见 §7.5；**枚举**只读区间用 `buffer-restrict-runs`） |
-| 语法高亮 / 标注 | `buffer-put-properties-many`（一次 tick） |
-| 插件输出（可合并 / 异步） | `patch` + `buffer-apply-patches` |
+| 部分只读 | `buffer-put-restrict` + `restrict`（裸 buffer）；活文档用 `document-put-restrict`（守卫规则见 §7.5；**枚举**只读区间用 `buffer-restrict-runs`） |
+| 语法高亮 / 标注 | `buffer-put-properties-many`（裸 buffer）；活文档用 `document-put-properties-many`（一次 tick） |
+| 插件输出（可合并 / 异步） | `patch` + `buffer-apply-patches`（裸 buffer）；活文档用 `document-apply-patches` |
 | 一个文档、多个视图 | `document-*`（§6.5） |
 | 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position`（一组编辑的行区间并集 → `edits-span`） |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
-| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §8.5；示范在 `history.rkt` + `main.rkt`） |
-| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步 ＋ **每次操作要重画哪几行**（`edits-span`），**只含必要调用**；编辑路径上不出现一个 `buffer-*`（ARCHITECTURE §8.6 / §8.7） |
-| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、**只读约束**（逐行设、用户编辑被拒、`buffer-restrict-runs` 枚举区间）、**程序修改**（`-trusted` 入口 vs 守卫版）、编辑时属性自动跟随、`patch` |
+| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §8.5；示范在 `history.rkt` + `editor.rkt`） |
+| 看「一个编辑器长啥样」 | `editor.rkt`：最小无前端编辑器（依赖清单见文件头）——打开 → 编辑 → 导航 → 撤销/重做 → 高亮 → 只读 → 渲染成纯文本，**只含必要调用** |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §9 |
 
 ---
@@ -144,7 +143,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
   的约束挡住。注意 desc 不含旧文本，逆只能由编辑前内容导出。
   底层纯代数：`edit-desc-inverse d old-text`。
 - core 只给上面这组**可逆编辑代数**；**账本**（记几步、连续打字并成一步、撤销后光标回哪）
-  是消费层的事，见 ARCHITECTURE §8.5（示范在 `history.rkt` + `main.rkt`）。
+  是消费层的事，见 ARCHITECTURE §8.5（示范在 `history.rkt` + `editor.rkt`）。
 
 ### 4.2 `events`（输入）
 
@@ -389,7 +388,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 
 ### 6.5 document —— 多视图容器（机制）
 
-一个 buffer + 一组视图（`view` = window + rebase 模式），所有编辑经 `document-edit`
+一个 buffer + 一组视图（视图 = window + rebase 模式），所有编辑经 `document-edit`
 串行化，编辑后每个视图按**自己的模式**重新基准。
 **不变量**：任一 document 内，所有视图的 buffer 都 `eq?` 同一个（不分叉）。
 
@@ -398,12 +397,20 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `document-open` | s | document |
 | `document-of-buffer` | b | document（从已配置的 buffer 构造） |
 | `document->string` / `document->lines` | doc | string / (listof string)（读文本的 document 层入口；要真 buffer 用 `document-buffer`） |
+| `document-line-count` / `document-line-ref` | doc [i] | nat / string（按行读，标注循环不再下探 buffer） |
+| `document-get-property` / `document-read-only-at?` | doc line col [prop] | any\|#f / boolean（读属性/只读，不向下探 buffer） |
+| `document-restrict-runs` | doc line | (listof (list start end restrict))（枚举只读区间，O(段数)） |
 | `document-add-view` | doc [height 24] [width 80] [p] [#:sync 'free\|'follow] | (values document index)（按尺寸开视图；不再造占位 window） |
-| `document-view-count` / `document-view-ref` | doc [i] | nat / view |
+| `document-view-count` | doc | nat |
 | `document-window` | doc i | window |
 | `document-view-sync` / `document-set-view-sync` | doc i [sync] | 'free\|'follow / document |
 | `document-update-view` | doc i f | document（f : window → window；更新后**自动同步 follow 视图**——几何变更不动锚点、同步无害，导航则正是 follow 语义） |
 | `document-sync-followers` | doc i | document（把 follow 视图对齐到 i；一般不必直接调） |
+| `document-update-buffer` | doc f | document（f : buffer → buffer；**装饰写回活文档**的唯一通用入口——属性/marker/overlay/patch，不改文本、不丢视图） |
+| `document-put-property` / `document-remove-property` | doc line start end [prop] [val] | document（单键写/清：只加一段或只清一段，不清旧） |
+| `document-put-properties-many` | doc segs | document（语法高亮：一次 tick） |
+| `document-put-restrict` | doc line start end rs | document（只读约束） |
+| `document-apply-patches` | doc patches | document（插件 delta：按 key 清旧写新） |
 | `document-edit` | doc i edit-fn | (values document (or/c #f edit-change))（**唯一的编辑入口**；`#f` = no-op/被拒；`edit-change` = desc + 逆（用**编辑前** buffer 求出）+ 编辑前光标；**不记历史**） |
 | `document-apply-descs-trusted` | doc i descs [pre-point] | document（依次施加 descs，**跳过守卫**；给了 `pre-point` 就把视图 i 的光标放回那里并 `ensure-point`。撤销/重放**唯一**的落回入口） |
 
@@ -515,12 +522,10 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
 >
-> **完整示范**见 `main.rkt`——一个带 `racket-tui` 前端的完整编辑器（布局 / 输入路由 /
-> 拼屏 / 键盘命令 + 撤销），把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开。
+> **无前端示例**见 `editor.rkt`——一个不碰终端的完整编辑器（打开 / 编辑 / 导航 / 撤销 /
+> 高亮 / 只读 / 渲染成纯文本），文件头列出它用到的全部 core 名字。
 >
-> **两个聚焦示例**（都只含必要的 core 调用，可直接 `racket 文件` 跑）：
-> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步 ＋ 重画范围）、
-> `attributes.rkt`（属性 / 只读约束 / 程序修改 / patch）。
+> **撤销账本**在 `history.rkt`（消费层）：`step`/`history`/合并规则，见 ARCHITECTURE §8.5。
 
 ---
 

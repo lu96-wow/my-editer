@@ -39,7 +39,8 @@
 ;;; ── 属性怎么参与（关键）──────────────────────────────────────
 ;;;   属性不是和 screen 拼的，是「存在 buffer 里」的：
 ;;;
-;;;     buffer-put-property b 0 1 7 'face 'keyword   ; 写一次
+;;;     buffer-put-property b 0 1 7 'face 'keyword          ; 裸 buffer 上写
+;;;     document-put-properties-many doc segs                ; 活文档上写（不丢视图）
 ;;;       │  编辑时 properties-apply-edit 让属性跟着文本自动移动
 ;;;       ▼
 ;;;     window->screen 投影时，render-line 把该位置的属性读出来
@@ -50,7 +51,8 @@
 ;;;       ▼
 ;;;     终端显示蓝色
 ;;;
-;;;   你只需要一个写入口 buffer-put-property / buffer-put-properties-many；
+;;;   裸 buffer 用 buffer-put-property / buffer-put-properties-many；
+;;;   活文档（有视图）用 document-put-properties-many / document-update-buffer。
 ;;;   之后全是自动的。
 ;;;
 ;;; ── read-only 区域（显示 + 输入）──────────────────────────────
@@ -82,7 +84,7 @@
 ;;;   编辑入口返回 (values 新值 (or/c #f edit-change))，没发生就是 #f；
 ;;;   导航/状态原语直接返回新值。
 ;;;
-;;; ── 导出边界：**显式白名单**（ARCHITECTURE §8.5 C）────────────────────
+;;; ── 导出边界：**显式白名单**（ARCHITECTURE §8.8）────────────────────
 ;;; 对外名字**逐个列出**：新增内部函数**不会**自动泄漏（原来是 `except-out all-from-out`，
 ;;; fail-open —— 加个内部助手就默认对外）。白名单与 MANUAL 的「消费者 API」栏目一一对应，
 ;;; 可用 `tools/reconcile.rkt` 对账。
@@ -90,8 +92,8 @@
 ;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
 ;;;                buffer-apply-edit(-trusted)、buffer-edit-desc-inverse / edit-desc-inverse、
 ;;;                marker/overlay 的 buffer 级入口、edit-change、restrict / make-restrict、
-;;;                document-apply-descs-trusted
-;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
+;;;                document-apply-descs-trusted / document-update-buffer
+;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-* view
 ;;;                     render-* vrow/layout/wrap/window-vrows、check-mode、snap-left-col
 ;;; ============================================================================
 
@@ -169,12 +171,15 @@
  window-point->screen window-screen->point window-scroll-visual
  ;; window->screen —— 投影成画面
  window->screen
- ;; document —— 共享 buffer 的多窗口同步
- view view? struct:view view-window view-sync
- document document? struct:document document-open document-of-buffer document->string document->lines
- document-add-view document-view-count document-view-ref document-window
+ ;; document —— 共享 buffer 的多窗口同步（唯一编辑入口 + 装饰写回）
+ document document? struct:document document-open document-of-buffer
+ document->string document->lines document-line-count document-line-ref
+ document-get-property document-read-only-at? document-restrict-runs
+ document-add-view document-view-count document-window
  document-view-sync document-set-view-sync document-update-view
  document-sync-followers
+ document-update-buffer document-put-property document-put-properties-many
+ document-remove-property document-put-restrict document-apply-patches
  document-edit document-apply-descs-trusted
  document-buffer document-views)
 

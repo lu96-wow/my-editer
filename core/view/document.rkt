@@ -3,6 +3,7 @@
 (require "../text/point.rkt"
          "../text/content.rkt"
          "../text/buffer.rkt"
+         "../text/patch.rkt"
          "window.rkt"
          "view.rkt"
          rackunit)
@@ -39,6 +40,11 @@
  document-of-buffer
  document->string
  document->lines
+ document-line-count
+ document-line-ref
+ document-get-property
+ document-read-only-at?
+ document-restrict-runs
  document-view-count
  document-view-ref
  document-add-view
@@ -47,6 +53,12 @@
  document-set-view-sync
  document-update-view
  document-sync-followers
+ document-update-buffer
+ document-put-property
+ document-put-properties-many
+ document-remove-property
+ document-put-restrict
+ document-apply-patches
  document-edit
  document-apply-descs-trusted)
 
@@ -72,6 +84,15 @@
 ;; 想拿真正的 buffer（插件/属性等）仍走 document-buffer 这个访问器。
 (define (document->string doc) (buffer->string (document-buffer doc)))
 (define (document->lines doc) (buffer->lines (document-buffer doc)))
+(define (document-line-count doc) (buffer-line-count (document-buffer doc)))
+(define (document-line-ref doc i) (buffer-line-ref (document-buffer doc) i))
+;; 读侧对称：读属性/约束也留在 document 层，插件不再下探 buffer。
+(define (document-get-property doc line col prop)
+  (buffer-get-property (document-buffer doc) line col prop))
+(define (document-read-only-at? doc line col)
+  (buffer-read-only-at? (document-buffer doc) line col))
+(define (document-restrict-runs doc line)
+  (buffer-restrict-runs (document-buffer doc) line))
 
 (define (document-view-count doc) (length (document-views doc)))
 
@@ -158,6 +179,32 @@
      [top-line (window-top-line editing)]
      [left-col (window-left-col editing)]
      [top-seg  (window-top-seg  editing)])))
+
+;;; ---------- 装饰（改 buffer 的元数据，不改文本）----------
+;;; 活文档的 buffer 只能经 document-edit（文本 splice）改变；但属性 / marker / overlay /
+;;; patch 这些**装饰**是 buffer 层操作，之前没有一个入口能把改过装饰的 buffer 装回
+;;; 已有多视图的 document（document-of-buffer 造出来是 0 个视图）——插件在活文档上
+;;; 没法标注。document-update-buffer 补上这个洞：f : buffer -> buffer（装饰类，不改文本），
+;;; 换 buffer 后把每个视图的 buffer 引用同步过去（point 不变，因为文本没变）。
+
+(define (document-update-buffer doc f)
+  (define b* (f (document-buffer doc)))
+  (struct-copy document doc
+    [buffer b*]
+    [views (for/list ([v (in-list (document-views doc))])
+             (struct-copy view v [window (window-set-buffer (view-window v) b*)]))]))
+
+;; 装饰写的常用糖：语法高亮（一次 tick）、只读约束、插件 delta。
+(define (document-put-property doc line start end prop val)
+  (document-update-buffer doc (lambda (b) (buffer-put-property b line start end prop val))))
+(define (document-put-properties-many doc segs)
+  (document-update-buffer doc (lambda (b) (buffer-put-properties-many b segs))))
+(define (document-remove-property doc line start end prop)
+  (document-update-buffer doc (lambda (b) (buffer-remove-property b line start end prop))))
+(define (document-put-restrict doc line start end rs)
+  (document-update-buffer doc (lambda (b) (buffer-put-restrict b line start end rs))))
+(define (document-apply-patches doc patches)
+  (document-update-buffer doc (lambda (b) (buffer-apply-patches b patches))))
 
 ;;; ---------- 编辑 ----------
 ;;; 一条核心 + 两个对外入口：
@@ -426,5 +473,29 @@
   (check-equal? (document->string (document-open "a\nb")) "a\nb")
   (check-equal? (document->lines (document-open "a\nb")) '("a" "b"))
   (check-equal? (document->lines (document-open "")) '(""))
+  (check-equal? (document-line-count (document-open "a\nb")) 2)
+  (check-equal? (document-line-ref (document-open "a\nb") 1) "b")
+
+  ;; 装饰写回活文档（洞已补）：属性/patch/只读都不丢视图、不换文本
+  (define dec0 (document-open "hello\nworld"))
+  (define-values (dec1 _dv) (document-add-view dec0 10 40 (point 0 1)))
+  ;; 高亮：写属性后，所有视图的 buffer 引用仍是 eq?，光标不动
+  (define dec2 (document-put-properties-many dec1 (list (list 0 0 5 'face 'bold))))
+  (check-equal? (buffer-get-property (document-buffer dec2) 0 2 'face) 'bold)
+  (check-equal? (buffer->string (document-buffer dec2)) "hello\nworld")
+  (check-eq? (document-buffer dec2) (window-buffer (document-window dec2 0)))   ; 同步了
+  (check-equal? (window-point (document-window dec2 0)) (point 0 1))            ; 光标不动
+  ;; 只读：写约束（不改文本、不丢视图）
+  (define dec3 (document-put-restrict dec2 0 0 2 (restrict #t)))
+  (check-true (buffer-read-only-at? (document-buffer dec3) 0 1))
+  (check-equal? (buffer-get-property (document-buffer dec3) 0 2 'face) 'bold)   ; 表现层还在
+  ;; patch：插件 delta 也能落回活文档
+  (define dec4 (document-apply-patches dec3 (list (patch 'diag 0 0 (list (list 0 0 5 "err"))))))
+  (check-equal? (buffer-get-property (document-buffer dec4) 0 1 'diag) "err")
+  (check-true (buffer-content-same? (document-buffer dec3) (document-buffer dec4)))  ; 标注不改内容
+  ;; document-update-buffer 通用入口：任意 buffer 级装饰操作
+  (define dec5 (document-update-buffer dec4 (lambda (b) (buffer-put-property b 1 0 5 'face 'italic))))
+  (check-equal? (buffer-get-property (document-buffer dec5) 1 3 'face) 'italic)
+  (check-equal? (buffer->string (document-buffer dec5)) "hello\nworld")
 
   (displayln "document.rkt: all tests passed"))

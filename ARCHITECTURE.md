@@ -23,15 +23,14 @@ edit/
 │   ├── text/             #   文本层（无光标）：point content properties marker overlay buffer patch edit
 │   └── view/             #   视口层（后端无关）：width render window view screen project events document
 ├── history.rkt           # 消费层：撤销/重放账本（不 require document；归属见 §8.5）
-├── editing.rkt           # 消费层：编辑组合示例（编辑 → 记账 → 撤销/重做 ＋ 多视图同步 ＋ 增量范围）
-├── attributes.rkt        # 消费层：属性示例（写/读/清、只读约束、程序修改 trusted 入口、patch）
-├── main.rkt              # 消费层：完整示范（布局 / 输入路由 / 拼屏 / 键盘命令 + racket-tui 前端）
-├── io/tui.rkt            # racket-tui ↔ core 的两个连接点（全项目唯一 require racket-tui 的地方）
+├── editor.rkt            # 消费层：最小无前端编辑器（依赖清单见文件头；编辑/导航/撤销/标注/渲染闭环）
+├── io/                   # 空：前端/后端由使用方自己接（core 只产 screen、只收 events）
 └── tools/reconcile.rkt   # 文档 ↔ 可达面对账（§8.8）；racket tools/reconcile.rkt
 ```
 
 `core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
-`editing.rkt` / `attributes.rkt` 是**只含必要调用**的聚焦示例，`main.rkt` 是完整示范。
+`editor.rkt` 是最小无前端编辑器示例（文件头列出它用到的全部 core 名字），
+`history.rkt` 是撤销账本。
 
 依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
 
@@ -137,7 +136,7 @@ core 只给原语，不预设「怎么组织窗口」。
 **撤销**：`buffer-edit-desc-inverse`（b 须是 desc 生效前的 buffer）取回被删文本、求出逆编辑，
 再用 `document-apply-descs-trusted` 落回；**重放**走同一入口、传 `replay-descs`。
 **账本不在 core**（§8.5）：core 只给这组可逆编辑代数，「记几步、怎么分组」是消费层策略
-（`history.rkt`，与 `main.rkt` 并列，不在 `core/` 下）。
+（`history.rkt`，与 `editor.rkt` 并列，不在 `core/` 下）。
 
 ## 4. 命名规范
 
@@ -258,6 +257,13 @@ core 不含任何后端，也不含多窗口组合。`events`（类型化事件�
   消费方先造一个「会被丢弃 buffer 的 window」；`document-update-view` 更新第 i 视图后
   **自动同步 follow 视图**（几何变更不动锚点、同步无害；导航变更正是 follow 语义）。
   `document-sync-followers` 是内部镜像原语，一般不必直接调。
+- **装饰写回（活文档也能标注，读/写都对称）**：`document-update-buffer doc f`（f : buffer → buffer，
+  装饰类、不改文本）换 buffer 并把每个视图的 buffer 引用同步过去——补上「属性/marker/overlay/
+  patch 只能作用于裸 buffer、进不了活文档」的洞。写糖：`document-put-property`（单键）、
+  `document-remove-property`（清）、`document-put-properties-many`（高亮，一次 tick）、
+  `document-put-restrict`（只读）、`document-apply-patches`（插件 delta，按 key 清旧写新）。
+  读糖：`document-get-property` / `document-read-only-at?` / `document-restrict-runs`——
+  插件在活文档上标注时读也留在 document 层，不再下探 buffer。
 - 正在被编辑的那个视图：光标推进到插入后 + `ensure-point`。
 - **第三种策略**：编辑前用 `document-window` 拿到旧 window（不可变快照），编辑后用
   `document-update-view` 任意调整即可——不需要把策略做成函数塞进 core。
@@ -338,7 +344,7 @@ core 不含任何后端，也不含多窗口组合。`events`（类型化事件�
 - **有唯一合法解释 → 夹紧**：越界行列、属性端点超出行长、视口 `top`/`left` 越界
   （经 `document` 的路径自动夹，`window-clamp-view` 供直接摆 window 的消费方手动夹）。
 
-校验加在**唯一漏斗**上（`content-splice`、`row-modify`、`document-view-ref`），不逐原语重复。
+校验加在**唯一漏斗**上（`content-splice`、`row-modify`、`check-view-index`），不逐原语重复。
 夹紧后的结果（含 `edit-desc` 里的坐标）反映**夹紧后**的值——想确认发生了什么，看返回的 `desc`。
 
 **core 不解释的东西**（立场，消费方自行处理）：tab/Ambiguous 宽度（core 记 1 列，终端画 8，
