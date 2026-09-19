@@ -97,13 +97,13 @@
   (define h (editor-height ed))
   (define mw (editor-width ed))
   (if (app-sidebar-open? e)
-      (editor-screen-compose h (+ sidebar-width mw)
+      (screen-compose h (+ sidebar-width mw)
                              (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
                                    (list 'main sidebar-width 0 (editor->screen ed)))
                              'main)
       (editor->screen ed)))
 
-(define (render e) (editor-screen->text (layout e)))
+(define (render e) (screen->string (layout e)))
 
 ;;; ---------- 走一遍 ----------
 

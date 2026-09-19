@@ -52,11 +52,6 @@
  ;; 投影
  editor->screen
  editor-view->screen
- ;; 屏幕工具（别名）
- editor-make-screen
- editor-screen->text
- editor-screen-diff-rows
- editor-screen-compose
  ;; 文本 / 解析（按 buffer-id）
  editor-buffer->string
  editor-buffer->lines
@@ -85,9 +80,9 @@
   (define entry (buffer-entry 0 name b (make-history)))
   (editor (list entry) (list (view 0 0 (window-open b height width) 'free)) 0 1 1))
 
-;; 新增一个 buffer + 一个视图。#:focus? 控制是否把焦点交给新视图（默认是）。
+;; 新增一个 buffer + 一个视图。#:focus? 控制是否把焦点交给新视图（默认**不抢**）。
 ;; 返回 (values editor buffer-id)。
-(define (editor-open-buffer ed name text [height 24] [width 80] #:focus? [focus? #t])
+(define (editor-open-buffer ed name text [height 24] [width 80] #:focus? [focus? #f])
   (define bid (editor-next-buffer ed))
   (define entry (buffer-entry bid name (buffer-open text) (make-history)))
   (define ed1 (struct-copy editor ed
@@ -96,9 +91,9 @@
   (define-values (ed2 _vid) (editor-add-view ed1 bid height width #:focus? focus?))
   (values ed2 bid))
 
-;; 新增一个视图。#:focus? 控制是否 focus 它（默认是）。返回 (values editor view-id)。
+;; 新增一个视图。#:focus? 控制是否 focus 它（默认**不抢**）。返回 (values editor view-id)。
 (define (editor-add-view ed bid [height 24] [width 80] [p (point 0 0)]
-                         #:sync [sync 'free] #:focus? [focus? #t])
+                         #:sync [sync 'free] #:focus? [focus? #f])
   (check-sync 'editor-add-view sync)
   (define entry (editor-buffer-entry ed bid))
   (define vid (editor-next-view ed))
@@ -144,24 +139,8 @@
   (if v (struct-copy editor ed [focus (view-id v)]) ed))
 
 ;;; ---------- 视图结构变换（无策略） ----------
-
-(define (editor-set-view-sync ed vid sync)
-  (check-sync 'editor-set-view-sync sync)
-  (struct-copy editor ed
-    [views (for/list ([v (in-list (editor-views ed))])
-             (if (= (view-id v) vid) (struct-copy view v [sync sync]) v))]))
-
-;; 把某个 view 切到另一个 buffer（换属主；不触发任何同步）
-(define (editor-set-view-buffer ed vid bid)
-  (define entry (editor-buffer-entry ed bid))
-  (struct-copy editor ed
-    [views (for/list ([v (in-list (editor-views ed))])
-             (if (= (view-id v) vid)
-                 (struct-copy view v
-                   [buffer-id bid]
-                   [window (window-clamp-view
-                            (window-set-buffer (view-window v) (buffer-entry-buffer entry)))])
-                 v))]))
+;; 实现在机制层（所有状态写入都在那里），此处只经 provide 再导出：
+;;   editor-set-view-sync / editor-set-view-buffer
 
 ;;; ---------- 光标 / 尺寸 / 映射（只读） ----------
 
@@ -188,11 +167,6 @@
   (window->screen (view-window (editor-view-ref ed vid))))
 (define (editor->screen ed)
   (editor-view->screen ed (editor-focus ed)))
-
-(define editor-make-screen make-screen)
-(define editor-screen->text screen->text)
-(define editor-screen-diff-rows screen-diff-rows)
-(define editor-screen-compose screen-compose)
 
 ;;; ---------- 文本 / 解析 / 标注读（按 buffer-id） ----------
 

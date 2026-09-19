@@ -2,11 +2,12 @@
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt"
          "../view/window.rkt" "../view/view.rkt" "../view/rebase.rkt"
-         "mechanism.rkt" "editor.rkt" rackunit)
+         "../tool/history.rkt"
+         "mechanism.rkt" rackunit)
 
 ;;; core/compose/reaction.rkt —— 显示语义：内容变更后，视图怎么反应
 ;;;
-;;; 内容面（editor-apply-desc）只管「换 buffer 引用」，光标一个都不碰。
+;;; 内容面（editor-apply-edit）只管「换 buffer 引用」，光标一个都不碰。
 ;;; 本层是唯一的**显示语义**层，全部是 editor -> editor 的纯函数，三选一：
 ;;;
 ;;;   editor-clamp-views   none   字面不动，只把光标/视口夹回合法域（可能文本变小）
@@ -19,6 +20,8 @@
 ;;;
 ;;; 契约：显示语义**只在同一 buffer 的 view 之间**发生；跨 buffer 无耦合。
 ;;; leader 必须**先 ensure 定稿**，follower 再复制（否则差一行）。
+;;;
+;;; 本层只依赖机制层（mechanism.rkt）；不认识中性接口/程序面/用户面。
 
 (provide editor-clamp-views
          editor-map-views
@@ -68,34 +71,45 @@
        (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
       [else e])))
 
-;;; ---------- 测试 ----------
+;;; ---------- 测试（只经机制层造 editor） ----------
 
 (module+ test
-  (define b* (buffer-open "XYl0\nl1\nl2\nl3"))
+  ;; 造一个单 buffer 单 view 的 editor；再加一个 view（可指定 sync）
+  (define (mk text h w)
+    (define b (buffer-open text))
+    (editor (list (buffer-entry 0 "s" b (make-history)))
+            (list (view 0 0 (window-open b h w) 'free)) 0 1 1))
+  (define (add-view ed h w p sync)
+    (define b (buffer-entry-buffer (editor-buffer-entry ed 0)))
+    (struct-copy editor ed
+      [views (append (editor-views ed)
+                     (list (view (editor-next-view ed) 0
+                                 (window-set-point (window-open b h w) p) sync)))]
+      [next-view (add1 (editor-next-view ed))]))
+  (define (vp ed vid) (window-point (view-window (editor-view-ref ed vid))))
+  (define (vtl ed vid) (window-top-line (view-window (editor-view-ref ed vid))))
+  (define (vb ed bid) (buffer-entry-buffer (editor-buffer-entry ed bid)))
+
   (define d-ins (edit-desc (point 0 0) (point 0 0) "XY"))
 
   ;; none：光标字面不动（只夹紧，不映射）
-  (define n0 (editor-open "l0\nl1\nl2\nl3"))
-  (define-values (n0b nv) (editor-add-view n0 0 3 10 (point 0 1) #:focus? #f))
-  (define n1 (let-values ([(e _) (editor-apply-desc n0b 0 d-ins)]) (editor-clamp-views e 0)))
-  (check-equal? (editor-view-point n1 nv) (point 0 1))     ; 不随编辑移动
+  (define n0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
+  (define n1 (let-values ([(e _) (editor-apply-edit n0 0 d-ins)]) (editor-clamp-views e 0)))
+  (check-equal? (vp n1 1) (point 0 1))                     ; 不随编辑移动
 
   ;; map：光标随编辑右移，视口不动
-  (define m0 (editor-open "l0\nl1\nl2\nl3"))
-  (define-values (m0b mv) (editor-add-view m0 0 3 10 (point 0 1) #:focus? #f))
-  (define m1 (let-values ([(e d*) (editor-apply-desc m0b 0 d-ins)])
-               (editor-map-views e 0 (editor-buffer e 0) d*)))
-  (check-equal? (editor-view-point m1 mv) (point 0 3))     ; (0,1) 映射到 (0,3)
-  (check-equal? (editor-view-top-line m1 mv) 0)
+  (define m0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
+  (define m1 (let-values ([(e d*) (editor-apply-edit m0 0 d-ins)])
+               (editor-map-views e 0 (vb e 0) d*)))
+  (check-equal? (vp m1 1) (point 0 3))                     ; (0,1) 映射到 (0,3)
+  (check-equal? (vtl m1 1) 0)
 
   ;; leader：leader 推进，follow 镜像
-  (define g0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 3 10))
-  (define-values (g1 gv) (editor-add-view g0 0 3 10 #:sync 'follow #:focus? #f))
-  (define g2 (editor-focus-view g1 0))
-  (define-values (g3 dg) (editor-apply-desc g2 0 (edit-desc (point 0 0) (point 0 0) "XY")))
-  (define g4 (editor-leader-view g3 0 (editor-buffer g3 0) dg))
-  (check-equal? (editor-point g4) (point 0 2))
-  (check-equal? (editor-view-point g4 gv) (point 0 2))
-  (check-eq? (editor-buffer g4 0) (window-buffer (view-window (editor-view-ref g4 gv))))
+  (define g0 (add-view (mk "l0\nl1\nl2\nl3\nl4\nl5" 3 10) 3 10 (point 0 0) 'follow))
+  (define-values (g3 dg) (editor-apply-edit g0 0 (edit-desc (point 0 0) (point 0 0) "XY")))
+  (define g4 (editor-leader-view g3 0 (vb g3 0) dg))
+  (check-equal? (vp g4 0) (point 0 2))
+  (check-equal? (vp g4 1) (point 0 2))
+  (check-eq? (vb g4 0) (window-buffer (view-window (editor-view-ref g4 1))))
 
   (displayln "reaction.rkt: all tests passed"))

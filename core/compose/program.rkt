@@ -41,7 +41,7 @@
   (cond
     [(not d) (values ed #f)]
     [else
-     (define-values (ed* d*) (editor-apply-desc ed bid d (not trusted?)))
+     (define-values (ed* d*) (editor-apply-edit ed bid d (not trusted?)))
      (cond
        [(not d*) (values ed #f)]
        [else

@@ -73,7 +73,7 @@
 ;; name : 状态栏显示；tops : 三个视图各自 top-line（用来肉眼验证 follow/free）
 (define (render-frame s rows cols name)
   (define-values (H leftW rightW topH botH) (layout rows cols))
-  (define scr (editor-screen-compose
+  (define scr (screen-compose
                H cols
                (list (list 0 0 0 (editor-view->screen s 0))
                      (list 1 (add1 leftW) 0 (editor-view->screen s 1))
@@ -108,7 +108,7 @@
                         (if (>= (string-length status) cols)
                             (substring status 0 (max 0 cols))
                             (string-append status (make-string (- cols (string-length status)) #\space)))))
-  ;; 光标跟着活动窗格（editor-screen-compose 已把 active 的光标平移好）
+  ;; 光标跟着活动窗格（screen-compose 已把 active 的光标平移好）
   (define cr (screen-cursor-row scr))
   (define cc (screen-cursor-col scr))
   (if (>= cr 0)

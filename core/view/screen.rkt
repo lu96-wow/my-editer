@@ -15,7 +15,7 @@
  make-screen
  screen-diff-rows
  screen-compose
- screen->text)
+ screen->string)
 
 (struct run (col text face) #:transparent)
 ;; col  : 显示列（0-based，已按宽字符换算）
@@ -32,7 +32,7 @@
 
 ;; 把一帧摊平成纯文本（朴素投影，给测试/无前端驱动用）：
 ;; 按 run-col 定位、缺口补空格、宽字符按显示宽度占位。不画光标、不加颜色。
-(define (screen->text s)
+(define (screen->string s)
   (string-join
    (for/list ([runs (in-vector (screen-row-runs s))])
      (define out (open-output-string))
@@ -83,11 +83,11 @@
   (check-equal? (vector-length (screen-row-runs s0)) 2)
   (check-equal? (screen-cursor-row s0) -1)
 
-  ;; 构造 / screen->text
+  ;; 构造 / screen->string
   (define r1 (run 0 "ab" (hash 'face 'bold)))
   (define r2 (run 2 "中" (hash 'face 'keyword)))
   (define s1 (screen 2 10 (vector (list r1 r2) '()) 0 3))
-  (check-equal? (screen->text s1) (string-append "ab中\n"))
+  (check-equal? (screen->string s1) (string-append "ab中\n"))
   (check-equal? (screen-cursor-col s1) 3)
 
   ;; diff

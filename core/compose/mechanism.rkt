@@ -13,7 +13,7 @@
 ;;;   · 查找：editor-buffer-entry / editor-view-ref / editor-focused-view
 ;;;   · 写原语（无策略）：
 ;;;       editor-swap-buffer   换某 buffer 的 buffer 值（entries + 同 buffer view 的引用）
-;;;       editor-apply-desc    内容变更唯一漏斗（= buffer-apply-edit + swap）
+;;;       editor-apply-edit    内容变更唯一漏斗（= buffer-apply-edit + swap）
 ;;;       editor-update-buffer 装饰类写回（f : buffer → buffer）
 ;;;       editor-put-view      换一个 view 的 window
 ;;;       editor-put-history / editor-record-history
@@ -31,9 +31,11 @@
  editor-history
  check-sync
  editor-swap-buffer
- editor-apply-desc
+ editor-apply-edit
  editor-update-buffer
  editor-put-view
+ editor-set-view-sync
+ editor-set-view-buffer
  editor-put-history
  editor-record-history)
 
@@ -74,6 +76,14 @@
 
 (define (editor-history ed bid) (buffer-entry-history (editor-buffer-entry ed bid)))
 
+;; 把指定 vid 的 view 交给 f 变换（f : view → view）；别的 view 不动。
+;; 所有按 vid 定位的视图写入都走它。
+(define (map-view ed vid f)
+  (editor-view-ref ed vid)                 ; 校验存在
+  (struct-copy editor ed
+    [views (for/list ([v (in-list (editor-views ed))])
+             (if (= (view-id v) vid) (f v) v))]))
+
 ;;; ---------- 写原语（无策略） ----------
 
 ;; 换某 buffer 的 buffer 值：entries + 同 buffer view 的 window.buffer 一起换。
@@ -90,7 +100,7 @@
 
 ;; 内容变更唯一漏斗：把 desc 施加到 bid 的 buffer，再换引用。
 ;; 返回 (values editor 生效desc/#f)。**不做**任何显示决策（不映射光标）。
-(define (editor-apply-desc ed bid d [guard? #t])
+(define (editor-apply-edit ed bid d [guard? #t])
   (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
   (define-values (b* d*) (if guard? (buffer-apply-edit b0 d) (buffer-apply-edit-trusted b0 d)))
   (if (not d*)
@@ -103,12 +113,21 @@
 
 ;; 换一个 view 的 window（夹紧视口）；不碰别的 view。
 (define (editor-put-view ed vid w)
-  (editor-view-ref ed vid)                 ; 校验存在
-  (struct-copy editor ed
-    [views (for/list ([v (in-list (editor-views ed))])
-             (if (= (view-id v) vid)
-                 (struct-copy view v [window (window-clamp-view w)])
-                 v))]))
+  (map-view ed vid (lambda (v) (struct-copy view v [window (window-clamp-view w)]))))
+
+;; 视图结构变换（无策略；只动指定的 view）
+(define (editor-set-view-sync ed vid sync)
+  (check-sync 'editor-set-view-sync sync)
+  (map-view ed vid (lambda (v) (struct-copy view v [sync sync]))))
+
+;; 把某个 view 切到另一个 buffer（换属主；不触发任何同步）
+(define (editor-set-view-buffer ed vid bid)
+  (define b* (buffer-entry-buffer (editor-buffer-entry ed bid)))
+  (map-view ed vid
+            (lambda (v)
+              (struct-copy view v
+                [buffer-id bid]
+                [window (window-clamp-view (window-set-buffer (view-window v) b*))]))))
 
 (define (editor-record-history ed bid ch)
   (define entry (editor-buffer-entry ed bid))
@@ -136,7 +155,7 @@
   (check-equal? (window-point (view-window (editor-view-ref e1 0))) (point 0 0))
 
   ;; apply-desc：内容变、光标字面不动
-  (define-values (e2 d2) (editor-apply-desc e0 0 (edit-desc (point 0 0) (point 0 0) "XY")))
+  (define-values (e2 d2) (editor-apply-edit e0 0 (edit-desc (point 0 0) (point 0 0) "XY")))
   (check-equal? (buffer->string (buffer-entry-buffer (editor-buffer-entry e2 0))) "XYold")
   (check-equal? (window-point (view-window (editor-view-ref e2 0))) (point 0 0))
   (check-equal? d2 (edit-desc (point 0 0) (point 0 0) "XY"))

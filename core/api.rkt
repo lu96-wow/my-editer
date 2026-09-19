@@ -79,13 +79,13 @@
  run run? struct:run run-col run-text run-face
  screen screen? struct:screen screen-rows screen-cols screen-row-runs
  screen-cursor-row screen-cursor-col
- make-screen screen-diff-rows screen-compose screen->text
+ make-screen screen-diff-rows screen-compose screen->string
  ;; ---- window ----
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
- window-set-top-seg window-set-size window-scroll window-hscroll
+ window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual

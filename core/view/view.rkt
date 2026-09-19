@@ -212,7 +212,7 @@
 
 (define (window-scroll-visual w delta)
   (case (window-mode w)
-    ['clip (window-scroll w delta)]
+    ['clip (window-scroll-clip w delta)]
     ['wrap (window-scroll-wrap w delta)]
     [else (check-mode 'window-scroll-visual (window-mode w))]))
 

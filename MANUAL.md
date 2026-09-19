@@ -123,7 +123,8 @@
 | `window-screen->point` | 屏幕坐标 → 位置 |
 | `window-set-size` | 设尺寸 |
 | `window-set-mode` | `clip` 或 `wrap` |
-| `window-scroll` | 设顶部行 |
+| `window-scroll-clip` | 相对滚动（clip：按 buffer 行） |
+| `window-scroll-visual` | 相对滚动（按 mode 分派到 clip/wrap） |
 | `window-hscroll` | 水平滚动 |
 
 ## 6. 投影 —— window → screen
@@ -143,7 +144,7 @@
 | `run-face` | run 语义样式 |
 | `screen-compose` | 把多块 screen 拼成一帧 |
 | `screen-diff-rows` | 两帧差异行 |
-| `screen->text` | 调试：画面转文本 |
+| `screen->string` | 调试：画面转字符串 |
 
 ## 7. 事件（后端喂进来的输入）
 
@@ -297,10 +298,6 @@
 | `editor-view-point->screen` | 某 view 光标 → 屏幕坐标 |
 | `editor-screen->point` | 屏幕坐标 → 焦点 view 位置 |
 | `editor-view-screen->point` | 屏幕坐标 → 某 view 位置 |
-| `editor-screen-compose` | 多块 screen 拼接 |
-| `editor-screen-diff-rows` | 两帧差异行 |
-| `editor-screen->text` | 调试：画面转文本 |
-| `editor-make-screen` | 造一个空 screen |
 
 ### 9.10 命令返回值
 

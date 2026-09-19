@@ -87,7 +87,7 @@ editor(入口)  ←  api, compose(editor, program, command)
 内容变更漏斗（机制层）：
 
 ```
-editor-apply-desc ed bid desc
+editor-apply-edit ed bid desc
   = buffer-apply-edit  →  editor-swap-buffer
 ```
 

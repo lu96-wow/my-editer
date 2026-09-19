@@ -81,10 +81,10 @@
 
 ;;; ---------- 位置夹紧 ----------
 ;; 越界位置有唯一合法解释 → 夹到合法域。行 ∈ [0, 行数)，列 ≤ 该行长。
+;; 唯一实现在 point-clamp；这里只把「行数 + 行长」两个投影喂给它。
 (define (content-clamp-point c p)
-  (define n (content-line-count c))
-  (define l (max 0 (min (point-line p) (sub1 n))))
-  (point l (max 0 (min (point-col p) (string-length (content-line-ref c l))))))
+  (point-clamp p (content-line-count c)
+               (lambda (l) (string-length (content-line-ref c l)))))
 
 (define (content-line-length c line)
   (define n (content-line-count c))

@@ -40,7 +40,7 @@
   (cond
     [(not d) (values ed #f)]
     [else
-     (define-values (ed* d*) (editor-apply-desc ed bid d #t))
+     (define-values (ed* d*) (editor-apply-edit ed bid d #t))
      (cond
        [(not d*) (values ed #f)]
        [else
@@ -61,7 +61,7 @@
     [(not st) (values ed #f)]
     [else
      (define ed* (for/fold ([e ed]) ([d (in-list (step-undo-descs st))])
-                   (define-values (e1 d1) (editor-apply-desc e bid d #f))
+                   (define-values (e1 d1) (editor-apply-edit e bid d #f))
                    (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) d1) e1)))
      ;; 撤销后 leader 光标回到该步开始前，并 ensure
      (define w* (window-ensure-point
@@ -79,7 +79,7 @@
     [(not st) (values ed #f)]
     [else
      (define ed* (for/fold ([e ed]) ([d (in-list (step-replay-descs st))])
-                   (define-values (e1 d1) (editor-apply-desc e bid d #f))
+                   (define-values (e1 d1) (editor-apply-edit e bid d #f))
                    (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) d1) e1)))
      (define-values (f l) (edits-span (step-replay-descs st)))
      (values (editor-put-history ed* bid h*) (change-report f l))]))
@@ -122,7 +122,7 @@
 
   ;; 多 buffer：各自独立文本 / 账本
   (define ed (editor-open "AAA"))
-  (define-values (ed2 bid1) (editor-open-buffer ed "b.txt" "BBB"))
+  (define-values (ed2 bid1) (editor-open-buffer ed "b.txt" "BBB" #:focus? #t))
   (check-equal? (editor-focused-buffer-id ed2) bid1)
   (define-values (ed3 _u5) (editor-edit ed2 (edit-insert "x")))
   (check-equal? (editor-buffer->string ed3 bid1) "xBBB")
@@ -132,7 +132,7 @@
 
   ;; 多视图同 buffer：free 映射、follow 镜像
   (define m0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
-  (define-values (m1 v0) (editor-add-view m0 0 3 10))         ; v0 被 focus
+  (define-values (m1 v0) (editor-add-view m0 0 3 10))         ; 默认不抢焦点：仍停在 view 0
   (define m2 (editor-focus-view (editor-set-view-sync m1 v0 'follow) 0))
   (define m3 (editor-goto m2 (point 0 0)))
   (define-values (m4 _u6) (editor-edit m3 (edit-insert "XY")))
