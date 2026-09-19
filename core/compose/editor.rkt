@@ -1,7 +1,8 @@
 #lang racket
 
 (require "../text/point.rkt" "../text/buffer.rkt" "../text/edit.rkt"
-         "../view/window.rkt" "../view/document.rkt" "../tool/history.rkt" rackunit)
+         "../view/window.rkt" "../view/document.rkt" "../view/screen.rkt" "../view/project.rkt"
+         "../tool/history.rkt" rackunit)
 
 ;;; core/compose/editor.rkt —— 统一的编辑平台：editor
 ;;;
@@ -10,6 +11,7 @@
 ;;;
 ;;;   构造   editor-open / editor-of-document
 ;;;   视图   editor-window / editor-add-view / editor-update-view / editor-set-view-size …
+;;;   投影   editor->screen / editor-view->screen
 ;;;   读     editor->string / editor-line-ref / editor-range-text / editor-get-property …
 ;;;   标注   editor-put-property / editor-put-restrict / editor-apply-patches …（不改文本、不动账本）
 ;;;   编辑   editor-edit / editor-undo / editor-redo   → (values editor (or/c #f change-report))
@@ -35,6 +37,11 @@
  editor-set-view-size
  editor-view-sync
  editor-set-view-sync
+ ;; 投影
+ editor->screen
+ editor-view->screen
+ ;; 拼屏（别名：与 screen-compose 同一个过程对象）
+ editor-screen-compose
  ;; 读
  editor->string
  editor->lines
@@ -119,6 +126,20 @@
 (define (editor-set-view-sync ed i sync)
   (with-document ed (lambda (doc) (document-set-view-sync doc i sync))))
 
+;;; ---------- 投影（window → screen）----------
+
+;; 活动视图投影成 screen（= window->screen (editor-window ed)）
+(define (editor->screen ed)
+  (window->screen (editor-window ed)))
+
+;; 第 i 个视图投影成 screen（多窗格布局用）
+(define (editor-view->screen ed i)
+  (window->screen (editor-view-window ed i)))
+
+;; 拼屏：多窗格用 editor-view->screen 拼成整屏。与 screen-compose 同一个过程对象，
+;; 提供 editor-* 前缀只是为了让使用者的平台面统一。
+(define editor-screen-compose screen-compose)
+
 ;;; ---------- 读 ----------
 
 (define (editor->string ed) (document->string (editor-document ed)))
@@ -193,6 +214,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
+  (require "../view/screen.rkt")
   (define e0 (editor-open ""))
 
   ;; 读 / 编辑 / 报告
@@ -246,5 +268,10 @@
   (check-equal? (editor-get-property ed5 0 1 'face) 'bold)
   (check-equal? (editor->string ed5) "l0\nl1\nl2\nl3")
   (check-equal? (editor-view-count ed5) 3)
+
+  ;; 投影 / 拼屏
+  (check-true (screen? (editor->screen e3)))
+  (check-true (screen? (editor-view->screen ed2 0)))
+  (check-eq? editor-screen-compose screen-compose)      ; 与原子是同一个过程对象
 
   (displayln "editor.rkt: all tests passed"))

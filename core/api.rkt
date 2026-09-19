@@ -1,8 +1,12 @@
 #lang racket
 
 ;;; ============================================================================
-;;; api.rkt —— core 对外的唯一原子门面
+;;; api.rkt —— core 的全量导出（原子 + 机制）
 ;;; ============================================================================
+;;;
+;;; 这是**全量**面：原子（buffer/window/screen/events/point/…）+ 机制（document-*）。
+;;; 日常编程用**标准入口** core/editor.rkt（只透出原子 + editor-*，不含 document-*）；
+;;; 需要下探机制（多视图/装饰写回等）时才来这里。
 ;;;
 ;;; 使用方一律 (require "core/api.rkt")。core/text/*、core/view/* 是内部实现，不直接 require。
 ;;; 工具层/组合层（core/tool/history.rkt、core/compose/editor.rkt）在门面之上，按需直接 require。

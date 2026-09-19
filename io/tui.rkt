@@ -58,7 +58,7 @@
 ;; 我们把光标移到「屏幕上第 row 行第 col 列」（0-based）——终端 CUP 是 1-based，故 +1。
 (define (render-frame s rows cols [name "*scratch*"])
   (define w (editor-window s))
-  (define scr (window->screen w))
+  (define scr (editor->screen s))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
   (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])

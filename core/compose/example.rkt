@@ -83,15 +83,16 @@
    height sidebar-width))
 
 (define (layout e)
-  (define main (editor-window (file-editor (current-file e))))
+  (define ed (file-editor (current-file e)))
+  (define main (editor-window ed))
   (define h (window-height main))
   (define mw (window-width main))
   (if (app-sidebar-open? e)
-      (screen-compose h (+ sidebar-width mw)
+      (editor-screen-compose h (+ sidebar-width mw)
                       (list (list 'sidebar 0 0 (window->screen (sidebar-window e h)))
-                            (list 'main sidebar-width 0 (window->screen main)))
+                            (list 'main sidebar-width 0 (editor->screen ed)))
                       'main)
-      (window->screen main)))
+      (editor->screen ed)))
 
 (define (render e) (screen->text (layout e)))
 
