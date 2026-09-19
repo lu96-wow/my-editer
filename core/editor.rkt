@@ -2,25 +2,23 @@
 
 ;;; core/editor.rkt —— 使用者标准入口
 ;;;
-;;; 一个 require 拿到全平台：
+;;; 一个 require 拿到：
 ;;;   · 原子          point / edit-desc / buffer / window / screen / events / …
-;;;   · editor 状态   editor / 查询 / 解析 / 标注 / 投影          （compose/editor.rkt）
-;;;   · 显示语义      none / map / leader                          （compose/reaction.rkt）
-;;;   · 程序面        editor-edit-at 等（默认不动视图）            （compose/program.rkt）
-;;;   · 用户面        editor-edit / 导航 / 撤销 / 焦点             （compose/command.rkt）
+;;;   · editor 中性面  构造 / 查询 / 解析 / 标注读 / 投影            （compose/editor.rkt）
+;;;   · 程序面        editor-edit-at / 显式视图命令 / 标注写          （compose/program.rkt）
+;;;   · 用户面        editor-edit / 导航 / 撤销 / 焦点               （compose/command.rkt）
 ;;;
-;;; 全量面（含机制）在 core/api.rkt。
+;;; 内部机制不在这里：compose/mechanism.rkt（写原语）、compose/reaction.rkt（显示语义）。
+;;; 全量原子面在 core/api.rkt。
 
 (require "api.rkt"
          "compose/editor.rkt"
-         "compose/reaction.rkt"
          "compose/program.rkt"
          "compose/command.rkt")
 
 (provide
  (all-from-out "compose/command.rkt")
  (all-from-out "compose/program.rkt")
- (all-from-out "compose/reaction.rkt")
  (all-from-out "compose/editor.rkt")
  (all-from-out "api.rkt"))
 

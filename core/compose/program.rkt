@@ -1,8 +1,9 @@
 #lang racket
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt" "../text/edit.rkt"
+         "../text/patch.rkt"
          "../view/window.rkt"
-         "editor.rkt" "reaction.rkt" rackunit)
+         "mechanism.rkt" "editor.rkt" "reaction.rkt" rackunit)
 
 ;;; core/compose/program.rkt —— 程序面：内容变更 + 显式视图命令
 ;;;
@@ -18,7 +19,13 @@
  editor-set-point
  editor-view-set-point
  editor-set-view-size
- editor-set-mode)
+ editor-set-mode
+ ;; 标注写（程序面：改 buffer 的标注，不碰文本/光标）
+ editor-put-property
+ editor-remove-property
+ editor-put-properties-many
+ editor-put-restrict
+ editor-apply-patches)
 
 ;; 在 bid 的显式位置 p 编辑。op : buffer point → (or/c #f edit-desc)。
 ;; 返回 (values editor (or/c #f change-report))。
@@ -69,6 +76,19 @@
   (editor-put-view ed (editor-focus ed)
                    (window-set-mode (view-window (editor-focused-view ed)) mode)))
 
+;;; ---------- 标注写（改 buffer 的标注；不碰文本，光标自然不动） ----------
+
+(define (editor-put-property ed bid start end key val)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-property b start end key val))))
+(define (editor-remove-property ed bid start end key)
+  (editor-update-buffer ed bid (lambda (b) (buffer-remove-property b start end key))))
+(define (editor-put-properties-many ed bid segs)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-properties-many b segs))))
+(define (editor-put-restrict ed bid start end rs)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
+(define (editor-apply-patches ed bid patches)
+  (editor-update-buffer ed bid (lambda (b) (buffer-apply-patches b patches))))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -100,6 +120,11 @@
   (check-equal? (editor-buffer->string tr1 0) "abc")
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
+
+  ;; 标注写：只改标注，不置 modified?（约定：只有编辑置位）
+  (define an (editor-put-property (editor-open "hello") 0 (point 0 0) (point 0 5) 'face 'bold))
+  (check-equal? (editor-get-property an 0 (point 0 2) 'face) 'bold)
+  (check-false (editor-buffer-modified? an 0))
 
   ;; 显式视图命令不动别的 view
   (define v0 (editor-open "l0\nl1\nl2"))

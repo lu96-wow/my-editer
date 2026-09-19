@@ -2,7 +2,7 @@
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt"
          "../view/window.rkt" "../view/view.rkt" "../view/rebase.rkt"
-         "editor.rkt" rackunit)
+         "mechanism.rkt" "editor.rkt" rackunit)
 
 ;;; core/compose/reaction.rkt —— 显示语义：内容变更后，视图怎么反应
 ;;;

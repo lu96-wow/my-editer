@@ -3,7 +3,7 @@
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt" "../text/edit.rkt"
          "../view/window.rkt" "../view/view.rkt"
          "../tool/history.rkt"
-         "editor.rkt" "reaction.rkt" rackunit)
+         "mechanism.rkt" "editor.rkt" "reaction.rkt" rackunit)
 
 ;;; core/compose/command.rkt —— 用户面：焦点 + leader + ensure + 账本
 ;;;

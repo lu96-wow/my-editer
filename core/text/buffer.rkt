@@ -206,11 +206,13 @@
     (error who "属性区间必须在同一行内: ~a..~a" start end))
   (values (point-line s) (point-col s) (point-col e)))
 
-(define (touch b) (struct-copy buffer b [tick (add1 (buffer-tick b))] [modified? #t]))
+;; 标注/标记/装饰写回：只涨 tick（重绘），**不置 modified?**。
+;; 约定（ARCHITECTURE）：modified? 只由文本编辑置位，patch/标注都不置。
+(define (bump b) (struct-copy buffer b [tick (add1 (buffer-tick b))]))
 
 (define (buffer-put-property b start end key val)
   (define-values (l s e) (clamp-prop-range 'buffer-put-property b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-put (buffer-properties b) l s e key val)])))
 
 ;; 单点查询收 point（区间查询收两端 point）。
@@ -219,7 +221,7 @@
 
 (define (buffer-remove-property b start end key)
   (define-values (l s e) (clamp-prop-range 'buffer-remove-property b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-remove (buffer-properties b) l s e key)])))
 
 ;; segs = (listof (list start end key val))，两端皆为 point；一次 tick。
@@ -231,13 +233,13 @@
        (for/list ([sg (in-list segs)])
          (define-values (l s e) (clamp-prop-range 'buffer-put-properties-many b (car sg) (cadr sg)))
          (list* l s e (cddr sg))))
-     (touch (struct-copy buffer b
+     (bump (struct-copy buffer b
               [properties (properties-put-many (buffer-properties b) clamped)]))]))
 
 ;; 写约束槽（传 (make-restrict) 即清除）。只动约束，不碰表现层。
 (define (buffer-put-restrict b start end rs)
   (define-values (l s e) (clamp-prop-range 'buffer-put-restrict b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-put-restrict (buffer-properties b) l s e rs)])))
 
 ;;; ---------- marker ----------
@@ -253,10 +255,10 @@
 (define (buffer-add-marker b p [insertion-type 'before])
   (check-buffer-position 'buffer-add-marker b p)
   (define-values (mt id) (marker-table-add (buffer-markers b) p insertion-type))
-  (values (touch (struct-copy buffer b [markers mt])) id))
+  (values (bump (struct-copy buffer b [markers mt])) id))
 
 (define (buffer-remove-marker b id)
-  (touch (struct-copy buffer b [markers (marker-table-remove (buffer-markers b) id)])))
+  (bump (struct-copy buffer b [markers (marker-table-remove (buffer-markers b) id)])))
 
 (define (buffer-marker-pos b id)
   (define m (marker-table-get (buffer-markers b) id))
@@ -276,10 +278,10 @@
   (define-values (ot oid)
     (overlay-table-add (buffer-overlays b) sid eid presentation
                        #:priority priority #:evaporate? evaporate?))
-  (values (touch (struct-copy buffer b [markers mt2] [overlays ot])) oid))
+  (values (bump (struct-copy buffer b [markers mt2] [overlays ot])) oid))
 
 (define (buffer-remove-overlay b oid)
-  (touch (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
+  (bump (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
 
 ;;; ---------- 测试 ----------
 
