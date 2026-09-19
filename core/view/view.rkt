@@ -152,7 +152,7 @@
 ;; 把视口夹回合法域：`top`/`top-seg` 夹到范围内、`left-col` 吸附到字符起点。
 ;; **为什么必须有**：`rebase-free` 只改 point、`set-top/set-left/set-size` 只做 `max 0` ——
 ;; 另一个视图把内容删短（或几何变化）后，本视图的 top 会越界，实测后果是
-;; clip 静默全空白 / wrap 在 `window->screen` 抛 vector-ref（ARCHITECTURE §10.3 D1）。
+;; clip 静默全空白 / wrap 在 `window->screen` 抛 vector-ref（ARCHITECTURE §8.5 D1）。
 ;; 语义修正：`free` 视图「视口钉住不动」= 钉住**但仍在合法域内**。
 (define (window-clamp-view w)
   (define b (window-buffer w))
@@ -419,7 +419,7 @@
   (if l (window-set-point w (point l c)) w))
 
 ;; 方向名词一族（§4：名字与键名同形）。**按视觉行**移动（= window-visual-move ∓1），
-;; 不是 buffer 行 —— wrap 模式下两者不同；window-visual-move 留给 delta 用法（§11.2 ④）。
+;; 不是 buffer 行 —— wrap 模式下两者不同；window-visual-move 留给 delta 用法。
 (define (window-up w)   (window-visual-move w -1))
 (define (window-down w) (window-visual-move w +1))
 

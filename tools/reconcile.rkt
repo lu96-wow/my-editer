@@ -1,6 +1,6 @@
 #lang racket
 
-;; tools/reconcile.rkt —— 文档 ↔ 可达面对账（ARCHITECTURE §10.3 C/E）
+;; tools/reconcile.rkt —— 文档 ↔ 可达面对账（ARCHITECTURE §8.5 C/E）
 ;;
 ;; 做法：扫两份 .md **表格行第一格**的首个反引号 token，逐个分类：
 ;;   api      —— 在 core/api.rkt 的显式白名单里（消费者可用）✓
@@ -11,7 +11,7 @@
 ;;       同时是 `raco test .` 的一个检查（`module+ test`：安静，有漂移才失败）。
 ;; 要点（踩过的坑）：① 只取**第一格**——行内其它反引号多是概念词、字段名、局部变量
 ;; （`cursor`、`left-col`、`pl`…），用「行内首个反引号」会误报一堆；
-;; ② 比对集合要含消费层模块（`history.rkt`/`main.rkt`），否则 §9 的账本名字会误报。
+;; ② 比对集合要含消费层模块（`history.rkt`/`main.rkt`），否则 §8.5 的账本名字会误报。
 
 (require racket/list racket/runtime-path)
 

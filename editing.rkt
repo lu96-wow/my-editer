@@ -12,7 +12,7 @@
 ;;;      操作都把范围一起返回；导航不改文本，也就没有范围。
 ;;;
 ;;; 必要 API（core/api.rkt ＋ 消费层 history.rkt）：
-;;;   装配  document-open        make-window            document-add-view
+;;;   装配  document-open        document-add-view（直接给尺寸，不再造占位 window）
 ;;;   编辑  document-edit        edit-char / edit-insert / edit-newline
 ;;;                              edit-backspace / edit-delete
 ;;;   记账  make-history         history-record         history-pop-undo / -redo
@@ -31,8 +31,8 @@
 (struct ed (doc active hist) #:transparent)
 
 (define (open-editor text)
-  (define-values (doc i) (document-add-view (document-open text) (make-window 6 40)))
-  (define-values (doc* _) (document-add-view doc (make-window 6 40) #:sync 'follow))
+  (define-values (doc i) (document-add-view (document-open text) 6 40))
+  (define-values (doc* _) (document-add-view doc 6 40 #:sync 'follow))
   (ed doc* i (make-history)))
 
 ;;; ---------- 编辑：一次调用 = 新状态 + 材料 + 要重画的行 ----------
@@ -51,10 +51,11 @@
 
 (define (nav a win-fn)
   (struct-copy ed a
-    [doc (document-update-view-synced (ed-doc a) (ed-active a) win-fn)]))
+    [doc (document-update-view (ed-doc a) (ed-active a)
+           (lambda (w) (window-ensure-point (win-fn w))))]))
 
 ;;; ---------- 撤销 / 重做：同一个入口，差别只有"传不传光标" ----------
-;;; 撤销：账本记得该步**之前**的光标，显式放回去（推导不出来，见 §12.5 R5）。
+;;; 撤销：账本记得该步**之前**的光标，显式放回去（推导不出来，见 §8.5 R5）。
 ;;; 重做：不给光标——desc 的天然落点（最后一条 desc 之后）就是当时的落点。
 ;;; 要重画的行 = **该步全部 desc 的并集**（一步可以有多条：连续打字会并成一步）。
 
@@ -150,7 +151,7 @@
   (define-values (m2 mf2 ml2) (edit (open-editor "aa\nbb") (edit-delete)))
   (check-equal? (list mf2 ml2) (list 0 0))
 
-  ;; 前向删除的撤销：光标与范围都只有账本知道（这条断言就是 §12.5 R5 的由来）
+  ;; 前向删除的撤销：光标与范围都只有账本知道（这条断言就是 §8.5 R5 的由来）
   (define b1 (nav (open-editor "abc") (lambda (w) (window-goto w 0 1))))
   (define-values (b2 _bf _bl) (edit b1 (edit-delete)))
   (check-equal? (text b2) "ac")

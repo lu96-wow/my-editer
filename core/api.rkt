@@ -20,17 +20,17 @@
 ;;;   screen      输出：一帧画面（每行几段 run + 一个光标，交给后端画）
 ;;;
 ;;;   【操作：真正的「API」只有这两个】
-;;;   window      视口：buffer 引用 + 光标 + 滚动 + 尺寸
-;;;               · 编辑：window-edit（收一个 edit-fn；构造器见 §12 的 edit-*）
-;;;               · 导航：window-goto/left/right/home/end + window-visual-move
+;;;   window      视口（**纯视图**）：buffer 引用 + 光标 + 滚动 + 尺寸
+;;;               · 导航：window-goto/left/right/up/down/home/end + window-visual-move
 ;;;               · 状态：window-set-* / window-scroll / window-ensure-point
+;;;               （**不编辑** —— 编辑改共享 buffer，属于 document）
 ;;;   window->screen  投影：window 可见区 → screen（纯函数，无副作用）
 ;;;
 ;;; ── 两条数据流 ──────────────────────────────────────────────
 ;;;
 ;;;   编辑流：
-;;;     events → window-edit / document-edit（收 edit-fn：§12 的 edit-*）→ buffer-* → 新 buffer + edit-change
-;;;     （入口会自动换新 buffer、把光标推到编辑后位置；document-edit 还会 rebase 其余视图）
+;;;     events → document-edit（唯一编辑入口，收 edit-fn：edit-*）→ buffer-* → 新 buffer + edit-change
+;;;     （入口自动换新 buffer、把光标推到编辑后位置，并 rebase 其余视图）
 ;;;
 ;;;   渲染流：
 ;;;     buffer → render-line → glyph → line-range->runs → run
@@ -65,25 +65,24 @@
 ;;;
 ;;; ── 最小编辑器骨架 ──────────────────────────────────────────
 ;;;
-;;;   (define b (buffer-open "hello"))            ; 开文档
-;;;   (define w (window-open b 24 80))            ; 开视口
-;;;   (define s (window->screen w))               ; 投影成画面
+;;;   (define-values (doc _) (document-add-view (document-open "hello") 24 80))  ; 开文档 + 开视口
+;;;   (define s (window->screen (document-window doc 0)))   ; 投影成画面
 ;;;   ;; 后端画 s；后端喂入一个 event：
-;;;   (define-values (w* ch) (window-edit w (edit-char #\X)))  ; 处理 text-event
-;;;   ;; w* 的 buffer 已换新、光标已推进；ch 是 (or/c #f edit-change)，
-;;;   ;; #f = 什么都没发生，非 #f 时上层拿它做同步/记账（多视图请改用 document-edit）
+;;;   (define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))  ; 处理 text-event
+;;;   ;; doc* 的 buffer 已换新、光标已推进；ch 是 (or/c #f edit-change)，
+;;;   ;; #f = 什么都没发生，非 #f 时上层拿它做记账（要撤销就收下 ch）
 ;;;
 ;;; ── 唯一跨层契约 ────────────────────────────────────────────
 ;;;   edit-desc   (s-line s-col e-line e-col new-text)
 ;;;   一次编辑 = 删除 [s..e) + 插入 new-text（所有编辑都是它的特例）。
 ;;;   edit-change (desc inv pre-point)
 ;;;   一次编辑的**完整材料**：desc（重放用）+ inv（撤销用，从编辑前的 buffer 导出）
-;;;   + pre-point（编辑前光标）。缓冲区层没有光标，故只有 window-edit / document-edit 产出它。
+;;;   + pre-point（编辑前光标）。缓冲区层没有光标，故只有 document-edit 产出它。
 ;;;
 ;;;   编辑入口返回 (values 新值 (or/c #f edit-change))，没发生就是 #f；
 ;;;   导航/状态原语直接返回新值。
 ;;;
-;;; ── 导出边界：**显式白名单**（ARCHITECTURE §10.3 C）────────────────────
+;;; ── 导出边界：**显式白名单**（ARCHITECTURE §8.5 C）────────────────────
 ;;; 对外名字**逐个列出**：新增内部函数**不会**自动泄漏（原来是 `except-out all-from-out`，
 ;;; fail-open —— 加个内部助手就默认对外）。白名单与 MANUAL 的「消费者 API」栏目一一对应，
 ;;; 可用 `tools/reconcile.rkt` 对账。
@@ -91,7 +90,7 @@
 ;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
 ;;;                buffer-apply-edit(-trusted)、buffer-edit-desc-inverse / edit-desc-inverse、
 ;;;                marker/overlay 的 buffer 级入口、edit-change、restrict / make-restrict、
-;;;                document-apply-edit / document-apply-descs-trusted
+;;;                document-apply-descs-trusted
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
 ;;;                     render-* vrow/layout/wrap/window-vrows、check-mode、snap-left-col
 ;;; ============================================================================
@@ -159,13 +158,12 @@
  screen-cursor-row screen-cursor-col
  make-screen screen-diff-rows screen-compose screen->text
  run run? struct:run run-col run-text run-face
- ;; window —— 视口 + 编辑/导航
- window window? struct:window window-open make-window window-buffer window-point
+ ;; window —— 视口（纯视图）+ 导航
+ window window? struct:window window-open window-buffer window-point
  window-height window-width window-mode window-top-line window-left-col window-top-seg
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
  window-set-top-seg window-set-size window-scroll window-hscroll window-goto
  window-left window-right window-home window-end
- window-edit
  ;; 窗口级操作（vrow 布局内部藏起来）
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual
@@ -175,9 +173,9 @@
  view view? struct:view view-window view-sync
  document document? struct:document document-open document-of-buffer document->string document->lines
  document-add-view document-view-count document-view-ref document-window
- document-view-sync document-set-view-sync document-update-view document-update-view-synced
+ document-view-sync document-set-view-sync document-update-view
  document-sync-followers
- document-edit document-apply-edit document-apply-descs-trusted
+ document-edit document-apply-descs-trusted
  document-buffer document-views)
 
 ;;; ============================================================================
@@ -192,14 +190,14 @@
   (check-equal? (buffer->string b) "hello\nworld")
   (check-equal? (buffer-line-count b) 2)
 
-  ;; 编辑闭环：插入字符 → 窗口光标推进 → 渲染出新文本
-  (define w (window-open b 2 10))
-  (check-equal? (window-point w) (point 0 0))
-  (define-values (w2 ch) (window-edit w (edit-char #\X)))
-  (check-equal? (buffer->string (window-buffer w2)) "Xhello\nworld")
+  ;; 编辑闭环：document-edit（唯一编辑入口）→ 光标推进 → 渲染出新文本
+  (define-values (d0 _i0) (document-add-view (document-open (buffer->string b)) 2 10))
+  (check-equal? (window-point (document-window d0 0)) (point 0 0))
+  (define-values (d1 ch) (document-edit d0 0 (edit-char #\X)))
+  (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? (edit-change-desc ch) (edit-desc 0 0 0 0 "X"))
-  (check-equal? (window-point w2) (point 0 1))
-  (check-equal? (screen-rows (window->screen w2)) 2)
+  (check-equal? (window-point (document-window d1 0)) (point 0 1))
+  (check-equal? (screen-rows (window->screen (document-window d1 0))) 2)
 
   ;; 属性链：写进 buffer → 自动流进 screen 的 run.face
   (define b3 (buffer-put-property b 0 0 5 'face 'keyword))
@@ -209,8 +207,9 @@
 
   ;; 属性随编辑移动：在属性区间前插一个字符 → 区间整体右移。
   ;; 插入点在左邻为空处，新字符不继承（继承左邻规则）；"hello" 仍带 keyword。
-  (define-values (w4 _) (window-edit (window-open b3 2 10) (edit-char #\Z)))
-  (define s4 (window->screen w4))
+  (define-values (d3 _d3i) (document-add-view (document-of-buffer b3) 2 10))
+  (define-values (d4 _) (document-edit d3 0 (edit-char #\Z)))
+  (define s4 (window->screen (document-window d4 0)))
   (check-equal? (vector-ref (screen-row-runs s4) 0)
                 (list (run 0 "Z" (hash))
                       (run 1 "hello" (hash 'face 'keyword))))

@@ -139,7 +139,7 @@
 ;; 单遍扫描：suffix 指针只向前走，整体 O(k log k)（排序主导）。
 (define (row-modify row start end transform)
   ;; 空区间/反向没有合法解释 → 报错。否则静默什么都不写，而调用方以为设上了
-  ;; （写只读区时"以为锁住了没锁"）。清除约束请传 (make-restrict)。见 ARCHITECTURE §10.3 A2。
+  ;; （写只读区时"以为锁住了没锁"）。清除约束请传 (make-restrict)。见 ARCHITECTURE §8.5 A2。
   (when (>= start end)
     (error 'properties "属性/约束区间必须 start < end，得到 [~a,~a)" start end))
   (define points

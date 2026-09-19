@@ -36,7 +36,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 命令/键位 | 哪个键干什么不是核心 |
 | 主题/配色 | face 是语义符号，颜色是外部策略 |
 | 后端 | core 只产 `screen`、只收 `events` |
-| 撤销账本 | core 只给**可逆编辑代数**（逆 desc + 应用）；「记几步 / 怎么分组 / 撤销后光标回哪」是使用方策略（ARCHITECTURE §9） |
+| 撤销账本 | core 只给**可逆编辑代数**（逆 desc + 应用）；「记几步 / 怎么分组 / 撤销后光标回哪」是使用方策略（ARCHITECTURE §8.5） |
 
 ### 1.3 三条边界契约
 
@@ -51,7 +51,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 
 | 我要做 | 用这些 |
 |---|---|
-| 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`）；**配合 document 用** `edit-insert` / `edit-newline` / `edit-backspace` / `edit-delete` / `edit-splice`（可传的值，§12） |
+| 插入 / 删除 / 换行 | `buffer-insert-char` / `-insert-string` / `-backspace` / `-delete` / `buffer-splice`（都返回 `(values 新值 edit-desc)`）；**配合 document 用** `edit-insert` / `edit-newline` / `edit-backspace` / `edit-delete` / `edit-splice`（可传的值，ARCHITECTURE §8.6） |
 | 程序化编辑（自带坐标） | 构造 `edit-desc` → `buffer-apply-edit`（或 `buffer-apply-edit-trusted`） |
 | 部分只读 | `buffer-put-restrict` + `restrict`（守卫规则见 §7.5；**枚举**只读区间用 `buffer-restrict-runs`） |
 | 语法高亮 / 标注 | `buffer-put-properties-many`（一次 tick） |
@@ -60,10 +60,10 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position`（一组编辑的行区间并集 → `edits-span`） |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
-| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
-| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步 ＋ **每次操作要重画哪几行**（`edits-span`），**只含必要调用**（18 个名字）；编辑路径上不出现一个 `buffer-*`（§12.5 / §12.6） |
-| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、**只读约束**（逐行设、用户编辑被拒、`buffer-restrict-runs` 枚举区间）、**程序修改**（`-trusted` 入口 vs 守卫版）、编辑时属性自动跟随、`patch`（22 个名字） |
-| 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
+| **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §8.5；示范在 `history.rkt` + `main.rkt`） |
+| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步 ＋ **每次操作要重画哪几行**（`edits-span`），**只含必要调用**；编辑路径上不出现一个 `buffer-*`（ARCHITECTURE §8.6 / §8.7） |
+| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、**只读约束**（逐行设、用户编辑被拒、`buffer-restrict-runs` 枚举区间）、**程序修改**（`-trusted` 入口 vs 守卫版）、编辑时属性自动跟随、`patch` |
+| 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §9 |
 
 ---
 
@@ -144,7 +144,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
   的约束挡住。注意 desc 不含旧文本，逆只能由编辑前内容导出。
   底层纯代数：`edit-desc-inverse d old-text`。
 - core 只给上面这组**可逆编辑代数**；**账本**（记几步、连续打字并成一步、撤销后光标回哪）
-  是消费层的事，见 ARCHITECTURE §9（示范在 `history.rkt` + `main.rkt`）。
+  是消费层的事，见 ARCHITECTURE §8.5（示范在 `history.rkt` + `main.rkt`）。
 
 ### 4.2 `events`（输入）
 
@@ -181,7 +181,7 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 
 > **哪些是消费者 API**：§5.2 / §5.3 / §5.4 三节整节都是**模块内部**（`(require "core/api.rkt")`
 > 拿不到——只能读、不能用）；消费者要的文本层入口在 §4.1 / §5.1 / §5.5 / §5.6。
-> 消费者 API 的白名单就是 `core/api.rkt` 的 `provide`（211 个名字），可用 `tools/reconcile.rkt` 对账。
+> 消费者 API 的白名单就是 `core/api.rkt` 的 `provide`（213 个名字），可用 `tools/reconcile.rkt` 对账。
 
 ### 5.1 point —— 位置
 
@@ -276,7 +276,7 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-newline` | b line col | (values buffer edit-desc) |
 | `buffer-backspace` | b line col | (values buffer edit-desc) |
 | `buffer-delete` | b line col | (values buffer edit-desc) |
-| `edit-insert` | s | buffer line col → (values buffer edit-desc)（把「插入」变成**可传的值**；见 §12） |
+| `edit-insert` | s | buffer line col → (values buffer edit-desc)（把「插入」变成**可传的值**；见 ARCHITECTURE §8.6） |
 | `edit-newline` / `edit-backspace` / `edit-delete` | — | 同上（就是那几个原语；形状本来就一致） |
 | `edit-splice` | s-line s-col e-line e-col new-text | 同上（通用：替换区间 —— 程序化编辑的逃生门） |
 | `buffer-apply-edit` | b desc | (values buffer edit-desc)（应用单个 desc，不重排/不查重叠） |
@@ -331,7 +331,6 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | 函数 | 输入 | 输出 |
 |---|---|---|
 | `window-open` | b [height 24] [width 80] | window |
-| `make-window` | [height 24] [width 80] | window（空构造器：带空 buffer；从 document 起步时用，省掉占位 buffer） |
 | `window-set-buffer` | w b | window（point 夹紧） |
 | `window-set-point` | w p | window |
 | `window-set-mode` | w 'clip\|'wrap | window |
@@ -340,9 +339,10 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `window-scroll` / `window-hscroll` | w delta | window |
 | `window-goto` | w l c | window |
 | `window-left` / `window-right` / `window-home` / `window-end` | w | window |
-| `window-edit` | w edit-fn | (values window (or/c #f edit-change))（本窗口的编辑入口；`edit-fn` 见 §12 的 `edit-*`。多窗口共享 buffer 时必须走 document，否则文档分叉） |
 
-> **返回值规则**：编辑原语返回 `(values 新值 事实-or-#f)`（`#f` = no-op / 被 read-only 拒）；导航/状态原语直接返回新值。
+> **window 是纯视图**：只做导航/滚动/尺寸/投影，**不编辑**。编辑改共享 buffer，统一走
+> `document-edit`（单窗口 = 一个视图的 document）。返回值规则：编辑入口（`document-edit`）
+> 返回 `(values 新值 (or/c #f edit-change))`；导航/状态原语直接返回新值。
 
 ### 6.2 view —— vrow 布局 + 映射 + 滚动
 
@@ -398,15 +398,13 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `document-open` | s | document |
 | `document-of-buffer` | b | document（从已配置的 buffer 构造） |
 | `document->string` / `document->lines` | doc | string / (listof string)（读文本的 document 层入口；要真 buffer 用 `document-buffer`） |
-| `document-add-view` | doc w [p] [#:sync 'free\|'follow] | (values document index) |
+| `document-add-view` | doc [height 24] [width 80] [p] [#:sync 'free\|'follow] | (values document index)（按尺寸开视图；不再造占位 window） |
 | `document-view-count` / `document-view-ref` | doc [i] | nat / view |
 | `document-window` | doc i | window |
 | `document-view-sync` / `document-set-view-sync` | doc i [sync] | 'free\|'follow / document |
-| `document-update-view` | doc i f | document（f : window → window） |
-| `document-update-view-synced` | doc i f | document（同上 + 保持 follow 一致；改尺寸等「不镜像」的场合仍用上面那个） |
-| `document-sync-followers` | doc i | document（把 follow 视图对齐到 i） |
+| `document-update-view` | doc i f | document（f : window → window；更新后**自动同步 follow 视图**——几何变更不动锚点、同步无害，导航则正是 follow 语义） |
+| `document-sync-followers` | doc i | document（把 follow 视图对齐到 i；一般不必直接调） |
 | `document-edit` | doc i edit-fn | (values document (or/c #f edit-change))（**唯一的编辑入口**；`#f` = no-op/被拒；`edit-change` = desc + 逆（用**编辑前** buffer 求出）+ 编辑前光标；**不记历史**） |
-| `document-apply-edit` | doc i desc | (values document (or/c #f edit-change))（施加一条**自带坐标**的 desc，**过守卫**；程序编辑用；与 `document-edit` 同一漏斗） |
 | `document-apply-descs-trusted` | doc i descs [pre-point] | document（依次施加 descs，**跳过守卫**；给了 `pre-point` 就把视图 i 的光标放回那里并 `ensure-point`。撤销/重放**唯一**的落回入口） |
 
 两条 rebase 模式是**容器语义**（类比 `window.mode` 的 `'clip`/`'wrap`）：
@@ -429,15 +427,13 @@ gap 定位（返回新 content）：`content-gap-goto`。
 ### 7.1 编辑闭环
 
 ```racket
-(define b  (buffer-open "hello\nworld"))
-(define w  (window-open b 10 40))
+(define-values (doc _) (document-add-view (document-open "hello\nworld") 10 40))
 
 ;; 一个 text-event 进来：
-(define-values (w* ch) (window-edit w (edit-char #\X)))
-;;   w* : buffer 已换新、point 已推到编辑后位置（window-edit 自动做）
-;;   ch : (or/c #f edit-change)；#f = 什么都没发生。
-;;        要撤销就收下它；配合 document 时改用 document-edit（同形，另加多视图 rebase）。
-;;        多窗口共享一个 buffer 时**必须**走 document —— 直接编辑 window 会让文档分叉。
+(define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))
+;;   doc* : buffer 已换新、point 已推到编辑后位置（document-edit 自动做）
+;;   ch   : (or/c #f edit-change)；#f = 什么都没发生。要撤销就收下它。
+;;          document-edit 是**唯一**编辑入口——单窗口就是「一个视图的 document」。
 ```
 
 ### 7.2 渲染链
@@ -506,27 +502,25 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 ```racket
 (require "core/api.rkt")
 
-(define b (buffer-open "hello"))            ; 开文档
-(define w (window-open b 24 80))            ; 开视口
+(define-values (doc _) (document-add-view (document-open "hello") 24 80))  ; 开文档 + 开视口
 
 ;; 每帧：
-(define s (window->screen w))               ; 投影成画面，后端画 s
+(define s (window->screen (document-window doc 0)))   ; 投影成画面，后端画 s
 
 ;; 后端喂入 event 后：
-(define-values (w* ch) (window-edit w (edit-char #\X)))  ; 处理 text-event
-(define w2 (window-right w*))               ; 处理 key-event 'right（直接返回 window）
+(define-values (doc* ch) (document-edit doc 0 (edit-char #\X)))  ; 处理 text-event
+(define doc2 (document-update-view doc* 0 window-right))          ; 处理 key-event 'right
 ```
 
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
 >
-> **完整示范**见 `main.rkt`（**无前端**：不 require 任何 `io/`，事件手搓、输出只读 `screen`
-> 的数据）——它把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开，用到 core 的
-> **60 个名字，占白名单 213 的 28%**。
+> **完整示范**见 `main.rkt`——一个带 `racket-tui` 前端的完整编辑器（布局 / 输入路由 /
+> 拼屏 / 键盘命令 + 撤销），把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开。
 >
 > **两个聚焦示例**（都只含必要的 core 调用，可直接 `racket 文件` 跑）：
-> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步 ＋ 重画范围，**18** 个名字）、
-> `attributes.rkt`（属性 / 只读约束 / 程序修改 / patch，**22** 个名字）。
+> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步 ＋ 重画范围）、
+> `attributes.rkt`（属性 / 只读约束 / 程序修改 / patch）。
 
 ---
 
@@ -538,15 +532,15 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 |---|---|
 | **tab / Ambiguous 宽度** | core 一律按 **1 列**（`char-display-width #\tab` = 1，`string-display-width` / `index->column` 同口径）。终端把 tab 画成多列是**后端的事**：要对齐就自己先展开成空格 |
 | **`modified?` 谁置位** | splice 与属性/约束/marker/overlay 写入都置 `#t`；只有 `buffer-apply-patches`（插件标注）不置 —— 用它判断「有没有未保存改动」时要知道这一点 |
-| **没有 `dirty` 槽** | 增量信息**归操作、不归文档**：要「这次/这一步改到哪几行」用 `edits-span`（传一条 desc 或整组）；`buffer-tick` 只回答「有没有变」（ARCHITECTURE §12.6） |
+| **没有 `dirty` 槽** | 增量信息**归操作、不归文档**：要「这次/这一步改到哪几行」用 `edits-span`（传一条 desc 或整组）；`buffer-tick` 只回答「有没有变」（ARCHITECTURE §8.7） |
 | **`left-col` 大于行宽** | **合法状态**（「滚过短行尾部」，该行显示空），不是错误；但**落在宽字符右半**会被吸附到字符起点 |
-| **`modified?` 的回退 / 保存点** | core 不做（`modified?` 只是「约定」，见 ARCHITECTURE §8.6） |
-| **撤销 / 重放账本** | 不在 core：core 只给**可逆编辑代数**；账本与分组是消费层策略（ARCHITECTURE §9） |
+| **`modified?` 的回退 / 保存点** | core 不做（`modified?` 只是「约定」，见 ARCHITECTURE §8.5） |
+| **撤销 / 重放账本** | 不在 core：core 只给**可逆编辑代数**；账本与分组是消费层策略（ARCHITECTURE §8.5） |
 | **命令 / 键位 / 主题 / 布局** | 不在 core（§1.2） |
 
 ## 10. 契约与违约行为
 
-core 的契约分两类（完整规则、依据与实测见 ARCHITECTURE §10.2）：
+core 的契约分两类（完整规则、依据与实测见 ARCHITECTURE §9）：
 
 - **没有唯一合法解释的输入 → 报错**（抛 `exn:fail?`）：编辑区间反向（`s > e`）、属性/约束区间
   为空或反向、视图索引越界、`window-set-mode` 未知 mode、marker/overlay 位置不在 buffer 内、

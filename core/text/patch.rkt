@@ -38,7 +38,7 @@
       b
       (begin
         ;; 行范围越界 = 过期 patch（它的行号属于旧文档）→ 报错，绝不静默夹到**别的行**
-        ;; 去清旧写新。"过期就丢弃"仍是消费方的责任（见 ARCHITECTURE §10.3 A6）。
+        ;; 去清旧写新。"过期就丢弃"仍是消费方的责任（见 ARCHITECTURE §8.5 A6）。
         (for ([pt (in-list patches)])
           (define n (buffer-line-count b))
           (define f (patch-first-line pt))

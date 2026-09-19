@@ -7,13 +7,13 @@
 ;;; buffer 是文档（无光标）；window 是「怎么看它」，并持有自己的 point。
 ;;; 一个 buffer 可被多个 window 绑定，各自有独立的 point。
 ;;;
-;;; 光标操作（导航 / 编辑）都在本层：用 window-point 驱动 buffer 的显式位置原语，
-;;; 再把新 buffer 与 post-edit 光标写回 window。滚动仍是纯视图状态。
+;;; 本层只做**纯视图**：光标导航、滚动、尺寸、投影（window->screen）。
+;;; **编辑不在这里**——编辑会改共享 buffer，必须经 document 的漏斗（document-edit），
+;;; 否则多视图会分叉。window 是视图原子，不是编辑入口。
 
 (provide
  (struct-out window)
  window-open
- make-window
  check-mode
  snap-left-col
  window-set-buffer
@@ -29,8 +29,7 @@
  window-left
  window-right
  window-home
- window-end
- window-edit)
+ window-end)
 
 (struct window
   (buffer   ; buffer.rkt     文档（编辑时换成新 buffer）
@@ -50,12 +49,6 @@
     (error 'window-open "width must be >= 1, got ~a" width))
   (window b (point 0 0) 'clip 0 0 0 height width))
 
-;; 空构造器（§4 的 make-* 家族：make-content / make-marker-table / make-screen）：带**空 buffer**
-;; 的窗口。用途：从 document 起步的消费方不该被迫造一个立刻被丢弃的 buffer —— `document-add-view`
-;; 会用共享 buffer 替换窗口自带的那个（ARCHITECTURE §11.2 ①）。
-(define (make-window [height 24] [width 80])
-  (window-open (buffer-open "") height width))
-
 ;;; ---------- point 夹紧 ----------
 
 (define (clamp-point b p)
@@ -72,7 +65,7 @@
 
 ;;; ---------- 视图状态 ----------
 
-;; mode 枚举检查。`window-set-mode` 立即查（报错点与设置点合一，见 ARCHITECTURE §10.3 A4）；
+;; mode 枚举检查。`window-set-mode` 立即查（报错点与设置点合一，见 ARCHITECTURE §8.5 A4）；
 ;; view.rkt 的渲染/跟随路径复用它做**延迟兜底** —— `window` 的构造器是公开的，
 ;; 仍可能被绕过造出非法 mode。
 (define (check-mode who m)
@@ -87,7 +80,7 @@
   (define n (buffer-line-count b))
   (buffer-line-ref b (max 0 (min (window-top-line w) (sub1 n)))))
 
-;; 把水平列吸附到**字符起点**：落在宽字符右半会画出半格空白（ARCHITECTURE §10.3 D2）。
+;; 把水平列吸附到**字符起点**：落在宽字符右半会画出半格空白（ARCHITECTURE §8.5 D2）。
 ;; 与 `snap-column-forward` 的区别：**不夹到行尾** —— 超过行宽的列原样保留，那是
 ;; 「滚过短行尾部」的合法状态（短行显示空、更长的行显示尾部）。
 (define (snap-left-col text col)
@@ -141,24 +134,6 @@
   (window-set-point w
     (point l (string-length (buffer-line-ref (window-buffer w) l)))))
 
-;;; ---------- 编辑（用本窗口 point 驱动 buffer 显式位置原语）----------
-
-;; edit-fn : (lambda (b line col) (values new-buffer edit-desc))
-;; 编辑成功后，把新 buffer 写回 window、光标设到 post-edit 位置，并把**这次编辑的
-;; 完整材料**（edit-change）交回调用方；no-op / 被 read-only 拒 → 整个 change 是 #f。
-;; 与 document-edit 同形，差别只有光标来源（本窗口 vs 视图 i）与是否 rebase 其他视图。
-;; 多窗口共享 buffer 时必须走 document-edit —— 直接编辑 window 会让文档分叉。
-(define (window-edit w edit-fn)
-  (define b0 (window-buffer w))
-  (define p0 (window-point w))
-  (define-values (b* desc) (edit-fn b0 (point-line p0) (point-col p0)))
-  (if desc
-      (values (struct-copy window w
-                [buffer b*]
-                [point (edit-desc-after-position desc)])
-              (edit-change desc (buffer-edit-desc-inverse b0 desc) p0))
-      (values w #f)))
-
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -202,57 +177,6 @@
   (check-equal? (window-point w7) (point 2 0))
   (define w8 (window-home w7))
   (check-equal? (window-point w8) (point 2 0))
-
-  ;; 编辑：point 随编辑跟进；材料（desc/inv/pre-point）一次给全
-  (define b0 (buffer-open "hello\nworld"))
-  (define w0 (window-open b0))
-  (define-values (wi di) (window-edit w0 (edit-char #\X)))
-  (check-equal? (buffer->string (window-buffer wi)) "Xhello\nworld")
-  (check-equal? (window-point wi) (point 0 1))
-  (check-equal? (edit-change-desc di) (edit-desc 0 0 0 0 "X"))
-  (check-equal? (edit-change-inv  di) (edit-desc 0 0 0 1 ""))
-  (check-equal? (edit-change-pre-point di) (point 0 0))
-
-  ;; 在非零列插入，point 正确前进（旧 bug：丢掉 s-col）
-  (define wg1 (window-goto w0 0 2))
-  (define-values (wi2 di2) (window-edit wg1 (edit-char #\Y)))
-  (check-equal? (buffer->string (window-buffer wi2)) "heYllo\nworld")
-  (check-equal? (window-point wi2) (point 0 3))
-  (check-equal? (edit-change-desc di2) (edit-desc 0 2 0 2 "Y"))
-  (check-equal? (edit-change-inv  di2) (edit-desc 0 2 0 3 ""))
-  (check-equal? (edit-change-pre-point di2) (point 0 2))
-
-  (define-values (wn dn) (window-edit w0 (edit-newline)))
-  (check-equal? (buffer->string (window-buffer wn)) "\nhello\nworld")
-  (check-equal? (window-point wn) (point 1 0))
-  (check-equal? (edit-change-desc dn) (edit-desc 0 0 0 0 "\n"))
-
-  ;; backspace 合并
-  (define wd1 (window-goto w0 1 0))
-  (define-values (wb db) (window-edit wd1 (edit-backspace)))
-  (check-equal? (buffer->string (window-buffer wb)) "helloworld")
-  (check-equal? (window-point wb) (point 0 5))
-  (check-equal? (edit-change-desc db) (edit-desc 0 5 1 0 ""))
-  ;; 删除的逆带回了被删文本（这里是行间的 "\n"），这是撤销的全部依据
-  (check-equal? (edit-change-inv db) (edit-desc 0 5 0 5 "\n"))
-
-  ;; delete 合并
-  (define wd2 (window-goto w0 0 5))
-  (define-values (wdel dd) (window-edit wd2 (edit-delete)))
-  (check-equal? (buffer->string (window-buffer wdel)) "helloworld")
-  (check-equal? (window-point wdel) (point 0 5))
-  (check-equal? (edit-change-desc dd) (edit-desc 0 5 1 0 ""))
-
-  ;; 无操作：window 原样返回，整个 change 是 #f
-  (define-values (wnop dnop) (window-edit w0 (edit-backspace)))
-  (check-eq? wnop w0)
-  (check-false dnop)
-
-  ;; 多行插入
-  (define-values (wp dp) (window-edit w0 (edit-insert "X\nY")))
-  (check-equal? (buffer->string (window-buffer wp)) "X\nYhello\nworld")
-  (check-equal? (window-point wp) (point 1 1))
-  (check-equal? (edit-change-desc dp) (edit-desc 0 0 0 0 "X\nY"))
 
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-scroll w 2)) 2)

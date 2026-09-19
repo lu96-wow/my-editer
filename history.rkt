@@ -4,13 +4,13 @@
          "core/api.rkt"
          rackunit)
 
-;;; history.rkt —— 撤销/重放账本（**消费层**，不是 core，见 ARCHITECTURE §9）
+;;; history.rkt —— 撤销/重放账本（**消费层**，不是 core，见 ARCHITECTURE §8.5）
 ;;;
-;;; 归属（§9.4）：文本变更走 document（撤销/重放都是 `document-apply-descs-trusted`，
+;;; 归属（§8.5）：文本变更走 document（撤销/重放都是 `document-apply-descs-trusted`，
 ;;; 只有它能 rebase 所有视图）；本模块只管账本——记不记、和谁并、几步。所以它是纯数据：
 ;;; 不碰 window、不 require document 的实现，只认识 edit-change / edit-desc 和 point。
 ;;;
-;;; 一步必须**自含正反两向**（§9.2）——撤销不许留快照（快照式每步 8MB×3）：
+;;; 一步必须**自含正反两向**（§8.5）——撤销不许留快照（快照式每步 8MB×3）：
 ;;;   replay-descs 重放用（desc 自带 new-text，不需旧文本）
 ;;;   undo-descs   撤销用（逆只能由「编辑前的 buffer」导出，故在编辑时捕获）
 ;;; 两者合起来才闭合：撤销到底再重放能精确回到原状态。
@@ -19,10 +19,10 @@
 ;;; 用编辑后的 buffer 会**静默写坏历史**：desc 不含旧文本，逆里的文本是从 b 的 [s..e)
 ;;; 读出来的，编辑后那里已是新内容。实测：删 "abcdef" 的 'b'，用后态求逆得到「插回 'c'」
 ;;; → 撤销出 "accdef"，不报任何错；而**纯插入时两态恰好相同**，所以打字路径看不出错，
-;;; 只在删除路径爆（探针见 §9.3）。
+;;; 只在删除路径爆（探针见 §8.5）。
 ;;;
 ;;; 本模块不替调用方「应用」——`main.rkt` 拿到 step 后用 `document-apply-descs-trusted`
-;;; 一次落回整组 desc（§9.6）。
+;;; 一次落回整组 desc（§8.5）。
 
 (provide
  (struct-out step)
@@ -37,7 +37,7 @@
  history-redo-depth)
 
 ;; 字段名自带方向与次序：两个列表存的是**相反次序**，而单元素 step（绝大多数）看不出
-;; 差别 —— 所以不许用中性名字（原名 `descs`/`invs`，见 ARCHITECTURE §9.2）。
+;; 差别 —— 所以不许用中性名字（原名 `descs`/`invs`，见 ARCHITECTURE §8.5）。
 (struct step (replay-descs undo-descs point) #:transparent)
 ;; replay-descs : (listof edit-desc)  重放：正序依次 apply（desc 自带 new-text，不需旧文本）
 ;; undo-descs   : (listof edit-desc)  撤销：正序依次 apply（与 replay-descs 相反次序）
@@ -53,7 +53,7 @@
 (define (history-undo-depth h) (length (history-undo h)))
 (define (history-redo-depth h) (length (history-redo h)))
 
-;;; ---------- 合并规则：结构判定（无时钟、无状态，§9.5）----------
+;;; ---------- 合并规则：结构判定（无时钟、无状态，§8.5）----------
 
 ;; 单字符、非换行的纯插入
 (define (char-insert? d)

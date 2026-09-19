@@ -100,13 +100,13 @@
 (define (content-splice c s-line s-col e-line e-col new-text)
   (define lines (content-lines c))
   (define n (vector-length lines))
-  ;; 端点夹紧：越界行列有唯一合法解释（与 content-gap-goto 同规则，ARCHITECTURE §10.2 R1）
+  ;; 端点夹紧：越界行列有唯一合法解释（与 content-gap-goto 同规则，ARCHITECTURE §8.5 R1）
   (define sl (max 0 (min s-line (sub1 n))))
   (define el (max 0 (min e-line (sub1 n))))
   (define sc (max 0 (min s-col (string-length (vector-ref lines sl)))))
   (define ec (max 0 (min e-col (string-length (vector-ref lines el)))))
   ;; 夹紧后仍反向 → 没有合法解释，报错。否则下面的「head + tail 拼接」会**静默复制**文本
-  ;; （"abcdef" 上 (0,3)-(0,1) → "abcbcdef"），见 ARCHITECTURE §10.3 A1。
+  ;; （"abcdef" 上 (0,3)-(0,1) → "abcbcdef"），见 ARCHITECTURE §8.5 A1。
   (when (pos<? el ec sl sc)
     (error 'content-splice "编辑区间反向: [~a,~a)..[~a,~a)" sl sc el ec))
   (define head (substring (vector-ref lines sl) 0 sc))

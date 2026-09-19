@@ -33,7 +33,7 @@
 
 ;; 把一帧摊平成纯文本（**朴素投影**，与 screen-diff-rows 同类：给测试与无前端驱动用）：
 ;; 按 run-col 定位、缺口补空格、宽字符按**显示宽度**占位。
-;; **不画光标、不加颜色/ANSI** —— 那是后端的事（ARCHITECTURE §11.2 ④b）。
+;; **不画光标、不加颜色/ANSI** —— 那是后端的事。
 (define (screen->text s)
   (string-join
    (for/list ([runs (in-vector (screen-row-runs s))])

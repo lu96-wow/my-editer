@@ -93,7 +93,7 @@
 ;;;       非零宽删除 → 删除区间 [s..e) 与任何 read-only 重叠则拒绝。
 ;;;
 ;;; 程序要编辑 read-only 内容时走**显式入口** buffer-splice-trusted——
-;;; 不给守卫留任何隐式/全局开关（见 ARCHITECTURE §8.8）。
+;;; 不给守卫留任何隐式/全局开关（见 ARCHITECTURE §8.4）。
 
 ;; 该位置的约束是否含 read-only
 (define (buffer-read-only-at? b line col)
@@ -162,7 +162,7 @@
                   (lambda (c) (content-splice c s-line s-col e-line e-col new-text))))
 
 ;; 与 buffer-splice 同形，但**跳过 read-only 守卫**：程序编辑 read-only 内容走这条。
-;; 这是唯一的绕行入口（无全局开关）——见 ARCHITECTURE §8.8。
+;; 这是唯一的绕行入口（无全局开关）——见 ARCHITECTURE §8.4。
 (define (buffer-splice-trusted b s-line s-col e-line e-col new-text)
   (buffer-edit-at b s-line s-col
                   (lambda (c) (content-splice c s-line s-col e-line e-col new-text))
@@ -184,7 +184,7 @@
 (define (buffer-delete b line col)
   (buffer-edit-at b line col content-delete))
 
-;;; ---------- 编辑动作的规范函数（ARCHITECTURE §12）----------
+;;; ---------- 编辑动作的规范函数（ARCHITECTURE §8.6）----------
 ;;; 把常用编辑变成**可传的值**，消费者不必再写 buffer 级 λ：
 ;;;     (on-edit a (edit-insert s))   而不是   (on-edit a (lambda (b l c) (buffer-insert-string b l c s)))
 ;;; 与 `edit-desc` 同族：一个**描述**一次编辑，一个**就是**那次编辑。
@@ -209,7 +209,7 @@
 
 ;; 应用单个 edit-desc 的 trusted 版（跳过 read-only 守卫）：撤销/重放的落点。
 ;; 记录在案的编辑在当时都过了守卫（被拒的 desc=#f 不会被记录），所以重放不该被
-;; **事后**才加的约束挡住——否则撤销会静默失灵（见 ARCHITECTURE §9.6）。
+;; **事后**才加的约束挡住——否则撤销会静默失灵（见 ARCHITECTURE §8.5）。
 (define (buffer-apply-edit-trusted b d)
   (buffer-splice-trusted b
                          (edit-desc-s-line d) (edit-desc-s-col d)
@@ -249,7 +249,7 @@
 ;; inv       : edit-desc  逆（操作后坐标，由**编辑前**的 buffer 导出）—— 撤销用它
 ;; pre-point : point      编辑视图在编辑前的光标 —— 撤销后回到这里
 
-;;; ---------- 输入夹紧与校验（ARCHITECTURE §10.2 R1/R2）----------
+;;; ---------- 输入夹紧与校验（ARCHITECTURE §8.5 R1/R2）----------
 ;;; 两类违约分开处理：
 ;;;   有唯一合法解释 → 夹紧（越界行列、超出行长的属性端点）
 ;;;   没有合法解释   → 报错（区间反向/为空、位置不在 buffer 内）
@@ -263,7 +263,7 @@
   (values l (max 0 (min start len)) (max 0 (min end len))))
 
 ;; marker/overlay 的位置必须能在 buffer 里解释：越界位置永远不会被编辑修正、
-;; 由它构成的 overlay 永不显示（见 ARCHITECTURE §10.3 A5）。
+;; 由它构成的 overlay 永不显示（见 ARCHITECTURE §8.5 A5）。
 (define (check-buffer-position who b pos)
   (define n (buffer-line-count b))
   (define l (point-line pos))
@@ -561,7 +561,7 @@
   (check-equal? (buffer->string (apply1-trusted v1 vinv))
                 (buffer->string (apply1 v1 vinv)))
 
-  ;; ---- A 组回归：曾经的静默行为现在报错 / 夹紧（ARCHITECTURE §10.3）----
+  ;; ---- A 组回归：曾经的静默行为现在报错 / 夹紧（ARCHITECTURE §8.5）----
 
   ;; A1：区间反向 → 报错（原来会静默复制文本："abcdef" → "abcbcdef"）
   (check-exn exn:fail?
@@ -594,7 +594,7 @@
   ;; A5：边界合法（行尾 = 行长）
   (check-true (let-values ([(b* _) (buffer-make-marker (buffer-open "abc") (point 0 3))]) (buffer? b*)))
 
-  ;; ---- §12：编辑动作的规范函数 ----
+  ;; ---- §8.6：编辑动作的规范函数 ----
   (define (run-op op b l c) (let-values ([(b* d) (op b l c)]) (values b* d)))
   (define (op-b op b l c) (let-values ([(b* _) (op b l c)]) b*))
   (define edop-b (buffer-open "abc"))

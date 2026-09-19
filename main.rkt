@@ -6,7 +6,7 @@
 ;;;
 ;;; 这层是「组装层」：core 只给 buffer/window/screen/events/document 原子，
 ;;; 怎么摆窗口、怎么路由输入、怎么拼屏，全在这里自己写。
-;;; 撤销/重放的账本也属于组装层（history.rkt）——core 只提供逆编辑代数，见 ARCHITECTURE §9。
+;;; 撤销/重放的账本也属于组装层（history.rkt）——core 只提供逆编辑代数，见 ARCHITECTURE §8.5。
 ;;;
 ;;;   布局：左窗 + 右窗 + 底部状态行
 ;;;   同步：左/右两窗是同一 document 的两个视图（view 0 / view 1），
@@ -113,8 +113,8 @@
   (define b (mark-prompt (highlight (buffer-open sample))))
   (define doc0 (document-of-buffer b))
   ;; 两个视图共享 b；左 'free（参考视图），右 'follow（跟手），光标都在提示后
-  (define-values (doc1 _v0) (document-add-view doc0 (window-open b area-h left-w)  (point 0 2)))
-  (define-values (doc2 _v1) (document-add-view doc1 (window-open b area-h right-w) (point 0 2) #:sync 'follow))
+  (define-values (doc1 _v0) (document-add-view doc0 area-h left-w (point 0 2)))
+  (define-values (doc2 _v1) (document-add-view doc1 area-h right-w (point 0 2) #:sync 'follow))
   (app doc2 0 (make-history)))
 
 (define (resize-app a rows cols)
@@ -161,12 +161,12 @@
 ;; 导航（只动 active 视图的 window，然后把 active 的最终视口对齐到 follow 视图）
 (define (on-nav a thunk)
   (struct-copy app a
-    [doc (document-update-view-synced (app-doc a) (app-active a)
+    [doc (document-update-view (app-doc a) (app-active a)
            (lambda (w) (window-ensure-point (thunk w))))]))
 
 ;; 编辑：document-edit 内部已经 ensure-point + 同步 follow，这里只需换 doc + 记一步撤回。
 ;; 一次编辑的完整材料（desc / inv / 编辑前光标）由它一并给出——要不要撤销只改变你对
-;; 第二值的处理；§9.3 那个静默坑（用后态 buffer 求逆不报错）不可达（ARCHITECTURE §11.2 ③）。
+;; 第二值的处理；§8.5 那个静默坑（用后态 buffer 求逆不报错）不可达。
 (define (on-edit a do-edit)
   ;; do-edit 直接用 document-edit 的 edit-fn 形状：(buffer, line, col) → (values buffer desc)。
   (define-values (doc* ch) (document-edit (app-doc a) (app-active a) do-edit))
@@ -178,7 +178,7 @@
 ;;; ---------- 撤销 / 重放（账本在 history.rkt；落回必须经 document）----------
 
 ;; 撤销一步：该步的逆 desc 依次落回，再把光标放回该步**之前**的位置，follow 视图随之对齐。
-;; 落回入口一次做完这两件事（trusted：记录在案的编辑当年都过了守卫，§9.6）。
+;; 落回入口一次做完这两件事（trusted：记录在案的编辑当年都过了守卫，§8.5）。
 (define (on-undo a)
   (define-values (st h*) (history-pop-undo (app-hist a)))
   (if st
@@ -247,7 +247,7 @@
   (define a (make-app 10 40))
   (define (w0 a) (document-window (app-doc a) 0))
   (define (w1 a) (document-window (app-doc a) 1))
-  (define (line0 ap) (list-ref (document->lines (app-doc ap)) 0))   ; 读文本走 document 层（§12）
+  (define (line0 ap) (list-ref (document->lines (app-doc ap)) 0))   ; 读文本走 document 层（§8.6）
 
   ;; 布局：左右各 20 列，高 9（10-1 状态行）
   (check-equal? (window-width (w0 a)) 20)
