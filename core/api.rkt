@@ -90,7 +90,7 @@
 ;;;   对外（消费者层）：point buffer window screen events edit-desc edit-change patch width document
 ;;;   对外（机制层）：buffer-splice / buffer-splice-trusted / buffer-apply-edit-batch、
 ;;;                buffer-apply-edit(-trusted)、buffer-edit-desc-inverse / edit-desc-inverse、
-;;;                marker/overlay 的 buffer 级入口、dirty-desc、restrict / make-restrict、
+;;;                marker/overlay 的 buffer 级入口、edit-change、restrict / make-restrict、
 ;;;                document-apply-edit / document-apply-descs-trusted
 ;;;   藏起来（内部实现）：content-* properties-* marker-table-* overlay-table-*
 ;;;                     render-* vrow/layout/wrap/window-vrows、check-mode、snap-left-col
@@ -132,14 +132,11 @@
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  buffer-make-marker buffer-remove-marker buffer-marker-pos
  buffer-make-overlay buffer-remove-overlay
- buffer-mark-dirty buffer-mark-dirty-all
- dirty-desc dirty-desc? struct:dirty-desc
- dirty-desc-first-line dirty-desc-last-line dirty-desc-old-count dirty-desc-new-count
  ;; 装配层访问器（一般用不到）
  buffer-content buffer-properties buffer-markers buffer-overlays
- buffer-tick buffer-dirty buffer-modified? buffer-gap
- ;; 批量编辑应用 + 点映射（机制）
- buffer-apply-edit-batch edits-map-position
+ buffer-tick buffer-modified? buffer-gap
+ ;; 批量编辑应用 + 点映射 / 行区间（机制）
+ buffer-apply-edit-batch edits-map-position edits-span
  ;; patch —— 补丁 delta（机制）
  patch patch? struct:patch patch-key patch-first-line patch-last-line patch-segs
  buffer-apply-patches buffer-content-same?

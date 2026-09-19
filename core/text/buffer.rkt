@@ -3,7 +3,7 @@
 (require "point.rkt" "content.rkt" "marker.rkt"
          "properties.rkt" "overlay.rkt" rackunit)
 
-;;; buffer.rkt —— 文档：文本 + 元数据 + 脏范围（无光标）
+;;; buffer.rkt —— 文档：文本 + 元数据（无光标）
 ;;;
 ;;; 组合根。所有编辑原语在这里装配：
 ;;;   1. sync gap 到给定位置 (line, col)
@@ -11,14 +11,13 @@
 ;;;   3. overlay-table-apply-edit ot mt desc → (ot', mt')
 ;;;      （内部先调 marker-table-apply-edit，再判 evaporate）
 ;;;   4. properties-apply-edit props desc → props'
-;;;   5. 更新 tick / dirty
+;;;   5. 更新 tick / modified?
 ;;;
 ;;; 光标（point）不属于文档，属于 window：一个 buffer 可被多个 window 绑定，
 ;;; 每个 window 有自己的 point。所以本文件的编辑原语都要求显式位置。
 
 (provide
  (struct-out buffer)
- (struct-out dirty-desc)
  (struct-out edit-desc)
  (struct-out edit-change)
  (struct-out restrict)
@@ -55,13 +54,9 @@
  buffer-marker-pos
  buffer-make-overlay
  buffer-remove-overlay
- buffer-mark-dirty
- buffer-mark-dirty-all
  edit-desc-after-position)
 
 ;;; ---------- 结构 ----------
-
-(struct dirty-desc (first-line last-line old-count new-count) #:transparent)
 
 (struct buffer
   (content      ; content.rkt
@@ -69,9 +64,8 @@
    markers      ; marker-table
    properties   ; properties
    overlays     ; overlay-table
-   tick         ; nat
-   dirty        ; (or/c #f dirty-desc)
-   modified?)   ; boolean
+   tick         ; nat             任何改动 +1（编辑 / 属性 / marker / patch）
+   modified?)   ; boolean         用户编辑过？写标注不算
   #:transparent)
 
 ;;; ---------- 构造 ----------
@@ -83,7 +77,7 @@
           (make-marker-table)
           (make-properties (content-line-count c))
           (make-overlay-table)
-          0 #f #f))
+          0 #f))
 
 ;;; ---------- 投影 ----------
 
@@ -91,33 +85,6 @@
 (define (buffer->lines  b) (content->lines  (buffer-content b)))
 (define (buffer-line-count b) (content-line-count (buffer-content b)))
 (define (buffer-line-ref b i) (content-line-ref (buffer-content b) i))
-
-;;; ---------- dirty：最近一次改动触及的行范围 ----------
-;;; 语义（per-operation）：dirty = 「刚刚那一次改动」改到的行，用「新 buffer 坐标系」。
-;;; 每次改动**整体覆盖**，不跨改动累加——跨改动累加必须把旧范围映射过新编辑
-;;; （否则行数一变就漏行），而消费方本就是改动的发起者，自己累积更直接、也永不出错。
-;;; 消费方式：改一次、读一次。
-
-(define (dirty-of desc old-count new-count)
-  (define s-line (edit-desc-s-line desc))
-  (define k (length (string->lines (edit-desc-new-text desc))))
-  (define last (if (zero? k) s-line (+ s-line (sub1 k))))
-  (dirty-desc s-line last old-count new-count))
-
-;; 把「这些行变了」告诉上层：供插件触及编辑范围之外的行时调用。
-;; 直接设定为该范围（不改行数，old=new），并 bump tick——即使本次没有真正编辑，
-;; 也要触发重渲染。
-(define (buffer-mark-dirty b first last)
-  (define n (buffer-line-count b))
-  (define f (max 0 (min first (sub1 n))))
-  (define l (max 0 (min last (sub1 n))))
-  (struct-copy buffer b
-    [dirty (dirty-desc (min f l) (max f l) n n)]
-    [tick (add1 (buffer-tick b))]))
-
-;; 把整个 buffer 标成 dirty（首次挂载插件时全量扫描用）。
-(define (buffer-mark-dirty-all b)
-  (buffer-mark-dirty b 0 (sub1 (buffer-line-count b))))
 
 ;;; ---------- read-only 守卫 ----------
 ;;; read-only 是**约束槽**（restrict）里的语义，不是表现层属性。
@@ -167,8 +134,6 @@
     [(not desc) (values b #f)]
     [(and guard? (edit-read-only? b desc)) (values b #f)]   ; 触碰 read-only → 拒绝
     [else
-     (define old-count (content-line-count c1))
-     (define new-count (content-line-count c2))
      (define ng (point (content-gap-line c2) (content-gap-col c2)))
      ;; overlay-table-apply-edit 内部先调 marker-table-apply-edit，再 prune evaporate
      (define-values (ot* mt*)
@@ -179,7 +144,6 @@
               (properties-apply-edit (buffer-properties b) desc)
               ot*
               (add1 (buffer-tick b))
-              (dirty-of desc old-count new-count)
               #t)
       desc)]))
 
@@ -403,13 +367,11 @@
   (check-equal? (buffer->lines  b0) (list "hello" "world"))
   (check-equal? (buffer-line-count b0) 2)
   (check-equal? (buffer-tick b0) 0)
-  (check-false (buffer-dirty b0))
 
   ;; insert（显式位置）：返回 (values buffer desc)
   (define-values (b1 d1) (buffer-insert-char b0 0 0 #\X))
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? (buffer-tick b1) 1)
-  (check-equal? (buffer-dirty b1) (dirty-desc 0 0 2 2))
   (check-equal? d1 (edit-desc 0 0 0 0 "X"))
   (check-equal? (edit-desc-after-position d1) (point 0 1))
 
@@ -489,18 +451,6 @@
   (define-values (b16 _7) (buffer-delete b15 0 1))
   (define-values (b17 _8) (buffer-delete b16 0 1))
   (check-equal? (overlay-table-count (buffer-overlays b17)) 0)
-
-  ;; dirty 是 per-operation：整体覆盖，不跨改动累加
-  ;; （旧实现做数值并集、不把旧范围映射过新编辑 → 行数一变就漏行）
-  (define db0 (buffer-open "l0\nl1\nl2\nl3"))
-  (define-values (db1 _dbd1) (buffer-insert-char db0 1 0 #\x))
-  (check-equal? (buffer-dirty db1) (dirty-desc 1 1 4 4))
-  (define-values (db2 _dbd2) (buffer-insert-char db1 3 0 #\y))
-  (check-equal? (buffer-dirty db2) (dirty-desc 3 3 4 4))   ; 覆盖为最近一次，而非并集 (1 3)
-  ;; mark-dirty：直接设定范围（供插件），不改行数、bump tick
-  (check-equal? (buffer-dirty (buffer-mark-dirty db2 0 2)) (dirty-desc 0 2 4 4))
-  (check-equal? (buffer-tick (buffer-mark-dirty db2 0 2)) (add1 (buffer-tick db2)))
-  (check-equal? (buffer-dirty (buffer-mark-dirty-all db2)) (dirty-desc 0 3 4 4))
 
   ;; tick 单调递增
   (check-equal? (buffer-tick b17)

@@ -26,19 +26,24 @@ core 里的 `window`/`buffer` 是原子，`window->screen`/`screen-compose` 只�
 edit/
 ├── core/                 # 编辑器核心（纯函数、持久化、后端无关、只含原子）
 │   ├── api.rkt           #   对外唯一入口：门面，转发 text/view 全部公开 API（零逻辑）
-│   ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰 + 脏范围
+│   ├── text/             #   文本层（无光标）：文档 = 文本 + 属性 + 标记 + 装饰
 │   │                     #     point content properties marker overlay buffer patch edit
 │   └── view/             #   视口层（后端无关）：宽度/渲染/窗口/视觉行/屏幕/事件/多视图容器
 │                         #     width render window view screen project events document
 ├── history.rkt           # 消费层：撤销/重放账本（不 require document；归属见 §9.4）
-├── skeleton.rkt          # 消费层：**无前端骨架**（状态 + 三类操作 + 投影；用 core 拼编辑器）
-├── document-layer.rkt    # 消费层：**document 层机制示例**（把"捕获 ≠ 记账"这条边界跑出来）
+├── editing.rkt           # 消费层：**编辑的组合示例**（编辑 → 记账 → 撤销/重做 ＋ 多视图同步）
+├── attributes.rkt        # 消费层：**属性示例**（写/读/清、read-only 约束槽、编辑时自动跟随、patch）
 ├── main.rkt              # 消费层：完整示范（布局 / 输入路由 / 拼屏 / 键盘命令 + racket-tui 前端）
 └── tools/reconcile.rkt   # 文档 ↔ 可达面对账（§10.3 C/E）；racket tools/reconcile.rkt
 ```
 
 `core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
-它们是「core 只给机制」这句话的示范：`skeleton.rkt` 是无前端的最小拼装，`main.rkt` 是完整示范。
+它们是「core 只给机制」这句话的示范：`editing.rkt` / `attributes.rkt` 是**只含必要调用**的
+聚焦示例（16 / 15 个 core 名字），`main.rkt` 是完整示范（60 个）。
+
+> **2026-09-19**：`skeleton.rkt` 与 `document-layer.rkt` 已删除，由 `editing.rkt`（编辑组合）
+> 与 `attributes.rkt`（属性）取代。§11 / §12 正文里引用它们的地方是**当时的取证记录**，
+> 保留原样（行号属于那两个文件）；当前示例以 `editing.rkt` / `attributes.rkt` / `main.rkt` 为准。
 
 依赖方向：`text ← view`；`api` 在最外层，只 `require` 它们并转发，不实现任何东西。
 
@@ -72,9 +77,9 @@ edit/
 | content | 文本存储 + 编辑，产出 `edit-desc` | 属性/marker/overlay 的存在 |
 | properties | 行内属性区间（两槽：presentation + restrict）的读写与随编辑调整 | 文本内容、具体的键值含义 |
 | marker/overlay | 位置/装饰的随编辑调整 | 文本内容 |
-| buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`dirty`/`tick` | 显示、输入、光标 |
+| buffer | 把上面各层装配成「文档」（无光标）；编辑原语显式位置；`tick`/`modified?` | 显示、输入、光标 |
 | patch | 补丁（delta）：按 key 清旧写新 | 谁在消费 |
-| edit | 批量编辑应用：`buffer-apply-edit-batch` / `edits-map-position` | 单条编辑语义 |
+| edit | 批量编辑应用：`buffer-apply-edit-batch` / `edits-map-position` / `edits-span` | 单条编辑语义 |
 | width | 字符 ↔ 显示列（wcwidth 语义，确定性 Unicode 表） | 终端/GUI |
 | render | 一行 → glyph（语义 face） | 布局、屏幕、宽字符列 |
 | window | 视口：buffer 引用 + point + 滚动/尺寸 + 光标导航/编辑 | 其他窗口、几何位置 |
@@ -135,10 +140,12 @@ edit-desc 不含旧文本，故逆必须由编辑前的内容导出——编辑�
 **账本不在 core**（§9.4）：core 只给这组可逆编辑代数，「记几步、怎么分组」是消费层策略
 （`history.rkt`，与 `main.rkt` 并列，不在 `core/` 下）。
 
-`dirty-desc`（`first-line last-line old-count new-count`）是**最近一次改动的行范围**
-（新坐标系），由 `dirty-of` 从 splice 折算，是上层做**增量推导**的线索。语义是
-per-operation：每次改动整体覆盖，消费方「改一次、读一次」；要跨改动累积由消费方自己
-累积（它本就是改动的发起者）——core 不做会随行数漂移的累加。
+`edit-desc` 是唯一跨层契约：一次编辑 = 删除 `[s..e)` + 插入 `new-text`，坐标全在**操作前**。
+`edit-change`（`desc inv pre-point`）是「一次编辑的完整材料」，由**持光标**的层产出
+（§9.3 / §12.5）。
+
+> **2026-09-19**：本节原有 `dirty-desc` / `dirty-of` 一段（`buffer` 的「最近一次改动行范围」
+> 槽 + per-operation 语义）。**该槽已删除**——增量信息一律归操作、不归文档，见 §12.6。
 
 ## 4. 命名规范
 
@@ -524,12 +531,11 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 3. 带守卫的版本会让撤销**静默失灵**（实测：给刚输入的字符事后加 read-only → 守卫版返回
    `desc #f`、文本不动），此时栈不能弹（弹了栈就在说谎）、不弹就把用户卡住——两种都不成立。
 4. 后果已知并且自洽：被恢复的文本**不带**它被删时的 restrict/表现（区间随删除塌缩），
-   注解由插件按 `dirty`/tick 重推（patch 模型）。
+   注解由插件按 `tick` 重推（patch 模型）。
 
 ### 9.7 边界与不变量
 
-**会恢复**：文本；`tick`（触发重渲染）；`dirty`（`buffer-edit-at` 按本次 splice 自算，
-per-operation 语义天然正确，零额外代码）；所有视图的位置（free 视图光标、marker/overlay/
+**会恢复**：文本；`tick`（触发重渲染）；所有视图的位置（free 视图光标、marker/overlay/
 properties 的**位置映射结果**）。
 
 **不会恢复（明确接受）**：
@@ -587,7 +593,7 @@ properties 的**位置映射结果**）。
 模式行（`make-*`、`*-open`、`*-trusted` 等 10 个）与 MANUAL §2 术语表的术语（`cursor`、`face`）。
 
 > 两个方法要点，留给下次：① 扫描必须取**第一格**（行内其它反引号多是概念词、字段名、
-> 局部变量，如 `dirty`、`left-col`、`pl`——用「行内首个反引号」会误报一堆）；
+> 局部变量，如 `cursor`、`left-col`、`pl`——用「行内首个反引号」会误报一堆）；
 > ② 比对集合要把 `history.rkt` / `main.rkt` 也算进去，否则消费层的名字会误报。
 
 ## 10. API 易用性：契约清单、规则与改法
@@ -987,3 +993,59 @@ change 是「编辑入口」的职责——落回路径没有新事实要捕捉�
 （`window-edit`）；3 处逐字重复的样板 → 每个消费者的 undo / redo 各 2 行、**完全对称**；
 `skeleton.rkt` 用到 core **48/221（22%）**。**撤销/重放不再借用导航入口**，`desc`/`inv` 的交换
 从"静默写坏历史"变成编译错（`history-record` 收 struct）。
+
+### 12.6 增量信息归操作，不归文档（`dirty` 槽的删除，2026-09-19）
+
+> **取代**：§3 结尾那段 `dirty-desc` / per-operation 语义的描述（已就地标注）、§9.7 的
+> 「会恢复：… `dirty` …」、§9.6 第 4 条的「注解按 `dirty`/tick 重推」、MANUAL 立场表的
+> 「`dirty` 是 per-operation」、以及更早那批修复里的第 3 项（把 `dirty` 从"累加"改成
+> per-operation）——**那一项修的是「累加语义错了」，但没有问「这个槽该不该存在」**。
+
+**核心冲突**：`dirty` 想回答「刚刚变了哪些文本行」，却把答案**存在文档状态里**；而编辑路径
+（§12.5）已经把「操作产生的信息」统一成"**随操作返回**"。同一个信息出现两个来源：
+
+| 问题 | 存在状态里（`dirty` 槽） | 随操作返回（`edit-desc` / `edit-change`） |
+|---|---|---|
+| 单次编辑 | ✅ | ✅ |
+| **一组编辑**（落回一整步 desc） | ❌ 只剩最后一条 | ✅ 并集（`edits-span`） |
+| 不碰文本的改动（写属性 / patch） | ⚠️ 语义上不属于"文本行"，所以 `buffer-put-property` 干脆不写它 | ❌ 也不返回（独立缺口，见下） |
+| 没人读时 | 💀 白占字段 | 无成本 |
+
+**为什么不能改成"累加 + 读完清"**（这是关键，别重开）：
+1. 累加本身**可行**：旧区间经 `edit-desc-map-position` 映射过新编辑再并集，O(1)。
+2. **"清"不可行**：buffer 不可变，"读过了"是副作用，"清"要产出新 buffer；而 buffer 在
+   document 里被**多个视图共享**——任一视图清掉，别的视图就看不到了。**"读过即清"是一个
+   跨视图的共享状态问题，在 document 世界无处安放。**
+3. 不清就退化成"从加载到现在的累计脏区" → 渲染时等于全量，**增量意义消失**。
+
+→ 累加路线死在"清"的归属上，不是死在难度上。
+
+**判据（为什么删）**：问「这个信息的存在期有多长」——
+- `dirty` 的有效期 = **到下一次操作为止** → 它是"上一次事务的日志"，不是文档的不变量。
+- 文档状态（`buffer` 字段）只装不变量与长期事实：文本、属性、marker/overlay、`tick`、
+  `modified?`。其中 `tick` 单调、无归属问题 ✅；`dirty` 两样都不满足 ✗。
+- 再看它想装的两半，各自都有更强的载体：**「有没有变」→ `buffer-tick`**（编辑/属性/patch
+  都算，`dirty` 不算）；**「变了哪些文本行」→ `edit-change` 的 desc**（一组也能算，`dirty` 不能）。
+  **`dirty` 是这两者的交集，而在两个方向上都比对方弱。**
+
+**已删**：`dirty-desc`（struct + 4 访问器）、`buffer` 的 `dirty` 字段、`buffer-dirty`、
+`dirty-of`、`buffer-mark-dirty`、`buffer-mark-dirty-all`（白名单 −9，221 → 212）；
+`buffer-edit-at` 少两次 `content-line-count`。新增 `edits-span`（`core/text/edit.rkt`，与
+`edits-map-position` 同族）：**一串（应用顺序的）desc → 行区间并集**，空 → `(values #f #f)`
+（与 `window-point->screen` 的"没有"同形）。**单次编辑也用它**：一条 desc 的区间就是这次改动。
+
+**"`buffer-mark-dirty` 的插件声明能力"不损失**：插件写标注也走 `buffer-put-property` /
+`buffer-apply-patches`，**都返回新 buffer**；消费层的重渲染本来就是"拿到新值就渲染"
+（`io/tui.rkt` 的 `tui-run` 每帧无条件 render）→ 不需要"状态里记一笔"。
+
+**明确不做**：
+1. **不给属性路径补"属性脏行"**（`buffer-put-property` 返回新 buffer 但不报告脏行）。
+   触发线：出现"按属性行做增量重绘"的消费者（当前 **0**）。
+2. **不删 `buffer-tick` / `buffer-modified?`**：前者语义正确（单调、累加）且是"变了没"的
+   唯一答案，后者是"有没有未保存改动"的长期事实。
+3. **保留 `buffer-mark-dirty` 的替代品？不需要**：若将来真有"外部副作用改了共享可变状态"
+   的插件——本项目全不可变，不存在。
+
+**验证**：`raco test .` 全绿（buffer.rkt 95 / edit.rkt 19）；`tools/reconcile.rkt` 0 漂移；
+全仓库 `grep dirty` 只剩**历史记录**处（§10 的审计回顾、§11 的计划表）——它们描述当时，
+不描述现状。

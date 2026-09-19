@@ -7,12 +7,14 @@
 ;;; 一次编辑 = 一个 edit-desc（统一 splice）。本模块提供：
 ;;;   - buffer-apply-edit-batch   : 把一批「同一坐标系」的编辑原子应用到 buffer
 ;;;   - edits-map-position : 把一个点依次映射过一串「应用顺序」的编辑
+;;;   - edits-span         : 一串编辑影响到的**行区间并集**（按文本行做增量重绘用）
 ;;;
 ;;; 纯函数，数据 -> lambda -> 数据，无任何副作用/线程。
 
 (provide
  buffer-apply-edit-batch
- edits-map-position)
+ edits-map-position
+ edits-span)
 
 ;;; ---------- 位置比较 ----------
 ;; pos<? / pos=? 的唯一实现在 point.rkt（本模块 require 它）。
@@ -87,6 +89,20 @@
               (loop (point-line m) (point-col m) (cdr ds))
               (point (edit-desc-s-line d) (edit-desc-s-col d)))])])))
 
+;;; ---------- 行区间并集（增量重绘用）----------
+
+;; 一串（应用顺序的）编辑影响到的**行区间并集**，用新坐标系：返回 (values 首行 末行)。
+;; 空 → (values #f #f)（与 window-point->screen 的"没有"同一形状）。
+;; 单条 desc 的区间 = [s-line, s-line + 新文本行数 - 1]：新文本为空 → 占 1 行，所以正是 s-line。
+;;
+;; 用途：按文本行做增量重绘（单次编辑同样适用——一条 desc 的区间就是这次改动的行）。
+;; **行数平移量（old→new）desc 里没有**，要的话编辑前后各读一次 buffer-line-count（O(1)）。
+(define (edits-span descs)
+  (for/fold ([fr #f] [lr #f]) ([d (in-list descs)])
+    (define s (edit-desc-s-line d))
+    (define e (+ s (sub1 (length (string->lines (edit-desc-new-text d))))))
+    (values (if fr (min fr s) s) (if lr (max lr e) e))))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -133,5 +149,24 @@
                                   (edit-desc 0 3 0 3 "Y"))))  ; 允许
   (check-equal? (buffer->string rb*) "abcYd")
   (check-equal? rdescs (list (edit-desc 0 3 0 3 "Y")))
+
+  ;; ---- edits-span：一组编辑的行区间并集（新坐标系）----
+  (define (span ds) (call-with-values (lambda () (edits-span ds)) list))
+  (check-equal? (span '()) (list #f #f))                                    ; 什么都没发生
+  (check-equal? (span (list (edit-desc 0 1 0 3 ""))) (list 0 0))            ; 纯删除 → 占 1 行
+  (check-equal? (span (list (edit-desc 0 1 0 1 "X"))) (list 0 0))           ; 单字符插入
+  (check-equal? (span (list (edit-desc 1 0 1 0 "M\nN\n"))) (list 1 3))      ; 插 3 行文本
+  (check-equal? (span (list (edit-desc 0 0 2 3 ""))) (list 0 0))            ; 删 3 行
+  ;; 并集：行 2 与行 0 两条 → (0 2)；顺序无关
+  (check-equal? (span (list (edit-desc 2 0 2 1 "") (edit-desc 0 0 0 1 ""))) (list 0 2))
+  (check-equal? (span (list (edit-desc 0 0 0 1 "") (edit-desc 2 0 2 1 ""))) (list 0 2))
+
+  ;; 真实用途：整组落回后取「哪些行要重画」（新坐标系）
+  (define gb0 (buffer-open "aaa\nbbb\nccc"))
+  (define gdescs (list (edit-desc 0 0 0 1 "") (edit-desc 2 0 2 1 "")))
+  (define-values (gb1 _g1) (buffer-apply-edit-trusted gb0 (car gdescs)))
+  (define-values (gb2 _g2) (buffer-apply-edit-trusted gb1 (cadr gdescs)))
+  (check-equal? (buffer->string gb2) "aa\nbbb\ncc")
+  (check-equal? (span gdescs) (list 0 2))          ; 行 0 与行 2 都要重画
 
   (displayln "edit.rkt: all tests passed"))

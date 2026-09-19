@@ -10,7 +10,7 @@
 ;; 用法：`racket tools/reconcile.rkt`（打印报告；有漂移则报错退出非零）
 ;;       同时是 `raco test .` 的一个检查（`module+ test`：安静，有漂移才失败）。
 ;; 要点（踩过的坑）：① 只取**第一格**——行内其它反引号多是概念词、字段名、局部变量
-;; （`dirty`、`left-col`、`pl`…），用「行内首个反引号」会误报一堆；
+;; （`cursor`、`left-col`、`pl`…），用「行内首个反引号」会误报一堆；
 ;; ② 比对集合要含消费层模块（`history.rkt`/`main.rkt`），否则 §9 的账本名字会误报。
 
 (require racket/list racket/runtime-path)

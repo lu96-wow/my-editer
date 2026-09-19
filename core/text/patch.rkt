@@ -32,7 +32,7 @@
   (eq? (buffer-content a) (buffer-content b)))
 
 ;; 应用一批补丁：按 key 清旧写新。只 bump tick（触发重渲染），
-;; 不 bump dirty（dirty 由 run-plugins 管理）、不置 modified?（标注不是用户编辑）。
+;; 不置 modified?（标注不是用户编辑）。
 (define (buffer-apply-patches b patches)
   (if (null? patches)
       b

@@ -57,12 +57,12 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 语法高亮 / 标注 | `buffer-put-properties-many`（一次 tick） |
 | 插件输出（可合并 / 异步） | `patch` + `buffer-apply-patches` |
 | 一个文档、多个视图 | `document-*`（§6.5） |
-| 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position` |
+| 光标在别处编辑后不失效 | `edit-desc-map-position` / `edits-map-position`（一组编辑的行区间并集 → `edits-span`） |
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
 | **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
-| 看一台编辑器怎么拼 | `skeleton.rkt`（**无前端骨架**，不 require `io/`）：状态 + 三类操作 + 投影，用到 core 的 50 个名字（白名单的 22%）；**编辑路径上不出现一个 `buffer-*`**（§12） |
-| 看「捕获 ≠ 记账」 | `document-layer.rkt`：只调 document 层 vs 加一行 `history-record` 的对照——**record 前后 document 的值完全相同**（`document` 里没有 undo） |
+| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步，**只含必要调用**（用到 core 的 16 个名字）；编辑路径上不出现一个 `buffer-*`（§12.5） |
+| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、read-only 约束槽（编辑被拒）、编辑时属性自动跟随、`patch`（插件 delta）（15 个名字） |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
 
 ---
@@ -293,11 +293,10 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-marker-pos` | b id | point \| #f |
 | `buffer-make-overlay` | b start-pos end-pos [presentation (hash)] [#:priority 0] [#:evaporate? #f] | (values buffer id) |
 | `buffer-remove-overlay` | b oid | buffer |
-| `buffer-mark-dirty` / `buffer-mark-dirty-all` | b [first last] | buffer（把该范围标为「刚变过」，bump tick） |
 
 > 另有装配层的 struct 访问器（一般用不到）：
 > `buffer-content` / `buffer-properties` / `buffer-markers` / `buffer-overlays` /
-> `buffer-tick` / `buffer-dirty` / `buffer-modified?` / `buffer-gap`，以及 `restrict` /
+> `buffer-tick` / `buffer-modified?` / `buffer-gap`，以及 `restrict` /
 > `make-restrict` / `restrict-read-only?`（约束槽，见 §5.3）。
 
 ### 5.6 patch / edit —— 批量与补丁
@@ -308,9 +307,14 @@ gap 定位（返回新 content）：`content-gap-goto`。
 | `buffer-content-same?` | a b | boolean（eq? content） |
 | `buffer-apply-edit-batch` | b (listof edit-desc) | (values buffer (listof edit-desc)) |
 | `edits-map-position` | descs line col | point（跨一串编辑映射） |
+| `edits-span` | descs | (values first-line last-line)（一组编辑影响到的**行区间并集**，新坐标系；空 → `(values #f #f)`） |
 
 > `buffer-apply-edit-batch` 的返回 descs 只含**真正应用**的编辑：no-op 或被 read-only 拒绝的
-> （desc = `#f`）不含在内，故可直接喂给 `edits-map-position`。
+> （desc = `#f`）不含在内，故可直接喂给 `edits-map-position` / `edits-span`。
+>
+> **增量重绘**：用 `edits-span` 取「这次要重画哪几行」——单次编辑传一条 desc，整步撤销/重放
+> 传整组 desc（取并集）。`buffer-tick` 只回答「有没有变」（编辑、写属性、补丁都让它涨），
+> `buffer-content-same?` 只回答「内容变没变」（不受标注影响）。
 
 ---
 
@@ -515,9 +519,13 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 > 命名约定速查：`make-*`（空构造）、`*-open`/`*-of-*`（从数据构造）、`*->*`（投影）、
 > `*-set-*`（字段更新）、动词-名词（变换）、`*-apply-edit`（解释 edit-desc）。
 >
-> **更完整的骨架**见 `skeleton.rkt`（**无前端**：不 require 任何 `io/`，事件手搓、输出只读
-> `screen` 的数据）——它把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开成三个函数，
-> 并列出实际用到的 core API：**52 个名字，占白名单 211 的 25%**。
+> **完整示范**见 `main.rkt`（**无前端**：不 require 任何 `io/`，事件手搓、输出只读 `screen`
+> 的数据）——它把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开，用到 core 的
+> **60 个名字，占白名单 221 的 27%**。
+>
+> **两个聚焦示例**（都只含必要的 core 调用，可直接 `racket 文件` 跑）：
+> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步，**16** 个名字）、
+> `attributes.rkt`（属性 / 约束 / patch，**15** 个名字）。
 
 ---
 
@@ -529,7 +537,7 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 |---|---|
 | **tab / Ambiguous 宽度** | core 一律按 **1 列**（`char-display-width #\tab` = 1，`string-display-width` / `index->column` 同口径）。终端把 tab 画成多列是**后端的事**：要对齐就自己先展开成空格 |
 | **`modified?` 谁置位** | splice 与属性/约束/marker/overlay 写入都置 `#t`；只有 `buffer-apply-patches`（插件标注）不置 —— 用它判断「有没有未保存改动」时要知道这一点 |
-| **`dirty` 是 per-operation** | 「最近一次改动」的行范围（新坐标系），改一次读一次；跨改动累积由消费方自己做（它本就是改动的发起者） |
+| **没有 `dirty` 槽** | 增量信息**归操作、不归文档**：要「这次/这一步改到哪几行」用 `edits-span`（传一条 desc 或整组）；`buffer-tick` 只回答「有没有变」（ARCHITECTURE §12.6） |
 | **`left-col` 大于行宽** | **合法状态**（「滚过短行尾部」，该行显示空），不是错误；但**落在宽字符右半**会被吸附到字符起点 |
 | **`modified?` 的回退 / 保存点** | core 不做（`modified?` 只是「约定」，见 ARCHITECTURE §8.6） |
 | **撤销 / 重放账本** | 不在 core：core 只给**可逆编辑代数**；账本与分组是消费层策略（ARCHITECTURE §9） |
