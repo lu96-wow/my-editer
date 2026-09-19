@@ -33,17 +33,29 @@
 
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-(define (rehighlight s)
+;; 只扫 [fl,ll] 这些行
+(define (syntax-segs doc fl ll)
+  (append*
+   (for/list ([line (in-range fl (add1 ll))])
+     (define text (document-line-ref doc line))
+     (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
+       (list line (car m) (cdr m) 'keyword)))))
+
+;; 局部重标：只在这几行上清旧写新（key='face）
+(define (highlight-range s fl ll)
   (define doc (editor-document s))
-  (define n (document-line-count doc))
-  (define segs
-    (append*
-     (for/list ([line (in-range n)])
-       (define text (document-line-ref doc line))
-       (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
-         (list line (car m) (cdr m) 'keyword)))))
   (struct-copy editor s
-    [document (document-apply-patches doc (list (patch 'face 0 (sub1 n) segs)))]))
+    [document (document-apply-patches doc (list (patch 'face fl ll (syntax-segs doc fl ll))))]))
+
+;; 打开时全量标一遍
+(define (rehighlight s)
+  (highlight-range s 0 (sub1 (document-line-count (editor-document s)))))
+
+;; 命令的第二返回值就是 change-report；有变化就按它给的行区间局部重标
+(define (apply-report s report)
+  (if report
+      (highlight-range s (change-report-first-line report) (change-report-last-line report))
+      s))
 
 ;; 把一帧 screen 变成要写出的字节。
 ;; 我们把光标移到「屏幕上第 row 行第 col 列」（0-based）——终端 CUP 是 1-based，故 +1。
@@ -95,14 +107,13 @@
      (define running? #t)
 
      (define (edit-op op)
-       (set! s (let-values ([(s* report) (compose-edit s op)])
-                 (if report (rehighlight s*) s*))))
+       (set! s (let-values ([(s* report) (compose-edit s op)]) (apply-report s* report))))
      (define (navigate f)
        (set! s (struct-copy editor s
                  [document (document-update-view (editor-document s) (editor-active s) f)])))
      (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
-     (define (undo) (set! s (let-values ([(s* _) (compose-undo s)]) (rehighlight s*))))
-     (define (redo) (set! s (let-values ([(s* _) (compose-redo s)]) (rehighlight s*))))
+     (define (undo) (set! s (let-values ([(s* report) (compose-undo s)]) (apply-report s* report))))
+     (define (redo) (set! s (let-values ([(s* report) (compose-redo s)]) (apply-report s* report))))
      (define (resize-editor! nr nc)
        (set! rows (max 2 nr)) (set! cols (max 1 nc))
        (set! s (struct-copy editor s
@@ -159,6 +170,12 @@
   (check-true (bytes? frame))
   (check-true (regexp-match? #rx"hello" frame))
   (check-true (regexp-match? #rx"world" frame))
+  ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
+  (check-equal? (document-get-property (editor-document s) 1 1 'face) 'keyword)
+  (define-values (s2 report) (compose-edit s (edit-splice (point 1 0) (point 1 7) "print  ")))
+  (define s3 (apply-report s2 report))
+  (check-equal? (document-get-property (editor-document s3) 1 1 'face) #f)
+  (check-equal? (change-report-first-line report) 1)
   (displayln "tui.rkt: render smoke test passed"))
 
 (module+ main
