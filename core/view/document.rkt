@@ -51,6 +51,7 @@
  document-get-property
  document-read-only-at?
  document-restrict-runs
+ document-range-text
  document-buffer)
 
 ;;; ---------- 数据 ----------
@@ -78,6 +79,10 @@
   (buffer-read-only-at? (document-buffer doc) line col))
 (define (document-restrict-runs doc line)
   (buffer-restrict-runs (document-buffer doc) line))
+
+;; [start,end) 的文本（跨行用 \n 连接）。取「光标附近的片段」等只读需求走这里。
+(define (document-range-text doc start end)
+  (buffer-range-text (document-buffer doc) start end))
 
 (define (check-view-index who doc i)
   (unless (and (exact-nonnegative-integer? i) (< i (document-view-count doc)))

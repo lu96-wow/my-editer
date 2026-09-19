@@ -13,8 +13,7 @@
 ;;;
 ;;; 只用 core/api.rkt（原子）+ core/compose/editor.rkt（editor/命令）。
 
-(require "../core/api.rkt"
-         "../core/compose/editor.rkt"
+(require "../core/editor.rkt"
          tui
          racket/string
          racket/path)
@@ -34,22 +33,20 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 ;; 只扫 [fl,ll] 这些行
-(define (syntax-segs doc fl ll)
+(define (syntax-segs ed fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (document-line-ref doc line))
+     (define text (editor-line-ref ed line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
 ;; 局部重标：只在这几行上清旧写新（key='face）
-(define (highlight-range s fl ll)
-  (define doc (editor-document s))
-  (struct-copy editor s
-    [document (document-apply-patches doc (list (patch 'face fl ll (syntax-segs doc fl ll))))]))
+(define (highlight-range ed fl ll)
+  (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll)))))
 
 ;; 打开时全量标一遍
-(define (rehighlight s)
-  (highlight-range s 0 (sub1 (document-line-count (editor-document s)))))
+(define (rehighlight ed)
+  (highlight-range ed 0 (sub1 (editor-line-count ed))))
 
 ;; 命令的第二返回值就是 change-report；有变化就按它给的行区间局部重标
 (define (apply-report s report)
@@ -71,12 +68,11 @@
       (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
   ;; 状态行（最后一行）
   (define p (window-point w))
-  (define doc (editor-document s))
   (define status
     (format " ~a  L~a:C~a  ~a   ^Z undo ^Y redo ^Q quit"
             name
             (add1 (point-line p)) (add1 (point-col p))
-            (if (buffer-modified? (document-buffer doc)) "modified" "saved")))
+            (if (editor-modified? s) "modified" "saved")))
   (emit! (format-cursor-move rows 1))
   (emit! (format-styled 'status-bar
                         (let ([s status])
@@ -107,18 +103,14 @@
      (define running? #t)
 
      (define (edit-op op)
-       (set! s (let-values ([(s* report) (compose-edit s op)]) (apply-report s* report))))
-     (define (navigate f)
-       (set! s (struct-copy editor s
-                 [document (document-update-view (editor-document s) (editor-active s) f)])))
+       (set! s (let-values ([(s* report) (editor-edit s op)]) (apply-report s* report))))
+     (define (navigate f) (set! s (editor-update-active s f)))
      (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
-     (define (undo) (set! s (let-values ([(s* report) (compose-undo s)]) (apply-report s* report))))
-     (define (redo) (set! s (let-values ([(s* report) (compose-redo s)]) (apply-report s* report))))
+     (define (undo) (set! s (let-values ([(s* report) (editor-undo s)]) (apply-report s* report))))
+     (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
      (define (resize-editor! nr nc)
        (set! rows (max 2 nr)) (set! cols (max 1 nc))
-       (set! s (struct-copy editor s
-                 [document (document-update-view (editor-document s) 0
-                                                 (lambda (w) (window-set-size w (sub1 rows) cols)))])))
+       (set! s (editor-set-view-size s 0 (sub1 rows) cols)))
      (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
 
@@ -171,10 +163,10 @@
   (check-true (regexp-match? #rx"hello" frame))
   (check-true (regexp-match? #rx"world" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
-  (check-equal? (document-get-property (editor-document s) 1 1 'face) 'keyword)
-  (define-values (s2 report) (compose-edit s (edit-splice (point 1 0) (point 1 7) "print  ")))
+  (check-equal? (editor-get-property s 1 1 'face) 'keyword)
+  (define-values (s2 report) (editor-edit s (edit-splice (point 1 0) (point 1 7) "print  ")))
   (define s3 (apply-report s2 report))
-  (check-equal? (document-get-property (editor-document s3) 1 1 'face) #f)
+  (check-equal? (editor-get-property s3 1 1 'face) #f)
   (check-equal? (change-report-first-line report) 1)
   (displayln "tui.rkt: render smoke test passed"))
 

@@ -3,43 +3,76 @@
 (require "../text/point.rkt" "../text/buffer.rkt" "../text/edit.rkt"
          "../view/window.rkt" "../view/document.rkt" "../tool/history.rkt" rackunit)
 
-;;; core/compose/editor.rkt —— 组合原语：把 document + 账本 + 活动视图接成命令
+;;; core/compose/editor.rkt —— 统一的编辑平台：editor
 ;;;
-;;; 问题（旧形态）：document + history + 活动视图下标三样必须一起 thread，
-;;; 却没有名字；调用方只能靠位置记住 (doc hist i) → (values doc hist fl ll)，
-;;; 容易配对错、记错顺序、把「变更行」两个裸值传来传去。
+;;; editor = document + 账本 + 活动视图。**这是使用者唯一碰的有状态对象**，
+;;; 所有日常操作都在 editor-* 上，不需要在 editor 和 document 之间来回搬：
 ;;;
-;;; 解决：把三样装进一个命名状态 editor；命令统一返回
-;;;     (values editor (or/c #f change-report))
-;;; 调用方不需要再记参数/返回值顺序。
+;;;   构造   editor-open / editor-of-document
+;;;   视图   editor-window / editor-add-view / editor-update-view / editor-set-view-size …
+;;;   读     editor->string / editor-line-ref / editor-range-text / editor-get-property …
+;;;   标注   editor-put-property / editor-put-restrict / editor-apply-patches …（不改文本、不动账本）
+;;;   编辑   editor-edit / editor-undo / editor-redo   → (values editor (or/c #f change-report))
+;;;   账本   editor-can-undo? / editor-undo-depth …
 ;;;
-;;;   compose-edit  document-edit + 记账 + 报变更行
-;;;   compose-undo  取账本 → 走 document 的 trusted 落回（光标回 pre-point）
-;;;   compose-redo  取账本 → trusted 落回（无 pre-point）
-;;;
-;;; 封掉的接缝坑：编辑后收 edit-change 记账；撤销/重放必须走 trusted；
-;;; 变更行用整组 desc 取 edits-span。多文件/布局/主题仍是使用方的事。
+;;; document 是**机制**（buffer + 多视图 + rebase），由 editor 内部持有；
+;;; 需要下探时才用逃生门 editor-document（并配合 core/api.rkt 的 document-*）。
 
 (provide
  (struct-out editor)
  (struct-out change-report)
+ ;; 构造
  editor-open
  editor-of-document
- editor-set-active
+ ;; 视图
  editor-window
- compose-edit
- compose-undo
- compose-redo)
+ editor-view-window
+ editor-view-count
+ editor-add-view
+ editor-set-active
+ editor-update-view
+ editor-update-active
+ editor-set-view-size
+ editor-view-sync
+ editor-set-view-sync
+ ;; 读
+ editor->string
+ editor->lines
+ editor-line-count
+ editor-line-ref
+ editor-range-text
+ editor-get-property
+ editor-read-only-at?
+ editor-restrict-runs
+ editor-buffer
+ editor-modified?
+ ;; 标注
+ editor-put-property
+ editor-remove-property
+ editor-put-properties-many
+ editor-put-restrict
+ editor-apply-patches
+ ;; 编辑 / 撤销 / 重做
+ editor-edit
+ editor-undo
+ editor-redo
+ ;; 账本查询
+ editor-can-undo?
+ editor-can-redo?
+ editor-undo-depth
+ editor-redo-depth)
 
 ;;; ---------- 状态 ----------
 
+;; document : document   一个 buffer + 多个视图（机制）
+;; history  : history    撤销/重放账本（工具层）
+;; active   : nat        当前编辑的视图下标
 (struct editor (document history active) #:transparent)
-;; document : document
-;; history  : history
-;; active   : nat      当前编辑的视图下标
 
-;; 一次命令影响到的行区间（**新坐标系**）。#f（命令返回处）表示什么都没发生。
+;; 一次命令影响到的行区间（**新坐标系**）。命令返回 #f 表示什么都没发生。
 (struct change-report (first-line last-line) #:transparent)
+
+;;; ---------- 构造 ----------
 
 (define (editor-open text [height 24] [width 80])
   (define-values (doc _u1) (document-add-view (document-open text) height width))
@@ -48,103 +81,170 @@
 (define (editor-of-document doc [active 0])
   (editor doc (make-history) active))
 
-(define (editor-set-active s i)
-  (struct-copy editor s [active i]))
+;; 内部：换 document（保留账本与活动视图）
+(define (with-document ed f)
+  (struct-copy editor ed [document (f (editor-document ed))]))
+
+;;; ---------- 视图 ----------
 
 ;; 活动视图的 window（渲染/查询用）
-(define (editor-window s)
-  (document-window (editor-document s) (editor-active s)))
+(define (editor-window ed)
+  (document-window (editor-document ed) (editor-active ed)))
 
-;;; ---------- 命令 ----------
+(define (editor-view-window ed i)
+  (document-window (editor-document ed) i))
 
-;; 编辑：document-edit + 记账 + 报变更行。
-(define (compose-edit s op)
-  (define-values (doc* ch) (document-edit (editor-document s) (editor-active s) op))
+(define (editor-view-count ed)
+  (document-view-count (editor-document ed)))
+
+(define (editor-add-view ed [height 24] [width 80] [p (point 0 0)] #:sync [sync 'free])
+  (define-values (doc i) (document-add-view (editor-document ed) height width p #:sync sync))
+  (values (struct-copy editor ed [document doc]) i))
+
+(define (editor-set-active ed i)
+  (struct-copy editor ed [active i]))
+
+(define (editor-update-view ed i f)
+  (with-document ed (lambda (doc) (document-update-view doc i f))))
+
+;; 更新**活动视图**（导航/滚动/尺寸），并同步 follow 视图
+(define (editor-update-active ed f)
+  (editor-update-view ed (editor-active ed) f))
+
+(define (editor-set-view-size ed i height width)
+  (with-document ed (lambda (doc) (document-set-view-size doc i height width))))
+
+(define (editor-view-sync ed i) (document-view-sync (editor-document ed) i))
+
+(define (editor-set-view-sync ed i sync)
+  (with-document ed (lambda (doc) (document-set-view-sync doc i sync))))
+
+;;; ---------- 读 ----------
+
+(define (editor->string ed) (document->string (editor-document ed)))
+(define (editor->lines ed) (document->lines (editor-document ed)))
+(define (editor-line-count ed) (document-line-count (editor-document ed)))
+(define (editor-line-ref ed i) (document-line-ref (editor-document ed) i))
+(define (editor-range-text ed start end) (document-range-text (editor-document ed) start end))
+(define (editor-get-property ed line col key) (document-get-property (editor-document ed) line col key))
+(define (editor-read-only-at? ed line col) (document-read-only-at? (editor-document ed) line col))
+(define (editor-restrict-runs ed line) (document-restrict-runs (editor-document ed) line))
+;; 逃生门：真 buffer（标注/属性等的底层结构）；大多数时候用不到
+(define (editor-buffer ed) (document-buffer (editor-document ed)))
+(define (editor-modified? ed) (buffer-modified? (editor-buffer ed)))
+
+;;; ---------- 标注（不改文本、不动账本）----------
+
+(define (editor-put-property ed line start end key val)
+  (with-document ed (lambda (doc) (document-put-property doc line start end key val))))
+(define (editor-remove-property ed line start end key)
+  (with-document ed (lambda (doc) (document-remove-property doc line start end key))))
+(define (editor-put-properties-many ed segs)
+  (with-document ed (lambda (doc) (document-put-properties-many doc segs))))
+(define (editor-put-restrict ed line start end rs)
+  (with-document ed (lambda (doc) (document-put-restrict doc line start end rs))))
+(define (editor-apply-patches ed patches)
+  (with-document ed (lambda (doc) (document-apply-patches doc patches))))
+
+;;; ---------- 编辑 ----------
+
+;; op : buffer point → (or/c #f edit-desc)。返回 (values editor (or/c #f change-report))。
+;; 逆用编辑前的 buffer 导出；入不入账本由本命令负责（editor-undo/redo 取用）。
+(define (editor-edit ed op)
+  (define-values (doc* ch) (document-edit (editor-document ed) (editor-active ed) op))
   (cond
-    [(not ch) (values s #f)]
+    [(not ch) (values ed #f)]
     [else
      (define-values (f l) (edits-span (list (edit-change-desc ch))))
-     (values (struct-copy editor s
+     (values (struct-copy editor ed
                [document doc*]
-               [history (history-record (editor-history s) ch)])
+               [history (history-record (editor-history ed) ch)])
              (change-report f l))]))
 
-;; 撤销：pop → trusted 落回（光标回 pre-point）→ 报变更行。
-(define (compose-undo s)
-  (define-values (st h*) (history-pop-undo (editor-history s)))
+(define (editor-undo ed)
+  (define-values (st h*) (history-pop-undo (editor-history ed)))
   (cond
-    [(not st) (values s #f)]
+    [(not st) (values ed #f)]
     [else
      (define-values (f l) (edits-span (step-undo-descs st)))
-     (define doc* (document-apply-descs-trusted (editor-document s) (editor-active s)
+     (define doc* (document-apply-descs-trusted (editor-document ed) (editor-active ed)
                                                 (step-undo-descs st) (step-pre-point st)))
-     (values (struct-copy editor s [document doc*] [history h*])
+     (values (struct-copy editor ed [document doc*] [history h*])
              (change-report f l))]))
 
-;; 重做：pop → trusted 落回（光标由最后一条 desc 推导）→ 报变更行。
-(define (compose-redo s)
-  (define-values (st h*) (history-pop-redo (editor-history s)))
+(define (editor-redo ed)
+  (define-values (st h*) (history-pop-redo (editor-history ed)))
   (cond
-    [(not st) (values s #f)]
+    [(not st) (values ed #f)]
     [else
      (define-values (f l) (edits-span (step-replay-descs st)))
-     (define doc* (document-apply-descs-trusted (editor-document s) (editor-active s)
+     (define doc* (document-apply-descs-trusted (editor-document ed) (editor-active ed)
                                                 (step-replay-descs st)))
-     (values (struct-copy editor s [document doc*] [history h*])
+     (values (struct-copy editor ed [document doc*] [history h*])
              (change-report f l))]))
+
+;;; ---------- 账本查询 ----------
+
+(define (editor-can-undo? ed) (history-can-undo? (editor-history ed)))
+(define (editor-can-redo? ed) (history-can-redo? (editor-history ed)))
+(define (editor-undo-depth ed) (history-undo-depth (editor-history ed)))
+(define (editor-redo-depth ed) (history-redo-depth (editor-history ed)))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define s0 (editor-open ""))
+  (define e0 (editor-open ""))
 
-  ;; 连续单字符并成一步；粘贴（多字符）自成一步；report 报变更行
-  (define-values (s1 r1) (compose-edit s0 (edit-insert-char #\a)))
-  (define-values (s2 _u2) (compose-edit s1 (edit-insert-char #\b)))
-  (define-values (s3 _u3) (compose-edit s2 (edit-insert-char #\c)))
-  (check-equal? (document->string (editor-document s3)) "abc")
+  ;; 读 / 编辑 / 报告
+  (define-values (e1 r1) (editor-edit e0 (edit-insert-char #\a)))
+  (define-values (e2 _ea) (editor-edit e1 (edit-insert-char #\b)))
+  (define-values (e3 _eb) (editor-edit e2 (edit-insert-char #\c)))
+  (check-equal? (editor->string e3) "abc")
   (check-equal? (change-report-first-line r1) 0)
-  (check-equal? (history-undo-depth (editor-history s3)) 1)
-  (define-values (s4 r4) (compose-edit s3 (edit-insert "de")))
-  (check-equal? (document->string (editor-document s4)) "abcde")
-  (check-equal? (history-undo-depth (editor-history s4)) 2)
-  (check-equal? r4 (change-report 0 0))
+  (check-equal? (editor-undo-depth e3) 1)          ; 三次单字符并成一步
+  (check-equal? (window-point (editor-window e3)) (point 0 3))
 
-  ;; 多行插入 → report 跨行
-  (define-values (m1 rm) (compose-edit s0 (edit-insert "X\nY\n")))
-  (check-equal? (document->string (editor-document m1)) "X\nY\n")
-  (check-equal? rm (change-report 0 2))
-
-  ;; 撤销 / 重做：文本 + 光标 + report
-  (define-values (u1 ur) (compose-undo s3))
-  (check-equal? (document->string (editor-document u1)) "")
+  ;; 撤销 / 重做
+  (define-values (u1 ur) (editor-undo e3))
+  (check-equal? (editor->string u1) "")
   (check-equal? (window-point (editor-window u1)) (point 0 0))
   (check-equal? ur (change-report 0 0))
-  (define-values (r1b rr) (compose-redo u1))
-  (check-equal? (document->string (editor-document r1b)) "abc")
-  (check-equal? (window-point (editor-window r1b)) (point 0 3))
-  (check-equal? rr (change-report 0 0))
+  (define-values (r1b _ec) (editor-redo u1))
+  (check-equal? (editor->string r1b) "abc")
+  (check-false (editor-can-redo? e3))
+  (check-true (editor-can-undo? e3))
 
-  ;; 空栈 / no-op → report #f，editor 原样
-  (define-values (e1 er1) (compose-undo s0))
-  (check-eq? e1 s0)
-  (check-false er1)
-  (define-values (e2 er2) (compose-redo s0))
-  (check-false er2)
-  (define-values (e3 er3) (compose-edit s0 (edit-backspace)))   ; (0,0) backspace 无操作
-  (check-eq? e3 s0)
-  (check-false er3)
+  ;; 空栈 / no-op
+  (define-values (z1 zr) (editor-undo e0))
+  (check-eq? z1 e0)
+  (check-false zr)
+  (define-values (z2 zr2) (editor-edit e0 (edit-backspace)))
+  (check-eq? z2 e0)
+  (check-false zr2)
 
-  ;; 被 read-only 拒 → 不记账、不变、report #f
-  (define rs (editor-open "abc"))
-  (define rs1 (editor-of-document
-               (document-put-restrict (editor-document rs) 0 0 2 (restrict #t))))
-  (define rs2 (struct-copy editor rs1
-                [document (document-update-view (editor-document rs1) 0
-                                                (lambda (w) (window-goto w 0 1)))]))
-  (define-values (rs3 er4) (compose-edit rs2 (edit-insert-char #\X)))
-  (check-equal? (document->string (editor-document rs3)) "abc")
-  (check-false er4)
-  (check-false (history-can-undo? (editor-history rs3)))
+  ;; 区间取文本
+  (check-equal? (editor-range-text e3 (point 0 0) (point 0 3)) "abc")
+  (define-values (m1 _ed) (editor-edit e0 (edit-insert "a\nb\nc")))
+  (check-equal? (editor-range-text m1 (point 1 0) (point 2 1)) "b\nc")
+
+  ;; 视图管理：多视图 / follow / 尺寸
+  (define ed0 (editor-open "l0\nl1\nl2\nl3"))
+  (define-values (ed1 i1) (editor-add-view ed0 2 10))
+  (define-values (ed2 i2) (editor-add-view ed1 2 10 #:sync 'follow))
+  (check-equal? (list i1 i2) (list 1 2))
+  (check-equal? (editor-view-count ed2) 3)
+  (check-equal? (editor-view-sync ed2 2) 'follow)
+  (define ed3 (editor-update-active ed2 (lambda (w) (window-goto w 2 0))))
+  (check-equal? (window-point (editor-window ed3)) (point 2 0))
+  (check-equal? (window-point (editor-view-window ed3 2)) (point 2 0))   ; follow 跟上了
+  (define ed4 (editor-set-view-size ed3 1 5 20))
+  (check-equal? (window-height (editor-view-window ed4 1)) 5)
+  (check-equal? (window-width (editor-view-window ed4 1)) 20)
+
+  ;; 标注写回保留账本/视图
+  (define ed5 (editor-put-properties-many ed2 (list (list 0 0 2 'face 'bold))))
+  (check-equal? (editor-get-property ed5 0 1 'face) 'bold)
+  (check-equal? (editor->string ed5) "l0\nl1\nl2\nl3")
+  (check-equal? (editor-view-count ed5) 3)
 
   (displayln "editor.rkt: all tests passed"))

@@ -52,6 +52,7 @@
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit
  edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-edit-desc-inverse
+ buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-read-only-at? buffer-restrict-runs
  buffer-add-marker buffer-remove-marker buffer-marker-pos
@@ -95,7 +96,7 @@
  ;; ---- document —— 多视图容器 + 唯一编辑入口 ----
  document document? struct:document document-open document-of-buffer
  document->string document->lines document-line-count document-line-ref
- document-get-property document-read-only-at? document-restrict-runs
+ document-get-property document-read-only-at? document-restrict-runs document-range-text
  document-add-view document-view-count document-window
  document-view-sync document-set-view-sync document-update-view document-set-view-size
  document-sync-followers

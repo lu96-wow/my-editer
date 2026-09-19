@@ -39,6 +39,7 @@
  edit-delete
  edit-splice
  buffer-edit-desc-inverse
+ buffer-range-text
  buffer-put-property
  buffer-get-property
  buffer-remove-property
@@ -164,7 +165,7 @@
 ;; 通用逃生门：显式区间的替换（程序化编辑）
 (define (edit-splice start end text) (lambda (_b _p) (edit-desc start end text)))
 
-;;; ---------- 逆编辑 ----------
+;;; ---------- 逆编辑 / 取区间文本 ----------
 
 (define (buffer-range-text b s e)
   (define sl (point-line s)) (define sc (point-col s))

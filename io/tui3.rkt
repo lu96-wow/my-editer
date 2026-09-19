@@ -16,8 +16,7 @@
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Tab 切换活动窗口
 ;;;         鼠标点击切换+定位   Ctrl+Z 撤销   Ctrl+Y 重做   Ctrl+Q / Esc 退出
 
-(require "../core/api.rkt"
-         "../core/compose/editor.rkt"
+(require "../core/editor.rkt"
          tui
          racket/string
          racket/path)
@@ -35,22 +34,20 @@
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 ;; 只扫 [fl,ll] 这些行
-(define (syntax-segs doc fl ll)
+(define (syntax-segs ed fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (document-line-ref doc line))
+     (define text (editor-line-ref ed line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
 ;; 局部重标：只在这几行上清旧写新（key='face）
-(define (highlight-range s fl ll)
-  (define doc (editor-document s))
-  (struct-copy editor s
-    [document (document-apply-patches doc (list (patch 'face fl ll (syntax-segs doc fl ll))))]))
+(define (highlight-range ed fl ll)
+  (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll)))))
 
 ;; 打开时全量标一遍
-(define (rehighlight s)
-  (highlight-range s 0 (sub1 (document-line-count (editor-document s)))))
+(define (rehighlight ed)
+  (highlight-range ed 0 (sub1 (editor-line-count ed))))
 
 ;; 命令的第二返回值就是 change-report；有变化就按它给的行区间局部重标
 (define (apply-report s report)
@@ -74,12 +71,11 @@
 ;; name : 状态栏显示；tops : 三个视图各自 top-line（用来肉眼验证 follow/free）
 (define (render-frame s rows cols name)
   (define-values (H leftW rightW topH botH) (layout rows cols))
-  (define doc (editor-document s))
   (define scr (screen-compose
                H cols
-               (list (list 0 0 0 (window->screen (document-window doc 0)))
-                     (list 1 (add1 leftW) 0 (window->screen (document-window doc 1)))
-                     (list 2 (add1 leftW) (+ topH 1) (window->screen (document-window doc 2))))
+               (list (list 0 0 0 (window->screen (editor-view-window s 0)))
+                     (list 1 (add1 leftW) 0 (window->screen (editor-view-window s 1)))
+                     (list 2 (add1 leftW) (+ topH 1) (window->screen (editor-view-window s 2))))
                (editor-active s)))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
@@ -99,8 +95,7 @@
   (emit! (format-content "├"))
   ;; 状态行：三个 top 行号 + 活动窗格
   (define p (window-point (editor-window s)))
-  (define doc* (editor-document s))
-  (define (top i) (window-top-line (document-window doc* i)))
+  (define (top i) (window-top-line (editor-view-window s i)))
   (define status
     (format " ~a  L~a:C~a  tops(~a,~a,~a)  active=~a   Tab pane  ^Z ^Y  ^Q"
             name
@@ -132,36 +127,28 @@
      (define text (if (and path (file-exists? path)) (file->string path) ""))
      (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define-values (H leftW rightW topH botH) (layout rows cols))
-     ;; 一个 document，三个视图：0=free（主），1=follow（右上），2=free（右下）
-     (define doc0 (document-open text))
-     (define-values (doc1 _i0) (document-add-view doc0 H leftW))
-     (define-values (doc2 _i1) (document-add-view doc1 topH rightW #:sync 'follow))
-     (define-values (doc3 _i2) (document-add-view doc2 botH rightW))
-     (define s (rehighlight (editor-of-document doc3 0)))
+     ;; 三个视图：0=free（主），1=follow（右上），2=free（右下）
+     (define ed0 (editor-open text H leftW))
+     (define-values (ed1 _a0) (editor-add-view ed0 topH rightW #:sync 'follow))
+     (define-values (ed2 _a1) (editor-add-view ed1 botH rightW))
+     (define s (rehighlight (editor-set-active ed2 0)))
      (define running? #t)
 
      (define (active) (editor-active s))
      (define (edit-op op)
-       (set! s (let-values ([(s* report) (compose-edit s op)]) (apply-report s* report))))
-     (define (navigate f)
-       (set! s (struct-copy editor s
-                 [document (document-update-view (editor-document s) (active) f)])))
+       (set! s (let-values ([(s* report) (editor-edit s op)]) (apply-report s* report))))
+     (define (navigate f) (set! s (editor-update-active s f)))
      (define (move f) (navigate (lambda (w) (window-ensure-point (f w)))))
-     (define (undo) (set! s (let-values ([(s* report) (compose-undo s)]) (apply-report s* report))))
-     (define (redo) (set! s (let-values ([(s* report) (compose-redo s)]) (apply-report s* report))))
+     (define (undo) (set! s (let-values ([(s* report) (editor-undo s)]) (apply-report s* report))))
+     (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
      (define (set-point! i pt)
-       (set! s (struct-copy editor s
-                 [document (document-update-view (editor-document s) i
-                                                 (lambda (w) (window-set-point w pt)))])))
+       (set! s (editor-update-view s i (lambda (w) (window-set-point w pt)))))
      (define (resize! nr nc)
        (set! rows (max 4 nr)) (set! cols (max 6 nc))
        (define-values (H leftW rightW topH botH) (layout rows cols))
-       (define doc* (editor-document s))
-       (set! s (struct-copy editor s
-                 [document (document-set-view-size
-                            (document-set-view-size
-                             (document-set-view-size doc* 0 H leftW) 1 topH rightW)
-                            2 botH rightW)])))
+       (set! s (editor-set-view-size
+                (editor-set-view-size (editor-set-view-size s 0 H leftW) 1 topH rightW)
+                2 botH rightW)))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
 
      ;; 屏幕坐标 → 窗格下标
@@ -204,7 +191,7 @@
                           (define ox (if (= pane 0) 0 (add1 leftW)))
                           (define oy (cond [(= pane 2) (+ topH 1)] [else 0]))
                           (define-values (l c)
-                            (window-screen->point (document-window (editor-document s) pane)
+                            (window-screen->point (editor-view-window s pane)
                                                   (- y oy) (- x ox)))
                           (when l (set-point! pane (point l c)))))
         #:mouse-scroll (lambda (dir _x _y _m)
@@ -219,20 +206,20 @@
 
 (module+ test
   (require rackunit)
-  (define-values (doc0 _t0) (document-add-view (document-open "l0\nl1\nl2\nl3\nl4") 4 10))
-  (define-values (doc1 _t1) (document-add-view doc0 2 8 #:sync 'follow))
-  (define-values (doc2 _t2) (document-add-view doc1 2 8))
-  (define s (rehighlight (editor-of-document doc2 0)))
+  (define ed0 (editor-open "l0\nl1\nl2\nl3\nl4" 4 10))
+  (define-values (ed1 _t1) (editor-add-view ed0 2 8 #:sync 'follow))
+  (define-values (ed2 _t2) (editor-add-view ed1 2 8))
+  (define s (rehighlight (editor-set-active ed2 0)))
   (define frame (render-frame s 10 24 "demo"))
   (check-true (bytes? frame))
   (check-true (regexp-match? #rx"l0" frame))
   (check-true (regexp-match? #rx"tops" frame))
   ;; 局部重标：改掉关键字后旧 face 被清掉（patch 的"清旧写新"）
   (define sh (rehighlight (editor-open "(define x 42)" 4 20)))
-  (check-equal? (document-get-property (editor-document sh) 0 1 'face) 'keyword)
-  (define-values (sh2 report) (compose-edit sh (edit-splice (point 0 0) (point 0 7) "print  ")))
+  (check-equal? (editor-get-property sh 0 1 'face) 'keyword)
+  (define-values (sh2 report) (editor-edit sh (edit-splice (point 0 0) (point 0 7) "print  ")))
   (define sh3 (apply-report sh2 report))
-  (check-equal? (document-get-property (editor-document sh3) 0 1 'face) #f)
+  (check-equal? (editor-get-property sh3 0 1 'face) #f)
   (check-equal? (change-report-first-line report) 0)
   (displayln "tui3.rkt: render smoke test passed"))
 

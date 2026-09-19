@@ -2,14 +2,14 @@
 
 ;;; core/compose/example.rkt —— 使用方示范：自己拼一个多文件编辑器
 ;;;
-;;; 组合层只给 editor（document+账本+活动视图）与 compose-edit/undo/redo。
+;;; 组合层只给 editor（document+账本+活动视图）与 editor-edit/undo/redo。
 ;;; 多文件状态、侧边栏布局、语法高亮全是使用方自己拼的。
 ;;;
 ;;; 看看现在接一个命令有多直白（不用记参数/返回值顺序）：
-;;;   (define-values (s report) (compose-edit s (edit-insert-char #\a)))
+;;;   (define-values (s report) (editor-edit s (edit-insert-char #\a)))
 ;;;   ;; report 是 (or/c #f change-report)；要重绘就 (change-report-first-line report)…
 
-(require "../api.rkt" "editor.rkt" racket/list rackunit)
+(require "../editor.rkt" racket/list rackunit)
 
 ;;; ---------- 使用方自己的状态 ----------
 
@@ -26,7 +26,7 @@
 (define (put-file e f)
   (struct-copy app e [files (list-set (app-files e) (app-active e) f)]))
 
-;;; ---------- 命令：把 compose-* 接进自己的状态 ----------
+;;; ---------- 命令：把 editor-* 接进自己的状态 ----------
 
 (define (run-command e cmd)
   (define fv (current-file e))
@@ -34,9 +34,9 @@
   (define e* (put-file e (file s* (file-name fv))))
   (values (highlight! e* report) report))
 
-(define (edit! e op) (run-command e (lambda (s) (compose-edit s op))))
-(define (undo! e) (run-command e compose-undo))
-(define (redo! e) (run-command e compose-redo))
+(define (edit! e op) (run-command e (lambda (s) (editor-edit s op))))
+(define (undo! e) (run-command e editor-undo))
+(define (redo! e) (run-command e editor-redo))
 
 (define (switch-file! e i) (struct-copy app e [active i]))
 (define (toggle-sidebar! e) (struct-copy app e [sidebar-open? (not (app-sidebar-open? e))]))
@@ -45,10 +45,10 @@
 
 (define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-(define (syntax-segs doc fl ll)
+(define (syntax-segs ed fl ll)
   (append*
    (for/list ([line (in-range fl (add1 ll))])
-     (define text (document-line-ref doc line))
+     (define text (editor-line-ref ed line))
      (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
        (list line (car m) (cdr m) 'keyword)))))
 
@@ -58,18 +58,17 @@
     [(not report) e]
     [else
      (define fv (current-file e))
-     (define s (file-editor fv))
-     (define doc (editor-document s))
+     (define ed (file-editor fv))
      (define fl (change-report-first-line report))
      (define ll (change-report-last-line report))
-     (define doc* (document-apply-patches doc (list (patch 'face fl ll (syntax-segs doc fl ll)))))
-     (put-file e (file (struct-copy editor s [document doc*]) (file-name fv)))]))
+     (put-file e (file (editor-apply-patches ed (list (patch 'face fl ll (syntax-segs ed fl ll))))
+                       (file-name fv)))]))
 
 ;;; ---------- 观察 ----------
 
-(define (text-of e) (document->string (editor-document (file-editor (current-file e)))))
+(define (text-of e) (editor->string (file-editor (current-file e))))
 (define (face-of e line col)
-  (document-get-property (editor-document (file-editor (current-file e))) line col 'face))
+  (editor-get-property (file-editor (current-file e)) line col 'face))
 
 ;;; ---------- 布局：侧边栏 + 主编辑区 ----------
 
