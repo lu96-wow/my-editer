@@ -14,6 +14,7 @@
 ;;;   写    buffer-put-property        buffer-put-properties-many    buffer-remove-property
 ;;;   读    buffer-get-property        buffer-line-ref
 ;;;   约束  buffer-put-restrict        make-restrict                buffer-read-only-at?
+;;;         buffer-restrict-runs                                   （枚举只读区间）
 ;;;   程序  buffer-splice-trusted      buffer-apply-edit-trusted    buffer-apply-edit
 ;;;   补丁  patch     buffer-apply-patches     buffer-content-same?
 ;;;   文本  buffer-open     buffer->string     buffer-insert-char     buffer-splice
@@ -93,7 +94,14 @@
 (define-values (h2 h2-desc) (buffer-apply-edit-trusted c0 g-desc))    ; trusted → 改
 
 ;; ⚠️ trusted 写进去的**新文本不带**原约束：被替换的只读区间随删除塌缩，约束消失
-;; （属性是随编辑**映射**过去的，不会凭空长到新文本上）——要它继续只读就再设一次。
+;; （属性是随编辑**映射**过去的，不会凭空长到新文本上）。
+
+;; 所以要"替换后仍只读"，得先**读出**原来的约束区间、再显式设到新文本上。
+;; `buffer-restrict-runs` 给的是**区间**（`buffer-read-only-at?` 只能逐点问）：
+;; 行 0 得到 ((0 1 空约束) (1 4 只读) (4 5 空约束)) → 只读段是 [1,4)。
+(define ro-runs (buffer-restrict-runs c0 0))
+;; 搬运：新文本 [1,3) 重新设上只读（这就是"程序替换一段只读内容"的正确姿势）
+(define g2-ro (buffer-put-restrict g2 0 1 3 (restrict #t)))
 
 ;;; ---------- 6. patch：插件输出 = delta（按 key 清旧写新）----------
 
@@ -133,6 +141,14 @@
                      h1-desc (and h2-desc #t) (buffer->string h2)))
   (displayln (format "   改完约束还在吗？  (0,1)=~a  ← 新文本不带原约束（区间塌缩）"
                      (buffer-read-only-at? g2 0 1)))
+  (displayln (format "   读回只读区间      ~a   ← 从 runs 筛 restrict-read-only?"
+                     (for/list ([seg (in-list ro-runs)]
+                                #:when (restrict-read-only? (caddr seg)))
+                       (list (car seg) (cadr seg)))))
+  (displayln (format "   搬运到新文本      ~a   ← 替换后重新设上"
+                     (for/list ([seg (in-list (buffer-restrict-runs g2-ro 0))]
+                                #:when (restrict-read-only? (caddr seg)))
+                       (list (car seg) (cadr seg)))))
   (displayln (format "⑥ patch 写 diag   (0,1)=~a  content 换了吗？~a ← 写标注不换 content"
                      (buffer-get-property p0 0 1 'diag) (not (buffer-content-same? b0 p0))))
   (displayln (format "   同 key 空 patch  (0,1)=~a                ← 清旧" (buffer-get-property p1 0 1 'diag)))
@@ -191,8 +207,20 @@
   ;; trusted 写进去的新文本**不带**原约束（被替换的只读区间随删除塌缩）
   (check-false (buffer-read-only-at? g2 0 1))
   (check-false (buffer-read-only-at? h2 0 1))
-  ;; 想让它继续只读 → 再设一次（这才是"程序替换一段只读内容"的正确姿势）
-  (check-true (buffer-read-only-at? (buffer-put-restrict g2 0 1 3 (restrict #t)) 0 2))
+  ;; 枚举只读区间：形状 (list start end restrict)，恰好覆盖整行、相邻段必不同
+  (check-equal? (buffer-restrict-runs c0 0)
+                (list (list 0 1 (make-restrict)) (list 1 4 (restrict #t)) (list 4 5 (make-restrict))))
+  (check-equal? (for/list ([seg (in-list (buffer-restrict-runs c0 0))]
+                           #:when (restrict-read-only? (caddr seg)))
+                  (list (car seg) (cadr seg)))
+                (list (list 1 4)))                                   ; 唯一的只读段
+  (check-equal? (buffer-restrict-runs ro0 0)                         ; 没设过 → 整行空约束
+                (list (list 0 5 (make-restrict))))
+  ;; 搬运：把读到的范围设到新文本上（"程序替换一段只读内容"的完整姿势）
+  (check-equal? (for/list ([seg (in-list (buffer-restrict-runs g2-ro 0))]
+                           #:when (restrict-read-only? (caddr seg)))
+                  (list (car seg) (cadr seg)))
+                (list (list 1 3)))
 
   ;; ⑥ patch：按 key 清旧写新；写标注不动 content（异步失效判定靠它）
   (check-equal? (buffer-get-property p0 0 1 'diag) "err")

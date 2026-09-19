@@ -39,7 +39,7 @@ edit/
 
 `core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
 它们是「core 只给机制」这句话的示范：`editing.rkt` / `attributes.rkt` 是**只含必要调用**的
-聚焦示例（18 / 20 个 core 名字），`main.rkt` 是完整示范（60 个）。
+聚焦示例（18 / 22 个 core 名字），`main.rkt` 是完整示范（60 个）。
 
 > **2026-09-19**：`skeleton.rkt` 与 `document-layer.rkt` 已删除，由 `editing.rkt`（编辑组合）
 > 与 `attributes.rkt`（属性）取代。§11 / §12 正文里引用它们的地方是**当时的取证记录**，
@@ -274,7 +274,10 @@ core 声称「只给机制（原子 + 变换），不给策略」。后端 / 主
 ```
 
 `restrict` **不是**新开一层区间机制，而是同一个 `span` 的第二个槽——这正是
-「提升 `read-only` 会复制整套区间机制」这一顾虑的解法。
+「提升 `read-only` 会复制整套区间机制」这一顾虑的解法。两槽的**读**也共用一份段分解
+（`properties-slot-runs`，只有"取哪个槽"不同）：`properties-runs`（表现层）/
+`properties-restrict-runs`（约束层，buffer 层导出为 `buffer-restrict-runs`，用于**枚举**
+只读区间——逐点问 `buffer-read-only-at?` 是 O(列数)，这是 O(段数)）。
 
 ### 8.4 传播规则（显式两槽，写在一处）
 

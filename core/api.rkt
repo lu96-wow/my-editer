@@ -128,7 +128,7 @@
  edit-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit-desc-inverse
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
- buffer-put-restrict buffer-read-only-at?
+ buffer-put-restrict buffer-read-only-at? buffer-restrict-runs
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  buffer-make-marker buffer-remove-marker buffer-marker-pos
  buffer-make-overlay buffer-remove-overlay

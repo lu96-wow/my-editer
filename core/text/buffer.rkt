@@ -49,6 +49,7 @@
  buffer-put-properties-many
  buffer-put-restrict
  buffer-read-only-at?
+ buffer-restrict-runs
  buffer-make-marker
  buffer-remove-marker
  buffer-marker-pos
@@ -97,6 +98,14 @@
 ;; 该位置的约束是否含 read-only
 (define (buffer-read-only-at? b line col)
   (restrict-read-only? (properties-restrict-at (buffer-properties b) line col)))
+
+;; 一行内所有**约束槽**段： (listof (list start end restrict))，按 start 升序，
+;; 恰好覆盖 [0, 行宽)，相邻段的 restrict 必不同。
+;; 用途：**枚举**只读区间——`buffer-read-only-at?` 只能逐点问，这个是 O(段数)。
+;; 行宽由文本给出，消费者不必自己算（presentation 侧的段分解见 properties-runs）。
+(define (buffer-restrict-runs b line)
+  (properties-restrict-runs (buffer-properties b) line
+                            (string-length (buffer-line-ref b line))))
 
 ;; [s..e) 半开区间内是否有 read-only 字符
 (define (range-read-only? b s-line s-col e-line e-col)
@@ -471,6 +480,23 @@
   (define rb-f (buffer-put-property rb 0 1 4 'face 'prompt))
   (check-equal? (buffer-get-property rb-f 0 2 'face) 'prompt)
   (check-true (buffer-read-only-at? rb-f 0 2))
+
+  ;; 枚举只读区间：buffer-restrict-runs（O(段数) 拿到区间；逐点问是 O(列数)）
+  (check-equal? (buffer-restrict-runs b0 0) (list (list 0 5 (make-restrict))))   ; 无约束
+  (check-equal? (buffer-restrict-runs rb 0)                                     ; 行 0：[1,4) 只读
+                (list (list 0 1 (make-restrict)) (list 1 4 (restrict #t)) (list 4 5 (make-restrict))))
+  ;; presentation 的段不影响约束的切分（rb-f 行 0 有 face 段，约束段仍是三段）
+  (check-equal? (buffer-restrict-runs rb-f 0) (buffer-restrict-runs rb 0))
+  ;; 编辑后区间跟着走：行 0 头部插一个字符 → [1,4) 变 [2,5)
+  (define-values (rrz _rrzd) (buffer-insert-char rb 0 0 #\X))
+  (check-equal? (buffer-restrict-runs rrz 0)
+                (list (list 0 2 (make-restrict)) (list 2 5 (restrict #t)) (list 5 6 (make-restrict))))
+  ;; 一行两段只读（中间可写）
+  (define rry (buffer-put-restrict (buffer-put-restrict b0 0 0 2 (restrict #t)) 1 0 3 (restrict #t)))
+  (check-equal? (buffer-restrict-runs rry 0)
+                (list (list 0 2 (restrict #t)) (list 2 5 (make-restrict))))
+  (check-equal? (buffer-restrict-runs rry 1)
+                (list (list 0 3 (restrict #t)) (list 3 5 (make-restrict))))
   ;; 清除约束（传空约束）
   (check-false (buffer-read-only-at? (buffer-put-restrict rb 0 1 4 (make-restrict)) 0 2))
   ;; 删除跨进 read-only → 拒绝

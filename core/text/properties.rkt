@@ -23,7 +23,8 @@
 ;;; 行号由 rows 向量的下标隐式表达，不重复存储。
 ;;;
 ;;; 对外不暴露 span 的内部结构。所有查询走
-;;; properties-at / properties-get / properties-restrict-at / properties-runs。
+;;; properties-at / properties-get / properties-restrict-at
+;;; ／行内段分解 properties-runs（表现层）/ properties-restrict-runs（约束层）。
 
 (provide
  (struct-out properties)
@@ -43,7 +44,8 @@
  properties-restrict-at
  properties-apply-edit
  properties-splice
- properties-runs)
+ properties-runs
+ properties-restrict-runs)
 
 ;;; ---------- 内部结构 ----------
 
@@ -180,23 +182,26 @@
 
 ;;; ---------- 查询 ----------
 
+;; 单点取槽：两个槽各一个入口，别处就不必反复解构 row-slots 的双值
+(define (row-presentation row col) (let-values ([(pl _rs) (row-slots row col)]) pl))
+(define (row-restrict row col)     (let-values ([(_pl rs) (row-slots row col)]) rs))
+
 (define (properties-at p line col)
-  (let-values ([(pl _rs) (row-slots (vector-ref (properties-rows p) line) col)])
-    pl))
+  (row-presentation (vector-ref (properties-rows p) line) col))
 
 (define (properties-get p line col prop)
   (hash-ref (properties-at p line col) prop #f))
 
 ;; 约束槽：没被覆盖 → 空约束
 (define (properties-restrict-at p line col)
-  (let-values ([(_pl rs) (row-slots (vector-ref (properties-rows p) line) col)])
-    rs))
+  (row-restrict (vector-ref (properties-rows p) line) col))
 
-;; 渲染扫描：一行内所有**表现层**段，恰好覆盖 [0, line-length)。
-;; 返回 (listof (list start end plist))，按 start 升序，相邻段的 plist 必不同。
-;; 只按 presentation 切分——**约束槽不参与**（它不影响画面）；
-;; 于是一个只读区间不会在画面里多切一段。
-(define (properties-runs p line line-length)
+;; 行内「某个槽」的段分解：切点 = 所有 span 边界 ∪ {0, line-length}，
+;; 逐段取该槽的值，再合并相邻**同值**段。
+;; 两个槽共用这一份——**只有取值不同**（slot : row col -> 值），切分与合并规则不各写一遍。
+;; 注意切点来自 span 边界（两槽共同的边界），所以另一槽只变一处时也会切一刀，
+;; 但紧接着会被"合并同值段"合回去——结果只由**被取的槽**决定。
+(define (properties-slot-runs p line line-length slot)
   (define row (vector-ref (properties-rows p) line))
   (define pts
     (sort (remove-duplicates
@@ -207,9 +212,8 @@
   (define raw
     (for/fold ([acc '()])
               ([a (in-list (drop-right pts 1))] [b (in-list (rest pts))])
-      (define-values (pl _rs) (row-slots row a))
-      (cons (list a b pl) acc)))
-  ;; 合并相邻同 presentation 的段
+      (cons (list a b (slot row a)) acc)))
+  ;; 合并相邻同值的段
   (reverse
    (for/fold ([acc '()]) ([seg (in-list (reverse raw))])
      (cond
@@ -217,6 +221,19 @@
        [(equal? (caddr (car acc)) (caddr seg))
         (cons (list (car (car acc)) (cadr seg) (caddr seg)) (cdr acc))]
        [else (cons seg acc)]))))
+
+;; 渲染扫描：一行内所有**表现层**段，恰好覆盖 [0, line-length)。
+;; 返回 (listof (list start end plist))，按 start 升序，相邻段的 plist 必不同。
+;; 结果只由 presentation 决定——**约束槽不参与**（它不影响画面），
+;; 于是一个只读区间不会在画面里多切一段。
+(define (properties-runs p line line-length)
+  (properties-slot-runs p line line-length row-presentation))
+
+;; 约束扫描：一行内所有**约束槽**段，形状同上： (listof (list start end restrict))，
+;; 恰好覆盖 [0, line-length)，相邻段的 restrict 必不同。
+;; 用途：**枚举**只读区间（`buffer-read-only-at?` 只能逐点问，这是 O(段数)）。
+(define (properties-restrict-runs p line line-length)
+  (properties-slot-runs p line line-length row-restrict))
 
 ;;; ---------- 写入（表现层）----------
 
@@ -514,6 +531,21 @@
   (define r0 (properties-put-restrict (properties-put (fresh) 1 0 2 'face 'bold) 1 3 6 ro))
   (check-equal? (properties-runs r0 1 8)
                 (list (list 0 2 (hash 'face 'bold)) (list 2 8 empty-plist)))
+
+  ;; properties-restrict-runs 只报约束层：同一个 r0，切分独立
+  ;; （[3,6) 是约束边界，对 presentation 被合并、对 restrict 就是一段）
+  (check-equal? (properties-restrict-runs r0 1 8)
+                (list (list 0 3 (make-restrict)) (list 3 6 ro) (list 6 8 (make-restrict))))
+  ;; 相邻同约束合并（两段都只读 → 一段）
+  (define r1 (properties-put-restrict (properties-put-restrict (fresh) 0 1 2 ro) 0 2 4 ro))
+  (check-equal? (properties-restrict-runs r1 0 5)
+                (list (list 0 1 (make-restrict)) (list 1 4 ro) (list 4 5 (make-restrict))))
+  ;; 一行里两段只读（中间可写）→ 三段
+  (define r2 (properties-put-restrict (properties-put-restrict (fresh) 0 0 1 ro) 0 3 4 ro))
+  (check-equal? (properties-restrict-runs r2 0 5)
+                (list (list 0 1 ro) (list 1 3 (make-restrict)) (list 3 4 ro) (list 4 5 (make-restrict))))
+  ;; 空行 → 没有段
+  (check-equal? (properties-restrict-runs (fresh) 0 0) '())
 
   ;; A2 回归：空区间/反向区间 → 报错（原来静默什么都不写）
   (check-exn exn:fail? (lambda () (properties-put (fresh) 1 2 2 'face 'bold)))
