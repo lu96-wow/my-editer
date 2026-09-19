@@ -32,14 +32,14 @@ edit/
 │                         #     width render window view screen project events document
 ├── history.rkt           # 消费层：撤销/重放账本（不 require document；归属见 §9.4）
 ├── editing.rkt           # 消费层：**编辑的组合示例**（编辑 → 记账 → 撤销/重做 ＋ 多视图同步）
-├── attributes.rkt        # 消费层：**属性示例**（写/读/清、read-only 约束槽、编辑时自动跟随、patch）
+├── attributes.rkt        # 消费层：**属性示例**（写/读/清、只读约束、程序修改 trusted 入口、patch）
 ├── main.rkt              # 消费层：完整示范（布局 / 输入路由 / 拼屏 / 键盘命令 + racket-tui 前端）
 └── tools/reconcile.rkt   # 文档 ↔ 可达面对账（§10.3 C/E）；racket tools/reconcile.rkt
 ```
 
 `core/` 之外的这几个文件是**消费层**：组装与策略，不在 core 的边界内，也不经 `api` 门面。
 它们是「core 只给机制」这句话的示范：`editing.rkt` / `attributes.rkt` 是**只含必要调用**的
-聚焦示例（16 / 15 个 core 名字），`main.rkt` 是完整示范（60 个）。
+聚焦示例（18 / 20 个 core 名字），`main.rkt` 是完整示范（60 个）。
 
 > **2026-09-19**：`skeleton.rkt` 与 `document-layer.rkt` 已删除，由 `editing.rkt`（编辑组合）
 > 与 `attributes.rkt`（属性）取代。§11 / §12 正文里引用它们的地方是**当时的取证记录**，

@@ -61,8 +61,8 @@ core 只给**机制**（原子 + 变换），不给**策略**：
 | 宽字符量宽 / 截断 | `char-display-width` / `string-display-width` / `index->column` / `column->index` |
 | 拼一块大屏 | `window->screen` + `screen-compose` |
 | **撤销 / 重放** | **不在 core**：编辑走 `document-edit`（返回 `(values document (or/c #f edit-change))`——逆与编辑前光标都在 `edit-change` 里；**不记历史**）；落回走 `document-apply-descs-trusted`；纯代数在 `buffer-edit-desc-inverse` / `edit-desc-inverse`；账本自己拼（ARCHITECTURE §9；示范在 `history.rkt` + `main.rkt`） |
-| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步，**只含必要调用**（用到 core 的 16 个名字）；编辑路径上不出现一个 `buffer-*`（§12.5） |
-| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、read-only 约束槽（编辑被拒）、编辑时属性自动跟随、`patch`（插件 delta）（15 个名字） |
+| 看「编辑怎么组合」 | `editing.rkt`：编辑 → 记账 → 撤销/重做 ＋ 多视图自动同步 ＋ **每次操作要重画哪几行**（`edits-span`），**只含必要调用**（18 个名字）；编辑路径上不出现一个 `buffer-*`（§12.5 / §12.6） |
+| 看「属性怎么改」 | `attributes.rkt`：写 / 读 / 清、**只读约束**（逐行设、用户编辑被拒）、**程序修改**（`-trusted` 入口 vs 守卫版）、编辑时属性自动跟随、`patch`（20 个名字） |
 | 违约会发生什么 | §10（报错 vs 夹紧），完整清单见 ARCHITECTURE §10 |
 
 ---
@@ -521,11 +521,11 @@ read-only 区间是**硬边界**：在它的边界插入，两个槽都**不继�
 >
 > **完整示范**见 `main.rkt`（**无前端**：不 require 任何 `io/`，事件手搓、输出只读 `screen`
 > 的数据）——它把「状态 → 三类操作（编辑 / 导航 / 撤销）→ 投影」摊开，用到 core 的
-> **60 个名字，占白名单 221 的 27%**。
+> **60 个名字，占白名单 212 的 28%**。
 >
 > **两个聚焦示例**（都只含必要的 core 调用，可直接 `racket 文件` 跑）：
-> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步，**16** 个名字）、
-> `attributes.rkt`（属性 / 约束 / patch，**15** 个名字）。
+> `editing.rkt`（编辑 → 记账 → 撤销/重做 ＋ 多视图同步 ＋ 重画范围，**18** 个名字）、
+> `attributes.rkt`（属性 / 只读约束 / 程序修改 / patch，**20** 个名字）。
 
 ---
 

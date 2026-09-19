@@ -1,16 +1,20 @@
 #lang racket
 
-;;; attributes.rkt —— 属性的修改：写 / 读 / 清 / 约束槽 / 编辑时自动跟随 / patch
+;;; attributes.rkt —— 属性的修改：写 / 读 / 清 / 只读约束 / 编辑时自动跟随 / 程序修改 / patch
 ;;;
-;;; 两个要点：
+;;; 三个要点：
 ;;;   1. 属性按**位置**存在按行切分的 span 里，**编辑时自动跟着文本移动**
 ;;;      （`buffer-edit-at` 这个唯一漏斗里就调 properties-apply-edit）——写一次，之后不用管。
 ;;;   2. **表现层（face）与约束（read-only）是两个槽**：前者是样式，后者是编辑器语义。
+;;;      约束是**逐行**存的（`buffer-put-restrict` 只作用于一行），跨行区间要逐行设。
+;;;   3. 只读挡住的是**用户编辑**；程序要改它必须走**显式 trusted 入口**——没有全局开关、
+;;;      没有隐式绕行（ARCHITECTURE §8.8）。而 trusted 写进去的新文本**不带**原约束。
 ;;;
 ;;; 必要 API：
 ;;;   写    buffer-put-property        buffer-put-properties-many    buffer-remove-property
-;;;   读    buffer-get-property
+;;;   读    buffer-get-property        buffer-line-ref
 ;;;   约束  buffer-put-restrict        make-restrict                buffer-read-only-at?
+;;;   程序  buffer-splice-trusted      buffer-apply-edit-trusted    buffer-apply-edit
 ;;;   补丁  patch     buffer-apply-patches     buffer-content-same?
 ;;;   文本  buffer-open     buffer->string     buffer-insert-char     buffer-splice
 
@@ -46,15 +50,52 @@
 ;; 删掉行 0 末尾的换行 → 两行合并，行 1 的属性跟着并到行 0
 (define-values (b5 _d5) (buffer-splice b4 0 6 1 0 ""))
 
-;;; ---------- 4. 约束槽：read-only（写进去以后，编辑漏斗会拒绝）----------
+;;; ---------- 4. 只读约束：设 / 查 / 用户编辑被拒 / 清 ----------
 
-(define c0 (buffer-put-restrict b0 0 1 4 (restrict #t)))        ; 行 0 的 [1,4) 只读
-(define-values (c1 c1-desc) (buffer-insert-char c0 0 1 #\X))    ; 插入点在只读区**内部** → 拒绝
-(define-values (c2 c2-desc) (buffer-insert-char c0 0 4 #\X))    ; 紧贴区间右边界（已在区间外）→ 允许
-(define c3 (buffer-put-restrict c0 0 1 4 (make-restrict)))      ; 传空约束 = 清除
-(define-values (c4 c4-desc) (buffer-insert-char c3 0 1 #\X))    ; 清除后同一点就能编辑
+(define ro0 (buffer-open "hello\nworld\nfoo"))
 
-;;; ---------- 5. patch：插件输出 = delta（按 key 清旧写新）----------
+;; 设：行 0 的 [1,4) 只读（约束是**逐行**的，(line start end) 都指同一行）
+(define c0 (buffer-put-restrict ro0 0 1 4 (restrict #t)))
+
+;; 查：注意 [1,4) 是**半开**区间 —— (0,4) 已经在区间外
+;; （区间的构造在 core 里也会夹紧，不会越界）
+
+;; 跨行整段只读：约束逐行存，所以逐行设（这里要读行长 → buffer-line-ref）
+(define (put-read-only-range b s-line s-col e-line e-col)
+  (for/fold ([x b]) ([ln (in-range s-line (add1 e-line))])
+    (buffer-put-restrict x ln
+                         (if (= ln s-line) s-col 0)
+                         (if (= ln e-line) e-col (string-length (buffer-line-ref x ln)))
+                         (restrict #t))))
+;; 行 1 的 [2,5) ＋ 行 2 的 [0,1) 一起只读
+(define c5 (put-read-only-range ro0 1 2 2 1))
+
+;; 用户编辑被拒：零宽插入点落在只读区间**内** → 整个编辑不发生（desc = #f，文本不动）
+(define-values (c1 c1-desc) (buffer-insert-char c0 0 1 #\X))
+;; 紧贴区间右边界（已在区间外）→ 允许
+(define-values (c2 c2-desc) (buffer-insert-char c0 0 4 #\X))
+
+;; 清：传空约束即清除该区间的约束
+(define c3 (buffer-put-restrict c0 0 1 4 (make-restrict)))
+(define-values (c4 c4-desc) (buffer-insert-char c3 0 1 #\X))   ; 清除后同一点就能编辑
+
+;;; ---------- 5. 程序修改：跳过守卫的显式入口 ----------
+;;; 上面挡住的是**用户编辑**。程序（格式化、重构、撤销/重放）要改只读内容，走
+;;; `-trusted` 入口——显式到调用点，没有全局开关，也没有隐式绕行（ARCHITECTURE §8.8）。
+;;; 两条路同形，只差一个名字，所以"谁在绕守卫"在调用点一眼可见。
+
+;; 显式坐标那一对
+(define-values (g1 g1-desc) (buffer-splice c0 0 1 0 4 "XX"))          ; 过守卫 → 拒
+(define-values (g2 g2-desc) (buffer-splice-trusted c0 0 1 0 4 "XX"))  ; trusted → 改
+;; desc 形状那一对
+(define g-desc (edit-desc 0 1 0 4 "YY"))
+(define-values (h1 h1-desc) (buffer-apply-edit c0 g-desc))            ; 过守卫 → 拒
+(define-values (h2 h2-desc) (buffer-apply-edit-trusted c0 g-desc))    ; trusted → 改
+
+;; ⚠️ trusted 写进去的**新文本不带**原约束：被替换的只读区间随删除塌缩，约束消失
+;; （属性是随编辑**映射**过去的，不会凭空长到新文本上）——要它继续只读就再设一次。
+
+;;; ---------- 6. patch：插件输出 = delta（按 key 清旧写新）----------
 
 (define p0 (buffer-apply-patches b0 (list (patch 'diag 0 0 (list (list 0 0 5 "err"))))))
 (define p1 (buffer-apply-patches p0 (list (patch 'diag 0 0 '()))))                ; 空 patch = 清旧
@@ -75,14 +116,24 @@
                      (face b4 0 0) (face b4 0 1) (face b4 0 5)))
   (displayln (format "③ 合并两行        ~s" (buffer->string b5)))
   (displayln (format "   行 1 的 italic 并过来：(0,7)=~a" (face b5 0 7)))
-  (displayln (format "④ 只读 [1,4)      (0,2) 只读？~a" (buffer-read-only-at? c0 0 2)))
-  (displayln (format "   插在 (0,1)      desc=~a 文本=~s   ← 被守卫拒绝"
+  (displayln (format "④ 只读 [1,4)      (0,1)=~a (0,2)=~a (0,4)=~a  ← 半开区间，右边界在外"
+                     (buffer-read-only-at? c0 0 1) (buffer-read-only-at? c0 0 2)
+                     (buffer-read-only-at? c0 0 4)))
+  (displayln (format "   跨行整段只读     (1,2)=~a (1,1)=~a (2,0)=~a (2,1)=~a"
+                     (buffer-read-only-at? c5 1 2) (buffer-read-only-at? c5 1 1)
+                     (buffer-read-only-at? c5 2 0) (buffer-read-only-at? c5 2 1)))
+  (displayln (format "   用户插在 (0,1)   desc=~a 文本=~s   ← 区间内：被拒"
                      c1-desc (buffer->string c1)))
-  (displayln (format "   插在 (0,4)      desc非#f？~a 文本=~s ← 区间外，允许"
+  (displayln (format "   用户插在 (0,4)   desc非#f？~a 文本=~s ← 区间外：允许"
                      (and c2-desc #t) (buffer->string c2)))
-  (displayln (format "   清除约束后 (0,1) desc非#f？~a 文本=~s"
-                     (and c4-desc #t) (buffer->string c4)))
-  (displayln (format "⑤ patch 写 diag   (0,1)=~a  content 换了吗？~a ← 写标注不换 content"
+  (displayln (format "   清除约束后插      desc非#f？~a 文本=~s" (and c4-desc #t) (buffer->string c4)))
+  (displayln (format "⑤ 程序改 [1,4)    守卫版 desc=~a；trusted 版 desc非#f？~a → ~s"
+                     g1-desc (and g2-desc #t) (buffer->string g2)))
+  (displayln (format "   desc 形状那一对  守卫版 desc=~a；trusted 版 desc非#f？~a → ~s"
+                     h1-desc (and h2-desc #t) (buffer->string h2)))
+  (displayln (format "   改完约束还在吗？  (0,1)=~a  ← 新文本不带原约束（区间塌缩）"
+                     (buffer-read-only-at? g2 0 1)))
+  (displayln (format "⑥ patch 写 diag   (0,1)=~a  content 换了吗？~a ← 写标注不换 content"
                      (buffer-get-property p0 0 1 'diag) (not (buffer-content-same? b0 p0))))
   (displayln (format "   同 key 空 patch  (0,1)=~a                ← 清旧" (buffer-get-property p1 0 1 'diag)))
   (displayln (format "   两个 key 并存    face=~a diag=~a   ← 不同插件互不干扰"
@@ -113,15 +164,37 @@
   (check-equal? (buffer->string b5) "Xhelloworld")
   (check-equal? (face b5 0 7) 'italic)
 
-  ;; ④ 约束槽：零宽插入点落在只读区间内 → 整个编辑被拒（desc = #f，文本不动）
-  (check-true (buffer-read-only-at? c0 0 2))
-  (check-false (buffer-read-only-at? c0 0 0))
+  ;; ④ 只读：半开区间、逐行设、用户编辑被拒、可清除
+  (check-true (buffer-read-only-at? c0 0 1))
+  (check-true (buffer-read-only-at? c0 0 3))
+  (check-false (buffer-read-only-at? c0 0 4))         ; 右边界在区间外
+  (check-false (buffer-read-only-at? c0 0 0))         ; 左边界在区间外
+  ;; 跨行整段：行 1 的 [2,5) ＋ 行 2 的 [0,1)
+  (check-true (buffer-read-only-at? c5 1 2))
+  (check-true (buffer-read-only-at? c5 1 4))
+  (check-false (buffer-read-only-at? c5 1 1))
+  (check-true (buffer-read-only-at? c5 2 0))
+  (check-false (buffer-read-only-at? c5 2 1))
+  ;; 零宽插入点落在区间内 → 整个编辑被拒（desc = #f，文本不动）
   (check-false c1-desc)
-  (check-equal? (buffer->string c1) "hello\nworld")
-  (check-equal? (buffer->string c2) "hellXo\nworld")  ; (0,4) 在 [1,4) 之外
-  (check-equal? (buffer->string c4) "hXello\nworld")  ; 清除约束后可编辑
+  (check-equal? (buffer->string c1) "hello\nworld\nfoo")
+  (check-equal? (buffer->string c2) "hellXo\nworld\nfoo")   ; (0,4) 在区间外
+  (check-equal? (buffer->string c4) "hXello\nworld\nfoo")   ; 清除约束后可编辑
 
-  ;; ⑤ patch：按 key 清旧写新；写标注不动 content（异步失效判定靠它）
+  ;; ⑤ 程序修改：守卫版拒、trusted 版改；两条路同形
+  (check-false g1-desc)
+  (check-equal? (buffer->string g1) "hello\nworld\nfoo")
+  (check-equal? (buffer->string g2) "hXXo\nworld\nfoo")
+  (check-false h1-desc)
+  (check-equal? (buffer->string h1) "hello\nworld\nfoo")
+  (check-equal? (buffer->string h2) "hYYo\nworld\nfoo")
+  ;; trusted 写进去的新文本**不带**原约束（被替换的只读区间随删除塌缩）
+  (check-false (buffer-read-only-at? g2 0 1))
+  (check-false (buffer-read-only-at? h2 0 1))
+  ;; 想让它继续只读 → 再设一次（这才是"程序替换一段只读内容"的正确姿势）
+  (check-true (buffer-read-only-at? (buffer-put-restrict g2 0 1 3 (restrict #t)) 0 2))
+
+  ;; ⑥ patch：按 key 清旧写新；写标注不动 content（异步失效判定靠它）
   (check-equal? (buffer-get-property p0 0 1 'diag) "err")
   (check-true (buffer-content-same? b0 p0))
   (check-false (buffer-get-property p1 0 1 'diag))
