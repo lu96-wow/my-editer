@@ -17,45 +17,16 @@
 ;;;         鼠标点击切换+定位   Ctrl+Z 撤销   Ctrl+Y 重做   Ctrl+Q / Esc 退出
 
 (require "../core/editor.rkt"
-         tui
+         "editor-ui.rkt"
+         ;; tui 也导出 key-event/resize-event 等事件结构体，与 core 同名；
+         ;; 这里用 core 的，排除 tui 的。
+         (except-in tui key-event key-event? key-event-key struct:key-event
+                    resize-event resize-event? resize-event-rows resize-event-cols
+                    struct:resize-event)
          racket/string
          racket/path)
 
-;;; ---------- face → 终端样式 ----------
-
-(define (face-style face)
-  (case (hash-ref face 'face #f)
-    [(keyword) 'info]
-    [(comment) 'green]
-    [(string)  'yellow]
-    [(error)   'error]
-    [else #f]))
-
-(define keyword-rx #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
-
-;; 只扫 [fl,ll] 这些行
-(define (syntax-segs ed bid fl ll)
-  (append*
-   (for/list ([line (in-range fl (add1 ll))])
-     (define text (editor-buffer-line-ref ed bid line))
-     (for/list ([m (in-list (regexp-match-positions* keyword-rx text))])
-       (list line (car m) (cdr m) 'keyword)))))
-
-;; 局部重标：只在焦点 buffer 的这几行上清旧写新（key='face）
-(define (highlight-range ed bid fl ll)
-  (editor-apply-patches ed bid (list (patch 'face fl ll (syntax-segs ed bid fl ll)))))
-
-;; 打开时全量标一遍
-(define (rehighlight ed)
-  (define bid (editor-focused-buffer-id ed))
-  (highlight-range ed bid 0 (sub1 (editor-buffer-line-count ed bid))))
-
-;; 命令的第二返回值就是 change-report；有变化就按它给的行区间在焦点 buffer 上局部重标
-(define (apply-report ed report)
-  (if report
-      (highlight-range ed (editor-focused-buffer-id ed)
-                       (change-report-first-line report) (change-report-last-line report))
-      ed))
+;; face / 高亮 / 命令封装 / Ctrl 映射 / 画帧原语都在 io/editor-ui.rkt。
 
 ;;; ---------- 布局（都 0-based，单位是屏幕行列）----------
 ;; 预算出各窗格尺寸，并保留 1 列 + 1 行分隔线。
@@ -81,11 +52,7 @@
                (editor-focus s)))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
-  (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])
-    (for ([r (in-list runs)])
-      (emit! (format-cursor-move (add1 row) (add1 (run-col r))))
-      (define st (face-style (run-face r)))
-      (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
+  (draw-runs! emit! scr)
   ;; 分隔线：竖线在列 leftW，横线在行 topH
   (for ([row (in-range H)])
     (emit! (format-cursor-move (add1 row) (add1 leftW)))
@@ -108,12 +75,7 @@
                         (if (>= (string-length status) cols)
                             (substring status 0 (max 0 cols))
                             (string-append status (make-string (- cols (string-length status)) #\space)))))
-  ;; 光标跟着活动窗格（screen-compose 已把 active 的光标平移好）
-  (define cr (screen-cursor-row scr))
-  (define cc (screen-cursor-col scr))
-  (if (>= cr 0)
-      (begin (emit! (format-cursor-move (add1 cr) (add1 cc))) (emit! format-cursor-show))
-      (emit! format-cursor-hide))
+  (draw-cursor! emit! scr)
   (apply bytes-append (reverse parts)))
 
 ;;; ---------- 入口 ----------
@@ -137,10 +99,9 @@
      (define running? #t)
 
      (define (active) (editor-focus s))
-     (define (edit-op op)
-       (set! s (let-values ([(s* report) (editor-edit s op)]) (apply-report s* report))))
-     (define (undo) (set! s (let-values ([(s* report) (editor-undo s)]) (apply-report s* report))))
-     (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
+     (define (edit-op op) (define-values (s* _) (edit-step s op)) (set! s s*))
+     (define (undo) (define-values (s* _) (undo-step s)) (set! s s*))
+     (define (redo) (define-values (s* _) (redo-step s)) (set! s s*))
      (define (set-point! i pt) (set! s (editor-view-set-point s i pt)))
      (define (resize! nr nc)
        (set! rows (max 4 nr)) (set! cols (max 6 nc))
@@ -160,8 +121,8 @@
 
      (define handler
        (build-input
-        #:utf-char (lambda (str) (edit-op (edit-insert str)))
-        #:char     (lambda (ch)  (edit-op (edit-insert (string (integer->char ch)))))
+        ;; 新 API：文本统一走 #:text（可打印字符 + 粘贴），收 string
+        #:text     (lambda (str) (edit-op (edit-insert str)))
         #:enter    (lambda ()    (edit-op (edit-newline)))
         #:backspace (lambda ()   (edit-op (edit-backspace)))
         #:delete   (lambda ()    (edit-op (edit-delete)))
@@ -174,15 +135,17 @@
         #:end (lambda () (set! s (editor-end s)))
         #:pageup   (lambda ()    (set! s (editor-scroll s (- (editor-height s)))))
         #:pagedown (lambda ()    (set! s (editor-scroll s (editor-height s))))
-        #:ctrl     (lambda (ch)
-                     (case ch
-                       [(#\Z) (undo)]
-                       [(#\Y) (redo)]
-                       [(#\Q) (set! running? #f)]
+        ;; Ctrl 组合走 #:key（key + mods）；无修饰的字符已由 #:text 接走
+        #:key      (lambda (key mods)
+                     (case (ctrl-action key mods)
+                       [(undo) (undo)]
+                       [(redo) (redo)]
+                       [(quit) (set! running? #f)]
                        [else (void)]))
         #:escape   (lambda () (set! running? #f))
-        #:paste    (lambda (data) (edit-op (edit-insert (bytes->string/utf-8 data))))
-        #:mouse-press (lambda (_b x y _m)
+        #:mouse    (lambda (action button x y _mods)
+                     (case action
+                       [(press)
                         (define pane (pane-at x y))
                         (when pane
                           (set! s (editor-focus-view s pane))
@@ -191,12 +154,13 @@
                           (define oy (cond [(= pane 2) (+ topH 1)] [else 0]))
                           (define-values (l c)
                             (editor-view-screen->point s pane (- y oy) (- x ox)))
-                          (when l (set-point! pane (point l c)))))
-        #:mouse-scroll (lambda (dir _x _y _m)
-                         (set! s (editor-scroll s (if (eq? dir 'up) -3 3))))
+                          (when l (set-point! pane (point l c))))]
+                       [(scroll)
+                        (set! s (editor-scroll s (if (eq? button 'up) -3 3)))]
+                       [else (void)]))
         #:resize   (lambda (nr nc) (resize! nr nc))))
 
-     (define (step type data mods) (handler type data mods) (redraw))
+     (define (step ev) (handler ev) (redraw))
      (redraw)
      (loop-input/stop (not running?) step))))
 
