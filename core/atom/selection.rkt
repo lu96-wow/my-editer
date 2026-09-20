@@ -20,6 +20,11 @@
  selection-range
  selection-empty?
  selection-map
+ selection-set-head
+ selection-set-anchor
+ selection-map-head
+ selection-map-anchor
+ selection-map-both
  selection<?
  selections-normalize
  selections-index-containing)
@@ -50,6 +55,16 @@
 (define (selection-map d s)
   (selection (map-endpoint d (selection-anchor s))
              (map-endpoint d (selection-head s))))
+
+;;; ---------- 空间变换（point → point）----------
+;; 与 selection-map（按 edit-desc 映射）职责不同：这里是「把端点搬到另一个点」。
+
+(define (selection-set-head s p) (selection (selection-anchor s) p))
+(define (selection-set-anchor s p) (selection p (selection-head s)))
+(define (selection-map-head f s) (selection-set-head s (f (selection-head s))))
+(define (selection-map-anchor f s) (selection-set-anchor s (f (selection-anchor s))))
+(define (selection-map-both f s)
+  (selection (f (selection-anchor s)) (f (selection-head s))))
 
 ;; 按 (起点, 终点) 字典序
 (define (selection<? a b)
@@ -114,5 +129,13 @@
   (check-true (caret? (caret (p 0 3))))
   (check-false (caret? (selection (p 0 0) (p 0 3))))
   (check-equal? (caret-point (caret (p 1 2))) (p 1 2))
+
+  ;; 空间变换：只动 head / 只动 anchor / 两端同动
+  (check-equal? (selection-map-head (lambda (p) (point 0 5)) (selection (p 0 1) (p 0 2)))
+                (selection (p 0 1) (p 0 5)))
+  (check-equal? (selection-map-anchor (lambda (p) (point 0 0)) (selection (p 0 1) (p 0 2)))
+                (selection (p 0 0) (p 0 2)))
+  (check-equal? (selection-map-both (lambda (p) (point 0 (+ 10 (point-col p)))) (selection (p 0 1) (p 0 2)))
+                (selection (p 0 11) (p 0 12)))
 
   (displayln "selection.rkt: all tests passed"))

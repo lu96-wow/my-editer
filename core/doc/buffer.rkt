@@ -43,6 +43,7 @@
  buffer-range-text
  buffer-put-property
  buffer-get-property
+ buffer-face-at
  buffer-remove-property
  buffer-put-properties-many
  buffer-put-restrict
@@ -212,6 +213,10 @@
 (define (buffer-get-property b p key)
   (properties-get (buffer-properties b) (point-line p) (point-col p) key))
 
+;; 该点的最终 face = 覆盖它的全部标注按 key 合并（渲染消费的就是它）。
+(define (buffer-face-at b p)
+  (properties-at (buffer-properties b) (point-line p) (point-col p)))
+
 (define (buffer-remove-property b start end key)
   (define-values (l s e) (clamp-prop-range 'buffer-remove-property b start end))
   (bump (struct-copy buffer b
@@ -287,6 +292,8 @@
   (check-equal? (buffer-get-property b4 (point 0 2) 'face) 'bold)   ; 新字符继承
   (check-false (buffer-get-property (buffer-remove-property b3 (point 0 1) (point 0 4) 'face)
                                     (point 0 2) 'face))
+  ;; face 读口 = 该点合并后的 face
+  (check-equal? (buffer-face-at b3 (point 0 2)) (hash 'face 'bold))
   ;; 区间跨行 → 报错（属性是行内区间）
   (check-exn exn:fail?
              (lambda () (buffer-put-property b0 (point 0 0) (point 1 0) 'face 'bold)))

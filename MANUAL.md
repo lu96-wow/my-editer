@@ -57,6 +57,11 @@
 | `caret` | 构造光标（= 同位置的空选区） |
 | `caret?` | 是否光标（空选区） |
 | `caret-point` | 光标点（= `head`） |
+| `selection-set-head` | 换 head（保 anchor） |
+| `selection-set-anchor` | 换 anchor（保 head） |
+| `selection-map-head` | 对 head 施加 `point→point`（扩选方向） |
+| `selection-map-anchor` | 对 anchor 施加 `point→point` |
+| `selection-map-both` | 对两端施加 `point→point`（平移） |
 
 ## 2. 编辑动作（可传的值）
 
@@ -89,6 +94,7 @@
 | `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
 | `buffer-put-property` | 写行内区间标注 |
 | `buffer-get-property` | 读某点标注 |
+| `buffer-face-at` | 某点合并后的 face（= 渲染输入） |
 | `buffer-remove-property` | 清某键标注 |
 | `buffer-put-properties-many` | 一次写多段（一次 tick） |
 | `buffer-put-restrict` | 写约束槽（只读等） |
@@ -117,11 +123,18 @@
 | `window-open` | 建视口 |
 | `window-point` | 本视口 primary 光标 |
 | `window-selections` | 本视口选区集（已规范化） |
-| `window-primary` | 主选区下标 |
+| `window-primary` | 本视口 primary 选区（值） |
+| `window-primary-index` | primary 的下标 |
 | `window-set-selections` | 设一组选区 |
 | `window-add-selections` | 并入一组选区（并集） |
 | `window-remove-selections` | 去掉一组选区（差集） |
 | `window-map-selections` | 对每个选区 head 施加 point→point 变换 |
+| `window-selection-map` | 对每个选区施加 `selection→selection`，再规范化 |
+| `window-primary-map` | 只对 primary 施加 `selection→selection` |
+| `window-add-selection` | 加一个选区（`#:primary?`） |
+| `window-remove-selection` | 去一个选区 |
+| `window-set-primary` | 让某选区成为 primary |
+| `window-selection-member?` | 集合中是否有该选区 |
 | `window-clamp-selections` | 把选区夹回合法域并规范化 |
 | `window-set-point` | 设成单个空选区（光标） |
 | `window-set-buffer` | 换绑 buffer（夹紧光标） |
@@ -140,6 +153,12 @@
 | `window-scroll-clip` | 相对滚动（clip：按 buffer 行） |
 | `window-scroll-visual` | 相对滚动（按 mode 分派到 clip/wrap） |
 | `window-hscroll` | 水平滚动 |
+| `point-left` | 点左移（纯，buffer 级） |
+| `point-right` | 点右移 |
+| `point-home` | 点到行首 |
+| `point-end` | 点到行尾 |
+| `window-point-up` | 点上移一视觉行（纯） |
+| `window-point-down` | 点下移一视觉行 |
 
 ## 6. 投影 —— window → screen
 
@@ -230,6 +249,10 @@
 | `editor-view-selections` | 某 view 的选区集 |
 | `editor-point` | 焦点 view 光标 |
 | `editor-view-point` | 某 view 光标 |
+| `editor-primary` | 焦点 view 的 primary 选区（值） |
+| `editor-view-primary` | 某 view 的 primary 选区 |
+| `editor-window` | 焦点 view 的 window（只读，供点运动组合） |
+| `editor-view-window` | 某 view 的 window（只读） |
 | `editor-height` | 焦点 view 可视高度 |
 | `editor-width` | 焦点 view 可视宽度 |
 | `editor-view-height` | 某 view 高度 |
@@ -269,6 +292,7 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-get-property` | 读某点标注 |
+| `editor-face-at` | 某点合并后的 face（= 渲染输入） |
 | `editor-restrict-at` | 某点的约束槽（`restrict`） |
 | `editor-remove-restrict` | 清约束区间 |
 | `editor-restrict-runs` | 某行约束段 |
@@ -276,6 +300,7 @@
 | `editor-put-property` | 写标注（程序面） |
 | `editor-remove-property` | 清标注 |
 | `editor-put-properties-many` | 一次写多段 |
+| `editor-put-properties` | 一次写多段（point 区间，规范名） |
 | `editor-put-restrict` | 写约束槽 |
 | `editor-apply-patches` | 施加插件 delta |
 
@@ -285,8 +310,11 @@
 |---|---|
 | `editor-edit-at` | 在显式 `(bid, point)` 编辑；`#:reaction 'none` 默认不动视图 |
 | `editor-edit-at-batch` | 一次施加一批（同坐标系、不重叠）`edit-desc`；`#:record? #t` 整批记一步 |
+| `editor-edit-at-with` | 编辑 + 派生 patch；`annotate : buffer × report → (listof patch)` |
 | `editor-view-edit` | 在指定 view 光标处编辑；leader + ensure + 记账本；不改焦点 |
+| `editor-view-edit-with` | 指定 view 编辑 + 派生 patch；leader + 账本 |
 | `editor-edit` | focus 糖：在焦点 view 光标处编辑 |
+| `editor-edit-with` | focus 糖：编辑 + 派生 patch |
 
 `editor-edit-at` 的参数：
 
@@ -307,6 +335,12 @@
 | `editor-view-add-selections` | 并入选区；`#:primary?` 可让新加的成为主选区 |
 | `editor-view-remove-selections` | 去掉选区（差集） |
 | `editor-view-collapse-selections` | 回单光标（保留 primary） |
+| `editor-view-map-selections` | 对某 view 每个选区施加 `selection→selection` |
+| `editor-view-map-primary` | 只对某 view 的 primary 施加 `selection→selection` |
+| `editor-view-add-selection` | 加一个选区（`#:primary?`） |
+| `editor-view-remove-selection` | 去一个选区 |
+| `editor-view-set-primary` | 让某选区成为 primary |
+| `editor-view-selection-member?` | 集合中是否有该选区 |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
 | `editor-view-set-top-line` | 设某 view 顶部行 |
@@ -322,6 +356,12 @@
 | `editor-add-selections` | focus 糖：并入选区（`#:primary?`） |
 | `editor-remove-selections` | focus 糖：去掉选区 |
 | `editor-collapse-selections` | focus 糖：回单光标 |
+| `editor-map-selections` | focus 糖：对所有选区施加 `selection→selection` |
+| `editor-map-primary` | focus 糖：只对 primary 施加 `selection→selection` |
+| `editor-add-selection` | focus 糖：加一个选区（`#:primary?`） |
+| `editor-remove-selection` | focus 糖：去一个选区 |
+| `editor-set-primary` | focus 糖：让某选区成为 primary |
+| `editor-selection-member?` | focus 糖：集合中是否有该选区 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
 | `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |

@@ -21,7 +21,7 @@
   (define mapped
     (for/list ([s (in-list (window-selections w))])
       (for/fold ([s s]) ([d (in-list descs)]) (selection-map d s))))
-  (window-set-selections (struct-copy window w [buffer b*]) mapped (window-primary w)))
+  (window-set-selections (struct-copy window w [buffer b*]) mapped (window-primary-index w)))
 
 ;; 编辑者语义：选区坍缩到「经过全部 desc 之后」的 head，再 ensure primary 可见。
 (define (rebase-leader w b* descs)
@@ -30,7 +30,7 @@
       (define p (edits-map-position descs (selection-head s)))
       (selection p p)))
   (window-ensure-point
-   (window-set-selections (struct-copy window w [buffer b*]) mapped (window-primary w))))
+   (window-set-selections (struct-copy window w [buffer b*]) mapped (window-primary-index w))))
 
 ;; w : 待调整的 window；leader : 编辑视图的最终 window（已 ensure）
 (define (rebase-follow w leader)
@@ -38,7 +38,7 @@
    (struct-copy window w
      [buffer     (window-buffer leader)]
      [selections (window-selections leader)]
-     [primary    (window-primary leader)]
+     [primary-index (window-primary-index leader)]
      [top-line   (window-top-line leader)]
      [left-col   (window-left-col leader)]
      [top-seg    (window-top-seg leader)])))

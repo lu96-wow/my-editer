@@ -26,6 +26,8 @@
  window-ensure-point
  window-clamp-view
  window-visual-move
+ window-point-up
+ window-point-down
  window-up
  window-down)
 
@@ -355,13 +357,17 @@
                       (column->index ttext tdc)))
      (values tl tcol)]))
 
-(define (window-visual-move w delta)
+(define (window-point-visual-move w p delta)
   (define b (window-buffer w))
-  (window-map-selections w
-   (lambda (p)
-     (define-values (l c) (visual-move b (point-line p) (point-col p)
-                                       (window-width w) (window-mode w) delta))
-     (if l (point l c) p))))
+  (define-values (l c) (visual-move b (point-line p) (point-col p)
+                                    (window-width w) (window-mode w) delta))
+  (if l (point l c) p))
+
+(define (window-point-up w p)   (window-point-visual-move w p -1))
+(define (window-point-down w p) (window-point-visual-move w p +1))
+
+(define (window-visual-move w delta)
+  (window-map-selections w (lambda (p) (window-point-visual-move w p delta))))
 
 (define (window-up w)   (window-visual-move w -1))
 (define (window-down w) (window-visual-move w +1))
@@ -469,5 +475,9 @@
   ;; 未 ensure 时也不返回越界列：宁可不出光标，也不画到窗口外
   (check-false (let-values ([(r c) (window-point->screen (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 10)))])
                  (or r c)))
+
+  ;; 点级视觉运动（供 map 组合）
+  (check-equal? (window-point-down ww (point 0 0)) (point 0 2))
+  (check-equal? (window-point-up ww (point 0 2)) (point 0 0))
 
   (displayln "view.rkt: all tests passed"))

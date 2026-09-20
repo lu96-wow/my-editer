@@ -20,6 +20,7 @@
 (provide
  ;; 用户面原语（按 vid；不读也不改 focus）
  editor-view-edit
+ editor-view-edit-with
  editor-view-undo
  editor-view-redo
  editor-view-left
@@ -32,6 +33,7 @@
  editor-view-scroll
  ;; focus 糖
  editor-edit
+ editor-edit-with
  editor-undo
  editor-redo
  editor-left
@@ -110,6 +112,17 @@
         (define-values (f l) (edits-span ds))
         (values ed*** (change-report f l ds))])]))
 
+;; 用户面编辑 + 派生标注：文本先走 editor-view-edit（leader/ensure/账本），
+;; 再用新 buffer 与 report 调 annotate 得 patch（清旧写新）并施加。
+(define (editor-view-edit-with ed vid op annotate)
+  (define-values (ed* report) (editor-view-edit ed vid op))
+  (cond
+    [(not report) (values ed* #f)]
+    [else
+     (define bid (view-buffer-id (editor-view-ref ed* vid)))
+     (define patches (annotate (editor-buffer ed* bid) report))
+     (values (editor-apply-patches ed* bid patches) report)]))
+
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
 (define (editor-view-undo ed vid)
@@ -164,6 +177,7 @@
 ;;; ---------- focus 糖（用户面便捷；程序面请用上面的 editor-view-*） ----------
 
 (define (editor-edit ed op)        (editor-view-edit ed (focused-vid ed) op))
+(define (editor-edit-with ed op annotate) (editor-view-edit-with ed (focused-vid ed) op annotate))
 (define (editor-undo ed)           (editor-view-undo ed (focused-vid ed)))
 (define (editor-redo ed)           (editor-view-redo ed (focused-vid ed)))
 (define (editor-left ed)           (editor-view-left ed (focused-vid ed)))
@@ -178,6 +192,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
+  (require "../doc/patch.rkt")
   ;; 单 buffer 编辑闭环 + 撤销/重做
   (define e0 (editor-open ""))
   (define-values (e1 r1) (editor-edit e0 (edit-insert-char #\a)))
@@ -282,5 +297,15 @@
                                     (list (caret (point 0 0)) (selection (point 0 0) (point 0 2)))))
   (define-values (od1 _od) (editor-edit od (edit-delete)))
   (check-equal? (editor-buffer->string od1 0) "c\ndef")
+
+  ;; 用户面编辑 + 派生标注（editor-edit-with）
+  (define ew0 (editor-open "ab"))
+  (define-values (ew1 _ewr)
+    (editor-edit-with ew0 (edit-insert "X")
+      (lambda (_b report)
+        (list (patch 'face (change-report-first-line report) (change-report-last-line report)
+                     (list (list 0 0 1 'mark)))))))
+  (check-equal? (editor-buffer->string ew1 0) "Xab")
+  (check-equal? (editor-get-property ew1 0 (point 0 0) 'face) 'mark)
 
   (displayln "command.rkt: all tests passed"))

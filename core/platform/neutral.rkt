@@ -40,6 +40,10 @@
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
+ editor-primary
+ editor-view-primary
+ editor-window
+ editor-view-window
  editor-selections
  editor-view-selections
  editor-height
@@ -75,6 +79,7 @@
  editor-buffer-content-eq?
  ;; 标注读（按 buffer-id）
  editor-get-property
+ editor-face-at
  editor-restrict-at
  editor-restrict-runs
  editor-property-runs
@@ -155,6 +160,11 @@
 
 (define (editor-point ed) (window-point (view-window (editor-focused-view ed))))
 (define (editor-view-point ed vid) (window-point (view-window (editor-view-ref ed vid))))
+;; 显式 primary：给选区值，不靠位置比较。
+(define (editor-primary ed) (window-primary (view-window (editor-focused-view ed))))
+(define (editor-view-primary ed vid) (window-primary (view-window (editor-view-ref ed vid))))
+(define (editor-window ed) (view-window (editor-focused-view ed)))
+(define (editor-view-window ed vid) (view-window (editor-view-ref ed vid)))
 (define (editor-view-selections ed vid) (window-selections (view-window (editor-view-ref ed vid))))
 (define (editor-selections ed) (editor-view-selections ed (editor-focus ed)))
 (define (editor-height ed) (window-height (view-window (editor-focused-view ed))))
@@ -200,6 +210,7 @@
 (define (editor-buffer-content-eq? ed b1 b2)
   (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
 (define (editor-get-property ed bid p key) (buffer-get-property (editor-buffer ed bid) p key))
+(define (editor-face-at ed bid p) (buffer-face-at (editor-buffer ed bid) p))
 (define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
 (define (editor-property-runs ed bid line key) (buffer-property-runs (editor-buffer ed bid) line key))

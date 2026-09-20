@@ -60,8 +60,7 @@
 
 ;; 2.0 编辑后统一收口
 ;; [core] change-report = (首行, 末行, 施加顺序的生效 desc)；command 的第二个返回值。
-;; [意图] 文本改了之后，高亮该重算哪几行，core 已经通过 report 告诉了我们（新坐标系），
-;;        不需要前端自己 diff。
+;; [意图] 文本改了之后，高亮该重算哪几行，core 通过 report 告诉我们（新坐标系）。
 ;; [前端] 「要不要重算高亮」是应用策略，所以包在 changed 里。
 (define (changed a ed report)
   (define app* (struct-copy app a [ed ed]))
@@ -73,14 +72,17 @@
       app*))
 
 ;; 2.1 用户面编辑
-;; [core] editor-edit ed op —— focus 糖，等价 (editor-view-edit ed (focused-vid ed) op)。
-;; [意图] 按键编辑要同时发生三件事：改文本、光标推进到插入后并 ensure 可见、记一步账本。
-;;        只有**用户面**同时具备；程序面 editor-edit-at 默认不动视图（那是给 LSP/脚本的）。
-;; [缺口] editor-edit 与 editor-edit-at 各自实现了「施加→反应→记账→report」这一套，
-;;        逻辑重叠。若给 editor-edit-at 一个 #:reaction 'leader 且带 vid，两个面就能合一。
-(define (edit app op)
-  (define-values (ed report) (editor-edit (app-ed app) op))
-  (changed app ed report))
+;; [core] editor-edit-with ed op annotate：文本 + 派生标注一次调用。
+(define (edit a op)
+  (define-values (ed _report)
+    (editor-edit-with (app-ed a) op
+      (lambda (b report)
+        (if (app-highlight? a)
+            (list (patch 'face
+                         (change-report-first-line report) (change-report-last-line report)
+                         (syntax-segs b (change-report-first-line report) (change-report-last-line report))))
+            '()))))
+  (struct-copy app a [ed ed]))
 
 (define (insert-text app str) (edit app (edit-insert str)))
 (define (delete-back app)     (edit app (edit-backspace)))
@@ -128,15 +130,15 @@
 ;;        也是 core 「内容变更默认不动视图」的体现。
 ;; [缺口] 程序面没有 leader/ensure，所以「让某个 view 跟着这次程序编辑」只能自己映射，
 ;;        或退化成用户面（会抢焦点/改焦点 view）。这也是 2.1 说的合一动机。
-(define (append-stamp app)
-  (define ed (app-ed app))
+(define (append-stamp a)
+  (define ed (app-ed a))
   (define bid (editor-buffer-id ed))
   (define n (editor-buffer-line-count ed bid))
   (define p (point (sub1 n) (editor-buffer-line-length ed bid (sub1 n))))
   (define stamp (number->string (current-seconds)))
   (define-values (ed* report)
     (editor-edit-at ed bid p (edit-insert (string-append "\n;; stamp " stamp))))
-  (changed app ed* report))
+  (changed a ed* report))
 
 ;; 2.6 视图面：尺寸
 ;; [core] editor-view-set-size ed vid h w —— 按 vid 定位，只动那个 view，不碰焦点。
@@ -152,26 +154,22 @@
 ;;
 ;; [core] editor-apply-patches ed bid [patch]；patch = 对某 key 在 [first-line,last-line]
 ;;        「清旧写新」。行区间直接来自 change-report。
-;; [意图] 用 patch 而不是 editor-put-property：
-;;          patch 的语义就是「这几行我重新推导了」，自带清旧、天然增量；
-;;          逐段 put 要自己算区间、还得先自己清旧，又慢又易错。
+;; [意图] 用 patch 而不是 editor-put-property：patch 语义就是「这几行我重新推导了」，
+;;        自带清旧、天然增量。
 ;; [前端] 「什么算关键字、用哪个 key、何时重扫」全是应用策略；core 不解释 face 的值。
-;; [缺口] 编辑 + 高亮是**两趟写**（tick 涨 2）；core 没有「编辑时顺便产出标注」的事务/钩子。
-;;        如果 core 能收一个「变更行区间 → patch」的纯函数，前端这层胶水就能消失。
 (define keyword-rx
   #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-(define (syntax-segs app bid fl ll)
+(define (syntax-segs b fl ll)
   (for*/list ([line (in-range fl (add1 ll))]
-              [m (in-list (regexp-match-positions*
-                           keyword-rx
-                           (editor-buffer-line-ref (app-ed app) bid line)))])
+              [m (in-list (regexp-match-positions* keyword-rx (buffer-line-ref b line)))])
     (list line (car m) (cdr m) 'keyword)))
 
 (define (highlight-range a bid fl ll)
   (struct-copy app a
     [ed (editor-apply-patches (app-ed a) bid
-                              (list (patch 'face fl ll (syntax-segs a bid fl ll))))]))
+                              (list (patch 'face fl ll
+                                           (syntax-segs (editor-buffer (app-ed a) bid) fl ll))))]))
 
 (define (rehighlight-all app)
   (define ed (app-ed app))
@@ -197,10 +195,8 @@
 ;;        全是应用策略。
 ;; [前端] 词边界、搜索方式、Ctrl+D 的推进规则，都由应用决定。
 
-;; 当前主选区（head == editor-point 的那个）
-(define (primary-selection ed)
-  (define p (editor-point ed))
-  (for/first ([s (in-list (editor-selections ed))] #:when (point=? (selection-point s) p)) s))
+;; 当前主选区：core 显式给，不用靠位置比较
+(define (primary-selection ed) (editor-primary ed))
 
 ;; 「词」：主选区非空 → 选区文本；否则取光标处/紧邻的 [A-Za-z0-9_] 串。
 (define (word-at ed)
@@ -235,21 +231,19 @@
   (cond
     [(not pat) a]
     [else
-     (define sels (editor-selections ed))
      (define prim (primary-selection ed))
      (cond
-       [(caret? prim)                              ; 第一次：只选词
-        (struct-copy app a [ed (editor-set-selections ed (cons (selection ps pe) (remove prim sels)))])]
-       [else                                       ; 已有：从 primary 之后选下一个出现（新选区设为主，继续往后）
+       [(caret? prim)                              ; 第一次：把 primary 扩成词
+        (struct-copy app a [ed (editor-map-primary ed (lambda (_s) (selection ps pe)))])]
+       [else                                       ; 已有：选 primary 之后、尚未选中的下一个出现
         (define prim-end (let-values ([(_ e) (selection-range prim)]) e))
-        (define taken (map (lambda (s) (call-with-values (lambda () (selection-range s)) list)) sels))
         (define nxt (for/first ([o (in-list (occurrences ed pat))]
                                 #:when (and (point<=? prim-end (car o))
-                                            (not (member (list (car o) (cadr o)) taken))))
+                                            (not (editor-selection-member? ed (selection (car o) (cadr o))))))
                       o))
         (cond
           [(not nxt) a]
-          [else (struct-copy app a [ed (editor-add-selections ed (list (selection (car nxt) (cadr nxt))) #t)])])])]))
+          [else (struct-copy app a [ed (editor-add-selection ed (selection (car nxt) (cadr nxt)) #t)])])])]))
 
 ;; Ctrl+A：把当前词的所有出现一次选中
 (define (select-all-occurrences a)
@@ -264,30 +258,31 @@
 
 ;; 回单光标（保留 primary）
 (define (collapse-selection a)
-  (struct-copy app a [ed (editor-set-point (app-ed a) (editor-point (app-ed a)))]))
+  (struct-copy app a [ed (editor-collapse-selections (app-ed a))]))
 
-;; Shift+方向：只移动**主选区**的 head，anchor 不动 → 扩选
+;; Shift+方向：只移动 primary 的 head，anchor 不动 → 扩选。
 (define (extend-selection a sym)
   (define ed (app-ed a))
-  (define prim (primary-selection ed))
-  (cond
-    [(not prim) a]
-    [else
-     (define at-head (editor-set-point ed (selection-point prim)))
-     (define moved (case sym
-                     [(left)  (editor-left at-head)]  [(right) (editor-right at-head)]
-                     [(up)    (editor-up at-head)]    [(down)  (editor-down at-head)]
-                     [(home)  (editor-home at-head)]  [(end)   (editor-end at-head)]
-                     [else at-head]))
-     (define sel* (selection (selection-anchor prim) (editor-point moved)))
-     (struct-copy app a [ed (editor-set-selections ed (cons sel* (remove prim (editor-selections ed))))])]))
+  (define b (editor-buffer ed (editor-buffer-id ed)))
+  (define w (editor-window ed))
+  (struct-copy app a
+    [ed (editor-map-primary ed
+          (lambda (s)
+            (define h (selection-point s))
+            (define h* (case sym
+                         [(left)  (point-left b h)]     [(right) (point-right b h)]
+                         [(up)    (window-point-up w h)] [(down)  (window-point-down w h)]
+                         [(home)  (point-home h)]       [(end)   (point-end b h)]))
+            (selection (selection-anchor s) h*)))]))
 
 ;; 加一个光标（Alt+上下）
 (define (add-caret a p)
-  (struct-copy app a [ed (editor-add-selections (app-ed a) (list (caret p)))]))
+  (struct-copy app a [ed (editor-add-selection (app-ed a) (caret p))]))
 (define (add-caret-vertical a delta)
   (define ed (app-ed a))
-  (add-caret a (editor-point (if (> delta 0) (editor-down ed) (editor-up ed)))))
+  (define w (editor-window ed))
+  (add-caret a (if (> delta 0) (window-point-down w (editor-point ed))
+                                (window-point-up w (editor-point ed)))))
 
 ;;; ============================================================================
 ;;; §3 渲染（[前端]；core 只给 screen）
@@ -518,9 +513,8 @@
 ;; 1. 两个操作面重复：editor-edit（用户面）与 editor-edit-at（程序面）各自实现
 ;;    「施加→反应→记账→report」。可考虑让 editor-edit-at 收 #:reaction 'leader + vid，
 ;;    把用户面变成它的特例，消除重复（见 2.1 / 2.5）。
-;; 2. 缺少「编辑 + 标注」事务：高亮被迫是第二趟写（tick +2）。可考虑让编辑命令接一个
-;;    「变更行区间 → patch」的纯函数，一次完成（见 2.8）。
-;; 3. 视图面缺 focus 糖：editor-view-set-size 要自己 (editor-focus) 取 vid；
-;;    可补 editor-set-size 之类（见 2.6）。
+;; 2. （已解决）「编辑 + 标注」现由 editor-edit-with / editor-edit-at-with 一条命令完成
+;;    （annotate : buffer × report → patch）（见 2.1）。
+;; 3. （已解决）视图面 focus 糖已有 editor-set-size 等（见 2.6）。
 ;; 4. report 粒度偏粗：change-report 只给「首行/末行 + descs」。若前端要按**每个**
 ;;    变更区间做增量标注（如多光标），需要自己再走 change-report-edits（见 2.0）。

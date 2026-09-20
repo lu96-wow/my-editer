@@ -171,14 +171,24 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 **`point` 是唯一的位置表示**（`line`, `col`，0-based，`col` 是**字符索引**）。
 
 **选区（selection）是 view 层的光标模型**：`selection = (anchor head)`，空选区就是普通光标；
-一个 view 持有一组选区（`window` 的 `selections` + `primary`），这就是多光标。
+一个 view 持有一组选区（`window` 的 `selections` + `primary-index`），这就是多光标。
 光标/选区是 **view 状态**，不进 buffer（buffer 无光标）。
+
+**选择/导航是算子，不是容器操作**（Unix 式接口）：
+- 点运动是纯原子：`point-left/right/home/end : buffer point -> point`，
+  `window-point-up/down : window point -> point`。
+- 选区变换是纯原子：`selection-map-head/anchor/both`（对端点施 `point→point`）。
+- 集合级正交组合：`window-selection-map`（全部）/ `window-primary-map`（仅 primary）；
+  `window-primary` 直接给 primary **选区值**（不再靠位置比较），`window-primary-index` 给下标。
+- 编辑入口 `editor-edit` 也遵循同一形态：`op : buffer × selection → edit-desc` 是策略，core 负责循环/落点/账本。
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
 交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
 若 op 会**超出选区**（如 backspace 删光标前一字符、delete 删后一字符），相邻选区可能产出
 重叠的 desc；`editor-edit` 会先把冲突的选区**合并成包络并重算 op**，保证交给 batch 的 desc 两两不相交。
 方向键对每个选区各走一步（`window-map-selections`）后再去重/合并。
+Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `editor-map-selections` +
+`selection-map-both`；加光标 = 点运动算位置后 `editor-add-selection`。
 
 | 名字 | 契约 |
 |---|---|

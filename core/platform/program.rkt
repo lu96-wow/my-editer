@@ -17,12 +17,19 @@
 (provide
  editor-edit-at
  editor-edit-at-batch
+ editor-edit-at-with
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
  editor-view-set-selections
  editor-view-add-selections
  editor-view-remove-selections
  editor-view-collapse-selections
+ editor-view-map-selections
+ editor-view-map-primary
+ editor-view-add-selection
+ editor-view-remove-selection
+ editor-view-set-primary
+ editor-view-selection-member?
  editor-view-set-size
  editor-view-set-mode
  editor-view-set-top-line
@@ -36,6 +43,12 @@
  editor-add-selections
  editor-remove-selections
  editor-collapse-selections
+ editor-map-selections
+ editor-map-primary
+ editor-add-selection
+ editor-remove-selection
+ editor-set-primary
+ editor-selection-member?
  editor-set-mode
  editor-set-size
  editor-set-top-line
@@ -48,6 +61,7 @@
  editor-put-property
  editor-remove-property
  editor-put-properties-many
+ editor-put-properties
  editor-put-restrict
  editor-remove-restrict
  editor-apply-patches)
@@ -75,12 +89,12 @@
                        [(none) (editor-clamp-views ed* bid)]
                        [(map)  (editor-map-views ed* bid b* (list d*))]
                        [else (error 'editor-edit-at "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
+        (define-values (f l) (edits-span (list d*)))
         (define ed*** (if record?
                           (editor-record-history
                            ed** bid
                            (edit-change d* (buffer-edit-desc-inverse b0 d*) (edit-desc-start d*)))
                           ed**))
-        (define-values (f l) (edits-span (list d*)))
         (values ed*** (change-report f l (list d*)))])]))
 
 ;; 批量：descs 同坐标系、互不重叠（= LSP TextEdit[]）。被守卫拒的静默丢弃
@@ -105,11 +119,27 @@
      (define-values (f l) (edits-span ds))
      (values ed*** (change-report f l ds))]))
 
+;; 编辑 + 派生标注，一次调用。annotate : buffer change-report -> (listof patch)。
+;; 文本先施加（走 editor-edit-at 的反应/守卫/记账），再用新 buffer 与 report 调 annotate，
+;; 得到「这几行重推这个 key」的 patch 并施加（清旧写新）。report 仍是变更区间。
+(define (editor-edit-at-with ed bid p op annotate
+                             #:reaction [reaction 'none]
+                             #:trusted? [trusted? #f]
+                             #:record? [record? #f])
+  (define-values (ed* report)
+    (editor-edit-at ed bid p op #:reaction reaction #:trusted? trusted? #:record? record?))
+  (cond
+    [(not report) (values ed* #f)]
+    [else
+     (define patches (annotate (editor-buffer ed* bid) report))
+     (values (editor-apply-patches ed* bid patches) report)]))
+
 ;; 批量没有唯一编辑点；pre-point 取最左（文档序）施加点，撤销后光标落到最靠前的改动处。
 (define (edits-min-start ds)
   (for/fold ([p #f]) ([d (in-list ds)])
     (define s (edit-desc-start d))
     (if (or (not p) (point<? s p)) s p)))
+
 
 ;;; ---------- 显式视图命令（程序面：只动一个 view，不镜像、不抢焦点） ----------
 ;; 全部按 vid 定位，绝不读也不改 focus；同 buffer 其它 view 一律不动。
@@ -152,6 +182,23 @@
 (define (editor-view-set-buffer ed vid bid)
   (editor-set-view-buffer ed vid bid))
 
+;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
+
+;; 对每个选区施加 f（selection → selection），再规范化；primary 保持。
+(define (editor-view-map-selections ed vid f)
+  (editor-put-view ed vid (window-selection-map (view-window-of ed vid) f)))
+;; 只对 primary 施加 f；其余不动。
+(define (editor-view-map-primary ed vid f)
+  (editor-put-view ed vid (window-primary-map (view-window-of ed vid) f)))
+(define (editor-view-add-selection ed vid s [primary? #f])
+  (editor-put-view ed vid (window-add-selection (view-window-of ed vid) s primary?)))
+(define (editor-view-remove-selection ed vid s)
+  (editor-put-view ed vid (window-remove-selection (view-window-of ed vid) s)))
+(define (editor-view-set-primary ed vid s)
+  (editor-put-view ed vid (window-set-primary (view-window-of ed vid) s)))
+(define (editor-view-selection-member? ed vid s)
+  (window-selection-member? (view-window-of ed vid) s))
+
 ;;; ---------- focus 糖（用户面便捷） ----------
 
 (define (editor-set-point ed p)
@@ -186,6 +233,20 @@
 (define (editor-set-buffer ed bid)
   (editor-view-set-buffer ed (view-id (editor-focused-view ed)) bid))
 
+;; 选区集合算子的 focus 糖。
+(define (editor-map-selections ed f)
+  (editor-view-map-selections ed (view-id (editor-focused-view ed)) f))
+(define (editor-map-primary ed f)
+  (editor-view-map-primary ed (view-id (editor-focused-view ed)) f))
+(define (editor-add-selection ed s [primary? #f])
+  (editor-view-add-selection ed (view-id (editor-focused-view ed)) s primary?))
+(define (editor-remove-selection ed s)
+  (editor-view-remove-selection ed (view-id (editor-focused-view ed)) s))
+(define (editor-set-primary ed s)
+  (editor-view-set-primary ed (view-id (editor-focused-view ed)) s))
+(define (editor-selection-member? ed s)
+  (editor-view-selection-member? ed (view-id (editor-focused-view ed)) s))
+
 ;;; ---------- buffer 元数据 ----------
 
 (define (editor-set-buffer-name ed bid name)
@@ -199,6 +260,9 @@
   (editor-update-buffer ed bid (lambda (b) (buffer-remove-property b start end key))))
 (define (editor-put-properties-many ed bid segs)
   (editor-update-buffer ed bid (lambda (b) (buffer-put-properties-many b segs))))
+;; 规范名：一批 point 区间标注。
+(define (editor-put-properties ed bid segs)
+  (editor-put-properties-many ed bid segs))
 (define (editor-put-restrict ed bid start end rs)
   (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
 (define (editor-remove-restrict ed bid start end)
@@ -327,5 +391,33 @@
   (define fs2 (editor-set-buffer fs1 bid2))
   (check-equal? (editor-buffer-id fs2) bid2)
   (check-equal? (editor-buffer-name (editor-set-buffer-name fs2 bid2 "renamed") bid2) "renamed")
+
+  ;; 选区集合算子：显式 primary + map 全部 / map primary + 增删
+  (define sm0 (editor-open "abcde"))
+  (define sm1 (editor-set-selections sm0 (list (caret (point 0 0)) (caret (point 0 2))) 1))
+  (check-equal? (editor-primary sm1) (caret (point 0 2)))
+  (check-true (editor-selection-member? sm1 (caret (point 0 0))))
+  (define sm2 (editor-map-primary sm1
+                (lambda (s) (selection-map-head (lambda (p) (point-right (editor-buffer sm1 0) p)) s))))
+  (check-equal? (editor-primary sm2) (selection (point 0 2) (point 0 3)))
+  (define sm3 (editor-map-selections sm1
+                (lambda (s) (selection-map-both (lambda (p) (point-left (editor-buffer sm1 0) p)) s))))
+  (check-equal? (map selection-head (editor-selections sm3)) (list (point 0 0) (point 0 1)))
+  (check-equal? (editor-primary (editor-add-selection sm1 (caret (point 0 4)) #t)) (caret (point 0 4)))
+  (check-equal? (length (editor-selections (editor-remove-selection sm1 (caret (point 0 0))))) 1)
+  (check-equal? (editor-primary (editor-set-primary sm1 (caret (point 0 0)))) (caret (point 0 0)))
+  ;; 标注：point 批量 + face 读口
+  (define am1 (editor-put-properties (editor-open "abc") 0 (list (list (point 0 0) (point 0 2) 'face 'bold))))
+  (check-equal? (editor-face-at am1 0 (point 0 1)) (hash 'face 'bold))
+  ;; 编辑 + 派生 patch：一次调用
+  (define aw (editor-open "ab"))
+  (define-values (aw1 raw)
+    (editor-edit-at-with aw 0 (point 0 0) (edit-insert "X")
+      (lambda (_b report)
+        (list (patch 'face (change-report-first-line report) (change-report-last-line report)
+                     (list (list 0 1 2 'mark)))))))
+  (check-equal? (editor-buffer->string aw1 0) "Xab")
+  (check-equal? (editor-get-property aw1 0 (point 0 1) 'face) 'mark)
+  (check-true (change-report? raw))
 
   (displayln "program.rkt: all tests passed"))

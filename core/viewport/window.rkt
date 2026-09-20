@@ -1,14 +1,14 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/selection.rkt" "../doc/buffer.rkt" "../atom/width.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/selection.rkt" "../doc/buffer.rkt" "../atom/width.rkt" racket/list rackunit)
 
 ;;; viewport/window.rkt —— 视口：buffer 引用 + 本窗口的选区集合 + 滚动位置 + 尺寸
 ;;;
 ;;; buffer 是文档（无光标）；window 是「怎么看它」，持有自己的**选区集合**（至少一个）。
 ;;; 一个 buffer 可被多个 window 绑定，各有独立选区。
 ;;;
-;;;   selections : (nonempty-listof selection)   已规范化（排序、去重、重叠合并）
-;;;   primary    : nat                            主选区下标；光标/打字点取它的 head
+;;;   selections    : (nonempty-listof selection)   已规范化（排序、去重、重叠合并）
+;;;   primary-index : nat                            主选区下标；光标/打字点取它的 head
 ;;;   空选区 (anchor=head) 就是普通光标；单个 window 至少含一个空选区。
 ;;;
 ;;; 本层是**纯视图**：导航、滚动、尺寸。**编辑不在这里**。
@@ -19,14 +19,25 @@
  window-open
  check-mode
  snap-left-col
+ point-left
+ point-right
+ point-home
+ point-end
  window-point
  window-selections
  window-primary
+ window-primary-index
+ window-selection-map
+ window-primary-map
  window-set-buffer
  window-set-point
  window-set-selections
  window-add-selections
  window-remove-selections
+ window-add-selection
+ window-remove-selection
+ window-set-primary
+ window-selection-member?
  window-map-selections
  window-clamp-selections
  window-set-mode
@@ -42,15 +53,15 @@
  window-end)
 
 (struct window
-  (buffer     ; buffer
-   selections ; (nonempty-listof selection)
-   primary    ; nat        主选区下标
-   mode       ; 'clip|'wrap
-   top-line   ; nat        clip：顶 buffer 行；wrap：顶部所在 buffer 行
-   left-col   ; nat        clip：水平滚动列；wrap：恒 0
-   top-seg    ; nat        wrap：顶部行的第几个折行段；clip：恒 0
-   height     ; nat        可见行数
-   width)     ; nat        可见列数
+  (buffer        ; buffer
+   selections    ; (nonempty-listof selection)
+   primary-index ; nat        主选区下标
+   mode          ; 'clip|'wrap
+   top-line      ; nat        clip：顶 buffer 行；wrap：顶部所在 buffer 行
+   left-col      ; nat        clip：水平滚动列；wrap：恒 0
+   top-seg       ; nat        wrap：顶部行的第几个折行段；clip：恒 0
+   height        ; nat        可见行数
+   width)        ; nat        可见列数
   #:transparent)
 
 (define (window-open b [height 24] [width 80])
@@ -62,7 +73,9 @@
 
 ;;; ---------- 光标 / 选区 ----------
 
-(define (window-selection w) (list-ref (window-selections w) (window-primary w)))
+(define (window-selection w) (list-ref (window-selections w) (window-primary-index w)))
+;; 显式 primary：给选区**值**，不靠位置比较。
+(define (window-primary w) (window-selection w))
 (define (window-point w) (selection-point (window-selection w)))
 
 (define (clamp-selection b s)
@@ -73,11 +86,11 @@
 (define (window-clamp-selections w)
   (define b (window-buffer w))
   (define sels (window-selections w))
-  (define pidx (window-primary w))
+  (define pidx (window-primary-index w))
   (define keysel (and (< pidx (length sels)) (clamp-selection b (list-ref sels pidx))))
   (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
   (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
-  (struct-copy window w [selections norm] [primary idx]))
+  (struct-copy window w [selections norm] [primary-index idx]))
 
 (define (window-set-buffer w b)
   (window-clamp-selections (struct-copy window w [buffer b])))
@@ -85,7 +98,7 @@
 ;; 设成单个空选区（程序面「把光标放这」的语义）。
 (define (window-set-point w p)
   (define q (buffer-clamp-point (window-buffer w) p))
-  (struct-copy window w [selections (list (caret q))] [primary 0]))
+  (struct-copy window w [selections (list (caret q))] [primary-index 0]))
 
 ;; 设一组选区；primary 按输入下标选，规范化后追到合并结果。
 (define (window-set-selections w sels [primary 0])
@@ -94,7 +107,29 @@
   (define keysel (and (< primary (length sels)) (clamp-selection b (list-ref sels primary))))
   (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
   (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
-  (struct-copy window w [selections norm] [primary idx]))
+  (struct-copy window w [selections norm] [primary-index idx]))
+
+;; 对每个选区施加 f（selection → selection），再规范化；primary 保持。
+(define (window-selection-map w f)
+  (window-set-selections w (map f (window-selections w)) (window-primary-index w)))
+
+;; 只对 primary 施加 f（selection → selection）；其余不动，primary 保持。
+(define (window-primary-map w f)
+  (define i (window-primary-index w))
+  (define sels (window-selections w))
+  (window-set-selections w (list-set sels i (f (list-ref sels i))) i))
+
+;; 增/删单个选区；set-primary 让集合中等于 s 的选区成为 primary（不在集合中则原样）。
+(define (window-add-selection w s [primary? #f])
+  (window-add-selections w (list s) primary?))
+(define (window-remove-selection w s)
+  (window-remove-selections w (list s)))
+(define (window-set-primary w s)
+  (define idx (for/first ([x (in-list (window-selections w))] [i (in-naturals)]
+                          #:when (equal? x s)) i))
+  (if idx (struct-copy window w [primary-index idx]) w))
+(define (window-selection-member? w s)
+  (and (member s (window-selections w)) #t))
 
 ;; 对每个选区的 head 施加 f（point → point），坍缩成空选区；primary 跟随。
 ;; 导航（方向键）用它：一次动所有光标。
@@ -106,12 +141,12 @@
 ;; 并集：把 sels 加进现有选区集（规范化）；primary 默认保持，primary? #t 则让新加的成为 primary。
 (define (window-add-selections w sels [primary? #f])
   (window-set-selections w (append (window-selections w) sels)
-                         (if primary? (length (window-selections w)) (window-primary w))))
+                         (if primary? (length (window-selections w)) (window-primary-index w))))
 
 ;; 差集：从现有选区集去掉与 drops 相等的项；primary 尽量保持，删空则原样。
 (define (window-remove-selections w drops)
   (define old (window-selections w))
-  (define pidx (window-primary w))
+  (define pidx (window-primary-index w))
   (define prim (and (< pidx (length old)) (list-ref old pidx)))
   (define kept (remove* drops old))
   (cond
@@ -156,17 +191,17 @@
 (define (window-hscroll w delta)
   (window-set-left-col w (+ (window-left-col w) delta)))
 
-;;; ---------- 导航（每个选区各走一步）----------
-;; 方向键把每个选区坍缩到 head 后移动；新位置去重/合并。
+;;; ---------- 点运动（纯）----------
+;; 只依赖文本的四种：字符/行级。up/down 需要视口几何，见 viewport/layout.rkt。
 
-(define (left-point b p)
+(define (point-left b p)
   (define l (point-line p)) (define o (point-col p))
   (cond
     [(> o 0) (point l (sub1 o))]
     [(> l 0) (point (sub1 l) (string-length (buffer-line-ref b (sub1 l))))]
     [else p]))
 
-(define (right-point b p)
+(define (point-right b p)
   (define l (point-line p)) (define o (point-col p))
   (define n (buffer-line-count b))
   (cond
@@ -174,14 +209,17 @@
     [(< l (sub1 n)) (point (add1 l) 0)]
     [else p]))
 
-(define (home-point p) (point (point-line p) 0))
-(define (end-point b p)
+(define (point-home p) (point (point-line p) 0))
+(define (point-end b p)
   (point (point-line p) (string-length (buffer-line-ref b (point-line p)))))
 
-(define (window-left w)  (window-map-selections w (lambda (p) (left-point  (window-buffer w) p))))
-(define (window-right w) (window-map-selections w (lambda (p) (right-point (window-buffer w) p))))
-(define (window-home w)  (window-map-selections w home-point))
-(define (window-end w)   (window-map-selections w (lambda (p) (end-point (window-buffer w) p))))
+;;; ---------- 导航（每个选区各走一步）----------
+;; 方向键把每个选区坍缩到 head 后移动；新位置去重/合并。
+
+(define (window-left w)  (window-map-selections w (lambda (p) (point-left  (window-buffer w) p))))
+(define (window-right w) (window-map-selections w (lambda (p) (point-right (window-buffer w) p))))
+(define (window-home w)  (window-map-selections w point-home))
+(define (window-end w)   (window-map-selections w (lambda (p) (point-end (window-buffer w) p))))
 
 ;;; ---------- 测试 ----------
 
@@ -244,5 +282,34 @@
 
   ;; 未知 mode → 报错
   (check-exn exn:fail? (lambda () (window-set-mode w 'bad)))
+
+  ;; —— 点运动原语 ——
+  (define bp (buffer-open "ab\ncd"))
+  (check-equal? (point-right bp (point 0 1)) (point 0 2))
+  (check-equal? (point-right bp (point 0 2)) (point 1 0))
+  (check-equal? (point-left bp (point 1 0)) (point 0 2))
+  (check-equal? (point-home (point 1 1)) (point 1 0))
+  (check-equal? (point-end bp (point 0 0)) (point 0 2))
+
+  ;; —— 显式 primary + map 算子 ——
+  (define wp0 (window-set-selections ws (list (caret (point 0 0)) (caret (point 0 2))) 1))
+  (check-equal? (window-primary wp0) (caret (point 0 2)))
+  (check-equal? (window-primary-index wp0) 1)
+  (check-true (window-selection-member? wp0 (caret (point 0 0))))
+  ;; map 全部（两端移动）；primary 保持
+  (define wp1 (window-selection-map wp0
+                 (lambda (s) (selection-map-both (lambda (p) (point-right (window-buffer wp0) p)) s))))
+  (check-equal? (map selection-head (window-selections wp1)) (list (point 0 1) (point 0 3)))
+  (check-equal? (window-primary wp1) (caret (point 0 3)))
+  ;; map primary：只动主选区，其余不动
+  (define wp2 (window-primary-map wp0
+                 (lambda (s) (selection-map-head (lambda (p) (point-right (window-buffer wp0) p)) s))))
+  (check-equal? (selection-head (list-ref (window-selections wp2) 0)) (point 0 0))
+  (check-equal? (selection-head (window-primary wp2)) (point 0 3))
+  ;; 增 / 删 / 设 primary
+  (check-equal? (length (window-selections (window-add-selection wp0 (caret (point 0 4))))) 3)
+  (check-equal? (window-primary (window-add-selection wp0 (caret (point 0 4)) #t)) (caret (point 0 4)))
+  (check-equal? (length (window-selections (window-remove-selection wp0 (caret (point 0 0))))) 1)
+  (check-equal? (window-primary (window-set-primary wp0 (caret (point 0 0)))) (caret (point 0 0)))
 
   (displayln "window.rkt: all tests passed"))

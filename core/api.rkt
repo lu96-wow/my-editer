@@ -47,6 +47,7 @@
  ;; ---- selection（选区：光标 + 影子）----
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
+ selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
  ;; ---- restrict（约束槽）----
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
@@ -59,6 +60,7 @@
  buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs buffer-property-runs
+ buffer-face-at
  buffer-content buffer-properties
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
@@ -90,12 +92,15 @@
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
- window-selections window-primary
+ window-selections window-primary window-primary-index
+ window-selection-map window-primary-map
  window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-map-selections window-clamp-selections
+ window-add-selection window-remove-selection window-set-primary window-selection-member?
  window-set-mode window-set-top-line window-set-left-col
  window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end
- window-ensure-point window-clamp-view window-visual-move window-up window-down
+ point-left point-right point-home point-end
+ window-ensure-point window-clamp-view window-visual-move window-point-up window-point-down window-up window-down
  window-point->screen window-point-at->screen window-screen->point window-scroll-visual
  ;; ---- project ----
  window->screen)

@@ -55,7 +55,7 @@
     (filter values
             (for/list ([s (in-list (window-selections w))] [i (in-naturals)])
               (define-values (r c) (window-point-at->screen w (selection-point s)))
-              (and r (cursor r c (hash 'face 'cursor) (= i (window-primary w)))))))
+              (and r (cursor r c (hash 'face 'cursor) (= i (window-primary-index w)))))))
   ;; 视图 overlay：选中区 = 每个非空选区的 [anchor,head)
   (define selections
     (filter values (append* (for/list ([s (in-list (window-selections w))])
