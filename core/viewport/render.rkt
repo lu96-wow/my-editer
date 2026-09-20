@@ -1,17 +1,17 @@
 #lang racket
 
-(require "../atom/point.rkt" "../doc/buffer.rkt" "../unit/properties.rkt"
-         "../atom/restrict.rkt" rackunit)
+(require "../atom/point.rkt" "../doc/buffer.rkt" rackunit)
 
 ;;; viewport/render.rkt —— 单行渲染：buffer 一行 → glyph 向量
 ;;;
-;;; 只做**语义合成**：把一行的 properties（表现层 runs）逐段算出 face，
-;;; 产出 (ch . face) 的 glyph 向量。
+;;; face **全部来自投影参数 face-provider**（派生 face = content 的纯函数，如语法高亮）；
+;;; 文档里不存 face。provider : buffer line -> (listof (list start end face))。
 ;;; 布局（折行/裁剪）、屏幕帧、滚动都在 viewport 层，与本层无关。
 
 (provide
  (struct-out glyph)
  (struct-out rendered-line)
+ no-face-provider
  render-line)
 
 (struct glyph (ch face) #:transparent)
@@ -20,10 +20,11 @@
 (struct rendered-line (glyphs) #:transparent)
 ;; glyphs : (vectorof glyph)
 
-(define empty-plist (hash))
+;; 缺省 provider：无派生 face。
+(define (no-face-provider _b _line) '())
 
 ;; runs 按 start 升序的 (start end payload)。返回覆盖列 a 的 payload（#f 未覆盖），
-;; 以及其后第一个 end > a 的剩余 runs。让每段只需向前走，整体 O(P+O)。
+;; 以及其后第一个 end > a 的剩余 runs。让每段只需向前走，整体 O(D)。
 (define (run-cover-at runs a)
   (let skip ([r runs])
     (cond
@@ -32,49 +33,47 @@
       [(<= (car (car r)) a) (values (caddr (car r)) r)]
       [else (values #f r)])))
 
-(define (render-line b i)
+(define (render-line b i [face-provider no-face-provider])
   (define text (buffer-line-ref b i))
   (define n (string-length text))
-  (define p-runs (properties-runs (buffer-properties b) i n))
+  (define d-runs (face-provider b i))
   (define points
     (sort (remove-duplicates
            (append (list 0 n)
-                   (append-map (lambda (seg) (list (car seg) (cadr seg))) p-runs)))
+                   (append-map (lambda (seg) (list (car seg) (cadr seg))) d-runs)))
           <))
   (define glyphs (make-vector n #f))
-  (let loop ([pts (drop-right points 1)] [bnd (rest points)] [pi p-runs])
+  (let loop ([pts (drop-right points 1)] [bnd (rest points)] [di d-runs])
     (cond
       [(null? pts) (void)]
       [else
        (define a (car pts)) (define z (car bnd))
-       (define-values (plist pi*) (run-cover-at pi a))
-       (define face (or plist empty-plist))
+       (define-values (dface di*) (run-cover-at di a))
+       (define face (or dface (hash)))
        (for ([j (in-range a z)]) (vector-set! glyphs j (glyph (string-ref text j) face)))
-       (loop (cdr pts) (cdr bnd) pi*)]))
+       (loop (cdr pts) (cdr bnd) di*)]))
   (rendered-line glyphs))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define (rline->string b i)
-    (list->string (for/list ([g (in-vector (rendered-line-glyphs (render-line b i)))])
-                    (glyph-ch g))))
-  (define (face-at b i j)
-    (glyph-face (vector-ref (rendered-line-glyphs (render-line b i)) j)))
+  (define (face-at b i j [provider no-face-provider])
+    (glyph-face (vector-ref (rendered-line-glyphs (render-line b i provider)) j)))
 
   (define b0 (buffer-open "hello\nworld"))
-  (check-equal? (rline->string b0 0) "hello")
-  (check-equal? (face-at b0 0 0) (hash))
+  (check-equal? (face-at b0 0 0) (hash))                    ; 无 provider → 无 face
 
-  ;; 属性 → face
-  (define b1 (buffer-put-property b0 (point 0 1) (point 0 4) 'face 'bold))
-  (check-equal? (face-at b1 0 0) (hash))
-  (check-equal? (face-at b1 0 1) (hash 'face 'bold))
-  (check-equal? (face-at b1 0 3) (hash 'face 'bold))
-  (check-equal? (face-at b1 0 4) (hash))
+  ;; 派生 face：投影时给出，不进文档
+  (define (provider _b line)
+    (if (zero? line) (list (list 0 5 (hash 'face 'keyword))) '()))
+  (check-equal? (face-at b0 0 0 provider) (hash 'face 'keyword))
+  (check-equal? (face-at b0 1 0 provider) (hash))           ; 第 1 行无匹配
 
-  ;; 约束不进 face
-  (define b2 (buffer-put-restrict b1 (point 0 1) (point 0 4) (restrict #t)))
-  (check-equal? (face-at b2 0 2) (hash 'face 'bold))
+  ;; 多段
+  (define (provider2 _b _line)
+    (list (list 0 2 (hash 'face 'a)) (list 3 5 (hash 'face 'b))))
+  (check-equal? (face-at b0 0 0 provider2) (hash 'face 'a))
+  (check-equal? (face-at b0 0 2 provider2) (hash))
+  (check-equal? (face-at b0 0 3 provider2) (hash 'face 'b))
 
   (displayln "render.rkt: all tests passed"))

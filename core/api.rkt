@@ -4,7 +4,7 @@
 ;;; api.rkt —— 低层全量面（原子 + 单元 + 文档 + 视口）
 ;;; ============================================================================
 ;;;
-;;; 只透出**原子及其直接组合**：point / edit-desc / buffer / window / screen / events / patch / width。
+;;; 只透出**原子及其直接组合**：point / edit-desc / buffer / window / screen / events / width。
 ;;; 不含 compose 平台（editor-*）。
 ;;;
 ;;; 消费者白名单 = **core/editor.rkt**（原子 + editor 平台）；日常只用它。
@@ -28,9 +28,9 @@
          "unit/screen.rkt"
          "doc/buffer.rkt"
          "doc/batch.rkt"
-         "doc/patch.rkt"
          "viewport/window.rkt"
          "viewport/layout.rkt"
+         "viewport/render.rkt"
          "viewport/project.rkt")
 
 (provide
@@ -58,16 +58,11 @@
  edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-edit-desc-inverse
  buffer-range-text
- buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
- buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs buffer-property-runs
- buffer-face-at
- buffer-content buffer-properties
+ buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs
+ buffer-content buffer-content-eq? buffer-restrictions
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch edits-map-position edits-span
- ;; ---- patch —— 插件 delta ----
- patch patch? struct:patch patch-key patch-first-line patch-last-line patch-segs
- buffer-apply-patches buffer-content-eq?
  ;; ---- events —— 类型化输入 ----
  modifiers modifiers? struct:modifiers
  modifiers-control modifiers-alt modifiers-shift modifiers-meta
@@ -102,8 +97,9 @@
  point-left point-right point-home point-end
  window-ensure-point window-clamp-view window-visual-move window-point-up window-point-down window-up window-down
  window-point->screen window-point-at->screen window-screen->point window-scroll-visual
- ;; ---- project ----
- window->screen)
+ ;; ---- project / render ----
+ window->screen
+ no-face-provider)
 
 ;;; ============================================================================
 ;;; 冒烟测试：门面 + 一条完整「属性 → 画面」链
@@ -124,14 +120,11 @@
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b1 2 10))) 0)
                 (list (run 0 "Xhello" (hash))))
 
-  ;; 属性 → run.face
-  (define b3 (buffer-put-property b (point 0 0) (point 0 5) 'face 'keyword))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b3 2 10))) 0)
+  ;; 派生 face 由投影参数 provider 给出，不进文档
+  (define (provider _b _line) (list (list 0 5 (hash 'face 'keyword))))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b 2 10) provider)) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
-
-  ;; 编辑后属性随文本移动
-  (define-values (b4 _d4) (buffer-edit b3 (point 0 0) (edit-insert-char #\Z)))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b4 2 10))) 0)
-                (list (run 0 "Z" (hash)) (run 1 "hello" (hash 'face 'keyword))))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b1 2 10))) 0)
+                (list (run 0 "Xhello" (hash))))
 
   (displayln "api.rkt: all tests passed"))

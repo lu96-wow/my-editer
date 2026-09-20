@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
-         "../doc/buffer.rkt" "../doc/batch.rkt" "../doc/patch.rkt"
+         "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../atom/restrict.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "reaction.rkt" rackunit)
 
@@ -17,7 +17,6 @@
 (provide
  editor-edit-at
  editor-edit-at-batch
- editor-edit-at-with
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
  editor-view-set-selections
@@ -57,14 +56,9 @@
  editor-set-sync
  editor-set-buffer
  editor-set-buffer-name
- ;; 标注写（程序面：改 buffer 的标注，不碰文本/光标）
- editor-put-property
- editor-remove-property
- editor-put-properties-many
- editor-put-properties
+ ;; 约束写（程序面：改 buffer 的约束，不碰文本/光标）
  editor-put-restrict
- editor-remove-restrict
- editor-apply-patches)
+ editor-remove-restrict)
 
 ;; 在 bid 的显式位置 p 编辑。op : buffer point → (or/c #f edit-desc)。
 ;; 返回 (values editor (or/c #f change-report))。
@@ -118,21 +112,6 @@
                        ed**))
      (define-values (f l) (edits-span ds))
      (values ed*** (change-report f l ds))]))
-
-;; 编辑 + 派生标注，一次调用。annotate : buffer change-report -> (listof patch)。
-;; 文本先施加（走 editor-edit-at 的反应/守卫/记账），再用新 buffer 与 report 调 annotate，
-;; 得到「这几行重推这个 key」的 patch 并施加（清旧写新）。report 仍是变更区间。
-(define (editor-edit-at-with ed bid p op annotate
-                             #:reaction [reaction 'none]
-                             #:trusted? [trusted? #f]
-                             #:record? [record? #f])
-  (define-values (ed* report)
-    (editor-edit-at ed bid p op #:reaction reaction #:trusted? trusted? #:record? record?))
-  (cond
-    [(not report) (values ed* #f)]
-    [else
-     (define patches (annotate (editor-buffer ed* bid) report))
-     (values (editor-apply-patches ed* bid patches) report)]))
 
 ;; 批量没有唯一编辑点；pre-point 取最左（文档序）施加点，撤销后光标落到最靠前的改动处。
 (define (edits-min-start ds)
@@ -252,23 +231,12 @@
 (define (editor-set-buffer-name ed bid name)
   (editor-put-buffer-name ed bid name))
 
-;;; ---------- 标注写（改 buffer 的标注；不碰文本，光标自然不动） ----------
+;;; ---------- 约束写（改 buffer 的约束；不碰文本，光标自然不动） ----------
 
-(define (editor-put-property ed bid start end key val)
-  (editor-update-buffer ed bid (lambda (b) (buffer-put-property b start end key val))))
-(define (editor-remove-property ed bid start end key)
-  (editor-update-buffer ed bid (lambda (b) (buffer-remove-property b start end key))))
-(define (editor-put-properties-many ed bid segs)
-  (editor-update-buffer ed bid (lambda (b) (buffer-put-properties-many b segs))))
-;; 规范名：一批 point 区间标注。
-(define (editor-put-properties ed bid segs)
-  (editor-put-properties-many ed bid segs))
 (define (editor-put-restrict ed bid start end rs)
   (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
 (define (editor-remove-restrict ed bid start end)
   (editor-update-buffer ed bid (lambda (b) (buffer-remove-restrict b start end))))
-(define (editor-apply-patches ed bid patches)
-  (editor-update-buffer ed bid (lambda (b) (buffer-apply-patches b patches))))
 
 ;;; ---------- 测试 ----------
 
@@ -304,9 +272,9 @@
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
-  ;; 标注写：只改标注、不碰文本/光标
-  (define an (editor-put-property (editor-open "hello") 0 (point 0 0) (point 0 5) 'face 'bold))
-  (check-equal? (editor-get-property an 0 (point 0 2) 'face) 'bold)
+  ;; 约束写：只改约束、不碰文本/光标
+  (define an (editor-put-restrict (editor-open "hello") 0 (point 0 0) (point 0 5) (restrict #t)))
+  (check-true (restrict-read-only? (editor-restrict-at an 0 (point 0 2))))
 
   ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
   (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
@@ -406,18 +374,5 @@
   (check-equal? (editor-primary (editor-add-selection sm1 (caret (point 0 4)) #t)) (caret (point 0 4)))
   (check-equal? (length (editor-selections (editor-remove-selection sm1 (caret (point 0 0))))) 1)
   (check-equal? (editor-primary (editor-set-primary sm1 (caret (point 0 0)))) (caret (point 0 0)))
-  ;; 标注：point 批量 + face 读口
-  (define am1 (editor-put-properties (editor-open "abc") 0 (list (list (point 0 0) (point 0 2) 'face 'bold))))
-  (check-equal? (editor-face-at am1 0 (point 0 1)) (hash 'face 'bold))
-  ;; 编辑 + 派生 patch：一次调用
-  (define aw (editor-open "ab"))
-  (define-values (aw1 raw)
-    (editor-edit-at-with aw 0 (point 0 0) (edit-insert "X")
-      (lambda (_b report)
-        (list (patch 'face (change-report-first-line report) (change-report-last-line report)
-                     (list (list 0 1 2 'mark)))))))
-  (check-equal? (editor-buffer->string aw1 0) "Xab")
-  (check-equal? (editor-get-property aw1 0 (point 0 1) 'face) 'mark)
-  (check-true (change-report? raw))
 
   (displayln "program.rkt: all tests passed"))

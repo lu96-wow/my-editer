@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/selection.rkt" "../atom/width.rkt"
-         "../doc/buffer.rkt" "window.rkt" "../unit/screen.rkt" "layout.rkt"
+         "../doc/buffer.rkt" "window.rkt" "../unit/screen.rkt" "layout.rkt" "render.rkt"
          "../atom/restrict.rkt" rackunit)
 
 ;;; viewport/project.rkt —— 把 window 的可见区投影成 screen（纯函数）
@@ -42,13 +42,13 @@
                        (hash 'face 'selection))))
         #f)))
 
-(define (window->screen w)
+(define (window->screen w [face-provider no-face-provider])
   (define b (window-buffer w))
   (define vrows (window-vrows w))
   (define row-runs
     (for/vector ([vr (in-vector vrows)])
       (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
-          (line-range->runs b (vrow-line vr) (vrow-start-col vr) (vrow-end-col vr))
+          (line-range->runs b (vrow-line vr) (vrow-start-col vr) (vrow-end-col vr) face-provider)
           '())))
   ;; 视图 overlay：光标 = 每个选区的 head
   (define cursors
@@ -100,15 +100,15 @@
                      (screen-selections (window->screen ww)))
                 '((0 0 4) (1 0 2)))                          ; "中中" + "中"
 
-  ;; 属性分段
-  (define b2 (buffer-put-property b0 (point 0 0) (point 0 1) 'face 'bold))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b2 2 10))) 0)
+  ;; 派生 face 分段（投影 provider，不进文档）
+  (define (provider _b line) (if (zero? line) (list (list 0 1 (hash 'face 'bold))) '()))
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b0 2 10) provider)) 0)
                 (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
 
   ;; 约束不进 face
-  (define b5 (buffer-put-restrict (buffer-put-property (buffer-open "abcdef") (point 0 0) (point 0 6) 'face 'bold)
+  (define b5 (buffer-put-restrict (buffer-open "abcdef")
                                   (point 0 3) (point 0 6) (restrict #t)))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
-                (list (run 0 "abcdef" (hash 'face 'bold))))
+                (list (run 0 "abcdef" (hash))))
 
   (displayln "project.rkt: all tests passed"))

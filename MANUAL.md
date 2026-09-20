@@ -2,7 +2,7 @@
 
 只用 `(require "core/editor.rkt")`。它给你三类东西：
 
-1. **原子**：`point`、`buffer`、`window`、`screen`、`events`、`patch`、宽字符工具。
+1. **原子**：`point`、`buffer`、`window`、`screen`、`events`、宽字符工具。
 2. **editor 中性面**：构造、查询、位置解析、标注读、投影。
 3. **两个操作面**：程序面（默认不动视图）、用户面（焦点 + 账本）。
 
@@ -92,29 +92,23 @@
 | `buffer-apply-edit-trusted` | 施加 desc（跳守卫） |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
 | `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
-| `buffer-put-property` | 写行内区间标注 |
-| `buffer-get-property` | 读某点标注 |
-| `buffer-face-at` | 某点合并后的 face（= 渲染输入） |
-| `buffer-remove-property` | 清某键标注 |
-| `buffer-put-properties-many` | 一次写多段（一次 tick） |
 | `buffer-put-restrict` | 写约束槽（只读等） |
 | `buffer-restrict-at` | 某点的约束槽（`restrict`；是否只读用 `restrict-read-only?`） |
 | `buffer-remove-restrict` | 清约束区间 |
 | `buffer-restrict-runs` | 某行的约束段 |
-| `buffer-property-runs` | 某行某键的表现层区间段 `(start end val)` |
 | `buffer-tick` | 单调计数：任何改动都涨 |
-| `buffer-apply-patches` | 施加插件 delta |
-| `buffer-content-eq?` | 内容是否同一（区分文本改动/仅标注） |
+| `buffer-content-eq?` | 内容是否同一（区分文本改动/仅写约束） |
 
-## 4. patch —— 插件 delta
+## 4. 派生 face（投影参数）
 
-| 名字 | 语义 |
-|---|---|
-| `patch` | 一个 key 在 `[first-line,last-line]` 上清旧写新 |
-| `patch-key` | 归属键 |
-| `patch-first-line` | 起始行 |
-| `patch-last-line` | 结束行 |
-| `patch-segs` | 写入段 `(line start end val)` |
+文档**不存 face**。派生 face（content 的纯函数，如语法高亮）作为**投影参数**给出：
+
+```racket
+face-provider : buffer line -> (listof (list start end face))
+```
+
+不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
+`no-face-provider` 是缺省（空）。
 
 ## 5. window —— 视口（纯视图）
 
@@ -164,7 +158,7 @@
 
 | 名字 | 语义 |
 |---|---|
-| `window->screen` | 视口 → 一帧画面 |
+| `window->screen` | 视口 → 一帧画面；可传 `face-provider`（见下） |
 | `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
 | `screen-rows` | 行数 |
 | `screen-cols` | 列数 |
@@ -285,24 +279,16 @@
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
 | `editor-buffer-tick` | 某 buffer 的变化计数（乐观并发 / 合并的版本戳） |
-| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅标注） |
+| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅写约束） |
 
-### 9.4 标注
+### 9.4 约束
 
 | 名字 | 语义 |
 |---|---|
-| `editor-get-property` | 读某点标注 |
-| `editor-face-at` | 某点合并后的 face（= 渲染输入） |
 | `editor-restrict-at` | 某点的约束槽（`restrict`） |
 | `editor-remove-restrict` | 清约束区间 |
 | `editor-restrict-runs` | 某行约束段 |
-| `editor-property-runs` | 某行某键的标注区间段 `(start end val)` |
-| `editor-put-property` | 写标注（程序面） |
-| `editor-remove-property` | 清标注 |
-| `editor-put-properties-many` | 一次写多段 |
-| `editor-put-properties` | 一次写多段（point 区间，规范名） |
 | `editor-put-restrict` | 写约束槽 |
-| `editor-apply-patches` | 施加插件 delta |
 
 ### 9.5 编辑
 
@@ -310,11 +296,8 @@
 |---|---|
 | `editor-edit-at` | 在显式 `(bid, point)` 编辑；`#:reaction 'none` 默认不动视图 |
 | `editor-edit-at-batch` | 一次施加一批（同坐标系、不重叠）`edit-desc`；`#:record? #t` 整批记一步 |
-| `editor-edit-at-with` | 编辑 + 派生 patch；`annotate : buffer × report → (listof patch)` |
 | `editor-view-edit` | 在指定 view 光标处编辑；leader + ensure + 记账本；不改焦点 |
-| `editor-view-edit-with` | 指定 view 编辑 + 派生 patch；leader + 账本 |
 | `editor-edit` | focus 糖：在焦点 view 光标处编辑 |
-| `editor-edit-with` | focus 糖：编辑 + 派生 patch |
 
 `editor-edit-at` 的参数：
 
@@ -404,10 +387,15 @@
 
 ### 9.9 投影
 
+投影接受一个可选的 **`face-provider`**：`buffer × line → (listof (list start end face))`。
+它是**派生 face**（content 的纯函数，如语法高亮）：投影时现算，**不进文档**。
+不传则无派生 face。文档里的 `properties.presentation` 只装**作者态** face；
+合成顺序：派生在下、作者在上。
+
 | 名字 | 语义 |
 |---|---|
-| `editor->screen` | 焦点 view → screen |
-| `editor-view->screen` | 某 view → screen |
+| `editor->screen` | 焦点 view → screen；可选 `face-provider` |
+| `editor-view->screen` | 某 view → screen；可选 `face-provider` |
 | `editor-point->screen` | 焦点光标 → 屏幕坐标 |
 | `editor-view-point->screen` | 某 view 光标 → 屏幕坐标 |
 | `editor-screen->point` | 屏幕坐标 → 焦点 view 位置 |

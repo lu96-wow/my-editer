@@ -45,9 +45,8 @@
 ;; highlight? : boolean 是否跑关键字高亮
 
 (define (make-app text rows cols name)
-  (rehighlight-all
-   (app (editor-open text (max 1 (sub1 rows)) cols #:name name)
-        rows cols name #t)))
+  (app (editor-open text (max 1 (sub1 rows)) cols #:name name)
+       rows cols name #t))
 
 (define (open-app path rows cols)
   (make-app (if (and path (file-exists? path)) (file->string path) "")
@@ -58,30 +57,12 @@
 ;;; §2 组合操作（每条都标了 [core]/[意图]/[前端]/[缺口]）
 ;;; ============================================================================
 
-;; 2.0 编辑后统一收口
-;; [core] change-report = (首行, 末行, 施加顺序的生效 desc)；command 的第二个返回值。
-;; [意图] 文本改了之后，高亮该重算哪几行，core 通过 report 告诉我们（新坐标系）。
-;; [前端] 「要不要重算高亮」是应用策略，所以包在 changed 里。
-(define (changed a ed report)
-  (define app* (struct-copy app a [ed ed]))
-  (if (and (app-highlight? app*) report)
-      (highlight-range app*
-                       (editor-buffer-id ed)
-                       (change-report-first-line report)
-                       (change-report-last-line report))
-      app*))
-
-;; 2.1 用户面编辑
-;; [core] editor-edit-with ed op annotate：文本 + 派生标注一次调用。
+;; 2.0 编辑：没有任何「重算」步骤
+;; [core] editor-edit ed op → (values editor report)。文本变；派生 face 不存文档，
+;;        所以不存在「过期」，也就没有重算。
+;; [意图] 高亮改成投影时的 face-provider（见 2.8 / §3），编辑路径彻底与标注解耦。
 (define (edit a op)
-  (define-values (ed _report)
-    (editor-edit-with (app-ed a) op
-      (lambda (b report)
-        (if (app-highlight? a)
-            (list (patch 'face
-                         (change-report-first-line report) (change-report-last-line report)
-                         (syntax-segs b (change-report-first-line report) (change-report-last-line report))))
-            '()))))
+  (define-values (ed _report) (editor-edit (app-ed a) op))
   (struct-copy app a [ed ed]))
 
 (define (insert-text app str) (edit app (edit-insert str)))
@@ -121,8 +102,8 @@
 ;; 2.4 账本
 ;; [core] editor-undo / editor-redo —— 按焦点 view 所属 buffer 的账本；同样走 leader 语义。
 ;; [意图] 撤销也改文本，所以同样用返回的 change-report 重贴高亮。
-(define (undo app) (define-values (ed r) (editor-undo (app-ed app))) (changed app ed r))
-(define (redo app) (define-values (ed r) (editor-redo (app-ed app))) (changed app ed r))
+(define (undo a) (define-values (ed _r) (editor-undo (app-ed a))) (struct-copy app a [ed ed]))
+(define (redo a) (define-values (ed _r) (editor-redo (app-ed a))) (struct-copy app a [ed ed]))
 
 ;; 2.5 程序面：不打扰用户的编辑
 ;; [core] editor-edit-at ed bid point op，默认 #:reaction 'none。
@@ -136,9 +117,9 @@
   (define n (editor-buffer-line-count ed bid))
   (define p (point (sub1 n) (editor-buffer-line-length ed bid (sub1 n))))
   (define stamp (number->string (current-seconds)))
-  (define-values (ed* report)
+  (define-values (ed* _report)
     (editor-edit-at ed bid p (edit-insert (string-append "\n;; stamp " stamp))))
-  (changed a ed* report))
+  (struct-copy app a [ed ed*]))
 
 ;; 2.6 视图面：尺寸
 ;; [core] editor-view-set-size ed vid h w —— 按 vid 定位，只动那个 view，不碰焦点。
@@ -152,40 +133,24 @@
 
 ;;; ---------- 2.8 标注：关键字高亮（应用策略）----------
 ;;
-;; [core] editor-apply-patches ed bid [patch]；patch = 对某 key 在 [first-line,last-line]
-;;        「清旧写新」。行区间直接来自 change-report。
-;; [意图] 用 patch 而不是 editor-put-property：patch 语义就是「这几行我重新推导了」，
-;;        自带清旧、天然增量。
-;; [前端] 「什么算关键字、用哪个 key、何时重扫」全是应用策略；core 不解释 face 的值。
+;; [core] face-provider = buffer × line -> (listof (list start end face))；投影时按需调用。
+;; [意图] 派生 face **不进文档**：没有存储、没有失效、没有重算。投影时现算。
+;; [前端] 「什么算关键字、用哪个 key」全是应用策略；core 不解释 face 的值。
 (define keyword-rx
   #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-(define (syntax-segs b fl ll)
-  (for*/list ([line (in-range fl (add1 ll))]
-              [m (in-list (regexp-match-positions* keyword-rx (buffer-line-ref b line)))])
-    (list line (car m) (cdr m) 'keyword)))
+;; 一个 face-provider：逐行扫关键字，返回本行的 (起列 止列 face) 段。
+(define (syntax-face b line)
+  (for/list ([m (in-list (regexp-match-positions* keyword-rx (buffer-line-ref b line)))])
+    (list (car m) (cdr m) (hash 'face 'keyword))))
 
-(define (highlight-range a bid fl ll)
-  (struct-copy app a
-    [ed (editor-apply-patches (app-ed a) bid
-                              (list (patch 'face fl ll
-                                           (syntax-segs (editor-buffer (app-ed a) bid) fl ll))))]))
+;; 应用按开关选 provider；投影时传给 editor->screen。
+(define (app-face-provider a)
+  (if (app-highlight? a) syntax-face (lambda (_b _line) '())))
 
-(define (rehighlight-all app)
-  (define ed (app-ed app))
-  (define bid (editor-buffer-id ed))
-  (highlight-range app bid 0 (sub1 (editor-buffer-line-count ed bid))))
-
-(define (clear-highlight a)
-  (define ed (app-ed a))
-  (define bid (editor-buffer-id ed))
-  (struct-copy app a
-    [ed (editor-apply-patches ed bid
-                              (list (patch 'face 0 (sub1 (editor-buffer-line-count ed bid)) '())))]))
-
+;; 开关高亮：只翻标志，不碰文档。
 (define (toggle-highlight a)
-  (define app* (struct-copy app a [highlight? (not (app-highlight? a))]))
-  (if (app-highlight? app*) (rehighlight-all app*) (clear-highlight app*)))
+  (struct-copy app a [highlight? (not (app-highlight? a))]))
 
 ;;; ---------- 2.9 选中 / 多光标（应用策略） ----------
 ;;
@@ -331,7 +296,7 @@
       " "))
 
 (define (frame->bytes app)
-  (define scr (editor->screen (app-ed app)))
+  (define scr (editor->screen (app-ed app) (app-face-provider app)))
   (define row-runs (screen-row-runs scr))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
@@ -459,11 +424,13 @@
   (check-equal? (editor-point (app-ed a7)) (point 0 1))       ; 光标没动（reaction none）
   (check-true (regexp-match? #rx";; stamp" (editor-buffer->string (app-ed a7) 0)))
 
-  ;; 标注：高亮写 face，patch 清旧写新
+  ;; 标注：派生 face 在投影时出现（文档里根本没有 face 这个概念）
   (define a8 (insert-text (make-app "" 5 20 "*t*") "define x"))
-  (check-equal? (editor-get-property (app-ed a8) 0 (point 0 1) 'face) 'keyword)
-  (define a9 (toggle-highlight a8))                            ; 关 → 清掉
-  (check-false (editor-get-property (app-ed a9) 0 (point 0 1) 'face))
+  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a8) (app-face-provider a8))) 0)))
+                (hash 'face 'keyword))                                        ; 投影里有
+  (define a9 (toggle-highlight a8))                                          ; 关 → provider 返回空
+  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a9) (app-face-provider a9))) 0)))
+                (hash))
 
   ;; 视图面：resize 只改 view，不动文本
   (define a10 (resize a8 8 30))
@@ -513,8 +480,7 @@
 ;; 1. 两个操作面重复：editor-edit（用户面）与 editor-edit-at（程序面）各自实现
 ;;    「施加→反应→记账→report」。可考虑让 editor-edit-at 收 #:reaction 'leader + vid，
 ;;    把用户面变成它的特例，消除重复（见 2.1 / 2.5）。
-;; 2. （已解决）「编辑 + 标注」现由 editor-edit-with / editor-edit-at-with 一条命令完成
-;;    （annotate : buffer × report → patch）（见 2.1）。
+;; 2. （已解决）派生 face 不再存文档：改成投影时的 face-provider，编辑与标注彻底解耦（见 2.0/2.8）。
 ;; 3. （已解决）视图面 focus 糖已有 editor-set-size 等（见 2.6）。
 ;; 4. report 粒度偏粗：change-report 只给「首行/末行 + descs」。若前端要按**每个**
 ;;    变更区间做增量标注（如多光标），需要自己再走 change-report-edits（见 2.0）。
