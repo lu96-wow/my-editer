@@ -23,12 +23,10 @@ core/
 │   └── event.rkt              #   类型化输入事件
 ├── unit/                      # 单元：由原子组合出的「单维结构」
 │   ├── properties.rkt         #   content 行 ×（face, restrict）区间
-│   ├── marker.rkt             #   point 锚（随 edit-desc 移动）
-│   ├── overlay.rkt            #   marker 对 + face + priority
 │   ├── screen.rkt             #   run 行帧（width）
 │   └── history.rkt            #   账本：edit-change 序列
 ├── doc/                       # 文档：把单元装配成一个可编辑值
-│   ├── buffer.rkt             #   content ⊕ properties ⊕ marker ⊕ overlay（+tick）
+│   ├── buffer.rkt             #   content ⊕ properties（+tick）
 │   ├── batch.rkt              #   [edit-desc] → buffer（原子批量施加）
 │   └── patch.rkt              #   插件 delta → buffer.properties
 ├── viewport/                  # 视口：把文档投影成画面
@@ -57,7 +55,7 @@ editor.rkt ←  api, platform(neutral, program, command)
 ```
 
 `platform/state.rkt`、`platform/write.rkt`、`platform/reaction.rkt` 是**内部**，不进入口。
-同层内允许相互依赖（如 `overlay → marker`、`project → layout`、`program → neutral`），
+同层内允许相互依赖（如 `project → layout`、`program → neutral`），
 但必须无环；`tools/layers.rkt` 机械校验「不得向上」。
 
 ---
@@ -72,13 +70,11 @@ editor.rkt ←  api, platform(neutral, program, command)
 ### unit —— 单元
 每种「单维结构」= 一种标注/索引 + 它自己的 `apply-edit`：
 - `properties`：行内区间，两个槽（`face` 表现层 + `restrict` 约束）。
-- `marker`：一个位置锚，按 `edit-desc` 移动。
-- `overlay`：两个 marker 锚定一个区间，带 face 与 priority。
 - `screen`：后端无关的输出帧（run 序列）。
 - `history`：`edit-change` 的账本（撤销/重放）。
 
 ### doc —— 文档
-把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 属性 ⊕ 标记 ⊕ 装饰（+ `tick`）。
+把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 属性（+ `tick`）。
 `buffer-apply-edit` 是唯一传播点，把同一条生效 `edit-desc` 依次喂给各层，保证坐标一致。
 `batch` 处理「一串 desc」；`patch` 处理插件 delta（只改 properties）。
 
@@ -99,11 +95,10 @@ editor.rkt ←  api, platform(neutral, program, command)
 ```
 atom        point · edit-desc · content · restrict · face(hash) · width · event
              │
-unit        properties = 行 × span(face, restrict)      marker = point ↶ edit-desc
-            overlay    = (marker,marker) × face × prio   screen = runs(文档) ⊕ cursors/selections(视图 overlay)
+unit        properties = 行 × span(face, restrict)      screen = runs(文档) ⊕ cursors/selections(视图 overlay)
             history    = [edit-change]
              │
-doc         buffer  = content ⊕ properties ⊕ marker ⊕ overlay ⊕ tick
+doc         buffer  = content ⊕ properties ⊕ tick
             batch   = buffer × [edit-desc] → buffer × applied × inverses
             patch   = buffer × [patch]     → buffer            （只改 properties）
              │
@@ -130,7 +125,7 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
 
 **`screen` 有两条独立通道**（这是刻意的分离）：
-- **文档文本** `row-runs`：来自 buffer 的文本/标注（`face` 由 properties+overlays 合成）。
+- **文档文本** `row-runs`：来自 buffer 的文本/标注（`face` 由 properties 合成）。
 - **视图 overlay** `cursors` / `selections`：来自 window 的选区（光标点 = 每个选区的 head；
   选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
 

@@ -524,5 +524,3 @@
 ;;    可补 editor-set-size 之类（见 2.6）。
 ;; 4. report 粒度偏粗：change-report 只给「首行/末行 + descs」。若前端要按**每个**
 ;;    变更区间做增量标注（如多光标），需要自己再走 change-report-edits（见 2.0）。
-;; 5. editor 面未暴露 marker/overlay：本示例只用 property/patch；要画跨行装饰/诊断
-;;    高亮（比如行内波浪线）得下探 buffer-add-overlay，绕开 editor 入口。

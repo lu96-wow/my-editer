@@ -2,11 +2,11 @@
 
 (require "../atom/point.rkt" "../atom/content.rkt" "../atom/edit.rkt"
          "../atom/restrict.rkt" "../atom/selection.rkt"
-         "../unit/properties.rkt" "../unit/marker.rkt" "../unit/overlay.rkt" rackunit)
+         "../unit/properties.rkt" rackunit)
 
-;;; doc/buffer.rkt —— 文档：文本 + 属性 + 标记 + 装饰（无光标）
+;;; doc/buffer.rkt —— 文档：文本 + 属性（无光标）
 ;;;
-;;; 装配根。buffere 把所有层绑成一个值，并提供唯一的编辑入口：
+;;; 装配根。把各层绑成一个值，并提供唯一的编辑入口：
 ;;;
 ;;;   buffer-apply-edit b desc           过一次编辑，传播到所有层（含 read-only 守卫）
 ;;;   buffer-apply-edit-trusted b desc   同上，跳过守卫（撤销/重放用）
@@ -16,7 +16,7 @@
 ;;; 所以本层所有编辑都显式收 point / edit-desc，不保存「当前位置」。
 ;;;
 ;;; 编辑传播顺序（唯一）：
-;;;   content-apply（夹紧 + 有效 desc）→ 守卫 → overlay-table（内含 marker-table）→ properties。
+;;;   content-apply（夹紧 + 有效 desc）→ 守卫 → properties。
 ;;; 各层都吃**同一个**生效 desc（content-apply 的返回值），保证坐标一致。
 
 (provide
@@ -50,35 +50,23 @@
  buffer-restrict-at
  buffer-restrict-runs
  buffer-property-runs
- buffer-add-marker
- buffer-remove-marker
- buffer-marker-pos
- buffer-add-overlay
- buffer-remove-overlay
- buffer-overlay-at
- buffer-overlay-runs
  buffer-tick
  buffer-content
- buffer-markers
- buffer-properties
- buffer-overlays)
+ buffer-properties)
 
 ;;; ---------- 数据 ----------
 
 (struct buffer
   (content      ; content.rkt
-   markers      ; marker-table
    properties   ; properties
-   overlays     ; overlay-table
-   tick)        ; nat      任何改动 +1（编辑 / 属性 / marker / overlay）
+   tick)        ; nat      任何改动 +1（编辑 / 属性）
   #:transparent)
 
 ;;; ---------- 构造 / 投影 ----------
 
 (define (buffer-open s)
   (define c (content-of-string s))
-  (buffer c (make-marker-table) (make-properties (content-line-count c))
-          (make-overlay-table) 0))
+  (buffer c (make-properties (content-line-count c)) 0))
 
 (define (buffer->string b) (content->string (buffer-content b)))
 (define (buffer->lines b)  (content->lines  (buffer-content b)))
@@ -146,11 +134,8 @@
   (cond
     [(and guard? (desc-read-only? b d*)) (values b #f)]
     [else
-     (define-values (ot* mt*)
-       (overlay-table-apply-edit (buffer-overlays b) (buffer-markers b) d*))
      (define props* (properties-apply-edit (buffer-properties b) d*))
-     (values (buffer content* mt* props* ot*
-                     (add1 (buffer-tick b)))
+     (values (buffer content* props* (add1 (buffer-tick b)))
              d*)]))
 
 (define (buffer-apply-edit b d) (buffer-apply-edit* b d #t))
@@ -254,54 +239,6 @@
 (define (buffer-remove-restrict b start end)
   (buffer-put-restrict b start end (make-restrict)))
 
-;;; ---------- marker ----------
-
-(define (check-buffer-position who b p)
-  (define n (buffer-line-count b))
-  (define l (point-line p)) (define c (point-col p))
-  (define len (and (exact-nonnegative-integer? l) (< l n)
-                   (string-length (buffer-line-ref b l))))
-  (unless (and len (exact-nonnegative-integer? c) (<= c len))
-    (error who "位置不在 buffer 内: ~a（共 ~a 行）" p n)))
-
-(define (buffer-add-marker b p [insertion-type 'before])
-  (check-buffer-position 'buffer-add-marker b p)
-  (define-values (mt id) (marker-table-add (buffer-markers b) p insertion-type))
-  (values (bump (struct-copy buffer b [markers mt])) id))
-
-(define (buffer-remove-marker b id)
-  (bump (struct-copy buffer b [markers (marker-table-remove (buffer-markers b) id)])))
-
-(define (buffer-marker-pos b id)
-  (define m (marker-table-get (buffer-markers b) id))
-  (and m (marker-pos m)))
-
-;;; ---------- overlay ----------
-
-(define (buffer-add-overlay b start end [presentation (hash)]
-                            #:priority [priority 0]
-                            #:evaporate? [evaporate? #f])
-  (check-buffer-position 'buffer-add-overlay b start)
-  (check-buffer-position 'buffer-add-overlay b end)
-  (when (point<? end start)
-    (error 'buffer-add-overlay "overlay 区间反向: ~a..~a" start end))
-  (define-values (mt1 sid) (marker-table-add (buffer-markers b) start 'before))
-  (define-values (mt2 eid) (marker-table-add mt1 end 'after))
-  (define-values (ot oid)
-    (overlay-table-add (buffer-overlays b) sid eid presentation
-                       #:priority priority #:evaporate? evaporate?))
-  (values (bump (struct-copy buffer b [markers mt2] [overlays ot])) oid))
-
-(define (buffer-remove-overlay b oid)
-  (bump (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
-
-;; 读回：覆盖 p 的 overlay（priority 降序）/ 某行的 overlay 段。与 add/remove 对称。
-(define (buffer-overlay-at b p)
-  (overlay-table-at (buffer-overlays b) (buffer-markers b) p))
-(define (buffer-overlay-runs b line)
-  (overlay-table-runs (buffer-overlays b) (buffer-markers b) line
-                      (string-length (buffer-line-ref b line))))
-
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -380,27 +317,6 @@
   (define rb-nr (buffer-remove-restrict rb (point 0 1) (point 0 4)))
   (check-false (restrict-read-only? (buffer-restrict-at rb-nr (point 0 2))))
   (check-equal? (buffer-restrict-runs rb-nr 0) (list (list 0 5 (make-restrict))))
-
-  ;; marker：随编辑移动
-  (define-values (mb mid) (buffer-add-marker b0 (point 0 3)))
-  (define mb2 (let-values ([(b _) (buffer-edit mb (point 0 0) (edit-insert-char #\a))]) b))
-  (check-equal? (buffer-marker-pos mb2 mid) (point 0 4))
-  (check-equal? (buffer-marker-pos (buffer-remove-marker mb2 mid) mid) #f)
-
-  ;; overlay：随编辑移动 + evaporate
-  (define-values (ob oid) (buffer-add-overlay b0 (point 0 1) (point 0 4) (hash 'face 'region)))
-  (define ob2 (let-values ([(b _) (buffer-edit ob (point 0 0) (edit-insert-char #\a))]) b))
-  (define oruns (overlay-table-runs (buffer-overlays ob2) (buffer-markers ob2) 0 10))
-  (check-equal? (list (caar oruns) (cadar oruns)) '(2 5))
-  ;; 读回（与 add/remove-overlay 对称）
-  (check-equal? (length (buffer-overlay-at ob2 (point 0 2))) 1)
-  (check-equal? (length (buffer-overlay-at ob2 (point 0 0))) 0)
-  (check-equal? (list (caar (buffer-overlay-runs ob2 0)) (cadar (buffer-overlay-runs ob2 0))) '(2 5))
-  (define-values (ob3 _oid3) (buffer-add-overlay b0 (point 0 1) (point 0 3) (hash)
-                                             #:evaporate? #t))
-  (define ob4 (let-values ([(b _) (buffer-edit ob3 (point 0 1) (edit-delete))]) b))
-  (define ob5 (let-values ([(b _) (buffer-edit ob4 (point 0 1) (edit-delete))]) b))
-  (check-equal? (overlay-table-count (buffer-overlays ob5)) 0)
 
   ;; 逆编辑：用编辑前的 buffer 取回被删文本
   (define u0 (buffer-open "abcd\nefgh"))

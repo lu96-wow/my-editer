@@ -96,12 +96,6 @@
 | `buffer-remove-restrict` | 清约束区间 |
 | `buffer-restrict-runs` | 某行的约束段 |
 | `buffer-property-runs` | 某行某键的表现层区间段 `(start end val)` |
-| `buffer-add-marker` | 加标记（随编辑移动） |
-| `buffer-marker-pos` | 标记当前位置 |
-| `buffer-add-overlay` | 加装饰 |
-| `buffer-remove-overlay` | 删装饰 |
-| `buffer-overlay-at` | 覆盖某点的 overlay（priority 降序） |
-| `buffer-overlay-runs` | 某行的 overlay 段 |
 | `buffer-tick` | 单调计数：任何改动都涨 |
 | `buffer-apply-patches` | 施加插件 delta |
 | `buffer-content-eq?` | 内容是否同一（区分文本改动/仅标注） |

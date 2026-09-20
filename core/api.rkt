@@ -59,9 +59,7 @@
  buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
  buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs buffer-property-runs
- buffer-add-marker buffer-remove-marker buffer-marker-pos
- buffer-add-overlay buffer-remove-overlay buffer-overlay-at buffer-overlay-runs
- buffer-content buffer-markers buffer-properties buffer-overlays
+ buffer-content buffer-properties
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch edits-map-position edits-span
