@@ -1,27 +1,21 @@
 #lang racket
 
 ;;; ============================================================================
-;;; api.rkt —— core 的全量导出（原子 + 机制）
+;;; api.rkt —— 原子全量面（text + view）
 ;;; ============================================================================
 ;;;
-;;; 这是**全量**面：原子（buffer/window/screen/events/point/…）+ 机制（document-*）。
-;;; 日常编程用**标准入口** core/editor.rkt（只透出原子 + editor-*，不含 document-*）；
-;;; 需要下探机制（多视图/装饰写回等）时才来这里。
+;;; 只透出**原子**：point / edit-desc / buffer / window / screen / events / patch / width。
+;;; 不含 compose 平台（editor-*）。
 ;;;
-;;; 使用方一律 (require "core/api.rkt")。core/text/*、core/view/* 是内部实现，不直接 require。
-;;; 工具层/组合层（core/tool/history.rkt、core/compose/editor.rkt）在门面之上，按需直接 require。
+;;; 消费者白名单 = **core/editor.rkt**（原子 + editor 平台）；日常只用它。
+;;; 本文件给需要单独拿原子、或要下探 buffer/window 原语的场合。
 ;;;
-;;; 门面**零逻辑**：只做显式白名单转发。新增内部函数不会自动泄漏。
-;;; 导出分三类：
-;;;   消费者层：point / edit-desc / buffer / window / screen / events / document / patch / width
-;;;   机制层：buffer-apply-edit(-trusted/-batch) / edit-desc 代数 / marker/overlay 入口 /
-;;;           edit-change / restrict / document-apply-descs-trusted / document-update-buffer
-;;;   藏起来：content-* properties-* marker-table-* overlay-table-* vrow/layout/wrap/
-;;;           render-* window-vrows / check-mode / snap-left-col / view 结构
+;;; 门面**零逻辑**：只做显式白名单转发（新增内部函数不会自动泄漏）。
+;;; 依赖方向：api ← text/view；compose 各模块直接 require 它们需要的原子，api 不依赖 compose。
 ;;;
 ;;; 两条数据流：
-;;;   events → document-edit（唯一编辑入口，收 edit-*）→ 新 document + edit-change
-;;;   buffer → render → run → window->screen → screen（后端画）
+;;;   内容流：op（buffer point → edit-desc）→ buffer-apply-edit → 新 buffer
+;;;   渲染流：buffer → render → run → window->screen → screen（后端画）
 ;;; ============================================================================
 
 (require "text/point.rkt"
@@ -58,11 +52,11 @@
  buffer-edit-desc-inverse
  buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
- buffer-put-restrict buffer-read-only-at? buffer-restrict-runs
+ buffer-put-restrict buffer-read-only-at? buffer-restrict-runs buffer-property-runs
  buffer-add-marker buffer-remove-marker buffer-marker-pos
  buffer-add-overlay buffer-remove-overlay
  buffer-content buffer-markers buffer-properties buffer-overlays
- buffer-tick buffer-modified?
+ buffer-tick buffer-content
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch edits-map-position edits-span
  ;; ---- patch —— 插件 delta ----
@@ -85,13 +79,13 @@
  run run? struct:run run-col run-text run-face
  screen screen? struct:screen screen-rows screen-cols screen-row-runs
  screen-cursor-row screen-cursor-col
- make-screen screen-diff-rows screen-compose screen->text
+ make-screen screen-diff-rows screen-compose screen->string
  ;; ---- window ----
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-set-buffer window-set-point window-set-mode window-set-top window-set-left
- window-set-top-seg window-set-size window-scroll window-hscroll
+ window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end
  window-ensure-point window-clamp-view window-visual-move window-up window-down
  window-point->screen window-screen->point window-scroll-visual

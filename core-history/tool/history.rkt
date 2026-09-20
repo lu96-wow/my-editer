@@ -27,6 +27,7 @@
  (struct-out history)
  make-history
  history-record
+ history-record-batch
  history-pop-undo
  history-pop-redo
  history-can-undo?
@@ -96,6 +97,13 @@
        [undo (cons (step (list d) (list inv) p) (history-undo h))]
        [redo '()])]))
 
+;; 记一步「批量」：整批自含正反两向。replay-descs 正序重放；undo-descs 正序撤销
+;; （= 各逆的反序）。不与栈顶合并（批量是原子的独立一步）。清空 redo。
+(define (history-record-batch h replay-descs undo-descs pre-point)
+  (struct-copy history h
+    [undo (cons (step replay-descs undo-descs pre-point) (history-undo h))]
+    [redo '()]))
+
 ;; 取出下一步。空栈 → (values #f h)（原样，不报错）。
 (define (history-pop-undo h)
   (cond
@@ -118,6 +126,7 @@
 ;;; ---------- 测试（纯数据）----------
 
 (module+ test
+  (require "../text/edit.rkt")
   (define (ap b d) (let-values ([(b* _) (buffer-apply-edit-trusted b d)]) b*))
   (define (ap-all b ds) (for/fold ([x b]) ([d (in-list ds)]) (ap x d)))
   ;; 模拟：编辑前 buffer、edit-change、编辑后 buffer
@@ -170,6 +179,18 @@
   (check-equal? (history-redo-depth c2) 1)
   (define-values (c3 _u5) (rec c2 (buffer-open "") (edit-insert "z") (point 0 0)))
   (check-equal? (history-redo-depth c3) 0)
+
+  ;; 批量记一步：整批可撤销 / 重放
+  (define bb0 (buffer-open "abcd"))
+  (define-values (bb* bds bis)
+    (buffer-apply-edit-batch bb0 (list (edit-desc (point 0 0) (point 0 0) "X")
+                                       (edit-desc (point 0 3) (point 0 3) "Y"))))
+  (define bh (history-record-batch (make-history) bds (reverse bis) (point 0 0)))
+  (check-equal? (buffer->string bb*) "XabcYd")
+  (check-equal? (history-undo-depth bh) 1)
+  (define-values (bs _bpu) (history-pop-undo bh))
+  (check-equal? (buffer->string (ap-all bb* (step-undo-descs bs))) "abcd")
+  (check-equal? (buffer->string (ap-all bb0 (step-replay-descs bs))) "XabcYd")
 
   ;; 空栈
   (define eh (make-history))

@@ -51,13 +51,13 @@
  buffer-put-restrict
  buffer-read-only-at?
  buffer-restrict-runs
+ buffer-property-runs
  buffer-add-marker
  buffer-remove-marker
  buffer-marker-pos
  buffer-add-overlay
  buffer-remove-overlay
  buffer-tick
- buffer-modified?
  buffer-content
  buffer-markers
  buffer-properties
@@ -70,8 +70,7 @@
    markers      ; marker-table
    properties   ; properties
    overlays     ; overlay-table
-   tick         ; nat      任何改动 +1（编辑 / 属性 / marker / overlay）
-   modified?)   ; boolean  用户编辑过？写标注不算
+   tick)        ; nat      任何改动 +1（编辑 / 属性 / marker / overlay）
   #:transparent)
 
 ;; 一次编辑的**完整材料**。desc 与 inv 同为 edit-desc，散着传写反了不报错，
@@ -86,7 +85,7 @@
 (define (buffer-open s)
   (define c (content-of-string s))
   (buffer c (make-marker-table) (make-properties (content-line-count c))
-          (make-overlay-table) 0 #f))
+          (make-overlay-table) 0))
 
 (define (buffer->string b) (content->string (buffer-content b)))
 (define (buffer->lines b)  (content->lines  (buffer-content b)))
@@ -113,6 +112,13 @@
 (define (buffer-restrict-runs b line)
   (properties-restrict-runs (buffer-properties b) line
                             (string-length (buffer-line-ref b line))))
+
+;; 一行内某表现层 key 的段：(listof (list start end val))，只含该 key 存在的段。
+;; 区间查询（诊断/高亮读回）用（O(段数)）。
+(define (buffer-property-runs b line key)
+  (filter caddr
+          (properties-key-runs (buffer-properties b) line
+                               (string-length (buffer-line-ref b line)) key)))
 
 ;; [a,z) 与某行任一 read-only 段有交集？
 (define (line-range-read-only? b line a z)
@@ -151,7 +157,7 @@
        (overlay-table-apply-edit (buffer-overlays b) (buffer-markers b) d*))
      (define props* (properties-apply-edit (buffer-properties b) d*))
      (values (buffer content* mt* props* ot*
-                     (add1 (buffer-tick b)) #t)
+                     (add1 (buffer-tick b)))
              d*)]))
 
 (define (buffer-apply-edit b d) (buffer-apply-edit* b d #t))
@@ -206,11 +212,12 @@
     (error who "属性区间必须在同一行内: ~a..~a" start end))
   (values (point-line s) (point-col s) (point-col e)))
 
-(define (touch b) (struct-copy buffer b [tick (add1 (buffer-tick b))] [modified? #t]))
+;; 标注/标记/装饰写回：只涨 tick（重绘），不是文本编辑。
+(define (bump b) (struct-copy buffer b [tick (add1 (buffer-tick b))]))
 
 (define (buffer-put-property b start end key val)
   (define-values (l s e) (clamp-prop-range 'buffer-put-property b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-put (buffer-properties b) l s e key val)])))
 
 ;; 单点查询收 point（区间查询收两端 point）。
@@ -219,7 +226,7 @@
 
 (define (buffer-remove-property b start end key)
   (define-values (l s e) (clamp-prop-range 'buffer-remove-property b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-remove (buffer-properties b) l s e key)])))
 
 ;; segs = (listof (list start end key val))，两端皆为 point；一次 tick。
@@ -231,13 +238,13 @@
        (for/list ([sg (in-list segs)])
          (define-values (l s e) (clamp-prop-range 'buffer-put-properties-many b (car sg) (cadr sg)))
          (list* l s e (cddr sg))))
-     (touch (struct-copy buffer b
+     (bump (struct-copy buffer b
               [properties (properties-put-many (buffer-properties b) clamped)]))]))
 
 ;; 写约束槽（传 (make-restrict) 即清除）。只动约束，不碰表现层。
 (define (buffer-put-restrict b start end rs)
   (define-values (l s e) (clamp-prop-range 'buffer-put-restrict b start end))
-  (touch (struct-copy buffer b
+  (bump (struct-copy buffer b
            [properties (properties-put-restrict (buffer-properties b) l s e rs)])))
 
 ;;; ---------- marker ----------
@@ -253,10 +260,10 @@
 (define (buffer-add-marker b p [insertion-type 'before])
   (check-buffer-position 'buffer-add-marker b p)
   (define-values (mt id) (marker-table-add (buffer-markers b) p insertion-type))
-  (values (touch (struct-copy buffer b [markers mt])) id))
+  (values (bump (struct-copy buffer b [markers mt])) id))
 
 (define (buffer-remove-marker b id)
-  (touch (struct-copy buffer b [markers (marker-table-remove (buffer-markers b) id)])))
+  (bump (struct-copy buffer b [markers (marker-table-remove (buffer-markers b) id)])))
 
 (define (buffer-marker-pos b id)
   (define m (marker-table-get (buffer-markers b) id))
@@ -276,10 +283,10 @@
   (define-values (ot oid)
     (overlay-table-add (buffer-overlays b) sid eid presentation
                        #:priority priority #:evaporate? evaporate?))
-  (values (touch (struct-copy buffer b [markers mt2] [overlays ot])) oid))
+  (values (bump (struct-copy buffer b [markers mt2] [overlays ot])) oid))
 
 (define (buffer-remove-overlay b oid)
-  (touch (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
+  (bump (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
 
 ;;; ---------- 测试 ----------
 
@@ -290,7 +297,6 @@
   (check-equal? (buffer->lines b0) '("hello" "world"))
   (check-equal? (buffer-line-count b0) 2)
   (check-equal? (buffer-tick b0) 0)
-  (check-false (buffer-modified? b0))
 
   ;; 位置解析（不依赖光标）：行长度 / 夹紧 / 行列 ↔ 偏移
   (check-equal? (buffer-line-length b0 0) 5)
@@ -304,7 +310,6 @@
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? d1 (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (buffer-tick b1) 1)
-  (check-true (buffer-modified? b1))
 
   ;; 换行 / 退格合并 / 前向删除
   (check-equal? (buffer->string (let-values ([(b _) (buffer-edit b0 (point 0 5) (edit-newline))]) b))

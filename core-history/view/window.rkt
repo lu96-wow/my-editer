@@ -24,7 +24,7 @@
  window-set-left
  window-set-top-seg
  window-set-size
- window-scroll
+ window-scroll-clip
  window-hscroll
  window-left
  window-right
@@ -70,7 +70,7 @@
 (define (window-set-size w height width)
   (struct-copy window w [height (max 1 height)] [width (max 1 width)]))
 
-(define (window-scroll w delta)
+(define (window-scroll-clip w delta)
   (struct-copy window w [top-line (max 0 (+ (window-top-line w) delta))]))
 
 ;; 水平滚动的参考行 = 顶行（left-col 作用于整个可见区，顶行是代表）。
@@ -147,8 +147,8 @@
   (check-equal? (window-point (window-home (window-set-point w (point 2 0)))) (point 2 0))
 
   ;; 滚动 / 尺寸
-  (check-equal? (window-top-line (window-scroll w 2)) 2)
-  (check-equal? (window-top-line (window-scroll w -5)) 0)
+  (check-equal? (window-top-line (window-scroll-clip w 2)) 2)
+  (check-equal? (window-top-line (window-scroll-clip w -5)) 0)
   (check-equal? (window-top-line (window-set-top w 4)) 4)
   (check-equal? (window-left-col (window-hscroll (window-set-left w 3) 2)) 5)
   (check-equal? (window-set-size w 30 100) (window-set-size w 30 100))

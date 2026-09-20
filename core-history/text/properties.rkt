@@ -36,6 +36,7 @@
  properties-replace-key
  properties-put-restrict
  properties-runs
+ properties-key-runs
  properties-restrict-runs
  properties-apply-edit
  properties-check)
@@ -188,6 +189,14 @@
   (slot-runs p line line-length
              (lambda (row col)
                (let-values ([(_ rs) (row-slots row col)]) rs))))
+
+;; 表现层单键扫描：只按该 key 的值切段合并，返回覆盖整行的段（无该 key 处为 #f）。
+;; 区间查询（诊断/高亮）必须用它：不能先取 properties-runs 再 filter —— 其它 key
+;; 会把边界切断/并错，读出来的区间就不是该 key 原来的区间。
+(define (properties-key-runs p line line-length key)
+  (slot-runs p line line-length
+             (lambda (row col)
+               (let-values ([(pl _) (row-slots row col)]) (hash-ref pl key #f)))))
 
 ;;; ---------- 写（表现层）----------
 
@@ -389,6 +398,12 @@
                 (list (list 0 2 (hash 'face 'bold)) (list 2 8 empty-plist)))
   (check-equal? (properties-restrict-runs r0 1 8)
                 (list (list 0 3 (make-restrict)) (list 3 6 ro) (list 6 8 (make-restrict))))
+  ;; 单键扫描：被其它 key 切断/包裹也还原该键区间
+  (define kr (properties-put (properties-put (fresh) 1 0 4 'diag 'D) 1 2 6 'face 'bold))
+  (check-equal? (properties-key-runs kr 1 10 'diag)
+                (list (list 0 4 'D) (list 4 10 #f)))
+  (check-equal? (properties-key-runs kr 1 10 'face)
+                (list (list 0 2 #f) (list 2 6 'bold) (list 6 10 #f)))
   ;; 相邻同约束合并
   (define r1 (properties-put-restrict (properties-put-restrict (fresh) 0 1 2 ro) 0 2 4 ro))
   (check-equal? (properties-restrict-runs r1 0 5)
