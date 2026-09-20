@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/restrict.rkt"
-         "../doc/buffer.rkt"
+         "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/project.rkt"
          "../viewport/render.rkt"
          "../unit/screen.rkt" "../unit/history.rkt"
@@ -36,7 +36,6 @@
  editor-buffer-name
  editor-view-buffer-id
  editor-view-sync
- editor-buffer-id
  editor-sync
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
@@ -88,7 +87,6 @@
  editor-redo-depth)
 
 ;;; ---------- 构造 / 生命周期 ----------
-
 (define (editor-open text [height 24] [width 80] #:name [name "*scratch*"])
   (define b (buffer-open text))
   (define entry (buffer-entry 0 name b (make-history)))
@@ -145,6 +143,12 @@
 (define (editor-buffer-name ed bid) (buffer-entry-name (editor-buffer-entry ed bid)))
 (define (editor-view-buffer-id ed vid) (view-buffer-id (editor-view-ref ed vid)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
+
+;; change-report 的行区间是 edits 的投影：读时现算，不存字段。
+(define (change-report-first-line r)
+  (let-values ([(f _) (edits-span (change-report-edits r))]) f))
+(define (change-report-last-line r)
+  (let-values ([(f l) (edits-span (change-report-edits r))]) l))
 
 (define (editor-focus-view ed vid)
   (editor-view-ref ed vid)                 ; 校验存在

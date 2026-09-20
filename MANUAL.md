@@ -389,8 +389,8 @@ face-provider : buffer line -> (listof (list start end face))
 
 投影接受一个可选的 **`face-provider`**：`buffer × line → (listof (list start end face))`。
 它是**派生 face**（content 的纯函数，如语法高亮）：投影时现算，**不进文档**。
-不传则无派生 face。文档里的 `properties.presentation` 只装**作者态** face；
-合成顺序：派生在下、作者在上。
+不传则无派生 face。文档**不存 face**：`restrict` 是作者态约束（由 core 解释），
+不进 glyph 的 face 通道；所有 face 都出自投影时的 provider。
 
 | 名字 | 语义 |
 |---|---|

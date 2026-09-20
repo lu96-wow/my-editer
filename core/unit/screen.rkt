@@ -20,6 +20,9 @@
  (struct-out region)
  (struct-out screen)
  make-screen
+ screen-primary-cursor
+ screen-cursor-row
+ screen-cursor-col
  screen-diff-rows
  screen-compose
  screen->string)
@@ -41,15 +44,24 @@
 ;; [start-col,end-col) : 显示列区间（0-based，相对本行）
 ;; face           : 语义 face（hash），如 (hash 'face 'selection)
 
-(struct screen (rows cols row-runs cursor-row cursor-col cursors selections) #:transparent)
+(struct screen (rows cols row-runs cursors selections) #:transparent)
 ;; row-runs   : (vectorof (listof run))   文档文本
-;; cursor-row : primary 光标显示行；-1 = 不画（兼容字段）
-;; cursor-col : primary 光标显示列
 ;; cursors    : (listof cursor)           所有光标（含 primary）
 ;; selections : (listof region)           所有选中区间段
+;;
+;; **primary 光标不存字段**：它就是 cursors 里 primary? 为真的那个。
+;; 光标行/列是它的投影（见 screen-cursor-row/col），存字段只会多一份要同步的状态。
 
 (define (make-screen rows cols)
-  (screen rows cols (make-vector rows '()) -1 -1 '() '()))
+  (screen rows cols (make-vector rows '()) '() '()))
+
+;; primary 光标本身（无 → #f）；行/列是它的投影（无 → -1）。
+(define (screen-primary-cursor s)
+  (for/first ([c (in-list (screen-cursors s))] #:when (cursor-primary? c)) c))
+(define (screen-cursor-row s)
+  (define c (screen-primary-cursor s)) (if c (cursor-row c) -1))
+(define (screen-cursor-col s)
+  (define c (screen-primary-cursor s)) (if c (cursor-col c) -1))
 
 ;; 把一帧摊平成纯文本（只含文档文本；不给光标/选区上色）。给测试/无前端驱动用。
 (define (screen->string s)
@@ -93,21 +105,14 @@
   (define sorted (for/vector ([runs (in-vector row-runs)])
                    (sort runs (lambda (a b) (< (run-col a) (run-col b))))))
   (define active (for/first ([piece (in-list pieces)] #:when (eq? (car piece) active-id)) piece))
-  (define-values (cr cc)
-    (cond
-      [(not active) (values -1 -1)]
-      [else
-       (match-define (list _ x y s) active)
-       (if (>= (screen-cursor-row s) 0)
-           (values (+ y (screen-cursor-row s)) (+ x (screen-cursor-col s)))
-           (values -1 -1))]))
+  ;; 只透出 active 块的光标；primary 由 cursors 里的标记表达，不再单独算行/列。
   (define active-cursors
     (if active
         (let ()
           (match-define (list _ x y s) active)
           (map (lambda (c) (shift-cursor c x y)) (screen-cursors s)))
         '()))
-  (screen rows cols sorted cr cc active-cursors sel-out))
+  (screen rows cols sorted active-cursors sel-out))
 
 ;;; ---------- 测试 ----------
 
@@ -123,22 +128,22 @@
   (define r2 (run 2 "中" (hash 'face 'keyword)))
   (define c1 (cursor 0 3 (hash 'face 'cursor) #t))
   (define g1 (region 0 0 2 (hash 'face 'selection)))
-  (define s1 (screen 2 10 (vector (list r1 r2) '()) 0 3 (list c1) (list g1)))
+  (define s1 (screen 2 10 (vector (list r1 r2) '()) (list c1) (list g1)))
   (check-equal? (screen->string s1) (string-append "ab中\n"))
   (check-equal? (screen-cursor-col s1) 3)
   (check-equal? (cursor-primary? (car (screen-cursors s1))) #t)
   (check-equal? (region-end-col (car (screen-selections s1))) 2)
 
   ;; diff
-  (define s2 (screen 2 10 (vector (list r1 (run 2 "文" (hash 'face 'keyword))) '()) 0 3 '() '()))
+  (define s2 (screen 2 10 (vector (list r1 (run 2 "文" (hash 'face 'keyword))) '()) '() '()))
   (check-equal? (screen-diff-rows s1 s2) '(0))
   (check-equal? (screen-diff-rows s1 s1) '())
 
   ;; compose：文本/选区平移；只有 active 块的光标出现
   (define sa (screen 2 4 (vector (list (run 0 "ab" (hash))) (list (run 0 "cd" (hash))))
-                     1 1 (list (cursor 1 1 (hash 'face 'cursor) #t)) (list (region 0 0 2 (hash 'face 'selection)))))
+                     (list (cursor 1 1 (hash 'face 'cursor) #t)) (list (region 0 0 2 (hash 'face 'selection)))))
   (define sb (screen 2 4 (vector (list (run 0 "XY" (hash))) (list (run 0 "ZW" (hash))))
-                     0 0 (list (cursor 0 0 (hash 'face 'cursor) #t)) '()))
+                     (list (cursor 0 0 (hash 'face 'cursor) #t)) '()))
   (define comp (screen-compose 2 8 (list (list 'a 0 0 sa) (list 'b 4 0 sb)) 'b))
   (check-equal? (vector-ref (screen-row-runs comp) 0)
                 (list (run 0 "ab" (hash)) (run 4 "XY" (hash))))

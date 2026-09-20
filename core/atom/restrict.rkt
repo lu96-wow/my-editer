@@ -5,7 +5,7 @@
 ;;; atom/restrict.rkt —— 约束槽的值
 ;;;
 ;;; core **解释**的语义（与表现层 face 相反）：目前只有 read-only。
-;;; 加约束 = 加字段（编译期可见）；这是 properties 两个槽中的一个。
+;;; 加约束 = 加字段（编译期可见）；这是文档里与 content 并列的那个槽。
 
 (provide
  (struct-out restrict)

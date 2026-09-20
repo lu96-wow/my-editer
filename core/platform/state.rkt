@@ -24,7 +24,8 @@
 ;; 一次命令的影响（新坐标系）；命令返回 #f 表示什么都没发生。
 ;; edits : (listof edit-desc) —— **施加顺序**；每个 desc 的坐标是「施加它之前」的文档状态
 ;;         （可直接喂 edits-map-position，或转成 LSP 的增量 didChange）。
-(struct change-report (first-line last-line edits) #:transparent)
+;; 受影响行区间不存字段：它是 edits 的投影（edits-span），读时现算（见 neutral.rkt）。
+(struct change-report (edits) #:transparent)
 
 (struct view (id buffer-id window sync) #:transparent)
 ;; sync : 'free | 'follow   —— 显示语义的策略槽，由 reaction 读取

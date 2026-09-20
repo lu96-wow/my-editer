@@ -7,7 +7,7 @@
 ;;;   edit-desc     一次替换 [start,end) → new-text（坐标全为「操作前」）
 ;;;   edit-change   一次编辑的完整材料（desc + 逆 + 编辑前光标）
 ;;;
-;;; 位置代数（properties / 账本 / 视图重基准共用）：
+;;; 位置代数（restrictions / 账本 / 视图重基准共用）：
 ;;;   edit-desc-map-position    编辑前位置 → 编辑后位置（#f = 落在被删区间内）
 ;;;   edit-desc-after-position  插入文本之后的点
 ;;;   edit-desc-inverse         由生效 desc + 旧文本求逆

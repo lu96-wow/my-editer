@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
-         "../doc/buffer.rkt" "../doc/batch.rkt"
+         "../doc/buffer.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "program.rkt" "reaction.rkt" rackunit)
@@ -107,8 +107,7 @@
                 (editor-record-history ed** bid
                                        (edit-change d (buffer-edit-desc-inverse b0 d) pre)))
               (editor-record-batch ed** bid ds (reverse ivs) pre)))
-        (define-values (f l) (edits-span ds))
-        (values ed*** (change-report f l ds))])]))
+        (values ed*** (change-report ds))])]))
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
@@ -126,8 +125,7 @@
      (define w* (window-ensure-point
                  (window-set-point (view-window (editor-view-ref ed* vid)) (step-pre-point st))))
      (define ed** (editor-leader-window ed* vid w*))
-     (define-values (f l) (edits-span (step-undo-descs st)))
-     (values (editor-put-history ed** bid h*) (change-report f l (step-undo-descs st)))]))
+     (values (editor-put-history ed** bid h*) (change-report (step-undo-descs st)))]))
 
 (define (editor-view-redo ed vid)
   (define bid (view-buffer-id (editor-view-ref ed vid)))
@@ -138,8 +136,7 @@
      (define ed* (for/fold ([e ed]) ([d (in-list (step-replay-descs st))])
                    (define-values (e1 d1) (editor-apply-edit e bid d #f))
                    (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) (list d1)) e1)))
-     (define-values (f l) (edits-span (step-replay-descs st)))
-     (values (editor-put-history ed* bid h*) (change-report f l (step-replay-descs st)))]))
+     (values (editor-put-history ed* bid h*) (change-report (step-replay-descs st)))]))
 
 ;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
 ;; editor-view-move 取 (window → window) 变换，**不对外**：它能看到并改写 window，

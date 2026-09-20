@@ -60,9 +60,7 @@
   (define selections
     (filter values (append* (for/list ([s (in-list (window-selections w))])
                               (selection->regions w s)))))
-  (define-values (cur-row cur-col) (window-point->screen w))
-  (screen (window-height w) (window-width w) row-runs
-          (or cur-row -1) (or cur-col -1) cursors selections))
+  (screen (window-height w) (window-width w) row-runs cursors selections))
 
 ;;; ---------- 测试 ----------
 

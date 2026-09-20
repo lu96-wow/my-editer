@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
-         "../doc/buffer.rkt" "../doc/batch.rkt"
+         "../doc/buffer.rkt"
          "../viewport/window.rkt" "../atom/restrict.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "reaction.rkt" rackunit)
 
@@ -83,13 +83,12 @@
                        [(none) (editor-clamp-views ed* bid)]
                        [(map)  (editor-map-views ed* bid b* (list d*))]
                        [else (error 'editor-edit-at "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
-        (define-values (f l) (edits-span (list d*)))
         (define ed*** (if record?
                           (editor-record-history
                            ed** bid
                            (edit-change d* (buffer-edit-desc-inverse b0 d*) (edit-desc-start d*)))
                           ed**))
-        (values ed*** (change-report f l (list d*)))])]))
+        (values ed*** (change-report (list d*)))])]))
 
 ;; 批量：descs 同坐标系、互不重叠（= LSP TextEdit[]）。被守卫拒的静默丢弃
 ;; （要强制用 #:trusted? #t）。#:reaction 'none（默认）| 'map。#:record? #t → 整批记**一步**。
@@ -110,8 +109,7 @@
      (define ed*** (if record?
                        (editor-record-batch ed** bid ds (reverse ivs) (edits-min-start ds))
                        ed**))
-     (define-values (f l) (edits-span ds))
-     (values ed*** (change-report f l ds))]))
+     (values ed*** (change-report ds))]))
 
 ;; 批量没有唯一编辑点；pre-point 取最左（文档序）施加点，撤销后光标落到最靠前的改动处。
 (define (edits-min-start ds)
