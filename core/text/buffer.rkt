@@ -58,7 +58,6 @@
  buffer-add-overlay
  buffer-remove-overlay
  buffer-tick
- buffer-modified?
  buffer-content
  buffer-markers
  buffer-properties
@@ -71,8 +70,7 @@
    markers      ; marker-table
    properties   ; properties
    overlays     ; overlay-table
-   tick         ; nat      任何改动 +1（编辑 / 属性 / marker / overlay）
-   modified?)   ; boolean  用户编辑过？写标注不算
+   tick)        ; nat      任何改动 +1（编辑 / 属性 / marker / overlay）
   #:transparent)
 
 ;; 一次编辑的**完整材料**。desc 与 inv 同为 edit-desc，散着传写反了不报错，
@@ -87,7 +85,7 @@
 (define (buffer-open s)
   (define c (content-of-string s))
   (buffer c (make-marker-table) (make-properties (content-line-count c))
-          (make-overlay-table) 0 #f))
+          (make-overlay-table) 0))
 
 (define (buffer->string b) (content->string (buffer-content b)))
 (define (buffer->lines b)  (content->lines  (buffer-content b)))
@@ -159,7 +157,7 @@
        (overlay-table-apply-edit (buffer-overlays b) (buffer-markers b) d*))
      (define props* (properties-apply-edit (buffer-properties b) d*))
      (values (buffer content* mt* props* ot*
-                     (add1 (buffer-tick b)) #t)
+                     (add1 (buffer-tick b)))
              d*)]))
 
 (define (buffer-apply-edit b d) (buffer-apply-edit* b d #t))
@@ -214,8 +212,7 @@
     (error who "属性区间必须在同一行内: ~a..~a" start end))
   (values (point-line s) (point-col s) (point-col e)))
 
-;; 标注/标记/装饰写回：只涨 tick（重绘），**不置 modified?**。
-;; 约定（ARCHITECTURE）：modified? 只由文本编辑置位，patch/标注都不置。
+;; 标注/标记/装饰写回：只涨 tick（重绘），不是文本编辑。
 (define (bump b) (struct-copy buffer b [tick (add1 (buffer-tick b))]))
 
 (define (buffer-put-property b start end key val)
@@ -300,7 +297,6 @@
   (check-equal? (buffer->lines b0) '("hello" "world"))
   (check-equal? (buffer-line-count b0) 2)
   (check-equal? (buffer-tick b0) 0)
-  (check-false (buffer-modified? b0))
 
   ;; 位置解析（不依赖光标）：行长度 / 夹紧 / 行列 ↔ 偏移
   (check-equal? (buffer-line-length b0 0) 5)
@@ -314,7 +310,6 @@
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? d1 (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (buffer-tick b1) 1)
-  (check-true (buffer-modified? b1))
 
   ;; 换行 / 退格合并 / 前向删除
   (check-equal? (buffer->string (let-values ([(b _) (buffer-edit b0 (point 0 5) (edit-newline))]) b))

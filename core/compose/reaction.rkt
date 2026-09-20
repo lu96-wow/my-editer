@@ -36,11 +36,14 @@
           (editor-put-view e (view-id v) (window-clamp-view (window-set-point w (window-point w)))))
         e)))
 
-;; map：每个同 buffer view 各自 free 映射光标；不设 leader、不滚屏、不复制视口。
-(define (editor-map-views ed bid b* d)
+;; map：每个同 buffer view 各自 free 映射光标（按施加顺序折叠过整批 descs）；
+;; 不设 leader、不滚屏、不复制视口。
+(define (editor-map-views ed bid b* descs)
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
     (if (= bid (view-buffer-id v))
-        (editor-put-view e (view-id v) (rebase-free (view-window v) b* d))
+        (editor-put-view e (view-id v)
+                         (for/fold ([w (view-window v)]) ([d (in-list descs)])
+                           (rebase-free w b* d)))
         e)))
 
 ;; leader：vid 推进到插入后 + ensure；同 buffer 其余 free 映射 / follow 镜像。
@@ -100,7 +103,7 @@
   ;; map：光标随编辑右移，视口不动
   (define m0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
   (define m1 (let-values ([(e d*) (editor-apply-edit m0 0 d-ins)])
-               (editor-map-views e 0 (vb e 0) d*)))
+               (editor-map-views e 0 (vb e 0) (list d*))))
   (check-equal? (vp m1 1) (point 0 3))                     ; (0,1) 映射到 (0,3)
   (check-equal? (vtl m1 1) 0)
 

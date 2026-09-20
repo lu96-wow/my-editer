@@ -128,13 +128,16 @@ editor-apply-edit ed bid desc
 
 ---
 
-## 5. `modified?` 约定（不是机制）
+## 5. `buffer-tick`（变化计数 / 版本戳）
 
-`buffer-modified?` 是「有没有未保存改动」的长期事实：
+`buffer-tick` 是单调计数，回答「有没有变」：文本编辑、写标注、patch **都涨**。
+读口是 `editor-buffer-tick ed bid`。多线程 / 乐观并发合并时拿它当**版本戳**：
+编辑基于哪个 tick 算出、当前 tick 是多少，不一致就重基准。
 
-- **文本编辑置位**。
-- **写标注 / patch 不置位**（`buffer-put-property`、`buffer-apply-patches` …）。
-- `buffer-tick` 则回答「有没有变」，编辑/标注/patch **都涨**。
+注意 tick 也随标注涨——要判断「**文本本身**是否同一」用 `buffer-content-eq?`（比较 content 引用）。
+
+「有没有未保存改动」**不属于 core**：它取决于外部事件（存盘），是会话 / 前端状态，
+由调用方自己持有（编辑时置、存盘时清）。
 
 ---
 

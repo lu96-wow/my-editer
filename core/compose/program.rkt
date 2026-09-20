@@ -16,6 +16,7 @@
 
 (provide
  editor-edit-at
+ editor-edit-at-batch
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
  editor-view-set-size
@@ -56,7 +57,7 @@
         (define b* (editor-buffer ed* bid))
         (define ed** (case reaction
                        [(none) (editor-clamp-views ed* bid)]
-                       [(map)  (editor-map-views ed* bid b* d*)]
+                       [(map)  (editor-map-views ed* bid b* (list d*))]
                        [else (error 'editor-edit-at "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
         (define ed*** (if record?
                           (editor-record-history
@@ -65,6 +66,34 @@
                           ed**))
         (define-values (f l) (edits-span (list d*)))
         (values ed*** (change-report f l (list d*)))])]))
+
+;; 批量：descs 同坐标系、互不重叠（= LSP TextEdit[]）。被守卫拒的静默丢弃
+;; （要强制用 #:trusted? #t）。#:reaction 'none（默认）| 'map。#:record? #t → 整批记**一步**。
+;; 返回 (values editor (or/c #f change-report))；report 的 edits = 实际施加的 descs（施加顺序）。
+(define (editor-edit-at-batch ed bid descs
+                              #:reaction [reaction 'none]
+                              #:trusted? [trusted? #f]
+                              #:record? [record? #f])
+  (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs (not trusted?)))
+  (cond
+    [(null? ds) (values ed #f)]
+    [else
+     (define b* (editor-buffer ed* bid))
+     (define ed** (case reaction
+                    [(none) (editor-clamp-views ed* bid)]
+                    [(map)  (editor-map-views ed* bid b* ds)]
+                    [else (error 'editor-edit-at-batch "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
+     (define ed*** (if record?
+                       (editor-record-batch ed** bid ds (reverse ivs) (edits-min-start ds))
+                       ed**))
+     (define-values (f l) (edits-span ds))
+     (values ed*** (change-report f l ds))]))
+
+;; 批量没有唯一编辑点；pre-point 取最左（文档序）施加点，撤销后光标落到最靠前的改动处。
+(define (edits-min-start ds)
+  (for/fold ([p #f]) ([d (in-list ds)])
+    (define s (edit-desc-start d))
+    (if (or (not p) (point<? s p)) s p)))
 
 ;;; ---------- 显式视图命令（程序面：只动一个 view，不镜像、不抢焦点） ----------
 ;; 全部按 vid 定位，绝不读也不改 focus；同 buffer 其它 view 一律不动。
@@ -150,10 +179,9 @@
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
-  ;; 标注写：只改标注，不置 modified?（约定：只有编辑置位）
+  ;; 标注写：只改标注、不碰文本/光标
   (define an (editor-put-property (editor-open "hello") 0 (point 0 0) (point 0 5) 'face 'bold))
   (check-equal? (editor-get-property an 0 (point 0 2) 'face) 'bold)
-  (check-false (editor-buffer-modified? an 0))
 
   ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
   (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
@@ -182,5 +210,26 @@
   ;; focus 糖仍作用于焦点 view
   (define v7 (editor-view-set-point v6 0 (point 1 0)))
   (check-equal? (editor-view-point v7 0) (point 1 0))
+
+  ;; 批量：一次施多条，记一步，report.edits 为施加顺序（起点倒序）
+  (define b0 (editor-open "abcd\nefgh"))
+  (define-values (b1 rb)
+    (editor-edit-at-batch b0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
+                                     (edit-desc (point 1 2) (point 1 2) "Y"))
+                          #:record? #t))
+  (check-equal? (editor-buffer->string b1 0) "aXbcd\nefYgh")
+  (check-equal? (change-report-edits rb)
+                (list (edit-desc (point 1 2) (point 1 2) "Y")
+                      (edit-desc (point 0 1) (point 0 1) "X")))
+  (check-equal? (editor-undo-depth b1 0) 1)                    ; 整批一步
+  (check-equal? (editor-point b1) (point 0 0))                 ; 默认 none：光标不动
+
+  ;; 批量被守卫拒 → 整体没发生；#:trusted? #t 强施
+  (define bt (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
+  (define-values (bt1 rbt1) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X"))))
+  (check-false rbt1)
+  (check-equal? (editor-buffer->string bt1 0) "abc")
+  (define-values (bt2 _rbt2) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X")) #:trusted? #t))
+  (check-equal? (editor-buffer->string bt2 0) "aXbc")
 
   (displayln "program.rkt: all tests passed"))

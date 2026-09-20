@@ -26,7 +26,7 @@
 ;; 写标注不改 content。所以这是「用户改了内容」与「插件只写了标注」的精确区分。
 (define (buffer-content-eq? a b) (eq? (buffer-content a) (buffer-content b)))
 
-;; 应用一批补丁：按 key 清旧写新。只 bump tick，不置 modified?（标注不是用户编辑）。
+;; 应用一批补丁：按 key 清旧写新。只 bump tick（标注不是文本编辑）。
 (define (buffer-apply-patches b patches)
   (cond
     [(null? patches) b]
@@ -72,8 +72,6 @@
 
   ;; 空补丁 → 原样
   (check-eq? (buffer-apply-patches b0 '()) b0)
-  ;; 标注不置 modified?
-  (check-false (buffer-modified? b5))
 
   ;; 过期 patch（行范围越界）→ 报错
   (check-exn exn:fail? (lambda () (buffer-apply-patches b0 (list (patch 'face 0 99 '())))))

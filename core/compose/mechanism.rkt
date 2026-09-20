@@ -1,6 +1,7 @@
 #lang racket
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt"
+         "../text/edit.rkt"
          "../view/window.rkt" "../view/view.rkt"
          "../tool/history.rkt" rackunit)
 
@@ -32,12 +33,14 @@
  check-sync
  editor-swap-buffer
  editor-apply-edit
+ editor-apply-edit-batch
  editor-update-buffer
  editor-put-view
  editor-set-view-sync
  editor-set-view-buffer
  editor-put-history
- editor-record-history)
+ editor-record-history
+ editor-record-batch)
 
 ;;; ---------- 数据 ----------
 
@@ -109,6 +112,15 @@
       (values ed #f)
       (values (editor-swap-buffer ed bid b*) d*)))
 
+;; 批量内容变更漏斗：一次 swap。返回 (values editor applied-descs inverses)；
+;; applied/inverses 施加顺序且平行（no-op / 被守卫拒的不进结果）。
+(define (editor-apply-edit-batch ed bid descs [guard? #t])
+  (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
+  (define-values (b* ds ivs) (buffer-apply-edit-batch b0 descs guard?))
+  (if (null? ds)
+      (values ed '() '())
+      (values (editor-swap-buffer ed bid b*) ds ivs)))
+
 ;; 装饰类写回：f : buffer → buffer（不改文本）。换 buffer 引用即可，光标无需动。
 (define (editor-update-buffer ed bid f)
   (editor-swap-buffer ed bid (f (buffer-entry-buffer (editor-buffer-entry ed bid)))))
@@ -135,6 +147,15 @@
   (define entry (editor-buffer-entry ed bid))
   (define entry* (struct-copy buffer-entry entry
                   [history (history-record (buffer-entry-history entry) ch)]))
+  (struct-copy editor ed
+    [buffers (for/list ([e (in-list (editor-buffers ed))])
+               (if (= (buffer-entry-id e) bid) entry* e))]))
+
+(define (editor-record-batch ed bid replay-descs undo-descs pre-point)
+  (define entry (editor-buffer-entry ed bid))
+  (define entry* (struct-copy buffer-entry entry
+                  [history (history-record-batch (buffer-entry-history entry)
+                                                 replay-descs undo-descs pre-point)]))
   (struct-copy editor ed
     [buffers (for/list ([e (in-list (editor-buffers ed))])
                (if (= (buffer-entry-id e) bid) entry* e))]))

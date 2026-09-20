@@ -35,10 +35,9 @@
   ;; 状态行（最后一行）
   (define p (editor-point s))
   (define status
-    (format " ~a  L~a:C~a  ~a   ^Z undo ^Y redo ^Q quit"
+    (format " ~a  L~a:C~a   ^Z undo ^Y redo ^Q quit"
             name
-            (add1 (point-line p)) (add1 (point-col p))
-            (if (editor-buffer-modified? s (editor-focused-buffer-id s)) "modified" "saved")))
+            (add1 (point-line p)) (add1 (point-col p))))
   (emit! (format-cursor-move rows 1))
   (emit! (format-styled 'status-bar
                         (let ([s status])

@@ -79,6 +79,7 @@
 | `buffer-apply-edit` | 施加 desc（带守卫） |
 | `buffer-apply-edit-trusted` | 施加 desc（跳守卫） |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
+| `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
 | `buffer-put-property` | 写行内区间标注 |
 | `buffer-get-property` | 读某点标注 |
 | `buffer-remove-property` | 清某键标注 |
@@ -90,7 +91,6 @@
 | `buffer-add-marker` | 加标记（随编辑移动） |
 | `buffer-marker-pos` | 标记当前位置 |
 | `buffer-add-overlay` | 加装饰 |
-| `buffer-modified?` | 是否有未保存文本改动 |
 | `buffer-tick` | 单调计数：任何改动都涨 |
 | `buffer-apply-patches` | 施加插件 delta |
 | `buffer-content-eq?` | 内容是否同一（区分文本改动/仅标注） |
@@ -229,6 +229,7 @@
 | `editor-buffer-point->offset` | 位置 → 偏移 |
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
+| `editor-buffer-tick` | 某 buffer 的变化计数（乐观并发 / 合并的版本戳） |
 
 ### 9.4 标注
 
@@ -238,7 +239,6 @@
 | `editor-read-only-at?` | 某点是否只读 |
 | `editor-restrict-runs` | 某行约束段 |
 | `editor-property-runs` | 某行某键的标注区间段 `(start end val)` |
-| `editor-buffer-modified?` | 是否有未保存改动 |
 | `editor-put-property` | 写标注（程序面） |
 | `editor-remove-property` | 清标注 |
 | `editor-put-properties-many` | 一次写多段 |
@@ -250,6 +250,7 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-edit-at` | 在显式 `(bid, point)` 编辑；`#:reaction 'none` 默认不动视图 |
+| `editor-edit-at-batch` | 一次施加一批（同坐标系、不重叠）`edit-desc`；`#:record? #t` 整批记一步 |
 | `editor-view-edit` | 在指定 view 光标处编辑；leader + ensure + 记账本；不改焦点 |
 | `editor-edit` | focus 糖：在焦点 view 光标处编辑 |
 
@@ -258,6 +259,10 @@
 - `#:reaction` —— `none`（默认，字面不动）或 `map`（光标跟随文本）。
 - `#:trusted?` —— 跳过 `read-only` 守卫（格式化器）。
 - `#:record?` —— 是否记一步账本（默认不记）。
+
+`editor-edit-at-batch` 的 `descs` 同坐标系、互不重叠（= LSP `TextEdit[]`）；被
+`read-only` 守卫拒的 desc 静默丢弃（用 `#:trusted? #t` 强制）；`#:record? #t` 把整批
+记成**一步**撤销。report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 
 ### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）
 

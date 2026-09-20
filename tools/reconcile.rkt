@@ -60,7 +60,7 @@
 (define pattern-rx #rx"[*]")
 ;; 概念词 / 符号字面量 / 字段名：文档表格用它开头是**有意**的（讲语义，不是 API 名）。
 (define concept-tokens
-  '("face" "cursor" "dirty" "modified?" "tick" "top" "left-col" "top-seg"
+  '("face" "cursor" "tick" "top" "left-col" "top-seg"
     "presentation" "payload" "none" "map" "leader" "clamp" "free" "follow"
     "buffer-id" "view-id" "buffer" "window" "editor" "op" "desc" "report"
     "data" "lambda" "apply" "state" "event" "run" "screen"))

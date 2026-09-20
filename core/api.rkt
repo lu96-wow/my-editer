@@ -56,7 +56,7 @@
  buffer-add-marker buffer-remove-marker buffer-marker-pos
  buffer-add-overlay buffer-remove-overlay
  buffer-content buffer-markers buffer-properties buffer-overlays
- buffer-tick buffer-modified?
+ buffer-tick buffer-content
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch edits-map-position edits-span
  ;; ---- patch —— 插件 delta ----
