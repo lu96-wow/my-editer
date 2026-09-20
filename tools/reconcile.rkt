@@ -2,9 +2,9 @@
 
 ;;; tools/reconcile.rkt —— 文档 ↔ 可达面对账
 ;;;
-;;; 可达面白名单 = **core/editor.rkt**（消费者标准入口：原子 + editor 平台）。
-;;; 内部机制（compose/mechanism.rkt、compose/reaction.rkt、text/*、view/* …）可达但
-;;; 不在白名单里，文档提到它们时必须按「内部」讲。
+;;; 可达面白名单 = **core/editor.rkt**（消费者标准入口：低层全量面 + editor 平台）。
+;;; 内部机制（platform/state.rkt、platform/write.rkt、platform/reaction.rkt、各层内部模块）
+;;; 可达但不在白名单里，文档提到它们时必须按「内部」讲。
 ;;;
 ;;; 做法：扫两份 .md **表格行第一格**的首个反引号 token，逐个分类：
 ;;;   api      —— 在 core/editor.rkt 的导出里（消费者可用）✓

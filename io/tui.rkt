@@ -11,7 +11,7 @@
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Ctrl+Z 撤销   Ctrl+Y 重做
 ;;;         鼠标点击定位   Ctrl+Q / Esc 退出
 ;;;
-;;; 只用 core/api.rkt（原子）+ core/compose/editor.rkt（editor/命令）。
+;;; 只用 core/api.rkt（低层全量面）+ core/editor.rkt（editor/命令）。
 
 (require "../core/editor.rkt"
          "editor-ui.rkt"
