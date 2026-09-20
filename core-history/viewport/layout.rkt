@@ -406,10 +406,10 @@
   ;; 光标跟随（clip）
   (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
   (check-equal? (window-top-line (window-ensure-point (window-set-point (window-open b5 2 10) (point 4 0)))) 3)
-  (check-equal? (window-top-line (window-ensure-point (window-set-top-line (window-set-point (window-open b5 2 10) (point 0 0)) 3))) 0)
+  (check-equal? (window-top-line (window-ensure-point (window-set-top (window-set-point (window-open b5 2 10) (point 0 0)) 3))) 0)
   ;; 水平跟随
   (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 7)))) 4)
-  (check-equal? (window-left-col (window-ensure-point (window-set-left-col (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 0)) 4))) 0)
+  (check-equal? (window-left-col (window-ensure-point (window-set-left (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 0)) 4))) 0)
 
   ;; 宽字符边界：绝不切半
   (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "中中文中") 1 4) (point 0 2)))) 2)
@@ -431,12 +431,12 @@
                 (point 1 0))
 
   ;; clamp-view
-  (define cv (window-set-top-line (window-open (buffer-open "l0\nl1\nl2\nl3") 2 10) 50))
+  (define cv (window-set-top (window-open (buffer-open "l0\nl1\nl2\nl3") 2 10) 50))
   (check-equal? (window-top-line cv) 50)                 ; set-* 只做 max 0
   (check-equal? (window-top-line (window-clamp-view cv)) 2)
   (check-equal? (vector-ref (window-vrows (window-clamp-view cv)) 0) (vrow 2 0 10))
   (check-true (vector? (window-vrows (window-clamp-view (window-set-mode cv 'wrap)))))
-  (check-equal? (window-left-col (window-clamp-view (window-set-left-col (window-open (buffer-open "中abc") 3 4) 1))) 2)
+  (check-equal? (window-left-col (window-clamp-view (window-set-left (window-open (buffer-open "中abc") 3 4) 1))) 2)
 
   ;; 行尾插入点占一格：光标不许落到窗口右边界之外
   ;; clip：行宽 == 窗口宽，光标在行尾 → 右滚一格，光标落到最后一列

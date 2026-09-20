@@ -81,20 +81,20 @@
 ;; 与栈顶可并 → 并进去并保留**较早**的 point。任何记录都清空 redo 栈。
 (define (history-record h ch)
   (define d (edit-change-desc ch))
-  (define inverse (edit-change-inverse ch))
+  (define inv (edit-change-inv ch))
   (define p (edit-change-pre-point ch))
   (define top (and (pair? (history-undo h)) (car (history-undo h))))
   (cond
     [(and top (step-merge? top d))
      (struct-copy history h
        [undo (cons (step (append (step-replay-descs top) (list d))
-                         (cons inverse (step-undo-descs top))
+                         (cons inv (step-undo-descs top))
                          (step-pre-point top))
                    (cdr (history-undo h)))]
        [redo '()])]
     [else
      (struct-copy history h
-       [undo (cons (step (list d) (list inverse) p) (history-undo h))]
+       [undo (cons (step (list d) (list inv) p) (history-undo h))]
        [redo '()])]))
 
 ;; 记一步「批量」：整批自含正反两向。replay-descs 正序重放；undo-descs 正序撤销

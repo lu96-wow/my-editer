@@ -20,8 +20,8 @@
  window-set-buffer
  window-set-point
  window-set-mode
- window-set-top-line
- window-set-left-col
+ window-set-top
+ window-set-left
  window-set-top-seg
  window-set-size
  window-scroll-clip
@@ -65,7 +65,7 @@
     (error who "mode 必须是 'clip 或 'wrap，得到 ~a" m)))
 
 (define (window-set-mode w m) (check-mode 'window-set-mode m) (struct-copy window w [mode m]))
-(define (window-set-top-line w n)  (struct-copy window w [top-line (max 0 n)]))
+(define (window-set-top w n)  (struct-copy window w [top-line (max 0 n)]))
 (define (window-set-top-seg w n) (struct-copy window w [top-seg (max 0 n)]))
 (define (window-set-size w height width)
   (struct-copy window w [height (max 1 height)] [width (max 1 width)]))
@@ -86,10 +86,10 @@
       (snap-column-forward text col)
       col))
 
-(define (window-set-left-col w n)
+(define (window-set-left w n)
   (struct-copy window w [left-col (snap-left-col (left-ref-text w) (max 0 n))]))
 (define (window-hscroll w delta)
-  (window-set-left-col w (+ (window-left-col w) delta)))
+  (window-set-left w (+ (window-left-col w) delta)))
 
 ;;; ---------- 导航（纯 point 操作）----------
 
@@ -149,18 +149,18 @@
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-scroll-clip w 2)) 2)
   (check-equal? (window-top-line (window-scroll-clip w -5)) 0)
-  (check-equal? (window-top-line (window-set-top-line w 4)) 4)
-  (check-equal? (window-left-col (window-hscroll (window-set-left-col w 3) 2)) 5)
+  (check-equal? (window-top-line (window-set-top w 4)) 4)
+  (check-equal? (window-left-col (window-hscroll (window-set-left w 3) 2)) 5)
   (check-equal? (window-set-size w 30 100) (window-set-size w 30 100))
   (check-equal? (window-mode (window-set-mode w 'wrap)) 'wrap)
   (check-equal? (window-top-seg (window-set-top-seg w 3)) 3)
 
   ;; 水平吸附：宽字符右半 → 下一字符起点；滚过行尾保留
   (define wd (window-open (buffer-open "中abc") 2 4))
-  (check-equal? (window-left-col (window-set-left-col wd 0)) 0)
-  (check-equal? (window-left-col (window-set-left-col wd 1)) 2)
-  (check-equal? (window-left-col (window-set-left-col wd 2)) 2)
-  (check-equal? (window-left-col (window-set-left-col wd 99)) 99)
+  (check-equal? (window-left-col (window-set-left wd 0)) 0)
+  (check-equal? (window-left-col (window-set-left wd 1)) 2)
+  (check-equal? (window-left-col (window-set-left wd 2)) 2)
+  (check-equal? (window-left-col (window-set-left wd 99)) 99)
 
   ;; 未知 mode → 报错
   (check-exn exn:fail? (lambda () (window-set-mode w 'bad)))

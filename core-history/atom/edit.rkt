@@ -27,12 +27,12 @@
 ;; start / end : point     被替换的半开区间 [start, end)（操作前坐标）
 ;; new-text    : string    取代该区间的文本（可含 \n）
 
-;; 一次编辑的**完整材料**。desc 与 inverse 同为 edit-desc，散着传写反了不报错，
+;; 一次编辑的**完整材料**。desc 与 inv 同为 edit-desc，散着传写反了不报错，
 ;; 打包让这个错变成编译错。pre-point 由持光标的层（window/command）填。
-(struct edit-change (desc inverse pre-point) #:transparent)
-;; desc        : edit-desc  这次编辑（操作前坐标）—— 重放用它
-;; inverse     : edit-desc  逆（操作后坐标，由编辑前的 buffer 导出）—— 撤销用它
-;; pre-point   : point      编辑视图在编辑前的光标 —— 撤销后回到这里
+(struct edit-change (desc inv pre-point) #:transparent)
+;; desc      : edit-desc  这次编辑（操作前坐标）—— 重放用它
+;; inv       : edit-desc  逆（操作后坐标，由编辑前的 buffer 导出）—— 撤销用它
+;; pre-point : point      编辑视图在编辑前的光标 —— 撤销后回到这里
 
 ;;; ---------- desc 代数（位置如何随一次编辑移动）----------
 ;; 全部只认 point。

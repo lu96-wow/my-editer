@@ -21,24 +21,19 @@
  editor-view-set-point
  editor-view-set-size
  editor-view-set-mode
- editor-view-set-top-line
+ editor-view-set-top
  editor-view-set-top-seg
- editor-view-set-left-col
+ editor-view-set-left
  editor-view-set-sync
  editor-view-set-buffer
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
  editor-set-mode
- editor-set-size
- editor-set-top-line
- editor-set-top-seg
- editor-set-left-col
  ;; 标注写（程序面：改 buffer 的标注，不碰文本/光标）
  editor-put-property
  editor-remove-property
  editor-put-properties-many
  editor-put-restrict
- editor-remove-restrict
  editor-apply-patches)
 
 ;; 在 bid 的显式位置 p 编辑。op : buffer point → (or/c #f edit-desc)。
@@ -114,14 +109,14 @@
 (define (editor-view-set-mode ed vid mode)
   (editor-put-view ed vid (window-set-mode (view-window-of ed vid) mode)))
 
-(define (editor-view-set-top-line ed vid n)
-  (editor-put-view ed vid (window-set-top-line (view-window-of ed vid) n)))
+(define (editor-view-set-top ed vid n)
+  (editor-put-view ed vid (window-set-top (view-window-of ed vid) n)))
 
 (define (editor-view-set-top-seg ed vid n)
   (editor-put-view ed vid (window-set-top-seg (view-window-of ed vid) n)))
 
-(define (editor-view-set-left-col ed vid n)
-  (editor-put-view ed vid (window-set-left-col (view-window-of ed vid) n)))
+(define (editor-view-set-left ed vid n)
+  (editor-put-view ed vid (window-set-left (view-window-of ed vid) n)))
 
 ;; 结构变换：换指定 view 的同步策略 / 属主；不触发同步。
 (define (editor-view-set-sync ed vid sync)
@@ -137,18 +132,6 @@
 (define (editor-set-mode ed mode)
   (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))
 
-(define (editor-set-size ed height width)
-  (editor-view-set-size ed (view-id (editor-focused-view ed)) height width))
-
-(define (editor-set-top-line ed n)
-  (editor-view-set-top-line ed (view-id (editor-focused-view ed)) n))
-
-(define (editor-set-top-seg ed n)
-  (editor-view-set-top-seg ed (view-id (editor-focused-view ed)) n))
-
-(define (editor-set-left-col ed n)
-  (editor-view-set-left-col ed (view-id (editor-focused-view ed)) n))
-
 ;;; ---------- 标注写（改 buffer 的标注；不碰文本，光标自然不动） ----------
 
 (define (editor-put-property ed bid start end key val)
@@ -159,8 +142,6 @@
   (editor-update-buffer ed bid (lambda (b) (buffer-put-properties-many b segs))))
 (define (editor-put-restrict ed bid start end rs)
   (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
-(define (editor-remove-restrict ed bid start end)
-  (editor-update-buffer ed bid (lambda (b) (buffer-remove-restrict b start end))))
 (define (editor-apply-patches ed bid patches)
   (editor-update-buffer ed bid (lambda (b) (buffer-apply-patches b patches))))
 
@@ -205,16 +186,16 @@
   ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
   (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
   (define-values (v1 vv) (editor-add-view v0 0 2 10 #:focus? #f))
-  (define v2 (editor-view-set-top-line v1 vv 2))
+  (define v2 (editor-view-set-top v1 vv 2))
   (check-equal? (editor-view-top-line v2 vv) 2)          ; 目标 view 动了
   (check-equal? (editor-view-top-line v2 0) 0)           ; 另一个 view 不动
-  (define v3 (editor-view-set-left-col v2 vv 3))
+  (define v3 (editor-view-set-left v2 vv 3))
   (check-equal? (editor-view-left-col v3 vv) 3)
   (define v4 (editor-view-set-mode v3 vv 'wrap))
   (check-equal? (editor-view-mode v4 vv) 'wrap)
   (check-equal? (editor-view-mode v4 0) 'clip)
   (define v5 (editor-view-set-sync v4 vv 'follow))
-  (check-equal? (editor-view-sync v5 vv) 'follow)
+  (check-equal? (view-sync (editor-view-ref v5 vv)) 'follow)
 
   ;; wrap 下的折行段：top-seg 可写且被夹紧到合法域
   (define ts0 (editor-open "abcdefghij" 2 3))
@@ -229,11 +210,6 @@
   ;; focus 糖仍作用于焦点 view
   (define v7 (editor-view-set-point v6 0 (point 1 0)))
   (check-equal? (editor-view-point v7 0) (point 1 0))
-  ;; 焦点 view 写糖（与 editor-view-set-* 镜像）
-  (define v8 (editor-set-top-line (editor-set-left-col (editor-set-mode v7 'wrap) 2) 1))
-  (check-equal? (editor-top-line v8) 1)
-  (check-equal? (editor-left-col v8) 2)
-  (check-equal? (editor-mode v8) 'wrap)
 
   ;; 批量：一次施多条，记一步，report.edits 为施加顺序（起点倒序）
   (define b0 (editor-open "abcd\nefgh"))

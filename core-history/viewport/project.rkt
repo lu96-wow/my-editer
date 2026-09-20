@@ -36,7 +36,7 @@
   (check-equal? (screen-cursor-col (window->screen (window-set-point (window-open b0 2 10) (point 0 2)))) 3)
 
   ;; 水平吸附：left=2 落在「中」右半 → 吸附到 3（'b' 的起点）
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-set-left-col (window-open b0 2 10) 2))) 0)
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-set-left (window-open b0 2 10) 2))) 0)
                 (list (run 0 "b" (hash))))
 
   ;; 属性分段

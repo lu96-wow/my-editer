@@ -46,8 +46,7 @@
  buffer-remove-property
  buffer-put-properties-many
  buffer-put-restrict
- buffer-remove-restrict
- buffer-restrict-at
+ buffer-read-only-at?
  buffer-restrict-runs
  buffer-property-runs
  buffer-add-marker
@@ -55,8 +54,6 @@
  buffer-marker-pos
  buffer-add-overlay
  buffer-remove-overlay
- buffer-overlay-at
- buffer-overlay-runs
  buffer-tick
  buffer-content
  buffer-markers
@@ -96,9 +93,9 @@
 ;;   · 非零宽删除：删除区间 [s,e) 与任一 read-only 段有交集 → 拒绝
 ;; 程序要编辑 read-only 内容，走显式入口 buffer-apply-edit-trusted / buffer-splice 的 trusted 版。
 
-;; 某点的约束槽。读口；想只要「是否只读」用 (restrict-read-only? (buffer-restrict-at …))。
-(define (buffer-restrict-at b p)
-  (properties-restrict-at (buffer-properties b) (point-line p) (point-col p)))
+(define (buffer-read-only-at? b p)
+  (restrict-read-only? (properties-restrict-at (buffer-properties b)
+                                               (point-line p) (point-col p))))
 
 ;; 一行内约束槽的段：(listof (list start end restrict))，恰好覆盖整行。
 ;; 枚举只读区间用（O(段数)）。
@@ -134,7 +131,7 @@
   (define s (edit-desc-start d))
   (define e (edit-desc-end d))
   (if (point=? s e)
-      (restrict-read-only? (buffer-restrict-at b s))
+      (buffer-read-only-at? b s)
       (range-read-only? b s e)))
 
 ;;; ---------- 编辑：唯一传播点 ----------
@@ -240,10 +237,6 @@
   (bump (struct-copy buffer b
            [properties (properties-put-restrict (buffer-properties b) l s e rs)])))
 
-;; 清约束（= put-restrict 传空）。与 buffer-remove-property 对称。
-(define (buffer-remove-restrict b start end)
-  (buffer-put-restrict b start end (make-restrict)))
-
 ;;; ---------- marker ----------
 
 (define (check-buffer-position who b p)
@@ -284,13 +277,6 @@
 
 (define (buffer-remove-overlay b oid)
   (bump (struct-copy buffer b [overlays (overlay-table-remove (buffer-overlays b) oid)])))
-
-;; 读回：覆盖 p 的 overlay（priority 降序）/ 某行的 overlay 段。与 add/remove 对称。
-(define (buffer-overlay-at b p)
-  (overlay-table-at (buffer-overlays b) (buffer-markers b) p))
-(define (buffer-overlay-runs b line)
-  (overlay-table-runs (buffer-overlays b) (buffer-markers b) line
-                      (string-length (buffer-line-ref b line))))
 
 ;;; ---------- 测试 ----------
 
@@ -346,13 +332,13 @@
 
   ;; read-only 守卫：区间内部插入被拒；右端点允许且不继承
   (define rb (buffer-put-restrict b0 (point 0 1) (point 0 4) (restrict #t)))
-  (check-true (restrict-read-only? (buffer-restrict-at rb (point 0 2))))
+  (check-true (buffer-read-only-at? rb (point 0 2)))
   (define-values (rb1 rd1) (buffer-edit rb (point 0 2) (edit-insert-char #\X)))
   (check-eq? rb1 rb)
   (check-false rd1)
   (define-values (rb2 _rd2) (buffer-edit rb (point 0 4) (edit-insert-char #\X)))
   (check-equal? (buffer->string rb2) "hellXo\nworld")
-  (check-false (restrict-read-only? (buffer-restrict-at rb2 (point 0 4))))
+  (check-false (buffer-read-only-at? rb2 (point 0 4)))
   ;; 删除跨进 read-only → 拒绝
   (define-values (rb3 rd3) (buffer-edit rb (point 0 4) (edit-backspace)))
   (check-eq? rb3 rb)
@@ -365,11 +351,6 @@
   ;; 枚举只读段
   (check-equal? (buffer-restrict-runs rb 0)
                 (list (list 0 1 (make-restrict)) (list 1 4 (restrict #t)) (list 4 5 (make-restrict))))
-  ;; 读回约束槽 / 清约束（与 put-restrict 对称）
-  (check-equal? (buffer-restrict-at rb (point 0 2)) (restrict #t))
-  (define rb-nr (buffer-remove-restrict rb (point 0 1) (point 0 4)))
-  (check-false (restrict-read-only? (buffer-restrict-at rb-nr (point 0 2))))
-  (check-equal? (buffer-restrict-runs rb-nr 0) (list (list 0 5 (make-restrict))))
 
   ;; marker：随编辑移动
   (define-values (mb mid) (buffer-add-marker b0 (point 0 3)))
@@ -382,10 +363,6 @@
   (define ob2 (let-values ([(b _) (buffer-edit ob (point 0 0) (edit-insert-char #\a))]) b))
   (define oruns (overlay-table-runs (buffer-overlays ob2) (buffer-markers ob2) 0 10))
   (check-equal? (list (caar oruns) (cadar oruns)) '(2 5))
-  ;; 读回（与 add/remove-overlay 对称）
-  (check-equal? (length (buffer-overlay-at ob2 (point 0 2))) 1)
-  (check-equal? (length (buffer-overlay-at ob2 (point 0 0))) 0)
-  (check-equal? (list (caar (buffer-overlay-runs ob2 0)) (cadar (buffer-overlay-runs ob2 0))) '(2 5))
   (define-values (ob3 _oid3) (buffer-add-overlay b0 (point 0 1) (point 0 3) (hash)
                                              #:evaporate? #t))
   (define ob4 (let-values ([(b _) (buffer-edit ob3 (point 0 1) (edit-delete))]) b))

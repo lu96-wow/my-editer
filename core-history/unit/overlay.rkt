@@ -13,6 +13,7 @@
 
 (provide
  (struct-out overlay)
+ (struct-out overlay-table)
  make-overlay-table
  overlay-table-add
  overlay-table-remove

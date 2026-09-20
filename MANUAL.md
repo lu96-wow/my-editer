@@ -85,12 +85,16 @@
 | `buffer-remove-property` | 清某键标注 |
 | `buffer-put-properties-many` | 一次写多段（一次 tick） |
 | `buffer-put-restrict` | 写约束槽（只读等） |
-| `buffer-read-only-at?` | 某点是否只读 |
+| `buffer-restrict-at` | 某点的约束槽（`restrict`；是否只读用 `restrict-read-only?`） |
+| `buffer-remove-restrict` | 清约束区间 |
 | `buffer-restrict-runs` | 某行的约束段 |
 | `buffer-property-runs` | 某行某键的表现层区间段 `(start end val)` |
 | `buffer-add-marker` | 加标记（随编辑移动） |
 | `buffer-marker-pos` | 标记当前位置 |
 | `buffer-add-overlay` | 加装饰 |
+| `buffer-remove-overlay` | 删装饰 |
+| `buffer-overlay-at` | 覆盖某点的 overlay（priority 降序） |
+| `buffer-overlay-runs` | 某行的 overlay 段 |
 | `buffer-tick` | 单调计数：任何改动都涨 |
 | `buffer-apply-patches` | 施加插件 delta |
 | `buffer-content-eq?` | 内容是否同一（区分文本改动/仅标注） |
@@ -199,6 +203,7 @@
 | `editor-buffer` | 取 buffer 值 |
 | `editor-buffer-name` | 取 buffer 名 |
 | `editor-view-buffer-id` | 某 view 的 buffer id |
+| `editor-view-sync` | 某 view 的同步策略 |
 | `editor-point` | 焦点 view 光标 |
 | `editor-view-point` | 某 view 光标 |
 | `editor-height` | 焦点 view 可视高度 |
@@ -210,6 +215,9 @@
 | `editor-view-mode` | 某 view `clip`/`wrap` |
 | `editor-view-left-col` | 某 view 水平滚动列 |
 | `editor-view-top-seg` | 某 view 折行段 |
+| `editor-mode` | 焦点 view `clip`/`wrap` |
+| `editor-left-col` | 焦点 view 水平滚动列 |
+| `editor-top-seg` | 焦点 view 折行段 |
 | `buffer-entry-id` | buffer id（投影） |
 | `buffer-entry-name` | buffer 名（投影） |
 | `view-id` | view id（投影） |
@@ -236,9 +244,12 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-get-property` | 读某点标注 |
-| `editor-read-only-at?` | 某点是否只读 |
+| `editor-restrict-at` | 某点的约束槽（`restrict`） |
+| `editor-remove-restrict` | 清约束区间 |
 | `editor-restrict-runs` | 某行约束段 |
 | `editor-property-runs` | 某行某键的标注区间段 `(start end val)` |
+| `editor-overlay-at` | 覆盖某点的 overlay（priority 降序） |
+| `editor-overlay-runs` | 某行的 overlay 段 |
 | `editor-put-property` | 写标注（程序面） |
 | `editor-remove-property` | 清标注 |
 | `editor-put-properties-many` | 一次写多段 |
@@ -271,13 +282,17 @@
 | `editor-view-set-point` | 设某 view 光标 |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
-| `editor-view-set-top` | 设某 view 顶部行 |
+| `editor-view-set-top-line` | 设某 view 顶部行 |
 | `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
-| `editor-view-set-left` | 设某 view 水平滚动列 |
+| `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
+| `editor-set-size` | focus 糖：设焦点 view 尺寸 |
+| `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |
+| `editor-set-top-seg` | focus 糖：设焦点 view 折行段 |
+| `editor-set-left-col` | focus 糖：设焦点 view 水平滚动列 |
 
 ### 9.7 导航（用户面：ensure + follow 镜像；原语按 vid，focus 糖见下）
 

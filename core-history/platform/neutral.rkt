@@ -34,7 +34,6 @@
  editor-buffer
  editor-buffer-name
  editor-view-buffer-id
- editor-view-sync
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
@@ -47,9 +46,6 @@
  editor-view-mode
  editor-view-left-col
  editor-view-top-seg
- editor-mode
- editor-left-col
- editor-top-seg
  editor-point->screen
  editor-view-point->screen
  editor-screen->point
@@ -70,11 +66,9 @@
  editor-buffer-tick
  ;; 标注读（按 buffer-id）
  editor-get-property
- editor-restrict-at
+ editor-read-only-at?
  editor-restrict-runs
  editor-property-runs
- editor-overlay-at
- editor-overlay-runs
  ;; 账本查询
  editor-can-undo?
  editor-can-redo?
@@ -137,7 +131,6 @@
 (define (editor-buffer ed bid) (buffer-entry-buffer (editor-buffer-entry ed bid)))
 (define (editor-buffer-name ed bid) (buffer-entry-name (editor-buffer-entry ed bid)))
 (define (editor-view-buffer-id ed vid) (view-buffer-id (editor-view-ref ed vid)))
-(define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
 
 (define (editor-focus-view ed vid)
   (editor-view-ref ed vid)                 ; 校验存在
@@ -160,9 +153,6 @@
 (define (editor-view-mode ed vid) (window-mode (view-window (editor-view-ref ed vid))))
 (define (editor-view-left-col ed vid) (window-left-col (view-window (editor-view-ref ed vid))))
 (define (editor-view-top-seg ed vid) (window-top-seg (view-window (editor-view-ref ed vid))))
-(define (editor-mode ed) (window-mode (view-window (editor-focused-view ed))))
-(define (editor-left-col ed) (window-left-col (view-window (editor-focused-view ed))))
-(define (editor-top-seg ed) (window-top-seg (view-window (editor-focused-view ed))))
 
 (define (editor-point->screen ed) (window-point->screen (view-window (editor-focused-view ed))))
 (define (editor-view-point->screen ed vid)
@@ -192,11 +182,9 @@
 (define (editor-buffer-range-text ed bid s e) (buffer-range-text (editor-buffer ed bid) s e))
 (define (editor-buffer-tick ed bid) (buffer-tick (editor-buffer ed bid)))
 (define (editor-get-property ed bid p key) (buffer-get-property (editor-buffer ed bid) p key))
-(define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
+(define (editor-read-only-at? ed bid p) (buffer-read-only-at? (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
 (define (editor-property-runs ed bid line key) (buffer-property-runs (editor-buffer ed bid) line key))
-(define (editor-overlay-at ed bid p) (buffer-overlay-at (editor-buffer ed bid) p))
-(define (editor-overlay-runs ed bid line) (buffer-overlay-runs (editor-buffer ed bid) line))
 
 ;;; ---------- 账本查询 ----------
 
@@ -223,10 +211,6 @@
   (check-equal? (editor-view-mode e0 0) 'clip)
   (check-equal? (editor-view-left-col e0 0) 0)
   (check-equal? (editor-view-top-seg e0 0) 0)
-  ;; 焦点 view 读糖（与 editor-view-* 镜像）
-  (check-equal? (editor-mode e0) 'clip)
-  (check-equal? (editor-left-col e0) 0)
-  (check-equal? (editor-top-seg e0) 0)
   (check-false (editor-can-undo? e0 0))
 
   ;; 变化计数：读口（并发/合并的版本戳）

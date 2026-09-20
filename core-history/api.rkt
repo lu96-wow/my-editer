@@ -42,7 +42,7 @@
  edit-desc-map-position edit-desc-after-position edit-desc-inverse
  ;; ---- edit-change（一次编辑的完整材料）----
  edit-change edit-change? struct:edit-change
- edit-change-desc edit-change-inverse edit-change-pre-point
+ edit-change-desc edit-change-inv edit-change-pre-point
  ;; ---- restrict（约束槽）----
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
@@ -54,9 +54,9 @@
  buffer-edit-desc-inverse
  buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
- buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs buffer-property-runs
+ buffer-put-restrict buffer-read-only-at? buffer-restrict-runs buffer-property-runs
  buffer-add-marker buffer-remove-marker buffer-marker-pos
- buffer-add-overlay buffer-remove-overlay buffer-overlay-at buffer-overlay-runs
+ buffer-add-overlay buffer-remove-overlay
  buffer-content buffer-markers buffer-properties buffer-overlays
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
@@ -86,7 +86,7 @@
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
- window-set-buffer window-set-point window-set-mode window-set-top-line window-set-left-col
+ window-set-buffer window-set-point window-set-mode window-set-top window-set-left
  window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end
  window-ensure-point window-clamp-view window-visual-move window-up window-down

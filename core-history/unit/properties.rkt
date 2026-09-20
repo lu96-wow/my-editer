@@ -34,7 +34,6 @@
  properties-remove
  properties-replace-key
  properties-put-restrict
- properties-remove-restrict
  properties-runs
  properties-key-runs
  properties-restrict-runs
@@ -251,10 +250,6 @@
 (define (properties-put-restrict p line start end rs)
   (properties-modify p line start end
                      (lambda (pl _) (values pl rs))))
-
-;; 清约束（= put-restrict 传空）。与 properties-remove 对称。
-(define (properties-remove-restrict p line start end)
-  (properties-put-restrict p line start end (make-restrict)))
 
 ;;; ---------- 编辑调整 ----------
 

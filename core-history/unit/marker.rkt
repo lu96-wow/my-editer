@@ -16,12 +16,14 @@
 
 (provide
  (struct-out marker)
+ (struct-out marker-table)
  make-marker-table
  marker-table-add
  marker-table-remove
  marker-table-get
  marker-table-all
  marker-table-count
+ marker-apply-edit
  marker-table-apply-edit)
 
 ;;; ---------- 数据 ----------
