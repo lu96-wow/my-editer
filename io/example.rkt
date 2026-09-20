@@ -19,12 +19,12 @@
 ;;;
 ;;; 运行：  racket io/example.rkt [文件]
 ;;; 按键：  可打印/中文 插入   Enter 自动缩进换行   Backspace/Delete 删除   Tab 两空格
-;;;         ←→↑↓ Home End PgUp PgDn 导航   鼠标点击定位
-;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^L 开关高亮  ^Q/Esc 退出
+;;;         ←→↑↓ Home End PgUp PgDn 导航   Shift+方向 扩选   Alt+↑↓ 上下加光标
+;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
+;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^L 开关高亮  ^Q 退出
 
 (require "../core/editor.rkt"
-         ;; racket-tui 也导出 key-event/resize-event 等，与 core 同名；这里用 core 的。
-         ;; racket-tui 也导出 key-event/resize-event/cursor-row/cursor-col 等，与 core 同名；用 core 的。
+         ;; racket-tui 也导出 key-event/resize-event/cursor-col 等，与 core 同名；用 core 的。
          (except-in tui key-event key-event? key-event-key struct:key-event
                     resize-event resize-event? resize-event-rows resize-event-cols
                     struct:resize-event cursor-col)
@@ -148,18 +148,6 @@
     [ed (editor-view-set-size (app-ed a) (editor-focus (app-ed a))
                               (max 1 (sub1 rows)) (max 1 cols))]))
 
-;; 2.7 鼠标：屏幕坐标 → 位置
-;; [core] editor-screen->point（焦点 view）→ editor-goto（用户面，会滚屏保证可见）。
-;; [意图] 坐标换算（宽字符、wrap）在 core 算好；把「点击」当用户导航，故会 ensure。
-;; [前端] 「只有文本区（非状态行）才处理」是应用政策。
-(define (click a x y)
-  (if (>= y (sub1 (app-rows a)))
-      a
-      (let-values ([(l c) (editor-screen->point (app-ed a) y x)])
-        (if l
-            (struct-copy app a [ed (editor-goto (app-ed a) (point l c))])
-            a))))
-
 ;;; ---------- 2.8 标注：关键字高亮（应用策略）----------
 ;;
 ;; [core] editor-apply-patches ed bid [patch]；patch = 对某 key 在 [first-line,last-line]
@@ -200,6 +188,108 @@
 (define (toggle-highlight a)
   (define app* (struct-copy app a [highlight? (not (app-highlight? a))]))
   (if (app-highlight? app*) (rehighlight-all app*) (clear-highlight app*)))
+
+;;; ---------- 2.9 选中 / 多光标（应用策略） ----------
+;;
+;; [core] editor-selections / editor-set-selections / editor-add-selections / editor-point /
+;;        editor-buffer->string / editor-buffer-offset->point / selection / caret …
+;;        core 只给「选区集合 + 增删改」和「按所有选区批量替换」；「选哪个词、选下一个、全选同词」
+;;        全是应用策略。
+;; [前端] 词边界、搜索方式、Ctrl+D 的推进规则，都由应用决定。
+
+;; 当前主选区（head == editor-point 的那个）
+(define (primary-selection ed)
+  (define p (editor-point ed))
+  (for/first ([s (in-list (editor-selections ed))] #:when (point=? (selection-point s) p)) s))
+
+;; 「词」：主选区非空 → 选区文本；否则取光标处/紧邻的 [A-Za-z0-9_] 串。
+(define (word-at ed)
+  (define bid (editor-focused-buffer-id ed))
+  (define prim (primary-selection ed))
+  (if (and prim (not (caret? prim)))
+      (let-values ([(a b) (selection-range prim)])
+        (values (editor-buffer-range-text ed bid a b) a b))
+      (let* ([p (editor-point ed)]
+             [line (editor-buffer-line-ref ed bid (point-line p))]
+             [n (string-length line)] [col (point-col p)]
+             [w? (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\_)))]
+             [start (let loop ([i col]) (if (and (> i 0) (w? (string-ref line (sub1 i)))) (loop (sub1 i)) i))]
+             [end (let loop ([i col]) (if (and (< i n) (w? (string-ref line i))) (loop (add1 i)) i))])
+        (if (< start end)
+            (values (substring line start end)
+                    (point (point-line p) start) (point (point-line p) end))
+            (values #f #f #f)))))
+
+;; 全 buffer 里 pattern 的全部出现（按文档顺序）
+(define (occurrences ed pattern)
+  (define bid (editor-focused-buffer-id ed))
+  (define full (editor-buffer->string ed bid))
+  (for/list ([m (in-list (regexp-match-positions* (regexp-quote pattern) full))])
+    (list (editor-buffer-offset->point ed bid (car m))
+          (editor-buffer-offset->point ed bid (cdr m)))))
+
+;; Ctrl+D：光标→先选词；已有选区→再选「最后一个选区之后」的下一个相同串
+(define (select-next-occurrence a)
+  (define ed (app-ed a))
+  (define-values (pat ps pe) (word-at ed))
+  (cond
+    [(not pat) a]
+    [else
+     (define sels (editor-selections ed))
+     (define prim (primary-selection ed))
+     (cond
+       [(caret? prim)                              ; 第一次：只选词
+        (struct-copy app a [ed (editor-set-selections ed (cons (selection ps pe) (remove prim sels)))])]
+       [else                                       ; 已有：加最后一个选区之后的下一个出现
+        (define last-end (for/fold ([m #f]) ([s sels])
+                           (define e (let-values ([(_ e) (selection-range s)]) e))
+                           (if (or (not m) (point<? m e)) e m)))
+        (define taken (map (lambda (s) (call-with-values (lambda () (selection-range s)) list)) sels))
+        (define nxt (for/first ([o (in-list (occurrences ed pat))]
+                                #:when (and (point<=? last-end (car o))
+                                            (not (member (list (car o) (cadr o)) taken))))
+                      o))
+        (cond
+          [(not nxt) a]
+          [else (struct-copy app a [ed (editor-add-selections ed (list (selection (car nxt) (cadr nxt))))])])])]))
+
+;; Ctrl+A：把当前词的所有出现一次选中
+(define (select-all-occurrences a)
+  (define ed (app-ed a))
+  (define-values (pat _ps _pe) (word-at ed))
+  (if (not pat)
+      a
+      (struct-copy app a
+        [ed (editor-set-selections
+             ed
+             (map (lambda (o) (selection (car o) (cadr o))) (occurrences ed pat)))])))
+
+;; 回单光标（保留 primary）
+(define (collapse-selection a)
+  (struct-copy app a [ed (editor-set-point (app-ed a) (editor-point (app-ed a)))]))
+
+;; Shift+方向：只移动**主选区**的 head，anchor 不动 → 扩选
+(define (extend-selection a sym)
+  (define ed (app-ed a))
+  (define prim (primary-selection ed))
+  (cond
+    [(not prim) a]
+    [else
+     (define at-head (editor-set-point ed (selection-point prim)))
+     (define moved (case sym
+                     [(left)  (editor-left at-head)]  [(right) (editor-right at-head)]
+                     [(up)    (editor-up at-head)]    [(down)  (editor-down at-head)]
+                     [(home)  (editor-home at-head)]  [(end)   (editor-end at-head)]
+                     [else at-head]))
+     (define sel* (selection (selection-anchor prim) (editor-point moved)))
+     (struct-copy app a [ed (editor-set-selections ed (cons sel* (remove prim (editor-selections ed))))])]))
+
+;; 加一个光标（Alt+上下）
+(define (add-caret a p)
+  (struct-copy app a [ed (editor-add-selections (app-ed a) (list (caret p)))]))
+(define (add-caret-vertical a delta)
+  (define ed (app-ed a))
+  (add-caret a (editor-point (if (> delta 0) (editor-down ed) (editor-up ed)))))
 
 ;;; ============================================================================
 ;;; §3 渲染（[前端]；core 只给 screen）
@@ -272,8 +362,9 @@
   ;; 状态栏（最后一行）
   (define p (editor-point (app-ed app)))
   (define status
-    (format " ~a  L~a:C~a  ~a   ^Z ^Y  ^G stamp  ^L hl  ^Q quit"
+    (format " ~a  L~a:C~a  sel~a  ~a  ^Z^Y ^D next ^A all ^G ^L ^Q"
             (app-name app) (add1 (point-line p)) (add1 (point-col p))
+            (length (editor-selections (app-ed app)))
             (if (app-highlight? app) "hl:on" "hl:off")))
   (emit! (format-cursor-move (app-rows app) 1))
   (emit! (format-styled 'status-bar (pad-to status (app-cols app))))
@@ -285,14 +376,13 @@
 ;;; §4 事件 → 命令（[前端] 映射；命令本身在 §2）
 ;;; ============================================================================
 ;;
-;; [core] 事件类型（text/key/mouse/resize/quit）在 core 定义；这里由 racket-tui 的
+;; [core] 事件类型（text/key/resize/quit 等）在 core 定义；这里由 racket-tui 的
 ;;        build-input 分好类，所以只写回调。
-;; [前端] 按键 → 命令的映射、Ctrl 组合、鼠标区域判断，都是应用政策。
+;; [前端] 按键 → 命令的映射、Ctrl 组合，都是应用政策。
 
 (define (run path)
   (with-tui
    (lambda ()
-     (enable-mouse!)
      (enable-bracketed-paste!)
      (define-values (rows0 cols0) (get-window-size))
      (define app (open-app path (max 2 rows0) (max 1 cols0)))
@@ -314,20 +404,34 @@
         #:end       (lambda ()     (set! app (navigate app 'end)))
         #:pageup    (lambda ()     (set! app (navigate app 'pageup)))
         #:pagedown  (lambda ()     (set! app (navigate app 'pagedown)))
-        #:escape    (lambda ()     (set! running? #f))
+        #:escape    (lambda ()     ; 有选区/多光标 → 先回单光标；否则退出
+                      (define sels (editor-selections (app-ed app)))
+                      (if (or (> (length sels) 1) (for/or ([s sels]) (not (caret? s))))
+                          (set! app (collapse-selection app))
+                          (set! running? #f)))
         #:key       (lambda (key mods)
-                      (when (and (char? key) (mods-ctrl? mods))
-                        (case key
-                          [(#\Z) (set! app (undo app))]
-                          [(#\Y) (set! app (redo app))]
-                          [(#\G) (set! app (append-stamp app))]
-                          [(#\L) (set! app (toggle-highlight app))]
-                          [(#\Q) (set! running? #f)]
-                          [else (void)])))
-        #:mouse     (lambda (action button x y _mods)
-                      (case action
-                        [(press)  (set! app (click app x y))]
-                        [(scroll) (set! app (navigate app (if (eq? button 'up) 'pageup 'pagedown)))]
+                      (cond
+                        [(and (symbol? key) (mods-shift? mods))
+                         (case key
+                           [(left)  (set! app (extend-selection app 'left))]
+                           [(right) (set! app (extend-selection app 'right))]
+                           [(up)    (set! app (extend-selection app 'up))]
+                           [(down)  (set! app (extend-selection app 'down))]
+                           [(home)  (set! app (extend-selection app 'home))]
+                           [(end)   (set! app (extend-selection app 'end))]
+                           [else (void)])]
+                        [(and (symbol? key) (mods-alt? mods) (memq key '(up down)))
+                         (set! app (add-caret-vertical app (if (eq? key 'down) 1 -1)))]
+                        [(and (char? key) (mods-ctrl? mods))
+                         (case key
+                           [(#\Z) (set! app (undo app))]
+                           [(#\Y) (set! app (redo app))]
+                           [(#\D) (set! app (select-next-occurrence app))]
+                           [(#\A) (set! app (select-all-occurrences app))]
+                           [(#\G) (set! app (append-stamp app))]
+                           [(#\L) (set! app (toggle-highlight app))]
+                           [(#\Q) (set! running? #f)]
+                           [else (void)])]
                         [else (void)]))
         #:resize    (lambda (rows cols) (set! app (resize app (max 2 rows) (max 1 cols))))))
 
@@ -372,6 +476,36 @@
   (define a10 (resize a8 8 30))
   (check-equal? (editor-height (app-ed a10)) 7)
   (check-equal? (editor-buffer->string (app-ed a10) 0) "define x")
+
+  ;; 选中/多光标（前端策略）：Ctrl+D 选词 → 再选下一个 → 一起替换
+  (define m0 (make-app "foo bar foo" 5 20 "*t*"))
+  (define m1 (select-next-occurrence m0))
+  (check-equal? (length (editor-selections (app-ed m1))) 1)      ; 光标→先选词
+  (define m2 (select-next-occurrence m1))
+  (check-equal? (length (editor-selections (app-ed m2))) 2)      ; 再选下一个相同串
+  (define m3 (insert-text m2 "X"))                             ; 两个一起替换
+  (check-equal? (editor-buffer->string (app-ed m3) 0) "X bar X")
+  (check-equal? (length (editor-selections (app-ed (collapse-selection m3)))) 1)
+  ;; 全选同词
+  (define m4 (select-all-occurrences m0))
+  (check-equal? (length (editor-selections (app-ed m4))) 2)
+  (check-equal? (editor-buffer->string (app-ed (insert-text m4 "Y")) 0) "Y bar Y")
+  ;; Shift+右：扩选（主选区 head 动、anchor 不动）
+  (define m5 (extend-selection m0 'right))
+  (check-true (not (caret? (car (editor-selections (app-ed m5))))))
+  ;; 渲染：多选区时 screen 两条通道都在，能出帧
+  (check-true (bytes? (frame->bytes m2)))
+  (check-equal? (length (screen-selections (editor->screen (app-ed m2)))) 2)
+  (check-equal? (length (screen-cursors (editor->screen (app-ed m2)))) 2)
+
+  ;; 跨行选区（Shift+↓）后删除
+  (define x0 (make-app "abc\ndef\nghi" 6 20 "*t*"))
+  (define x1 (navigate x0 'down))
+  (define x2 (extend-selection x1 'down))
+  (check-true (not (caret? (car (editor-selections (app-ed x2))))))
+  (define x3 (delete-back x2))
+  (check-equal? (editor-buffer->string (app-ed x3) 0) "abc\nghi")
+  (check-true (bytes? (frame->bytes x3)))
 
   (displayln "example.rkt: all tests passed"))
 

@@ -181,6 +181,8 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
 交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
+若 op 会**超出选区**（如 backspace 删光标前一字符、delete 删后一字符），相邻选区可能产出
+重叠的 desc；`editor-edit` 会先把冲突的选区**合并成包络并重算 op**，保证交给 batch 的 desc 两两不相交。
 方向键对每个选区各走一步（`window-map-selections`）后再去重/合并。
 
 | 名字 | 契约 |

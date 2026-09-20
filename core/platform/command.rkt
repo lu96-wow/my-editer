@@ -48,16 +48,49 @@
 
 ;;; ---------- 编辑（指定 view，leader 语义） ----------
 
+;; 两条 desc 的区间是否相交（半开）
+(define (desc-overlap? d1 d2)
+  (and (point<? (edit-desc-start d1) (edit-desc-end d2))
+       (point<? (edit-desc-start d2) (edit-desc-end d1))))
+
+;; 两个选区的包络（方向取正向）
+(define (selection-hull a b)
+  (define-values (as ae) (selection-range a))
+  (define-values (bs be) (selection-range b))
+  (selection (if (point<? bs as) bs as) (if (point<? ae be) be ae)))
+
+;; 多选区：对每个选区算 desc；若两条 desc 重叠（backspace/delete 等会超出选区，
+;; 相邻选区就会撞上），把冲突选区合并成包络再重算 op，直到 desc 两两不相交。
+(define (coalesce-descs b0 sels op)
+  (define pairs
+    (filter values (for/list ([s (in-list sels)])
+                     (define d (op b0 s))
+                     (and d (cons s d)))))
+  (let loop ([ps pairs])
+    (cond
+      [(null? ps) '()]
+      [else
+       (define p (car ps))
+       (define conflicts (filter (lambda (q) (desc-overlap? (cdr p) (cdr q))) (cdr ps)))
+       (cond
+         [(null? conflicts) (cons (cdr p) (loop (cdr ps)))]
+         [else
+          (define group (cons p conflicts))
+          (define hull (for/fold ([h (car (car group))]) ([g (in-list (cdr group))])
+                         (selection-hull h (car g))))
+          (define d (op b0 hull))
+          (loop (if d
+                    (cons (cons hull d) (remove* conflicts (cdr ps)))
+                    (remove* conflicts (cdr ps))))])])))
+
 (define (editor-view-edit ed vid op)
   (define v (editor-view-ref ed vid))
   (define bid (view-buffer-id v))
   (define w (view-window v))
   (define b0 (editor-buffer ed bid))
   (define pre (window-point w))
-  ;; 对每个选区施加同一 op；空选区=插，非空=替换。
-  (define descs
-    (filter values
-            (for/list ([s (in-list (window-selections w))]) (op b0 s))))
+  ;; 对每个选区施加同一 op；空选区=插，非空=替换。重叠的 desc 先合并重算。
+  (define descs (coalesce-descs b0 (window-selections w) op))
   (cond
     [(null? descs) (values ed #f)]
     [else
@@ -237,5 +270,17 @@
                                            (selection (point 0 3) (point 0 3)))))
   (define-values (mc5 _r5) (editor-edit mc4 (edit-backspace)))
   (check-equal? (editor-buffer->string mc5 0) "b")
+
+  ;; 跨行选区 + 边界光标：desc 重叠 → 合并重算，不崩（回归）
+  (define oc (editor-set-selections (editor-open "abc\ndef\nghi")
+                                    (list (selection (point 0 0) (point 1 0)) (caret (point 1 0)))))
+  (check-equal? (length (editor-selections oc)) 2)
+  (define-values (oc1 _oc) (editor-edit oc (edit-backspace)))
+  (check-equal? (editor-buffer->string oc1 0) "def\nghi")
+  ;; 前向删除同边界情形
+  (define od (editor-set-selections (editor-open "abc\ndef")
+                                    (list (caret (point 0 0)) (selection (point 0 0) (point 0 2)))))
+  (define-values (od1 _od) (editor-edit od (edit-delete)))
+  (check-equal? (editor-buffer->string od1 0) "c\ndef")
 
   (displayln "command.rkt: all tests passed"))
