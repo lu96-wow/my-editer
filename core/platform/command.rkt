@@ -85,7 +85,7 @@
 
 (define (editor-view-edit ed vid op)
   (define v (editor-view-ref ed vid))
-  (define bid (view-buffer-id v))
+  (define bid (editor-view-buffer-id ed vid))
   (define w (view-window v))
   (define b0 (editor-buffer ed bid))
   (define pre (window-point w))
@@ -112,7 +112,7 @@
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
 (define (editor-view-undo ed vid)
-  (define bid (view-buffer-id (editor-view-ref ed vid)))
+  (define bid (editor-view-buffer-id ed vid))
   (define-values (st h*) (history-pop-undo (editor-history ed bid)))
   (cond
     [(not st) (values ed #f)]
@@ -128,7 +128,7 @@
      (values (editor-put-history ed** bid h*) (change-report (step-undo-descs st)))]))
 
 (define (editor-view-redo ed vid)
-  (define bid (view-buffer-id (editor-view-ref ed vid)))
+  (define bid (editor-view-buffer-id ed vid))
   (define-values (st h*) (history-pop-redo (editor-history ed bid)))
   (cond
     [(not st) (values ed #f)]

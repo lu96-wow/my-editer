@@ -12,13 +12,14 @@
 ;;; 只读投影 + 生命周期；**不含**任何写原语（在 write.rkt）与显示决策（在 reaction.rkt）。
 ;;; 内容变更在 program.rkt（程序面）/ command.rkt（用户面）。
 ;;;
-;;; 不变量：任一 view 的 (window-buffer v) 必 eq? 于其 buffer-id 对应 entry 的 buffer。
+;;; 引用完整性：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer。
+;;; view 不存 buffer-id；要 id 就用 buffer-id-of 反查。
 
 (provide
  ;; editor 只读投影（构造器/struct:editor 不外露）
  editor? editor-buffers editor-views editor-focus
  buffer-entry-id buffer-entry-name
- view-id view-buffer-id view-sync
+ view-id view-sync
  change-report change-report? change-report-first-line change-report-last-line change-report-edits
  ;; 构造 / 生命周期
  editor-open
@@ -90,7 +91,7 @@
 (define (editor-open text [height 24] [width 80] #:name [name "*scratch*"])
   (define b (buffer-open text))
   (define entry (buffer-entry 0 name b (make-history)))
-  (editor (list entry) (list (view 0 0 (window-open b height width) 'free)) 0 1 1))
+  (editor (list entry) (list (view 0 (window-open b height width) 'free)) 0 1 1))
 
 ;; 新增一个 buffer + 一个视图。#:focus? 控制是否把焦点交给新视图（默认**不抢**）。
 ;; 返回 (values editor buffer-id)。
@@ -112,7 +113,7 @@
   (define w (window-clamp-view
              (window-set-point (window-open (buffer-entry-buffer entry) height width) p)))
   (values (struct-copy editor ed
-            [views (append (editor-views ed) (list (view vid bid w sync)))]
+            [views (append (editor-views ed) (list (view vid w sync)))]
             [focus (if focus? vid (editor-focus ed))]
             [next-view (add1 vid)])
           vid))
@@ -125,7 +126,8 @@
   (struct-copy editor ed [views vs] [focus focus]))
 
 (define (editor-close-buffer ed bid)
-  (define vs (filter (lambda (v) (not (= (view-buffer-id v) bid))) (editor-views ed)))
+  (define b (buffer-entry-buffer (editor-buffer-entry ed bid)))
+  (define vs (filter (lambda (v) (not (eq? b (view-buffer v)))) (editor-views ed)))
   (define bs (filter (lambda (e) (not (= (buffer-entry-id e) bid))) (editor-buffers ed)))
   (define focus
     (cond [(null? vs) #f]
@@ -137,11 +139,11 @@
 
 (define (editor-buffer-count ed) (length (editor-buffers ed)))
 (define (editor-view-count ed) (length (editor-views ed)))
-(define (editor-buffer-id ed) (view-buffer-id (editor-focused-view ed)))
+(define (editor-buffer-id ed) (buffer-id-of ed (view-buffer (editor-focused-view ed))))
 (define (editor-sync ed) (view-sync (editor-focused-view ed)))
 (define (editor-buffer ed bid) (buffer-entry-buffer (editor-buffer-entry ed bid)))
 (define (editor-buffer-name ed bid) (buffer-entry-name (editor-buffer-entry ed bid)))
-(define (editor-view-buffer-id ed vid) (view-buffer-id (editor-view-ref ed vid)))
+(define (editor-view-buffer-id ed vid) (buffer-id-of ed (view-buffer (editor-view-ref ed vid))))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
 
 ;; change-report 的行区间是 edits 的投影：读时现算，不存字段。
@@ -155,7 +157,8 @@
   (struct-copy editor ed [focus vid]))
 
 (define (editor-focus-buffer ed bid)
-  (define v (for/first ([v (in-list (editor-views ed))] #:when (= bid (view-buffer-id v))) v))
+  (define b (buffer-entry-buffer (editor-buffer-entry ed bid)))
+  (define v (for/first ([v (in-list (editor-views ed))] #:when (eq? b (view-buffer v))) v))
   (if v (struct-copy editor ed [focus (view-id v)]) ed))
 
 ;;; ---------- 光标 / 尺寸 / 映射（只读） ----------

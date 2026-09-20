@@ -30,9 +30,9 @@
          editor-leader-window)
 
 ;; none：只夹紧（换 buffer 引用时已保留旧光标；文本可能变小 → 必须夹回合法域）。
-(define (editor-clamp-views ed bid)
+(define (editor-clamp-views ed b)
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
-    (if (= bid (view-buffer-id v))
+    (if (eq? b (view-buffer v))
         (let ([w (view-window v)])
           (editor-put-view e (view-id v)
                            (window-clamp-view (window-clamp-selections w))))
@@ -40,35 +40,33 @@
 
 ;; map：每个同 buffer view 各自 free 映射所有选区（按施加顺序折叠过整批 descs）；
 ;; 不设 leader、不滚屏、不复制视口。
-(define (editor-map-views ed bid b* descs)
+(define (editor-map-views ed b descs)
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
-    (if (= bid (view-buffer-id v))
-        (editor-put-view e (view-id v) (rebase-free (view-window v) b* descs))
+    (if (eq? b (view-buffer v))
+        (editor-put-view e (view-id v) (rebase-free (view-window v) b descs))
         e)))
 
 ;; leader：vid 的选区推进到插入后 + ensure；同 buffer 其余 free 映射 / follow 镜像。
-(define (editor-leader-view ed vid b* descs)
+(define (editor-leader-view ed vid b descs)
   (define v (editor-view-ref ed vid))
-  (define bid (view-buffer-id v))
-  (define editing (rebase-leader (view-window v) b* descs))
+  (define editing (rebase-leader (view-window v) b descs))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
-      [(not (= bid (view-buffer-id x))) e]
+      [(not (eq? b (view-buffer x))) e]
       [(= vid (view-id x)) (editor-put-view e vid editing)]
       [else
        (define w (case (view-sync x)
-                   [(free)   (rebase-free   (view-window x) b* descs)]
+                   [(free)   (rebase-free   (view-window x) b descs)]
                    [(follow) (rebase-follow (view-window x) editing)]))
        (editor-put-view e (view-id x) w)])))
 
 ;; 用户导航：把 vid 的 window 定稿；同 buffer 的 follow view 镜像它（自由 view 钉住）。
 (define (editor-leader-window ed vid w*)
-  (define v (editor-view-ref ed vid))
-  (define bid (view-buffer-id v))
+  (define b (view-buffer (editor-view-ref ed vid)))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
       [(= vid (view-id x)) (editor-put-view e vid w*)]
-      [(and (= bid (view-buffer-id x)) (eq? (view-sync x) 'follow))
+      [(and (eq? b (view-buffer x)) (eq? (view-sync x) 'follow))
        (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
       [else e])))
 
@@ -79,12 +77,12 @@
   (define (mk text h w)
     (define b (buffer-open text))
     (editor (list (buffer-entry 0 "s" b (make-history)))
-            (list (view 0 0 (window-open b h w) 'free)) 0 1 1))
+            (list (view 0 (window-open b h w) 'free)) 0 1 1))
   (define (add-view ed h w p sync)
     (define b (buffer-entry-buffer (editor-buffer-entry ed 0)))
     (struct-copy editor ed
       [views (append (editor-views ed)
-                     (list (view (editor-next-view ed) 0
+                     (list (view (editor-next-view ed)
                                  (window-set-point (window-open b h w) p) sync)))]
       [next-view (add1 (editor-next-view ed))]))
   (define (vp ed vid) (window-point (view-window (editor-view-ref ed vid))))
@@ -95,13 +93,13 @@
 
   ;; none：光标字面不动（只夹紧，不映射）
   (define n0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
-  (define n1 (let-values ([(e _) (editor-apply-edit n0 0 d-ins)]) (editor-clamp-views e 0)))
+  (define n1 (let-values ([(e _) (editor-apply-edit n0 0 d-ins)]) (editor-clamp-views e (vb e 0))))
   (check-equal? (vp n1 1) (point 0 1))                     ; 不随编辑移动
 
   ;; map：光标随编辑右移，视口不动
   (define m0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
   (define m1 (let-values ([(e d*) (editor-apply-edit m0 0 d-ins)])
-               (editor-map-views e 0 (vb e 0) (list d*))))
+               (editor-map-views e (vb e 0) (list d*))))
   (check-equal? (vp m1 1) (point 0 3))                     ; (0,1) 映射到 (0,3)
   (check-equal? (vtl m1 1) 0)
 

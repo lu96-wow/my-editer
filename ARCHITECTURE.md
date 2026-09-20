@@ -84,7 +84,7 @@ editor.rkt ←  api, platform(neutral, program, command)
 `rebase` 是编辑后 view 的重新基准（free 映射 / follow 镜像）。
 
 ### platform —— 平台
-`state` 是 `[buffer-entry] × [view] × focus`（`view` = id × buffer-id × window × sync）；
+`state` 是 `[buffer-entry] × [view] × focus`（`view` = id × window × sync，buffer 在 window 里）；
 `write` 是无策略写原语，维持不变量；`neutral` 只读投影；`reaction` 是唯一的显示语义；
 `program` / `command` 是两个操作面。
 
@@ -107,7 +107,7 @@ viewport    window  = buffer ⊕ point ⊕ (mode, top, left, height, width)
             project = window × layout → screen
             rebase  = window × edit-desc → window              （free / follow）
              │
-platform    state   = [buffer-entry] × [view] × focus   （view = id × buffer-id × window × sync）
+platform    state   = [buffer-entry] × [view] × focus   （view = id × window × sync；window 含 buffer）
             write   : state × … → state                        （无策略写原语）
             reaction= state × edit → state                     （clamp / map / leader）
             neutral = state → 读 / 构造 / 投影

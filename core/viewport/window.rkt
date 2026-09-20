@@ -57,9 +57,9 @@
    selections    ; (nonempty-listof selection)
    primary-index ; nat        主选区下标
    mode          ; 'clip|'wrap
-   top-line      ; nat        clip：顶 buffer 行；wrap：顶部所在 buffer 行
-   left-col      ; nat        clip：水平滚动列；wrap：恒 0
-   top-seg       ; nat        wrap：顶部行的第几个折行段；clip：恒 0
+   top-line      ; nat        clip/wrap：顶部所在 buffer 行
+   left-col      ; nat        clip：水平滚动列（wrap 下被布局忽略；值保留，切回 clip 再生效）
+   top-seg       ; nat        wrap：顶部行的第几个折行段（clip 下被布局忽略；同上）
    height        ; nat        可见行数
    width)        ; nat        可见列数
   #:transparent)

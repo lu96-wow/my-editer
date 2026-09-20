@@ -262,7 +262,6 @@ face-provider : buffer line -> (listof (list start end face))
 | `buffer-entry-id` | buffer id（投影） |
 | `buffer-entry-name` | buffer 名（投影） |
 | `view-id` | view id（投影） |
-| `view-buffer-id` | view 看哪个 buffer（投影） |
 | `view-sync` | view 的同步策略（投影） |
 
 ### 9.3 位置解析（程序入口）

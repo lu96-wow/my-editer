@@ -17,7 +17,8 @@
 ;;;   editor-put-view      换一个 view 的 window
 ;;;   editor-put-history / editor-record-history / editor-record-batch
 ;;;
-;;; 不变量（由本层维持）：任一 view 的 window.buffer 必 eq? 于其 buffer-id 对应 entry 的 buffer。
+;;; 不变量（由本层维持）：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer
+;;; （引用完整性）。view 不另存 buffer-id，所以「绑定」只有一处，不会失同步。
 
 (provide
  editor-swap-buffer
@@ -47,11 +48,13 @@
 ;; 换某 buffer 的 buffer 值：entries + 同 buffer view 的 window.buffer 一起换。
 ;; **不**动光标、不滚屏、不 ensure（即使文本变了，光标也不映射）。
 (define (editor-swap-buffer ed bid b*)
+  (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
   (struct-copy editor ed
     [buffers (for/list ([e (in-list (editor-buffers ed))])
                (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [buffer b*]) e))]
     [views (for/list ([v (in-list (editor-views ed))])
-             (if (= (view-buffer-id v) bid)
+             ;; 按**文档值**找同属主 view：绑定只有 window.buffer 一处，无需再对 buffer-id。
+             (if (eq? b0 (view-buffer v))
                  (struct-copy view v
                    [window (struct-copy window (view-window v) [buffer b*])])
                  v))]))
@@ -93,7 +96,6 @@
   (map-view ed vid
             (lambda (v)
               (struct-copy view v
-                [buffer-id bid]
                 [window (window-clamp-view (window-set-buffer (view-window v) b*))]))))
 
 ;;; ---------- 账本写回 ----------
@@ -129,8 +131,9 @@
 
 (module+ test
   ;; swap-buffer 不动光标
-  (define e0 (editor (list (buffer-entry 0 "s" (buffer-open "old") (make-history)))
-                     (list (view 0 0 (window-open (buffer-open "old") 3 10) 'free))
+  (define b-old (buffer-open "old"))
+  (define e0 (editor (list (buffer-entry 0 "s" b-old (make-history)))
+                     (list (view 0 (window-open b-old 3 10) 'free))
                      0 1 1))
   (define e1 (editor-swap-buffer e0 0 (buffer-open "NEW")))
   (check-equal? (window-buffer (view-window (editor-view-ref e1 0)))

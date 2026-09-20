@@ -80,8 +80,8 @@
        [else
         (define b* (editor-buffer ed* bid))
         (define ed** (case reaction
-                       [(none) (editor-clamp-views ed* bid)]
-                       [(map)  (editor-map-views ed* bid b* (list d*))]
+                       [(none) (editor-clamp-views ed* b*)]
+                       [(map)  (editor-map-views ed* b* (list d*))]
                        [else (error 'editor-edit-at "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
         (define ed*** (if record?
                           (editor-record-history
@@ -103,8 +103,8 @@
     [else
      (define b* (editor-buffer ed* bid))
      (define ed** (case reaction
-                    [(none) (editor-clamp-views ed* bid)]
-                    [(map)  (editor-map-views ed* bid b* ds)]
+                    [(none) (editor-clamp-views ed* b*)]
+                    [(map)  (editor-map-views ed* b* ds)]
                     [else (error 'editor-edit-at-batch "reaction 必须是 'none 或 'map，得到 ~a" reaction)]))
      (define ed*** (if record?
                        (editor-record-batch ed** bid ds (reverse ivs) (edits-min-start ds))
