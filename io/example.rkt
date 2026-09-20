@@ -9,13 +9,17 @@
 ;;;
 ;;; 注释有固定标签，请按标签读：
 ;;;
-;;;   [core]   用到的 core 能力（原子 / 文档 / 视口 / 平台各面）
+;;;   [core]   用到的 core 能力（原子 / 文档 / 视口 / 编辑原语）
 ;;;   [意图]   为什么选这个 api、为什么这个顺序、保证什么不变量
 ;;;   [前端]   应用自己的策略，core 不该管（高亮、终端、按键映射、状态栏）
-;;;   [缺口]   core 目前缺失，导致这里要绕 —— 这是给你改进 core 的线索（§6 汇总）
 ;;;
 ;;; 数据驱动：应用状态是一个不可变 struct `app`；命令都是 `app -> app` 的纯函数；
 ;;; 只有最外层事件循环用 set! 更新一次。core 的 editor 只是 app 的一个字段。
+;;;
+;;; core 的编辑只有**一个原语** `editor-command`（策略全是参数）：
+;;;   editor-edit     = 焦点 view + #:reaction 'leader + #:record? #t   （用户编辑）
+;;;   editor-view-edit= 指定 view + 同上
+;;;   editor-command  = 本示例直接用它演示「程序编辑」：显式 #:selection + 默认 reaction 'none
 ;;;
 ;;; 运行：  racket io/example.rkt [文件]
 ;;; 按键：  可打印/中文 插入   Enter 自动缩进换行   Backspace/Delete 删除   Tab 两空格
@@ -54,23 +58,25 @@
             (if path (path->string (file-name-from-path path)) "*scratch*")))
 
 ;;; ============================================================================
-;;; §2 组合操作（每条都标了 [core]/[意图]/[前端]/[缺口]）
+;;; §2 组合操作（每条都标了 [core]/[意图]/[前端]）
 ;;; ============================================================================
 
 ;; 2.0 编辑：没有任何「重算」步骤
-;; [core] editor-edit ed op → (values editor report)。文本变；派生 face 不存文档，
-;;        所以不存在「过期」，也就没有重算。
-;; [意图] 高亮改成投影时的 face-provider（见 2.8 / §3），编辑路径彻底与标注解耦。
-(define (edit a op)
-  (define-values (ed _report) (editor-edit (app-ed a) op))
+;; [core] editor-edit ed op → (values editor report)，用户编辑（leader + 记账）。
+;;        文本变；派生 face 不存文档，所以不存在「过期」，也就没有重算。
+;; [意图] 高亮走投影时的 face-provider（见 2.8 / §3），编辑路径与标注解耦。
+;;
+;; core 命令有两种返回形状：editor（视图命令）或 (values editor report)（编辑 / 账本）。
+;; 这里只把 editor 塞回 app；report 前端不用。
+(define (run-ed a f)
+  (define-values (ed _report) (f (app-ed a)))
   (struct-copy app a [ed ed]))
 
-(define (insert-text app str) (edit app (edit-insert str)))
-(define (delete-back app)     (edit app (edit-backspace)))
-(define (delete-fwd app)      (edit app (edit-delete)))
+;; 一次用户编辑：op : buffer selection → edit-desc。
+(define (edit a op) (run-ed a (lambda (ed) (editor-edit ed op))))
 
 ;; 2.2 回车：自动缩进
-;; [core] op 是**值**：`buffer point -> edit-desc`。可以自己写，先看 buffer 再决定插什么。
+;; [core] op 是**值**：`buffer selection -> edit-desc`。可以自己写，先看 buffer 再决定插什么。
 ;; [意图] 自动缩进 = 插 "\n" + 当前行前导空白，必须读 buffer，所以用自定义 op；
 ;;        edit-newline 只会插一个 "\n"，做不到。
 ;; [前端] 缩进宽度、是否缩进，是应用策略。
@@ -83,8 +89,8 @@
           (edit-desc (selection-anchor sel) (selection-head sel) (string-append "\n" indent)))))
 
 ;; 2.3 导航
-;; [core] editor-left/right/up/down/home/end/scroll（focus 糖 → editor-view-* + ensure）。
-;; [意图] 用户导航 = 动焦点光标 + 保证可见 + 同 buffer 的 follow 视图镜像；全在用户面。
+;; [core] editor-left/right/up/down/home/end/scroll（命名用户命令，内部走 editor-command 组合）。
+;; [意图] 用户导航 = 动焦点光标 + 保证可见 + 同 buffer 的 follow 视图镜像。
 ;; [前端] 按键 → 动作的映射属于应用。
 (define (navigate a sym)
   (define ed (app-ed a))
@@ -99,18 +105,10 @@
           [(pageup)   (editor-scroll ed (- (editor-height ed)))]
           [(pagedown) (editor-scroll ed (editor-height ed))])]))
 
-;; 2.4 账本
-;; [core] editor-undo / editor-redo —— 按焦点 view 所属 buffer 的账本；同样走 leader 语义。
-;; [意图] 撤销也改文本，所以同样用返回的 change-report 重贴高亮。
-(define (undo a) (define-values (ed _r) (editor-undo (app-ed a))) (struct-copy app a [ed ed]))
-(define (redo a) (define-values (ed _r) (editor-redo (app-ed a))) (struct-copy app a [ed ed]))
-
-;; 2.5 程序面：不打扰用户的编辑
-;; [core] editor-edit-at ed bid point op，默认 #:reaction 'none。
-;; [意图] 「在文件末尾追加时间戳」不该把用户光标拽走 —— 这正是**程序面**与用户面的区别，
-;;        也是 core 「内容变更默认不动视图」的体现。
-;; [缺口] 程序面没有 leader/ensure，所以「让某个 view 跟着这次程序编辑」只能自己映射，
-;;        或退化成用户面（会抢焦点/改焦点 view）。这也是 2.1 说的合一动机。
+;; 2.5 程序编辑：不打扰用户
+;; [core] editor-command 是唯一编辑原语；策略是参数。
+;; [意图] 「在文件末尾追加时间戳」不该把用户光标拽走 —— 用显式 #:selection 指定位置，
+;;        reaction 留默认 'none（不动任何视图），也不记账。
 (define (append-stamp a)
   (define ed (app-ed a))
   (define bid (editor-buffer-id ed))
@@ -118,18 +116,17 @@
   (define p (point (sub1 n) (editor-buffer-line-length ed bid (sub1 n))))
   (define stamp (number->string (current-seconds)))
   (define-values (ed* _report)
-    (editor-edit-at ed bid p (edit-insert (string-append "\n;; stamp " stamp))))
+    (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
+                    #:selection (list (caret p))))
   (struct-copy app a [ed ed*]))
 
 ;; 2.6 视图面：尺寸
-;; [core] editor-view-set-size ed vid h w —— 按 vid 定位，只动那个 view，不碰焦点。
+;; [core] editor-set-size ed h w —— focus 糖（内部 = editor-view-set-size + 焦点 vid）。
 ;; [意图] 尺寸是「怎么看你」，属于视图面；同 buffer 的其它 view 不受影响。
-;; [缺口] 没有 editor-set-size 这样的 focus 糖，必须自己 (editor-focus) 取 vid。
 (define (resize a rows cols)
   (struct-copy app a
     [rows rows] [cols cols]
-    [ed (editor-view-set-size (app-ed a) (editor-focus (app-ed a))
-                              (max 1 (sub1 rows)) (max 1 cols))]))
+    [ed (editor-set-size (app-ed a) (max 1 (sub1 rows)) (max 1 cols))]))
 
 ;;; ---------- 2.8 标注：关键字高亮（应用策略）----------
 ;;
@@ -154,19 +151,16 @@
 
 ;;; ---------- 2.9 选中 / 多光标（应用策略） ----------
 ;;
-;; [core] editor-selections / editor-set-selections / editor-add-selections / editor-point /
-;;        editor-buffer->string / editor-buffer-offset->point / selection / caret …
+;; [core] editor-selections / editor-set-selections / editor-add-selections / editor-primary /
+;;        editor-point / editor-buffer->string / editor-buffer-offset->point / selection / caret …
 ;;        core 只给「选区集合 + 增删改」和「按所有选区批量替换」；「选哪个词、选下一个、全选同词」
 ;;        全是应用策略。
 ;; [前端] 词边界、搜索方式、Ctrl+D 的推进规则，都由应用决定。
 
-;; 当前主选区：core 显式给，不用靠位置比较
-(define (primary-selection ed) (editor-primary ed))
-
 ;; 「词」：主选区非空 → 选区文本；否则取光标处/紧邻的 [A-Za-z0-9_] 串。
 (define (word-at ed)
   (define bid (editor-buffer-id ed))
-  (define prim (primary-selection ed))
+  (define prim (editor-primary ed))
   (if (and prim (not (caret? prim)))
       (let-values ([(a b) (selection-range prim)])
         (values (editor-buffer-range-text ed bid a b) a b))
@@ -196,7 +190,7 @@
   (cond
     [(not pat) a]
     [else
-     (define prim (primary-selection ed))
+     (define prim (editor-primary ed))
      (cond
        [(caret? prim)                              ; 第一次：把 primary 扩成词
         (struct-copy app a [ed (editor-map-primary ed (lambda (_s) (selection ps pe)))])]
@@ -236,7 +230,7 @@
             (define h (selection-point s))
             (define h* (case sym
                          [(left)  (point-left b h)]     [(right) (point-right b h)]
-                         [(up)    (window-point-up w h)] [(down)  (window-point-down w h)]
+                         [(up)    (point-up w h)]       [(down)  (point-down w h)]
                          [(home)  (point-home h)]       [(end)   (point-end b h)]))
             (selection (selection-anchor s) h*)))]))
 
@@ -246,8 +240,8 @@
 (define (add-caret-vertical a delta)
   (define ed (app-ed a))
   (define w (editor-window ed))
-  (add-caret a (if (> delta 0) (window-point-down w (editor-point ed))
-                                (window-point-up w (editor-point ed)))))
+  (add-caret a (if (> delta 0) (point-down w (editor-point ed))
+                                (point-up w (editor-point ed)))))
 
 ;;; ============================================================================
 ;;; §3 渲染（[前端]；core 只给 screen）
@@ -336,7 +330,7 @@
 ;;
 ;; [core] 事件类型（text/key/resize/quit 等）在 core 定义；这里由 racket-tui 的
 ;;        build-input 分好类，所以只写回调。
-;; [前端] 按键 → 命令的映射、Ctrl 组合，都是应用政策。
+;; [前端] 按键 → 命令的映射、Ctrl 组合，都是应用策略。
 
 (define (run path)
   (with-tui
@@ -349,11 +343,11 @@
 
      (define handler
        (build-input
-        #:text      (lambda (str)  (set! app (insert-text app str)))
+        #:text      (lambda (str)  (set! app (edit app (edit-insert str))))
         #:enter     (lambda ()     (set! app (newline app)))
-        #:backspace (lambda ()     (set! app (delete-back app)))
-        #:delete    (lambda ()     (set! app (delete-fwd app)))
-        #:tab       (lambda ()     (set! app (insert-text app "  ")))
+        #:backspace (lambda ()     (set! app (edit app (edit-backspace))))
+        #:delete    (lambda ()     (set! app (edit app (edit-delete))))
+        #:tab       (lambda ()     (set! app (edit app (edit-insert "  "))))
         #:left      (lambda ()     (set! app (navigate app 'left)))
         #:right     (lambda ()     (set! app (navigate app 'right)))
         #:up        (lambda ()     (set! app (navigate app 'up)))
@@ -382,8 +376,8 @@
                          (set! app (add-caret-vertical app (if (eq? key 'down) 1 -1)))]
                         [(and (char? key) (mods-ctrl? mods))
                          (case key
-                           [(#\Z) (set! app (undo app))]
-                           [(#\Y) (set! app (redo app))]
+                           [(#\Z) (set! app (run-ed app editor-undo))]
+                           [(#\Y) (set! app (run-ed app editor-redo))]
                            [(#\D) (set! app (select-next-occurrence app))]
                            [(#\A) (set! app (select-all-occurrences app))]
                            [(#\G) (set! app (append-stamp app))]
@@ -406,10 +400,10 @@
 
   ;; 用户面编辑 + 撤销
   (define a0 (make-app "" 5 20 "*t*"))
-  (define a1 (insert-text a0 "abc"))
+  (define a1 (edit a0 (edit-insert "abc")))
   (check-equal? (editor-buffer->string (app-ed a1) 0) "abc")
   (check-equal? (editor-point (app-ed a1)) (point 0 3))
-  (define a2 (undo a1))
+  (define a2 (run-ed a1 editor-undo))
   (check-equal? (editor-buffer->string (app-ed a2) 0) "")
 
   ;; 自定义 op：自动缩进
@@ -418,14 +412,14 @@
   (define a5 (newline a4))
   (check-equal? (editor-buffer->string (app-ed a5) 0) "  x\n  ")
 
-  ;; 程序面：追加时间戳不改光标
-  (define a6 (insert-text (make-app "hi" 5 20 "*t*") "!"))   ; → "!hi"，光标 (0,1)
+  ;; 程序编辑：追加时间戳不改光标（editor-command，reaction 'none）
+  (define a6 (edit (make-app "hi" 5 20 "*t*") (edit-insert "!")))   ; → "!hi"，光标 (0,1)
   (define a7 (append-stamp a6))
-  (check-equal? (editor-point (app-ed a7)) (point 0 1))       ; 光标没动（reaction none）
+  (check-equal? (editor-point (app-ed a7)) (point 0 1))       ; 光标没动
   (check-true (regexp-match? #rx";; stamp" (editor-buffer->string (app-ed a7) 0)))
 
   ;; 标注：派生 face 在投影时出现（文档里根本没有 face 这个概念）
-  (define a8 (insert-text (make-app "" 5 20 "*t*") "define x"))
+  (define a8 (edit (make-app "" 5 20 "*t*") (edit-insert "define x")))
   (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a8) (app-face-provider a8))) 0)))
                 (hash 'face 'keyword))                                        ; 投影里有
   (define a9 (toggle-highlight a8))                                          ; 关 → provider 返回空
@@ -443,13 +437,13 @@
   (check-equal? (length (editor-selections (app-ed m1))) 1)      ; 光标→先选词
   (define m2 (select-next-occurrence m1))
   (check-equal? (length (editor-selections (app-ed m2))) 2)      ; 再选下一个相同串
-  (define m3 (insert-text m2 "X"))                             ; 两个一起替换
+  (define m3 (edit m2 (edit-insert "X")))                        ; 两个一起替换
   (check-equal? (editor-buffer->string (app-ed m3) 0) "X bar X")
   (check-equal? (length (editor-selections (app-ed (collapse-selection m3)))) 1)
   ;; 全选同词
   (define m4 (select-all-occurrences m0))
   (check-equal? (length (editor-selections (app-ed m4))) 2)
-  (check-equal? (editor-buffer->string (app-ed (insert-text m4 "Y")) 0) "Y bar Y")
+  (check-equal? (editor-buffer->string (app-ed (edit m4 (edit-insert "Y"))) 0) "Y bar Y")
   ;; Shift+右：扩选（主选区 head 动、anchor 不动）
   (define m5 (extend-selection m0 'right))
   (check-true (not (caret? (car (editor-selections (app-ed m5))))))
@@ -463,7 +457,7 @@
   (define x1 (navigate x0 'down))
   (define x2 (extend-selection x1 'down))
   (check-true (not (caret? (car (editor-selections (app-ed x2))))))
-  (define x3 (delete-back x2))
+  (define x3 (edit x2 (edit-backspace)))
   (check-equal? (editor-buffer->string (app-ed x3) 0) "abc\nghi")
   (check-true (bytes? (frame->bytes x3)))
 
@@ -477,10 +471,7 @@
 ;;; §6 本示例暴露的 core 改进线索（汇总）
 ;;; ============================================================================
 ;;
-;; 1. 两个操作面重复：editor-edit（用户面）与 editor-edit-at（程序面）各自实现
-;;    「施加→反应→记账→report」。可考虑让 editor-edit-at 收 #:reaction 'leader + vid，
-;;    把用户面变成它的特例，消除重复（见 2.1 / 2.5）。
-;; 2. （已解决）派生 face 不再存文档：改成投影时的 face-provider，编辑与标注彻底解耦（见 2.0/2.8）。
-;; 3. （已解决）视图面 focus 糖已有 editor-set-size 等（见 2.6）。
-;; 4. report 粒度偏粗：change-report 只给「首行/末行 + descs」。若前端要按**每个**
-;;    变更区间做增量标注（如多光标），需要自己再走 change-report-edits（见 2.0）。
+;; 1. report 粒度：change-report 只给「首行/末行 + descs」（行区间由 edits 现算）。
+;;    前端若要按**每个**变更区间做增量处理，需自己走 change-report-edits。
+;; 2. 无「多窗格布局」原语：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
+;;    但 view 的摆放、焦点切换策略不在 core）。

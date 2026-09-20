@@ -9,19 +9,19 @@
 
 (provide
  (struct-out restrict)
- make-restrict
+ restrict-empty
  restrict-empty?)
 
 (struct restrict (read-only?) #:transparent)
 
-(define (make-restrict) (restrict #f))
-(define (restrict-empty? r) (equal? r (make-restrict)))
+(define (restrict-empty) (restrict #f))
+(define (restrict-empty? r) (equal? r (restrict-empty)))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (check-false (restrict-read-only? (make-restrict)))
+  (check-false (restrict-read-only? (restrict-empty)))
   (check-true (restrict-read-only? (restrict #t)))
-  (check-true (restrict-empty? (make-restrict)))
+  (check-true (restrict-empty? (restrict-empty)))
   (check-false (restrict-empty? (restrict #t)))
   (displayln "restrict.rkt: all tests passed"))

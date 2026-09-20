@@ -49,12 +49,12 @@
  caret selection-point caret-point selection-range selection-empty? caret?
  selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
  ;; ---- restrict（约束槽）----
- restrict restrict? struct:restrict make-restrict restrict-read-only?
+ restrict restrict? struct:restrict restrict-empty restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
  buffer buffer? struct:buffer buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
  buffer-line-length buffer-clamp-point buffer-point->offset buffer-offset->point
- buffer-apply-edit buffer-apply-edit-trusted buffer-edit
+ buffer-apply-edit buffer-apply-edit-trusted buffer-edit buffer-edit-trusted
  edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
  buffer-edit-desc-inverse
  buffer-range-text
@@ -62,7 +62,7 @@
  buffer-content buffer-content-eq? buffer-restrictions
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
- buffer-apply-edit-batch edits-map-position edits-span
+ buffer-apply-edit-batch buffer-apply-edit-batch-trusted edits-map-position edits-span
  ;; ---- events —— 类型化输入 ----
  modifiers modifiers? struct:modifiers
  modifiers-control modifiers-alt modifiers-shift modifiers-meta
@@ -81,21 +81,21 @@
  cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
  region region? struct:region region-row region-start-col region-end-col region-face
  screen screen? struct:screen screen-rows screen-cols screen-row-runs
- screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections make-screen screen-diff-rows screen-compose screen->string
+ screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-diff-rows screen-compose screen->string
  ;; ---- window ----
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
- window-selection-map window-primary-map
- window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-map-selections window-clamp-selections
- window-add-selection window-remove-selection window-set-primary window-selection-member?
+ window-map-selections window-map-primary window-map-points
+ window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-map-points window-clamp-selections
+ window-add-selection window-remove-selection window-set-primary window-set-primary-index window-selection-member?
  window-set-mode window-set-top-line window-set-left-col
- window-set-top-seg window-set-size window-scroll-clip window-hscroll
+ window-set-top-seg window-set-size window-vscroll window-hscroll
  window-left window-right window-home window-end
  point-left point-right point-home point-end
- window-ensure-point window-clamp-view window-visual-move window-point-up window-point-down window-up window-down
- window-point->screen window-point-at->screen window-screen->point window-scroll-visual
+ window-ensure-point window-clamp-view window-visual-move point-up point-down window-up window-down
+ window-point->screen window-screen->point window-scroll
  ;; ---- project / render ----
  window->screen
  no-face-provider)
@@ -108,6 +108,7 @@
   (require rackunit)
 
   (define b (buffer-open "hello\nworld"))
+  ;; buffer 基本读口
   (check-equal? (buffer->string b) "hello\nworld")
   (check-equal? (buffer-line-count b) 2)
 

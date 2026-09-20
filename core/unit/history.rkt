@@ -25,7 +25,7 @@
 (provide
  (struct-out step)
  (struct-out history)
- make-history
+ history-empty
  history-record
  history-record-batch
  history-pop-undo
@@ -46,7 +46,7 @@
 (struct history (undo redo) #:transparent)
 ;; undo / redo : (listof step)  栈顶在前
 
-(define (make-history) (history '() '()))
+(define (history-empty) (history '() '()))
 (define (history-can-undo? h) (pair? (history-undo h)))
 (define (history-can-redo? h) (pair? (history-redo h)))
 (define (history-undo-depth h) (length (history-undo h)))
@@ -137,7 +137,7 @@
         (values (history-record h (edit-change d (buffer-edit-desc-inverse b d) p)) b*)))
 
   ;; 打字连续段并成 1 步
-  (define-values (t1 b1) (rec (make-history) (buffer-open "") (edit-insert "a") (point 0 0)))
+  (define-values (t1 b1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
   (define-values (t2 b2) (rec t1 b1 (edit-insert "b") (point 0 1)))
   (define-values (t3 b3) (rec t2 b2 (edit-insert "c") (point 0 2)))
   (check-equal? (buffer->string b3) "abc")
@@ -150,13 +150,13 @@
   (check-equal? (buffer->string (ap-all (buffer-open "") (step-replay-descs s2))) "abc")
 
   ;; 换行打断连续段
-  (define-values (n1 nb1) (rec (make-history) (buffer-open "") (edit-insert "a") (point 0 0)))
+  (define-values (n1 nb1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
   (define-values (n2 nb2) (rec n1 nb1 (edit-newline) (point 0 1)))
   (define-values (n3 _u2) (rec n2 nb2 (edit-insert "b") (point 1 0)))
   (check-equal? (history-undo-depth n3) 3)
 
   ;; 退格连续段
-  (define-values (k1 kb1) (rec (make-history) (buffer-open "abc") (edit-backspace) (point 0 3)))
+  (define-values (k1 kb1) (rec (history-empty) (buffer-open "abc") (edit-backspace) (point 0 3)))
   (define-values (k2 kb2) (rec k1 kb1 (edit-backspace) (point 0 2)))
   (check-equal? (buffer->string kb2) "a")
   (check-equal? (history-undo-depth k2) 1)
@@ -164,13 +164,13 @@
   (check-equal? (buffer->string (ap-all kb2 (step-undo-descs ks1))) "abc")
 
   ;; 前向删除连续段
-  (define-values (f1 fb1) (rec (make-history) (buffer-open "abcde") (edit-delete) (point 0 2)))
+  (define-values (f1 fb1) (rec (history-empty) (buffer-open "abcde") (edit-delete) (point 0 2)))
   (define-values (f2 fb2) (rec f1 fb1 (edit-delete) (point 0 2)))
   (check-equal? (buffer->string fb2) "abe")
   (check-equal? (history-undo-depth f2) 1)
 
   ;; 粘贴（多字符）不并
-  (define-values (p1 pb1) (rec (make-history) (buffer-open "") (edit-insert "a") (point 0 0)))
+  (define-values (p1 pb1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
   (define-values (p2 _u4) (rec p1 pb1 (edit-insert "XY") (point 0 1)))
   (check-equal? (history-undo-depth p2) 2)
 
@@ -185,7 +185,7 @@
   (define-values (bb* bds bis)
     (buffer-apply-edit-batch bb0 (list (edit-desc (point 0 0) (point 0 0) "X")
                                        (edit-desc (point 0 3) (point 0 3) "Y"))))
-  (define bh (history-record-batch (make-history) bds (reverse bis) (point 0 0)))
+  (define bh (history-record-batch (history-empty) bds (reverse bis) (point 0 0)))
   (check-equal? (buffer->string bb*) "XabcYd")
   (check-equal? (history-undo-depth bh) 1)
   (define-values (bs _bpu) (history-pop-undo bh))
@@ -193,7 +193,7 @@
   (check-equal? (buffer->string (ap-all bb0 (step-replay-descs bs))) "XabcYd")
 
   ;; 空栈
-  (define eh (make-history))
+  (define eh (history-empty))
   (check-false (let-values ([(s _) (history-pop-undo eh)]) s))
   (check-false (let-values ([(s _) (history-pop-redo eh)]) s))
   (check-false (history-can-undo? eh))

@@ -13,6 +13,7 @@
 
 (provide
  buffer-apply-edit-batch
+ buffer-apply-edit-batch-trusted
  edits-map-position
  edits-span)
 
@@ -26,7 +27,9 @@
 ;; 返回 (values 新 buffer applied-descs inverses)：
 ;;   applied-descs 按**施加顺序**（起点倒序），供 edits-map-position 按序映射；
 ;;   inverses 与之平行，inv_i 由「施加 desc_i 前」的 buffer 导出（no-op / 被拒的不进结果）。
-(define (buffer-apply-edit-batch b descs [guard? #t])
+(define (buffer-apply-edit-batch b descs) (buffer-apply-edit-batch* b descs #t))
+(define (buffer-apply-edit-batch-trusted b descs) (buffer-apply-edit-batch* b descs #f))
+(define (buffer-apply-edit-batch* b descs guard?)
   (cond
     [(null? descs) (values b '() '())]
     [else
@@ -122,7 +125,7 @@
   (check-equal? rinv (list (edit-desc (point 0 3) (point 0 4) "")))
   ;; #f 守卫：绕 read-only 强施
   (define-values (rt* rtds _rti)
-    (buffer-apply-edit-batch rbd (list (edit-desc (point 0 1) (point 0 1) "X")) #f))
+    (buffer-apply-edit-batch-trusted rbd (list (edit-desc (point 0 1) (point 0 1) "X"))))
   (check-equal? (buffer->string rt*) "aXbcd")
   (check-equal? rtds (list (edit-desc (point 0 1) (point 0 1) "X")))
 

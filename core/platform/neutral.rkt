@@ -13,7 +13,7 @@
 ;;; 内容变更在 program.rkt（程序面）/ command.rkt（用户面）。
 ;;;
 ;;; 引用完整性：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer。
-;;; view 不存 buffer-id；要 id 就用 buffer-id-of 反查。
+;;; 要 buffer-id 就用 buffer-id-of 反查。
 
 (provide
  ;; editor 只读投影（构造器/struct:editor 不外露）
@@ -36,6 +36,7 @@
  editor-buffer
  editor-buffer-name
  editor-view-buffer-id
+ editor-view-buffer
  editor-view-sync
  editor-sync
  ;; 光标 / 尺寸 / 映射（只读）
@@ -43,6 +44,8 @@
  editor-view-point
  editor-primary
  editor-view-primary
+ editor-primary-index
+ editor-view-primary-index
  editor-window
  editor-view-window
  editor-selections
@@ -90,14 +93,14 @@
 ;;; ---------- 构造 / 生命周期 ----------
 (define (editor-open text [height 24] [width 80] #:name [name "*scratch*"])
   (define b (buffer-open text))
-  (define entry (buffer-entry 0 name b (make-history)))
+  (define entry (buffer-entry 0 name b (history-empty)))
   (editor (list entry) (list (view 0 (window-open b height width) 'free)) 0 1 1))
 
 ;; 新增一个 buffer + 一个视图。#:focus? 控制是否把焦点交给新视图（默认**不抢**）。
 ;; 返回 (values editor buffer-id)。
 (define (editor-open-buffer ed name text [height 24] [width 80] #:focus? [focus? #f])
   (define bid (editor-next-buffer ed))
-  (define entry (buffer-entry bid name (buffer-open text) (make-history)))
+  (define entry (buffer-entry bid name (buffer-open text) (history-empty)))
   (define ed1 (struct-copy editor ed
                [buffers (append (editor-buffers ed) (list entry))]
                [next-buffer (add1 bid)]))
@@ -137,16 +140,21 @@
 
 ;;; ---------- 查询 ----------
 
+;; 焦点 view 所属 buffer 的 id（focus 糖的默认 bid）。
+(define (focused-bid ed) (editor-view-buffer-id ed (editor-focus ed)))
+
 (define (editor-buffer-count ed) (length (editor-buffers ed)))
 (define (editor-view-count ed) (length (editor-views ed)))
-(define (editor-buffer-id ed) (buffer-id-of ed (view-buffer (editor-focused-view ed))))
-(define (editor-sync ed) (view-sync (editor-focused-view ed)))
-(define (editor-buffer ed bid) (buffer-entry-buffer (editor-buffer-entry ed bid)))
-(define (editor-buffer-name ed bid) (buffer-entry-name (editor-buffer-entry ed bid)))
+(define (editor-buffer-id ed) (focused-bid ed))
+;; bid 省略时用焦点 view 的 buffer（focus 糖）。
+(define (editor-buffer ed [bid (focused-bid ed)]) (buffer-entry-buffer (editor-buffer-entry ed bid)))
+(define (editor-buffer-name ed [bid (focused-bid ed)]) (buffer-entry-name (editor-buffer-entry ed bid)))
 (define (editor-view-buffer-id ed vid) (buffer-id-of ed (view-buffer (editor-view-ref ed vid))))
+(define (editor-view-buffer ed vid) (view-buffer (editor-view-ref ed vid)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
+(define (editor-sync ed) (editor-view-sync ed (editor-focus ed)))
 
-;; change-report 的行区间是 edits 的投影：读时现算，不存字段。
+;; change-report 的行区间是 edits 的投影，读时现算。
 (define (change-report-first-line r)
   (let-values ([(f _) (edits-span (change-report-edits r))]) f))
 (define (change-report-last-line r)
@@ -162,34 +170,37 @@
   (if v (struct-copy editor ed [focus (view-id v)]) ed))
 
 ;;; ---------- 光标 / 尺寸 / 映射（只读） ----------
+;; 每个操作只有一份实现（editor-view-* 按 vid）；editor-* 是焦点糖，委托给它。
 
-(define (editor-point ed) (window-point (view-window (editor-focused-view ed))))
+(define (editor-point ed) (editor-view-point ed (editor-focus ed)))
 (define (editor-view-point ed vid) (window-point (view-window (editor-view-ref ed vid))))
 ;; 显式 primary：给选区值，不靠位置比较。
-(define (editor-primary ed) (window-primary (view-window (editor-focused-view ed))))
+(define (editor-primary ed) (editor-view-primary ed (editor-focus ed)))
 (define (editor-view-primary ed vid) (window-primary (view-window (editor-view-ref ed vid))))
-(define (editor-window ed) (view-window (editor-focused-view ed)))
+(define (editor-primary-index ed) (editor-view-primary-index ed (editor-focus ed)))
+(define (editor-view-primary-index ed vid) (window-primary-index (view-window (editor-view-ref ed vid))))
+(define (editor-window ed) (editor-view-window ed (editor-focus ed)))
 (define (editor-view-window ed vid) (view-window (editor-view-ref ed vid)))
-(define (editor-view-selections ed vid) (window-selections (view-window (editor-view-ref ed vid))))
 (define (editor-selections ed) (editor-view-selections ed (editor-focus ed)))
-(define (editor-height ed) (window-height (view-window (editor-focused-view ed))))
-(define (editor-width ed) (window-width (view-window (editor-focused-view ed))))
+(define (editor-view-selections ed vid) (window-selections (view-window (editor-view-ref ed vid))))
+(define (editor-height ed) (editor-view-height ed (editor-focus ed)))
+(define (editor-width ed) (editor-view-width ed (editor-focus ed)))
 (define (editor-view-height ed vid) (window-height (view-window (editor-view-ref ed vid))))
 (define (editor-view-width ed vid) (window-width (view-window (editor-view-ref ed vid))))
-(define (editor-top-line ed) (window-top-line (view-window (editor-focused-view ed))))
+(define (editor-top-line ed) (editor-view-top-line ed (editor-focus ed)))
 (define (editor-view-top-line ed vid) (window-top-line (view-window (editor-view-ref ed vid))))
+(define (editor-mode ed) (editor-view-mode ed (editor-focus ed)))
 (define (editor-view-mode ed vid) (window-mode (view-window (editor-view-ref ed vid))))
+(define (editor-left-col ed) (editor-view-left-col ed (editor-focus ed)))
 (define (editor-view-left-col ed vid) (window-left-col (view-window (editor-view-ref ed vid))))
+(define (editor-top-seg ed) (editor-view-top-seg ed (editor-focus ed)))
 (define (editor-view-top-seg ed vid) (window-top-seg (view-window (editor-view-ref ed vid))))
-(define (editor-mode ed) (window-mode (view-window (editor-focused-view ed))))
-(define (editor-left-col ed) (window-left-col (view-window (editor-focused-view ed))))
-(define (editor-top-seg ed) (window-top-seg (view-window (editor-focused-view ed))))
 
-(define (editor-point->screen ed) (window-point->screen (view-window (editor-focused-view ed))))
+(define (editor-point->screen ed) (editor-view-point->screen ed (editor-focus ed)))
 (define (editor-view-point->screen ed vid)
   (window-point->screen (view-window (editor-view-ref ed vid))))
 (define (editor-screen->point ed row col)
-  (window-screen->point (view-window (editor-focused-view ed)) row col))
+  (editor-view-screen->point ed (editor-focus ed) row col))
 (define (editor-view-screen->point ed vid row col)
   (window-screen->point (view-window (editor-view-ref ed vid)) row col))
 
@@ -219,19 +230,20 @@
 
 ;;; ---------- 账本查询 ----------
 
-(define (editor-can-undo? ed bid)
+(define (editor-can-undo? ed [bid (focused-bid ed)])
   (history-can-undo? (buffer-entry-history (editor-buffer-entry ed bid))))
-(define (editor-can-redo? ed bid)
+(define (editor-can-redo? ed [bid (focused-bid ed)])
   (history-can-redo? (buffer-entry-history (editor-buffer-entry ed bid))))
-(define (editor-undo-depth ed bid)
+(define (editor-undo-depth ed [bid (focused-bid ed)])
   (history-undo-depth (buffer-entry-history (editor-buffer-entry ed bid))))
-(define (editor-redo-depth ed bid)
+(define (editor-redo-depth ed [bid (focused-bid ed)])
   (history-redo-depth (buffer-entry-history (editor-buffer-entry ed bid))))
 
 ;;; ---------- 测试：中性面 ----------
 
 (module+ test
   (define e0 (editor-open "hello\nworld" 2 10))
+  ;; 文本 / 位置解析 / 投影
   (check-equal? (editor-buffer->string e0 0) "hello\nworld")
   (check-equal? (editor-buffer-line-length e0 0 0) 5)
   (check-equal? (editor-buffer-clamp-point e0 0 (point 9 9)) (point 1 5))
@@ -268,5 +280,14 @@
   (define n1 (editor-set-view-buffer e1 0 1))
   (check-equal? (editor-view-buffer-id n1 0) 1)
   (check-equal? (editor-buffer->string n1 1) "BBB")
+
+  ;; focus 糖默认 bid：editor-buffer / 账本查询省略 bid 时看焦点 buffer
+  (check-eq? (editor-buffer e0) (editor-buffer e0 0))
+  (check-false (editor-can-undo? e0))
+  ;; 按 view 直取 buffer（省一次 buffer-id 往返）
+  (check-eq? (editor-view-buffer e0 0) (editor-buffer e0 0))
+  ;; primary 下标读口（focus / 指定 view）
+  (check-equal? (editor-primary-index e0) 0)
+  (check-equal? (editor-view-primary-index e0 0) 0)
 
   (displayln "editor.rkt: all tests passed"))

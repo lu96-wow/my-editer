@@ -32,6 +32,7 @@
  buffer-apply-edit
  buffer-apply-edit-trusted
  buffer-edit
+ buffer-edit-trusted
  edit-insert-char
  edit-insert
  edit-newline
@@ -61,7 +62,7 @@
 
 (define (buffer-open s)
   (define c (content-of-string s))
-  (buffer c (make-restrictions (content-line-count c)) 0))
+  (buffer c (restrictions-empty (content-line-count c)) 0))
 
 (define (buffer->string b) (content->string (buffer-content b)))
 (define (buffer->lines b)  (content->lines  (buffer-content b)))
@@ -133,7 +134,9 @@
 (define (buffer-apply-edit-trusted b d) (buffer-apply-edit* b d #f))
 
 ;; buffer 层的编辑入口：给位置与 op（buffer selection → desc/#f），算 desc 再施加。
-(define (buffer-edit b p op [guard? #t])
+(define (buffer-edit b p op) (buffer-edit* b p op #t))
+(define (buffer-edit-trusted b p op) (buffer-edit* b p op #f))
+(define (buffer-edit* b p op guard?)
   (define d (op b (selection p p)))
   (if d
       (buffer-apply-edit* b d guard?)
@@ -198,13 +201,14 @@
            [restrictions (restrictions-put (buffer-restrictions b) l s e rs)])))
 
 (define (buffer-remove-restrict b start end)
-  (buffer-put-restrict b start end (make-restrict)))
+  (buffer-put-restrict b start end (restrict-empty)))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   (define b0 (buffer-open "hello\nworld"))
 
+  ;; 构造 + 投影（文本 / 行 / 行数 / tick / content 同一性）
   (check-equal? (buffer->string b0) "hello\nworld")
   (check-equal? (buffer->lines b0) '("hello" "world"))
   (check-equal? (buffer-line-count b0) 2)
@@ -252,16 +256,16 @@
   (check-eq? rb3 rb)
   (check-false rd3)
   ;; trusted 入口：程序编辑 read-only
-  (define-values (rb4 rd4) (buffer-edit rb (point 0 2) (edit-insert-char #\X) #f))
+  (define-values (rb4 rd4) (buffer-edit-trusted rb (point 0 2) (edit-insert-char #\X)))
   (check-equal? (buffer->string rb4) "heXllo\nworld")
   (check-equal? rd4 (edit-desc (point 0 2) (point 0 2) "X"))
 
   ;; 枚举只读段 / 清约束
   (check-equal? (buffer-restrict-runs rb 0)
-                (list (list 0 1 (make-restrict)) (list 1 4 (restrict #t)) (list 4 5 (make-restrict))))
+                (list (list 0 1 (restrict-empty)) (list 1 4 (restrict #t)) (list 4 5 (restrict-empty))))
   (define rb-nr (buffer-remove-restrict rb (point 0 1) (point 0 4)))
   (check-false (restrict-read-only? (buffer-restrict-at rb-nr (point 0 2))))
-  (check-equal? (buffer-restrict-runs rb-nr 0) (list (list 0 5 (make-restrict))))
+  (check-equal? (buffer-restrict-runs rb-nr 0) (list (list 0 5 (restrict-empty))))
   ;; 写约束不动 content
   (check-true (buffer-content-eq? b0 rb))
 

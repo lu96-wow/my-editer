@@ -58,6 +58,7 @@
 (module+ test
   (require rackunit)
 
+  ;; 构造与比较：point<? / point<=? / point=?
   (check-equal? (point 2 3) (point 2 3))
   (check-true  (point<? (point 1 9) (point 2 0)))
   (check-true  (point<? (point 1 1) (point 1 2)))

@@ -103,7 +103,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  ;; 基本
+  ;; 字符/串显示宽度（宽字符=2，组合字符/ZWJ=0）
   (check-equal? (char-display-width #\a) 1)
   (check-equal? (char-display-width #\中) 2)
   (check-equal? (char-display-width #\あ) 2)

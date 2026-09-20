@@ -20,7 +20,7 @@
 (define (rebase-free w b* descs)
   (define mapped
     (for/list ([s (in-list (window-selections w))])
-      (for/fold ([s s]) ([d (in-list descs)]) (selection-map d s))))
+      (for/fold ([s s]) ([d (in-list descs)]) (selection-map-edit d s))))
   (window-set-selections (struct-copy window w [buffer b*]) mapped (window-primary-index w)))
 
 ;; 编辑者语义：选区坍缩到「经过全部 desc 之后」的 head，再 ensure primary 可见。

@@ -76,7 +76,7 @@
   ;; 造一个单 buffer 单 view 的 editor；再加一个 view（可指定 sync）
   (define (mk text h w)
     (define b (buffer-open text))
-    (editor (list (buffer-entry 0 "s" b (make-history)))
+    (editor (list (buffer-entry 0 "s" b (history-empty)))
             (list (view 0 (window-open b h w) 'free)) 0 1 1))
   (define (add-view ed h w p sync)
     (define b (buffer-entry-buffer (editor-buffer-entry ed 0)))

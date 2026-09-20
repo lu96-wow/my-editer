@@ -6,16 +6,12 @@
          "../unit/history.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "program.rkt" "reaction.rkt" rackunit)
 
-;;; platform/command.rkt —— 用户面：leader + ensure + 账本
+;;; platform/command.rkt —— 用户命令：leader + ensure + 账本
 ;;;
-;;; 用户操作 = 内容变更 + 显示语义 leader + 账本，原语**按 vid 定位**（editor-view-*）：
-;;;   · editor-view-edit      在指定 view 光标处编辑；leader 推进到插入后 + ensure；
-;;;                           同 buffer 其余 free 映射 / follow 镜像；记一步。
-;;;   · editor-view-undo/redo 按该 view 所属 buffer 的账本；leader 语义；撤销回到 pre-point。
-;;;   · editor-view-*（导航） 更新该 view 的 window（ensure 可见），同 buffer follow 镜像它。
-;;;
-;;; 焦点只是**解析 vid 的糖**：editor-edit / editor-undo / editor-left … 一律落到上面的原语，
-;;; 绝不反过来。程序操作（显式 buffer/位置、默认不动视图）在 program.rkt。
+;;; 编辑原语是 program.rkt 的 editor-command；这里只固定「用户编辑」的策略：
+;;;   editor-view-edit / editor-edit = editor-command + #:reaction 'leader + #:record? #t
+;;; 导航与同步是 editor-view-put-window（裸写）+ window-* + editor-view-follow 的组合。
+;;; 所有原语按 vid 定位；focus 只是解析 vid 的糖。
 
 (provide
  ;; 用户面原语（按 vid；不读也不改 focus）
@@ -30,6 +26,7 @@
  editor-view-end
  editor-view-goto
  editor-view-scroll
+ editor-view-follow
  ;; focus 糖
  editor-edit
  editor-undo
@@ -41,73 +38,17 @@
  editor-home
  editor-end
  editor-goto
- editor-scroll)
+ editor-scroll
+ editor-follow)
 
 ;; 解析焦点 vid —— 用户面唯一读 focus 的地方。
 (define (focused-vid ed) (view-id (editor-focused-view ed)))
 
 ;;; ---------- 编辑（指定 view，leader 语义） ----------
-
-;; 两条 desc 的区间是否相交（半开）
-(define (desc-overlap? d1 d2)
-  (and (point<? (edit-desc-start d1) (edit-desc-end d2))
-       (point<? (edit-desc-start d2) (edit-desc-end d1))))
-
-;; 两个选区的包络（方向取正向）
-(define (selection-hull a b)
-  (define-values (as ae) (selection-range a))
-  (define-values (bs be) (selection-range b))
-  (selection (if (point<? bs as) bs as) (if (point<? ae be) be ae)))
-
-;; 多选区：对每个选区算 desc；若两条 desc 重叠（backspace/delete 等会超出选区，
-;; 相邻选区就会撞上），把冲突选区合并成包络再重算 op，直到 desc 两两不相交。
-(define (coalesce-descs b0 sels op)
-  (define pairs
-    (filter values (for/list ([s (in-list sels)])
-                     (define d (op b0 s))
-                     (and d (cons s d)))))
-  (let loop ([ps pairs])
-    (cond
-      [(null? ps) '()]
-      [else
-       (define p (car ps))
-       (define conflicts (filter (lambda (q) (desc-overlap? (cdr p) (cdr q))) (cdr ps)))
-       (cond
-         [(null? conflicts) (cons (cdr p) (loop (cdr ps)))]
-         [else
-          (define group (cons p conflicts))
-          (define hull (for/fold ([h (car (car group))]) ([g (in-list (cdr group))])
-                         (selection-hull h (car g))))
-          (define d (op b0 hull))
-          (loop (if d
-                    (cons (cons hull d) (remove* conflicts (cdr ps)))
-                    (remove* conflicts (cdr ps))))])])))
+;; 薄封装：策略全在 editor-command 的参数里；这里只固定「用户编辑」的取值。
 
 (define (editor-view-edit ed vid op)
-  (define v (editor-view-ref ed vid))
-  (define bid (editor-view-buffer-id ed vid))
-  (define w (view-window v))
-  (define b0 (editor-buffer ed bid))
-  (define pre (window-point w))
-  ;; 对每个选区施加同一 op；空选区=插，非空=替换。重叠的 desc 先合并重算。
-  (define descs (coalesce-descs b0 (window-selections w) op))
-  (cond
-    [(null? descs) (values ed #f)]
-    [else
-     (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs #t))
-     (cond
-       [(null? ds) (values ed #f)]
-       [else
-        (define b* (editor-buffer ed* bid))
-        (define ed** (editor-leader-view ed* vid b* ds))
-        ;; 单条编辑走 edit-change（保留打字/退格的连续段合并）；多条走整批一步。
-        (define ed***
-          (if (= 1 (length ds))
-              (let ([d (car ds)])
-                (editor-record-history ed** bid
-                                       (edit-change d (buffer-edit-desc-inverse b0 d) pre)))
-              (editor-record-batch ed** bid ds (reverse ivs) pre)))
-        (values ed*** (change-report ds))])]))
+  (editor-command ed op #:view vid #:reaction 'leader #:record? #t))
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
@@ -139,8 +80,8 @@
      (values (editor-put-history ed* bid h*) (change-report (step-replay-descs st)))]))
 
 ;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
-;; editor-view-move 取 (window → window) 变换，**不对外**：它能看到并改写 window，
-;; 会破坏「view.buffer-id ↔ window.buffer」不变量。对外只暴露具体动作。
+;; 裸写用 editor-view-put-window（program.rkt），同步用 editor-view-follow；
+;; 这里的 editor-view-move 是二者的组合，故不对外。
 
 (define (editor-view-move ed vid f)
   (define w* (window-ensure-point (f (view-window (editor-view-ref ed vid)))))
@@ -156,7 +97,15 @@
   (editor-view-move ed vid (lambda (w) (window-set-point w p))))
 (define (editor-view-scroll ed vid delta)
   (editor-leader-window ed vid
-                        (window-scroll-visual (view-window (editor-view-ref ed vid)) delta)))
+                        (window-scroll (view-window (editor-view-ref ed vid)) delta)))
+
+;;; ---------- 同步（显式、可组合） ----------
+;; 把同 buffer 的 follow view 镜像到 vid 的当前 window；vid 自身不动。
+;; 与裸写组合：先 editor-view-put-window，再 editor-view-follow。
+
+(define (editor-view-follow ed vid)
+  (editor-leader-window ed vid (view-window (editor-view-ref ed vid))))
+(define (editor-follow ed) (editor-view-follow ed (focused-vid ed)))
 
 ;;; ---------- focus 糖（用户面便捷；程序面请用上面的 editor-view-*） ----------
 
@@ -175,6 +124,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
+  (require "../atom/restrict.rkt")
   ;; 单 buffer 编辑闭环 + 撤销/重做
   (define e0 (editor-open ""))
   (define-values (e1 r1) (editor-edit e0 (edit-insert-char #\a)))
@@ -279,5 +229,40 @@
                                     (list (caret (point 0 0)) (selection (point 0 0) (point 0 2)))))
   (define-values (od1 _od) (editor-edit od (edit-delete)))
   (check-equal? (editor-buffer->string od1 0) "c\ndef")
+
+  ;; 编辑原语 editor-command：策略是参数
+  (define ec0 (editor-open "abcdef"))
+  ;;   默认：焦点 view 的选区 + reaction 'none + 不记账
+  (define-values (ec1 _ec-r1) (editor-command ec0 (edit-insert "X")))
+  (check-equal? (editor-buffer->string ec1 0) "Xabcdef")
+  (check-equal? (editor-point ec1) (point 0 0))          ; none：光标不动
+  (check-false (editor-can-undo? ec1))                   ; 默认不记账
+  ;;   显式 #:selection：程序化定位
+  (define-values (ec2 _ec-r2) (editor-command ec0 (edit-insert "Y")
+                                           #:selection (list (caret (point 0 3)))))
+  (check-equal? (editor-buffer->string ec2 0) "abcYdef")
+  ;;   显式 #:reaction 'leader + #:record?：用户编辑语义
+  (define-values (ec3 _ec-r3) (editor-command ec0 (edit-insert "X") #:reaction 'leader #:record? #t))
+  (check-equal? (editor-point ec3) (point 0 1))          ; leader：光标推进到插入后
+  (check-true (editor-can-undo? ec3))
+  ;;   显式 #:guard? #f：绕 read-only
+  (define ecr (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
+  (define-values (ecr1 rcr1) (editor-command ecr (edit-insert-char #\X)
+                                             #:selection (list (caret (point 0 1)))))
+  (check-false rcr1)
+  (check-equal? (editor-buffer->string ecr1 0) "abc")
+  (define-values (ecr2 _ec-rcr2) (editor-command ecr (edit-insert-char #\X)
+                                              #:selection (list (caret (point 0 1))) #:guard? #f))
+  (check-equal? (editor-buffer->string ecr2 0) "aXbc")
+
+  ;; 显式同步：裸写不同步；editor-follow 才把 follow view 镜像到 leader 的 window
+  ;; （leader 须光标可见：rebase-follow 会按 mirror 后的光标重新 ensure）
+  (define f0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 3 10))
+  (define-values (f1 fv) (editor-add-view f0 0 3 10 #:sync 'follow))
+  (define f2 (editor-focus-view f1 0))
+  (define w* (window-set-top-line (window-set-point (editor-window f2) (point 5 0)) 3))
+  (define f3 (editor-put-window f2 w*))
+  (check-equal? (editor-view-top-line f3 fv) 0)                  ; 裸写不同步
+  (check-equal? (editor-view-top-line (editor-follow f3) fv) 3)  ; follow 后镜像
 
   (displayln "command.rkt: all tests passed"))

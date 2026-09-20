@@ -54,7 +54,7 @@
   (define cursors
     (filter values
             (for/list ([s (in-list (window-selections w))] [i (in-naturals)])
-              (define-values (r c) (window-point-at->screen w (selection-point s)))
+              (define-values (r c) (window-point->screen w (selection-point s)))
               (and r (cursor r c (hash 'face 'cursor) (= i (window-primary-index w)))))))
   ;; 视图 overlay：选中区 = 每个非空选区的 [anchor,head)
   (define selections
@@ -67,6 +67,7 @@
 (module+ test
   (define b0 (buffer-open "a中b\nc"))
 
+  ;; 基本投影：文档 runs + primary 光标；空选区不出区间
   (define s0 (window->screen (window-open b0 2 10)))
   (check-equal? (vector-ref (screen-row-runs s0) 0) (list (run 0 "a中b" (hash))))
   (check-equal? (vector-ref (screen-row-runs s0) 1) (list (run 0 "c" (hash))))

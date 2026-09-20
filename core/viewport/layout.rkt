@@ -20,14 +20,13 @@
  layout-wrap
  window-vrows
  window-point->screen
- window-point-at->screen
  window-screen->point
- window-scroll-visual
+ window-scroll
  window-ensure-point
  window-clamp-view
  window-visual-move
- window-point-up
- window-point-down
+ point-up
+ point-down
  window-up
  window-down)
 
@@ -178,11 +177,8 @@
       (not (= (vrow-line (vector-ref vrows row))
               (vrow-line (vector-ref vrows (add1 row)))))))
 
-;; point → 屏幕 (row col)；不可见 → (values #f #f)
-(define (window-point->screen w) (window-point-at->screen w (window-point w)))
-
-;; 指定点的屏幕坐标（多光标 / 任意点映射用）。
-(define (window-point-at->screen w p)
+;; point → 屏幕 (row col)；不给 p 就用 window 的 primary 光标；不可见 → (values #f #f)
+(define (window-point->screen w [p (window-point w)])
   (define b (window-buffer w))
   (define line (point-line p))
   (define target (index->column (buffer-line-ref b line) (point-col p)))
@@ -215,11 +211,11 @@
 
 ;;; ---------- 视觉行滚动 ----------
 
-(define (window-scroll-visual w delta)
+(define (window-scroll w delta)
   (case (window-mode w)
-    ['clip (window-scroll-clip w delta)]
+    ['clip (window-vscroll w delta)]
     ['wrap (window-scroll-wrap w delta)]
-    [else (check-mode 'window-scroll-visual (window-mode w))]))
+    [else (check-mode 'window-scroll (window-mode w))]))
 
 (define (window-scroll-wrap w delta)
   (define b (window-buffer w))
@@ -301,7 +297,7 @@
     [(and (= line top-line) (< seg top-seg)) (struct-copy window w [top-seg seg])]
     [else
      (define dist (visual-distance b top-line top-seg line seg width))
-     (if (< dist height) w (window-scroll-visual w (+ (- dist height) 1)))]))
+     (if (< dist height) w (window-scroll w (+ (- dist height) 1)))]))
 
 (define (window-ensure-point w)
   (define b (window-buffer w))
@@ -363,11 +359,11 @@
                                     (window-width w) (window-mode w) delta))
   (if l (point l c) p))
 
-(define (window-point-up w p)   (window-point-visual-move w p -1))
-(define (window-point-down w p) (window-point-visual-move w p +1))
+(define (point-up w p)   (window-point-visual-move w p -1))
+(define (point-down w p) (window-point-visual-move w p +1))
 
 (define (window-visual-move w delta)
-  (window-map-selections w (lambda (p) (window-point-visual-move w p delta))))
+  (window-map-points w (lambda (p) (window-point-visual-move w p delta))))
 
 (define (window-up w)   (window-visual-move w -1))
 (define (window-down w) (window-visual-move w +1))
@@ -407,10 +403,10 @@
                 '(0 2))
 
   ;; wrap 视觉行滚动
-  (check-equal? (let ([w (window-scroll-visual ww 1)]) (list (window-top-line w) (window-top-seg w))) '(0 1))
-  (check-equal? (let* ([w (window-scroll-visual ww 1)] [w (window-scroll-visual w 1)])
+  (check-equal? (let ([w (window-scroll ww 1)]) (list (window-top-line w) (window-top-seg w))) '(0 1))
+  (check-equal? (let* ([w (window-scroll ww 1)] [w (window-scroll w 1)])
                   (list (window-top-line w) (window-top-seg w))) '(1 0))
-  (check-equal? (let* ([w (window-scroll-visual ww 2)] [w (window-scroll-visual w -1)])
+  (check-equal? (let* ([w (window-scroll ww 2)] [w (window-scroll w -1)])
                   (list (window-top-line w) (window-top-seg w))) '(0 1))
 
   ;; 光标跟随（clip）
@@ -477,7 +473,7 @@
                  (or r c)))
 
   ;; 点级视觉运动（供 map 组合）
-  (check-equal? (window-point-down ww (point 0 0)) (point 0 2))
-  (check-equal? (window-point-up ww (point 0 2)) (point 0 0))
+  (check-equal? (point-down ww (point 0 0)) (point 0 2))
+  (check-equal? (point-up ww (point 0 2)) (point 0 0))
 
   (displayln "view.rkt: all tests passed"))

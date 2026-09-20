@@ -4,7 +4,8 @@
 
 1. **原子**：`point`、`buffer`、`window`、`screen`、`events`、宽字符工具。
 2. **editor 中性面**：构造、查询、位置解析、标注读、投影。
-3. **两个操作面**：程序面（默认不动视图）、用户面（焦点 + 账本）。
+3. **一个编辑原语**：`editor-command` / `editor-command-batch`，策略全显式；
+   `editor-edit` / `editor-edit-at` / `editor-view-edit` 只是它的命名薄封装。
 
 内部机制（`state.rkt`、`write.rkt`、`reaction.rkt`）不在入口里，不用碰。
 
@@ -90,8 +91,11 @@
 | `buffer-range-text` | 取 `[start,end)` 文本 |
 | `buffer-apply-edit` | 施加 desc（带守卫） |
 | `buffer-apply-edit-trusted` | 施加 desc（跳守卫） |
+| `buffer-edit` | 给位置与 op 算 desc 再施加（带守卫） |
+| `buffer-edit-trusted` | 同上，跳守卫 |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
 | `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
+| `buffer-apply-edit-batch-trusted` | 同上，跳守卫 |
 | `buffer-put-restrict` | 写约束槽（只读等） |
 | `buffer-restrict-at` | 某点的约束槽（`restrict`；是否只读用 `restrict-read-only?`） |
 | `buffer-remove-restrict` | 清约束区间 |
@@ -122,12 +126,13 @@ face-provider : buffer line -> (listof (list start end face))
 | `window-set-selections` | 设一组选区 |
 | `window-add-selections` | 并入一组选区（并集） |
 | `window-remove-selections` | 去掉一组选区（差集） |
-| `window-map-selections` | 对每个选区 head 施加 point→point 变换 |
-| `window-selection-map` | 对每个选区施加 `selection→selection`，再规范化 |
-| `window-primary-map` | 只对 primary 施加 `selection→selection` |
+| `window-map-points` | 对每个选区 head 施加 point→point 变换（坍缩成光标） |
+| `window-map-selections` | 对每个选区施加 `selection→selection`，再规范化 |
+| `window-map-primary` | 只对 primary 施加 `selection→selection` |
 | `window-add-selection` | 加一个选区（`#:primary?`） |
 | `window-remove-selection` | 去一个选区 |
 | `window-set-primary` | 让某选区成为 primary |
+| `window-set-primary-index` | 直接设 primary 下标 |
 | `window-selection-member?` | 集合中是否有该选区 |
 | `window-clamp-selections` | 把选区夹回合法域并规范化 |
 | `window-set-point` | 设成单个空选区（光标） |
@@ -139,20 +144,19 @@ face-provider : buffer line -> (listof (list start end face))
 | `window-home` | 行首 |
 | `window-end` | 行尾 |
 | `window-ensure-point` | 调整滚动使光标可见 |
-| `window-point->screen` | 光标 → 屏幕坐标 |
-| `window-point-at->screen` | 指定点 → 屏幕坐标 |
+| `window-point->screen` | 光标 → 屏幕坐标；可传点 |
 | `window-screen->point` | 屏幕坐标 → 位置 |
 | `window-set-size` | 设尺寸 |
 | `window-set-mode` | `clip` 或 `wrap` |
-| `window-scroll-clip` | 相对滚动（clip：按 buffer 行） |
-| `window-scroll-visual` | 相对滚动（按 mode 分派到 clip/wrap） |
+| `window-vscroll` | 相对滚动（clip：按 buffer 行） |
+| `window-scroll` | 相对滚动（按 mode 分派到 clip/wrap） |
 | `window-hscroll` | 水平滚动 |
 | `point-left` | 点左移（纯，buffer 级） |
 | `point-right` | 点右移 |
 | `point-home` | 点到行首 |
 | `point-end` | 点到行尾 |
-| `window-point-up` | 点上移一视觉行（纯） |
-| `window-point-down` | 点下移一视觉行 |
+| `point-up` | 点上移一视觉行（纯，window 级） |
+| `point-down` | 点下移一视觉行 |
 
 ## 6. 投影 —— window → screen
 
@@ -237,6 +241,7 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-buffer` | 取 buffer 值 |
 | `editor-buffer-name` | 取 buffer 名 |
 | `editor-view-buffer-id` | 某 view 的 buffer id |
+| `editor-view-buffer` | 某 view 的 buffer 值 |
 | `editor-view-sync` | 某 view 的同步策略 |
 | `editor-sync` | 焦点 view 的同步策略 |
 | `editor-selections` | 焦点 view 的选区集 |
@@ -245,6 +250,8 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-view-point` | 某 view 光标 |
 | `editor-primary` | 焦点 view 的 primary 选区（值） |
 | `editor-view-primary` | 某 view 的 primary 选区 |
+| `editor-primary-index` | 焦点 view 的 primary 下标 |
+| `editor-view-primary-index` | 某 view 的 primary 下标 |
 | `editor-window` | 焦点 view 的 window（只读，供点运动组合） |
 | `editor-view-window` | 某 view 的 window（只读） |
 | `editor-height` | 焦点 view 可视高度 |
@@ -291,37 +298,47 @@ face-provider : buffer line -> (listof (list start end face))
 
 ### 9.5 编辑
 
-| 名字 | 语义 |
+**唯一的编辑原语**是 `editor-command`（single）/ `editor-command-batch`（descs）：
+策略全是**参数**，不是函数身份；其余编辑入口都是它的薄封装。
+
+| 策略参数 | 取值 | 含义 |
+|---|---|---|
+| `#:view` | vid（默认焦点） | 目标 view |
+| `#:selection` | 选区集（默认该 view 的选区） | 编辑上下文 |
+| `#:guard?` | 默认 `#t` | 是否守 read-only |
+| `#:reaction` | `'none`/`'map`/`'leader` | 本 view 的反应；其余同文档 view 按 sync |
+| `#:record?` | 默认 `#f` | 是否记一步账本 |
+| `#:pre-point` | 默认该 view primary head | 记账用的编辑前光标 |
+
+| 薄封装 | 固定的策略 |
 |---|---|
-| `editor-edit-at` | 在显式 `(bid, point)` 编辑；`#:reaction 'none` 默认不动视图 |
-| `editor-edit-at-batch` | 一次施加一批（同坐标系、不重叠）`edit-desc`；`#:record? #t` 整批记一步 |
-| `editor-view-edit` | 在指定 view 光标处编辑；leader + ensure + 记账本；不改焦点 |
-| `editor-edit` | focus 糖：在焦点 view 光标处编辑 |
+| `editor-edit` | 焦点 view；`leader` + 记账 |
+| `editor-view-edit` | 指定 view；`leader` + 记账 |
+| `editor-edit-at` | 文档的 view + 显式位置；`none` + 可选记账 |
+| `editor-edit-at-batch` | 同上，`descs` 批；`none` + 可选记账 |
 
-`editor-edit-at` 的参数：
-
-- `#:reaction` —— `none`（默认，字面不动）或 `map`（光标跟随文本）。
-- `#:trusted?` —— 跳过 `read-only` 守卫（格式化器）。
-- `#:record?` —— 是否记一步账本（默认不记）。
-
-`editor-edit-at-batch` 的 `descs` 同坐标系、互不重叠（= LSP `TextEdit[]`）；被
-`read-only` 守卫拒的 desc 静默丢弃（用 `#:trusted? #t` 强制）；`#:record? #t` 把整批
-记成**一步**撤销。report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
+`op : buffer selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
+同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
+（用 `#:guard? #f` / `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
+report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 
 ### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）
 
 | 名字 | 语义 |
 |---|---|
 | `editor-view-set-point` | 设某 view 光标 |
+| `editor-view-put-window` | 裸写某 view 视图态（只夹紧、不同步；不改文档） |
 | `editor-view-set-selections` | 设某 view 的选区集（多光标）；可选 primary 下标 |
 | `editor-view-add-selections` | 并入选区；`#:primary?` 可让新加的成为主选区 |
 | `editor-view-remove-selections` | 去掉选区（差集） |
 | `editor-view-collapse-selections` | 回单光标（保留 primary） |
 | `editor-view-map-selections` | 对某 view 每个选区施加 `selection→selection` |
 | `editor-view-map-primary` | 只对某 view 的 primary 施加 `selection→selection` |
+| `editor-view-map-points` | 对某 view 每个选区 head 施 `point→point`（坍缩成光标） |
 | `editor-view-add-selection` | 加一个选区（`#:primary?`） |
 | `editor-view-remove-selection` | 去一个选区 |
 | `editor-view-set-primary` | 让某选区成为 primary |
+| `editor-view-set-primary-index` | 直接设某 view 的 primary 下标 |
 | `editor-view-selection-member?` | 集合中是否有该选区 |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
@@ -334,15 +351,18 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-set-buffer` | focus 糖：让焦点 view 改看另一个 buffer |
 | `editor-set-buffer-name` | 重命名某 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
+| `editor-put-window` | focus 糖：裸写焦点 view 整个 window |
 | `editor-set-selections` | focus 糖：设焦点 view 选区集（可选 primary） |
 | `editor-add-selections` | focus 糖：并入选区（`#:primary?`） |
 | `editor-remove-selections` | focus 糖：去掉选区 |
 | `editor-collapse-selections` | focus 糖：回单光标 |
 | `editor-map-selections` | focus 糖：对所有选区施加 `selection→selection` |
 | `editor-map-primary` | focus 糖：只对 primary 施加 `selection→selection` |
+| `editor-map-points` | focus 糖：对每个选区 head 施 `point→point` |
 | `editor-add-selection` | focus 糖：加一个选区（`#:primary?`） |
 | `editor-remove-selection` | focus 糖：去一个选区 |
 | `editor-set-primary` | focus 糖：让某选区成为 primary |
+| `editor-set-primary-index` | focus 糖：直接设 primary 下标 |
 | `editor-selection-member?` | focus 糖：集合中是否有该选区 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
@@ -362,6 +382,7 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-view-end` | 某 view 行尾 |
 | `editor-view-goto` | 某 view 跳到位置并 ensure |
 | `editor-view-scroll` | 滚动某 view |
+| `editor-view-follow` | 把同 buffer 的 follow view 镜像到某 view 的 window |
 | `editor-left` | focus 糖：焦点 view 左移 |
 | `editor-right` | focus 糖：右移 |
 | `editor-up` | focus 糖：上移 |
@@ -370,6 +391,7 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-end` | focus 糖：行尾 |
 | `editor-goto` | focus 糖：跳到位置并 ensure |
 | `editor-scroll` | focus 糖：滚动焦点视口 |
+| `editor-follow` | focus 糖：把 follow view 镜像到焦点 view 的 window |
 
 ### 9.8 撤销 / 重做
 

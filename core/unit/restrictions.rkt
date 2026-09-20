@@ -17,7 +17,7 @@
 
 (provide
  (struct-out restrictions)
- make-restrictions
+ restrictions-empty
  restrictions-line-count
  restrictions-at
  restrictions-put
@@ -41,9 +41,9 @@
 
 ;;; ---------- 构造 / 不变量 ----------
 
-(define (make-restrictions line-count)
+(define (restrictions-empty line-count)
   (unless (and (exact-nonnegative-integer? line-count) (>= line-count 1))
-    (error 'make-restrictions "line-count must be >= 1, got ~a" line-count))
+    (error 'restrictions-empty "line-count must be >= 1, got ~a" line-count))
   (restrictions (make-vector line-count '())))
 
 (define (restrictions-line-count p) (vector-length (restrictions-rows p)))
@@ -74,7 +74,7 @@
   (define sp (for/first ([sp (in-list row)]
                          #:when (and (<= (rspan-start sp) col) (< col (rspan-end sp))))
               sp))
-  (if sp (rspan-restrict sp) (make-restrict)))
+  (if sp (rspan-restrict sp) (restrict-empty)))
 
 ;; 合并相邻且 restrict 相同的 rspan（P2）。输入须升序。
 (define (merge-adjacent spans)
@@ -111,7 +111,7 @@
 
 ;; 清约束（= put 传空 restrict）。
 (define (restrictions-remove p line start end)
-  (restrictions-put p line start end (make-restrict)))
+  (restrictions-put p line start end (restrict-empty)))
 
 ;;; ---------- 读 ----------
 
@@ -204,7 +204,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define (fresh) (make-restrictions 3))
+  (define (fresh) (restrictions-empty 3))
   (define ro (restrict #t))
   (define (apply* p d) (restrictions-apply-edit p d))
 
@@ -217,7 +217,7 @@
   ;; 相邻同约束合并（P2）
   (define p1 (restrictions-put (restrictions-put (fresh) 0 1 2 ro) 0 2 4 ro))
   (check-equal? (restrictions-runs p1 0 5)
-                (list (list 0 1 (make-restrict)) (list 1 4 ro) (list 4 5 (make-restrict))))
+                (list (list 0 1 (restrict-empty)) (list 1 4 ro) (list 4 5 (restrict-empty))))
 
   ;; 清约束
   (define p2 (restrictions-remove p0 1 2 3))
@@ -229,7 +229,7 @@
   (define e0 (restrictions-put (fresh) 0 0 5 ro))
   (define e1 (apply* e0 (edit-desc (point 0 2) (point 0 2) "x")))
   (check-equal? (restrictions-runs e1 0 6)
-                (list (list 0 2 ro) (list 2 3 (make-restrict)) (list 3 6 ro)))
+                (list (list 0 2 ro) (list 2 3 (restrict-empty)) (list 3 6 ro)))
   ;; 删除区间内部 → 收缩
   (define e2 (apply* e0 (edit-desc (point 0 1) (point 0 3) "")))
   (check-equal? (restrictions-runs e2 0 3) (list (list 0 3 ro)))

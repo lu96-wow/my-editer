@@ -19,7 +19,7 @@
  selection-point
  selection-range
  selection-empty?
- selection-map
+ selection-map-edit
  selection-set-head
  selection-set-anchor
  selection-map-head
@@ -52,12 +52,12 @@
 (define (map-endpoint d p)
   (or (edit-desc-map-position d p) (edit-desc-start d)))
 
-(define (selection-map d s)
+(define (selection-map-edit d s)
   (selection (map-endpoint d (selection-anchor s))
              (map-endpoint d (selection-head s))))
 
 ;;; ---------- 空间变换（point → point）----------
-;; 与 selection-map（按 edit-desc 映射）职责不同：这里是「把端点搬到另一个点」。
+;; 与 selection-map-edit（按 edit-desc 映射）职责不同：这里是「把端点搬到另一个点」。
 
 (define (selection-set-head s p) (selection (selection-anchor s) p))
 (define (selection-set-anchor s p) (selection p (selection-head s)))
@@ -101,6 +101,7 @@
 
 (module+ test
   (define p (lambda (l c) (point l c)))
+  ;; 基本：空选区 / 光标点 / 区间（反向端点归一）
   (check-true (selection-empty? (selection (p 0 0) (p 0 0))))
   (check-equal? (selection-point (selection (p 0 0) (p 0 3))) (p 0 3))
   (check-equal? (call-with-values (lambda () (selection-range (selection (p 1 2) (p 0 1)))) list)
@@ -108,10 +109,10 @@
 
   ;; 映射：端点随编辑移动 / 落在删除区内塌缩到删除起点
   (define d-ins (edit-desc (p 0 0) (p 0 0) "XX"))
-  (check-equal? (selection-map d-ins (selection (p 0 0) (p 0 1)))
+  (check-equal? (selection-map-edit d-ins (selection (p 0 0) (p 0 1)))
                 (selection (p 0 0) (p 0 3)))
   (define d-del (edit-desc (p 0 0) (p 0 3) ""))
-  (check-equal? (selection-map d-del (selection (p 0 1) (p 0 2)))
+  (check-equal? (selection-map-edit d-del (selection (p 0 1) (p 0 2)))
                 (selection (p 0 0) (p 0 0)))
 
   ;; 规范化：去重 / 排序 / 重叠合并 / 相邻不合并
@@ -122,6 +123,7 @@
   (check-equal? (selections-normalize (list (selection (p 0 0) (p 0 0)) (selection (p 0 0) (p 0 0))))
                 (list (selection (p 0 0) (p 0 0))))
 
+  ;; 定位：含某点的选区下标
   (check-equal? (selections-index-containing (list (selection (p 0 0) (p 0 2)) (selection (p 0 5) (p 0 6))) (p 0 5)) 1)
 
   ;; caret 构造器/谓词（底层仍是 selection）

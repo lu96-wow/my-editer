@@ -17,8 +17,7 @@
 ;;;   editor-put-view      换一个 view 的 window
 ;;;   editor-put-history / editor-record-history / editor-record-batch
 ;;;
-;;; 不变量（由本层维持）：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer
-;;; （引用完整性）。view 不另存 buffer-id，所以「绑定」只有一处，不会失同步。
+;;; 不变量（由本层维持）：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer。
 
 (provide
  editor-swap-buffer
@@ -53,7 +52,7 @@
     [buffers (for/list ([e (in-list (editor-buffers ed))])
                (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [buffer b*]) e))]
     [views (for/list ([v (in-list (editor-views ed))])
-             ;; 按**文档值**找同属主 view：绑定只有 window.buffer 一处，无需再对 buffer-id。
+             ;; 同属主 view = window 指向同一个 buffer 值的 view。
              (if (eq? b0 (view-buffer v))
                  (struct-copy view v
                    [window (struct-copy window (view-window v) [buffer b*])])
@@ -72,7 +71,9 @@
 ;; applied/inverses 施加顺序且平行（no-op / 被守卫拒的不进结果）。
 (define (editor-apply-edit-batch ed bid descs [guard? #t])
   (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
-  (define-values (b* ds ivs) (buffer-apply-edit-batch b0 descs guard?))
+  (define-values (b* ds ivs) (if guard?
+                              (buffer-apply-edit-batch b0 descs)
+                              (buffer-apply-edit-batch-trusted b0 descs)))
   (if (null? ds)
       (values ed '() '())
       (values (editor-swap-buffer ed bid b*) ds ivs)))
@@ -132,7 +133,7 @@
 (module+ test
   ;; swap-buffer 不动光标
   (define b-old (buffer-open "old"))
-  (define e0 (editor (list (buffer-entry 0 "s" b-old (make-history)))
+  (define e0 (editor (list (buffer-entry 0 "s" b-old (history-empty)))
                      (list (view 0 (window-open b-old 3 10) 'free))
                      0 1 1))
   (define e1 (editor-swap-buffer e0 0 (buffer-open "NEW")))

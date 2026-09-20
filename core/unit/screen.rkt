@@ -19,7 +19,7 @@
  (struct-out cursor)
  (struct-out region)
  (struct-out screen)
- make-screen
+ screen-empty
  screen-primary-cursor
  screen-cursor-row
  screen-cursor-col
@@ -49,10 +49,9 @@
 ;; cursors    : (listof cursor)           所有光标（含 primary）
 ;; selections : (listof region)           所有选中区间段
 ;;
-;; **primary 光标不存字段**：它就是 cursors 里 primary? 为真的那个。
-;; 光标行/列是它的投影（见 screen-cursor-row/col），存字段只会多一份要同步的状态。
+;; primary 光标 = cursors 里 primary? 为真的那个；其行/列是它的投影（见 screen-cursor-row/col）。
 
-(define (make-screen rows cols)
+(define (screen-empty rows cols)
   (screen rows cols (make-vector rows '()) '() '()))
 
 ;; primary 光标本身（无 → #f）；行/列是它的投影（无 → -1）。
@@ -105,7 +104,7 @@
   (define sorted (for/vector ([runs (in-vector row-runs)])
                    (sort runs (lambda (a b) (< (run-col a) (run-col b))))))
   (define active (for/first ([piece (in-list pieces)] #:when (eq? (car piece) active-id)) piece))
-  ;; 只透出 active 块的光标；primary 由 cursors 里的标记表达，不再单独算行/列。
+  ;; 只透出 active 块的光标。
   (define active-cursors
     (if active
         (let ()
@@ -117,7 +116,8 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define s0 (make-screen 2 10))
+  ;; 空帧：尺寸 / 无光标 / 无选区
+  (define s0 (screen-empty 2 10))
   (check-equal? (vector-length (screen-row-runs s0)) 2)
   (check-equal? (screen-cursor-row s0) -1)
   (check-equal? (screen-cursors s0) '())

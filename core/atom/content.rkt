@@ -12,7 +12,7 @@
 
 (provide
  (struct-out content)
- make-content
+ content-empty
  content-of-string
  content-of-lines
  content->string
@@ -35,7 +35,7 @@
 
 ;;; ---------- 构造 / 投影 ----------
 
-(define (make-content) (content (vector "")))
+(define (content-empty) (content (vector "")))
 
 (define (content-of-lines lines)
   (unless (and (pair? lines) (andmap string? lines))
@@ -47,7 +47,7 @@
   (content (list->vector (string->lines s))))
 
 (define (content->lines c)     (vector->list (content-lines c)))
-(define (content->string c)    (string-join (content->lines c) "\n"))
+(define (content->string c)    (lines->string (content->lines c)))
 (define (content-line-count c) (vector-length (content-lines c)))
 (define (content-line-ref c i) (vector-ref (content-lines c) i))
 
@@ -157,7 +157,7 @@
 (module+ test
   (define (apply* c d) (let-values ([(c* _) (content-apply c d)]) c*))
 
-  (check-equal? (content->string (make-content)) "")
+  (check-equal? (content->string (content-empty)) "")
   (check-equal? (content->string (content-of-string "hello\nworld")) "hello\nworld")
   (check-equal? (content->lines (content-of-string "hello\nworld")) '("hello" "world"))
   (check-equal? (content-line-count (content-of-string "a\nb\n")) 3)   ; 尾换行保留空行

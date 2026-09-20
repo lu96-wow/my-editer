@@ -133,20 +133,36 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 
 ---
 
-## 3. 两个平面的划分
+## 3. 一个编辑原语 + 显式策略
 
-一切操作先问一句：**它改的是内容，还是视图？**
+一切操作先问：**改哪个对象（view）？编辑上下文是什么？用什么策略？**
 
-| 平面 | 谁调用 | 改什么 | 入口 |
-|---|---|---|---|
-| 内容面 | 程序 | 只改 buffer（文本 / 标注） | `editor-edit-at` |
-| 视图面 | 程序 | 只改指定的一个 view（按 vid，不经过焦点） | `editor-view-set-point` |
-| 用户面 | 输入 | 指定 view 的光标 + 视口 + 账本（focus 糖） | `editor-edit` |
-| 中性面 | 任何人 | 读、解析、投影、构造 | `editor-buffer->string` |
+编辑只有**一个原语**（在 `platform/program.rkt`）：
 
-- **程序默认不动视图**：`editor-edit-at` 的 `#:reaction` 默认 `none`——只换 buffer
-  值，任何 view 的光标/滚动字面不动（只做合法性夹紧）。
-- **用户操作才动视图**：`editor-edit` / 导航走 `leader` 语义。
+```
+editor-command        : 给 op，算 desc 再施加
+editor-command-batch  : 给 descs 直接施加
+```
+
+策略全是**正交的显式参数**（不是函数身份）：
+
+| 参数 | 取值 |
+|---|---|
+| `#:view` | 目标 view（默认焦点） |
+| `#:selection` | 编辑上下文（默认该 view 的选区集） |
+| `#:guard?` | 是否守 read-only |
+| `#:reaction` | `none` / `map` / `leader`（本 view 怎么反应；其余同文档 view 按 sync） |
+| `#:record?` | 是否记一步账本 |
+| `#:pre-point` | 撤销回落的编辑前光标 |
+
+`editor-edit-at` / `editor-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
+**薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。
+
+- **程序默认**：`editor-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
+- **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? #t`。
+- **裸写 / 同步**：视图写入是 `editor-view-put-window`（裸写，不镜像）；同步是显式
+  `editor-view-follow`。用户导航 = 两者的组合（`editor-view-move`，不对外）。
+- **中性面**：读、解析、投影、构造（`editor-buffer->string` 等）。
 
 ---
 
@@ -175,9 +191,9 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 
 **选择/导航是算子，不是容器操作**（Unix 式接口）：
 - 点运动是纯原子：`point-left/right/home/end : buffer point -> point`，
-  `window-point-up/down : window point -> point`。
+  `point-up/down : window point -> point`。
 - 选区变换是纯原子：`selection-map-head/anchor/both`（对端点施 `point→point`）。
-- 集合级正交组合：`window-selection-map`（全部）/ `window-primary-map`（仅 primary）；
+- 集合级正交组合：`window-map-selections`（全部）/ `window-map-primary`（仅 primary）；
   `window-primary` 直接给 primary **选区值**（不再靠位置比较），`window-primary-index` 给下标。
 - 编辑入口 `editor-edit` 也遵循同一形态：`op : buffer × selection → edit-desc` 是策略，core 负责循环/落点/账本。
 
@@ -185,7 +201,7 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
 若 op 会**超出选区**（如 backspace 删光标前一字符、delete 删后一字符），相邻选区可能产出
 重叠的 desc；`editor-edit` 会先把冲突的选区**合并成包络并重算 op**，保证交给 batch 的 desc 两两不相交。
-方向键对每个选区各走一步（`window-map-selections`）后再去重/合并。
+方向键对每个选区各走一步（`window-map-points`）后再去重/合并。
 Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `editor-map-selections` +
 `selection-map-both`；加光标 = 点运动算位置后 `editor-add-selection`。
 

@@ -61,6 +61,7 @@
     (glyph-face (vector-ref (rendered-line-glyphs (render-line b i provider)) j)))
 
   (define b0 (buffer-open "hello\nworld"))
+  ;; 无 provider → 无 face；provider 在投影时给出派生 face
   (check-equal? (face-at b0 0 0) (hash))                    ; 无 provider → 无 face
 
   ;; 派生 face：投影时给出，不进文档
