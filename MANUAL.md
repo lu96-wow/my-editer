@@ -54,6 +54,9 @@
 | `selection-point` | 选区光标点（= `head`） |
 | `selection-range` | 选区半开区间 `[start,end)` |
 | `selection-empty?` | 是否空选区 |
+| `caret` | 构造光标（= 同位置的空选区） |
+| `caret?` | 是否光标（空选区） |
+| `caret-point` | 光标点（= `head`） |
 
 ## 2. 编辑动作（可传的值）
 
@@ -122,6 +125,8 @@
 | `window-selections` | 本视口选区集（已规范化） |
 | `window-primary` | 主选区下标 |
 | `window-set-selections` | 设一组选区 |
+| `window-add-selections` | 并入一组选区（并集） |
+| `window-remove-selections` | 去掉一组选区（差集） |
 | `window-map-selections` | 对每个选区 head 施加 point→point 变换 |
 | `window-clamp-selections` | 把选区夹回合法域并规范化 |
 | `window-set-point` | 设成单个空选区（光标） |
@@ -303,6 +308,8 @@
 |---|---|
 | `editor-view-set-point` | 设某 view 光标 |
 | `editor-view-set-selections` | 设某 view 的选区集（多光标） |
+| `editor-view-add-selections` | 并入选区（并集） |
+| `editor-view-remove-selections` | 去掉选区（差集） |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
 | `editor-view-set-top-line` | 设某 view 顶部行 |
@@ -312,6 +319,8 @@
 | `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-set-selections` | focus 糖：设焦点 view 选区集 |
+| `editor-add-selections` | focus 糖：并入选区 |
+| `editor-remove-selections` | focus 糖：去掉选区 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
 | `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |

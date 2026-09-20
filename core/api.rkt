@@ -46,7 +46,7 @@
  edit-change-desc edit-change-inverse edit-change-pre-point
  ;; ---- selection（选区：光标 + 影子）----
  selection selection? struct:selection selection-anchor selection-head
- selection-point selection-range selection-empty?
+ caret selection-point caret-point selection-range selection-empty? caret?
  ;; ---- restrict（约束槽）----
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
@@ -93,7 +93,7 @@
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-selections window-primary
- window-set-buffer window-set-point window-set-selections window-map-selections window-clamp-selections
+ window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-map-selections window-clamp-selections
  window-set-mode window-set-top-line window-set-left-col
  window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end

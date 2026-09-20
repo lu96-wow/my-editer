@@ -25,6 +25,8 @@
  window-set-buffer
  window-set-point
  window-set-selections
+ window-add-selections
+ window-remove-selections
  window-map-selections
  window-clamp-selections
  window-set-mode
@@ -56,7 +58,7 @@
     (error 'window-open "height 必须 ≥ 1，得到 ~a" height))
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width 必须 ≥ 1，得到 ~a" width))
-  (window b (list (selection (point 0 0) (point 0 0))) 0 'clip 0 0 0 height width))
+  (window b (list (caret (point 0 0))) 0 'clip 0 0 0 height width))
 
 ;;; ---------- 光标 / 选区 ----------
 
@@ -83,7 +85,7 @@
 ;; 设成单个空选区（程序面「把光标放这」的语义）。
 (define (window-set-point w p)
   (define q (buffer-clamp-point (window-buffer w) p))
-  (struct-copy window w [selections (list (selection q q))] [primary 0]))
+  (struct-copy window w [selections (list (caret q))] [primary 0]))
 
 ;; 设一组选区；primary 按输入下标选，规范化后追到合并结果。
 (define (window-set-selections w sels [primary 0])
@@ -98,8 +100,27 @@
 ;; 导航（方向键）用它：一次动所有光标。
 (define (window-map-selections w f)
   (define moved (for/list ([s (in-list (window-selections w))])
-                  (define p (f (selection-head s))) (selection p p)))
+                  (caret (f (selection-head s)))))
   (window-clamp-selections (struct-copy window w [selections moved])))
+
+;; 并集：把 sels 加进现有选区集（规范化）；primary 保持。
+(define (window-add-selections w sels)
+  (window-set-selections w (append (window-selections w) sels) (window-primary w)))
+
+;; 差集：从现有选区集去掉与 drops 相等的项；primary 尽量保持，删空则原样。
+(define (window-remove-selections w drops)
+  (define old (window-selections w))
+  (define pidx (window-primary w))
+  (define prim (and (< pidx (length old)) (list-ref old pidx)))
+  (define kept (remove* drops old))
+  (cond
+    [(null? kept) w]
+    [else
+     (define pidx* (if prim
+                       (or (for/first ([s (in-list kept)] [i (in-naturals)]
+                                       #:when (equal? s prim)) i) 0)
+                       0))
+     (window-set-selections w kept pidx*)]))
 
 ;;; ---------- 视图状态 ----------
 

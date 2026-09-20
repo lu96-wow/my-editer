@@ -20,6 +20,8 @@
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
  editor-view-set-selections
+ editor-view-add-selections
+ editor-view-remove-selections
  editor-view-set-size
  editor-view-set-mode
  editor-view-set-top-line
@@ -30,6 +32,8 @@
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
  editor-set-selections
+ editor-add-selections
+ editor-remove-selections
  editor-set-mode
  editor-set-size
  editor-set-top-line
@@ -112,6 +116,10 @@
 
 (define (editor-view-set-selections ed vid sels)
   (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels)))
+(define (editor-view-add-selections ed vid sels)
+  (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels)))
+(define (editor-view-remove-selections ed vid sels)
+  (editor-put-view ed vid (window-remove-selections (view-window-of ed vid) sels)))
 
 (define (editor-view-set-size ed vid height width)
   (editor-put-view ed vid (window-set-size (view-window-of ed vid) height width)))
@@ -141,6 +149,10 @@
 
 (define (editor-set-selections ed sels)
   (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels))
+(define (editor-add-selections ed sels)
+  (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels))
+(define (editor-remove-selections ed sels)
+  (editor-view-remove-selections ed (view-id (editor-focused-view ed)) sels))
 
 (define (editor-set-mode ed mode)
   (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))
@@ -263,5 +275,17 @@
   (check-equal? (editor-buffer->string bt1 0) "abc")
   (define-values (bt2 _rbt2) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X")) #:trusted? #t))
   (check-equal? (editor-buffer->string bt2 0) "aXbc")
+
+  ;; 加/减选区（并集/差集；primary 保持；不允许空集）
+  (define se0 (editor-open "abcdef"))
+  (define se1 (editor-add-selections se0 (list (caret (point 0 1)))))
+  (check-equal? (length (editor-selections se1)) 2)
+  (define se2 (editor-add-selections se1 (list (selection (point 0 3) (point 0 5)))))
+  (check-equal? (length (editor-selections se2)) 3)
+  (define se3 (editor-remove-selections se2 (list (caret (point 0 1)))))
+  (check-equal? (length (editor-selections se3)) 2)
+  (check-equal? (length (editor-selections (editor-remove-selections se0 (list (caret (point 0 0)))))) 1)
+  ;; 去重：加一个已存在的选区不变多
+  (check-equal? (length (editor-selections (editor-add-selections se0 (list (caret (point 0 0)))))) 1)
 
   (displayln "program.rkt: all tests passed"))

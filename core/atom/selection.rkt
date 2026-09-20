@@ -13,6 +13,9 @@
 
 (provide
  (struct-out selection)
+ caret
+ caret?
+ caret-point
  selection-point
  selection-range
  selection-empty?
@@ -22,6 +25,13 @@
  selections-index-containing)
 
 (struct selection (anchor head) #:transparent)
+
+;;; ---------- 光标 = 空选区（构造 API 把「同位置」藏起来）----------
+;; 底层仍是 selection；caret 只是「anchor = head」的显式命名。
+
+(define (caret p) (selection p p))
+(define (caret? s) (selection-empty? s))
+(define (caret-point s) (selection-point s))
 
 ;; 光标点 = 活动端
 (define (selection-point s) (selection-head s))
@@ -98,5 +108,11 @@
                 (list (selection (p 0 0) (p 0 0))))
 
   (check-equal? (selections-index-containing (list (selection (p 0 0) (p 0 2)) (selection (p 0 5) (p 0 6))) (p 0 5)) 1)
+
+  ;; caret 构造器/谓词（底层仍是 selection）
+  (check-equal? (caret (p 0 3)) (selection (p 0 3) (p 0 3)))
+  (check-true (caret? (caret (p 0 3))))
+  (check-false (caret? (selection (p 0 0) (p 0 3))))
+  (check-equal? (caret-point (caret (p 1 2))) (p 1 2))
 
   (displayln "selection.rkt: all tests passed"))
