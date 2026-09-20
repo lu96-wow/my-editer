@@ -145,8 +145,8 @@
      (define (resize! nr nc)
        (set! rows (max 4 nr)) (set! cols (max 6 nc))
        (define-values (H leftW rightW topH botH) (layout rows cols))
-       (set! s (editor-set-view-size
-                (editor-set-view-size (editor-set-view-size s 0 H leftW) 1 topH rightW)
+       (set! s (editor-view-set-size
+                (editor-view-set-size (editor-view-set-size s 0 H leftW) 1 topH rightW)
                 2 botH rightW)))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
 

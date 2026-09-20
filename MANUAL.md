@@ -206,6 +206,9 @@
 | `editor-view-width` | 某 view 宽度 |
 | `editor-top-line` | 焦点 view 顶部行 |
 | `editor-view-top-line` | 某 view 顶部行 |
+| `editor-view-mode` | 某 view `clip`/`wrap` |
+| `editor-view-left-col` | 某 view 水平滚动列 |
+| `editor-view-top-seg` | 某 view 折行段 |
 | `buffer-entry-id` | buffer id（投影） |
 | `buffer-entry-name` | buffer 名（投影） |
 | `view-id` | view id（投影） |
@@ -253,16 +256,21 @@
 - `#:trusted?` —— 跳过 `read-only` 守卫（格式化器）。
 - `#:record?` —— 是否记一步账本（默认不记）。
 
-### 9.6 视图命令（程序面：只动指定的一个 view）
+### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）
 
 | 名字 | 语义 |
 |---|---|
-| `editor-set-point` | 设焦点 view 光标（不 ensure、不镜像） |
 | `editor-view-set-point` | 设某 view 光标 |
-| `editor-set-view-size` | 设某 view 尺寸 |
-| `editor-set-mode` | 设焦点 view 的 `clip`/`wrap` |
-| `editor-set-view-sync` | 设某 view 同步策略 |
-| `editor-set-view-buffer` | 让某 view 改看另一个 buffer |
+| `editor-view-set-size` | 设某 view 尺寸 |
+| `editor-view-set-mode` | 设某 view `clip`/`wrap` |
+| `editor-view-set-top` | 设某 view 顶部行 |
+| `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
+| `editor-view-set-left` | 设某 view 水平滚动列 |
+| `editor-view-scroll` | 相对滚动某 view（按 mode 分派 clip/wrap） |
+| `editor-view-set-sync` | 设某 view 同步策略 |
+| `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
+| `editor-set-point` | focus 糖：设焦点 view 光标 |
+| `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 
 ### 9.7 导航（用户面：焦点 view；ensure + follow 镜像）
 

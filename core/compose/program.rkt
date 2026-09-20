@@ -2,7 +2,7 @@
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt" "../text/edit.rkt"
          "../text/patch.rkt"
-         "../view/window.rkt"
+         "../view/window.rkt" "../view/view.rkt"
          "mechanism.rkt" "editor.rkt" "reaction.rkt" rackunit)
 
 ;;; core/compose/program.rkt —— 程序面：内容变更 + 显式视图命令
@@ -16,9 +16,18 @@
 
 (provide
  editor-edit-at
- editor-set-point
+ ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
- editor-set-view-size
+ editor-view-set-size
+ editor-view-set-mode
+ editor-view-set-top
+ editor-view-set-top-seg
+ editor-view-set-left
+ editor-view-scroll
+ editor-view-set-sync
+ editor-view-set-buffer
+ ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
+ editor-set-point
  editor-set-mode
  ;; 标注写（程序面：改 buffer 的标注，不碰文本/光标）
  editor-put-property
@@ -58,23 +67,45 @@
         (define-values (f l) (edits-span (list d*)))
         (values ed*** (change-report f l))])]))
 
-;;; ---------- 显式视图命令（只动一个 view，不镜像） ----------
+;;; ---------- 显式视图命令（程序面：只动一个 view，不镜像、不抢焦点） ----------
+;; 全部按 vid 定位，绝不读也不改 focus；同 buffer 其它 view 一律不动。
 
-(define (editor-set-point ed p)
-  (editor-put-view ed (editor-focus ed)
-                   (window-set-point (view-window (editor-focused-view ed)) p)))
+(define (view-window-of ed vid) (view-window (editor-view-ref ed vid)))
 
 (define (editor-view-set-point ed vid p)
-  (editor-put-view ed vid
-                   (window-set-point (view-window (editor-view-ref ed vid)) p)))
+  (editor-put-view ed vid (window-set-point (view-window-of ed vid) p)))
 
-(define (editor-set-view-size ed vid height width)
-  (editor-put-view ed vid
-                   (window-set-size (view-window (editor-view-ref ed vid)) height width)))
+(define (editor-view-set-size ed vid height width)
+  (editor-put-view ed vid (window-set-size (view-window-of ed vid) height width)))
+
+(define (editor-view-set-mode ed vid mode)
+  (editor-put-view ed vid (window-set-mode (view-window-of ed vid) mode)))
+
+(define (editor-view-set-top ed vid n)
+  (editor-put-view ed vid (window-set-top (view-window-of ed vid) n)))
+
+(define (editor-view-set-top-seg ed vid n)
+  (editor-put-view ed vid (window-set-top-seg (view-window-of ed vid) n)))
+
+(define (editor-view-set-left ed vid n)
+  (editor-put-view ed vid (window-set-left (view-window-of ed vid) n)))
+
+(define (editor-view-scroll ed vid delta)
+  (editor-put-view ed vid (window-scroll-visual (view-window-of ed vid) delta)))
+
+;; 结构变换：换指定 view 的同步策略 / 属主；不触发同步。
+(define (editor-view-set-sync ed vid sync)
+  (editor-set-view-sync ed vid sync))
+(define (editor-view-set-buffer ed vid bid)
+  (editor-set-view-buffer ed vid bid))
+
+;;; ---------- focus 糖（用户面便捷） ----------
+
+(define (editor-set-point ed p)
+  (editor-view-set-point ed (view-id (editor-focused-view ed)) p))
 
 (define (editor-set-mode ed mode)
-  (editor-put-view ed (editor-focus ed)
-                   (window-set-mode (view-window (editor-focused-view ed)) mode)))
+  (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))
 
 ;;; ---------- 标注写（改 buffer 的标注；不碰文本，光标自然不动） ----------
 
@@ -126,11 +157,32 @@
   (check-equal? (editor-get-property an 0 (point 0 2) 'face) 'bold)
   (check-false (editor-buffer-modified? an 0))
 
-  ;; 显式视图命令不动别的 view
-  (define v0 (editor-open "l0\nl1\nl2"))
-  (define-values (v1 vv) (editor-add-view v0 0 3 10 #:focus? #f))
-  (define v2 (editor-view-set-point v1 vv (point 2 0)))
-  (check-equal? (editor-view-point v2 vv) (point 2 0))
-  (check-equal? (editor-point v2) (point 0 0))          ; 焦点 view 不动
+  ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
+  (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
+  (define-values (v1 vv) (editor-add-view v0 0 2 10 #:focus? #f))
+  (define v2 (editor-view-set-top v1 vv 2))
+  (check-equal? (editor-view-top-line v2 vv) 2)          ; 目标 view 动了
+  (check-equal? (editor-view-top-line v2 0) 0)           ; 另一个 view 不动
+  (define v3 (editor-view-set-left v2 vv 3))
+  (check-equal? (editor-view-left-col v3 vv) 3)
+  (define v4 (editor-view-set-mode v3 vv 'wrap))
+  (check-equal? (editor-view-mode v4 vv) 'wrap)
+  (check-equal? (editor-view-mode v4 0) 'clip)
+  (define v5 (editor-view-set-sync v4 vv 'follow))
+  (check-equal? (view-sync (editor-view-ref v5 vv)) 'follow)
+
+  ;; wrap 下的折行段：top-seg 可写且被夹紧到合法域
+  (define ts0 (editor-open "abcdefghij" 2 3))
+  (define ts1 (editor-view-set-mode ts0 0 'wrap))
+  (define ts2 (editor-view-set-top-seg ts1 0 1))
+  (check-equal? (editor-view-top-seg ts2 0) 1)
+  (define-values (v5b other) (editor-open-buffer v5 "other" "OTHER" 2 10 #:focus? #f))
+  (define v6 (editor-view-set-buffer v5b vv other))
+  (check-equal? (editor-view-buffer-id v6 vv) other)
+  (check-equal? (editor-focused-buffer-id v6) 0)         ; 焦点不动
+
+  ;; focus 糖仍作用于焦点 view
+  (define v7 (editor-view-set-point v6 0 (point 1 0)))
+  (check-equal? (editor-view-point v7 0) (point 1 0))
 
   (displayln "program.rkt: all tests passed"))

@@ -109,7 +109,7 @@
      (define (redo) (set! s (let-values ([(s* report) (editor-redo s)]) (apply-report s* report))))
      (define (resize-editor! nr nc)
        (set! rows (max 2 nr)) (set! cols (max 1 nc))
-       (set! s (editor-set-view-size s 0 (sub1 rows) cols)))     (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
+       (set! s (editor-view-set-size s 0 (sub1 rows) cols)))     (define name (if path (path->string (file-name-from-path path)) "*scratch*"))
      (define (redraw) (put-bytes (render-frame s rows cols name)))
 
      (define handler

@@ -33,9 +33,6 @@
  editor-buffer
  editor-buffer-name
  editor-view-buffer-id
- ;; 视图结构变换（无策略；不改文本）
- editor-set-view-sync
- editor-set-view-buffer
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
@@ -45,6 +42,9 @@
  editor-view-width
  editor-top-line
  editor-view-top-line
+ editor-view-mode
+ editor-view-left-col
+ editor-view-top-seg
  editor-point->screen
  editor-view-point->screen
  editor-screen->point
@@ -138,10 +138,6 @@
   (define v (for/first ([v (in-list (editor-views ed))] #:when (= bid (view-buffer-id v))) v))
   (if v (struct-copy editor ed [focus (view-id v)]) ed))
 
-;;; ---------- 视图结构变换（无策略） ----------
-;; 实现在机制层（所有状态写入都在那里），此处只经 provide 再导出：
-;;   editor-set-view-sync / editor-set-view-buffer
-
 ;;; ---------- 光标 / 尺寸 / 映射（只读） ----------
 
 (define (editor-point ed) (window-point (view-window (editor-focused-view ed))))
@@ -152,6 +148,9 @@
 (define (editor-view-width ed vid) (window-width (view-window (editor-view-ref ed vid))))
 (define (editor-top-line ed) (window-top-line (view-window (editor-focused-view ed))))
 (define (editor-view-top-line ed vid) (window-top-line (view-window (editor-view-ref ed vid))))
+(define (editor-view-mode ed vid) (window-mode (view-window (editor-view-ref ed vid))))
+(define (editor-view-left-col ed vid) (window-left-col (view-window (editor-view-ref ed vid))))
+(define (editor-view-top-seg ed vid) (window-top-seg (view-window (editor-view-ref ed vid))))
 
 (define (editor-point->screen ed) (window-point->screen (view-window (editor-focused-view ed))))
 (define (editor-view-point->screen ed vid)
@@ -205,6 +204,10 @@
   (check-equal? (editor-buffer-point->offset e0 0 (point 1 0)) 6)
   (check-equal? (editor-point e0) (point 0 0))
   (check-true (screen? (editor->screen e0)))
+  ;; 显式 view 只读：mode / left-col / top-seg（不经过焦点）
+  (check-equal? (editor-view-mode e0 0) 'clip)
+  (check-equal? (editor-view-left-col e0 0) 0)
+  (check-equal? (editor-view-top-seg e0 0) 0)
   (check-false (editor-can-undo? e0 0))
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
