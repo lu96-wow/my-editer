@@ -22,6 +22,7 @@
  editor-view-set-selections
  editor-view-add-selections
  editor-view-remove-selections
+ editor-view-collapse-selections
  editor-view-set-size
  editor-view-set-mode
  editor-view-set-top-line
@@ -34,11 +35,15 @@
  editor-set-selections
  editor-add-selections
  editor-remove-selections
+ editor-collapse-selections
  editor-set-mode
  editor-set-size
  editor-set-top-line
  editor-set-top-seg
  editor-set-left-col
+ editor-set-sync
+ editor-set-buffer
+ editor-set-buffer-name
  ;; 标注写（程序面：改 buffer 的标注，不碰文本/光标）
  editor-put-property
  editor-remove-property
@@ -114,12 +119,17 @@
 (define (editor-view-set-point ed vid p)
   (editor-put-view ed vid (window-set-point (view-window-of ed vid) p)))
 
-(define (editor-view-set-selections ed vid sels)
-  (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels)))
-(define (editor-view-add-selections ed vid sels)
-  (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels)))
+(define (editor-view-set-selections ed vid sels [primary 0])
+  (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels primary)))
+(define (editor-view-add-selections ed vid sels [primary? #f])
+  (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels primary?)))
 (define (editor-view-remove-selections ed vid sels)
   (editor-put-view ed vid (window-remove-selections (view-window-of ed vid) sels)))
+
+;; 回单光标：把该 view 的选区坍缩成 primary 处的一个空选区
+(define (editor-view-collapse-selections ed vid)
+  (define w (view-window-of ed vid))
+  (editor-put-view ed vid (window-set-point w (window-point w))))
 
 (define (editor-view-set-size ed vid height width)
   (editor-put-view ed vid (window-set-size (view-window-of ed vid) height width)))
@@ -147,12 +157,14 @@
 (define (editor-set-point ed p)
   (editor-view-set-point ed (view-id (editor-focused-view ed)) p))
 
-(define (editor-set-selections ed sels)
-  (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels))
-(define (editor-add-selections ed sels)
-  (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels))
+(define (editor-set-selections ed sels [primary 0])
+  (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels primary))
+(define (editor-add-selections ed sels [primary? #f])
+  (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels primary?))
 (define (editor-remove-selections ed sels)
   (editor-view-remove-selections ed (view-id (editor-focused-view ed)) sels))
+(define (editor-collapse-selections ed)
+  (editor-view-collapse-selections ed (view-id (editor-focused-view ed))))
 
 (define (editor-set-mode ed mode)
   (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))
@@ -168,6 +180,16 @@
 
 (define (editor-set-left-col ed n)
   (editor-view-set-left-col ed (view-id (editor-focused-view ed)) n))
+
+(define (editor-set-sync ed sync)
+  (editor-view-set-sync ed (view-id (editor-focused-view ed)) sync))
+(define (editor-set-buffer ed bid)
+  (editor-view-set-buffer ed (view-id (editor-focused-view ed)) bid))
+
+;;; ---------- buffer 元数据 ----------
+
+(define (editor-set-buffer-name ed bid name)
+  (editor-put-buffer-name ed bid name))
 
 ;;; ---------- 标注写（改 buffer 的标注；不碰文本，光标自然不动） ----------
 
@@ -244,7 +266,7 @@
   (define-values (v5b other) (editor-open-buffer v5 "other" "OTHER" 2 10 #:focus? #f))
   (define v6 (editor-view-set-buffer v5b vv other))
   (check-equal? (editor-view-buffer-id v6 vv) other)
-  (check-equal? (editor-focused-buffer-id v6) 0)         ; 焦点不动
+  (check-equal? (editor-buffer-id v6) 0)         ; 焦点不动
 
   ;; focus 糖仍作用于焦点 view
   (define v7 (editor-view-set-point v6 0 (point 1 0)))
@@ -287,5 +309,23 @@
   (check-equal? (length (editor-selections (editor-remove-selections se0 (list (caret (point 0 0)))))) 1)
   ;; 去重：加一个已存在的选区不变多
   (check-equal? (length (editor-selections (editor-add-selections se0 (list (caret (point 0 0)))))) 1)
+
+  ;; primary 控制 + collapse
+  (define pr0 (editor-open "abcdef"))
+  (define pr1 (editor-set-selections pr0 (list (caret (point 0 0)) (caret (point 0 3))) 1))
+  (check-equal? (editor-point pr1) (point 0 3))              ; primary = 传入的第 1 个
+  (define pr2 (editor-add-selections pr1 (list (caret (point 0 5))) #t))
+  (check-equal? (editor-point pr2) (point 0 5))              ; 新加的成为 primary
+  (define pr3 (editor-collapse-selections pr2))
+  (check-equal? (length (editor-selections pr3)) 1)
+  (check-equal? (editor-point pr3) (point 0 5))
+
+  ;; focus 糖：sync / buffer / 重命名
+  (define fs0 (editor-open "x"))
+  (check-equal? (editor-sync (editor-set-sync fs0 'follow)) 'follow)
+  (define-values (fs1 bid2) (editor-open-buffer fs0 "b" "y" #:focus? #f))
+  (define fs2 (editor-set-buffer fs1 bid2))
+  (check-equal? (editor-buffer-id fs2) bid2)
+  (check-equal? (editor-buffer-name (editor-set-buffer-name fs2 bid2 "renamed") bid2) "renamed")
 
   (displayln "program.rkt: all tests passed"))

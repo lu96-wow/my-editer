@@ -28,6 +28,7 @@
  editor-set-view-sync
  editor-set-view-buffer
  editor-put-history
+ editor-put-buffer-name
  editor-record-history
  editor-record-batch)
 
@@ -113,6 +114,11 @@
   (struct-copy editor ed
     [buffers (for/list ([e (in-list (editor-buffers ed))])
                (if (= (buffer-entry-id e) bid) entry* e))]))
+
+(define (editor-put-buffer-name ed bid name)
+  (struct-copy editor ed
+    [buffers (for/list ([e (in-list (editor-buffers ed))])
+               (if (= (buffer-entry-id e) bid) (struct-copy buffer-entry e [name name]) e))]))
 
 (define (editor-put-history ed bid h)
   (struct-copy editor ed

@@ -67,7 +67,7 @@
   (define app* (struct-copy app a [ed ed]))
   (if (and (app-highlight? app*) report)
       (highlight-range app*
-                       (editor-focused-buffer-id ed)
+                       (editor-buffer-id ed)
                        (change-report-first-line report)
                        (change-report-last-line report))
       app*))
@@ -130,7 +130,7 @@
 ;;        或退化成用户面（会抢焦点/改焦点 view）。这也是 2.1 说的合一动机。
 (define (append-stamp app)
   (define ed (app-ed app))
-  (define bid (editor-focused-buffer-id ed))
+  (define bid (editor-buffer-id ed))
   (define n (editor-buffer-line-count ed bid))
   (define p (point (sub1 n) (editor-buffer-line-length ed bid (sub1 n))))
   (define stamp (number->string (current-seconds)))
@@ -175,12 +175,12 @@
 
 (define (rehighlight-all app)
   (define ed (app-ed app))
-  (define bid (editor-focused-buffer-id ed))
+  (define bid (editor-buffer-id ed))
   (highlight-range app bid 0 (sub1 (editor-buffer-line-count ed bid))))
 
 (define (clear-highlight a)
   (define ed (app-ed a))
-  (define bid (editor-focused-buffer-id ed))
+  (define bid (editor-buffer-id ed))
   (struct-copy app a
     [ed (editor-apply-patches ed bid
                               (list (patch 'face 0 (sub1 (editor-buffer-line-count ed bid)) '())))]))
@@ -204,7 +204,7 @@
 
 ;; 「词」：主选区非空 → 选区文本；否则取光标处/紧邻的 [A-Za-z0-9_] 串。
 (define (word-at ed)
-  (define bid (editor-focused-buffer-id ed))
+  (define bid (editor-buffer-id ed))
   (define prim (primary-selection ed))
   (if (and prim (not (caret? prim)))
       (let-values ([(a b) (selection-range prim)])
@@ -222,7 +222,7 @@
 
 ;; 全 buffer 里 pattern 的全部出现（按文档顺序）
 (define (occurrences ed pattern)
-  (define bid (editor-focused-buffer-id ed))
+  (define bid (editor-buffer-id ed))
   (define full (editor-buffer->string ed bid))
   (for/list ([m (in-list (regexp-match-positions* (regexp-quote pattern) full))])
     (list (editor-buffer-offset->point ed bid (car m))
@@ -240,18 +240,16 @@
      (cond
        [(caret? prim)                              ; 第一次：只选词
         (struct-copy app a [ed (editor-set-selections ed (cons (selection ps pe) (remove prim sels)))])]
-       [else                                       ; 已有：加最后一个选区之后的下一个出现
-        (define last-end (for/fold ([m #f]) ([s sels])
-                           (define e (let-values ([(_ e) (selection-range s)]) e))
-                           (if (or (not m) (point<? m e)) e m)))
+       [else                                       ; 已有：从 primary 之后选下一个出现（新选区设为主，继续往后）
+        (define prim-end (let-values ([(_ e) (selection-range prim)]) e))
         (define taken (map (lambda (s) (call-with-values (lambda () (selection-range s)) list)) sels))
         (define nxt (for/first ([o (in-list (occurrences ed pat))]
-                                #:when (and (point<=? last-end (car o))
+                                #:when (and (point<=? prim-end (car o))
                                             (not (member (list (car o) (cadr o)) taken))))
                       o))
         (cond
           [(not nxt) a]
-          [else (struct-copy app a [ed (editor-add-selections ed (list (selection (car nxt) (cadr nxt))))])])])]))
+          [else (struct-copy app a [ed (editor-add-selections ed (list (selection (car nxt) (cadr nxt))) #t)])])])]))
 
 ;; Ctrl+A：把当前词的所有出现一次选中
 (define (select-all-occurrences a)

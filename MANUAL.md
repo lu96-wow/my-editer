@@ -226,11 +226,12 @@
 | `editor-buffers` | buffer-entry 列表 |
 | `editor-views` | view 列表 |
 | `editor-focus` | 当前焦点 view id |
-| `editor-focused-buffer-id` | 焦点 view 的 buffer id |
+| `editor-buffer-id` | 焦点 view 的 buffer id |
 | `editor-buffer` | 取 buffer 值 |
 | `editor-buffer-name` | 取 buffer 名 |
 | `editor-view-buffer-id` | 某 view 的 buffer id |
 | `editor-view-sync` | 某 view 的同步策略 |
+| `editor-sync` | 焦点 view 的同步策略 |
 | `editor-selections` | 焦点 view 的选区集 |
 | `editor-view-selections` | 某 view 的选区集 |
 | `editor-point` | 焦点 view 光标 |
@@ -267,6 +268,7 @@
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
 | `editor-buffer-tick` | 某 buffer 的变化计数（乐观并发 / 合并的版本戳） |
+| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅标注） |
 
 ### 9.4 标注
 
@@ -307,9 +309,10 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-view-set-point` | 设某 view 光标 |
-| `editor-view-set-selections` | 设某 view 的选区集（多光标） |
-| `editor-view-add-selections` | 并入选区（并集） |
+| `editor-view-set-selections` | 设某 view 的选区集（多光标）；可选 primary 下标 |
+| `editor-view-add-selections` | 并入选区；`#:primary?` 可让新加的成为主选区 |
 | `editor-view-remove-selections` | 去掉选区（差集） |
+| `editor-view-collapse-selections` | 回单光标（保留 primary） |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
 | `editor-view-set-top-line` | 设某 view 顶部行 |
@@ -317,10 +320,14 @@
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
+| `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
+| `editor-set-buffer` | focus 糖：让焦点 view 改看另一个 buffer |
+| `editor-set-buffer-name` | 重命名某 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
-| `editor-set-selections` | focus 糖：设焦点 view 选区集 |
-| `editor-add-selections` | focus 糖：并入选区 |
+| `editor-set-selections` | focus 糖：设焦点 view 选区集（可选 primary） |
+| `editor-add-selections` | focus 糖：并入选区（`#:primary?`） |
 | `editor-remove-selections` | focus 糖：去掉选区 |
+| `editor-collapse-selections` | focus 糖：回单光标 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
 | `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |

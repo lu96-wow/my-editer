@@ -103,9 +103,10 @@
                   (caret (f (selection-head s)))))
   (window-clamp-selections (struct-copy window w [selections moved])))
 
-;; 并集：把 sels 加进现有选区集（规范化）；primary 保持。
-(define (window-add-selections w sels)
-  (window-set-selections w (append (window-selections w) sels) (window-primary w)))
+;; 并集：把 sels 加进现有选区集（规范化）；primary 默认保持，primary? #t 则让新加的成为 primary。
+(define (window-add-selections w sels [primary? #f])
+  (window-set-selections w (append (window-selections w) sels)
+                         (if primary? (length (window-selections w)) (window-primary w))))
 
 ;; 差集：从现有选区集去掉与 drops 相等的项；primary 尽量保持，删空则原样。
 (define (window-remove-selections w drops)

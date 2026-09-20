@@ -204,7 +204,7 @@
   ;; 多 buffer：各自独立文本 / 账本
   (define ed (editor-open "AAA"))
   (define-values (ed2 bid1) (editor-open-buffer ed "b.txt" "BBB" #:focus? #t))
-  (check-equal? (editor-focused-buffer-id ed2) bid1)
+  (check-equal? (editor-buffer-id ed2) bid1)
   (define-values (ed3 _u5) (editor-edit ed2 (edit-insert "x")))
   (check-equal? (editor-buffer->string ed3 bid1) "xBBB")
   (check-equal? (editor-buffer->string ed3 0) "AAA")

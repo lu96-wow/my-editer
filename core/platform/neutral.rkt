@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt"
-         "../doc/buffer.rkt"
+         "../doc/buffer.rkt" "../doc/patch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/project.rkt"
          "../unit/screen.rkt" "../unit/history.rkt"
          "state.rkt" "write.rkt" rackunit)
@@ -15,7 +15,7 @@
 
 (provide
  ;; editor 只读投影（构造器/struct:editor 不外露）
- editor? editor-buffers editor-views editor-focus editor-next-buffer editor-next-view
+ editor? editor-buffers editor-views editor-focus
  buffer-entry-id buffer-entry-name
  view-id view-buffer-id view-sync
  change-report change-report? change-report-first-line change-report-last-line change-report-edits
@@ -30,11 +30,13 @@
  ;; 查询
  editor-buffer-count
  editor-view-count
- editor-focused-buffer-id
+ editor-buffer-id
  editor-buffer
  editor-buffer-name
  editor-view-buffer-id
  editor-view-sync
+ editor-buffer-id
+ editor-sync
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
@@ -70,6 +72,7 @@
  editor-buffer-offset->point
  editor-buffer-range-text
  editor-buffer-tick
+ editor-buffer-content-eq?
  ;; 标注读（按 buffer-id）
  editor-get-property
  editor-restrict-at
@@ -133,7 +136,8 @@
 
 (define (editor-buffer-count ed) (length (editor-buffers ed)))
 (define (editor-view-count ed) (length (editor-views ed)))
-(define (editor-focused-buffer-id ed) (view-buffer-id (editor-focused-view ed)))
+(define (editor-buffer-id ed) (view-buffer-id (editor-focused-view ed)))
+(define (editor-sync ed) (view-sync (editor-focused-view ed)))
 (define (editor-buffer ed bid) (buffer-entry-buffer (editor-buffer-entry ed bid)))
 (define (editor-buffer-name ed bid) (buffer-entry-name (editor-buffer-entry ed bid)))
 (define (editor-view-buffer-id ed vid) (view-buffer-id (editor-view-ref ed vid)))
@@ -193,6 +197,8 @@
 (define (editor-buffer-offset->point ed bid off) (buffer-offset->point (editor-buffer ed bid) off))
 (define (editor-buffer-range-text ed bid s e) (buffer-range-text (editor-buffer ed bid) s e))
 (define (editor-buffer-tick ed bid) (buffer-tick (editor-buffer ed bid)))
+(define (editor-buffer-content-eq? ed b1 b2)
+  (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
 (define (editor-get-property ed bid p key) (buffer-get-property (editor-buffer ed bid) p key))
 (define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
@@ -231,6 +237,7 @@
 
   ;; 变化计数：读口（并发/合并的版本戳）
   (check-equal? (editor-buffer-tick e0 0) 0)
+  (check-true (editor-buffer-content-eq? e0 0 0))
   (define-values (et _dt) (editor-apply-edit e0 0 (edit-desc (point 0 0) (point 0 0) "X")))
   (check-equal? (editor-buffer-tick et 0) 1)
 
@@ -241,7 +248,7 @@
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
   (define-values (e1 _bid) (editor-open-buffer e0 "b" "BBB" #:focus? #f))
-  (check-equal? (editor-focused-buffer-id e1) 0)
+  (check-equal? (editor-buffer-id e1) 0)
   (check-equal? (editor-buffer-count e1) 2)
 
   ;; 结构变换：set-view-buffer 换属主、不改文本、不动焦点
