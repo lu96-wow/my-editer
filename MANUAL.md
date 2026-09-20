@@ -248,7 +248,8 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-edit-at` | 在显式 `(bid, point)` 编辑；`#:reaction 'none` 默认不动视图 |
-| `editor-edit` | 在焦点 view 光标处编辑；leader + ensure + 记账本 |
+| `editor-view-edit` | 在指定 view 光标处编辑；leader + ensure + 记账本；不改焦点 |
+| `editor-edit` | focus 糖：在焦点 view 光标处编辑 |
 
 `editor-edit-at` 的参数：
 
@@ -266,31 +267,40 @@
 | `editor-view-set-top` | 设某 view 顶部行 |
 | `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
 | `editor-view-set-left` | 设某 view 水平滚动列 |
-| `editor-view-scroll` | 相对滚动某 view（按 mode 分派 clip/wrap） |
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 
-### 9.7 导航（用户面：焦点 view；ensure + follow 镜像）
+### 9.7 导航（用户面：ensure + follow 镜像；原语按 vid，focus 糖见下）
 
 | 名字 | 语义 |
 |---|---|
-| `editor-left` | 左移 |
-| `editor-right` | 右移 |
-| `editor-up` | 上移（视觉行） |
-| `editor-down` | 下移（视觉行） |
-| `editor-home` | 行首 |
-| `editor-end` | 行尾 |
-| `editor-goto` | 跳到位置并 ensure |
-| `editor-scroll` | 滚动焦点视口 |
+| `editor-view-left` | 某 view 左移 |
+| `editor-view-right` | 某 view 右移 |
+| `editor-view-up` | 某 view 上移（视觉行） |
+| `editor-view-down` | 某 view 下移（视觉行） |
+| `editor-view-home` | 某 view 行首 |
+| `editor-view-end` | 某 view 行尾 |
+| `editor-view-goto` | 某 view 跳到位置并 ensure |
+| `editor-view-scroll` | 滚动某 view |
+| `editor-left` | focus 糖：焦点 view 左移 |
+| `editor-right` | focus 糖：右移 |
+| `editor-up` | focus 糖：上移 |
+| `editor-down` | focus 糖：下移 |
+| `editor-home` | focus 糖：行首 |
+| `editor-end` | focus 糖：行尾 |
+| `editor-goto` | focus 糖：跳到位置并 ensure |
+| `editor-scroll` | focus 糖：滚动焦点视口 |
 
 ### 9.8 撤销 / 重做
 
 | 名字 | 语义 |
 |---|---|
-| `editor-undo` | 按焦点 view 的 buffer 撤销一步 |
-| `editor-redo` | 重做一步 |
+| `editor-view-undo` | 按某 view 所属 buffer 撤销一步；不改焦点 |
+| `editor-view-redo` | 按某 view 所属 buffer 重做一步 |
+| `editor-undo` | focus 糖：按焦点 view 的 buffer 撤销一步 |
+| `editor-redo` | focus 糖：重做一步 |
 | `editor-can-undo?` | 可否撤销 |
 | `editor-can-redo?` | 可否重做 |
 | `editor-undo-depth` | 撤销栈深 |

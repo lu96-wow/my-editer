@@ -37,8 +37,7 @@ edit/
 │       ├── editor.rkt        #     中性接口：构造/查询/解析/标注读/投影（公开）
 │       ├── reaction.rkt      #     显示语义：none / map / leader / follow（内部）
 │       ├── program.rkt       #     程序面（公开）
-│       ├── command.rkt       #     用户面（公开）
-│       └── example.rkt       #     使用方示范（多 buffer / 侧边栏 / 高亮）
+│       └── command.rkt       #     用户面（公开）
 ├── io/                       #   后端示范：racket-tui 接线（core 只产 screen、只收 events）
 └── tools/reconcile.rkt       #   文档 ↔ 可达面对账
 ```
@@ -46,7 +45,7 @@ edit/
 依赖方向：
 
 ```
-text  ←  view  ←  compose(mechanism ← editor ← {reaction, program, command})
+text  ←  view  ←  compose(mechanism ← editor ← {reaction, program ← command})
 api   ←  text, view                      # api 只转发原子，不依赖 compose
 editor(入口)  ←  api, compose(editor, program, command)
 ```
@@ -62,8 +61,8 @@ editor(入口)  ←  api, compose(editor, program, command)
 | 平面 | 谁调用 | 改什么 | 入口 |
 |---|---|---|---|
 | 内容面 | 程序 | 只改 buffer（文本 / 标注） | `editor-edit-at` |
-| 视图面 | 程序 | 只改指定的一个 view | `editor-set-point` |
-| 用户面 | 输入 | 焦点 view 的光标 + 视口 + 账本 | `editor-edit` |
+| 视图面 | 程序 | 只改指定的一个 view（按 vid，不经过焦点） | `editor-view-set-*` |
+| 用户面 | 输入 | 指定 view 的光标 + 视口 + 账本（focus 糖） | `editor-edit` |
 | 中性面 | 任何人 | 读、解析、投影、构造 | `editor-buffer->string` |
 
 - **程序默认不动视图**：`editor-edit-at` 的 `#:reaction` 默认 `none`——只换 buffer

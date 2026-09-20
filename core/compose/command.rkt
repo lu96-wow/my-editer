@@ -3,19 +3,33 @@
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt" "../text/edit.rkt"
          "../view/window.rkt" "../view/view.rkt"
          "../tool/history.rkt"
-         "mechanism.rkt" "editor.rkt" "reaction.rkt" rackunit)
+         "mechanism.rkt" "editor.rkt" "program.rkt" "reaction.rkt" rackunit)
 
-;;; core/compose/command.rkt —— 用户面：焦点 + leader + ensure + 账本
+;;; core/compose/command.rkt —— 用户面：leader + ensure + 账本
 ;;;
-;;; 用户操作 = 内容变更 + 显示语义 leader + 账本，全部落在**焦点 view** 上：
-;;;   · editor-edit      在焦点 view 光标处编辑；leader 推进到插入后 + ensure；
-;;;                      同 buffer 其余 free 映射 / follow 镜像；记一步。
-;;;   · editor-undo/redo 按焦点 view 所属 buffer 的账本；leader 语义；撤销回到 pre-point。
-;;;   · 导航             更新焦点 view 的 window（ensure 可见），同 buffer follow 镜像它。
+;;; 用户操作 = 内容变更 + 显示语义 leader + 账本，原语**按 vid 定位**（editor-view-*）：
+;;;   · editor-view-edit      在指定 view 光标处编辑；leader 推进到插入后 + ensure；
+;;;                           同 buffer 其余 free 映射 / follow 镜像；记一步。
+;;;   · editor-view-undo/redo 按该 view 所属 buffer 的账本；leader 语义；撤销回到 pre-point。
+;;;   · editor-view-*（导航） 更新该 view 的 window（ensure 可见），同 buffer follow 镜像它。
 ;;;
-;;; 程序操作（显式 buffer/位置、默认不动视图）在 program.rkt。
+;;; 焦点只是**解析 vid 的糖**：editor-edit / editor-undo / editor-left … 一律落到上面的原语，
+;;; 绝不反过来。程序操作（显式 buffer/位置、默认不动视图）在 program.rkt。
 
 (provide
+ ;; 用户面原语（按 vid；不读也不改 focus）
+ editor-view-edit
+ editor-view-undo
+ editor-view-redo
+ editor-view-left
+ editor-view-right
+ editor-view-up
+ editor-view-down
+ editor-view-home
+ editor-view-end
+ editor-view-goto
+ editor-view-scroll
+ ;; focus 糖
  editor-edit
  editor-undo
  editor-redo
@@ -28,14 +42,16 @@
  editor-goto
  editor-scroll)
 
-;;; ---------- 编辑（焦点 view，leader 语义） ----------
+;; 解析焦点 vid —— 用户面唯一读 focus 的地方。
+(define (focused-vid ed) (view-id (editor-focused-view ed)))
 
-(define (editor-edit ed op)
-  (define fv (editor-focused-view ed))
-  (define vid (view-id fv))
-  (define bid (view-buffer-id fv))
+;;; ---------- 编辑（指定 view，leader 语义） ----------
+
+(define (editor-view-edit ed vid op)
+  (define v (editor-view-ref ed vid))
+  (define bid (view-buffer-id v))
   (define b0 (editor-buffer ed bid))
-  (define p0 (window-point (view-window fv)))
+  (define p0 (window-point (view-window v)))
   (define d (op b0 p0))
   (cond
     [(not d) (values ed #f)]
@@ -50,12 +66,10 @@
         (define-values (f l) (edits-span (list d*)))
         (values (editor-record-history ed** bid ch) (change-report f l))])]))
 
-;;; ---------- 撤销 / 重做 ----------
+;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
-(define (editor-undo ed)
-  (define fv (editor-focused-view ed))
-  (define vid (view-id fv))
-  (define bid (view-buffer-id fv))
+(define (editor-view-undo ed vid)
+  (define bid (view-buffer-id (editor-view-ref ed vid)))
   (define-values (st h*) (history-pop-undo (editor-history ed bid)))
   (cond
     [(not st) (values ed #f)]
@@ -70,10 +84,8 @@
      (define-values (f l) (edits-span (step-undo-descs st)))
      (values (editor-put-history ed** bid h*) (change-report f l))]))
 
-(define (editor-redo ed)
-  (define fv (editor-focused-view ed))
-  (define vid (view-id fv))
-  (define bid (view-buffer-id fv))
+(define (editor-view-redo ed vid)
+  (define bid (view-buffer-id (editor-view-ref ed vid)))
   (define-values (st h*) (history-pop-redo (editor-history ed bid)))
   (cond
     [(not st) (values ed #f)]
@@ -84,24 +96,39 @@
      (define-values (f l) (edits-span (step-replay-descs st)))
      (values (editor-put-history ed* bid h*) (change-report f l))]))
 
-;;; ---------- 导航（焦点 view；移动后 ensure + follow 镜像） ----------
+;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
+;; editor-view-move 取 (window → window) 变换，**不对外**：它能看到并改写 window，
+;; 会破坏「view.buffer-id ↔ window.buffer」不变量。对外只暴露具体动作。
 
-(define (editor-move ed f)
-  (define fv (editor-focused-view ed))
-  (define vid (view-id fv))
-  (define w* (window-ensure-point (f (view-window fv))))
+(define (editor-view-move ed vid f)
+  (define w* (window-ensure-point (f (view-window (editor-view-ref ed vid)))))
   (editor-leader-window ed vid w*))
 
-(define (editor-left ed)  (editor-move ed window-left))
-(define (editor-right ed) (editor-move ed window-right))
-(define (editor-up ed)    (editor-move ed window-up))
-(define (editor-down ed)  (editor-move ed window-down))
-(define (editor-home ed)  (editor-move ed window-home))
-(define (editor-end ed)   (editor-move ed window-end))
-(define (editor-goto ed p) (editor-move ed (lambda (w) (window-set-point w p))))
-(define (editor-scroll ed delta)
-  (define fv (editor-focused-view ed))
-  (editor-leader-window ed (view-id fv) (window-scroll-visual (view-window fv) delta)))
+(define (editor-view-left ed vid)  (editor-view-move ed vid window-left))
+(define (editor-view-right ed vid) (editor-view-move ed vid window-right))
+(define (editor-view-up ed vid)    (editor-view-move ed vid window-up))
+(define (editor-view-down ed vid)  (editor-view-move ed vid window-down))
+(define (editor-view-home ed vid)  (editor-view-move ed vid window-home))
+(define (editor-view-end ed vid)   (editor-view-move ed vid window-end))
+(define (editor-view-goto ed vid p)
+  (editor-view-move ed vid (lambda (w) (window-set-point w p))))
+(define (editor-view-scroll ed vid delta)
+  (editor-leader-window ed vid
+                        (window-scroll-visual (view-window (editor-view-ref ed vid)) delta)))
+
+;;; ---------- focus 糖（用户面便捷；程序面请用上面的 editor-view-*） ----------
+
+(define (editor-edit ed op)        (editor-view-edit ed (focused-vid ed) op))
+(define (editor-undo ed)           (editor-view-undo ed (focused-vid ed)))
+(define (editor-redo ed)           (editor-view-redo ed (focused-vid ed)))
+(define (editor-left ed)           (editor-view-left ed (focused-vid ed)))
+(define (editor-right ed)          (editor-view-right ed (focused-vid ed)))
+(define (editor-up ed)             (editor-view-up ed (focused-vid ed)))
+(define (editor-down ed)           (editor-view-down ed (focused-vid ed)))
+(define (editor-home ed)           (editor-view-home ed (focused-vid ed)))
+(define (editor-end ed)            (editor-view-end ed (focused-vid ed)))
+(define (editor-goto ed p)         (editor-view-goto ed (focused-vid ed) p))
+(define (editor-scroll ed delta)   (editor-view-scroll ed (focused-vid ed) delta))
 
 ;;; ---------- 测试 ----------
 
@@ -133,7 +160,7 @@
   ;; 多视图同 buffer：free 映射、follow 镜像
   (define m0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
   (define-values (m1 v0) (editor-add-view m0 0 3 10))         ; 默认不抢焦点：仍停在 view 0
-  (define m2 (editor-focus-view (editor-set-view-sync m1 v0 'follow) 0))
+  (define m2 (editor-focus-view (editor-view-set-sync m1 v0 'follow) 0))
   (define m3 (editor-goto m2 (point 0 0)))
   (define-values (m4 _u6) (editor-edit m3 (edit-insert "XY")))
   (check-equal? (editor-buffer->string m4 0) "XYl0\nl1\nl2\nl3\nl4\nl5\nl6")
@@ -155,5 +182,20 @@
   (check-equal? (editor-buffer->string g6 other) "OTHER")
   (check-equal? (editor-view-top-line g6 vfollow) (editor-view-top-line g6 0))
   (check-eq? (editor-buffer g6 0) (window-buffer (view-window (editor-view-ref g6 vfollow))))
+
+  ;; 显式 vid 的用户语义：不抢焦点，只作用目标 view
+  (define p0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
+  (define-values (p1 pv) (editor-add-view p0 0 3 10 #:focus? #f))
+  (define p2 (editor-view-goto p1 pv (point 3 0)))
+  (check-equal? (editor-view-point p2 pv) (point 3 0))
+  (check-equal? (editor-point p2) (point 0 0))              ; 焦点 view 光标不动
+  (define-values (p3 _r) (editor-view-edit p2 pv (edit-insert "X")))
+  (check-equal? (editor-buffer->string p3 0) "l0\nl1\nl2\nXl3\nl4\nl5\nl6")
+  (check-equal? (editor-point p3) (point 0 0))
+  (check-true (editor-can-undo? p3 0))
+  (define-values (p4 _r2) (editor-view-undo p3 pv))
+  (check-equal? (editor-buffer->string p4 0) "l0\nl1\nl2\nl3\nl4\nl5\nl6")
+  (define p5 (editor-view-scroll p4 pv 2))
+  (check-equal? (editor-view-top-line p5 0) 0)              ; 焦点 view 视口不动
 
   (displayln "command.rkt: all tests passed"))

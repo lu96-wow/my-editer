@@ -2,7 +2,7 @@
 
 (require "../text/point.rkt" "../text/content.rkt" "../text/buffer.rkt" "../text/edit.rkt"
          "../text/patch.rkt"
-         "../view/window.rkt" "../view/view.rkt"
+         "../view/window.rkt"
          "mechanism.rkt" "editor.rkt" "reaction.rkt" rackunit)
 
 ;;; core/compose/program.rkt —— 程序面：内容变更 + 显式视图命令
@@ -23,7 +23,6 @@
  editor-view-set-top
  editor-view-set-top-seg
  editor-view-set-left
- editor-view-scroll
  editor-view-set-sync
  editor-view-set-buffer
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
@@ -89,9 +88,6 @@
 
 (define (editor-view-set-left ed vid n)
   (editor-put-view ed vid (window-set-left (view-window-of ed vid) n)))
-
-(define (editor-view-scroll ed vid delta)
-  (editor-put-view ed vid (window-scroll-visual (view-window-of ed vid) delta)))
 
 ;; 结构变换：换指定 view 的同步策略 / 属主；不触发同步。
 (define (editor-view-set-sync ed vid sync)
