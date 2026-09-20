@@ -64,7 +64,7 @@
                            (edit-change d* (buffer-edit-desc-inverse b0 d*) (edit-desc-start d*)))
                           ed**))
         (define-values (f l) (edits-span (list d*)))
-        (values ed*** (change-report f l))])]))
+        (values ed*** (change-report f l (list d*)))])]))
 
 ;;; ---------- 显式视图命令（程序面：只动一个 view，不镜像、不抢焦点） ----------
 ;; 全部按 vid 定位，绝不读也不改 focus；同 buffer 其它 view 一律不动。
@@ -125,6 +125,8 @@
   (check-equal? (editor-buffer->string e1 0) "XYhello")
   (check-equal? (editor-point e1) (point 0 0))          ; none
   (check-equal? (change-report-first-line r1) 0)
+  (check-equal? (change-report-edits r1)
+                (list (edit-desc (point 0 0) (point 0 0) "XY")))   ; 施加顺序的生效 desc
   (check-false (editor-can-undo? e1 0))                 ; 默认不记账本
 
   ;; 'map：光标跟随文本（光标在编辑点之后才会右移）

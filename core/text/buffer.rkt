@@ -51,6 +51,7 @@
  buffer-put-restrict
  buffer-read-only-at?
  buffer-restrict-runs
+ buffer-property-runs
  buffer-add-marker
  buffer-remove-marker
  buffer-marker-pos
@@ -113,6 +114,13 @@
 (define (buffer-restrict-runs b line)
   (properties-restrict-runs (buffer-properties b) line
                             (string-length (buffer-line-ref b line))))
+
+;; 一行内某表现层 key 的段：(listof (list start end val))，只含该 key 存在的段。
+;; 区间查询（诊断/高亮读回）用（O(段数)）。
+(define (buffer-property-runs b line key)
+  (filter caddr
+          (properties-key-runs (buffer-properties b) line
+                               (string-length (buffer-line-ref b line)) key)))
 
 ;; [a,z) 与某行任一 read-only 段有交集？
 (define (line-range-read-only? b line a z)

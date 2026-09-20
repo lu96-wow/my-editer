@@ -64,7 +64,7 @@
         (define ed** (editor-leader-view ed* vid b* d*))
         (define ch (edit-change d* (buffer-edit-desc-inverse b0 d*) p0))
         (define-values (f l) (edits-span (list d*)))
-        (values (editor-record-history ed** bid ch) (change-report f l))])]))
+        (values (editor-record-history ed** bid ch) (change-report f l (list d*)))])]))
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
@@ -82,7 +82,7 @@
                  (window-set-point (view-window (editor-view-ref ed* vid)) (step-pre-point st))))
      (define ed** (editor-leader-window ed* vid w*))
      (define-values (f l) (edits-span (step-undo-descs st)))
-     (values (editor-put-history ed** bid h*) (change-report f l))]))
+     (values (editor-put-history ed** bid h*) (change-report f l (step-undo-descs st)))]))
 
 (define (editor-view-redo ed vid)
   (define bid (view-buffer-id (editor-view-ref ed vid)))
@@ -94,7 +94,7 @@
                    (define-values (e1 d1) (editor-apply-edit e bid d #f))
                    (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) d1) e1)))
      (define-values (f l) (edits-span (step-replay-descs st)))
-     (values (editor-put-history ed* bid h*) (change-report f l))]))
+     (values (editor-put-history ed* bid h*) (change-report f l (step-replay-descs st)))]))
 
 ;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
 ;; editor-view-move 取 (window → window) 变换，**不对外**：它能看到并改写 window，
@@ -141,11 +141,20 @@
   (check-equal? (editor-buffer->string e3 0) "abc")
   (check-equal? (change-report-first-line r1) 0)
   (check-equal? (editor-undo-depth e3 0) 1)          ; 打字连续段并成 1 步
-  (define-values (u1 _u3) (editor-undo e3))
+  (define-values (u1 r-u3) (editor-undo e3))
   (check-equal? (editor-buffer->string u1 0) "")
   (check-equal? (editor-point u1) (point 0 0))
-  (define-values (r1b _u4) (editor-redo u1))
+  ;; 撤销报告：施加顺序的 undo-descs
+  (check-equal? (change-report-edits r-u3)
+                (list (edit-desc (point 0 2) (point 0 3) "")
+                      (edit-desc (point 0 1) (point 0 2) "")
+                      (edit-desc (point 0 0) (point 0 1) "")))
+  (define-values (r1b r-u4) (editor-redo u1))
   (check-equal? (editor-buffer->string r1b 0) "abc")
+  (check-equal? (change-report-edits r-u4)
+                (list (edit-desc (point 0 0) (point 0 0) "a")
+                      (edit-desc (point 0 1) (point 0 1) "b")
+                      (edit-desc (point 0 2) (point 0 2) "c")))
 
   ;; 多 buffer：各自独立文本 / 账本
   (define ed (editor-open "AAA"))

@@ -17,7 +17,7 @@
  editor? editor-buffers editor-views editor-focus editor-next-buffer editor-next-view
  buffer-entry-id buffer-entry-name
  view-id view-buffer-id view-sync
- change-report change-report? change-report-first-line change-report-last-line
+ change-report change-report? change-report-first-line change-report-last-line change-report-edits
  ;; 构造 / 生命周期
  editor-open
  editor-open-buffer
@@ -66,6 +66,7 @@
  editor-get-property
  editor-read-only-at?
  editor-restrict-runs
+ editor-property-runs
  editor-buffer-modified?
  ;; 账本查询
  editor-can-undo?
@@ -181,6 +182,7 @@
 (define (editor-get-property ed bid p key) (buffer-get-property (editor-buffer ed bid) p key))
 (define (editor-read-only-at? ed bid p) (buffer-read-only-at? (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
+(define (editor-property-runs ed bid line key) (buffer-property-runs (editor-buffer ed bid) line key))
 (define (editor-buffer-modified? ed bid) (buffer-modified? (editor-buffer ed bid)))
 
 ;;; ---------- 账本查询 ----------
@@ -209,6 +211,12 @@
   (check-equal? (editor-view-left-col e0 0) 0)
   (check-equal? (editor-view-top-seg e0 0) 0)
   (check-false (editor-can-undo? e0 0))
+
+  ;; 标注读：按 key 的区间段（写标注用机制层原语；中性面本身不含写）
+  (define pr (editor-update-buffer e0 0
+                (lambda (b) (buffer-put-property b (point 0 0) (point 0 5) 'face 'bold))))
+  (check-equal? (editor-property-runs pr 0 0 'face) (list (list 0 5 'bold)))
+  (check-false (editor-buffer-modified? pr 0))
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
   (define-values (e1 _bid) (editor-open-buffer e0 "b" "BBB" #:focus? #f))

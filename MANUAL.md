@@ -86,6 +86,7 @@
 | `buffer-put-restrict` | 写约束槽（只读等） |
 | `buffer-read-only-at?` | 某点是否只读 |
 | `buffer-restrict-runs` | 某行的约束段 |
+| `buffer-property-runs` | 某行某键的表现层区间段 `(start end val)` |
 | `buffer-add-marker` | 加标记（随编辑移动） |
 | `buffer-marker-pos` | 标记当前位置 |
 | `buffer-add-overlay` | 加装饰 |
@@ -236,6 +237,7 @@
 | `editor-get-property` | 读某点标注 |
 | `editor-read-only-at?` | 某点是否只读 |
 | `editor-restrict-runs` | 某行约束段 |
+| `editor-property-runs` | 某行某键的标注区间段 `(start end val)` |
 | `editor-buffer-modified?` | 是否有未保存改动 |
 | `editor-put-property` | 写标注（程序面） |
 | `editor-remove-property` | 清标注 |
@@ -321,8 +323,11 @@
 
 | 名字 | 语义 |
 |---|---|
-| `change-report` | 一次命令影响的行区间（新坐标系） |
-| `change-report-first-line` | 首行 |
-| `change-report-last-line` | 末行 |
+| `change-report` | 一次命令的影响：行区间 + 生效 desc 列表 |
+| `change-report-first-line` | 首行（新坐标系） |
+| `change-report-last-line` | 末行（新坐标系） |
+| `change-report-edits` | 施加顺序的 `edit-desc` 列表 |
 
 命令返回 `(values editor (or/c #f change-report))`；`#f` 表示什么都没发生。
+`change-report-edits` 按**施加顺序**给出这次生效的编辑，每个 desc 的坐标是施加它之前
+的状态——可直接嗂 `edits-map-position`，或转成 LSP 的增量 `didChange`。

@@ -52,7 +52,7 @@
  buffer-edit-desc-inverse
  buffer-range-text
  buffer-put-property buffer-get-property buffer-remove-property buffer-put-properties-many
- buffer-put-restrict buffer-read-only-at? buffer-restrict-runs
+ buffer-put-restrict buffer-read-only-at? buffer-restrict-runs buffer-property-runs
  buffer-add-marker buffer-remove-marker buffer-marker-pos
  buffer-add-overlay buffer-remove-overlay
  buffer-content buffer-markers buffer-properties buffer-overlays
