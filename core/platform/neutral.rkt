@@ -38,6 +38,8 @@
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
+ editor-selections
+ editor-view-selections
  editor-height
  editor-width
  editor-view-height
@@ -73,8 +75,6 @@
  editor-restrict-at
  editor-restrict-runs
  editor-property-runs
- editor-overlay-at
- editor-overlay-runs
  ;; 账本查询
  editor-can-undo?
  editor-can-redo?
@@ -151,6 +151,8 @@
 
 (define (editor-point ed) (window-point (view-window (editor-focused-view ed))))
 (define (editor-view-point ed vid) (window-point (view-window (editor-view-ref ed vid))))
+(define (editor-view-selections ed vid) (window-selections (view-window (editor-view-ref ed vid))))
+(define (editor-selections ed) (editor-view-selections ed (editor-focus ed)))
 (define (editor-height ed) (window-height (view-window (editor-focused-view ed))))
 (define (editor-width ed) (window-width (view-window (editor-focused-view ed))))
 (define (editor-view-height ed vid) (window-height (view-window (editor-view-ref ed vid))))
@@ -195,8 +197,6 @@
 (define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
 (define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
 (define (editor-property-runs ed bid line key) (buffer-property-runs (editor-buffer ed bid) line key))
-(define (editor-overlay-at ed bid p) (buffer-overlay-at (editor-buffer ed bid) p))
-(define (editor-overlay-runs ed bid line) (buffer-overlay-runs (editor-buffer ed bid) line))
 
 ;;; ---------- 账本查询 ----------
 

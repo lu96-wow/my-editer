@@ -22,6 +22,7 @@
          "atom/content.rkt"
          "atom/edit.rkt"
          "atom/restrict.rkt"
+         "atom/selection.rkt"
          "atom/width.rkt"
          "atom/event.rkt"
          "unit/screen.rkt"
@@ -43,6 +44,9 @@
  ;; ---- edit-change（一次编辑的完整材料）----
  edit-change edit-change? struct:edit-change
  edit-change-desc edit-change-inverse edit-change-pre-point
+ ;; ---- selection（选区：光标 + 影子）----
+ selection selection? struct:selection selection-anchor selection-head
+ selection-point selection-range selection-empty?
  ;; ---- restrict（约束槽）----
  restrict restrict? struct:restrict make-restrict restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
@@ -79,18 +83,22 @@
  char-display-width string-display-width index->column column->index snap-column-forward
  ;; ---- screen ----
  run run? struct:run run-col run-text run-face
+ cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
+ region region? struct:region region-row region-start-col region-end-col region-face
  screen screen? struct:screen screen-rows screen-cols screen-row-runs
- screen-cursor-row screen-cursor-col
+ screen-cursor-row screen-cursor-col screen-cursors screen-selections
  make-screen screen-diff-rows screen-compose screen->string
  ;; ---- window ----
  window window? struct:window window-open
  window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
- window-set-buffer window-set-point window-set-mode window-set-top-line window-set-left-col
+ window-selections window-primary
+ window-set-buffer window-set-point window-set-selections window-map-selections window-clamp-selections
+ window-set-mode window-set-top-line window-set-left-col
  window-set-top-seg window-set-size window-scroll-clip window-hscroll
  window-left window-right window-home window-end
  window-ensure-point window-clamp-view window-visual-move window-up window-down
- window-point->screen window-screen->point window-scroll-visual
+ window-point->screen window-point-at->screen window-screen->point window-scroll-visual
  ;; ---- project ----
  window->screen)
 

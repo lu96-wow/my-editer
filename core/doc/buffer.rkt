@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/content.rkt" "../atom/edit.rkt"
-         "../atom/restrict.rkt"
+         "../atom/restrict.rkt" "../atom/selection.rkt"
          "../unit/properties.rkt" "../unit/marker.rkt" "../unit/overlay.rkt" rackunit)
 
 ;;; doc/buffer.rkt —— 文档：文本 + 属性 + 标记 + 装饰（无光标）
@@ -156,23 +156,33 @@
 (define (buffer-apply-edit b d) (buffer-apply-edit* b d #t))
 (define (buffer-apply-edit-trusted b d) (buffer-apply-edit* b d #f))
 
-;; buffer 层的编辑入口：给位置与 op（buffer point → desc/#f），算 desc 再施加。
+;; buffer 层的编辑入口：给位置与 op（buffer selection → desc/#f），算 desc 再施加。
 (define (buffer-edit b p op [guard? #t])
-  (define d (op b p))
+  (define d (op b (selection p p)))
   (if d
       (buffer-apply-edit* b d guard?)
       (values b #f)))
 
 ;;; ---------- 编辑动作（可传的值）----------
-;; 形状统一：op : buffer point → (or/c #f edit-desc)。op 只**算** desc，不施加。
+;; 形状统一：op : buffer selection → (or/c #f edit-desc)。op 只**算** desc，不施加。
+;; 空选区 = 普通光标（anchor=head）；非空选区 = 替换该区间。
 
-(define (edit-insert text)   (lambda (_b p) (edit-desc p p text)))
+(define (edit-insert text)
+  (lambda (_b sel) (edit-desc (selection-anchor sel) (selection-head sel) text)))
 (define (edit-insert-char ch) (edit-insert (string ch)))
 (define (edit-newline)       (edit-insert "\n"))
-(define (edit-backspace)     (lambda (b p) (content-backspace-desc (buffer-content b) p)))
-(define (edit-delete)        (lambda (b p) (content-delete-desc (buffer-content b) p)))
+(define (edit-backspace)
+  (lambda (b sel)
+    (if (selection-empty? sel)
+        (content-backspace-desc (buffer-content b) (selection-head sel))
+        (let-values ([(a z) (selection-range sel)]) (edit-desc a z "")))))
+(define (edit-delete)
+  (lambda (b sel)
+    (if (selection-empty? sel)
+        (content-delete-desc (buffer-content b) (selection-head sel))
+        (let-values ([(a z) (selection-range sel)]) (edit-desc a z "")))))
 ;; 通用逃生门：显式区间的替换（程序化编辑）
-(define (edit-splice start end text) (lambda (_b _p) (edit-desc start end text)))
+(define (edit-splice start end text) (lambda (_b _sel) (edit-desc start end text)))
 
 ;;; ---------- 逆编辑 / 取区间文本 ----------
 

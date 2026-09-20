@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
          "../doc/buffer.rkt" "../doc/batch.rkt" "../doc/patch.rkt"
          "../viewport/window.rkt" "../atom/restrict.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "reaction.rkt" rackunit)
@@ -19,6 +19,7 @@
  editor-edit-at-batch
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
+ editor-view-set-selections
  editor-view-set-size
  editor-view-set-mode
  editor-view-set-top-line
@@ -28,6 +29,7 @@
  editor-view-set-buffer
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
+ editor-set-selections
  editor-set-mode
  editor-set-size
  editor-set-top-line
@@ -51,7 +53,7 @@
                         #:trusted? [trusted? #f]
                         #:record? [record? #f])
   (define b0 (editor-buffer ed bid))
-  (define d (op b0 p))
+  (define d (op b0 (selection p p)))
   (cond
     [(not d) (values ed #f)]
     [else
@@ -108,6 +110,9 @@
 (define (editor-view-set-point ed vid p)
   (editor-put-view ed vid (window-set-point (view-window-of ed vid) p)))
 
+(define (editor-view-set-selections ed vid sels)
+  (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels)))
+
 (define (editor-view-set-size ed vid height width)
   (editor-put-view ed vid (window-set-size (view-window-of ed vid) height width)))
 
@@ -133,6 +138,9 @@
 
 (define (editor-set-point ed p)
   (editor-view-set-point ed (view-id (editor-focused-view ed)) p))
+
+(define (editor-set-selections ed sels)
+  (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels))
 
 (define (editor-set-mode ed mode)
   (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))

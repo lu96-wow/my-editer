@@ -100,7 +100,7 @@ editor.rkt ←  api, platform(neutral, program, command)
 atom        point · edit-desc · content · restrict · face(hash) · width · event
              │
 unit        properties = 行 × span(face, restrict)      marker = point ↶ edit-desc
-            overlay    = (marker,marker) × face × prio   screen = width × runs
+            overlay    = (marker,marker) × face × prio   screen = runs(文档) ⊕ cursors/selections(视图 overlay)
             history    = [edit-change]
              │
 doc         buffer  = content ⊕ properties ⊕ marker ⊕ overlay ⊕ tick
@@ -128,6 +128,14 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 
 - **内容流**：`op`（`buffer point → edit-desc`）→ `buffer-apply-edit` → 新 buffer。
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
+
+**`screen` 有两条独立通道**（这是刻意的分离）：
+- **文档文本** `row-runs`：来自 buffer 的文本/标注（`face` 由 properties+overlays 合成）。
+- **视图 overlay** `cursors` / `selections`：来自 window 的选区（光标点 = 每个选区的 head；
+  选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
+
+两者不混：文本/标注是**文档**状态（存 buffer、随文本移动、可编辑）；光标/选区是**视图**状态
+（存 window、临时）。`face` 一律是**语义 hash**，core **不给颜色**，前端把语义映射成样式。
 
 ---
 
@@ -166,6 +174,14 @@ editor.rkt  = api（低层全量面）+ neutral + program + command
 ## 5. 位置契约
 
 **`point` 是唯一的位置表示**（`line`, `col`，0-based，`col` 是**字符索引**）。
+
+**选区（selection）是 view 层的光标模型**：`selection = (anchor head)`，空选区就是普通光标；
+一个 view 持有一组选区（`window` 的 `selections` + `primary`），这就是多光标。
+光标/选区是 **view 状态**，不进 buffer（buffer 无光标）。
+
+多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
+交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
+方向键对每个选区各走一步（`window-map-selections`）后再去重/合并。
 
 | 名字 | 契约 |
 |---|---|

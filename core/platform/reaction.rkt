@@ -34,33 +34,30 @@
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
     (if (= bid (view-buffer-id v))
         (let ([w (view-window v)])
-          (editor-put-view e (view-id v) (window-clamp-view (window-set-point w (window-point w)))))
+          (editor-put-view e (view-id v)
+                           (window-clamp-view (window-clamp-selections w))))
         e)))
 
-;; map：每个同 buffer view 各自 free 映射光标（按施加顺序折叠过整批 descs）；
+;; map：每个同 buffer view 各自 free 映射所有选区（按施加顺序折叠过整批 descs）；
 ;; 不设 leader、不滚屏、不复制视口。
 (define (editor-map-views ed bid b* descs)
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
     (if (= bid (view-buffer-id v))
-        (editor-put-view e (view-id v)
-                         (for/fold ([w (view-window v)]) ([d (in-list descs)])
-                           (rebase-free w b* d)))
+        (editor-put-view e (view-id v) (rebase-free (view-window v) b* descs))
         e)))
 
-;; leader：vid 推进到插入后 + ensure；同 buffer 其余 free 映射 / follow 镜像。
-(define (editor-leader-view ed vid b* d)
+;; leader：vid 的选区推进到插入后 + ensure；同 buffer 其余 free 映射 / follow 镜像。
+(define (editor-leader-view ed vid b* descs)
   (define v (editor-view-ref ed vid))
   (define bid (view-buffer-id v))
-  (define editing
-    (window-ensure-point
-     (struct-copy window (view-window v) [buffer b*] [point (edit-desc-after-position d)])))
+  (define editing (rebase-leader (view-window v) b* descs))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
       [(not (= bid (view-buffer-id x))) e]
       [(= vid (view-id x)) (editor-put-view e vid editing)]
       [else
        (define w (case (view-sync x)
-                   [(free)   (rebase-free   (view-window x) b* d)]
+                   [(free)   (rebase-free   (view-window x) b* descs)]
                    [(follow) (rebase-follow (view-window x) editing)]))
        (editor-put-view e (view-id x) w)])))
 
@@ -111,7 +108,7 @@
   ;; leader：leader 推进，follow 镜像
   (define g0 (add-view (mk "l0\nl1\nl2\nl3\nl4\nl5" 3 10) 3 10 (point 0 0) 'follow))
   (define-values (g3 dg) (editor-apply-edit g0 0 (edit-desc (point 0 0) (point 0 0) "XY")))
-  (define g4 (editor-leader-view g3 0 (vb g3 0) dg))
+  (define g4 (editor-leader-view g3 0 (vb g3 0) (list dg)))
   (check-equal? (vp g4 0) (point 0 2))
   (check-equal? (vp g4 1) (point 0 2))
   (check-eq? (vb g4 0) (window-buffer (view-window (editor-view-ref g4 1))))

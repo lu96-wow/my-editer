@@ -41,7 +41,7 @@
     (define full (path->string (build-path dir p)))
     (cond
       [(directory-exists? full)
-       (if (regexp-match? #rx"/(compiled|[.]git|tools|core-history)$" full) acc (append (rkt-files full) acc))]
+       (if (regexp-match? #rx"/(compiled|[.]git|tools|core-history|io-temp)$" full) acc (append (rkt-files full) acc))]
       [(regexp-match? #rx"[.]rkt$" full) (cons full acc)]
       [else acc])))
 (define all-syms

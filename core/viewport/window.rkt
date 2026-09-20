@@ -1,15 +1,17 @@
 #lang racket
 
-(require "../atom/point.rkt" "../doc/buffer.rkt" "../atom/width.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/selection.rkt" "../doc/buffer.rkt" "../atom/width.rkt" rackunit)
 
-;;; viewport/window.rkt —— 视口：buffer 引用 + 本窗口光标 + 滚动位置 + 尺寸
+;;; viewport/window.rkt —— 视口：buffer 引用 + 本窗口的选区集合 + 滚动位置 + 尺寸
 ;;;
-;;; buffer 是文档（无光标）；window 是「怎么看它」，并持有自己的 point。
-;;; 一个 buffer 可被多个 window 绑定，各有独立光标。
+;;; buffer 是文档（无光标）；window 是「怎么看它」，持有自己的**选区集合**（至少一个）。
+;;; 一个 buffer 可被多个 window 绑定，各有独立选区。
 ;;;
-;;; 本层是**纯视图**：导航、滚动、尺寸。**编辑不在这里**——编辑改共享 buffer，
-;;; 必须经 document 的漏斗（document-edit），否则多视图会分叉。
+;;;   selections : (nonempty-listof selection)   已规范化（排序、去重、重叠合并）
+;;;   primary    : nat                            主选区下标；光标/打字点取它的 head
+;;;   空选区 (anchor=head) 就是普通光标；单个 window 至少含一个空选区。
 ;;;
+;;; 本层是**纯视图**：导航、滚动、尺寸。**编辑不在这里**。
 ;;; 坐标：point 的 col 是**字符索引**；top-line/top-seg/left-col 是**显示列/行**。
 
 (provide
@@ -17,8 +19,14 @@
  window-open
  check-mode
  snap-left-col
+ window-point
+ window-selections
+ window-primary
  window-set-buffer
  window-set-point
+ window-set-selections
+ window-map-selections
+ window-clamp-selections
  window-set-mode
  window-set-top-line
  window-set-left-col
@@ -32,14 +40,15 @@
  window-end)
 
 (struct window
-  (buffer   ; buffer
-   point    ; point      本窗口光标
-   mode     ; 'clip|'wrap
-   top-line ; nat        clip：顶 buffer 行；wrap：顶部所在 buffer 行
-   left-col ; nat        clip：水平滚动列；wrap：恒 0
-   top-seg  ; nat        wrap：顶部行的第几个折行段；clip：恒 0
-   height   ; nat        可见行数
-   width)   ; nat        可见列数
+  (buffer     ; buffer
+   selections ; (nonempty-listof selection)
+   primary    ; nat        主选区下标
+   mode       ; 'clip|'wrap
+   top-line   ; nat        clip：顶 buffer 行；wrap：顶部所在 buffer 行
+   left-col   ; nat        clip：水平滚动列；wrap：恒 0
+   top-seg    ; nat        wrap：顶部行的第几个折行段；clip：恒 0
+   height     ; nat        可见行数
+   width)     ; nat        可见列数
   #:transparent)
 
 (define (window-open b [height 24] [width 80])
@@ -47,16 +56,50 @@
     (error 'window-open "height 必须 ≥ 1，得到 ~a" height))
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width 必须 ≥ 1，得到 ~a" width))
-  (window b (point 0 0) 'clip 0 0 0 height width))
+  (window b (list (selection (point 0 0) (point 0 0))) 0 'clip 0 0 0 height width))
 
-;;; ---------- 光标夹紧 ----------
-;; 夹紧只取决于 buffer（content），实现唯一一份在 buffer-clamp-point。
+;;; ---------- 光标 / 选区 ----------
+
+(define (window-selection w) (list-ref (window-selections w) (window-primary w)))
+(define (window-point w) (selection-point (window-selection w)))
+
+(define (clamp-selection b s)
+  (selection (buffer-clamp-point b (selection-anchor s))
+             (buffer-clamp-point b (selection-head s))))
+
+;; 把现有选区夹进 buffer 合法域并规范化；primary 追到它合并后的那个。
+(define (window-clamp-selections w)
+  (define b (window-buffer w))
+  (define sels (window-selections w))
+  (define pidx (window-primary w))
+  (define keysel (and (< pidx (length sels)) (clamp-selection b (list-ref sels pidx))))
+  (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
+  (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
+  (struct-copy window w [selections norm] [primary idx]))
 
 (define (window-set-buffer w b)
-  (struct-copy window w [buffer b] [point (buffer-clamp-point b (window-point w))]))
+  (window-clamp-selections (struct-copy window w [buffer b])))
 
+;; 设成单个空选区（程序面「把光标放这」的语义）。
 (define (window-set-point w p)
-  (struct-copy window w [point (buffer-clamp-point (window-buffer w) p)]))
+  (define q (buffer-clamp-point (window-buffer w) p))
+  (struct-copy window w [selections (list (selection q q))] [primary 0]))
+
+;; 设一组选区；primary 按输入下标选，规范化后追到合并结果。
+(define (window-set-selections w sels [primary 0])
+  (unless (pair? sels) (error 'window-set-selections "至少一个选区"))
+  (define b (window-buffer w))
+  (define keysel (and (< primary (length sels)) (clamp-selection b (list-ref sels primary))))
+  (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
+  (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
+  (struct-copy window w [selections norm] [primary idx]))
+
+;; 对每个选区的 head 施加 f（point → point），坍缩成空选区；primary 跟随。
+;; 导航（方向键）用它：一次动所有光标。
+(define (window-map-selections w f)
+  (define moved (for/list ([s (in-list (window-selections w))])
+                  (define p (f (selection-head s))) (selection p p)))
+  (window-clamp-selections (struct-copy window w [selections moved])))
 
 ;;; ---------- 视图状态 ----------
 
@@ -91,33 +134,32 @@
 (define (window-hscroll w delta)
   (window-set-left-col w (+ (window-left-col w) delta)))
 
-;;; ---------- 导航（纯 point 操作）----------
+;;; ---------- 导航（每个选区各走一步）----------
+;; 方向键把每个选区坍缩到 head 后移动；新位置去重/合并。
 
-(define (window-left w)
-  (define p (window-point w))
+(define (left-point b p)
   (define l (point-line p)) (define o (point-col p))
   (cond
-    [(> o 0) (window-set-point w (point l (sub1 o)))]
-    [(> l 0) (define pl (sub1 l))
-             (window-set-point w (point pl (string-length (buffer-line-ref (window-buffer w) pl))))]
-    [else w]))
+    [(> o 0) (point l (sub1 o))]
+    [(> l 0) (point (sub1 l) (string-length (buffer-line-ref b (sub1 l))))]
+    [else p]))
 
-(define (window-right w)
-  (define p (window-point w))
+(define (right-point b p)
   (define l (point-line p)) (define o (point-col p))
-  (define n (buffer-line-count (window-buffer w)))
+  (define n (buffer-line-count b))
   (cond
-    [(< o (string-length (buffer-line-ref (window-buffer w) l)))
-     (window-set-point w (point l (add1 o)))]
-    [(< l (sub1 n)) (window-set-point w (point (add1 l) 0))]
-    [else w]))
+    [(< o (string-length (buffer-line-ref b l))) (point l (add1 o))]
+    [(< l (sub1 n)) (point (add1 l) 0)]
+    [else p]))
 
-(define (window-home w)
-  (window-set-point w (point (point-line (window-point w)) 0)))
+(define (home-point p) (point (point-line p) 0))
+(define (end-point b p)
+  (point (point-line p) (string-length (buffer-line-ref b (point-line p)))))
 
-(define (window-end w)
-  (define l (point-line (window-point w)))
-  (window-set-point w (point l (string-length (buffer-line-ref (window-buffer w) l)))))
+(define (window-left w)  (window-map-selections w (lambda (p) (left-point  (window-buffer w) p))))
+(define (window-right w) (window-map-selections w (lambda (p) (right-point (window-buffer w) p))))
+(define (window-home w)  (window-map-selections w home-point))
+(define (window-end w)   (window-map-selections w (lambda (p) (end-point (window-buffer w) p))))
 
 ;;; ---------- 测试 ----------
 
@@ -145,6 +187,22 @@
   (check-equal? (window-point (window-right (window-end w))) (point 1 0))
   (check-equal? (window-point (window-left (window-right (window-end w)))) (point 0 1))
   (check-equal? (window-point (window-home (window-set-point w (point 2 0)))) (point 2 0))
+
+  ;; 多选区：设一组，导航一次动全部
+  (define ws (window-open (buffer-open "abcde\nfghij") 3 10))
+  (define wm (window-set-selections ws (list (selection (point 0 0) (point 0 0))
+                                             (selection (point 0 2) (point 0 2)))))
+  (check-equal? (length (window-selections wm)) 2)
+  (check-equal? (map selection-head (window-selections (window-left wm)))
+                (list (point 0 0) (point 0 1)))       ; 第一不动(行首)，第二左移
+  (check-equal? (length (window-selections (window-right wm))) 2)  ; 两光标各右移一格
+
+  ;; 重叠合并 / 去重；primary 追到合并结果
+  (define wo (window-set-selections ws (list (selection (point 0 0) (point 0 2))
+                                             (selection (point 0 1) (point 0 3)))))
+  (check-equal? (length (window-selections wo)) 1)
+  (check-equal? (call-with-values (lambda () (selection-range (car (window-selections wo)))) list)
+                (list (point 0 0) (point 0 3)))
 
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-scroll-clip w 2)) 2)

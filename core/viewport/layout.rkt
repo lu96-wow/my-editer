@@ -20,6 +20,7 @@
  layout-wrap
  window-vrows
  window-point->screen
+ window-point-at->screen
  window-screen->point
  window-scroll-visual
  window-ensure-point
@@ -176,9 +177,11 @@
               (vrow-line (vector-ref vrows (add1 row)))))))
 
 ;; point → 屏幕 (row col)；不可见 → (values #f #f)
-(define (window-point->screen w)
+(define (window-point->screen w) (window-point-at->screen w (window-point w)))
+
+;; 指定点的屏幕坐标（多光标 / 任意点映射用）。
+(define (window-point-at->screen w p)
   (define b (window-buffer w))
-  (define p (window-point w))
   (define line (point-line p))
   (define target (index->column (buffer-line-ref b line) (point-col p)))
   (define vrows (window-vrows w))
@@ -354,10 +357,11 @@
 
 (define (window-visual-move w delta)
   (define b (window-buffer w))
-  (define p (window-point w))
-  (define-values (l c) (visual-move b (point-line p) (point-col p)
-                                    (window-width w) (window-mode w) delta))
-  (if l (window-set-point w (point l c)) w))
+  (window-map-selections w
+   (lambda (p)
+     (define-values (l c) (visual-move b (point-line p) (point-col p)
+                                       (window-width w) (window-mode w) delta))
+     (if l (point l c) p))))
 
 (define (window-up w)   (window-visual-move w -1))
 (define (window-down w) (window-visual-move w +1))

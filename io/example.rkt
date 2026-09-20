@@ -24,9 +24,10 @@
 
 (require "../core/editor.rkt"
          ;; racket-tui 也导出 key-event/resize-event 等，与 core 同名；这里用 core 的。
+         ;; racket-tui 也导出 key-event/resize-event/cursor-row/cursor-col 等，与 core 同名；用 core 的。
          (except-in tui key-event key-event? key-event-key struct:key-event
                     resize-event resize-event? resize-event-rows resize-event-cols
-                    struct:resize-event)
+                    struct:resize-event cursor-col)
          racket/file racket/string racket/path)
 
 ;;; ============================================================================
@@ -92,10 +93,11 @@
 ;; [前端] 缩进宽度、是否缩进，是应用策略。
 (define (newline app)
   (edit app
-        (lambda (b p)
+        (lambda (b sel)
+          (define p (selection-head sel))
           (define line (buffer-line-ref b (point-line p)))
           (define indent (car (regexp-match #rx"^[ \t]*" line)))
-          (edit-desc p p (string-append "\n" indent)))))
+          (edit-desc (selection-anchor sel) (selection-head sel) (string-append "\n" indent)))))
 
 ;; 2.3 导航
 ;; [core] editor-left/right/up/down/home/end/scroll（focus 糖 → editor-view-* + ensure）。
@@ -203,16 +205,19 @@
 ;;; §3 渲染（[前端]；core 只给 screen）
 ;;; ============================================================================
 ;;
-;; [core] editor->screen → screen（每行 runs + 一个光标位置）。core **不知道**终端。
-;; [前端] 终端字节、颜色、状态栏、布局，全是应用的事。
-;;        core 的 face 是语义 hash（'face → 'keyword…），映射成终端样式由应用决定。
+;; [core] editor->screen → screen：**两条通道**分开给：
+;;          row-runs（文档文本 + face）、cursors / selections（视图 overlay，带语义 face）。
+;;        core **不知道**终端，也**不给颜色**；face 是语义 hash，映射成样式是应用的事。
+;; [前端] 终端字节、颜色、叠加顺序，全是应用的事。
 
 (define (face-style face)
   (case (hash-ref face 'face #f)
-    [(keyword) 'info]
-    [(comment) 'green]
-    [(string)  'yellow]
-    [(error)   'error]
+    [(keyword)   'info]
+    [(comment)   'green]
+    [(string)    'yellow]
+    [(error)     'error]
+    [(cursor)    'cursor]
+    [(selection) 'selection]
     [else #f]))
 
 (define (pad-to s n)
@@ -220,16 +225,50 @@
       (substring s 0 n)
       (string-append s (make-string (- n (string-length s)) #\space))))
 
+;; 从一行的 runs 里取显示列 [a,b) 的文本（宽字符按显示列切）
+(define (runs-substring runs a b)
+  (define out (open-output-string))
+  (for ([r (in-list runs)])
+    (define rcol (run-col r))
+    (define rtext (run-text r))
+    (define rw (string-display-width rtext))
+    (define lo (max a rcol))
+    (define hi (min b (+ rcol rw)))
+    (when (< lo hi)
+      (display (substring rtext (column->index rtext (- lo rcol)) (column->index rtext (- hi rcol)))
+               out)))
+  (get-output-string out))
+
+;; 一个显示单元格上的字符（EOL / 空位 → 空格），用来把一个光标画成一格
+(define (cell-text runs col)
+  (or (for/first ([r (in-list runs)]
+                  #:when (let ([rc (run-col r)])
+                           (and (<= rc col) (< col (+ rc (string-display-width (run-text r)))))))
+        (string (string-ref (run-text r) (column->index (run-text r) (- col (run-col r))))))
+      " "))
+
 (define (frame->bytes app)
   (define scr (editor->screen (app-ed app)))
+  (define row-runs (screen-row-runs scr))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
-  ;; 画每行 runs
-  (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])
+  ;; 1) 文档文本
+  (for ([runs (in-vector row-runs)] [row (in-naturals)])
     (for ([r (in-list runs)])
       (emit! (format-cursor-move (add1 row) (add1 (run-col r))))
       (define st (face-style (run-face r)))
       (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
+  ;; 2) 选中区：叠加层——把区间文本重画成 selection 样式
+  (for ([g (in-list (screen-selections scr))])
+    (define txt (runs-substring (vector-ref row-runs (region-row g))
+                                (region-start-col g) (region-end-col g)))
+    (unless (string=? txt "")
+      (emit! (format-cursor-move (add1 (region-row g)) (add1 (region-start-col g))))
+      (emit! (format-styled 'selection txt))))
+  ;; 3) 所有光标：终端只有一个硬件光标，多光标只能画成格子（primary? 供前端区分样式）
+  (for ([c (in-list (screen-cursors scr))])
+    (emit! (format-cursor-move (add1 (cursor-row c)) (add1 (cursor-col c))))
+    (emit! (format-styled 'cursor (cell-text (vector-ref row-runs (cursor-row c)) (cursor-col c)))))
   ;; 状态栏（最后一行）
   (define p (editor-point (app-ed app)))
   (define status
@@ -238,12 +277,8 @@
             (if (app-highlight? app) "hl:on" "hl:off")))
   (emit! (format-cursor-move (app-rows app) 1))
   (emit! (format-styled 'status-bar (pad-to status (app-cols app))))
-  ;; 光标（core 算好屏幕坐标；不可见则隐藏）
-  (define cr (screen-cursor-row scr))
-  (define cc (screen-cursor-col scr))
-  (if (>= cr 0)
-      (begin (emit! (format-cursor-move (add1 cr) (add1 cc))) (emit! format-cursor-show))
-      (emit! format-cursor-hide))
+  ;; 光标已画成格子 → 始终隐藏硬件光标
+  (emit! format-cursor-hide)
   (apply bytes-append (reverse parts)))
 
 ;;; ============================================================================

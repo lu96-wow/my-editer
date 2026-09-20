@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
          "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
@@ -51,21 +51,31 @@
 (define (editor-view-edit ed vid op)
   (define v (editor-view-ref ed vid))
   (define bid (view-buffer-id v))
+  (define w (view-window v))
   (define b0 (editor-buffer ed bid))
-  (define p0 (window-point (view-window v)))
-  (define d (op b0 p0))
+  (define pre (window-point w))
+  ;; 对每个选区施加同一 op；空选区=插，非空=替换。
+  (define descs
+    (filter values
+            (for/list ([s (in-list (window-selections w))]) (op b0 s))))
   (cond
-    [(not d) (values ed #f)]
+    [(null? descs) (values ed #f)]
     [else
-     (define-values (ed* d*) (editor-apply-edit ed bid d #t))
+     (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs #t))
      (cond
-       [(not d*) (values ed #f)]
+       [(null? ds) (values ed #f)]
        [else
         (define b* (editor-buffer ed* bid))
-        (define ed** (editor-leader-view ed* vid b* d*))
-        (define ch (edit-change d* (buffer-edit-desc-inverse b0 d*) p0))
-        (define-values (f l) (edits-span (list d*)))
-        (values (editor-record-history ed** bid ch) (change-report f l (list d*)))])]))
+        (define ed** (editor-leader-view ed* vid b* ds))
+        ;; 单条编辑走 edit-change（保留打字/退格的连续段合并）；多条走整批一步。
+        (define ed***
+          (if (= 1 (length ds))
+              (let ([d (car ds)])
+                (editor-record-history ed** bid
+                                       (edit-change d (buffer-edit-desc-inverse b0 d) pre)))
+              (editor-record-batch ed** bid ds (reverse ivs) pre)))
+        (define-values (f l) (edits-span ds))
+        (values ed*** (change-report f l ds))])]))
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
@@ -75,9 +85,10 @@
   (cond
     [(not st) (values ed #f)]
     [else
+     ;; undo-descs 是**依次施加**（每条坐标基于上一条之后），不能当同坐标批处理。
      (define ed* (for/fold ([e ed]) ([d (in-list (step-undo-descs st))])
                    (define-values (e1 d1) (editor-apply-edit e bid d #f))
-                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) d1) e1)))
+                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) (list d1)) e1)))
      ;; 撤销后 leader 光标回到该步开始前，并 ensure
      (define w* (window-ensure-point
                  (window-set-point (view-window (editor-view-ref ed* vid)) (step-pre-point st))))
@@ -93,7 +104,7 @@
     [else
      (define ed* (for/fold ([e ed]) ([d (in-list (step-replay-descs st))])
                    (define-values (e1 d1) (editor-apply-edit e bid d #f))
-                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) d1) e1)))
+                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) (list d1)) e1)))
      (define-values (f l) (edits-span (step-replay-descs st)))
      (values (editor-put-history ed* bid h*) (change-report f l (step-replay-descs st)))]))
 
@@ -207,5 +218,24 @@
   (check-equal? (editor-buffer->string p4 0) "l0\nl1\nl2\nl3\nl4\nl5\nl6")
   (define p5 (editor-view-scroll p4 pv 2))
   (check-equal? (editor-view-top-line p5 0) 0)              ; 焦点 view 视口不动
+
+  ;; 多光标：一组选区，一次替换全部；整批记一步
+  (define mc0 (editor-open "foo bar foo"))
+  (define mc1 (editor-set-selections mc0 (list (selection (point 0 0) (point 0 3))
+                                               (selection (point 0 8) (point 0 11)))))
+  (check-equal? (length (editor-selections mc1)) 2)
+  (define-values (mc2 _r-mc) (editor-edit mc1 (edit-insert "XX")))
+  (check-equal? (editor-buffer->string mc2 0) "XX bar XX")
+  (check-equal? (editor-undo-depth mc2 0) 1)                 ; 整批一步
+  (check-equal? (length (editor-selections mc2)) 2)          ; 两选区各自映射
+  (define-values (mc3 _u-mc) (editor-undo mc2))
+  (check-equal? (editor-buffer->string mc3 0) "foo bar foo")
+
+  ;; 多光标退格：每个光标删各自前一个字符（选区为空时）
+  (define mc4 (editor-set-selections (editor-open "abc")
+                                     (list (selection (point 0 1) (point 0 1))
+                                           (selection (point 0 3) (point 0 3)))))
+  (define-values (mc5 _r5) (editor-edit mc4 (edit-backspace)))
+  (check-equal? (editor-buffer->string mc5 0) "b")
 
   (displayln "command.rkt: all tests passed"))

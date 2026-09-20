@@ -50,13 +50,17 @@
 | `edit-desc-after-position` | 插入文本之后的点 |
 | `edit-desc-map-position` | 编辑前位置 → 编辑后位置（`#f` = 落在删除区内） |
 | `edit-desc-inverse` | 由生效 desc + 旧文本求逆 |
+| `selection` | 选区 `(anchor head)`；空选区 = 普通光标 |
+| `selection-point` | 选区光标点（= `head`） |
+| `selection-range` | 选区半开区间 `[start,end)` |
+| `selection-empty?` | 是否空选区 |
 
 ## 2. 编辑动作（可传的值）
 
 | 名字 | 语义 |
 |---|---|
 | `edit-insert-char` | 构造「插入一个字符」的 op |
-| `edit-insert` | 构造「插入字符串」的 op |
+| `edit-insert` | 构造「插入/替换」的 op（空选区=插，非空=替换选区） |
 | `edit-newline` | 换行 |
 | `edit-backspace` | 退格（可跨行合并） |
 | `edit-delete` | 前向删除（可跨行合并） |
@@ -114,8 +118,13 @@
 | 名字 | 语义 |
 |---|---|
 | `window-open` | 建视口 |
-| `window-point` | 本视口光标 |
-| `window-set-point` | 设光标（夹紧） |
+| `window-point` | 本视口 primary 光标 |
+| `window-selections` | 本视口选区集（已规范化） |
+| `window-primary` | 主选区下标 |
+| `window-set-selections` | 设一组选区 |
+| `window-map-selections` | 对每个选区 head 施加 point→point 变换 |
+| `window-clamp-selections` | 把选区夹回合法域并规范化 |
+| `window-set-point` | 设成单个空选区（光标） |
 | `window-set-buffer` | 换绑 buffer（夹紧光标） |
 | `window-left` | 光标左移 |
 | `window-right` | 光标右移 |
@@ -125,6 +134,7 @@
 | `window-end` | 行尾 |
 | `window-ensure-point` | 调整滚动使光标可见 |
 | `window-point->screen` | 光标 → 屏幕坐标 |
+| `window-point-at->screen` | 指定点 → 屏幕坐标 |
 | `window-screen->point` | 屏幕坐标 → 位置 |
 | `window-set-size` | 设尺寸 |
 | `window-set-mode` | `clip` 或 `wrap` |
@@ -137,12 +147,24 @@
 | 名字 | 语义 |
 |---|---|
 | `window->screen` | 视口 → 一帧画面 |
-| `screen` | 输出契约：每行 runs + 一个光标 |
+| `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
 | `screen-rows` | 行数 |
 | `screen-cols` | 列数 |
-| `screen-row-runs` | 第 r 行的 run 序列 |
-| `screen-cursor-row` | 光标行 |
-| `screen-cursor-col` | 光标列 |
+| `screen-row-runs` | 第 r 行的 run 序列（文档文本 + face） |
+| `screen-cursor-row` | primary 光标行 |
+| `screen-cursor-col` | primary 光标列 |
+| `screen-cursors` | 所有光标（`(listof cursor)`，含 primary） |
+| `screen-selections` | 所有选中区段（`(listof region)`） |
+| `cursor` | 视图 overlay：一个光标点 `(row col face primary?)` |
+| `cursor-row` | 光标显示行 |
+| `cursor-col` | 光标显示列 |
+| `cursor-face` | 光标语义 face（hash） |
+| `cursor-primary?` | 是否主光标 |
+| `region` | 视图 overlay：一段选中区间 `(row start-col end-col face)` |
+| `region-row` | 区间显示行 |
+| `region-start-col` | 区间起始显示列 |
+| `region-end-col` | 区间结束显示列（半开） |
+| `region-face` | 区间语义 face（hash） |
 | `run` | 一段同 face 文本 |
 | `run-col` | run 起始显示列 |
 | `run-text` | run 文本 |
@@ -204,6 +226,8 @@
 | `editor-buffer-name` | 取 buffer 名 |
 | `editor-view-buffer-id` | 某 view 的 buffer id |
 | `editor-view-sync` | 某 view 的同步策略 |
+| `editor-selections` | 焦点 view 的选区集 |
+| `editor-view-selections` | 某 view 的选区集 |
 | `editor-point` | 焦点 view 光标 |
 | `editor-view-point` | 某 view 光标 |
 | `editor-height` | 焦点 view 可视高度 |
@@ -248,8 +272,6 @@
 | `editor-remove-restrict` | 清约束区间 |
 | `editor-restrict-runs` | 某行约束段 |
 | `editor-property-runs` | 某行某键的标注区间段 `(start end val)` |
-| `editor-overlay-at` | 覆盖某点的 overlay（priority 降序） |
-| `editor-overlay-runs` | 某行的 overlay 段 |
 | `editor-put-property` | 写标注（程序面） |
 | `editor-remove-property` | 清标注 |
 | `editor-put-properties-many` | 一次写多段 |
@@ -280,6 +302,7 @@
 | 名字 | 语义 |
 |---|---|
 | `editor-view-set-point` | 设某 view 光标 |
+| `editor-view-set-selections` | 设某 view 的选区集（多光标） |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
 | `editor-view-set-top-line` | 设某 view 顶部行 |
@@ -288,6 +311,7 @@
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
+| `editor-set-selections` | focus 糖：设焦点 view 选区集 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
 | `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |
