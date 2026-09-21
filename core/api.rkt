@@ -25,6 +25,7 @@
          "atom/attr.rkt"
          "atom/change.rkt"
          "atom/selection.rkt"
+         "atom/selection-set.rkt"
          "atom/width.rkt"
          "atom/event.rkt"
          "unit/attrs.rkt"
@@ -57,6 +58,10 @@
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
  selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
+ ;; ---- selection-set（命名选区集：区间集 + leader）----
+ selection-set? selection-set-name selection-set-selections selection-set-leader-index
+ selection-set-open selection-set-normalize selection-set-leader selection-set-set-leader selection-set-add selection-set-remove selection-set-map
+ selection-set-clear selection-set-map-edit selection-set-advance-leader
  ;; ---- attrs（属性槽：通用 key→hash，随编辑移动）----
  attrs? attrs-empty attrs-line-count
  attrs-at attrs-runs attrs-key-runs attrs-range-runs
@@ -108,6 +113,7 @@
  window-document window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
+ window-selection-set window-selection-set-name window-set-selection-set window-clear-selection-set
  window-map-selections window-map-primary window-map-points
  window-set-document window-set-point window-set-selections window-add-selections window-remove-selections window-clamp-selections
  window-add-selection window-remove-selection window-set-primary window-set-primary-index window-selection-member?

@@ -16,6 +16,7 @@ core/
 ├── atom/                      # 原子：不可再分的值 + 代数（只互相依赖）
 │   ├── point.rkt              #   位置 (line,col) + 比较 + clamp
 │   ├── selection.rkt          #   选区 (anchor,head) + 端点映射
+│   ├── selection-set.rkt    #   命名选区集：区间集 + leader（多选区的单位）
 │   ├── lines.rkt              #   string->lines（换行归一的唯一约定）
 │   ├── edit.rkt               #   edit-desc + 位置代数 + edits-normalize / map-position / span
 │   ├── attr.rkt               #   attr-desc（属性变更原子）
@@ -32,7 +33,7 @@ core/
 │   ├── document.rkt           #   可编辑根：buffer ⊕ attrs（唯一变更漏斗）
 │   └── batch.rkt              #   [edit-desc] → document（原子批量施加）
 ├── viewport/                  # 视口：把文档投影成画面
-│   ├── window.rkt             #   document ⊕ point ⊕ 滚动/尺寸
+│   ├── window.rkt             #   document ⊕ selection-set（选区集）⊕ 滚动/尺寸
 │   ├── render.rkt             #   buffer 行 × line-face-provider → glyph
 │   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动
 │   ├── project.rkt            #   window → screen
@@ -108,7 +109,7 @@ doc         buffer    = content ⊕ tick
             document  = buffer ⊕ attrs
             document-apply-change = change → document × change-result
              │
-viewport    window  = document ⊕ point ⊕ (mode, top, left, height, width)
+viewport    window  = document ⊕ selection-set ⊕ (mode, top, left, height, width)
             render  = buffer × line × line-face-provider → glyphs   （派生 face 在此注入）
             layout  = window × render → vrows / 映射 / ensure / 视觉移动
             project = window × layout → screen
@@ -198,8 +199,14 @@ editor-command-batch  : 给现成 change 直接施加
 **`point` 是唯一的位置表示**（`line`, `col`，0-based，`col` 是**字符索引**）。
 
 **选区（selection）是 view 层的光标模型**：`selection = (anchor head)`，空选区就是普通光标；
-一个 view 持有一组选区（`window` 的 `selections` + `primary-index`），这就是多光标。
+一个 view 持有的是一个**选区集**（`window` 的 `selection-set`），集 = 名字 ⊕ 区间集 ⊕ leader，这就是多光标。
 光标/选区是 **view 状态**，不进 buffer（buffer 无光标）。
+
+**选区集（selection-set）**：多选区 = 一次同构操作的临时单位。组有**名字**（身份）、一组已规范化的
+区间、一个 **leader**（“原来的单选区”）。core 只提供：对组做插入/删除（即 `editor-edit` 的 op，作用于集合内所有区间）、
+以及 `editor-put-selection-set`（命名/安装）/ `editor-clear-selection-set`（收敛为单个 leader）。
+**何时清除由上层决定** —— core 不做自动收敛；典型上层用法是多选 → 操作 → 自己调 `editor-clear-selection-set`。
+leader 跨规范化（排序/去重/合并）用 `selections-primary-index` 按身份追踪（半开边界不歧义）。
 
 **选择/导航是算子，不是容器操作**（Unix 式接口）：
 - 值级原子（低层）：`point-left/right/home/end : buffer point -> point`，

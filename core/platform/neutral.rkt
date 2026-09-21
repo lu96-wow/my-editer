@@ -52,6 +52,10 @@
  editor-view-window
  editor-selections
  editor-view-selections
+ editor-selection-set
+ editor-view-selection-set
+ editor-selection-set-name
+ editor-view-selection-set-name
  editor-height
  editor-width
  editor-view-height
@@ -209,6 +213,11 @@
 (define (editor-view-window ed vid) (view-window (editor-view-ref ed vid)))
 (define (editor-selections ed) (editor-view-selections ed (editor-focus ed)))
 (define (editor-view-selections ed vid) (window-selections (view-window (editor-view-ref ed vid))))
+;; 选区集（命名 + 区间集 + leader）。组是 view 状态。
+(define (editor-selection-set ed) (editor-view-selection-set ed (editor-focus ed)))
+(define (editor-view-selection-set ed vid) (window-selection-set (view-window (editor-view-ref ed vid))))
+(define (editor-selection-set-name ed) (editor-view-selection-set-name ed (editor-focus ed)))
+(define (editor-view-selection-set-name ed vid) (window-selection-set-name (view-window (editor-view-ref ed vid))))
 (define (editor-height ed) (editor-view-height ed (editor-focus ed)))
 (define (editor-width ed) (editor-view-width ed (editor-focus ed)))
 (define (editor-view-height ed vid) (window-height (view-window (editor-view-ref ed vid))))

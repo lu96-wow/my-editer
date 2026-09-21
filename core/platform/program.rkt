@@ -1,6 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
+         "../atom/selection-set.rkt"
          "../atom/attr.rkt" "../atom/change.rkt"
          "../doc/buffer.rkt" "../doc/document.rkt"
          "../viewport/window.rkt"
@@ -26,6 +27,10 @@
  editor-view-set-point
  editor-view-put-window
  editor-view-set-selections
+ editor-view-put-selection-set
+ editor-put-selection-set
+ editor-view-clear-selection-set
+ editor-clear-selection-set
  editor-view-add-selections
  editor-view-remove-selections
  editor-view-collapse-selections
@@ -249,6 +254,16 @@
 
 (define (editor-view-set-selections ed vid sels [primary-index 0])
   (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels primary-index)))
+
+;; 选区集：安装一个命名选区集 / 清除（收敛为单个 leader 选区）。**何时清除由上层决定**。
+(define (editor-view-put-selection-set ed vid g)
+  (editor-put-view ed vid (window-set-selection-set (view-window-of ed vid) g)))
+(define (editor-put-selection-set ed g)
+  (editor-view-put-selection-set ed (view-id (editor-focused-view ed)) g))
+(define (editor-view-clear-selection-set ed vid)
+  (editor-put-view ed vid (window-clear-selection-set (view-window-of ed vid))))
+(define (editor-clear-selection-set ed)
+  (editor-view-clear-selection-set ed (view-id (editor-focused-view ed))))
 (define (editor-view-add-selections ed vid sels #:primary? [primary? #f])
   (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels #:primary? primary?)))
 (define (editor-view-remove-selections ed vid sels)
@@ -541,5 +556,19 @@
   (define pv (editor-set-selections pw0 (list (caret (point 0 0)) (caret (point 0 3)))))
   (check-equal? (editor-primary-index pv) 0)
   (check-equal? (editor-primary-index (editor-set-primary-index pv 1)) 1)
+
+  ;; 命名选区集：安装 -> 插入（作用于集合内所有区间）-> 上层自己清除
+  (define gg0 (editor-open "foo bar foo" 5 20))
+  (define gg1 (editor-put-selection-set gg0
+                (selection-set-open 'foo (list (selection (point 0 0) (point 0 3))
+                                       (selection (point 0 8) (point 0 11))) 0)))
+  (check-equal? (editor-selection-set-name gg1) 'foo)
+  (check-equal? (length (editor-selections gg1)) 2)
+  (define-values (gg2 _ggr) (editor-command gg1 (edit-insert "X") #:reaction 'leader))
+  (check-equal? (editor-buffer->string gg2 0) "X bar X")
+  (check-equal? (editor-selection-set-name gg2) 'foo)        ; 编辑后名字保持
+  (define gg3 (editor-clear-selection-set gg2))
+  (check-false (editor-selection-set-name gg3))
+  (check-equal? (length (editor-selections gg3)) 1)  ; 收敛为单个 leader
 
   (displayln "program.rkt: all tests passed"))

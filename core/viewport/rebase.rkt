@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt" "../atom/selection-set.rkt"
          "../doc/buffer.rkt" "../doc/document.rkt"
          "window.rkt" "layout.rkt" rackunit)
 
@@ -21,30 +21,22 @@
 
 ;; w : 待调整的 window；d* : 编辑后的新 document；descs : (listof edit-desc) 施加顺序
 (define (rebase-free w d* descs)
-  (define mapped
-    (for/list ([s (in-list (window-selections w))])
-      (for/fold ([s s]) ([d (in-list descs)]) (selection-map-edit d s))))
-  (window-set-selections (struct-copy window w [document d*]) mapped (window-primary-index w)))
+  (struct-copy window w [document d*] [selection-set (selection-set-map-edit (window-selection-set w) descs)]))
 
 ;; 编辑者语义：选区坍缩到「经过全部 desc 之后」的 head，再 ensure primary 可见。
 (define (rebase-leader w d* descs)
-  (define mapped
-    (for/list ([s (in-list (window-selections w))])
-      (define p (edits-map-position descs (selection-head s)))
-      (selection p p)))
   (window-ensure-point
-   (window-set-selections (struct-copy window w [document d*]) mapped (window-primary-index w))))
+   (struct-copy window w [document d*] [selection-set (selection-set-advance-leader (window-selection-set w) descs)])))
 
 ;; w : 待调整的 window；leader : 编辑视图的最终 window（已 ensure）
 (define (rebase-follow w leader)
   (window-ensure-point
    (struct-copy window w
-     [document   (window-document leader)]
-     [selections (window-selections leader)]
-     [primary-index (window-primary-index leader)]
-     [top-line   (window-top-line leader)]
-     [left-col   (window-left-col leader)]
-     [top-seg    (window-top-seg leader)])))
+     [document (window-document leader)]
+     [selection-set    (window-selection-set leader)]
+     [top-line (window-top-line leader)]
+     [left-col (window-left-col leader)]
+     [top-seg  (window-top-seg leader)])))
 
 ;;; ---------- 测试（纯 window 级）----------
 

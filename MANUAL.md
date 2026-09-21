@@ -70,6 +70,13 @@
 | `selection-map-head` | 对 head 施加 `point→point`（扩选方向） |
 | `selection-map-anchor` | 对 anchor 施加 `point→point` |
 | `selection-map-both` | 对两端施加 `point→point`（平移） |
+| `selection-set?` | 命名选区集：名字 ⊕ 区间集 ⊕ leader（多选区的单位） |
+| `selection-set-open` | 构造组（规范化；leader 由输入下标追踪） |
+| `selection-set-name` / `selection-set-selections` / `selection-set-leader-index` | 读名字 / 区间集 / leader 下标 |
+| `selection-set-leader` | 读 leader 选区（“原来的单选区”） |
+| `selection-set-add` / `selection-set-remove` / `selection-set-map` / `selection-set-set-leader` | 增 / 删 / 映射 / 设 leader |
+| `selection-set-map-edit` / `selection-set-advance-leader` | 编辑后重定位（free / leader 语义） |
+| `selection-set-clear` | 清除：收敛为单个 leader 选区（名字丢弃） |
 
 ## 2. 编辑动作（可传的值，editor 级）
 
@@ -282,6 +289,8 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-sync` | 焦点 view 的同步策略 |
 | `editor-selections` | 焦点 view 的选区集 |
 | `editor-view-selections` | 某 view 的选区集 |
+| `editor-selection-set` / `editor-view-selection-set` | 焦点 / 某 view 的选区集（名字+区间集+leader） |
+| `editor-selection-set-name` / `editor-view-selection-set-name` | 名字 |
 | `editor-point` | 焦点 view 光标 |
 | `editor-view-point` | 某 view 光标 |
 | `editor-primary` | 焦点 view 的 primary 选区（值） |
@@ -402,6 +411,8 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-put-window` | focus 糖：裸写焦点 view 整个 window |
 | `editor-set-selections` | focus 糖：设焦点 view 选区集（可选 primary） |
+| `editor-view-put-selection-set` / `editor-put-selection-set` | 安装一个命名选区集 |
+| `editor-view-clear-selection-set` / `editor-clear-selection-set` | 清除选区集：收敛为单个 leader 选区（**何时调由上层决定**） |
 | `editor-add-selections` | focus 糖：并入选区（`#:primary?`） |
 | `editor-remove-selections` | focus 糖：去掉选区 |
 | `editor-collapse-selections` | focus 糖：回单光标 |
