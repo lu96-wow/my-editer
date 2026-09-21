@@ -21,11 +21,15 @@
 ;;;   editor-view-edit= 指定 view + 同上
 ;;;   editor-command  = 本示例直接用它演示「程序编辑」：显式 #:selection + 默认 reaction 'none
 ;;;
-;;; 运行：  racket io/example.rkt [文件]
+;;; 运行：  racket io/example.rkt [文件]   （无文件 → 内置示例文本）
 ;;; 按键：  可打印/中文 插入   Enter 自动缩进换行   Backspace/Delete 删除   Tab 两空格
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Shift+方向 扩选   Alt+↑↓ 上下加光标
 ;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
-;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读  ^K 清除只读  ^L 开关高亮  ^Q 退出
+;;;         ^W 切换左右窗格    ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读
+;;;         ^K 清除只读  ^L 开关高亮  ^Q 退出
+;;;
+;;; 左右两个窗格是**两个不同的 document**（右为镜像），用 core 的**跨 document 视口同步**
+;;; （`editor-link-views`）链接：滚动/导航一个，另一个按「行固定、列按比例」跟随。
 
 (require "../core/editor.rkt"   ; editor 平台面（中性/程序/用户）
          "../core/api.rkt"      ; 低层公开面（point/selection/edit-desc/attr/window/screen/…）
@@ -43,18 +47,76 @@
 ;;        是否高亮）都是**前端状态**，core 不存。
 ;; [前端] 会话状态（比如「有没有未保存改动」）也归前端——core 的 tick 只是版本戳。
 
-(struct app (ed rows cols name highlight?) #:transparent)
+(struct app (ed rows cols name highlight? mirror-vid) #:transparent)
 ;; ed        : editor
 ;; rows/cols : nat      终端整屏尺寸（最后一行留作状态栏）
 ;; name      : string
 ;; highlight? : boolean 是否跑关键字高亮
+;; mirror-vid : view-id 右窗格视图（看第二个 document）
+
+;; 分屏几何：左 pane 宽 = cols/2，右 = 其余；内容高 = rows-1（最后一行状态栏）。
+(define (pane-left-w cols)  (max 1 (quotient cols 2)))
+(define (pane-right-w cols) (max 1 (- cols (pane-left-w cols))))
+(define (set-pane-sizes ed mvid rows cols)
+  (define h (max 1 (sub1 rows)))
+  (editor-view-set-size (editor-view-set-size ed 0 h (pane-left-w cols)) mvid h (pane-right-w cols)))
+
+;; 无文件时的默认内容（够长，能看出滚动同步）
+(define default-doc
+  (string-join
+   '(";; 示例：左右两个 document，用跨 document 视口同步链接起来"
+     ";; 左 pane = 主文档；右 pane = 行号镜像（另一个 document）"
+     ";; 按 ↓ / PgDn 滚动，右侧按『行固定』跟随；^W 切换焦点"
+     ""
+     "(define (fact n)"
+     "  (if (zero? n)"
+     "      1"
+     "      (* n (fact (sub1 n)))))"
+     ""
+     "(define (map1 f xs)"
+     "  (cond [(null? xs) '()]"
+     "        [else (cons (f (car xs))"
+     "                    (map1 f (cdr xs)))]))"
+     ""
+     ";; 中文行也同步：宽字符按显示宽算"
+     ";; 左右 pane 列宽不同时，水平滚动按比例映射"
+     ""
+     "(struct point (line col) #:transparent)"
+     "(define origin (point 0 0))"
+     ""
+     "(define (repeat n x)"
+     "  (if (zero? n) '() (cons x (repeat (sub1 n) x))))"
+     ""
+     "(provide fact map1 point origin repeat)"
+     ""
+     ";; 下面这段只为把行数拉长，方便看滚动"
+     "(define (foldl f acc xs)"
+     "  (if (null? xs) acc (foldl f (f acc (car xs)) (cdr xs))))"
+     ""
+     "(define (range0 n) (map1 (lambda (i) i) (repeat n 0)))")
+   "\n"))
+
+;; 右 pane 文档：把主文本渲染成「行号 | 原文」（行数一致，但内容/列宽明显不同）
+(define (mirror-of text)
+  (string-join
+   (for/list ([ln (in-list (string-split text #rx"\r?\n" #:trim? #f))] [i (in-naturals)])
+     (format "~a | ~a" (add1 i) ln))
+   "\n"))
 
 (define (make-app text rows cols name)
-  (app (editor-open text (max 1 (sub1 rows)) cols #:name name)
-       rows cols name #t))
+  (define h (max 1 (sub1 rows)))
+  (define ed0 (editor-open text h (pane-left-w cols) #:name name))
+  ;; 第二个 document（镜像，独立文本；`#:history? #f`：派生 UI 不进历史）
+  (define-values (ed1 mdid) (editor-open-document ed0 (mirror-of text) h (pane-right-w cols)
+                                                  #:name "mirror" #:focus? #f #:history? #f))
+  (define mvid (for/first ([v (in-list (editor-views ed1))]
+                           #:when (= (editor-view-document-id ed1 (view-id v)) mdid))
+                 (view-id v)))
+  ;; 链接两个 view：跨 document 视口同步（行固定、列按比例）
+  (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid))
 
 (define (open-app path rows cols)
-  (make-app (if (and path (file-exists? path)) (file->string path) "")
+  (make-app (if (and path (file-exists? path)) (file->string path) default-doc)
             rows cols
             (if path (path->string (file-name-from-path path)) "*scratch*")))
 
@@ -129,7 +191,7 @@
 (define (resize a rows cols)
   (struct-copy app a
     [rows rows] [cols cols]
-    [ed (editor-set-size (app-ed a) (max 1 (sub1 rows)) (max 1 cols))]))
+    [ed (set-pane-sizes (app-ed a) (app-mirror-vid a) rows cols)]))
 
 ;;; ---------- 2.8 标注：两种来源，投影时汇合（应用策略）----------
 ;;
@@ -296,6 +358,12 @@
   (add-caret a (if (> delta 0) (editor-point-down ed (editor-point ed))
                                 (editor-point-up ed (editor-point ed)))))
 
+;; 切换窗格：把焦点在左（view 0）与右（mirror view）之间切
+(define (switch-pane a)
+  (define ed (app-ed a))
+  (define mvid (app-mirror-vid a))
+  (struct-copy app a [ed (editor-focus-view ed (if (= (editor-focus ed) 0) mvid 0))]))
+
 ;;; ============================================================================
 ;;; §3 渲染（[前端]；core 只给 screen）
 ;;; ============================================================================
@@ -344,7 +412,16 @@
       " "))
 
 (define (frame->bytes app)
-  (define scr (editor->screen (app-ed app) (app-face-provider app)))
+  (define ed (app-ed app))
+  (define mvid (app-mirror-vid app))
+  (define fvid (editor-focus ed))
+  ;; 两个 pane 各自投影成 screen，再拼成整屏；只有活动 pane 的光标透出
+  (define scr
+    (screen-compose (max 1 (sub1 (app-rows app))) (app-cols app)
+                    (list (list 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
+                          (list 'right (pane-left-w (app-cols app)) 0
+                                (editor-view->screen ed mvid (app-face-provider app))))
+                    (if (= fvid 0) 'left 'right)))
   (define row-runs (screen-row-runs scr))
   (define parts (list format-cursor-hide format-screen-clear))
   (define (emit! b) (set! parts (cons b parts)))
@@ -365,12 +442,14 @@
   (for ([c (in-list (screen-cursors scr))])
     (emit! (format-cursor-move (add1 (cursor-row c)) (add1 (cursor-col c))))
     (emit! (format-styled 'cursor (cell-text (vector-ref row-runs (cursor-row c)) (cursor-col c)))))
-  ;; 状态栏（最后一行）
+  ;; 状态栏（最后一行）：左右 top-line + 活动窗格
   (define p (editor-point (app-ed app)))
   (define status
-    (format " ~a  L~a:C~a  sel~a  ~a  ^Z^Y ^D next ^A all ^G ^L ^Q"
+    (format " ~a  L~a:C~a  sel~a  | L~a L~a  pane:~a  ~a  ^W switch ^Z^Y ^D ^A ^G ^O ^K ^L ^Q"
             (app-name app) (add1 (point-line p)) (add1 (point-col p))
             (length (editor-selections (app-ed app)))
+            (editor-view-top-line (app-ed app) 0) (editor-view-top-line (app-ed app) mvid)
+            (if (= fvid 0) "L" "R")
             (if (app-highlight? app) "hl:on" "hl:off")))
   (emit! (format-cursor-move (app-rows app) 1))
   (emit! (format-styled 'status-bar (pad-to status (app-cols app))))
@@ -438,6 +517,7 @@
                            [(#\O) (set! app (mark-read-only app))]
                            [(#\K) (set! app (clear-read-only app))]
                            [(#\L) (set! app (toggle-highlight app))]
+                           [(#\W) (set! app (switch-pane app))]
                            [(#\Q) (set! running? #f)]
                            [else (void)])]
                         [else (void)]))
@@ -509,7 +589,7 @@
   (check-equal? (editor-buffer->string (app-ed a10) 0) "define x")
 
   ;; 选中/多光标（前端策略）：Ctrl+D 选词 → 再选下一个 → 一起替换
-  (define m0 (make-app "foo bar foo" 5 20 "*t*"))
+  (define m0 (make-app "foo bar foo" 5 40 "*t*"))
   (define m1 (select-next-occurrence m0))
   (check-equal? (length (editor-selections (app-ed m1))) 1)      ; 光标→先选词
   (define m2 (select-next-occurrence m1))
@@ -547,6 +627,21 @@
   (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-newline))) 0) "a\nef")
   (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-backspace))) 0) "aef")
 
+  ;; 分屏 + 跨 document 视口同步：左右是两个 document，链接后滚动一个另一个跟随
+  (define p0 (make-app (string-join (for/list ([i (in-range 30)]) (format "line ~a" i)) "\n") 8 40 "*p*"))
+  (check-equal? (editor-document-count (app-ed p0)) 2)                     ; 两个 document
+  (check-equal? (editor-view-link (app-ed p0) 0) 'mirror)                  ; 左 pane 在链接里
+  (check-equal? (editor-view-link (app-ed p0) (app-mirror-vid p0)) 'mirror)
+  (define p1 (for/fold ([a p0]) ([_ (in-range 12)]) (navigate a 'down)))  ; 左 pane 下移出屏
+  (check-true (> (editor-view-top-line (app-ed p1) 0) 0))                  ; 确实滚了
+  (check-equal? (editor-view-top-line (app-ed p1) (app-mirror-vid p1))     ; 右 pane 跟随
+                (editor-view-top-line (app-ed p1) 0))
+  (check-true (bytes? (frame->bytes p1)))                                  ; 两 pane 能拼成一帧
+  ;; ^W 切换窗格
+  (define p2 (switch-pane p1))
+  (check-equal? (editor-focus (app-ed p2)) (app-mirror-vid p1))
+  (check-equal? (editor-focus (app-ed (switch-pane p2))) 0)
+
   (displayln "example.rkt: all tests passed"))
 
 (module+ main
@@ -559,7 +654,8 @@
 ;;
 ;; 1. report 粒度：change-report 给「首行/末行 + 生效 texts + 生效 attrs」（行区间由 texts 现算）。
 ;;    前端若要按**每个**变更区间做增量处理，需自己走 change-report-texts / change-report-attrs。
-;; 2. 多窗格布局：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
-;;    但 view 的摆放、焦点切换策略不在 core）。
+;; 2. 多窗格布局：分屏 / 拼接要前端自己做（`screen-compose` 给拼屏）；
+;;    但**跨 document 的视口同步**是 core 能力（`editor-link-views` + `viewport/mirror.rkt`），
+;;    本示例就用它把左右两个 document 的窗格链接起来（`^W` 切换焦点）。
 ;; 3. 属性已是一等公民：editor-apply-attrs 批量写、进账本、replay/undo 精确；
 ;;    「插入文本 + 标只读」可用 editor-command 的 #:attrs 计划一次完成。

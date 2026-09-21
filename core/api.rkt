@@ -36,6 +36,7 @@
          "viewport/window.rkt"
          "viewport/layout.rkt"
          "viewport/render.rkt"
+         "viewport/mirror.rkt"
          "viewport/project.rkt")
 
 (provide
@@ -124,7 +125,9 @@
  window-ensure-point window-clamp-view window-visual-move point-up point-down window-up window-down
  window-point->screen window-screen->point window-scroll
  ;; ---- project / render ----
- window->screen)
+ window->screen
+ ;; ---- mirror（window → window 视口映射）----
+ mirror-point mirror-window)
 
 ;;; ============================================================================
 ;;; 冒烟测试：门面 + 一条完整「文档 → 画面」链

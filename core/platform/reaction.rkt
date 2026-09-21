@@ -2,7 +2,7 @@
 
 (require "../atom/point.rkt" "../atom/edit.rkt"
          "../doc/buffer.rkt" "../doc/document.rkt"
-         "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/rebase.rkt"
+         "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/rebase.rkt" "../viewport/mirror.rkt"
          "../unit/history.rkt"
          "state.rkt" "write.rkt" rackunit)
 
@@ -46,26 +46,35 @@
         (editor-put-view e (view-id v) (rebase-free (view-window v) d descs))
         e)))
 
-;; leader：vid 的选区推进到插入后 + ensure；同 document 其余 free 映射 / follow 镜像。
+;; leader：vid 的选区推进到插入后 + ensure；同 link 成员按视口镜像（可跨 document），
+;; 同 document 其余 free 映射 / follow 镜像。
 (define (editor-leader-view ed vid d descs)
   (define v (editor-view-ref ed vid))
+  (define link (view-link v))
   (define editing (rebase-leader (view-window v) d descs))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
-      [(not (eq? d (view-document x))) e]
       [(= vid (view-id x)) (editor-put-view e vid editing)]
+      ;; 同 link（可跨 document）：只镜像视口，不改成员自己的 document
+      [(and link (eq? link (view-link x)))
+       (editor-put-view e (view-id x) (mirror-window (view-window x) editing))]
+      [(not (eq? d (view-document x))) e]
       [else
        (define w (case (view-sync x)
                    [(free)   (rebase-free   (view-window x) d descs)]
                    [(follow) (rebase-follow (view-window x) editing)]))
        (editor-put-view e (view-id x) w)])))
 
-;; 用户导航：把 vid 的 window 定稿；同 document 的 follow view 镜像它（自由 view 钉住）。
+;; 用户导航：把 vid 的 window 定稿；同 link 成员按视口镜像，同 document 的 follow view 镜像它。
 (define (editor-leader-window ed vid w*)
-  (define d (view-document (editor-view-ref ed vid)))
+  (define v (editor-view-ref ed vid))
+  (define d (view-document v))
+  (define link (view-link v))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
       [(= vid (view-id x)) (editor-put-view e vid w*)]
+      [(and link (eq? link (view-link x)))
+       (editor-put-view e (view-id x) (mirror-window (view-window x) w*))]
       [(and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
        (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
       [else e])))
@@ -77,13 +86,13 @@
   (define (mk text h w)
     (define d (document-open text))
     (editor (list (document-entry 0 "s" d (history-empty) #t))
-            (list (view 0 (window-open d h w) 'free)) 0 1 1))
+            (list (view 0 (window-open d h w) 'free #f)) 0 1 1))
   (define (add-view ed h w p sync)
     (define d (document-entry-document (editor-document-entry ed 0)))
     (struct-copy editor ed
       [views (append (editor-views ed)
                      (list (view (editor-next-view ed)
-                                 (window-set-point (window-open d h w) p) sync)))]
+                                 (window-set-point (window-open d h w) p) sync #f)))]
       [next-view (add1 (editor-next-view ed))]))
   (define (vp ed vid) (window-point (view-window (editor-view-ref ed vid))))
   (define (vtl ed vid) (window-top-line (view-window (editor-view-ref ed vid))))

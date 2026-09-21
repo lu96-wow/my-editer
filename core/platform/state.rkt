@@ -39,9 +39,10 @@
 ;; 受影响行区间是二者的投影，由读面现算（见 neutral.rkt）。
 (struct change-report (texts attrs) #:transparent)
 
-(struct view (id window sync) #:transparent)
+(struct view (id window sync link) #:transparent)
 ;; window : window            本视图看的 document 在其内
-;; sync   : 'free | 'follow   显示语义的策略槽，由 reaction 读取
+;; sync   : 'free | 'follow   同 document 的显示语义策略槽，由 reaction 读取
+;; link   : (or/c symbol? #f) 跨 document 的视口同步链接名；#f = 不参与
 
 (struct editor (documents views focus next-document next-view) #:transparent)
 ;; documents   : (listof document-entry)   顺序稳定
@@ -95,7 +96,7 @@
   (require rackunit "../doc/buffer.rkt")
   (define d (document-open "s"))
   (define ed (editor (list (document-entry 0 "s" d 'H #t))
-                     (list (view 0 (window-open d 24 80) 'free)) 0 1 1))
+                     (list (view 0 (window-open d 24 80) 'free #f)) 0 1 1))
 
   (check-equal? (document-entry-id (editor-document-entry ed 0)) 0)
   (check-equal? (view-id (editor-view-ref ed 0)) 0)

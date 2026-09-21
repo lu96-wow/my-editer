@@ -43,6 +43,9 @@
  editor-view-document
  editor-view-sync
  editor-sync
+ editor-view-link
+ editor-link
+ editor-links
  ;; 光标 / 尺寸 / 映射（只读）
  editor-point
  editor-view-point
@@ -115,9 +118,9 @@
                      #:name [name "*scratch*"] #:history? [history? #t])
   (define d (document-open text))
   (define entry (document-entry 0 name d (history-empty) history?))
-  (editor (list entry) (list (view 0 (window-open d height width) 'free)) 0 1 1))
+  (editor (list entry) (list (view 0 (window-open d height width) 'free #f)) 0 1 1))
 
-;; 新增一个 buffer + 一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
+;; 新增一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
 ;; （默认**不抢**）。返回 (values editor buffer-id)。
 (define (editor-open-document ed text [height 24] [width 80]
                             #:name [name "*scratch*"] #:focus? [focus? #f]
@@ -130,16 +133,17 @@
   (define-values (ed2 _vid) (editor-add-view ed1 did height width #:focus? focus?))
   (values ed2 did))
 
-;; 新增一个视图。#:focus? 控制是否 focus 它（默认**不抢**）。返回 (values editor view-id)。
+;; 新增一个视图。#:focus? 控制是否 focus 它（默认**不抢**）；#:link 加入视口同步链接。
+;; 返回 (values editor view-id)。
 (define (editor-add-view ed did [height 24] [width 80] [p (point 0 0)]
-                         #:sync [sync 'free] #:focus? [focus? #f])
+                         #:sync [sync 'free] #:focus? [focus? #f] #:link [link #f])
   (check-sync 'editor-add-view sync)
   (define entry (editor-document-entry ed did))
   (define vid (editor-next-view ed))
   (define w (window-clamp-view
              (window-set-point (window-open (document-entry-document entry) height width) p)))
   (values (struct-copy editor ed
-            [views (append (editor-views ed) (list (view vid w sync)))]
+            [views (append (editor-views ed) (list (view vid w sync link)))]
             [focus (if focus? vid (editor-focus ed))]
             [next-view (add1 vid)])
           vid))
@@ -184,6 +188,10 @@
 (define (editor-view-document ed vid) (view-document (editor-view-ref ed vid)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
 (define (editor-sync ed) (editor-view-sync ed (editor-focus ed)))
+;; 视口同步链接（可跨 document）：单个 view 的 link 名 / 焦点 link / 全部 link 名。
+(define (editor-view-link ed vid) (view-link (editor-view-ref ed vid)))
+(define (editor-link ed) (editor-view-link ed (view-id (editor-focused-view ed))))
+(define (editor-links ed) (remove-duplicates (filter values (map view-link (editor-views ed)))))
 
 ;; change-report 的行区间是 texts 与 attrs 的投影并集，读时现算。
 (define (change-report-span r)

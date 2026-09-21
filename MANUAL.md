@@ -211,6 +211,8 @@ face-provider : editor did line -> (listof (list start end face))
 | 名字 | 语义 |
 |---|---|
 | `window->screen` | 视口 → 一帧画面；可传 `line-face-provider`（buffer 级，见下） |
+| `mirror-point` | 逻辑映射：把 A 点的行列投到 B（行固定、列按比例）；mode 无关 |
+| `mirror-window` | 把一个 window 的可视范围投到另一个 window（clip/wrap；行固定列比例，wrap 投影到 `top-seg`） |
 | `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
 | `screen-rows` | 行数 |
 | `screen-cols` | 列数 |
@@ -269,7 +271,7 @@ face-provider : editor did line -> (listof (list start end face))
 |---|---|
 | `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名；`#:history?`（默认 `#t`）定历史策略 |
 | `editor-open-document` | 新开 document + view；`#:name`（默认 `*scratch*`）、`#:focus?`、`#:history?`（默认 `#t`） |
-| `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?` |
+| `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?`、`#:link`（视口同步链接名，可跨 document） |
 | `editor-close-view` | 关一个 view |
 | `editor-close-document` | 关一个 document 及其 view |
 | `editor-focus-view` | 聚焦某 view |
@@ -292,6 +294,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-document-id` | 某 view 的 document id |
 | `editor-view-buffer` | 某 view 的 buffer 值 |
 | `editor-view-sync` | 某 view 的同步策略 |
+| `editor-view-link` / `editor-link` / `editor-links` | 某 / 焦点 view 的链接名；全部链接名 |
 | `editor-sync` | 焦点 view 的同步策略 |
 | `editor-selections` | 焦点 view 的选区集 |
 | `editor-view-selections` | 某 view 的选区集 |
@@ -411,6 +414,9 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-document` | 让某 view 改看另一个 buffer |
+| `editor-view-set-link` / `editor-set-view-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链） |
+| `editor-link-views` | 把一组 view 设为同一链接（组替换语义） |
+| `editor-unlink-view` | 让某 view 退出链接 |
 | `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
 | `editor-set-document` | focus 糖：让焦点 view 改看另一个 buffer |
 | `editor-set-document-name` | 重命名某 document |

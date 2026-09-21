@@ -306,4 +306,50 @@
   (check-equal? (editor-buffer->string br4 0) "abc")
   (check-equal? (editor-attr-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
 
+  ;; 跨 document 视口同步（行数相同 → 行恒等）
+  (define lk0 (editor-open (string-join (for/list ([i (in-range 8)]) (format "l~a" i)) "\n") 3 10 #:name "A"))
+  (define-values (lk1 vidB) (editor-open-document
+                             lk0 (string-join (for/list ([i (in-range 8)]) (format "m~a" i)) "\n")
+                             3 10 #:name "B" #:focus? #f))
+  (check-false (editor-view-link lk1 0))
+  (define lk2 (editor-link-views lk1 'pair (list 0 vidB)))
+  (check-equal? (editor-view-link lk2 0) 'pair)
+  (check-equal? (editor-view-link lk2 vidB) 'pair)
+  (check-equal? (editor-links lk2) '(pair))
+  (define lk3 (editor-view-goto lk2 0 (point 5 0)))
+  (check-equal? (editor-view-top-line lk3 0) 3)      ; ensure：point 5 → top-line 3
+  (check-equal? (editor-view-top-line lk3 vidB) 3)   ; 行固定 → 3
+  (define lk4 (editor-view-goto lk3 0 (point 0 0)))
+  (check-equal? (editor-view-top-line lk4 vidB) 0)
+  ;; 解链后不再跟
+  (define lk5 (editor-unlink-view lk4 vidB))
+  (check-false (editor-view-link lk5 vidB))
+  (define lk6 (editor-view-goto lk5 0 (point 5 0)))
+  (check-equal? (editor-view-top-line lk6 vidB) 0)   ; 已解链，不动
+
+  ;; 目标更短 → 行夹到最近
+  (define sk0 (editor-open (string-join (for/list ([i (in-range 8)]) (format "l~a" i)) "\n") 3 10 #:name "A"))
+  (define-values (sk1 vidS) (editor-open-document sk0 "m0\nm1\nm2\nm3" 3 10 #:name "S" #:focus? #f))
+  (define sk2 (editor-link-views sk1 'short (list 0 vidS)))
+  (define sk3 (editor-view-goto sk2 0 (point 5 0)))
+  (check-equal? (editor-view-top-line sk3 0) 3)
+  (check-equal? (editor-view-top-line sk3 vidS) 1)   ; 3 → 最近末页（max-top=1）
+
+  ;; 列按比例：A line0 宽 8、B line0 宽 2；A left-col 4 → B left-col 1（4/8*2）
+  (define ck0 (editor-open "abcdefgh\nzzzz" 3 20 #:name "A"))
+  (define-values (ck1 vidC) (editor-open-document ck0 "xy\nzzzz" 3 20 #:name "C" #:focus? #f))
+  (define ck2 (editor-link-views ck1 'col (list 0 vidC)))
+  (define ck3 (editor-view-set-left-col ck2 0 4))
+  (define ck4 (editor-view-follow ck3 0))
+  (check-equal? (editor-view-left-col ck4 0) 4)
+  (check-equal? (editor-view-left-col ck4 vidC) 1)
+
+  ;; wrap follower：leader clip 滚到列 6 → follower（宽 4）的 top-seg = 1
+  (define wk0 (editor-open "abcdefgh" 3 20 #:name "A"))
+  (define-values (wk1 vidW) (editor-open-document wk0 "abcdefgh" 3 4 #:name "W" #:focus? #f))
+  (define wk2 (editor-view-set-mode wk1 vidW 'wrap))
+  (define wk3 (editor-link-views wk2 'wr (list 0 vidW)))
+  (define wk4 (editor-view-follow (editor-view-set-left-col wk3 0 6) 0))
+  (check-equal? (editor-view-top-seg wk4 vidW) 1)
+
   (displayln "command.rkt: all tests passed"))

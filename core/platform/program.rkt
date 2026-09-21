@@ -49,6 +49,11 @@
  editor-view-set-left-col
  editor-view-set-sync
  editor-view-set-document
+ ;; 视口同步链接（可跨 document）
+ editor-view-set-link
+ editor-set-view-link
+ editor-link-views
+ editor-unlink-view
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
  editor-put-window
@@ -308,6 +313,22 @@
   (editor-set-view-sync ed vid sync))
 (define (editor-view-set-document ed vid did)
   (editor-set-view-document ed vid did))
+
+;;; ---------- 视口同步链接（可跨 document）----------
+;;; link 只是成员归属（符号名）；投影固定为「行固定 + 列按比例」，见 viewport/mirror.rkt。
+
+(define (editor-view-set-link ed vid link) (editor-put-view-link ed vid link))
+(define (editor-set-view-link ed link)
+  (editor-view-set-link ed (view-id (editor-focused-view ed)) link))
+
+;; 把 vids 设成链接 name；原来属于 name 但不在 vids 的 view 退出（组替换语义）。
+(define (editor-link-views ed name vids)
+  (for/fold ([e ed]) ([v (in-list (editor-views ed))])
+    (cond
+      [(memv (view-id v) vids)  (editor-put-view-link e (view-id v) name)]
+      [(eq? (view-link v) name) (editor-put-view-link e (view-id v) #f)]
+      [else e])))
+(define (editor-unlink-view ed vid) (editor-put-view-link ed vid #f))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
 

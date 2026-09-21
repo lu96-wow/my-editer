@@ -37,7 +37,8 @@ core/
 │   ├── render.rkt             #   buffer 行 × line-face-provider → glyph
 │   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动
 │   ├── project.rkt            #   window → screen
-│   └── rebase.rkt             #   window × edit → window（free / follow）
+│   ├── rebase.rkt             #   window × edit → window（free / follow）
+│   └── mirror.rkt             #   window → window 视口映射（跨 document 同步）
 ├── platform/                  # 平台：多文档 × 多视口 + 三种面
 │   ├── state.rkt              #   editor/view/document-entry 数据 + 查找 + 不变量（内部）
 │   ├── write.rkt              #   无策略写原语（内部）
@@ -114,6 +115,7 @@ viewport    window  = document ⊕ selection-set ⊕ (mode, top, left, height, w
             layout  = window × render → vrows / 映射 / ensure / 视觉移动
             project = window × layout → screen
             rebase  = window × edit-desc → window              （free / follow）
+            mirror  = window × window → window                  （跨 document 视口同步）
              │
 platform    state   = [document-entry] × [view] × focus   （view = id × window × sync；window 含 document）
             write   : state × change → state                    （无策略写原语；唯一漏斗）
@@ -192,6 +194,12 @@ editor-command-batch  : 给现成 change 直接施加
 
 契约：同步**只在同一 buffer 的 view 之间**发生；`leader` 必须**先 ensure 定稿**，
 `follow` 再复制。
+
+**跨 document 视口同步（link）**：`view` 带一个 `link`（符号名，可 `#f`）。同 link 的 view 可跨 document；
+`editor-leader-{view,window}` 对同 link 成员调 `viewport/mirror.rkt` 的 `mirror-window`——只改成员的
+**视口**（不改它的 document），投影 = 「行固定行号（不够夹最近）+ 列按该行字符长比例」。逻辑映射
+（`mirror-point`）与 mode 无关；clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用
+`editor-link-views` / `editor-unlink-view` / `editor-view-set-link` 管理。
 
 ---
 

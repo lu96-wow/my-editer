@@ -28,6 +28,7 @@
  editor-apply-edit
  editor-apply-edit-batch
  editor-put-view
+ editor-put-view-link
  editor-set-view-sync
  editor-set-view-document
  editor-put-history
@@ -89,6 +90,10 @@
 (define (editor-put-view ed vid w)
   (map-view ed vid (lambda (v) (struct-copy view v [window (window-clamp-view w)]))))
 
+;; 设/清一个 view 的视口同步链接（link = 符号或 #f）。
+(define (editor-put-view-link ed vid link)
+  (map-view ed vid (lambda (v) (struct-copy view v [link link]))))
+
 ;; 视图结构变换（无策略；只动指定的 view）
 (define (editor-set-view-sync ed vid sync)
   (check-sync 'editor-set-view-sync sync)
@@ -138,7 +143,7 @@
   ;; swap-document 不动光标
   (define d-old (document-open "old"))
   (define e0 (editor (list (document-entry 0 "s" d-old (history-empty) #t))
-                     (list (view 0 (window-open d-old 3 10) 'free))
+                     (list (view 0 (window-open d-old 3 10) 'free #f))
                      0 1 1))
   (define e1 (editor-swap-document e0 0 (document-open "NEW")))
   (check-eq? (window-document (view-window (editor-view-ref e1 0)))
