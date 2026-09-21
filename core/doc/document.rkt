@@ -131,7 +131,7 @@
   (define-values (d* _) (document-apply-change d (change/attrs (list (attr-set start end key val)))))
   d*)
 (define (document-remove-attr d start end key)
-  (define-values (d* _) (document-apply-change d (change/attrs (list (attr-del start end key)))))
+  (define-values (d* _) (document-apply-change d (change/attrs (list (attr-remove start end key)))))
   d*)
 
 ;;; ---------- read-only 守卫 ----------

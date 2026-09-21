@@ -169,7 +169,7 @@
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
             (attr-set (point line c0) (point line c1) read-only-key #t)))
-        (define-values (ed* _r) (editor-apply-attrs ed bid attrs))
+        (define-values (ed* _r) (editor-apply-attrs ed bid attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 (define (clear-read-only a)
@@ -183,8 +183,8 @@
           (for/list ([sp (in-list (selection-line-spans ed bid s e))]
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
-            (attr-del (point line c0) (point line c1) read-only-key)))
-        (define-values (ed* _r) (editor-apply-attrs ed bid attrs))
+            (attr-remove (point line c0) (point line c1) read-only-key)))
+        (define-values (ed* _r) (editor-apply-attrs ed bid attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。

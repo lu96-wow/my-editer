@@ -131,7 +131,7 @@
 ;;; ---------- 测试（纯数据 + doc 帮助构造逆） ----------
 
 (module+ test
-  (require "../doc/buffer.rkt" "../doc/document.rkt" "../doc/batch.rkt")
+  (require "../doc/buffer.rkt" "../doc/document.rkt")
 
   ;; 施加一条文本 desc，并给出 (replay undo pre-point)
   (define (step-of b d p)

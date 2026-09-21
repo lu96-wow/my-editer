@@ -7,7 +7,7 @@
 ;;;
 ;;; 一个 attrs 就是一块**属性 buffer**：与 content 同坐标、平行，吃**同一条生效
 ;;; edit-desc**（由 content-apply 产出）。属性是 span 上的 hash：key/值由使用方定义，
-;;; core 只保留并解释 'read-only（见 doc/buffer.rkt）。
+;;; core 只保留并解释 'read-only（见 doc/document.rkt）。
 ;;;
 ;;; 不变量（attrs-check 强制）：
 ;;;   P1  每行内 rspan 按 start 升序、互不重叠
@@ -20,7 +20,7 @@
 ;;;   attrs-apply-attr[-batch]—— 显式属性变更（吃 attr-desc），零宽 = no-op
 ;;;
 ;;; 撤销材料：attrs-attr-inverse（单条 attr-desc 的逆）。文本编辑抹掉的属性由 doc 层
-;;; 用 attrs-range-runs 捕获后补回（见 doc/buffer.rkt）。
+;;; 用 attrs-range-runs 捕获后补回（见 doc/document.rkt）。
 
 (provide
  attrs?                             ; 构造器/内部字段不外露（避免绕过不变量）
@@ -353,7 +353,7 @@
           (define h (row-val-at row x))
           (if (hash-has-key? h key)
               (attr-set (point line x) (point line y) key (hash-ref h key))
-              (attr-del (point line x) (point line y) key))))))
+              (attr-remove (point line x) (point line y) key))))))
 
 ;;; ---------- 测试 ----------
 
@@ -378,7 +378,7 @@
   (check-equal? (attrs-key-runs p1b 0 5 'b) (list (list 2 3 2)))
 
   ;; remove key
-  (define p2 (apply-attr* p0 (attr-del (P 1 2) (P 1 3) 'ro)))
+  (define p2 (apply-attr* p0 (attr-remove (P 1 2) (P 1 3) 'ro)))
   (check-equal? (attrs-at p2 (P 1 1)) (hash 'ro #t))
   (check-equal? (attrs-at p2 (P 1 2)) (hash))
   (check-equal? (attrs-at p2 (P 1 3)) (hash 'ro #t))
@@ -386,7 +386,7 @@
   ;; 零宽 = no-op（不报错、不变）
   (define z0 (fresh))
   (check-eq? (apply-attr* z0 (attr-set (P 0 1) (P 0 1) 'k #t)) z0)
-  (check-eq? (apply-attr* p0 (attr-del (P 1 2) (P 1 2) 'ro)) p0)
+  (check-eq? (apply-attr* p0 (attr-remove (P 1 2) (P 1 2) 'ro)) p0)
 
   ;; 跨行先报错（不被夹紧掩盖）；行号越界具名报错
   (check-exn exn:fail? (lambda () (apply-attr* (fresh) (attr-set (P 0 0) (P 1 0) 'k #t))))

@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/change.rkt"
-         "../doc/buffer.rkt" "../doc/document.rkt" "../doc/batch.rkt"
+         "../doc/buffer.rkt" "../doc/document.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
          "state.rkt" rackunit)
@@ -16,7 +16,7 @@
 ;;;   editor-apply-edit      文本单条漏斗
 ;;;   editor-apply-edit-batch 文本批量漏斗
 ;;;   editor-put-view        换一个 view 的 window
-;;;   editor-set-view-sync / editor-set-view-document  视图结构变换
+;;;   editor-set-view-sync / editor-set-view-buffer  视图结构变换
 ;;;   editor-put-buffer-name
 ;;;   editor-put-history / editor-record-history
 ;;;
@@ -29,7 +29,7 @@
  editor-apply-edit-batch
  editor-put-view
  editor-set-view-sync
- editor-set-view-document
+ editor-set-view-buffer
  editor-put-history
  editor-put-buffer-name
  editor-record-history)
@@ -93,7 +93,7 @@
   (map-view ed vid (lambda (v) (struct-copy view v [sync sync]))))
 
 ;; 把某个 view 切到另一个文档（换属主；不触发任何同步）
-(define (editor-set-view-document ed vid bid)
+(define (editor-set-view-buffer ed vid bid)
   (define d* (buffer-entry-document (editor-buffer-entry ed bid)))
   (map-view ed vid
             (lambda (v)

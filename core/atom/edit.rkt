@@ -11,8 +11,12 @@
 ;;;   edit-desc-after-position  插入文本之后的点
 ;;;   edit-desc-inverse         由生效 desc + 旧文本求逆
 ;;;
+;;; 「一串 desc」的代数也在这里（doc/viewport 共用）：
+;;;   edits-normalize           排序 + 重叠检查
+;;;   edits-map-position        把一个点依次映射过一串（施加顺序的）编辑
+;;;   edits-span                 一串编辑影响到的行区间并集（增量重绘用）
+;;;
 ;;; 只依赖 point 与 lines，不认识 content/buffer —— 这是最底层的变更原子。
-;;; 「一串 desc」的规范化（排序 + 重叠检查）也在这里，供 doc 层共用。
 
 (require racket/list)
 
@@ -21,7 +25,9 @@
  edit-desc-map-position
  edit-desc-after-position
  edit-desc-inverse
- edits-normalize)
+ edits-normalize
+ edits-map-position
+ edits-span)
 
 ;;; ---------- 数据 ----------
 
@@ -90,6 +96,25 @@
 (define (edit-desc-inverse d old-text)
   (edit-desc (edit-desc-start d) (edit-desc-after-position d) old-text))
 
+;;; ---------- 一串 desc 的代数（位置映射 / 变更行区间）----------
+
+;; 把 p 依次映射过 descs（**施加顺序**）。落在某次删除区间内 → 落到该区间起点。
+;; 恰好落在一次零宽插入的点上 → 落到插入文本之后（光标跟随右边文本）。
+(define (edits-map-position descs p)
+  (for/fold ([p p]) ([d (in-list descs)])
+    (cond
+      [(and (point=? p (edit-desc-start d))
+            (point=? (edit-desc-start d) (edit-desc-end d)))
+       (edit-desc-after-position d)]
+      [else (or (edit-desc-map-position d p) (edit-desc-start d))])))
+
+;; 一串编辑影响到的行区间并集（新坐标系）：(values 首行 末行)；空 → (values #f #f)。
+(define (edits-span descs)
+  (for/fold ([f #f] [l #f]) ([d (in-list descs)])
+    (define sl (point-line (edit-desc-start d)))
+    (define el (+ sl (sub1 (length (string->lines (edit-desc-new-text d))))))
+    (values (if f (min f sl) sl) (if l (max l el) el))))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -126,5 +151,20 @@
   (check-exn exn:fail?
              (lambda () (edits-normalize 'x (list (edit-desc (point 0 1) (point 0 3) "")
                                                   (edit-desc (point 0 2) (point 0 4) "")))))
+
+  ;; edits-map-position：零宽插入落到插入后；删除区间内吸附起点
+  (check-equal? (edits-map-position (list (edit-desc (point 0 1) (point 0 1) "X")) (point 0 1))
+                (point 0 2))
+  (check-equal? (edits-map-position (list (edit-desc (point 0 1) (point 0 3) "")) (point 0 2))
+                (point 0 1))
+
+  ;; edits-span：行区间并集（新坐标系）
+  (define (span ds) (call-with-values (lambda () (edits-span ds)) list))
+  (check-equal? (span '()) (list #f #f))
+  (check-equal? (span (list (edit-desc (point 0 1) (point 0 3) ""))) (list 0 0))
+  (check-equal? (span (list (edit-desc (point 1 0) (point 1 0) "M\nN\n"))) (list 1 3))
+  (check-equal? (span (list (edit-desc (point 2 0) (point 2 1) "")
+                            (edit-desc (point 0 0) (point 0 1) "")))
+                (list 0 2))
 
   (displayln "edit.rkt: all tests passed"))

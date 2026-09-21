@@ -44,7 +44,7 @@
 
 (struct buffer
   (content ; content.rkt
-   tick)   ; nat      本 buffer 的版本戳（document 漏斗每次变更 +1）
+   tick)   ; nat      本 buffer 的版本戳（document 漏斗每次**文本**变更 +1）
   #:transparent)
 
 ;;; ---------- 构造 / 投影 ----------

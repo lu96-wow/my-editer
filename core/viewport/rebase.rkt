@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
-         "../doc/buffer.rkt" "../doc/document.rkt" "../doc/batch.rkt"
+         "../doc/buffer.rkt" "../doc/document.rkt"
          "window.rkt" "layout.rkt" rackunit)
 
 ;;; viewport/rebase.rkt —— 编辑后 view 的重新基准（窗口同步机制的唯一实现）

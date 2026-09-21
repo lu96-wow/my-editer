@@ -18,7 +18,8 @@
  change/edits
  change/attrs
  change-empty?
- change-text-only?)
+ change-text-only?
+ change-attr-only?)
 
 (struct change (texts attrs) #:transparent)
 
@@ -26,6 +27,7 @@
 (define (change/attrs as) (change '() as))
 (define (change-empty? c) (and (null? (change-texts c)) (null? (change-attrs c))))
 (define (change-text-only? c) (null? (change-attrs c)))
+(define (change-attr-only? c) (null? (change-texts c)))
 
 ;;; ---------- 测试 ----------
 
@@ -34,4 +36,6 @@
   (check-true (change-empty? (change '() '())))
   (check-true (change-text-only? (change/edits (list (edit-desc (p 0 0) (p 0 0) "x")))))
   (check-false (change-text-only? (change/attrs (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
+  (check-true (change-attr-only? (change/attrs (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
+  (check-false (change-attr-only? (change/edits (list (edit-desc (p 0 0) (p 0 0) "x")))))
   (displayln "change.rkt: all tests passed"))

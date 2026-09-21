@@ -17,7 +17,7 @@ core/
 │   ├── point.rkt              #   位置 (line,col) + 比较 + clamp
 │   ├── selection.rkt          #   选区 (anchor,head) + 端点映射
 │   ├── lines.rkt              #   string->lines（换行归一的唯一约定）
-│   ├── edit.rkt               #   edit-desc + 位置代数 + edits-normalize
+│   ├── edit.rkt               #   edit-desc + 位置代数 + edits-normalize / map-position / span
 │   ├── attr.rkt               #   attr-desc（属性变更原子）
 │   ├── change.rkt             #   change（变更集：文本 + 属性）
 │   ├── content.rkt            #   行向量文本存储 + content-apply
@@ -114,7 +114,7 @@ viewport    window  = document ⊕ point ⊕ (mode, top, left, height, width)
             project = window × layout → screen
             rebase  = window × edit-desc → window              （free / follow）
              │
-platform    state   = [buffer-entry] × [view] × focus   （view = id × window × sync；window 含 buffer）
+platform    state   = [buffer-entry] × [view] × focus   （view = id × window × sync；window 含 document）
             write   : state × change → state                    （无策略写原语；唯一漏斗）
             reaction= state × edit-desc → state                 （clamp / map / leader）
             neutral = state → 读 / 构造 / 投影

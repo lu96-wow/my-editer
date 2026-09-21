@@ -234,12 +234,12 @@
 (define (view-window-of ed vid) (view-window (editor-view-ref ed vid)))
 
 ;; 裸写视图态（光标/视口/模式，只夹紧、不同步）；读口是 editor-view-window。
-;; **不改文档**：w 的 buffer 必须就是该 view 当前的 buffer；换文档用 editor-view-set-buffer。
+;; **不改文档**：w 的 document 必须就是该 view 当前的 document；换文档用 editor-view-set-buffer。
 (define (editor-view-put-window ed vid w)
   (define v (editor-view-ref ed vid))
   (unless (eq? (window-document w) (view-document v))
     (error 'editor-view-put-window
-           "window 的 buffer 与该 view 不符；换文档请用 editor-view-set-buffer"))
+           "window 的 document 与该 view 不符；换文档请用 editor-view-set-buffer"))
   (editor-put-view ed vid w))
 (define (editor-put-window ed w)
   (editor-view-put-window ed (view-id (editor-focused-view ed)) w))
@@ -278,7 +278,7 @@
 (define (editor-view-set-sync ed vid sync)
   (editor-set-view-sync ed vid sync))
 (define (editor-view-set-buffer ed vid bid)
-  (editor-set-view-document ed vid bid))
+  (editor-set-view-buffer ed vid bid))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
 
@@ -360,17 +360,18 @@
   (editor-put-buffer-name ed bid name))
 
 ;;; ---------- 属性写（改 buffer 的属性；不碰文本，光标自然不动） ----------
-;; 走 change 命令：可记账（可撤销）、有 report、与文本编辑同一条路径。
+;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 #f（程序面，与 editor-edit-at 一致），
+;; 用户面（如标记只读）请传 #:record? #t 以入账本、可撤销。
 
-(define (editor-apply-attrs ed bid attrs #:record? [record? #t])
+(define (editor-apply-attrs ed bid attrs #:record? [record? #f])
   (editor-command-batch ed (change/attrs attrs)
                         #:view (document-vid 'editor-apply-attrs ed bid)
                         #:record? record?))
 
-(define (editor-put-attr ed bid start end key val)
-  (editor-apply-attrs ed bid (list (attr-set start end key val))))
-(define (editor-remove-attr ed bid start end key)
-  (editor-apply-attrs ed bid (list (attr-del start end key))))
+(define (editor-put-attr ed bid start end key val #:record? [record? #f])
+  (editor-apply-attrs ed bid (list (attr-set start end key val)) #:record? record?))
+(define (editor-remove-attr ed bid start end key #:record? [record? #f])
+  (editor-apply-attrs ed bid (list (attr-remove start end key)) #:record? record?))
 
 ;;; ---------- 测试 ----------
 
@@ -407,8 +408,8 @@
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
-  ;; 属性写：只改属性、不碰文本/光标；且记账（可撤销）
-  (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
+  ;; 属性写：只改属性、不碰文本/光标；#:record? #t 才入账本
+  (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t #:record? #t))
   (check-true (attr-read-only? (editor-attr-at an 0 (point 0 2))))
   (check-true (editor-can-undo? an 0))
 
@@ -531,7 +532,7 @@
   (define pw0 (editor-open "abcdef"))
   (define pw1 (editor-put-window pw0 (window-set-point (editor-window pw0) (point 0 3))))
   (check-equal? (editor-point pw1) (point 0 3))
-  ;; put-window 只写视图态：buffer 不符 → 报错（换文档用 editor-view-set-buffer）
+  ;; put-window 只写视图态：document 不符 → 报错（换文档用 editor-view-set-buffer）
   (check-exn exn:fail? (lambda () (editor-put-window pw0 (window-open (document-open "x") 2 10))))
   ;; map-points：对每个选区 head 施 point→point（坍缩成光标）
   (define pw2 (editor-map-points pw1 (lambda (p) (point 0 (add1 (point-col p))))))

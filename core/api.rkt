@@ -4,7 +4,8 @@
 ;;; api.rkt —— 低层公开面（原子 + 单元 + 文档 + 视口）
 ;;; ============================================================================
 ;;;
-;;; 只透出**原子及其直接组合**：point / edit-desc / buffer / window / screen / events / width。
+;;; 只透出**原子及其直接组合**：point / edit-desc / attr-desc / change / attrs /
+;;; buffer / document / window / screen / events / width。
 ;;; 不含 compose 平台（editor-*）。
 ;;;
 ;;; 消费者白名单 = **core/editor.rkt**（原子 + editor 平台）；日常只用它。
@@ -14,7 +15,7 @@
 ;;; 依赖方向：api ← 低层各层；platform 各模块直接 require 它们需要的层，api 不依赖 platform。
 ;;;
 ;;; 两条数据流：
-;;;   内容流：op（buffer point → edit-desc）→ document-apply-change → 新 document
+;;;   内容流：op（buffer selection → edit-desc）→ document-apply-change → 新 document
 ;;;   渲染流：buffer → render → run → window->screen → screen（后端画）
 ;;; ============================================================================
 
@@ -44,14 +45,14 @@
  edit-desc edit-desc? struct:edit-desc
  edit-desc-start edit-desc-end edit-desc-new-text
  edit-desc-map-position edit-desc-after-position edit-desc-inverse
- edits-normalize
+ edits-normalize edits-map-position edits-span
  ;; ---- attr-desc（属性变更原子）----
  attr-desc attr-desc? struct:attr-desc
  attr-desc-start attr-desc-end attr-desc-key attr-desc-op attr-desc-val
- attr-set attr-del attr-desc-empty?
+ attr-set attr-remove attr-desc-empty?
  ;; ---- change（变更集：文本 + 属性）----
  change change? struct:change
- change-texts change-attrs change/edits change/attrs change-empty? change-text-only?
+ change-texts change-attrs change/edits change/attrs change-empty? change-text-only? change-attr-only?
  ;; ---- selection（选区：光标 + 影子）----
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
@@ -81,8 +82,8 @@
  change-result change-result? change-result-applied-texts change-result-applied-attrs
  change-result-text-inverses change-result-attr-inverses change-result-erased-restores
  change-result-replay change-result-undo
- ;; ---- edit —— 批量 / 映射 / 变更行 ----
- document-apply-edit-batch document-apply-edit-batch-trusted edits-map-position edits-span
+ ;; ---- edit —— 批量文本施加 ----
+ document-apply-edit-batch document-apply-edit-batch-trusted
  ;; ---- events —— 类型化输入 ----
  modifiers modifiers? struct:modifiers
  modifiers-control modifiers-alt modifiers-shift modifiers-meta

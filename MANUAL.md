@@ -53,7 +53,7 @@
 | `edit-desc-inverse` | 由生效 desc + 旧文本求逆 |
 | `attr-desc` | 属性变更 `(start end key op val)`；同行、半开、零宽 = no-op |
 | `attr-set` | 构造「设置属性」的 `attr-desc` |
-| `attr-del` | 构造「移除属性」的 `attr-desc` |
+| `attr-remove` | 构造「移除属性」的 `attr-desc` |
 | `change` | 变更集：文本 descs + 属性 descs；唯一的跨层变更值 |
 | `change/edits` | 由文本 descs 构造 change |
 | `change/attrs` | 由属性 descs 构造 change |
@@ -336,9 +336,9 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-attr-at` | 某点的全部属性（hash） |
 | `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
 | `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
-| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销） |
-| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)` |
-| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)` |
+| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `#f` |
+| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `#f` |
+| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `#f` |
 
 ### 9.5 编辑
 
