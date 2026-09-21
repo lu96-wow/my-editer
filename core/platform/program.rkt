@@ -2,7 +2,7 @@
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
          "../doc/buffer.rkt"
-         "../viewport/window.rkt" "../atom/restrict.rkt"
+         "../viewport/window.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "reaction.rkt" rackunit)
 
 ;;; platform/program.rkt —— 程序面：编辑原语 + 显式视图命令
@@ -19,6 +19,8 @@
  editor-command-batch
  editor-edit-at
  editor-edit-at-batch
+ ;; 编辑动作（editor 级，可传的值；op : editor bid selection → desc）
+ edit-insert edit-insert-char edit-newline edit-backspace edit-delete edit-splice
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
  editor-view-put-window
@@ -64,12 +66,12 @@
  editor-set-sync
  editor-set-buffer
  editor-set-buffer-name
- ;; 约束写（程序面：改 buffer 的约束，不碰文本/光标）
- editor-put-restrict
- editor-remove-restrict)
+ ;; 属性写（程序面：改 buffer 的属性，不碰文本/光标）
+ editor-put-attr
+ editor-remove-attr)
 
 ;;; ---------- 编辑原语：策略全显式 ----------
-;; op : buffer selection → (or/c #f edit-desc)。所有编辑入口都是它的薄封装。
+;; op : editor bid selection → (or/c #f edit-desc)。所有编辑入口都是它的薄封装。
 ;;
 ;; 正交策略（都是数据，不是函数身份）：
 ;;   #:view       目标 view（默认焦点 view）
@@ -93,11 +95,11 @@
   (selection (if (point<? bs as) bs as) (if (point<? ae be) be ae)))
 
 ;; 多选区：对每个选区算 desc；重叠（backspace/delete 超出选区，相邻就撞上）的合并成包络
-;; 再重算 op，直到 desc 两两不相交。
-(define (coalesce-descs b0 sels op)
+;; 再重算 op，直到 desc 两两不相交。op : editor bid selection → desc/#f。
+(define (coalesce-descs ed bid sels op)
   (define pairs
     (filter values (for/list ([s (in-list sels)])
-                     (define d (op b0 s))
+                     (define d (op ed bid s))
                      (and d (cons s d)))))
   (let loop ([ps pairs])
     (cond
@@ -111,7 +113,7 @@
           (define group (cons p conflicts))
           (define hull (for/fold ([h (car (car group))]) ([g (in-list (cdr group))])
                          (selection-hull h (car g))))
-          (define d (op b0 hull))
+          (define d (op ed bid hull))
           (loop (if d
                     (cons (cons hull d) (remove* conflicts (cdr ps)))
                     (remove* conflicts (cdr ps))))])])))
@@ -148,7 +150,7 @@
   (define bid (editor-view-buffer-id ed vid))
   (define b0 (editor-buffer ed bid))
   (define sels (or selection (window-selections (view-window v))))
-  (define descs (coalesce-descs b0 sels op))
+  (define descs (coalesce-descs ed bid sels op))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
   (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs (not trusted?)))
   (editor-command-finish ed* vid bid b0 ds ivs pre reaction record?))
@@ -167,7 +169,21 @@
   (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs (not trusted?)))
   (editor-command-finish ed* vid bid b0 ds ivs pre reaction record?))
 
-;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
+;;; ---------- 编辑动作（editor 级，可传的值）----------
+;;; op : editor bid selection → (or/c #f edit-desc)。只**算** desc，不施加；
+;;; 转发给 doc 层的 buffer 级动作（buffer-op-*）。编辑原语只认这一种形状。
+
+(define (edit-insert text)
+  (lambda (ed bid sel) ((buffer-op-insert text) (editor-buffer ed bid) sel)))
+(define (edit-insert-char ch) (edit-insert (string ch)))
+(define (edit-newline)       (edit-insert "\n"))
+(define (edit-backspace)
+  (lambda (ed bid sel) ((buffer-op-backspace) (editor-buffer ed bid) sel)))
+(define (edit-delete)
+  (lambda (ed bid sel) ((buffer-op-delete) (editor-buffer ed bid) sel)))
+;; 通用逃生门：显式区间的替换（程序化编辑）
+(define (edit-splice start end text)
+  (lambda (_ed _bid _sel) (edit-desc start end text)))
 
 ;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
 
@@ -339,12 +355,12 @@
 (define (editor-set-buffer-name ed bid name)
   (editor-put-buffer-name ed bid name))
 
-;;; ---------- 约束写（改 buffer 的约束；不碰文本，光标自然不动） ----------
+;;; ---------- 属性写（改 buffer 的属性；不碰文本，光标自然不动） ----------
 
-(define (editor-put-restrict ed bid start end rs)
-  (editor-update-buffer ed bid (lambda (b) (buffer-put-restrict b start end rs))))
-(define (editor-remove-restrict ed bid start end)
-  (editor-update-buffer ed bid (lambda (b) (buffer-remove-restrict b start end))))
+(define (editor-put-attr ed bid start end key val)
+  (editor-update-buffer ed bid (lambda (b) (buffer-put-attr b start end key val))))
+(define (editor-remove-attr ed bid start end key)
+  (editor-update-buffer ed bid (lambda (b) (buffer-remove-attr b start end key))))
 
 ;;; ---------- 测试 ----------
 
@@ -373,16 +389,16 @@
   (check-true (editor-can-undo? e3 0))
 
   ;; #:trusted? #t 跳过 read-only 守卫
-  (define tr (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
+  (define tr (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
   (define-values (tr1 rtr1) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X)))
   (check-false rtr1)                                    ; 守卫版被拒
   (check-equal? (editor-buffer->string tr1 0) "abc")
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
-  ;; 约束写：只改约束、不碰文本/光标
-  (define an (editor-put-restrict (editor-open "hello") 0 (point 0 0) (point 0 5) (restrict #t)))
-  (check-true (restrict-read-only? (editor-restrict-at an 0 (point 0 2))))
+  ;; 属性写：只改属性、不碰文本/光标
+  (define an (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
+  (check-true (attr-read-only? (editor-attr-at an 0 (point 0 2))))
 
   ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
   (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
@@ -431,7 +447,7 @@
   (check-equal? (editor-point b1) (point 0 0))                 ; 默认 none：光标不动
 
   ;; 批量被守卫拒 → 整体没发生；#:trusted? #t 强施
-  (define bt (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
+  (define bt (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
   (define-values (bt1 rbt1) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X"))))
   (check-false rbt1)
   (check-equal? (editor-buffer->string bt1 0) "abc")

@@ -137,9 +137,9 @@
         (values (history-record h (edit-change d (buffer-edit-desc-inverse b d) p)) b*)))
 
   ;; 打字连续段并成 1 步
-  (define-values (t1 b1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
-  (define-values (t2 b2) (rec t1 b1 (edit-insert "b") (point 0 1)))
-  (define-values (t3 b3) (rec t2 b2 (edit-insert "c") (point 0 2)))
+  (define-values (t1 b1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
+  (define-values (t2 b2) (rec t1 b1 (buffer-op-insert "b") (point 0 1)))
+  (define-values (t3 b3) (rec t2 b2 (buffer-op-insert "c") (point 0 2)))
   (check-equal? (buffer->string b3) "abc")
   (check-equal? (history-undo-depth t3) 1)
   (define-values (s1 t4) (history-pop-undo t3))
@@ -150,34 +150,34 @@
   (check-equal? (buffer->string (ap-all (buffer-open "") (step-replay-descs s2))) "abc")
 
   ;; 换行打断连续段
-  (define-values (n1 nb1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
-  (define-values (n2 nb2) (rec n1 nb1 (edit-newline) (point 0 1)))
-  (define-values (n3 _u2) (rec n2 nb2 (edit-insert "b") (point 1 0)))
+  (define-values (n1 nb1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
+  (define-values (n2 nb2) (rec n1 nb1 (buffer-op-newline) (point 0 1)))
+  (define-values (n3 _u2) (rec n2 nb2 (buffer-op-insert "b") (point 1 0)))
   (check-equal? (history-undo-depth n3) 3)
 
   ;; 退格连续段
-  (define-values (k1 kb1) (rec (history-empty) (buffer-open "abc") (edit-backspace) (point 0 3)))
-  (define-values (k2 kb2) (rec k1 kb1 (edit-backspace) (point 0 2)))
+  (define-values (k1 kb1) (rec (history-empty) (buffer-open "abc") (buffer-op-backspace) (point 0 3)))
+  (define-values (k2 kb2) (rec k1 kb1 (buffer-op-backspace) (point 0 2)))
   (check-equal? (buffer->string kb2) "a")
   (check-equal? (history-undo-depth k2) 1)
   (define-values (ks1 _u3) (history-pop-undo k2))
   (check-equal? (buffer->string (ap-all kb2 (step-undo-descs ks1))) "abc")
 
   ;; 前向删除连续段
-  (define-values (f1 fb1) (rec (history-empty) (buffer-open "abcde") (edit-delete) (point 0 2)))
-  (define-values (f2 fb2) (rec f1 fb1 (edit-delete) (point 0 2)))
+  (define-values (f1 fb1) (rec (history-empty) (buffer-open "abcde") (buffer-op-delete) (point 0 2)))
+  (define-values (f2 fb2) (rec f1 fb1 (buffer-op-delete) (point 0 2)))
   (check-equal? (buffer->string fb2) "abe")
   (check-equal? (history-undo-depth f2) 1)
 
   ;; 粘贴（多字符）不并
-  (define-values (p1 pb1) (rec (history-empty) (buffer-open "") (edit-insert "a") (point 0 0)))
-  (define-values (p2 _u4) (rec p1 pb1 (edit-insert "XY") (point 0 1)))
+  (define-values (p1 pb1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
+  (define-values (p2 _u4) (rec p1 pb1 (buffer-op-insert "XY") (point 0 1)))
   (check-equal? (history-undo-depth p2) 2)
 
   ;; 记录新编辑 → redo 清空
   (define-values (_c1 c2) (history-pop-undo t3))
   (check-equal? (history-redo-depth c2) 1)
-  (define-values (c3 _u5) (rec c2 (buffer-open "") (edit-insert "z") (point 0 0)))
+  (define-values (c3 _u5) (rec c2 (buffer-open "") (buffer-op-insert "z") (point 0 0)))
   (check-equal? (history-redo-depth c3) 0)
 
   ;; 批量记一步：整批可撤销 / 重放

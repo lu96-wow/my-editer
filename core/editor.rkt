@@ -4,8 +4,8 @@
 ;;;
 ;;; 一个 require 拿到：
 ;;;   · 低层公开面  point / edit-desc / buffer / window / screen / events / …   （api.rkt）
-;;;   · editor 中性面  构造 / 查询 / 解析 / 约束读 / 投影   （platform/neutral.rkt）
-;;;   · 程序面        editor-edit-at / 显式视图命令 / 约束写   （platform/program.rkt）
+;;;   · editor 中性面  构造 / 查询 / 解析 / 属性读 / 投影   （platform/neutral.rkt）
+;;;   · 程序面        editor-edit-at / 显式视图命令 / 属性写   （platform/program.rkt）
 ;;;   · 用户面        editor-edit / 导航 / 撤销 / 焦点        （platform/command.rkt）
 ;;;
 ;;; 内部机制不在这里：platform/state.rkt（数据/查找）、platform/write.rkt（写原语）、

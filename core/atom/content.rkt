@@ -4,7 +4,7 @@
 
 ;;; atom/content.rkt —— 行向量文本存储
 ;;;
-;;; 职责只有一件：**存文本、施加编辑**。不含光标、不含约束、不含 face。
+;;; 职责只有一件：**存文本、施加编辑**。不含光标、不含属性、不含 face。
 ;;;
 ;;; 编辑的唯一单位是 edit-desc（见 atom/edit.rkt）；原语只有一个 content-apply。
 ;;; 插入/删除/换行/合并都只是「造一条 edit-desc」。退格/删除需要看文本才能定出
@@ -97,7 +97,7 @@
 
 ;; 施加一条 edit-desc。端点先夹紧；夹紧后仍反向（start > end）没有合法解释 → 报错。
 ;; 返回 (values 新 content 生效的 desc)：生效 desc 里的坐标是**夹紧后**的值，
-;; 上层（约束/账本/视图）一律用它，不要用传入的原始 desc。
+;; 上层（属性/账本/视图）一律用它，不要用传入的原始 desc。
 (define (content-apply c d)
   (define n (content-line-count c))
   (define lines (content-lines c))

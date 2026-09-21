@@ -25,7 +25,7 @@
 ;;; 按键：  可打印/中文 插入   Enter 自动缩进换行   Backspace/Delete 删除   Tab 两空格
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Shift+方向 扩选   Alt+↑↓ 上下加光标
 ;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
-;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^L 开关高亮  ^Q 退出
+;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读  ^K 清除只读  ^L 开关高亮  ^Q 退出
 
 (require "../core/editor.rkt"
          ;; racket-tui 也导出 key-event/resize-event/cursor-col 等，与 core 同名；用 core 的。
@@ -61,10 +61,10 @@
 ;;; §2 组合操作（每条都标了 [core]/[意图]/[前端]）
 ;;; ============================================================================
 
-;; 2.0 编辑：没有任何「重算」步骤
+;; 2.0 编辑：core 没有「重算」步骤
 ;; [core] editor-edit ed op → (values editor report)，用户编辑（leader + 记账）。
-;;        文本变；派生 face 不存文档，所以不存在「过期」，也就没有重算。
-;; [意图] 高亮走投影时的 face-provider（见 2.8 / §3），编辑路径与标注解耦。
+;;        文本变；派生标注走投影 provider（不存，无过期）；作者态属性随编辑自动移动。
+;; [意图] 编辑路径与标注解耦：report 只给生效 desc，是否重算/重划由应用决定（见 2.8）。
 ;;
 ;; core 命令有两种返回形状：editor（视图命令）或 (values editor report)（编辑 / 账本）。
 ;; 这里只把 editor 塞回 app；report 前端不用。
@@ -76,15 +76,15 @@
 (define (edit a op) (run-ed a (lambda (ed) (editor-edit ed op))))
 
 ;; 2.2 回车：自动缩进
-;; [core] op 是**值**：`buffer selection -> edit-desc`。可以自己写，先看 buffer 再决定插什么。
-;; [意图] 自动缩进 = 插 "\n" + 当前行前导空白，必须读 buffer，所以用自定义 op；
+;; [core] op 是**值**：`editor bid selection -> edit-desc`；读文本用 editor 级读口。
+;; [意图] 自动缩进 = 插 "\n" + 当前行前导空白，必须读当前行，所以用自定义 op；
 ;;        edit-newline 只会插一个 "\n"，做不到。
 ;; [前端] 缩进宽度、是否缩进，是应用策略。
 (define (newline app)
   (edit app
-        (lambda (b sel)
+        (lambda (ed bid sel)
           (define p (selection-head sel))
-          (define line (buffer-line-ref b (point-line p)))
+          (define line (editor-buffer-line-ref ed bid (point-line p)))
           (define indent (car (regexp-match #rx"^[ \t]*" line)))
           (edit-desc (selection-anchor sel) (selection-head sel) (string-append "\n" indent)))))
 
@@ -128,22 +128,72 @@
     [rows rows] [cols cols]
     [ed (editor-set-size (app-ed a) (max 1 (sub1 rows)) (max 1 cols))]))
 
-;;; ---------- 2.8 标注：关键字高亮（应用策略）----------
+;;; ---------- 2.8 标注：两种来源，投影时汇合（应用策略）----------
 ;;
-;; [core] face-provider = buffer × line -> (listof (list start end face))；投影时按需调用。
-;; [意图] 派生 face **不进文档**：没有存储、没有失效、没有重算。投影时现算。
-;; [前端] 「什么算关键字、用哪个 key」全是应用策略；core 不解释 face 的值。
+;; [core] 标注有两条路，最后都变成**投影参数 face-provider**（editor bid line → runs）：
+;;   ① 派生（content 的纯函数，如语法高亮）→ 纯 provider：不存、不失效、不重算；
+;;   ② 作者态/外部（如只读标记）→ 属性 buffer：写一次随编辑移动，投影时读。
+;; [前端] 「什么算关键字 / 什么算只读 / 用哪个 key」全是应用策略；core 不解释值。
 (define keyword-rx
   #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
-;; 一个 face-provider：逐行扫关键字，返回本行的 (起列 止列 face) 段。
-(define (syntax-face b line)
-  (for/list ([m (in-list (regexp-match-positions* keyword-rx (buffer-line-ref b line)))])
+;; ① 派生：逐行扫关键字，返回本行的 (起列 止列 face) 段。
+(define (syntax-face ed bid line)
+  (for/list ([m (in-list (regexp-match-positions* keyword-rx
+                                                   (editor-buffer-line-ref ed bid line)))])
     (list (car m) (cdr m) (hash 'face 'keyword))))
 
-;; 应用按开关选 provider；投影时传给 editor->screen。
+;; ② 作者态：把主选区涉及的每行区间标为只读（core 保留 key）。
+;;    选区 → (list (line c0 c1))；跨行时首/末行取列区间，中间行整行。
+(define (selection-line-spans ed bid s e)
+  (define sl (point-line s)) (define sc (point-col s))
+  (define el (point-line e)) (define ec (point-col e))
+  (cond
+    [(= sl el) (list (list sl sc ec))]
+    [else
+     (append (list (list sl sc (editor-buffer-line-length ed bid sl)))
+             (for/list ([l (in-range (add1 sl) el)])
+               (list l 0 (editor-buffer-line-length ed bid l)))
+             (list (list el 0 ec)))]))
+
+(define (mark-read-only a)
+  (define ed (app-ed a))
+  (define bid (editor-buffer-id ed))
+  (define sel (editor-primary ed))
+  (if (caret? sel)
+      a
+      (let-values ([(s e) (selection-range sel)])
+        (struct-copy app a
+          [ed (for/fold ([ed ed]) ([sp (in-list (selection-line-spans ed bid s e))])
+                (match-define (list line c0 c1) sp)
+                (if (< c0 c1)
+                    (editor-put-attr ed bid (point line c0) (point line c1) read-only-key #t)
+                    ed))]))))
+
+(define (clear-read-only a)
+  (define ed (app-ed a))
+  (define bid (editor-buffer-id ed))
+  (define sel (editor-primary ed))
+  (if (caret? sel)
+      a
+      (let-values ([(s e) (selection-range sel)])
+        (struct-copy app a
+          [ed (for/fold ([ed ed]) ([sp (in-list (selection-line-spans ed bid s e))])
+                (match-define (list line c0 c1) sp)
+                (if (< c0 c1)
+                    (editor-remove-attr ed bid (point line c0) (point line c1) read-only-key)
+                    ed))]))))
+
+;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
+(define (read-only-face ed bid line)
+  (for/list ([r (in-list (editor-attr-key-runs ed bid line read-only-key))])
+    (list (car r) (cadr r) (hash 'face 'read-only))))
+
+;; 投影：两个来源拼成一个 provider（后者覆盖前者）；传给 editor->screen。
 (define (app-face-provider a)
-  (if (app-highlight? a) syntax-face no-face-provider))
+  (lambda (ed bid line)
+    (append (if (app-highlight? a) (syntax-face ed bid line) '())
+            (read-only-face ed bid line))))
 
 ;; 开关高亮：只翻标志，不碰文档。
 (define (toggle-highlight a)
@@ -222,16 +272,14 @@
 ;; Shift+方向：只移动 primary 的 head，anchor 不动 → 扩选。
 (define (extend-selection a sym)
   (define ed (app-ed a))
-  (define b (editor-buffer ed (editor-buffer-id ed)))
-  (define w (editor-window ed))
   (struct-copy app a
     [ed (editor-map-primary ed
           (lambda (s)
             (define h (selection-point s))
             (define h* (case sym
-                         [(left)  (point-left b h)]     [(right) (point-right b h)]
-                         [(up)    (point-up w h)]       [(down)  (point-down w h)]
-                         [(home)  (point-home h)]       [(end)   (point-end b h)]))
+                         [(left)  (editor-point-left ed h)]  [(right) (editor-point-right ed h)]
+                         [(up)    (editor-point-up ed h)]    [(down)  (editor-point-down ed h)]
+                         [(home)  (editor-point-home ed h)]  [(end)   (editor-point-end ed h)]))
             (selection (selection-anchor s) h*)))]))
 
 ;; 加一个光标（Alt+上下）
@@ -239,9 +287,8 @@
   (struct-copy app a [ed (editor-add-selection (app-ed a) (caret p))]))
 (define (add-caret-vertical a delta)
   (define ed (app-ed a))
-  (define w (editor-window ed))
-  (add-caret a (if (> delta 0) (point-down w (editor-point ed))
-                                (point-up w (editor-point ed)))))
+  (add-caret a (if (> delta 0) (editor-point-down ed (editor-point ed))
+                                (editor-point-up ed (editor-point ed)))))
 
 ;;; ============================================================================
 ;;; §3 渲染（[前端]；core 只给 screen）
@@ -258,6 +305,7 @@
     [(comment)   'green]
     [(string)    'yellow]
     [(error)     'error]
+    [(read-only) 'error]
     [(cursor)    'cursor]
     [(selection) 'selection]
     [else #f]))
@@ -381,6 +429,8 @@
                            [(#\D) (set! app (select-next-occurrence app))]
                            [(#\A) (set! app (select-all-occurrences app))]
                            [(#\G) (set! app (append-stamp app))]
+                           [(#\O) (set! app (mark-read-only app))]
+                           [(#\K) (set! app (clear-read-only app))]
                            [(#\L) (set! app (toggle-highlight app))]
                            [(#\Q) (set! running? #f)]
                            [else (void)])]
@@ -425,6 +475,27 @@
   (define a9 (toggle-highlight a8))                                          ; 关 → provider 返回空
   (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a9) (app-face-provider a9))) 0)))
                 (hash))
+
+  ;; 作者态属性（属性 buffer）：标记只读 → 投影出样式；守卫拦编辑；清除后恢复
+  (define r0 (make-app "hello world" 5 20 "*t*"))
+  (define r1 (struct-copy app r0
+               [ed (editor-set-selections (app-ed r0)
+                                          (list (selection (point 0 0) (point 0 5))))]))
+  (define r2 (mark-read-only r1))
+  (check-equal? (editor-attr-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
+  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed r2) (app-face-provider r2))) 0)))
+                (hash 'face 'read-only))
+  ;; 只读区内插入被守卫拒绝
+  (define r3 (struct-copy app r2 [ed (editor-set-selections (app-ed r2) (list (caret (point 0 2))))]))
+  (define r4 (edit r3 (edit-insert "X")))
+  (check-equal? (editor-buffer->string (app-ed r4) 0) "hello world")
+  ;; 清除只读 → 可编辑
+  (define r5 (struct-copy app r4 [ed (editor-set-selections (app-ed r4)
+                                                            (list (selection (point 0 0) (point 0 5))))]))
+  (define r6 (clear-read-only r5))
+  (check-false (attr-read-only? (editor-attr-at (app-ed r6) 0 (point 0 2))))
+  (define r7 (struct-copy app r6 [ed (editor-set-selections (app-ed r6) (list (caret (point 0 0))))]))
+  (check-equal? (editor-buffer->string (app-ed (edit r7 (edit-insert "X"))) 0) "Xhello world")
 
   ;; 视图面：resize 只改 view，不动文本
   (define a10 (resize a8 8 30))
@@ -473,5 +544,7 @@
 ;;
 ;; 1. report 粒度：change-report 只给「首行/末行 + descs」（行区间由 edits 现算）。
 ;;    前端若要按**每个**变更区间做增量处理，需自己走 change-report-edits。
-;; 2. 无「多窗格布局」原语：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
+;; 2. 无「批量属性写」原语：一行写多个属性段要多次 editor-put-attr；整篇重打会退化
+;;    （每次 copy attrs 行向量）。若要把「整篇语法高亮入库」做成 O(n)，需要一个批量口。
+;; 3. 无「多窗格布局」原语：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
 ;;    但 view 的摆放、焦点切换策略不在 core）。

@@ -64,7 +64,10 @@
 | `selection-map-anchor` | 对 anchor 施加 `point→point` |
 | `selection-map-both` | 对两端施加 `point→point`（平移） |
 
-## 2. 编辑动作（可传的值）
+## 2. 编辑动作（可传的值，editor 级）
+
+`op : editor bid selection → (or/c #f edit-desc)`。这些是 editor 级动作（内部转发给 buffer 级
+`buffer-op-*`，见 §3）；应用写自定义 op 时也只读 editor 级读口，不碰 buffer。
 
 | 名字 | 语义 |
 |---|---|
@@ -91,28 +94,39 @@
 | `buffer-range-text` | 取 `[start,end)` 文本 |
 | `buffer-apply-edit` | 施加 desc（带守卫） |
 | `buffer-apply-edit-trusted` | 施加 desc（跳守卫） |
-| `buffer-edit` | 给位置与 op 算 desc 再施加（带守卫） |
+| `buffer-edit` | 给位置与 op 算 desc 再施加（带守卫；op : buffer selection → desc） |
 | `buffer-edit-trusted` | 同上，跳守卫 |
+| `buffer-op-insert` / `buffer-op-insert-char` / `buffer-op-newline` | buffer 级插入动作 |
+| `buffer-op-backspace` / `buffer-op-delete` | buffer 级删除动作 |
+| `buffer-op-splice` | buffer 级显式区间替换 |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
 | `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
 | `buffer-apply-edit-batch-trusted` | 同上，跳守卫 |
-| `buffer-put-restrict` | 写约束槽（只读等） |
-| `buffer-restrict-at` | 某点的约束槽（`restrict`；是否只读用 `restrict-read-only?`） |
-| `buffer-remove-restrict` | 清约束区间 |
-| `buffer-restrict-runs` | 某行的约束段 |
+| `buffer-put-attr` | 写属性 `[start,end) → key=val`（保留其它 key） |
+| `buffer-remove-attr` | 移除区间内的某个 key |
+| `buffer-attr-at` | 某点的全部属性（hash） |
+| `buffer-attr-runs` | 某行的属性段 `(list start end hash)` |
+| `buffer-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `read-only-key` | core 保留 key（`'read-only`） |
+| `attr-read-only?` | 该属性 hash 是否只读 |
 | `buffer-tick` | 单调计数：任何改动都涨 |
-| `buffer-content-eq?` | 内容是否同一（区分文本改动/仅写约束） |
+| `buffer-content-eq?` | 内容是否同一（区分文本改动/仅写属性） |
 
 ## 4. 派生 face（投影参数）
 
 文档**不存 face**。派生 face（content 的纯函数，如语法高亮）作为**投影参数**给出：
 
 ```racket
-face-provider : buffer line -> (listof (list start end face))
+face-provider : editor bid line -> (listof (list start end face))
 ```
 
 不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
 `no-face-provider` 是缺省（空）。
+
+**属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-put-attr`），
+再用 `attrs-provider` 取某个 key 的 provider：`(attrs-provider 'face)`。
+于是「写一次属性、投影时读」与「每帧现算的纯 provider」统一在同一个投影参数上；
+多个来源可以传多个 provider（按顺序合并）。
 
 ## 5. window —— 视口（纯视图）
 
@@ -162,7 +176,7 @@ face-provider : buffer line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `window->screen` | 视口 → 一帧画面；可传 `face-provider`（见下） |
+| `window->screen` | 视口 → 一帧画面；可传 `line-face-provider`（buffer 级，见下） |
 | `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
 | `screen-rows` | 行数 |
 | `screen-cols` | 列数 |
@@ -291,16 +305,17 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
 | `editor-buffer-tick` | 某 buffer 的变化计数（乐观并发 / 合并的版本戳） |
-| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅写约束） |
+| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅写属性） |
 
-### 9.4 约束
+### 9.4 属性
 
 | 名字 | 语义 |
 |---|---|
-| `editor-restrict-at` | 某点的约束槽（`restrict`） |
-| `editor-remove-restrict` | 清约束区间 |
-| `editor-restrict-runs` | 某行约束段 |
-| `editor-put-restrict` | 写约束槽 |
+| `editor-attr-at` | 某点的全部属性（hash） |
+| `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
+| `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `editor-put-attr` | 写属性 `[start,end) → key=val` |
+| `editor-remove-attr` | 移除区间内的某个 key |
 
 ### 9.5 编辑
 
@@ -323,7 +338,7 @@ face-provider : buffer line -> (listof (list start end face))
 | `editor-edit-at` | 文档的 view + 显式位置；`none` + 可选记账 |
 | `editor-edit-at-batch` | 同上，`descs` 批；`none` + 可选记账 |
 
-`op : buffer selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
+`op : editor bid selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
 同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
 （用 `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
 report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
@@ -414,12 +429,16 @@ report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 
 ### 9.9 投影
 
-投影接受一个可选的 **`face-provider`**：`buffer × line → (listof (list start end face))`。
+投影接受一个可选的 **`face-provider`**：`editor bid line → (listof (list start end face))`。
 它是**派生 face**（content 的纯函数，如语法高亮）：投影时现算，**不进文档**。
-不传则无派生 face。文档**不存 face**：`restrict` 是作者态约束（由 core 解释），
+不传则无派生 face。文档**不存 face**：`read-only` 是 core 保留的属性 key（由 core 解释），
 不进 glyph 的 face 通道；所有 face 都出自投影时的 provider。
+`attrs-provider` 把属性 buffer 的某个 key 物化成 provider（`(attrs-provider 'face)`）。
 
 | 名字 | 语义 |
+|---|---|
+| `no-face-provider` | 缺省 provider（空） |
+| `attrs-provider` | `key → provider`（读属性 buffer） |
 |---|---|
 | `editor->screen` | 焦点 view → screen；可选 `face-provider` |
 | `editor-view->screen` | 某 view → screen；可选 `face-provider` |
@@ -428,7 +447,18 @@ report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 | `editor-screen->point` | 屏幕坐标 → 焦点 view 位置 |
 | `editor-view-screen->point` | 屏幕坐标 → 某 view 位置 |
 
-### 9.10 命令返回值
+### 9.10 点算子（editor 级：位置只认 `point`，buffer/window 由 bid/vid 解析）
+
+| 名字 | 语义 |
+|---|---|
+| `editor-point-left` / `editor-point-right` | 焦点 buffer 上左/右移 |
+| `editor-point-home` / `editor-point-end` | 焦点 buffer 上行首/行尾 |
+| `editor-point-up` / `editor-point-down` | 焦点 view 上/下移一视觉行 |
+| `editor-view-point-left` / `editor-view-point-right` | 某 view 的 buffer 上左/右移 |
+| `editor-view-point-home` / `editor-view-point-end` | 某 view 的 buffer 上行首/行尾 |
+| `editor-view-point-up` / `editor-view-point-down` | 某 view 上/下移一视觉行 |
+
+### 9.11 命令返回值
 
 | 名字 | 语义 |
 |---|---|

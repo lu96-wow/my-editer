@@ -21,10 +21,10 @@
 (require "atom/point.rkt"
          "atom/content.rkt"
          "atom/edit.rkt"
-         "atom/restrict.rkt"
          "atom/selection.rkt"
          "atom/width.rkt"
          "atom/event.rkt"
+         "unit/attrs.rkt"
          "unit/screen.rkt"
          "doc/buffer.rkt"
          "doc/batch.rkt"
@@ -48,17 +48,19 @@
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
  selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
- ;; ---- restrict（约束槽）----
- restrict restrict? struct:restrict restrict-empty restrict-read-only?
+ ;; ---- attrs（属性槽：通用 key→hash，随编辑移动）----
+ attrs? attrs-empty attrs-line-count
+ attrs-at attrs-put attrs-remove attrs-runs attrs-key-runs attrs-apply-edit
  ;; ---- buffer —— 文档原子 ----
  buffer? buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
  buffer-line-length buffer-clamp-point buffer-point->offset buffer-offset->point
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit buffer-edit-trusted
- edit-insert-char edit-insert edit-newline edit-backspace edit-delete edit-splice
+ buffer-op-insert-char buffer-op-insert buffer-op-newline buffer-op-backspace buffer-op-delete buffer-op-splice
  buffer-edit-desc-inverse
  buffer-range-text
- buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs
+ read-only-key attr-read-only?
+ buffer-put-attr buffer-remove-attr buffer-attr-at buffer-attr-runs buffer-attr-key-runs
  buffer-content-eq?
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
@@ -97,8 +99,7 @@
  window-ensure-point window-clamp-view window-visual-move point-up point-down window-up window-down
  window-point->screen window-screen->point window-scroll
  ;; ---- project / render ----
- window->screen
- no-face-provider)
+ window->screen)
 
 ;;; ============================================================================
 ;;; 冒烟测试：门面 + 一条完整「文档 → 画面」链
@@ -113,7 +114,7 @@
   (check-equal? (buffer-line-count b) 2)
 
   ;; 原子链：buffer → 编辑 → window → screen
-  (define-values (b1 d1) (buffer-edit b (point 0 0) (edit-insert-char #\X)))
+  (define-values (b1 d1) (buffer-edit b (point 0 0) (buffer-op-insert-char #\X)))
   (check-equal? (buffer->string b1) "Xhello\nworld")
   (check-equal? d1 (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (screen-rows (window->screen (window-open b1 2 10))) 2)

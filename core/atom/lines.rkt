@@ -5,7 +5,7 @@
 ;;; atom/lines.rkt —— 文本行拆分（换行归一）
 ;;;
 ;;; 这是「字符串 ↔ 行序列」的**唯一**约定，被 content 存储、edit-desc 代数、
-;;; restrictions 继承共同依赖，所以单独抽成原子，避免各层各拆一套。
+;;; attrs 继承共同依赖，所以单独抽成原子，避免各层各拆一套。
 
 (provide string->lines lines->string)
 

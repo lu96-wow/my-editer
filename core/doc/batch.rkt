@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt" "../atom/restrict.rkt" "buffer.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt" "buffer.rkt" rackunit)
 
 ;;; doc/batch.rkt —— 批量编辑应用 + 位置映射 + 变更行区间
 ;;;
@@ -116,7 +116,7 @@
   (check-equal? (buffer->string b3) "ABabcd\nefgh")
 
   ;; 被 read-only 拒绝的编辑没发生，不污染点映射；逆与 applied 平行
-  (define rbd (buffer-put-restrict (buffer-open "abcd") (point 0 0) (point 0 2) (restrict #t)))
+  (define rbd (buffer-put-attr (buffer-open "abcd") (point 0 0) (point 0 2) read-only-key #t))
   (define-values (rb* rdescs rinv)
     (buffer-apply-edit-batch rbd (list (edit-desc (point 0 1) (point 0 1) "X")   ; 只读内 → 拒
                                        (edit-desc (point 0 3) (point 0 3) "Y"))))

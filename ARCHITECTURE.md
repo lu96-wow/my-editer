@@ -19,19 +19,18 @@ core/
 │   ├── lines.rkt              #   string->lines（换行归一的唯一约定）
 │   ├── edit.rkt               #   edit-desc + 位置代数 + edit-change
 │   ├── content.rkt            #   行向量文本存储 + content-apply
-│   ├── restrict.rkt           #   约束槽的值（read-only）
 │   ├── width.rkt              #   显示宽度（wcwidth 语义）
 │   └── event.rkt              #   类型化输入事件
 ├── unit/                      # 单元：由原子组合出的「单维结构」
-│   ├── restrictions.rkt       #   行内 restrict 区间（作者态约束）
+│   ├── attrs.rkt              #   行内属性区间（通用 key→hash，随编辑移动）
 │   ├── screen.rkt             #   run 行帧（width）
 │   └── history.rkt            #   账本：edit-change 序列
 ├── doc/                       # 文档：把单元装配成一个可编辑值
-│   ├── buffer.rkt             #   content ⊕ restrictions（+tick）
+│   ├── buffer.rkt             #   content ⊕ attrs（+tick）
 │   └── batch.rkt              #   [edit-desc] → buffer（原子批量施加）
 ├── viewport/                  # 视口：把文档投影成画面
 │   ├── window.rkt             #   buffer ⊕ point ⊕ 滚动/尺寸
-│   ├── render.rkt             #   buffer 行 × face-provider → glyph
+│   ├── render.rkt             #   buffer 行 × line-face-provider → glyph
 │   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动
 │   ├── project.rkt            #   window → screen
 │   └── rebase.rkt             #   window × edit → window（free / follow）
@@ -65,17 +64,17 @@ editor.rkt ←  api, platform(neutral, program, command)
 ### atom —— 原子
 不可再分的值，以及只依赖同层原子的代数。`point` 是唯一位置表示；`selection` 是选区
 （`anchor`/`head`，空选区即光标）；`edit-desc` 是唯一跨层变更契约；`content` 是行向量
-文本存储；`restrict` / `width` / `event` 是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一
+文本存储；`width` / `event` 是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一
 约定，供存储与代数共用。
 
 ### unit —— 单元
 每种「单维结构」= 一种标注/索引 + 它自己的 `apply-edit`：
-- `restrictions`：行内 `restrict` 区间（**作者态约束**，如 read-only）。
+- `attrs`：行内属性区间（通用 key→hash）；core 只解释保留 key `read-only`。
 - `screen`：后端无关的输出帧（run 序列）。
 - `history`：`edit-change` 的账本（撤销/重放）。
 
 ### doc —— 文档
-把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 约束（+ `tick`）。
+把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 属性（+ `tick`）。
 **文档不存 face**（派生 face 是投影参数，见 §5、§9）。
 `buffer-apply-edit` 是唯一传播点，把同一条生效 `edit-desc` 依次喂给各层，保证坐标一致。
 `batch` 处理「一串 desc」。
@@ -95,16 +94,16 @@ editor.rkt ←  api, platform(neutral, program, command)
 ## 2. 核心结构如何组合成 editor.rkt
 
 ```
-atom        point · selection · edit-desc · content · restrict · width · event
+atom        point · selection · edit-desc · content · width · event
              │
-unit        restrictions = 行 × rspan(restrict)          screen = runs(文档) ⊕ cursors/selections(视图 overlay)
+unit        attrs = 行 × rspan(hash)                      screen = runs(文档) ⊕ cursors/selections(视图 overlay)
             history      = [edit-change]
              │
-doc         buffer  = content ⊕ restrictions ⊕ tick
+doc         buffer  = content ⊕ attrs ⊕ tick
             batch   = buffer × [edit-desc] → buffer × applied × inverses
              │
 viewport    window  = buffer ⊕ point ⊕ (mode, top, left, height, width)
-            render  = buffer × line × face-provider → glyphs   （派生 face 在此注入）
+            render  = buffer × line × line-face-provider → glyphs   （派生 face 在此注入）
             layout  = window × render → vrows / 映射 / ensure / 视觉移动
             project = window × layout → screen
             rebase  = window × edit-desc → window              （free / follow）
@@ -126,7 +125,7 @@ editor.rkt  = api（低层公开面）+ neutral + program + command
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
 
 **`screen` 有两条独立通道**（这是刻意的分离）：
-- **文档文本** `row-runs`：来自 buffer 的文本 + 投影 `face-provider` 给出的 face。
+- **文档文本** `row-runs`：来自 buffer 的文本 + 投影 `line-face-provider` 给出的 face。
 - **视图 overlay** `cursors` / `selections`：来自 window 的选区（光标点 = 每个选区的 head；
   选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
 
@@ -192,12 +191,15 @@ editor-command-batch  : 给 descs 直接施加
 光标/选区是 **view 状态**，不进 buffer（buffer 无光标）。
 
 **选择/导航是算子，不是容器操作**（Unix 式接口）：
-- 点运动是纯原子：`point-left/right/home/end : buffer point -> point`，
+- 值级原子（低层）：`point-left/right/home/end : buffer point -> point`，
   `point-up/down : window point -> point`。
+- editor 级算子（应用用）：`editor-point-left/right/home/end : editor bid point -> point`，
+  `editor-point-up/down : editor vid point -> point`；buffer/window 由 bid/vid 解析，应用不见底层值。
 - 选区变换是纯原子：`selection-map-head/anchor/both`（对端点施 `point→point`）。
 - 集合级正交组合：`window-map-selections`（全部）/ `window-map-primary`（仅 primary）；
   `window-primary` 直接给 primary **选区值**（不再靠位置比较），`window-primary-index` 给下标。
-- 编辑入口 `editor-edit` 也遵循同一形态：`op : buffer × selection → edit-desc` 是策略，core 负责循环/落点/账本。
+- 编辑入口 `editor-edit` 也遵循同一形态：`op : editor bid selection → edit-desc` 是策略（editor 级），
+  core 负责循环/落点/账本；buffer 级 `buffer-op-*` 是更低层的动作。
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
 交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
@@ -221,7 +223,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ## 6. `buffer-tick`（变化计数 / 版本戳）
 
-`buffer-tick` 是单调计数，回答「有没有变」：文本编辑、写约束 **都涨**。
+`buffer-tick` 是单调计数，回答「有没有变」：文本编辑、写属性 **都涨**。
 多线程 / 乐观并发合并时拿它当**版本戳**。注意 tick 也随标注涨——要判断「**文本本身**
 是否同一」用 `buffer-content-eq?`。「有没有未保存改动」不属于 core：它取决于外部事件
 （存盘），由调用方自己持有。
@@ -234,7 +236,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 - 逆必须由**编辑前**的 `buffer` 导出（`buffer-edit-desc-inverse`）；用编辑后的 buffer
   求逆会静默写坏历史。
 - 合并规则是**结构判定**（打字连续段 / 退格段 / 前向删除段），无时钟无状态。
-- 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后约束挡住。
+- 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后属性挡住。
 
 ---
 
@@ -250,9 +252,10 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 「这次改了哪几行」随操作返回（`edit-desc` / `change-report`），不存进 `buffer`：
 `edits-span` 给出应用顺序的一组 desc 影响的行区间并集；`change-report` 是命令的第二个返回值。
 
-**作者态 vs 派生态（face）：** 文档只存**作者态**（`content` + `restrictions`，如 read-only），
-它们随编辑移动。**派生 face**（content 的纯函数，如语法高亮）**不进文档**，
-而是作为投影参数 `face-provider : buffer × line → (listof (list start end face))` 在
+**作者态 vs 派生态（face）：** 文档只存**文本 + 属性**（`content` + `attrs`；`read-only` 是 core
+保留并解释的 key，其余对 core 不透明），它们随编辑移动。**派生 face**（content 的纯函数，如语法高亮）**不进文档**，
+而是作为投影参数：viewport 机制用 `line-face-provider : buffer × line → runs`，
+editor 门面用 `face-provider : editor bid line → runs`（内部适配成前者），在
 `window->screen` / `editor->screen` 时现算。
 
 这条边界消除了「重算」：派生量不存 → 不会过期 → 不需要失效，也不需要 `change-report`
@@ -277,4 +280,4 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 违约分两类，判据是「最近合法解释」是否存在：
 
 - **有唯一合法解释 → 夹紧/归一**（越界位置夹到合法域；见 `point-clamp`）。
-- **没有合法解释 → 报错**（反向编辑区间、跨行约束区间、未知 `sync`）。
+- **没有合法解释 → 报错**（反向编辑区间、跨行属性区间、未知 `sync`）。

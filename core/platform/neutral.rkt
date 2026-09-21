@@ -1,13 +1,12 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/restrict.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt"
          "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/project.rkt"
-         "../viewport/render.rkt"
          "../unit/screen.rkt" "../unit/history.rkt"
          "state.rkt")
 
-;;; platform/neutral.rkt —— 中性接口：状态构造 + 查询 + 解析 + 约束读 + 投影
+;;; platform/neutral.rkt —— 中性接口：状态构造 + 查询 + 解析 + 属性读 + 投影
 ;;;
 ;;; 只读投影 + 生命周期；**不含**任何写原语（在 write.rkt）与显示决策（在 reaction.rkt）。
 ;;; 内容变更在 program.rkt（程序面）/ command.rkt（用户面）。
@@ -66,9 +65,18 @@
  editor-view-point->screen
  editor-screen->point
  editor-view-screen->point
- ;; 投影
+ ;; 投影（face-provider : editor bid line → runs）
+ no-face-provider
+ attrs-provider
  editor->screen
  editor-view->screen
+ ;; 点算子（editor 级）
+ editor-point-left editor-view-point-left
+ editor-point-right editor-view-point-right
+ editor-point-home editor-view-point-home
+ editor-point-end editor-view-point-end
+ editor-point-up editor-view-point-up
+ editor-point-down editor-view-point-down
  ;; 文本 / 解析（按 buffer-id）
  editor-buffer->string
  editor-buffer->lines
@@ -81,9 +89,10 @@
  editor-buffer-range-text
  editor-buffer-tick
  editor-buffer-content-eq?
- ;; 约束读（按 buffer-id）
- editor-restrict-at
- editor-restrict-runs
+ ;; 属性读（按 buffer-id）
+ editor-attr-at
+ editor-attr-runs
+ editor-attr-key-runs
  ;; 账本查询
  editor-can-undo?
  editor-can-redo?
@@ -206,13 +215,39 @@
   (window-screen->point (view-window (editor-view-ref ed vid)) row col))
 
 ;;; ---------- 投影 ----------
+;;; face-provider : editor bid line → (listof (list start end face))；投影时按需调用。
+;;; 内部适配成 viewport 的 buffer 级 provider，应用不见 buffer。
+
+(define (no-face-provider _ed _bid _line) '())
+
+;; 把属性 buffer 的某个 key 物化成 face-provider。
+(define (attrs-provider key)
+  (lambda (ed bid line) (editor-attr-key-runs ed bid line key)))
 
 (define (editor-view->screen ed vid [face-provider no-face-provider])
-  (window->screen (view-window (editor-view-ref ed vid)) face-provider))
+  (define bid (editor-view-buffer-id ed vid))
+  (window->screen (view-window (editor-view-ref ed vid))
+                  (lambda (_b line) (face-provider ed bid line))))
 (define (editor->screen ed [face-provider no-face-provider])
   (editor-view->screen ed (editor-focus ed) face-provider))
 
-;;; ---------- 文本 / 解析 / 约束读（按 buffer-id） ----------
+;;; ---------- 点算子（editor 级：位置只认 point，buffer 由 bid/vid 解析） ----------
+;;; 应用写导航/扩选时不再需要拿 buffer / window。
+
+(define (editor-point-left ed p) (point-left (editor-buffer ed (focused-bid ed)) p))
+(define (editor-view-point-left ed vid p) (point-left (editor-view-buffer ed vid) p))
+(define (editor-point-right ed p) (point-right (editor-buffer ed (focused-bid ed)) p))
+(define (editor-view-point-right ed vid p) (point-right (editor-view-buffer ed vid) p))
+(define (editor-point-home ed p) (point-home p))
+(define (editor-view-point-home ed vid p) (point-home p))
+(define (editor-point-end ed p) (point-end (editor-buffer ed (focused-bid ed)) p))
+(define (editor-view-point-end ed vid p) (point-end (editor-view-buffer ed vid) p))
+(define (editor-point-up ed p) (point-up (editor-window ed) p))
+(define (editor-view-point-up ed vid p) (point-up (editor-view-window ed vid) p))
+(define (editor-point-down ed p) (point-down (editor-window ed) p))
+(define (editor-view-point-down ed vid p) (point-down (editor-view-window ed vid) p))
+
+;;; ---------- 文本 / 解析 / 属性读（按 buffer-id） ----------
 ;;; bid 缺省 = 焦点 buffer；只有「ed 后只有一个参数」的读口能安全缺省
 ;;; （带 payload 时，位置缺省会与 payload 抢参数，故必须显式给 bid）。
 
@@ -228,8 +263,10 @@
 (define (editor-buffer-tick ed [bid (focused-bid ed)]) (buffer-tick (editor-buffer ed bid)))
 (define (editor-buffer-content-eq? ed b1 b2)
   (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
-(define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
-(define (editor-restrict-runs ed bid line) (buffer-restrict-runs (editor-buffer ed bid) line))
+(define (editor-attr-at ed bid p) (buffer-attr-at (editor-buffer ed bid) p))
+(define (editor-attr-runs ed bid line) (buffer-attr-runs (editor-buffer ed bid) line))
+(define (editor-attr-key-runs ed bid line key)
+  (buffer-attr-key-runs (editor-buffer ed bid) line key))
 
 ;;; ---------- 账本查询 ----------
 
@@ -270,10 +307,11 @@
   (define-values (et _dt) (editor-apply-edit e0 0 (edit-desc (point 0 0) (point 0 0) "X")))
   (check-equal? (editor-buffer-tick et 0) 1)
 
-  ;; 约束读：区间的 restrict 段
+  ;; 属性读：任意 key 的段；read-only 是保留 key
   (define pr (editor-update-buffer e0 0
-                (lambda (b) (buffer-put-restrict b (point 0 0) (point 0 5) (restrict #t)))))
-  (check-equal? (editor-restrict-runs pr 0 0) (list (list 0 5 (restrict #t))))
+                (lambda (b) (buffer-put-attr b (point 0 0) (point 0 5) read-only-key #t))))
+  (check-equal? (editor-attr-runs pr 0 0) (list (list 0 5 (hash read-only-key #t))))
+  (check-equal? (editor-attr-key-runs pr 0 0 read-only-key) (list (list 0 5 #t)))
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
   (define-values (e1 _bid) (editor-open-buffer e0 "BBB" #:name "b" #:focus? #f))
@@ -295,5 +333,20 @@
   ;; primary 下标读口（focus / 指定 view）
   (check-equal? (editor-primary-index e0) 0)
   (check-equal? (editor-view-primary-index e0 0) 0)
+
+  ;; 点算子（editor 级：不碰 buffer/window）
+  (check-equal? (editor-point-right e0 (point 0 0)) (point 0 1))
+  (check-equal? (editor-point-left e0 (point 1 0)) (point 0 5))
+  (check-equal? (editor-point-end e0 (point 0 0)) (point 0 5))
+  (check-equal? (editor-point-up e0 (point 1 0)) (point 0 0))
+  (check-equal? (editor-point-down e0 (point 0 0)) (point 1 0))
+
+  ;; 属性 buffer 物化成 provider：editor->screen 直接读，无需 buffer
+  (define pa (editor-update-buffer e0 0
+                (lambda (b) (buffer-put-attr b (point 0 0) (point 0 5) 'face (hash 'face 'keyword)))))
+  (check-equal? (vector-ref (screen-row-runs (editor->screen pa (attrs-provider 'face))) 0)
+                (list (run 0 "hello" (hash 'face 'keyword))))
+  (check-equal? (vector-ref (screen-row-runs (editor->screen pa)) 0)
+                (list (run 0 "hello" (hash))))
 
   (displayln "editor.rkt: all tests passed"))

@@ -2,7 +2,7 @@
 
 (require "../atom/point.rkt" "../atom/selection.rkt" "../atom/width.rkt"
          "../doc/buffer.rkt" "window.rkt" "../unit/screen.rkt" "layout.rkt" "render.rkt"
-         "../atom/restrict.rkt" rackunit)
+         rackunit)
 
 ;;; viewport/project.rkt —— 把 window 的可见区投影成 screen（纯函数）
 ;;;
@@ -104,9 +104,9 @@
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b0 2 10) provider)) 0)
                 (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
 
-  ;; 约束不进 face
-  (define b5 (buffer-put-restrict (buffer-open "abcdef")
-                                  (point 0 3) (point 0 6) (restrict #t)))
+  ;; 属性不进 face
+  (define b5 (buffer-put-attr (buffer-open "abcdef")
+                              (point 0 3) (point 0 6) read-only-key #t))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
                 (list (run 0 "abcdef" (hash))))
 
