@@ -50,42 +50,42 @@
 (define (editor-view-edit ed vid op)
   (editor-command ed op #:view vid #:reaction 'leader #:record? #t))
 
-;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
+;;; ---------- 撤销 / 重做（指定 view 所属 document 的账本） ----------
 
 ;; 依次施加一串 change（撤销/重放）；每个 change 后把 vid 的视图 leader 到插入后。
 ;; 返回 (values editor 生效文本descs 生效属性descs)。
-(define (apply-change-seq ed bid vid chs)
+(define (apply-change-seq ed did vid chs)
   (for/fold ([e ed] [texts '()] [attrs '()]) ([ch (in-list chs)])
-    (define-values (e1 res) (editor-apply-change e bid ch #f))   ; trusted
+    (define-values (e1 res) (editor-apply-change e did ch #f))   ; trusted
     (cond
       [(not res) (values e1 texts attrs)]
       [else
        (define tds (change-result-applied-texts res))
        (define ads (change-result-applied-attrs res))
-       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-document e1 bid) tds)))
+       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-document e1 did) tds)))
        (values e2 (append texts tds) (append attrs ads))])))
 
 (define (editor-view-undo ed vid)
-  (define bid (editor-view-buffer-id ed vid))
-  (define-values (st h*) (history-pop-undo (editor-history ed bid)))
+  (define did (editor-view-document-id ed vid))
+  (define-values (st h*) (history-pop-undo (editor-history ed did)))
   (cond
     [(not st) (values ed #f)]
     [else
-     (define-values (ed* texts attrs) (apply-change-seq ed bid vid (step-undo st)))
+     (define-values (ed* texts attrs) (apply-change-seq ed did vid (step-undo st)))
      ;; 撤销后 leader 光标回到该步开始前，并 ensure
      (define w* (window-ensure-point
                  (window-set-point (view-window (editor-view-ref ed* vid)) (step-pre-point st))))
      (define ed** (editor-leader-window ed* vid w*))
-     (values (editor-put-history ed** bid h*) (change-report texts attrs))]))
+     (values (editor-put-history ed** did h*) (change-report texts attrs))]))
 
 (define (editor-view-redo ed vid)
-  (define bid (editor-view-buffer-id ed vid))
-  (define-values (st h*) (history-pop-redo (editor-history ed bid)))
+  (define did (editor-view-document-id ed vid))
+  (define-values (st h*) (history-pop-redo (editor-history ed did)))
   (cond
     [(not st) (values ed #f)]
     [else
-     (define-values (ed* texts attrs) (apply-change-seq ed bid vid (step-replay st)))
-     (values (editor-put-history ed* bid h*) (change-report texts attrs))]))
+     (define-values (ed* texts attrs) (apply-change-seq ed did vid (step-replay st)))
+     (values (editor-put-history ed* did h*) (change-report texts attrs))]))
 
 ;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
 ;; 裸写用 editor-view-put-window（program.rkt），同步用 editor-view-follow；
@@ -108,7 +108,7 @@
                         (window-scroll (view-window (editor-view-ref ed vid)) delta)))
 
 ;;; ---------- 同步（显式、可组合） ----------
-;; 把同 buffer 的 follow view 镜像到 vid 的当前 window；vid 自身不动。
+;; 把同 document 的 follow view 镜像到 vid 的当前 window；vid 自身不动。
 ;; 与裸写组合：先 editor-view-put-window，再 editor-view-follow。
 
 (define (editor-view-follow ed vid)
@@ -155,17 +155,17 @@
                       (edit-desc (point 0 1) (point 0 1) "b")
                       (edit-desc (point 0 2) (point 0 2) "c")))
 
-  ;; 多 buffer：各自独立文本 / 账本
+  ;; 多 document：各自独立文本 / 账本
   (define ed (editor-open "AAA"))
-  (define-values (ed2 bid1) (editor-open-buffer ed "BBB" #:name "b.txt" #:focus? #t))
-  (check-equal? (editor-buffer-id ed2) bid1)
+  (define-values (ed2 bid1) (editor-open-document ed "BBB" #:name "b.txt" #:focus? #t))
+  (check-equal? (editor-document-id ed2) bid1)
   (define-values (ed3 _u5) (editor-edit ed2 (edit-insert "x")))
   (check-equal? (editor-buffer->string ed3 bid1) "xBBB")
   (check-equal? (editor-buffer->string ed3 0) "AAA")
   (check-true (editor-can-undo? ed3 bid1))
   (check-false (editor-can-undo? ed3 0))
 
-  ;; 多视图同 buffer：free 映射、follow 镜像
+  ;; 多视图同 document：free 映射、follow 镜像
   (define m0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
   (define-values (m1 v0) (editor-add-view m0 0 3 10))         ; 默认不抢焦点：仍停在 view 0
   (define m2 (editor-focus-view (editor-view-set-sync m1 v0 'follow) 0))
@@ -180,7 +180,7 @@
   (define g0 (editor-open (string-join (map number->string (range 30)) "\n") 5 20))
   (define-values (g1 vfree) (editor-add-view g0 0 5 20 #:focus? #f))
   (define-values (g2 vfollow) (editor-add-view g1 0 5 20 #:sync 'follow #:focus? #f))
-  (define-values (g3 other) (editor-open-buffer g2 "OTHER" #:name "other"))
+  (define-values (g3 other) (editor-open-document g2 "OTHER" #:name "other"))
   (define g4 (editor-focus-view g3 0))
   (define g5 (editor-goto g4 (point 20 0)))
   (check-equal? (editor-top-line g5) 16)

@@ -57,6 +57,7 @@
 | `change` | 变更集：文本 descs + 属性 descs；唯一的跨层变更值 |
 | `change/edits` | 由文本 descs 构造 change |
 | `change/attrs` | 由属性 descs 构造 change |
+| `change-empty?` / `change-text-only?` / `change-attr-only?` | 空 / 纯文本 / 纯属性判定 |
 | `selection` | 选区 `(anchor head)`；空选区 = 普通光标 |
 | `selection-point` | 选区光标点（= `head`） |
 | `selection-range` | 选区半开区间 `[start,end)` |
@@ -72,7 +73,7 @@
 
 ## 2. 编辑动作（可传的值，editor 级）
 
-`op : editor bid selection → (or/c #f edit-desc)`。这些是 editor 级动作（内部转发给 buffer 级
+`op : editor did selection → (or/c #f edit-desc)`。这些是 editor 级动作（内部转发给 buffer 级
 `buffer-op-*`，见 §3）；应用写自定义 op 时也只读 editor 级读口，不碰 buffer。
 
 | 名字 | 语义 |
@@ -116,7 +117,7 @@
 | `document-buffer` / `document-attrs` | 取纯文本 / 取属性 |
 | `document->string` / `document->lines` / `document-line-count` / `document-line-ref` / `document-line-length` | 文本委托 |
 | `document-clamp-point` / `document-point->offset` / `document-offset->point` / `document-range-text` | 位置委托 |
-| `document-clamp-edit-descs` / `document-tick` / `document-attr-tick` / `document-content-eq?` / `document-attrs-eq?` | 文本委托 / 版本戳 |
+| `document-clamp-edit-descs` / `document-text-tick` / `document-attr-tick` / `document-content-eq?` / `document-attrs-eq?` | 文本委托 / 版本戳 |
 | `document-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；返回 `(values 新document change-result)` |
 | `document-apply-change-trusted` | 同上，跳守卫 |
 | `document-apply-edit` / `document-edit` | 文本单条 / 给位置与 op 算 desc 再施加 |
@@ -138,7 +139,7 @@
 文档**不存 face**。派生 face（content 的纯函数，如语法高亮）作为**投影参数**给出：
 
 ```racket
-face-provider : editor bid line -> (listof (list start end face))
+face-provider : editor did line -> (listof (list start end face))
 ```
 
 不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
@@ -254,28 +255,28 @@ face-provider : editor bid line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `editor-open` | 建一个单 buffer 单 view 的 editor；`#:name` 命名 |
-| `editor-open-buffer` | 新开 buffer + view；`#:name` 命名（默认 `*scratch*`），`#:focus?` 控制是否抢焦点 |
-| `editor-add-view` | 给某 buffer 加 view；`#:sync`、`#:focus?` |
+| `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名 |
+| `editor-open-document` | 新开 document + view；`#:name` 命名（默认 `*scratch*`），`#:focus?` 控制是否抢焦点 |
+| `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?` |
 | `editor-close-view` | 关一个 view |
-| `editor-close-buffer` | 关一个 buffer 及其 view |
+| `editor-close-document` | 关一个 document 及其 view |
 | `editor-focus-view` | 聚焦某 view |
-| `editor-focus-buffer` | 聚焦某 buffer 的首个 view |
+| `editor-focus-document` | 聚焦某 document 的首个 view |
 
 ### 9.2 查询
 
 | 名字 | 语义 |
 |---|---|
 | `editor?` | 是否 editor |
-| `editor-buffer-count` | buffer 数 |
+| `editor-document-count` | document 数 |
 | `editor-view-count` | view 数 |
-| `editor-buffers` | buffer-entry 列表 |
+| `editor-documents` | document-entry 列表 |
 | `editor-views` | view 列表 |
 | `editor-focus` | 当前焦点 view id |
-| `editor-buffer-id` | 焦点 view 的 buffer id |
+| `editor-document-id` | 焦点 view 的 document id |
 | `editor-buffer` | 取 buffer 值 |
-| `editor-buffer-name` | 取 buffer 名 |
-| `editor-view-buffer-id` | 某 view 的 buffer id |
+| `editor-document-name` | 取 buffer 名 |
+| `editor-view-document-id` | 某 view 的 document id |
 | `editor-view-buffer` | 某 view 的 buffer 值 |
 | `editor-view-sync` | 某 view 的同步策略 |
 | `editor-sync` | 焦点 view 的同步策略 |
@@ -301,18 +302,18 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-mode` | 焦点 view `clip`/`wrap` |
 | `editor-left-col` | 焦点 view 水平滚动列 |
 | `editor-top-seg` | 焦点 view 折行段 |
-| `buffer-entry-id` | buffer id（投影） |
-| `buffer-entry-name` | buffer 名（投影） |
+| `document-entry-id` | document id（投影） |
+| `document-entry-name` | document 名（投影） |
 | `view-id` | view id（投影） |
 | `view-sync` | view 的同步策略（投影） |
 
 ### 9.3 位置解析（程序入口）
 
-按 buffer 寻址的读口，`bid` 缺省 = 焦点 buffer，但**仅当 bid 是该读口唯一参数**时
-（`editor-buffer` / `editor-buffer-name` / `editor-buffer->string` / `editor-buffer->lines` /
-`editor-buffer-line-count` / `editor-buffer-tick` / 账本查询）。带 payload 的读口
-（如 `editor-buffer-line-ref ed bid i`）必须显式给 bid —— 位置缺省会与 payload 抢参数。
-`editor-buffer-content-eq?` 比较两个 buffer，两个 bid 都显式。
+按 document 寻址的读口，`did` 缺省 = 焦点 document，但**仅当 did 是该读口唯一参数**时
+（`editor-buffer` / `editor-document-name` / `editor-buffer->string` / `editor-buffer->lines` /
+`editor-buffer-line-count` / `editor-text-tick` / 账本查询）。带 payload 的读口
+（如 `editor-buffer-line-ref ed did i`）必须显式给 did —— 位置缺省会与 payload 抢参数。
+`editor-buffer-content-eq?` 比较两个 buffer，两个 did 都显式。
 
 | 名字 | 语义 |
 |---|---|
@@ -325,20 +326,22 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-buffer-point->offset` | 位置 → 偏移 |
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
-| `editor-buffer-tick` | 某 buffer 的**文本**版本戳（只有文本变才 +1） |
-| `editor-attr-tick` | 某 buffer 的**标注**版本戳（只有属性变才 +1） |
+| `editor-text-tick` | 某 document 的**文本**版本戳（只有文本变才 +1） |
+| `editor-attr-tick` | 某 document 的**标注**版本戳（只有属性变才 +1） |
 | `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一 |
 
 ### 9.4 属性
 
 | 名字 | 语义 |
 |---|---|
+| `editor-attrs` | 某 document 的全部属性（默认焦点 buffer） |
 | `editor-attr-at` | 某点的全部属性（hash） |
 | `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
 | `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
 | `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `#f` |
 | `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `#f` |
 | `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `#f` |
+| `editor-attrs-eq?` | 两个 buffer 的标注是否同一 |
 
 ### 9.5 编辑
 
@@ -362,10 +365,10 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-edit-at` | 文档的 view + 显式位置；`none` + 可选记账 |
 | `editor-edit-at-batch` | 同上，`descs` 批；`none` + 可选记账 |
 
-`op : editor bid selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
+`op : editor did selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
 同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
 （用 `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
-`#:attrs` 计划 `editor bid (listof edit-desc) → (listof attr-desc)`：插入文本并标只读
+`#:attrs` 计划 `editor did (listof edit-desc) → (listof attr-desc)`：插入文本并标只读
 可以一条命令完成。report 的 `change-report-texts` / `change-report-attrs` 是实际生效的 descs（施加顺序）。
 
 ### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）
@@ -392,10 +395,10 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
-| `editor-view-set-buffer` | 让某 view 改看另一个 buffer |
+| `editor-view-set-document` | 让某 view 改看另一个 buffer |
 | `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
-| `editor-set-buffer` | focus 糖：让焦点 view 改看另一个 buffer |
-| `editor-set-buffer-name` | 重命名某 buffer |
+| `editor-set-document` | focus 糖：让焦点 view 改看另一个 buffer |
+| `editor-set-document-name` | 重命名某 document |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-put-window` | focus 糖：裸写焦点 view 整个 window |
 | `editor-set-selections` | focus 糖：设焦点 view 选区集（可选 primary） |
@@ -428,7 +431,7 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-view-end` | 某 view 行尾 |
 | `editor-view-goto` | 某 view 跳到位置并 ensure |
 | `editor-view-scroll` | 滚动某 view |
-| `editor-view-follow` | 把同 buffer 的 follow view 镜像到某 view 的 window |
+| `editor-view-follow` | 把同 document 的 follow view 镜像到某 view 的 window |
 | `editor-left` | focus 糖：焦点 view 左移 |
 | `editor-right` | focus 糖：右移 |
 | `editor-up` | focus 糖：上移 |
@@ -443,8 +446,8 @@ face-provider : editor bid line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `editor-view-undo` | 按某 view 所属 buffer 撤销一步；不改焦点 |
-| `editor-view-redo` | 按某 view 所属 buffer 重做一步 |
+| `editor-view-undo` | 按某 view 所属 document 撤销一步；不改焦点 |
+| `editor-view-redo` | 按某 view 所属 document 重做一步 |
 | `editor-undo` | focus 糖：按焦点 view 的 buffer 撤销一步 |
 | `editor-redo` | focus 糖：重做一步 |
 | `editor-can-undo?` | 可否撤销 |
@@ -454,7 +457,7 @@ face-provider : editor bid line -> (listof (list start end face))
 
 ### 9.9 投影
 
-投影接受一个可选的 **`face-provider`**：`editor bid line → (listof (list start end face))`。
+投影接受一个可选的 **`face-provider`**：`editor did line → (listof (list start end face))`。
 它是**派生 face**（content 的纯函数，如语法高亮）：投影时现算，**不进文档**。
 不传则无派生 face。文档**不存 face**：`read-only` 是 core 保留的属性 key（由 core 解释），
 不进 glyph 的 face 通道；所有 face 都出自投影时的 provider。
@@ -472,7 +475,7 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-screen->point` | 屏幕坐标 → 焦点 view 位置 |
 | `editor-view-screen->point` | 屏幕坐标 → 某 view 位置 |
 
-### 9.10 点算子（editor 级：位置只认 `point`，buffer/window 由 bid/vid 解析）
+### 9.10 点算子（editor 级：位置只认 `point`，buffer/window 由 did/vid 解析）
 
 | 名字 | 语义 |
 |---|---|

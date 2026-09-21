@@ -76,21 +76,21 @@
 (define (edit a op) (run-ed a (lambda (ed) (editor-edit ed op))))
 
 ;; 2.2 回车：自动缩进
-;; [core] op 是**值**：`editor bid selection -> edit-desc`；读文本用 editor 级读口。
+;; [core] op 是**值**：`editor did selection -> edit-desc`；读文本用 editor 级读口。
 ;; [意图] 自动缩进 = 插 "\n" + 当前行前导空白，必须读当前行，所以用自定义 op；
 ;;        edit-newline 只会插一个 "\n"，做不到。
 ;; [前端] 缩进宽度、是否缩进，是应用策略。
 (define (newline app)
   (edit app
-        (lambda (ed bid sel)
+        (lambda (ed did sel)
           (define p (selection-head sel))
-          (define line (editor-buffer-line-ref ed bid (point-line p)))
+          (define line (editor-buffer-line-ref ed did (point-line p)))
           (define indent (car (regexp-match #rx"^[ \t]*" line)))
           (edit-desc (selection-anchor sel) (selection-head sel) (string-append "\n" indent)))))
 
 ;; 2.3 导航
 ;; [core] editor-left/right/up/down/home/end/scroll（命名用户命令，内部走 editor-command 组合）。
-;; [意图] 用户导航 = 动焦点光标 + 保证可见 + 同 buffer 的 follow 视图镜像。
+;; [意图] 用户导航 = 动焦点光标 + 保证可见 + 同 document 的 follow 视图镜像。
 ;; [前端] 按键 → 动作的映射属于应用。
 (define (navigate a sym)
   (define ed (app-ed a))
@@ -111,9 +111,9 @@
 ;;        reaction 留默认 'none（不动任何视图），也不记账。
 (define (append-stamp a)
   (define ed (app-ed a))
-  (define bid (editor-buffer-id ed))
-  (define n (editor-buffer-line-count ed bid))
-  (define p (point (sub1 n) (editor-buffer-line-length ed bid (sub1 n))))
+  (define did (editor-document-id ed))
+  (define n (editor-buffer-line-count ed did))
+  (define p (point (sub1 n) (editor-buffer-line-length ed did (sub1 n))))
   (define stamp (number->string (current-seconds)))
   (define-values (ed* _report)
     (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
@@ -122,7 +122,7 @@
 
 ;; 2.6 视图面：尺寸
 ;; [core] editor-set-size ed h w —— focus 糖（内部 = editor-view-set-size + 焦点 vid）。
-;; [意图] 尺寸是「怎么看你」，属于视图面；同 buffer 的其它 view 不受影响。
+;; [意图] 尺寸是「怎么看你」，属于视图面；同 document 的其它 view 不受影响。
 (define (resize a rows cols)
   (struct-copy app a
     [rows rows] [cols cols]
@@ -130,7 +130,7 @@
 
 ;;; ---------- 2.8 标注：两种来源，投影时汇合（应用策略）----------
 ;;
-;; [core] 标注有两条路，最后都变成**投影参数 face-provider**（editor bid line → runs）：
+;; [core] 标注有两条路，最后都变成**投影参数 face-provider**（editor did line → runs）：
 ;;   ① 派生（content 的纯函数，如语法高亮）→ 纯 provider：不存、不失效、不重算；
 ;;   ② 作者态/外部（如只读标记）→ 属性 buffer：写一次随编辑移动，投影时读。
 ;; [前端] 「什么算关键字 / 什么算只读 / 用哪个 key」全是应用策略；core 不解释值。
@@ -138,65 +138,65 @@
   #px"\\b(define|lambda|if|cond|let|for|match|and|or|not|else)\\b")
 
 ;; ① 派生：逐行扫关键字，返回本行的 (起列 止列 face) 段。
-(define (syntax-face ed bid line)
+(define (syntax-face ed did line)
   (for/list ([m (in-list (regexp-match-positions* keyword-rx
-                                                   (editor-buffer-line-ref ed bid line)))])
+                                                   (editor-buffer-line-ref ed did line)))])
     (list (car m) (cdr m) (hash 'face 'keyword))))
 
 ;; ② 作者态：把主选区涉及的每行区间标为只读（core 保留 key）。
 ;;    选区 → (list (line c0 c1))；跨行时首/末行取列区间，中间行整行。
-(define (selection-line-spans ed bid s e)
+(define (selection-line-spans ed did s e)
   (define sl (point-line s)) (define sc (point-col s))
   (define el (point-line e)) (define ec (point-col e))
   (cond
     [(= sl el) (list (list sl sc ec))]
     [else
-     (append (list (list sl sc (editor-buffer-line-length ed bid sl)))
+     (append (list (list sl sc (editor-buffer-line-length ed did sl)))
              (for/list ([l (in-range (add1 sl) el)])
-               (list l 0 (editor-buffer-line-length ed bid l)))
+               (list l 0 (editor-buffer-line-length ed did l)))
              (list (list el 0 ec)))]))
 
 (define (mark-read-only a)
   (define ed (app-ed a))
-  (define bid (editor-buffer-id ed))
+  (define did (editor-document-id ed))
   (define sel (editor-primary ed))
   (if (caret? sel)
       a
       (let-values ([(s e) (selection-range sel)])
         ;; [core] 一次 editor-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
         (define attrs
-          (for/list ([sp (in-list (selection-line-spans ed bid s e))]
+          (for/list ([sp (in-list (selection-line-spans ed did s e))]
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
             (attr-set (point line c0) (point line c1) read-only-key #t)))
-        (define-values (ed* _r) (editor-apply-attrs ed bid attrs #:record? #t))
+        (define-values (ed* _r) (editor-apply-attrs ed did attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 (define (clear-read-only a)
   (define ed (app-ed a))
-  (define bid (editor-buffer-id ed))
+  (define did (editor-document-id ed))
   (define sel (editor-primary ed))
   (if (caret? sel)
       a
       (let-values ([(s e) (selection-range sel)])
         (define attrs
-          (for/list ([sp (in-list (selection-line-spans ed bid s e))]
+          (for/list ([sp (in-list (selection-line-spans ed did s e))]
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
             (attr-remove (point line c0) (point line c1) read-only-key)))
-        (define-values (ed* _r) (editor-apply-attrs ed bid attrs #:record? #t))
+        (define-values (ed* _r) (editor-apply-attrs ed did attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
-(define (read-only-face ed bid line)
-  (for/list ([r (in-list (editor-attr-key-runs ed bid line read-only-key))])
+(define (read-only-face ed did line)
+  (for/list ([r (in-list (editor-attr-key-runs ed did line read-only-key))])
     (list (car r) (cadr r) (hash 'face 'read-only))))
 
 ;; 投影：两个来源拼成一个 provider（后者覆盖前者）；传给 editor->screen。
 (define (app-face-provider a)
-  (lambda (ed bid line)
-    (append (if (app-highlight? a) (syntax-face ed bid line) '())
-            (read-only-face ed bid line))))
+  (lambda (ed did line)
+    (append (if (app-highlight? a) (syntax-face ed did line) '())
+            (read-only-face ed did line))))
 
 ;; 开关高亮：只翻标志，不碰文档。
 (define (toggle-highlight a)
@@ -212,13 +212,13 @@
 
 ;; 「词」：主选区非空 → 选区文本；否则取光标处/紧邻的 [A-Za-z0-9_] 串。
 (define (word-at ed)
-  (define bid (editor-buffer-id ed))
+  (define did (editor-document-id ed))
   (define prim (editor-primary ed))
   (if (and prim (not (caret? prim)))
       (let-values ([(a b) (selection-range prim)])
-        (values (editor-buffer-range-text ed bid a b) a b))
+        (values (editor-buffer-range-text ed did a b) a b))
       (let* ([p (editor-point ed)]
-             [line (editor-buffer-line-ref ed bid (point-line p))]
+             [line (editor-buffer-line-ref ed did (point-line p))]
              [n (string-length line)] [col (point-col p)]
              [w? (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\_)))]
              [start (let loop ([i col]) (if (and (> i 0) (w? (string-ref line (sub1 i)))) (loop (sub1 i)) i))]
@@ -230,11 +230,11 @@
 
 ;; 全 buffer 里 pattern 的全部出现（按文档顺序）
 (define (occurrences ed pattern)
-  (define bid (editor-buffer-id ed))
-  (define full (editor-buffer->string ed bid))
+  (define did (editor-document-id ed))
+  (define full (editor-buffer->string ed did))
   (for/list ([m (in-list (regexp-match-positions* (regexp-quote pattern) full))])
-    (list (editor-buffer-offset->point ed bid (car m))
-          (editor-buffer-offset->point ed bid (cdr m)))))
+    (list (editor-buffer-offset->point ed did (car m))
+          (editor-buffer-offset->point ed did (cdr m)))))
 
 ;; Ctrl+D：光标→先选词；已有选区→再选「最后一个选区之后」的下一个相同串
 (define (select-next-occurrence a)

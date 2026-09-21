@@ -43,7 +43,7 @@
  document-offset->point
  document-range-text
  document-clamp-edit-descs
- document-tick
+ document-text-tick
  document-attr-tick
  document-content-eq?
  document-attrs-eq?
@@ -107,7 +107,7 @@
 (define (document-range-text d s e) (buffer-range-text (document-buffer d) s e))
 (define (document-clamp-edit-descs d descs) (buffer-clamp-edit-descs (document-buffer d) descs))
 ;; 文本版本（只有文本变才涨）与标注版本（只有属性变才涨）分开。
-(define (document-tick d) (buffer-tick (document-buffer d)))
+(define (document-text-tick d) (buffer-tick (document-buffer d)))
 (define (document-content-eq? a b)
   (buffer-content-eq? (document-buffer a) (document-buffer b)))
 (define (document-attrs-eq? a b) (eq? (document-attrs a) (document-attrs b)))
@@ -288,7 +288,7 @@
   (define-values (d1 e1) (document-edit d0 (P 0 0) (buffer-op-insert-char #\X)))
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? e1 (edit-desc (P 0 0) (P 0 0) "X"))
-  (check-equal? (document-tick d1) 1)             ; 文本版本
+  (check-equal? (document-text-tick d1) 1)             ; 文本版本
   (check-equal? (document-attr-tick d1) 0)
 
   ;; 属性读写：任意 key 独立；read-only 是保留 key
@@ -300,7 +300,7 @@
   (define ab3 (document-remove-attr ab2 (P 0 2) (P 0 3) read-only-key))
   (check-false (attr-read-only? (document-attr-at ab3 (P 0 2))))
   (check-true (document-content-eq? d0 ab))       ; 写属性不动文本
-  (check-equal? (document-tick ab) 0)             ; 文本版本不变
+  (check-equal? (document-text-tick ab) 0)             ; 文本版本不变
   (check-equal? (document-attr-tick ab) 1)        ; 标注版本 +1
 
   ;; 零宽 = no-op
@@ -337,7 +337,7 @@
               (list (attr-set (P 0 1) (P 0 2) read-only-key #t)))))
   (check-equal? (document->string cb1) "aXbc")
   (check-equal? (document-attr-key-runs cb1 0 read-only-key) (list (list 1 2 #t)))
-  (check-equal? (document-tick cb1) 1)            ; 文本版本
+  (check-equal? (document-text-tick cb1) 1)            ; 文本版本
   (check-equal? (document-attr-tick cb1) 1)       ; 标注版本
   (check-equal? (change-result-applied-texts res) (list (edit-desc (P 0 1) (P 0 1) "X")))
   (check-equal? (change-result-applied-attrs res)

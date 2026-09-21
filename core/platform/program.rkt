@@ -20,7 +20,7 @@
  editor-command-batch
  editor-edit-at
  editor-edit-at-batch
- ;; 编辑动作（editor 级，可传的值；op : editor bid selection → desc）
+ ;; 编辑动作（editor 级，可传的值；op : editor did selection → desc）
  edit-insert edit-insert-char edit-newline edit-backspace edit-delete edit-splice
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
  editor-view-set-point
@@ -43,7 +43,7 @@
  editor-view-set-top-seg
  editor-view-set-left-col
  editor-view-set-sync
- editor-view-set-buffer
+ editor-view-set-document
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
  editor-put-window
@@ -65,16 +65,16 @@
  editor-set-top-seg
  editor-set-left-col
  editor-set-sync
- editor-set-buffer
- editor-set-buffer-name
- ;; 属性写（程序面：改 buffer 的属性，不碰文本/光标）
+ editor-set-document
+ editor-set-document-name
+ ;; 属性写（程序面：改 document 的属性，不碰文本/光标）
  editor-apply-attrs
  editor-put-attr
  editor-remove-attr)
 
 ;;; ---------- 编辑原语：策略全显式 ----------
-;; op   : (or/c #f (editor bid selection → (or/c #f edit-desc)))
-;; attrs: (or/c #f (editor bid (listof edit-desc) → (listof attr-desc)))
+;; op   : (or/c #f (editor did selection → (or/c #f edit-desc)))
+;; attrs: (or/c #f (editor did (listof edit-desc) → (listof attr-desc)))
 ;;
 ;; 正交策略（都是数据，不是函数身份）：
 ;;   #:view       目标 view（默认焦点 view）
@@ -99,11 +99,11 @@
   (selection (if (point<? bs as) bs as) (if (point<? ae be) be ae)))
 
 ;; 多选区：对每个选区算 desc；重叠（backspace/delete 超出选区，相邻就撞上）的合并成包络
-;; 再重算 op，直到 desc 两两不相交。op : editor bid selection → desc/#f。
-(define (coalesce-descs ed bid sels op)
+;; 再重算 op，直到 desc 两两不相交。op : editor did selection → desc/#f。
+(define (coalesce-descs ed did sels op)
   (define pairs
     (filter values (for/list ([s (in-list sels)])
-                     (define d (op ed bid s))
+                     (define d (op ed did s))
                      (and d (cons s d)))))
   (let loop ([ps pairs])
     (cond
@@ -117,19 +117,19 @@
           (define group (cons p conflicts))
           (define hull (for/fold ([h (car (car group))]) ([g (in-list (cdr group))])
                          (selection-hull h (car g))))
-          (define d (op ed bid hull))
+          (define d (op ed did hull))
           (loop (if d
                     (cons (cons hull d) (remove* conflicts (cdr ps)))
                     (remove* conflicts (cdr ps))))])])))
 
 ;; 命令的后半：反应 + 记账 + report（single / batch / attr 共用）。
 (define (editor-run-change ed ch vid reaction record? pre guard?)
-  (define bid (editor-view-buffer-id ed vid))
-  (define-values (ed* res) (editor-apply-change ed bid ch guard?))
+  (define did (editor-view-document-id ed vid))
+  (define-values (ed* res) (editor-apply-change ed did ch guard?))
   (cond
     [(not res) (values ed #f)]
     [else
-     (define d* (editor-document ed* bid))
+     (define d* (editor-document ed* did))
      (define tds (change-result-applied-texts res))
      (define ed** (case reaction
                     [(none)   (editor-clamp-views ed* d*)]
@@ -137,7 +137,7 @@
                     [(leader) (editor-leader-view ed* vid d* tds)]
                     [else (error 'editor-command "reaction 必须是 'none / 'map / 'leader，得到 ~a" reaction)]))
      (define ed*** (if record?
-                       (editor-record-history ed** bid
+                       (editor-record-history ed** did
                                               (list (change-result-replay res))
                                               (change-result-undo res)
                                               pre)
@@ -154,11 +154,11 @@
                         #:record? [record? #f]
                         #:pre-point [pre-point #f])
   (define v (editor-view-ref ed vid))
-  (define bid (editor-view-buffer-id ed vid))
+  (define did (editor-view-document-id ed vid))
   (define sels (or selection (window-selections (view-window v))))
-  (define descs (if op (coalesce-descs ed bid sels op) '()))
-  (define eff (buffer-clamp-edit-descs (editor-buffer ed bid) descs))
-  (define attrs (if attr-plan (or (attr-plan ed bid eff) '()) '()))
+  (define descs (if op (coalesce-descs ed did sels op) '()))
+  (define eff (buffer-clamp-edit-descs (editor-buffer ed did) descs))
+  (define attrs (if attr-plan (or (attr-plan ed did eff) '()) '()))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
   (editor-run-change ed (change eff attrs) vid reaction record? pre (not trusted?)))
 
@@ -174,48 +174,48 @@
   (editor-run-change ed ch vid reaction record? pre (not trusted?)))
 
 ;;; ---------- 编辑动作（editor 级，可传的值）----------
-;;; op : editor bid selection → (or/c #f edit-desc)。只**算** desc，不施加；
+;;; op : editor did selection → (or/c #f edit-desc)。只**算** desc，不施加；
 ;;; 转发给 doc 层的 buffer 级动作（buffer-op-*）。编辑原语只认这一种形状。
 
 (define (edit-insert text)
-  (lambda (ed bid sel) ((buffer-op-insert text) (editor-buffer ed bid) sel)))
+  (lambda (ed did sel) ((buffer-op-insert text) (editor-buffer ed did) sel)))
 (define (edit-insert-char ch) (edit-insert (string ch)))
 (define (edit-newline)       (edit-insert "\n"))
 (define (edit-backspace)
-  (lambda (ed bid sel) ((buffer-op-backspace) (editor-buffer ed bid) sel)))
+  (lambda (ed did sel) ((buffer-op-backspace) (editor-buffer ed did) sel)))
 (define (edit-delete)
-  (lambda (ed bid sel) ((buffer-op-delete) (editor-buffer ed bid) sel)))
+  (lambda (ed did sel) ((buffer-op-delete) (editor-buffer ed did) sel)))
 ;; 通用逃生门：显式区间的替换（程序化编辑）
 (define (edit-splice start end text)
   (lambda (_ed _bid _sel) (edit-desc start end text)))
 
-;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
+;;; ---------- 薄封装：按 did + 位置 / 批量 descs（程序面） ----------
 
-;; 按 bid 取它任一 view 的 vid。buffer 没有任何 view 时无法承载显示语义（reaction），
+;; 按 did 取它任一 view 的 vid。buffer 没有任何 view 时无法承载显示语义（reaction），
 ;; 也没有可取的选区上下文 → 明确报错。
-(define (document-vid who ed bid)
-  (define v (view-of-document ed bid))
-  (unless v (error who "buffer ~a 没有任何 view，无法编辑" bid))
+(define (document-vid who ed did)
+  (define v (view-of-document ed did))
+  (unless v (error who "buffer ~a 没有任何 view，无法编辑" did))
   (view-id v))
 
-(define (editor-edit-at ed bid p op
+(define (editor-edit-at ed did p op
                         #:reaction [reaction 'none]
                         #:trusted? [trusted? #f]
                         #:record? [record? #f])
   (editor-command ed op
-                  #:view (document-vid 'editor-edit-at ed bid)
+                  #:view (document-vid 'editor-edit-at ed did)
                   #:selection (list (caret p))
                   #:trusted? trusted?
                   #:reaction reaction
                   #:record? record?
                   #:pre-point p))
 
-(define (editor-edit-at-batch ed bid descs
+(define (editor-edit-at-batch ed did descs
                               #:reaction [reaction 'none]
                               #:trusted? [trusted? #f]
                               #:record? [record? #f])
   (editor-command-batch ed (change/edits descs)
-                        #:view (document-vid 'editor-edit-at-batch ed bid)
+                        #:view (document-vid 'editor-edit-at-batch ed did)
                         #:trusted? trusted?
                         #:reaction reaction
                         #:record? record?
@@ -229,17 +229,17 @@
 
 
 ;;; ---------- 显式视图命令（程序面：只动一个 view，不镜像、不抢焦点） ----------
-;; 全部按 vid 定位，绝不读也不改 focus；同 buffer 其它 view 一律不动。
+;; 全部按 vid 定位，绝不读也不改 focus；同 document 其它 view 一律不动。
 
 (define (view-window-of ed vid) (view-window (editor-view-ref ed vid)))
 
 ;; 裸写视图态（光标/视口/模式，只夹紧、不同步）；读口是 editor-view-window。
-;; **不改文档**：w 的 document 必须就是该 view 当前的 document；换文档用 editor-view-set-buffer。
+;; **不改文档**：w 的 document 必须就是该 view 当前的 document；换文档用 editor-view-set-document。
 (define (editor-view-put-window ed vid w)
   (define v (editor-view-ref ed vid))
   (unless (eq? (window-document w) (view-document v))
     (error 'editor-view-put-window
-           "window 的 document 与该 view 不符；换文档请用 editor-view-set-buffer"))
+           "window 的 document 与该 view 不符；换文档请用 editor-view-set-document"))
   (editor-put-view ed vid w))
 (define (editor-put-window ed w)
   (editor-view-put-window ed (view-id (editor-focused-view ed)) w))
@@ -277,8 +277,8 @@
 ;; 结构变换：换指定 view 的同步策略 / 属主；不触发同步。
 (define (editor-view-set-sync ed vid sync)
   (editor-set-view-sync ed vid sync))
-(define (editor-view-set-buffer ed vid bid)
-  (editor-set-view-buffer ed vid bid))
+(define (editor-view-set-document ed vid did)
+  (editor-set-view-document ed vid did))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
 
@@ -333,8 +333,8 @@
 
 (define (editor-set-sync ed sync)
   (editor-view-set-sync ed (view-id (editor-focused-view ed)) sync))
-(define (editor-set-buffer ed bid)
-  (editor-view-set-buffer ed (view-id (editor-focused-view ed)) bid))
+(define (editor-set-document ed did)
+  (editor-view-set-document ed (view-id (editor-focused-view ed)) did))
 
 ;; 选区集合算子的 focus 糖。
 (define (editor-map-selections ed f)
@@ -356,22 +356,22 @@
 
 ;;; ---------- buffer 元数据 ----------
 
-(define (editor-set-buffer-name ed bid name)
-  (editor-put-buffer-name ed bid name))
+(define (editor-set-document-name ed did name)
+  (editor-put-document-name ed did name))
 
-;;; ---------- 属性写（改 buffer 的属性；不碰文本，光标自然不动） ----------
+;;; ---------- 属性写（改 document 的属性；不碰文本，光标自然不动） ----------
 ;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 #f（程序面，与 editor-edit-at 一致），
 ;; 用户面（如标记只读）请传 #:record? #t 以入账本、可撤销。
 
-(define (editor-apply-attrs ed bid attrs #:record? [record? #f])
+(define (editor-apply-attrs ed did attrs #:record? [record? #f])
   (editor-command-batch ed (change/attrs attrs)
-                        #:view (document-vid 'editor-apply-attrs ed bid)
+                        #:view (document-vid 'editor-apply-attrs ed did)
                         #:record? record?))
 
-(define (editor-put-attr ed bid start end key val #:record? [record? #f])
-  (editor-apply-attrs ed bid (list (attr-set start end key val)) #:record? record?))
-(define (editor-remove-attr ed bid start end key #:record? [record? #f])
-  (editor-apply-attrs ed bid (list (attr-remove start end key)) #:record? record?))
+(define (editor-put-attr ed did start end key val #:record? [record? #f])
+  (editor-apply-attrs ed did (list (attr-set start end key val)) #:record? record?))
+(define (editor-remove-attr ed did start end key #:record? [record? #f])
+  (editor-apply-attrs ed did (list (attr-remove start end key)) #:record? record?))
 
 ;;; ---------- 测试 ----------
 
@@ -448,10 +448,10 @@
   (define ts1 (editor-view-set-mode ts0 0 'wrap))
   (define ts2 (editor-view-set-top-seg ts1 0 1))
   (check-equal? (editor-view-top-seg ts2 0) 1)
-  (define-values (v5b other) (editor-open-buffer v5 "OTHER" 2 10 #:name "other" #:focus? #f))
-  (define v6 (editor-view-set-buffer v5b vv other))
-  (check-equal? (editor-view-buffer-id v6 vv) other)
-  (check-equal? (editor-buffer-id v6) 0)         ; 焦点不动
+  (define-values (v5b other) (editor-open-document v5 "OTHER" 2 10 #:name "other" #:focus? #f))
+  (define v6 (editor-view-set-document v5b vv other))
+  (check-equal? (editor-view-document-id v6 vv) other)
+  (check-equal? (editor-document-id v6) 0)         ; 焦点不动
 
   ;; focus 糖仍作用于焦点 view
   (define v7 (editor-view-set-point v6 0 (point 1 0)))
@@ -508,10 +508,10 @@
   ;; focus 糖：sync / buffer / 重命名
   (define fs0 (editor-open "x"))
   (check-equal? (editor-sync (editor-set-sync fs0 'follow)) 'follow)
-  (define-values (fs1 bid2) (editor-open-buffer fs0 "y" #:name "b" #:focus? #f))
-  (define fs2 (editor-set-buffer fs1 bid2))
-  (check-equal? (editor-buffer-id fs2) bid2)
-  (check-equal? (editor-buffer-name (editor-set-buffer-name fs2 bid2 "renamed") bid2) "renamed")
+  (define-values (fs1 bid2) (editor-open-document fs0 "y" #:name "b" #:focus? #f))
+  (define fs2 (editor-set-document fs1 bid2))
+  (check-equal? (editor-document-id fs2) bid2)
+  (check-equal? (editor-document-name (editor-set-document-name fs2 bid2 "renamed") bid2) "renamed")
 
   ;; 选区集合算子：显式 primary + map 全部 / map primary + 增删
   (define sm0 (editor-open "abcde"))
@@ -532,7 +532,7 @@
   (define pw0 (editor-open "abcdef"))
   (define pw1 (editor-put-window pw0 (window-set-point (editor-window pw0) (point 0 3))))
   (check-equal? (editor-point pw1) (point 0 3))
-  ;; put-window 只写视图态：document 不符 → 报错（换文档用 editor-view-set-buffer）
+  ;; put-window 只写视图态：document 不符 → 报错（换文档用 editor-view-set-document）
   (check-exn exn:fail? (lambda () (editor-put-window pw0 (window-open (document-open "x") 2 10))))
   ;; map-points：对每个选区 head 施 point→point（坍缩成光标）
   (define pw2 (editor-map-points pw1 (lambda (p) (point 0 (add1 (point-col p))))))

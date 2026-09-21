@@ -73,7 +73,7 @@
  document->string document->lines
  document-line-count document-line-ref document-line-length
  document-clamp-point document-point->offset document-offset->point document-range-text
- document-clamp-edit-descs document-tick document-attr-tick document-content-eq? document-attrs-eq?
+ document-clamp-edit-descs document-text-tick document-attr-tick document-content-eq? document-attrs-eq?
  read-only-key attr-read-only?
  document-attr-at document-attr-runs document-attr-key-runs
  document-put-attr document-remove-attr

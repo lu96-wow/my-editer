@@ -38,7 +38,7 @@ core/
 │   ├── project.rkt            #   window → screen
 │   └── rebase.rkt             #   window × edit → window（free / follow）
 ├── platform/                  # 平台：多文档 × 多视口 + 三种面
-│   ├── state.rkt              #   editor/view/buffer-entry 数据 + 查找 + 不变量（内部）
+│   ├── state.rkt              #   editor/view/document-entry 数据 + 查找 + 不变量（内部）
 │   ├── write.rkt              #   无策略写原语（内部）
 │   ├── neutral.rkt            #   中性面：读 / 构造 / 投影（公开）
 │   ├── reaction.rkt           #   显示语义：clamp / map / leader（内部）
@@ -90,7 +90,7 @@ editor.rkt ←  api, platform(neutral, program, command)
 `rebase` 是编辑后 view 的重新基准（free 映射 / follow 镜像）。
 
 ### platform —— 平台
-`state` 是 `[buffer-entry] × [view] × focus`（`view` = id × window × sync，buffer 在 window 里）；
+`state` 是 `[document-entry] × [view] × focus`（`view` = id × window × sync，buffer 在 window 里）；
 `write` 是无策略写原语，维持不变量；`neutral` 只读投影；`reaction` 是唯一的显示语义；
 `program` / `command` 是两个操作面。
 
@@ -114,7 +114,7 @@ viewport    window  = document ⊕ point ⊕ (mode, top, left, height, width)
             project = window × layout → screen
             rebase  = window × edit-desc → window              （free / follow）
              │
-platform    state   = [buffer-entry] × [view] × focus   （view = id × window × sync；window 含 document）
+platform    state   = [document-entry] × [view] × focus   （view = id × window × sync；window 含 document）
             write   : state × change → state                    （无策略写原语；唯一漏斗）
             reaction= state × edit-desc → state                 （clamp / map / leader）
             neutral = state → 读 / 构造 / 投影
@@ -151,7 +151,7 @@ editor-command        : 给 op（+ 可选属性计划），算 change 再施加
 editor-command-batch  : 给现成 change 直接施加
 ```
 
-`op : editor bid selection → edit-desc`；`#:attrs : editor bid (listof edit-desc) → (listof attr-desc)`
+`op : editor did selection → edit-desc`；`#:attrs : editor did (listof edit-desc) → (listof attr-desc)`
 是属性计划，在文本 descs 夹紧后求值（坐标为「文本生效之后」）。
 
 策略全是**正交的显式参数**（不是函数身份）：
@@ -185,7 +185,7 @@ editor-command-batch  : 给现成 change 直接施加
 | 策略 | 行为 | 谁用 |
 |---|---|---|
 | `none` | 字面不动，只把光标/视口夹回合法域 | 程序默认 |
-| `map` | 每个同 buffer view 各自把光标映射过这次编辑（不滚屏） | `editor-edit-at` 显式地图 |
+| `map` | 每个同 document view 各自把光标映射过这次编辑（不滚屏） | `editor-edit-at` 显式地图 |
 | `leader` | 指定 view 推进到插入后 + ensure；其余 free 映射 / follow 镜像 | 用户编辑 |
 
 契约：同步**只在同一 buffer 的 view 之间**发生；`leader` 必须**先 ensure 定稿**，
@@ -204,12 +204,12 @@ editor-command-batch  : 给现成 change 直接施加
 **选择/导航是算子，不是容器操作**（Unix 式接口）：
 - 值级原子（低层）：`point-left/right/home/end : buffer point -> point`，
   `point-up/down : window point -> point`。
-- editor 级算子（应用用）：`editor-point-left/right/home/end : editor bid point -> point`，
-  `editor-point-up/down : editor vid point -> point`；buffer/window 由 bid/vid 解析，应用不见底层值。
+- editor 级算子（应用用）：`editor-point-left/right/home/end : editor did point -> point`，
+  `editor-point-up/down : editor vid point -> point`；buffer/window 由 did/vid 解析，应用不见底层值。
 - 选区变换是纯原子：`selection-map-head/anchor/both`（对端点施 `point→point`）。
 - 集合级正交组合：`window-map-selections`（全部）/ `window-map-primary`（仅 primary）；
   `window-primary` 直接给 primary **选区值**（不再靠位置比较），`window-primary-index` 给下标。
-- 编辑入口 `editor-edit` 也遵循同一形态：`op : editor bid selection → edit-desc` 是策略（editor 级），
+- 编辑入口 `editor-edit` 也遵循同一形态：`op : editor did selection → edit-desc` 是策略（editor 级），
   core 负责循环/落点/账本；buffer 级 `buffer-op-*` 是更低层的动作。
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
@@ -236,8 +236,9 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 文本与标注各有独立版本号（因为二者已经解耦）：
 
-- `buffer-tick`：纯文本版本，**只有文本变更**才 +1（一次 change 内无论多少条文本 desc，合计 +1）。
+- `document-text-tick`（= `buffer-tick`）：纯文本版本，**只有文本变更**才 +1（一次 change 内无论多少条文本 desc，合计 +1）。
 - `document-attr-tick`：标注版本，**只有属性变更**才 +1。
+- editor 面：`editor-text-tick` / `editor-attr-tick`（各按 did 取）。
 
 一次 change 同时含文本与属性时，两者各 +1。要判断「**文本本身**是否同一」用
 `buffer-content-eq?`；判断「标注是否同一」用 `document-attrs-eq?`。
@@ -276,7 +277,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 **作者态 vs 派生态（face）：** 文档只存**文本 + 属性**（`content` + `attrs`；`read-only` 是 core
 保留并解释的 key，其余对 core 不透明），它们随编辑移动。**派生 face**（content 的纯函数，如语法高亮）**不进文档**，
 而是作为投影参数：viewport 机制用 `line-face-provider : buffer × line → runs`，
-editor 门面用 `face-provider : editor bid line → runs`（内部适配成前者），在
+editor 门面用 `face-provider : editor did line → runs`（内部适配成前者），在
 `window->screen` / `editor->screen` 时现算。
 
 这条边界消除了「重算」：派生量不存 → 不会过期 → 不需要失效，也不需要 `change-report`

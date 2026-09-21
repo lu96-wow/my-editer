@@ -76,10 +76,10 @@
   ;; 造一个单 document 单 view 的 editor；再加一个 view（可指定 sync）
   (define (mk text h w)
     (define d (document-open text))
-    (editor (list (buffer-entry 0 "s" d (history-empty)))
+    (editor (list (document-entry 0 "s" d (history-empty)))
             (list (view 0 (window-open d h w) 'free)) 0 1 1))
   (define (add-view ed h w p sync)
-    (define d (buffer-entry-document (editor-buffer-entry ed 0)))
+    (define d (document-entry-document (editor-document-entry ed 0)))
     (struct-copy editor ed
       [views (append (editor-views ed)
                      (list (view (editor-next-view ed)
@@ -87,7 +87,7 @@
       [next-view (add1 (editor-next-view ed))]))
   (define (vp ed vid) (window-point (view-window (editor-view-ref ed vid))))
   (define (vtl ed vid) (window-top-line (view-window (editor-view-ref ed vid))))
-  (define (vd ed bid) (buffer-entry-document (editor-buffer-entry ed bid)))
+  (define (vd ed did) (document-entry-document (editor-document-entry ed did)))
 
   (define d-ins (edit-desc (point 0 0) (point 0 0) "XY"))
 
