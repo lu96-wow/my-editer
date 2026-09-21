@@ -1,7 +1,7 @@
 #lang racket
 
 ;;; ============================================================================
-;;; api.rkt —— 低层全量面（原子 + 单元 + 文档 + 视口）
+;;; api.rkt —— 低层公开面（原子 + 单元 + 文档 + 视口）
 ;;; ============================================================================
 ;;;
 ;;; 只透出**原子及其直接组合**：point / edit-desc / buffer / window / screen / events / width。
@@ -51,7 +51,7 @@
  ;; ---- restrict（约束槽）----
  restrict restrict? struct:restrict restrict-empty restrict-read-only?
  ;; ---- buffer —— 文档原子 ----
- buffer buffer? struct:buffer buffer-open buffer->string buffer->lines
+ buffer? buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
  buffer-line-length buffer-clamp-point buffer-point->offset buffer-offset->point
  buffer-apply-edit buffer-apply-edit-trusted buffer-edit buffer-edit-trusted
@@ -59,7 +59,7 @@
  buffer-edit-desc-inverse
  buffer-range-text
  buffer-put-restrict buffer-remove-restrict buffer-restrict-at buffer-restrict-runs
- buffer-content buffer-content-eq? buffer-restrictions
+ buffer-content-eq?
  buffer-tick
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch buffer-apply-edit-batch-trusted edits-map-position edits-span
@@ -88,7 +88,7 @@
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
  window-map-selections window-map-primary window-map-points
- window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-map-points window-clamp-selections
+ window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-clamp-selections
  window-add-selection window-remove-selection window-set-primary window-set-primary-index window-selection-member?
  window-set-mode window-set-top-line window-set-left-col
  window-set-top-seg window-set-size window-vscroll window-hscroll
@@ -101,7 +101,7 @@
  no-face-provider)
 
 ;;; ============================================================================
-;;; 冒烟测试：门面 + 一条完整「属性 → 画面」链
+;;; 冒烟测试：门面 + 一条完整「文档 → 画面」链
 ;;; ============================================================================
 
 (module+ test

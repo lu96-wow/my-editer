@@ -13,8 +13,11 @@
 ;;;
 ;;;   editor-swap-buffer   换某 buffer 的 buffer 值（entries + 同 buffer view 的引用）
 ;;;   editor-apply-edit    内容变更唯一漏斗（= buffer-apply-edit + swap）
+;;;   editor-apply-edit-batch 批量漏斗（= buffer-apply-edit-batch + 一次 swap）
 ;;;   editor-update-buffer 装饰类写回（f : buffer → buffer）
 ;;;   editor-put-view      换一个 view 的 window
+;;;   editor-set-view-sync / editor-set-view-buffer  视图结构变换
+;;;   editor-put-buffer-name
 ;;;   editor-put-history / editor-record-history / editor-record-batch
 ;;;
 ;;; 不变量（由本层维持）：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer。

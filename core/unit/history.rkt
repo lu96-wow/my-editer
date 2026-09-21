@@ -77,7 +77,7 @@
 
 ;;; ---------- 记录 / 取出 ----------
 
-;; 记一步。参数是 document-edit 交回的 edit-change。
+;; 记一步。参数是 buffer-edit / 编辑命令交回的 edit-change。
 ;; 与栈顶可并 → 并进去并保留**较早**的 point。任何记录都清空 redo 栈。
 (define (history-record h ch)
   (define d (edit-change-desc ch))

@@ -169,12 +169,21 @@
 
 ;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
 
+;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
+
+;; 按 bid 取它任一 view 的 vid。buffer 没有任何 view 时无法承载显示语义（reaction），
+;; 也没有可取的选区上下文 → 明确报错。
+(define (document-vid who ed bid)
+  (define v (view-of-document ed bid))
+  (unless v (error who "buffer ~a 没有任何 view，无法编辑" bid))
+  (view-id v))
+
 (define (editor-edit-at ed bid p op
                         #:reaction [reaction 'none]
                         #:trusted? [trusted? #f]
                         #:record? [record? #f])
   (editor-command ed op
-                  #:view (view-id (view-of-document ed bid))
+                  #:view (document-vid 'editor-edit-at ed bid)
                   #:selection (list (caret p))
                   #:guard? (not trusted?)
                   #:reaction reaction
@@ -186,7 +195,7 @@
                               #:trusted? [trusted? #f]
                               #:record? [record? #f])
   (editor-command-batch ed descs
-                        #:view (view-id (view-of-document ed bid))
+                        #:view (document-vid 'editor-edit-at-batch ed bid)
                         #:guard? (not trusted?)
                         #:reaction reaction
                         #:record? record?
@@ -220,8 +229,8 @@
 
 (define (editor-view-set-selections ed vid sels [primary 0])
   (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels primary)))
-(define (editor-view-add-selections ed vid sels [primary? #f])
-  (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels primary?)))
+(define (editor-view-add-selections ed vid sels #:primary? [primary? #f])
+  (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels #:primary? primary?)))
 (define (editor-view-remove-selections ed vid sels)
   (editor-put-view ed vid (window-remove-selections (view-window-of ed vid) sels)))
 
@@ -262,8 +271,8 @@
 ;; 对每个选区 head 施加 f（point → point），坍缩成光标。
 (define (editor-view-map-points ed vid f)
   (editor-put-view ed vid (window-map-points (view-window-of ed vid) f)))
-(define (editor-view-add-selection ed vid s [primary? #f])
-  (editor-put-view ed vid (window-add-selection (view-window-of ed vid) s primary?)))
+(define (editor-view-add-selection ed vid s #:primary? [primary? #f])
+  (editor-put-view ed vid (window-add-selection (view-window-of ed vid) s #:primary? primary?)))
 (define (editor-view-remove-selection ed vid s)
   (editor-put-view ed vid (window-remove-selection (view-window-of ed vid) s)))
 (define (editor-view-set-primary ed vid s)
@@ -280,8 +289,8 @@
 
 (define (editor-set-selections ed sels [primary 0])
   (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels primary))
-(define (editor-add-selections ed sels [primary? #f])
-  (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels primary?))
+(define (editor-add-selections ed sels #:primary? [primary? #f])
+  (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels #:primary? primary?))
 (define (editor-remove-selections ed sels)
   (editor-view-remove-selections ed (view-id (editor-focused-view ed)) sels))
 (define (editor-collapse-selections ed)
@@ -314,8 +323,8 @@
   (editor-view-map-primary ed (view-id (editor-focused-view ed)) f))
 (define (editor-map-points ed f)
   (editor-view-map-points ed (view-id (editor-focused-view ed)) f))
-(define (editor-add-selection ed s [primary? #f])
-  (editor-view-add-selection ed (view-id (editor-focused-view ed)) s primary?))
+(define (editor-add-selection ed s #:primary? [primary? #f])
+  (editor-view-add-selection ed (view-id (editor-focused-view ed)) s #:primary? primary?))
 (define (editor-remove-selection ed s)
   (editor-view-remove-selection ed (view-id (editor-focused-view ed)) s))
 (define (editor-set-primary ed s)
@@ -445,7 +454,7 @@
   (define pr0 (editor-open "abcdef"))
   (define pr1 (editor-set-selections pr0 (list (caret (point 0 0)) (caret (point 0 3))) 1))
   (check-equal? (editor-point pr1) (point 0 3))              ; primary = 传入的第 1 个
-  (define pr2 (editor-add-selections pr1 (list (caret (point 0 5))) #t))
+  (define pr2 (editor-add-selections pr1 (list (caret (point 0 5))) #:primary? #t))
   (check-equal? (editor-point pr2) (point 0 5))              ; 新加的成为 primary
   (define pr3 (editor-collapse-selections pr2))
   (check-equal? (length (editor-selections pr3)) 1)
@@ -470,7 +479,7 @@
   (define sm3 (editor-map-selections sm1
                 (lambda (s) (selection-map-both (lambda (p) (point-left (editor-buffer sm1 0) p)) s))))
   (check-equal? (map selection-head (editor-selections sm3)) (list (point 0 0) (point 0 1)))
-  (check-equal? (editor-primary (editor-add-selection sm1 (caret (point 0 4)) #t)) (caret (point 0 4)))
+  (check-equal? (editor-primary (editor-add-selection sm1 (caret (point 0 4)) #:primary? #t)) (caret (point 0 4)))
   (check-equal? (length (editor-selections (editor-remove-selection sm1 (caret (point 0 0))))) 1)
   (check-equal? (editor-primary (editor-set-primary sm1 (caret (point 0 0)))) (caret (point 0 0)))
 

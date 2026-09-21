@@ -15,6 +15,7 @@
 core/
 ├── atom/                      # 原子：不可再分的值 + 代数（只互相依赖）
 │   ├── point.rkt              #   位置 (line,col) + 比较 + clamp
+│   ├── selection.rkt          #   选区 (anchor,head) + 端点映射
 │   ├── lines.rkt              #   string->lines（换行归一的唯一约定）
 │   ├── edit.rkt               #   edit-desc + 位置代数 + edit-change
 │   ├── content.rkt            #   行向量文本存储 + content-apply
@@ -41,7 +42,7 @@ core/
 │   ├── reaction.rkt           #   显示语义：clamp / map / leader（内部）
 │   ├── program.rkt            #   程序面（公开）
 │   └── command.rkt            #   用户面（公开）
-├── api.rkt                    # 低层全量面：白名单转发（零逻辑）
+├── api.rkt                    # 低层公开面：白名单转发（零逻辑）
 └── editor.rkt                 # 最终组合入口
 ```
 
@@ -62,9 +63,10 @@ editor.rkt ←  api, platform(neutral, program, command)
 ## 1. 五层各是什么
 
 ### atom —— 原子
-不可再分的值，以及只依赖同层原子的代数。`point` 是唯一位置表示；`edit-desc` 是唯一
-跨层变更契约；`content` 是行向量文本存储；`restrict` / `face`（hash）/ `width` / `event`
-是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一约定，供存储与代数共用。
+不可再分的值，以及只依赖同层原子的代数。`point` 是唯一位置表示；`selection` 是选区
+（`anchor`/`head`，空选区即光标）；`edit-desc` 是唯一跨层变更契约；`content` 是行向量
+文本存储；`restrict` / `width` / `event` 是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一
+约定，供存储与代数共用。
 
 ### unit —— 单元
 每种「单维结构」= 一种标注/索引 + 它自己的 `apply-edit`：
@@ -93,7 +95,7 @@ editor.rkt ←  api, platform(neutral, program, command)
 ## 2. 核心结构如何组合成 editor.rkt
 
 ```
-atom        point · edit-desc · content · restrict · width · event
+atom        point · selection · edit-desc · content · restrict · width · event
              │
 unit        restrictions = 行 × rspan(restrict)          screen = runs(文档) ⊕ cursors/selections(视图 overlay)
             history      = [edit-change]
@@ -114,7 +116,7 @@ platform    state   = [buffer-entry] × [view] × focus   （view = id × window
             program = state × edit-desc → (values state report)（程序面）
             command = state × op      → (values state report)（用户面）
              │
-editor.rkt  = api（低层全量面）+ neutral + program + command
+editor.rkt  = api（低层公开面）+ neutral + program + command
 ```
 
 一条命令的返回是 `(values editor (or/c #f change-report))`；`change-report` 携带
@@ -260,7 +262,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ## 10. API 可达面：显式白名单
 
-- 消费者白名单 = **`core/editor.rkt`**（低层全量面 + editor 平台）。
+- 消费者白名单 = **`core/editor.rkt`**（低层公开面 + editor 平台）。
 - 内部机制可达但不进白名单：`platform/state.rkt`、`platform/write.rkt`、
   `platform/reaction.rkt`、各层内部模块。
 - `tools/reconcile.rkt` 对账文档表格名字与白名单；`tools/layers.rkt` 强制「依赖不向上」。

@@ -19,7 +19,7 @@
 ;;; 编辑传播顺序（唯一）：content-apply（夹紧 + 有效 desc）→ 守卫 → restrictions。
 
 (provide
- (struct-out buffer)
+ buffer?                            ; 构造器/内部字段不外露（避免绕过不变量）
  buffer-open
  buffer->string
  buffer->lines
@@ -46,9 +46,7 @@
  buffer-restrict-at
  buffer-restrict-runs
  buffer-tick
- buffer-content
- buffer-content-eq?
- buffer-restrictions)
+ buffer-content-eq?)
 
 ;;; ---------- 数据 ----------
 

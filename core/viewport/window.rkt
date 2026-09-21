@@ -121,8 +121,8 @@
   (window-set-selections w (list-set sels i (f (list-ref sels i))) i))
 
 ;; 增/删单个选区；set-primary 让集合中等于 s 的选区成为 primary（不在集合中则原样）。
-(define (window-add-selection w s [primary? #f])
-  (window-add-selections w (list s) primary?))
+(define (window-add-selection w s #:primary? [primary? #f])
+  (window-add-selections w (list s) #:primary? primary?))
 (define (window-remove-selection w s)
   (window-remove-selections w (list s)))
 (define (window-set-primary w s)
@@ -143,10 +143,14 @@
                   (caret (f (selection-head s)))))
   (window-clamp-selections (struct-copy window w [selections moved])))
 
-;; 并集：把 sels 加进现有选区集（规范化）；primary 默认保持，primary? #t 则让新加的成为 primary。
-(define (window-add-selections w sels [primary? #f])
-  (window-set-selections w (append (window-selections w) sels)
-                         (if primary? (length (window-selections w)) (window-primary-index w))))
+;; 并集：把 sels 加进现有选区集（规范化）；primary 默认保持，#:primary? #t 则让新加的成为 primary。
+;; 空集是恒等（不改变 primary）。
+(define (window-add-selections w sels #:primary? [primary? #f])
+  (cond
+    [(null? sels) w]
+    [else
+     (window-set-selections w (append (window-selections w) sels)
+                            (if primary? (length (window-selections w)) (window-primary-index w)))]))
 
 ;; 差集：从现有选区集去掉与 drops 相等的项；primary 尽量保持，删空则原样。
 (define (window-remove-selections w drops)
@@ -314,7 +318,7 @@
   (check-equal? (selection-head (window-primary wp2)) (point 0 3))
   ;; 增 / 删 / 设 primary
   (check-equal? (length (window-selections (window-add-selection wp0 (caret (point 0 4))))) 3)
-  (check-equal? (window-primary (window-add-selection wp0 (caret (point 0 4)) #t)) (caret (point 0 4)))
+  (check-equal? (window-primary (window-add-selection wp0 (caret (point 0 4)) #:primary? #t)) (caret (point 0 4)))
   (check-equal? (length (window-selections (window-remove-selection wp0 (caret (point 0 0))))) 1)
   (check-equal? (window-primary (window-set-primary wp0 (caret (point 0 0)))) (caret (point 0 0)))
 

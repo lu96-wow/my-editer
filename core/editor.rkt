@@ -3,13 +3,13 @@
 ;;; core/editor.rkt —— 使用者标准入口
 ;;;
 ;;; 一个 require 拿到：
-;;;   · 低层全量面  point / edit-desc / buffer / window / screen / events / …   （api.rkt）
-;;;   · editor 中性面  构造 / 查询 / 解析 / 标注读 / 投影   （platform/neutral.rkt）
-;;;   · 程序面        editor-edit-at / 显式视图命令 / 标注写   （platform/program.rkt）
+;;;   · 低层公开面  point / edit-desc / buffer / window / screen / events / …   （api.rkt）
+;;;   · editor 中性面  构造 / 查询 / 解析 / 约束读 / 投影   （platform/neutral.rkt）
+;;;   · 程序面        editor-edit-at / 显式视图命令 / 约束写   （platform/program.rkt）
 ;;;   · 用户面        editor-edit / 导航 / 撤销 / 焦点        （platform/command.rkt）
 ;;;
 ;;; 内部机制不在这里：platform/state.rkt（数据/查找）、platform/write.rkt（写原语）、
-;;; platform/reaction.rkt（显示语义）。全量低层面在 core/api.rkt。
+;;; platform/reaction.rkt（显示语义）。低层公开面在 core/api.rkt。
 
 (require "api.rkt"
          "platform/neutral.rkt"

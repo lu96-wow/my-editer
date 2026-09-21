@@ -202,7 +202,7 @@
                       o))
         (cond
           [(not nxt) a]
-          [else (struct-copy app a [ed (editor-add-selection ed (selection (car nxt) (cadr nxt)) #t)])])])]))
+          [else (struct-copy app a [ed (editor-add-selection ed (selection (car nxt) (cadr nxt)) #:primary? #t)])])])]))
 
 ;; Ctrl+A：把当前词的所有出现一次选中
 (define (select-all-occurrences a)

@@ -5,9 +5,9 @@
          "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/project.rkt"
          "../viewport/render.rkt"
          "../unit/screen.rkt" "../unit/history.rkt"
-         "state.rkt" "write.rkt" rackunit)
+         "state.rkt")
 
-;;; platform/neutral.rkt —— 中性接口：状态构造 + 查询 + 解析 + 标注读 + 投影
+;;; platform/neutral.rkt —— 中性接口：状态构造 + 查询 + 解析 + 约束读 + 投影
 ;;;
 ;;; 只读投影 + 生命周期；**不含**任何写原语（在 write.rkt）与显示决策（在 reaction.rkt）。
 ;;; 内容变更在 program.rkt（程序面）/ command.rkt（用户面）。
@@ -81,7 +81,7 @@
  editor-buffer-range-text
  editor-buffer-tick
  editor-buffer-content-eq?
- ;; 标注读（按 buffer-id）
+ ;; 约束读（按 buffer-id）
  editor-restrict-at
  editor-restrict-runs
  ;; 账本查询
@@ -211,7 +211,7 @@
 (define (editor->screen ed [face-provider no-face-provider])
   (editor-view->screen ed (editor-focus ed) face-provider))
 
-;;; ---------- 文本 / 解析 / 标注读（按 buffer-id） ----------
+;;; ---------- 文本 / 解析 / 约束读（按 buffer-id） ----------
 
 (define (editor-buffer->string ed bid) (buffer->string (editor-buffer ed bid)))
 (define (editor-buffer->lines ed bid) (buffer->lines (editor-buffer ed bid)))
@@ -242,6 +242,7 @@
 ;;; ---------- 测试：中性面 ----------
 
 (module+ test
+  (require rackunit "write.rkt")
   (define e0 (editor-open "hello\nworld" 2 10))
   ;; 文本 / 位置解析 / 投影
   (check-equal? (editor-buffer->string e0 0) "hello\nworld")
