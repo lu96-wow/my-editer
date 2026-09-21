@@ -27,7 +27,8 @@
 ;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
 ;;;         ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读  ^K 清除只读  ^L 开关高亮  ^Q 退出
 
-(require "../core/editor.rkt"
+(require "../core/editor.rkt"   ; editor 平台面（中性/程序/用户）
+         "../core/api.rkt"      ; 低层公开面（point/selection/edit-desc/attr/window/screen/…）
          ;; racket-tui 也导出 key-event/resize-event/cursor-col 等，与 core 同名；用 core 的。
          (except-in tui key-event key-event? key-event-key struct:key-event
                     resize-event resize-event? resize-event-rows resize-event-cols

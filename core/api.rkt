@@ -8,8 +8,8 @@
 ;;; buffer / document / window / screen / events / width。
 ;;; 不含 compose 平台（editor-*）。
 ;;;
-;;; 消费者白名单 = **core/editor.rkt**（原子 + editor 平台）；日常只用它。
-;;; 本文件给需要单独拿低层值、或要下探 buffer/window 原语的场合。
+;;; 低层公开面：原子及其直接组合。editor 平台面在 core/editor.rkt（**不重导**本文件）。
+;;; 需要低层值时单独 require 本文件；需要 editor 命令时 require core/editor.rkt。
 ;;;
 ;;; 门面**零逻辑**：只做显式白名单转发（新增内部函数不会自动泄漏）。
 ;;; 依赖方向：api ← 低层各层；platform 各模块直接 require 它们需要的层，api 不依赖 platform。

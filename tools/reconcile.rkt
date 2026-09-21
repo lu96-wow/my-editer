@@ -2,7 +2,7 @@
 
 ;;; tools/reconcile.rkt —— 文档 ↔ 可达面对账
 ;;;
-;;; 可达面白名单 = **core/editor.rkt**（消费者标准入口：低层公开面 + editor 平台）。
+;;; 可达面白名单 = **core/api.rkt**（低层公开面）+ **core/editor.rkt**（editor 平台）。
 ;;; 内部机制（platform/state.rkt、platform/write.rkt、platform/reaction.rkt、各层内部模块）
 ;;; 可达但不在白名单里，文档提到它们时必须按「内部」讲。
 ;;;
@@ -30,9 +30,11 @@
 
 (define base-syms (syms-of '()))
 
-;; 消费者白名单：core/editor.rkt
+;; 消费者可达面 = 低层公开面 core/api.rkt + editor 平台 core/editor.rkt
 (define api-syms
-  (set-subtract (syms-of (list `(file ,(string-append root "core/editor.rkt")))) base-syms))
+  (set-subtract (syms-of (list `(file ,(string-append root "core/api.rkt"))
+                               `(file ,(string-append root "core/editor.rkt"))))
+                base-syms))
 
 ;; 模块内部（含机制/工具/组合层）：用来把 "internal" 与 "nowhere" 分开。
 ;; 排除 tools/（否则会把本脚本自己当模块 require，无限递归）。
@@ -108,7 +110,7 @@
       (define l (sort (hash-ref groups k '()) string<?))
       (when (pair? l)
         (displayln (format "  【~a】：~a" k (string-join l " "))))))
-  (displayln (format "\n消费者可达面（core/editor.rkt）：~a 个名字" (length api-syms)))
+  (displayln (format "\n消费者可达面（core/api.rkt + core/editor.rkt）：~a 个名字" (length api-syms)))
   (displayln (if (pair? (drift-tokens))
                  "== 有真漂移：上面【nowhere】的名字在项目里不存在 =="
                  "== 无漂移：所有表格名字要么可达、要么是模块内部 ==")))

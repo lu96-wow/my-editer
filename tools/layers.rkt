@@ -12,7 +12,7 @@
 (define-runtime-path here "layers.rkt")
 (define root (simplify-path (build-path (path-only here) "..")))
 
-;; 层号：越底越小。api 是低层公开门面（≤ viewport），editor 是最终组合入口。
+;; 层号：越底越小。api 是低层公开门面（≤ viewport），editor 是 editor 平台入口。
 (define rank-alist
   '(("core/atom"      . 0)
     ("core/unit"      . 1)

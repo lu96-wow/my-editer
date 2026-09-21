@@ -46,7 +46,7 @@ core/
 │   ├── program.rkt            #   程序面（公开）
 │   └── command.rkt            #   用户面（公开）
 ├── api.rkt                    # 低层公开面：白名单转发（零逻辑）
-└── editor.rkt                 # 最终组合入口
+└── editor.rkt                 # editor 平台入口（neutral + program + command）
 ```
 
 依赖方向：
@@ -54,7 +54,7 @@ core/
 ```
 atom  ←  unit  ←  doc  ←  viewport  ←  platform
 api        ←  atom, unit, doc, viewport          # api 只转发低层，不依赖 platform
-editor.rkt ←  api, platform(neutral, program, command)
+editor.rkt ←  platform(neutral, program, command) # editor 平台入口；不重导 api
 ```
 
 `platform/state.rkt`、`platform/write.rkt`、`platform/reaction.rkt` 是**内部**，不进入口。
@@ -122,7 +122,8 @@ platform    state   = [document-entry] × [view] × focus   （view = id × wind
             program = state × change → (values state report)（程序面）
             command = state × op     → (values state report)（用户面）
              │
-editor.rkt  = api（低层公开面）+ neutral + program + command
+editor.rkt  = neutral（中性面）+ program（程序面）+ command（用户面）
+              # 低层公开面（atomic/unit/doc/viewport）由 api.rkt 单独提供
 ```
 
 一条命令的返回是 `(values editor (or/c #f change-report))`；`change-report` 携带
@@ -294,7 +295,8 @@ editor 门面用 `face-provider : editor did line → runs`（内部适配成前
 
 ## 10. API 可达面：显式白名单
 
-- 消费者白名单 = **`core/editor.rkt`**（低层公开面 + editor 平台）。
+- 消费者可达面 = **`core/api.rkt`**（低层公开面）+ **`core/editor.rkt`**（editor 平台）。
+  两者分开：低层值单独 `(require "core/api.rkt")`，平台命令用 `(require "core/editor.rkt")`。
 - 内部机制可达但不进白名单：`platform/state.rkt`、`platform/write.rkt`、
   `platform/reaction.rkt`、各层内部模块。
 - 带不变量的值（`buffer` / `window` / `screen`）只透出谓词、读口与具名构造入口

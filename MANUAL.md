@@ -1,11 +1,16 @@
 # MANUAL —— 消费者手册
 
-只用 `(require "core/editor.rkt")`。它给你三类东西：
+两个公开入口，按需 `require`：
 
-1. **原子**：`point`、`buffer`、`window`、`screen`、`events`、宽字符工具。
-2. **editor 中性面**：构造、查询、位置解析、标注读、投影。
-3. **一个编辑原语**：`editor-command` / `editor-command-batch`，策略全显式；
-   `editor-edit` / `editor-edit-at` / `editor-view-edit` 只是它的命名薄封装。
+- `(require "core/api.rkt")` —— **低层公开面**：原子及其直接组合
+  （`point` / `selection` / `edit-desc` / `attr-desc` / `change` / `buffer` / `document` / `window` / `screen` / 事件 / 宽字符工具）。
+- `(require "core/editor.rkt")` —— **editor 平台**：
+  1. editor 中性面：构造、查询、位置解析、标注读、投影。
+  2. 一个编辑原语：`editor-command` / `editor-command-batch`，策略全显式；
+     `editor-edit` / `editor-edit-at` / `editor-view-edit` 只是它的命名薄封装。
+  3. 用户面：导航 / 撤销重做 / 焦点。
+
+`core/editor.rkt` **不重导** `core/api.rkt`：要低层值就单独 require 它。
 
 内部机制（`state.rkt`、`write.rkt`、`reaction.rkt`）不在入口里，不用碰。
 
@@ -14,7 +19,8 @@
 ## 0. 快速开始
 
 ```racket
-(require "core/editor.rkt")
+(require "core/api.rkt")      ; 低层：point / edit-desc / …
+(require "core/editor.rkt")   ; editor 平台：构造 + 编辑命令
 
 ;; 用户编辑：在焦点 view 的光标处插入，cursor 前进，可撤销
 (define ed (editor-open "hello\nworld"))
@@ -27,7 +33,6 @@
 (editor-point ed2)                    ; 仍是 (point 0 0)
 
 ;; 渲染
-(require "core/editor.rkt")
 (define scr (editor->screen ed*))    ; screen：交后端画
 ```
 
