@@ -163,12 +163,14 @@
   (if (caret? sel)
       a
       (let-values ([(s e) (selection-range sel)])
-        (struct-copy app a
-          [ed (for/fold ([ed ed]) ([sp (in-list (selection-line-spans ed bid s e))])
-                (match-define (list line c0 c1) sp)
-                (if (< c0 c1)
-                    (editor-put-attr ed bid (point line c0) (point line c1) read-only-key #t)
-                    ed))]))))
+        ;; [core] 一次 editor-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
+        (define attrs
+          (for/list ([sp (in-list (selection-line-spans ed bid s e))]
+                     #:when (< (cadr sp) (caddr sp)))
+            (match-define (list line c0 c1) sp)
+            (attr-set (point line c0) (point line c1) read-only-key #t)))
+        (define-values (ed* _r) (editor-apply-attrs ed bid attrs))
+        (struct-copy app a [ed ed*]))))
 
 (define (clear-read-only a)
   (define ed (app-ed a))
@@ -177,12 +179,13 @@
   (if (caret? sel)
       a
       (let-values ([(s e) (selection-range sel)])
-        (struct-copy app a
-          [ed (for/fold ([ed ed]) ([sp (in-list (selection-line-spans ed bid s e))])
-                (match-define (list line c0 c1) sp)
-                (if (< c0 c1)
-                    (editor-remove-attr ed bid (point line c0) (point line c1) read-only-key)
-                    ed))]))))
+        (define attrs
+          (for/list ([sp (in-list (selection-line-spans ed bid s e))]
+                     #:when (< (cadr sp) (caddr sp)))
+            (match-define (list line c0 c1) sp)
+            (attr-del (point line c0) (point line c1) read-only-key)))
+        (define-values (ed* _r) (editor-apply-attrs ed bid attrs))
+        (struct-copy app a [ed ed*]))))
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
 (define (read-only-face ed bid line)
@@ -542,9 +545,9 @@
 ;;; §6 本示例暴露的 core 改进线索（汇总）
 ;;; ============================================================================
 ;;
-;; 1. report 粒度：change-report 只给「首行/末行 + descs」（行区间由 edits 现算）。
-;;    前端若要按**每个**变更区间做增量处理，需自己走 change-report-edits。
-;; 2. 无「批量属性写」原语：一行写多个属性段要多次 editor-put-attr；整篇重打会退化
-;;    （每次 copy attrs 行向量）。若要把「整篇语法高亮入库」做成 O(n)，需要一个批量口。
-;; 3. 无「多窗格布局」原语：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
+;; 1. report 粒度：change-report 给「首行/末行 + 生效 texts + 生效 attrs」（行区间由 texts 现算）。
+;;    前端若要按**每个**变更区间做增量处理，需自己走 change-report-texts / change-report-attrs。
+;; 2. 多窗格布局：分屏 / 拼接要前端自己做（`screen-compose` 已给拼屏，
 ;;    但 view 的摆放、焦点切换策略不在 core）。
+;; 3. 属性已是一等公民：editor-apply-attrs 批量写、进账本、replay/undo 精确；
+;;    「插入文本 + 标只读」可用 editor-command 的 #:attrs 计划一次完成。

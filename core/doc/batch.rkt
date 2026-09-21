@@ -1,15 +1,17 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt" "buffer.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt"
+         "../atom/change.rkt" "../unit/attrs.rkt" "buffer.rkt" rackunit)
 
-;;; doc/batch.rkt —— 批量编辑应用 + 位置映射 + 变更行区间
+;;; doc/batch.rkt —— 批量文本编辑 + 位置映射 + 变更行区间
 ;;;
 ;;; 一次编辑是 edit-desc；这里处理「一串 edit-desc」：
-;;;   buffer-apply-edit-batch  把一批互相独立、不重叠的编辑原子地施加
+;;;   buffer-apply-edit-batch  把一批互相独立、不重叠的编辑原子地施加（文本专用）
 ;;;   edits-map-position       把一个点依次映射过一串（应用顺序的）编辑
 ;;;   edits-span               一串编辑影响到的行区间并集（增量重绘用）
 ;;;
-;;; 全部是纯函数，数据 → 数据。
+;;; 批量文本施加现在只是 change 漏斗（doc/buffer.rkt 的 buffer-apply-change）的
+;;; 文本专用封装——属性跟随与撤销材料的逻辑只有一份。
 
 (provide
  buffer-apply-edit-batch
@@ -17,43 +19,18 @@
  edits-map-position
  edits-span)
 
-;; 按起点（point 字典序）比较
-(define (start<? a b) (point<? (edit-desc-start a) (edit-desc-start b)))
-
-;; 输入 descs 都在 b 的同一坐标系里，互相独立、不重叠。
-;; 做法：按起点倒序施加（先改后面的位置，前面未处理位置的坐标不动）。
-;; 重叠（含跨行）→ 报错；同起点零宽插入按原列表顺序确定性地应用。
-;; guard? = #t 走 read-only 守卫；#f 走 trusted（格式化器）。
-;; 返回 (values 新 buffer applied-descs inverses)：
-;;   applied-descs 按**施加顺序**（起点倒序），供 edits-map-position 按序映射；
-;;   inverses 与之平行，inv_i 由「施加 desc_i 前」的 buffer 导出（no-op / 被拒的不进结果）。
 (define (buffer-apply-edit-batch b descs) (buffer-apply-edit-batch* b descs #t))
 (define (buffer-apply-edit-batch-trusted b descs) (buffer-apply-edit-batch* b descs #f))
 (define (buffer-apply-edit-batch* b descs guard?)
+  (define-values (b* res)
+    (if guard?
+        (buffer-apply-change b (change/edits descs))
+        (buffer-apply-change-trusted b (change/edits descs))))
   (cond
-    [(null? descs) (values b '() '())]
-    [else
-     (define sorted
-       (sort (for/list ([i (in-naturals)] [d (in-list descs)]) (cons i d))
-             (lambda (a b)
-               (define da (cdr a)) (define db (cdr b))
-               (cond [(start<? da db) #t]
-                     [(start<? db da) #f]
-                     [else (< (car a) (car b))]))))
-     ;; 升序检查相邻是否重叠（半开：next.start < prev.end 即重叠）
-     (for ([a (in-list (drop-right sorted 1))] [d (in-list (rest sorted))])
-       (when (point<? (edit-desc-start (cdr d)) (edit-desc-end (cdr a)))
-         (error 'buffer-apply-edit-batch "编辑重叠: ~a 与 ~a" (cdr a) (cdr d))))
-     (define apply (if guard? buffer-apply-edit buffer-apply-edit-trusted))
-     (define-values (b* descs* invs*)
-       (for/fold ([b b] [acc '()] [ivs '()]) ([it (in-list (reverse sorted))])
-         (define d (cdr it))
-         (define b-before b)                     ; 逆必须由「施加前」的 buffer 导出
-         (define-values (b* d*) (apply b d))
-         (if d*
-             (values b* (cons d* acc) (cons (buffer-edit-desc-inverse b-before d*) ivs))
-             (values b* acc ivs))))
-     (values b* (reverse descs*) (reverse invs*))]))
+    [(not res) (values b '() '())]
+    [else (values b*
+                  (change-result-applied-texts res)
+                  (change-result-text-inverses res))]))
 
 ;;; ---------- 点映射 ----------
 
@@ -140,4 +117,4 @@
                             (edit-desc (point 0 0) (point 0 1) "")))
                 (list 0 2))
 
-  (displayln "edit.rkt: all tests passed"))
+  (displayln "batch.rkt: all tests passed"))

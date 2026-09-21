@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/attr.rkt"
          "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt" "../viewport/project.rkt"
          "../unit/screen.rkt" "../unit/history.rkt"
@@ -19,7 +19,7 @@
  editor? editor-buffers editor-views editor-focus
  buffer-entry-id buffer-entry-name
  view-id view-sync
- change-report change-report? change-report-first-line change-report-last-line change-report-edits
+ change-report change-report? change-report-first-line change-report-last-line change-report-texts change-report-attrs
  ;; 构造 / 生命周期
  editor-open
  editor-open-buffer
@@ -165,10 +165,19 @@
 (define (editor-sync ed) (editor-view-sync ed (editor-focus ed)))
 
 ;; change-report 的行区间是 edits 的投影，读时现算。
+;; change-report 的行区间是 texts 与 attrs 的投影并集，读时现算。
+(define (change-report-span r)
+  (define-values (tf tl) (edits-span (change-report-texts r)))
+  (define-values (af al)
+    (for/fold ([f #f] [l #f]) ([a (in-list (change-report-attrs r))])
+      (define line (point-line (attr-desc-start a)))
+      (values (if f (min f line) line) (if l (max l line) line))))
+  (values (cond [(and tf af) (min tf af)] [tf tf] [af af] [else #f])
+          (cond [(and tl al) (max tl al)] [tl tl] [al al] [else #f])))
 (define (change-report-first-line r)
-  (let-values ([(f _) (edits-span (change-report-edits r))]) f))
+  (let-values ([(f _) (change-report-span r)]) f))
 (define (change-report-last-line r)
-  (let-values ([(f l) (edits-span (change-report-edits r))]) l))
+  (let-values ([( _ l) (change-report-span r)]) l))
 
 (define (editor-focus-view ed vid)
   (editor-view-ref ed vid)                 ; 校验存在

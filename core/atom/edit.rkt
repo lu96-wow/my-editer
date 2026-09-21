@@ -5,7 +5,6 @@
 ;;; atom/edit.rkt —— 编辑描述（唯一跨层契约）+ 位置代数
 ;;;
 ;;;   edit-desc     一次替换 [start,end) → new-text（坐标全为「操作前」）
-;;;   edit-change   一次编辑的完整材料（desc + 逆 + 编辑前光标）
 ;;;
 ;;; 位置代数（attrs / 账本 / 视图重基准共用）：
 ;;;   edit-desc-map-position    编辑前位置 → 编辑后位置（#f = 落在被删区间内）
@@ -13,13 +12,16 @@
 ;;;   edit-desc-inverse         由生效 desc + 旧文本求逆
 ;;;
 ;;; 只依赖 point 与 lines，不认识 content/buffer —— 这是最底层的变更原子。
+;;; 「一串 desc」的规范化（排序 + 重叠检查）也在这里，供 doc 层共用。
+
+(require racket/list)
 
 (provide
  (struct-out edit-desc)
- (struct-out edit-change)
  edit-desc-map-position
  edit-desc-after-position
- edit-desc-inverse)
+ edit-desc-inverse
+ edits-normalize)
 
 ;;; ---------- 数据 ----------
 
@@ -27,12 +29,24 @@
 ;; start / end : point     被替换的半开区间 [start, end)（操作前坐标）
 ;; new-text    : string    取代该区间的文本（可含 \n）
 
-;; 一次编辑的**完整材料**。desc 与 inverse 同为 edit-desc，散着传写反了不报错，
-;; 打包让这个错变成编译错。pre-point 由持光标的层（window/command）填。
-(struct edit-change (desc inverse pre-point) #:transparent)
-;; desc        : edit-desc  这次编辑（操作前坐标）—— 重放用它
-;; inverse     : edit-desc  逆（操作后坐标，由编辑前的 buffer 导出）—— 撤销用它
-;; pre-point   : point      编辑视图在编辑前的光标 —— 撤销后回到这里
+;;; ---------- 批规范化 ----------
+
+;; 输入 descs 都在同一坐标系里、应两两不重叠。返回按起点升序（同起点保持输入次序）
+;; 的列表；发现重叠（半开：next.start < prev.end）→ 具名报错。
+;; 供 doc 层的批量文本施加与 change 漏斗共用。
+(define (edits-normalize who descs)
+  (define sorted
+    (sort (for/list ([i (in-naturals)] [d (in-list descs)]) (cons i d))
+          (lambda (a b)
+            (define da (cdr a)) (define db (cdr b))
+            (cond [(point<? (edit-desc-start da) (edit-desc-start db)) #t]
+                  [(point<? (edit-desc-start db) (edit-desc-start da)) #f]
+                  [else (< (car a) (car b))]))))
+  (when (>= (length sorted) 2)
+    (for ([a (in-list (drop-right sorted 1))] [d (in-list (rest sorted))])
+      (when (point<? (edit-desc-start (cdr d)) (edit-desc-end (cdr a)))
+        (error who "编辑重叠: ~a 与 ~a" (cdr a) (cdr d)))))
+  (map cdr sorted))
 
 ;;; ---------- desc 代数（位置如何随一次编辑移动）----------
 ;; 全部只认 point。
@@ -99,7 +113,18 @@
   (check-equal? (edit-desc-inverse (edit-desc (point 0 0) (point 0 0) "X") "")
                 (edit-desc (point 0 0) (point 0 1) ""))
 
-  ;; edit-change 打包
-  (check-equal? (edit-change-desc (edit-change d-sp d-sp (point 0 0))) d-sp)
+  ;; edits-normalize：排序 / 同起点保序 / 重叠报错
+  (define (ds* . ds) ds)
+  (check-equal? (map edit-desc-start
+                     (edits-normalize 'x (list (edit-desc (point 1 0) (point 1 1) "")
+                                               (edit-desc (point 0 0) (point 0 1) ""))))
+                (list (point 0 0) (point 1 0)))
+  (check-equal? (edits-normalize 'x (list (edit-desc (point 0 0) (point 0 0) "A")
+                                          (edit-desc (point 0 0) (point 0 0) "B")))
+                (list (edit-desc (point 0 0) (point 0 0) "A")
+                      (edit-desc (point 0 0) (point 0 0) "B")))
+  (check-exn exn:fail?
+             (lambda () (edits-normalize 'x (list (edit-desc (point 0 1) (point 0 3) "")
+                                                  (edit-desc (point 0 2) (point 0 4) "")))))
 
   (displayln "edit.rkt: all tests passed"))

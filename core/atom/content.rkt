@@ -24,6 +24,7 @@
  content-line-length
  content-point->offset
  content-offset->point
+ content-clamp-desc
  content-apply
  content-backspace-desc
  content-delete-desc)
@@ -95,19 +96,26 @@
 
 ;;; ---------- 施加：唯一原语 ----------
 
-;; 施加一条 edit-desc。端点先夹紧；夹紧后仍反向（start > end）没有合法解释 → 报错。
-;; 返回 (values 新 content 生效的 desc)：生效 desc 里的坐标是**夹紧后**的值，
+;; 把一条 edit-desc 夹到 content 的合法域，返回**生效 desc**（不动 content）。
+;; 端点先夹紧；夹紧后仍反向（start > end）没有合法解释 → 报错。
+(define (content-clamp-desc c d)
+  (define s (content-clamp-point c (edit-desc-start d)))
+  (define e (content-clamp-point c (edit-desc-end d)))
+  (when (point<? e s)
+    (error 'content-clamp-desc "编辑区间反向: ~a..~a" s e))
+  (edit-desc s e (edit-desc-new-text d)))
+
+;; 施加一条 edit-desc。生效 desc 里的坐标是**夹紧后**的值，
 ;; 上层（属性/账本/视图）一律用它，不要用传入的原始 desc。
 (define (content-apply c d)
   (define n (content-line-count c))
   (define lines (content-lines c))
-  (define s (content-clamp-point c (edit-desc-start d)))
-  (define e (content-clamp-point c (edit-desc-end d)))
-  (when (point<? e s)
-    (error 'content-apply "编辑区间反向: ~a..~a" s e))
+  (define d* (content-clamp-desc c d))
+  (define s (edit-desc-start d*))
+  (define e (edit-desc-end d*))
   (define sl (point-line s)) (define sc (point-col s))
   (define el (point-line e)) (define ec (point-col e))
-  (define text (edit-desc-new-text d))
+  (define text (edit-desc-new-text d*))
   ;; 新文本拆行：k 段。k=0（纯删除）时两行拼成一行。
   (define new-lines (string->lines text))
   (define k (length new-lines))
@@ -127,7 +135,7 @@
      (vector-set! v* (+ sl (sub1 k))
                   (string-append (list-ref new-lines (sub1 k)) tail))])
   (vector-copy! v* (+ sl inserted) lines (add1 el) n)
-  (values (content v*) (edit-desc s e text)))
+  (values (content v*) d*))
 
 ;;; ---------- 退格 / 删除：先算 desc（纯），不直接施加 ----------
 
@@ -183,6 +191,12 @@
   (check-exn exn:fail?
              (lambda () (content-apply (content-of-string "abcdef")
                                        (edit-desc (point 0 3) (point 0 1) ""))))
+
+  ;; content-clamp-desc：不动 content，只给出生效 desc
+  (check-equal? (content-clamp-desc c0 (edit-desc (point 0 1) (point 0 99) ""))
+                (edit-desc (point 0 1) (point 0 5) ""))
+  (check-equal? (content-clamp-desc c0 (edit-desc (point 9 9) (point 9 9) "X"))
+                (edit-desc (point 1 5) (point 1 5) "X"))
 
   (check-equal? (content-backspace-desc c0 (point 0 2)) (edit-desc (point 0 1) (point 0 2) ""))
   (check-false (content-backspace-desc c0 (point 0 0)))

@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt" "../atom/attr.rkt"
          "../doc/buffer.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
@@ -52,21 +52,31 @@
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 buffer 的账本） ----------
 
+;; 依次施加一串 change（撤销/重放）；每个 change 后把 vid 的视图 leader 到插入后。
+;; 返回 (values editor 生效文本descs 生效属性descs)。
+(define (apply-change-seq ed bid vid chs)
+  (for/fold ([e ed] [texts '()] [attrs '()]) ([ch (in-list chs)])
+    (define-values (e1 res) (editor-apply-change e bid ch #f))   ; trusted
+    (cond
+      [(not res) (values e1 texts attrs)]
+      [else
+       (define tds (change-result-applied-texts res))
+       (define ads (change-result-applied-attrs res))
+       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-buffer e1 bid) tds)))
+       (values e2 (append texts tds) (append attrs ads))])))
+
 (define (editor-view-undo ed vid)
   (define bid (editor-view-buffer-id ed vid))
   (define-values (st h*) (history-pop-undo (editor-history ed bid)))
   (cond
     [(not st) (values ed #f)]
     [else
-     ;; undo-descs 是**依次施加**（每条坐标基于上一条之后），不能当同坐标批处理。
-     (define ed* (for/fold ([e ed]) ([d (in-list (step-undo-descs st))])
-                   (define-values (e1 d1) (editor-apply-edit e bid d #f))
-                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) (list d1)) e1)))
+     (define-values (ed* texts attrs) (apply-change-seq ed bid vid (step-undo st)))
      ;; 撤销后 leader 光标回到该步开始前，并 ensure
      (define w* (window-ensure-point
                  (window-set-point (view-window (editor-view-ref ed* vid)) (step-pre-point st))))
      (define ed** (editor-leader-window ed* vid w*))
-     (values (editor-put-history ed** bid h*) (change-report (step-undo-descs st)))]))
+     (values (editor-put-history ed** bid h*) (change-report texts attrs))]))
 
 (define (editor-view-redo ed vid)
   (define bid (editor-view-buffer-id ed vid))
@@ -74,10 +84,8 @@
   (cond
     [(not st) (values ed #f)]
     [else
-     (define ed* (for/fold ([e ed]) ([d (in-list (step-replay-descs st))])
-                   (define-values (e1 d1) (editor-apply-edit e bid d #f))
-                   (if d1 (editor-leader-view e1 vid (editor-buffer e1 bid) (list d1)) e1)))
-     (values (editor-put-history ed* bid h*) (change-report (step-replay-descs st)))]))
+     (define-values (ed* texts attrs) (apply-change-seq ed bid vid (step-replay st)))
+     (values (editor-put-history ed* bid h*) (change-report texts attrs))]))
 
 ;;; ---------- 导航（指定 view；移动后 ensure + follow 镜像） ----------
 ;; 裸写用 editor-view-put-window（program.rkt），同步用 editor-view-follow；
@@ -136,13 +144,13 @@
   (check-equal? (editor-buffer->string u1 0) "")
   (check-equal? (editor-point u1) (point 0 0))
   ;; 撤销报告：施加顺序的 undo-descs
-  (check-equal? (change-report-edits r-u3)
+  (check-equal? (change-report-texts r-u3)
                 (list (edit-desc (point 0 2) (point 0 3) "")
                       (edit-desc (point 0 1) (point 0 2) "")
                       (edit-desc (point 0 0) (point 0 1) "")))
   (define-values (r1b r-u4) (editor-redo u1))
   (check-equal? (editor-buffer->string r1b 0) "abc")
-  (check-equal? (change-report-edits r-u4)
+  (check-equal? (change-report-texts r-u4)
                 (list (edit-desc (point 0 0) (point 0 0) "a")
                       (edit-desc (point 0 1) (point 0 1) "b")
                       (edit-desc (point 0 2) (point 0 2) "c")))
@@ -245,7 +253,7 @@
   (check-equal? (editor-point ec3) (point 0 1))          ; leader：光标推进到插入后
   (check-true (editor-can-undo? ec3))
   ;;   显式 #:trusted? #t：绕 read-only
-  (define ecr (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
+  (define-values (ecr _ecr-r) (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
   (define-values (ecr1 rcr1) (editor-command ecr (edit-insert-char #\X)
                                              #:selection (list (caret (point 0 1)))))
   (check-false rcr1)
@@ -263,5 +271,36 @@
   (define f3 (editor-put-window f2 w*))
   (check-equal? (editor-view-top-line f3 fv) 0)                  ; 裸写不同步
   (check-equal? (editor-view-top-line (editor-follow f3) fv) 3)  ; follow 后镜像
+
+  ;; 文本 + 属性一条命令、一步撤销：撤销要把属性一起正确地回退
+  (define ba0 (editor-open "abc"))
+  (define-values (ba1 _ba-r)
+    (editor-command ba0 (edit-insert "X")
+                    #:selection (list (caret (point 0 1)))
+                    #:attrs (lambda (_ed _bid texts)
+                              (for/list ([d (in-list texts)])
+                                (attr-set (edit-desc-start d) (edit-desc-after-position d)
+                                          read-only-key #t)))
+                    #:reaction 'leader #:record? #t))
+  (check-equal? (editor-buffer->string ba1 0) "aXbc")
+  (check-equal? (editor-attr-key-runs ba1 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-undo-depth ba1 0) 1)
+  (define-values (ba2 _ba-u) (editor-undo ba1))
+  (check-equal? (editor-buffer->string ba2 0) "abc")
+  (check-false (attr-read-only? (editor-attr-at ba2 0 (point 0 1))))
+  ;; 重做也要把文本 + 属性恢复
+  (define-values (ba3 _ba-r2) (editor-redo ba2))
+  (check-equal? (editor-buffer->string ba3 0) "aXbc")
+  (check-equal? (editor-attr-key-runs ba3 0 0 read-only-key) (list (list 1 2 #t)))
+
+  ;; 删除带属性的文本再撤销：属性不得丢失（旧实现的回归点）
+  (define br0 (editor-open "abc"))
+  (define-values (br1 _br-r) (editor-apply-attrs br0 0 (list (attr-set (point 0 0) (point 0 3) read-only-key #t))))
+  (define br2 (editor-set-selections br1 (list (selection (point 0 1) (point 0 2)))))
+  (define-values (br3 _br-e) (editor-command br2 (edit-backspace) #:trusted? #t #:reaction 'leader #:record? #t))
+  (check-equal? (editor-buffer->string br3 0) "ac")
+  (define-values (br4 _br-u) (editor-undo br3))
+  (check-equal? (editor-buffer->string br4 0) "abc")
+  (check-equal? (editor-attr-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
 
   (displayln "command.rkt: all tests passed"))

@@ -1,6 +1,7 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/lines.rkt" "../atom/edit.rkt"
+         "../atom/attr.rkt" rackunit)
 
 ;;; unit/attrs.rkt —— 行内属性区间（通用 key→value，随编辑移动）
 ;;;
@@ -12,19 +13,27 @@
 ;;;   P1  每行内 rspan 按 start 升序、互不重叠
 ;;;   P2  相邻且 hash 相同的 rspan 已合并
 ;;;   P3  hash 为空的 rspan 不保留
+;;;   P4  行数 == content 行数（attrs-check 用 line-count 参数校验）
 ;;;
-;;; 编辑传播：新文本一律**不继承**任何属性。
+;;; 两条写路径：
+;;;   attrs-apply-edit        —— 文本变更时跟随（吃生效 edit-desc），新文本不继承属性
+;;;   attrs-apply-attr[-batch]—— 显式属性变更（吃 attr-desc），零宽 = no-op
+;;;
+;;; 撤销材料：attrs-attr-inverse（单条 attr-desc 的逆）。文本编辑抹掉的属性由 doc 层
+;;; 用 attrs-range-runs 捕获后补回（见 doc/buffer.rkt）。
 
 (provide
  attrs?                             ; 构造器/内部字段不外露（避免绕过不变量）
  attrs-empty
  attrs-line-count
  attrs-at
- attrs-put
- attrs-remove
  attrs-runs
  attrs-key-runs
+ attrs-range-runs
  attrs-apply-edit
+ attrs-apply-attr
+ attrs-apply-attr-batch
+ attrs-attr-inverse
  attrs-check)
 
 ;;; ---------- 数据 ----------
@@ -61,7 +70,13 @@
         (error 'attrs-check "empty rspan present: ~a" sp))
       (loop (rspan-end sp) (cdr rest)))))
 
-(define (attrs-check p)
+;; 交叉校验：行数必须等于 line-count（与 content 同坐标），否则报错。
+(define (attrs-check p line-count)
+  (unless (and (exact-nonnegative-integer? line-count) (>= line-count 1))
+    (error 'attrs-check "line-count must be >= 1, got ~a" line-count))
+  (unless (= (attrs-line-count p) line-count)
+    (error 'attrs-check "attrs 行数 ~a ≠ content 行数 ~a"
+           (attrs-line-count p) line-count))
   (for ([row (in-vector (attrs-rows p))]) (check-row! row))
   p)
 
@@ -91,43 +106,33 @@
             (cons sp acc))]))))
 
 ;; 对 [start, end) 的每个子段做 (f 当前 hash)；空段丢弃、相邻相同合并。
-(define (row-update row start end f)
+(define (row-update who row start end f)
   (when (>= start end)
-    (error 'attrs-put "属性区间必须 start < end，得到 [~a,~a)" start end))
+    (error who "属性区间必须 start < end，得到 [~a,~a)" start end))
   (define bounds (sort (remove-duplicates (append (list start end)
                                                   (rspan-boundaries row)))
                        <))
   (define segments
     (for/list ([a (in-list (drop-right bounds 1))]
                [b (in-list (rest bounds))])
-      (define v (if (and (<= start a) (<= b end)) (f (row-val-at row a)) (row-val-at row a)))
+      (define inside? (and (<= start a) (<= b end)))
+      (define v (if inside? (f (row-val-at row a)) (row-val-at row a)))
       (rspan a b v)))
   (merge-adjacent (filter (lambda (sp) (not (rspan-empty? sp))) segments)))
 
 ;; 对 [start,end) 统一设置 key→val（保留其它 key）。
-(define (row-put-key row start end key val)
-  (row-update row start end (lambda (h) (hash-set h key val))))
+(define (row-put-key who row start end key val)
+  (row-update who row start end (lambda (h) (hash-set h key val))))
 
 ;; 对 [start,end) 移除 key。
-(define (row-remove-key row start end key)
-  (row-update row start end (lambda (h) (hash-remove h key))))
-
-(define (attrs-put p line start end key val)
-  (define rows (attrs-rows p))
-  (define rows* (vector-copy rows))
-  (vector-set! rows* line (row-put-key (vector-ref rows line) start end key val))
-  (attrs rows*))
-
-(define (attrs-remove p line start end key)
-  (define rows (attrs-rows p))
-  (define rows* (vector-copy rows))
-  (vector-set! rows* line (row-remove-key (vector-ref rows line) start end key))
-  (attrs rows*))
+(define (row-remove-key who row start end key)
+  (row-update who row start end (lambda (h) (hash-remove h key))))
 
 ;;; ---------- 读 ----------
 
-(define (attrs-at p line col)
-  (row-val-at (vector-ref (attrs-rows p) line) col))
+(define (attrs-at p q)
+  (define l (point-line q)) (define c (point-col q))
+  (row-val-at (vector-ref (attrs-rows p) l) c))
 
 ;; 整行属性段：(listof (list start end hash))，恰好覆盖 [0, line-length)。
 (define (attrs-runs p line line-length)
@@ -160,7 +165,33 @@
         (cons (list (car (car acc)) (cadr seg) (caddr seg)) (cdr acc))]
        [else (cons seg acc)]))))
 
-;;; ---------- 编辑调整（新文本无属性，不继承） ----------
+;; 跨行枚举 [start,end) 内所有属性段（含每个 key 的完整 hash）；含两端行、中间整行。
+;; 半开区间，跨行时按行切；返回 (listof (list line start-col end-col hash))。
+;; 用于：文本编辑抹掉某区间时，把该区间的属性捕获下来（撤销时补回）。
+(define (attrs-range-runs p start end)
+  (unless (point<=? start end)
+    (error 'attrs-range-runs "区间反向: ~a..~a" start end))
+  (define rows (attrs-rows p))
+  (define n (vector-length rows))
+  (define sl (point-line start)) (define sc (point-col start))
+  (define el (point-line end))   (define ec (point-col end))
+  (unless (< sl n) (error 'attrs-range-runs "起始行越界: ~a" sl))
+  (unless (< el n) (error 'attrs-range-runs "结束行越界: ~a" el))
+  (define (clip-line line lo hi)            ; hi = #f → 到行尾
+    (for*/list ([sp (in-list (vector-ref rows line))]
+                #:when (and (or (not hi) (< (rspan-start sp) hi))
+                            (> (rspan-end sp) lo)))
+      (list line (max lo (rspan-start sp))
+            (if hi (min hi (rspan-end sp)) (rspan-end sp))
+            (rspan-val sp))))
+  (cond
+    [(= sl el) (clip-line sl sc ec)]
+    [else
+     (append (clip-line sl sc #f)
+             (append* (for/list ([l (in-range (add1 sl) el)]) (clip-line l 0 #f)))
+             (clip-line el 0 ec))]))
+
+;;; ---------- 文本编辑跟随（新文本无属性，不继承） ----------
 
 ;; 在 col 处把一行切成两半；跨切点的 rspan 被切成两个。
 (define (split-row row col)
@@ -225,51 +256,188 @@
    (insert-lines rows1 (edit-desc-start d)
                  (string->lines (edit-desc-new-text d)))))
 
+;;; ---------- 显式属性变更（attr-desc） ----------
+
+;; attr-desc 的静态合法性：同行、行号在域内、方向不反。零宽由调用方按 no-op 处理。
+(define (check-attr-line a who d)
+  (define s (attr-desc-start d)) (define e (attr-desc-end d))
+  (unless (= (point-line s) (point-line e))
+    (error who "属性区间必须同一行: ~a..~a" s e))
+  (unless (point<=? s e)
+    (error who "属性区间反向: ~a..~a" s e))
+  (define l (point-line s))
+  (unless (< l (attrs-line-count a))
+    (error who "属性行号越界: ~a（attrs 行数 ~a）" l (attrs-line-count a))))
+
+(define (op-fn who d row)
+  (case (attr-desc-op d)
+    [(set)    (lambda () (row-put-key who row
+                                       (point-col (attr-desc-start d))
+                                       (point-col (attr-desc-end d))
+                                       (attr-desc-key d) (attr-desc-val d)))]
+    [(remove) (lambda () (row-remove-key who row
+                                         (point-col (attr-desc-start d))
+                                         (point-col (attr-desc-end d))
+                                         (attr-desc-key d)))]
+    [else (error who "未知 attr op: ~a" (attr-desc-op d))]))
+
+;; 施加单条 attr-desc。零宽 = no-op（有唯一合法解释 → 归一，不报错）。
+(define (attrs-apply-attr a who d)
+  (check-attr-line a who d)
+  (if (attr-desc-empty? d)
+      a
+      (let* ([rows (attrs-rows a)]
+             [rows* (vector-copy rows)]
+             [line (point-line (attr-desc-start d))]
+             [row* ((op-fn who d (vector-ref rows line)))])
+        (vector-set! rows* line row*)
+        (attrs rows*))))
+
+;; 批量施加：按行分组，每行只拷贝一次行、只做一次 row 折叠。
+;; 同 (line,key) 区间不得重叠（否则逆不成立）→ 报错。
+(define (check-attr-descs who ds)
+  (define groups (make-hash))
+  (for ([d (in-list ds)])
+    (hash-update! groups (cons (point-line (attr-desc-start d)) (attr-desc-key d))
+                  (lambda (l) (cons d l)) '()))
+  (for ([(k l) (in-hash groups)])
+    (define sorted (sort l (lambda (x y)
+                             (< (point-col (attr-desc-start x))
+                                (point-col (attr-desc-start y))))))
+    (for ([x (in-list (drop-right sorted 1))] [y (in-list (rest sorted))])
+      (when (point<? (attr-desc-start y) (attr-desc-end x))
+        (error who "属性编辑重叠（同一 key）: ~a 与 ~a" x y)))))
+
+(define (attrs-apply-attr-batch a who ds)
+  (for-each (lambda (d) (check-attr-line a who d)) ds)
+  (check-attr-descs who ds)
+  (define live (filter (lambda (d) (not (attr-desc-empty? d))) ds))
+  (cond
+    [(null? live) a]
+    [else
+     (define by-line (make-hash))
+     (for ([d (in-list live)])
+       (hash-update! by-line (point-line (attr-desc-start d))
+                     (lambda (l) (append l (list d))) '()))
+     (define rows* (vector-copy (attrs-rows a)))
+     (for ([(line line-ds) (in-hash by-line)])
+       (define row* (for/fold ([row (vector-ref rows* line)]) ([d (in-list line-ds)])
+                      ((op-fn who d row))))
+       (vector-set! rows* line row*))
+     (attrs rows*)]))
+
+;;; ---------- 逆（显式属性的撤销材料） ----------
+
+;; 对单条 attr-desc，给出「恢复其覆盖前 key 状态」的 attr-desc 列表
+;; （同坐标系；依次施加可精确回到 d 之前）。零宽 → '()。
+(define (attrs-attr-inverse a d)
+  (check-attr-line a 'attrs-attr-inverse d)
+  (if (attr-desc-empty? d)
+      '()
+      (let* ([line (point-line (attr-desc-start d))]
+             [s (point-col (attr-desc-start d))]
+             [e (point-col (attr-desc-end d))]
+             [key (attr-desc-key d)]
+             [row (vector-ref (attrs-rows a) line)]
+             [pts (sort (remove-duplicates
+                         (append (list s e)
+                                 (append*
+                                  (for*/list ([sp (in-list row)]
+                                              #:when (and (< (rspan-start sp) e)
+                                                          (> (rspan-end sp) s)))
+                                    (list (max s (rspan-start sp))
+                                          (min e (rspan-end sp)))))))
+                        <)])
+        (for/list ([x (in-list (drop-right pts 1))] [y (in-list (rest pts))]
+                   #:when (< x y))
+          (define h (row-val-at row x))
+          (if (hash-has-key? h key)
+              (attr-set (point line x) (point line y) key (hash-ref h key))
+              (attr-del (point line x) (point line y) key))))))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
   (define (fresh) (attrs-empty 3))
-  (define (apply* p d) (attrs-apply-edit p d))
+  (define (P l c) (point l c))
+  (define (apply-attr* a d) (attrs-apply-attr a 'test d))
 
-  ;; 半开区间 + 点查询（hash 属性）
-  (define p0 (attrs-put (fresh) 1 0 5 'ro #t))
-  (check-equal? (attrs-at p0 1 0) (hash 'ro #t))
-  (check-equal? (attrs-at p0 1 4) (hash 'ro #t))
-  (check-equal? (attrs-at p0 1 5) (hash))
+  ;; 点查询（hash 属性）+ 半开区间
+  (define p0 (apply-attr* (fresh) (attr-set (P 1 0) (P 1 5) 'ro #t)))
+  (check-equal? (attrs-at p0 (P 1 0)) (hash 'ro #t))
+  (check-equal? (attrs-at p0 (P 1 4)) (hash 'ro #t))
+  (check-equal? (attrs-at p0 (P 1 5)) (hash))
 
   ;; 多 key 互不干扰；相邻同 hash 合并（P2）
-  (define p1 (attrs-put (attrs-put (fresh) 0 1 2 'a 1) 0 2 4 'a 1))
+  (define p1 (apply-attr* (apply-attr* (fresh) (attr-set (P 0 1) (P 0 2) 'a 1))
+                          (attr-set (P 0 2) (P 0 4) 'a 1)))
   (check-equal? (attrs-runs p1 0 5)
                 (list (list 0 1 (hash)) (list 1 4 (hash 'a 1)) (list 4 5 (hash))))
-  (define p1b (attrs-put p1 0 2 3 'b 2))
+  (define p1b (apply-attr* p1 (attr-set (P 0 2) (P 0 3) 'b 2)))
   (check-equal? (attrs-key-runs p1b 0 5 'a) (list (list 1 4 1)))
   (check-equal? (attrs-key-runs p1b 0 5 'b) (list (list 2 3 2)))
 
-  ;; 移除 key
-  (define p2 (attrs-remove p0 1 2 3 'ro))
-  (check-equal? (attrs-at p2 1 1) (hash 'ro #t))
-  (check-equal? (attrs-at p2 1 2) (hash))
-  (check-equal? (attrs-at p2 1 3) (hash 'ro #t))
+  ;; remove key
+  (define p2 (apply-attr* p0 (attr-del (P 1 2) (P 1 3) 'ro)))
+  (check-equal? (attrs-at p2 (P 1 1)) (hash 'ro #t))
+  (check-equal? (attrs-at p2 (P 1 2)) (hash))
+  (check-equal? (attrs-at p2 (P 1 3)) (hash 'ro #t))
 
-  ;; 编辑：区间内插入 → 右半后移，插入点无属性
-  (define e0 (attrs-put (fresh) 0 0 5 'ro #t))
-  (define e1 (apply* e0 (edit-desc (point 0 2) (point 0 2) "x")))
+  ;; 零宽 = no-op（不报错、不变）
+  (define z0 (fresh))
+  (check-eq? (apply-attr* z0 (attr-set (P 0 1) (P 0 1) 'k #t)) z0)
+  (check-eq? (apply-attr* p0 (attr-del (P 1 2) (P 1 2) 'ro)) p0)
+
+  ;; 跨行先报错（不被夹紧掩盖）；行号越界具名报错
+  (check-exn exn:fail? (lambda () (apply-attr* (fresh) (attr-set (P 0 0) (P 1 0) 'k #t))))
+  (check-exn exn:fail? (lambda () (apply-attr* (fresh) (attr-set (P 9 0) (P 9 1) 'k #t))))
+
+  ;; 批量：一次施加多条（含跨行）
+  (define pb (attrs-apply-attr-batch (fresh) 'test
+                                     (list (attr-set (P 0 0) (P 0 3) 'ro #t)
+                                           (attr-set (P 1 0) (P 1 2) 'ro #t))))
+  (check-equal? (attrs-key-runs pb 0 3 'ro) (list (list 0 3 #t)))
+  (check-equal? (attrs-key-runs pb 1 3 'ro) (list (list 0 2 #t)))
+  ;; 同 key 重叠 → 报错
+  (check-exn exn:fail?
+             (lambda () (attrs-apply-attr-batch (fresh) 'test
+                          (list (attr-set (P 0 1) (P 0 3) 'ro #t)
+                                (attr-set (P 0 2) (P 0 4) 'ro #t)))))
+
+  ;; 逆：set 覆盖后恢复原值/恢复「无 key」
+  (define inv-base (apply-attr* (fresh) (attr-set (P 0 1) (P 0 2) 'ro #t)))  ; [1,2) ro
+  (define invs (attrs-attr-inverse inv-base (attr-set (P 0 0) (P 0 4) 'ro #t)))
+  (define restored
+    (for/fold ([a (apply-attr* inv-base (attr-set (P 0 0) (P 0 4) 'ro #t))])
+              ([d (in-list invs)]) (apply-attr* a d)))
+  (check-equal? (attrs-key-runs restored 0 5 'ro) (list (list 1 2 #t)))
+
+  ;; 文本编辑跟随：区间内插入 → 右半后移，插入点无属性
+  (define e0 (apply-attr* (fresh) (attr-set (P 0 0) (P 0 5) 'ro #t)))
+  (define e1 (attrs-apply-edit e0 (edit-desc (P 0 2) (P 0 2) "x")))
   (check-equal? (attrs-runs e1 0 6)
                 (list (list 0 2 (hash 'ro #t)) (list 2 3 (hash)) (list 3 6 (hash 'ro #t))))
   ;; 删除区间内部 → 收缩
-  (define e2 (apply* e0 (edit-desc (point 0 1) (point 0 3) "")))
+  (define e2 (attrs-apply-edit e0 (edit-desc (P 0 1) (P 0 3) "")))
   (check-equal? (attrs-runs e2 0 3) (list (list 0 3 (hash 'ro #t))))
 
   ;; 跨行删除 + 多行插入：属性被正确切/移，新行无属性
-  (define p4 (attrs-put (fresh) 0 0 3 'ro #t))
-  (define p5 (apply* p4 (edit-desc (point 0 1) (point 1 1) "PQ\nR")))
-  (check-equal? (attrs-at p5 0 0) (hash 'ro #t))
-  (check-equal? (attrs-at p5 0 1) (hash))
-  (check-equal? (attrs-at p5 1 0) (hash))
-  (check-equal? (attrs-check p5) p5)
+  (define p4 (apply-attr* (fresh) (attr-set (P 0 0) (P 0 3) 'ro #t)))
+  (define p5 (attrs-apply-edit p4 (edit-desc (P 0 1) (P 1 1) "PQ\nR")))
+  (check-equal? (attrs-at p5 (P 0 0)) (hash 'ro #t))
+  (check-equal? (attrs-at p5 (P 0 1)) (hash))
+  (check-equal? (attrs-at p5 (P 1 0)) (hash))
+  (check-equal? (attrs-check p5 3) p5)
 
-  ;; 空 / 反向区间 → 报错
-  (check-exn exn:fail? (lambda () (attrs-put (fresh) 1 2 2 'ro #t)))
-  (check-exn exn:fail? (lambda () (attrs-put (fresh) 1 3 1 'ro #t)))
+  ;; attrs-range-runs：跨行捕获
+  (define rg (apply-attr* (fresh) (attr-set (P 0 1) (P 0 4) 'ro #t)))
+  (check-equal? (attrs-range-runs rg (P 0 0) (P 1 0))
+                (list (list 0 1 4 (hash 'ro #t))))
+  (check-equal? (attrs-range-runs rg (P 0 2) (P 0 3))
+                (list (list 0 2 3 (hash 'ro #t))))
+
+  ;; attrs-check：行数必须一致
+  (check-exn exn:fail? (lambda () (attrs-check (fresh) 2)))
+  (check-exn exn:fail? (lambda () (attrs-check (fresh) 0)))
 
   (displayln "attrs.rkt: all tests passed"))

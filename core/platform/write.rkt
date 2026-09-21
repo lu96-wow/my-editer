@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt"
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/change.rkt"
          "../doc/buffer.rkt" "../doc/batch.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
@@ -12,18 +12,20 @@
 ;;; 这里的东西能破坏不变量（比如只换 buffer 不换别的），所以必须藏起来。
 ;;;
 ;;;   editor-swap-buffer   换某 buffer 的 buffer 值（entries + 同 buffer view 的引用）
-;;;   editor-apply-edit    内容变更唯一漏斗（= buffer-apply-edit + swap）
-;;;   editor-apply-edit-batch 批量漏斗（= buffer-apply-edit-batch + 一次 swap）
+;;;   editor-apply-change  变更唯一漏斗（= buffer-apply-change + swap）
+;;;   editor-apply-edit    文本单条漏斗
+;;;   editor-apply-edit-batch 文本批量漏斗
 ;;;   editor-update-buffer 装饰类写回（f : buffer → buffer）
 ;;;   editor-put-view      换一个 view 的 window
 ;;;   editor-set-view-sync / editor-set-view-buffer  视图结构变换
 ;;;   editor-put-buffer-name
-;;;   editor-put-history / editor-record-history / editor-record-batch
+;;;   editor-put-history / editor-record-history
 ;;;
 ;;; 不变量（由本层维持）：任一 view 的 window.buffer 必是某个 buffer-entry 的 buffer。
 
 (provide
  editor-swap-buffer
+ editor-apply-change
  editor-apply-edit
  editor-apply-edit-batch
  editor-update-buffer
@@ -32,8 +34,7 @@
  editor-set-view-buffer
  editor-put-history
  editor-put-buffer-name
- editor-record-history
- editor-record-batch)
+ editor-record-history)
 
 ;;; ---------- 视图定位 ----------
 
@@ -61,25 +62,29 @@
                    [window (struct-copy window (view-window v) [buffer b*])])
                  v))]))
 
-;; 内容变更唯一漏斗：把 desc 施加到 bid 的 buffer，再换引用。
-;; 返回 (values editor 生效desc/#f)。**不做**任何显示决策（不映射光标）。
-(define (editor-apply-edit ed bid d [guard? #t])
+;; 变更唯一漏斗：把 change 施加到 bid 的 buffer，再换引用。
+;; 返回 (values editor change-result/#f)。**不做**任何显示决策（不映射光标）。
+(define (editor-apply-change ed bid ch [guard? #t])
   (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
-  (define-values (b* d*) (if guard? (buffer-apply-edit b0 d) (buffer-apply-edit-trusted b0 d)))
-  (if (not d*)
+  (define-values (b* res) (if guard?
+                              (buffer-apply-change b0 ch)
+                              (buffer-apply-change-trusted b0 ch)))
+  (if (not res)
       (values ed #f)
-      (values (editor-swap-buffer ed bid b*) d*)))
+      (values (editor-swap-buffer ed bid b*) res)))
 
-;; 批量内容变更漏斗：一次 swap。返回 (values editor applied-descs inverses)；
-;; applied/inverses 施加顺序且平行（no-op / 被守卫拒的不进结果）。
+;; 文本单条漏斗（便利）：返回 (values editor 生效desc/#f)。
+(define (editor-apply-edit ed bid d [guard? #t])
+  (define-values (ed* res) (editor-apply-change ed bid (change/edits (list d)) guard?))
+  (define ds (if res (change-result-applied-texts res) '()))
+  (values ed* (and (pair? ds) (car ds))))
+
+;; 文本批量漏斗：返回 (values editor 生效descs 逆)；施加顺序且平行。
 (define (editor-apply-edit-batch ed bid descs [guard? #t])
-  (define b0 (buffer-entry-buffer (editor-buffer-entry ed bid)))
-  (define-values (b* ds ivs) (if guard?
-                              (buffer-apply-edit-batch b0 descs)
-                              (buffer-apply-edit-batch-trusted b0 descs)))
-  (if (null? ds)
-      (values ed '() '())
-      (values (editor-swap-buffer ed bid b*) ds ivs)))
+  (define-values (ed* res) (editor-apply-change ed bid (change/edits descs) guard?))
+  (if res
+      (values ed* (change-result-applied-texts res) (change-result-text-inverses res))
+      (values ed '() '())))
 
 ;; 装饰类写回：f : buffer → buffer（不改文本）。换 buffer 引用即可，光标无需动。
 (define (editor-update-buffer ed bid f)
@@ -104,19 +109,11 @@
 
 ;;; ---------- 账本写回 ----------
 
-(define (editor-record-history ed bid ch)
+;; replay / undo 都是 change 的序列（正序施加）。
+(define (editor-record-history ed bid replay undo pre-point)
   (define entry (editor-buffer-entry ed bid))
   (define entry* (struct-copy buffer-entry entry
-                  [history (history-record (buffer-entry-history entry) ch)]))
-  (struct-copy editor ed
-    [buffers (for/list ([e (in-list (editor-buffers ed))])
-               (if (= (buffer-entry-id e) bid) entry* e))]))
-
-(define (editor-record-batch ed bid replay-descs undo-descs pre-point)
-  (define entry (editor-buffer-entry ed bid))
-  (define entry* (struct-copy buffer-entry entry
-                  [history (history-record-batch (buffer-entry-history entry)
-                                                 replay-descs undo-descs pre-point)]))
+                  [history (history-record (buffer-entry-history entry) replay undo pre-point)]))
   (struct-copy editor ed
     [buffers (for/list ([e (in-list (editor-buffers ed))])
                (if (= (buffer-entry-id e) bid) entry* e))]))

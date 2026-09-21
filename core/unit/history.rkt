@@ -1,25 +1,28 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/edit.rkt" rackunit)
+(require "../atom/point.rkt" "../atom/edit.rkt" "../atom/attr.rkt" "../atom/change.rkt" rackunit)
 
 ;;; unit/history.rkt —— 撤销/重放账本
 ;;;
-;;; 归属：文本变更走 document；本模块只管账本——记不记、和谁并、几步。
-;;; 所以它是**纯数据**：不碰 window/document，只认识 edit-change / edit-desc / point。
+;;; 归属：文本与属性变更都走 document；本模块只管账本——记不记、和谁并、几步。
+;;; 所以它是**纯数据**：不碰 window/document，只认识 change / edit-desc / point。
 ;;;
 ;;; 一步必须自含正反两向：
-;;;   replay-descs  重放用（desc 自带 new-text，不需旧文本）
-;;;   undo-descs    撤销用（逆只能由「编辑前的 buffer」导出，故在编辑时捕获）
-;;; 两者合起来才闭合：撤销到底再重放能精确回到原状态。
+;;;   replay : (listof change)  重放：**正序依次施加**（每条坐标基于上一条之后）
+;;;   undo   : (listof change)  撤销：正序依次施加
+;;;   pre-point : point         该步开始前 active 视图的光标
 ;;;
-;;; ⚠ 逆必须由**编辑前**的 buffer 导出（见 buffer-edit-desc-inverse）。
-;;; 用编辑后的 buffer 求逆会静默写坏历史，且只在删除路径爆。
+;;; 一步是 change 的**序列**而非单个 change：连续打字合并成一步时，每条 desc 的坐标
+;;; 都基于前一条之后，不能塞进一个批语义的 change。
 ;;;
-;;; 合并规则（结构判定，无时钟无状态）：新 desc 能否并进栈顶那一步——
+;;; ⚠ 逆必须由**编辑前**的 buffer 导出（见 doc/buffer.rkt 的 change-result）。
+;;; 用编辑后的 buffer 求逆会静默写坏历史；属性的逆还必须额外补回被文本抹掉的段。
+;;;
+;;; 合并规则（结构判定，无时钟无状态）：只对**纯文本、单字符**的连续段合并——
 ;;;   打字连续段：两条都是「单字符、非换行」纯插入，且 d.start = after(pl)
 ;;;   退格连续段：两条都是「单字符、非换行」纯删除，且 d.end = pl.start
 ;;;   前向删除段：同上，且 d.start = pl.start
-;;;   其余（换行、粘贴、跨行删除、替换…）一律不合并
+;;;   其余（换行、粘贴、跨行删除、替换、任何带属性的变更…）一律不合并
 ;;; 合并时保留**较早**的 point（撤销回到整段之前）。
 
 (provide
@@ -27,7 +30,6 @@
  (struct-out history)
  history-empty
  history-record
- history-record-batch
  history-pop-undo
  history-pop-redo
  history-can-undo?
@@ -37,11 +39,9 @@
 
 ;;; ---------- 数据 ----------
 
-;; 字段名自带方向与次序：两个 desc 列表存的是**相反次序**，不许用中性名。
-(struct step (replay-descs undo-descs pre-point) #:transparent)
-;; replay-descs : (listof edit-desc)  重放：正序依次 apply
-;; undo-descs   : (listof edit-desc)  撤销：正序依次 apply（与 replay 相反次序）
-;; pre-point    : point               该步开始前 active 视图的光标
+;; replay : (listof change)  正序依次施加
+;; undo   : (listof change)  正序依次施加（新编辑的逆在前）
+(struct step (replay undo pre-point) #:transparent)
 
 (struct history (undo redo) #:transparent)
 ;; undo / redo : (listof step)  栈顶在前
@@ -65,44 +65,49 @@
        (= (point-col (edit-desc-end d)) (add1 (point-col (edit-desc-start d))))
        (string=? (edit-desc-new-text d) "")))
 
-(define (step-merge? prev d)
-  (define pl (last (step-replay-descs prev)))
-  (cond
-    [(and (char-insert? pl) (char-insert? d))
-     (point=? (edit-desc-start d) (edit-desc-after-position pl))]
-    [(and (char-delete? pl) (char-delete? d))
-     (or (point=? (edit-desc-end d) (edit-desc-start pl))     ; 退格：向左推进
-         (point=? (edit-desc-start d) (edit-desc-start pl)))] ; 前向删除：同点继续
-    [else #f]))
+;; 只有「纯文本单条」才可能参与合并。
+(define (single-text ch)
+  (and (null? (change-attrs ch))
+       (= 1 (length (change-texts ch)))
+       (car (change-texts ch))))
+
+;; 本次 replay 是单条纯文本 change；返回其 desc。
+(define (single-change-text replay)
+  (and (= 1 (length replay)) (single-text (car replay))))
+
+(define (replay-merge? prev replay)
+  (define pch (and (pair? (step-replay prev)) (last (step-replay prev))))
+  (define pl (and pch (null? (change-attrs pch))
+                  (pair? (change-texts pch))
+                  (last (change-texts pch))))
+  (define d (single-change-text replay))
+  (and pl d
+       (cond
+         [(and (char-insert? pl) (char-insert? d))
+          (point=? (edit-desc-start d) (edit-desc-after-position pl))]
+         [(and (char-delete? pl) (char-delete? d))
+          (or (point=? (edit-desc-end d) (edit-desc-start pl))     ; 退格：向左推进
+              (point=? (edit-desc-start d) (edit-desc-start pl)))] ; 前向删除：同点继续
+         [else #f])))
 
 ;;; ---------- 记录 / 取出 ----------
 
-;; 记一步。参数是 buffer-edit / 编辑命令交回的 edit-change。
-;; 与栈顶可并 → 并进去并保留**较早**的 point。任何记录都清空 redo 栈。
-(define (history-record h ch)
-  (define d (edit-change-desc ch))
-  (define inverse (edit-change-inverse ch))
-  (define p (edit-change-pre-point ch))
+;; 记一步：replay / undo 都是 change 的序列（正序施加）。任何记录都清空 redo 栈。
+(define (history-record h replay undo pre-point)
   (define top (and (pair? (history-undo h)) (car (history-undo h))))
   (cond
-    [(and top (step-merge? top d))
+    [(and top (replay-merge? top replay))
      (struct-copy history h
-       [undo (cons (step (append (step-replay-descs top) (list d))
-                         (cons inverse (step-undo-descs top))
+       [undo (cons (step (append (step-replay top) replay)
+                         ;; 新的逆在前，旧的在后（撤销顺序）
+                         (append undo (step-undo top))
                          (step-pre-point top))
                    (cdr (history-undo h)))]
        [redo '()])]
     [else
      (struct-copy history h
-       [undo (cons (step (list d) (list inverse) p) (history-undo h))]
+       [undo (cons (step replay undo pre-point) (history-undo h))]
        [redo '()])]))
-
-;; 记一步「批量」：整批自含正反两向。replay-descs 正序重放；undo-descs 正序撤销
-;; （= 各逆的反序）。不与栈顶合并（批量是原子的独立一步）。清空 redo。
-(define (history-record-batch h replay-descs undo-descs pre-point)
-  (struct-copy history h
-    [undo (cons (step replay-descs undo-descs pre-point) (history-undo h))]
-    [redo '()]))
 
 ;; 取出下一步。空栈 → (values #f h)（原样，不报错）。
 (define (history-pop-undo h)
@@ -123,74 +128,78 @@
                   [redo (cdr (history-redo h))]
                   [undo (cons st (history-undo h))]))]))
 
-;;; ---------- 测试（纯数据）----------
+;;; ---------- 测试（纯数据 + doc 帮助构造逆） ----------
 
 (module+ test
   (require "../doc/buffer.rkt" "../doc/batch.rkt")
-  (define (ap b d) (let-values ([(b* _) (buffer-apply-edit-trusted b d)]) b*))
-  (define (ap-all b ds) (for/fold ([x b]) ([d (in-list ds)]) (ap x d)))
-  ;; 模拟：编辑前 buffer、edit-change、编辑后 buffer
-  (define (rec h b op p)
-    (define-values (b* d) (buffer-edit b p op))
-    (if (not d)
-        (values h b)
-        (values (history-record h (edit-change d (buffer-edit-desc-inverse b d) p)) b*)))
+
+  ;; 施加一条文本 desc，并给出 (replay undo pre-point)
+  (define (step-of b d p)
+    (define-values (b* res) (buffer-apply-change-trusted b (change/edits (list d))))
+    (values b* (list (change-result-replay res)) (change-result-undo res)))
+  ;; 模拟一次编辑并记账
+  (define (rec h b d p)
+    (define-values (b* replay undo) (step-of b d p))
+    (values (history-record h replay undo p) b*))
+  (define (apply-undo b undo) (for/fold ([x b]) ([c (in-list undo)]) (let-values ([(x* _) (buffer-apply-change-trusted x c)]) x*)))
+  (define (apply-replay b replay) (for/fold ([x b]) ([c (in-list replay)]) (let-values ([(x* _) (buffer-apply-change-trusted x c)]) x*)))
 
   ;; 打字连续段并成 1 步
-  (define-values (t1 b1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
-  (define-values (t2 b2) (rec t1 b1 (buffer-op-insert "b") (point 0 1)))
-  (define-values (t3 b3) (rec t2 b2 (buffer-op-insert "c") (point 0 2)))
+  (define-values (t1 b1) (rec (history-empty) (buffer-open "") (edit-desc (point 0 0) (point 0 0) "a") (point 0 0)))
+  (define-values (t2 b2) (rec t1 b1 (edit-desc (point 0 1) (point 0 1) "b") (point 0 1)))
+  (define-values (t3 b3) (rec t2 b2 (edit-desc (point 0 2) (point 0 2) "c") (point 0 2)))
   (check-equal? (buffer->string b3) "abc")
   (check-equal? (history-undo-depth t3) 1)
   (define-values (s1 t4) (history-pop-undo t3))
-  (check-equal? (buffer->string (ap-all b3 (step-undo-descs s1))) "")
+  (check-equal? (buffer->string (apply-undo b3 (step-undo s1))) "")
   (check-equal? (step-pre-point s1) (point 0 0))
   (check-equal? (history-redo-depth t4) 1)
   (define-values (s2 _u1) (history-pop-redo t4))
-  (check-equal? (buffer->string (ap-all (buffer-open "") (step-replay-descs s2))) "abc")
+  (check-equal? (buffer->string (apply-replay (buffer-open "") (step-replay s2))) "abc")
 
   ;; 换行打断连续段
-  (define-values (n1 nb1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
-  (define-values (n2 nb2) (rec n1 nb1 (buffer-op-newline) (point 0 1)))
-  (define-values (n3 _u2) (rec n2 nb2 (buffer-op-insert "b") (point 1 0)))
+  (define-values (n1 nb1) (rec (history-empty) (buffer-open "") (edit-desc (point 0 0) (point 0 0) "a") (point 0 0)))
+  (define-values (n2 nb2) (rec n1 nb1 (edit-desc (point 0 1) (point 0 1) "\n") (point 0 1)))
+  (define-values (n3 _u2) (rec n2 nb2 (edit-desc (point 1 0) (point 1 0) "b") (point 1 0)))
   (check-equal? (history-undo-depth n3) 3)
 
   ;; 退格连续段
-  (define-values (k1 kb1) (rec (history-empty) (buffer-open "abc") (buffer-op-backspace) (point 0 3)))
-  (define-values (k2 kb2) (rec k1 kb1 (buffer-op-backspace) (point 0 2)))
+  (define-values (k1 kb1) (rec (history-empty) (buffer-open "abc") (edit-desc (point 0 2) (point 0 3) "") (point 0 3)))
+  (define-values (k2 kb2) (rec k1 kb1 (edit-desc (point 0 1) (point 0 2) "") (point 0 2)))
   (check-equal? (buffer->string kb2) "a")
   (check-equal? (history-undo-depth k2) 1)
   (define-values (ks1 _u3) (history-pop-undo k2))
-  (check-equal? (buffer->string (ap-all kb2 (step-undo-descs ks1))) "abc")
+  (check-equal? (buffer->string (apply-undo kb2 (step-undo ks1))) "abc")
 
   ;; 前向删除连续段
-  (define-values (f1 fb1) (rec (history-empty) (buffer-open "abcde") (buffer-op-delete) (point 0 2)))
-  (define-values (f2 fb2) (rec f1 fb1 (buffer-op-delete) (point 0 2)))
+  (define-values (f1 fb1) (rec (history-empty) (buffer-open "abcde") (edit-desc (point 0 2) (point 0 3) "") (point 0 2)))
+  (define-values (f2 fb2) (rec f1 fb1 (edit-desc (point 0 2) (point 0 3) "") (point 0 2)))
   (check-equal? (buffer->string fb2) "abe")
   (check-equal? (history-undo-depth f2) 1)
 
   ;; 粘贴（多字符）不并
-  (define-values (p1 pb1) (rec (history-empty) (buffer-open "") (buffer-op-insert "a") (point 0 0)))
-  (define-values (p2 _u4) (rec p1 pb1 (buffer-op-insert "XY") (point 0 1)))
+  (define-values (p1 pb1) (rec (history-empty) (buffer-open "") (edit-desc (point 0 0) (point 0 0) "a") (point 0 0)))
+  (define-values (p2 _u4) (rec p1 pb1 (edit-desc (point 0 1) (point 0 1) "XY") (point 0 1)))
   (check-equal? (history-undo-depth p2) 2)
 
   ;; 记录新编辑 → redo 清空
   (define-values (_c1 c2) (history-pop-undo t3))
   (check-equal? (history-redo-depth c2) 1)
-  (define-values (c3 _u5) (rec c2 (buffer-open "") (buffer-op-insert "z") (point 0 0)))
+  (define-values (c3 _u5) (rec c2 (buffer-open "") (edit-desc (point 0 0) (point 0 0) "z") (point 0 0)))
   (check-equal? (history-redo-depth c3) 0)
 
-  ;; 批量记一步：整批可撤销 / 重放
-  (define bb0 (buffer-open "abcd"))
-  (define-values (bb* bds bis)
-    (buffer-apply-edit-batch bb0 (list (edit-desc (point 0 0) (point 0 0) "X")
-                                       (edit-desc (point 0 3) (point 0 3) "Y"))))
-  (define bh (history-record-batch (history-empty) bds (reverse bis) (point 0 0)))
-  (check-equal? (buffer->string bb*) "XabcYd")
-  (check-equal? (history-undo-depth bh) 1)
-  (define-values (bs _bpu) (history-pop-undo bh))
-  (check-equal? (buffer->string (ap-all bb* (step-undo-descs bs))) "abcd")
-  (check-equal? (buffer->string (ap-all bb0 (step-replay-descs bs))) "XabcYd")
+  ;; 文本 + 属性一步：可撤销
+  (define ab0 (buffer-open "abcd"))
+  (define-values (ab1 res)
+    (buffer-apply-change-trusted ab0
+      (change (list (edit-desc (point 0 1) (point 0 1) "X"))
+              (list (attr-set (point 0 1) (point 0 2) read-only-key #t)))))
+  (define ah (history-record (history-empty) (list (change-result-replay res)) (change-result-undo res) (point 0 1)))
+  (check-equal? (buffer->string ab1) "aXbcd")
+  (check-equal? (history-undo-depth ah) 1)
+  (define-values (as _bpu) (history-pop-undo ah))
+  (check-equal? (buffer->string (apply-undo ab1 (step-undo as))) "abcd")
+  (check-false (attr-read-only? (buffer-attr-at (apply-undo ab1 (step-undo as)) (point 0 1))))
 
   ;; 空栈
   (define eh (history-empty))

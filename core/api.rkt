@@ -21,6 +21,8 @@
 (require "atom/point.rkt"
          "atom/content.rkt"
          "atom/edit.rkt"
+         "atom/attr.rkt"
+         "atom/change.rkt"
          "atom/selection.rkt"
          "atom/width.rkt"
          "atom/event.rkt"
@@ -37,20 +39,26 @@
  ;; ---- point ----
  point point? struct:point point-line point-col
  point<? point=? point<=? pos<? pos=? pos<=? point-clamp
- ;; ---- edit-desc（唯一跨层契约）----
+ ;; ---- edit-desc（唯一跨层文本变更契约）----
  edit-desc edit-desc? struct:edit-desc
  edit-desc-start edit-desc-end edit-desc-new-text
  edit-desc-map-position edit-desc-after-position edit-desc-inverse
- ;; ---- edit-change（一次编辑的完整材料）----
- edit-change edit-change? struct:edit-change
- edit-change-desc edit-change-inverse edit-change-pre-point
+ edits-normalize
+ ;; ---- attr-desc（属性变更原子）----
+ attr-desc attr-desc? struct:attr-desc
+ attr-desc-start attr-desc-end attr-desc-key attr-desc-op attr-desc-val
+ attr-set attr-del attr-desc-empty?
+ ;; ---- change（变更集：文本 + 属性）----
+ change change? struct:change
+ change-texts change-attrs change/edits change/attrs change-empty? change-text-only?
  ;; ---- selection（选区：光标 + 影子）----
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
  selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
  ;; ---- attrs（属性槽：通用 key→hash，随编辑移动）----
  attrs? attrs-empty attrs-line-count
- attrs-at attrs-put attrs-remove attrs-runs attrs-key-runs attrs-apply-edit
+ attrs-at attrs-runs attrs-key-runs attrs-range-runs
+ attrs-apply-edit attrs-apply-attr attrs-apply-attr-batch attrs-attr-inverse attrs-check
  ;; ---- buffer —— 文档原子 ----
  buffer? buffer-open buffer->string buffer->lines
  buffer-line-count buffer-line-ref
@@ -59,10 +67,16 @@
  buffer-op-insert-char buffer-op-insert buffer-op-newline buffer-op-backspace buffer-op-delete buffer-op-splice
  buffer-edit-desc-inverse
  buffer-range-text
+ buffer-clamp-edit-descs
  read-only-key attr-read-only?
  buffer-put-attr buffer-remove-attr buffer-attr-at buffer-attr-runs buffer-attr-key-runs
  buffer-content-eq?
  buffer-tick
+ ;; ---- change 漏斗 + 结果 ----
+ buffer-apply-change buffer-apply-change-trusted
+ change-result change-result? change-result-applied-texts change-result-applied-attrs
+ change-result-text-inverses change-result-attr-inverses change-result-erased-restores
+ change-result-replay change-result-undo
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
  buffer-apply-edit-batch buffer-apply-edit-batch-trusted edits-map-position edits-span
  ;; ---- events —— 类型化输入 ----

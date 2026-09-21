@@ -17,14 +17,16 @@ core/
 │   ├── point.rkt              #   位置 (line,col) + 比较 + clamp
 │   ├── selection.rkt          #   选区 (anchor,head) + 端点映射
 │   ├── lines.rkt              #   string->lines（换行归一的唯一约定）
-│   ├── edit.rkt               #   edit-desc + 位置代数 + edit-change
+│   ├── edit.rkt               #   edit-desc + 位置代数 + edits-normalize
+│   ├── attr.rkt               #   attr-desc（属性变更原子）
+│   ├── change.rkt             #   change（变更集：文本 + 属性）
 │   ├── content.rkt            #   行向量文本存储 + content-apply
 │   ├── width.rkt              #   显示宽度（wcwidth 语义）
 │   └── event.rkt              #   类型化输入事件
 ├── unit/                      # 单元：由原子组合出的「单维结构」
 │   ├── attrs.rkt              #   行内属性区间（通用 key→hash，随编辑移动）
 │   ├── screen.rkt             #   run 行帧（width）
-│   └── history.rkt            #   账本：edit-change 序列
+│   └── history.rkt            #   账本：change 序列
 ├── doc/                       # 文档：把单元装配成一个可编辑值
 │   ├── buffer.rkt             #   content ⊕ attrs（+tick）
 │   └── batch.rkt              #   [edit-desc] → buffer（原子批量施加）
@@ -63,20 +65,21 @@ editor.rkt ←  api, platform(neutral, program, command)
 
 ### atom —— 原子
 不可再分的值，以及只依赖同层原子的代数。`point` 是唯一位置表示；`selection` 是选区
-（`anchor`/`head`，空选区即光标）；`edit-desc` 是唯一跨层变更契约；`content` 是行向量
-文本存储；`width` / `event` 是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一
-约定，供存储与代数共用。
+（`anchor`/`head`，空选区即光标）；`edit-desc` 是文本变更契约，`attr-desc` 是属性变更
+原子，`change` 把二者打包成**唯一跨层变更值**；`content` 是行向量文本存储；
+`width` / `event` 是值。`lines.rkt` 固定「字符串 ↔ 行序列」的唯一约定，供存储与代数共用。
 
 ### unit —— 单元
 每种「单维结构」= 一种标注/索引 + 它自己的 `apply-edit`：
 - `attrs`：行内属性区间（通用 key→hash）；core 只解释保留 key `read-only`。
 - `screen`：后端无关的输出帧（run 序列）。
-- `history`：`edit-change` 的账本（撤销/重放）。
+- `history`：`change` 的账本（撤销/重放）。
 
 ### doc —— 文档
 把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 属性（+ `tick`）。
 **文档不存 face**（派生 face 是投影参数，见 §5、§9）。
-`buffer-apply-edit` 是唯一传播点，把同一条生效 `edit-desc` 依次喂给各层，保证坐标一致。
+`buffer-apply-change` 是唯一传播点，把同一条生效 `edit-desc` 依次喂给各层，并施加 change
+的属性部分，保证坐标一致。
 `batch` 处理「一串 desc」。
 
 ### viewport —— 视口
@@ -94,13 +97,13 @@ editor.rkt ←  api, platform(neutral, program, command)
 ## 2. 核心结构如何组合成 editor.rkt
 
 ```
-atom        point · selection · edit-desc · content · width · event
+atom        point · selection · edit-desc · attr-desc · change · content · width · event
              │
 unit        attrs = 行 × rspan(hash)                      screen = runs(文档) ⊕ cursors/selections(视图 overlay)
-            history      = [edit-change]
+            history      = [(replay: change 序列, undo: change 序列)]
              │
 doc         buffer  = content ⊕ attrs ⊕ tick
-            batch   = buffer × [edit-desc] → buffer × applied × inverses
+            buffer-apply-change = change → buffer × change-result
              │
 viewport    window  = buffer ⊕ point ⊕ (mode, top, left, height, width)
             render  = buffer × line × line-face-provider → glyphs   （派生 face 在此注入）
@@ -109,19 +112,19 @@ viewport    window  = buffer ⊕ point ⊕ (mode, top, left, height, width)
             rebase  = window × edit-desc → window              （free / follow）
              │
 platform    state   = [buffer-entry] × [view] × focus   （view = id × window × sync；window 含 buffer）
-            write   : state × … → state                        （无策略写原语）
-            reaction= state × edit → state                     （clamp / map / leader）
+            write   : state × change → state                    （无策略写原语；唯一漏斗）
+            reaction= state × edit-desc → state                 （clamp / map / leader）
             neutral = state → 读 / 构造 / 投影
-            program = state × edit-desc → (values state report)（程序面）
-            command = state × op      → (values state report)（用户面）
+            program = state × change → (values state report)（程序面）
+            command = state × op     → (values state report)（用户面）
              │
 editor.rkt  = api（低层公开面）+ neutral + program + command
 ```
 
 一条命令的返回是 `(values editor (or/c #f change-report))`；`change-report` 携带
-影响行区间与**施加顺序**的生效 `edit-desc`。两条数据流：
+影响行区间与**施加顺序**的生效 `edit-desc` 与生效 `attr-desc`。两条数据流：
 
-- **内容流**：`op`（`buffer point → edit-desc`）→ `buffer-apply-edit` → 新 buffer。
+- **内容流**：`op`（`buffer point → edit-desc`）→ `buffer-apply-change` → 新 buffer。
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
 
 **`screen` 有两条独立通道**（这是刻意的分离）：
@@ -141,9 +144,12 @@ editor.rkt  = api（低层公开面）+ neutral + program + command
 编辑只有**一个原语**（在 `platform/program.rkt`）：
 
 ```
-editor-command        : 给 op，算 desc 再施加
-editor-command-batch  : 给 descs 直接施加
+editor-command        : 给 op（+ 可选属性计划），算 change 再施加
+editor-command-batch  : 给现成 change 直接施加
 ```
+
+`op : editor bid selection → edit-desc`；`#:attrs : editor bid (listof edit-desc) → (listof attr-desc)`
+是属性计划，在文本 descs 夹紧后求值（坐标为「文本生效之后」）。
 
 策略全是**正交的显式参数**（不是函数身份）：
 
@@ -151,13 +157,15 @@ editor-command-batch  : 给 descs 直接施加
 |---|---|
 | `#:view` | 目标 view（默认焦点） |
 | `#:selection` | 编辑上下文（默认该 view 的选区集） |
+| `#:attrs` | 属性计划（默认无）；与文本编辑合成一条 change |
 | `#:trusted?` | 是否跳过 read-only 守卫（默认 `#f` = 守） |
 | `#:reaction` | `none` / `map` / `leader`（本 view 怎么反应；其余同文档 view 按 sync） |
 | `#:record?` | 是否记一步账本 |
 | `#:pre-point` | 撤销回落的编辑前光标 |
 
 `editor-edit-at` / `editor-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
-**薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。
+**薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。属性写也是它的封装：
+`editor-apply-attrs` / `editor-put-attr` / `editor-remove-attr`。
 
 - **程序默认**：`editor-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
 - **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? #t`。
@@ -202,7 +210,7 @@ editor-command-batch  : 给 descs 直接施加
   core 负责循环/落点/账本；buffer 级 `buffer-op-*` 是更低层的动作。
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
-交给 `buffer-apply-edit-batch` **一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
+交给 `buffer-apply-change`（文本批）**一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
 若 op 会**超出选区**（如 backspace 删光标前一字符、delete 删后一字符），相邻选区可能产出
 重叠的 desc；`editor-edit` 会先把冲突的选区**合并成包络并重算 op**，保证交给 batch 的 desc 两两不相交。
 方向键对每个选区各走一步（`window-map-points`）后再去重/合并。
@@ -223,7 +231,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ## 6. `buffer-tick`（变化计数 / 版本戳）
 
-`buffer-tick` 是单调计数，回答「有没有变」：文本编辑、写属性 **都涨**。
+`buffer-tick` 是单调计数，回答「有没有变」：一次 `change`（无论含多少文本 / 属性 desc）涨 **1**。
 多线程 / 乐观并发合并时拿它当**版本戳**。注意 tick 也随标注涨——要判断「**文本本身**
 是否同一」用 `buffer-content-eq?`。「有没有未保存改动」不属于 core：它取决于外部事件
 （存盘），由调用方自己持有。
@@ -232,25 +240,30 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ## 7. 撤销 / 重放
 
-- 一步自含正反两向：`step` = `(replay-descs undo-descs pre-point)`，账本 = `(undo redo)`。
-- 逆必须由**编辑前**的 `buffer` 导出（`buffer-edit-desc-inverse`）；用编辑后的 buffer
-  求逆会静默写坏历史。
-- 合并规则是**结构判定**（打字连续段 / 退格段 / 前向删除段），无时钟无状态。
+- 一步是 change 的**序列**，自含正反两向：
+  `step` = `(replay undo pre-point)`，`replay`/`undo` 都是 `(listof change)`（正序施加）；
+  账本 = `(undo redo)`。
+- 文本逆必须由**编辑前**的 `buffer` 导出（`buffer-edit-desc-inverse`）；用编辑后的
+  buffer 求逆会静默写坏历史。文本逆**逐条、逆序**施加（每条坐标基于上一条之后）。
+- 属性也要可逆：显式属性的逆由 `attrs-attr-inverse` 给出；文本编辑抹掉的属性由
+  `attrs-range-runs` 在施加前捕获，撤销时在**原坐标**补回（`change-result-erased-restores`）。
+- 合并规则是**结构判定**（纯文本单字符的打字 / 退格 / 前向删除连续段），无时钟无状态。
 - 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后属性挡住。
 
 ---
 
 ## 8. 守卫抑制：显式 trusted 入口
 
-`read-only` 守卫默认开；绕行**只**有显式入口 `buffer-apply-edit-trusted` 与
+`read-only` 守卫默认开；绕行**只**有显式入口 `buffer-apply-change-trusted` 与
 `editor-edit-at` 的 `#:trusted?`。没有全局开关、没有 `inhibit` 参数。
 
 ---
 
 ## 9. 增量信息归操作，不归文档
 
-「这次改了哪几行」随操作返回（`edit-desc` / `change-report`），不存进 `buffer`：
-`edits-span` 给出应用顺序的一组 desc 影响的行区间并集；`change-report` 是命令的第二个返回值。
+「这次改了哪几行」随操作返回（`change-report`），不存进 `buffer`：
+`edits-span` 给出生效文本 descs 影响的行区间并集；`change-report` 是命令的第二个返回值，
+携带生效的 `change-report-texts` 与 `change-report-attrs`（均施加顺序）。
 
 **作者态 vs 派生态（face）：** 文档只存**文本 + 属性**（`content` + `attrs`；`read-only` 是 core
 保留并解释的 key，其余对 core 不透明），它们随编辑移动。**派生 face**（content 的纯函数，如语法高亮）**不进文档**，
@@ -279,5 +292,32 @@ editor 门面用 `face-provider : editor bid line → runs`（内部适配成前
 
 违约分两类，判据是「最近合法解释」是否存在：
 
-- **有唯一合法解释 → 夹紧/归一**（越界位置夹到合法域；见 `point-clamp`）。
-- **没有合法解释 → 报错**（反向编辑区间、跨行属性区间、未知 `sync`）。
+- **有唯一合法解释 → 夹紧/归一**（越界位置夹到合法域；见 `point-clamp`；零宽 `attr-desc` = no-op）。
+- **没有合法解释 → 报错**（反向编辑区间、跨行属性区间、同一 key 属性区间重叠、未知 `sync`/`op`）。
+
+---
+
+## 12. 属性与文本共用同一条变更通道
+
+属性不是「buffer 的旁路写口」，而是和文本并列的第一类文档状态：
+
+```
+change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.rkt）
+   │
+   └─ buffer-apply-change（doc/buffer.rkt，唯一漏斗）
+        · 文本：content-apply 产出生效 desc → 守卫 → attrs-apply-edit 跟随
+        · 属性：attrs-apply-attr-batch（坐标 = 文本生效之后；每行只拷贝一次）
+        · tick +1，一次 swap，一条 report
+```
+
+- `attr-desc = (start end key op val)`，同一行、半开 `[start,end)`，`op ∈ 'set | 'remove`；
+  零宽 = no-op。
+- 属性变更可以：与文本**原子**合成一条命令（`editor-command` 的 `#:attrs` 计划）、
+  **批量**写（`editor-apply-attrs` / `attrs-apply-attr-batch`）、**进账本**并精确撤销。
+- 撤销材料（`change-result`）：
+  - `applied-texts` / `text-inverses`（与施加顺序平行，逐条逆序施加）；
+  - `applied-attrs` / `attr-inverses`（逐条 `attrs-attr-inverse`）；
+  - `erased-restores`：文本编辑抹掉的属性在**原坐标**补回——这是「撤销删除不得丢标注」
+    的关键；只靠 `attrs-apply-edit` 跟随重放是回不来的。
+- `history` 的一步是 change 的**序列**（`replay` / `undo` 都是 `(listof change)`），
+  因为连续打字合并时每条 desc 的坐标基于前一条之后，不能塞进一个批语义的 change。

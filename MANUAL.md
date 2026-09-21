@@ -51,6 +51,12 @@
 | `edit-desc-after-position` | 插入文本之后的点 |
 | `edit-desc-map-position` | 编辑前位置 → 编辑后位置（`#f` = 落在删除区内） |
 | `edit-desc-inverse` | 由生效 desc + 旧文本求逆 |
+| `attr-desc` | 属性变更 `(start end key op val)`；同行、半开、零宽 = no-op |
+| `attr-set` | 构造「设置属性」的 `attr-desc` |
+| `attr-del` | 构造「移除属性」的 `attr-desc` |
+| `change` | 变更集：文本 descs + 属性 descs；唯一的跨层变更值 |
+| `change/edits` | 由文本 descs 构造 change |
+| `change/attrs` | 由属性 descs 构造 change |
 | `selection` | 选区 `(anchor head)`；空选区 = 普通光标 |
 | `selection-point` | 选区光标点（= `head`） |
 | `selection-range` | 选区半开区间 `[start,end)` |
@@ -100,10 +106,15 @@
 | `buffer-op-backspace` / `buffer-op-delete` | buffer 级删除动作 |
 | `buffer-op-splice` | buffer 级显式区间替换 |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
-| `buffer-apply-edit-batch` | 批量施加（同坐标系、不重叠）；返回 `(values 新buffer 生效descs 逆)` |
+| `buffer-clamp-edit-descs` | 把一串文本 desc 夹到生效域（不动 buffer） |
+| `buffer-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；返回 `(values 新buffer change-result)` |
+| `buffer-apply-change-trusted` | 同上，跳守卫 |
+| `change-result-replay` | 由结果构造「重放」change |
+| `change-result-undo` | 由结果构造撤销 change 序列（含属性逆 / 被抹属性补回） |
+| `buffer-apply-edit-batch` | 批量文本施加（change 的文本专用封装）；返回 `(values 新buffer 生效descs 逆)` |
 | `buffer-apply-edit-batch-trusted` | 同上，跳守卫 |
-| `buffer-put-attr` | 写属性 `[start,end) → key=val`（保留其它 key） |
-| `buffer-remove-attr` | 移除区间内的某个 key |
+| `buffer-put-attr` | 写属性 `[start,end) → key=val`（走 change 漏斗；零宽 = no-op） |
+| `buffer-remove-attr` | 移除区间内的某个 key（零宽 = no-op） |
 | `buffer-attr-at` | 某点的全部属性（hash） |
 | `buffer-attr-runs` | 某行的属性段 `(list start end hash)` |
 | `buffer-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
@@ -123,7 +134,7 @@ face-provider : editor bid line -> (listof (list start end face))
 不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
 `no-face-provider` 是缺省（空）。
 
-**属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-put-attr`），
+**属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-apply-attrs` / `editor-put-attr`），
 再用 `attrs-provider` 取某个 key 的 provider：`(attrs-provider 'face)`。
 于是「写一次属性、投影时读」与「每帧现算的纯 provider」统一在同一个投影参数上；
 多个来源可以传多个 provider（按顺序合并）。
@@ -314,18 +325,20 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-attr-at` | 某点的全部属性（hash） |
 | `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
 | `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
-| `editor-put-attr` | 写属性 `[start,end) → key=val` |
-| `editor-remove-attr` | 移除区间内的某个 key |
+| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销） |
+| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)` |
+| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)` |
 
 ### 9.5 编辑
 
-**唯一的编辑原语**是 `editor-command`（single）/ `editor-command-batch`（descs）：
+**唯一的编辑原语**是 `editor-command`（选区 + op + 可选属性计划）/ `editor-command-batch`（现成 change）：
 策略全是**参数**，不是函数身份；其余编辑入口都是它的薄封装。
 
 | 策略参数 | 取值 | 含义 |
 |---|---|---|
 | `#:view` | vid（默认焦点） | 目标 view |
 | `#:selection` | 选区集（默认该 view 的选区） | 编辑上下文 |
+| `#:attrs` | 属性计划（默认无） | 在文本 descs 夹紧后求值；与文本合成一条 change |
 | `#:trusted?` | 默认 `#f` | 是否跳过 read-only 守卫 |
 | `#:reaction` | `'none`/`'map`/`'leader` | 本 view 的反应；其余同文档 view 按 sync |
 | `#:record?` | 默认 `#f` | 是否记一步账本 |
@@ -341,7 +354,8 @@ face-provider : editor bid line -> (listof (list start end face))
 `op : editor bid selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
 同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
 （用 `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
-report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
+`#:attrs` 计划 `editor bid (listof edit-desc) → (listof attr-desc)`：插入文本并标只读
+可以一条命令完成。report 的 `change-report-texts` / `change-report-attrs` 是实际生效的 descs（施加顺序）。
 
 ### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）
 
@@ -462,11 +476,12 @@ report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 
 | 名字 | 语义 |
 |---|---|
-| `change-report` | 一次命令的影响：行区间 + 生效 desc 列表 |
+| `change-report` | 一次命令的影响：行区间 + 生效 texts/attrs |
 | `change-report-first-line` | 首行（新坐标系） |
 | `change-report-last-line` | 末行（新坐标系） |
-| `change-report-edits` | 施加顺序的 `edit-desc` 列表 |
+| `change-report-texts` | 施加顺序的生效 `edit-desc` 列表 |
+| `change-report-attrs` | 施加顺序的生效 `attr-desc` 列表 |
 
 命令返回 `(values editor (or/c #f change-report))`；`#f` 表示什么都没发生。
-`change-report-edits` 按**施加顺序**给出这次生效的编辑，每个 desc 的坐标是施加它之前
-的状态——可直接嗂 `edits-map-position`，或转成 LSP 的增量 `didChange`。
+`change-report-texts` 按**施加顺序**给出这次生效的文本编辑，每个 desc 的坐标是施加它之前
+的状态——可直接喂 `edits-map-position`，或转成 LSP 的增量 `didChange`。
