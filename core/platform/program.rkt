@@ -2,7 +2,7 @@
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt"
          "../atom/attr.rkt" "../atom/change.rkt"
-         "../doc/buffer.rkt"
+         "../doc/buffer.rkt" "../doc/document.rkt"
          "../viewport/window.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "reaction.rkt" rackunit)
 
@@ -129,12 +129,12 @@
   (cond
     [(not res) (values ed #f)]
     [else
-     (define b* (editor-buffer ed* bid))
+     (define d* (editor-document ed* bid))
      (define tds (change-result-applied-texts res))
      (define ed** (case reaction
-                    [(none)   (editor-clamp-views ed* b*)]
-                    [(map)    (editor-map-views ed* b* tds)]
-                    [(leader) (editor-leader-view ed* vid b* tds)]
+                    [(none)   (editor-clamp-views ed* d*)]
+                    [(map)    (editor-map-views ed* d* tds)]
+                    [(leader) (editor-leader-view ed* vid d* tds)]
                     [else (error 'editor-command "reaction 必须是 'none / 'map / 'leader，得到 ~a" reaction)]))
      (define ed*** (if record?
                        (editor-record-history ed** bid
@@ -237,7 +237,7 @@
 ;; **不改文档**：w 的 buffer 必须就是该 view 当前的 buffer；换文档用 editor-view-set-buffer。
 (define (editor-view-put-window ed vid w)
   (define v (editor-view-ref ed vid))
-  (unless (eq? (window-buffer w) (view-buffer v))
+  (unless (eq? (window-document w) (view-document v))
     (error 'editor-view-put-window
            "window 的 buffer 与该 view 不符；换文档请用 editor-view-set-buffer"))
   (editor-put-view ed vid w))
@@ -278,7 +278,7 @@
 (define (editor-view-set-sync ed vid sync)
   (editor-set-view-sync ed vid sync))
 (define (editor-view-set-buffer ed vid bid)
-  (editor-set-view-buffer ed vid bid))
+  (editor-set-view-document ed vid bid))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
 
@@ -532,7 +532,7 @@
   (define pw1 (editor-put-window pw0 (window-set-point (editor-window pw0) (point 0 3))))
   (check-equal? (editor-point pw1) (point 0 3))
   ;; put-window 只写视图态：buffer 不符 → 报错（换文档用 editor-view-set-buffer）
-  (check-exn exn:fail? (lambda () (editor-put-window pw0 (window-open (buffer-open "x") 2 10))))
+  (check-exn exn:fail? (lambda () (editor-put-window pw0 (window-open (document-open "x") 2 10))))
   ;; map-points：对每个选区 head 施 point→point（坍缩成光标）
   (define pw2 (editor-map-points pw1 (lambda (p) (point 0 (add1 (point-col p))))))
   (check-equal? (editor-point pw2) (point 0 4))

@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/selection.rkt" "../atom/width.rkt"
-         "../doc/buffer.rkt" "window.rkt" "../unit/screen.rkt" "layout.rkt" "render.rkt"
+         "../doc/buffer.rkt" "../doc/document.rkt" "window.rkt" "../unit/screen.rkt" "layout.rkt" "render.rkt"
          rackunit)
 
 ;;; viewport/project.rkt —— 把 window 的可见区投影成 screen（纯函数）
@@ -65,7 +65,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define b0 (buffer-open "a中b\nc"))
+  (define b0 (document-open "a中b\nc"))
 
   ;; 基本投影：文档 runs + primary 光标；空选区不出区间
   (define s0 (window->screen (window-open b0 2 10)))
@@ -81,7 +81,7 @@
   (check-equal? (screen-cursor-col (window->screen (window-set-point (window-open b0 2 10) (point 0 2)))) 3)
 
   ;; 选中区：跨宽字符 → 显示列区间；另一行是空光标
-  (define ws (window-open (buffer-open "abcdef\nghij") 3 10))
+  (define ws (window-open (document-open "abcdef\nghij") 3 10))
   (define wsel (window-set-selections ws (list (selection (point 0 1) (point 0 4))
                                                (selection (point 1 0) (point 1 2)))))
   (define ss (window->screen wsel))
@@ -92,7 +92,7 @@
                 '((0 1 4) (1 0 2)))
 
   ;; wrap：一行折成两段，选中区切成两段
-  (define ww (window-set-mode (window-set-selections (window-open (buffer-open "中中中") 3 4)
+  (define ww (window-set-mode (window-set-selections (window-open (document-open "中中中") 3 4)
                                                      (list (selection (point 0 0) (point 0 3))))
                               'wrap))
   (check-equal? (map (lambda (g) (list (region-row g) (region-start-col g) (region-end-col g)))
@@ -105,7 +105,7 @@
                 (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
 
   ;; 属性不进 face
-  (define b5 (buffer-put-attr (buffer-open "abcdef")
+  (define b5 (document-put-attr (document-open "abcdef")
                               (point 0 3) (point 0 6) read-only-key #t))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
                 (list (run 0 "abcdef" (hash))))

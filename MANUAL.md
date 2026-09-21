@@ -44,7 +44,7 @@
 | `point<?` | 位置字典序比较 |
 | `point=?` | 位置相等 |
 | `point<=?` | 位置偏序 |
-| `edit-desc` | 一次替换 `[start,end) → new-text`；跨层唯一契约 |
+| `edit-desc` | 一次替换 `[start,end) → new-text`；文本变更原子（跨层变更值是 `change`） |
 | `edit-desc-start` | 区间起点 |
 | `edit-desc-end` | 区间终点（半开） |
 | `edit-desc-new-text` | 取代文本 |
@@ -84,44 +84,54 @@
 | `edit-delete` | 前向删除（可跨行合并） |
 | `edit-splice` | 通用逃生门：显式区间替换 |
 
-## 3. buffer —— 文档原子（无光标）
+## 3. buffer / document —— 纯文本值 + 可编辑根
+
+`buffer` 只有文本与版本号；属性在 `document` 里。二者装配成可编辑根：
+`document = buffer(纯文本) ⊕ attrs`。
+
+### 3.1 buffer —— 纯文本值（无光标、无属性）
 
 | 名字 | 语义 |
 |---|---|
 | `buffer-open` | 由字符串建 buffer |
-| `buffer->string` | 导出为字符串 |
-| `buffer->lines` | 导出为行表 |
-| `buffer-line-count` | 行数（≥ 1） |
-| `buffer-line-ref` | 第 i 行文本 |
-| `buffer-line-length` | 第 i 行长度 |
+| `buffer-content` | 文本原子（content） |
+| `buffer->string` / `buffer->lines` | 导出为字符串 / 行表 |
+| `buffer-line-count` / `buffer-line-ref` / `buffer-line-length` | 行数 / 第 i 行 / 第 i 行长度 |
 | `buffer-clamp-point` | 对 buffer 夹紧位置 |
-| `buffer-point->offset` | 位置 → 绝对偏移 |
-| `buffer-offset->point` | 绝对偏移 → 位置 |
+| `buffer-point->offset` / `buffer-offset->point` | 位置 ↔ 绝对偏移 |
 | `buffer-range-text` | 取 `[start,end)` 文本 |
-| `buffer-apply-edit` | 施加 desc（带守卫） |
-| `buffer-apply-edit-trusted` | 施加 desc（跳守卫） |
-| `buffer-edit` | 给位置与 op 算 desc 再施加（带守卫；op : buffer selection → desc） |
-| `buffer-edit-trusted` | 同上，跳守卫 |
+| `buffer-clamp-edit-descs` | 把一串文本 desc 夹到生效域（不动 buffer） |
+| `buffer-content-eq?` | 文本是否同一 |
+| `buffer-tick` | 文本版本戳（只有文本变才 +1） |
 | `buffer-op-insert` / `buffer-op-insert-char` / `buffer-op-newline` | buffer 级插入动作 |
 | `buffer-op-backspace` / `buffer-op-delete` | buffer 级删除动作 |
 | `buffer-op-splice` | buffer 级显式区间替换 |
 | `buffer-edit-desc-inverse` | 用编辑前 buffer 求逆 |
-| `buffer-clamp-edit-descs` | 把一串文本 desc 夹到生效域（不动 buffer） |
-| `buffer-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；返回 `(values 新buffer change-result)` |
-| `buffer-apply-change-trusted` | 同上，跳守卫 |
+
+### 3.2 document —— 可编辑根（buffer ⊕ attrs）
+
+| 名字 | 语义 |
+|---|---|
+| `document-open` | 建文档（文本 + 空属性） |
+| `document-buffer` / `document-attrs` | 取纯文本 / 取属性 |
+| `document->string` / `document->lines` / `document-line-count` / `document-line-ref` / `document-line-length` | 文本委托 |
+| `document-clamp-point` / `document-point->offset` / `document-offset->point` / `document-range-text` | 位置委托 |
+| `document-clamp-edit-descs` / `document-tick` / `document-attr-tick` / `document-content-eq?` / `document-attrs-eq?` | 文本委托 / 版本戳 |
+| `document-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；返回 `(values 新document change-result)` |
+| `document-apply-change-trusted` | 同上，跳守卫 |
+| `document-apply-edit` / `document-edit` | 文本单条 / 给位置与 op 算 desc 再施加 |
+| `document-apply-edit-trusted` / `document-edit-trusted` | 同上，跳守卫 |
+| `document-apply-edit-batch` | 批量文本施加（change 的文本专用封装）；返回 `(values 新document 生效descs 逆)` |
+| `document-apply-edit-batch-trusted` | 同上，跳守卫 |
+| `document-put-attr` | 写属性 `[start,end) → key=val`（走 change 漏斗；零宽 = no-op） |
+| `document-remove-attr` | 移除区间内的某个 key（零宽 = no-op） |
+| `document-attr-at` | 某点的全部属性（hash） |
+| `document-attr-runs` | 某行的属性段 `(list start end hash)` |
+| `document-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
 | `change-result-replay` | 由结果构造「重放」change |
 | `change-result-undo` | 由结果构造撤销 change 序列（含属性逆 / 被抹属性补回） |
-| `buffer-apply-edit-batch` | 批量文本施加（change 的文本专用封装）；返回 `(values 新buffer 生效descs 逆)` |
-| `buffer-apply-edit-batch-trusted` | 同上，跳守卫 |
-| `buffer-put-attr` | 写属性 `[start,end) → key=val`（走 change 漏斗；零宽 = no-op） |
-| `buffer-remove-attr` | 移除区间内的某个 key（零宽 = no-op） |
-| `buffer-attr-at` | 某点的全部属性（hash） |
-| `buffer-attr-runs` | 某行的属性段 `(list start end hash)` |
-| `buffer-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
 | `read-only-key` | core 保留 key（`'read-only`） |
 | `attr-read-only?` | 该属性 hash 是否只读 |
-| `buffer-tick` | 单调计数：任何改动都涨 |
-| `buffer-content-eq?` | 内容是否同一（区分文本改动/仅写属性） |
 
 ## 4. 派生 face（投影参数）
 
@@ -161,7 +171,7 @@ face-provider : editor bid line -> (listof (list start end face))
 | `window-selection-member?` | 集合中是否有该选区 |
 | `window-clamp-selections` | 把选区夹回合法域并规范化 |
 | `window-set-point` | 设成单个空选区（光标） |
-| `window-set-buffer` | 换绑 buffer（夹紧光标） |
+| `window-set-document` | 换绑 document（夹紧光标） |
 | `window-left` | 光标左移 |
 | `window-right` | 光标右移 |
 | `window-up` | 按视觉行上移 |
@@ -315,8 +325,9 @@ face-provider : editor bid line -> (listof (list start end face))
 | `editor-buffer-point->offset` | 位置 → 偏移 |
 | `editor-buffer-offset->point` | 偏移 → 位置 |
 | `editor-buffer-range-text` | 取区间文本 |
-| `editor-buffer-tick` | 某 buffer 的变化计数（乐观并发 / 合并的版本戳） |
-| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一（区分文本改动/仅写属性） |
+| `editor-buffer-tick` | 某 buffer 的**文本**版本戳（只有文本变才 +1） |
+| `editor-attr-tick` | 某 buffer 的**标注**版本戳（只有属性变才 +1） |
+| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一 |
 
 ### 9.4 属性
 

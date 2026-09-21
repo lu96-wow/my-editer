@@ -28,10 +28,11 @@ core/
 │   ├── screen.rkt             #   run 行帧（width）
 │   └── history.rkt            #   账本：change 序列
 ├── doc/                       # 文档：把单元装配成一个可编辑值
-│   ├── buffer.rkt             #   content ⊕ attrs（+tick）
-│   └── batch.rkt              #   [edit-desc] → buffer（原子批量施加）
+│   ├── buffer.rkt             #   纯文本：content ⊕ tick
+│   ├── document.rkt           #   可编辑根：buffer ⊕ attrs（唯一变更漏斗）
+│   └── batch.rkt              #   [edit-desc] → document（原子批量施加）
 ├── viewport/                  # 视口：把文档投影成画面
-│   ├── window.rkt             #   buffer ⊕ point ⊕ 滚动/尺寸
+│   ├── window.rkt             #   document ⊕ point ⊕ 滚动/尺寸
 │   ├── render.rkt             #   buffer 行 × line-face-provider → glyph
 │   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动
 │   ├── project.rkt            #   window → screen
@@ -76,10 +77,11 @@ editor.rkt ←  api, platform(neutral, program, command)
 - `history`：`change` 的账本（撤销/重放）。
 
 ### doc —— 文档
-把 unit 装配成**一个可编辑值**：`buffer` = 文本 ⊕ 属性（+ `tick`）。
+把 unit 装配成**一个可编辑值**：`document` = `buffer`（纯文本 ⊕ tick）⊕ `attrs`。
+**文本与标注分离**：`buffer` 是纯文本值，`attrs` 是并行标注；视图持有 `document`。
 **文档不存 face**（派生 face 是投影参数，见 §5、§9）。
-`buffer-apply-change` 是唯一传播点，把同一条生效 `edit-desc` 依次喂给各层，并施加 change
-的属性部分，保证坐标一致。
+`document-apply-change` 是唯一传播点：文本先走 content-apply 产出生效 `edit-desc`，`attrs` 跟随，
+再施加 change 的属性部分，保证坐标一致。
 `batch` 处理「一串 desc」。
 
 ### viewport —— 视口
@@ -102,10 +104,11 @@ atom        point · selection · edit-desc · attr-desc · change · content ·
 unit        attrs = 行 × rspan(hash)                      screen = runs(文档) ⊕ cursors/selections(视图 overlay)
             history      = [(replay: change 序列, undo: change 序列)]
              │
-doc         buffer  = content ⊕ attrs ⊕ tick
-            buffer-apply-change = change → buffer × change-result
+doc         buffer    = content ⊕ tick
+            document  = buffer ⊕ attrs
+            document-apply-change = change → document × change-result
              │
-viewport    window  = buffer ⊕ point ⊕ (mode, top, left, height, width)
+viewport    window  = document ⊕ point ⊕ (mode, top, left, height, width)
             render  = buffer × line × line-face-provider → glyphs   （派生 face 在此注入）
             layout  = window × render → vrows / 映射 / ensure / 视觉移动
             project = window × layout → screen
@@ -124,7 +127,7 @@ editor.rkt  = api（低层公开面）+ neutral + program + command
 一条命令的返回是 `(values editor (or/c #f change-report))`；`change-report` 携带
 影响行区间与**施加顺序**的生效 `edit-desc` 与生效 `attr-desc`。两条数据流：
 
-- **内容流**：`op`（`buffer point → edit-desc`）→ `buffer-apply-change` → 新 buffer。
+- **内容流**：`op`（`buffer point → edit-desc`）→ `document-apply-change` → 新 document。
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
 
 **`screen` 有两条独立通道**（这是刻意的分离）：
@@ -210,7 +213,7 @@ editor-command-batch  : 给现成 change 直接施加
   core 负责循环/落点/账本；buffer 级 `buffer-op-*` 是更低层的动作。
 
 多光标编辑 = 对每个选区施加同一 op 得到一组**同坐标系、不重叠**的 `edit-desc`，
-交给 `buffer-apply-change`（文本批）**一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
+交给 `document-apply-change`（文本批）**一次原子施加、一步撤销**（`editor-edit` 就是这么做的）。
 若 op 会**超出选区**（如 backspace 删光标前一字符、delete 删后一字符），相邻选区可能产出
 重叠的 desc；`editor-edit` 会先把冲突的选区**合并成包络并重算 op**，保证交给 batch 的 desc 两两不相交。
 方向键对每个选区各走一步（`window-map-points`）后再去重/合并。
@@ -229,12 +232,17 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ---
 
-## 6. `buffer-tick`（变化计数 / 版本戳）
+## 6. `tick`（变化计数 / 版本戳）
 
-`buffer-tick` 是单调计数，回答「有没有变」：一次 `change`（无论含多少文本 / 属性 desc）涨 **1**。
-多线程 / 乐观并发合并时拿它当**版本戳**。注意 tick 也随标注涨——要判断「**文本本身**
-是否同一」用 `buffer-content-eq?`。「有没有未保存改动」不属于 core：它取决于外部事件
-（存盘），由调用方自己持有。
+文本与标注各有独立版本号（因为二者已经解耦）：
+
+- `buffer-tick`：纯文本版本，**只有文本变更**才 +1（一次 change 内无论多少条文本 desc，合计 +1）。
+- `document-attr-tick`：标注版本，**只有属性变更**才 +1。
+
+一次 change 同时含文本与属性时，两者各 +1。要判断「**文本本身**是否同一」用
+`buffer-content-eq?`；判断「标注是否同一」用 `document-attrs-eq?`。
+多线程 / 乐观并发合并时把对应版本号当戳。「有没有未保存改动」不属于 core：它取决于
+外部事件（存盘），由调用方自己持有。
 
 ---
 
@@ -254,7 +262,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 ## 8. 守卫抑制：显式 trusted 入口
 
-`read-only` 守卫默认开；绕行**只**有显式入口 `buffer-apply-change-trusted` 与
+`read-only` 守卫默认开；绕行**只**有显式入口 `document-apply-change-trusted` 与
 `editor-edit-at` 的 `#:trusted?`。没有全局开关、没有 `inhibit` 参数。
 
 ---
@@ -282,7 +290,7 @@ editor 门面用 `face-provider : editor bid line → runs`（内部适配成前
 - 内部机制可达但不进白名单：`platform/state.rkt`、`platform/write.rkt`、
   `platform/reaction.rkt`、各层内部模块。
 - 带不变量的值（`buffer` / `window` / `screen`）只透出谓词、读口与具名构造入口
-  （`buffer-open` / `window-open` / `screen-empty` / `screen-compose`），**不透出 struct
+  （`document-open` / `window-open` / `screen-empty` / `screen-compose`），**不透出 struct
   构造器**，避免从外部绕过规范化。
 - `tools/reconcile.rkt` 对账文档表格名字与白名单；`tools/layers.rkt` 强制「依赖不向上」。
 
@@ -304,10 +312,10 @@ editor 门面用 `face-provider : editor bid line → runs`（内部适配成前
 ```
 change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.rkt）
    │
-   └─ buffer-apply-change（doc/buffer.rkt，唯一漏斗）
+   └─ document-apply-change（doc/document.rkt，唯一漏斗）
         · 文本：content-apply 产出生效 desc → 守卫 → attrs-apply-edit 跟随
         · 属性：attrs-apply-attr-batch（坐标 = 文本生效之后；每行只拷贝一次）
-        · tick +1，一次 swap，一条 report
+        · 文本版本 / 标注版本各自 +1，一次 swap，一条 report
 ```
 
 - `attr-desc = (start end key op val)`，同一行、半开 `[start,end)`，`op ∈ 'set | 'remove`；

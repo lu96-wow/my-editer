@@ -2,7 +2,7 @@
 
 (require "point.rkt" "lines.rkt" rackunit)
 
-;;; atom/edit.rkt —— 编辑描述（唯一跨层契约）+ 位置代数
+;;; atom/edit.rkt —— 文本变更原子（edit-desc）+ 位置代数
 ;;;
 ;;;   edit-desc     一次替换 [start,end) → new-text（坐标全为「操作前」）
 ;;;

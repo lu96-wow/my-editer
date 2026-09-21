@@ -1,6 +1,7 @@
 #lang racket
 
-(require "../atom/point.rkt" "../atom/selection.rkt" "../doc/buffer.rkt" "../atom/width.rkt" racket/list rackunit)
+(require "../atom/point.rkt" "../atom/selection.rkt" "../doc/buffer.rkt" "../doc/document.rkt"
+         "../atom/width.rkt" racket/list rackunit)
 
 ;;; viewport/window.rkt —— 视口：buffer 引用 + 本窗口的选区集合 + 滚动位置 + 尺寸
 ;;;
@@ -17,6 +18,8 @@
 (provide
  (struct-out window)
  window-open
+ window-buffer
+ window-set-document
  check-mode
  snap-left-col
  point-left
@@ -29,7 +32,7 @@
  window-primary-index
  window-map-selections
  window-map-primary
- window-set-buffer
+ window-set-document
  window-set-point
  window-set-selections
  window-add-selections
@@ -54,7 +57,7 @@
  window-end)
 
 (struct window
-  (buffer        ; buffer
+  (document      ; document（buffer ⊕ attrs）
    selections    ; (nonempty-listof selection)
    primary-index ; nat        主选区下标
    mode          ; 'clip|'wrap
@@ -65,12 +68,15 @@
    width)        ; nat        可见列数
   #:transparent)
 
-(define (window-open b [height 24] [width 80])
+(define (window-open d [height 24] [width 80])
   (unless (and (exact-nonnegative-integer? height) (>= height 1))
     (error 'window-open "height 必须 ≥ 1，得到 ~a" height))
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width 必须 ≥ 1，得到 ~a" width))
-  (window b (list (caret (point 0 0))) 0 'clip 0 0 0 height width))
+  (window d (list (caret (point 0 0))) 0 'clip 0 0 0 height width))
+
+;; 本视图看的**文本**（属性在 window-document 的 attrs 里）。
+(define (window-buffer w) (document-buffer (window-document w)))
 
 ;;; ---------- 光标 / 选区 ----------
 
@@ -93,8 +99,8 @@
   (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
   (struct-copy window w [selections norm] [primary-index idx]))
 
-(define (window-set-buffer w b)
-  (window-clamp-selections (struct-copy window w [buffer b])))
+(define (window-set-document w d)
+  (window-clamp-selections (struct-copy window w [document d])))
 
 ;; 设成单个空选区（程序面「把光标放这」的语义）。
 (define (window-set-point w p)
@@ -233,8 +239,9 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define b (buffer-open "a\nb\nc\nd\ne"))
-  (define w (window-open b 2 10))
+  (define d (document-open "a\nb\nc\nd\ne"))
+  (define b (document-buffer d))
+  (define w (window-open d 2 10))
 
   ;; 构造：buffer 引用 + 初始光标 / 滚动 / 尺寸
   (check-equal? (window-buffer w) b)
@@ -248,7 +255,7 @@
   ;; 光标夹紧
   (check-equal? (window-point (window-set-point w (point 3 99))) (point 3 1))
   (check-equal? (window-point (window-set-point w (point 99 0))) (point 4 0))
-  (check-equal? (window-point (window-set-buffer w (buffer-open ""))) (point 0 0))
+  (check-equal? (window-point (window-set-document w (document-open ""))) (point 0 0))
 
   ;; 导航
   (check-equal? (window-point (window-right w)) (point 0 1))
@@ -259,7 +266,7 @@
   (check-equal? (window-point (window-home (window-set-point w (point 2 0)))) (point 2 0))
 
   ;; 多选区：设一组，导航一次动全部
-  (define ws (window-open (buffer-open "abcde\nfghij") 3 10))
+  (define ws (window-open (document-open "abcde\nfghij") 3 10))
   (define wm (window-set-selections ws (list (selection (point 0 0) (point 0 0))
                                              (selection (point 0 2) (point 0 2)))))
   (check-equal? (length (window-selections wm)) 2)
@@ -284,7 +291,7 @@
   (check-equal? (window-top-seg (window-set-top-seg w 3)) 3)
 
   ;; 水平吸附：宽字符右半 → 下一字符起点；滚过行尾保留
-  (define wd (window-open (buffer-open "中abc") 2 4))
+  (define wd (window-open (document-open "中abc") 2 4))
   (check-equal? (window-left-col (window-set-left-col wd 0)) 0)
   (check-equal? (window-left-col (window-set-left-col wd 1)) 2)
   (check-equal? (window-left-col (window-set-left-col wd 2)) 2)

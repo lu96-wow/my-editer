@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../atom/point.rkt" "../doc/buffer.rkt" "window.rkt" "render.rkt"
+(require "../atom/point.rkt" "../doc/buffer.rkt" "../doc/document.rkt" "window.rkt" "render.rkt"
          "../atom/width.rkt" "../unit/screen.rkt" rackunit)
 
 ;;; viewport/layout.rkt —— 显示布局：vrow（视觉行）
@@ -382,14 +382,14 @@
   (check-equal? (wrap-segments "" 5) '((0 . 0)))
 
   ;; clip 布局
-  (define b1 (buffer-open "l1\nl2\nl3"))
+  (define b1 (document-open "l1\nl2\nl3"))
   (define wc (window-open b1 2 80))
   (check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-col v)))
                      (vector->list (window-vrows wc)))
                 '((0 0) (1 0)))
 
   ;; wrap 布局
-  (define ww (window-set-mode (window-open (buffer-open "中中中\nx") 3 4) 'wrap))
+  (define ww (window-set-mode (window-open (document-open "中中中\nx") 3 4) 'wrap))
   (check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-col v) (vrow-end-col v)))
                      (vector->list (window-vrows ww)))
                 '((0 0 4) (0 4 6) (1 0 1)))
@@ -410,51 +410,51 @@
                   (list (window-top-line w) (window-top-seg w))) '(0 1))
 
   ;; 光标跟随（clip）
-  (define b5 (buffer-open "l1\nl2\nl3\nl4\nl5"))
+  (define b5 (document-open "l1\nl2\nl3\nl4\nl5"))
   (check-equal? (window-top-line (window-ensure-point (window-set-point (window-open b5 2 10) (point 4 0)))) 3)
   (check-equal? (window-top-line (window-ensure-point (window-set-top-line (window-set-point (window-open b5 2 10) (point 0 0)) 3))) 0)
   ;; 水平跟随
-  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 7)))) 4)
-  (check-equal? (window-left-col (window-ensure-point (window-set-left-col (window-set-point (window-open (buffer-open "abcdefgh") 1 4) (point 0 0)) 4))) 0)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (document-open "abcdefgh") 1 4) (point 0 7)))) 4)
+  (check-equal? (window-left-col (window-ensure-point (window-set-left-col (window-set-point (window-open (document-open "abcdefgh") 1 4) (point 0 0)) 4))) 0)
 
   ;; 宽字符边界：绝不切半
-  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "中中文中") 1 4) (point 0 2)))) 2)
-  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (buffer-open "abcdef中") 1 7) (point 0 6)))) 1)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (document-open "中中文中") 1 4) (point 0 2)))) 2)
+  (check-equal? (window-left-col (window-ensure-point (window-set-point (window-open (document-open "abcdef中") 1 7) (point 0 6)))) 1)
 
   ;; 光标跟随（wrap）
-  (define w7 (window-set-mode (window-set-point (window-open (buffer-open "中中中\nx") 2 4) (point 1 0)) 'wrap))
+  (define w7 (window-set-mode (window-set-point (window-open (document-open "中中中\nx") 2 4) (point 1 0)) 'wrap))
   (check-equal? (let ([w (window-ensure-point w7)]) (list (window-top-line w) (window-top-seg w))) '(0 1))
 
   ;; 视觉行移动（wrap 跨段）
-  (define wv (window-set-mode (window-open (buffer-open "中中中\nx") 3 4) 'wrap))
+  (define wv (window-set-mode (window-open (document-open "中中中\nx") 3 4) 'wrap))
   (check-equal? (window-point (window-visual-move wv +1)) (point 0 2))
   (check-equal? (window-point (window-visual-move (window-visual-move wv +1) +1)) (point 1 0))
   ;; 视觉列保持（clip 按显示列）
-  (check-equal? (window-point (window-visual-move (window-set-point (window-open (buffer-open "中ab\nabcd") 2 80) (point 0 2)) +1))
+  (check-equal? (window-point (window-visual-move (window-set-point (window-open (document-open "中ab\nabcd") 2 80) (point 0 2)) +1))
                 (point 1 3))
   ;; 夹到段尾不溢出
-  (check-equal? (window-point (window-visual-move (window-set-point (window-set-mode (window-open (buffer-open "x\na中b") 2 2) 'wrap) (point 0 1)) +1))
+  (check-equal? (window-point (window-visual-move (window-set-point (window-set-mode (window-open (document-open "x\na中b") 2 2) 'wrap) (point 0 1)) +1))
                 (point 1 0))
 
   ;; clamp-view
-  (define cv (window-set-top-line (window-open (buffer-open "l0\nl1\nl2\nl3") 2 10) 50))
+  (define cv (window-set-top-line (window-open (document-open "l0\nl1\nl2\nl3") 2 10) 50))
   (check-equal? (window-top-line cv) 50)                 ; set-* 只做 max 0
   (check-equal? (window-top-line (window-clamp-view cv)) 2)
   (check-equal? (vector-ref (window-vrows (window-clamp-view cv)) 0) (vrow 2 0 10))
   (check-true (vector? (window-vrows (window-clamp-view (window-set-mode cv 'wrap)))))
-  (check-equal? (window-left-col (window-clamp-view (window-set-left-col (window-open (buffer-open "中abc") 3 4) 1))) 2)
+  (check-equal? (window-left-col (window-clamp-view (window-set-left-col (window-open (document-open "中abc") 3 4) 1))) 2)
 
   ;; 行尾插入点占一格：光标不许落到窗口右边界之外
   ;; clip：行宽 == 窗口宽，光标在行尾 → 右滚一格，光标落到最后一列
-  (define eol-clip (window-ensure-point (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 10))))
+  (define eol-clip (window-ensure-point (window-set-point (window-open (document-open "0123456789") 1 10) (point 0 10))))
   (check-equal? (window-left-col eol-clip) 1)
   (check-equal? (call-with-values (lambda () (window-point->screen eol-clip)) list) '(0 9))
   ;; clip：行尾但行没填满 → 视口不动，光标就在行尾
-  (define eol-short (window-ensure-point (window-set-point (window-open (buffer-open "abc") 1 10) (point 0 3))))
+  (define eol-short (window-ensure-point (window-set-point (window-open (document-open "abc") 1 10) (point 0 3))))
   (check-equal? (window-left-col eol-short) 0)
   (check-equal? (call-with-values (lambda () (window-point->screen eol-short)) list) '(0 3))
   ;; clip：光标在最后一列（不是行尾，下面还有字符）→ 不误滚
-  (define lastcol (window-ensure-point (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 9))))
+  (define lastcol (window-ensure-point (window-set-point (window-open (document-open "0123456789") 1 10) (point 0 9))))
   (check-equal? (window-left-col lastcol) 0)
   (check-equal? (call-with-values (lambda () (window-point->screen lastcol)) list) '(0 9))
   ;; wrap：一行正好填满一段 → 行尾插入点占下一视觉行
@@ -462,14 +462,14 @@
   (check-equal? (wrap-segments "aaaaaaaa" 4) '((0 . 4) (4 . 8) (8 . 8)))
   (check-equal? (wrap-segments "aaa" 4) '((0 . 3)))          ; 没填满 → 不补空段
   (check-equal? (wrap-segments "" 4) '((0 . 0)))
-  (define eol-wrap (window-ensure-point (window-set-mode (window-set-point (window-open (buffer-open "aaaa") 2 4) (point 0 4)) 'wrap)))
+  (define eol-wrap (window-ensure-point (window-set-mode (window-set-point (window-open (document-open "aaaa") 2 4) (point 0 4)) 'wrap)))
   (check-equal? (call-with-values (lambda () (window-point->screen eol-wrap)) list) '(1 0))
   ;; wrap 高度 1：ensure 把视口滚到行尾那一段
-  (define eol-wrap1 (window-ensure-point (window-set-mode (window-set-point (window-open (buffer-open "aaaa") 1 4) (point 0 4)) 'wrap)))
+  (define eol-wrap1 (window-ensure-point (window-set-mode (window-set-point (window-open (document-open "aaaa") 1 4) (point 0 4)) 'wrap)))
   (check-equal? (list (window-top-line eol-wrap1) (window-top-seg eol-wrap1)) '(0 1))
   (check-equal? (call-with-values (lambda () (window-point->screen eol-wrap1)) list) '(0 0))
   ;; 未 ensure 时也不返回越界列：宁可不出光标，也不画到窗口外
-  (check-false (let-values ([(r c) (window-point->screen (window-set-point (window-open (buffer-open "0123456789") 1 10) (point 0 10)))])
+  (check-false (let-values ([(r c) (window-point->screen (window-set-point (window-open (document-open "0123456789") 1 10) (point 0 10)))])
                  (or r c)))
 
   ;; 点级视觉运动（供 map 组合）

@@ -14,7 +14,7 @@
 ;;; 依赖方向：api ← 低层各层；platform 各模块直接 require 它们需要的层，api 不依赖 platform。
 ;;;
 ;;; 两条数据流：
-;;;   内容流：op（buffer point → edit-desc）→ buffer-apply-edit → 新 buffer
+;;;   内容流：op（buffer point → edit-desc）→ document-apply-change → 新 document
 ;;;   渲染流：buffer → render → run → window->screen → screen（后端画）
 ;;; ============================================================================
 
@@ -29,6 +29,7 @@
          "unit/attrs.rkt"
          "unit/screen.rkt"
          "doc/buffer.rkt"
+         "doc/document.rkt"
          "doc/batch.rkt"
          "viewport/window.rkt"
          "viewport/layout.rkt"
@@ -59,26 +60,29 @@
  attrs? attrs-empty attrs-line-count
  attrs-at attrs-runs attrs-key-runs attrs-range-runs
  attrs-apply-edit attrs-apply-attr attrs-apply-attr-batch attrs-attr-inverse attrs-check
- ;; ---- buffer —— 文档原子 ----
- buffer? buffer-open buffer->string buffer->lines
+ ;; ---- buffer —— 纯文本值（content ⊕ tick）----
+ buffer? buffer-open buffer-content buffer->string buffer->lines
  buffer-line-count buffer-line-ref
  buffer-line-length buffer-clamp-point buffer-point->offset buffer-offset->point
- buffer-apply-edit buffer-apply-edit-trusted buffer-edit buffer-edit-trusted
+ buffer-range-text buffer-clamp-edit-descs buffer-content-eq? buffer-tick
  buffer-op-insert-char buffer-op-insert buffer-op-newline buffer-op-backspace buffer-op-delete buffer-op-splice
  buffer-edit-desc-inverse
- buffer-range-text
- buffer-clamp-edit-descs
+ ;; ---- document —— 可编辑根（buffer ⊕ attrs）----
+ document? document-open document-buffer document-attrs
+ document->string document->lines
+ document-line-count document-line-ref document-line-length
+ document-clamp-point document-point->offset document-offset->point document-range-text
+ document-clamp-edit-descs document-tick document-attr-tick document-content-eq? document-attrs-eq?
  read-only-key attr-read-only?
- buffer-put-attr buffer-remove-attr buffer-attr-at buffer-attr-runs buffer-attr-key-runs
- buffer-content-eq?
- buffer-tick
- ;; ---- change 漏斗 + 结果 ----
- buffer-apply-change buffer-apply-change-trusted
+ document-attr-at document-attr-runs document-attr-key-runs
+ document-put-attr document-remove-attr
+ document-apply-change document-apply-change-trusted
+ document-apply-edit document-apply-edit-trusted document-edit document-edit-trusted
  change-result change-result? change-result-applied-texts change-result-applied-attrs
  change-result-text-inverses change-result-attr-inverses change-result-erased-restores
  change-result-replay change-result-undo
  ;; ---- edit —— 批量 / 映射 / 变更行 ----
- buffer-apply-edit-batch buffer-apply-edit-batch-trusted edits-map-position edits-span
+ document-apply-edit-batch document-apply-edit-batch-trusted edits-map-position edits-span
  ;; ---- events —— 类型化输入 ----
  modifiers modifiers? struct:modifiers
  modifiers-control modifiers-alt modifiers-shift modifiers-meta
@@ -100,11 +104,11 @@
  screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-diff-rows screen-compose screen->string
  ;; ---- window ----
  window? window-open
- window-buffer window-point window-height window-width window-mode
+ window-document window-buffer window-point window-height window-width window-mode
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
  window-map-selections window-map-primary window-map-points
- window-set-buffer window-set-point window-set-selections window-add-selections window-remove-selections window-clamp-selections
+ window-set-document window-set-point window-set-selections window-add-selections window-remove-selections window-clamp-selections
  window-add-selection window-remove-selection window-set-primary window-set-primary-index window-selection-member?
  window-set-mode window-set-top-line window-set-left-col
  window-set-top-seg window-set-size window-vscroll window-hscroll
@@ -127,19 +131,20 @@
   (check-equal? (buffer->string b) "hello\nworld")
   (check-equal? (buffer-line-count b) 2)
 
-  ;; 原子链：buffer → 编辑 → window → screen
-  (define-values (b1 d1) (buffer-edit b (point 0 0) (buffer-op-insert-char #\X)))
-  (check-equal? (buffer->string b1) "Xhello\nworld")
-  (check-equal? d1 (edit-desc (point 0 0) (point 0 0) "X"))
-  (check-equal? (screen-rows (window->screen (window-open b1 2 10))) 2)
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b1 2 10))) 0)
+  ;; 原子链：document → 编辑 → window → screen
+  (define d (document-open "hello\nworld"))
+  (define-values (d1 desc) (document-edit d (point 0 0) (buffer-op-insert-char #\X)))
+  (check-equal? (document->string d1) "Xhello\nworld")
+  (check-equal? desc (edit-desc (point 0 0) (point 0 0) "X"))
+  (check-equal? (screen-rows (window->screen (window-open d1 2 10))) 2)
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d1 2 10))) 0)
                 (list (run 0 "Xhello" (hash))))
 
   ;; 派生 face 由投影参数 provider 给出，不进文档
   (define (provider _b _line) (list (list 0 5 (hash 'face 'keyword))))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b 2 10) provider)) 0)
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d 2 10) provider)) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b1 2 10))) 0)
+  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d1 2 10))) 0)
                 (list (run 0 "Xhello" (hash))))
 
   (displayln "api.rkt: all tests passed"))

@@ -5,7 +5,7 @@
 ;;; atom/change.rkt —— 变更集：文本 + 属性，一次施加
 ;;;
 ;;; core 的唯一变更单位。把「替换一段文本」与「改一段属性」打包成一个值，
-;;; 由唯一漏斗施加（doc/buffer.rkt 的 buffer-apply-change）：
+;;; 由唯一漏斗施加（doc/document.rkt 的 document-apply-change）：
 ;;;
 ;;;   · texts : (listof edit-desc)  同一坐标系、两两不重叠；施加时按起点倒序
 ;;;   · attrs : (listof attr-desc)  坐标 = texts **全部生效之后**；同 (line,key) 不重叠

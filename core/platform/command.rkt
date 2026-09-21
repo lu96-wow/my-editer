@@ -1,7 +1,7 @@
 #lang racket
 
 (require "../atom/point.rkt" "../atom/edit.rkt" "../atom/selection.rkt" "../atom/attr.rkt"
-         "../doc/buffer.rkt"
+         "../doc/buffer.rkt" "../doc/document.rkt"
          "../viewport/window.rkt" "../viewport/layout.rkt"
          "../unit/history.rkt"
          "state.rkt" "write.rkt" "neutral.rkt" "program.rkt" "reaction.rkt" rackunit)
@@ -62,7 +62,7 @@
       [else
        (define tds (change-result-applied-texts res))
        (define ads (change-result-applied-attrs res))
-       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-buffer e1 bid) tds)))
+       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-document e1 bid) tds)))
        (values e2 (append texts tds) (append attrs ads))])))
 
 (define (editor-view-undo ed vid)
