@@ -152,7 +152,7 @@ editor-command-batch  : 给 descs 直接施加
 |---|---|
 | `#:view` | 目标 view（默认焦点） |
 | `#:selection` | 编辑上下文（默认该 view 的选区集） |
-| `#:guard?` | 是否守 read-only |
+| `#:trusted?` | 是否跳过 read-only 守卫（默认 `#f` = 守） |
 | `#:reaction` | `none` / `map` / `leader`（本 view 怎么反应；其余同文档 view 按 sync） |
 | `#:record?` | 是否记一步账本 |
 | `#:pre-point` | 撤销回落的编辑前光标 |
@@ -265,6 +265,9 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 - 消费者白名单 = **`core/editor.rkt`**（低层公开面 + editor 平台）。
 - 内部机制可达但不进白名单：`platform/state.rkt`、`platform/write.rkt`、
   `platform/reaction.rkt`、各层内部模块。
+- 带不变量的值（`buffer` / `window` / `screen`）只透出谓词、读口与具名构造入口
+  （`buffer-open` / `window-open` / `screen-empty` / `screen-compose`），**不透出 struct
+  构造器**，避免从外部绕过规范化。
 - `tools/reconcile.rkt` 对账文档表格名字与白名单；`tools/layers.rkt` 强制「依赖不向上」。
 
 ---

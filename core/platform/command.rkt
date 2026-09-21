@@ -150,7 +150,7 @@
 
   ;; 多 buffer：各自独立文本 / 账本
   (define ed (editor-open "AAA"))
-  (define-values (ed2 bid1) (editor-open-buffer ed "b.txt" "BBB" #:focus? #t))
+  (define-values (ed2 bid1) (editor-open-buffer ed "BBB" #:name "b.txt" #:focus? #t))
   (check-equal? (editor-buffer-id ed2) bid1)
   (define-values (ed3 _u5) (editor-edit ed2 (edit-insert "x")))
   (check-equal? (editor-buffer->string ed3 bid1) "xBBB")
@@ -173,7 +173,7 @@
   (define g0 (editor-open (string-join (map number->string (range 30)) "\n") 5 20))
   (define-values (g1 vfree) (editor-add-view g0 0 5 20 #:focus? #f))
   (define-values (g2 vfollow) (editor-add-view g1 0 5 20 #:sync 'follow #:focus? #f))
-  (define-values (g3 other) (editor-open-buffer g2 "other" "OTHER"))
+  (define-values (g3 other) (editor-open-buffer g2 "OTHER" #:name "other"))
   (define g4 (editor-focus-view g3 0))
   (define g5 (editor-goto g4 (point 20 0)))
   (check-equal? (editor-top-line g5) 16)
@@ -245,14 +245,14 @@
   (define-values (ec3 _ec-r3) (editor-command ec0 (edit-insert "X") #:reaction 'leader #:record? #t))
   (check-equal? (editor-point ec3) (point 0 1))          ; leader：光标推进到插入后
   (check-true (editor-can-undo? ec3))
-  ;;   显式 #:guard? #f：绕 read-only
+  ;;   显式 #:trusted? #t：绕 read-only
   (define ecr (editor-put-restrict (editor-open "abc") 0 (point 0 0) (point 0 3) (restrict #t)))
   (define-values (ecr1 rcr1) (editor-command ecr (edit-insert-char #\X)
                                              #:selection (list (caret (point 0 1)))))
   (check-false rcr1)
   (check-equal? (editor-buffer->string ecr1 0) "abc")
   (define-values (ecr2 _ec-rcr2) (editor-command ecr (edit-insert-char #\X)
-                                              #:selection (list (caret (point 0 1))) #:guard? #f))
+                                              #:selection (list (caret (point 0 1))) #:trusted? #t))
   (check-equal? (editor-buffer->string ecr2 0) "aXbc")
 
   ;; 显式同步：裸写不同步；editor-follow 才把 follow view 镜像到 leader 的 window

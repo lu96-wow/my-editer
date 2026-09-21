@@ -96,9 +96,10 @@
   (define entry (buffer-entry 0 name b (history-empty)))
   (editor (list entry) (list (view 0 (window-open b height width) 'free)) 0 1 1))
 
-;; 新增一个 buffer + 一个视图。#:focus? 控制是否把焦点交给新视图（默认**不抢**）。
-;; 返回 (values editor buffer-id)。
-(define (editor-open-buffer ed name text [height 24] [width 80] #:focus? [focus? #f])
+;; 新增一个 buffer + 一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
+;; （默认**不抢**）。返回 (values editor buffer-id)。
+(define (editor-open-buffer ed text [height 24] [width 80]
+                            #:name [name "*scratch*"] #:focus? [focus? #f])
   (define bid (editor-next-buffer ed))
   (define entry (buffer-entry bid name (buffer-open text) (history-empty)))
   (define ed1 (struct-copy editor ed
@@ -212,17 +213,19 @@
   (editor-view->screen ed (editor-focus ed) face-provider))
 
 ;;; ---------- 文本 / 解析 / 约束读（按 buffer-id） ----------
+;;; bid 缺省 = 焦点 buffer；只有「ed 后只有一个参数」的读口能安全缺省
+;;; （带 payload 时，位置缺省会与 payload 抢参数，故必须显式给 bid）。
 
-(define (editor-buffer->string ed bid) (buffer->string (editor-buffer ed bid)))
-(define (editor-buffer->lines ed bid) (buffer->lines (editor-buffer ed bid)))
-(define (editor-buffer-line-count ed bid) (buffer-line-count (editor-buffer ed bid)))
+(define (editor-buffer->string ed [bid (focused-bid ed)]) (buffer->string (editor-buffer ed bid)))
+(define (editor-buffer->lines ed [bid (focused-bid ed)]) (buffer->lines (editor-buffer ed bid)))
+(define (editor-buffer-line-count ed [bid (focused-bid ed)]) (buffer-line-count (editor-buffer ed bid)))
 (define (editor-buffer-line-ref ed bid i) (buffer-line-ref (editor-buffer ed bid) i))
 (define (editor-buffer-line-length ed bid i) (buffer-line-length (editor-buffer ed bid) i))
 (define (editor-buffer-clamp-point ed bid p) (buffer-clamp-point (editor-buffer ed bid) p))
 (define (editor-buffer-point->offset ed bid p) (buffer-point->offset (editor-buffer ed bid) p))
 (define (editor-buffer-offset->point ed bid off) (buffer-offset->point (editor-buffer ed bid) off))
 (define (editor-buffer-range-text ed bid s e) (buffer-range-text (editor-buffer ed bid) s e))
-(define (editor-buffer-tick ed bid) (buffer-tick (editor-buffer ed bid)))
+(define (editor-buffer-tick ed [bid (focused-bid ed)]) (buffer-tick (editor-buffer ed bid)))
 (define (editor-buffer-content-eq? ed b1 b2)
   (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
 (define (editor-restrict-at ed bid p) (buffer-restrict-at (editor-buffer ed bid) p))
@@ -273,7 +276,7 @@
   (check-equal? (editor-restrict-runs pr 0 0) (list (list 0 5 (restrict #t))))
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
-  (define-values (e1 _bid) (editor-open-buffer e0 "b" "BBB" #:focus? #f))
+  (define-values (e1 _bid) (editor-open-buffer e0 "BBB" #:name "b" #:focus? #f))
   (check-equal? (editor-buffer-id e1) 0)
   (check-equal? (editor-buffer-count e1) 2)
 
@@ -284,6 +287,8 @@
 
   ;; focus 糖默认 bid：editor-buffer / 账本查询省略 bid 时看焦点 buffer
   (check-eq? (editor-buffer e0) (editor-buffer e0 0))
+  (check-equal? (editor-buffer->string e0) (editor-buffer->string e0 0))
+  (check-equal? (editor-buffer-line-count e0) (editor-buffer-line-count e0 0))
   (check-false (editor-can-undo? e0))
   ;; 按 view 直取 buffer（省一次 buffer-id 往返）
   (check-eq? (editor-view-buffer e0 0) (editor-buffer e0 0))

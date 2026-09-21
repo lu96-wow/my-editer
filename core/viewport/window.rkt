@@ -102,10 +102,10 @@
   (struct-copy window w [selections (list (caret q))] [primary-index 0]))
 
 ;; 设一组选区；primary 按输入下标选，规范化后追到合并结果。
-(define (window-set-selections w sels [primary 0])
+(define (window-set-selections w sels [primary-index 0])
   (unless (pair? sels) (error 'window-set-selections "至少一个选区"))
   (define b (window-buffer w))
-  (define keysel (and (< primary (length sels)) (clamp-selection b (list-ref sels primary))))
+  (define keysel (and (< primary-index (length sels)) (clamp-selection b (list-ref sels primary-index))))
   (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
   (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
   (struct-copy window w [selections norm] [primary-index idx]))

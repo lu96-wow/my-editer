@@ -74,7 +74,7 @@
 ;; 正交策略（都是数据，不是函数身份）：
 ;;   #:view       目标 view（默认焦点 view）
 ;;   #:selection  编辑上下文（默认该 view 的选区集）
-;;   #:guard?     是否守 read-only 守卫
+;;   #:trusted?   是否跳过 read-only 守卫（默认 #f = 守）
 ;;   #:reaction   'none（只夹紧）/ 'map（同文档各 view free 映射）/
 ;;                'leader（本 view 推进到插入后 + ensure，其余按 sync）
 ;;   #:record?    是否记一步账本（整批记一步）
@@ -140,7 +140,7 @@
 (define (editor-command ed op
                         #:view [vid (view-id (editor-focused-view ed))]
                         #:selection [selection #f]
-                        #:guard? [guard? #t]
+                        #:trusted? [trusted? #f]
                         #:reaction [reaction 'none]
                         #:record? [record? #f]
                         #:pre-point [pre-point #f])
@@ -150,13 +150,13 @@
   (define sels (or selection (window-selections (view-window v))))
   (define descs (coalesce-descs b0 sels op))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
-  (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs guard?))
+  (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs (not trusted?)))
   (editor-command-finish ed* vid bid b0 ds ivs pre reaction record?))
 
 ;; 给一串已算好的 desc（同坐标系、互不重叠）直接施加。
 (define (editor-command-batch ed descs
                         #:view [vid (view-id (editor-focused-view ed))]
-                        #:guard? [guard? #t]
+                        #:trusted? [trusted? #f]
                         #:reaction [reaction 'none]
                         #:record? [record? #f]
                         #:pre-point [pre-point #f])
@@ -164,7 +164,7 @@
   (define bid (editor-view-buffer-id ed vid))
   (define b0 (editor-buffer ed bid))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
-  (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs guard?))
+  (define-values (ed* ds ivs) (editor-apply-edit-batch ed bid descs (not trusted?)))
   (editor-command-finish ed* vid bid b0 ds ivs pre reaction record?))
 
 ;;; ---------- 薄封装：按 bid + 位置 / 批量 descs（程序面） ----------
@@ -185,7 +185,7 @@
   (editor-command ed op
                   #:view (document-vid 'editor-edit-at ed bid)
                   #:selection (list (caret p))
-                  #:guard? (not trusted?)
+                  #:trusted? trusted?
                   #:reaction reaction
                   #:record? record?
                   #:pre-point p))
@@ -196,7 +196,7 @@
                               #:record? [record? #f])
   (editor-command-batch ed descs
                         #:view (document-vid 'editor-edit-at-batch ed bid)
-                        #:guard? (not trusted?)
+                        #:trusted? trusted?
                         #:reaction reaction
                         #:record? record?
                         #:pre-point (edits-min-start descs)))
@@ -227,8 +227,8 @@
 (define (editor-view-set-point ed vid p)
   (editor-put-view ed vid (window-set-point (view-window-of ed vid) p)))
 
-(define (editor-view-set-selections ed vid sels [primary 0])
-  (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels primary)))
+(define (editor-view-set-selections ed vid sels [primary-index 0])
+  (editor-put-view ed vid (window-set-selections (view-window-of ed vid) sels primary-index)))
 (define (editor-view-add-selections ed vid sels #:primary? [primary? #f])
   (editor-put-view ed vid (window-add-selections (view-window-of ed vid) sels #:primary? primary?)))
 (define (editor-view-remove-selections ed vid sels)
@@ -287,8 +287,8 @@
 (define (editor-set-point ed p)
   (editor-view-set-point ed (view-id (editor-focused-view ed)) p))
 
-(define (editor-set-selections ed sels [primary 0])
-  (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels primary))
+(define (editor-set-selections ed sels [primary-index 0])
+  (editor-view-set-selections ed (view-id (editor-focused-view ed)) sels primary-index))
 (define (editor-add-selections ed sels #:primary? [primary? #f])
   (editor-view-add-selections ed (view-id (editor-focused-view ed)) sels #:primary? primary?))
 (define (editor-remove-selections ed sels)
@@ -403,7 +403,7 @@
   (define ts1 (editor-view-set-mode ts0 0 'wrap))
   (define ts2 (editor-view-set-top-seg ts1 0 1))
   (check-equal? (editor-view-top-seg ts2 0) 1)
-  (define-values (v5b other) (editor-open-buffer v5 "other" "OTHER" 2 10 #:focus? #f))
+  (define-values (v5b other) (editor-open-buffer v5 "OTHER" 2 10 #:name "other" #:focus? #f))
   (define v6 (editor-view-set-buffer v5b vv other))
   (check-equal? (editor-view-buffer-id v6 vv) other)
   (check-equal? (editor-buffer-id v6) 0)         ; 焦点不动
@@ -463,7 +463,7 @@
   ;; focus 糖：sync / buffer / 重命名
   (define fs0 (editor-open "x"))
   (check-equal? (editor-sync (editor-set-sync fs0 'follow)) 'follow)
-  (define-values (fs1 bid2) (editor-open-buffer fs0 "b" "y" #:focus? #f))
+  (define-values (fs1 bid2) (editor-open-buffer fs0 "y" #:name "b" #:focus? #f))
   (define fs2 (editor-set-buffer fs1 bid2))
   (check-equal? (editor-buffer-id fs2) bid2)
   (check-equal? (editor-buffer-name (editor-set-buffer-name fs2 bid2 "renamed") bid2) "renamed")

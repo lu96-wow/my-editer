@@ -219,8 +219,8 @@ face-provider : buffer line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `editor-open` | 建一个单 buffer 单 view 的 editor |
-| `editor-open-buffer` | 新开 buffer + view；`#:focus?` 控制是否抢焦点 |
+| `editor-open` | 建一个单 buffer 单 view 的 editor；`#:name` 命名 |
+| `editor-open-buffer` | 新开 buffer + view；`#:name` 命名（默认 `*scratch*`），`#:focus?` 控制是否抢焦点 |
 | `editor-add-view` | 给某 buffer 加 view；`#:sync`、`#:focus?` |
 | `editor-close-view` | 关一个 view |
 | `editor-close-buffer` | 关一个 buffer 及其 view |
@@ -273,6 +273,12 @@ face-provider : buffer line -> (listof (list start end face))
 
 ### 9.3 位置解析（程序入口）
 
+按 buffer 寻址的读口，`bid` 缺省 = 焦点 buffer，但**仅当 bid 是该读口唯一参数**时
+（`editor-buffer` / `editor-buffer-name` / `editor-buffer->string` / `editor-buffer->lines` /
+`editor-buffer-line-count` / `editor-buffer-tick` / 账本查询）。带 payload 的读口
+（如 `editor-buffer-line-ref ed bid i`）必须显式给 bid —— 位置缺省会与 payload 抢参数。
+`editor-buffer-content-eq?` 比较两个 buffer，两个 bid 都显式。
+
 | 名字 | 语义 |
 |---|---|
 | `editor-buffer->string` | buffer 全文字符串 |
@@ -305,7 +311,7 @@ face-provider : buffer line -> (listof (list start end face))
 |---|---|---|
 | `#:view` | vid（默认焦点） | 目标 view |
 | `#:selection` | 选区集（默认该 view 的选区） | 编辑上下文 |
-| `#:guard?` | 默认 `#t` | 是否守 read-only |
+| `#:trusted?` | 默认 `#f` | 是否跳过 read-only 守卫 |
 | `#:reaction` | `'none`/`'map`/`'leader` | 本 view 的反应；其余同文档 view 按 sync |
 | `#:record?` | 默认 `#f` | 是否记一步账本 |
 | `#:pre-point` | 默认该 view primary head | 记账用的编辑前光标 |
@@ -319,7 +325,7 @@ face-provider : buffer line -> (listof (list start end face))
 
 `op : buffer selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
 同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
-（用 `#:guard? #f` / `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
+（用 `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
 report 的 `change-report-edits` 是实际生效的 descs（施加顺序）。
 
 ### 9.6 视图命令（程序面：按 vid 定位，只动指定的一个 view，**不经过焦点**）

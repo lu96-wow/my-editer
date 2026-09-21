@@ -143,7 +143,7 @@
 
 ;; 应用按开关选 provider；投影时传给 editor->screen。
 (define (app-face-provider a)
-  (if (app-highlight? a) syntax-face (lambda (_b _line) '())))
+  (if (app-highlight? a) syntax-face no-face-provider))
 
 ;; 开关高亮：只翻标志，不碰文档。
 (define (toggle-highlight a)
