@@ -86,7 +86,8 @@
           (define p (selection-head sel))
           (define line (editor-buffer-line-ref ed did (point-line p)))
           (define indent (car (regexp-match #rx"^[ \t]*" line)))
-          (edit-desc (selection-anchor sel) (selection-head sel) (string-append "\n" indent)))))
+          (define-values (a z) (selection-range sel))
+          (edit-desc a z (string-append "\n" indent)))))
 
 ;; 2.3 导航
 ;; [core] editor-left/right/up/down/home/end/scroll（命名用户命令，内部走 editor-command 组合）。
@@ -534,6 +535,15 @@
   (define x3 (edit x2 (edit-backspace)))
   (check-equal? (editor-buffer->string (app-ed x3) 0) "abc\nghi")
   (check-true (bytes? (frame->bytes x3)))
+
+  ;; 反向选区（Shift+左/上 可能产生）：插入 / 回车按正向区间替换，不得报错
+  (define rv0 (make-app "abcdef" 5 20 "*t*"))
+  (define rv1 (struct-copy app rv0
+               [ed (editor-set-selections (app-ed rv0)
+                                          (list (selection (point 0 4) (point 0 1))))]))
+  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-insert "X"))) 0) "aXef")
+  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-newline))) 0) "a\nef")
+  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-backspace))) 0) "aef")
 
   (displayln "example.rkt: all tests passed"))
 

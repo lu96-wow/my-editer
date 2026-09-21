@@ -92,7 +92,9 @@
 ;;; 形状统一：op : buffer selection → (or/c #f edit-desc)。
 
 (define (buffer-op-insert text)
-  (lambda (_b sel) (edit-desc (selection-anchor sel) (selection-head sel) text)))
+  (lambda (_b sel)
+    (define-values (a z) (selection-range sel))
+    (edit-desc a z text)))
 (define (buffer-op-insert-char ch) (buffer-op-insert (string ch)))
 (define (buffer-op-newline)       (buffer-op-insert "\n"))
 (define (buffer-op-backspace)
@@ -131,6 +133,9 @@
   ;; 文本动作只算 desc
   (check-equal? ((buffer-op-insert-char #\X) b0 (caret (point 0 0)))
                 (edit-desc (point 0 0) (point 0 0) "X"))
+  ;; 反向选区（head 在 anchor 左）→ 归一为正向区间，不得产生反向 desc
+  (check-equal? ((buffer-op-insert "X") b0 (selection (point 0 3) (point 0 1)))
+                (edit-desc (point 0 1) (point 0 3) "X"))
   (check-equal? ((buffer-op-backspace) b0 (caret (point 1 0)))
                 (edit-desc (point 0 5) (point 1 0) ""))
   (check-equal? (buffer-clamp-edit-descs b0 (list (edit-desc (point 0 1) (point 0 99) "")))

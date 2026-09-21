@@ -96,7 +96,7 @@
   (define pidx (window-primary-index w))
   (define keysel (and (< pidx (length sels)) (clamp-selection b (list-ref sels pidx))))
   (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
-  (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
+  (define idx (if keysel (selections-primary-index norm keysel) 0))
   (struct-copy window w [selections norm] [primary-index idx]))
 
 (define (window-set-document w d)
@@ -113,7 +113,7 @@
   (define b (window-buffer w))
   (define keysel (and (< primary-index (length sels)) (clamp-selection b (list-ref sels primary-index))))
   (define norm (selections-normalize (map (lambda (s) (clamp-selection b s)) sels)))
-  (define idx (if keysel (or (selections-index-containing norm (selection-head keysel)) 0) 0))
+  (define idx (if keysel (selections-primary-index norm keysel) 0))
   (struct-copy window w [selections norm] [primary-index idx]))
 
 ;; 对每个选区施加 f（selection → selection），再规范化；primary 保持。
@@ -280,6 +280,14 @@
   (check-equal? (length (window-selections wo)) 1)
   (check-equal? (call-with-values (lambda () (selection-range (car (window-selections wo)))) list)
                 (list (point 0 0) (point 0 3)))
+
+  ;; primary 边界不歧义：[0,2) 与 caret(2) 并存时 primary=caret；首尾相接的两个区间取后者
+  (check-equal? (window-primary (window-set-selections ws (list (selection (point 0 0) (point 0 2))
+                                                                (caret (point 0 2))) 1))
+                (caret (point 0 2)))
+  (check-equal? (window-primary (window-set-selections ws (list (selection (point 0 0) (point 0 2))
+                                                                (selection (point 0 2) (point 0 4))) 1))
+                (selection (point 0 2) (point 0 4)))
 
   ;; 滚动 / 尺寸
   (check-equal? (window-top-line (window-vscroll w 2)) 2)

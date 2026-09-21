@@ -27,7 +27,7 @@
  selection-map-both
  selection<?
  selections-normalize
- selections-index-containing)
+ selections-primary-index)
 
 (struct selection (anchor head) #:transparent)
 
@@ -90,12 +90,28 @@
             (cons (selection ps (if (point<? pe se) se pe)) (cdr acc))
             (cons s acc))]))))
 
-;; 规范化后的列表里，哪个选区含点 p（用于把 primary 追到合并后的那个）。
-(define (selections-index-containing sels p)
-  (for/first ([s (in-list sels)] [i (in-naturals)]
-              #:when (let-values ([(a b) (selection-range s)])
-                       (and (point<=? a p) (point<=? p b))))
-    i))
+;; 规范化后的 sels 里，原 primary（target）落在哪一项：用于 primary 跨规范化（排序/去重/合并）
+;; 的**位置追踪**。半开区间在边界上有歧义，故分情况：
+;;   · target 是区间：找「完整包含 target 区间」的项（合并后的包络）；
+;;   · target 是光标：先精确相等，再退到半开包含 [xa,xb)，最后才用含端点的包含。
+;; 这样 [0,2) 与 caret(2) 并存时 caret 归 caret，而不会被前一个区间吃掉。
+(define (selections-primary-index sels target)
+  (define-values (a b) (selection-range target))
+  (define (full-contains? x)
+    (let-values ([(xa xb) (selection-range x)]) (and (point<=? xa a) (point<=? b xb))))
+  (define (half-open-contains? x p)
+    (let-values ([(xa xb) (selection-range x)]) (and (point<=? xa p) (point<? p xb))))
+  (define (closed-contains? x p)
+    (let-values ([(xa xb) (selection-range x)]) (and (point<=? xa p) (point<=? p xb))))
+  (cond
+    [(point=? a b)
+     (or (for/first ([x (in-list sels)] [i (in-naturals)] #:when (equal? x target)) i)
+         (for/first ([x (in-list sels)] [i (in-naturals)] #:when (half-open-contains? x a)) i)
+         (for/first ([x (in-list sels)] [i (in-naturals)] #:when (closed-contains? x a)) i)
+         0)]
+    [else
+     (or (for/first ([x (in-list sels)] [i (in-naturals)] #:when (full-contains? x)) i)
+         0)]))
 
 ;;; ---------- 测试 ----------
 
@@ -123,8 +139,17 @@
   (check-equal? (selections-normalize (list (selection (p 0 0) (p 0 0)) (selection (p 0 0) (p 0 0))))
                 (list (selection (p 0 0) (p 0 0))))
 
-  ;; 定位：含某点的选区下标
-  (check-equal? (selections-index-containing (list (selection (p 0 0) (p 0 2)) (selection (p 0 5) (p 0 6))) (p 0 5)) 1)
+  ;; 定位：primary 跨规范化的追踪（区间完整包含 / 光标边界不被前一区间吃掉）
+  (define sels* (list (selection (p 0 0) (p 0 2)) (selection (p 0 5) (p 0 6))))
+  (check-equal? (selections-primary-index sels* (selection (p 0 5) (p 0 6))) 1)
+  ;; [0,2) 与 caret(2) 并存：primary 是 caret → 不得归给 [0,2)
+  (check-equal? (selections-primary-index (list (selection (p 0 0) (p 0 2)) (caret (p 0 2)))
+                                          (caret (p 0 2)))
+                1)
+  ;; 首尾相接的两个区间：主选是后者时不得归给前者
+  (check-equal? (selections-primary-index (list (selection (p 0 0) (p 0 2)) (selection (p 0 2) (p 0 4)))
+                                          (selection (p 0 2) (p 0 4)))
+                1)
 
   ;; caret 构造器/谓词（底层仍是 selection）
   (check-equal? (caret (p 0 3)) (selection (p 0 3) (p 0 3)))
