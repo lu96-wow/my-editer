@@ -18,7 +18,7 @@
 ;;;   editor-put-view        换一个 view 的 window
 ;;;   editor-set-view-sync / editor-set-view-document  视图结构变换
 ;;;   editor-put-document-name
-;;;   editor-put-history / editor-record-history
+;;;   editor-put-history / editor-put-history-on? / editor-put-history-clear / editor-record-history
 ;;;
 ;;; 不变量（由本层维持）：任一 view 的 window.document 必是某个 document-entry 的 document。
 
@@ -31,6 +31,8 @@
  editor-set-view-sync
  editor-set-view-document
  editor-put-history
+ editor-put-history-on?
+ editor-put-history-clear
  editor-put-document-name
  editor-record-history)
 
@@ -121,12 +123,21 @@
     [documents (for/list ([e (in-list (editor-documents ed))])
                (if (= (document-entry-id e) did) (struct-copy document-entry e [history h]) e))]))
 
+;; 设某 document 的默认历史策略（是否把变更记入账本）。
+(define (editor-put-history-on? ed did on?)
+  (struct-copy editor ed
+    [documents (for/list ([e (in-list (editor-documents ed))])
+               (if (= (document-entry-id e) did) (struct-copy document-entry e [record? on?]) e))]))
+
+;; 清空某 document 的账本（保留历史策略）。
+(define (editor-put-history-clear ed did) (editor-put-history ed did (history-empty)))
+
 ;;; ---------- 测试：机制原语 ----------
 
 (module+ test
   ;; swap-document 不动光标
   (define d-old (document-open "old"))
-  (define e0 (editor (list (document-entry 0 "s" d-old (history-empty)))
+  (define e0 (editor (list (document-entry 0 "s" d-old (history-empty) #t))
                      (list (view 0 (window-open d-old 3 10) 'free))
                      0 1 1))
   (define e1 (editor-swap-document e0 0 (document-open "NEW")))

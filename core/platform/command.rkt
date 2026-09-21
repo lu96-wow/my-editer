@@ -9,7 +9,7 @@
 ;;; platform/command.rkt —— 用户命令：leader + ensure + 账本
 ;;;
 ;;; 编辑原语是 program.rkt 的 editor-command；这里只固定「用户编辑」的策略：
-;;;   editor-view-edit / editor-edit = editor-command + #:reaction 'leader + #:record? #t
+;;;   editor-view-edit / editor-edit = editor-command + #:reaction 'leader + #:record? 'default
 ;;; 导航与同步是 editor-view-put-window（裸写）+ window-* + editor-view-follow 的组合。
 ;;; 所有原语按 vid 定位；focus 只是解析 vid 的糖。
 
@@ -48,7 +48,7 @@
 ;; 薄封装：策略全在 editor-command 的参数里；这里只固定「用户编辑」的取值。
 
 (define (editor-view-edit ed vid op)
-  (editor-command ed op #:view vid #:reaction 'leader #:record? #t))
+  (editor-command ed op #:view vid #:reaction 'leader #:record? 'default))
 
 ;;; ---------- 撤销 / 重做（指定 view 所属 document 的账本） ----------
 
@@ -239,11 +239,14 @@
 
   ;; 编辑原语 editor-command：策略是参数
   (define ec0 (editor-open "abcdef"))
-  ;;   默认：焦点 view 的选区 + reaction 'none + 不记账
+  ;;   默认：焦点 view 的选区 + reaction 'none；#:record? 'default → 跟随 document 策略（这里 #:history? #t）
   (define-values (ec1 _ec-r1) (editor-command ec0 (edit-insert "X")))
   (check-equal? (editor-buffer->string ec1 0) "Xabcdef")
   (check-equal? (editor-point ec1) (point 0 0))          ; none：光标不动
-  (check-false (editor-can-undo? ec1))                   ; 默认不记账
+  (check-true (editor-can-undo? ec1))                    ; 默认跟随 document
+  ;;   #:record? #f：显式不记账
+  (define-values (ec1n _ec1nr) (editor-command ec0 (edit-insert "X") #:record? #f))
+  (check-false (editor-can-undo? ec1n))
   ;;   显式 #:selection：程序化定位
   (define-values (ec2 _ec-r2) (editor-command ec0 (edit-insert "Y")
                                            #:selection (list (caret (point 0 3)))))

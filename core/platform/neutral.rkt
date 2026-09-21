@@ -30,6 +30,8 @@
  editor-focus-document
  ;; 查询
  editor-document-count
+ editor-history-on?
+ editor-view-history-on?
  editor-view-count
  editor-document-id
  editor-buffer
@@ -109,17 +111,19 @@
  editor-redo-depth)
 
 ;;; ---------- 构造 / 生命周期 ----------
-(define (editor-open text [height 24] [width 80] #:name [name "*scratch*"])
+(define (editor-open text [height 24] [width 80]
+                     #:name [name "*scratch*"] #:history? [history? #t])
   (define d (document-open text))
-  (define entry (document-entry 0 name d (history-empty)))
+  (define entry (document-entry 0 name d (history-empty) history?))
   (editor (list entry) (list (view 0 (window-open d height width) 'free)) 0 1 1))
 
 ;; 新增一个 buffer + 一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
 ;; （默认**不抢**）。返回 (values editor buffer-id)。
 (define (editor-open-document ed text [height 24] [width 80]
-                            #:name [name "*scratch*"] #:focus? [focus? #f])
+                            #:name [name "*scratch*"] #:focus? [focus? #f]
+                            #:history? [history? #t])
   (define did (editor-next-document ed))
-  (define entry (document-entry did name (document-open text) (history-empty)))
+  (define entry (document-entry did name (document-open text) (history-empty) history?))
   (define ed1 (struct-copy editor ed
                [documents (append (editor-documents ed) (list entry))]
                [next-document (add1 did)]))
@@ -163,6 +167,11 @@
 (define (focused-did ed) (editor-view-document-id ed (editor-focus ed)))
 
 (define (editor-document-count ed) (length (editor-documents ed)))
+;; 该 document 的默认历史策略（是否把变更记入账本）。命令可用 #:record? 覆盖。
+(define (editor-history-on? ed [did (focused-did ed)])
+  (document-entry-record? (editor-document-entry ed did)))
+(define (editor-view-history-on? ed vid)
+  (document-entry-record? (editor-document-entry ed (editor-view-document-id ed vid))))
 (define (editor-view-count ed) (length (editor-views ed)))
 (define (editor-document-id ed) (focused-did ed))
 ;; did 省略时用焦点 view 的 buffer（focus 糖）。

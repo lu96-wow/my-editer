@@ -28,7 +28,9 @@
 
 ;;; ---------- 数据 ----------
 
-(struct document-entry (id name document history) #:transparent)
+(struct document-entry (id name document history record?) #:transparent)
+;; history : history   撤销/重放账本（空栈 = 还没记过）
+;; record? : boolean   该 document 的**默认历史策略**：变更是否入账本（命令可用 #:record? 覆盖）
 
 ;; 一次命令的影响（新坐标系）；命令返回 #f 表示什么都没发生。
 ;; texts : (listof edit-desc) —— **施加顺序**；每个 desc 的坐标是「施加它之前」的文档状态
@@ -92,7 +94,7 @@
 (module+ test
   (require rackunit "../doc/buffer.rkt")
   (define d (document-open "s"))
-  (define ed (editor (list (document-entry 0 "s" d 'H))
+  (define ed (editor (list (document-entry 0 "s" d 'H #t))
                      (list (view 0 (window-open d 24 80) 'free)) 0 1 1))
 
   (check-equal? (document-entry-id (editor-document-entry ed 0)) 0)

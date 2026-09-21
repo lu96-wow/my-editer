@@ -119,7 +119,8 @@
   (define stamp (number->string (current-seconds)))
   (define-values (ed* _report)
     (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
-                    #:selection (list (caret p))))
+                    #:selection (list (caret p))
+                    #:record? #f))
   (struct-copy app a [ed ed*]))
 
 ;; 2.6 视图面：尺寸

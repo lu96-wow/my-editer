@@ -76,7 +76,7 @@
   ;; 造一个单 document 单 view 的 editor；再加一个 view（可指定 sync）
   (define (mk text h w)
     (define d (document-open text))
-    (editor (list (document-entry 0 "s" d (history-empty)))
+    (editor (list (document-entry 0 "s" d (history-empty) #t))
             (list (view 0 (window-open d h w) 'free)) 0 1 1))
   (define (add-view ed h w p sync)
     (define d (document-entry-document (editor-document-entry ed 0)))

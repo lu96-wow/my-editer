@@ -165,7 +165,7 @@ editor-command-batch  : 给现成 change 直接施加
 | `#:attrs` | 属性计划（默认无）；与文本编辑合成一条 change |
 | `#:trusted?` | 是否跳过 read-only 守卫（默认 `#f` = 守） |
 | `#:reaction` | `none` / `map` / `leader`（本 view 怎么反应；其余同文档 view 按 sync） |
-| `#:record?` | 是否记一步账本 |
+| `#:record?` | 是否记一步账本：`'default`（跟随 document 策略）/ `#t` / `#f` |
 | `#:pre-point` | 撤销回落的编辑前光标 |
 
 `editor-edit-at` / `editor-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
@@ -173,7 +173,7 @@ editor-command-batch  : 给现成 change 直接施加
 `editor-apply-attrs` / `editor-put-attr` / `editor-remove-attr`。
 
 - **程序默认**：`editor-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
-- **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? #t`。
+- **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? 'default`（跟随 document）。
 - **裸写 / 同步**：视图写入是 `editor-view-put-window`（裸写，不镜像）；同步是显式
   `editor-view-follow`。用户导航 = 两者的组合（`editor-view-move`，不对外）。
 - **中性面**：读、解析、投影、构造（`editor-buffer->string` 等）。
@@ -265,6 +265,10 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 - 属性也要可逆：显式属性的逆由 `attrs-attr-inverse` 给出；文本编辑抹掉的属性由
   `attrs-range-runs` 在施加前捕获，撤销时在**原坐标**补回（`change-result-erased-restores`）。
 - 合并规则是**结构判定**（纯文本单字符的打字 / 退格 / 前向删除连续段），无时钟无状态。
+- **记不记是 document 的策略 + 命令级覆盖**：`document-entry` 带 `record?`（开口 `#:history?`，默认 `#t`）。
+  命令的 `#:record?` 取 `'default`（跟随 document）/ `#t` / `#f`，在 `editor-run-change` 一处解析。
+  派生 / 只读文档（文件树、状态栏）用 `#:history? #f` 从此不产账本；运行时 `editor-history-on?` /
+  `editor-set-history-on?` 查询 / 切换，`editor-clear-history` 清栈（不隐式清）。
 - 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后属性挡住。
 
 ---

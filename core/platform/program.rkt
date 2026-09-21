@@ -75,7 +75,12 @@
  ;; 属性写（程序面：改 document 的属性，不碰文本/光标）
  editor-apply-attrs
  editor-put-attr
- editor-remove-attr)
+ editor-remove-attr
+ ;; 历史策略 / 清栈（读口 editor-history-on? 在 neutral）
+ editor-set-history-on?
+ editor-view-set-history-on?
+ editor-clear-history
+ editor-view-clear-history)
 
 ;;; ---------- 编辑原语：策略全显式 ----------
 ;; op   : (or/c #f (editor did selection → (or/c #f edit-desc)))
@@ -88,7 +93,7 @@
 ;;   #:trusted?   是否跳过 read-only 守卫（默认 #f = 守）
 ;;   #:reaction   'none（只夹紧）/ 'map（同文档各 view free 映射）/
 ;;                'leader（本 view 推进到插入后 + ensure，其余按 sync）
-;;   #:record?    是否记一步账本（整批记一步）
+;;   #:record?    是否记一步账本：'default（跟随 document 策略）/ #t / #f（整批记一步）
 ;;   #:pre-point  记账用的编辑前光标（默认该 view 的 primary head）
 ;; 返回 (values editor (or/c #f change-report))。
 
@@ -128,8 +133,17 @@
                     (remove* conflicts (cdr ps))))])])))
 
 ;; 命令的后半：反应 + 记账 + report（single / batch / attr 共用）。
+;; 把命令级的 #:record? 解析成布尔：'default = 跟随 document 的历史策略。
+(define (resolve-record? who e did r)
+  (case r
+    [(default) (editor-history-on? e did)]
+    [(#t) #t]
+    [(#f) #f]
+    [else (error who "#:record? 必须是 'default / #t / #f，得到 ~a" r)]))
+
 (define (editor-run-change ed ch vid reaction record? pre guard?)
   (define did (editor-view-document-id ed vid))
+  (define rec? (resolve-record? 'editor-command ed did record?))
   (define-values (ed* res) (editor-apply-change ed did ch guard?))
   (cond
     [(not res) (values ed #f)]
@@ -141,7 +155,7 @@
                     [(map)    (editor-map-views ed* d* tds)]
                     [(leader) (editor-leader-view ed* vid d* tds)]
                     [else (error 'editor-command "reaction 必须是 'none / 'map / 'leader，得到 ~a" reaction)]))
-     (define ed*** (if record?
+     (define ed*** (if rec?
                        (editor-record-history ed** did
                                               (list (change-result-replay res))
                                               (change-result-undo res)
@@ -156,7 +170,7 @@
                         #:selection [selection #f]
                         #:trusted? [trusted? #f]
                         #:reaction [reaction 'none]
-                        #:record? [record? #f]
+                        #:record? [record? 'default]
                         #:pre-point [pre-point #f])
   (define v (editor-view-ref ed vid))
   (define did (editor-view-document-id ed vid))
@@ -172,7 +186,7 @@
                         #:view [vid (view-id (editor-focused-view ed))]
                         #:trusted? [trusted? #f]
                         #:reaction [reaction 'none]
-                        #:record? [record? #f]
+                        #:record? [record? 'default]
                         #:pre-point [pre-point #f])
   (define v (editor-view-ref ed vid))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
@@ -206,7 +220,7 @@
 (define (editor-edit-at ed did p op
                         #:reaction [reaction 'none]
                         #:trusted? [trusted? #f]
-                        #:record? [record? #f])
+                        #:record? [record? 'default])
   (editor-command ed op
                   #:view (document-vid 'editor-edit-at ed did)
                   #:selection (list (caret p))
@@ -218,7 +232,7 @@
 (define (editor-edit-at-batch ed did descs
                               #:reaction [reaction 'none]
                               #:trusted? [trusted? #f]
-                              #:record? [record? #f])
+                              #:record? [record? 'default])
   (editor-command-batch ed (change/edits descs)
                         #:view (document-vid 'editor-edit-at-batch ed did)
                         #:trusted? trusted?
@@ -375,18 +389,30 @@
   (editor-put-document-name ed did name))
 
 ;;; ---------- 属性写（改 document 的属性；不碰文本，光标自然不动） ----------
-;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 #f（程序面，与 editor-edit-at 一致），
-;; 用户面（如标记只读）请传 #:record? #t 以入账本、可撤销。
+;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 'default（跟随 document 策略），
+;; 可用 #:record? #t / #f 覆盖。
 
-(define (editor-apply-attrs ed did attrs #:record? [record? #f])
+(define (editor-apply-attrs ed did attrs #:record? [record? 'default])
   (editor-command-batch ed (change/attrs attrs)
                         #:view (document-vid 'editor-apply-attrs ed did)
                         #:record? record?))
 
-(define (editor-put-attr ed did start end key val #:record? [record? #f])
+(define (editor-put-attr ed did start end key val #:record? [record? 'default])
   (editor-apply-attrs ed did (list (attr-set start end key val)) #:record? record?))
-(define (editor-remove-attr ed did start end key #:record? [record? #f])
+(define (editor-remove-attr ed did start end key #:record? [record? 'default])
   (editor-apply-attrs ed did (list (attr-remove start end key)) #:record? record?))
+
+;;; ---------- 历史策略 / 清栈 ----------
+;; 策略位在 document：开文档时 #:history? 定默认；这里运行时查询/切换。
+
+(define (editor-view-set-history-on? ed vid on?)
+  (editor-put-history-on? ed (editor-view-document-id ed vid) on?))
+(define (editor-set-history-on? ed on?)
+  (editor-view-set-history-on? ed (view-id (editor-focused-view ed)) on?))
+;; 清栈（focus 糖：did 缺省 = 焦点 document）
+(define (editor-clear-history ed [did (editor-document-id ed)]) (editor-put-history-clear ed did))
+(define (editor-view-clear-history ed vid)
+  (editor-put-history-clear ed (editor-view-document-id ed vid)))
 
 ;;; ---------- 测试 ----------
 
@@ -400,7 +426,10 @@
   (check-equal? (change-report-texts r1)
                 (list (edit-desc (point 0 0) (point 0 0) "XY")))   ; 施加顺序的生效 desc
   (check-equal? (change-report-attrs r1) '())
-  (check-false (editor-can-undo? e1 0))                 ; 默认不记账本
+  (check-true (editor-can-undo? e1 0))                  ; 默认跟随 document 策略（#:history? #t）
+  ;; #:record? #f：显式不记账
+  (define-values (e1n _r1n) (editor-edit-at e0 0 (point 0 0) (edit-splice (point 0 0) (point 0 0) "XY") #:record? #f))
+  (check-false (editor-can-undo? e1n 0))
 
   ;; 'map：光标跟随文本（光标在编辑点之后才会右移）
   (define e0s (editor-set-point e0 (point 0 3)))
@@ -423,10 +452,28 @@
   (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
   (check-equal? (editor-buffer->string tr2 0) "aXbc")
 
-  ;; 属性写：只改属性、不碰文本/光标；#:record? #t 才入账本
-  (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t #:record? #t))
+  ;; 属性写：只改属性、不碰文本/光标；默认跟随 document 策略（可撤销）
+  (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
   (check-true (attr-read-only? (editor-attr-at an 0 (point 0 2))))
   (check-true (editor-can-undo? an 0))
+
+  ;; document 级历史策略：#:history? #f 的文档不记账（用户面/程序面/属性写都不记）
+  (define noh (editor-open "abc" 5 20 #:history? #f))
+  (check-false (editor-history-on? noh))
+  (define-values (noh1 _nohr1) (editor-command noh (edit-insert "X")))
+  (check-equal? (editor-buffer->string noh1 0) "Xabc")
+  (check-false (editor-can-undo? noh1))
+  (define-values (noh2 _nohr2) (editor-put-attr noh1 0 (point 0 0) (point 0 1) read-only-key #t))
+  (check-false (editor-can-undo? noh2))
+  ;; 显式 #:record? #t 仍可强制记
+  (define-values (noh3 _nohr3) (editor-command noh1 (edit-insert "X") #:record? #t))
+  (check-true (editor-can-undo? noh3))
+  ;; 切换策略 / 清栈
+  (define yesh (editor-set-history-on? noh #t))
+  (check-true (editor-history-on? yesh))
+  (define-values (yesh1 _yeshr1) (editor-command yesh (edit-insert "X")))
+  (check-true (editor-can-undo? yesh1))
+  (check-false (editor-can-undo? (editor-clear-history yesh1)))
 
   ;; 文本 + 属性一条命令：插入 "X" 并标只读 —— 一次记一步、report 含文本与属性
   (define cx0 (editor-open "abc"))

@@ -267,8 +267,8 @@ face-provider : editor did line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名 |
-| `editor-open-document` | 新开 document + view；`#:name` 命名（默认 `*scratch*`），`#:focus?` 控制是否抢焦点 |
+| `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名；`#:history?`（默认 `#t`）定历史策略 |
+| `editor-open-document` | 新开 document + view；`#:name`（默认 `*scratch*`）、`#:focus?`、`#:history?`（默认 `#t`） |
 | `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?` |
 | `editor-close-view` | 关一个 view |
 | `editor-close-document` | 关一个 document 及其 view |
@@ -281,6 +281,7 @@ face-provider : editor did line -> (listof (list start end face))
 |---|---|
 | `editor?` | 是否 editor |
 | `editor-document-count` | document 数 |
+| `editor-history-on?` / `editor-view-history-on?` | 该 document 的默认历史策略（是否入账本） |
 | `editor-view-count` | view 数 |
 | `editor-documents` | document-entry 列表 |
 | `editor-views` | view 列表 |
@@ -352,9 +353,9 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-attr-at` | 某点的全部属性（hash） |
 | `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
 | `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
-| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `#f` |
-| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `#f` |
-| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `#f` |
+| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `'default` |
+| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `'default` |
+| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `'default` |
 | `editor-attrs-eq?` | 两个 buffer 的标注是否同一 |
 
 ### 9.5 编辑
@@ -369,7 +370,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `#:attrs` | 属性计划（默认无） | 在文本 descs 夹紧后求值；与文本合成一条 change |
 | `#:trusted?` | 默认 `#f` | 是否跳过 read-only 守卫 |
 | `#:reaction` | `'none`/`'map`/`'leader` | 本 view 的反应；其余同文档 view 按 sync |
-| `#:record?` | 默认 `#f` | 是否记一步账本 |
+| `#:record?` | 默认 `'default` | 是否记一步账本：`'default`（跟随 document 策略）/ `#t` / `#f` |
 | `#:pre-point` | 默认该 view primary head | 记账用的编辑前光标 |
 
 | 薄封装 | 固定的策略 |
@@ -470,6 +471,8 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-can-redo?` | 可否重做 |
 | `editor-undo-depth` | 撤销栈深 |
 | `editor-redo-depth` | 重做栈深 |
+| `editor-set-history-on?` / `editor-view-set-history-on?` | 切换某 document 的默认历史策略 |
+| `editor-clear-history` / `editor-view-clear-history` | 清空账本（不隐式清；保留策略） |
 
 ### 9.9 投影
 
