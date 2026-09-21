@@ -14,10 +14,13 @@
 ;;;   ① mirror-point  —— 逻辑映射（line/col），不换 document、不看 mode：
 ;;;       行：**固定行号**，超出目标行数 → 夹到最近
 ;;;       列：按该行字符长**比例**
-;;;   ② mirror-window —— 取 leader 左上角的逻辑点，按 follower 的 mode 投影成视口：
+;;;   ② mirror-window —— 取源窗口左上角的逻辑点，按目标窗口的 mode 投影成视口：
 ;;;       clip：top-line = 行；left-col = 该列的显示列（吸附字符起点）
 ;;;       wrap：top-line = 行；top-seg = 该列所在的折行段
 ;;;       最后 window-clamp-view 夹回合法域（行不够→顶到最近）
+;;;
+;;; 参数一律「源在前、目标在后」：mirror-point 返回目标点，mirror-window 返回目标窗口
+;;; （目标窗口的 document / 选区原样保留，只改视口）。
 ;;;
 ;;; 纯几何：只依赖 window/buffer/width，不改 document。
 
@@ -25,30 +28,32 @@
 
 ;;; ---------- ① 逻辑映射（mode 无关） ----------
 
-;; 把 A 文档的点 pA 投到 B 文档（逻辑坐标）。
+;; 把源 document 的点 p 投到目标 document（逻辑坐标）。
 ;; 行固定行号（不够夹到最近）；列按行字符长比例；空行/单行都夹到最近。
-(define (mirror-point dA pA dB)
-  (define nA (document-line-count dA))
-  (define nB (document-line-count dB))
-  (define lA (max 0 (min (point-line pA) (sub1 nA))))
-  (define lB (min lA (sub1 nB)))                       ; 固定行号，越界夹最近
-  (define lenA (document-line-length dA lA))
-  (define lenB (document-line-length dB lB))
-  (define cA (max 0 (min (point-col pA) lenA)))
-  (define cB (if (zero? lenA) 0 (round (* cA (/ lenB lenA)))))   ; 列按比例
-  (point lB (max 0 cB)))
+(define (mirror-point d-src p d-dst)
+  (define n-src (document-line-count d-src))
+  (define n-dst (document-line-count d-dst))
+  (define l-src (max 0 (min (point-line p) (sub1 n-src))))
+  (define l-dst (min l-src (sub1 n-dst)))                    ; 固定行号，越界夹最近
+  (define len-src (document-line-length d-src l-src))
+  (define len-dst (document-line-length d-dst l-dst))
+  (define c (max 0 (min (point-col p) len-src)))
+  (point l-dst (if (zero? len-src) 0 (round (* c (/ len-dst len-src))))))   ; 列按比例
 
 ;;; ---------- ② 逻辑 → 视口（mode 相关） ----------
 
-;; leader 可视区左上角的**显示列**：clip 是 left-col；wrap 是 top-seg 段的起点列。
-(define (window-top-left-col w)
-  (case (window-mode w)
-    [(clip) (window-left-col w)]
-    [(wrap) (define segs (wrap-segments (buffer-line-ref (window-buffer w) (window-top-line w))
-                                         (window-width w)))
-            (define i (max 0 (min (window-top-seg w) (sub1 (length segs)))))
-            (car (list-ref segs i))]
-    [else (error 'window-top-left-col "未知 mode: ~a" (window-mode w))]))
+;; 窗口可视区左上角对应的逻辑点 (line, col)（col 是字符索引）。越界行先夹到合法域。
+(define (window-top-left-point w)
+  (define d (window-document w))
+  (define line (max 0 (min (window-top-line w) (sub1 (document-line-count d)))))
+  (define text (buffer-line-ref (document-buffer d) line))
+  (define col
+    (case (window-mode w)
+      [(clip) (window-left-col w)]
+      [(wrap) (define segs (wrap-segments text (window-width w)))
+              (car (list-ref segs (max 0 (min (window-top-seg w) (sub1 (length segs))))))]
+      [else (error 'window-top-left-point "未知 mode: ~a" (window-mode w))]))
+  (point line (column->index text col)))
 
 ;; 某显示列落在第几个折行段（不在任何段内 → 末段）。
 (define (seg-of-col text width col)
@@ -57,26 +62,23 @@
                   #:when (and (<= (car s) col) (< col (cdr s)))) i)
       (sub1 (length segs))))
 
-;; 按 follower 的 mode 把它定位到逻辑点 (lB, cB)。
-(define (set-viewport w-follower lB cB)
-  (define w1 (window-set-top-line w-follower lB))
-  (define text (buffer-line-ref (window-buffer w-follower) lB))
-  (define col (index->column text cB))
-  (case (window-mode w-follower)
-    [(clip) (window-clamp-view (window-set-left-col w1 col))]
-    [(wrap) (window-clamp-view (window-set-top-seg w1 (seg-of-col text (window-width w-follower) col)))]
-    [else (error 'mirror-window "未知 mode: ~a" (window-mode w-follower))]))
+;; 按目标窗口的 mode 把它定位到逻辑点 (line, col)。
+(define (set-viewport w line col)
+  (define w1 (window-set-top-line w line))
+  (define text (buffer-line-ref (window-buffer w1) line))
+  (define dc (index->column text col))
+  (case (window-mode w1)
+    [(clip) (window-clamp-view (window-set-left-col w1 dc))]
+    [(wrap) (window-clamp-view (window-set-top-seg w1 (seg-of-col text (window-width w1) dc)))]
+    [else (error 'set-viewport "未知 mode: ~a" (window-mode w1))]))
 
-;; 把 leader 窗口的左上角逻辑点投到 follower，按 follower 的 mode 设视口，再夹回合法域。
-;; **不动 follower 的 document**（跨文档各看各的文本）。
-(define (mirror-window w-follower w-leader)
-  (define dA (window-document w-leader))
-  (define dB (window-document w-follower))
-  ;; leader 左上角 = (top-line, 左上显示列) → 逻辑点
-  (define refA (buffer-line-ref (document-buffer dA) (window-top-line w-leader)))
-  (define cA (column->index refA (window-top-left-col w-leader)))
-  (define pB (mirror-point dA (point (window-top-line w-leader) cA) dB))
-  (set-viewport w-follower (point-line pB) (point-col pB)))
+;; 把源窗口的可视范围投到目标窗口：源左上角逻辑点 → 目标逻辑点 → 目标视口。
+;; **不动目标窗口的 document**（跨文档各看各的文本），也**不动它的选区**。
+(define (mirror-window w-src w-dst)
+  (define p (mirror-point (window-document w-src)
+                          (window-top-left-point w-src)
+                          (window-document w-dst)))
+  (set-viewport w-dst (point-line p) (point-col p)))
 
 ;;; ---------- 测试 ----------
 
@@ -118,31 +120,35 @@
   (check-equal? (window-top-line w-same) 1)
   (check-equal? (window-left-col w-same) 0)
 
-  ;; ② 跨 document：leader 顶行 4，follower 4 行、高 2 → 夹到末页（max-top = 2）
-  (define wf (mirror-window (win "m0\nm1\nm2\nm3" 2 20) (win "l0\nl1\nl2\nl3\nl4" 2 20 4 0)))
+  ;; ② 跨 document：源顶行 4，目标 4 行、高 2 → 夹到末页（max-top = 2）
+  (define wf (mirror-window (win "l0\nl1\nl2\nl3\nl4" 2 20 4 0) (win "m0\nm1\nm2\nm3" 2 20)))
   (check-equal? (window-top-line wf) 2)
-  (check-equal? (buffer->string (window-buffer wf)) "m0\nm1\nm2\nm3")   ; document 未变
+  (check-equal? (buffer->string (window-buffer wf)) "m0\nm1\nm2\nm3")   ; 目标 document 未变
 
-  ;; ② 列按比例：leader 第 0 行 4 宽，left-col=4 → follower 第 0 行 2 宽，left-col=2
-  (define wf2 (mirror-window (win "ab\nabcdefgh" 2 20 0 0) (win "abcd\nab\nabcdefgh" 2 20 0 4)))
+  ;; ② 列按比例：源第 0 行 4 宽、left-col=4 → 目标第 0 行 2 宽、left-col=2
+  (define wf2 (mirror-window (win "abcd\nab\nabcdefgh" 2 20 0 4) (win "ab\nabcdefgh" 2 20 0 0)))
   (check-equal? (window-top-line wf2) 0)
   (check-equal? (window-left-col wf2) 2)
 
-  ;; ② wrap 投影：clip leader → wrap follower（列 6 落在第 2 个折行段 4..8）
+  ;; ② wrap 投影：clip 源 → wrap 目标（列 6 落在第 2 个折行段 4..8）
   (define wa (window-set-left-col (window-open (document-open "abcdefgh") 2 20) 6))
   (define wb (window-set-mode (window-open (document-open "abcdefgh") 2 4) 'wrap))
-  (define mb (mirror-window wb wa))
+  (define mb (mirror-window wa wb))
   (check-equal? (window-top-line mb) 0)
   (check-equal? (window-top-seg mb) 1)
 
-  ;; ② wrap leader → clip follower（段 1 起点列 4 → left-col 4）
+  ;; ② wrap 源 → clip 目标（段 1 起点列 4 → left-col 4）
   (define wl (window-set-top-seg (window-set-mode (window-open (document-open "abcdefgh") 2 4) 'wrap) 1))
-  (define wc (mirror-window (window-open (document-open "abcdefgh") 2 20) wl))
+  (define wc (mirror-window wl (window-open (document-open "abcdefgh") 2 20)))
   (check-equal? (window-top-line wc) 0)
   (check-equal? (window-left-col wc) 4)
 
-  ;; ② wrap leader → wrap follower（同文档同宽 → 段号对齐）
-  (define wr (mirror-window (window-set-mode (window-open (document-open "abcdefgh") 2 4) 'wrap) wl))
+  ;; ② wrap 源 → wrap 目标（同文档同宽 → 段号对齐）
+  (define wr (mirror-window wl (window-set-mode (window-open (document-open "abcdefgh") 2 4) 'wrap)))
   (check-equal? (window-top-seg wr) 1)
+
+  ;; ② 越界 top-line 的源也能投（先夹，不崩）
+  (define wover (window-set-top-line (window-open (document-open "abcdefgh") 2 20) 99))
+  (check-equal? (window-top-line (mirror-window wover (window-open (document-open "xy") 2 20))) 0)
 
   (displayln "mirror.rkt: all tests passed"))

@@ -13,14 +13,15 @@
 ;;;
 ;;;   editor-clamp-views   none   字面不动，只把光标/视口夹回合法域（可能文本变小）
 ;;;   editor-map-views     map    每个同 document view 各自把光标映射过这次编辑（不滚屏）
-;;;   editor-leader-view   leader 指定 view 推进到插入后 + ensure；同 document 其余
-;;;                               free 映射光标 / follow 复制 leader 最终视口
+;;;   editor-leader-view   leader 指定 view 推进到插入后 + ensure；同 link 成员按视口镜像
+;;;                               （可跨 document），同 document 其余 free 映射 / follow 复制最终视口
 ;;;
-;;; 另有 editor-leader-window：用户导航用——把一个 view 的 window 定稿，同文档的
-;;; follow 镜像它（不含内容变更）。
+;;; 另有 editor-leader-window：用户导航用——把一个 view 的 window 定稿，同 link 成员按视口镜像，
+;;; 同 document 的 follow 镜像它（不含内容变更）。
 ;;;
-;;; 契约：显示语义**只在同一 document 的 view 之间**发生；跨文档无耦合。
-;;; leader 必须**先 ensure 定稿**，follower 再复制（否则差一行）。
+;;; 契约：`free` / `follow` 显示语义**只在同一 document 的 view 之间**发生；跨 document 只走
+;;; `link` 的视口镜像（不改对方的 document / 选区）。leader 必须**先 ensure 定稿**，follower 再复制
+;;; （否则差一行）。
 ;;;
 ;;; 本层只依赖 platform 的数据/写原语（state.rkt / write.rkt）；不认识中性接口/程序面/用户面。
 
@@ -52,18 +53,20 @@
   (define v (editor-view-ref ed vid))
   (define link (view-link v))
   (define editing (rebase-leader (view-window v) d descs))
+  ;; 同 document 的 view 先把光标映射过这次编辑；跨 document 的保持原样。
+  (define (base-window x)
+    (cond
+      [(not (eq? d (view-document x))) (view-window x)]
+      [(eq? (view-sync x) 'follow) (rebase-follow (view-window x) editing)]
+      [else (rebase-free (view-window x) d descs)]))
   (for/fold ([e ed]) ([x (in-list (editor-views ed))])
     (cond
       [(= vid (view-id x)) (editor-put-view e vid editing)]
       ;; 同 link（可跨 document）：只镜像视口，不改成员自己的 document
       [(and link (eq? link (view-link x)))
-       (editor-put-view e (view-id x) (mirror-window (view-window x) editing))]
+       (editor-put-view e (view-id x) (mirror-window editing (base-window x)))]
       [(not (eq? d (view-document x))) e]
-      [else
-       (define w (case (view-sync x)
-                   [(free)   (rebase-free   (view-window x) d descs)]
-                   [(follow) (rebase-follow (view-window x) editing)]))
-       (editor-put-view e (view-id x) w)])))
+      [else (editor-put-view e (view-id x) (base-window x))])))
 
 ;; 用户导航：把 vid 的 window 定稿；同 link 成员按视口镜像，同 document 的 follow view 镜像它。
 (define (editor-leader-window ed vid w*)
@@ -74,7 +77,12 @@
     (cond
       [(= vid (view-id x)) (editor-put-view e vid w*)]
       [(and link (eq? link (view-link x)))
-       (editor-put-view e (view-id x) (mirror-window (view-window x) w*))]
+       ;; 同 document 的成员带上 leader 的选区；跨 document 的只镜像视口。
+       (define w0 (view-window x))
+       (define base (if (and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
+                        (rebase-follow w0 w*)
+                        w0))
+       (editor-put-view e (view-id x) (mirror-window w* base))]
       [(and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
        (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
       [else e])))

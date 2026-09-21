@@ -192,14 +192,15 @@ editor-command-batch  : 给现成 change 直接施加
 | `map` | 每个同 document view 各自把光标映射过这次编辑（不滚屏） | `editor-edit-at` 显式地图 |
 | `leader` | 指定 view 推进到插入后 + ensure；其余 free 映射 / follow 镜像 | 用户编辑 |
 
-契约：同步**只在同一 buffer 的 view 之间**发生；`leader` 必须**先 ensure 定稿**，
+契约：`free` / `follow` 同步**只在同一 document 的 view 之间**发生；`leader` 必须**先 ensure 定稿**，
 `follow` 再复制。
 
 **跨 document 视口同步（link）**：`view` 带一个 `link`（符号名，可 `#f`）。同 link 的 view 可跨 document；
 `editor-leader-{view,window}` 对同 link 成员调 `viewport/mirror.rkt` 的 `mirror-window`——只改成员的
-**视口**（不改它的 document），投影 = 「行固定行号（不够夹最近）+ 列按该行字符长比例」。逻辑映射
-（`mirror-point`）与 mode 无关；clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用
-`editor-link-views` / `editor-unlink-view` / `editor-view-set-link` 管理。
+**视口**（不改它的 document，也不动它的选区；同 document 的成员会先按 `free`/`follow` 重定位光标）。
+投影 = 「行固定行号（不够夹最近）+ 列按该行字符长比例」。逻辑映射（`mirror-point`）与 mode 无关；
+clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用 `editor-link-views` / `editor-unlink-view` /
+`editor-view-set-link`（焦点糖 `editor-set-link`）管理。
 
 ---
 

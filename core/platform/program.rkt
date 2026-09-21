@@ -51,7 +51,7 @@
  editor-view-set-document
  ;; 视口同步链接（可跨 document）
  editor-view-set-link
- editor-set-view-link
+ editor-set-link
  editor-link-views
  editor-unlink-view
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
@@ -318,11 +318,13 @@
 ;;; link 只是成员归属（符号名）；投影固定为「行固定 + 列按比例」，见 viewport/mirror.rkt。
 
 (define (editor-view-set-link ed vid link) (editor-put-view-link ed vid link))
-(define (editor-set-view-link ed link)
+(define (editor-set-link ed link)
   (editor-view-set-link ed (view-id (editor-focused-view ed)) link))
 
 ;; 把 vids 设成链接 name；原来属于 name 但不在 vids 的 view 退出（组替换语义）。
+;; vids 里出现不存在的 view id → 报错（与其它按 vid 的原语一致，不静默丢）。
 (define (editor-link-views ed name vids)
+  (for ([vid (in-list vids)]) (editor-view-ref ed vid))     ; 校验存在
   (for/fold ([e ed]) ([v (in-list (editor-views ed))])
     (cond
       [(memv (view-id v) vids)  (editor-put-view-link e (view-id v) name)]

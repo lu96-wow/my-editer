@@ -211,8 +211,8 @@ face-provider : editor did line -> (listof (list start end face))
 | 名字 | 语义 |
 |---|---|
 | `window->screen` | 视口 → 一帧画面；可传 `line-face-provider`（buffer 级，见下） |
-| `mirror-point` | 逻辑映射：把 A 点的行列投到 B（行固定、列按比例）；mode 无关 |
-| `mirror-window` | 把一个 window 的可视范围投到另一个 window（clip/wrap；行固定列比例，wrap 投影到 `top-seg`） |
+| `mirror-point` | 逻辑映射：把源 document 的点投到目标 document（行固定、列按比例）；mode 无关 |
+| `mirror-window` | 把源 window 的可视范围投到目标 window（目标 window 原样保留 document/选区，只改视口；clip → `left-col`，wrap → `top-seg`） |
 | `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
 | `screen-rows` | 行数 |
 | `screen-cols` | 列数 |
@@ -413,12 +413,12 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
-| `editor-view-set-document` | 让某 view 改看另一个 buffer |
-| `editor-view-set-link` / `editor-set-view-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链） |
+| `editor-view-set-document` | 让某 view 改看另一个 document |
+| `editor-view-set-link` / `editor-set-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链） |
 | `editor-link-views` | 把一组 view 设为同一链接（组替换语义） |
 | `editor-unlink-view` | 让某 view 退出链接 |
 | `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
-| `editor-set-document` | focus 糖：让焦点 view 改看另一个 buffer |
+| `editor-set-document` | focus 糖：让焦点 view 改看另一个 document |
 | `editor-set-document-name` | 重命名某 document |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-put-window` | focus 糖：裸写焦点 view 整个 window |
@@ -454,7 +454,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-end` | 某 view 行尾 |
 | `editor-view-goto` | 某 view 跳到位置并 ensure |
 | `editor-view-scroll` | 滚动某 view |
-| `editor-view-follow` | 把同 document 的 follow view 镜像到某 view 的 window |
+| `editor-view-follow` | 以某 view 的 window 为准，镜像同 document 的 follow view 与同 link 成员（可跨 document） |
 | `editor-left` | focus 糖：焦点 view 左移 |
 | `editor-right` | focus 糖：右移 |
 | `editor-up` | focus 糖：上移 |
@@ -463,7 +463,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-end` | focus 糖：行尾 |
 | `editor-goto` | focus 糖：跳到位置并 ensure |
 | `editor-scroll` | focus 糖：滚动焦点视口 |
-| `editor-follow` | focus 糖：把 follow view 镜像到焦点 view 的 window |
+| `editor-follow` | focus 糖：以焦点 view 的 window 为准镜像 follow view / link 成员 |
 
 ### 9.8 撤销 / 重做
 

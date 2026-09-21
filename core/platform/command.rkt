@@ -108,8 +108,8 @@
                         (window-scroll (view-window (editor-view-ref ed vid)) delta)))
 
 ;;; ---------- 同步（显式、可组合） ----------
-;; 把同 document 的 follow view 镜像到 vid 的当前 window；vid 自身不动。
-;; 与裸写组合：先 editor-view-put-window，再 editor-view-follow。
+;; 以 vid 的当前 window 为准，镜像同 document 的 follow view，以及同 link 的成员（可跨 document）；
+;; vid 自身不动。与裸写组合：先 editor-view-put-window，再 editor-view-follow。
 
 (define (editor-view-follow ed vid)
   (editor-leader-window ed vid (view-window (editor-view-ref ed vid))))
@@ -351,5 +351,17 @@
   (define wk3 (editor-link-views wk2 'wr (list 0 vidW)))
   (define wk4 (editor-view-follow (editor-view-set-left-col wk3 0 6) 0))
   (check-equal? (editor-view-top-seg wk4 vidW) 1)
+
+  ;; 同步链接会把成员光标也带过编辑：同 document 的两个 view 链接后，
+  ;; 在 0 编辑时成员 slV 的选区也必须 rebase（不能停在旧坐标）。
+  (define sl0 (editor-open "l0\nl1\nl2" 3 10 #:name "S"))
+  (define-values (sl1 slV) (editor-add-view sl0 0 3 10 #:focus? #f))
+  (define sl2 (editor-link-views sl1 'same (list 0 slV)))
+  (define sl3 (editor-view-goto sl2 slV (point 0 1)))
+  (define-values (sl4 _slr) (editor-view-edit sl3 0 (edit-insert "XX")))
+  (check-equal? (editor-view-point sl4 slV) (point 0 3))   ; (0,1) 随编辑映射到 (0,3)
+
+  ;; editor-link-views 对不存在的 vid 报错，不静默忽略
+  (check-exn exn:fail? (lambda () (editor-link-views sl0 'x (list 0 999))))
 
   (displayln "command.rkt: all tests passed"))
