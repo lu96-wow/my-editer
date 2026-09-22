@@ -92,6 +92,7 @@
 
 ;; 设/清一个 view 的视口同步链接（link = 符号或 #f）。
 (define (editor-put-view-link ed vid link)
+  (check-link 'editor-put-view-link link)
   (map-view ed vid (lambda (v) (struct-copy view v [link link]))))
 
 ;; 视图结构变换（无策略；只动指定的 view）

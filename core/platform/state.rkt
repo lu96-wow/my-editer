@@ -24,7 +24,8 @@
  editor-view-ref
  editor-focused-view
  editor-history
- check-sync)
+ check-sync
+ check-link)
 
 ;;; ---------- 数据 ----------
 
@@ -82,6 +83,10 @@
 (define (check-sync who s)
   (unless (memq s '(free follow))
     (error who "sync 必须是 'free 或 'follow，得到 ~a" s)))
+
+(define (check-link who l)
+  (unless (or (not l) (symbol? l))
+    (error who "link 必须是符号或 #f，得到 ~a" l)))
 
 (define (editor-focused-view ed)
   (define f (editor-focus ed))

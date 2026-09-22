@@ -292,6 +292,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-buffer` | 取 buffer 值 |
 | `editor-document-name` | 取 buffer 名 |
 | `editor-view-document-id` | 某 view 的 document id |
+| `editor-document-view` | 某 document 的第一个 view id（无 view → `#f`；did 缺省 = 焦点） |
 | `editor-view-buffer` | 某 view 的 buffer 值 |
 | `editor-view-sync` | 某 view 的同步策略 |
 | `editor-view-link` / `editor-link` / `editor-links` | 某 / 焦点 view 的链接名；全部链接名 |
@@ -414,8 +415,8 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
 | `editor-view-set-sync` | 设某 view 同步策略 |
 | `editor-view-set-document` | 让某 view 改看另一个 document |
-| `editor-view-set-link` / `editor-set-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链） |
-| `editor-link-views` | 把一组 view 设为同一链接（组替换语义） |
+| `editor-view-set-link` / `editor-set-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链；默认 `#:align? #t` 立即对齐，基准 = `#:from` → 焦点 view → 组内首成员） |
+| `editor-link-views` | 把一组 view 设为同一链接（组替换语义；`#:align?` / `#:from` 同上） |
 | `editor-unlink-view` | 让某 view 退出链接 |
 | `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
 | `editor-set-document` | focus 糖：让焦点 view 改看另一个 document |

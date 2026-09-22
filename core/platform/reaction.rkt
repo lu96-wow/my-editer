@@ -28,7 +28,8 @@
 (provide editor-clamp-views
          editor-map-views
          editor-leader-view
-         editor-leader-window)
+         editor-leader-window
+         editor-align-link)
 
 ;; none：只夹紧（换 document 引用时已保留旧光标；文本可能变小 → 必须夹回合法域）。
 (define (editor-clamp-views ed d)
@@ -86,6 +87,27 @@
       [(and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
        (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
       [else e])))
+
+;; 把一个 link 组对齐到**参考成员**：`from`（若在组内）→ 焦点 view（若在组内）→ 组内第一个成员。
+;; 参考成员自身不动，其余成员按 mirror-window 投参考窗口视口。空组 / #f → 恒等。
+(define (editor-align-link ed link [from #f])
+  (define members (if link
+                      (filter (lambda (v) (eq? link (view-link v))) (editor-views ed))
+                      '()))
+  (define (member? vid) (and vid (for/or ([v (in-list members)]) (= vid (view-id v)))))
+  (define focus (editor-focus ed))
+  (define src-id (cond [(member? from) from]
+                       [(member? focus) focus]
+                       [(pair? members) (view-id (car members))]
+                       [else #f]))
+  (cond
+    [(not src-id) ed]
+    [else
+     (define w (view-window (editor-view-ref ed src-id)))
+     (for/fold ([e ed]) ([x (in-list members)])
+       (if (= src-id (view-id x))
+           e
+           (editor-put-view e (view-id x) (mirror-window w (view-window x)))))]))
 
 ;;; ---------- 测试（只经机制层造 editor） ----------
 

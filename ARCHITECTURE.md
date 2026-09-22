@@ -200,7 +200,9 @@ editor-command-batch  : 给现成 change 直接施加
 **视口**（不改它的 document，也不动它的选区；同 document 的成员会先按 `free`/`follow` 重定位光标）。
 投影 = 「行固定行号（不够夹最近）+ 列按该行字符长比例」。逻辑映射（`mirror-point`）与 mode 无关；
 clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用 `editor-link-views` / `editor-unlink-view` /
-`editor-view-set-link`（焦点糖 `editor-set-link`）管理。
+`editor-view-set-link`（焦点糖 `editor-set-link`）管理；设链默认**立即对齐**：基准 = `#:from`（若在组内）
+→ 焦点 view（若在组内）→ 组内第一个成员（`#:align? #f` 只设成员，`#:from` 显式指定基准）。
+`link` 类型受 `check-link` 校验（符号 / `#f`）。
 
 ---
 

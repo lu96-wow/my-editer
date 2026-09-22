@@ -316,20 +316,26 @@
 
 ;;; ---------- 视口同步链接（可跨 document）----------
 ;;; link 只是成员归属（符号名）；投影固定为「行固定 + 列按比例」，见 viewport/mirror.rkt。
+;;; 设链默认**立即对齐**：参考成员 = `#:from`（若在组内）→ 焦点 view（若在组内）→ 组内第一个。
+;;; `#:align? #f` 只设成员，不动视口。
 
-(define (editor-view-set-link ed vid link) (editor-put-view-link ed vid link))
-(define (editor-set-link ed link)
-  (editor-view-set-link ed (view-id (editor-focused-view ed)) link))
+(define (editor-view-set-link ed vid link #:align? [align? #t] #:from [from #f])
+  (define ed* (editor-put-view-link ed vid link))
+  (if align? (editor-align-link ed* link from) ed*))
+(define (editor-set-link ed link #:align? [align? #t] #:from [from #f])
+  (editor-view-set-link ed (view-id (editor-focused-view ed)) link #:align? align? #:from from))
 
 ;; 把 vids 设成链接 name；原来属于 name 但不在 vids 的 view 退出（组替换语义）。
 ;; vids 里出现不存在的 view id → 报错（与其它按 vid 的原语一致，不静默丢）。
-(define (editor-link-views ed name vids)
+(define (editor-link-views ed name vids #:align? [align? #t] #:from [from #f])
+  (check-link 'editor-link-views name)
   (for ([vid (in-list vids)]) (editor-view-ref ed vid))     ; 校验存在
-  (for/fold ([e ed]) ([v (in-list (editor-views ed))])
-    (cond
-      [(memv (view-id v) vids)  (editor-put-view-link e (view-id v) name)]
-      [(eq? (view-link v) name) (editor-put-view-link e (view-id v) #f)]
-      [else e])))
+  (define ed* (for/fold ([e ed]) ([v (in-list (editor-views ed))])
+                (cond
+                  [(memv (view-id v) vids)  (editor-put-view-link e (view-id v) name)]
+                  [(eq? (view-link v) name) (editor-put-view-link e (view-id v) #f)]
+                  [else e])))
+  (if align? (editor-align-link ed* name from) ed*))
 (define (editor-unlink-view ed vid) (editor-put-view-link ed vid #f))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------

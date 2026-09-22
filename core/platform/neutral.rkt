@@ -39,6 +39,7 @@
  editor-attrs
  editor-document-name
  editor-view-document-id
+ editor-document-view
  editor-view-buffer
  editor-view-document
  editor-view-sync
@@ -138,6 +139,7 @@
 (define (editor-add-view ed did [height 24] [width 80] [p (point 0 0)]
                          #:sync [sync 'free] #:focus? [focus? #f] #:link [link #f])
   (check-sync 'editor-add-view sync)
+  (check-link 'editor-add-view link)
   (define entry (editor-document-entry ed did))
   (define vid (editor-next-view ed))
   (define w (window-clamp-view
@@ -184,6 +186,10 @@
 (define (editor-attrs ed [did (focused-did ed)]) (document-attrs (editor-document ed did)))
 (define (editor-document-name ed [did (focused-did ed)]) (document-entry-name (editor-document-entry ed did)))
 (define (editor-view-document-id ed vid) (document-id-of ed (view-document (editor-view-ref ed vid))))
+;; 某 document 的第一个 view id（没有 view → #f）；did 缺省 = 焦点 document。
+(define (editor-document-view ed [did (focused-did ed)])
+  (define v (view-of-document ed did))
+  (and v (view-id v)))
 (define (editor-view-buffer ed vid) (view-buffer (editor-view-ref ed vid)))
 (define (editor-view-document ed vid) (view-document (editor-view-ref ed vid)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
@@ -373,6 +379,15 @@
   (define-values (e1 _bid) (editor-open-document e0 "BBB" #:name "b" #:focus? #f))
   (check-equal? (editor-document-id e1) 0)
   (check-equal? (editor-document-count e1) 2)
+
+  ;; document → 第一个 view id（没有 view → #f）
+  (check-equal? (editor-document-view e0 0) 0)
+  (define-values (e2v bid2v) (editor-open-document e0 "CCC" #:name "c" #:focus? #f))
+  (define v2v (editor-document-view e2v bid2v))
+  (check-equal? (editor-view-document-id e2v v2v) bid2v)
+  (check-false (editor-document-view (editor-close-view e2v v2v) bid2v))
+  ;; #:link 类型校验
+  (check-exn exn:fail? (lambda () (editor-add-view e0 0 2 10 #:link "bad")))
 
   ;; 结构变换：set-view-buffer 换属主、不改文本、不动焦点
   (define n1 (editor-set-view-document e1 0 1))

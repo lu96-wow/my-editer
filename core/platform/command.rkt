@@ -364,4 +364,27 @@
   ;; editor-link-views 对不存在的 vid 报错，不静默忽略
   (check-exn exn:fail? (lambda () (editor-link-views sl0 'x (list 0 999))))
 
+  ;; 加链即对齐：参考成员 = 焦点 view（此处焦点 = A/view 0）
+  (define al0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 3 10 #:name "A"))
+  (define-values (al1 vidAB) (editor-open-document al0 "m0\nm1\nm2\nm3\nm4\nm5" 3 10 #:name "B" #:focus? #f))
+  (define al2 (editor-view-set-top-line al1 0 3))            ; A top=3，B top=0
+  (define al3 (editor-link-views al2 'al (list 0 vidAB)))
+  (check-equal? (editor-view-top-line al3 vidAB) 3)          ; B 对齐到焦点 A
+  ;; 焦点在 B 时，以 B 为基准：A 被拉到 B 的位置
+  (define al5 (editor-focus-view al2 vidAB))
+  (define al6 (editor-link-views al5 'al2 (list 0 vidAB)))
+  (check-equal? (editor-view-top-line al6 0) 0)
+  ;; #:from 显式指定基准（视图时）：A 为基准 → B 跟到 3
+  (define al7 (editor-link-views al5 'al3 (list 0 vidAB) #:from 0))
+  (check-equal? (editor-view-top-line al7 vidAB) 3)
+  ;; #:align? #f：只设成员，视口不动
+  (define al4 (editor-link-views (editor-view-set-top-line al1 0 3) 'al4 (list 0 vidAB) #:align? #f))
+  (check-equal? (editor-view-top-line al4 vidAB) 0)
+  ;; 单成员组：对齐即恒等，不报错
+  (check-equal? (editor-view-top-line (editor-link-views al2 'solo (list vidAB)) vidAB) 0)
+  ;; link 类型校验（符号 / #f）
+  (check-exn exn:fail? (lambda () (editor-view-set-link al1 0 "bad")))
+  (check-exn exn:fail? (lambda () (editor-link-views al1 "bad" (list 0))))
+  (check-exn exn:fail? (lambda () (editor-add-view al1 0 3 10 #:link "bad")))
+
   (displayln "command.rkt: all tests passed"))

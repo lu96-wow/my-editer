@@ -109,10 +109,8 @@
   ;; 第二个 document（镜像，独立文本；`#:history? #f`：派生 UI 不进历史）
   (define-values (ed1 mdid) (editor-open-document ed0 (mirror-of text) h (pane-right-w cols)
                                                   #:name "mirror" #:focus? #f #:history? #f))
-  (define mvid (for/first ([v (in-list (editor-views ed1))]
-                           #:when (= (editor-view-document-id ed1 (view-id v)) mdid))
-                 (view-id v)))
-  ;; 链接两个 view：跨 document 视口同步（行固定、列按比例）
+  ;; 链接两个 view：跨 document 视口同步（行固定、列按比例）；用 editor 层读口直接拿到镜像 document 的 view
+  (define mvid (editor-document-view ed1 mdid))
   (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid))
 
 (define (open-app path rows cols)
