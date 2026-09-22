@@ -28,9 +28,13 @@
 ;;;         ^W 切换左右窗格    ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读
 ;;;         ^K 清除只读  ^L 开关高亮  ^N 开关行号栏  ^R 换分屏比例  ^Q 退出
 ;;;
+;;; 内置示例文本启动时第 4~8 行已标为只读（read-only）——可直接试打字/删除，会被守卫拒；
+;;; 选中后 ^K 可清除。
+;;;
 ;;; 左右两个窗格是**两个不同的 document**（右 pane 同文本、开行号栏），用 core 的**跨 document 视口同步**
 ;;; （`editor-link-views`）链接：滚动/导航一个，另一个按「行固定、列按比例」跟随。
 ;;; 行号是**视图装饰**（`#:line-numbers?` / `editor-set-line-numbers`），不拼进文本；`^R` 换分屏比例。
+;;; 文档**内容**也同步（应用层策略，用 `change-report`）：编辑任一 pane，另一个 document 原样跟着变。
 
 (require "../core/editor.rkt"   ; editor 平台面（中性/程序/用户）
          "../core/api.rkt"      ; 低层公开面（point/selection/edit-desc/attr/window/screen/…）
@@ -117,10 +121,32 @@
   (define mvid (editor-document-view ed1 mdid))
   (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid split))
 
+;; 启动时给主文档预置一段**只读区**（仅在用内置 default-doc 时），便于立刻测试不可修改守卫：
+;; 第 4..8 行写 read-only 属性（投影时显示为 read-only face）；编辑到那里会被守卫拒。
+;; 也可随时用 ^O（选区标只读）/ ^K（清除）。
+(define (seed-read-only a)
+  (define ed0 (app-ed a))
+  (define mirror-did (editor-view-document-id ed0 (app-mirror-vid a)))
+  (for/fold ([a a]) ([did (in-list (list 0 mirror-did))])
+    (define ed (app-ed a))
+    (define n (editor-document-line-count ed did))
+    (define lines (for/list ([l (in-range 4 (min 9 n))]) l))
+    (cond
+      [(null? lines) a]
+      [else
+       (define attrs
+         (for/list ([l (in-list lines)])
+           (attr-set (point l 0) (point l (editor-document-line-length ed did l))
+                     read-only-key #t)))
+       (define-values (ed* _r) (editor-document-apply-attrs ed did attrs #:record? #f))
+       (struct-copy app a [ed ed*])])))
+
 (define (open-app path rows cols)
-  (make-app (if (and path (file-exists? path)) (file->string path) default-doc)
-            rows cols
-            (if path (path->string (file-name-from-path path)) "*scratch*")))
+  (define a (make-app (if (and path (file-exists? path)) (file->string path) default-doc)
+                      rows cols
+                      (if path (path->string (file-name-from-path path)) "*scratch*")))
+  ;; 内置示例文本：预置只读区；打开真实文件时不擅自标记
+  (if path a (seed-read-only a)))
 
 ;;; ============================================================================
 ;;; §2 组合操作（每条都标了 [core]/[意图]/[前端]）
@@ -132,10 +158,32 @@
 ;; [意图] 编辑路径与标注解耦：report 只给生效 desc，是否重算/重划由应用决定（见 2.8）。
 ;;
 ;; core 命令有两种返回形状：editor（视图命令）或 (values editor report)（编辑 / 账本）。
-;; 这里只把 editor 塞回 app；report 前端不用。
+;; 这里把 editor 塞回 app，并把 report 转给内容同步。
+
+;; 内容同步（应用策略）：core 只做**视口**同步（link/mirror），文档**内容**同步在这里。
+;; 每次编辑拿到 change-report（生效 texts + attrs），原样施加到另一个 document：
+;;   · #:trusted? #t      —— 源已经过守卫，镜像必须一致（不因目标属性再判一次 → 防分叉）
+;;   · #:record? 'default —— 跟随目标策略（左有账本 → 记；右 #:history? #f → 不记）
+(define (other-did a)
+  (define ed (app-ed a))
+  (define mirror-did (editor-view-document-id ed (app-mirror-vid a)))
+  (if (= (editor-document-id ed) mirror-did) 0 mirror-did))
+
+(define (sync a report)
+  (cond
+    [(not report) a]
+    [else
+     (define ed (app-ed a))
+     (define-values (ed* _r)
+       (editor-command-batch ed
+                             (change (change-report-texts report) (change-report-attrs report))
+                             #:view (editor-document-view ed (other-did a))
+                             #:trusted? #t #:record? 'default))
+     (struct-copy app a [ed ed*])]))
+
 (define (run-ed a f)
-  (define-values (ed _report) (f (app-ed a)))
-  (struct-copy app a [ed ed]))
+  (define-values (ed report) (f (app-ed a)))
+  (sync (struct-copy app a [ed ed]) report))
 
 ;; 一次用户编辑：op : buffer selection → edit-desc。
 (define (edit a op) (run-ed a (lambda (ed) (editor-edit ed op))))
@@ -176,16 +224,15 @@
 ;; [意图] 「在文件末尾追加时间戳」不该把用户光标拽走 —— 用显式 #:selection 指定位置，
 ;;        reaction 留默认 'none（不动任何视图），也不记账。
 (define (append-stamp a)
-  (define ed (app-ed a))
-  (define did (editor-document-id ed))
-  (define n (editor-document-line-count ed did))
-  (define p (point (sub1 n) (editor-document-line-length ed did (sub1 n))))
-  (define stamp (number->string (current-seconds)))
-  (define-values (ed* _report)
-    (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
-                    #:selection (list (caret p))
-                    #:record? #f))
-  (struct-copy app a [ed ed*]))
+  (run-ed a
+    (lambda (ed)
+      (define did (editor-document-id ed))
+      (define n (editor-document-line-count ed did))
+      (define p (point (sub1 n) (editor-document-line-length ed did (sub1 n))))
+      (define stamp (number->string (current-seconds)))
+      (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
+                      #:selection (list (caret p))
+                      #:record? #f))))
 
 ;; 2.6 视图面：尺寸
 ;; [core] editor-set-size ed h w —— focus 糖（内部 = editor-view-set-size + 焦点 vid）。
@@ -232,35 +279,35 @@
              (list (list el 0 ec)))]))
 
 (define (mark-read-only a)
-  (define ed (app-ed a))
-  (define did (editor-document-id ed))
-  (define sel (editor-primary ed))
-  (if (caret? sel)
-      a
-      (let-values ([(s e) (selection-range sel)])
-        ;; [core] 一次 editor-document-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
-        (define attrs
-          (for/list ([sp (in-list (selection-line-spans ed did s e))]
-                     #:when (< (cadr sp) (caddr sp)))
-            (match-define (list line c0 c1) sp)
-            (attr-set (point line c0) (point line c1) read-only-key #t)))
-        (define-values (ed* _r) (editor-document-apply-attrs ed did attrs #:record? #t))
-        (struct-copy app a [ed ed*]))))
+  (run-ed a
+    (lambda (ed)
+      (define did (editor-document-id ed))
+      (define sel (editor-primary ed))
+      (if (caret? sel)
+          (values ed #f)
+          (let-values ([(s e) (selection-range sel)])
+            ;; [core] 一次 editor-document-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
+            (define attrs
+              (for/list ([sp (in-list (selection-line-spans ed did s e))]
+                         #:when (< (cadr sp) (caddr sp)))
+                (match-define (list line c0 c1) sp)
+                (attr-set (point line c0) (point line c1) read-only-key #t)))
+            (editor-document-apply-attrs ed did attrs #:record? #t))))))
 
 (define (clear-read-only a)
-  (define ed (app-ed a))
-  (define did (editor-document-id ed))
-  (define sel (editor-primary ed))
-  (if (caret? sel)
-      a
-      (let-values ([(s e) (selection-range sel)])
-        (define attrs
-          (for/list ([sp (in-list (selection-line-spans ed did s e))]
-                     #:when (< (cadr sp) (caddr sp)))
-            (match-define (list line c0 c1) sp)
-            (attr-remove (point line c0) (point line c1) read-only-key)))
-        (define-values (ed* _r) (editor-document-apply-attrs ed did attrs #:record? #t))
-        (struct-copy app a [ed ed*]))))
+  (run-ed a
+    (lambda (ed)
+      (define did (editor-document-id ed))
+      (define sel (editor-primary ed))
+      (if (caret? sel)
+          (values ed #f)
+          (let-values ([(s e) (selection-range sel)])
+            (define attrs
+              (for/list ([sp (in-list (selection-line-spans ed did s e))]
+                         #:when (< (cadr sp) (caddr sp)))
+                (match-define (list line c0 c1) sp)
+                (attr-remove (point line c0) (point line c1) read-only-key)))
+            (editor-document-apply-attrs ed did attrs #:record? #t))))))
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
 (define (read-only-face ed did line)
@@ -683,6 +730,34 @@
   (check-not-equal? (editor-view-width (app-ed p3) 0) (editor-view-width (app-ed p0) 0))
   (check-true (bytes? (frame->bytes p3)))
   (check-equal? (app-split (cycle-split (cycle-split p3))) (app-split p0))   ; 轮换回 1/2
+
+  ;; 预置只读区（内置文档）：第 4..8 行只读，编辑被守卫拒；可渲染
+  (define sr0 (seed-read-only (make-app default-doc 12 60 "*seed*")))
+  (check-true (attr-read-only? (editor-document-attrs-at (app-ed sr0) 0 (point 4 1))))
+  (define sr1 (struct-copy app sr0 [ed (editor-set-point (app-ed sr0) (point 4 1))]))
+  (define before (editor-document->string (app-ed sr0) 0))
+  (define sr2 (edit sr1 (edit-insert "x")))
+  (check-equal? (editor-document->string (app-ed sr2) 0) before)   ; 只读区未被改
+  (check-true (bytes? (frame->bytes sr0)))
+
+  ;; 文档内容同步（应用层，用 change-report）：编辑任一 pane，另一个 document 跟着变
+  (define sy0 (make-app "abc\ndef" 6 40 "*sy*"))
+  (define sy-mdid (editor-view-document-id (app-ed sy0) (app-mirror-vid sy0)))
+  (define sy1 (edit sy0 (edit-insert "X")))                      ; 左 pane (0,0) 插 X
+  (check-equal? (editor-document->string (app-ed sy1) 0) "Xabc\ndef")
+  (check-equal? (editor-document->string (app-ed sy1) sy-mdid) "Xabc\ndef")
+  ;; 聚焦镜像后编辑 → 同步回左
+  (define sy2 (struct-copy app sy1 [ed (editor-focus-view (app-ed sy1) (app-mirror-vid sy1))]))
+  (define sy3 (edit sy2 (edit-insert "Y")))                      ; 右 pane (0,0) 插 Y
+  (check-equal? (editor-document->string (app-ed sy3) 0) "YXabc\ndef")
+  (check-equal? (editor-document->string (app-ed sy3) sy-mdid) "YXabc\ndef")
+  ;; 属性也同步：左标只读 → 右也有；两边编辑都被守卫拒
+  (define sy4 (struct-copy app sy3 [ed (editor-focus-view (app-ed sy3) 0)]))
+  (define sy5 (struct-copy app sy4 [ed (editor-set-selections (app-ed sy4) (list (selection (point 0 0) (point 0 2))))]))
+  (define sy6 (mark-read-only sy5))
+  (check-true (attr-read-only? (editor-document-attrs-at (app-ed sy6) 0 (point 0 1))))
+  (check-true (attr-read-only? (editor-document-attrs-at (app-ed sy6) sy-mdid (point 0 1))))
+  (check-true (bytes? (frame->bytes sy6)))
 
   (displayln "example.rkt: all tests passed"))
 
