@@ -84,9 +84,9 @@
  editor-document-apply-attrs
  editor-document-put-attr
  editor-document-remove-attr
- ;; 历史策略 / 清栈（读口 editor-document-history-on? 在 neutral）
- editor-set-history-on?
- editor-view-set-history-on?
+ ;; 历史策略 / 清栈（读口 editor-document-history-enabled? 在 neutral）
+ editor-set-history-enabled
+ editor-view-set-history-enabled
  editor-document-clear-history
  editor-view-clear-history)
 
@@ -144,7 +144,7 @@
 ;; 把命令级的 #:record? 解析成布尔：'default = 跟随 document 的历史策略。
 (define (resolve-record? who e did r)
   (case r
-    [(default) (editor-document-history-on? e did)]
+    [(default) (editor-document-history-enabled? e did)]
     [(#t) #t]
     [(#f) #f]
     [else (error who "#:record? 必须是 'default / #t / #f，得到 ~a" r)]))
@@ -152,7 +152,7 @@
 (define (editor-run-change ed ch vid reaction record? pre guard?)
   (define did (editor-view-document-id ed vid))
   (define rec? (resolve-record? 'editor-command ed did record?))
-  (define-values (ed* res) (editor-apply-change ed did ch guard?))
+  (define-values (ed* res) (editor-apply-change ed did ch #:trusted? (not guard?)))
   (cond
     [(not res) (values ed #f)]
     [else
@@ -448,10 +448,10 @@
 ;;; ---------- 历史策略 / 清栈 ----------
 ;; 策略位在 document：开文档时 #:history? 定默认；这里运行时查询/切换。
 
-(define (editor-view-set-history-on? ed vid on?)
-  (editor-put-history-on? ed (editor-view-document-id ed vid) on?))
-(define (editor-set-history-on? ed on?)
-  (editor-view-set-history-on? ed (view-id (editor-focused-view ed)) on?))
+(define (editor-view-set-history-enabled ed vid on?)
+  (editor-put-history-enabled ed (editor-view-document-id ed vid) on?))
+(define (editor-set-history-enabled ed on?)
+  (editor-view-set-history-enabled ed (view-id (editor-focused-view ed)) on?))
 ;; 清栈（focus 糖：did 缺省 = 焦点 document）
 (define (editor-document-clear-history ed [did (editor-document-id ed)]) (editor-put-history-clear ed did))
 (define (editor-view-clear-history ed vid)
@@ -502,7 +502,7 @@
 
   ;; document 级历史策略：#:history? #f 的文档不记账（用户面/程序面/属性写都不记）
   (define noh (editor-open "abc" 5 20 #:history? #f))
-  (check-false (editor-document-history-on? noh))
+  (check-false (editor-document-history-enabled? noh))
   (define-values (noh1 _nohr1) (editor-command noh (edit-insert "X")))
   (check-equal? (editor-document->string noh1 0) "Xabc")
   (check-false (editor-document-can-undo? noh1))
@@ -512,8 +512,8 @@
   (define-values (noh3 _nohr3) (editor-command noh1 (edit-insert "X") #:record? #t))
   (check-true (editor-document-can-undo? noh3))
   ;; 切换策略 / 清栈
-  (define yesh (editor-set-history-on? noh #t))
-  (check-true (editor-document-history-on? yesh))
+  (define yesh (editor-set-history-enabled noh #t))
+  (check-true (editor-document-history-enabled? yesh))
   (define-values (yesh1 _yeshr1) (editor-command yesh (edit-insert "X")))
   (check-true (editor-document-can-undo? yesh1))
   (check-false (editor-document-can-undo? (editor-document-clear-history yesh1)))

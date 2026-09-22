@@ -30,8 +30,8 @@
  editor-focus-document
  ;; 查询
  editor-document-count
- editor-document-history-on?
- editor-view-history-on?
+ editor-document-history-enabled?
+ editor-view-history-enabled?
  editor-view-count
  editor-document-id
  editor-document-buffer
@@ -182,9 +182,9 @@
 
 (define (editor-document-count ed) (length (editor-documents ed)))
 ;; 该 document 的默认历史策略（是否把变更记入账本）。命令可用 #:record? 覆盖。
-(define (editor-document-history-on? ed [did (focused-did ed)])
+(define (editor-document-history-enabled? ed [did (focused-did ed)])
   (document-entry-record? (editor-document-entry ed did)))
-(define (editor-view-history-on? ed vid)
+(define (editor-view-history-enabled? ed vid)
   (document-entry-record? (editor-document-entry ed (editor-view-document-id ed vid))))
 (define (editor-view-count ed) (length (editor-views ed)))
 (define (editor-document-id ed) (focused-did ed))

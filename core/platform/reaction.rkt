@@ -132,19 +132,19 @@
 
   ;; none：光标字面不动（只夹紧，不映射）
   (define n0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
-  (define n1 (let-values ([(e _) (editor-apply-edit n0 0 d-ins #f)]) (editor-clamp-views e (vd e 0))))
+  (define n1 (let-values ([(e _) (editor-apply-edit n0 0 d-ins #:trusted? #t)]) (editor-clamp-views e (vd e 0))))
   (check-equal? (vp n1 1) (point 0 1))                     ; 不随编辑移动
 
   ;; map：光标随编辑右移，视口不动
   (define m0 (add-view (mk "l0\nl1\nl2\nl3" 3 10) 3 10 (point 0 1) 'free))
-  (define m1 (let-values ([(e d*) (editor-apply-edit m0 0 d-ins #f)])
+  (define m1 (let-values ([(e d*) (editor-apply-edit m0 0 d-ins #:trusted? #t)])
                (editor-map-views e (vd e 0) (list d*))))
   (check-equal? (vp m1 1) (point 0 3))                     ; (0,1) 映射到 (0,3)
   (check-equal? (vtl m1 1) 0)
 
   ;; leader：leader 推进，follow 镜像
   (define g0 (add-view (mk "l0\nl1\nl2\nl3\nl4\nl5" 3 10) 3 10 (point 0 0) 'follow))
-  (define-values (g3 dg) (editor-apply-edit g0 0 (edit-desc (point 0 0) (point 0 0) "XY") #f))
+  (define-values (g3 dg) (editor-apply-edit g0 0 (edit-desc (point 0 0) (point 0 0) "XY") #:trusted? #t))
   (define g4 (editor-leader-view g3 0 (vd g3 0) (list dg)))
   (check-equal? (vp g4 0) (point 0 2))
   (check-equal? (vp g4 1) (point 0 2))

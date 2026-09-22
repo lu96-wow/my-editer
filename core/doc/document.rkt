@@ -11,10 +11,9 @@
 ;;; buffer 只有文本与版本号（doc/buffer.rkt）；attrs 是行内标注（unit/attrs.rkt）。
 ;;; 二者以 **document** 装配，唯一变更漏斗也在这里：
 ;;;
-;;;   document-apply-change        施加 change（文本 + 属性），带 read-only 守卫
-;;;   document-apply-change-trusted 跳守卫
-;;;   document-apply-edit[-trusted] 文本单条便利封装
-;;;   document-edit[-trusted]       给位置与 op 算 desc 再施加（文本）
+;;;   document-apply-change[#:trusted?] 施加 change（文本 + 属性），默认带 read-only 守卫
+;;;   document-apply-edit  [#:trusted?] 文本单条便利封装
+;;;   document-edit-at     [#:trusted?] 给位置与 op 算 desc 再施加（文本）
 ;;;   document-put-attr/remove-attr 属性单条便利封装
 ;;;
 ;;; 编辑传播顺序（唯一）：
@@ -57,11 +56,8 @@
  document-remove-attr
  ;; 唯一变更漏斗
  document-apply-change
- document-apply-change-trusted
  document-apply-edit
- document-apply-edit-trusted
- document-edit
- document-edit-trusted
+ document-edit-at
  ;; 一次变更的完整结果
  change-result
  change-result?
@@ -216,8 +212,8 @@
                  (append erased er))])))
   (values b* a* (reverse applied) (reverse invs) erased))
 
-(define (document-apply-change d ch) (document-apply-change* d ch #t))
-(define (document-apply-change-trusted d ch) (document-apply-change* d ch #f))
+(define (document-apply-change d ch #:trusted? [trusted? #f])
+  (document-apply-change* d ch (not trusted?)))
 (define (document-apply-change* d ch guard?)
   (define b0 (document-buffer d))
   (define-values (b1 attrs1 applied-texts text-invs erased)
@@ -242,16 +238,16 @@
 ;;; ---------- 便利入口 ----------
 
 ;; 文本单条：返回 (values document 生效desc/#f)。
-(define (document-apply-edit d desc) (document-apply-edit* d desc #t))
-(define (document-apply-edit-trusted d desc) (document-apply-edit* d desc #f))
+(define (document-apply-edit d desc #:trusted? [trusted? #f])
+  (document-apply-edit* d desc (not trusted?)))
 (define (document-apply-edit* d desc guard?)
   (define-values (d* res) (document-apply-change* d (edits->change (list desc)) guard?))
   (define ds (if res (change-result-applied-texts res) '()))
   (values d* (and (pair? ds) (car ds))))
 
 ;; 给位置与 op（buffer selection → desc/#f），算 desc 再施加。
-(define (document-edit d p op) (document-edit* d p op #t))
-(define (document-edit-trusted d p op) (document-edit* d p op #f))
+(define (document-edit-at d p op #:trusted? [trusted? #f])
+  (document-edit* d p op (not trusted?)))
 (define (document-edit* d p op guard?)
   (define desc (op (document-buffer d) (selection p p)))
   (if desc
@@ -285,7 +281,7 @@
   (check-equal? (attrs-line-count (document-attrs d0)) 2)
 
   ;; 文本编辑
-  (define-values (d1 e1) (document-edit d0 (P 0 0) (buffer-op-insert-char #\X)))
+  (define-values (d1 e1) (document-edit-at d0 (P 0 0) (buffer-op-insert-char #\X)))
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? e1 (edit-desc (P 0 0) (P 0 0) "X"))
   (check-equal? (document-text-tick d1) 1)             ; 文本版本
@@ -312,13 +308,13 @@
 
   ;; read-only 守卫
   (define rb (document-put-attr d0 (P 0 1) (P 0 4) read-only-key #t))
-  (define-values (rb1 rrd) (document-edit rb (P 0 2) (buffer-op-insert-char #\X)))
+  (define-values (rb1 rrd) (document-edit-at rb (P 0 2) (buffer-op-insert-char #\X)))
   (check-eq? rb1 rb)
   (check-false rrd)
-  (define-values (rb2 _) (document-edit rb (P 0 4) (buffer-op-insert-char #\X)))
+  (define-values (rb2 _) (document-edit-at rb (P 0 4) (buffer-op-insert-char #\X)))
   (check-equal? (document->string rb2) "hellXo\nworld")
   (check-false (attr-read-only? (document-attrs-at rb2 (P 0 4))))
-  (define-values (rb4 rrd4) (document-edit-trusted rb (P 0 2) (buffer-op-insert-char #\X)))
+  (define-values (rb4 rrd4) (document-edit-at rb (P 0 2) (buffer-op-insert-char #\X) #:trusted? #t))
   (check-equal? (document->string rb4) "heXllo\nworld")
   (check-equal? rrd4 (edit-desc (P 0 2) (P 0 2) "X"))
 
@@ -349,7 +345,7 @@
   ;; 撤销辅助
   (define (apply-undo d res)
     (for/fold ([x d]) ([c (in-list (change-result-undo res))])
-      (let-values ([(x* _) (document-apply-change-trusted x c)]) x*)))
+      (let-values ([(x* _) (document-apply-change x c #:trusted? #t)]) x*)))
 
   (define cb2 (apply-undo cb1 res))
   (check-equal? (document->string cb2) "abc")
@@ -358,7 +354,7 @@
   ;; 回归：删除带属性的文本，撤销必须把属性一起带回
   (define eb0 (document-put-attr (document-open "abc") (P 0 0) (P 0 3) read-only-key #t))
   (define-values (eb1 res2)
-    (document-apply-change-trusted eb0 (edits->change (list (edit-desc (P 0 1) (P 0 2) "")))))
+    (document-apply-change eb0 (edits->change (list (edit-desc (P 0 1) (P 0 2) ""))) #:trusted? #t))
   (check-equal? (document->string eb1) "ac")
   (check-equal? (document-attrs-key-runs eb1 0 read-only-key) (list (list 0 2 #t)))
   (define eb2 (apply-undo eb1 res2))

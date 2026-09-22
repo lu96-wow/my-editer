@@ -130,12 +130,10 @@
 | `document->string` / `document->lines` / `document-line-count` / `document-line-ref` / `document-line-length` | 文本委托 |
 | `document-clamp-point` / `document-point->offset` / `document-offset->point` / `document-range-text` | 位置委托 |
 | `document-clamp-edit-descs` / `document-text-tick` / `document-attr-tick` / `document-content-eq?` / `document-attrs-eq?` | 文本委托 / 版本戳 |
-| `document-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；返回 `(values 新document change-result)` |
-| `document-apply-change-trusted` | 同上，跳守卫 |
-| `document-apply-edit` / `document-edit` | 文本单条 / 给位置与 op 算 desc 再施加 |
-| `document-apply-edit-trusted` / `document-edit-trusted` | 同上，跳守卫 |
-| `document-apply-edit-batch` | 批量文本施加（change 的文本专用封装）；返回 `(values 新document 生效descs 逆)` |
-| `document-apply-edit-batch-trusted` | 同上，跳守卫 |
+| `document-apply-change` | **唯一变更漏斗**：施加 change（文本 + 属性）；`#:trusted?` 跳守卫；返回 `(values 新document change-result)` |
+| `document-apply-edit` | 文本单条便利封装（`#:trusted?` 跳守卫） |
+| `document-edit-at` | 给位置与 op 算 desc 再施加（`#:trusted?` 跳守卫） |
+| `document-apply-edit-batch` | 批量文本施加（change 的文本专用封装）；`#:trusted?`；返回 `(values 新document 生效descs 逆)` |
 | `document-put-attr` | 写属性 `[start,end) → key=val`（走 change 漏斗；零宽 = no-op） |
 | `document-remove-attr` | 移除区间内的某个 key（零宽 = no-op） |
 | `document-attrs-at` | 某点的全部属性（hash） |
@@ -288,7 +286,7 @@ face-provider : editor did line -> (listof (list start end face))
 |---|---|
 | `editor?` | 是否 editor |
 | `editor-document-count` | document 数 |
-| `editor-document-history-on?` / `editor-view-history-on?` | 该 document 的默认历史策略（是否入账本） |
+| `editor-document-history-enabled?` / `editor-view-history-enabled?` | 该 document 的默认历史策略（是否入账本） |
 | `editor-view-count` | view 数 |
 | `editor-documents` | document-entry 列表 |
 | `editor-views` | view 列表 |
@@ -487,7 +485,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-document-can-redo?` | 可否重做 |
 | `editor-document-undo-depth` | 撤销栈深 |
 | `editor-document-redo-depth` | 重做栈深 |
-| `editor-set-history-on?` / `editor-view-set-history-on?` | 切换某 document 的默认历史策略 |
+| `editor-set-history-enabled` / `editor-view-set-history-enabled` | 切换某 document 的默认历史策略 |
 | `editor-document-clear-history` / `editor-view-clear-history` | 清空账本（不隐式清；保留策略） |
 
 ### 9.9 投影

@@ -286,16 +286,16 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 - 合并规则是**结构判定**（纯文本单字符的打字 / 退格 / 前向删除连续段），无时钟无状态。
 - **记不记是 document 的策略 + 命令级覆盖**：`document-entry` 带 `record?`（开口 `#:history?`，默认 `#t`）。
   命令的 `#:record?` 取 `'default`（跟随 document）/ `#t` / `#f`，在 `editor-run-change` 一处解析。
-  派生 / 只读文档（文件树、状态栏）用 `#:history? #f` 从此不产账本；运行时 `editor-document-history-on?` /
-  `editor-set-history-on?` 查询 / 切换，`editor-document-clear-history` 清栈（不隐式清）。
+  派生 / 只读文档（文件树、状态栏）用 `#:history? #f` 从此不产账本；运行时 `editor-document-history-enabled?` /
+  `editor-set-history-enabled` 查询 / 切换，`editor-document-clear-history` 清栈（不隐式清）。
 - 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后属性挡住。
 
 ---
 
-## 8. 守卫抑制：显式 trusted 入口
+## 8. 守卫抑制：显式 `#:trusted?` 参数
 
-`read-only` 守卫默认开；绕行**只**有显式入口 `document-apply-change-trusted` 与
-`editor-document-edit-at` 的 `#:trusted?`。没有全局开关、没有 `inhibit` 参数。
+`read-only` 守卫默认开；绕行**只**有显式参数 `#:trusted?`（`document-apply-change` /
+`editor-document-edit-at` 等）。没有全局开关、没有 `inhibit`。
 
 ---
 

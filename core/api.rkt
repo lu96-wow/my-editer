@@ -83,13 +83,13 @@
  read-only-key attr-read-only?
  document-attrs-at document-attrs-runs document-attrs-key-runs
  document-put-attr document-remove-attr
- document-apply-change document-apply-change-trusted
- document-apply-edit document-apply-edit-trusted document-edit document-edit-trusted
+ document-apply-change
+ document-apply-edit document-edit-at
  change-result change-result? change-result-applied-texts change-result-applied-attrs
  change-result-text-inverses change-result-attr-inverses change-result-erased-restores
  change-result-replay change-result-undo
  ;; ---- edit —— 批量文本施加 ----
- document-apply-edit-batch document-apply-edit-batch-trusted
+ document-apply-edit-batch
  ;; ---- events —— 类型化输入 ----
  modifiers modifiers? struct:modifiers
  modifiers-control modifiers-alt modifiers-shift modifiers-meta
@@ -144,7 +144,7 @@
 
   ;; 原子链：document → 编辑 → window → screen
   (define d (document-open "hello\nworld"))
-  (define-values (d1 desc) (document-edit d (point 0 0) (buffer-op-insert-char #\X)))
+  (define-values (d1 desc) (document-edit-at d (point 0 0) (buffer-op-insert-char #\X)))
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? desc (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (screen-rows (window->screen (window-open d1 2 10))) 2)

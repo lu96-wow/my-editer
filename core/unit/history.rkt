@@ -135,14 +135,14 @@
 
   ;; 施加一条文本 desc，并给出 (replay undo pre-point)
   (define (step-of b d p)
-    (define-values (b* res) (document-apply-change-trusted b (edits->change (list d))))
+    (define-values (b* res) (document-apply-change b (edits->change (list d)) #:trusted? #t))
     (values b* (list (change-result-replay res)) (change-result-undo res)))
   ;; 模拟一次编辑并记账
   (define (rec h b d p)
     (define-values (b* replay undo) (step-of b d p))
     (values (history-record h replay undo p) b*))
-  (define (apply-undo b undo) (for/fold ([x b]) ([c (in-list undo)]) (let-values ([(x* _) (document-apply-change-trusted x c)]) x*)))
-  (define (apply-replay b replay) (for/fold ([x b]) ([c (in-list replay)]) (let-values ([(x* _) (document-apply-change-trusted x c)]) x*)))
+  (define (apply-undo b undo) (for/fold ([x b]) ([c (in-list undo)]) (let-values ([(x* _) (document-apply-change x c #:trusted? #t)]) x*)))
+  (define (apply-replay b replay) (for/fold ([x b]) ([c (in-list replay)]) (let-values ([(x* _) (document-apply-change x c #:trusted? #t)]) x*)))
 
   ;; 打字连续段并成 1 步
   (define-values (t1 b1) (rec (history-empty) (document-open "") (edit-desc (point 0 0) (point 0 0) "a") (point 0 0)))
@@ -191,9 +191,10 @@
   ;; 文本 + 属性一步：可撤销
   (define ab0 (document-open "abcd"))
   (define-values (ab1 res)
-    (document-apply-change-trusted ab0
+    (document-apply-change ab0
       (change (list (edit-desc (point 0 1) (point 0 1) "X"))
-              (list (attr-set (point 0 1) (point 0 2) read-only-key #t)))))
+              (list (attr-set (point 0 1) (point 0 2) read-only-key #t)))
+      #:trusted? #t))
   (define ah (history-record (history-empty) (list (change-result-replay res)) (change-result-undo res) (point 0 1)))
   (check-equal? (document->string ab1) "aXbcd")
   (check-equal? (history-undo-depth ah) 1)

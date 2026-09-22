@@ -18,7 +18,7 @@
 ;;;   editor-put-view        换一个 view 的 window
 ;;;   editor-set-view-sync / editor-set-view-document  视图结构变换
 ;;;   editor-put-document-name
-;;;   editor-put-history / editor-put-history-on? / editor-put-history-clear / editor-record-history
+;;;   editor-put-history / editor-put-history-enabled / editor-put-history-clear / editor-record-history
 ;;;
 ;;; 不变量（由本层维持）：任一 view 的 window.document 必是某个 document-entry 的 document。
 
@@ -32,7 +32,7 @@
  editor-set-view-sync
  editor-set-view-document
  editor-put-history
- editor-put-history-on?
+ editor-put-history-enabled
  editor-put-history-clear
  editor-put-document-name
  editor-record-history)
@@ -64,24 +64,22 @@
 
 ;; 变更唯一漏斗：把 change 施加到 did 的 document，再换引用。
 ;; 返回 (values editor change-result/#f)。**不做**任何显示决策（不映射光标）。
-(define (editor-apply-change ed did ch [guard? #t])
+(define (editor-apply-change ed did ch #:trusted? [trusted? #f])
   (define d0 (document-entry-document (editor-document-entry ed did)))
-  (define-values (d* res) (if guard?
-                              (document-apply-change d0 ch)
-                              (document-apply-change-trusted d0 ch)))
+  (define-values (d* res) (document-apply-change d0 ch #:trusted? trusted?))
   (if (not res)
       (values ed #f)
       (values (editor-swap-document ed did d*) res)))
 
 ;; 文本单条漏斗（便利）：返回 (values editor 生效desc/#f)。
-(define (editor-apply-edit ed did d [guard? #t])
-  (define-values (ed* res) (editor-apply-change ed did (edits->change (list d)) guard?))
+(define (editor-apply-edit ed did d #:trusted? [trusted? #f])
+  (define-values (ed* res) (editor-apply-change ed did (edits->change (list d)) #:trusted? trusted?))
   (define ds (if res (change-result-applied-texts res) '()))
   (values ed* (and (pair? ds) (car ds))))
 
 ;; 文本批量漏斗：返回 (values editor 生效descs 逆)；施加顺序且平行。
-(define (editor-apply-edit-batch ed did descs [guard? #t])
-  (define-values (ed* res) (editor-apply-change ed did (edits->change descs) guard?))
+(define (editor-apply-edit-batch ed did descs #:trusted? [trusted? #f])
+  (define-values (ed* res) (editor-apply-change ed did (edits->change descs) #:trusted? trusted?))
   (if res
       (values ed* (change-result-applied-texts res) (change-result-text-inverses res))
       (values ed '() '())))
@@ -130,7 +128,7 @@
                (if (= (document-entry-id e) did) (struct-copy document-entry e [history h]) e))]))
 
 ;; 设某 document 的默认历史策略（是否把变更记入账本）。
-(define (editor-put-history-on? ed did on?)
+(define (editor-put-history-enabled ed did on?)
   (struct-copy editor ed
     [documents (for/list ([e (in-list (editor-documents ed))])
                (if (= (document-entry-id e) did) (struct-copy document-entry e [record? on?]) e))]))

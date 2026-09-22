@@ -56,7 +56,7 @@
 ;; 返回 (values editor 生效文本descs 生效属性descs)。
 (define (apply-change-seq ed did vid chs)
   (for/fold ([e ed] [texts '()] [attrs '()]) ([ch (in-list chs)])
-    (define-values (e1 res) (editor-apply-change e did ch #f))   ; trusted
+    (define-values (e1 res) (editor-apply-change e did ch #:trusted? #t))   ; trusted
     (cond
       [(not res) (values e1 texts attrs)]
       [else

@@ -13,16 +13,13 @@
 ;;; 的逻辑只有一份（在 document.rkt）。
 
 (provide
- document-apply-edit-batch
- document-apply-edit-batch-trusted)
+ document-apply-edit-batch)
 
-(define (document-apply-edit-batch d descs) (document-apply-edit-batch* d descs #t))
-(define (document-apply-edit-batch-trusted d descs) (document-apply-edit-batch* d descs #f))
+(define (document-apply-edit-batch d descs #:trusted? [trusted? #f])
+  (document-apply-edit-batch* d descs (not trusted?)))
 (define (document-apply-edit-batch* d descs guard?)
   (define-values (d* res)
-    (if guard?
-        (document-apply-change d (edits->change descs))
-        (document-apply-change-trusted d (edits->change descs))))
+    (document-apply-change d (edits->change descs) #:trusted? (not guard?)))
   (cond
     [(not res) (values d '() '())]
     [else (values d*
@@ -75,9 +72,9 @@
   (check-equal? (document->string rb*) "abcYd")
   (check-equal? rdescs (list (edit-desc (point 0 3) (point 0 3) "Y")))
   (check-equal? rinv (list (edit-desc (point 0 3) (point 0 4) "")))
-  ;; #f 守卫：绕 read-only 强施
+  ;; #:trusted? #t：绕 read-only 强施
   (define-values (rt* rtds _rti)
-    (document-apply-edit-batch-trusted rbd (list (edit-desc (point 0 1) (point 0 1) "X"))))
+    (document-apply-edit-batch rbd (list (edit-desc (point 0 1) (point 0 1) "X")) #:trusted? #t))
   (check-equal? (document->string rt*) "aXbcd")
   (check-equal? rtds (list (edit-desc (point 0 1) (point 0 1) "X")))
 
