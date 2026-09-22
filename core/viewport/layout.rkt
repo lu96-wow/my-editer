@@ -39,7 +39,7 @@
 
 ;;; ---------- 一行 [start,end) 显示列 → runs ----------
 
-(define (line-range->runs b li start end [face-provider no-face-provider])
+(define (line-range->runs b li start end [face-provider empty-face-provider])
   (define glyphs (rendered-line-glyphs (render-line b li face-provider)))
   (define n (vector-length glyphs))
   (define cells

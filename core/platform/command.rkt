@@ -286,15 +286,15 @@
                                           read-only-key #t)))
                     #:reaction 'leader #:record? #t))
   (check-equal? (editor-buffer->string ba1 0) "aXbc")
-  (check-equal? (editor-attr-key-runs ba1 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-attrs-key-runs ba1 0 0 read-only-key) (list (list 1 2 #t)))
   (check-equal? (editor-undo-depth ba1 0) 1)
   (define-values (ba2 _ba-u) (editor-undo ba1))
   (check-equal? (editor-buffer->string ba2 0) "abc")
-  (check-false (attr-read-only? (editor-attr-at ba2 0 (point 0 1))))
+  (check-false (attr-read-only? (editor-attrs-at ba2 0 (point 0 1))))
   ;; 重做也要把文本 + 属性恢复
   (define-values (ba3 _ba-r2) (editor-redo ba2))
   (check-equal? (editor-buffer->string ba3 0) "aXbc")
-  (check-equal? (editor-attr-key-runs ba3 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-attrs-key-runs ba3 0 0 read-only-key) (list (list 1 2 #t)))
 
   ;; 删除带属性的文本再撤销：属性不得丢失（旧实现的回归点）
   (define br0 (editor-open "abc"))
@@ -304,7 +304,7 @@
   (check-equal? (editor-buffer->string br3 0) "ac")
   (define-values (br4 _br-u) (editor-undo br3))
   (check-equal? (editor-buffer->string br4 0) "abc")
-  (check-equal? (editor-attr-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
+  (check-equal? (editor-attrs-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
 
   ;; 跨 document 视口同步（行数相同 → 行恒等）
   (define lk0 (editor-open (string-join (for/list ([i (in-range 8)]) (format "l~a" i)) "\n") 3 10 #:name "A"))

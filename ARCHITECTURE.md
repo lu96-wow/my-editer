@@ -281,7 +281,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
   账本 = `(undo redo)`。
 - 文本逆必须由**编辑前**的 `buffer` 导出（`buffer-edit-desc-inverse`）；用编辑后的
   buffer 求逆会静默写坏历史。文本逆**逐条、逆序**施加（每条坐标基于上一条之后）。
-- 属性也要可逆：显式属性的逆由 `attrs-attr-inverse` 给出；文本编辑抹掉的属性由
+- 属性也要可逆：显式属性的逆由 `attrs-desc-inverse` 给出；文本编辑抹掉的属性由
   `attrs-range-runs` 在施加前捕获，撤销时在**原坐标**补回（`change-result-erased-restores`）。
 - 合并规则是**结构判定**（纯文本单字符的打字 / 退格 / 前向删除连续段），无时钟无状态。
 - **记不记是 document 的策略 + 命令级覆盖**：`document-entry` 带 `record?`（开口 `#:history?`，默认 `#t`）。
@@ -357,7 +357,7 @@ change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.r
   **批量**写（`editor-apply-attrs` / `attrs-apply-attr-batch`）、**进账本**并精确撤销。
 - 撤销材料（`change-result`）：
   - `applied-texts` / `text-inverses`（与施加顺序平行，逐条逆序施加）；
-  - `applied-attrs` / `attr-inverses`（逐条 `attrs-attr-inverse`）；
+  - `applied-attrs` / `attr-inverses`（逐条 `attrs-desc-inverse`）；
   - `erased-restores`：文本编辑抹掉的属性在**原坐标**补回——这是「撤销删除不得丢标注」
     的关键；只靠 `attrs-apply-edit` 跟随重放是回不来的。
 - `history` 的一步是 change 的**序列**（`replay` / `undo` 都是 `(listof change)`），

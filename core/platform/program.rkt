@@ -79,7 +79,8 @@
  editor-set-sync
  editor-set-document
  editor-set-document-name
- ;; 属性写（程序面：改 document 的属性，不碰文本/光标）
+ ;; 批量写（程序面：显式 did，不碰光标）
+ editor-apply-edits
  editor-apply-attrs
  editor-put-attr
  editor-remove-attr
@@ -240,7 +241,7 @@
                               #:reaction [reaction 'none]
                               #:trusted? [trusted? #f]
                               #:record? [record? 'default])
-  (editor-command-batch ed (change/edits descs)
+  (editor-command-batch ed (edits->change descs)
                         #:view (document-vid 'editor-edit-at-batch ed did)
                         #:trusted? trusted?
                         #:reaction reaction
@@ -278,7 +279,7 @@
 
 ;; 选区集：安装一个命名选区集 / 清除（收敛为单个 leader 选区）。**何时清除由上层决定**。
 (define (editor-view-put-selection-set ed vid g)
-  (editor-put-view ed vid (window-set-selection-set (view-window-of ed vid) g)))
+  (editor-put-view ed vid (window-put-selection-set (view-window-of ed vid) g)))
 (define (editor-put-selection-set ed g)
   (editor-view-put-selection-set ed (view-id (editor-focused-view ed)) g))
 (define (editor-view-clear-selection-set ed vid)
@@ -429,8 +430,13 @@
 ;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 'default（跟随 document 策略），
 ;; 可用 #:record? #t / #f 覆盖。
 
+(define (editor-apply-edits ed did descs #:record? [record? 'default])
+  (editor-command-batch ed (edits->change descs)
+                        #:view (document-vid 'editor-apply-edits ed did)
+                        #:record? record?))
+
 (define (editor-apply-attrs ed did attrs #:record? [record? 'default])
-  (editor-command-batch ed (change/attrs attrs)
+  (editor-command-batch ed (attrs->change attrs)
                         #:view (document-vid 'editor-apply-attrs ed did)
                         #:record? record?))
 
@@ -491,7 +497,7 @@
 
   ;; 属性写：只改属性、不碰文本/光标；默认跟随 document 策略（可撤销）
   (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
-  (check-true (attr-read-only? (editor-attr-at an 0 (point 0 2))))
+  (check-true (attr-read-only? (editor-attrs-at an 0 (point 0 2))))
   (check-true (editor-can-undo? an 0))
 
   ;; document 级历史策略：#:history? #f 的文档不记账（用户面/程序面/属性写都不记）
@@ -523,7 +529,7 @@
                                           read-only-key #t)))
                     #:reaction 'leader #:record? #t))
   (check-equal? (editor-buffer->string cx1 0) "aXbc")
-  (check-equal? (editor-attr-key-runs cx1 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-attrs-key-runs cx1 0 0 read-only-key) (list (list 1 2 #t)))
   (check-equal? (change-report-texts rx) (list (edit-desc (point 0 1) (point 0 1) "X")))
   (check-equal? (change-report-attrs rx) (list (attr-set (point 0 1) (point 0 2) read-only-key #t)))
   (check-equal? (editor-undo-depth cx1 0) 1)             ; 文本与属性合成一步
@@ -664,5 +670,15 @@
   (check-false (editor-line-numbers? (editor-set-line-numbers ln1 #f)))
   (define-values (ln2 lnv) (editor-add-view ln0 0 3 10 #:line-numbers? #t))
   (check-true (editor-view-line-numbers? ln2 lnv))
+
+  ;; 文本批量（与 editor-apply-attrs 对称）：一次多条、报告含生效 descs
+  (define be0 (editor-open "abcd\nefgh"))
+  (define-values (be1 ber)
+    (editor-apply-edits be0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
+                                    (edit-desc (point 1 2) (point 1 2) "Y"))))
+  (check-equal? (editor-buffer->string be1 0) "aXbcd\nefYgh")
+  (check-equal? (change-report-texts ber) (list (edit-desc (point 1 2) (point 1 2) "Y")
+                                                (edit-desc (point 0 1) (point 0 1) "X")))
+  (check-equal? (editor-point be1) (point 0 0))            ; 'none：光标不动
 
   (displayln "program.rkt: all tests passed"))

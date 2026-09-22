@@ -20,8 +20,8 @@
  selection-range
  selection-empty?
  selection-map-edit
- selection-set-head
- selection-set-anchor
+ selection-with-head
+ selection-with-anchor
  selection-map-head
  selection-map-anchor
  selection-map-both
@@ -59,10 +59,10 @@
 ;;; ---------- 空间变换（point → point）----------
 ;; 与 selection-map-edit（按 edit-desc 映射）职责不同：这里是「把端点搬到另一个点」。
 
-(define (selection-set-head s p) (selection (selection-anchor s) p))
-(define (selection-set-anchor s p) (selection p (selection-head s)))
-(define (selection-map-head f s) (selection-set-head s (f (selection-head s))))
-(define (selection-map-anchor f s) (selection-set-anchor s (f (selection-anchor s))))
+(define (selection-with-head s p) (selection (selection-anchor s) p))
+(define (selection-with-anchor s p) (selection p (selection-head s)))
+(define (selection-map-head f s) (selection-with-head s (f (selection-head s))))
+(define (selection-map-anchor f s) (selection-with-anchor s (f (selection-anchor s))))
 (define (selection-map-both f s)
   (selection (f (selection-anchor s)) (f (selection-head s))))
 

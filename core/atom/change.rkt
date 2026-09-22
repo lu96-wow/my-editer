@@ -15,16 +15,16 @@
 
 (provide
  (struct-out change)
- change/edits
- change/attrs
+ edits->change
+ attrs->change
  change-empty?
  change-text-only?
  change-attr-only?)
 
 (struct change (texts attrs) #:transparent)
 
-(define (change/edits ds) (change ds '()))
-(define (change/attrs as) (change '() as))
+(define (edits->change ds) (change ds '()))
+(define (attrs->change as) (change '() as))
 (define (change-empty? c) (and (null? (change-texts c)) (null? (change-attrs c))))
 (define (change-text-only? c) (null? (change-attrs c)))
 (define (change-attr-only? c) (null? (change-texts c)))
@@ -34,8 +34,8 @@
 (module+ test
   (define p (lambda (l c) (point l c)))
   (check-true (change-empty? (change '() '())))
-  (check-true (change-text-only? (change/edits (list (edit-desc (p 0 0) (p 0 0) "x")))))
-  (check-false (change-text-only? (change/attrs (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
-  (check-true (change-attr-only? (change/attrs (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
-  (check-false (change-attr-only? (change/edits (list (edit-desc (p 0 0) (p 0 0) "x")))))
+  (check-true (change-text-only? (edits->change (list (edit-desc (p 0 0) (p 0 0) "x")))))
+  (check-false (change-text-only? (attrs->change (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
+  (check-true (change-attr-only? (attrs->change (list (attr-set (p 0 0) (p 0 1) 'k #t)))))
+  (check-false (change-attr-only? (edits->change (list (edit-desc (p 0 0) (p 0 0) "x")))))
   (displayln "change.rkt: all tests passed"))

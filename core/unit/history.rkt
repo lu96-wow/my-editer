@@ -135,7 +135,7 @@
 
   ;; 施加一条文本 desc，并给出 (replay undo pre-point)
   (define (step-of b d p)
-    (define-values (b* res) (document-apply-change-trusted b (change/edits (list d))))
+    (define-values (b* res) (document-apply-change-trusted b (edits->change (list d))))
     (values b* (list (change-result-replay res)) (change-result-undo res)))
   ;; 模拟一次编辑并记账
   (define (rec h b d p)
@@ -199,7 +199,7 @@
   (check-equal? (history-undo-depth ah) 1)
   (define-values (as _bpu) (history-pop-undo ah))
   (check-equal? (document->string (apply-undo ab1 (step-undo as))) "abcd")
-  (check-false (attr-read-only? (document-attr-at (apply-undo ab1 (step-undo as)) (point 0 1))))
+  (check-false (attr-read-only? (document-attrs-at (apply-undo ab1 (step-undo as)) (point 0 1))))
 
   ;; 空栈
   (define eh (history-empty))

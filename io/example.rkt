@@ -264,7 +264,7 @@
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
 (define (read-only-face ed did line)
-  (for/list ([r (in-list (editor-attr-key-runs ed did line read-only-key))])
+  (for/list ([r (in-list (editor-attrs-key-runs ed did line read-only-key))])
     (list (car r) (cadr r) (hash 'face 'read-only))))
 
 ;; 投影：两个来源拼成一个 provider（后者覆盖前者）；传给 editor->screen。
@@ -585,7 +585,7 @@
                [ed (editor-set-selections (app-ed r0)
                                           (list (selection (point 0 0) (point 0 5))))]))
   (define r2 (mark-read-only r1))
-  (check-equal? (editor-attr-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
+  (check-equal? (editor-attrs-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
   (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed r2) (app-face-provider r2))) 0)))
                 (hash 'face 'read-only))
   ;; 只读区内插入被守卫拒绝
@@ -596,7 +596,7 @@
   (define r5 (struct-copy app r4 [ed (editor-set-selections (app-ed r4)
                                                             (list (selection (point 0 0) (point 0 5))))]))
   (define r6 (clear-read-only r5))
-  (check-false (attr-read-only? (editor-attr-at (app-ed r6) 0 (point 0 2))))
+  (check-false (attr-read-only? (editor-attrs-at (app-ed r6) 0 (point 0 2))))
   (define r7 (struct-copy app r6 [ed (editor-set-selections (app-ed r6) (list (caret (point 0 0))))]))
   (check-equal? (editor-buffer->string (app-ed (edit r7 (edit-insert "X"))) 0) "Xhello world")
 

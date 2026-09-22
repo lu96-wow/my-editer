@@ -75,13 +75,13 @@
 
 ;; 文本单条漏斗（便利）：返回 (values editor 生效desc/#f)。
 (define (editor-apply-edit ed did d [guard? #t])
-  (define-values (ed* res) (editor-apply-change ed did (change/edits (list d)) guard?))
+  (define-values (ed* res) (editor-apply-change ed did (edits->change (list d)) guard?))
   (define ds (if res (change-result-applied-texts res) '()))
   (values ed* (and (pair? ds) (car ds))))
 
 ;; 文本批量漏斗：返回 (values editor 生效descs 逆)；施加顺序且平行。
 (define (editor-apply-edit-batch ed did descs [guard? #t])
-  (define-values (ed* res) (editor-apply-change ed did (change/edits descs) guard?))
+  (define-values (ed* res) (editor-apply-change ed did (edits->change descs) guard?))
   (if res
       (values ed* (change-result-applied-texts res) (change-result-text-inverses res))
       (values ed '() '())))

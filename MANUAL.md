@@ -60,8 +60,8 @@
 | `attr-set` | 构造「设置属性」的 `attr-desc` |
 | `attr-remove` | 构造「移除属性」的 `attr-desc` |
 | `change` | 变更集：文本 descs + 属性 descs；唯一的跨层变更值 |
-| `change/edits` | 由文本 descs 构造 change |
-| `change/attrs` | 由属性 descs 构造 change |
+| `edits->change` | 由文本 descs 构造 change |
+| `attrs->change` | 由属性 descs 构造 change |
 | `change-empty?` / `change-text-only?` / `change-attr-only?` | 空 / 纯文本 / 纯属性判定 |
 | `selection` | 选区 `(anchor head)`；空选区 = 普通光标 |
 | `selection-point` | 选区光标点（= `head`） |
@@ -70,8 +70,8 @@
 | `caret` | 构造光标（= 同位置的空选区） |
 | `caret?` | 是否光标（空选区） |
 | `caret-point` | 光标点（= `head`） |
-| `selection-set-head` | 换 head（保 anchor） |
-| `selection-set-anchor` | 换 anchor（保 head） |
+| `selection-with-head` | 换 head（保 anchor） |
+| `selection-with-anchor` | 换 anchor（保 head） |
 | `selection-map-head` | 对 head 施加 `point→point`（扩选方向） |
 | `selection-map-anchor` | 对 anchor 施加 `point→point` |
 | `selection-map-both` | 对两端施加 `point→point`（平移） |
@@ -79,7 +79,7 @@
 | `selection-set-open` | 构造组（规范化；leader 由输入下标追踪） |
 | `selection-set-name` / `selection-set-selections` / `selection-set-leader-index` | 读名字 / 区间集 / leader 下标 |
 | `selection-set-leader` | 读 leader 选区（“原来的单选区”） |
-| `selection-set-add` / `selection-set-remove` / `selection-set-map` / `selection-set-set-leader` | 增 / 删 / 映射 / 设 leader |
+| `selection-set-add` / `selection-set-remove` / `selection-set-map` / `selection-set-put-leader` | 增 / 删 / 映射 / 设 leader |
 | `selection-set-map-edit` / `selection-set-advance-leader` | 编辑后重定位（free / leader 语义） |
 | `selection-set-clear` | 清除：收敛为单个 leader 选区（名字丢弃） |
 
@@ -138,9 +138,9 @@
 | `document-apply-edit-batch-trusted` | 同上，跳守卫 |
 | `document-put-attr` | 写属性 `[start,end) → key=val`（走 change 漏斗；零宽 = no-op） |
 | `document-remove-attr` | 移除区间内的某个 key（零宽 = no-op） |
-| `document-attr-at` | 某点的全部属性（hash） |
-| `document-attr-runs` | 某行的属性段 `(list start end hash)` |
-| `document-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `document-attrs-at` | 某点的全部属性（hash） |
+| `document-attrs-runs` | 某行的属性段 `(list start end hash)` |
+| `document-attrs-key-runs` | 某行某 key 的段 `(list start end val)` |
 | `change-result-replay` | 由结果构造「重放」change |
 | `change-result-undo` | 由结果构造撤销 change 序列（含属性逆 / 被抹属性补回） |
 | `read-only-key` | core 保留 key（`'read-only`） |
@@ -155,7 +155,7 @@ face-provider : editor did line -> (listof (list start end face))
 ```
 
 不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
-`no-face-provider` 是缺省（空）。
+`empty-face-provider` 是缺省（空）。
 
 **属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-apply-attrs` / `editor-put-attr`），
 再用 `attrs-provider` 取某个 key 的 provider：`(attrs-provider 'face)`。
@@ -335,7 +335,7 @@ face-provider : editor did line -> (listof (list start end face))
 （`editor-buffer` / `editor-document-name` / `editor-buffer->string` / `editor-buffer->lines` /
 `editor-buffer-line-count` / `editor-text-tick` / 账本查询）。带 payload 的读口
 （如 `editor-buffer-line-ref ed did i`）必须显式给 did —— 位置缺省会与 payload 抢参数。
-`editor-buffer-content-eq?` 比较两个 buffer，两个 did 都显式。
+`editor-content-eq?` 比较两个 buffer，两个 did 都显式。
 
 | 名字 | 语义 |
 |---|---|
@@ -350,16 +350,17 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-buffer-range-text` | 取区间文本 |
 | `editor-text-tick` | 某 document 的**文本**版本戳（只有文本变才 +1） |
 | `editor-attr-tick` | 某 document 的**标注**版本戳（只有属性变才 +1） |
-| `editor-buffer-content-eq?` | 两个 buffer 的文本是否同一 |
+| `editor-content-eq?` | 两个 buffer 的文本是否同一 |
 
 ### 9.4 属性
 
 | 名字 | 语义 |
 |---|---|
 | `editor-attrs` | 某 document 的全部属性（默认焦点 buffer） |
-| `editor-attr-at` | 某点的全部属性（hash） |
-| `editor-attr-runs` | 某行的属性段 `(list start end hash)` |
-| `editor-attr-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `editor-attrs-at` | 某点的全部属性（hash） |
+| `editor-attrs-runs` | 某行的属性段 `(list start end hash)` |
+| `editor-attrs-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `editor-apply-edits` | 批量施加文本 `edit-desc`（与 `editor-apply-attrs` 对称，`'none` 反应、不碰光标）；返回 `(values editor report)` |
 | `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `'default` |
 | `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `'default` |
 | `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `'default` |
@@ -496,7 +497,7 @@ face-provider : editor did line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `no-face-provider` | 缺省 provider（空） |
+| `empty-face-provider` | 缺省 provider（空） |
 | `attrs-provider` | `key → provider`（读属性 buffer） |
 |---|---|
 | `editor->screen` | 焦点 view → screen；可选 `face-provider` |

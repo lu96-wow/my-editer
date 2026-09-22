@@ -11,7 +11,7 @@
 (provide
  (struct-out glyph)
  (struct-out rendered-line)
- no-face-provider
+ empty-face-provider
  render-line)
 
 (struct glyph (ch face) #:transparent)
@@ -21,7 +21,7 @@
 ;; glyphs : (vectorof glyph)
 
 ;; 缺省 provider：无派生 face。
-(define (no-face-provider _b _line) '())
+(define (empty-face-provider _b _line) '())
 
 ;; runs 按 start 升序的 (start end payload)。返回覆盖列 a 的 payload（#f 未覆盖），
 ;; 以及其后第一个 end > a 的剩余 runs。让每段只需向前走，整体 O(D)。
@@ -33,7 +33,7 @@
       [(<= (car (car r)) a) (values (caddr (car r)) r)]
       [else (values #f r)])))
 
-(define (render-line b i [face-provider no-face-provider])
+(define (render-line b i [face-provider empty-face-provider])
   (define text (buffer-line-ref b i))
   (define n (string-length text))
   (define d-runs (face-provider b i))
@@ -57,7 +57,7 @@
 ;;; ---------- 测试 ----------
 
 (module+ test
-  (define (face-at b i j [provider no-face-provider])
+  (define (face-at b i j [provider empty-face-provider])
     (glyph-face (vector-ref (rendered-line-glyphs (render-line b i provider)) j)))
 
   (define b0 (buffer-open "hello\nworld"))

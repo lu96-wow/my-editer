@@ -21,8 +21,8 @@
 (define (document-apply-edit-batch* d descs guard?)
   (define-values (d* res)
     (if guard?
-        (document-apply-change d (change/edits descs))
-        (document-apply-change-trusted d (change/edits descs))))
+        (document-apply-change d (edits->change descs))
+        (document-apply-change-trusted d (edits->change descs))))
   (cond
     [(not res) (values d '() '())]
     [else (values d*

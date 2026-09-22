@@ -23,7 +23,7 @@
  selection-set-open
  selection-set-normalize
  selection-set-leader
- selection-set-set-leader
+ selection-set-put-leader
  selection-set-add
  selection-set-remove
  selection-set-map
@@ -62,7 +62,7 @@
 ;;; ---------- 变更 ----------
 
 ;; 让集合中等于 s 的选区成为 leader（不在集合中则原样）。
-(define (selection-set-set-leader g s)
+(define (selection-set-put-leader g s)
   (define idx (for/first ([x (in-list (selection-set-selections g))] [i (in-naturals)]
                           #:when (equal? x s)) i))
   (if idx (selection-set (selection-set-name g) (selection-set-selections g) idx) g))
@@ -141,7 +141,7 @@
                 (list s1 s2))
   (check-equal? (selection-set-name (selection-set-add g (list s1))) 'g)
   (check-equal? (selection-set-selections (selection-set-remove g (list s2))) (list s1 s3))
-  (check-equal? (selection-set-leader (selection-set-set-leader g s3)) s3)
+  (check-equal? (selection-set-leader (selection-set-put-leader g s3)) s3)
   (check-equal? (selection-set-leader (selection-set-map (selection-set-open 'g (list s1 s2) 1)
                                          (lambda (s) (caret (selection-anchor s)))))
                 (caret (P 0 8)))

@@ -42,7 +42,7 @@
                        (hash 'face 'selection))))
         #f)))
 
-(define (window->screen w [face-provider no-face-provider])
+(define (window->screen w [face-provider empty-face-provider])
   (define b (window-buffer w))
   (define vrows (window-vrows w))
   (define g (window-gutter-width w))

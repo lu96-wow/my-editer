@@ -80,7 +80,7 @@
  editor-screen->point
  editor-view-screen->point
  ;; 投影（face-provider : editor did line → runs）
- no-face-provider
+ empty-face-provider
  attrs-provider
  editor->screen
  editor-view->screen
@@ -103,12 +103,12 @@
  editor-buffer-range-text
  editor-text-tick
  editor-attr-tick
- editor-buffer-content-eq?
+ editor-content-eq?
  editor-attrs-eq?
  ;; 属性读（按 buffer-id）
- editor-attr-at
- editor-attr-runs
- editor-attr-key-runs
+ editor-attrs-at
+ editor-attrs-runs
+ editor-attrs-key-runs
  ;; 账本查询
  editor-can-undo?
  editor-can-redo?
@@ -276,17 +276,17 @@
 ;;; face-provider : editor did line → (listof (list start end face))；投影时按需调用。
 ;;; 内部适配成 viewport 的 buffer 级 provider，应用不见 buffer。
 
-(define (no-face-provider _ed _bid _line) '())
+(define (empty-face-provider _ed _bid _line) '())
 
 ;; 把属性 buffer 的某个 key 物化成 face-provider。
 (define (attrs-provider key)
-  (lambda (ed did line) (editor-attr-key-runs ed did line key)))
+  (lambda (ed did line) (editor-attrs-key-runs ed did line key)))
 
-(define (editor-view->screen ed vid [face-provider no-face-provider])
+(define (editor-view->screen ed vid [face-provider empty-face-provider])
   (define did (editor-view-document-id ed vid))
   (window->screen (view-window (editor-view-ref ed vid))
                   (lambda (_b line) (face-provider ed did line))))
-(define (editor->screen ed [face-provider no-face-provider])
+(define (editor->screen ed [face-provider empty-face-provider])
   (editor-view->screen ed (editor-focus ed) face-provider))
 
 ;;; ---------- 点算子（editor 级：位置只认 point，buffer 由 did/vid 解析） ----------
@@ -320,14 +320,14 @@
 (define (editor-buffer-range-text ed did s e) (buffer-range-text (editor-buffer ed did) s e))
 (define (editor-text-tick ed [did (focused-did ed)]) (buffer-tick (editor-buffer ed did)))
 (define (editor-attr-tick ed [did (focused-did ed)]) (document-attr-tick (editor-document ed did)))
-(define (editor-buffer-content-eq? ed b1 b2)
+(define (editor-content-eq? ed b1 b2)
   (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
 (define (editor-attrs-eq? ed b1 b2)
   (document-attrs-eq? (editor-document ed b1) (editor-document ed b2)))
-(define (editor-attr-at ed did p) (document-attr-at (editor-document ed did) p))
-(define (editor-attr-runs ed did line) (document-attr-runs (editor-document ed did) line))
-(define (editor-attr-key-runs ed did line key)
-  (document-attr-key-runs (editor-document ed did) line key))
+(define (editor-attrs-at ed did p) (document-attrs-at (editor-document ed did) p))
+(define (editor-attrs-runs ed did line) (document-attrs-runs (editor-document ed did) line))
+(define (editor-attrs-key-runs ed did line key)
+  (document-attrs-key-runs (editor-document ed did) line key))
 
 ;;; ---------- 账本查询 ----------
 
@@ -365,22 +365,22 @@
   ;; 变化计数：读口（并发/合并的版本戳）
   (check-equal? (editor-text-tick e0 0) 0)
   (check-equal? (editor-attr-tick e0 0) 0)
-  (check-true (editor-buffer-content-eq? e0 0 0))
+  (check-true (editor-content-eq? e0 0 0))
   (define-values (et _dt) (editor-apply-edit e0 0 (edit-desc (point 0 0) (point 0 0) "X")))
   (check-equal? (editor-text-tick et 0) 1)
   ;; 属性写只涨标注版本，不涨文本版本
   (define-values (et2 _et2r)
-    (editor-apply-change et 0 (change/attrs (list (attr-set (point 0 0) (point 0 1) 'x #t)))))
+    (editor-apply-change et 0 (attrs->change (list (attr-set (point 0 0) (point 0 1) 'x #t)))))
   (check-equal? (editor-text-tick et2 0) 1)     ; 文本版本不变
   (check-equal? (editor-attr-tick et2 0) 1)       ; 标注版本 +1
 
   ;; 属性读：任意 key 的段；read-only 是保留 key
   (define-values (pr _prr)
-    (editor-apply-change e0 0 (change/attrs (list (attr-set (point 0 0) (point 0 5) read-only-key #t)))))
-  (check-equal? (editor-attr-runs pr 0 0) (list (list 0 5 (hash read-only-key #t))))
-  (check-equal? (editor-attr-key-runs pr 0 0 read-only-key) (list (list 0 5 #t)))
+    (editor-apply-change e0 0 (attrs->change (list (attr-set (point 0 0) (point 0 5) read-only-key #t)))))
+  (check-equal? (editor-attrs-runs pr 0 0) (list (list 0 5 (hash read-only-key #t))))
+  (check-equal? (editor-attrs-key-runs pr 0 0 read-only-key) (list (list 0 5 #t)))
 
-  ;; 整体属性读 + 属性等价（与 editor-buffer / editor-buffer-content-eq? 对称）
+  ;; 整体属性读 + 属性等价（与 editor-buffer / editor-content-eq? 对称）
   (check-equal? (editor-attrs pr) (document-attrs (editor-document pr 0)))
   (check-true (editor-attrs-eq? pr 0 0))
   (check-true (editor-attrs-eq? e0 0 0))
@@ -430,7 +430,7 @@
 
   ;; 属性 buffer 物化成 provider：editor->screen 直接读，无需 buffer
   (define-values (pa _par)
-    (editor-apply-change e0 0 (change/attrs (list (attr-set (point 0 0) (point 0 5) 'face (hash 'face 'keyword))))))
+    (editor-apply-change e0 0 (attrs->change (list (attr-set (point 0 0) (point 0 5) 'face (hash 'face 'keyword))))))
   (check-equal? (vector-ref (screen-row-runs (editor->screen pa (attrs-provider 'face))) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
   (check-equal? (vector-ref (screen-row-runs (editor->screen pa)) 0)

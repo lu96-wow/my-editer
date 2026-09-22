@@ -54,19 +54,19 @@
  attr-set attr-remove attr-desc-empty?
  ;; ---- change（变更集：文本 + 属性）----
  change change? struct:change
- change-texts change-attrs change/edits change/attrs change-empty? change-text-only? change-attr-only?
+ change-texts change-attrs edits->change attrs->change change-empty? change-text-only? change-attr-only?
  ;; ---- selection（选区：光标 + 影子）----
  selection selection? struct:selection selection-anchor selection-head
  caret selection-point caret-point selection-range selection-empty? caret?
- selection-set-head selection-set-anchor selection-map-head selection-map-anchor selection-map-both
+ selection-with-head selection-with-anchor selection-map-head selection-map-anchor selection-map-both
  ;; ---- selection-set（命名选区集：区间集 + leader）----
  selection-set? selection-set-name selection-set-selections selection-set-leader-index
- selection-set-open selection-set-normalize selection-set-leader selection-set-set-leader selection-set-add selection-set-remove selection-set-map
+ selection-set-open selection-set-normalize selection-set-leader selection-set-put-leader selection-set-add selection-set-remove selection-set-map
  selection-set-clear selection-set-map-edit selection-set-advance-leader
  ;; ---- attrs（属性槽：通用 key→hash，随编辑移动）----
  attrs? attrs-empty attrs-line-count
  attrs-at attrs-runs attrs-key-runs attrs-range-runs
- attrs-apply-edit attrs-apply-attr attrs-apply-attr-batch attrs-attr-inverse attrs-check
+ attrs-apply-edit attrs-apply-attr attrs-apply-attr-batch attrs-desc-inverse attrs-check
  ;; ---- buffer —— 纯文本值（content ⊕ tick）----
  buffer? buffer-open buffer-content buffer->string buffer->lines
  buffer-line-count buffer-line-ref
@@ -81,7 +81,7 @@
  document-clamp-point document-point->offset document-offset->point document-range-text
  document-clamp-edit-descs document-text-tick document-attr-tick document-content-eq? document-attrs-eq?
  read-only-key attr-read-only?
- document-attr-at document-attr-runs document-attr-key-runs
+ document-attrs-at document-attrs-runs document-attrs-key-runs
  document-put-attr document-remove-attr
  document-apply-change document-apply-change-trusted
  document-apply-edit document-apply-edit-trusted document-edit document-edit-trusted
@@ -115,7 +115,7 @@
  window-line-numbers? window-set-line-numbers window-gutter-width window-content-width
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
- window-selection-set window-selection-set-name window-set-selection-set window-clear-selection-set
+ window-selection-set window-selection-set-name window-put-selection-set window-clear-selection-set
  window-map-selections window-map-primary window-map-points
  window-set-document window-set-point window-set-selections window-add-selections window-remove-selections window-clamp-selections
  window-add-selection window-remove-selection window-set-primary window-set-primary-index window-selection-member?

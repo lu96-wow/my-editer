@@ -19,7 +19,7 @@
 ;;;   attrs-apply-edit        —— 文本变更时跟随（吃生效 edit-desc），新文本不继承属性
 ;;;   attrs-apply-attr[-batch]—— 显式属性变更（吃 attr-desc），零宽 = no-op
 ;;;
-;;; 撤销材料：attrs-attr-inverse（单条 attr-desc 的逆）。文本编辑抹掉的属性由 doc 层
+;;; 撤销材料：attrs-desc-inverse（单条 attr-desc 的逆）。文本编辑抹掉的属性由 doc 层
 ;;; 用 attrs-range-runs 捕获后补回（见 doc/document.rkt）。
 
 (provide
@@ -33,7 +33,7 @@
  attrs-apply-edit
  attrs-apply-attr
  attrs-apply-attr-batch
- attrs-attr-inverse
+ attrs-desc-inverse
  attrs-check)
 
 ;;; ---------- 数据 ----------
@@ -330,8 +330,8 @@
 
 ;; 对单条 attr-desc，给出「恢复其覆盖前 key 状态」的 attr-desc 列表
 ;; （同坐标系；依次施加可精确回到 d 之前）。零宽 → '()。
-(define (attrs-attr-inverse a d)
-  (check-attr-line a 'attrs-attr-inverse d)
+(define (attrs-desc-inverse a d)
+  (check-attr-line a 'attrs-desc-inverse d)
   (if (attr-desc-empty? d)
       '()
       (let* ([line (point-line (attr-desc-start d))]
@@ -406,7 +406,7 @@
 
   ;; 逆：set 覆盖后恢复原值/恢复「无 key」
   (define inv-base (apply-attr* (fresh) (attr-set (P 0 1) (P 0 2) 'ro #t)))  ; [1,2) ro
-  (define invs (attrs-attr-inverse inv-base (attr-set (P 0 0) (P 0 4) 'ro #t)))
+  (define invs (attrs-desc-inverse inv-base (attr-set (P 0 0) (P 0 4) 'ro #t)))
   (define restored
     (for/fold ([a (apply-attr* inv-base (attr-set (P 0 0) (P 0 4) 'ro #t))])
               ([d (in-list invs)]) (apply-attr* a d)))

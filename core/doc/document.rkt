@@ -50,9 +50,9 @@
  ;; 属性读写（通用 key→value）
  read-only-key
  attr-read-only?
- document-attr-at
- document-attr-runs
- document-attr-key-runs
+ document-attrs-at
+ document-attrs-runs
+ document-attrs-key-runs
  document-put-attr
  document-remove-attr
  ;; 唯一变更漏斗
@@ -117,21 +117,21 @@
 (define read-only-key 'read-only)
 (define (attr-read-only? h) (eq? #t (hash-ref h read-only-key #f)))
 
-(define (document-attr-at d p)
+(define (document-attrs-at d p)
   (define q (buffer-clamp-point (document-buffer d) p))
   (attrs-at (document-attrs d) q))
 
-(define (document-attr-runs d line)
+(define (document-attrs-runs d line)
   (attrs-runs (document-attrs d) line (buffer-line-length (document-buffer d) line)))
 
-(define (document-attr-key-runs d line key)
+(define (document-attrs-key-runs d line key)
   (attrs-key-runs (document-attrs d) line (buffer-line-length (document-buffer d) line) key))
 
 (define (document-put-attr d start end key val)
-  (define-values (d* _) (document-apply-change d (change/attrs (list (attr-set start end key val)))))
+  (define-values (d* _) (document-apply-change d (attrs->change (list (attr-set start end key val)))))
   d*)
 (define (document-remove-attr d start end key)
-  (define-values (d* _) (document-apply-change d (change/attrs (list (attr-remove start end key)))))
+  (define-values (d* _) (document-apply-change d (attrs->change (list (attr-remove start end key)))))
   d*)
 
 ;;; ---------- read-only 守卫 ----------
@@ -227,7 +227,7 @@
                   (define x* (clamp-attr-desc b1 x))
                   (and (not (attr-desc-empty? x*)) x*))
                 (change-attrs ch)))
-  (define attr-invs (map (lambda (x) (attrs-attr-inverse attrs1 x)) eff-attrs))
+  (define attr-invs (map (lambda (x) (attrs-desc-inverse attrs1 x)) eff-attrs))
   (define attrs* (attrs-apply-attr-batch attrs1 'document-apply-change eff-attrs))
   (define text? (pair? applied-texts))
   (define attrs? (pair? eff-attrs))
@@ -245,7 +245,7 @@
 (define (document-apply-edit d desc) (document-apply-edit* d desc #t))
 (define (document-apply-edit-trusted d desc) (document-apply-edit* d desc #f))
 (define (document-apply-edit* d desc guard?)
-  (define-values (d* res) (document-apply-change* d (change/edits (list desc)) guard?))
+  (define-values (d* res) (document-apply-change* d (edits->change (list desc)) guard?))
   (define ds (if res (change-result-applied-texts res) '()))
   (values d* (and (pair? ds) (car ds))))
 
@@ -265,12 +265,12 @@
 (define (change-result-undo res)
   (append
    ;; ① 显式属性的逆：同一（post）坐标，可批
-   (list (change/attrs (append* (reverse (change-result-attr-inverses res)))))
+   (list (attrs->change (append* (reverse (change-result-attr-inverses res)))))
    ;; ② 文本逆：与 applied 平行，每条坐标基于「上一条之后」——必须逆序、逐条施加
    (for/list ([x (in-list (reverse (change-result-text-inverses res)))])
-     (change/edits (list x)))
+     (edits->change (list x)))
    ;; ③ 被抹掉的属性：此时文本已复原，用原坐标补回
-   (list (change/attrs (change-result-erased-restores res)))))
+   (list (attrs->change (change-result-erased-restores res)))))
 
 ;;; ---------- 测试 ----------
 
@@ -293,12 +293,12 @@
 
   ;; 属性读写：任意 key 独立；read-only 是保留 key
   (define ab (document-put-attr d0 (P 0 1) (P 0 4) 'face 'bold))
-  (check-equal? (document-attr-at ab (P 0 2)) (hash 'face 'bold))
-  (check-equal? (document-attr-key-runs ab 0 'face) (list (list 1 4 'bold)))
+  (check-equal? (document-attrs-at ab (P 0 2)) (hash 'face 'bold))
+  (check-equal? (document-attrs-key-runs ab 0 'face) (list (list 1 4 'bold)))
   (define ab2 (document-put-attr ab (P 0 2) (P 0 3) read-only-key #t))
-  (check-equal? (document-attr-at ab2 (P 0 2)) (hash 'face 'bold read-only-key #t))
+  (check-equal? (document-attrs-at ab2 (P 0 2)) (hash 'face 'bold read-only-key #t))
   (define ab3 (document-remove-attr ab2 (P 0 2) (P 0 3) read-only-key))
-  (check-false (attr-read-only? (document-attr-at ab3 (P 0 2))))
+  (check-false (attr-read-only? (document-attrs-at ab3 (P 0 2))))
   (check-true (document-content-eq? d0 ab))       ; 写属性不动文本
   (check-equal? (document-text-tick ab) 0)             ; 文本版本不变
   (check-equal? (document-attr-tick ab) 1)        ; 标注版本 +1
@@ -317,17 +317,17 @@
   (check-false rrd)
   (define-values (rb2 _) (document-edit rb (P 0 4) (buffer-op-insert-char #\X)))
   (check-equal? (document->string rb2) "hellXo\nworld")
-  (check-false (attr-read-only? (document-attr-at rb2 (P 0 4))))
+  (check-false (attr-read-only? (document-attrs-at rb2 (P 0 4))))
   (define-values (rb4 rrd4) (document-edit-trusted rb (P 0 2) (buffer-op-insert-char #\X)))
   (check-equal? (document->string rb4) "heXllo\nworld")
   (check-equal? rrd4 (edit-desc (P 0 2) (P 0 2) "X"))
 
   ;; 枚举 / 清属性
-  (check-equal? (document-attr-runs rb 0)
+  (check-equal? (document-attrs-runs rb 0)
                 (list (list 0 1 (hash)) (list 1 4 ro) (list 4 5 (hash))))
   (define rb-nr (document-remove-attr rb (P 0 1) (P 0 4) read-only-key))
-  (check-false (attr-read-only? (document-attr-at rb-nr (P 0 2))))
-  (check-equal? (document-attr-runs rb-nr 0) (list (list 0 5 (hash))))
+  (check-false (attr-read-only? (document-attrs-at rb-nr (P 0 2))))
+  (check-equal? (document-attrs-runs rb-nr 0) (list (list 0 5 (hash))))
 
   ;; 文本 + 属性一条 change：一次施加、一步 tick、report 含两者
   (define cb0 (document-open "abc"))
@@ -336,7 +336,7 @@
       (change (list (edit-desc (P 0 1) (P 0 1) "X"))
               (list (attr-set (P 0 1) (P 0 2) read-only-key #t)))))
   (check-equal? (document->string cb1) "aXbc")
-  (check-equal? (document-attr-key-runs cb1 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (document-attrs-key-runs cb1 0 read-only-key) (list (list 1 2 #t)))
   (check-equal? (document-text-tick cb1) 1)            ; 文本版本
   (check-equal? (document-attr-tick cb1) 1)       ; 标注版本
   (check-equal? (change-result-applied-texts res) (list (edit-desc (P 0 1) (P 0 1) "X")))
@@ -353,21 +353,21 @@
 
   (define cb2 (apply-undo cb1 res))
   (check-equal? (document->string cb2) "abc")
-  (check-false (attr-read-only? (document-attr-at cb2 (P 0 1))))
+  (check-false (attr-read-only? (document-attrs-at cb2 (P 0 1))))
 
   ;; 回归：删除带属性的文本，撤销必须把属性一起带回
   (define eb0 (document-put-attr (document-open "abc") (P 0 0) (P 0 3) read-only-key #t))
   (define-values (eb1 res2)
-    (document-apply-change-trusted eb0 (change/edits (list (edit-desc (P 0 1) (P 0 2) "")))))
+    (document-apply-change-trusted eb0 (edits->change (list (edit-desc (P 0 1) (P 0 2) "")))))
   (check-equal? (document->string eb1) "ac")
-  (check-equal? (document-attr-key-runs eb1 0 read-only-key) (list (list 0 2 #t)))
+  (check-equal? (document-attrs-key-runs eb1 0 read-only-key) (list (list 0 2 #t)))
   (define eb2 (apply-undo eb1 res2))
   (check-equal? (document->string eb2) "abc")
-  (check-equal? (document-attr-key-runs eb2 0 read-only-key) (list (list 0 3 #t)))
+  (check-equal? (document-attrs-key-runs eb2 0 read-only-key) (list (list 0 3 #t)))
 
   ;; 守卫拒绝 → 什么都没发生
   (define gb (document-put-attr (document-open "abc") (P 0 0) (P 0 1) read-only-key #t))
-  (define-values (gb1 res3) (document-apply-change gb (change/edits (list (edit-desc (P 0 0) (P 0 0) "Z")))))
+  (define-values (gb1 res3) (document-apply-change gb (edits->change (list (edit-desc (P 0 0) (P 0 0) "Z")))))
   (check-equal? (document->string gb1) "abc")
   (check-false res3)
 

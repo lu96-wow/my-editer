@@ -32,7 +32,7 @@
  window-primary
  window-primary-index
  window-selection-set-name
- window-set-selection-set
+ window-put-selection-set
  window-clear-selection-set
  window-map-selections
  window-map-primary
@@ -96,7 +96,7 @@
 ;; 名字（“命名区间组”）；#f = 匿名。
 (define (window-selection-set-name w) (selection-set-name (window-selection-set w)))
 ;; 安装一个现成的选区集（含名字）。
-(define (window-set-selection-set w g) (struct-copy window w [selection-set g]))
+(define (window-put-selection-set w g) (struct-copy window w [selection-set g]))
 ;; 清除：收敛为单个选区（leader），名字丢弃。**何时调用由上层决定**。
 (define (window-clear-selection-set w) (struct-copy window w [selection-set (selection-set-clear (window-selection-set w))]))
 
@@ -142,7 +142,7 @@
 (define (window-remove-selection w s)
   (window-remove-selections w (list s)))
 (define (window-set-primary w s)
-  (struct-copy window w [selection-set (selection-set-set-leader (window-selection-set w) s)]))
+  (struct-copy window w [selection-set (selection-set-put-leader (window-selection-set w) s)]))
 
 ;; 直接设 primary 下标；越界夹回合法域（选区集非空）。
 (define (window-set-primary-index w i)
@@ -346,7 +346,7 @@
   (check-equal? (window-primary (window-set-primary wp0 (caret (point 0 0)))) (caret (point 0 0)))
 
   ;; 名字（命名区间组）：设组 / 读名 / 清除；map 保留名字
-  (define wg (window-set-selection-set w (selection-set-open 'g (list (caret (point 0 0)) (caret (point 0 2))) 0)))
+  (define wg (window-put-selection-set w (selection-set-open 'g (list (caret (point 0 0)) (caret (point 0 2))) 0)))
   (check-equal? (window-selection-set-name wg) 'g)
   (check-equal? (window-selection-set-name (window-map-points wg (lambda (p) p))) 'g)
   (check-equal? (window-selection-set-name (window-set-point wg (point 0 1))) #f)
