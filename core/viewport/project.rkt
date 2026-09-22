@@ -80,10 +80,15 @@
       (not (= (vrow-line (vector-ref vrows row))
               (vrow-line (vector-ref vrows (sub1 row)))))))
 
-;; 行号栏一格：数字右对齐到 g-1 列 + 1 分隔空格；col 固定 0（正文整体右移 g）。
+;; 行号栏一格：**恰好占 g 显示列** —— 数字右对齐到左侧 g-1 列 + 1 列分隔空格；col 固定 0。
+;; g 可能因「栏不得吃掉全部列」被夹到比数字位数还小；此时保留**低位**数字，绝不溢出负宽。
 (define (line-number-run n g)
   (define s (number->string n))
-  (run 0 (string-append (make-string (- g 1 (string-length s)) #\space) s " ")
+  (define num-cols (max 0 (sub1 g)))
+  (define shown (if (>= (string-length s) num-cols)
+                    (substring s (- (string-length s) num-cols))
+                    s))
+  (run 0 (string-append (make-string (- num-cols (string-length shown)) #\space) shown " ")
        (hash 'face 'line-number)))
 (define (blank-gutter-run g) (run 0 (make-string g #\space) (hash 'face 'line-number)))
 (define (shift-run rn x) (run (+ x (run-col rn)) (run-text rn) (run-face rn)))
@@ -159,5 +164,17 @@
   (define wln3 (window-set-line-numbers (window-set-mode (window-open (document-open "abcdefgh") 3 6) 'wrap) #t))
   (check-equal? (window-content-width wln3) 4)
   (check-equal? (map vrow-end-col (vector->list (window-vrows wln3))) '(4 8 8))
+
+  ;; 窄窗 + 多位行号：栏被夹到比数字位数还小也不崩（只保留低位，宽度恰为 g）
+  (define long (document-open (string-join (for/list ([i (in-range 20)]) (number->string i)) "\n")))
+  (define narrow1 (window-set-line-numbers (window-open long 3 2) #t))
+  (check-equal? (window-gutter-width narrow1) 1)
+  (check-equal? (run-text (car (screen-row (window->screen narrow1) 0))) " ")
+  (define narrow2 (window-set-line-numbers (window-open long 3 3) #t))
+  (check-equal? (window-gutter-width narrow2) 2)
+  (check-equal? (run-text (car (screen-row (window->screen narrow2) 0))) "1 ")
+  (define narrow3 (window-set-line-numbers (window-set-top-line (window-open long 3 3) 9) #t))
+  (check-equal? (window-gutter-width narrow3) 2)
+  (check-equal? (run-text (car (screen-row (window->screen narrow3) 0))) "0 ")   ; 行号 10 → 只留低位
 
   (displayln "project.rkt: all tests passed"))

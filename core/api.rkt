@@ -107,7 +107,7 @@
  run run? struct:run run-col run-text run-face
  cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
  region region? struct:region region-row region-start-col region-end-col region-face
- screen? screen-rows screen-cols screen-row screen->rows screen-row->string
+ screen? screen-height screen-width screen-row screen->rows screen-row->string
  screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-damage screen-compose screen->string
  ;; ---- window ----
  window? window-open
@@ -147,7 +147,7 @@
   (define-values (d1 desc) (document-edit-at d (point 0 0) (buffer-op-insert-char #\X)))
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? desc (edit-desc (point 0 0) (point 0 0) "X"))
-  (check-equal? (screen-rows (window->screen (window-open d1 2 10))) 2)
+  (check-equal? (screen-height (window->screen (window-open d1 2 10))) 2)
   (check-equal? (screen-row (window->screen (window-open d1 2 10)) 0)
                 (list (run 0 "Xhello" (hash))))
 

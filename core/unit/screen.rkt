@@ -18,7 +18,7 @@
  (struct-out run)
  (struct-out cursor)
  (struct-out region)
- (struct-out screen)
+ screen screen? screen-height screen-width screen-cursors screen-selections
  screen-empty
  screen-row
  screen->rows
@@ -47,15 +47,16 @@
 ;; [start-col,end-col) : 显示列区间（0-based，相对本行）
 ;; face           : 语义 face（hash），如 (hash 'face 'selection)
 
-(struct screen (rows cols row-runs cursors selections) #:transparent)
-;; row-runs   : (vectorof (listof run))   文档文本
-;; cursors    : (listof cursor)           所有光标（含 primary）
-;; selections : (listof region)           所有选中区间段
+(struct screen (height width row-runs cursors selections) #:transparent)
+;; height/width : nat                     帧尺寸（行数 / 列数）
+;; row-runs     : (vectorof (listof run)) 文档文本；**不透明**，读用 screen-row / screen->rows
+;; cursors      : (listof cursor)         所有光标（含 primary）
+;; selections   : (listof region)         所有选中区间段
 ;;
 ;; primary 光标 = cursors 里 primary? 为真的那个；其行/列是它的投影（见 screen-cursor-row/col）。
 
-(define (screen-empty rows cols)
-  (screen rows cols (make-vector rows '()) '() '()))
+(define (screen-empty height width)
+  (screen height width (make-vector height '()) '() '()))
 
 ;;; ---------- 行读取（直观 API；不暴露内部 vector / struct） ----------
 ;;; 后端只需：`screen->rows` 拿所有行 / `screen-row` 拿某行；每行是 `(listof run)`，
@@ -63,8 +64,8 @@
 
 ;; 第 i 行的 runs：(listof run)。越界报错。
 (define (screen-row s i)
-  (unless (and (exact-nonnegative-integer? i) (< i (screen-rows s)))
-    (error 'screen-row "行号越界: ~a（共 ~a 行）" i (screen-rows s)))
+  (unless (and (exact-nonnegative-integer? i) (< i (screen-height s)))
+    (error 'screen-row "行号越界: ~a（共 ~a 行）" i (screen-height s)))
   (vector-ref (screen-row-runs s) i))
 
 ;; 所有行：(listof (listof run))；可直接 `(for ([row (in-list (screen->rows s))]) …)`。
@@ -91,32 +92,23 @@
 
 ;; 把一帧摊平成纯文本（只含文档文本；不给光标/选区上色）。给测试/无前端驱动用。
 (define (screen->string s)
-  (string-join (for/list ([i (in-range (screen-rows s))]) (screen-row->string s i)) "\n"))
+  (string-join (for/list ([i (in-range (screen-height s))]) (screen-row->string s i)) "\n"))
 
-;; 两屏（同尺寸）之间发生变化的行号（增量绘制的依据；只比文档文本）。
-;; 两帧之间需要**整行重绘**的行号：文本变化行 ∪ overlay（光标/选区）变化行。
-;; 返回 #f = 必须**整屏重绘**（全局变化：帧尺寸、行号栏开关/宽度等）。
+;; 两帧之间需要**整行重绘**的行号：文本 runs 变化行 ∪ overlay（光标/选区）变化行。
+;; 返回 #f = 必须**整屏重绘**（帧尺寸变了——行数/列数不同，逐行 diff 无意义）。
+;; 行号栏开关/宽度变化让**每一行**的 run 列整体位移 → 自然落入「全部行都损坏」，
+;; 所以这里**不认识任何具体 face**（unit 层不知道 viewport 的 face 约定）。
 (define (screen-damage old new)
-  (define rows (screen-rows new))
+  (define h (screen-height new))
   (cond
-    [(or (not (= rows (screen-rows old)))
-         (not (= (screen-cols new) (screen-cols old)))) #f]
-    [(not (equal? (gutter-shape old) (gutter-shape new))) #f]
+    [(or (not (= h (screen-height old)))
+         (not (= (screen-width new) (screen-width old)))) #f]
     [else
-     (for/list ([r (in-range rows)]
+     (for/list ([r (in-range h)]
                 #:when (or (not (equal? (vector-ref (screen-row-runs old) r)
                                         (vector-ref (screen-row-runs new) r)))
                            (not (equal? (row-overlay old r) (row-overlay new r)))))
        r)]))
-
-;; 行号栏“形状”：第 0 行里 'line-number face run 的 (col . 显示宽) 序列。
-;; 开关或位数变化 → 形状变 → 整屏重绘（栏宽一变，正文整体位移，逐行 diff 不可靠）。
-(define (gutter-shape s)
-  (if (zero? (screen-rows s))
-      '()
-      (for/list ([rn (in-list (vector-ref (screen-row-runs s) 0))]
-                 #:when (eq? 'line-number (hash-ref (run-face rn) 'face #f)))
-        (cons (run-col rn) (string-display-width (run-text rn))))))
 
 ;; 某行的 overlay 规范化表示（光标 + 选区，按列排序），用于跨帧比较。
 (define (row-overlay s r)
@@ -132,16 +124,16 @@
 (define (shift-cursor c x y) (cursor (+ y (cursor-row c)) (+ x (cursor-col c)) (cursor-face c) (cursor-primary? c)))
 (define (shift-region rg x y) (region (+ y (region-row rg)) (+ x (region-start-col rg)) (+ x (region-end-col rg)) (region-face rg)))
 
-;; 拼屏：把若干块 (list id x y screen) 贴到 (rows cols) 大屏。
+;; 拼屏：把若干块 (list id x y screen) 贴到 (height width) 大屏。
 ;; 文本 + 选区按 x/y 平移自各块；**只有 active 块的光标**被透出（非活动窗格不显示光标）。
-(define (screen-compose rows cols pieces active-id)
-  (define row-runs (make-vector rows '()))
+(define (screen-compose height width pieces active-id)
+  (define row-runs (make-vector height '()))
   (define sel-out '())
   (for ([piece (in-list pieces)])
     (match-define (list _id x y s) piece)
-    (for ([r (in-range (screen-rows s))])
+    (for ([r (in-range (screen-height s))])
       (define dst (+ y r))
-      (when (and (>= dst 0) (< dst rows))
+      (when (and (>= dst 0) (< dst height))
         (vector-set! row-runs dst (append (vector-ref row-runs dst)
                                           (map (lambda (rn) (shift-run rn x))
                                                (vector-ref (screen-row-runs s) r))))))
@@ -157,14 +149,14 @@
           (match-define (list _ x y s) active)
           (map (lambda (c) (shift-cursor c x y)) (screen-cursors s)))
         '()))
-  (screen rows cols sorted active-cursors sel-out))
+  (screen height width sorted active-cursors sel-out))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   ;; 空帧：尺寸 / 无光标 / 无选区
   (define s0 (screen-empty 2 10))
-  (check-equal? (screen-rows s0) 2)
+  (check-equal? (screen-height s0) 2)
   (check-equal? (screen-cursor-row s0) -1)
   (check-equal? (screen-cursors s0) '())
   (check-equal? (screen-selections s0) '())
@@ -195,9 +187,9 @@
   ;; overlay 变化也要报（文本不变、只动光标）
   (define s3 (screen 2 10 (vector (list r1 r2) '()) (list (cursor 1 1 (hash 'face 'cursor) #t)) '()))
   (check-equal? (screen-damage s1 s3) '(0 1))
-  ;; 行号栏形状变化 → 全屏
+  ;; 行号栏变化（run 变）→ 对应行损坏，不是全屏（unit 层不认识 'line-number）
   (define s4 (screen 2 10 (vector (list (run 0 "1 " (hash 'face 'line-number)) r1) '()) '() '()))
-  (check-equal? (screen-damage s1 s4) #f)
+  (check-equal? (screen-damage s1 s4) '(0))
 
   ;; compose：文本/选区平移；只有 active 块的光标出现
   (define sa (screen 2 4 (vector (list (run 0 "ab" (hash))) (list (run 0 "cd" (hash))))

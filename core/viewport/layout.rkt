@@ -175,8 +175,10 @@
   (define b (window-buffer w))
   (define n (buffer-line-count b))
   (define max-top (max 0 (- (visual-line-count w) (window-height w))))
-  (define top (max 0 (min (window-top-line w) max-top)))
-  (define tline (max 0 (min top (sub1 n))))
+  ;; top-line 是 **buffer 行号**（不是视觉行号）：wrap 下 visual-line-count 是折行**段数**，
+  ;; 大于行数；若不额外夹到 (sub1 n)，top-line 会越界，layout-wrap 的 buffer-line-ref 会崩。
+  (define top (max 0 (min (window-top-line w) max-top (sub1 n))))
+  (define tline top)
   (define ttext (buffer-line-ref b tline))
   (define max-seg (case (window-mode w)
                     ['clip 0]
@@ -462,6 +464,11 @@
   (check-equal? (vector-ref (window-vrows (window-clamp-view cv)) 0) (vrow 2 0 10))
   (check-true (vector? (window-vrows (window-clamp-view (window-set-mode cv 'wrap)))))
   (check-equal? (window-left-col (window-clamp-view (window-set-left-col (window-open (document-open "中abc") 3 4) 1))) 2)
+  ;; wrap + 行号栏：顶层行号越界（远超行数）也要夹回合法行，绝不崩
+  (define wclamp (window-set-mode (window-set-line-numbers (window-open (document-open "0123456789\n0123456789\n0123456789") 1 2) #t) 'wrap))
+  (define wclamped (window-clamp-view (window-set-top-line wclamp 4)))
+  (check-equal? (window-top-line wclamped) 2)              ; n=3 → 最大行号 2
+  (check-true (vector? (window-vrows wclamped)))
 
   ;; 行尾插入点占一格：光标不许落到窗口右边界之外
   ;; clip：行宽 == 窗口宽，光标在行尾 → 右滚一格，光标落到最后一列

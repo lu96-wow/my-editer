@@ -69,8 +69,8 @@
 
 ;; 渲染
 (define scr (editor->screen ed2))  ; 一帧（后端无关的 screen）
-(screen-rows scr)                  ; => 帧高（数字）
-(vector-ref (screen-row-runs scr) 0) ; => 第 0 行的 run 列表 (listof run)
+(screen-height scr)                ; => 帧高（行数）
+(screen-row scr 0)                 ; => 第 0 行的 run 列表 (listof run)
 ```
 
 ---
@@ -343,21 +343,23 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 
 #### screen（一帧）
 
-`(struct screen (rows cols row-runs cursors selections))`（结构不透明，只给读口）
+`(struct screen (height width row-runs cursors selections))`（结构不透明，只给读口）
 
 | 读口 | 签名 | 返回 | 语义 |
 |---|---|---|---|
 | `screen?` | `(screen? v)` | bool | 谓词 |
-| `screen-rows` | `(screen-rows s)` | nat | **帧高**（行数，数字不是内容） |
-| `screen-cols` | `(screen-cols s)` | nat | 帧宽（列数） |
-| `screen-row-runs` | `(screen-row-runs s)` | `(vectorof (listof run))` | 长度 = rows；第 r 行是若干**按 col 升序**的 run |
+| `screen-height` | `(screen-height s)` | nat | **帧高**（行数） |
+| `screen-width` | `(screen-width s)` | nat | 帧宽（列数） |
+| `screen-row` | `(screen-row s i)` | `(listof run)` | 第 i 行的 run，**按 col 升序**；越界报错 |
+| `screen->rows` | `(screen->rows s)` | `(listof (listof run))` | 所有行（共 `height` 个） |
+| `screen-row->string` | `(screen-row->string s i)` | string | 第 i 行的纯文本（run 空隙补空格、末尾裁掉） |
 | `screen-cursors` | `(screen-cursors s)` | `(listof cursor)` | 所有光标点（含 primary） |
 | `screen-selections` | `(screen-selections s)` | `(listof region)` | 所有选中区段（跨行切成多段） |
 | `screen-cursor-row` / `-cursor-col` | `(screen-cursor-row s)` | int | primary 光标的行 / 列（无 → `-1`） |
 | `screen-primary-cursor` | `(screen-primary-cursor s)` | `cursor`/`#f` | primary 光标值 |
 
-行内容用 `screen-row-runs`（向量），**不是** `screen-rows`（那只是行数）。行内可有空隙：
-run 未覆盖的列 = 一个空格。
+行内容用 `screen-row` / `screen->rows`（list，**不暴露内部 vector**），不是 `screen-height`
+（那只是行数）。行内可有空隙：run 未覆盖的列 = 一个空格。
 
 #### run（一行里的一段文本）
 
@@ -387,10 +389,10 @@ run 未覆盖的列 = 一个空格。
 
 对每一行 r：
 
-1. `runs = (vector-ref (screen-row-runs scr) r)`；列游标 `col` 从 0 起。
+1. `runs = (screen-row scr r)`；列游标 `col` 从 0 起。
 2. 若 `(> (run-col run) col)`，先补 `(- (run-col run) col)` 个空格（run 之间的空隙）。
 3. 按 `run-face` 映射出的样式输出 `run-text`；`col ← (run-col run) + string-display-width(run-text)`。
-4. 行尾可补空格到 `screen-cols`。
+4. 行尾可补空格到 `screen-width`。
 
 再叠加：`screen-selections`（把区间文本重画成选择样式）→ `screen-cursors`（把光标画成一格）。
 **`face` → 样式是应用的事**。
@@ -402,7 +404,7 @@ run 未覆盖的列 = 一个空格。
     [(selection) 'selection] [(cursor) 'cursor] [else #f]))
 
 (define (draw-screen scr)                   ; 伪代码；真终端 = 光标移动 + 样式转义
-  (for ([runs (in-vector (screen-row-runs scr))] [row (in-naturals)])
+  (for ([runs (in-list (screen->rows scr))] [row (in-naturals)])
     (define col 0)
     (for ([run (in-list runs)])
       (when (> (run-col run) col) (emit-spaces (- (run-col run) col)))   ; 补空隙
@@ -421,8 +423,8 @@ run 未覆盖的列 = 一个空格。
 
 | 名字 | 签名 | 语义 |
 |---|---|---|
-| `screen-compose` | `(screen-compose rows cols pieces active-id)` | 把 `pieces = (list id x y screen)` 贴到大屏；文本/选区按 x/y 平移，**只透出 active 块的光标** |
-| `screen-damage` | `(screen-damage old new)` | 需要**整行重绘**的行号（文本 ∪ overlay 变化）；`#f` = 整屏重绘（尺寸 / 行号栏变化） |
+| `screen-compose` | `(screen-compose height width pieces active-id)` | 把 `pieces = (list id x y screen)` 贴到大屏；文本/选区按 x/y 平移，**只透出 active 块的光标** |
+| `screen-damage` | `(screen-damage old new)` | 需要**整行重绘**的行号（文本 ∪ overlay 变化）；`#f` = 整屏重绘（帧尺寸变化） |
 
 #### 投影 API
 
@@ -432,7 +434,7 @@ run 未覆盖的列 = 一个空格。
 | `editor->screen` | `(editor->screen ed [face-provider empty-face-provider])` | 焦点视图 → 一帧 |
 | `editor-view->screen` | `(editor-view->screen ed vid [face-provider empty-face-provider])` | 某视图 → 一帧 |
 | `empty-face-provider` | `(empty-face-provider b line)` | 缺省 provider（总是空） |
-| `screen-empty` | `(screen-empty rows cols)` | 空帧（无 run / 光标 / 选区） |
+| `screen-empty` | `(screen-empty height width)` | 空帧（无 run / 光标 / 选区） |
 | `screen->string` | `(screen->string s)` | 只把文档文本摊平成纯文本（测试用） |
 | `render-line` | `(render-line b i [provider])` | 一行 → glyph 向量（内部） |
 | `window-vrows` | `(window-vrows w)` | 视觉行向量（内部） |
@@ -479,7 +481,7 @@ run 未覆盖的列 = 一个空格。
 | `run` | `col : nat`、`text : string`、`face : hash` | 屏幕一行里的一段 |
 | `cursor` | `row : nat`、`col : nat`、`face : hash`、`primary? : bool` | 视图 overlay |
 | `region` | `row : nat`、`start-col : nat`、`end-col : nat`、`face : hash` | 视图 overlay |
-| `screen` | `rows : nat`、`cols : nat`、`row-runs : (vectorof (listof run))`、`cursors : (listof cursor)`、`selections : (listof region)` | 不透明；后端据此画 |
+| `screen` | `height : nat`、`width : nat`、`row-runs : (vectorof (listof run))`、`cursors : (listof cursor)`、`selections : (listof region)` | 不透明；后端据此画 |
 
 字符索引 vs 显示列：**`point.col` 是字符索引**；**`window.left-col` / `run-col` /
 `cursor-col` / `region-*-col` / vrow 都是显示列**（已按宽字符换算）。换算只经

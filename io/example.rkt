@@ -530,7 +530,7 @@
   (cond
     [(not damage)                              ; #f = 整屏重绘
      (emit! format-screen-clear)
-     (for ([row (in-range (screen-rows scr))])
+     (for ([row (in-range (screen-height scr))])
        (emit-row! emit! scr row))]
     [else                                      ; 增量：每个受损行先清行再重画
      (for ([row (in-list damage)])
@@ -809,9 +809,10 @@
   (define rr2 (edit rr1 (edit-insert "X")))
   (define-values (rrb2 rr3) (draw-frame rr2))
   (check-false (full-frame? rrb2))
-  ;; 行号栏开关（不经过 draw-frame 重置 last-scr）→ 下一帧整屏
+  ;; 行号栏开关：正文列整体右移 → 每行 run 都变 → 逐行重绘（不必整屏清）也正确
   (define rr4 (struct-copy app rr3 [ed (editor-set-line-numbers (app-ed rr3) #t)]))
-  (check-true (full-frame? (call-with-values (lambda () (draw-frame rr4)) (lambda (b _) b))))
+  (check-false (full-frame? (frame->bytes rr4)))
+  (check-true (bytes? (frame->bytes rr4)))
 
   (displayln "example.rkt: all tests passed"))
 
