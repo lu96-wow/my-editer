@@ -141,7 +141,7 @@ editor.rkt  = neutral（中性面）+ program（程序面）+ command（用户�
   选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
 
 两者不混：文本/标注是**文档**状态（存 buffer、随文本移动、可编辑）；光标/选区是**视图**状态
-（存 window、临时）。`face` 是**不透明语义值**（`any/c`，结构应用自定；约定常用 hash），core **不给颜色**，前端把语义映射成样式。
+（存 window、临时）。`face` 是**不透明语义值**（`any/c`，结构应用自定；约定常用 hash；provider 未覆盖段为 `#f`），core **不给颜色**，前端把语义映射成样式。
 
 ---
 

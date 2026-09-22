@@ -394,8 +394,8 @@
 (module+ test
   ;; line-range->runs：宽字符 + 裁剪
   (define b0 (buffer-open "a中b\nc"))
-  (check-equal? (line-range->runs b0 0 0 10) (list (run 0 "a中b" (hash))))
-  (check-equal? (line-range->runs b0 0 2 10) (list (run 1 "b" (hash))))   ; 左界切丢「中」
+  (check-equal? (line-range->runs b0 0 0 10) (list (run 0 "a中b" #f)))
+  (check-equal? (line-range->runs b0 0 2 10) (list (run 1 "b" #f)))   ; 左界切丢「中」
 
   ;; wrap-segments
   (check-equal? (wrap-segments "aaaa中中中" 5) '((0 . 4) (4 . 8) (8 . 10)))

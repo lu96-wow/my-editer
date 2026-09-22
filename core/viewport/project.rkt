@@ -100,8 +100,8 @@
 
   ;; 基本投影：文档 runs + primary 光标；空选区不出区间
   (define s0 (window->screen (window-open b0 2 10)))
-  (check-equal? (screen-row s0 0) (list (run 0 "a中b" (hash))))
-  (check-equal? (screen-row s0 1) (list (run 0 "c" (hash))))
+  (check-equal? (screen-row s0 0) (list (run 0 "a中b" #f)))
+  (check-equal? (screen-row s0 1) (list (run 0 "c" #f)))
   (check-equal? (screen-cursor-row s0) 0)
   (check-equal? (screen-cursor-col s0) 0)
   (check-equal? (map (lambda (c) (list (cursor-row c) (cursor-col c) (cursor-primary? c))) (screen-cursors s0))
@@ -133,21 +133,21 @@
   ;; 派生 face 分段（投影 provider，不进文档）
   (define (provider _b line) (if (zero? line) (list (list 0 1 (hash 'face 'bold))) '()))
   (check-equal? (screen-row (window->screen (window-open b0 2 10) provider) 0)
-                (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
+                (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" #f)))
 
   ;; 属性不进 face
   (define b5 (document-put-attr (document-open "abcdef") read-only-key 0 3 6 #t))
   (check-equal? (screen-row (window->screen (window-open b5 1 10)) 0)
-                (list (run 0 "abcdef" (hash))))
+                (list (run 0 "abcdef" #f)))
 
   ;; —— 行号栏：run 前缀 + 光标/选区右移 + 点 gutter 落行首 ——
   (define dln (document-open "a\nb\nc"))
   (define wln2 (window-set-line-numbers (window-open dln 3 10) #t))   ; g = 1 位 +1 = 2
   (define sln (window->screen wln2))
   (check-equal? (screen-row sln 0)
-                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" (hash))))
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" #f)))
   (check-equal? (screen-row sln 2)
-                (list (run 0 "3 " (hash 'face 'line-number)) (run 2 "c" (hash))))
+                (list (run 0 "3 " (hash 'face 'line-number)) (run 2 "c" #f)))
   (check-equal? (screen-cursor-col sln) 2)                         ; (0,0) → 屏幕列 2
   (check-equal? (call-with-values (lambda () (window-screen->point wln2 0 0)) list) '(0 0))  ; gutter → 行首
 
@@ -155,9 +155,9 @@
   (define wlnw (window-set-line-numbers (window-set-mode (window-open (document-open "abcdefgh") 3 4) 'wrap) #t))
   (define sww (window->screen wlnw))                               ; g=2 → 正文宽 2
   (check-equal? (screen-row sww 0)
-                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "ab" (hash))))
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "ab" #f)))
   (check-equal? (screen-row sww 1)
-                (list (run 0 "  " (hash 'face 'line-number)) (run 2 "cd" (hash))))
+                (list (run 0 "  " (hash 'face 'line-number)) (run 2 "cd" #f)))
 
   ;; 行号栏让出的宽度影响折行：宽 6、g=2 → 正文宽 4
   (define wln3 (window-set-line-numbers (window-set-mode (window-open (document-open "abcdefgh") 3 6) 'wrap) #t))

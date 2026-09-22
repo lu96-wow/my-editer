@@ -11,9 +11,8 @@
 ;;; 分开的理由：文档文本是**文档**状态（存 buffer，随文本移动）；face 是投影时现算的派生量；
 ;;; 光标/选区是**视图**状态（存 window，临时）。drawing 上后者是叠加层。
 ;;;
-;;; face 是**不透明的语义值**（any/c；core 不解释、更不给颜色）——结构由应用自定义，
-;;; 约定常用 `(hash 'face 'keyword)`，但用符号/struct/任何值都行。前端把 face 映射成样式。
-;;; 注意：core 在“无 face”处填的是 `(hash)`（默认空 face 值）。
+;;; face 是**不透明的语义值**（any/c；core 不解释、更不给颜色）——结构由应用自定义。
+;;; provider 未覆盖的段，core 给 `#f`（纯“无 face”，不发明任何值）；前端把 face 映射成样式。
 ;;; 宽字符不做特殊处理：run.text 是原字符，col 是**显示列**（0-based）。
 
 (provide
@@ -36,7 +35,7 @@
 (struct run (col text face) #:transparent)
 ;; col  : 显示列（0-based，已按宽字符换算）
 ;; text : 文本（不含换行）
-;; face : any/c  语义值（core 不解释）；结构由应用定义，常用 (hash 'face 'keyword)
+;; face : any/c  语义值（core 不解释）；结构由应用定义，常用 (hash 'face 'keyword)；未覆盖段 = #f
 
 ;; 视图 overlay - 光标点
 (struct cursor (row col face primary?) #:transparent)

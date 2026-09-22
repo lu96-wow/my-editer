@@ -49,7 +49,7 @@
       [else
        (define a (car pts)) (define z (car bnd))
        (define-values (dface di*) (run-cover-at di a))
-       (define face (or dface (hash)))          ; 无 face 段 → 默认空 face 值 (hash)
+       (define face dface)                       ; 无 face 段 → #f（core 不发明任何 face 值）
        (for ([j (in-range a z)]) (vector-set! glyphs j (glyph (string-ref text j) face)))
        (loop (cdr pts) (cdr bnd) di*)]))
   (rendered-line glyphs))
@@ -62,19 +62,19 @@
 
   (define b0 (buffer-open "hello\nworld"))
   ;; 无 provider → 无 face；provider 在投影时给出派生 face
-  (check-equal? (face-at b0 0 0) (hash))                    ; 无 provider → 无 face
+  (check-equal? (face-at b0 0 0) #f)                        ; 无 provider → #f
 
   ;; 派生 face：投影时给出，不进文档
   (define (provider _b line)
     (if (zero? line) (list (list 0 5 (hash 'face 'keyword))) '()))
   (check-equal? (face-at b0 0 0 provider) (hash 'face 'keyword))
-  (check-equal? (face-at b0 1 0 provider) (hash))           ; 第 1 行无匹配
+  (check-equal? (face-at b0 1 0 provider) #f)               ; 第 1 行无匹配
 
   ;; 多段
   (define (provider2 _b _line)
     (list (list 0 2 (hash 'face 'a)) (list 3 5 (hash 'face 'b))))
   (check-equal? (face-at b0 0 0 provider2) (hash 'face 'a))
-  (check-equal? (face-at b0 0 2 provider2) (hash))
+  (check-equal? (face-at b0 0 2 provider2) #f)
   (check-equal? (face-at b0 0 3 provider2) (hash 'face 'b))
 
   (displayln "render.rkt: all tests passed"))

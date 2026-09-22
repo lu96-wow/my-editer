@@ -150,13 +150,13 @@
   (check-equal? desc (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (screen-height (window->screen (window-open d1 2 10))) 2)
   (check-equal? (screen-row (window->screen (window-open d1 2 10)) 0)
-                (list (run 0 "Xhello" (hash))))
+                (list (run 0 "Xhello" #f)))
 
   ;; 派生 face 由投影参数 provider 给出，不进文档
   (define (provider _b _line) (list (list 0 5 (hash 'face 'keyword))))
   (check-equal? (screen-row (window->screen (window-open d 2 10) provider) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
   (check-equal? (screen-row (window->screen (window-open d1 2 10)) 0)
-                (list (run 0 "Xhello" (hash))))
+                (list (run 0 "Xhello" #f)))
 
   (displayln "api.rkt: all tests passed"))

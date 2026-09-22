@@ -335,7 +335,8 @@
 
 **`face` 是应用自定义的语义值**（`any/c`）——结构随你，core 只搬运、不解释；
 `face-provider` 返回什么，`run-face` / `cursor-face` / `region-face` 就是什么。
-约定常用 `(hash 'face 'keyword)`，但用符号 / struct / 任何值都行；core 对“无 face”的段填默认空值 `(hash)`。
+约定常用 `(hash 'face 'keyword)`，但用符号 / struct / 任何值都行；provider 未覆盖的段，
+core 给 `#f`（纯“无 face”，不发明任何值），由前端自行处理。
 
 **数据流**：
 
@@ -376,7 +377,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `run?` | `(run? v)` | bool | 谓词 |
 | `run-col` | `(run-col r)` | nat（显示列） | 这段文本从哪一列开始 |
 | `run-text` | `(run-text r)` | string | 文本（不含换行；原字符，宽字符不展开） |
-| `run-face` | `(run-face r)` | any/c | **语义** face：结构应用自定（如 `(hash 'face 'keyword)` 或符号）；core 不解释、不给颜色 |
+| `run-face` | `(run-face r)` | any/c | **语义** face：结构应用自定（如 `(hash 'face 'keyword)` 或符号）；未覆盖段为 `#f`；core 不解释、不给颜色 |
 
 #### cursor / region（视图 overlay）
 
@@ -412,10 +413,11 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 **`face` → 样式是应用的事**。
 
 ```racket
-(define (face-style face)                  ; 语义 face → 样式（这里假设 face 是 (hash 'face …)）
-  (case (hash-ref face 'face #f)
-    [(keyword) 'info] [(comment) 'green] [(read-only) 'error]
-    [(selection) 'selection] [(cursor) 'cursor] [else #f]))
+(define (face-style face)                  ; face : any/c；#f = 无 face（provider 未覆盖）
+  (and (hash? face)
+       (case (hash-ref face 'face #f)
+         [(keyword) 'info] [(comment) 'green] [(read-only) 'error]
+         [(selection) 'selection] [(cursor) 'cursor] [else #f])))
 
 (define (draw-screen scr)                   ; 伪代码；真终端 = 光标移动 + 样式转义
   (for ([runs (in-list (screen->rows scr))] [row (in-naturals)])
@@ -492,7 +494,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `window` | `document`、`selection-set`、`mode : 'clip/'wrap'`、`top-line : nat`、`left-col : nat`、`top-seg : nat`、`height : nat`、`width : nat`、`line-numbers? : bool` | 不透明；`width` 含行号栏 |
 | `change-result` | `applied-texts`、`applied-attrs`、`text-inverses`、`attr-inverses`、`erased-restores` | 一次变更的结果（施加顺序） |
 | `change-report` | `texts : (listof edit-desc)`、`attrs : (listof attr-desc)` | 命令第二返回值 |
-| `run` | `col : nat`、`text : string`、`face : any/c` | 屏幕一行里的一段；`face` 结构应用自定 |
+| `run` | `col : nat`、`text : string`、`face : any/c` | 屏幕一行里的一段；`face` 结构应用自定，未覆盖段为 `#f` |
 | `cursor` | `row : nat`、`col : nat`、`face : any/c`、`primary? : bool` | 视图 overlay |
 | `region` | `row : nat`、`start-col : nat`、`end-col : nat`、`face : any/c` | 视图 overlay |
 | `pane` | `id : any`、`x : int`、`y : int`、`screen : screen` | 合成屏的一块子帧 |
@@ -805,7 +807,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 ### 3.14 投影
 
 `face-provider : editor did line → (listof (list start end face))`。`face` 是**应用自定义**的语义值
-（`any/c`）：provider 返回什么，`run.face` 就是什么；`attrs-provider key` 只是把该 key 的 **value 原样**当 face。
+（`any/c`）：provider 返回什么，`run.face` 就是什么；未覆盖段为 `#f`；`attrs-provider key` 只是把该 key 的 **value 原样**当 face。
 
 | 名字 | 签名 | 语义 |
 |---|---|---|

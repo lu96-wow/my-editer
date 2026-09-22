@@ -402,7 +402,7 @@
   ;; 行号栏：投影到 screen 的前缀 run（face 'line-number），光标右移 g 列
   (define eln (editor-open "a\nb\nc" 3 10 #:line-numbers? #t))
   (check-equal? (screen-row (editor-view->screen eln 0) 0)
-                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" (hash))))
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" #f)))
   (check-equal? (screen-cursor-col (editor-view->screen eln 0)) 2)
 
   ;; 结构变换：set-view-buffer 换属主、不改文本、不动焦点
@@ -434,6 +434,6 @@
   (check-equal? (screen-row (editor->screen pa (attrs-provider 'face)) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
   (check-equal? (screen-row (editor->screen pa) 0)
-                (list (run 0 "hello" (hash))))
+                (list (run 0 "hello" #f)))
 
   (displayln "editor.rkt: all tests passed"))

@@ -437,16 +437,18 @@
 ;;        core **不知道**终端，也**不给颜色**；face 是语义值（结构自定，示例用 hash），映射成样式是应用的事。
 ;; [前端] 终端字节、颜色、叠加顺序，全是应用的事。
 
+;; face : any/c（结构自定）；provider 未覆盖的段是 #f（core 不发明 face 值）
 (define (face-style face)
-  (case (hash-ref face 'face #f)
-    [(keyword)   'info]
-    [(comment)   'green]
-    [(string)    'yellow]
-    [(error)     'error]
-    [(read-only) 'error]
-    [(cursor)    'cursor]
-    [(selection) 'selection]
-    [else #f]))
+  (and (hash? face)
+       (case (hash-ref face 'face #f)
+         [(keyword)   'info]
+         [(comment)   'green]
+         [(string)    'yellow]
+         [(error)     'error]
+         [(read-only) 'error]
+         [(cursor)    'cursor]
+         [(selection) 'selection]
+         [else #f])))
 
 (define (pad-to s n)
   (if (>= (string-length s) n)
@@ -661,7 +663,7 @@
                 (hash 'face 'keyword))                                        ; 投影里有
   (define a9 (toggle-highlight a8))                                          ; 关 → provider 返回空
   (check-equal? (run-face (car (screen-row (editor->screen (app-ed a9) (app-face-provider a9)) 0)))
-                (hash))
+                #f)
 
   ;; 作者态属性（属性 buffer）：标记只读 → 投影出样式；守卫拦编辑；清除后恢复
   (define r0 (make-app "hello world" 5 20 "*t*"))
@@ -751,7 +753,7 @@
   (check-equal? (run-face (car (screen-row (editor->screen (app-ed ln1)) 0)))
                 (hash 'face 'line-number))
   (check-equal? (run-face (car (screen-row (editor->screen (app-ed (toggle-line-numbers ln1))) 0)))
-                (hash))
+                #f)
   (check-true (bytes? (frame->bytes ln1)))                 ; 行号栏让出的宽度能渲染
 
   ;; 右 pane 无手绘行号：文本与左 pane 相同，行号来自 core 行号栏（视图装饰）
