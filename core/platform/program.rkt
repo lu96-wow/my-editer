@@ -11,7 +11,7 @@
 ;;;
 ;;; 编辑只有一个原语 **editor-command**（选区 + op + 可选属性计划）/ **editor-command-batch**（现成 change）：
 ;;; 策略（目标 / 上下文 / 守卫 / 反应 / 记账）全是**参数**，不是函数身份。
-;;; editor-edit-at / editor-edit-at-batch / editor-edit / editor-view-edit 都是它的薄封装。
+;;; editor-document-edit-at / editor-document-edit-at-batch / editor-edit / editor-view-edit 都是它的薄封装。
 ;;;
 ;;; 视图命令都是「只动指定的那个 view」，绝不镜像、不抢焦点、不 ensure；
 ;;; 用户命令（leader/ensure/账本）在 command.rkt。
@@ -19,8 +19,8 @@
 (provide
  editor-command
  editor-command-batch
- editor-edit-at
- editor-edit-at-batch
+ editor-document-edit-at
+ editor-document-edit-at-batch
  ;; 编辑动作（editor 级，可传的值；op : editor did selection → desc）
  edit-insert edit-insert-char edit-newline edit-backspace edit-delete edit-splice
  ;; 显式 view 命令（程序面：按 vid 定位，只动指定 view，不经过焦点）
@@ -54,7 +54,7 @@
  editor-view-set-link
  editor-set-link
  editor-link-views
- editor-unlink-view
+ editor-view-unlink
  ;; focus 糖（用户面便捷；程序面请用上面的 editor-view-*）
  editor-set-point
  editor-put-window
@@ -78,16 +78,16 @@
  editor-set-left-col
  editor-set-sync
  editor-set-document
- editor-set-document-name
+ editor-document-set-name
  ;; 批量写（程序面：显式 did，不碰光标）
- editor-apply-edits
- editor-apply-attrs
- editor-put-attr
- editor-remove-attr
- ;; 历史策略 / 清栈（读口 editor-history-on? 在 neutral）
+ editor-document-apply-edits
+ editor-document-apply-attrs
+ editor-document-put-attr
+ editor-document-remove-attr
+ ;; 历史策略 / 清栈（读口 editor-document-history-on? 在 neutral）
  editor-set-history-on?
  editor-view-set-history-on?
- editor-clear-history
+ editor-document-clear-history
  editor-view-clear-history)
 
 ;;; ---------- 编辑原语：策略全显式 ----------
@@ -144,7 +144,7 @@
 ;; 把命令级的 #:record? 解析成布尔：'default = 跟随 document 的历史策略。
 (define (resolve-record? who e did r)
   (case r
-    [(default) (editor-history-on? e did)]
+    [(default) (editor-document-history-on? e did)]
     [(#t) #t]
     [(#f) #f]
     [else (error who "#:record? 必须是 'default / #t / #f，得到 ~a" r)]))
@@ -184,7 +184,7 @@
   (define did (editor-view-document-id ed vid))
   (define sels (or selection (window-selections (view-window v))))
   (define descs (if op (coalesce-descs ed did sels op) '()))
-  (define eff (buffer-clamp-edit-descs (editor-buffer ed did) descs))
+  (define eff (buffer-clamp-edit-descs (editor-document-buffer ed did) descs))
   (define attrs (if attr-plan (or (attr-plan ed did eff) '()) '()))
   (define pre (or pre-point (selection-point (window-primary (view-window v)))))
   (editor-run-change ed (change eff attrs) vid reaction record? pre (not trusted?)))
@@ -205,44 +205,44 @@
 ;;; 转发给 doc 层的 buffer 级动作（buffer-op-*）。编辑原语只认这一种形状。
 
 (define (edit-insert text)
-  (lambda (ed did sel) ((buffer-op-insert text) (editor-buffer ed did) sel)))
+  (lambda (ed did sel) ((buffer-op-insert text) (editor-document-buffer ed did) sel)))
 (define (edit-insert-char ch) (edit-insert (string ch)))
 (define (edit-newline)       (edit-insert "\n"))
 (define (edit-backspace)
-  (lambda (ed did sel) ((buffer-op-backspace) (editor-buffer ed did) sel)))
+  (lambda (ed did sel) ((buffer-op-backspace) (editor-document-buffer ed did) sel)))
 (define (edit-delete)
-  (lambda (ed did sel) ((buffer-op-delete) (editor-buffer ed did) sel)))
+  (lambda (ed did sel) ((buffer-op-delete) (editor-document-buffer ed did) sel)))
 ;; 通用逃生门：显式区间的替换（程序化编辑）
 (define (edit-splice start end text)
   (lambda (_ed _bid _sel) (edit-desc start end text)))
 
 ;;; ---------- 薄封装：按 did + 位置 / 批量 descs（程序面） ----------
 
-;; 按 did 取它任一 view 的 vid。buffer 没有任何 view 时无法承载显示语义（reaction），
+;; 按 did 取它任一 view 的 vid。document 没有任何 view 时无法承载显示语义（reaction），
 ;; 也没有可取的选区上下文 → 明确报错。
 (define (document-vid who ed did)
   (define v (view-of-document ed did))
-  (unless v (error who "buffer ~a 没有任何 view，无法编辑" did))
+  (unless v (error who "document ~a 没有任何 view，无法编辑" did))
   (view-id v))
 
-(define (editor-edit-at ed did p op
+(define (editor-document-edit-at ed did p op
                         #:reaction [reaction 'none]
                         #:trusted? [trusted? #f]
                         #:record? [record? 'default])
   (editor-command ed op
-                  #:view (document-vid 'editor-edit-at ed did)
+                  #:view (document-vid 'editor-document-edit-at ed did)
                   #:selection (list (caret p))
                   #:trusted? trusted?
                   #:reaction reaction
                   #:record? record?
                   #:pre-point p))
 
-(define (editor-edit-at-batch ed did descs
+(define (editor-document-edit-at-batch ed did descs
                               #:reaction [reaction 'none]
                               #:trusted? [trusted? #f]
                               #:record? [record? 'default])
   (editor-command-batch ed (edits->change descs)
-                        #:view (document-vid 'editor-edit-at-batch ed did)
+                        #:view (document-vid 'editor-document-edit-at-batch ed did)
                         #:trusted? trusted?
                         #:reaction reaction
                         #:record? record?
@@ -343,7 +343,7 @@
                   [(eq? (view-link v) name) (editor-put-view-link e (view-id v) #f)]
                   [else e])))
   (if align? (editor-align-link ed* name from) ed*))
-(define (editor-unlink-view ed vid) (editor-put-view-link ed vid #f))
+(define (editor-view-unlink ed vid) (editor-put-view-link ed vid #f))
 
 ;;; ---------- 选区集合算子（程序面：只动指定 view） ----------
 
@@ -423,27 +423,27 @@
 
 ;;; ---------- buffer 元数据 ----------
 
-(define (editor-set-document-name ed did name)
+(define (editor-document-set-name ed did name)
   (editor-put-document-name ed did name))
 
 ;;; ---------- 属性写（改 document 的属性；不碰文本，光标自然不动） ----------
 ;; 走 change 命令：与文本编辑同一条路径；#:record? 默认 'default（跟随 document 策略），
 ;; 可用 #:record? #t / #f 覆盖。
 
-(define (editor-apply-edits ed did descs #:record? [record? 'default])
+(define (editor-document-apply-edits ed did descs #:record? [record? 'default])
   (editor-command-batch ed (edits->change descs)
-                        #:view (document-vid 'editor-apply-edits ed did)
+                        #:view (document-vid 'editor-document-apply-edits ed did)
                         #:record? record?))
 
-(define (editor-apply-attrs ed did attrs #:record? [record? 'default])
+(define (editor-document-apply-attrs ed did attrs #:record? [record? 'default])
   (editor-command-batch ed (attrs->change attrs)
-                        #:view (document-vid 'editor-apply-attrs ed did)
+                        #:view (document-vid 'editor-document-apply-attrs ed did)
                         #:record? record?))
 
-(define (editor-put-attr ed did start end key val #:record? [record? 'default])
-  (editor-apply-attrs ed did (list (attr-set start end key val)) #:record? record?))
-(define (editor-remove-attr ed did start end key #:record? [record? 'default])
-  (editor-apply-attrs ed did (list (attr-remove start end key)) #:record? record?))
+(define (editor-document-put-attr ed did start end key val #:record? [record? 'default])
+  (editor-document-apply-attrs ed did (list (attr-set start end key val)) #:record? record?))
+(define (editor-document-remove-attr ed did start end key #:record? [record? 'default])
+  (editor-document-apply-attrs ed did (list (attr-remove start end key)) #:record? record?))
 
 ;;; ---------- 历史策略 / 清栈 ----------
 ;; 策略位在 document：开文档时 #:history? 定默认；这里运行时查询/切换。
@@ -453,7 +453,7 @@
 (define (editor-set-history-on? ed on?)
   (editor-view-set-history-on? ed (view-id (editor-focused-view ed)) on?))
 ;; 清栈（focus 糖：did 缺省 = 焦点 document）
-(define (editor-clear-history ed [did (editor-document-id ed)]) (editor-put-history-clear ed did))
+(define (editor-document-clear-history ed [did (editor-document-id ed)]) (editor-put-history-clear ed did))
 (define (editor-view-clear-history ed vid)
   (editor-put-history-clear ed (editor-view-document-id ed vid)))
 
@@ -462,61 +462,61 @@
 (module+ test
   ;; 默认 none：内容变了，光标字面不动
   (define e0 (editor-open "hello"))
-  (define-values (e1 r1) (editor-edit-at e0 0 (point 0 0) (edit-splice (point 0 0) (point 0 0) "XY")))
-  (check-equal? (editor-buffer->string e1 0) "XYhello")
+  (define-values (e1 r1) (editor-document-edit-at e0 0 (point 0 0) (edit-splice (point 0 0) (point 0 0) "XY")))
+  (check-equal? (editor-document->string e1 0) "XYhello")
   (check-equal? (editor-point e1) (point 0 0))          ; none
   (check-equal? (change-report-first-line r1) 0)
   (check-equal? (change-report-texts r1)
                 (list (edit-desc (point 0 0) (point 0 0) "XY")))   ; 施加顺序的生效 desc
   (check-equal? (change-report-attrs r1) '())
-  (check-true (editor-can-undo? e1 0))                  ; 默认跟随 document 策略（#:history? #t）
+  (check-true (editor-document-can-undo? e1 0))                  ; 默认跟随 document 策略（#:history? #t）
   ;; #:record? #f：显式不记账
-  (define-values (e1n _r1n) (editor-edit-at e0 0 (point 0 0) (edit-splice (point 0 0) (point 0 0) "XY") #:record? #f))
-  (check-false (editor-can-undo? e1n 0))
+  (define-values (e1n _r1n) (editor-document-edit-at e0 0 (point 0 0) (edit-splice (point 0 0) (point 0 0) "XY") #:record? #f))
+  (check-false (editor-document-can-undo? e1n 0))
 
   ;; 'map：光标跟随文本（光标在编辑点之后才会右移）
   (define e0s (editor-set-point e0 (point 0 3)))
-  (define-values (e2 _r2) (editor-edit-at e0s 0 (point 0 1) (edit-insert "XY") #:reaction 'map))
-  (check-equal? (editor-buffer->string e2 0) "hXYello")
+  (define-values (e2 _r2) (editor-document-edit-at e0s 0 (point 0 1) (edit-insert "XY") #:reaction 'map))
+  (check-equal? (editor-document->string e2 0) "hXYello")
   (check-equal? (editor-point e2) (point 0 5))          ; (0,3) 映射到 (0,5)
   ;; 同一场景用 none（不传 #:reaction）：光标字面不动
-  (define-values (e2n _r2n) (editor-edit-at e0s 0 (point 0 1) (edit-insert "XY")))
+  (define-values (e2n _r2n) (editor-document-edit-at e0s 0 (point 0 1) (edit-insert "XY")))
   (check-equal? (editor-point e2n) (point 0 3))
 
   ;; #:record? #t：记一步，pre-point = 编辑点
-  (define-values (e3 _r3) (editor-edit-at e0 0 (point 0 2) (edit-insert "Z") #:record? #t))
-  (check-true (editor-can-undo? e3 0))
+  (define-values (e3 _r3) (editor-document-edit-at e0 0 (point 0 2) (edit-insert "Z") #:record? #t))
+  (check-true (editor-document-can-undo? e3 0))
 
   ;; #:trusted? #t 跳过 read-only 守卫
-  (define-values (tr _trr) (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
-  (define-values (tr1 rtr1) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X)))
+  (define-values (tr _trr) (editor-document-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
+  (define-values (tr1 rtr1) (editor-document-edit-at tr 0 (point 0 1) (edit-insert-char #\X)))
   (check-false rtr1)                                    ; 守卫版被拒
-  (check-equal? (editor-buffer->string tr1 0) "abc")
-  (define-values (tr2 _rtr2) (editor-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
-  (check-equal? (editor-buffer->string tr2 0) "aXbc")
+  (check-equal? (editor-document->string tr1 0) "abc")
+  (define-values (tr2 _rtr2) (editor-document-edit-at tr 0 (point 0 1) (edit-insert-char #\X) #:trusted? #t))
+  (check-equal? (editor-document->string tr2 0) "aXbc")
 
   ;; 属性写：只改属性、不碰文本/光标；默认跟随 document 策略（可撤销）
-  (define-values (an _anr) (editor-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
-  (check-true (attr-read-only? (editor-attrs-at an 0 (point 0 2))))
-  (check-true (editor-can-undo? an 0))
+  (define-values (an _anr) (editor-document-put-attr (editor-open "hello") 0 (point 0 0) (point 0 5) read-only-key #t))
+  (check-true (attr-read-only? (editor-document-attrs-at an 0 (point 0 2))))
+  (check-true (editor-document-can-undo? an 0))
 
   ;; document 级历史策略：#:history? #f 的文档不记账（用户面/程序面/属性写都不记）
   (define noh (editor-open "abc" 5 20 #:history? #f))
-  (check-false (editor-history-on? noh))
+  (check-false (editor-document-history-on? noh))
   (define-values (noh1 _nohr1) (editor-command noh (edit-insert "X")))
-  (check-equal? (editor-buffer->string noh1 0) "Xabc")
-  (check-false (editor-can-undo? noh1))
-  (define-values (noh2 _nohr2) (editor-put-attr noh1 0 (point 0 0) (point 0 1) read-only-key #t))
-  (check-false (editor-can-undo? noh2))
+  (check-equal? (editor-document->string noh1 0) "Xabc")
+  (check-false (editor-document-can-undo? noh1))
+  (define-values (noh2 _nohr2) (editor-document-put-attr noh1 0 (point 0 0) (point 0 1) read-only-key #t))
+  (check-false (editor-document-can-undo? noh2))
   ;; 显式 #:record? #t 仍可强制记
   (define-values (noh3 _nohr3) (editor-command noh1 (edit-insert "X") #:record? #t))
-  (check-true (editor-can-undo? noh3))
+  (check-true (editor-document-can-undo? noh3))
   ;; 切换策略 / 清栈
   (define yesh (editor-set-history-on? noh #t))
-  (check-true (editor-history-on? yesh))
+  (check-true (editor-document-history-on? yesh))
   (define-values (yesh1 _yeshr1) (editor-command yesh (edit-insert "X")))
-  (check-true (editor-can-undo? yesh1))
-  (check-false (editor-can-undo? (editor-clear-history yesh1)))
+  (check-true (editor-document-can-undo? yesh1))
+  (check-false (editor-document-can-undo? (editor-document-clear-history yesh1)))
 
   ;; 文本 + 属性一条命令：插入 "X" 并标只读 —— 一次记一步、report 含文本与属性
   (define cx0 (editor-open "abc"))
@@ -528,11 +528,11 @@
                                 (attr-set (edit-desc-start d) (edit-desc-after-position d)
                                           read-only-key #t)))
                     #:reaction 'leader #:record? #t))
-  (check-equal? (editor-buffer->string cx1 0) "aXbc")
-  (check-equal? (editor-attrs-key-runs cx1 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-document->string cx1 0) "aXbc")
+  (check-equal? (editor-document-attrs-key-runs cx1 0 0 read-only-key) (list (list 1 2 #t)))
   (check-equal? (change-report-texts rx) (list (edit-desc (point 0 1) (point 0 1) "X")))
   (check-equal? (change-report-attrs rx) (list (attr-set (point 0 1) (point 0 2) read-only-key #t)))
-  (check-equal? (editor-undo-depth cx1 0) 1)             ; 文本与属性合成一步
+  (check-equal? (editor-document-undo-depth cx1 0) 1)             ; 文本与属性合成一步
 
   ;; 显式视图命令：按 vid 定位，只动目标 view，不动焦点
   (define v0 (editor-open "l0\nl1\nl2\nl3\nl4" 2 10))
@@ -570,23 +570,23 @@
   ;; 批量：一次施多条，记一步，report.edits 为施加顺序（起点倒序）
   (define b0 (editor-open "abcd\nefgh"))
   (define-values (b1 rb)
-    (editor-edit-at-batch b0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
+    (editor-document-edit-at-batch b0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
                                      (edit-desc (point 1 2) (point 1 2) "Y"))
                           #:record? #t))
-  (check-equal? (editor-buffer->string b1 0) "aXbcd\nefYgh")
+  (check-equal? (editor-document->string b1 0) "aXbcd\nefYgh")
   (check-equal? (change-report-texts rb)
                 (list (edit-desc (point 1 2) (point 1 2) "Y")
                       (edit-desc (point 0 1) (point 0 1) "X")))
-  (check-equal? (editor-undo-depth b1 0) 1)                    ; 整批一步
+  (check-equal? (editor-document-undo-depth b1 0) 1)                    ; 整批一步
   (check-equal? (editor-point b1) (point 0 0))                 ; 默认 none：光标不动
 
   ;; 批量被守卫拒 → 整体没发生；#:trusted? #t 强施
-  (define-values (bt _btr) (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
-  (define-values (bt1 rbt1) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X"))))
+  (define-values (bt _btr) (editor-document-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
+  (define-values (bt1 rbt1) (editor-document-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X"))))
   (check-false rbt1)
-  (check-equal? (editor-buffer->string bt1 0) "abc")
-  (define-values (bt2 _rbt2) (editor-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X")) #:trusted? #t))
-  (check-equal? (editor-buffer->string bt2 0) "aXbc")
+  (check-equal? (editor-document->string bt1 0) "abc")
+  (define-values (bt2 _rbt2) (editor-document-edit-at-batch bt 0 (list (edit-desc (point 0 1) (point 0 1) "X")) #:trusted? #t))
+  (check-equal? (editor-document->string bt2 0) "aXbc")
 
   ;; 加/减选区（并集/差集；primary 保持；不允许空集）
   (define se0 (editor-open "abcdef"))
@@ -616,7 +616,7 @@
   (define-values (fs1 bid2) (editor-open-document fs0 "y" #:name "b" #:focus? #f))
   (define fs2 (editor-set-document fs1 bid2))
   (check-equal? (editor-document-id fs2) bid2)
-  (check-equal? (editor-document-name (editor-set-document-name fs2 bid2 "renamed") bid2) "renamed")
+  (check-equal? (editor-document-name (editor-document-set-name fs2 bid2 "renamed") bid2) "renamed")
 
   ;; 选区集合算子：显式 primary + map 全部 / map primary + 增删
   (define sm0 (editor-open "abcde"))
@@ -624,10 +624,10 @@
   (check-equal? (editor-primary sm1) (caret (point 0 2)))
   (check-true (editor-selection-member? sm1 (caret (point 0 0))))
   (define sm2 (editor-map-primary sm1
-                (lambda (s) (selection-map-head (lambda (p) (point-right (editor-buffer sm1 0) p)) s))))
+                (lambda (s) (selection-map-head (lambda (p) (point-right (editor-document-buffer sm1 0) p)) s))))
   (check-equal? (editor-primary sm2) (selection (point 0 2) (point 0 3)))
   (define sm3 (editor-map-selections sm1
-                (lambda (s) (selection-map-both (lambda (p) (point-left (editor-buffer sm1 0) p)) s))))
+                (lambda (s) (selection-map-both (lambda (p) (point-left (editor-document-buffer sm1 0) p)) s))))
   (check-equal? (map selection-head (editor-selections sm3)) (list (point 0 0) (point 0 1)))
   (check-equal? (editor-primary (editor-add-selection sm1 (caret (point 0 4)) #:primary? #t)) (caret (point 0 4)))
   (check-equal? (length (editor-selections (editor-remove-selection sm1 (caret (point 0 0))))) 1)
@@ -655,7 +655,7 @@
   (check-equal? (editor-selection-set-name gg1) 'foo)
   (check-equal? (length (editor-selections gg1)) 2)
   (define-values (gg2 _ggr) (editor-command gg1 (edit-insert "X") #:reaction 'leader))
-  (check-equal? (editor-buffer->string gg2 0) "X bar X")
+  (check-equal? (editor-document->string gg2 0) "X bar X")
   (check-equal? (editor-selection-set-name gg2) 'foo)        ; 编辑后名字保持
   (define gg3 (editor-clear-selection-set gg2))
   (check-false (editor-selection-set-name gg3))
@@ -671,12 +671,12 @@
   (define-values (ln2 lnv) (editor-add-view ln0 0 3 10 #:line-numbers? #t))
   (check-true (editor-view-line-numbers? ln2 lnv))
 
-  ;; 文本批量（与 editor-apply-attrs 对称）：一次多条、报告含生效 descs
+  ;; 文本批量（与 editor-document-apply-attrs 对称）：一次多条、报告含生效 descs
   (define be0 (editor-open "abcd\nefgh"))
   (define-values (be1 ber)
-    (editor-apply-edits be0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
+    (editor-document-apply-edits be0 0 (list (edit-desc (point 0 1) (point 0 1) "X")
                                     (edit-desc (point 1 2) (point 1 2) "Y"))))
-  (check-equal? (editor-buffer->string be1 0) "aXbcd\nefYgh")
+  (check-equal? (editor-document->string be1 0) "aXbcd\nefYgh")
   (check-equal? (change-report-texts ber) (list (edit-desc (point 1 2) (point 1 2) "Y")
                                                 (edit-desc (point 0 1) (point 0 1) "X")))
   (check-equal? (editor-point be1) (point 0 0))            ; 'none：光标不动

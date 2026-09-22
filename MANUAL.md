@@ -7,7 +7,7 @@
 - `(require "core/editor.rkt")` —— **editor 平台**：
   1. editor 中性面：构造、查询、位置解析、标注读、投影。
   2. 一个编辑原语：`editor-command` / `editor-command-batch`，策略全显式；
-     `editor-edit` / `editor-edit-at` / `editor-view-edit` 只是它的命名薄封装。
+     `editor-edit` / `editor-document-edit-at` / `editor-view-edit` 只是它的命名薄封装。
   3. 用户面：导航 / 撤销重做 / 焦点。
 
 `core/editor.rkt` **不重导** `core/api.rkt`：要低层值就单独 require 它。
@@ -25,11 +25,11 @@
 ;; 用户编辑：在焦点 view 的光标处插入，cursor 前进，可撤销
 (define ed (editor-open "hello\nworld"))
 (define-values (ed* report) (editor-edit ed (edit-insert "hi ")))
-(editor-buffer->string ed* 0)        ; => "hi hello\nworld"
+(editor-document->string ed* 0)        ; => "hi hello\nworld"
 (editor-point ed*)                    ; => (point 0 3)
 
 ;; 程序编辑：显式位置，默认不动任何光标
-(define-values (ed2 _r) (editor-edit-at ed 0 (point 1 0) (edit-insert "> ")))
+(define-values (ed2 _r) (editor-document-edit-at ed 0 (point 1 0) (edit-insert "> ")))
 (editor-point ed2)                    ; 仍是 (point 0 0)
 
 ;; 渲染
@@ -157,7 +157,7 @@ face-provider : editor did line -> (listof (list start end face))
 不传则无派生 face。`window->screen` / `editor->screen` / `editor-view->screen` 接受该参数。
 `empty-face-provider` 是缺省（空）。
 
-**属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-apply-attrs` / `editor-put-attr`），
+**属性 buffer 也可以直接当投影源**：先把属性写进 buffer（`editor-document-apply-attrs` / `editor-document-put-attr`），
 再用 `attrs-provider` 取某个 key 的 provider：`(attrs-provider 'face)`。
 于是「写一次属性、投影时读」与「每帧现算的纯 provider」统一在同一个投影参数上；
 多个来源可以传多个 provider（按顺序合并）。
@@ -267,13 +267,16 @@ face-provider : editor did line -> (listof (list start end face))
 
 ## 9. editor 平台
 
+命名契约（先看寻址轴）：`editor-view-*` = 显式 **vid**；`editor-*` = **焦点 view** 糖；
+`editor-document-*` = 显式 **did**（文档级读/写/账本）；`editor-open/close/focus/add-view` = 生命周期。
+
 ### 9.1 构造 / 生命周期
 
 | 名字 | 语义 |
 |---|---|
-| `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名；`#:history?`（默认 `#t`）定历史策略 |
-| `editor-open-document` | 新开 document + view；`#:name`（默认 `*scratch*`）、`#:focus?`、`#:history?`（默认 `#t`） |
-| `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?`、`#:link`（视口同步链接名，可跨 document） |
+| `editor-open` | 建一个单 document 单 view 的 editor；`#:name` 命名；`#:history?`（默认 `#t`）定历史策略；`#:line-numbers?` 行号栏 |
+| `editor-open-document` | 新开 document + view；`#:name`（默认 `*scratch*`）、`#:focus?`、`#:history?`（默认 `#t`）、`#:line-numbers?` |
+| `editor-add-view` | 给某 document 加 view；`#:sync`、`#:focus?`、`#:link`（视口同步链接名，可跨 document）、`#:line-numbers?` |
 | `editor-close-view` | 关一个 view |
 | `editor-close-document` | 关一个 document 及其 view |
 | `editor-focus-view` | 聚焦某 view |
@@ -285,13 +288,13 @@ face-provider : editor did line -> (listof (list start end face))
 |---|---|
 | `editor?` | 是否 editor |
 | `editor-document-count` | document 数 |
-| `editor-history-on?` / `editor-view-history-on?` | 该 document 的默认历史策略（是否入账本） |
+| `editor-document-history-on?` / `editor-view-history-on?` | 该 document 的默认历史策略（是否入账本） |
 | `editor-view-count` | view 数 |
 | `editor-documents` | document-entry 列表 |
 | `editor-views` | view 列表 |
 | `editor-focus` | 当前焦点 view id |
 | `editor-document-id` | 焦点 view 的 document id |
-| `editor-buffer` | 取 buffer 值 |
+| `editor-document-buffer` | 取 buffer 值 |
 | `editor-document-name` | 取 buffer 名 |
 | `editor-view-document-id` | 某 view 的 document id |
 | `editor-document-view` | 某 document 的第一个 view id（无 view → `#f`；did 缺省 = 焦点） |
@@ -332,39 +335,39 @@ face-provider : editor did line -> (listof (list start end face))
 ### 9.3 位置解析（程序入口）
 
 按 document 寻址的读口，`did` 缺省 = 焦点 document，但**仅当 did 是该读口唯一参数**时
-（`editor-buffer` / `editor-document-name` / `editor-buffer->string` / `editor-buffer->lines` /
-`editor-buffer-line-count` / `editor-text-tick` / 账本查询）。带 payload 的读口
-（如 `editor-buffer-line-ref ed did i`）必须显式给 did —— 位置缺省会与 payload 抢参数。
-`editor-content-eq?` 比较两个 buffer，两个 did 都显式。
+（`editor-document-buffer` / `editor-document-name` / `editor-document->string` / `editor-document->lines` /
+`editor-document-line-count` / `editor-document-text-tick` / 账本查询）。带 payload 的读口
+（如 `editor-document-line-ref ed did i`）必须显式给 did —— 位置缺省会与 payload 抢参数。
+`editor-document-content-eq?` 比较两个 buffer，两个 did 都显式。
 
 | 名字 | 语义 |
 |---|---|
-| `editor-buffer->string` | buffer 全文字符串 |
-| `editor-buffer->lines` | buffer 行表 |
-| `editor-buffer-line-count` | 行数 |
-| `editor-buffer-line-ref` | 第 i 行 |
-| `editor-buffer-line-length` | 第 i 行长度 |
-| `editor-buffer-clamp-point` | 夹紧位置（不需要 view） |
-| `editor-buffer-point->offset` | 位置 → 偏移 |
-| `editor-buffer-offset->point` | 偏移 → 位置 |
-| `editor-buffer-range-text` | 取区间文本 |
-| `editor-text-tick` | 某 document 的**文本**版本戳（只有文本变才 +1） |
-| `editor-attr-tick` | 某 document 的**标注**版本戳（只有属性变才 +1） |
-| `editor-content-eq?` | 两个 buffer 的文本是否同一 |
+| `editor-document->string` | buffer 全文字符串 |
+| `editor-document->lines` | buffer 行表 |
+| `editor-document-line-count` | 行数 |
+| `editor-document-line-ref` | 第 i 行 |
+| `editor-document-line-length` | 第 i 行长度 |
+| `editor-document-clamp-point` | 夹紧位置（不需要 view） |
+| `editor-document-point->offset` | 位置 → 偏移 |
+| `editor-document-offset->point` | 偏移 → 位置 |
+| `editor-document-range-text` | 取区间文本 |
+| `editor-document-text-tick` | 某 document 的**文本**版本戳（只有文本变才 +1） |
+| `editor-document-attr-tick` | 某 document 的**标注**版本戳（只有属性变才 +1） |
+| `editor-document-content-eq?` | 两个 buffer 的文本是否同一 |
 
 ### 9.4 属性
 
 | 名字 | 语义 |
 |---|---|
-| `editor-attrs` | 某 document 的全部属性（默认焦点 buffer） |
-| `editor-attrs-at` | 某点的全部属性（hash） |
-| `editor-attrs-runs` | 某行的属性段 `(list start end hash)` |
-| `editor-attrs-key-runs` | 某行某 key 的段 `(list start end val)` |
-| `editor-apply-edits` | 批量施加文本 `edit-desc`（与 `editor-apply-attrs` 对称，`'none` 反应、不碰光标）；返回 `(values editor report)` |
-| `editor-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `'default` |
-| `editor-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `'default` |
-| `editor-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `'default` |
-| `editor-attrs-eq?` | 两个 buffer 的标注是否同一 |
+| `editor-document-attrs` | 某 document 的全部属性（默认焦点 buffer） |
+| `editor-document-attrs-at` | 某点的全部属性（hash） |
+| `editor-document-attrs-runs` | 某行的属性段 `(list start end hash)` |
+| `editor-document-attrs-key-runs` | 某行某 key 的段 `(list start end val)` |
+| `editor-document-apply-edits` | 批量施加文本 `edit-desc`（与 `editor-document-apply-attrs` 对称，`'none` 反应、不碰光标）；返回 `(values editor report)` |
+| `editor-document-apply-attrs` | 批量写属性（一个 change、一次 swap、一步撤销）；`#:record?` 默认 `'default` |
+| `editor-document-put-attr` | 写属性 `[start,end) → key=val`；返回 `(values editor report)`；`#:record?` 默认 `'default` |
+| `editor-document-remove-attr` | 移除区间内的某个 key；返回 `(values editor report)`；`#:record?` 默认 `'default` |
+| `editor-document-attrs-eq?` | 两个 buffer 的标注是否同一 |
 
 ### 9.5 编辑
 
@@ -385,10 +388,10 @@ face-provider : editor did line -> (listof (list start end face))
 |---|---|
 | `editor-edit` | 焦点 view；`leader` + 记账 |
 | `editor-view-edit` | 指定 view；`leader` + 记账 |
-| `editor-edit-at` | 文档的 view + 显式位置；`none` + 可选记账 |
-| `editor-edit-at-batch` | 同上，`descs` 批；`none` + 可选记账 |
+| `editor-document-edit-at` | 文档的 view + 显式位置；`none` + 可选记账 |
+| `editor-document-edit-at-batch` | 同上，`descs` 批；`none` + 可选记账 |
 
-`op : editor did selection → (or/c #f edit-desc)`。`editor-edit-at-batch` 的 `descs`
+`op : editor did selection → (or/c #f edit-desc)`。`editor-document-edit-at-batch` 的 `descs`
 同坐标系、互不重叠（= LSP `TextEdit[]`）；被 `read-only` 守卫拒的 desc 静默丢弃
 （用 `#:trusted? #t` 强制）；`#:record? #t` 把整批记成**一步**撤销。
 `#:attrs` 计划 `editor did (listof edit-desc) → (listof attr-desc)`：插入文本并标只读
@@ -422,10 +425,10 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-set-document` | 让某 view 改看另一个 document |
 | `editor-view-set-link` / `editor-set-link` | 设某 / 焦点 view 的视口同步链接名（可跨 document；`#f` 解链；默认 `#:align? #t` 立即对齐，基准 = `#:from` → 焦点 view → 组内首成员） |
 | `editor-link-views` | 把一组 view 设为同一链接（组替换语义；`#:align?` / `#:from` 同上） |
-| `editor-unlink-view` | 让某 view 退出链接 |
+| `editor-view-unlink` | 让某 view 退出链接 |
 | `editor-set-sync` | focus 糖：设焦点 view 同步策略 |
 | `editor-set-document` | focus 糖：让焦点 view 改看另一个 document |
-| `editor-set-document-name` | 重命名某 document |
+| `editor-document-set-name` | 重命名某 document |
 | `editor-set-point` | focus 糖：设焦点 view 光标 |
 | `editor-put-window` | focus 糖：裸写焦点 view 整个 window |
 | `editor-set-selections` | focus 糖：设焦点 view 选区集（可选 primary） |
@@ -480,12 +483,12 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-redo` | 按某 view 所属 document 重做一步 |
 | `editor-undo` | focus 糖：按焦点 view 的 buffer 撤销一步 |
 | `editor-redo` | focus 糖：重做一步 |
-| `editor-can-undo?` | 可否撤销 |
-| `editor-can-redo?` | 可否重做 |
-| `editor-undo-depth` | 撤销栈深 |
-| `editor-redo-depth` | 重做栈深 |
+| `editor-document-can-undo?` | 可否撤销 |
+| `editor-document-can-redo?` | 可否重做 |
+| `editor-document-undo-depth` | 撤销栈深 |
+| `editor-document-redo-depth` | 重做栈深 |
 | `editor-set-history-on?` / `editor-view-set-history-on?` | 切换某 document 的默认历史策略 |
-| `editor-clear-history` / `editor-view-clear-history` | 清空账本（不隐式清；保留策略） |
+| `editor-document-clear-history` / `editor-view-clear-history` | 清空账本（不隐式清；保留策略） |
 
 ### 9.9 投影
 

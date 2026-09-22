@@ -171,15 +171,15 @@ editor-command-batch  : 给现成 change 直接施加
 | `#:record?` | 是否记一步账本：`'default`（跟随 document 策略）/ `#t` / `#f` |
 | `#:pre-point` | 撤销回落的编辑前光标 |
 
-`editor-edit-at` / `editor-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
+`editor-document-edit-at` / `editor-document-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
 **薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。属性写也是它的封装：
-`editor-apply-attrs` / `editor-put-attr` / `editor-remove-attr`。
+`editor-document-apply-attrs` / `editor-document-put-attr` / `editor-document-remove-attr`。
 
-- **程序默认**：`editor-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
+- **程序默认**：`editor-document-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
 - **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? 'default`（跟随 document）。
 - **裸写 / 同步**：视图写入是 `editor-view-put-window`（裸写，不镜像）；同步是显式
   `editor-view-follow`。用户导航 = 两者的组合（`editor-view-move`，不对外）。
-- **中性面**：读、解析、投影、构造（`editor-buffer->string` 等）。
+- **中性面**：读、解析、投影、构造（`editor-document->string` 等）。
 
 ---
 
@@ -190,7 +190,7 @@ editor-command-batch  : 给现成 change 直接施加
 | 策略 | 行为 | 谁用 |
 |---|---|---|
 | `none` | 字面不动，只把光标/视口夹回合法域 | 程序默认 |
-| `map` | 每个同 document view 各自把光标映射过这次编辑（不滚屏） | `editor-edit-at` 显式地图 |
+| `map` | 每个同 document view 各自把光标映射过这次编辑（不滚屏） | `editor-document-edit-at` 显式地图 |
 | `leader` | 指定 view 推进到插入后 + ensure；其余 free 映射 / follow 镜像 | 用户编辑 |
 
 契约：`free` / `follow` 同步**只在同一 document 的 view 之间**发生；`leader` 必须**先 ensure 定稿**，
@@ -200,7 +200,7 @@ editor-command-batch  : 给现成 change 直接施加
 `editor-leader-{view,window}` 对同 link 成员调 `viewport/mirror.rkt` 的 `mirror-window`——只改成员的
 **视口**（不改它的 document，也不动它的选区；同 document 的成员会先按 `free`/`follow` 重定位光标）。
 投影 = 「行固定行号（不够夹最近）+ 列按该行字符长比例」。逻辑映射（`mirror-point`）与 mode 无关；
-clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用 `editor-link-views` / `editor-unlink-view` /
+clip 与 wrap 都已实现（wrap 投影到 `top-seg`）。链接用 `editor-link-views` / `editor-view-unlink` /
 `editor-view-set-link`（焦点糖 `editor-set-link`）管理；设链默认**立即对齐**：基准 = `#:from`（若在组内）
 → 焦点 view（若在组内）→ 组内第一个成员（`#:align? #f` 只设成员，`#:from` 显式指定基准）。
 `link` 类型受 `check-link` 校验（符号 / `#f`）。
@@ -265,7 +265,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 - `document-text-tick`（= `buffer-tick`）：纯文本版本，**只有文本变更**才 +1（一次 change 内无论多少条文本 desc，合计 +1）。
 - `document-attr-tick`：标注版本，**只有属性变更**才 +1。
-- editor 面：`editor-text-tick` / `editor-attr-tick`（各按 did 取）。
+- editor 面：`editor-document-text-tick` / `editor-document-attr-tick`（各按 did 取）。
 
 一次 change 同时含文本与属性时，两者各 +1。要判断「**文本本身**是否同一」用
 `buffer-content-eq?`；判断「标注是否同一」用 `document-attrs-eq?`。
@@ -286,8 +286,8 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 - 合并规则是**结构判定**（纯文本单字符的打字 / 退格 / 前向删除连续段），无时钟无状态。
 - **记不记是 document 的策略 + 命令级覆盖**：`document-entry` 带 `record?`（开口 `#:history?`，默认 `#t`）。
   命令的 `#:record?` 取 `'default`（跟随 document）/ `#t` / `#f`，在 `editor-run-change` 一处解析。
-  派生 / 只读文档（文件树、状态栏）用 `#:history? #f` 从此不产账本；运行时 `editor-history-on?` /
-  `editor-set-history-on?` 查询 / 切换，`editor-clear-history` 清栈（不隐式清）。
+  派生 / 只读文档（文件树、状态栏）用 `#:history? #f` 从此不产账本；运行时 `editor-document-history-on?` /
+  `editor-set-history-on?` 查询 / 切换，`editor-document-clear-history` 清栈（不隐式清）。
 - 撤销/重放走 **trusted**：当年过了守卫（被拒的 `desc` 不入栈），不该被事后属性挡住。
 
 ---
@@ -295,7 +295,7 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 ## 8. 守卫抑制：显式 trusted 入口
 
 `read-only` 守卫默认开；绕行**只**有显式入口 `document-apply-change-trusted` 与
-`editor-edit-at` 的 `#:trusted?`。没有全局开关、没有 `inhibit` 参数。
+`editor-document-edit-at` 的 `#:trusted?`。没有全局开关、没有 `inhibit` 参数。
 
 ---
 
@@ -317,6 +317,19 @@ editor 门面用 `face-provider : editor did line → runs`（内部适配成前
 ---
 
 ## 10. API 可达面：显式白名单
+
+**命名契约（先看寻址轴，再看动作）**：
+
+| 前缀 | 寻址 / 用途 | 例 |
+|---|---|---|
+| `editor-view-*` | 显式 **vid** | `editor-view-set-mode`、`editor-view-unlink` |
+| `editor-*` | **焦点 view** 糖（视图状态 / 命令） | `editor-point`、`editor-mode`、`editor-goto` |
+| `editor-document-*` | 显式 **did**（文档级读 / 写 / 账本） | `editor-document-attrs`、`editor-document-apply-attrs`、`editor-document-can-undo?` |
+| `editor-{open,open-document,close-*,focus-*,add-view}` | 生命周期 / 结构 | `editor-open-document`、`editor-add-view` |
+| `editor-command[-batch]` / `editor-edit` | 编辑原语 / 焦点编辑 | — |
+
+低层面同理：`window-*`（显式 view 值）、`document-*`（文档值）、`buffer-*`（纯文本值）。
+低层没有“焦点”概念，寻址靠值本身。
 
 - 消费者可达面 = **`core/api.rkt`**（低层公开面）+ **`core/editor.rkt`**（editor 平台）。
   两者分开：低层值单独 `(require "core/api.rkt")`，平台命令用 `(require "core/editor.rkt")`。
@@ -354,7 +367,7 @@ change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.r
 - `attr-desc = (start end key op val)`，同一行、半开 `[start,end)`，`op ∈ 'set | 'remove`；
   零宽 = no-op。
 - 属性变更可以：与文本**原子**合成一条命令（`editor-command` 的 `#:attrs` 计划）、
-  **批量**写（`editor-apply-attrs` / `attrs-apply-attr-batch`）、**进账本**并精确撤销。
+  **批量**写（`editor-document-apply-attrs` / `attrs-apply-attr-batch`）、**进账本**并精确撤销。
 - 撤销材料（`change-result`）：
   - `applied-texts` / `text-inverses`（与施加顺序平行，逐条逆序施加）；
   - `applied-attrs` / `attr-inverses`（逐条 `attrs-desc-inverse`）；

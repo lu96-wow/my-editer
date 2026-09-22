@@ -149,7 +149,7 @@
   (edit app
         (lambda (ed did sel)
           (define p (selection-head sel))
-          (define line (editor-buffer-line-ref ed did (point-line p)))
+          (define line (editor-document-line-ref ed did (point-line p)))
           (define indent (car (regexp-match #rx"^[ \t]*" line)))
           (define-values (a z) (selection-range sel))
           (edit-desc a z (string-append "\n" indent)))))
@@ -178,8 +178,8 @@
 (define (append-stamp a)
   (define ed (app-ed a))
   (define did (editor-document-id ed))
-  (define n (editor-buffer-line-count ed did))
-  (define p (point (sub1 n) (editor-buffer-line-length ed did (sub1 n))))
+  (define n (editor-document-line-count ed did))
+  (define p (point (sub1 n) (editor-document-line-length ed did (sub1 n))))
   (define stamp (number->string (current-seconds)))
   (define-values (ed* _report)
     (editor-command ed (edit-insert (string-append "\n;; stamp " stamp))
@@ -215,7 +215,7 @@
 ;; ① 派生：逐行扫关键字，返回本行的 (起列 止列 face) 段。
 (define (syntax-face ed did line)
   (for/list ([m (in-list (regexp-match-positions* keyword-rx
-                                                   (editor-buffer-line-ref ed did line)))])
+                                                   (editor-document-line-ref ed did line)))])
     (list (car m) (cdr m) (hash 'face 'keyword))))
 
 ;; ② 作者态：把主选区涉及的每行区间标为只读（core 保留 key）。
@@ -226,9 +226,9 @@
   (cond
     [(= sl el) (list (list sl sc ec))]
     [else
-     (append (list (list sl sc (editor-buffer-line-length ed did sl)))
+     (append (list (list sl sc (editor-document-line-length ed did sl)))
              (for/list ([l (in-range (add1 sl) el)])
-               (list l 0 (editor-buffer-line-length ed did l)))
+               (list l 0 (editor-document-line-length ed did l)))
              (list (list el 0 ec)))]))
 
 (define (mark-read-only a)
@@ -238,13 +238,13 @@
   (if (caret? sel)
       a
       (let-values ([(s e) (selection-range sel)])
-        ;; [core] 一次 editor-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
+        ;; [core] 一次 editor-document-apply-attrs = 一条 change 命令：批量、一次 swap、一步撤销。
         (define attrs
           (for/list ([sp (in-list (selection-line-spans ed did s e))]
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
             (attr-set (point line c0) (point line c1) read-only-key #t)))
-        (define-values (ed* _r) (editor-apply-attrs ed did attrs #:record? #t))
+        (define-values (ed* _r) (editor-document-apply-attrs ed did attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 (define (clear-read-only a)
@@ -259,12 +259,12 @@
                      #:when (< (cadr sp) (caddr sp)))
             (match-define (list line c0 c1) sp)
             (attr-remove (point line c0) (point line c1) read-only-key)))
-        (define-values (ed* _r) (editor-apply-attrs ed did attrs #:record? #t))
+        (define-values (ed* _r) (editor-document-apply-attrs ed did attrs #:record? #t))
         (struct-copy app a [ed ed*]))))
 
 ;; 属性 buffer → face：只读段读出来当样式（其它 key 同理）。
 (define (read-only-face ed did line)
-  (for/list ([r (in-list (editor-attrs-key-runs ed did line read-only-key))])
+  (for/list ([r (in-list (editor-document-attrs-key-runs ed did line read-only-key))])
     (list (car r) (cadr r) (hash 'face 'read-only))))
 
 ;; 投影：两个来源拼成一个 provider（后者覆盖前者）；传给 editor->screen。
@@ -285,7 +285,7 @@
 ;;; ---------- 2.9 选中 / 多光标（应用策略） ----------
 ;;
 ;; [core] editor-selections / editor-set-selections / editor-add-selections / editor-primary /
-;;        editor-point / editor-buffer->string / editor-buffer-offset->point / selection / caret …
+;;        editor-point / editor-document->string / editor-document-offset->point / selection / caret …
 ;;        core 只给「选区集合 + 增删改」和「按所有选区批量替换」；「选哪个词、选下一个、全选同词」
 ;;        全是应用策略。
 ;; [前端] 词边界、搜索方式、Ctrl+D 的推进规则，都由应用决定。
@@ -296,9 +296,9 @@
   (define prim (editor-primary ed))
   (if (and prim (not (caret? prim)))
       (let-values ([(a b) (selection-range prim)])
-        (values (editor-buffer-range-text ed did a b) a b))
+        (values (editor-document-range-text ed did a b) a b))
       (let* ([p (editor-point ed)]
-             [line (editor-buffer-line-ref ed did (point-line p))]
+             [line (editor-document-line-ref ed did (point-line p))]
              [n (string-length line)] [col (point-col p)]
              [w? (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\_)))]
              [start (let loop ([i col]) (if (and (> i 0) (w? (string-ref line (sub1 i)))) (loop (sub1 i)) i))]
@@ -311,10 +311,10 @@
 ;; 全 buffer 里 pattern 的全部出现（按文档顺序）
 (define (occurrences ed pattern)
   (define did (editor-document-id ed))
-  (define full (editor-buffer->string ed did))
+  (define full (editor-document->string ed did))
   (for/list ([m (in-list (regexp-match-positions* (regexp-quote pattern) full))])
-    (list (editor-buffer-offset->point ed did (car m))
-          (editor-buffer-offset->point ed did (cdr m)))))
+    (list (editor-document-offset->point ed did (car m))
+          (editor-document-offset->point ed did (cdr m)))))
 
 ;; Ctrl+D：光标→先选词；已有选区→再选「最后一个选区之后」的下一个相同串
 (define (select-next-occurrence a)
@@ -554,22 +554,22 @@
   ;; 用户面编辑 + 撤销
   (define a0 (make-app "" 5 20 "*t*"))
   (define a1 (edit a0 (edit-insert "abc")))
-  (check-equal? (editor-buffer->string (app-ed a1) 0) "abc")
+  (check-equal? (editor-document->string (app-ed a1) 0) "abc")
   (check-equal? (editor-point (app-ed a1)) (point 0 3))
   (define a2 (run-ed a1 editor-undo))
-  (check-equal? (editor-buffer->string (app-ed a2) 0) "")
+  (check-equal? (editor-document->string (app-ed a2) 0) "")
 
   ;; 自定义 op：自动缩进
   (define a3 (make-app "  x" 5 20 "*t*"))
   (define a4 (navigate a3 'end))
   (define a5 (newline a4))
-  (check-equal? (editor-buffer->string (app-ed a5) 0) "  x\n  ")
+  (check-equal? (editor-document->string (app-ed a5) 0) "  x\n  ")
 
   ;; 程序编辑：追加时间戳不改光标（editor-command，reaction 'none）
   (define a6 (edit (make-app "hi" 5 20 "*t*") (edit-insert "!")))   ; → "!hi"，光标 (0,1)
   (define a7 (append-stamp a6))
   (check-equal? (editor-point (app-ed a7)) (point 0 1))       ; 光标没动
-  (check-true (regexp-match? #rx";; stamp" (editor-buffer->string (app-ed a7) 0)))
+  (check-true (regexp-match? #rx";; stamp" (editor-document->string (app-ed a7) 0)))
 
   ;; 标注：派生 face 在投影时出现（文档里根本没有 face 这个概念）
   (define a8 (edit (make-app "" 5 20 "*t*") (edit-insert "define x")))
@@ -585,25 +585,25 @@
                [ed (editor-set-selections (app-ed r0)
                                           (list (selection (point 0 0) (point 0 5))))]))
   (define r2 (mark-read-only r1))
-  (check-equal? (editor-attrs-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
+  (check-equal? (editor-document-attrs-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
   (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed r2) (app-face-provider r2))) 0)))
                 (hash 'face 'read-only))
   ;; 只读区内插入被守卫拒绝
   (define r3 (struct-copy app r2 [ed (editor-set-selections (app-ed r2) (list (caret (point 0 2))))]))
   (define r4 (edit r3 (edit-insert "X")))
-  (check-equal? (editor-buffer->string (app-ed r4) 0) "hello world")
+  (check-equal? (editor-document->string (app-ed r4) 0) "hello world")
   ;; 清除只读 → 可编辑
   (define r5 (struct-copy app r4 [ed (editor-set-selections (app-ed r4)
                                                             (list (selection (point 0 0) (point 0 5))))]))
   (define r6 (clear-read-only r5))
-  (check-false (attr-read-only? (editor-attrs-at (app-ed r6) 0 (point 0 2))))
+  (check-false (attr-read-only? (editor-document-attrs-at (app-ed r6) 0 (point 0 2))))
   (define r7 (struct-copy app r6 [ed (editor-set-selections (app-ed r6) (list (caret (point 0 0))))]))
-  (check-equal? (editor-buffer->string (app-ed (edit r7 (edit-insert "X"))) 0) "Xhello world")
+  (check-equal? (editor-document->string (app-ed (edit r7 (edit-insert "X"))) 0) "Xhello world")
 
   ;; 视图面：resize 只改 view，不动文本
   (define a10 (resize a8 8 30))
   (check-equal? (editor-height (app-ed a10)) 7)
-  (check-equal? (editor-buffer->string (app-ed a10) 0) "define x")
+  (check-equal? (editor-document->string (app-ed a10) 0) "define x")
 
   ;; 选中/多光标（前端策略）：Ctrl+D 选词 → 再选下一个 → 一起替换
   (define m0 (make-app "foo bar foo" 5 40 "*t*"))
@@ -612,12 +612,12 @@
   (define m2 (select-next-occurrence m1))
   (check-equal? (length (editor-selections (app-ed m2))) 2)      ; 再选下一个相同串
   (define m3 (edit m2 (edit-insert "X")))                        ; 两个一起替换
-  (check-equal? (editor-buffer->string (app-ed m3) 0) "X bar X")
+  (check-equal? (editor-document->string (app-ed m3) 0) "X bar X")
   (check-equal? (length (editor-selections (app-ed (collapse-selection m3)))) 1)
   ;; 全选同词
   (define m4 (select-all-occurrences m0))
   (check-equal? (length (editor-selections (app-ed m4))) 2)
-  (check-equal? (editor-buffer->string (app-ed (edit m4 (edit-insert "Y"))) 0) "Y bar Y")
+  (check-equal? (editor-document->string (app-ed (edit m4 (edit-insert "Y"))) 0) "Y bar Y")
   ;; Shift+右：扩选（主选区 head 动、anchor 不动）
   (define m5 (extend-selection m0 'right))
   (check-true (not (caret? (car (editor-selections (app-ed m5))))))
@@ -632,7 +632,7 @@
   (define x2 (extend-selection x1 'down))
   (check-true (not (caret? (car (editor-selections (app-ed x2))))))
   (define x3 (edit x2 (edit-backspace)))
-  (check-equal? (editor-buffer->string (app-ed x3) 0) "abc\nghi")
+  (check-equal? (editor-document->string (app-ed x3) 0) "abc\nghi")
   (check-true (bytes? (frame->bytes x3)))
 
   ;; 反向选区（Shift+左/上 可能产生）：插入 / 回车按正向区间替换，不得报错
@@ -640,9 +640,9 @@
   (define rv1 (struct-copy app rv0
                [ed (editor-set-selections (app-ed rv0)
                                           (list (selection (point 0 4) (point 0 1))))]))
-  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-insert "X"))) 0) "aXef")
-  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-newline))) 0) "a\nef")
-  (check-equal? (editor-buffer->string (app-ed (edit rv1 (edit-backspace))) 0) "aef")
+  (check-equal? (editor-document->string (app-ed (edit rv1 (edit-insert "X"))) 0) "aXef")
+  (check-equal? (editor-document->string (app-ed (edit rv1 (edit-newline))) 0) "a\nef")
+  (check-equal? (editor-document->string (app-ed (edit rv1 (edit-backspace))) 0) "aef")
 
   ;; 分屏 + 跨 document 视口同步：左右是两个 document，链接后滚动一个另一个跟随
   (define p0 (make-app (string-join (for/list ([i (in-range 30)]) (format "line ~a" i)) "\n") 8 40 "*p*"))
@@ -672,9 +672,9 @@
 
   ;; 右 pane 无手绘行号：文本与左 pane 相同，行号来自 core 行号栏（视图装饰）
   (define mvid0 (app-mirror-vid p0))
-  (define rtext (editor-buffer->string (app-ed p0) (editor-view-document-id (app-ed p0) mvid0)))
+  (define rtext (editor-document->string (app-ed p0) (editor-view-document-id (app-ed p0) mvid0)))
   (check-true (editor-view-line-numbers? (app-ed p0) mvid0))
-  (check-equal? rtext (editor-buffer->string (app-ed p0) 0))
+  (check-equal? rtext (editor-document->string (app-ed p0) 0))
   (check-false (regexp-match? #rx" \\| " rtext))
 
   ;; ^R 换分屏比例：左 pane 宽度改变，行号栏/正文宽随之重算
@@ -699,5 +699,5 @@
 ;; 2. 多窗格布局：分屏 / 拼接要前端自己做（`screen-compose` 给拼屏）；
 ;;    但**跨 document 的视口同步**是 core 能力（`editor-link-views` + `viewport/mirror.rkt`），
 ;;    本示例就用它把左右两个 document 的窗格链接起来（`^W` 切换焦点）。
-;; 3. 属性已是一等公民：editor-apply-attrs 批量写、进账本、replay/undo 精确；
+;; 3. 属性已是一等公民：editor-document-apply-attrs 批量写、进账本、replay/undo 精确；
 ;;    「插入文本 + 标只读」可用 editor-command 的 #:attrs 计划一次完成。

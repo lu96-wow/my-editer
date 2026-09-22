@@ -3,7 +3,7 @@
 ;;; core/editor.rkt —— editor 平台入口（中性面 + 程序面 + 用户面）
 ;;;
 ;;;   · editor 中性面  构造 / 查询 / 解析 / 属性读 / 投影   （platform/neutral.rkt）
-;;;   · 程序面        editor-edit-at / 显式视图命令 / 属性写   （platform/program.rkt）
+;;;   · 程序面        editor-document-edit-at / 显式视图命令 / 属性写   （platform/program.rkt）
 ;;;   · 用户面        editor-edit / 导航 / 撤销 / 焦点        （platform/command.rkt）
 ;;;
 ;;; 低层公开面（point / edit-desc / buffer / window / screen / events / …）在 core/api.rkt，
@@ -26,12 +26,12 @@
   ;; 用户面
   (define ed (editor-open "hi"))
   (define-values (ed* report) (editor-edit ed (edit-insert "!")))
-  (check-equal? (editor-buffer->string ed* 0) "!hi")
+  (check-equal? (editor-document->string ed* 0) "!hi")
   (check-equal? (change-report-first-line report) 0)
   ;; 程序面：默认不动视图
   (define ed2 (editor-open "hi"))
-  (define-values (ed2* _r2) (editor-edit-at ed2 0 (point 0 0) (edit-insert "!")))
-  (check-equal? (editor-buffer->string ed2* 0) "!hi")
+  (define-values (ed2* _r2) (editor-document-edit-at ed2 0 (point 0 0) (edit-insert "!")))
+  (check-equal? (editor-document->string ed2* 0) "!hi")
   (check-equal? (editor-point ed2*) (point 0 0))
   ;; 投影 + 原子（原子来自 core/api.rkt）
   (check-true (screen? (editor->screen ed*)))

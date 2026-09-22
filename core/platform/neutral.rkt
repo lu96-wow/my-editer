@@ -12,7 +12,7 @@
 ;;; 内容变更在 program.rkt（程序面）/ command.rkt（用户面）。
 ;;;
 ;;; 引用完整性：任一 view 的 window.document 必是某个 document-entry 的 document。
-;;; 要 buffer-id 就用 buffer-id-of 反查。
+;;; 要 document-id 就用 document-id-of 反查。
 
 (provide
  ;; editor 只读投影（构造器/struct:editor 不外露）
@@ -30,13 +30,13 @@
  editor-focus-document
  ;; 查询
  editor-document-count
- editor-history-on?
+ editor-document-history-on?
  editor-view-history-on?
  editor-view-count
  editor-document-id
- editor-buffer
+ editor-document-buffer
  editor-document
- editor-attrs
+ editor-document-attrs
  editor-document-name
  editor-view-document-id
  editor-document-view
@@ -91,29 +91,29 @@
  editor-point-end editor-view-point-end
  editor-point-up editor-view-point-up
  editor-point-down editor-view-point-down
- ;; 文本 / 解析（按 buffer-id）
- editor-buffer->string
- editor-buffer->lines
- editor-buffer-line-count
- editor-buffer-line-ref
- editor-buffer-line-length
- editor-buffer-clamp-point
- editor-buffer-point->offset
- editor-buffer-offset->point
- editor-buffer-range-text
- editor-text-tick
- editor-attr-tick
- editor-content-eq?
- editor-attrs-eq?
- ;; 属性读（按 buffer-id）
- editor-attrs-at
- editor-attrs-runs
- editor-attrs-key-runs
+ ;; 文本 / 解析（按 did）
+ editor-document->string
+ editor-document->lines
+ editor-document-line-count
+ editor-document-line-ref
+ editor-document-line-length
+ editor-document-clamp-point
+ editor-document-point->offset
+ editor-document-offset->point
+ editor-document-range-text
+ editor-document-text-tick
+ editor-document-attr-tick
+ editor-document-content-eq?
+ editor-document-attrs-eq?
+ ;; 属性读（按 did）
+ editor-document-attrs-at
+ editor-document-attrs-runs
+ editor-document-attrs-key-runs
  ;; 账本查询
- editor-can-undo?
- editor-can-redo?
- editor-undo-depth
- editor-redo-depth)
+ editor-document-can-undo?
+ editor-document-can-redo?
+ editor-document-undo-depth
+ editor-document-redo-depth)
 
 ;;; ---------- 构造 / 生命周期 ----------
 (define (editor-open text [height 24] [width 80]
@@ -126,7 +126,7 @@
           0 1 1))
 
 ;; 新增一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
-;; （默认**不抢**）。返回 (values editor buffer-id)。
+;; （默认**不抢**）。返回 (values editor document-id)。
 (define (editor-open-document ed text [height 24] [width 80]
                             #:name [name "*scratch*"] #:focus? [focus? #f]
                             #:history? [history? #t] #:line-numbers? [line-numbers? #f])
@@ -182,16 +182,16 @@
 
 (define (editor-document-count ed) (length (editor-documents ed)))
 ;; 该 document 的默认历史策略（是否把变更记入账本）。命令可用 #:record? 覆盖。
-(define (editor-history-on? ed [did (focused-did ed)])
+(define (editor-document-history-on? ed [did (focused-did ed)])
   (document-entry-record? (editor-document-entry ed did)))
 (define (editor-view-history-on? ed vid)
   (document-entry-record? (editor-document-entry ed (editor-view-document-id ed vid))))
 (define (editor-view-count ed) (length (editor-views ed)))
 (define (editor-document-id ed) (focused-did ed))
 ;; did 省略时用焦点 view 的 buffer（focus 糖）。
-(define (editor-buffer ed [did (focused-did ed)]) (document-buffer (editor-document ed did)))
+(define (editor-document-buffer ed [did (focused-did ed)]) (document-buffer (editor-document ed did)))
 (define (editor-document ed [did (focused-did ed)]) (document-entry-document (editor-document-entry ed did)))
-(define (editor-attrs ed [did (focused-did ed)]) (document-attrs (editor-document ed did)))
+(define (editor-document-attrs ed [did (focused-did ed)]) (document-attrs (editor-document ed did)))
 (define (editor-document-name ed [did (focused-did ed)]) (document-entry-name (editor-document-entry ed did)))
 (define (editor-view-document-id ed vid) (document-id-of ed (view-document (editor-view-ref ed vid))))
 ;; 某 document 的第一个 view id（没有 view → #f）；did 缺省 = 焦点 document。
@@ -280,7 +280,7 @@
 
 ;; 把属性 buffer 的某个 key 物化成 face-provider。
 (define (attrs-provider key)
-  (lambda (ed did line) (editor-attrs-key-runs ed did line key)))
+  (lambda (ed did line) (editor-document-attrs-key-runs ed did line key)))
 
 (define (editor-view->screen ed vid [face-provider empty-face-provider])
   (define did (editor-view-document-id ed vid))
@@ -292,52 +292,52 @@
 ;;; ---------- 点算子（editor 级：位置只认 point，buffer 由 did/vid 解析） ----------
 ;;; 应用写导航/扩选时不再需要拿 buffer / window。
 
-(define (editor-point-left ed p) (point-left (editor-buffer ed (focused-did ed)) p))
+(define (editor-point-left ed p) (point-left (editor-document-buffer ed (focused-did ed)) p))
 (define (editor-view-point-left ed vid p) (point-left (editor-view-buffer ed vid) p))
-(define (editor-point-right ed p) (point-right (editor-buffer ed (focused-did ed)) p))
+(define (editor-point-right ed p) (point-right (editor-document-buffer ed (focused-did ed)) p))
 (define (editor-view-point-right ed vid p) (point-right (editor-view-buffer ed vid) p))
 (define (editor-point-home ed p) (point-home p))
 (define (editor-view-point-home ed vid p) (point-home p))
-(define (editor-point-end ed p) (point-end (editor-buffer ed (focused-did ed)) p))
+(define (editor-point-end ed p) (point-end (editor-document-buffer ed (focused-did ed)) p))
 (define (editor-view-point-end ed vid p) (point-end (editor-view-buffer ed vid) p))
 (define (editor-point-up ed p) (point-up (editor-window ed) p))
 (define (editor-view-point-up ed vid p) (point-up (editor-view-window ed vid) p))
 (define (editor-point-down ed p) (point-down (editor-window ed) p))
 (define (editor-view-point-down ed vid p) (point-down (editor-view-window ed vid) p))
 
-;;; ---------- 文本 / 解析 / 属性读（按 buffer-id） ----------
+;;; ---------- 文本 / 解析 / 属性读（按 document-id） ----------
 ;;; did 缺省 = 焦点 buffer；只有「ed 后只有一个参数」的读口能安全缺省
 ;;; （带 payload 时，位置缺省会与 payload 抢参数，故必须显式给 did）。
 
-(define (editor-buffer->string ed [did (focused-did ed)]) (buffer->string (editor-buffer ed did)))
-(define (editor-buffer->lines ed [did (focused-did ed)]) (buffer->lines (editor-buffer ed did)))
-(define (editor-buffer-line-count ed [did (focused-did ed)]) (buffer-line-count (editor-buffer ed did)))
-(define (editor-buffer-line-ref ed did i) (buffer-line-ref (editor-buffer ed did) i))
-(define (editor-buffer-line-length ed did i) (buffer-line-length (editor-buffer ed did) i))
-(define (editor-buffer-clamp-point ed did p) (buffer-clamp-point (editor-buffer ed did) p))
-(define (editor-buffer-point->offset ed did p) (buffer-point->offset (editor-buffer ed did) p))
-(define (editor-buffer-offset->point ed did off) (buffer-offset->point (editor-buffer ed did) off))
-(define (editor-buffer-range-text ed did s e) (buffer-range-text (editor-buffer ed did) s e))
-(define (editor-text-tick ed [did (focused-did ed)]) (buffer-tick (editor-buffer ed did)))
-(define (editor-attr-tick ed [did (focused-did ed)]) (document-attr-tick (editor-document ed did)))
-(define (editor-content-eq? ed b1 b2)
-  (buffer-content-eq? (editor-buffer ed b1) (editor-buffer ed b2)))
-(define (editor-attrs-eq? ed b1 b2)
+(define (editor-document->string ed [did (focused-did ed)]) (buffer->string (editor-document-buffer ed did)))
+(define (editor-document->lines ed [did (focused-did ed)]) (buffer->lines (editor-document-buffer ed did)))
+(define (editor-document-line-count ed [did (focused-did ed)]) (buffer-line-count (editor-document-buffer ed did)))
+(define (editor-document-line-ref ed did i) (buffer-line-ref (editor-document-buffer ed did) i))
+(define (editor-document-line-length ed did i) (buffer-line-length (editor-document-buffer ed did) i))
+(define (editor-document-clamp-point ed did p) (buffer-clamp-point (editor-document-buffer ed did) p))
+(define (editor-document-point->offset ed did p) (buffer-point->offset (editor-document-buffer ed did) p))
+(define (editor-document-offset->point ed did off) (buffer-offset->point (editor-document-buffer ed did) off))
+(define (editor-document-range-text ed did s e) (buffer-range-text (editor-document-buffer ed did) s e))
+(define (editor-document-text-tick ed [did (focused-did ed)]) (buffer-tick (editor-document-buffer ed did)))
+(define (editor-document-attr-tick ed [did (focused-did ed)]) (document-attr-tick (editor-document ed did)))
+(define (editor-document-content-eq? ed b1 b2)
+  (buffer-content-eq? (editor-document-buffer ed b1) (editor-document-buffer ed b2)))
+(define (editor-document-attrs-eq? ed b1 b2)
   (document-attrs-eq? (editor-document ed b1) (editor-document ed b2)))
-(define (editor-attrs-at ed did p) (document-attrs-at (editor-document ed did) p))
-(define (editor-attrs-runs ed did line) (document-attrs-runs (editor-document ed did) line))
-(define (editor-attrs-key-runs ed did line key)
+(define (editor-document-attrs-at ed did p) (document-attrs-at (editor-document ed did) p))
+(define (editor-document-attrs-runs ed did line) (document-attrs-runs (editor-document ed did) line))
+(define (editor-document-attrs-key-runs ed did line key)
   (document-attrs-key-runs (editor-document ed did) line key))
 
 ;;; ---------- 账本查询 ----------
 
-(define (editor-can-undo? ed [did (focused-did ed)])
+(define (editor-document-can-undo? ed [did (focused-did ed)])
   (history-can-undo? (document-entry-history (editor-document-entry ed did))))
-(define (editor-can-redo? ed [did (focused-did ed)])
+(define (editor-document-can-redo? ed [did (focused-did ed)])
   (history-can-redo? (document-entry-history (editor-document-entry ed did))))
-(define (editor-undo-depth ed [did (focused-did ed)])
+(define (editor-document-undo-depth ed [did (focused-did ed)])
   (history-undo-depth (document-entry-history (editor-document-entry ed did))))
-(define (editor-redo-depth ed [did (focused-did ed)])
+(define (editor-document-redo-depth ed [did (focused-did ed)])
   (history-redo-depth (document-entry-history (editor-document-entry ed did))))
 
 ;;; ---------- 测试：中性面 ----------
@@ -346,10 +346,10 @@
   (require rackunit "write.rkt")
   (define e0 (editor-open "hello\nworld" 2 10))
   ;; 文本 / 位置解析 / 投影
-  (check-equal? (editor-buffer->string e0 0) "hello\nworld")
-  (check-equal? (editor-buffer-line-length e0 0 0) 5)
-  (check-equal? (editor-buffer-clamp-point e0 0 (point 9 9)) (point 1 5))
-  (check-equal? (editor-buffer-point->offset e0 0 (point 1 0)) 6)
+  (check-equal? (editor-document->string e0 0) "hello\nworld")
+  (check-equal? (editor-document-line-length e0 0 0) 5)
+  (check-equal? (editor-document-clamp-point e0 0 (point 9 9)) (point 1 5))
+  (check-equal? (editor-document-point->offset e0 0 (point 1 0)) 6)
   (check-equal? (editor-point e0) (point 0 0))
   (check-true (screen? (editor->screen e0)))
   ;; 显式 view 只读：mode / left-col / top-seg（不经过焦点）
@@ -360,30 +360,30 @@
   (check-equal? (editor-mode e0) 'clip)
   (check-equal? (editor-left-col e0) 0)
   (check-equal? (editor-top-seg e0) 0)
-  (check-false (editor-can-undo? e0 0))
+  (check-false (editor-document-can-undo? e0 0))
 
   ;; 变化计数：读口（并发/合并的版本戳）
-  (check-equal? (editor-text-tick e0 0) 0)
-  (check-equal? (editor-attr-tick e0 0) 0)
-  (check-true (editor-content-eq? e0 0 0))
+  (check-equal? (editor-document-text-tick e0 0) 0)
+  (check-equal? (editor-document-attr-tick e0 0) 0)
+  (check-true (editor-document-content-eq? e0 0 0))
   (define-values (et _dt) (editor-apply-edit e0 0 (edit-desc (point 0 0) (point 0 0) "X")))
-  (check-equal? (editor-text-tick et 0) 1)
+  (check-equal? (editor-document-text-tick et 0) 1)
   ;; 属性写只涨标注版本，不涨文本版本
   (define-values (et2 _et2r)
     (editor-apply-change et 0 (attrs->change (list (attr-set (point 0 0) (point 0 1) 'x #t)))))
-  (check-equal? (editor-text-tick et2 0) 1)     ; 文本版本不变
-  (check-equal? (editor-attr-tick et2 0) 1)       ; 标注版本 +1
+  (check-equal? (editor-document-text-tick et2 0) 1)     ; 文本版本不变
+  (check-equal? (editor-document-attr-tick et2 0) 1)       ; 标注版本 +1
 
   ;; 属性读：任意 key 的段；read-only 是保留 key
   (define-values (pr _prr)
     (editor-apply-change e0 0 (attrs->change (list (attr-set (point 0 0) (point 0 5) read-only-key #t)))))
-  (check-equal? (editor-attrs-runs pr 0 0) (list (list 0 5 (hash read-only-key #t))))
-  (check-equal? (editor-attrs-key-runs pr 0 0 read-only-key) (list (list 0 5 #t)))
+  (check-equal? (editor-document-attrs-runs pr 0 0) (list (list 0 5 (hash read-only-key #t))))
+  (check-equal? (editor-document-attrs-key-runs pr 0 0 read-only-key) (list (list 0 5 #t)))
 
-  ;; 整体属性读 + 属性等价（与 editor-buffer / editor-content-eq? 对称）
-  (check-equal? (editor-attrs pr) (document-attrs (editor-document pr 0)))
-  (check-true (editor-attrs-eq? pr 0 0))
-  (check-true (editor-attrs-eq? e0 0 0))
+  ;; 整体属性读 + 属性等价（与 editor-document-buffer / editor-document-content-eq? 对称）
+  (check-equal? (editor-document-attrs pr) (document-attrs (editor-document pr 0)))
+  (check-true (editor-document-attrs-eq? pr 0 0))
+  (check-true (editor-document-attrs-eq? e0 0 0))
 
   ;; #:focus? #f：后台开 buffer 不抢焦点
   (define-values (e1 _bid) (editor-open-document e0 "BBB" #:name "b" #:focus? #f))
@@ -408,15 +408,15 @@
   ;; 结构变换：set-view-buffer 换属主、不改文本、不动焦点
   (define n1 (editor-set-view-document e1 0 1))
   (check-equal? (editor-view-document-id n1 0) 1)
-  (check-equal? (editor-buffer->string n1 1) "BBB")
+  (check-equal? (editor-document->string n1 1) "BBB")
 
-  ;; focus 糖默认 did：editor-buffer / 账本查询省略 did 时看焦点 buffer
-  (check-eq? (editor-buffer e0) (editor-buffer e0 0))
-  (check-equal? (editor-buffer->string e0) (editor-buffer->string e0 0))
-  (check-equal? (editor-buffer-line-count e0) (editor-buffer-line-count e0 0))
-  (check-false (editor-can-undo? e0))
-  ;; 按 view 直取 buffer（省一次 buffer-id 往返）
-  (check-eq? (editor-view-buffer e0 0) (editor-buffer e0 0))
+  ;; focus 糖默认 did：editor-document-buffer / 账本查询省略 did 时看焦点 buffer
+  (check-eq? (editor-document-buffer e0) (editor-document-buffer e0 0))
+  (check-equal? (editor-document->string e0) (editor-document->string e0 0))
+  (check-equal? (editor-document-line-count e0) (editor-document-line-count e0 0))
+  (check-false (editor-document-can-undo? e0))
+  ;; 按 view 直取 buffer（省一次 document-id 往返）
+  (check-eq? (editor-view-buffer e0 0) (editor-document-buffer e0 0))
   ;; primary 下标读口（focus / 指定 view）
   (check-equal? (editor-primary-index e0) 0)
   (check-equal? (editor-view-primary-index e0 0) 0)

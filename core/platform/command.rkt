@@ -137,11 +137,11 @@
   (define-values (e1 r1) (editor-edit e0 (edit-insert-char #\a)))
   (define-values (e2 _u1) (editor-edit e1 (edit-insert-char #\b)))
   (define-values (e3 _u2) (editor-edit e2 (edit-insert-char #\c)))
-  (check-equal? (editor-buffer->string e3 0) "abc")
+  (check-equal? (editor-document->string e3 0) "abc")
   (check-equal? (change-report-first-line r1) 0)
-  (check-equal? (editor-undo-depth e3 0) 1)          ; 打字连续段并成 1 步
+  (check-equal? (editor-document-undo-depth e3 0) 1)          ; 打字连续段并成 1 步
   (define-values (u1 r-u3) (editor-undo e3))
-  (check-equal? (editor-buffer->string u1 0) "")
+  (check-equal? (editor-document->string u1 0) "")
   (check-equal? (editor-point u1) (point 0 0))
   ;; 撤销报告：施加顺序的 undo-descs
   (check-equal? (change-report-texts r-u3)
@@ -149,7 +149,7 @@
                       (edit-desc (point 0 1) (point 0 2) "")
                       (edit-desc (point 0 0) (point 0 1) "")))
   (define-values (r1b r-u4) (editor-redo u1))
-  (check-equal? (editor-buffer->string r1b 0) "abc")
+  (check-equal? (editor-document->string r1b 0) "abc")
   (check-equal? (change-report-texts r-u4)
                 (list (edit-desc (point 0 0) (point 0 0) "a")
                       (edit-desc (point 0 1) (point 0 1) "b")
@@ -160,10 +160,10 @@
   (define-values (ed2 bid1) (editor-open-document ed "BBB" #:name "b.txt" #:focus? #t))
   (check-equal? (editor-document-id ed2) bid1)
   (define-values (ed3 _u5) (editor-edit ed2 (edit-insert "x")))
-  (check-equal? (editor-buffer->string ed3 bid1) "xBBB")
-  (check-equal? (editor-buffer->string ed3 0) "AAA")
-  (check-true (editor-can-undo? ed3 bid1))
-  (check-false (editor-can-undo? ed3 0))
+  (check-equal? (editor-document->string ed3 bid1) "xBBB")
+  (check-equal? (editor-document->string ed3 0) "AAA")
+  (check-true (editor-document-can-undo? ed3 bid1))
+  (check-false (editor-document-can-undo? ed3 0))
 
   ;; 多视图同 document：free 映射、follow 镜像
   (define m0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
@@ -171,10 +171,10 @@
   (define m2 (editor-focus-view (editor-view-set-sync m1 v0 'follow) 0))
   (define m3 (editor-goto m2 (point 0 0)))
   (define-values (m4 _u6) (editor-edit m3 (edit-insert "XY")))
-  (check-equal? (editor-buffer->string m4 0) "XYl0\nl1\nl2\nl3\nl4\nl5\nl6")
+  (check-equal? (editor-document->string m4 0) "XYl0\nl1\nl2\nl3\nl4\nl5\nl6")
   (check-equal? (editor-point m4) (point 0 2))
   (check-equal? (editor-view-point m4 v0) (point 0 2))
-  (check-eq? (editor-buffer m4 0) (window-buffer (view-window (editor-view-ref m4 v0))))
+  (check-eq? (editor-document-buffer m4 0) (window-buffer (view-window (editor-view-ref m4 v0))))
 
   ;; 同步契约：follow 镜像 leader 视口；free 钉住；别的 buffer 不动
   (define g0 (editor-open (string-join (map number->string (range 30)) "\n") 5 20))
@@ -187,9 +187,9 @@
   (check-equal? (editor-view-top-line g5 vfree) 0)
   (check-equal? (editor-view-top-line g5 vfollow) (editor-top-line g5))
   (define-values (g6 _u9) (editor-edit g5 (edit-insert-char #\X)))
-  (check-equal? (editor-buffer->string g6 other) "OTHER")
+  (check-equal? (editor-document->string g6 other) "OTHER")
   (check-equal? (editor-view-top-line g6 vfollow) (editor-view-top-line g6 0))
-  (check-eq? (editor-buffer g6 0) (window-buffer (view-window (editor-view-ref g6 vfollow))))
+  (check-eq? (editor-document-buffer g6 0) (window-buffer (view-window (editor-view-ref g6 vfollow))))
 
   ;; 显式 vid 的用户语义：不抢焦点，只作用目标 view
   (define p0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6"))
@@ -198,11 +198,11 @@
   (check-equal? (editor-view-point p2 pv) (point 3 0))
   (check-equal? (editor-point p2) (point 0 0))              ; 焦点 view 光标不动
   (define-values (p3 _r) (editor-view-edit p2 pv (edit-insert "X")))
-  (check-equal? (editor-buffer->string p3 0) "l0\nl1\nl2\nXl3\nl4\nl5\nl6")
+  (check-equal? (editor-document->string p3 0) "l0\nl1\nl2\nXl3\nl4\nl5\nl6")
   (check-equal? (editor-point p3) (point 0 0))
-  (check-true (editor-can-undo? p3 0))
+  (check-true (editor-document-can-undo? p3 0))
   (define-values (p4 _r2) (editor-view-undo p3 pv))
-  (check-equal? (editor-buffer->string p4 0) "l0\nl1\nl2\nl3\nl4\nl5\nl6")
+  (check-equal? (editor-document->string p4 0) "l0\nl1\nl2\nl3\nl4\nl5\nl6")
   (define p5 (editor-view-scroll p4 pv 2))
   (check-equal? (editor-view-top-line p5 0) 0)              ; 焦点 view 视口不动
 
@@ -212,58 +212,58 @@
                                                (selection (point 0 8) (point 0 11)))))
   (check-equal? (length (editor-selections mc1)) 2)
   (define-values (mc2 _r-mc) (editor-edit mc1 (edit-insert "XX")))
-  (check-equal? (editor-buffer->string mc2 0) "XX bar XX")
-  (check-equal? (editor-undo-depth mc2 0) 1)                 ; 整批一步
+  (check-equal? (editor-document->string mc2 0) "XX bar XX")
+  (check-equal? (editor-document-undo-depth mc2 0) 1)                 ; 整批一步
   (check-equal? (length (editor-selections mc2)) 2)          ; 两选区各自映射
   (define-values (mc3 _u-mc) (editor-undo mc2))
-  (check-equal? (editor-buffer->string mc3 0) "foo bar foo")
+  (check-equal? (editor-document->string mc3 0) "foo bar foo")
 
   ;; 多光标退格：每个光标删各自前一个字符（选区为空时）
   (define mc4 (editor-set-selections (editor-open "abc")
                                      (list (selection (point 0 1) (point 0 1))
                                            (selection (point 0 3) (point 0 3)))))
   (define-values (mc5 _r5) (editor-edit mc4 (edit-backspace)))
-  (check-equal? (editor-buffer->string mc5 0) "b")
+  (check-equal? (editor-document->string mc5 0) "b")
 
   ;; 跨行选区 + 边界光标：desc 重叠 → 合并重算，不崩（回归）
   (define oc (editor-set-selections (editor-open "abc\ndef\nghi")
                                     (list (selection (point 0 0) (point 1 0)) (caret (point 1 0)))))
   (check-equal? (length (editor-selections oc)) 2)
   (define-values (oc1 _oc) (editor-edit oc (edit-backspace)))
-  (check-equal? (editor-buffer->string oc1 0) "def\nghi")
+  (check-equal? (editor-document->string oc1 0) "def\nghi")
   ;; 前向删除同边界情形
   (define od (editor-set-selections (editor-open "abc\ndef")
                                     (list (caret (point 0 0)) (selection (point 0 0) (point 0 2)))))
   (define-values (od1 _od) (editor-edit od (edit-delete)))
-  (check-equal? (editor-buffer->string od1 0) "c\ndef")
+  (check-equal? (editor-document->string od1 0) "c\ndef")
 
   ;; 编辑原语 editor-command：策略是参数
   (define ec0 (editor-open "abcdef"))
   ;;   默认：焦点 view 的选区 + reaction 'none；#:record? 'default → 跟随 document 策略（这里 #:history? #t）
   (define-values (ec1 _ec-r1) (editor-command ec0 (edit-insert "X")))
-  (check-equal? (editor-buffer->string ec1 0) "Xabcdef")
+  (check-equal? (editor-document->string ec1 0) "Xabcdef")
   (check-equal? (editor-point ec1) (point 0 0))          ; none：光标不动
-  (check-true (editor-can-undo? ec1))                    ; 默认跟随 document
+  (check-true (editor-document-can-undo? ec1))                    ; 默认跟随 document
   ;;   #:record? #f：显式不记账
   (define-values (ec1n _ec1nr) (editor-command ec0 (edit-insert "X") #:record? #f))
-  (check-false (editor-can-undo? ec1n))
+  (check-false (editor-document-can-undo? ec1n))
   ;;   显式 #:selection：程序化定位
   (define-values (ec2 _ec-r2) (editor-command ec0 (edit-insert "Y")
                                            #:selection (list (caret (point 0 3)))))
-  (check-equal? (editor-buffer->string ec2 0) "abcYdef")
+  (check-equal? (editor-document->string ec2 0) "abcYdef")
   ;;   显式 #:reaction 'leader + #:record?：用户编辑语义
   (define-values (ec3 _ec-r3) (editor-command ec0 (edit-insert "X") #:reaction 'leader #:record? #t))
   (check-equal? (editor-point ec3) (point 0 1))          ; leader：光标推进到插入后
-  (check-true (editor-can-undo? ec3))
+  (check-true (editor-document-can-undo? ec3))
   ;;   显式 #:trusted? #t：绕 read-only
-  (define-values (ecr _ecr-r) (editor-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
+  (define-values (ecr _ecr-r) (editor-document-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
   (define-values (ecr1 rcr1) (editor-command ecr (edit-insert-char #\X)
                                              #:selection (list (caret (point 0 1)))))
   (check-false rcr1)
-  (check-equal? (editor-buffer->string ecr1 0) "abc")
+  (check-equal? (editor-document->string ecr1 0) "abc")
   (define-values (ecr2 _ec-rcr2) (editor-command ecr (edit-insert-char #\X)
                                               #:selection (list (caret (point 0 1))) #:trusted? #t))
-  (check-equal? (editor-buffer->string ecr2 0) "aXbc")
+  (check-equal? (editor-document->string ecr2 0) "aXbc")
 
   ;; 显式同步：裸写不同步；editor-follow 才把 follow view 镜像到 leader 的 window
   ;; （leader 须光标可见：rebase-follow 会按 mirror 后的光标重新 ensure）
@@ -285,26 +285,26 @@
                                 (attr-set (edit-desc-start d) (edit-desc-after-position d)
                                           read-only-key #t)))
                     #:reaction 'leader #:record? #t))
-  (check-equal? (editor-buffer->string ba1 0) "aXbc")
-  (check-equal? (editor-attrs-key-runs ba1 0 0 read-only-key) (list (list 1 2 #t)))
-  (check-equal? (editor-undo-depth ba1 0) 1)
+  (check-equal? (editor-document->string ba1 0) "aXbc")
+  (check-equal? (editor-document-attrs-key-runs ba1 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-document-undo-depth ba1 0) 1)
   (define-values (ba2 _ba-u) (editor-undo ba1))
-  (check-equal? (editor-buffer->string ba2 0) "abc")
-  (check-false (attr-read-only? (editor-attrs-at ba2 0 (point 0 1))))
+  (check-equal? (editor-document->string ba2 0) "abc")
+  (check-false (attr-read-only? (editor-document-attrs-at ba2 0 (point 0 1))))
   ;; 重做也要把文本 + 属性恢复
   (define-values (ba3 _ba-r2) (editor-redo ba2))
-  (check-equal? (editor-buffer->string ba3 0) "aXbc")
-  (check-equal? (editor-attrs-key-runs ba3 0 0 read-only-key) (list (list 1 2 #t)))
+  (check-equal? (editor-document->string ba3 0) "aXbc")
+  (check-equal? (editor-document-attrs-key-runs ba3 0 0 read-only-key) (list (list 1 2 #t)))
 
   ;; 删除带属性的文本再撤销：属性不得丢失（旧实现的回归点）
   (define br0 (editor-open "abc"))
-  (define-values (br1 _br-r) (editor-apply-attrs br0 0 (list (attr-set (point 0 0) (point 0 3) read-only-key #t))))
+  (define-values (br1 _br-r) (editor-document-apply-attrs br0 0 (list (attr-set (point 0 0) (point 0 3) read-only-key #t))))
   (define br2 (editor-set-selections br1 (list (selection (point 0 1) (point 0 2)))))
   (define-values (br3 _br-e) (editor-command br2 (edit-backspace) #:trusted? #t #:reaction 'leader #:record? #t))
-  (check-equal? (editor-buffer->string br3 0) "ac")
+  (check-equal? (editor-document->string br3 0) "ac")
   (define-values (br4 _br-u) (editor-undo br3))
-  (check-equal? (editor-buffer->string br4 0) "abc")
-  (check-equal? (editor-attrs-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
+  (check-equal? (editor-document->string br4 0) "abc")
+  (check-equal? (editor-document-attrs-key-runs br4 0 0 read-only-key) (list (list 0 3 #t)))
 
   ;; 跨 document 视口同步（行数相同 → 行恒等）
   (define lk0 (editor-open (string-join (for/list ([i (in-range 8)]) (format "l~a" i)) "\n") 3 10 #:name "A"))
@@ -322,7 +322,7 @@
   (define lk4 (editor-view-goto lk3 0 (point 0 0)))
   (check-equal? (editor-view-top-line lk4 vidB) 0)
   ;; 解链后不再跟
-  (define lk5 (editor-unlink-view lk4 vidB))
+  (define lk5 (editor-view-unlink lk4 vidB))
   (check-false (editor-view-link lk5 vidB))
   (define lk6 (editor-view-goto lk5 0 (point 5 0)))
   (check-equal? (editor-view-top-line lk6 vidB) 0)   ; 已解链，不动
