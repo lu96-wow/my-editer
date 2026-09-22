@@ -481,8 +481,8 @@
   (define mvid (app-mirror-vid app))
   ;; 两个 pane 各自投影成 screen，再拼成整屏；只有活动 pane 的光标透出
   (screen-compose (max 1 (sub1 (app-rows app))) (app-cols app)
-                  (list (list 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
-                        (list 'right (pane-left-w (app-cols app) (app-split app)) 0
+                  (list (pane 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
+                        (pane 'right (pane-left-w (app-cols app) (app-split app)) 0
                               (editor-view->screen ed mvid (app-face-provider app))))
                   (if (= (editor-focus ed) 0) 'left 'right)))
 

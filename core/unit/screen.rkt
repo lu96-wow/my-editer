@@ -18,6 +18,7 @@
  (struct-out run)
  (struct-out cursor)
  (struct-out region)
+ (struct-out pane)
  screen screen? screen-height screen-width screen-cursors screen-selections
  screen-empty
  screen-row
@@ -124,13 +125,16 @@
 (define (shift-cursor c x y) (cursor (+ y (cursor-row c)) (+ x (cursor-col c)) (cursor-face c) (cursor-primary? c)))
 (define (shift-region rg x y) (region (+ y (region-row rg)) (+ x (region-start-col rg)) (+ x (region-end-col rg)) (region-face rg)))
 
-;; 拼屏：把若干块 (list id x y screen) 贴到 (height width) 大屏。
-;; 文本 + 选区按 x/y 平移自各块；**只有 active 块的光标**被透出（非活动窗格不显示光标）。
-(define (screen-compose height width pieces active-id)
+;; 一个「贴在合成屏上的子帧」：id 供 active 匹配，x/y 是左上角（可负，超出部分裁掉）。
+(struct pane (id x y screen) #:transparent)
+
+;; 拼屏：把若干 pane 贴到 (height width) 大屏。
+;; 文本 + 选区按 x/y 平移自各 pane；**只有 active pane 的光标**被透出（非活动窗格不显示光标）。
+(define (screen-compose height width panes active-id)
   (define row-runs (make-vector height '()))
   (define sel-out '())
-  (for ([piece (in-list pieces)])
-    (match-define (list _id x y s) piece)
+  (for ([p (in-list panes)])
+    (define x (pane-x p)) (define y (pane-y p)) (define s (pane-screen p))
     (for ([r (in-range (screen-height s))])
       (define dst (+ y r))
       (when (and (>= dst 0) (< dst height))
@@ -141,13 +145,12 @@
       (set! sel-out (cons (shift-region rg x y) sel-out))))
   (define sorted (for/vector ([runs (in-vector row-runs)])
                    (sort runs (lambda (a b) (< (run-col a) (run-col b))))))
-  (define active (for/first ([piece (in-list pieces)] #:when (eq? (car piece) active-id)) piece))
-  ;; 只透出 active 块的光标。
+  (define active (for/first ([p (in-list panes)] #:when (equal? (pane-id p) active-id)) p))
+  ;; 只透出 active pane 的光标。
   (define active-cursors
     (if active
-        (let ()
-          (match-define (list _ x y s) active)
-          (map (lambda (c) (shift-cursor c x y)) (screen-cursors s)))
+        (map (lambda (c) (shift-cursor c (pane-x active) (pane-y active)))
+             (screen-cursors (pane-screen active)))
         '()))
   (screen height width sorted active-cursors sel-out))
 
@@ -196,7 +199,7 @@
                      (list (cursor 1 1 (hash 'face 'cursor) #t)) (list (region 0 0 2 (hash 'face 'selection)))))
   (define sb (screen 2 4 (vector (list (run 0 "XY" (hash))) (list (run 0 "ZW" (hash))))
                      (list (cursor 0 0 (hash 'face 'cursor) #t)) '()))
-  (define comp (screen-compose 2 8 (list (list 'a 0 0 sa) (list 'b 4 0 sb)) 'b))
+  (define comp (screen-compose 2 8 (list (pane 'a 0 0 sa) (pane 'b 4 0 sb)) 'b))
   (check-equal? (screen-row comp 0)
                 (list (run 0 "ab" (hash)) (run 4 "XY" (hash))))
   (check-equal? (screen-row comp 1)
@@ -206,7 +209,7 @@
   (check-equal? (map cursor-col (screen-cursors comp)) '(4))          ; 只透 active(b)
   (check-equal? (map region-row (screen-selections comp)) '(0))       ; 选区来自 a，row+0
   (check-equal? (map region-start-col (screen-selections comp)) '(0))
-  ;; active 不在 pieces → 隐藏光标
-  (check-equal? (screen-cursor-row (screen-compose 2 8 (list (list 'a 0 0 sa)) 'b)) -1)
+  ;; active 不在 panes → 隐藏光标
+  (check-equal? (screen-cursor-row (screen-compose 2 8 (list (pane 'a 0 0 sa)) 'b)) -1)
 
   (displayln "screen.rkt: all tests passed"))

@@ -107,6 +107,7 @@
  run run? struct:run run-col run-text run-face
  cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
  region region? struct:region region-row region-start-col region-end-col region-face
+ pane pane? struct:pane pane-id pane-x pane-y pane-screen
  screen? screen-height screen-width screen-row screen->rows screen-row->string
  screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-damage screen-compose screen->string
  ;; ---- window ----

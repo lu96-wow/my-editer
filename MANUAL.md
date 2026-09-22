@@ -385,6 +385,15 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `cursor` / `cursor?` / `cursor-row` / `cursor-col` / `cursor-face` / `cursor-primary?` | `(cursor row col face primary?)` | 光标 overlay |
 | `region` / `region?` / `region-row` / `region-start-col` / `region-end-col` / `region-face` | `(region row start-col end-col face)` | 选中区 overlay |
 
+#### pane（合成屏里的一块）
+
+`(struct pane (id x y screen))`：把子帧 `screen` 的左上角贴在合成屏 `(x,y)`（可负，超出裁掉）；
+`id` 供 `screen-compose` 匹配 `active-id`，只有 active pane 的光标透出。
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `pane` / `pane?` / `pane-id` / `pane-x` / `pane-y` / `pane-screen` | `(pane id x y screen)` | 合成屏的一块子帧 |
+
 #### 怎么画（最小终端渲染器）
 
 对每一行 r：
@@ -423,7 +432,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 
 | 名字 | 签名 | 语义 |
 |---|---|---|
-| `screen-compose` | `(screen-compose height width pieces active-id)` | 把 `pieces = (list id x y screen)` 贴到大屏；文本/选区按 x/y 平移，**只透出 active 块的光标** |
+| `screen-compose` | `(screen-compose height width panes active-id)` | 把 `(listof pane)` 贴到大屏；文本/选区按 x/y 平移，**只透出 active pane 的光标** |
 | `screen-damage` | `(screen-damage old new)` | 需要**整行重绘**的行号（文本 ∪ overlay 变化）；`#f` = 整屏重绘（帧尺寸变化） |
 
 #### 投影 API
@@ -481,6 +490,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `run` | `col : nat`、`text : string`、`face : hash` | 屏幕一行里的一段 |
 | `cursor` | `row : nat`、`col : nat`、`face : hash`、`primary? : bool` | 视图 overlay |
 | `region` | `row : nat`、`start-col : nat`、`end-col : nat`、`face : hash` | 视图 overlay |
+| `pane` | `id : any`、`x : int`、`y : int`、`screen : screen` | 合成屏的一块子帧 |
 | `screen` | `height : nat`、`width : nat`、`row-runs : (vectorof (listof run))`、`cursors : (listof cursor)`、`selections : (listof region)` | 不透明；后端据此画 |
 
 字符索引 vs 显示列：**`point.col` 是字符索引**；**`window.left-col` / `run-col` /
