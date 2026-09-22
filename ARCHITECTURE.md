@@ -376,3 +376,58 @@ change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.r
     的关键；只靠 `attrs-apply-edit` 跟随重放是回不来的。
 - `history` 的一步是 change 的**序列**（`replay` / `undo` 都是 `(listof change)`），
   因为连续打字合并时每条 desc 的坐标基于前一条之后，不能塞进一个批语义的 change。
+
+---
+
+## 13. `default-editor/` —— 布局与打包（core 之上）
+
+core 只管「一个 document 的一个 viewport」，**没有窗口管理**（分区 / 拼屏 / 焦点路由）。
+窗口管理整体在 `default-editor/`，它只依赖低层公开面（`core/api.rkt` + `core/editor.rkt`），
+不改 core：
+
+```
+core/                     引擎：atom < unit < doc < viewport < platform         （L0-L5）
+default-editor/           窗口管理：几何 + 组件 + 打包壳 + 后端                 （L6）
+io/                       示例 / 自定义应用                                     （L6）
+```
+
+```
+default-editor/
+├── layout.rkt     纯几何：rows×cols → rect（main / tree / status）
+├── status.rkt     组件：状态栏 = 可复用的**派生 document**
+├── tree.rkt       组件：文件树 = 可复用的**派生 document**
+├── shell.rkt      打包壳：editor ⊕ tree ⊕ status ⊕ layout ⊕ focus
+└── terminal.rkt   默认终端后端：screen → 字节 + 事件循环 + 增量重绘
+```
+
+`tools/layers.rkt` 把 `default-editor` 记为 L6，同样机械校验「不得向上」。
+
+### 派生 document（派生 UI 的统一套路）
+
+状态栏与文件树都不是用户写作的文本，而是**内容由外部状态算出来的 document**：
+
+- 在同一个 `editor` 里开一个 `#:history? #f` 的 document（+ view）；
+- `*-refresh` 从外部状态现算文本，**只在文本变化时才写**（走 `editor-command-batch`
+  `#:trusted? #t` `#:record? #f`，tick 不动就不产生重绘）；
+- face 一律走**投影 provider**（派生，不进文档）；
+- 行选择 / 滚动 / 裁剪 / `screen-compose` 沿用 core，组件不自己布局。
+
+所以 core 不需要「派生文档」「窗口」这些概念——`#:history?` 策略 + provider + 唯一变更漏斗
+已经够用。
+
+### shell：窗口管理
+
+`shell` 把「一个 editor + 左栏文件树 + 底部状态栏 + 布局几何」包成一个不可变值；操作是
+`shell → shell`（输入路径返回 `(values shell quit?)`）。职责：
+
+| 名字 | 行为 |
+|---|---|
+| `shell-open` | 开主文档 + 树 + 状态栏，按 `layout` 给三个 view 定尺寸 |
+| `shell-refresh` | 重算布局尺寸 → 写回三个 view → refresh 树 / 状态栏 |
+| `shell-resize` / `shell-toggle-sidebar` | 改几何（左栏可隐藏），main 至少 1×1 |
+| `shell-focus` / `shell-focus-at` | 焦点 = `'main` / `'tree`（由 `editor-focus` 派生；状态栏永不聚焦） |
+| `shell-open-file` / `shell-write-file` | 主 view 换 document / 写盘（IO 边界） |
+| `shell->screen` | `screen-compose` 拼 main / tree / status；只透出活动 pane 的光标 |
+| `shell-handle` / `shell-key` / `shell-click` | 默认键位与鼠标路由；键位是应用策略，可整层替换 |
+
+`shell` 的 `screen` 仍然后端无关；`terminal.rkt` 才把 `screen` 画成字节（`screen-damage` 增量）。

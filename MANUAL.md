@@ -37,6 +37,12 @@
   - [3.15 change-report](#315-change-report)
 - [4. 配方](#4-配方)
 - [5. 类型、不变量、违约](#5-类型不变量违约)
+- [6. `default-editor`：布局与打包](#6-default-editor布局与打包)
+  - [6.1 layout（几何）](#61-layout几何)
+  - [6.2 status（状态栏）](#62-status状态栏)
+  - [6.3 tree（文件树）](#63-tree文件树)
+  - [6.4 shell（打包壳）](#64-shell打包壳)
+  - [6.5 terminal（默认终端后端）](#65-terminal默认终端后端)
 
 ---
 
@@ -928,3 +934,111 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 
 **只读守卫**：默认开；`#:trusted? #t`（`document-apply-change` / `editor-command*`）跳。
 没有全局开关。
+
+---
+
+## 6. `default-editor`：布局与打包
+
+core 只管一个 document 的一个 viewport；**布局与窗口管理**在 `default-editor/`（L6），
+只依赖 `core/api.rkt` + `core/editor.rkt`。三个概念：
+
+- **派生 document**：状态栏 / 文件树内容由外部状态算出，物化成 `#:history? #f` 的 document；
+  face 走投影 provider（不存文档）；文本不变则不写。
+- **layout**：纯几何，把 rows×cols 切成 main / tree / status 三块矩形。
+- **shell**：把 editor ⊕ tree ⊕ status ⊕ layout ⊕ focus 打包成一个不可变值。
+
+### 6.1 layout（几何）
+
+```racket
+(require "default-editor/layout.rkt")
+```
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `layout-open` | `(layout-open rows cols #:sidebar? #t #:sidebar-width 30 #:status-height 1)` | 造布局（自动 normalize） |
+| `layout-normalize` | `(layout-normalize l)` | 夹紧：main ≥ 1×1；status ≤ rows-1；tree ≤ cols-1 |
+| `layout-main` / `layout-tree` / `layout-status` | `(layout-main l)` | 三块 `rect` |
+| `layout-region-at` | `(layout-region-at l x y)` | 命中 `'main` / `'tree` / `'status` / `#f` |
+| `layout-sidebar?` / `layout-sidebar-width` / `layout-status-height` | | 读口 |
+| `layout-set-sidebar?` / `layout-set-sidebar-width` / `layout-set-status-height` | | 写口（自动 normalize） |
+
+### 6.2 status（状态栏）
+
+```racket
+(require "default-editor/status.rkt")
+```
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `status-open` | `(status-open ed [height 1] [width 80] #:name "*status*" #:source [source (editor-focus ed)])` | 建状态栏文档；返回 `(values ed status)` |
+| `status-refresh` | `(status-refresh ed s #:left #f #:right #f)` | 从 `source` 现算文本；变了才写 |
+| `status-set-message` | `(status-set-message ed s msg)` | 设瞬时消息（右对齐）并刷新 |
+| `status-set-source` | `(status-set-source ed s vid)` | 换被描述的 view |
+| `status-line` | `(status-line ed [vid] #:message #f #:width #f #:left #f #:right #f)` | 纯逻辑：算一行文本 + 段 |
+| `status-provider` / `status-screen` | | 投影（provider / 一帧） |
+| `status-document-id` / `status-view` / `status-source` / `status-message` / `status-segments` | | 读口 |
+| `status-close` | `(status-close ed s)` | 关文档 |
+
+默认行：` {name}  L{line}:C{col}  sel:{n}  {mode}`，右端放 message。face 约定
+`status-name` / `status-pos` / `status-sel` / `status-mode` / `status-message`。
+
+### 6.3 tree（文件树）
+
+```racket
+(require "default-editor/tree.rkt")
+```
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `tree-open` | `(tree-open ed root [height 24] [width 30] #:name "*tree*" #:show-hidden? #f #:current #f #:expanded #f)` | 建文件树文档；返回 `(values ed tree)` |
+| `tree-refresh` / `tree-rescan` | `(tree-refresh ed t)` | 重扫 fs，重建文本 + entries |
+| `tree-enter` | `(tree-enter ed t)` | 目录→展开/收起；文件→返回 `'open` action |
+| `tree-selected` | `(tree-selected ed t)` | 选中行 → 路径（`#f` 无） |
+| `tree-goto-line` / `tree-set-selected` | | 定位光标 |
+| `tree-up` / `tree-down` / `tree-home` / `tree-end` | | 行导航 |
+| `tree-expand` / `tree-collapse` / `tree-toggle` | | 对选中目录 |
+| `tree-set-root` / `tree-set-current` / `tree-set-show-hidden` | | 结构 / 高亮 / 隐藏项 |
+| `tree-lines` | `(tree-lines root expanded #:show-hidden? #f)` | 纯逻辑：算整棵树文本 + entries |
+| `tree-provider` / `tree-screen` | | 投影（face：`tree-dir` / `tree-file` / `tree-current`） |
+| `tree-action?` / `tree-action-kind` / `tree-action-path` | | `'open`（文件）/ `'toggle`（目录） |
+| `tree-document-id` / `tree-view` / `tree-root` / `tree-expanded` / `tree-expanded?` / `tree-entries` / `tree-current` | | 读口 |
+
+行格式：缩进 2 空格/层，目录 `- `（已展开）/ `+ `（已收起），文件 `  `。
+
+### 6.4 shell（打包壳）
+
+```racket
+(require "default-editor/shell.rkt")
+```
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `shell-open` | `(shell-open [path #f] [rows 24] [cols 80] #:root (current-directory) #:sidebar? #t #:sidebar-width 30 #:status-height 1)` | 打包主文档 + 树 + 状态栏 + 布局 |
+| `shell-refresh` | `(shell-refresh s)` | 重算尺寸 → 写回三 view → refresh 树/状态 |
+| `shell-resize` | `(shell-resize s rows cols)` | 改屏尺寸 |
+| `shell-toggle-sidebar` / `shell-set-sidebar?` / `shell-set-sidebar-width` / `shell-set-status-height` | | 布局开关 |
+| `shell-focus` | `(shell-focus s)` | 查询：`'main` / `'tree` |
+| `shell-focus-at` / `shell-toggle-focus` | `(shell-focus-at s 'tree)` | 改焦点（隐藏时忽略 tree） |
+| `shell-open-text` / `shell-open-file` | `(shell-open-file s path)` | 主 view 换 document（读盘） |
+| `shell-write-file` | `(shell-write-file s [path])` | 写盘（IO 边界），返回 `(values shell ok?)` |
+| `shell-set-message` / `shell-clear-message` | | 状态栏消息 |
+| `shell->string` / `shell-main-did` | | 主文档文本 / did |
+| `shell->screen` | `(shell->screen s #:face-provider shell-default-provider)` | `screen-compose` 拼屏 |
+| `shell-handle` | `(shell-handle s ev)` | core 事件 → `(values shell quit?)` |
+| `shell-text` / `shell-key` / `shell-click` / `shell-wheel` | | 语义输入 |
+| `shell-undo` / `shell-redo` / `shell-toggle-line-numbers` | | 命令 |
+| `shell-editor` / `shell-tree` / `shell-status` / `shell-layout` / `shell-main-vid` / `shell-path` / `shell-message` / `shell-sidebar?` | | 读口 |
+
+默认键位：`←→↑↓ Home End PgUp PgDn` 导航；`Shift+方向` 扩选；`Alt+↑↓` 加光标；
+`^Z ^Y` 撤销/重做；`^S` 保存；`^W` 切焦点；`^B` 开关侧栏；`^Q` 退出；`Esc` 收敛选区/退出；
+文件树焦点下 `↑↓` 移动、`←→` 收起/展开、`Enter` 打开·展开。
+
+### 6.5 terminal（默认终端后端）
+
+```racket
+(require "default-editor/terminal.rkt")
+(run-default-editor [path #f] #:root [root (current-directory)])
+```
+
+唯一碰终端字节的地方：`shell->screen` → `screen-damage` 增量 → `put-bytes`；事件循环用
+`build-input` 把按键转成 `shell-*`。想换后端（GUI / Web），只替换本层。

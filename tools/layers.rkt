@@ -20,7 +20,8 @@
     ("core/viewport"  . 3)
     ("core/api.rkt"   . 3)
     ("core/platform"  . 4)
-    ("core/editor.rkt" . 5)))
+    ("core/editor.rkt" . 5)
+    ("default-editor" . 6)))
 
 ;; core/ 下所有 .rkt（排除 compiled）
 (define (rkt-files dir)
@@ -42,6 +43,10 @@
 
 (define (root-relative p) (path->string (find-relative-path root (simplify-path p))))
 
+;; 扫描的层根：core（L0-L5）+ default-editor（L6）。
+(define layer-roots (list (build-path root "core") (build-path root "default-editor")))
+(define (all-rkt-files) (append* (map rkt-files layer-roots)))
+
 ;; 读 body 形态（去掉 #lang 行），收集**顶层** require 的字符串目标。
 ;; 只看生产依赖：module+ test 等子模块里的 require 不算（测试可以向上借更高层来驱动）。
 (define (read-forms path)
@@ -59,7 +64,7 @@
 
 (define (violations)
   (filter values
-          (for*/list ([f (in-list (rkt-files (build-path root "core")))]
+          (for*/list ([f (in-list (all-rkt-files))]
                       [spec (in-list (append* (map collect-requires (read-forms f))))])
             (define src-rank (file->rank (root-relative f)))
             (define tgt (simplify-path (build-path (path-only f) spec)))
@@ -69,7 +74,7 @@
 
 (define (report)
   (define vs (violations))
-  (for ([f (in-list (sort (rkt-files (build-path root "core"))
+  (for ([f (in-list (sort (all-rkt-files)
                           (lambda (a b) (string<? (path->string a) (path->string b)))))])
     (define rel (root-relative f))
     (printf "  L~a  ~a\n" (or (file->rank rel) '-) rel))
