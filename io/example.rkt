@@ -52,13 +52,15 @@
 ;;        是否高亮）都是**前端状态**，core 不存。
 ;; [前端] 会话状态（比如「有没有未保存改动」）也归前端——core 的 tick 只是版本戳。
 
-(struct app (ed rows cols name highlight? mirror-vid split) #:transparent)
+(struct app (ed rows cols name highlight? mirror-vid split last-scr last-status) #:transparent)
 ;; ed        : editor
 ;; rows/cols : nat      终端整屏尺寸（最后一行留作状态栏）
 ;; name      : string
 ;; highlight? : boolean 是否跑关键字高亮
 ;; mirror-vid : view-id 右窗格视图（看第二个 document）
 ;; split     : rational 左 pane 宽度占比（在 split-ratios 里轮换）
+;; last-scr  : (or/c screen #f) 上一帧（增量重绘的基准；#f = 首帧）
+;; last-status : (or/c string #f) 上一帧状态栏文本（变了才重画）
 
 ;; 分屏几何：左 pane 宽 = cols × split，右 = 其余；内容高 = rows-1（最后一行状态栏）。
 (define split-ratios '(1/2 1/3 2/3))
@@ -119,7 +121,7 @@
                                                   #:line-numbers? #t))
   ;; 链接两个 view：跨 document 视口同步（行固定、列按比例）；用 editor 层读口直接拿到镜像 document 的 view
   (define mvid (editor-document-view ed1 mdid))
-  (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid split))
+  (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid split #f #f))
 
 ;; 启动时给主文档预置一段**只读区**（仅在用内置 default-doc 时），便于立刻测试不可修改守卫：
 ;; 第 4..8 行写 read-only 属性（投影时显示为 read-only face）；编辑到那里会被守卫拒。
@@ -473,51 +475,82 @@
         (string (string-ref (run-text r) (column->index (run-text r) (- col (run-col r))))))
       " "))
 
-(define (frame->bytes app)
+;; 把当前 app 投影 + 拼屏成一帧 screen（不含状态栏那一行）。
+(define (frame-screen app)
   (define ed (app-ed app))
   (define mvid (app-mirror-vid app))
-  (define fvid (editor-focus ed))
   ;; 两个 pane 各自投影成 screen，再拼成整屏；只有活动 pane 的光标透出
-  (define scr
-    (screen-compose (max 1 (sub1 (app-rows app))) (app-cols app)
-                    (list (list 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
-                          (list 'right (pane-left-w (app-cols app) (app-split app)) 0
-                                (editor-view->screen ed mvid (app-face-provider app))))
-                    (if (= fvid 0) 'left 'right)))
-  (define row-runs (screen-row-runs scr))
-  (define parts (list format-cursor-hide format-screen-clear))
-  (define (emit! b) (set! parts (cons b parts)))
-  ;; 1) 文档文本
-  (for ([runs (in-vector row-runs)] [row (in-naturals)])
-    (for ([r (in-list runs)])
-      (emit! (format-cursor-move (add1 row) (add1 (run-col r))))
-      (define st (face-style (run-face r)))
-      (emit! (if st (format-styled st (run-text r)) (format-content (run-text r))))))
-  ;; 2) 选中区：叠加层——把区间文本重画成 selection 样式
-  (for ([g (in-list (screen-selections scr))])
-    (define txt (runs-substring (vector-ref row-runs (region-row g))
-                                (region-start-col g) (region-end-col g)))
+  (screen-compose (max 1 (sub1 (app-rows app))) (app-cols app)
+                  (list (list 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
+                        (list 'right (pane-left-w (app-cols app) (app-split app)) 0
+                              (editor-view->screen ed mvid (app-face-provider app))))
+                  (if (= (editor-focus ed) 0) 'left 'right)))
+
+(define (frame-status app)
+  (define ed (app-ed app))
+  (define mvid (app-mirror-vid app))
+  (define p (editor-point ed))
+  (format " ~a  L~a:C~a  sel~a  | L~a L~a  pane:~a  ~a  ^W ^Z^Y ^D ^A ^G ^O ^K ^L ^N ^R ^Q"
+          (app-name app) (add1 (point-line p)) (add1 (point-col p))
+          (length (editor-selections ed))
+          (editor-view-top-line ed 0) (editor-view-top-line ed mvid)
+          (if (= (editor-focus ed) 0) "L" "R")
+          (if (app-highlight? app) "hl:on" "hl:off")))
+
+;; 清行到行尾：增量重绘时先清本行，旧内容/旧 overlay 才不会残留。
+(define erase-eol (string->bytes/utf-8 "\u001b[K"))
+
+;; 画第 row 行：文本 runs → 该行选区 → 该行光标（顺序 = 叠加次序）。
+(define (emit-row! emit! row-runs scr row)
+  (for ([r (in-list (vector-ref row-runs row))])
+    (emit! (format-cursor-move (add1 row) (add1 (run-col r))))
+    (define st (face-style (run-face r)))
+    (emit! (if st (format-styled st (run-text r)) (format-content (run-text r)))))
+  (for ([g (in-list (screen-selections scr))] #:when (= row (region-row g)))
+    (define txt (runs-substring (vector-ref row-runs row) (region-start-col g) (region-end-col g)))
     (unless (string=? txt "")
-      (emit! (format-cursor-move (add1 (region-row g)) (add1 (region-start-col g))))
+      (emit! (format-cursor-move (add1 row) (add1 (region-start-col g))))
       (emit! (format-styled 'selection txt))))
-  ;; 3) 所有光标：终端只有一个硬件光标，多光标只能画成格子（primary? 供前端区分样式）
-  (for ([c (in-list (screen-cursors scr))])
-    (emit! (format-cursor-move (add1 (cursor-row c)) (add1 (cursor-col c))))
-    (emit! (format-styled 'cursor (cell-text (vector-ref row-runs (cursor-row c)) (cursor-col c)))))
-  ;; 状态栏（最后一行）：左右 top-line + 活动窗格
-  (define p (editor-point (app-ed app)))
-  (define status
-    (format " ~a  L~a:C~a  sel~a  | L~a L~a  pane:~a  ~a  ^W switch ^Z^Y ^D ^A ^G ^O ^K ^L ^Q"
-            (app-name app) (add1 (point-line p)) (add1 (point-col p))
-            (length (editor-selections (app-ed app)))
-            (editor-view-top-line (app-ed app) 0) (editor-view-top-line (app-ed app) mvid)
-            (if (= fvid 0) "L" "R")
-            (if (app-highlight? app) "hl:on" "hl:off")))
-  (emit! (format-cursor-move (app-rows app) 1))
-  (emit! (format-styled 'status-bar (pad-to status (app-cols app))))
+  (for ([c (in-list (screen-cursors scr))] #:when (= row (cursor-row c)))
+    (emit! (format-cursor-move (add1 row) (add1 (cursor-col c))))
+    (emit! (format-styled 'cursor (cell-text (vector-ref row-runs row) (cursor-col c))))))
+
+;; 画一帧：首帧或 screen-damage → #f 时全屏；否则只重画受损行。
+;; 返回 (values bytes app')，app' 已更新 last-scr/last-status（事件循环据此保持基准）。
+(define (draw-frame app)
+  (define ed (app-ed app))
+  (define scr (frame-screen app))
+  (define status (frame-status app))
+  (define damage (if (app-last-scr app) (screen-damage (app-last-scr app) scr) #f))
+  (define row-runs (screen-row-runs scr))
+  (define parts '())
+  (define (emit! b) (set! parts (cons b parts)))
+  (emit! format-cursor-hide)
+  (cond
+    [(not damage)                              ; #f = 整屏重绘
+     (emit! format-screen-clear)
+     (for ([_ (in-vector row-runs)] [row (in-naturals)])
+       (emit-row! emit! row-runs scr row))]
+    [else                                      ; 增量：每个受损行先清行再重画
+     (for ([row (in-list damage)])
+       (emit! (format-cursor-move (add1 row) 1))
+       (emit! erase-eol)
+       (emit-row! emit! row-runs scr row))])
+  ;; 状态栏：变了或整屏才重画
+  (when (or (not damage) (not (equal? status (app-last-status app))))
+    (emit! (format-cursor-move (app-rows app) 1))
+    (emit! (format-styled 'status-bar (pad-to status (app-cols app)))))
   ;; 光标已画成格子 → 始终隐藏硬件光标
   (emit! format-cursor-hide)
-  (apply bytes-append (reverse parts)))
+  (values (apply bytes-append (reverse parts))
+          (app-with-frame app scr status)))
+
+(define (app-with-frame a scr status)     ; 参数名不能叫 app，否则遮蔽结构名
+  (struct-copy app a [last-scr scr] [last-status status]))
+
+;; 纯函数版（测试 / 一次性绘制）：只取 bytes，不更新基准。
+(define (frame->bytes app)
+  (call-with-values (lambda () (draw-frame app)) (lambda (b _app*) b)))
 
 ;;; ============================================================================
 ;;; §4 事件 → 命令（[前端] 映射；命令本身在 §2）
@@ -534,7 +567,10 @@
      (define-values (rows0 cols0) (get-window-size))
      (define app (open-app path (max 2 rows0) (max 1 cols0)))
      (define running? #t)
-     (define (redraw) (put-bytes (frame->bytes app)))
+     (define (redraw)
+       (define-values (bytes app*) (draw-frame app))
+       (set! app app*)
+       (put-bytes bytes))
 
      (define handler
        (build-input
@@ -758,6 +794,23 @@
   (check-true (attr-read-only? (editor-document-attrs-at (app-ed sy6) 0 (point 0 1))))
   (check-true (attr-read-only? (editor-document-attrs-at (app-ed sy6) sy-mdid (point 0 1))))
   (check-true (bytes? (frame->bytes sy6)))
+
+  ;; 增量渲染：首帧全屏；小编辑后只重画受损行（不再全清）；行号开关 → 整屏
+  (define (frame-str b) (bytes->string/utf-8 b))
+  (define (full-frame? b) (string-contains? (frame-str b) (bytes->string/utf-8 format-screen-clear)))
+  (define rr0 (make-app "abc\ndef" 6 40 "*rr*"))
+  (check-false (app-last-scr rr0))
+  (define-values (rrb1 rr1) (draw-frame rr0))
+  (check-true (full-frame? rrb1))                        ; 首帧：整屏
+  (check-true (screen? (app-last-scr rr1)))
+  (check-false (app-last-scr rr0))                       ; 纯函数：原 app 未被改
+  ;; 左 pane 插入一个字符 → 第二帧增量（不全清）
+  (define rr2 (edit rr1 (edit-insert "X")))
+  (define-values (rrb2 rr3) (draw-frame rr2))
+  (check-false (full-frame? rrb2))
+  ;; 行号栏开关（不经过 draw-frame 重置 last-scr）→ 下一帧整屏
+  (define rr4 (struct-copy app rr3 [ed (editor-set-line-numbers (app-ed rr3) #t)]))
+  (check-true (full-frame? (call-with-values (lambda () (draw-frame rr4)) (lambda (b _) b))))
 
   (displayln "example.rkt: all tests passed"))
 

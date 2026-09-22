@@ -108,7 +108,7 @@
  cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
  region region? struct:region region-row region-start-col region-end-col region-face
  screen? screen-rows screen-cols screen-row-runs
- screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-diff-rows screen-compose screen->string
+ screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-damage screen-compose screen->string
  ;; ---- window ----
  window? window-open
  window-document window-buffer window-point window-height window-width window-mode

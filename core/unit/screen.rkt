@@ -23,7 +23,7 @@
  screen-primary-cursor
  screen-cursor-row
  screen-cursor-col
- screen-diff-rows
+ screen-damage
  screen-compose
  screen->string)
 
@@ -76,11 +76,39 @@
    "\n"))
 
 ;; 两屏（同尺寸）之间发生变化的行号（增量绘制的依据；只比文档文本）。
-(define (screen-diff-rows old new)
-  (for/list ([row (in-range (screen-rows new))]
-             #:unless (equal? (vector-ref (screen-row-runs old) row)
-                              (vector-ref (screen-row-runs new) row)))
-    row))
+;; 两帧之间需要**整行重绘**的行号：文本变化行 ∪ overlay（光标/选区）变化行。
+;; 返回 #f = 必须**整屏重绘**（全局变化：帧尺寸、行号栏开关/宽度等）。
+(define (screen-damage old new)
+  (define rows (screen-rows new))
+  (cond
+    [(or (not (= rows (screen-rows old)))
+         (not (= (screen-cols new) (screen-cols old)))) #f]
+    [(not (equal? (gutter-shape old) (gutter-shape new))) #f]
+    [else
+     (for/list ([r (in-range rows)]
+                #:when (or (not (equal? (vector-ref (screen-row-runs old) r)
+                                        (vector-ref (screen-row-runs new) r)))
+                           (not (equal? (row-overlay old r) (row-overlay new r)))))
+       r)]))
+
+;; 行号栏“形状”：第 0 行里 'line-number face run 的 (col . 显示宽) 序列。
+;; 开关或位数变化 → 形状变 → 整屏重绘（栏宽一变，正文整体位移，逐行 diff 不可靠）。
+(define (gutter-shape s)
+  (if (zero? (screen-rows s))
+      '()
+      (for/list ([rn (in-list (vector-ref (screen-row-runs s) 0))]
+                 #:when (eq? 'line-number (hash-ref (run-face rn) 'face #f)))
+        (cons (run-col rn) (string-display-width (run-text rn))))))
+
+;; 某行的 overlay 规范化表示（光标 + 选区，按列排序），用于跨帧比较。
+(define (row-overlay s r)
+  (list
+   (sort (for/list ([c (in-list (screen-cursors s))] #:when (= r (cursor-row c)))
+           (list (cursor-col c) (cursor-face c) (cursor-primary? c)))
+         < #:key car)
+   (sort (for/list ([g (in-list (screen-selections s))] #:when (= r (region-row g)))
+           (list (region-start-col g) (region-end-col g) (region-face g)))
+         < #:key car)))
 
 (define (shift-run rn x) (run (+ x (run-col rn)) (run-text rn) (run-face rn)))
 (define (shift-cursor c x y) (cursor (+ y (cursor-row c)) (+ x (cursor-col c)) (cursor-face c) (cursor-primary? c)))
@@ -134,10 +162,17 @@
   (check-equal? (cursor-primary? (car (screen-cursors s1))) #t)
   (check-equal? (region-end-col (car (screen-selections s1))) 2)
 
-  ;; diff
+  ;; damage：文本行 ∪ overlay 行；尺寸/行号栏变化 → #f（全屏）
   (define s2 (screen 2 10 (vector (list r1 (run 2 "文" (hash 'face 'keyword))) '()) '() '()))
-  (check-equal? (screen-diff-rows s1 s2) '(0))
-  (check-equal? (screen-diff-rows s1 s1) '())
+  (check-equal? (screen-damage s1 s2) '(0))
+  (check-equal? (screen-damage s1 s1) '())
+  (check-equal? (screen-damage s1 (screen 3 10 (vector (list r1 r2) '() '()) '() '())) #f)   ; 尺寸变 → 全屏
+  ;; overlay 变化也要报（文本不变、只动光标）
+  (define s3 (screen 2 10 (vector (list r1 r2) '()) (list (cursor 1 1 (hash 'face 'cursor) #t)) '()))
+  (check-equal? (screen-damage s1 s3) '(0 1))
+  ;; 行号栏形状变化 → 全屏
+  (define s4 (screen 2 10 (vector (list (run 0 "1 " (hash 'face 'line-number)) r1) '()) '() '()))
+  (check-equal? (screen-damage s1 s4) #f)
 
   ;; compose：文本/选区平移；只有 active 块的光标出现
   (define sa (screen 2 4 (vector (list (run 0 "ab" (hash))) (list (run 0 "cd" (hash))))

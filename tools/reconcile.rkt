@@ -65,6 +65,7 @@
   '("face" "cursor" "tick" "top" "left-col" "top-seg"
     "payload" "none" "map" "leader" "clamp" "free" "follow"
     "buffer-id" "view-id" "buffer" "window" "editor" "op" "desc" "report"
+    "attrs" "document" "selection-set" "vrow"
     "data" "lambda" "apply" "state" "event" "run" "screen"))
 
 (define (classify tok)
