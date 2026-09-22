@@ -266,8 +266,7 @@
 | `document-edit-at` | `(document-edit-at d p op #:trusted? [trusted? #f])` | 给位置与 op 算 desc 再施加 |
 | `document-put-attr` | `(document-put-attr d key line c0 c1 val)` | 单段写属性（走漏斗） |
 | `document-remove-attr` | `(document-remove-attr d key line c0 c1)` | 单段删属性 |
-| `document-put-attr-runs` | `(document-put-attr-runs d key line runs)` | 替换某 key 在一行的 runs（`runs` = `(list (list c0 c1 val))`） |
-| `document-put-attrs` | `(document-put-attrs d key rows #:lines [l0 0] [l1 末行])` | 替换某 key 在一段行范围（`rows` = `(list (list line c0 c1 val))`） |
+| `document-replace-attr` | `(document-replace-attr d key spans #:lines [l0 0] [l1 末行])` | **替换**某 key 在一段行范围（`spans` = `(list (list line c0 c1 val))`；单行 = `#:lines L L`） |
 | `document-attrs-at` / `-runs` / `-key-runs` | | 属性读 |
 | `change-result` | `(struct change-result ...)` | 一次变更的完整结果 |
 | `change-result?` | `(change-result? v)` | 谓词 |
@@ -334,6 +333,10 @@
 （终端 / GUI）拿它画。**坐标单位**：`col` / `start-col` / `end-col` 都是**显示列**
 （0-based，宽字符按 `char-display-width` 换算），与 `point.col`（字符索引）不同。
 
+**`face` 是应用自定义的语义值**（`any/c`）——结构随你，core 只搬运、不解释；
+`face-provider` 返回什么，`run-face` / `cursor-face` / `region-face` 就是什么。
+约定常用 `(hash 'face 'keyword)`，但用符号 / struct / 任何值都行；core 对“无 face”的段填默认空值 `(hash)`。
+
 **数据流**：
 
 ```
@@ -373,14 +376,14 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `run?` | `(run? v)` | bool | 谓词 |
 | `run-col` | `(run-col r)` | nat（显示列） | 这段文本从哪一列开始 |
 | `run-text` | `(run-text r)` | string | 文本（不含换行；原字符，宽字符不展开） |
-| `run-face` | `(run-face r)` | hash | **语义** face，如 `(hash 'face 'keyword)`；core 不解释、不给颜色 |
+| `run-face` | `(run-face r)` | any/c | **语义** face：结构应用自定（如 `(hash 'face 'keyword)` 或符号）；core 不解释、不给颜色 |
 
 #### cursor / region（视图 overlay）
 
-`(struct cursor (row col face primary?))`：`row`/`col` 显示坐标，`face` 如
-`(hash 'face 'cursor)`，`primary?` 标记主光标。
-`(struct region (row start-col end-col face))`：`[start-col,end-col)` 半开，`face` 如
-`(hash 'face 'selection)`。
+`(struct cursor (row col face primary?))`：`row`/`col` 显示坐标，`face` 是自定义语义值（如
+`(hash 'face 'cursor)`），`primary?` 标记主光标。
+`(struct region (row start-col end-col face))`：`[start-col,end-col)` 半开，`face` 同上（如
+`(hash 'face 'selection)`）。
 
 | 名字 | 签名 | 语义 |
 |---|---|---|
@@ -409,7 +412,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 **`face` → 样式是应用的事**。
 
 ```racket
-(define (face-style face)                  ; 语义 face → 样式（应用自定）
+(define (face-style face)                  ; 语义 face → 样式（这里假设 face 是 (hash 'face …)）
   (case (hash-ref face 'face #f)
     [(keyword) 'info] [(comment) 'green] [(read-only) 'error]
     [(selection) 'selection] [(cursor) 'cursor] [else #f]))
@@ -489,9 +492,9 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `window` | `document`、`selection-set`、`mode : 'clip/'wrap'`、`top-line : nat`、`left-col : nat`、`top-seg : nat`、`height : nat`、`width : nat`、`line-numbers? : bool` | 不透明；`width` 含行号栏 |
 | `change-result` | `applied-texts`、`applied-attrs`、`text-inverses`、`attr-inverses`、`erased-restores` | 一次变更的结果（施加顺序） |
 | `change-report` | `texts : (listof edit-desc)`、`attrs : (listof attr-desc)` | 命令第二返回值 |
-| `run` | `col : nat`、`text : string`、`face : hash` | 屏幕一行里的一段 |
-| `cursor` | `row : nat`、`col : nat`、`face : hash`、`primary? : bool` | 视图 overlay |
-| `region` | `row : nat`、`start-col : nat`、`end-col : nat`、`face : hash` | 视图 overlay |
+| `run` | `col : nat`、`text : string`、`face : any/c` | 屏幕一行里的一段；`face` 结构应用自定 |
+| `cursor` | `row : nat`、`col : nat`、`face : any/c`、`primary? : bool` | 视图 overlay |
+| `region` | `row : nat`、`start-col : nat`、`end-col : nat`、`face : any/c` | 视图 overlay |
 | `pane` | `id : any`、`x : int`、`y : int`、`screen : screen` | 合成屏的一块子帧 |
 | `screen` | `height : nat`、`width : nat`、`row-runs : (vectorof (listof run))`、`cursors : (listof cursor)`、`selections : (listof region)` | 不透明；后端据此画 |
 
@@ -738,8 +741,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `editor-document-apply-attrs` | `(editor-document-apply-attrs ed did attrs #:record? 'default)` | 批量写属性 |
 | `editor-document-put-attr` | `(editor-document-put-attr ed did key line c0 c1 val #:record? 'default)` | 单段 set |
 | `editor-document-remove-attr` | `(editor-document-remove-attr ed did key line c0 c1 #:record? 'default)` | 单段 remove |
-| `editor-document-put-attr-runs` | `(editor-document-put-attr-runs ed did key line runs #:record? 'default)` | 替换该行该 key（`runs` = `(list (list c0 c1 val))`） |
-| `editor-document-put-attrs` | `(editor-document-put-attrs ed did key rows #:lines [l0 0] [l1 末行] #:record? 'default)` | 替换一段行范围（`rows` = `(list (list line c0 c1 val))`） |
+| `editor-document-replace-attr` | `(editor-document-replace-attr ed did key spans #:lines [l0 0] [l1 末行] #:record? 'default)` | **替换**某 key 在一段行范围（`spans` = `(list (list line c0 c1 val))`；单行 = `#:lines L L`） |
 | `read-only-key` / `attr-read-only?` | | core 解释的保留 key |
 
 ```racket
@@ -747,7 +749,7 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 (editor-document-put-attr ed 0 read-only-key 0 0 3 #t)
 
 ;; 替换式：整屏重算某来源的标注（旧值自动消失；读口输出可直接写回）
-(editor-document-put-attrs ed 0 'lsp-token
+(editor-document-replace-attr ed 0 'lsp-token
   '((0 0 5 face) (1 0 3 warn)))
 ```
 
@@ -802,7 +804,8 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 
 ### 3.14 投影
 
-`face-provider : editor did line → (listof (list start end face))`。
+`face-provider : editor did line → (listof (list start end face))`。`face` 是**应用自定义**的语义值
+（`any/c`）：provider 返回什么，`run.face` 就是什么；`attrs-provider key` 只是把该 key 的 **value 原样**当 face。
 
 | 名字 | 签名 | 语义 |
 |---|---|---|

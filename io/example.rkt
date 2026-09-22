@@ -434,7 +434,7 @@
 ;;
 ;; [core] editor->screen → screen：**两条通道**分开给：
 ;;          row-runs（文档文本 + face）、cursors / selections（视图 overlay，带语义 face）。
-;;        core **不知道**终端，也**不给颜色**；face 是语义 hash，映射成样式是应用的事。
+;;        core **不知道**终端，也**不给颜色**；face 是语义值（结构自定，示例用 hash），映射成样式是应用的事。
 ;; [前端] 终端字节、颜色、叠加顺序，全是应用的事。
 
 (define (face-style face)

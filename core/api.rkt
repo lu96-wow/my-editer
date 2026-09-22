@@ -82,7 +82,7 @@
  document-clamp-edit-descs document-text-tick document-attr-tick document-content-eq? document-attrs-eq?
  read-only-key attr-read-only?
  document-attrs-at document-attrs-runs document-attrs-key-runs
- document-put-attr document-remove-attr document-put-attr-runs document-put-attrs
+ document-put-attr document-remove-attr document-replace-attr
  document-apply-change
  document-apply-edit document-edit-at
  change-result change-result? change-result-applied-texts change-result-applied-attrs

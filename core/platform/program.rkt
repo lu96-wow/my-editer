@@ -84,8 +84,7 @@
  editor-document-apply-attrs
  editor-document-put-attr
  editor-document-remove-attr
- editor-document-put-attr-runs
- editor-document-put-attrs
+ editor-document-replace-attr
  ;; 历史策略 / 清栈（读口 editor-document-history-enabled? 在 neutral）
  editor-set-history-enabled
  editor-view-set-history-enabled
@@ -450,22 +449,14 @@
   (editor-document-apply-attrs ed did
     (list (attr-remove (point line c0) (point line c1) key)) #:record? record?))
 
-;; 替换式（单行）：把 key 在第 line 行的 runs 整体换成 runs（旧值全清）。
-;; runs : (listof (list c0 c1 val))，与 editor-document-attrs-key-runs 读口同形状。
-(define (editor-document-put-attr-runs ed did key line runs #:record? [record? 'default])
+;; 替换式：把 key 在 [l0,l1] 行的值整体换成 spans（旧的先清）。
+;; spans : (listof (list line c0 c1 val))；单行是特例 `#:lines L L`。
+(define (editor-document-replace-attr ed did key spans
+                                     #:lines [l0 0] [l1 (sub1 (editor-document-line-count ed did))]
+                                     #:record? [record? 'default])
   (editor-command-batch ed
-    (document-put-attr-runs-change (editor-document ed did) key line runs)
-    #:view (document-vid 'editor-document-put-attr-runs ed did)
-    #:record? record?))
-
-;; 替换式（多行）：把 key 在 [l0,l1] 行的 runs 换成 rows 里属于该行的 runs；
-;; 范围内没给 rows 的行 → 清空该 key。rows : (listof (list line c0 c1 val))。
-(define (editor-document-put-attrs ed did key rows
-                                  #:lines [l0 0] [l1 (sub1 (editor-document-line-count ed did))]
-                                  #:record? [record? 'default])
-  (editor-command-batch ed
-    (document-put-attrs-change (editor-document ed did) key rows #:lines l0 l1)
-    #:view (document-vid 'editor-document-put-attrs ed did)
+    (document-replace-attr-change (editor-document ed did) key spans #:lines l0 l1)
+    #:view (document-vid 'editor-document-replace-attr ed did)
     #:record? record?))
 
 ;;; ---------- 历史策略 / 清栈 ----------
@@ -523,18 +514,21 @@
   (check-true (attr-read-only? (editor-document-attrs-at an 0 (point 0 2))))
   (check-true (editor-document-can-undo? an 0))
 
-  ;; 替换式属性写：单行整体替换 + 多行整体替换（范围外不动、范围内缺省清空）
-  (define-values (ap0 _ap0r) (editor-document-put-attr-runs (editor-open "aa\nbb\ncc") 0 read-only-key 0 (list (list 1 2 'x))))
+  ;; 替换式属性写：单行（#:lines L L）与多行整体替换（范围外不动、范围内缺省清空）
+  (define-values (ap0 _ap0r) (editor-document-replace-attr (editor-open "aa\nbb\ncc") 0 read-only-key (list (list 0 1 2 'x)) #:lines 0 0))
   (check-equal? (editor-document-attrs-key-runs ap0 0 0 read-only-key) (list (list 1 2 'x)))
-  (define-values (ap _apr) (editor-document-put-attrs ap0 0 read-only-key (list (list 0 0 2 'y) (list 2 0 2 'z)) #:lines 0 2))
+  (define-values (ap _apr) (editor-document-replace-attr ap0 0 read-only-key (list (list 0 0 2 'y) (list 2 0 2 'z)) #:lines 0 2))
   (check-equal? (editor-document-attrs-key-runs ap 0 0 read-only-key) (list (list 0 2 'y)))
   (check-equal? (editor-document-attrs-key-runs ap 0 1 read-only-key) '())        ; 范围内没给 → 清空
   (check-equal? (editor-document-attrs-key-runs ap 0 2 read-only-key) (list (list 0 2 'z)))
-  (define-values (ap2 _ap2r) (editor-document-put-attrs ap 0 read-only-key (list (list 1 1 2 'w)) #:lines 1 1))
+  (define-values (ap2 _ap2r) (editor-document-replace-attr ap 0 read-only-key (list (list 1 1 2 'w)) #:lines 1 1))
   (check-equal? (editor-document-attrs-key-runs ap2 0 0 read-only-key) (list (list 0 2 'y)))  ; 范围外不动
   (check-equal? (editor-document-attrs-key-runs ap2 0 1 read-only-key) (list (list 1 2 'w)))
-  ;; 与读口同形状：读出来可直接写回
-  (define-values (ap3 _ap3r) (editor-document-put-attr-runs ap 0 read-only-key 0 (editor-document-attrs-key-runs ap 0 0 read-only-key)))
+  ;; 读口输出加个行号即可写回（同形状）
+  (define-values (ap3 _ap3r) (editor-document-replace-attr ap 0 read-only-key
+                                                           (for/list ([r (in-list (editor-document-attrs-key-runs ap 0 0 read-only-key))])
+                                                             (cons 0 r))
+                                                           #:lines 0 0))
   (check-equal? (editor-document-attrs-key-runs ap3 0 0 read-only-key) (list (list 0 2 'y)))
 
   ;; document 级历史策略：#:history? #f 的文档不记账（用户面/程序面/属性写都不记）

@@ -141,7 +141,7 @@ editor.rkt  = neutral（中性面）+ program（程序面）+ command（用户�
   选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
 
 两者不混：文本/标注是**文档**状态（存 buffer、随文本移动、可编辑）；光标/选区是**视图**状态
-（存 window、临时）。`face` 一律是**语义 hash**，core **不给颜色**，前端把语义映射成样式。
+（存 window、临时）。`face` 是**不透明语义值**（`any/c`，结构应用自定；约定常用 hash），core **不给颜色**，前端把语义映射成样式。
 
 ---
 
@@ -174,7 +174,7 @@ editor-command-batch  : 给现成 change 直接施加
 `editor-document-edit-at` / `editor-document-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
 **薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。属性写也是它的封装：
 `editor-document-apply-attrs` / `editor-document-put-attr` / `editor-document-remove-attr` /
-`editor-document-put-attr-runs` / `editor-document-put-attrs`（后两个是「行 + 列区间」的替换语义封装）。
+`editor-document-replace-attr`（最后一个把某 key 在一段行范围内**替换**，其余是**增量** set/remove）。
 
 - **程序默认**：`editor-document-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
 - **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? 'default`（跟随 document）。

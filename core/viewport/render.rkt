@@ -15,7 +15,7 @@
  render-line)
 
 (struct glyph (ch face) #:transparent)
-;; face : hash（语义 face）
+;; face : any/c（语义值；结构由应用定义，常用 (hash 'face 'keyword)）
 
 (struct rendered-line (glyphs) #:transparent)
 ;; glyphs : (vectorof glyph)
@@ -49,7 +49,7 @@
       [else
        (define a (car pts)) (define z (car bnd))
        (define-values (dface di*) (run-cover-at di a))
-       (define face (or dface (hash)))
+       (define face (or dface (hash)))          ; 无 face 段 → 默认空 face 值 (hash)
        (for ([j (in-range a z)]) (vector-set! glyphs j (glyph (string-ref text j) face)))
        (loop (cdr pts) (cdr bnd) di*)]))
   (rendered-line glyphs))
