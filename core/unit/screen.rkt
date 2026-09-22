@@ -20,6 +20,9 @@
  (struct-out region)
  (struct-out screen)
  screen-empty
+ screen-row
+ screen->rows
+ screen-row->string
  screen-primary-cursor
  screen-cursor-row
  screen-cursor-col
@@ -54,6 +57,30 @@
 (define (screen-empty rows cols)
   (screen rows cols (make-vector rows '()) '() '()))
 
+;;; ---------- 行读取（直观 API；不暴露内部 vector / struct） ----------
+;;; 后端只需：`screen->rows` 拿所有行 / `screen-row` 拿某行；每行是 `(listof run)`，
+;;; 用 `run-col` / `run-text` / `run-face` 读。无需知道内部是 vector。
+
+;; 第 i 行的 runs：(listof run)。越界报错。
+(define (screen-row s i)
+  (unless (and (exact-nonnegative-integer? i) (< i (screen-rows s)))
+    (error 'screen-row "行号越界: ~a（共 ~a 行）" i (screen-rows s)))
+  (vector-ref (screen-row-runs s) i))
+
+;; 所有行：(listof (listof run))；可直接 `(for ([row (in-list (screen->rows s))]) …)`。
+(define (screen->rows s)
+  (for/list ([runs (in-vector (screen-row-runs s))]) runs))
+
+;; 第 i 行的纯文本：run 间空隙补空格、末尾裁掉。给测试 / 文本后端用。
+(define (screen-row->string s i)
+  (define out (open-output-string))
+  (define col 0)
+  (for ([r (in-list (screen-row s i))])
+    (when (> (run-col r) col) (display (make-string (- (run-col r) col) #\space) out))
+    (display (run-text r) out)
+    (set! col (+ (run-col r) (string-display-width (run-text r)))))
+  (get-output-string out))
+
 ;; primary 光标本身（无 → #f）；行/列是它的投影（无 → -1）。
 (define (screen-primary-cursor s)
   (for/first ([c (in-list (screen-cursors s))] #:when (cursor-primary? c)) c))
@@ -64,16 +91,7 @@
 
 ;; 把一帧摊平成纯文本（只含文档文本；不给光标/选区上色）。给测试/无前端驱动用。
 (define (screen->string s)
-  (string-join
-   (for/list ([runs (in-vector (screen-row-runs s))])
-     (define out (open-output-string))
-     (define col 0)
-     (for ([r (in-list runs)])
-       (when (> (run-col r) col) (display (make-string (- (run-col r) col) #\space) out))
-       (display (run-text r) out)
-       (set! col (+ (run-col r) (string-display-width (run-text r)))))
-     (get-output-string out))
-   "\n"))
+  (string-join (for/list ([i (in-range (screen-rows s))]) (screen-row->string s i)) "\n"))
 
 ;; 两屏（同尺寸）之间发生变化的行号（增量绘制的依据；只比文档文本）。
 ;; 两帧之间需要**整行重绘**的行号：文本变化行 ∪ overlay（光标/选区）变化行。
@@ -146,7 +164,7 @@
 (module+ test
   ;; 空帧：尺寸 / 无光标 / 无选区
   (define s0 (screen-empty 2 10))
-  (check-equal? (vector-length (screen-row-runs s0)) 2)
+  (check-equal? (screen-rows s0) 2)
   (check-equal? (screen-cursor-row s0) -1)
   (check-equal? (screen-cursors s0) '())
   (check-equal? (screen-selections s0) '())
@@ -161,6 +179,13 @@
   (check-equal? (screen-cursor-col s1) 3)
   (check-equal? (cursor-primary? (car (screen-cursors s1))) #t)
   (check-equal? (region-end-col (car (screen-selections s1))) 2)
+
+  ;; 直观行 API：screen-row / screen->rows / screen-row->string，越界报错
+  (check-equal? (screen-row s1 0) (list r1 r2))
+  (check-equal? (screen->rows s1) (list (list r1 r2) '()))
+  (check-equal? (screen-row->string s1 0) "ab中")
+  (check-equal? (screen-row->string s1 1) "")
+  (check-exn exn:fail? (lambda () (screen-row s1 9)))
 
   ;; damage：文本行 ∪ overlay 行；尺寸/行号栏变化 → #f（全屏）
   (define s2 (screen 2 10 (vector (list r1 (run 2 "文" (hash 'face 'keyword))) '()) '() '()))
@@ -180,9 +205,9 @@
   (define sb (screen 2 4 (vector (list (run 0 "XY" (hash))) (list (run 0 "ZW" (hash))))
                      (list (cursor 0 0 (hash 'face 'cursor) #t)) '()))
   (define comp (screen-compose 2 8 (list (list 'a 0 0 sa) (list 'b 4 0 sb)) 'b))
-  (check-equal? (vector-ref (screen-row-runs comp) 0)
+  (check-equal? (screen-row comp 0)
                 (list (run 0 "ab" (hash)) (run 4 "XY" (hash))))
-  (check-equal? (vector-ref (screen-row-runs comp) 1)
+  (check-equal? (screen-row comp 1)
                 (list (run 0 "cd" (hash)) (run 4 "ZW" (hash))))
   (check-equal? (screen-cursor-row comp) 0)
   (check-equal? (screen-cursor-col comp) 4)

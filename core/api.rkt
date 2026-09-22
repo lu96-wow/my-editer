@@ -107,7 +107,7 @@
  run run? struct:run run-col run-text run-face
  cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
  region region? struct:region region-row region-start-col region-end-col region-face
- screen? screen-rows screen-cols screen-row-runs
+ screen? screen-rows screen-cols screen-row screen->rows screen-row->string
  screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-damage screen-compose screen->string
  ;; ---- window ----
  window? window-open
@@ -148,14 +148,14 @@
   (check-equal? (document->string d1) "Xhello\nworld")
   (check-equal? desc (edit-desc (point 0 0) (point 0 0) "X"))
   (check-equal? (screen-rows (window->screen (window-open d1 2 10))) 2)
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d1 2 10))) 0)
+  (check-equal? (screen-row (window->screen (window-open d1 2 10)) 0)
                 (list (run 0 "Xhello" (hash))))
 
   ;; 派生 face 由投影参数 provider 给出，不进文档
   (define (provider _b _line) (list (list 0 5 (hash 'face 'keyword))))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d 2 10) provider)) 0)
+  (check-equal? (screen-row (window->screen (window-open d 2 10) provider) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
-  (check-equal? (vector-ref (screen-row-runs (window->screen (window-open d1 2 10))) 0)
+  (check-equal? (screen-row (window->screen (window-open d1 2 10)) 0)
                 (list (run 0 "Xhello" (hash))))
 
   (displayln "api.rkt: all tests passed"))

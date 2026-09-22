@@ -401,7 +401,7 @@
 
   ;; 行号栏：投影到 screen 的前缀 run（face 'line-number），光标右移 g 列
   (define eln (editor-open "a\nb\nc" 3 10 #:line-numbers? #t))
-  (check-equal? (vector-ref (screen-row-runs (editor-view->screen eln 0)) 0)
+  (check-equal? (screen-row (editor-view->screen eln 0) 0)
                 (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" (hash))))
   (check-equal? (screen-cursor-col (editor-view->screen eln 0)) 2)
 
@@ -431,9 +431,9 @@
   ;; 属性 buffer 物化成 provider：editor->screen 直接读，无需 buffer
   (define-values (pa _par)
     (editor-apply-change e0 0 (attrs->change (list (attr-set (point 0 0) (point 0 5) 'face (hash 'face 'keyword))))))
-  (check-equal? (vector-ref (screen-row-runs (editor->screen pa (attrs-provider 'face))) 0)
+  (check-equal? (screen-row (editor->screen pa (attrs-provider 'face)) 0)
                 (list (run 0 "hello" (hash 'face 'keyword))))
-  (check-equal? (vector-ref (screen-row-runs (editor->screen pa)) 0)
+  (check-equal? (screen-row (editor->screen pa) 0)
                 (list (run 0 "hello" (hash))))
 
   (displayln "editor.rkt: all tests passed"))

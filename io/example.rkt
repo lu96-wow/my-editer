@@ -501,19 +501,21 @@
 (define erase-eol (string->bytes/utf-8 "\u001b[K"))
 
 ;; 画第 row 行：文本 runs → 该行选区 → 该行光标（顺序 = 叠加次序）。
-(define (emit-row! emit! row-runs scr row)
-  (for ([r (in-list (vector-ref row-runs row))])
+;; 行内容用直观的 `(screen-row scr row)`（listof run），不再碰内部 vector。
+(define (emit-row! emit! scr row)
+  (define runs (screen-row scr row))
+  (for ([r (in-list runs)])
     (emit! (format-cursor-move (add1 row) (add1 (run-col r))))
     (define st (face-style (run-face r)))
     (emit! (if st (format-styled st (run-text r)) (format-content (run-text r)))))
   (for ([g (in-list (screen-selections scr))] #:when (= row (region-row g)))
-    (define txt (runs-substring (vector-ref row-runs row) (region-start-col g) (region-end-col g)))
+    (define txt (runs-substring runs (region-start-col g) (region-end-col g)))
     (unless (string=? txt "")
       (emit! (format-cursor-move (add1 row) (add1 (region-start-col g))))
       (emit! (format-styled 'selection txt))))
   (for ([c (in-list (screen-cursors scr))] #:when (= row (cursor-row c)))
     (emit! (format-cursor-move (add1 row) (add1 (cursor-col c))))
-    (emit! (format-styled 'cursor (cell-text (vector-ref row-runs row) (cursor-col c))))))
+    (emit! (format-styled 'cursor (cell-text runs (cursor-col c))))))
 
 ;; 画一帧：首帧或 screen-damage → #f 时全屏；否则只重画受损行。
 ;; 返回 (values bytes app')，app' 已更新 last-scr/last-status（事件循环据此保持基准）。
@@ -522,20 +524,19 @@
   (define scr (frame-screen app))
   (define status (frame-status app))
   (define damage (if (app-last-scr app) (screen-damage (app-last-scr app) scr) #f))
-  (define row-runs (screen-row-runs scr))
   (define parts '())
   (define (emit! b) (set! parts (cons b parts)))
   (emit! format-cursor-hide)
   (cond
     [(not damage)                              ; #f = 整屏重绘
      (emit! format-screen-clear)
-     (for ([_ (in-vector row-runs)] [row (in-naturals)])
-       (emit-row! emit! row-runs scr row))]
+     (for ([row (in-range (screen-rows scr))])
+       (emit-row! emit! scr row))]
     [else                                      ; 增量：每个受损行先清行再重画
      (for ([row (in-list damage)])
        (emit! (format-cursor-move (add1 row) 1))
        (emit! erase-eol)
-       (emit-row! emit! row-runs scr row))])
+       (emit-row! emit! scr row))])
   ;; 状态栏：变了或整屏才重画
   (when (or (not damage) (not (equal? status (app-last-status app))))
     (emit! (format-cursor-move (app-rows app) 1))
@@ -656,10 +657,10 @@
 
   ;; 标注：派生 face 在投影时出现（文档里根本没有 face 这个概念）
   (define a8 (edit (make-app "" 5 20 "*t*") (edit-insert "define x")))
-  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a8) (app-face-provider a8))) 0)))
+  (check-equal? (run-face (car (screen-row (editor->screen (app-ed a8) (app-face-provider a8)) 0)))
                 (hash 'face 'keyword))                                        ; 投影里有
   (define a9 (toggle-highlight a8))                                          ; 关 → provider 返回空
-  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed a9) (app-face-provider a9))) 0)))
+  (check-equal? (run-face (car (screen-row (editor->screen (app-ed a9) (app-face-provider a9)) 0)))
                 (hash))
 
   ;; 作者态属性（属性 buffer）：标记只读 → 投影出样式；守卫拦编辑；清除后恢复
@@ -669,7 +670,7 @@
                                           (list (selection (point 0 0) (point 0 5))))]))
   (define r2 (mark-read-only r1))
   (check-equal? (editor-document-attrs-key-runs (app-ed r2) 0 0 read-only-key) (list (list 0 5 #t)))
-  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed r2) (app-face-provider r2))) 0)))
+  (check-equal? (run-face (car (screen-row (editor->screen (app-ed r2) (app-face-provider r2)) 0)))
                 (hash 'face 'read-only))
   ;; 只读区内插入被守卫拒绝
   (define r3 (struct-copy app r2 [ed (editor-set-selections (app-ed r2) (list (caret (point 0 2))))]))
@@ -747,9 +748,9 @@
   (check-false (editor-line-numbers? (app-ed ln0)))
   (define ln1 (toggle-line-numbers ln0))
   (check-true (editor-line-numbers? (app-ed ln1)))
-  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed ln1))) 0)))
+  (check-equal? (run-face (car (screen-row (editor->screen (app-ed ln1)) 0)))
                 (hash 'face 'line-number))
-  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed (toggle-line-numbers ln1)))) 0)))
+  (check-equal? (run-face (car (screen-row (editor->screen (app-ed (toggle-line-numbers ln1))) 0)))
                 (hash))
   (check-true (bytes? (frame->bytes ln1)))                 ; 行号栏让出的宽度能渲染
 
