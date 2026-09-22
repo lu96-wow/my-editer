@@ -50,7 +50,7 @@
   (define col
     (case (window-mode w)
       [(clip) (window-left-col w)]
-      [(wrap) (define segs (wrap-segments text (window-width w)))
+      [(wrap) (define segs (wrap-segments text (window-content-width w)))
               (car (list-ref segs (max 0 (min (window-top-seg w) (sub1 (length segs))))))]
       [else (error 'window-top-left-point "未知 mode: ~a" (window-mode w))]))
   (point line (column->index text col)))
@@ -69,7 +69,7 @@
   (define dc (index->column text col))
   (case (window-mode w1)
     [(clip) (window-clamp-view (window-set-left-col w1 dc))]
-    [(wrap) (window-clamp-view (window-set-top-seg w1 (seg-of-col text (window-width w1) dc)))]
+    [(wrap) (window-clamp-view (window-set-top-seg w1 (seg-of-col text (window-content-width w1) dc)))]
     [else (error 'set-viewport "未知 mode: ~a" (window-mode w1))]))
 
 ;; 把源窗口的可视范围投到目标窗口：源左上角逻辑点 → 目标逻辑点 → 目标视口。

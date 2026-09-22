@@ -44,6 +44,7 @@
  editor-view-selection-member?
  editor-view-set-size
  editor-view-set-mode
+ editor-view-set-line-numbers
  editor-view-set-top-line
  editor-view-set-top-seg
  editor-view-set-left-col
@@ -70,6 +71,7 @@
  editor-set-primary-index
  editor-selection-member?
  editor-set-mode
+ editor-set-line-numbers
  editor-set-size
  editor-set-top-line
  editor-set-top-seg
@@ -299,6 +301,10 @@
 (define (editor-view-set-mode ed vid mode)
   (editor-put-view ed vid (window-set-mode (view-window-of ed vid) mode)))
 
+;; 行号栏开关（视图装饰；只动指定 view）。
+(define (editor-view-set-line-numbers ed vid on?)
+  (editor-put-view ed vid (window-set-line-numbers (view-window-of ed vid) on?)))
+
 (define (editor-view-set-top-line ed vid n)
   (editor-put-view ed vid (window-set-top-line (view-window-of ed vid) n)))
 
@@ -376,6 +382,8 @@
 
 (define (editor-set-mode ed mode)
   (editor-view-set-mode ed (view-id (editor-focused-view ed)) mode))
+(define (editor-set-line-numbers ed on?)
+  (editor-view-set-line-numbers ed (view-id (editor-focused-view ed)) on?))
 
 (define (editor-set-size ed height width)
   (editor-view-set-size ed (view-id (editor-focused-view ed)) height width))
@@ -646,5 +654,15 @@
   (define gg3 (editor-clear-selection-set gg2))
   (check-false (editor-selection-set-name gg3))
   (check-equal? (length (editor-selections gg3)) 1)  ; 收敛为单个 leader
+
+  ;; 行号栏开关（视图装饰；只动指定 view）
+  (define ln0 (editor-open "a\nb\nc" 3 10))
+  (check-false (editor-line-numbers? ln0))
+  (define ln1 (editor-set-line-numbers ln0 #t))
+  (check-true (editor-line-numbers? ln1))
+  (check-true (editor-view-line-numbers? ln1 0))
+  (check-false (editor-line-numbers? (editor-set-line-numbers ln1 #f)))
+  (define-values (ln2 lnv) (editor-add-view ln0 0 3 10 #:line-numbers? #t))
+  (check-true (editor-view-line-numbers? ln2 lnv))
 
   (displayln "program.rkt: all tests passed"))

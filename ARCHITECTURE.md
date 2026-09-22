@@ -33,10 +33,10 @@ core/
 │   ├── document.rkt           #   可编辑根：buffer ⊕ attrs（唯一变更漏斗）
 │   └── batch.rkt              #   [edit-desc] → document（原子批量施加）
 ├── viewport/                  # 视口：把文档投影成画面
-│   ├── window.rkt             #   document ⊕ selection-set（选区集）⊕ 滚动/尺寸
+│   ├── window.rkt             #   document ⊕ selection-set（选区集）⊕ 滚动/尺寸 ⊕ 行号开关
 │   ├── render.rkt             #   buffer 行 × line-face-provider → glyph
-│   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动
-│   ├── project.rkt            #   window → screen
+│   ├── layout.rkt             #   window → vrow / 光标映射 / ensure / 视觉移动 / 行号栏宽度
+│   ├── project.rkt            #   window → screen（拼行号栏 + 光标/选区 overlay）
 │   ├── rebase.rkt             #   window × edit → window（free / follow）
 │   └── mirror.rkt             #   window → window 视口映射（跨 document 同步）
 ├── platform/                  # 平台：多文档 × 多视口 + 三种面
@@ -110,10 +110,10 @@ doc         buffer    = content ⊕ tick
             document  = buffer ⊕ attrs
             document-apply-change = change → document × change-result
              │
-viewport    window  = document ⊕ selection-set ⊕ (mode, top, left, height, width)
+viewport    window  = document ⊕ selection-set ⊕ (mode, top, left, height, width, line-numbers?)
             render  = buffer × line × line-face-provider → glyphs   （派生 face 在此注入）
-            layout  = window × render → vrows / 映射 / ensure / 视觉移动
-            project = window × layout → screen
+            layout  = window × render → vrows / 映射 / ensure / 视觉移动 / 行号栏宽度
+            project = window × layout → screen              （拼行号栏 + overlay）
             rebase  = window × edit-desc → window              （free / follow）
             mirror  = window × window → window                  （跨 document 视口同步）
              │
@@ -135,7 +135,8 @@ editor.rkt  = neutral（中性面）+ program（程序面）+ command（用户�
 - **渲染流**：`buffer → render → run → window->screen → screen`（后端画）。
 
 **`screen` 有两条独立通道**（这是刻意的分离）：
-- **文档文本** `row-runs`：来自 buffer 的文本 + 投影 `line-face-provider` 给出的 face。
+- **文档文本** `row-runs`：来自 buffer 的文本 + 投影 `line-face-provider` 给出的 face；
+  行号栏若开，则以 `'line-number` face 的 run **前置**在每行最左（视图装饰，不属文档）。
 - **视图 overlay** `cursors` / `selections`：来自 window 的选区（光标点 = 每个选区的 head；
   选中区 = 每个非空选区的 `[anchor,head)` 按 vrow 切段）。
 
@@ -248,6 +249,13 @@ Shift 扩选 = `editor-map-primary` + `selection-map-head`；移动全部 = `edi
 
 三套列不许混：`point.col` 是字符索引，`window.left-col` / vrow 是显示列，
 偏移是 `content->string` 坐标。换算只经 `index->column` / `column->index`。
+
+**行号栏（视图装饰）**：`window` 带 `line-numbers?` 开关；栏宽是**派生量**
+（`window-gutter-width` = 当前视口行号上界位数 + 1 分隔，且不超过总宽减一），
+正文宽 = `window-content-width` = 总宽 − 栏宽。`layout` 内部一律用**正文宽**
+（vrow / 折行 / ensure / 视觉移动都是正文坐标）；`project` 把栏 run 前置到 `row-runs`
+并把光标/选区列右移栏宽（屏幕列 = 正文列 + 栏宽），鼠标点 gutter 落到行首。
+行号只标在 buffer 行的**首段**（wrap 续段留空）。它不进 `document`，开关只动目标 view。
 
 ---
 

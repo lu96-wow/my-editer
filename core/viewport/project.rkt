@@ -45,22 +45,48 @@
 (define (window->screen w [face-provider no-face-provider])
   (define b (window-buffer w))
   (define vrows (window-vrows w))
+  (define g (window-gutter-width w))
   (define row-runs
-    (for/vector ([vr (in-vector vrows)])
-      (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
-          (line-range->runs b (vrow-line vr) (vrow-start-col vr) (vrow-end-col vr) face-provider)
-          '())))
-  ;; 视图 overlay：光标 = 每个选区的 head
+    (for/vector ([vr (in-vector vrows)] [row (in-naturals)])
+      (define content
+        (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
+            (line-range->runs b (vrow-line vr) (vrow-start-col vr) (vrow-end-col vr) face-provider)
+            '()))
+      (define gutter
+        (cond
+          [(zero? g) '()]
+          [(and (>= (vrow-line vr) 0) (vrow-first-for-line? vrows row))
+           (list (line-number-run (add1 (vrow-line vr)) g))]
+          [else (list (blank-gutter-run g))]))
+      (append gutter (map (lambda (rn) (shift-run rn g)) content))))
+  ;; 视图 overlay：光标 = 每个选区的 head（列 +g → 屏幕绝对列）
   (define cursors
     (filter values
             (for/list ([s (in-list (window-selections w))] [i (in-naturals)])
               (define-values (r c) (window-point->screen w (selection-point s)))
-              (and r (cursor r c (hash 'face 'cursor) (= i (window-primary-index w)))))))
+              (and r (cursor r (+ g c) (hash 'face 'cursor) (= i (window-primary-index w)))))))
   ;; 视图 overlay：选中区 = 每个非空选区的 [anchor,head)
   (define selections
-    (filter values (append* (for/list ([s (in-list (window-selections w))])
-                              (selection->regions w s)))))
+    (for/list ([rg (in-list (filter values (append* (for/list ([s (in-list (window-selections w))])
+                                                      (selection->regions w s))))) ])
+      (region (region-row rg) (+ g (region-start-col rg)) (+ g (region-end-col rg)) (region-face rg))))
   (screen (window-height w) (window-width w) row-runs cursors selections))
+
+;;; ---------- 行号栏（视图装饰，不属文档） ----------
+
+;; 该 vrow 是否是它那条 buffer 行的首段（wrap 下只有首段显示行号）。
+(define (vrow-first-for-line? vrows row)
+  (or (= row 0)
+      (not (= (vrow-line (vector-ref vrows row))
+              (vrow-line (vector-ref vrows (sub1 row)))))))
+
+;; 行号栏一格：数字右对齐到 g-1 列 + 1 分隔空格；col 固定 0（正文整体右移 g）。
+(define (line-number-run n g)
+  (define s (number->string n))
+  (run 0 (string-append (make-string (- g 1 (string-length s)) #\space) s " ")
+       (hash 'face 'line-number)))
+(define (blank-gutter-run g) (run 0 (make-string g #\space) (hash 'face 'line-number)))
+(define (shift-run rn x) (run (+ x (run-col rn)) (run-text rn) (run-face rn)))
 
 ;;; ---------- 测试 ----------
 
@@ -109,5 +135,29 @@
                               (point 0 3) (point 0 6) read-only-key #t))
   (check-equal? (vector-ref (screen-row-runs (window->screen (window-open b5 1 10))) 0)
                 (list (run 0 "abcdef" (hash))))
+
+  ;; —— 行号栏：run 前缀 + 光标/选区右移 + 点 gutter 落行首 ——
+  (define dln (document-open "a\nb\nc"))
+  (define wln2 (window-set-line-numbers (window-open dln 3 10) #t))   ; g = 1 位 +1 = 2
+  (define sln (window->screen wln2))
+  (check-equal? (vector-ref (screen-row-runs sln) 0)
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" (hash))))
+  (check-equal? (vector-ref (screen-row-runs sln) 2)
+                (list (run 0 "3 " (hash 'face 'line-number)) (run 2 "c" (hash))))
+  (check-equal? (screen-cursor-col sln) 2)                         ; (0,0) → 屏幕列 2
+  (check-equal? (call-with-values (lambda () (window-screen->point wln2 0 0)) list) '(0 0))  ; gutter → 行首
+
+  ;; wrap：只有 buffer 行首段显示行号，续段/空行留空
+  (define wlnw (window-set-line-numbers (window-set-mode (window-open (document-open "abcdefgh") 3 4) 'wrap) #t))
+  (define sww (window->screen wlnw))                               ; g=2 → 正文宽 2
+  (check-equal? (vector-ref (screen-row-runs sww) 0)
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "ab" (hash))))
+  (check-equal? (vector-ref (screen-row-runs sww) 1)
+                (list (run 0 "  " (hash 'face 'line-number)) (run 2 "cd" (hash))))
+
+  ;; 行号栏让出的宽度影响折行：宽 6、g=2 → 正文宽 4
+  (define wln3 (window-set-line-numbers (window-set-mode (window-open (document-open "abcdefgh") 3 6) 'wrap) #t))
+  (check-equal? (window-content-width wln3) 4)
+  (check-equal? (map vrow-end-col (vector->list (window-vrows wln3))) '(4 8 8))
 
   (displayln "project.rkt: all tests passed"))

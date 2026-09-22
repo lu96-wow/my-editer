@@ -20,6 +20,7 @@
  window-open
  window-buffer
  window-set-document
+ window-set-line-numbers
  check-mode
  snap-left-col
  point-left
@@ -67,7 +68,8 @@
    left-col      ; nat        clip：水平滚动列（wrap 下被布局忽略；值保留，切回 clip 再生效）
    top-seg       ; nat        wrap：顶部行的第几个折行段（clip 下被布局忽略；同上）
    height        ; nat        可见行数
-   width)        ; nat        可见列数
+   width         ; nat        可见列数（含行号栏）
+   line-numbers?) ; boolean   是否在左侧留行号栏（宽度由 layout 派生，不存）
   #:transparent)
 
 (define (window-open d [height 24] [width 80])
@@ -75,7 +77,10 @@
     (error 'window-open "height 必须 ≥ 1，得到 ~a" height))
   (unless (and (exact-nonnegative-integer? width) (>= width 1))
     (error 'window-open "width 必须 ≥ 1，得到 ~a" width))
-  (window d (selection-set-open #f (list (caret (point 0 0))) 0) 'clip 0 0 0 height width))
+  (window d (selection-set-open #f (list (caret (point 0 0))) 0) 'clip 0 0 0 height width #f))
+
+;; 行号栏开关（视图装饰）。宽度不由本层存：由 layout 按当前视口的行号上界现算。
+(define (window-set-line-numbers w on?) (struct-copy window w [line-numbers? (and on? #t)]))
 
 ;; 本视图看的**文本**（属性在 window-document 的 attrs 里）。
 (define (window-buffer w) (document-buffer (window-document w)))

@@ -69,6 +69,7 @@
  editor-top-line
  editor-view-top-line
  editor-view-mode
+ editor-view-line-numbers? editor-line-numbers?
  editor-view-left-col
  editor-view-top-seg
  editor-mode
@@ -116,34 +117,41 @@
 
 ;;; ---------- 构造 / 生命周期 ----------
 (define (editor-open text [height 24] [width 80]
-                     #:name [name "*scratch*"] #:history? [history? #t])
+                     #:name [name "*scratch*"] #:history? [history? #t]
+                     #:line-numbers? [line-numbers? #f])
   (define d (document-open text))
   (define entry (document-entry 0 name d (history-empty) history?))
-  (editor (list entry) (list (view 0 (window-open d height width) 'free #f)) 0 1 1))
+  (editor (list entry)
+          (list (view 0 (window-set-line-numbers (window-open d height width) line-numbers?) 'free #f))
+          0 1 1))
 
 ;; 新增一个视图。#:name 命名（默认 *scratch*）；#:focus? 控制是否把焦点交给新视图
 ;; （默认**不抢**）。返回 (values editor buffer-id)。
 (define (editor-open-document ed text [height 24] [width 80]
                             #:name [name "*scratch*"] #:focus? [focus? #f]
-                            #:history? [history? #t])
+                            #:history? [history? #t] #:line-numbers? [line-numbers? #f])
   (define did (editor-next-document ed))
   (define entry (document-entry did name (document-open text) (history-empty) history?))
   (define ed1 (struct-copy editor ed
                [documents (append (editor-documents ed) (list entry))]
                [next-document (add1 did)]))
-  (define-values (ed2 _vid) (editor-add-view ed1 did height width #:focus? focus?))
+  (define-values (ed2 _vid) (editor-add-view ed1 did height width
+                                            #:focus? focus? #:line-numbers? line-numbers?))
   (values ed2 did))
 
 ;; 新增一个视图。#:focus? 控制是否 focus 它（默认**不抢**）；#:link 加入视口同步链接。
 ;; 返回 (values editor view-id)。
 (define (editor-add-view ed did [height 24] [width 80] [p (point 0 0)]
-                         #:sync [sync 'free] #:focus? [focus? #f] #:link [link #f])
+                         #:sync [sync 'free] #:focus? [focus? #f] #:link [link #f]
+                         #:line-numbers? [line-numbers? #f])
   (check-sync 'editor-add-view sync)
   (check-link 'editor-add-view link)
   (define entry (editor-document-entry ed did))
   (define vid (editor-next-view ed))
   (define w (window-clamp-view
-             (window-set-point (window-open (document-entry-document entry) height width) p)))
+             (window-set-line-numbers
+              (window-set-point (window-open (document-entry-document entry) height width) p)
+              line-numbers?)))
   (values (struct-copy editor ed
             [views (append (editor-views ed) (list (view vid w sync link)))]
             [focus (if focus? vid (editor-focus ed))]
@@ -249,6 +257,8 @@
 (define (editor-view-top-line ed vid) (window-top-line (view-window (editor-view-ref ed vid))))
 (define (editor-mode ed) (editor-view-mode ed (editor-focus ed)))
 (define (editor-view-mode ed vid) (window-mode (view-window (editor-view-ref ed vid))))
+(define (editor-view-line-numbers? ed vid) (window-line-numbers? (view-window (editor-view-ref ed vid))))
+(define (editor-line-numbers? ed) (editor-view-line-numbers? ed (editor-focus ed)))
 (define (editor-left-col ed) (editor-view-left-col ed (editor-focus ed)))
 (define (editor-view-left-col ed vid) (window-left-col (view-window (editor-view-ref ed vid))))
 (define (editor-top-seg ed) (editor-view-top-seg ed (editor-focus ed)))
@@ -388,6 +398,12 @@
   (check-false (editor-document-view (editor-close-view e2v v2v) bid2v))
   ;; #:link 类型校验
   (check-exn exn:fail? (lambda () (editor-add-view e0 0 2 10 #:link "bad")))
+
+  ;; 行号栏：投影到 screen 的前缀 run（face 'line-number），光标右移 g 列
+  (define eln (editor-open "a\nb\nc" 3 10 #:line-numbers? #t))
+  (check-equal? (vector-ref (screen-row-runs (editor-view->screen eln 0)) 0)
+                (list (run 0 "1 " (hash 'face 'line-number)) (run 2 "a" (hash))))
+  (check-equal? (screen-cursor-col (editor-view->screen eln 0)) 2)
 
   ;; 结构变换：set-view-buffer 换属主、不改文本、不动焦点
   (define n1 (editor-set-view-document e1 0 1))

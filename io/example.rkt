@@ -26,7 +26,7 @@
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Shift+方向 扩选   Alt+↑↓ 上下加光标
 ;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
 ;;;         ^W 切换左右窗格    ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读
-;;;         ^K 清除只读  ^L 开关高亮  ^Q 退出
+;;;         ^K 清除只读  ^L 开关高亮  ^N 开关行号栏  ^Q 退出
 ;;;
 ;;; 左右两个窗格是**两个不同的 document**（右为镜像），用 core 的**跨 document 视口同步**
 ;;; （`editor-link-views`）链接：滚动/导航一个，另一个按「行固定、列按比例」跟随。
@@ -264,6 +264,11 @@
 ;; 开关高亮：只翻标志，不碰文档。
 (define (toggle-highlight a)
   (struct-copy app a [highlight? (not (app-highlight? a))]))
+
+;; 开关行号栏（core 视图装饰；只动焦点 view，不碰文档）
+(define (toggle-line-numbers a)
+  (struct-copy app a
+    [ed (editor-set-line-numbers (app-ed a) (not (editor-line-numbers? (app-ed a))))]))
 
 ;;; ---------- 2.9 选中 / 多光标（应用策略） ----------
 ;;
@@ -515,6 +520,7 @@
                            [(#\O) (set! app (mark-read-only app))]
                            [(#\K) (set! app (clear-read-only app))]
                            [(#\L) (set! app (toggle-highlight app))]
+                           [(#\N) (set! app (toggle-line-numbers app))]
                            [(#\W) (set! app (switch-pane app))]
                            [(#\Q) (set! running? #f)]
                            [else (void)])]
@@ -639,6 +645,17 @@
   (define p2 (switch-pane p1))
   (check-equal? (editor-focus (app-ed p2)) (app-mirror-vid p1))
   (check-equal? (editor-focus (app-ed (switch-pane p2))) 0)
+
+  ;; 行号栏开关：开 → screen 首 run 是 'line-number；关 → 回到文本首 run
+  (define ln0 (make-app "a\nb\nc" 5 40 "*ln*"))
+  (check-false (editor-line-numbers? (app-ed ln0)))
+  (define ln1 (toggle-line-numbers ln0))
+  (check-true (editor-line-numbers? (app-ed ln1)))
+  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed ln1))) 0)))
+                (hash 'face 'line-number))
+  (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed (toggle-line-numbers ln1)))) 0)))
+                (hash))
+  (check-true (bytes? (frame->bytes ln1)))                 ; 行号栏让出的宽度能渲染
 
   (displayln "example.rkt: all tests passed"))
 

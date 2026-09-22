@@ -112,6 +112,7 @@
  ;; ---- window ----
  window? window-open
  window-document window-buffer window-point window-height window-width window-mode
+ window-line-numbers? window-set-line-numbers window-gutter-width window-content-width
  window-top-line window-left-col window-top-seg
  window-selections window-primary window-primary-index
  window-selection-set window-selection-set-name window-set-selection-set window-clear-selection-set

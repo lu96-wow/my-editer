@@ -19,6 +19,8 @@
  layout-clip
  layout-wrap
  window-vrows
+ window-gutter-width
+ window-content-width
  window-point->screen
  window-screen->point
  window-scroll
@@ -101,6 +103,22 @@
 
 ;;; ---------- 布局 ----------
 
+;; 行号栏宽度：当前视口行号上界的位数 + 1 分隔空格；关闭 → 0。
+;; 上界用 top-line + height（而非精确可见行）：wrap 下“栏宽 → 正文宽 → 折行 → 可见行 → 栏宽”
+;; 成环，会抖；top+height 与 mode 无关、单调、无环（最多多留一格）。
+(define (window-gutter-width w)
+  (cond
+    [(not (window-line-numbers? w)) 0]
+    [else
+     (define n (buffer-line-count (window-buffer w)))
+     (define max-line (min n (+ (window-top-line w) (window-height w))))
+     (define digits (string-length (number->string max-line)))
+     (min (+ digits 1) (max 0 (sub1 (window-width w))))]))   ; 栏不得吃掉全部列
+
+;; 正文可用宽度 = 总宽 - 行号栏宽度（至少 1 列）。layout 内部一律用它，而非 window-width。
+(define (window-content-width w)
+  (max 1 (- (window-width w) (window-gutter-width w))))
+
 (define (layout-clip b top-line left-col width height)
   (for/vector ([row (in-range height)])
     (define li (+ top-line row))
@@ -134,9 +152,9 @@
   (define b (window-buffer w))
   (case (window-mode w)
     ['clip (layout-clip b (window-top-line w) (window-left-col w)
-                        (window-width w) (window-height w))]
+                        (window-content-width w) (window-height w))]
     ['wrap (layout-wrap b (window-top-line w) (window-top-seg w)
-                        (window-width w) (window-height w))]
+                        (window-content-width w) (window-height w))]
     [else (check-mode 'window-vrows (window-mode w))]))
 
 ;;; ---------- 视口自洽（夹紧）----------
@@ -147,7 +165,7 @@
   (case (window-mode w)
     ['clip (buffer-line-count b)]
     ['wrap (for/sum ([l (in-range (buffer-line-count b))])
-             (length (wrap-segments (buffer-line-ref b l) (window-width w))))]
+             (length (wrap-segments (buffer-line-ref b l) (window-content-width w))))]
     [else (check-mode 'visual-line-count (window-mode w))]))
 
 ;; 把视口夹回合法域：top/top-seg 在范围内、left-col 吸附到字符起点。
@@ -162,7 +180,7 @@
   (define ttext (buffer-line-ref b tline))
   (define max-seg (case (window-mode w)
                     ['clip 0]
-                    ['wrap (max 0 (sub1 (length (wrap-segments ttext (window-width w)))))]
+                    ['wrap (max 0 (sub1 (length (wrap-segments ttext (window-content-width w)))))]
                     [else (check-mode 'window-clamp-view (window-mode w))]))
   (struct-copy window w
     [top-line top]
@@ -191,13 +209,14 @@
        (define hit? (and (= (vrow-line vr) line)
                          (or (and (<= (vrow-start-col vr) target) (< target (vrow-end-col vr)))
                              (and (= target (vrow-end-col vr))
-                                  ;; 行尾插入点：只有落在窗口宽度内才算可见（否则宁可不画）
-                                  (< (- target (vrow-start-col vr)) (window-width w))
+                                  ;; 行尾插入点：只有落在正文宽度内才算可见（否则宁可不画）
+                                  (< (- target (vrow-start-col vr)) (window-content-width w))
                                   (vrow-last-for-line? vrows row)))))
        (if hit? (values row (- target (vrow-start-col vr))) (loop (add1 row)))])))
 
 ;; 屏幕 (row col) → buffer (line col)；越界 → (values #f #f)
 (define (window-screen->point w row col)
+  (define g (window-gutter-width w))                       ; 行号栏列 → 视作正文列 0
   (define vrows (window-vrows w))
   (cond
     [(or (< row 0) (>= row (vector-length vrows))) (values #f #f)]
@@ -207,7 +226,7 @@
          (values #f #f)
          (values (vrow-line vr)
                  (column->index (buffer-line-ref (window-buffer w) (vrow-line vr))
-                                (+ (vrow-start-col vr) col))))]))
+                                (+ (vrow-start-col vr) (max 0 (- col g))))))]))
 
 ;;; ---------- 视觉行滚动 ----------
 
@@ -219,7 +238,7 @@
 
 (define (window-scroll-wrap w delta)
   (define b (window-buffer w))
-  (define width (window-width w))
+  (define width (window-content-width w))
   (define (nseg line) (length (wrap-segments (buffer-line-ref b line) width)))
   (cond
     [(> delta 0)
@@ -267,7 +286,7 @@
 
 (define (ensure-clip w line target-col)
   (define b (window-buffer w))
-  (define height (window-height w)) (define width (window-width w))
+  (define height (window-height w)) (define width (window-content-width w))
   (define text (buffer-line-ref b line))
   ;; 行尾插入点也**占一格**：否则 target = left+width 时右滚条件不成立，
   ;; 光标会停到窗口右边界之外（point->screen 返回 col = width）。
@@ -288,7 +307,7 @@
 
 (define (ensure-wrap w line target-col)
   (define b (window-buffer w))
-  (define width (window-width w)) (define height (window-height w))
+  (define width (window-content-width w)) (define height (window-height w))
   (define segs (wrap-segments (buffer-line-ref b line) width))
   (define-values (seg _) (segment-at segs target-col))
   (define top-line (window-top-line w)) (define top-seg (window-top-seg w))
@@ -356,7 +375,7 @@
 (define (window-point-visual-move w p delta)
   (define b (window-buffer w))
   (define-values (l c) (visual-move b (point-line p) (point-col p)
-                                    (window-width w) (window-mode w) delta))
+                                    (window-content-width w) (window-mode w) delta))
   (if l (point l c) p))
 
 (define (point-up w p)   (window-point-visual-move w p -1))
@@ -475,5 +494,18 @@
   ;; 点级视觉运动（供 map 组合）
   (check-equal? (point-down ww (point 0 0)) (point 0 2))
   (check-equal? (point-up ww (point 0 2)) (point 0 0))
+
+  ;; —— 行号栏宽度 / 正文宽度 ——
+  (define long200 (document-open (string-join (for/list ([i (in-range 200)]) (number->string i)) "\n")))
+  (define wln (window-set-line-numbers (window-open long200 3 10) #t))
+  (check-equal? (window-gutter-width wln) 2)                    ; max-line=3 → 1 位 +1 分隔
+  (check-equal? (window-content-width wln) 8)
+  (check-equal? (window-gutter-width (window-set-top-line wln 99)) 4)   ; max=102 → 3 位 +1
+  (check-equal? (window-gutter-width (window-open long200 3 10)) 0)     ; 关闭 → 0
+  (check-equal? (window-content-width (window-open long200 3 10)) 10)
+  ;; 栏不得吃掉全部列
+  (check-equal? (window-gutter-width (window-set-line-numbers (window-open (document-open "x") 3 2) #t)) 1)
+  (check-equal? (window-content-width (window-set-line-numbers (window-open (document-open "x") 3 2) #t)) 1)
+  (check-equal? (window-gutter-width (window-set-line-numbers (window-open (document-open "x") 3 1) #t)) 0)
 
   (displayln "view.rkt: all tests passed"))

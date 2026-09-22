@@ -167,6 +167,8 @@ face-provider : editor did line -> (listof (list start end face))
 | 名字 | 语义 |
 |---|---|
 | `window-open` | 建视口 |
+| `window-line-numbers?` / `window-set-line-numbers` | 行号栏开关（视图装饰） |
+| `window-gutter-width` / `window-content-width` | 行号栏宽（派生）/ 正文可用宽（= 总宽 − 栏宽） |
 | `window-point` | 本视口 primary 光标 |
 | `window-selections` | 本视口选区集（已规范化） |
 | `window-primary` | 本视口 primary 选区（值） |
@@ -210,7 +212,7 @@ face-provider : editor did line -> (listof (list start end face))
 
 | 名字 | 语义 |
 |---|---|
-| `window->screen` | 视口 → 一帧画面；可传 `line-face-provider`（buffer 级，见下） |
+| `window->screen` | 视口 → 一帧画面；可传 `line-face-provider`（buffer 级，见下）；行号栏开启时以 `'line-number` face 的 run 前置在每行最左（光标/选区列已含栏宽偏移） |
 | `mirror-point` | 逻辑映射：把源 document 的点投到目标 document（行固定、列按比例）；mode 无关 |
 | `mirror-window` | 把源 window 的可视范围投到目标 window（目标 window 原样保留 document/选区，只改视口；clip → `left-col`，wrap → `top-seg`） |
 | `screen` | 输出契约：文本 runs（文档）+ cursors/selections（视图 overlay）两条通道 |
@@ -316,6 +318,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-top-line` | 焦点 view 顶部行 |
 | `editor-view-top-line` | 某 view 顶部行 |
 | `editor-view-mode` | 某 view `clip`/`wrap` |
+| `editor-view-line-numbers?` / `editor-line-numbers?` | 某 / 焦点 view 的行号栏开关（读） |
 | `editor-view-left-col` | 某 view 水平滚动列 |
 | `editor-view-top-seg` | 某 view 折行段 |
 | `editor-mode` | 焦点 view `clip`/`wrap` |
@@ -410,6 +413,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-view-selection-member?` | 集合中是否有该选区 |
 | `editor-view-set-size` | 设某 view 尺寸 |
 | `editor-view-set-mode` | 设某 view `clip`/`wrap` |
+| `editor-view-set-line-numbers` | 设某 view 行号栏开关 |
 | `editor-view-set-top-line` | 设某 view 顶部行 |
 | `editor-view-set-top-seg` | 设某 view 折行段（wrap） |
 | `editor-view-set-left-col` | 设某 view 水平滚动列 |
@@ -438,6 +442,7 @@ face-provider : editor did line -> (listof (list start end face))
 | `editor-set-primary-index` | focus 糖：直接设 primary 下标 |
 | `editor-selection-member?` | focus 糖：集合中是否有该选区 |
 | `editor-set-mode` | focus 糖：设焦点 view 的 `clip`/`wrap` |
+| `editor-set-line-numbers` | focus 糖：设焦点 view 行号栏开关 |
 | `editor-set-size` | focus 糖：设焦点 view 尺寸 |
 | `editor-set-top-line` | focus 糖：设焦点 view 顶部行 |
 | `editor-set-top-seg` | focus 糖：设焦点 view 折行段 |
