@@ -26,10 +26,11 @@
 ;;;         ←→↑↓ Home End PgUp PgDn 导航   Shift+方向 扩选   Alt+↑↓ 上下加光标
 ;;;         ^D 选中下一个相同串（多光标）  ^A 选中全部相同串  Esc 回单光标/退出
 ;;;         ^W 切换左右窗格    ^Z 撤销  ^Y 重做  ^G 程序面追加时间戳  ^O 标记只读
-;;;         ^K 清除只读  ^L 开关高亮  ^N 开关行号栏  ^Q 退出
+;;;         ^K 清除只读  ^L 开关高亮  ^N 开关行号栏  ^R 换分屏比例  ^Q 退出
 ;;;
-;;; 左右两个窗格是**两个不同的 document**（右为镜像），用 core 的**跨 document 视口同步**
+;;; 左右两个窗格是**两个不同的 document**（右 pane 同文本、开行号栏），用 core 的**跨 document 视口同步**
 ;;; （`editor-link-views`）链接：滚动/导航一个，另一个按「行固定、列按比例」跟随。
+;;; 行号是**视图装饰**（`#:line-numbers?` / `editor-set-line-numbers`），不拼进文本；`^R` 换分屏比例。
 
 (require "../core/editor.rkt"   ; editor 平台面（中性/程序/用户）
          "../core/api.rkt"      ; 低层公开面（point/selection/edit-desc/attr/window/screen/…）
@@ -47,26 +48,33 @@
 ;;        是否高亮）都是**前端状态**，core 不存。
 ;; [前端] 会话状态（比如「有没有未保存改动」）也归前端——core 的 tick 只是版本戳。
 
-(struct app (ed rows cols name highlight? mirror-vid) #:transparent)
+(struct app (ed rows cols name highlight? mirror-vid split) #:transparent)
 ;; ed        : editor
 ;; rows/cols : nat      终端整屏尺寸（最后一行留作状态栏）
 ;; name      : string
 ;; highlight? : boolean 是否跑关键字高亮
 ;; mirror-vid : view-id 右窗格视图（看第二个 document）
+;; split     : rational 左 pane 宽度占比（在 split-ratios 里轮换）
 
-;; 分屏几何：左 pane 宽 = cols/2，右 = 其余；内容高 = rows-1（最后一行状态栏）。
-(define (pane-left-w cols)  (max 1 (quotient cols 2)))
-(define (pane-right-w cols) (max 1 (- cols (pane-left-w cols))))
-(define (set-pane-sizes ed mvid rows cols)
+;; 分屏几何：左 pane 宽 = cols × split，右 = 其余；内容高 = rows-1（最后一行状态栏）。
+(define split-ratios '(1/2 1/3 2/3))
+(define (pane-left-w cols split)  (max 1 (min (sub1 cols) (round (* cols split)))))
+(define (pane-right-w cols split) (max 1 (- cols (pane-left-w cols split))))
+(define (set-pane-sizes ed mvid rows cols split)
   (define h (max 1 (sub1 rows)))
-  (editor-view-set-size (editor-view-set-size ed 0 h (pane-left-w cols)) mvid h (pane-right-w cols)))
+  (editor-view-set-size (editor-view-set-size ed 0 h (pane-left-w cols split))
+                        mvid h (pane-right-w cols split)))
+
+(define (next-split s)
+  (define i (or (for/first ([x (in-list split-ratios)] [i (in-naturals)] #:when (equal? x s)) i) 0))
+  (list-ref split-ratios (modulo (add1 i) (length split-ratios))))
 
 ;; 无文件时的默认内容（够长，能看出滚动同步）
 (define default-doc
   (string-join
    '(";; 示例：左右两个 document，用跨 document 视口同步链接起来"
-     ";; 左 pane = 主文档；右 pane = 行号镜像（另一个 document）"
-     ";; 按 ↓ / PgDn 滚动，右侧按『行固定』跟随；^W 切换焦点"
+     ";; 左 pane = 主文档；右 pane = 同一文本的另一个 document（开行号栏）"
+     ";; 按 ↓ / PgDn 滚动，右侧按『行固定』跟随；^W 切换焦点，^R 换分屏比例"
      ""
      "(define (fact n)"
      "  (if (zero? n)"
@@ -96,22 +104,18 @@
      "(define (range0 n) (map1 (lambda (i) i) (repeat n 0)))")
    "\n"))
 
-;; 右 pane 文档：把主文本渲染成「行号 | 原文」（行数一致，但内容/列宽明显不同）
-(define (mirror-of text)
-  (string-join
-   (for/list ([ln (in-list (string-split text #rx"\r?\n" #:trim? #f))] [i (in-naturals)])
-     (format "~a | ~a" (add1 i) ln))
-   "\n"))
-
-(define (make-app text rows cols name)
+;; 右 pane 是与主文本相同的**独立 document**：行号由 core 行号栏（视图装饰）现画，
+;; 不再把行号拼进文本。两份文本相同 → 跨 document 视口同步的行/列映射为恒等。
+(define (make-app text rows cols name [split 1/2])
   (define h (max 1 (sub1 rows)))
-  (define ed0 (editor-open text h (pane-left-w cols) #:name name))
-  ;; 第二个 document（镜像，独立文本；`#:history? #f`：派生 UI 不进历史）
-  (define-values (ed1 mdid) (editor-open-document ed0 (mirror-of text) h (pane-right-w cols)
-                                                  #:name "mirror" #:focus? #f #:history? #f))
+  (define ed0 (editor-open text h (pane-left-w cols split) #:name name))
+  ;; 第二个 document（同一文本；`#:history? #f`：派生 UI 不进历史；`#:line-numbers?`：行号栏）
+  (define-values (ed1 mdid) (editor-open-document ed0 text h (pane-right-w cols split)
+                                                  #:name "mirror" #:focus? #f #:history? #f
+                                                  #:line-numbers? #t))
   ;; 链接两个 view：跨 document 视口同步（行固定、列按比例）；用 editor 层读口直接拿到镜像 document 的 view
   (define mvid (editor-document-view ed1 mdid))
-  (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid))
+  (app (editor-link-views ed1 'mirror (list 0 mvid)) rows cols name #t mvid split))
 
 (define (open-app path rows cols)
   (make-app (if (and path (file-exists? path)) (file->string path) default-doc)
@@ -189,7 +193,15 @@
 (define (resize a rows cols)
   (struct-copy app a
     [rows rows] [cols cols]
-    [ed (set-pane-sizes (app-ed a) (app-mirror-vid a) rows cols)]))
+    [ed (set-pane-sizes (app-ed a) (app-mirror-vid a) rows cols (app-split a))]))
+
+;; 2.7 分屏比例：轮换 split-ratios，重算两 pane 宽度。
+;; [core] editor-view-set-size ed vid h w —— 只动指定 view。
+;; [前端] “多大比例”是应用策略；改宽后行号栏/正文宽自动重算。
+(define (cycle-split a)
+  (define s* (next-split (app-split a)))
+  (struct-copy app a [split s*]
+    [ed (set-pane-sizes (app-ed a) (app-mirror-vid a) (app-rows a) (app-cols a) s*)]))
 
 ;;; ---------- 2.8 标注：两种来源，投影时汇合（应用策略）----------
 ;;
@@ -422,7 +434,7 @@
   (define scr
     (screen-compose (max 1 (sub1 (app-rows app))) (app-cols app)
                     (list (list 'left  0 0 (editor-view->screen ed 0 (app-face-provider app)))
-                          (list 'right (pane-left-w (app-cols app)) 0
+                          (list 'right (pane-left-w (app-cols app) (app-split app)) 0
                                 (editor-view->screen ed mvid (app-face-provider app))))
                     (if (= fvid 0) 'left 'right)))
   (define row-runs (screen-row-runs scr))
@@ -521,6 +533,7 @@
                            [(#\K) (set! app (clear-read-only app))]
                            [(#\L) (set! app (toggle-highlight app))]
                            [(#\N) (set! app (toggle-line-numbers app))]
+                           [(#\R) (set! app (cycle-split app))]
                            [(#\W) (set! app (switch-pane app))]
                            [(#\Q) (set! running? #f)]
                            [else (void)])]
@@ -656,6 +669,20 @@
   (check-equal? (run-face (car (vector-ref (screen-row-runs (editor->screen (app-ed (toggle-line-numbers ln1)))) 0)))
                 (hash))
   (check-true (bytes? (frame->bytes ln1)))                 ; 行号栏让出的宽度能渲染
+
+  ;; 右 pane 无手绘行号：文本与左 pane 相同，行号来自 core 行号栏（视图装饰）
+  (define mvid0 (app-mirror-vid p0))
+  (define rtext (editor-buffer->string (app-ed p0) (editor-view-document-id (app-ed p0) mvid0)))
+  (check-true (editor-view-line-numbers? (app-ed p0) mvid0))
+  (check-equal? rtext (editor-buffer->string (app-ed p0) 0))
+  (check-false (regexp-match? #rx" \\| " rtext))
+
+  ;; ^R 换分屏比例：左 pane 宽度改变，行号栏/正文宽随之重算
+  (define p3 (cycle-split p0))
+  (check-not-equal? (app-split p3) (app-split p0))
+  (check-not-equal? (editor-view-width (app-ed p3) 0) (editor-view-width (app-ed p0) 0))
+  (check-true (bytes? (frame->bytes p3)))
+  (check-equal? (app-split (cycle-split (cycle-split p3))) (app-split p0))   ; 轮换回 1/2
 
   (displayln "example.rkt: all tests passed"))
 
