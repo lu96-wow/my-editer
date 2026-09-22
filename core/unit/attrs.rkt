@@ -33,6 +33,7 @@
  attrs-apply-edit
  attrs-apply-attr
  attrs-apply-attr-batch
+ attrs-replace-descs
  attrs-desc-inverse
  attrs-check)
 
@@ -355,6 +356,65 @@
               (attr-set (point line x) (point line y) key (hash-ref h key))
               (attr-remove (point line x) (point line y) key))))))
 
+;;; ---------- 替换式批量（把某 key 在一行上的 runs 整体换成新 runs） ----------
+
+;; 合并相邻、同 op/key/val 的 attr-desc（把被旧 run 边界切开的同一次 set 接回去）。
+(define (merge-replace-descs ds)
+  (define (same? a b)
+    (and (eq? (attr-desc-op a) (attr-desc-op b))
+         (eq? (attr-desc-key a) (attr-desc-key b))
+         (equal? (attr-desc-val a) (attr-desc-val b))
+         (point=? (attr-desc-end a) (attr-desc-start b))))
+  (reverse
+   (for/fold ([acc '()]) ([d (in-list ds)])
+     (cond
+       [(null? acc) (list d)]
+       [(same? (car acc) d)
+        (cons (attr-desc (attr-desc-start (car acc)) (attr-desc-end d)
+                         (attr-desc-key d) (attr-desc-op d) (attr-desc-val d))
+              (cdr acc))]
+       [else (cons d acc)]))))
+
+;; old-runs / new-runs : (listof (list start end val))，行内列号（nat）。
+;; 返回同 line/key、**两两不重叠**的 attr-desc：新 runs 覆盖的段 set，其余原先被旧 runs
+;; 覆盖的段 remove；两者都未覆盖的段不产出。结果可直接进 attrs-apply-attr-batch。
+;; 语义 = 「该 key 在这一行的值变成且仅变成 new-runs」（旧值自动消失）。
+(define (attrs-replace-descs who line key old-runs new-runs)
+  (define (norm runs)
+    (define sorted
+      (sort (for/list ([r (in-list runs)])
+              (match-define (list a b v) r)
+              (unless (and (exact-nonnegative-integer? a) (exact-nonnegative-integer? b))
+                (error who "run 列号必须是 nat: ~a" r))
+              (when (< b a) (error who "run 列号反向: ~a" r))
+              (list a b v))
+            < #:key car))
+    (when (pair? sorted)
+      (for ([x (in-list (drop-right sorted 1))] [y (in-list (rest sorted))])
+        (when (< (car y) (cadr x))
+          (error who "新增 run 重叠: ~a 与 ~a" x y))))
+    sorted)
+  (define old-n (norm old-runs))
+  (define new-n (norm new-runs))
+  (define pts (sort (remove-duplicates
+                     (append* (for/list ([r (in-list (append old-n new-n))])
+                                (list (car r) (cadr r)))))
+                    <))
+  (merge-replace-descs
+   (if (null? pts)
+       '()
+       (filter values
+           (for/list ([a (in-list (drop-right pts 1))] [b (in-list (rest pts))])
+             (cond
+               [(>= a b) #f]
+               [else
+                (define nr (for/first ([r (in-list new-n)] #:when (and (<= (car r) a) (< a (cadr r)))) r))
+                (define orr (for/first ([r (in-list old-n)] #:when (and (<= (car r) a) (< a (cadr r)))) r))
+                (cond
+                  [nr  (attr-set (point line a) (point line b) key (caddr nr))]
+                  [orr (attr-remove (point line a) (point line b) key)]
+                  [else #f])]))))))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -439,5 +499,27 @@
   ;; attrs-check：行数必须一致
   (check-exn exn:fail? (lambda () (attrs-check (fresh) 2)))
   (check-exn exn:fail? (lambda () (attrs-check (fresh) 0)))
+
+  ;; attrs-replace-descs：新覆盖 set、原旧区 remove，结果两两不重叠
+  (define (replace old new) (attrs-replace-descs 'test 0 'ro old new))
+  (check-equal? (replace '() '((0 2 v))) (list (attr-set (P 0 0) (P 0 2) 'ro 'v)))
+  (check-equal? (replace '((0 5 v)) '()) (list (attr-remove (P 0 0) (P 0 5) 'ro)))
+  (check-equal? (replace '((0 5 v)) '((2 3 w)))
+                (list (attr-remove (P 0 0) (P 0 2) 'ro)
+                      (attr-set (P 0 2) (P 0 3) 'ro 'w)
+                      (attr-remove (P 0 3) (P 0 5) 'ro)))
+  (check-equal? (replace '((0 5 v)) '((0 5 w))) (list (attr-set (P 0 0) (P 0 5) 'ro 'w)))
+  (check-equal? (replace '((0 2 v) (4 6 v)) '((1 5 w)))
+                (list (attr-remove (P 0 0) (P 0 1) 'ro)
+                      (attr-set (P 0 1) (P 0 5) 'ro 'w)
+                      (attr-remove (P 0 5) (P 0 6) 'ro)))
+  ;; 结果确实不重叠（能进 batch）
+  (define rds (replace '((0 5 v)) '((2 3 w))))
+  (define base (attrs-apply-attr-batch (fresh) 'test (list (attr-set (P 0 0) (P 0 5) 'ro 'v))))
+  (define done (attrs-apply-attr-batch base 'test rds))
+  (check-equal? (attrs-key-runs done 0 5 'ro) (list (list 2 3 'w)))
+  ;; 新 runs 自身重叠 → 报错
+  (check-exn exn:fail? (lambda () (replace '() '((0 3 v) (1 4 w)))))
+  (check-exn exn:fail? (lambda () (replace '() '((4 2 v)))))
 
   (displayln "attrs.rkt: all tests passed"))

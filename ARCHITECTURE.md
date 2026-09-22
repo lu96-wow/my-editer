@@ -173,7 +173,8 @@ editor-command-batch  : 给现成 change 直接施加
 
 `editor-document-edit-at` / `editor-document-edit-at-batch` / `editor-view-edit` / `editor-edit` 都是它的
 **薄封装**（只固定策略取值），所以不存在「两个面各自实现一遍」。属性写也是它的封装：
-`editor-document-apply-attrs` / `editor-document-put-attr` / `editor-document-remove-attr`。
+`editor-document-apply-attrs` / `editor-document-put-attr` / `editor-document-remove-attr` /
+`editor-document-put-attr-runs` / `editor-document-put-attrs`（后两个是「行 + 列区间」的替换语义封装）。
 
 - **程序默认**：`editor-document-edit-at` → `#:reaction 'none`（只换 buffer 值，视图字面不动）。
 - **用户默认**：`editor-edit` → `#:reaction 'leader` + `#:record? 'default`（跟随 document）。

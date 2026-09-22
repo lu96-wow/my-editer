@@ -136,8 +136,7 @@
                 (list (run 0 "a" (hash 'face 'bold)) (run 1 "中b" (hash))))
 
   ;; 属性不进 face
-  (define b5 (document-put-attr (document-open "abcdef")
-                              (point 0 3) (point 0 6) read-only-key #t))
+  (define b5 (document-put-attr (document-open "abcdef") read-only-key 0 3 6 #t))
   (check-equal? (screen-row (window->screen (window-open b5 1 10)) 0)
                 (list (run 0 "abcdef" (hash))))
 

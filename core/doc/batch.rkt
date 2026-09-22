@@ -65,7 +65,7 @@
   (check-equal? (document->string d3) "ABabcd\nefgh")
 
   ;; 被 read-only 拒绝的编辑没发生，不污染点映射；逆与 applied 平行
-  (define rbd (document-put-attr (document-open "abcd") (point 0 0) (point 0 2) read-only-key #t))
+  (define rbd (document-put-attr (document-open "abcd") read-only-key 0 0 2 #t))
   (define-values (rb* rdescs rinv)
     (document-apply-edit-batch rbd (list (edit-desc (point 0 1) (point 0 1) "X")   ; 只读内 → 拒
                                        (edit-desc (point 0 3) (point 0 3) "Y"))))

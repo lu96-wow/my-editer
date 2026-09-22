@@ -256,7 +256,7 @@
   (check-equal? (editor-point ec3) (point 0 1))          ; leader：光标推进到插入后
   (check-true (editor-document-can-undo? ec3))
   ;;   显式 #:trusted? #t：绕 read-only
-  (define-values (ecr _ecr-r) (editor-document-put-attr (editor-open "abc") 0 (point 0 0) (point 0 3) read-only-key #t))
+  (define-values (ecr _ecr-r) (editor-document-put-attr (editor-open "abc") 0 read-only-key 0 0 3 #t))
   (define-values (ecr1 rcr1) (editor-command ecr (edit-insert-char #\X)
                                              #:selection (list (caret (point 0 1)))))
   (check-false rcr1)

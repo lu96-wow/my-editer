@@ -14,7 +14,9 @@
 ;;;   document-apply-change[#:trusted?] 施加 change（文本 + 属性），默认带 read-only 守卫
 ;;;   document-apply-edit  [#:trusted?] 文本单条便利封装
 ;;;   document-edit-at     [#:trusted?] 给位置与 op 算 desc 再施加（文本）
-;;;   document-put-attr/remove-attr 属性单条便利封装
+;;;   document-put-attr / -remove-attr   单段属性 set / remove（行 + 列区间）
+;;;   document-put-attr-runs             把某 key 在一行上的 runs 整体替换（替换语义）
+;;;   document-put-attrs                 把某 key 在一段行范围内整体替换
 ;;;
 ;;; 编辑传播顺序（唯一）：
 ;;;   content-apply（夹紧 + 生效文本 desc）
@@ -54,6 +56,10 @@
  document-attrs-key-runs
  document-put-attr
  document-remove-attr
+ document-put-attr-runs
+ document-put-attrs
+ document-put-attr-runs-change
+ document-put-attrs-change
  ;; 唯一变更漏斗
  document-apply-change
  document-apply-edit
@@ -123,11 +129,49 @@
 (define (document-attrs-key-runs d line key)
   (attrs-key-runs (document-attrs d) line (buffer-line-length (document-buffer d) line) key))
 
-(define (document-put-attr d start end key val)
-  (define-values (d* _) (document-apply-change d (attrs->change (list (attr-set start end key val)))))
+(define (document-put-attr d key line c0 c1 val)
+  (define-values (d* _)
+    (document-apply-change d (attrs->change (list (attr-set (point line c0) (point line c1) key val)))))
   d*)
-(define (document-remove-attr d start end key)
-  (define-values (d* _) (document-apply-change d (attrs->change (list (attr-remove start end key)))))
+(define (document-remove-attr d key line c0 c1)
+  (define-values (d* _)
+    (document-apply-change d (attrs->change (list (attr-remove (point line c0) (point line c1) key)))))
+  d*)
+
+;; 替换式（单行）：把 key 在第 line 行的 runs 整体换成 runs（旧值全清）。
+(define (document-put-attr-runs-change d key line runs)
+  (define n (document-line-count d))
+  (unless (< -1 line n)
+    (error 'document-put-attr-runs-change "行号越界: ~a（共 ~a 行）" line n))
+  (attrs->change
+   (attrs-replace-descs 'document-put-attr-runs-change line key
+                        (document-attrs-key-runs d line key) runs)))
+
+(define (document-put-attr-runs d key line runs)
+  (define-values (d* _) (document-apply-change d (document-put-attr-runs-change d key line runs)))
+  d*)
+
+;; 替换式（多行）：把 key 在 [l0,l1] 行的 runs 换成 rows 里属于该行的 runs；
+;; 范围内没给 rows 的行 → 清空该 key。rows : (listof (list line c0 c1 val))。
+(define (document-put-attrs-change d key rows #:lines [l0 0] [l1 (sub1 (document-line-count d))])
+  (define n (document-line-count d))
+  (unless (<= 0 l0 l1 (sub1 n))
+    (error 'document-put-attrs-change "行范围非法: ~a..~a（共 ~a 行）" l0 l1 n))
+  (define by-line (make-hash))
+  (for ([r (in-list rows)])
+    (match-define (list line c0 c1 val) r)
+    (unless (<= l0 line l1)
+      (error 'document-put-attrs-change "row 行号 ~a 不在范围 ~a..~a" line l0 l1))
+    (hash-update! by-line line (lambda (l) (cons (list c0 c1 val) l)) '()))
+  (attrs->change
+   (append*
+    (for/list ([line (in-range l0 (add1 l1))])
+      (attrs-replace-descs 'document-put-attrs-change line key
+                           (document-attrs-key-runs d line key)
+                           (reverse (hash-ref by-line line '())))))))
+
+(define (document-put-attrs d key rows #:lines [l0 0] [l1 (sub1 (document-line-count d))])
+  (define-values (d* _) (document-apply-change d (document-put-attrs-change d key rows #:lines l0 l1)))
   d*)
 
 ;;; ---------- read-only 守卫 ----------
@@ -288,26 +332,36 @@
   (check-equal? (document-attr-tick d1) 0)
 
   ;; 属性读写：任意 key 独立；read-only 是保留 key
-  (define ab (document-put-attr d0 (P 0 1) (P 0 4) 'face 'bold))
+  (define ab (document-put-attr d0 'face 0 1 4 'bold))
   (check-equal? (document-attrs-at ab (P 0 2)) (hash 'face 'bold))
   (check-equal? (document-attrs-key-runs ab 0 'face) (list (list 1 4 'bold)))
-  (define ab2 (document-put-attr ab (P 0 2) (P 0 3) read-only-key #t))
+  (define ab2 (document-put-attr ab read-only-key 0 2 3 #t))
   (check-equal? (document-attrs-at ab2 (P 0 2)) (hash 'face 'bold read-only-key #t))
-  (define ab3 (document-remove-attr ab2 (P 0 2) (P 0 3) read-only-key))
+  (define ab3 (document-remove-attr ab2 read-only-key 0 2 3))
   (check-false (attr-read-only? (document-attrs-at ab3 (P 0 2))))
   (check-true (document-content-eq? d0 ab))       ; 写属性不动文本
   (check-equal? (document-text-tick ab) 0)             ; 文本版本不变
   (check-equal? (document-attr-tick ab) 1)        ; 标注版本 +1
 
+  ;; 替换语义（单行）：put-attr-runs 把该 key 在该行的 runs 整体换掉（旧值全清）
+  (define ar (document-put-attr-runs ab 'face 0 (list (list 2 3 'italic))))
+  (check-equal? (document-attrs-key-runs ar 0 'face) (list (list 2 3 'italic)))
+  (check-equal? (document-attrs-key-runs (document-put-attr-runs ab 'face 0 '()) 0 'face) '())
+  ;; 替换语义（多行）：范围内没给 rows 的行被清空
+  (define am (document-put-attrs ab 'face (list (list 0 0 1 'x)) #:lines 0 1))
+  (check-equal? (document-attrs-key-runs am 0 'face) (list (list 0 1 'x)))
+  (check-equal? (document-attrs-key-runs am 1 'face) '())
+  (check-exn exn:fail? (lambda () (document-put-attrs ab 'face (list (list 5 0 1 'x)))))
+  (check-exn exn:fail? (lambda () (document-put-attr-runs ab 'face 9 '())))
+
   ;; 零宽 = no-op
-  (check-eq? (document-put-attr d0 (P 0 1) (P 0 1) 'k #t) d0)
-  (check-eq? (document-remove-attr ab (P 0 2) (P 0 2) 'face) ab)
-  ;; 跨行 / 越界 → 报错
-  (check-exn exn:fail? (lambda () (document-put-attr d0 (P 0 0) (P 1 0) 'k #t)))
-  (check-exn exn:fail? (lambda () (document-put-attr d0 (P 9 0) (P 9 1) 'k #t)))
+  (check-eq? (document-put-attr d0 'k 0 1 1 #t) d0)
+  (check-eq? (document-remove-attr ab 'face 0 2 2) ab)
+  ;; 越界 → 报错
+  (check-exn exn:fail? (lambda () (document-put-attr d0 'k 9 0 1 #t)))
 
   ;; read-only 守卫
-  (define rb (document-put-attr d0 (P 0 1) (P 0 4) read-only-key #t))
+  (define rb (document-put-attr d0 read-only-key 0 1 4 #t))
   (define-values (rb1 rrd) (document-edit-at rb (P 0 2) (buffer-op-insert-char #\X)))
   (check-eq? rb1 rb)
   (check-false rrd)
@@ -321,7 +375,7 @@
   ;; 枚举 / 清属性
   (check-equal? (document-attrs-runs rb 0)
                 (list (list 0 1 (hash)) (list 1 4 ro) (list 4 5 (hash))))
-  (define rb-nr (document-remove-attr rb (P 0 1) (P 0 4) read-only-key))
+  (define rb-nr (document-remove-attr rb read-only-key 0 1 4))
   (check-false (attr-read-only? (document-attrs-at rb-nr (P 0 2))))
   (check-equal? (document-attrs-runs rb-nr 0) (list (list 0 5 (hash))))
 
@@ -352,7 +406,7 @@
   (check-false (attr-read-only? (document-attrs-at cb2 (P 0 1))))
 
   ;; 回归：删除带属性的文本，撤销必须把属性一起带回
-  (define eb0 (document-put-attr (document-open "abc") (P 0 0) (P 0 3) read-only-key #t))
+  (define eb0 (document-put-attr (document-open "abc") read-only-key 0 0 3 #t))
   (define-values (eb1 res2)
     (document-apply-change eb0 (edits->change (list (edit-desc (P 0 1) (P 0 2) ""))) #:trusted? #t))
   (check-equal? (document->string eb1) "ac")
@@ -362,7 +416,7 @@
   (check-equal? (document-attrs-key-runs eb2 0 read-only-key) (list (list 0 3 #t)))
 
   ;; 守卫拒绝 → 什么都没发生
-  (define gb (document-put-attr (document-open "abc") (P 0 0) (P 0 1) read-only-key #t))
+  (define gb (document-put-attr (document-open "abc") read-only-key 0 0 1 #t))
   (define-values (gb1 res3) (document-apply-change gb (edits->change (list (edit-desc (P 0 0) (P 0 0) "Z")))))
   (check-equal? (document->string gb1) "abc")
   (check-false res3)

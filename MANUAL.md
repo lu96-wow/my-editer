@@ -264,8 +264,10 @@
 | `document-apply-edit` | `(document-apply-edit d desc #:trusted? [trusted? #f])` | 文本单条；返回 `(values document 生效desc/#f)` |
 | `document-apply-edit-batch` | `(document-apply-edit-batch d descs #:trusted? [trusted? #f])` | 文本批；返回 `(values document 生效descs 逆)` |
 | `document-edit-at` | `(document-edit-at d p op #:trusted? [trusted? #f])` | 给位置与 op 算 desc 再施加 |
-| `document-put-attr` | `(document-put-attr d start end key val)` | 写属性（走漏斗） |
-| `document-remove-attr` | `(document-remove-attr d start end key)` | 删属性 |
+| `document-put-attr` | `(document-put-attr d key line c0 c1 val)` | 单段写属性（走漏斗） |
+| `document-remove-attr` | `(document-remove-attr d key line c0 c1)` | 单段删属性 |
+| `document-put-attr-runs` | `(document-put-attr-runs d key line runs)` | 替换某 key 在一行的 runs（`runs` = `(list (list c0 c1 val))`） |
+| `document-put-attrs` | `(document-put-attrs d key rows #:lines [l0 0] [l1 末行])` | 替换某 key 在一段行范围（`rows` = `(list (list line c0 c1 val))`） |
 | `document-attrs-at` / `-runs` / `-key-runs` | | 属性读 |
 | `change-result` | `(struct change-result ...)` | 一次变更的完整结果 |
 | `change-result?` | `(change-result? v)` | 谓词 |
@@ -734,13 +736,19 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `editor-document-attrs-runs` | `(editor-document-attrs-runs ed did line)` | 某行属性段 |
 | `editor-document-attrs-key-runs` | `(editor-document-attrs-key-runs ed did line key)` | 某行某 key 段 |
 | `editor-document-apply-attrs` | `(editor-document-apply-attrs ed did attrs #:record? 'default)` | 批量写属性 |
-| `editor-document-put-attr` | `(editor-document-put-attr ed did start end key val #:record? 'default)` | 写单 key |
-| `editor-document-remove-attr` | `(editor-document-remove-attr ed did start end key #:record? 'default)` | 删单 key |
+| `editor-document-put-attr` | `(editor-document-put-attr ed did key line c0 c1 val #:record? 'default)` | 单段 set |
+| `editor-document-remove-attr` | `(editor-document-remove-attr ed did key line c0 c1 #:record? 'default)` | 单段 remove |
+| `editor-document-put-attr-runs` | `(editor-document-put-attr-runs ed did key line runs #:record? 'default)` | 替换该行该 key（`runs` = `(list (list c0 c1 val))`） |
+| `editor-document-put-attrs` | `(editor-document-put-attrs ed did key rows #:lines [l0 0] [l1 末行] #:record? 'default)` | 替换一段行范围（`rows` = `(list (list line c0 c1 val))`） |
 | `read-only-key` / `attr-read-only?` | | core 解释的保留 key |
 
 ```racket
-;; 把文档 0 的 [0,3) 标成只读（走 change 漏斗，可撤销）
-(editor-document-put-attr ed 0 (point 0 0) (point 0 3) read-only-key #t)
+;; 单段：把文档 0 第 0 行 [0,3) 标成只读（走 change 漏斗，可撤销）
+(editor-document-put-attr ed 0 read-only-key 0 0 3 #t)
+
+;; 替换式：整屏重算某来源的标注（旧值自动消失；读口输出可直接写回）
+(editor-document-put-attrs ed 0 'lsp-token
+  '((0 0 5 face) (1 0 3 warn)))
 ```
 
 ### 3.11 历史策略
