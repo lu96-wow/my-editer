@@ -106,21 +106,35 @@
     [(or (not (= h (screen-height old)))
          (not (= (screen-width new) (screen-width old)))) #f]
     [else
+     ;; overlay 按行分桶一次，逐行只比本行桶（旧实现每行都扫全部光标/选区）。
+     (define ov-old (overlays-by-row old h))
+     (define ov-new (overlays-by-row new h))
      (for/list ([r (in-range h)]
                 #:when (or (not (equal? (vector-ref (screen-row-runs old) r)
                                         (vector-ref (screen-row-runs new) r)))
-                           (not (equal? (row-overlay old r) (row-overlay new r)))))
+                           (not (equal? (vector-ref ov-old r) (vector-ref ov-new r)))))
        r)]))
 
-;; 某行的 overlay 规范化表示（光标 + 选区，按列排序），用于跨帧比较。
-(define (row-overlay s r)
-  (list
-   (sort (for/list ([c (in-list (screen-cursors s))] #:when (= r (cursor-row c)))
-           (list (cursor-col c) (cursor-face c) (cursor-primary? c)))
-         < #:key car)
-   (sort (for/list ([g (in-list (screen-selections s))] #:when (= r (region-row g)))
-           (list (region-start-col g) (region-end-col g) (region-face g)))
-         < #:key car)))
+;; 每行的 overlay 规范化表示（光标 + 选区，各自按列排序）；返回长度 h 的 vector。
+;; 一次遍历光标/选区填桶，用于跨帧逐行比较。
+(define (overlays-by-row s h)
+  (define cursors (make-vector h '()))
+  (define sels (make-vector h '()))
+  (for ([c (in-list (screen-cursors s))])
+    (define r (cursor-row c))
+    (when (and (exact-nonnegative-integer? r) (< r h))
+      (vector-set! cursors r
+                   (cons (list (cursor-col c) (cursor-face c) (cursor-primary? c))
+                         (vector-ref cursors r)))))
+  (for ([g (in-list (screen-selections s))])
+    (define r (region-row g))
+    (when (and (exact-nonnegative-integer? r) (< r h))
+      (vector-set! sels r
+                   (cons (list (region-start-col g) (region-end-col g) (region-face g))
+                         (vector-ref sels r)))))
+  (for/vector ([r (in-range h)])
+    (list (sort (vector-ref cursors r) < #:key car)
+          (sort (vector-ref sels r) < #:key car))))
 
 (define (shift-run rn x) (run (+ x (run-col rn)) (run-text rn) (run-face rn)))
 (define (shift-cursor c x y) (cursor (+ y (cursor-row c)) (+ x (cursor-col c)) (cursor-face c) (cursor-primary? c)))
