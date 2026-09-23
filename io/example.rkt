@@ -389,16 +389,21 @@
           [(not nxt) a]
           [else (struct-copy app a [ed (editor-add-selection ed (selection (car nxt) (cadr nxt)) #:primary? #t)])])])]))
 
-;; Ctrl+A：把当前词的所有出现一次选中
+;; Ctrl+A：把当前词的所有出现一次选中；**保留原来的 primary**（不重置成第一个）。
 (define (select-all-occurrences a)
   (define ed (app-ed a))
-  (define-values (pat _ps _pe) (word-at ed))
+  (define-values (pat ps pe) (word-at ed))
   (if (not pat)
       a
-      (struct-copy app a
-        [ed (editor-set-selections
-             ed
-             (map (lambda (o) (selection (car o) (cadr o))) (occurrences ed pat)))])))
+      (let* ([sels (map (lambda (o) (selection (car o) (cadr o))) (occurrences ed pat))]
+             ;; 原 primary（caret 时 word-at 已给出派生词范围 [ps,pe]）对应哪个 occurrence
+             ;; → 作为 primary 下标（core 会在规范化后按身份追踪 leader）。
+             [idx (or (for/first ([s (in-list sels)] [i (in-naturals)]
+                                  #:when (let-values ([(x y) (selection-range s)])
+                                           (and (point=? x ps) (point=? y pe))))
+                        i)
+                      0)])                                  ; 理论上必命中；兜底同旧行为
+        (struct-copy app a [ed (editor-set-selections ed sels idx)]))))
 
 ;; 回单光标（保留 primary）
 (define (collapse-selection a)
@@ -707,6 +712,17 @@
   (define m4 (select-all-occurrences m0))
   (check-equal? (length (editor-selections (app-ed m4))) 2)
   (check-equal? (editor-document->string (app-ed (edit m4 (edit-insert "Y"))) 0) "Y bar Y")
+  ;; ^A 保留原 primary：^D 两次后 primary 是第二个 foo，^A 后仍是它（不重置为第一个）
+  (define ma0 (select-next-occurrence m0))
+  (define ma1 (select-next-occurrence ma0))
+  (check-equal? (editor-primary (app-ed ma1)) (selection (point 0 8) (point 0 11)))
+  (define ma2 (select-all-occurrences ma1))
+  (check-equal? (length (editor-selections (app-ed ma2))) 2)
+  (check-equal? (editor-primary (app-ed ma2)) (selection (point 0 8) (point 0 11)))
+  ;; 光标在第二处词内 → ^A 的 primary 也是第二处
+  (define ma3 (struct-copy app m0 [ed (editor-set-point (app-ed m0) (point 0 9))]))
+  (check-equal? (editor-primary (app-ed (select-all-occurrences ma3)))
+                (selection (point 0 8) (point 0 11)))
   ;; Shift+右：扩选（主选区 head 动、anchor 不动）
   (define m5 (extend-selection m0 'right))
   (check-true (not (caret? (car (editor-selections (app-ed m5))))))
