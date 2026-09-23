@@ -26,7 +26,7 @@
 ;;; 合并时保留**较早**的 point（撤销回到整段之前）。
 
 (provide
- (struct-out step)
+ step? step-replay step-undo step-pre-point
  (struct-out history)
  history-empty
  history-record
@@ -39,9 +39,14 @@
 
 ;;; ---------- 数据 ----------
 
-;; replay : (listof change)  正序依次施加
-;; undo   : (listof change)  正序依次施加（新编辑的逆在前）
-(struct step (replay undo pre-point) #:transparent)
+;; replay-rev : (listof change)  **逆序**（最新在前）—— 合并时只需 cons，O(1)。
+;;   用 step-replay 取回正序（公开契约不变）。合并一段长打字原本是每次
+;;   (append big (list x))，O(n²)；逆序存储后整段 O(n)。
+;; undo       : (listof change)  正序依次施加（新编辑的逆在前）
+(struct step (replay-rev undo pre-point) #:transparent)
+
+;; 公开访问器：正序 replay（依次施加）。
+(define (step-replay s) (reverse (step-replay-rev s)))
 
 (struct history (undo redo) #:transparent)
 ;; undo / redo : (listof step)  栈顶在前
@@ -76,7 +81,9 @@
   (and (= 1 (length replay)) (single-text (car replay))))
 
 (define (replay-merge? prev replay)
-  (define pch (and (pair? (step-replay prev)) (last (step-replay prev))))
+  ;; prev 的逆序 replay 的头部 = 正序的最后一条。
+  (define prev-rev (step-replay-rev prev))
+  (define pch (and (pair? prev-rev) (car prev-rev)))
   (define pl (and pch (null? (change-attrs pch))
                   (pair? (change-texts pch))
                   (last (change-texts pch))))
@@ -97,8 +104,10 @@
   (define top (and (pair? (history-undo h)) (car (history-undo h))))
   (cond
     [(and top (replay-merge? top replay))
+     ;; 合并：新 replay 接在旧 replay 之后（正序）→ 逆序存储即 (reverse replay) 接在头部。
+     ;; 合并分支保证 replay 只有一条，故这是 O(1)（旧实现 (append big …) 是 O(n) → O(n²)）。
      (struct-copy history h
-       [undo (cons (step (append (step-replay top) replay)
+       [undo (cons (step (append (reverse replay) (step-replay-rev top))
                          ;; 新的逆在前，旧的在后（撤销顺序）
                          (append undo (step-undo top))
                          (step-pre-point top))
@@ -106,7 +115,7 @@
        [redo '()])]
     [else
      (struct-copy history h
-       [undo (cons (step replay undo pre-point) (history-undo h))]
+       [undo (cons (step (reverse replay) undo pre-point) (history-undo h))]
        [redo '()])]))
 
 ;; 取出下一步。空栈 → (values #f h)（原样，不报错）。

@@ -15,6 +15,7 @@
 (provide
  (struct-out vrow)
  line-range->runs
+ line-range->runs/glyphs
  wrap-segments
  layout-clip
  layout-wrap
@@ -41,7 +42,11 @@
 ;;; ---------- 一行 [start,end) 显示列 → runs ----------
 
 (define (line-range->runs b li start end [face-provider empty-face-provider])
-  (define glyphs (rendered-line-glyphs (render-line b li face-provider)))
+  (line-range->runs/glyphs (rendered-line-glyphs (render-line b li face-provider)) start end))
+
+;; 同上，但已渲染的 glyphs 由调用方传入 —— 同一行在 wrap 下会对应多个 vrow（多个
+;; [start,end) 段），一次渲染、多次切片，不必每个 vrow 都整行重渲。
+(define (line-range->runs/glyphs glyphs start end)
   (define n (vector-length glyphs))
   (define cells
     (let loop ([i 0] [col 0] [acc '()])
@@ -160,14 +165,20 @@
 
 ;;; ---------- 视口自洽（夹紧）----------
 
-;; mode-aware 的视觉行总数：clip = buffer 行数；wrap = 折行段总数。
-(define (visual-line-count w)
-  (define b (window-buffer w))
-  (case (window-mode w)
-    ['clip (buffer-line-count b)]
-    ['wrap (for/sum ([l (in-range (buffer-line-count b))])
-             (length (wrap-segments (buffer-line-ref b l) (window-content-width w))))]
-    [else (check-mode 'visual-line-count (window-mode w))]))
+;; 最大 top-line（buffer 行号）：从这个行号起能看到**足够填满一屏**的视觉行。
+;; 从末尾往回数折行段，只走到「够 height 段」为止 —— O(height × 行长)，与总行数无关；
+;; 旧实现的 visual-line-count 要折行**整个 buffer**（O(全文)），在文件末尾编辑时每键都付这个代价。
+(define (max-top-line b width height mode)
+  (case mode
+    ['clip (max 0 (- (buffer-line-count b) height))]
+    ['wrap
+     (let loop ([line (sub1 (buffer-line-count b))] [segs 0])
+       (cond
+         [(< line 0) 0]
+         [else
+          (define s (length (wrap-segments (buffer-line-ref b line) width)))
+          (if (>= (+ segs s) height) line (loop (sub1 line) (+ segs s)))]))]
+    [else (check-mode 'max-top-line mode)]))
 
 ;; 把视口夹回合法域：top/top-seg 在范围内、left-col 吸附到字符起点。
 ;; free 视图「视口钉住」= 钉住**但仍在合法域内**；否则别的视图删短内容后
@@ -175,15 +186,12 @@
 (define (window-clamp-view w)
   (define b (window-buffer w))
   (define n (buffer-line-count b))
-  ;; top-line 是 **buffer 行号**（不是视觉行号）：wrap 下 visual-line-count 是折行**段数**，
-  ;; 大于行数；若不额外夹到 (sub1 n)，top-line 会越界，layout-wrap 的 buffer-line-ref 会崩。
-  ;; visual-line-count 在 wrap 下要折行全 buffer（O(全文)），只在「顶行已到末页」时才需要：
-  ;; 若 top+height ≤ n，则 top ≤ n-height ≤ visual-line-count-height，视觉上界不起作用。
+  ;; top-line 是 **buffer 行号**（不是视觉行号）；若不夹到 max-top-line / (sub1 n)，
+  ;; wrap 下会滚出末页、layout-wrap 的 buffer-line-ref 会崩。
   (define top
-    (let ([t (window-top-line w)])
-      (if (<= (+ t (window-height w)) n)
-          (max 0 (min t (sub1 n)))
-          (max 0 (min t (max 0 (- (visual-line-count w) (window-height w))) (sub1 n))))))
+    (max 0 (min (window-top-line w)
+                (max-top-line b (window-content-width w) (window-height w) (window-mode w))
+                (sub1 n))))
   (define tline top)
   (define ttext (buffer-line-ref b tline))
   (define max-seg (case (window-mode w)

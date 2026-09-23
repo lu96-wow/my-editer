@@ -46,11 +46,17 @@
   (define b (window-buffer w))
   (define vrows (window-vrows w))
   (define g (window-gutter-width w))
+  ;; wrap 下同一行会占多个 vrow；整行 glyph 只渲染一次，各段复用（否则每个 vrow 重渲整行）。
+  (define glyph-cache (make-hash))
+  (define (glyphs-for li)
+    (hash-ref! glyph-cache li
+               (lambda () (rendered-line-glyphs (render-line b li face-provider)))))
   (define row-runs
     (for/vector ([vr (in-vector vrows)] [row (in-naturals)])
       (define content
         (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
-            (line-range->runs b (vrow-line vr) (vrow-start-col vr) (vrow-end-col vr) face-provider)
+            (line-range->runs/glyphs (glyphs-for (vrow-line vr))
+                                     (vrow-start-col vr) (vrow-end-col vr))
             '()))
       (define gutter
         (cond
