@@ -22,6 +22,7 @@
  window-gutter-width
  window-content-width
  window-point->screen
+ window-point->screen/vrows
  window-screen->point
  window-scroll
  window-ensure-point
@@ -174,10 +175,15 @@
 (define (window-clamp-view w)
   (define b (window-buffer w))
   (define n (buffer-line-count b))
-  (define max-top (max 0 (- (visual-line-count w) (window-height w))))
   ;; top-line 是 **buffer 行号**（不是视觉行号）：wrap 下 visual-line-count 是折行**段数**，
   ;; 大于行数；若不额外夹到 (sub1 n)，top-line 会越界，layout-wrap 的 buffer-line-ref 会崩。
-  (define top (max 0 (min (window-top-line w) max-top (sub1 n))))
+  ;; visual-line-count 在 wrap 下要折行全 buffer（O(全文)），只在「顶行已到末页」时才需要：
+  ;; 若 top+height ≤ n，则 top ≤ n-height ≤ visual-line-count-height，视觉上界不起作用。
+  (define top
+    (let ([t (window-top-line w)])
+      (if (<= (+ t (window-height w)) n)
+          (max 0 (min t (sub1 n)))
+          (max 0 (min t (max 0 (- (visual-line-count w) (window-height w))) (sub1 n))))))
   (define tline top)
   (define ttext (buffer-line-ref b tline))
   (define max-seg (case (window-mode w)
@@ -199,10 +205,13 @@
 
 ;; point → 屏幕 (row col)；不给 p 就用 window 的 primary 光标；不可见 → (values #f #f)
 (define (window-point->screen w [p (window-point w)])
+  (window-point->screen/vrows w (window-vrows w) p))
+
+;; 同上，但视口 vrows 由调用方传入（多光标投影时避免每个光标重建整屏 vrows）。
+(define (window-point->screen/vrows w vrows p)
   (define b (window-buffer w))
   (define line (point-line p))
   (define target (index->column (buffer-line-ref b line) (point-col p)))
-  (define vrows (window-vrows w))
   (let loop ([row 0])
     (cond
       [(>= row (vector-length vrows)) (values #f #f)]
@@ -265,16 +274,17 @@
 
 ;;; ---------- 光标跟随滚动 ----------
 
+;; 目标显示列落在第几个折行段（不在任何段内 → 末段）；返回 (values 段号 段起始列)。
+;; 一次遍历（不能用 (list-ref segs i) —— 那会退化成 O(段数²)）。
 (define (segment-at segs target-col)
-  (define n (length segs))
-  (let loop ([i 0])
+  (let loop ([i 0] [rest segs])
     (cond
-      [(>= i (sub1 n)) (values (sub1 n) (car (list-ref segs (sub1 n))))]
+      [(null? (cdr rest)) (values i (car (car rest)))]
       [else
-       (define s (list-ref segs i))
+       (define s (car rest))
        (if (and (<= (car s) target-col) (< target-col (cdr s)))
            (values i (car s))
-           (loop (add1 i)))])))
+           (loop (add1 i) (cdr rest)))])))
 
 (define (visual-distance b from-line from-seg to-line to-seg width)
   (cond

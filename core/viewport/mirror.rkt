@@ -75,10 +75,26 @@
 ;; 把源窗口的可视范围投到目标窗口：源左上角逻辑点 → 目标逻辑点 → 目标视口。
 ;; **不动目标窗口的 document**（跨文档各看各的文本），也**不动它的选区**。
 (define (mirror-window w-src w-dst)
-  (define p (mirror-point (window-document w-src)
-                          (window-top-left-point w-src)
-                          (window-document w-dst)))
-  (set-viewport w-dst (point-line p) (point-col p)))
+  (define d-src (window-document w-src))
+  (define d-dst (window-document w-dst))
+  (cond
+    [(and (eq? (window-mode w-src) 'clip) (eq? (window-mode w-dst) 'clip))
+     ;; clip↔clip：横向是**显示列**偏移（作用于整个视口，与具体行无关）。
+     ;; 不能经 window-top-left-point —— 它把 left-col 经**顶行**文字折成 char index，
+     ;; 顶行比 left-col 短（如空行）时会被夹到行尾，目标视口就不跟着横向滚了。
+     ;; 按顶行**显示宽**比例映射；两边都空行时保持原值（恒等）。
+     (define line-src (max 0 (min (window-top-line w-src) (sub1 (document-line-count d-src)))))
+     (define line-dst (min line-src (sub1 (document-line-count d-dst))))
+     (define ws (string-display-width (buffer-line-ref (document-buffer d-src) line-src)))
+     (define wd (string-display-width (buffer-line-ref (document-buffer d-dst) line-dst)))
+     (define ls (window-left-col w-src))
+     (define ld (cond [(zero? ws) (if (zero? wd) ls 0)]
+                      [else (max 0 (round (* ls (/ wd ws))))]))
+     (window-clamp-view
+      (window-set-left-col (window-set-top-line w-dst line-dst) ld))]
+    [else
+     (define p (mirror-point d-src (window-top-left-point w-src) d-dst))
+     (set-viewport w-dst (point-line p) (point-col p))]))
 
 ;;; ---------- 测试 ----------
 
@@ -129,6 +145,17 @@
   (define wf2 (mirror-window (win "abcd\nab\nabcdefgh" 2 20 0 4) (win "ab\nabcdefgh" 2 20 0 0)))
   (check-equal? (window-top-line wf2) 0)
   (check-equal? (window-left-col wf2) 2)
+
+  ;; ② 顶行比 left-col 短 / 为空时，横向仍必须跟随。
+  ;; 回归：旧实现经 window-top-left-point 把 left-col 折成顶行的 char index，
+  ;; 被夹到顶行行尾 → 目标视口不再横向滚。
+  (define wshort (mirror-window (win "abc\nabcdefghij" 1 4 0 5)
+                                (win "abc\nabcdefghij" 1 4 0 0)))
+  (check-equal? (window-left-col wshort) 5)
+  (define wempty (mirror-window (win "\nabcdefghij" 2 4 0 6)
+                                (win "\nabcdefghij" 2 4 0 0)))
+  (check-equal? (window-left-col wempty) 6)                 ; 两边顶行都空 → 保持原值
+  (check-equal? (window-top-line wempty) 0)
 
   ;; ② wrap 投影：clip 源 → wrap 目标（列 6 落在第 2 个折行段 4..8）
   (define wa (window-set-left-col (window-open (document-open "abcdefgh") 2 20) 6))

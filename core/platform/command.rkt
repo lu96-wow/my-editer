@@ -54,16 +54,19 @@
 
 ;; 依次施加一串 change（撤销/重放）；每个 change 后把 vid 的视图 leader 到插入后。
 ;; 返回 (values editor 生效文本descs 生效属性descs)。
+;; 累积用 cons（末尾一次 append*），避免逐条 append 的 O(n²)。
 (define (apply-change-seq ed did vid chs)
-  (for/fold ([e ed] [texts '()] [attrs '()]) ([ch (in-list chs)])
-    (define-values (e1 res) (editor-apply-change e did ch #:trusted? #t))   ; trusted
-    (cond
-      [(not res) (values e1 texts attrs)]
-      [else
-       (define tds (change-result-applied-texts res))
-       (define ads (change-result-applied-attrs res))
-       (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-document e1 did) tds)))
-       (values e2 (append texts tds) (append attrs ads))])))
+  (define-values (e* texts-rev attrs-rev)
+    (for/fold ([e ed] [texts '()] [attrs '()]) ([ch (in-list chs)])
+      (define-values (e1 res) (editor-apply-change e did ch #:trusted? #t))   ; trusted
+      (cond
+        [(not res) (values e1 texts attrs)]
+        [else
+         (define tds (change-result-applied-texts res))
+         (define ads (change-result-applied-attrs res))
+         (define e2 (if (null? tds) e1 (editor-leader-view e1 vid (editor-document e1 did) tds)))
+         (values e2 (cons tds texts) (cons ads attrs))])))
+  (values e* (append* (reverse texts-rev)) (append* (reverse attrs-rev))))
 
 (define (editor-view-undo ed vid)
   (define did (editor-view-document-id ed vid))
@@ -274,6 +277,21 @@
   (define f3 (editor-put-window f2 w*))
   (check-equal? (editor-view-top-line f3 fv) 0)                  ; 裸写不同步
   (check-equal? (editor-view-top-line (editor-follow f3) fv) 3)  ; follow 后镜像
+
+  ;; 滚动同步：leader 把光标滚出视口时，follow 视口必须**字面**跟随（不得被 follower 光标拉回）
+  (define s0 (editor-open (string-join (for/list ([i (in-range 20)]) (format "l~a" i)) "\n") 3 10))
+  (define-values (s1 sv) (editor-add-view s0 0 3 10 #:sync 'follow #:focus? #f))
+  (define s2 (editor-focus-view s1 0))            ; 光标在 (0,0)，即视口首行
+  (define s3 (editor-view-scroll s2 0 1))         ; 视口下滚一行，光标滚到视口外
+  (check-equal? (editor-view-top-line s3 0) 1)
+  (check-equal? (editor-view-top-line s3 sv) 1)   ; 旧实现被 ensure 拉回 0，差一行
+  (check-equal? (editor-view-point s3 sv) (point 0 0))
+  (define s4 (editor-view-scroll s3 0 1))
+  (check-equal? (editor-view-top-line s4 sv) 2)   ; 继续滚仍逐行对齐
+  ;; 滚回
+  (define s5 (editor-view-scroll s4 0 -1))
+  (check-equal? (editor-view-top-line s5 sv) 1)
+  (check-equal? (editor-view-top-line s5 0) 1)
 
   ;; 文本 + 属性一条命令、一步撤销：撤销要把属性一起正确地回退
   (define ba0 (editor-open "abc"))

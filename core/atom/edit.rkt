@@ -64,9 +64,7 @@
   (define sl (point-line s)) (define sc (point-col s))
   (define el (point-line e)) (define ec (point-col e))
   (define l (point-line p)) (define c (point-col p))
-  (define new-lines (string->lines (edit-desc-new-text d)))
-  (define k (length new-lines))
-  (define last-len (if (zero? k) 0 (string-length (last new-lines))))
+  (define-values (k last-len) (string-line-geom (edit-desc-new-text d)))
   (define delta (- k (- el sl) 1))            ; 行数变化：k - (el-sl+1)
   (cond
     [(or (pos<? l c sl sc) (pos=? l c sl sc)) (point l c)]   ; 起点及之前不动
@@ -75,7 +73,6 @@
      (cond
        [(= l el)
         (cond
-          [(zero? k) (point sl (+ sc (- c ec)))]              ; 纯删除：接回起点之后
           [(= k 1)   (point sl (+ sc last-len (- c ec)))]     ; 单行插入：含起点列
           [else      (point (+ sl (sub1 k)) (+ last-len (- c ec)))])]
        [else (point (+ l delta) c)])]))
@@ -83,12 +80,11 @@
 ;; 插入文本之后的点（'after' 语义 / 逆编辑的终点 / 光标推进落点）。
 (define (edit-desc-after-position d)
   (define s (edit-desc-start d))
-  (define new-lines (string->lines (edit-desc-new-text d)))
-  (define k (length new-lines))
+  (define text (edit-desc-new-text d))
+  (define-values (k last-len) (string-line-geom text))
   (cond
-    [(zero? k) (point (point-line s) (point-col s))]                    ; 纯删除 → 回到起点
-    [(= k 1)   (point (point-line s) (+ (point-col s) (string-length (car new-lines))))]
-    [else      (point (+ (point-line s) (sub1 k)) (string-length (last new-lines)))]))
+    [(= k 1)   (point (point-line s) (+ (point-col s) (string-length text)))]
+    [else      (point (+ (point-line s) (sub1 k)) last-len)]))
 
 ;; 逆编辑：抵消 d 的那次编辑。用「d 生效后的新坐标系」表示。
 ;;   · 区间 = [d.start, d 插入文本之后)
@@ -112,7 +108,7 @@
 (define (edits-span descs)
   (for/fold ([f #f] [l #f]) ([d (in-list descs)])
     (define sl (point-line (edit-desc-start d)))
-    (define el (+ sl (sub1 (length (string->lines (edit-desc-new-text d))))))
+    (define el (+ sl (sub1 (string-line-count (edit-desc-new-text d)))))
     (values (if f (min f sl) sl) (if l (max l el) el))))
 
 ;;; ---------- 测试 ----------

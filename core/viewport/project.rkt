@@ -24,12 +24,12 @@
     [else #f]))
 
 ;; 一个选区 → 若干屏幕区间段（每个可见 vrow 至多一段）。空选区 → '()。
-(define (selection->regions w sel)
+;; vrows 由调用方传入（一次算好，不在每个选区里重建）。
+(define (selection->regions w vrows sel)
   (define b (window-buffer w))
   (define-values (s e) (selection-range sel))
   (define sl (point-line s)) (define sc (point-col s))
   (define el (point-line e)) (define ec (point-col e))
-  (define vrows (window-vrows w))
   (for/list ([vr (in-vector vrows)] [row (in-naturals)])
     (define ln (vrow-line vr))
     (define rng (and (>= ln 0) (selection-range-on-line b sl sc el ec ln)))
@@ -63,12 +63,12 @@
   (define cursors
     (filter values
             (for/list ([s (in-list (window-selections w))] [i (in-naturals)])
-              (define-values (r c) (window-point->screen w (selection-point s)))
+              (define-values (r c) (window-point->screen/vrows w vrows (selection-point s)))
               (and r (cursor r (+ g c) (hash 'face 'cursor) (= i (window-primary-index w)))))))
   ;; 视图 overlay：选中区 = 每个非空选区的 [anchor,head)
   (define selections
     (for/list ([rg (in-list (filter values (append* (for/list ([s (in-list (window-selections w))])
-                                                      (selection->regions w s))))) ])
+                                                      (selection->regions w vrows s))))) ])
       (region (region-row rg) (+ g (region-start-col rg)) (+ g (region-end-col rg)) (region-face rg))))
   (screen (window-height w) (window-width w) row-runs cursors selections))
 

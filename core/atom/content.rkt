@@ -116,24 +116,23 @@
   (define sl (point-line s)) (define sc (point-col s))
   (define el (point-line e)) (define ec (point-col e))
   (define text (edit-desc-new-text d*))
-  ;; 新文本拆行：k 段。k=0（纯删除）时两行拼成一行。
-  (define new-lines (string->lines text))
-  (define k (length new-lines))
+  ;; 新文本拆行：k 段（k ≥ 1，string->lines 至少一行）。
+  (define new-lines (list->vector (string->lines text)))
+  (define k (vector-length new-lines))
   (define head (substring (vector-ref lines sl) 0 sc))
   (define tail (substring (vector-ref lines el) ec
                           (string-length (vector-ref lines el))))
-  (define inserted (max 1 k))                              ; k=0 时合并出的 1 行
+  (define inserted k)
   (define v* (make-vector (- (+ n inserted) (+ (- el sl) 1)) #f))
   (vector-copy! v* 0 lines 0 sl)
   (cond
-    [(zero? k) (vector-set! v* sl (string-append head tail))]
-    [(= k 1)   (vector-set! v* sl (string-append head (car new-lines) tail))]
+    [(= k 1)   (vector-set! v* sl (string-append head (vector-ref new-lines 0) tail))]
     [else
-     (vector-set! v* sl (string-append head (car new-lines)))
+     (vector-set! v* sl (string-append head (vector-ref new-lines 0)))
      (for ([i (in-range 1 (sub1 k))])
-       (vector-set! v* (+ sl i) (list-ref new-lines i)))
+       (vector-set! v* (+ sl i) (vector-ref new-lines i)))
      (vector-set! v* (+ sl (sub1 k))
-                  (string-append (list-ref new-lines (sub1 k)) tail))])
+                  (string-append (vector-ref new-lines (sub1 k)) tail))])
   (vector-copy! v* (+ sl inserted) lines (add1 el) n)
   (values (content v*) d*))
 

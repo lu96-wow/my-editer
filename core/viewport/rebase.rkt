@@ -17,7 +17,7 @@
 ;;; 注意：本层换的是 window 里的 **document**（文本 + 标注）；标注的移动在
 ;;; document-apply-change 里已经完成，这里只重定位光标/视口。
 
-(provide rebase-free rebase-leader rebase-follow)
+(provide rebase-free rebase-leader rebase-follow rebase-follow-viewport)
 
 ;; w : 待调整的 window；d* : 编辑后的新 document；descs : (listof edit-desc) 施加顺序
 (define (rebase-free w d* descs)
@@ -37,6 +37,19 @@
      [top-line (window-top-line leader)]
      [left-col (window-left-col leader)]
      [top-seg  (window-top-seg leader)])))
+
+;; 视口镜像（**不**重新 ensure）：把 leader 的 document / 选区 / 视口锚点字面复制过来。
+;;
+;; 用于「以某 window 为准」的同步（editor-view-scroll / editor-view-follow）：leader 可能
+;; 特意把光标滚出视口（window-scroll 只管视口、不管光标），若再按 follower 自己的光标
+;; ensure，视口会被拉回一行 / 多行，导致同步窗口与被同步窗口错位。
+(define (rebase-follow-viewport w leader)
+  (struct-copy window w
+    [document (window-document leader)]
+    [selection-set (window-selection-set leader)]
+    [top-line (window-top-line leader)]
+    [left-col (window-left-col leader)]
+    [top-seg  (window-top-seg leader)]))
 
 ;;; ---------- 测试（纯 window 级）----------
 
@@ -74,5 +87,15 @@
   (check-true (<= (window-top-line foll) 4
                   (+ (window-top-line foll) (sub1 (window-height foll)))))
   (check-eq? (window-document foll) (window-document leader*))
+
+  ;; follow-viewport：字面镜像视口，**不**按 follower 光标重新 ensure
+  ;; （leader 特意把光标滚出视口时，视口不得被拉回）
+  (define lv (struct-copy window (window-ensure-point (window-open d1 3 10))
+                          [top-line 4]))
+  (define fv* (rebase-follow-viewport (window-open d1 3 10) lv))
+  (check-equal? (window-top-line fv*) 4)
+  (check-equal? (window-point fv*) (window-point lv))          ; 选区仍复制自 leader
+  (check-equal? (window-top-seg fv*) (window-top-seg lv))
+  (check-equal? (window-left-col fv*) (window-left-col lv))
 
   (displayln "rebase.rkt: all tests passed"))

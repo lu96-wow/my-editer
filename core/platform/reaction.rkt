@@ -79,13 +79,14 @@
       [(= vid (view-id x)) (editor-put-view e vid w*)]
       [(and link (eq? link (view-link x)))
        ;; 同 document 的成员带上 leader 的选区；跨 document 的只镜像视口。
+       ;; 字面镜像视口（不重新 ensure）：否则 leader 把光标滚出视口时会被拉回。
        (define w0 (view-window x))
        (define base (if (and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
-                        (rebase-follow w0 w*)
+                        (rebase-follow-viewport w0 w*)
                         w0))
        (editor-put-view e (view-id x) (mirror-window w* base))]
       [(and (eq? d (view-document x)) (eq? (view-sync x) 'follow))
-       (editor-put-view e (view-id x) (rebase-follow (view-window x) w*))]
+       (editor-put-view e (view-id x) (rebase-follow-viewport (view-window x) w*))]
       [else e])))
 
 ;; 把一个 link 组对齐到**参考成员**：`from`（若在组内）→ 焦点 view（若在组内）→ 组内第一个成员。

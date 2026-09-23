@@ -226,7 +226,7 @@
 ;; 文本批：规范化 → 按起点倒序施加 → attrs 跟随 → 捕获被抹属性。tick 不变。
 (define (apply-text-batch b attrs descs guard?)
   (define ordered (edits-normalize 'document-apply-change descs))
-  (define-values (b* a* applied invs erased)
+  (define-values (b* a* applied invs erased-acc)
     (for/fold ([b b] [attrs attrs] [applied '()] [invs '()] [erased '()])
               ([d (in-list (reverse ordered))])
       (define b-before b) (define attrs-before attrs)
@@ -236,10 +236,11 @@
         [else
          (define er (runs->attr-descs
                      (attrs-range-runs attrs-before (edit-desc-start dd) (edit-desc-end dd))))
+         ;; 累积为「处理顺序的反向」；末尾一次 append*（避免逐条 append 的 O(n²)）。
          (values bb aa (cons dd applied)
                  (cons (buffer-edit-desc-inverse b-before dd) invs)
-                 (append erased er))])))
-  (values b* a* (reverse applied) (reverse invs) erased))
+                 (cons er erased))])))
+  (values b* a* (reverse applied) (reverse invs) (append* (reverse erased-acc))))
 
 (define (document-apply-change d ch #:trusted? [trusted? #f])
   (document-apply-change* d ch (not trusted?)))

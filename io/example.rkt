@@ -181,7 +181,10 @@
                              (change (change-report-texts report) (change-report-attrs report))
                              #:view (editor-document-view ed (other-did a))
                              #:trusted? #t #:record? 'default))
-     (struct-copy app a [ed ed*])]))
+     ;; 内容同步是应用策略，core 的 link 只做视口同步；目标 document 变了行数后，必须再按
+     ;; 当前焦点视口重新镜像一次 —— 否则 link 成员的视口是在内容同步**之前**按旧行数 clamp 的，
+     ;; 文档在末尾变长/变短时会差一行（尤其光标在末行回车时）。
+     (struct-copy app a [ed (editor-follow ed*)])]))
 
 (define (run-ed a f)
   (define-values (ed report) (f (app-ed a)))
@@ -740,6 +743,24 @@
   (check-equal? (editor-view-top-line (app-ed p1) (app-mirror-vid p1))     ; 右 pane 跟随
                 (editor-view-top-line (app-ed p1) 0))
   (check-true (bytes? (frame->bytes p1)))                                  ; 两 pane 能拼成一帧
+
+  ;; 回归：光标在末行回车（换行使文档变长）—— 内容同步后 link 视口必须重新镜像。
+  ;; 旧实现先按**旧**行数 clamp 右 pane 视口、再同步内容，不再重镜像 → 底行差一行。
+  (define nls0 (make-app (string-join (for/list ([i (in-range 6)]) (format "l~a" i)) "\n") 5 40 "*nl*"))
+  (define nls1 (for/fold ([a nls0]) ([_ (in-range 10)]) (navigate a 'down)))  ; 光标到末行
+  (define nls2 (newline nls1))
+  (check-equal? (editor-view-top-line (app-ed nls2) (app-mirror-vid nls2))
+                (editor-view-top-line (app-ed nls2) 0))
+  (check-equal? (editor-document->string (app-ed nls2) (editor-view-document-id (app-ed nls2) (app-mirror-vid nls2)))
+                (editor-document->string (app-ed nls2) 0))
+
+  ;; 回归：顶行是空行时，光标在下方长行右移，右 pane 仍要横向跟随
+  (define hz0 (make-app (string-append "\n" (make-string 80 #\x)) 3 40 "*hz*"))
+  (define hz1 (navigate hz0 'down))                            ; 光标移到长行
+  (define hz2 (for/fold ([a hz1]) ([_ (in-range 60)]) (navigate a 'right)))
+  (check-true (> (editor-view-left-col (app-ed hz2) 0) 0))
+  (check-equal? (editor-view-left-col (app-ed hz2) (app-mirror-vid hz2))
+                (editor-view-left-col (app-ed hz2) 0))
   ;; ^W 切换窗格
   (define p2 (switch-pane p1))
   (check-equal? (editor-focus (app-ed p2)) (app-mirror-vid p1))

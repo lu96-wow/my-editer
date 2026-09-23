@@ -319,10 +319,11 @@
      (define by-line (make-hash))
      (for ([d (in-list live)])
        (hash-update! by-line (point-line (attr-desc-start d))
-                     (lambda (l) (append l (list d))) '()))
+                     (lambda (l) (cons d l)) '()))
      (define rows* (vector-copy (attrs-rows a)))
      (for ([(line line-ds) (in-hash by-line)])
-       (define row* (for/fold ([row (vector-ref rows* line)]) ([d (in-list line-ds)])
+       ;; line-ds 为逆序（cons 累积）；反向回到原输入顺序。
+       (define row* (for/fold ([row (vector-ref rows* line)]) ([d (in-list (reverse line-ds))])
                       ((op-fn who d row))))
        (vector-set! rows* line row*))
      (attrs rows*)]))
@@ -400,20 +401,31 @@
                      (append* (for/list ([r (in-list (append old-n new-n))])
                                 (list (car r) (cadr r)))))
                     <))
+  ;; 两个 run 表都已按起点升序，段起点 a 也递增：只需向前推进指针，不再对每个段重扫。
+  (define (skip-before runs a)
+    (cond [(null? runs) runs]
+          [(<= (cadr (car runs)) a) (skip-before (cdr runs) a)]
+          [else runs]))
+  (define (covering runs a)
+    (and (pair? runs) (<= (car (car runs)) a) (car runs)))
   (merge-replace-descs
    (if (null? pts)
        '()
-       (filter values
-           (for/list ([a (in-list (drop-right pts 1))] [b (in-list (rest pts))])
-             (cond
-               [(>= a b) #f]
-               [else
-                (define nr (for/first ([r (in-list new-n)] #:when (and (<= (car r) a) (< a (cadr r)))) r))
-                (define orr (for/first ([r (in-list old-n)] #:when (and (<= (car r) a) (< a (cadr r)))) r))
-                (cond
-                  [nr  (attr-set (point line a) (point line b) key (caddr nr))]
-                  [orr (attr-remove (point line a) (point line b) key)]
-                  [else #f])]))))))
+       (let loop ([as (drop-right pts 1)] [bs (rest pts)]
+                  [old-rs old-n] [new-rs new-n] [acc '()])
+         (cond
+           [(null? as) (reverse acc)]
+           [else
+            (define a (car as)) (define b (car bs))
+            (define old-rs* (skip-before old-rs a))
+            (define new-rs* (skip-before new-rs a))
+            (define nr (covering new-rs* a))
+            (define orr (covering old-rs* a))
+            (define d (cond
+                        [nr  (attr-set (point line a) (point line b) key (caddr nr))]
+                        [orr (attr-remove (point line a) (point line b) key)]
+                        [else #f]))
+            (loop (cdr as) (cdr bs) old-rs* new-rs* (if d (cons d acc) acc))])))))
 
 ;;; ---------- 测试 ----------
 
