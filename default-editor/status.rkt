@@ -13,14 +13,16 @@
 
 (require "../core/editor.rkt"
          "../core/api.rkt"
+         "layout.rkt"
+         "panel.rkt"
          rackunit)
 
 (provide
  status? status-open status-close
  status-document-id status-view status-source status-message status-segments
- status-set-source status-set-message status-refresh
+ status-set-source status-with-source status-set-message status-refresh
  status-line
- status-provider status-screen)
+ status-provider status-screen status-panel)
 
 ;;; ---------- 值 ----------
 
@@ -132,6 +134,9 @@
 (define (status-set-source ed s vid)
   (status-refresh ed (struct-copy status s [source vid])))
 
+;; 纯设置 source（不写文档）：切换 buffer 时先改 source，再由 shell 统一 sync。
+(define (status-with-source s vid) (struct-copy status s [source vid]))
+
 (define (status-set-message ed s message)
   (status-refresh ed (struct-copy status s [message message])))
 
@@ -150,6 +155,19 @@
 
 (define (status-screen ed s)
   (editor-view->screen ed (status-view s) (status-provider ed s)))
+
+;;; ---------- 窗格 ----------
+
+;; 状态栏窗格：被动。sync 与 refresh 同价（都是从 source 现算一行文本）。
+(define (status-panel s)
+  (panel-open 'status s
+    #:project (lambda (ed s) (status-screen ed s))
+    #:resize (lambda (ed s r)
+               (values (editor-view-set-size ed (status-view s)
+                                             (max 1 (rect-h r)) (max 1 (rect-w r)))
+                       s))
+    #:refresh (lambda (ed s) (status-refresh ed s))
+    #:sync (lambda (ed s) (status-refresh ed s))))
 
 ;;; ---------- 测试 ----------
 

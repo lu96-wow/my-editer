@@ -387,20 +387,49 @@ core 只管「一个 document 的一个 viewport」，**没有窗口管理**（�
 
 ```
 core/                     引擎：atom < unit < doc < viewport < platform         （L0-L5）
-default-editor/           窗口管理：几何 + 组件 + 打包壳 + 后端                 （L6）
+default-editor/           窗口管理：几何 + 窗格 + 组件 + 装配 + 后端              （L6）
 io/                       示例 / 自定义应用                                     （L6）
 ```
 
+### 设计：组件分离，只在 layout 与命令处相遇
+
+三个可见部件 —— **前端**（主编辑区）、**文件树**、**状态栏** —— 彼此独立：
+`frontend.rkt` / `tree.rkt` / `status.rkt` 互不 `require`，也不认识彼此的状态。
+它们唯一共享的是：
+
+1. **layout.rkt**（几何）—— 谁在哪个 `rect`、是否可见；
+2. **命令**（`shell.rkt` 的输入路由与跨组件动作）—— 例如「树里回车 → 前端打开文件」。
+
+`panel.rkt` 是组件与 shell 之间唯一的协议：一个 `panel` = id + 自己的状态 + 四个回调
+（投影 / 尺寸 / 全量刷新 / 廉价同步）。于是 shell 不需要认识「前端 / 树 / 状态栏」这些具体类型。
+
 ```
 default-editor/
-├── layout.rkt     纯几何：rows×cols → rect（main / tree / status）
-├── status.rkt     组件：状态栏 = 可复用的**派生 document**
+├── layout.rkt     纯几何：rows×cols → {pane-id → rect} + 显隐          （耦合点 ①）
+├── panel.rkt      通用窗格协议（投影 / 尺寸 / 刷新 / 同步）
+├── buffer.rkt     打开的文档注册表（did ↔ vid ↔ 文件 + 顺序 + 当前项）
+├── frontend.rkt   主编辑窗格 = buffer ⊕ 编辑 / 投影策略
 ├── tree.rkt       组件：文件树 = 可复用的**派生 document**
-├── shell.rkt      打包壳：editor ⊕ tree ⊕ status ⊕ layout ⊕ focus
+├── status.rkt     组件：状态栏 = 可复用的**派生 document**
+├── shell.rkt      装配：editor ⊕ panels ⊕ layout ⊕ focus ⊕ 命令          （耦合点 ②）
 └── terminal.rkt   默认终端后端：screen → 字节 + 事件循环 + 增量重绘
 ```
 
 `tools/layers.rkt` 把 `default-editor` 记为 L6，同样机械校验「不得向上」。
+
+### buffer：打开的文档（与窗口解耦）
+
+core 的 `editor` 持有所有 document（含派生 UI 的树 / 状态栏）；`buffer.rkt` 只记**用户在编辑的
+document**：打开顺序、当前项、来自哪个文件、各自的 view、上次保存的版本。**每个 entry 有自己的
+view**，所以切换文档不丢光标 / 滚动。
+
+两个生命周期被刻意分开，这是本层的核心契约：
+
+- **窗口显隐**（`shell-set-visible?` / `layout`）：只改几何与 `panel.visible?`，**不动任何 document**；
+- **文档开关**（`shell-open-file` / `shell-close-buffer` / `*-close`）：显式地建 / 关 document。
+
+旧实现的 `shell-open-text` 会用新文档**顶掉并关掉**旧文档（隐式关文档），本层改成「开新文档进 buffer，
+旧文档保留」；隐藏窗格更不会关文档。
 
 ### 派生 document（派生 UI 的统一套路）
 
@@ -415,19 +444,22 @@ default-editor/
 所以 core 不需要「派生文档」「窗口」这些概念——`#:history?` 策略 + provider + 唯一变更漏斗
 已经够用。
 
-### shell：窗口管理
+### shell：装配（layout + 命令）
 
-`shell` 把「一个 editor + 左栏文件树 + 底部状态栏 + 布局几何」包成一个不可变值；操作是
-`shell → shell`（输入路径返回 `(values shell quit?)`）。职责：
+`shell` 把「一个 editor + 一组 panel + 布局几何 + 焦点」包成一个不可变值；操作是
+`shell → shell`（输入路径返回 `(values shell quit?)`）。刷新分两档，避免旧实现每次按键
+都重扫文件系统：
 
 | 名字 | 行为 |
 |---|---|
-| `shell-open` | 开主文档 + 树 + 状态栏，按 `layout` 给三个 view 定尺寸 |
-| `shell-refresh` | 重算布局尺寸 → 写回三个 view → refresh 树 / 状态栏 |
-| `shell-resize` / `shell-toggle-sidebar` | 改几何（左栏可隐藏），main 至少 1×1 |
-| `shell-focus` / `shell-focus-at` | 焦点 = `'main` / `'tree`（由 `editor-focus` 派生；状态栏永不聚焦） |
-| `shell-open-file` / `shell-write-file` | 主 view 换 document / 写盘（IO 边界） |
-| `shell->screen` | `screen-compose` 拼 main / tree / status；只透出活动 pane 的光标 |
+| `shell-open` | 前端 + 树 + 状态栏各建一个 panel，按 `layout` 给三个 view 定尺寸 |
+| `shell-sync` | **廉价**：只重算派生内容（状态栏；不动 fs）—— 每次编辑后调用 |
+| `shell-refresh` | **全量**：重算几何 → 写回三个 view 尺寸 → 刷新每个 panel（树重扫 fs） |
+| `shell-resize` / `shell-set-visible?` | 改几何 / 显隐（不动 document），frontend 至少 1×1 |
+| `shell-focus` / `shell-focus-at` | 焦点 = `'frontend` / `'tree`（隐藏的 pane 拒绝聚焦；状态栏永不聚焦） |
+| `shell-open-file` / `shell-close-buffer` | 打开文档进 buffer / 显式关文档（旧文档不再被顶掉） |
+| `shell-write-file` | 写盘（IO 边界） |
+| `shell->screen` | `screen-compose` 拼可见 panel；只透出焦点 panel 的光标 |
 | `shell-handle` / `shell-key` / `shell-click` | 默认键位与鼠标路由；键位是应用策略，可整层替换 |
 
 `shell` 的 `screen` 仍然后端无关；`terminal.rkt` 才把 `screen` 画成字节（`screen-damage` 增量）。

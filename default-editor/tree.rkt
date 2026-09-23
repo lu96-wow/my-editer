@@ -10,6 +10,8 @@
 
 (require "../core/editor.rkt"
          "../core/api.rkt"
+         "layout.rkt"
+         "panel.rkt"
          racket/file racket/path racket/list racket/string rackunit)
 
 (provide
@@ -20,7 +22,7 @@
  tree-selected tree-current-line tree-goto-line
  tree-up tree-down tree-home tree-end
  tree-expand tree-collapse tree-toggle tree-enter
- tree-lines tree-provider tree-screen)
+ tree-lines tree-provider tree-screen tree-panel)
 
 ;;; ---------- 值 ----------
 
@@ -211,6 +213,19 @@
 
 (define (tree-screen ed t)
   (editor-view->screen ed (tree-view t) (tree-provider ed t)))
+
+;;; ---------- 窗格 ----------
+
+;; 文件树窗格：只**投影 / 定尺寸 / 重扫**；输入与「打开文件」由命令层决定（见 shell）。
+(define (tree-panel t)
+  (panel-open 'tree t
+    #:project (lambda (ed t) (tree-screen ed t))
+    #:resize (lambda (ed t r)
+               (values (editor-view-set-size ed (tree-view t)
+                                             (max 1 (rect-h r)) (max 1 (rect-w r)))
+                       t))
+    #:refresh (lambda (ed t) (tree-refresh ed t))
+    #:sync (lambda (ed t) (values ed t))))
 
 ;;; ---------- 测试 ----------
 
