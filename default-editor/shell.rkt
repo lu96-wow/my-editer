@@ -282,11 +282,12 @@
     [(key-event? ev) (shell-key s (key-event-key ev) (key-event-modifiers ev))]
     [(resize-event? ev) (values (shell-resize s (resize-event-rows ev) (resize-event-cols ev)) #f)]
     [(mouse-press-event? ev)
-     (values (shell-click s (mouse-press-event-x ev) (mouse-press-event-y ev)
-                          (mouse-press-event-button ev)) #f)]
+     ;; shell-click 已经返回 (values shell quit?)，不要再包一层
+     (shell-click s (mouse-press-event-x ev) (mouse-press-event-y ev)
+                  (mouse-press-event-button ev))]
     [(mouse-wheel-event? ev)
-     (values (shell-wheel s (mouse-wheel-event-x ev) (mouse-wheel-event-y ev)
-                          (mouse-wheel-event-direction ev)) #f)]
+     (shell-wheel s (mouse-wheel-event-x ev) (mouse-wheel-event-y ev)
+                  (mouse-wheel-event-direction ev))]
     [(quit-event? ev) (values s #t)]
     [else (values s #f)]))
 
@@ -485,6 +486,22 @@
   ;; core 事件入口
   (define-values (s14 _q14) (shell-handle s0 (text-event "Z" (modifiers #f #f #f #f))))
   (check-equal? (shell->string s14) "Z")
+
+  ;; 鼠标：点击 / 滚轮经 shell-handle 不得抛错
+  ;;   回归：shell-click/shell-wheel 本身返回 (values shell quit?)，
+  ;;   旧实现又在 shell-handle 里包了一层 (values … #f) → 3 个值 → arity mismatch。
+  (define m-nom (modifiers #f #f #f #f))
+  (define-values (sm1 qm1) (shell-handle s0 (mouse-press-event 'left 5 5 m-nom)))
+  (check-true (shell? sm1))
+  (check-false qm1)
+  (check-equal? (shell-focus sm1) 'tree)                      ; (5,5) 落在左栏
+  (define-values (sm2 qm2) (shell-handle s0 (mouse-press-event 'left 50 5 m-nom)))
+  (check-true (shell? sm2))
+  (check-false qm2)
+  (check-equal? (shell-focus sm2) 'frontend)                  ; (50,5) 落在前端
+  (define-values (sm3 qm3) (shell-handle s0 (mouse-wheel-event 'down 50 5 m-nom)))
+  (check-true (shell? sm3))
+  (check-false qm3)
 
   (delete-directory/files dir)
   (displayln "shell.rkt: all tests passed"))

@@ -27,7 +27,7 @@ for a in "$@"; do
 done
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
-RKT=$(find core io tools default-editor -name '*.rkt' | sort)
+RKT=$(find core io tools default-editor ui -name '*.rkt' | sort)
 
 if [ "$NO_MAKE" -eq 0 ]; then
   echo "== 1/3 raco make -j $JOBS（并行预编译）=="
@@ -38,13 +38,13 @@ else
 fi
 
 echo
-echo "== 2/3 raco test core io tools default-editor =="
-raco test core io tools default-editor
+echo "== 2/3 raco test core io tools default-editor ui =="
+raco test core io tools default-editor ui
 
 if [ "$KEEP" -eq 0 ]; then
   echo
   echo "== 3/3 清理编译缓存（compiled/）=="
-  find core io tools default-editor -type d -name compiled -prune -exec rm -rf -- {} +
+  find core io tools default-editor ui -type d -name compiled -prune -exec rm -rf -- {} +
   echo "cleaned."
 else
   echo

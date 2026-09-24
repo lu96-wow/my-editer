@@ -21,7 +21,8 @@
     ("core/api.rkt"   . 3)
     ("core/platform"  . 4)
     ("core/editor.rkt" . 5)
-    ("default-editor" . 6)))
+    ("ui"             . 6)
+    ("default-editor" . 7)))
 
 ;; core/ 下所有 .rkt（排除 compiled）
 (define (rkt-files dir)
@@ -43,8 +44,10 @@
 
 (define (root-relative p) (path->string (find-relative-path root (simplify-path p))))
 
-;; 扫描的层根：core（L0-L5）+ default-editor（L6）。
-(define layer-roots (list (build-path root "core") (build-path root "default-editor")))
+;; 扫描的层根：core（L0-L5）+ ui（L6）+ default-editor（L7）。
+(define layer-roots (list (build-path root "core")
+                          (build-path root "ui")
+                          (build-path root "default-editor")))
 (define (all-rkt-files) (append* (map rkt-files layer-roots)))
 
 ;; 读 body 形态（去掉 #lang 行），收集**顶层** require 的字符串目标。
