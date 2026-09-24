@@ -60,7 +60,7 @@ editor.rkt ←  platform(neutral, program, command) # editor 平台入口；不�
 
 `platform/state.rkt`、`platform/write.rkt`、`platform/reaction.rkt` 是**内部**，不进入口。
 同层内允许相互依赖（如 `project → layout`、`program → neutral`），
-但必须无环；`tools/layers.rkt` 机械校验「不得向上」。
+但必须无环；「依赖不向上」是硬约定（代码评审保证）。
 
 ---
 
@@ -339,7 +339,6 @@ editor 门面用 `face-provider : editor did line → runs`（内部适配成前
 - 带不变量的值（`buffer` / `window` / `screen`）只透出谓词、读口与具名构造入口
   （`document-open` / `window-open` / `screen-empty` / `screen-compose`），**不透出 struct
   构造器**，避免从外部绕过规范化。
-- `tools/reconcile.rkt` 对账文档表格名字与白名单；`tools/layers.rkt` 强制「依赖不向上」。
 
 ---
 
@@ -379,87 +378,9 @@ change = texts : [(edit-desc)]  ⊕  attrs : [(attr-desc)]      （atom/change.r
 
 ---
 
-## 13. `default-editor/` —— 布局与打包（core 之上）
+## 13. 范围
 
-core 只管「一个 document 的一个 viewport」，**没有窗口管理**（分区 / 拼屏 / 焦点路由）。
-窗口管理整体在 `default-editor/`，它只依赖低层公开面（`core/api.rkt` + `core/editor.rkt`），
-不改 core：
-
-```
-core/                     引擎：atom < unit < doc < viewport < platform         （L0-L5）
-default-editor/           窗口管理：几何 + 窗格 + 组件 + 装配 + 后端              （L6）
-io/                       示例 / 自定义应用                                     （L6）
-```
-
-### 设计：组件分离，只在 layout 与命令处相遇
-
-三个可见部件 —— **前端**（主编辑区）、**文件树**、**状态栏** —— 彼此独立：
-`frontend.rkt` / `tree.rkt` / `status.rkt` 互不 `require`，也不认识彼此的状态。
-它们唯一共享的是：
-
-1. **layout.rkt**（几何）—— 谁在哪个 `rect`、是否可见；
-2. **命令**（`shell.rkt` 的输入路由与跨组件动作）—— 例如「树里回车 → 前端打开文件」。
-
-`panel.rkt` 是组件与 shell 之间唯一的协议：一个 `panel` = id + 自己的状态 + 四个回调
-（投影 / 尺寸 / 全量刷新 / 廉价同步）。于是 shell 不需要认识「前端 / 树 / 状态栏」这些具体类型。
-
-```
-default-editor/
-├── layout.rkt     纯几何：rows×cols → {pane-id → rect} + 显隐          （耦合点 ①）
-├── panel.rkt      通用窗格协议（投影 / 尺寸 / 刷新 / 同步）
-├── buffer.rkt     打开的文档注册表（did ↔ vid ↔ 文件 + 顺序 + 当前项）
-├── frontend.rkt   主编辑窗格 = buffer ⊕ 编辑 / 投影策略
-├── tree.rkt       组件：文件树 = 可复用的**派生 document**
-├── status.rkt     组件：状态栏 = 可复用的**派生 document**
-├── shell.rkt      装配：editor ⊕ panels ⊕ layout ⊕ focus ⊕ 命令          （耦合点 ②）
-└── terminal.rkt   默认终端后端：screen → 字节 + 事件循环 + 增量重绘
-```
-
-`tools/layers.rkt` 把 `default-editor` 记为 L6，同样机械校验「不得向上」。
-
-### buffer：打开的文档（与窗口解耦）
-
-core 的 `editor` 持有所有 document（含派生 UI 的树 / 状态栏）；`buffer.rkt` 只记**用户在编辑的
-document**：打开顺序、当前项、来自哪个文件、各自的 view、上次保存的版本。**每个 entry 有自己的
-view**，所以切换文档不丢光标 / 滚动。
-
-两个生命周期被刻意分开，这是本层的核心契约：
-
-- **窗口显隐**（`shell-set-visible?` / `layout`）：只改几何与 `panel.visible?`，**不动任何 document**；
-- **文档开关**（`shell-open-file` / `shell-close-buffer` / `*-close`）：显式地建 / 关 document。
-
-旧实现的 `shell-open-text` 会用新文档**顶掉并关掉**旧文档（隐式关文档），本层改成「开新文档进 buffer，
-旧文档保留」；隐藏窗格更不会关文档。
-
-### 派生 document（派生 UI 的统一套路）
-
-状态栏与文件树都不是用户写作的文本，而是**内容由外部状态算出来的 document**：
-
-- 在同一个 `editor` 里开一个 `#:history? #f` 的 document（+ view）；
-- `*-refresh` 从外部状态现算文本，**只在文本变化时才写**（走 `editor-command-batch`
-  `#:trusted? #t` `#:record? #f`，tick 不动就不产生重绘）；
-- face 一律走**投影 provider**（派生，不进文档）；
-- 行选择 / 滚动 / 裁剪 / `screen-compose` 沿用 core，组件不自己布局。
-
-所以 core 不需要「派生文档」「窗口」这些概念——`#:history?` 策略 + provider + 唯一变更漏斗
-已经够用。
-
-### shell：装配（layout + 命令）
-
-`shell` 把「一个 editor + 一组 panel + 布局几何 + 焦点」包成一个不可变值；操作是
-`shell → shell`（输入路径返回 `(values shell quit?)`）。刷新分两档，避免旧实现每次按键
-都重扫文件系统：
-
-| 名字 | 行为 |
-|---|---|
-| `shell-open` | 前端 + 树 + 状态栏各建一个 panel，按 `layout` 给三个 view 定尺寸 |
-| `shell-sync` | **廉价**：只重算派生内容（状态栏；不动 fs）—— 每次编辑后调用 |
-| `shell-refresh` | **全量**：重算几何 → 写回三个 view 尺寸 → 刷新每个 panel（树重扫 fs） |
-| `shell-resize` / `shell-set-visible?` | 改几何 / 显隐（不动 document），frontend 至少 1×1 |
-| `shell-focus` / `shell-focus-at` | 焦点 = `'frontend` / `'tree`（隐藏的 pane 拒绝聚焦；状态栏永不聚焦） |
-| `shell-open-file` / `shell-close-buffer` | 打开文档进 buffer / 显式关文档（旧文档不再被顶掉） |
-| `shell-write-file` | 写盘（IO 边界） |
-| `shell->screen` | `screen-compose` 拼可见 panel；只透出焦点 panel 的光标 |
-| `shell-handle` / `shell-key` / `shell-click` | 默认键位与鼠标路由；键位是应用策略，可整层替换 |
-
-`shell` 的 `screen` 仍然后端无关；`terminal.rkt` 才把 `screen` 画成字节（`screen-damage` 增量）。
+本仓库只包含 `core/`：引擎（`atom < unit < doc < viewport < platform`）与两个公开入口
+（`core/api.rkt`、`core/editor.rkt`）。窗口管理（分区 / 拼屏 / 焦点路由）、组件（文件树 /
+状态栏）、终端后端、示例应用都不在本仓库；它们是 core 之上的 L6，由使用方自行构建。
+core 对它们只提两条要求：只用两个公开入口，且不向上依赖。
