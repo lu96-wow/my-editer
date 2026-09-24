@@ -440,13 +440,20 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | 名字 | 签名 | 语义 |
 |---|---|---|
 | `screen-compose` | `(screen-compose height width panes active-id)` | 把 `(listof pane)` 贴到大屏；文本/选区按 x/y 平移，**只透出 active pane 的光标** |
+| `compose-panes` | `(compose-panes height width panes active-id)` | 全量合成 → `composition`（合成屏 + 参与窗格 + active id） |
+| `compose-panes/incremental` | `(compose-panes/incremental old height width panes active-id dirty-map)` | 几何未变时只重拼脏行 + overlay 变化行 → `(values composition 脏行集)`；几何变 → 退回全量（脏行 = 全部） |
 | `screen-damage` | `(screen-damage old new)` | 需要**整行重绘**的行号（文本 ∪ overlay 变化）；`#f` = 整屏重绘（帧尺寸变化） |
+
+`dirty-map : pane-id → (or/c #t (listof 局部行号))`。
 
 #### 投影 API
 
 | 名字 | 签名 | 语义 |
 |---|---|---|
 | `window->screen` | `(window->screen w [face-provider empty-face-provider])` | 视口 → 一帧 |
+| `window->projection` | `(window->projection w [face-provider empty-face-provider])` | 视口 → `projection`（帧 + 布局 vrows + 栏宽） |
+| `window->projection/incremental` | `(window->projection/incremental old w dirty-lines [face-provider empty-face-provider])` | 布局未变时只重建 `dirty-lines`（缓冲行号，`#t` = 全脏）对应的屏幕行 → `(values projection 脏屏幕行集)`；布局变 → 退回全量 |
+| `projection?` / `projection-screen` | | 投影谓词 / 取帧 |
 | `editor->screen` | `(editor->screen ed [face-provider empty-face-provider])` | 焦点视图 → 一帧 |
 | `editor-view->screen` | `(editor-view->screen ed vid [face-provider empty-face-provider])` | 某视图 → 一帧 |
 | `empty-face-provider` | `(empty-face-provider b line)` | 缺省 provider（总是空） |
@@ -455,6 +462,23 @@ face-provider : buffer × line → (list start end face)   ; 派生 face 在此�
 | `render-line` | `(render-line b i [provider])` | 一行 → glyph 向量（内部） |
 | `window-vrows` | `(window-vrows w)` | 视觉行向量（内部） |
 | `line-range->runs` / `wrap-segments` / `layout-clip` / `layout-wrap` | | 布局/runs 原语（内部） |
+
+#### 后端绘制接口（target）
+
+把内部帧摊平成「绘制项 + 脏矩形」；后端只认绘制项，不碰 screen / run / cursor 内部结构。
+
+| 名字 | 签名 | 语义 |
+|---|---|---|
+| `draw-item` | `(draw-item layer x y width height text attr)` | 屏幕坐标 (x,y) 上的一段文本；`attr` 是语义属性 |
+| `draw-item-layer` / `-x` / `-y` / `-width` / `-height` / `-text` / `-attr` | | 读口 |
+| `text-layer` / `selection-layer` / `cursor-layer` | `0` / `10` / `20` | 叠放次序（小在下） |
+| `frame?` / `frame-width` / `frame-height` | | 帧谓词 / 尺寸（`frame?` = `screen?`） |
+| `frame->draw-list` | `(frame->draw-list frame)` | 全量：帧 → 绘制项列表 |
+| `frame->patch` | `(frame->patch old new)` | 全量补丁：对所有行 diff → `(values 脏矩形集 修补绘制项)` |
+| `frame->patch/incremental` | `(frame->patch/incremental old new dirty-rows)` | 只对 `dirty-rows` 列级 diff；帧尺寸变 → `(values #f 全量绘制项)` |
+| `rect` / `rect?` / `rect-x` / `-y` / `-width` / `-height` | `(rect x y width height)` | 脏矩形（内列坐标） |
+
+修补绘制项**裁到脏列区间**：后端只清脏矩形、只画修补项，区间外永远不动。
 
 ### 2.10 事件 / 宽字符
 

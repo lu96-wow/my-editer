@@ -108,7 +108,7 @@
  screen? screen-height screen-width screen-empty screen-compose
  (struct-out pane)
  (struct-out composition)
- compose-panes composition-refresh
+ compose-panes compose-panes/incremental
  window->screen
  window->projection window->projection/incremental projection? projection-screen
  ;; ---- target —— 后端绘制接口（绘制项 + 脏矩形）----

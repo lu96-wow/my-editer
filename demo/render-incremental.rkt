@@ -4,7 +4,7 @@
 ;;; demo/render-incremental.rkt —— 增量渲染等价性测试（虚拟终端）
 ;;; ============================================================================
 ;;;
-;;; 把 frame-damage 的补丁（脏矩形 + 修补绘制项）应用到一块「虚拟终端网格」，
+;;; 把 frame->patch/incremental 的补丁（脏矩形 + 修补绘制项）应用到一块「虚拟终端网格」，
 ;;; 结果必须与「整帧重绘」逐格一致。这样就能严格验证：
 ;;;   · 上一帧被光标/选区覆盖的位置有没有被正确还原；
 ;;;   · 多选区（多个 cursor / region）增删移动是否正确；
@@ -98,7 +98,7 @@
     (define ed2 (f ed))
     (define-values (p dirty) (window->projection/incremental proj (editor-view-window ed2 0) '()))
     (define s2 (projection-screen p))
-    (define-values (rects items) (frame-damage scr s2 dirty))
+    (define-values (rects items) (frame->patch/incremental scr s2 dirty))
     (apply-patch! gr H W rects items)
     (check-equal? gr (full-grid H W s2) (format "单窗格 step ~a（增量补丁 != 全量）" i))
     (values ed2 p s2 gr)))
@@ -119,9 +119,9 @@
     (define ed2 (f ed))
     (define-values (pa2 da) (window->projection/incremental pa (editor-view-window ed2 0) '()))
     (define-values (pb2 db) (window->projection/incremental pb (editor-view-window ed2 1) '()))
-    (define-values (cp2 cd) (composition-refresh cp H W (panes pa2 pb2) 0 (hash 0 da 1 db)))
+    (define-values (cp2 cd) (compose-panes/incremental cp H W (panes pa2 pb2) 0 (hash 0 da 1 db)))
     (define s2 (composition-screen cp2))
-    (define-values (rects items) (frame-damage (composition-screen cp) s2 cd))
+    (define-values (rects items) (frame->patch/incremental (composition-screen cp) s2 cd))
     (apply-patch! gr H W rects items)
     (check-equal? gr (full-grid H W s2) (format "双窗格 step ~a（增量补丁 != 全量）" i))
     (values ed2 pa2 pb2 cp2 gr)))

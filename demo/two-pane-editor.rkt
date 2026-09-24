@@ -9,7 +9,7 @@
 ;;; 一个文档，两个视图（同尺寸、左右并排）：
 ;;;   · 左视图 = 主导（焦点），右视图 sync='follow 跟随；
 ;;;   · 编辑 / 导航 / 滚动 → 右边自动镜像，两边永远一致；
-;;;   · 渲染走 core 的增量链路：projection 增量 → composition 增量 → frame-damage；
+;;;   · 渲染走 core 的增量链路：projection 增量 → composition 增量 → frame->patch/incremental；
 ;;;   · 需要整屏时走全量 API（compose-panes / frame->draw-list）。
 ;;;
 ;;; 按键：
@@ -127,7 +127,7 @@
   (define old-comp (rcache-comp c))
   (define-values (comp2 dirty-rows)
     (if old-comp
-        (composition-refresh old-comp ph cols panes 0 dirty-map)
+        (compose-panes/incremental old-comp ph cols panes 0 dirty-map)
         (values (compose-panes ph cols panes 0)
                 (for/list ([r (in-range ph)]) r))))
 
@@ -136,7 +136,7 @@
   (define new-screen (composition-screen comp2))
   (define-values (rects items)
     (if old-screen
-        (frame-damage old-screen new-screen dirty-rows)
+        (frame->patch/incremental old-screen new-screen dirty-rows)
         (values #f (frame->draw-list new-screen))))
 
   ;; 4) 输出
@@ -350,13 +350,13 @@
   (check-equal? db '(1))
   (check-equal? (editor-document->string e2 0) "aaaa\nYbbb\ncccc")
   (define-values (comp1 cd)
-    (composition-refresh comp0 3 20
+    (compose-panes/incremental comp0 3 20
                          (list (pane 0 0 0 (projection-screen pa2))
                                (pane 1 10 0 (projection-screen pb2)))
                          0 (hash 0 da 1 db)))
   (check-equal? cd '(1))
   (define-values (rects _items)
-    (frame-damage (composition-screen comp0) (composition-screen comp1) cd))
+    (frame->patch/incremental (composition-screen comp0) (composition-screen comp1) cd))
   (check-equal? rects (list (rect 0 1 1 1) (rect 10 1 1 1)))   ; 左窗格 + 右窗格各 1 列
 
   ;; Shift 扩选：主选区头部右移 → 选区变长

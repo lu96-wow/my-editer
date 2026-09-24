@@ -44,7 +44,7 @@
                        (hash 'face 'selection))))
         #f)))
 
-(struct projection (screen vrows gutter) #:transparent)
+(struct projection (screen vrows gutter-width) #:transparent)
 ;; 一次投影的完整产物：屏幕帧 + 布局（vrows）+ 栏宽。
 ;; 增量更新需要上次的 vrows 才能判断「哪些屏幕行可以原样复用」。
 
@@ -76,16 +76,6 @@
       [else (list (blank-gutter-run g))]))
   (append gutter (map (lambda (rn) (shift-run rn g)) content)))
 
-;; 按屏幕行归并 overlay 的规范化签名（用于判断哪些行的 overlay 变了）。
-(define (overlay-signatures cursors selections h)
-  (for/vector ([r (in-range h)])
-    (list (sort (for/list ([c (in-list cursors)] #:when (= r (cursor-row c)))
-                  (list (cursor-col c) (cursor-primary? c)))
-                < #:key car)
-          (sort (for/list ([g (in-list selections)] #:when (= r (region-row g)))
-                  (list (region-start-col g) (region-end-col g)))
-                < #:key car))))
-
 (define (window->projection w [face-provider empty-face-provider])
   (define b (window-buffer w))
   (define vrows (window-vrows w))
@@ -110,7 +100,7 @@
   (define same-layout?
     (and old
          (equal? new-vrows (projection-vrows old))
-         (= new-g (projection-gutter old))))
+         (= new-g (projection-gutter-width old))))
   (cond
     [(and same-layout? (not (eq? dirty-lines #t)))
      (define old-screen (projection-screen old))

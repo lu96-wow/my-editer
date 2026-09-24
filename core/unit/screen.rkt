@@ -30,10 +30,11 @@
  screen-cursor-col
  screen-damage
  screen-compose
+ overlay-signatures
  ;; 合成帧（多窗格）：全量 + 增量
  (struct-out composition)
  compose-panes
- composition-refresh
+ compose-panes/incremental
  screen->string)
 
 (struct run (col text face) #:transparent)
@@ -119,26 +120,29 @@
                            (not (equal? (vector-ref ov-old r) (vector-ref ov-new r)))))
        r)]))
 
-;; 每行的 overlay 规范化表示（光标 + 选区，各自按列排序）；返回长度 h 的 vector。
-;; 一次遍历光标/选区填桶，用于跨帧逐行比较。
-(define (overlays-by-row s h)
-  (define cursors (make-vector h '()))
-  (define sels (make-vector h '()))
-  (for ([c (in-list (screen-cursors s))])
+;; 每行的 overlay 规范化签名（光标 + 选区，各自按列排序）；返回长度 h 的 vector。
+;; 用于跨帧逐行比较（screen-damage / 增量投影 / 增量合成）。
+(define (overlay-signatures cursors selections h)
+  (define cs (make-vector h '()))
+  (define gs (make-vector h '()))
+  (for ([c (in-list cursors)])
     (define r (cursor-row c))
     (when (and (exact-nonnegative-integer? r) (< r h))
-      (vector-set! cursors r
+      (vector-set! cs r
                    (cons (list (cursor-col c) (cursor-face c) (cursor-primary? c))
-                         (vector-ref cursors r)))))
-  (for ([g (in-list (screen-selections s))])
+                         (vector-ref cs r)))))
+  (for ([g (in-list selections)])
     (define r (region-row g))
     (when (and (exact-nonnegative-integer? r) (< r h))
-      (vector-set! sels r
+      (vector-set! gs r
                    (cons (list (region-start-col g) (region-end-col g) (region-face g))
-                         (vector-ref sels r)))))
+                         (vector-ref gs r)))))
   (for/vector ([r (in-range h)])
-    (list (sort (vector-ref cursors r) < #:key car)
-          (sort (vector-ref sels r) < #:key car))))
+    (list (sort (vector-ref cs r) < #:key car)
+          (sort (vector-ref gs r) < #:key car))))
+
+(define (overlays-by-row s h)
+  (overlay-signatures (screen-cursors s) (screen-selections s) h))
 
 (define (shift-run rn x) (run (+ x (run-col rn)) (run-text rn) (run-face rn)))
 (define (shift-cursor c x y) (cursor (+ y (cursor-row c)) (+ x (cursor-col c)) (cursor-face c) (cursor-primary? c)))
@@ -150,28 +154,9 @@
 ;; 拼屏：把若干 pane 贴到 (height width) 大屏。
 ;; 文本 + 选区按 x/y 平移自各 pane；**只有 active pane 的光标**被透出（非活动窗格不显示光标）。
 (define (screen-compose height width panes active-id)
-  (define row-runs (make-vector height '()))
-  (define sel-out '())
-  (for ([p (in-list panes)])
-    (define x (pane-x p)) (define y (pane-y p)) (define s (pane-screen p))
-    (for ([r (in-range (screen-height s))])
-      (define dst (+ y r))
-      (when (and (>= dst 0) (< dst height))
-        (vector-set! row-runs dst (append (vector-ref row-runs dst)
-                                          (map (lambda (rn) (shift-run rn x))
-                                               (vector-ref (screen-row-runs s) r))))))
-    (for ([rg (in-list (screen-selections s))])
-      (set! sel-out (cons (shift-region rg x y) sel-out))))
-  (define sorted (for/vector ([runs (in-vector row-runs)])
-                   (sort runs (lambda (a b) (< (run-col a) (run-col b))))))
-  (define active (for/first ([p (in-list panes)] #:when (equal? (pane-id p) active-id)) p))
-  ;; 只透出 active pane 的光标。
-  (define active-cursors
-    (if active
-        (map (lambda (c) (shift-cursor c (pane-x active) (pane-y active)))
-             (screen-cursors (pane-screen active)))
-        '()))
-  (screen height width sorted active-cursors sel-out))
+  (define row-runs (for/vector ([row (in-range height)]) (compose-row panes row)))
+  (define-values (cursors selections) (compose-overlay panes active-id))
+  (screen height width row-runs cursors selections))
 
 ;;; ---------- 合成帧（多窗格）：全量 + 增量 ----------
 
@@ -215,7 +200,7 @@
 ;; 增量合成：dirty-map : pane-id → (or/c #t (listof 局部行号))。
 ;; 几何（帧尺寸 / 每个窗格 id·x·y·尺寸 / 顺序）没变 → 只重拼脏行 + overlay 变化行；
 ;; 变了（增删 / 移动 / 缩放 / 改尺寸）→ 退回全量，脏行 = 全部。
-(define (composition-refresh old height width panes active-id dirty-map)
+(define (compose-panes/incremental old height width panes active-id dirty-map)
   (define same-geometry?
     (and (= (composition-height old) height)
          (= (composition-width old) width)
@@ -313,20 +298,20 @@
   (define ca1 (screen 2 4 (vector (list (run 0 "aX" 'f)) (list (run 0 "cd" 'f))) '() '()))
   (define cb  (screen 2 4 (vector (list (run 0 "XY" 'f)) (list (run 0 "ZW" 'f))) '() '()))
   (define cp0 (compose-panes 2 8 (list (pane 'a 0 0 ca0) (pane 'b 4 0 cb)) 'a))
-  (define-values (cp1 cpd) (composition-refresh cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 4 0 cb)) 'a (hash 'a '(0))))
+  (define-values (cp1 cpd) (compose-panes/incremental cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 4 0 cb)) 'a (hash 'a '(0))))
   (check-equal? cpd '(0))
   (check-equal? (screen-row (composition-screen cp1) 0) (list (run 0 "aX" 'f) (run 4 "XY" 'f)))
   (check-equal? (screen-row (composition-screen cp1) 1) (list (run 0 "cd" 'f) (run 4 "ZW" 'f)))
 
   ;; 几何变（pane b 右移）→ 全量，脏行 = 全部
-  (define-values (_cp2 cpd2) (composition-refresh cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 5 0 cb)) 'a (hash)))
+  (define-values (_cp2 cpd2) (compose-panes/incremental cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 5 0 cb)) 'a (hash)))
   (check-equal? cpd2 '(0 1))
 
   ;; active 变 → overlay 变化行脏（a 的光标没了 / b 的光标出现）
   (define ca-c (screen 2 4 (vector (list (run 0 "ab" 'f)) (list (run 0 "cd" 'f))) (list (cursor 0 1 'c #t)) '()))
   (define cb-c (screen 2 4 (vector (list (run 0 "XY" 'f)) (list (run 0 "ZW" 'f))) (list (cursor 1 0 'c #t)) '()))
   (define cp3 (compose-panes 2 8 (list (pane 'a 0 0 ca-c) (pane 'b 4 0 cb)) 'a))
-  (define-values (cp4 cpd4) (composition-refresh cp3 2 8 (list (pane 'a 0 0 ca-c) (pane 'b 4 0 cb-c)) 'b (hash)))
+  (define-values (cp4 cpd4) (compose-panes/incremental cp3 2 8 (list (pane 'a 0 0 ca-c) (pane 'b 4 0 cb-c)) 'b (hash)))
   (check-equal? cpd4 '(0 1))
   (check-equal? (map cursor-row (screen-cursors (composition-screen cp4))) '(1))
 

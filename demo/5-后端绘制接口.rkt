@@ -139,8 +139,8 @@
 (define pA (window->projection (window-open dA 4 12)))
 (define-values (pB dirty) (window->projection/incremental pA (window-open dB 4 12) '(1)))
 (printf "只改第 1 行 → 脏屏幕行 = ~s（不是 (0 1 2 3)）\n" dirty)
-(define-values (rects4 items4) (frame-damage (projection-screen pA) (projection-screen pB) dirty))
-(printf "frame-damage → 脏矩形 = ~s，patch 绘制项 = ~a 个（只来自脏行）\n" rects4 (length items4))
+(define-values (rects4 items4) (frame->patch/incremental (projection-screen pA) (projection-screen pB) dirty))
+(printf "frame->patch/incremental → 脏矩形 = ~s，patch 绘制项 = ~a 个（只来自脏行）\n" rects4 (length items4))
 
 ;; 对照：layout 变（行数变）→ 退回全量
 (define-values (_pC dirty2) (window->projection/incremental pA (window-open (document-open "aaaa") 4 12) '(0)))
@@ -159,15 +159,15 @@
 (define-values (pL2 left-dirty)
   (window->projection/incremental pL (window-open (document-open "aaaa\nbXbb\ncccc") 3 8) '(1)))
 (define-values (comp1 comp-dirty)
-  (composition-refresh comp0 3 20
+  (compose-panes/incremental comp0 3 20
                        (list (pane 'L 0 0 (projection-screen pL2))
                              (pane 'R 10 0 (projection-screen pR)))
                        'L
                        (hash 'L left-dirty)))
 (printf "左窗格第 1 行改 → 合成脏行 = ~s（不是 (0 1 2)）\n" comp-dirty)
 (define-values (crects citems)
-  (frame-damage (composition-screen comp0) (composition-screen comp1) comp-dirty))
-(printf "frame-damage → 脏矩形 = ~s，patch 绘制项 = ~a 个\n" crects (length citems))
+  (frame->patch/incremental (composition-screen comp0) (composition-screen comp1) comp-dirty))
+(printf "frame->patch/incremental → 脏矩形 = ~s，patch 绘制项 = ~a 个\n" crects (length citems))
 
 ;; 全量渲染 API 一直保留：需要整屏时直接 frame->draw-list / screen-compose。
 (printf "全量路径：frame->draw-list 项数 = ~a\n"

@@ -12,8 +12,8 @@
  text-layer selection-layer cursor-layer
  ;; 帧（不透明值 + 尺寸）
  frame? frame-width frame-height
- ;; 两个入口
- frame->draw-list frame->patch frame-damage)
+ ;; 三个入口：全量绘制项 / 全量补丁 / 增量补丁
+ frame->draw-list frame->patch frame->patch/incremental)
 
 ;;; target.rkt —— 后端绘制接口：把内部「帧 screen」摊平成**绘制项列表 + 脏矩形**
 ;;;
@@ -192,40 +192,46 @@
          (draw-item (draw-item-layer it) lo* (draw-item-y it)
                     (string-display-width t*) (draw-item-height it) t* (draw-item-attr it)))))
 
-;; 两帧 → (values 脏矩形集 修补绘制项)：等价于对**所有行**调用 frame-damage。
+;; 两帧 → (values 脏矩形集 修补绘制项)：等价于对**所有行**调用增量版。
 ;; 需要整屏 / 不用增量信息时用它。
 (define (frame->patch old new)
-  (frame-damage old new (for/list ([r (in-range (screen-height new))]) r)))
+  (frame->patch/incremental old new (for/list ([r (in-range (screen-height new))]) r)))
 
 ;; 只在 dirty-rows 上算增量：逐行按列 diff（含 attr），
 ;; 脏矩形 = 变化列区间；修补项 = 该行新绘制项**裁到变化列区间**（保证区间外不动）。
-(define (frame-damage old new dirty-rows)
+;; 帧尺寸变了 → (values #f 全量绘制项)。
+(define (frame->patch/incremental old new dirty-rows)
   (cond
     [(or (not (= (screen-height old) (screen-height new)))
          (not (= (screen-width old) (screen-width new))))
      (values #f (frame->draw-list new))]
     [else
      (define w (screen-width new))
-     (define rects '())
-     (define patch '())
-     (for ([row (in-list dirty-rows)])
-       (define oi (row->draw-items old row))
-       (define ni (row->draw-items new row))
-       (unless (equal? oi ni)
-         (define a (row-cells oi w))
-         (define b (row-cells ni w))
-         (define cols (for/list ([c (in-range w)]
-                                 #:when (not (equal? (vector-ref a c) (vector-ref b c))))
-                        c))
-         (when (pair? cols)
-           (set! rects (append rects (columns->rects row cols)))
-           (define x0 (car cols))
-           (define x1 (add1 (last cols)))
-           (set! patch (append patch
-                               (filter values
-                                       (for/list ([it (in-list ni)])
-                                         (clip-draw-item it x0 x1))))))))
-     (values rects patch)]))
+     (define h (screen-height new))
+     ;; 逐行算：无变化 → 空；有变化 → 本行脏矩形 + 本行修补项。
+     (define rows
+       (for/list ([row (in-list (sort (remove-duplicates (filter exact-nonnegative-integer? dirty-rows)) <))]
+                  #:when (< row h))
+         (define oi (row->draw-items old row))
+         (define ni (row->draw-items new row))
+         (cond
+           [(equal? oi ni) (cons '() '())]
+           [else
+            (define a (row-cells oi w))
+            (define b (row-cells ni w))
+            (define cols (for/list ([c (in-range w)]
+                                    #:when (not (equal? (vector-ref a c) (vector-ref b c))))
+                           c))
+            (cond
+              [(null? cols) (cons '() '())]
+              [else
+               (define x0 (car cols))
+               (define x1 (add1 (last cols)))
+               (cons (columns->rects row cols)
+                     (filter values
+                             (for/list ([it (in-list ni)])
+                               (clip-draw-item it x0 x1))))])])))
+     (values (append* (map car rows)) (append* (map cdr rows)))]))
 
 ;;; ---------- 测试 ----------
 
@@ -261,6 +267,8 @@
   ;; 尺寸变 → 全屏（#f）
   (define-values (d4 p4) (frame->patch s0 (screen 3 5 (vector (list (run 0 "ab" 'f)) '() '()) '() '())))
   (check-false d4)
+  (define-values (d4b _p4b) (frame->patch/incremental s0 (screen 3 5 (vector (list (run 0 "ab" 'f)) '() '()) '() '()) '()))
+  (check-false d4b)
   (check-equal? p4 (frame->draw-list (screen 3 5 (vector (list (run 0 "ab" 'f)) '() '()) '() '())))
 
   ;; 增量投影（彻底版）：只改第 1 行 → 只脏第 1 屏行
@@ -270,7 +278,7 @@
   (define pA (window->projection wA))
   (define-values (pB dirty) (window->projection/incremental pA (window-open dB 4 10) '(1)))
   (check-equal? dirty '(1))
-  (define-values (drects _ditems) (frame-damage (projection-screen pA) (projection-screen pB) dirty))
+  (define-values (drects _ditems) (frame->patch/incremental (projection-screen pA) (projection-screen pB) dirty))
   (check-equal? drects (list (rect 1 1 1 1)))          ; 只列 1 变了
 
   ;; 改两行 → 两行脏
