@@ -11,7 +11,9 @@
 ;;;   视图 overlay  window-selections → 光标点（head）/ 选中区段（[anchor,head) 按 vrow 切）
 ;;; 真正的绘制在后端；这里只给屏幕坐标 + 语义 face。
 
-(provide window->screen)
+(provide window->screen
+         window->projection window->projection/incremental
+         projection? projection-screen)
 
 ;; 一个选区在**某一行**的显示列区间 (list start end)，不在该行 → #f。
 (define (selection-range-on-line b sl sc el ec line)
@@ -42,41 +44,112 @@
                        (hash 'face 'selection))))
         #f)))
 
-(define (window->screen w [face-provider empty-face-provider])
-  (define b (window-buffer w))
-  (define vrows (window-vrows w))
-  (define g (window-gutter-width w))
-  ;; wrap 下同一行会占多个 vrow；整行 glyph 只渲染一次，各段复用（否则每个 vrow 重渲整行）。
-  (define glyph-cache (make-hash))
-  (define (glyphs-for li)
-    (hash-ref! glyph-cache li
-               (lambda () (rendered-line-glyphs (render-line b li face-provider)))))
-  (define row-runs
-    (for/vector ([vr (in-vector vrows)] [row (in-naturals)])
-      (define content
-        (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
-            (line-range->runs/glyphs (glyphs-for (vrow-line vr))
-                                     (vrow-start-col vr) (vrow-end-col vr))
-            '()))
-      (define gutter
-        (cond
-          [(zero? g) '()]
-          [(and (>= (vrow-line vr) 0) (vrow-first-for-line? vrows row))
-           (list (line-number-run (add1 (vrow-line vr)) g))]
-          [else (list (blank-gutter-run g))]))
-      (append gutter (map (lambda (rn) (shift-run rn g)) content))))
-  ;; 视图 overlay：光标 = 每个选区的 head（列 +g → 屏幕绝对列）
+(struct projection (screen vrows gutter) #:transparent)
+;; 一次投影的完整产物：屏幕帧 + 布局（vrows）+ 栏宽。
+;; 增量更新需要上次的 vrows 才能判断「哪些屏幕行可以原样复用」。
+
+;; 视图 overlay（光标点 / 选中区段），已平移到屏幕坐标（列 +g）。
+(define (window-overlay w vrows g)
   (define cursors
     (filter values
             (for/list ([s (in-list (window-selections w))] [i (in-naturals)])
               (define-values (r c) (window-point->screen/vrows w vrows (selection-point s)))
               (and r (cursor r (+ g c) (hash 'face 'cursor) (= i (window-primary-index w)))))))
-  ;; 视图 overlay：选中区 = 每个非空选区的 [anchor,head)
   (define selections
     (for/list ([rg (in-list (filter values (append* (for/list ([s (in-list (window-selections w))])
                                                       (selection->regions w vrows s))))) ])
       (region (region-row rg) (+ g (region-start-col rg)) (+ g (region-end-col rg)) (region-face rg))))
-  (screen (window-height w) (window-width w) row-runs cursors selections))
+  (values cursors selections))
+
+;; 一条 vrow 的 runs（栏 + 正文），正文已右移 g。
+(define (vrow->runs w vrows g glyphs-for i)
+  (define vr (vector-ref vrows i))
+  (define content
+    (if (and (>= (vrow-line vr) 0) (< (vrow-start-col vr) (vrow-end-col vr)))
+        (line-range->runs/glyphs (glyphs-for (vrow-line vr)) (vrow-start-col vr) (vrow-end-col vr))
+        '()))
+  (define gutter
+    (cond
+      [(zero? g) '()]
+      [(and (>= (vrow-line vr) 0) (vrow-first-for-line? vrows i))
+       (list (line-number-run (add1 (vrow-line vr)) g))]
+      [else (list (blank-gutter-run g))]))
+  (append gutter (map (lambda (rn) (shift-run rn g)) content)))
+
+;; 按屏幕行归并 overlay 的规范化签名（用于判断哪些行的 overlay 变了）。
+(define (overlay-signatures cursors selections h)
+  (for/vector ([r (in-range h)])
+    (list (sort (for/list ([c (in-list cursors)] #:when (= r (cursor-row c)))
+                  (list (cursor-col c) (cursor-primary? c)))
+                < #:key car)
+          (sort (for/list ([g (in-list selections)] #:when (= r (region-row g)))
+                  (list (region-start-col g) (region-end-col g)))
+                < #:key car))))
+
+(define (window->projection w [face-provider empty-face-provider])
+  (define b (window-buffer w))
+  (define vrows (window-vrows w))
+  (define g (window-gutter-width w))
+  ;; wrap 下同一行会占多个 vrow；整行 glyph 只渲染一次，各段复用。
+  (define glyph-cache (make-hash))
+  (define (glyphs-for li)
+    (hash-ref! glyph-cache li
+               (lambda () (rendered-line-glyphs (render-line b li face-provider)))))
+  (define row-runs
+    (for/vector ([i (in-range (vector-length vrows))])
+      (vrow->runs w vrows g glyphs-for i)))
+  (define-values (cursors selections) (window-overlay w vrows g))
+  (projection (screen (window-height w) (window-width w) row-runs cursors selections) vrows g))
+
+;; 增量投影：layout（vrows / 栏宽）未变时，只重建源行在 dirty-lines 里的屏幕行，
+;; 其余行**原样复用旧帧**；返回 (values 新投影 脏屏幕行号集)。
+;; dirty-lines = #t 表示全脏；layout 变了（折行段数/行数/栏宽变）→ 退回全量。
+(define (window->projection/incremental old w dirty-lines [face-provider empty-face-provider])
+  (define new-vrows (window-vrows w))
+  (define new-g (window-gutter-width w))
+  (define same-layout?
+    (and old
+         (equal? new-vrows (projection-vrows old))
+         (= new-g (projection-gutter old))))
+  (cond
+    [(and same-layout? (not (eq? dirty-lines #t)))
+     (define old-screen (projection-screen old))
+     (define b (window-buffer w))
+     (define h (vector-length new-vrows))
+     (define dirty-set (make-hash))
+     (for ([l (in-list dirty-lines)]) (hash-set! dirty-set l #t))
+     (define glyph-cache (make-hash))
+     (define (glyphs-for li)
+       (hash-ref! glyph-cache li
+                  (lambda () (rendered-line-glyphs (render-line b li face-provider)))))
+     (define new-runs (make-vector h '()))
+     (define rebuilt (make-vector h #f))
+     (for ([i (in-range h)])
+       (define li (vrow-line (vector-ref new-vrows i)))
+       (cond
+         [(and (>= li 0) (hash-ref dirty-set li #f))
+          (vector-set! new-runs i (vrow->runs w new-vrows new-g glyphs-for i))
+          (vector-set! rebuilt i #t)]
+         [else
+          (vector-set! new-runs i (screen-row old-screen i))]))
+     (define-values (new-cursors new-selections) (window-overlay w new-vrows new-g))
+     (define old-ov (overlay-signatures (screen-cursors old-screen) (screen-selections old-screen) h))
+     (define new-ov (overlay-signatures new-cursors new-selections h))
+     (define overlay-dirty
+       (for/list ([r (in-range h)] #:when (not (equal? (vector-ref old-ov r) (vector-ref new-ov r)))) r))
+     (define new-screen (screen (window-height w) (window-width w) new-runs new-cursors new-selections))
+     (define dirty-rows
+       (sort (remove-duplicates
+              (append (for/list ([i (in-range h)] #:when (vector-ref rebuilt i)) i)
+                      overlay-dirty))
+             <))
+     (values (projection new-screen new-vrows new-g) dirty-rows)]
+    [else
+     (define p (window->projection w face-provider))
+     (values p (for/list ([i (in-range (screen-height (projection-screen p)))]) i))]))
+
+(define (window->screen w [face-provider empty-face-provider])
+  (projection-screen (window->projection w face-provider)))
 
 ;;; ---------- 行号栏（视图装饰，不属文档） ----------
 

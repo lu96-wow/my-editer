@@ -30,6 +30,10 @@
  screen-cursor-col
  screen-damage
  screen-compose
+ ;; 合成帧（多窗格）：全量 + 增量
+ (struct-out composition)
+ compose-panes
+ composition-refresh
  screen->string)
 
 (struct run (col text face) #:transparent)
@@ -169,6 +173,83 @@
         '()))
   (screen height width sorted active-cursors sel-out))
 
+;;; ---------- 合成帧（多窗格）：全量 + 增量 ----------
+
+;; 合成帧 = 合成后的屏幕（不透明）+ 参与合成的窗格 + active id。
+;; 增量刷新需要旧值（旧窗格布局 / 旧屏幕）才能判断哪些合成行能复用。
+(struct composition (height width panes active-id screen) #:transparent)
+
+;; 窗格的几何指纹（id · x · y · 尺寸）：一变就退回全量。
+(define (pane-shape p)
+  (list (pane-id p) (pane-x p) (pane-y p)
+        (screen-height (pane-screen p)) (screen-width (pane-screen p))))
+
+;; 合成一行：把所有覆盖该行的窗格片段右移 x 后按列排序。
+(define (compose-row panes row)
+  (sort (append*
+         (for/list ([p (in-list panes)])
+           (define lr (- row (pane-y p)))
+           (if (and (>= lr 0) (< lr (screen-height (pane-screen p))))
+               (map (lambda (rn) (shift-run rn (pane-x p))) (screen-row (pane-screen p) lr))
+               '())))
+        < #:key run-col))
+
+;; 合成 overlay：只有 active 窗格的光标 + 所有窗格的选中区。
+(define (compose-overlay panes active-id)
+  (define active (for/first ([p (in-list panes)] #:when (equal? (pane-id p) active-id)) p))
+  (define cursors
+    (if active
+        (map (lambda (c) (shift-cursor c (pane-x active) (pane-y active)))
+             (screen-cursors (pane-screen active)))
+        '()))
+  (define selections
+    (append* (for/list ([p (in-list panes)])
+               (map (lambda (g) (shift-region g (pane-x p) (pane-y p)))
+                    (screen-selections (pane-screen p))))))
+  (values cursors selections))
+
+;; 全量合成：返回 composition（含屏幕）。永远可用——需要整屏重绘时用它。
+(define (compose-panes height width panes active-id)
+  (composition height width panes active-id (screen-compose height width panes active-id)))
+
+;; 增量合成：dirty-map : pane-id → (or/c #t (listof 局部行号))。
+;; 几何（帧尺寸 / 每个窗格 id·x·y·尺寸 / 顺序）没变 → 只重拼脏行 + overlay 变化行；
+;; 变了（增删 / 移动 / 缩放 / 改尺寸）→ 退回全量，脏行 = 全部。
+(define (composition-refresh old height width panes active-id dirty-map)
+  (define same-geometry?
+    (and (= (composition-height old) height)
+         (= (composition-width old) width)
+         (equal? (map pane-shape (composition-panes old)) (map pane-shape panes))))
+  (cond
+    [(not same-geometry?)
+     (values (compose-panes height width panes active-id)
+             (for/list ([r (in-range height)]) r))]
+    [else
+     (define old-screen (composition-screen old))
+     (define dirty (make-hash))
+     (for ([p (in-list panes)])
+       (define d (hash-ref dirty-map (pane-id p) '()))
+       (define y (pane-y p))
+       (define locals (if (eq? d #t)
+                          (for/list ([i (in-range (screen-height (pane-screen p)))]) i)
+                          d))
+       (for ([lr (in-list locals)])
+         (define row (+ y lr))
+         (when (and (>= row 0) (< row height)) (hash-set! dirty row #t))))
+     (define new-runs
+       (for/vector ([row (in-range height)])
+         (if (hash-has-key? dirty row)
+             (compose-row panes row)
+             (screen-row old-screen row))))
+     (define-values (cursors selections) (compose-overlay panes active-id))
+     (define new-screen (screen height width new-runs cursors selections))
+     (define ov-old (overlays-by-row old-screen height))
+     (define ov-new (overlays-by-row new-screen height))
+     (for ([r (in-range height)] #:when (not (equal? (vector-ref ov-old r) (vector-ref ov-new r))))
+       (hash-set! dirty r #t))
+     (values (composition height width panes active-id new-screen)
+             (sort (for/list ([(k _) (in-hash dirty)]) k) <))]))
+
 ;;; ---------- 测试 ----------
 
 (module+ test
@@ -226,5 +307,27 @@
   (check-equal? (map region-start-col (screen-selections comp)) '(0))
   ;; active 不在 panes → 隐藏光标
   (check-equal? (screen-cursor-row (screen-compose 2 8 (list (pane 'a 0 0 sa)) 'b)) -1)
+
+  ;; composition 增量：只改窗格 a 的第 0 行 → 合成脏行 = (0)，非脏行原样复用
+  (define ca0 (screen 2 4 (vector (list (run 0 "ab" 'f)) (list (run 0 "cd" 'f))) '() '()))
+  (define ca1 (screen 2 4 (vector (list (run 0 "aX" 'f)) (list (run 0 "cd" 'f))) '() '()))
+  (define cb  (screen 2 4 (vector (list (run 0 "XY" 'f)) (list (run 0 "ZW" 'f))) '() '()))
+  (define cp0 (compose-panes 2 8 (list (pane 'a 0 0 ca0) (pane 'b 4 0 cb)) 'a))
+  (define-values (cp1 cpd) (composition-refresh cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 4 0 cb)) 'a (hash 'a '(0))))
+  (check-equal? cpd '(0))
+  (check-equal? (screen-row (composition-screen cp1) 0) (list (run 0 "aX" 'f) (run 4 "XY" 'f)))
+  (check-equal? (screen-row (composition-screen cp1) 1) (list (run 0 "cd" 'f) (run 4 "ZW" 'f)))
+
+  ;; 几何变（pane b 右移）→ 全量，脏行 = 全部
+  (define-values (_cp2 cpd2) (composition-refresh cp0 2 8 (list (pane 'a 0 0 ca1) (pane 'b 5 0 cb)) 'a (hash)))
+  (check-equal? cpd2 '(0 1))
+
+  ;; active 变 → overlay 变化行脏（a 的光标没了 / b 的光标出现）
+  (define ca-c (screen 2 4 (vector (list (run 0 "ab" 'f)) (list (run 0 "cd" 'f))) (list (cursor 0 1 'c #t)) '()))
+  (define cb-c (screen 2 4 (vector (list (run 0 "XY" 'f)) (list (run 0 "ZW" 'f))) (list (cursor 1 0 'c #t)) '()))
+  (define cp3 (compose-panes 2 8 (list (pane 'a 0 0 ca-c) (pane 'b 4 0 cb)) 'a))
+  (define-values (cp4 cpd4) (composition-refresh cp3 2 8 (list (pane 'a 0 0 ca-c) (pane 'b 4 0 cb-c)) 'b (hash)))
+  (check-equal? cpd4 '(0 1))
+  (check-equal? (map cursor-row (screen-cursors (composition-screen cp4))) '(1))
 
   (displayln "screen.rkt: all tests passed"))

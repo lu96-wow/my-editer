@@ -5,7 +5,7 @@
 ;;; ============================================================================
 ;;;
 ;;; 只透出**原子及其直接组合**：point / edit-desc / attr-desc / change / attrs /
-;;; buffer / document / window / screen / events / width。
+;;; buffer / document / window / frame（帧）/ events / width，以及后端绘制接口 target。
 ;;; 不含 compose 平台（editor-*）。
 ;;;
 ;;; 低层公开面：原子及其直接组合。editor 平台面在 core/editor.rkt（**不重导**本文件）。
@@ -16,7 +16,7 @@
 ;;;
 ;;; 两条数据流：
 ;;;   内容流：op（buffer selection → edit-desc）→ document-apply-change → 新 document
-;;;   渲染流：buffer → render → run → window->screen → screen（后端画）
+;;; 渲染流：buffer → render → run → window->screen → frame → target（后端只认绘制项）
 ;;; ============================================================================
 
 (require "atom/point.rkt"
@@ -37,7 +37,8 @@
          "viewport/layout.rkt"
          "viewport/render.rkt"
          "viewport/mirror.rkt"
-         "viewport/project.rkt")
+         "viewport/project.rkt"
+         "target.rkt")
 
 (provide
  ;; ---- point ----
@@ -103,13 +104,15 @@
  quit-event quit-event? struct:quit-event
  ;; ---- width ----
  char-display-width string-display-width index->column column->index snap-column-forward
- ;; ---- screen ----
- run run? struct:run run-col run-text run-face
- cursor cursor? struct:cursor cursor-row cursor-col cursor-face cursor-primary?
- region region? struct:region region-row region-start-col region-end-col region-face
- pane pane? struct:pane pane-id pane-x pane-y pane-screen
- screen? screen-height screen-width screen-row screen->rows screen-row->string
- screen-cursor-row screen-cursor-col screen-primary-cursor screen-cursors screen-selections screen-empty screen-damage screen-compose screen->string
+ ;; ---- frame —— 帧的生产 + 几何（内容结构只经 target.rkt）----
+ screen? screen-height screen-width screen-empty screen-compose
+ (struct-out pane)
+ (struct-out composition)
+ compose-panes composition-refresh
+ window->screen
+ window->projection window->projection/incremental projection? projection-screen
+ ;; ---- target —— 后端绘制接口（绘制项 + 脏矩形）----
+ (all-from-out "target.rkt")
  ;; ---- window ----
  window? window-open
  window-document window-buffer window-point window-height window-width window-mode
