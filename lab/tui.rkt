@@ -24,6 +24,7 @@
 ;;;                         （同此前：编辑、扩选、高亮、只读、撤销、剪贴板、多选区）
 ;;;   Ctrl+O                切焦点：编辑格 ↔ 文件树
 ;;;   树有焦点时：方向键 = 普通光标移动（树就是个文档）；Enter 打开文件 / 展开收起目录
+;;;                n 新建文件   m 新建文件夹   d 删除（目录需输入 y 确认；根目录禁删）
 ;;;   鼠标左键              点树：选中/展开/打开；点编辑格：定位；滚轮滚动
 ;;;   Ctrl+Q                退出
 
@@ -292,8 +293,7 @@
   (set-box! host-box (if line (tree-set-line! h1 line) h1))
   (draw!))
 
-(define (tree-delete!)
-  (define e (cur-entry))
+(define (tree-do-delete! e)
   (define line (tree-line))
   (define h (cur))
   (define tid (unbox tree-id-box))
@@ -303,6 +303,20 @@
   (set-box! host-box (if (> n 0) (tree-set-line! h1 (min line (sub1 n))) h1))
   (when path (close-deleted! path))
   (draw!))
+
+;; 删选中：根目录禁删；目录要确认；文件即时删。
+(define (tree-delete!)
+  (define e (cur-entry))
+  (cond
+    [(not e) (void)]
+    [(equal? (entry-path e)
+             (entry-path (tree-root (host-pane-state (cur) (unbox tree-id-box)))))
+     (set-box! host-box (set-msg (cur) "根目录不能删除"))
+     (draw!)]
+    [(entry-dir? e)
+     (prompt-start! (format "删除目录 ~a 及其全部内容？输入 y 回车确认 " (entry-name e)) ""
+                    (lambda (buf) (when (string-ci=? buf "y") (tree-do-delete! e))))]
+    [else (tree-do-delete! e)]))
 
 (define (tree-command! s)
   (cond
@@ -697,8 +711,29 @@
     (define made (build-path sub "untitled"))
     (check-true (file-exists? made))
     (check-equal? (ps (entry-path (cur-entry))) (ps made))         ; 光标落到新项
-    (h (key-event #\d (mods #f #f #f)))                           ; 删除
+    (h (key-event #\d (mods #f #f #f)))                           ; 删文件：即时
     (check-false (file-exists? made))
+
+    ;; 删目录：需确认；Esc 取消，输入 y 才删
+    (set-box! host-box (tree-set-line! (cur) (tree-line-of (host-pane-state (cur) (tid)) sub)))
+    (h (key-event #\d (mods #f #f #f)))
+    (check-true (prompting?))
+    (check-true (directory-exists? sub))                            ; 还没删
+    (h (key-event 'escape (mods #f #f #f)))                         ; 取消
+    (check-false (prompting?))
+    (check-true (directory-exists? sub))
+    (h (key-event #\d (mods #f #f #f)))                            ; 再来，输入 y 回车
+    (check-true (prompting?))
+    (h (key-event #\y (mods #f #f #f)))
+    (h (key-event 'enter (mods #f #f #f)))
+    (check-false (prompting?))
+    (check-false (directory-exists? sub))
+
+    ;; 根目录：禁删
+    (set-box! host-box (tree-set-line! (cur) 0))
+    (h (key-event #\d (mods #f #f #f)))
+    (check-true (directory-exists? dir))
+    (check-false (prompting?))
 
     ;; 删除已打开的文件 → 关文档 + 编辑格换空 scratch
     (open-path! ms)

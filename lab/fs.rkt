@@ -50,9 +50,12 @@
           (entry (name-of p) p (directory-exists? p))))
       (lambda (p) (make-directory p))
       (lambda (p) (call-with-output-file p #:exists 'error void))
-      (lambda (p) (if (directory-exists? p)
-                      (delete-directory/files p)
-                      (delete-file p)))))
+      (lambda (p)
+        (define-values (_base name _dir?) (split-path p))
+        (when (not name) (error 'fs-real "拒绝删除文件系统根目录: ~a" p))
+        (if (directory-exists? p)
+            (delete-directory/files p)
+            (delete-file p)))))
 
 ;;; ---------- 内存文件系统（测试 / 演示） ----------
 
@@ -108,6 +111,9 @@
   (check-equal? (length ((fs-list M) (string->path "/r"))) 3)
   ((fs-delete M) (string->path "/r/a"))                        ; 目录递归
   (check-equal? (sort (map entry-name ((fs-list M) (string->path "/r"))) string<?) '("b" "c"))
+
+  ;; 拒绝删文件系统根
+  (check-exn exn:fail? (lambda () ((fs-delete F) (string->path "/"))))
 
   (delete-directory/files d)
   (displayln "lab/fs.rkt: all tests passed"))
