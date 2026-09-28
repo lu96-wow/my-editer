@@ -1,0 +1,154 @@
+#lang racket
+
+;; 与 core/editor/query.rkt 对应的外部测试。
+(require rackunit
+         "../../core/editor.rkt"
+         "../../core/text/base/point.rkt"
+         "../../core/text/base/selection.rkt")
+
+;;; ---------- 焦点糖 shim（core 不再管焦点；本测试焦点恒 0）----------
+(define (editor-string ed) (editor-view-string ed 0))
+(define (editor-document-name ed) (editor-view-document-name ed 0))
+(define (editor-document-id ed) (editor-view-document-id ed 0))
+(define (editor-sync ed) (editor-view-sync ed 0))
+(define (editor-link ed) (editor-view-link ed 0))
+(define (editor-point ed) (editor-view-point ed 0))
+(define (editor-point-line ed) (editor-view-point-line ed 0))
+(define (editor-point-col ed) (editor-view-point-col ed 0))
+(define (editor-primary ed) (editor-view-primary ed 0))
+(define (editor-primary-index ed) (editor-view-primary-index ed 0))
+(define (editor-selection-count ed) (editor-view-selection-count ed 0))
+(define (editor-point->screen-pos ed p) (editor-view-point->screen-pos ed 0 p))
+(define (editor-screen-pos->point ed r c) (editor-view-screen-pos->point ed 0 r c))
+(define (editor-mode ed) (editor-view-mode ed 0))
+(define (editor-set-mode ed m) (editor-view-set-mode ed 0 m))
+(define (editor-line-numbers? ed) (editor-view-line-numbers? ed 0))
+(define (editor-top-line ed) (editor-view-top-line ed 0))
+(define (editor-top-seg ed) (editor-view-top-seg ed 0))
+(define (editor-left-col ed) (editor-view-left-col ed 0))
+(define (editor-width ed) (editor-view-width ed 0))
+(define (editor-height ed) (editor-view-height ed 0))
+(define (editor-can-undo? ed) (editor-view-can-undo? ed 0))
+(define (editor-can-redo? ed) (editor-view-can-redo? ed 0))
+(define (editor-depth ed) (editor-view-depth ed 0))
+(define (editor-history-enabled? ed) (editor-view-history-enabled? ed 0))
+(define (editor-set-history-enabled ed f) (editor-view-set-history-enabled ed 0 f))
+(define (editor-highlight-at ed l c) (editor-view-highlight-at ed 0 l c))
+(define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed 0 l c))
+(define (editor-highlight-row ed l) (editor-view-highlight-row ed 0 l))
+(define (editor-readonly-row ed l) (editor-view-readonly-row ed 0 l))
+(define (editor-highlight-range? ed l0 c0 l1 c1) (editor-view-highlight-range? ed 0 l0 c0 l1 c1))
+(define (editor-readonly-range? ed l0 c0 l1 c1) (editor-view-readonly-range? ed 0 l0 c0 l1 c1))
+(define (editor-editable? ed l0 c0 l1 c1) (editor-view-editable? ed 0 l0 c0 l1 c1))
+(define (editor-highlight-range ed r f) (editor-view-highlight-range ed 0 r f))
+(define (editor-readonly-range ed r f) (editor-view-readonly-range ed 0 r f))
+(define (editor-insert ed text [tag #f]) (editor-view-insert ed 0 text tag))
+(define (editor-undo ed) (editor-view-undo ed 0))
+
+(define ed (editor-open "abc\ndef" 20 4 "doc"))
+
+;; 文本
+(check-equal? (editor-string ed) "abc\ndef")
+(check-equal? (editor-view-string ed 0) "abc\ndef")
+
+;; 点
+(check-equal? (editor-point-line ed) 0)
+(check-equal? (editor-point-col ed) 0)
+(check-equal? (editor-view-point-line ed 0) 0)
+(check-equal? (editor-view-point-col ed 0) 0)
+
+;; 屏幕坐标往返
+(define ed2 (editor-view-set-point ed 0 (point 1 2)))
+(check-equal? (call-with-values (lambda () (editor-view-point->screen-pos ed2 0 (point 1 2))) list) '(1 2))
+(check-equal? (call-with-values (lambda () (editor-view-screen-pos->point ed2 0 1 2)) list) '(1 2))
+;; 行越界 → #f
+(check-equal? (call-with-values (lambda () (editor-view-screen-pos->point ed2 0 9 0)) list) '(#f #f))
+
+;; 视口状态
+(check-equal? (editor-mode ed) 'clip)
+(check-equal? (editor-view-mode ed 0) 'clip)
+(check-equal? (editor-mode (editor-set-mode ed 'wrap)) 'wrap)   ; set-mode 后焦点读口跟着变
+(check-false (editor-view-line-numbers? ed 0))
+(check-equal? (editor-view-top-line ed 0) 0)
+(check-equal? (editor-view-left-col ed 0) 0)
+(check-equal? (editor-view-height ed 0) 4)
+
+;; 名称 / 计数 / 身份
+(check-equal? (editor-document-name ed) "doc")
+(check-equal? (editor-view-document-name ed 0) "doc")
+(check-equal? (editor-document-count ed) 1)
+(check-equal? (editor-view-count ed) 1)
+(check-equal? (editor-view-document-id ed 0) 0)
+(check-equal? (editor-document-id ed) 0)
+(check-equal? (editor-view-sync ed 0) 'free)
+(check-equal? (editor-sync ed) 'free)
+(check-false (editor-view-link ed 0))
+(check-false (editor-link ed))
+
+;; 焦点读口（editor-* 与 editor-view-* 成对）
+(check-equal? (editor-point ed) (editor-view-point ed 0))
+(check-equal? (editor-primary ed) (editor-view-primary ed 0))
+(check-equal? (editor-primary-index ed) (editor-view-primary-index ed 0))
+(check-equal? (editor-selection-count ed) 1)
+(check-equal? (editor-width ed) (editor-view-width ed 0))
+(check-equal? (editor-height ed) (editor-view-height ed 0))
+(check-equal? (editor-top-seg ed) (editor-view-top-seg ed 0))
+(check-equal? (editor-line-numbers? ed) (editor-view-line-numbers? ed 0))
+(check-equal? (editor-top-line ed) (editor-view-top-line ed 0))
+(check-equal? (editor-left-col ed) (editor-view-left-col ed 0))
+(check-equal? (call-with-values (lambda () (editor-point->screen-pos ed (point 1 2))) list)
+              (call-with-values (lambda () (editor-view-point->screen-pos ed 0 (point 1 2))) list))
+(check-equal? (call-with-values (lambda () (editor-screen-pos->point ed 1 2)) list)
+              (call-with-values (lambda () (editor-view-screen-pos->point ed 0 1 2)) list))
+(check-equal? (editor-view-can-undo? ed 0) (editor-can-undo? ed))
+(check-equal? (editor-view-can-redo? ed 0) (editor-can-redo? ed))
+(check-equal? (editor-view-depth ed 0) (editor-depth ed))
+
+;; 属性读口（高亮 / 只读；写口用步骤 4 的 -range）
+(define at0 (editor-open "abcd\nef" 20 5 "attr"))
+(define at1 (editor-highlight-range at0 (editor-range (point 0 1) (point 1 1)) 'kw))
+(define at2 (editor-readonly-range at1 (editor-range (point 0 0) (point 0 2)) #t))
+(check-equal? (editor-highlight-at at2 0 0) #f)
+(check-equal? (editor-highlight-at at2 0 1) 'kw)
+(check-equal? (editor-highlight-at at2 1 0) 'kw)
+(check-equal? (editor-highlight-at at2 1 1) #f)
+(check-equal? (editor-view-highlight-at at2 0 0 1) 'kw)
+(check-equal? (editor-highlight-row at2 0) (vector #f 'kw 'kw 'kw))
+(check-equal? (editor-view-highlight-row at2 0 1) (vector 'kw #f))
+(check-true (editor-highlight-range? at2 0 1 0 2))
+(check-false (editor-highlight-range? at2 1 1 1 2))
+(check-true (editor-readonly-at? at2 0 0))
+(check-false (editor-readonly-at? at2 0 2))
+(check-equal? (editor-readonly-row at2 0) (vector #t #t #f #f))
+(check-true (editor-readonly-range? at2 0 0 0 1))
+(check-false (editor-readonly-range? at2 0 2 0 4))
+;; editable?：被只读挡 → #f；未标 → #t；零宽看插入点的格（行尾除外）
+(check-false (editor-editable? at2 0 0 0 1))
+(check-true (editor-editable? at2 0 2 0 4))
+(check-false (editor-editable? at2 0 0 0 0))
+(check-true (editor-editable? at2 0 4 0 4))
+;; 无属性轨时读口给全默认
+(check-equal? (editor-highlight-at ed 0 0) #f)
+(check-equal? (editor-readonly-row ed 0) (vector #f #f #f))
+(check-false (editor-highlight-range? ed 0 0 0 3))
+
+;; 历史
+(check-false (editor-can-undo? ed))
+(check-false (editor-can-redo? ed))
+(check-equal? (editor-depth ed) 0)
+(define-values (ed3 _) (editor-insert ed "X" 'typing))
+(check-true (editor-can-undo? ed3))
+(check-equal? (editor-depth ed3) 1)
+(check-true (editor-can-redo? (editor-undo ed3)))
+
+;; 历史开关读口
+(check-true (editor-history-enabled? ed))
+(check-equal? (editor-view-history-enabled? ed 0) (editor-history-enabled? ed))
+(check-false (editor-history-enabled? (editor-set-history-enabled ed #f)))
+
+;; 主选区两端点
+(define pr1 (editor-view-set-selections ed 0 (selections-of (list (selection (point 0 0) (point 1 2))) 0)))
+(check-equal? (editor-range-start (editor-view-primary-range pr1 0)) (point 0 0))
+(check-equal? (editor-range-end (editor-view-primary-range pr1 0)) (point 1 2))
+
+(displayln "editor/query.rkt: all tests passed")
