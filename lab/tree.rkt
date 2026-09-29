@@ -30,7 +30,9 @@
  tree-activate                     ; st × entry → (values st intent)，intent = (list 'open path) | #f
  tree-target-dir                   ; st × entry → path（新建落点）
  tree-create                       ; st × entry × kind × name → (values st path)
+ tree-create-at                    ; st × dir × kind × name → (values st path)
  tree-delete                       ; st × entry → (values st path | #f)
+ tree-delete-path                  ; st × path → (values st path | #f)
 
  ;; ---------- 投影 ----------
  tree-sync)
@@ -124,24 +126,30 @@
         (define cand (bump-name name i))
         (if (member cand names) (loop (add1 i)) cand))))
 
-;; kind : 'file | 'dir
-(define (tree-create st e kind name)
+;; kind : 'file | 'dir；落点目录显式给出（命令层可提前算好，不必回头取光标）。
+(define (tree-create-at st dir kind name)
   (define fs (tree-fs st))
-  (define dir (tree-target-dir st e))
   (define path (build-path dir (unique-name fs dir name)))
   (if (eq? kind 'dir) ((fs-mkdir fs) path) ((fs-create fs) path))
   (define st1 (tree-reload st dir))
   (values (struct-copy tree st1 [visible (visible-of st1)]) path))
 
-(define (tree-delete st e)
+;; kind : 'file | 'dir
+(define (tree-create st e kind name)
+  (tree-create-at st (tree-target-dir st e) kind name))
+
+;; 按路径删（命令层的确认流程只握有 path，不握 entry）。根目录仍禁删。
+(define (tree-delete-path st path)
   (cond
-    [(or (not e) (equal? (entry-path e) (entry-path (tree-root st)))) (values st #f)]
+    [(equal? (canon-path path) (entry-path (tree-root st))) (values st #f)]
     [else
-     (define path (entry-path e))
      ((fs-delete (tree-fs st)) path)
      (define parent (canon-path (let-values ([(base _n _d) (split-path path)]) base)))
      (define st1 (tree-reload st parent))
      (values (struct-copy tree st1 [visible (visible-of st1)]) path)]))
+
+(define (tree-delete st e)
+  (if (not e) (values st #f) (tree-delete-path st (entry-path e))))
 
 ;;; ---------- 投影 ----------
 

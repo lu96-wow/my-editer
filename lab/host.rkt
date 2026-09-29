@@ -34,7 +34,7 @@
  host-add-document
  host-adopt-view
  host-set-pane-state host-pane-state
- host-pane-vid
+ host-pane-vid host-sync-pane
  host-remove-pane
 
  ;; ---------- 焦点 / 布局 / 尺寸 ----------
@@ -149,23 +149,29 @@
 (define (make-ctx h p ed)
   (ctx ed (host-focus-id h) (host-focused-vid h) (comp-id p) (comp-vid p) (host-rows h) (host-cols h)))
 
+;; 跑单个组件的 sync：产出 document → 写回 pane state → 幂等加进视图。
+;; host-frame 逐 pane 用它；命令层在改完某组件 state 后也可用它立即投影，
+;; 免得「新 state 生成的行数」和对视图 set-point 时用的旧文档对不上而被 clamp。
+(define (host-sync-pane h id)
+  (define p (find-comp h id))
+  (define sync (comp-sync p))
+  (cond
+    [(not sync) h]
+    [else
+     (define ed (host-editor h))
+     (define-values (doc st*) (sync (make-ctx h p ed) (comp-state p)))
+     (define h1 (struct-copy host h
+                  [comps (for/list ([q (in-list (host-comps h))])
+                           (if (= id (comp-id q)) (struct-copy comp q [state st*]) q))]))
+     (cond
+       [(not doc) h1]
+       [(equal? doc (editor-view-document (host-editor h1) (comp-vid p))) h1]
+       [else (struct-copy host h1
+               [editor (editor-view-assign (host-editor h1) (comp-vid p) doc)])])]))
+
 (define (run-comp-syncs h)
   (for/fold ([h h]) ([pid (in-list (map comp-id (host-comps h)))])
-    (define p (find-comp h pid))
-    (define sync (comp-sync p))
-    (cond
-      [(not sync) h]
-      [else
-       (define ed (host-editor h))
-       (define-values (doc st*) (sync (make-ctx h p ed) (comp-state p)))
-       (define h1 (struct-copy host h
-                    [comps (for/list ([q (in-list (host-comps h))])
-                             (if (= pid (comp-id q)) (struct-copy comp q [state st*]) q))]))
-       (cond
-         [(not doc) h1]
-         [(equal? doc (editor-view-document (host-editor h1) (comp-vid p))) h1]
-         [else (struct-copy host h1
-                 [editor (editor-view-assign (host-editor h1) (comp-vid p) doc)])])])))
+    (host-sync-pane h pid)))
 
 ;;; ---------- 分隔带（可选装饰）：竖带画 │、横带画 ─ ----------
 
