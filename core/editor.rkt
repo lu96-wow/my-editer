@@ -7,6 +7,7 @@
 ;;;   view    单视图维护 / 同文档视图传播（core/editor/view.rkt，内部用）
 ;;;   command 用户命令（core/editor/command.rkt）
 ;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（core/editor/query.rkt）
+;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（core/editor/attributes.rkt）
 ;;;   change  读：编辑命令返回的 change（core/editor/change.rkt）
 ;;;   render  单视图渲染 + 增量投影（core/editor/render.rkt）
 ;;;   layout  rect 布局：尺寸落到 view、位置用于贴屏（core/editor/layout.rkt）
@@ -20,7 +21,7 @@
 ;;; 低层（document / viewport / screen / edit / …）在各自模块；需要时单独 require。
 
 (require "editor/state.rkt" "editor/history.rkt" "editor/command.rkt"
-         "editor/query.rkt"
+         "editor/query.rkt" "editor/attributes.rkt"
          ;; change 词汇表：入口统一改为 editor-* 名。
          (rename-in "editor/change.rkt"
                     [change editor-change]
@@ -49,6 +50,8 @@
  (all-from-out "editor/command.rkt")
  ;; ---------- 读 ----------
  (all-from-out "editor/query.rkt")
+ ;; ---------- 属性覆盖层（句柄式写回，O(1)） ----------
+ (all-from-out "editor/attributes.rkt")
  ;; ---------- 变更（编辑命令返回的 change） ----------
  (all-from-out "editor/change.rkt")
  ;; ---------- 渲染 / 投影 ----------

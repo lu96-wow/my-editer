@@ -25,7 +25,8 @@
 (check-equal? (screen-cursors (render bd vp (selections-one (caret (point 0 1)))))
               (list (cursor 0 1 #t)))
 
-(define bd-hl (document-highlight-fill bd 0 1 0 3 'kw))
+;; 属性编辑是**就地**改 box：用独立文档，避免影响上面复用的 bd
+(define bd-hl (document-highlight-fill (document-open "abc\ndef") 0 1 0 3 'kw))
 (check-equal? (screen-row (render bd-hl vp) 0)
               (list (run 0 "a" #f) (run 1 "bc" 'kw)))
 

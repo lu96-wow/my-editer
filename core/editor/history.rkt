@@ -23,8 +23,9 @@
 ;;; 关闭记步时（widget / 程序改写）：保留 past、清 future、把 current 的 merge-tag 封掉，
 ;;; 避免重开后与旧步合并或 redo 覆盖；undo/redo 在关闭期间一律 no-op。
 ;;;
-;;; highlight / readonly 这类作者态不产生独立步：用 history-set-current 同步 current
-;;; （随快照搭车回退）。
+;;; highlight / readonly 这类作者态不产生独立步：属性存放在 document 的 box 里，
+;;; **就地**修改，再用 history-set-current 同步 current（document/who/selections），
+;;; 于是随快照搭车回退。异步写回直接改 box 句柄，不经过这里（见 editor/attributes.rkt）。
 
 (provide
  ;; ---------- 类型 ----------

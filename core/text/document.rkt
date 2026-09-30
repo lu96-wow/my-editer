@@ -3,30 +3,34 @@
 (require "base/track.rkt" "base/line.rkt" "base/edit.rkt"
          "base/point.rkt" "base/range.rkt" "base/change.rkt")
 
-;;; document.rkt —— 文档 = 文本 + 属性
+;;; document.rkt —— 文档 = 不可变文本 ⊕ 可变属性（高亮 / 只读）
 ;;;
-;;; 属性只有**两种**：
-;;;     高亮 highlight   每字符一个 face（语法高亮；#f = 无）
+;;; 底层拆成三个结构体，把不可变 / 可变彻底分开：
+;;;
+;;;     (struct document-immutable (text))              ; 纯不可变：版本身份
+;;;     (struct document-mutable  (highlight readonly)) ; 外壳不可变，内容在 box 里
+;;;     (struct document (im mut))                      ; ★ document 本身不可变
+;;;
+;;; document 的值永不改变：写属性只动 document-mutable 里的 box。
+;;; 于是异步结果（LSP 高亮 / 诊断）写回 = 改句柄，O(1)，不需要在 history 上找版本。
+;;;
+;;; 两条属性轨语义不变：
+;;;     高亮 highlight   每字符一个 face（#f = 无）
 ;;;     只读 readonly    每字符一个布尔（#t = 不可写）
-;;;
-;;;     document = 文本轨  ⊕  高亮轨  ⊕  只读轨
-;;;
 ;;; 三条轨共享同一套行划分（行数一致、每行文本字符数 == 属性格数），document-aligned? 校验。
-;;; 文本轨行 = string，属性轨行 = vector。
 ;;;
-;;; **属性轨惰性**：highlight / readonly 可为 #f = “整轨全默认”。空文档就是两条 #f，
-;;; 不分配任何属性格。文本编辑对“全默认”封闭（插/删的都是默认格，结果仍全默认），
-;;; 所以文本编辑遇到 #f 直接保持 #f；只有**属性编辑**才 materialize 出真轨（一次 O(文档)）。
+;;; **属性轨惰性**：#f = 整轨全默认，不分配属性格；
+;;; 文本编辑对全默认封闭（插/删默认格，结果仍全默认），只有属性编辑才 materialize。
 ;;;
-;;; 编辑入口：
-;;;     document-edit-tracks       文本编辑：三条轨一起施（自动扇出，保持对齐）
-;;;     document-edit-highlight  只改高亮
-;;;     document-edit-readonly   只改只读
-;;;
-;;; 持久化：与 track 一致，旧 document 值天然保留（undo = 换旧值）。
+;;; 编辑语义：
+;;;     document-edit-tracks       文本编辑：fork 新的 immutable + mutable（属性随编辑搬运）
+;;;     document-edit-highlight    只改高亮：**就地**改 box，返回同一个 document
+;;;     document-edit-readonly     只改只读：**就地**改 box，返回同一个 document
 
 (provide
  ;; ---------- 类型 ----------
+ (struct-out document-immutable)
+ (struct-out document-mutable)
  (struct-out document)
  (struct-out clipboard)
 
@@ -35,11 +39,16 @@
  clipboard-of-text
 
  ;; ---------- 读 / 校验 ----------
+ document-text document-highlight document-readonly
  document->string document-range-text document-change-text
  document-highlight-at document-readonly-at?
  document-highlight-row document-readonly-row
  document-highlight-range? document-readonly-range? document-editable?
  document-aligned?
+
+ ;; ---------- 属性原子（写回句柄） ----------
+ document-highlight-atom document-readonly-atom
+ document-set-highlight! document-set-readonly!
 
  ;; ---------- 写：文本轨（守只读 / -ignore-readonly） ----------
  document-edit-tracks
@@ -57,12 +66,42 @@
 
 ;;; ---------- 数据 ----------
 
-(struct document (text highlight readonly) #:transparent)
-;; text      : track（行 = string）
-;; highlight : (or/c #f track)   #f = 整轨全默认；否则行 = vector（格值 = face / #f）
-;; readonly  : (or/c #f track)   #f = 整轨全默认；否则行 = vector（格值 = #t / #f）
+;; 纯不可变：唯一字段就是文本（版本身份）。
+(struct document-immutable (text) #:transparent)
+;; text : track（行 = string）
+
+;; 可变部分：外壳不可变，可变性只在两个 box 里。
+(struct document-mutable (highlight readonly) #:transparent)
+;; highlight : box（行 = vector，格值 = face / #f；或 #f = 整轨全默认）
+;; readonly  : box（行 = vector，格值 = #t / #f；或 #f = 整轨全默认）
+
+;; document 本身不可变：只是不可变部分 + 可变部分的不可变对。
+(struct document (im mut) #:transparent)
+
+;;; ---------- 读（读穿 box） ----------
+
+(define (document-text bd) (document-immutable-text (document-im bd)))
+(define (document-highlight bd) (unbox (document-mutable-highlight (document-mut bd))))
+(define (document-readonly bd) (unbox (document-mutable-readonly (document-mut bd))))
+
+;;; ---------- 属性原子：写回句柄 ----------
+
+(define (document-highlight-atom bd) (document-mutable-highlight (document-mut bd)))
+(define (document-readonly-atom bd) (document-mutable-readonly (document-mut bd)))
+
+;; 就地写属性：O(1)，不换 document，不碰 history。返回同一个 document 便于串接。
+(define (document-set-highlight! bd v)
+  (set-box! (document-highlight-atom bd) v)
+  bd)
+(define (document-set-readonly! bd v)
+  (set-box! (document-readonly-atom bd) v)
+  bd)
 
 ;;; ---------- 构造 ----------
+
+(define (make-document text highlight readonly)
+  (document (document-immutable text)
+            (document-mutable (box highlight) (box readonly))))
 
 ;; 与文本同形、值全为 default 的属性轨。
 (define (attr-track-for text default)
@@ -71,29 +110,34 @@
                  (track-max text)))
 
 (define (document-open s [chunk-lines default-chunk-lines])
-  (document (track-of-list (string->lines s) chunk-lines) #f #f))
+  (make-document (track-of-list (string->lines s) chunk-lines) #f #f))
 
 (define (document->string bd) (lines->string (track->list (document-text bd))))
 
-;;; ---------- 编辑 ----------
+;;; ---------- 文本编辑：fork 新的 immutable + mutable ----------
 
-;; 文本编辑：三条轨一起施同一个编辑（ed 必须是行 payload 自适应的）。
 ;; 属性轨为 #f（全默认）时保持 #f —— 插/删的都是默认格，封闭。
 (define (edit-attr a ed) (and a (ed a)))
+
+;; 文本编辑：三条轨一起施同一个编辑，产物是**新的 document**（新 text + 新属性 box）。
+;; fork 保证旧版本的属性不被新版本共享（写回旧版本不污染新版本）。
 (define (document-edit-tracks bd ed)
-  (document (ed (document-text bd))
-            (edit-attr (document-highlight bd) ed)
-            (edit-attr (document-readonly bd) ed)))
+  (make-document (ed (document-text bd))
+                 (edit-attr (document-highlight bd) ed)
+                 (edit-attr (document-readonly bd) ed)))
+
+;;; ---------- 属性编辑：就地改 box ----------
 
 ;; 只改高亮 / 只改只读；首次编辑时按当前文本行长 materialize 出真轨。
+;; **就地修改**：改 box，返回同一个 document。
 (define (document-edit-highlight bd ed)
-  (document (document-text bd)
-            (ed (or (document-highlight bd) (attr-track-for (document-text bd) #f)))
-            (document-readonly bd)))
+  (set-box! (document-highlight-atom bd)
+            (ed (or (document-highlight bd) (attr-track-for (document-text bd) #f))))
+  bd)
 (define (document-edit-readonly bd ed)
-  (document (document-text bd)
-            (document-highlight bd)
-            (ed (or (document-readonly bd) (attr-track-for (document-text bd) #f)))))
+  (set-box! (document-readonly-atom bd)
+            (ed (or (document-readonly bd) (attr-track-for (document-text bd) #f))))
+  bd)
 
 ;; 赋值糖：把 [l0,c0)..(l1,c1) 的高亮设为 face / 只读设为 flag。
 (define (document-highlight-fill bd l0 c0 l1 c1 face)
@@ -114,7 +158,7 @@
   (and a (let ([l (track-ref a line)]) (and (< col (line-length l)) (line-ref l col)))))
 
 ;; 整行属性格（向量视图）：真轨取行；整轨 #f → 按文本行长造全默认向量。
-;; 纯读、不改惰性；让“读整行”的调用方不必知道 #f。
+;; 纯读、不改惰性；让"读整行"的调用方不必知道 #f。
 (define (document-attr-row a text-line line)
   (if a (track-ref a line) (make-vector (string-length text-line) #f)))
 
@@ -140,14 +184,7 @@
 
 ;;; ---------- 用户编辑 / 程序编辑：成对（守 vs -ignore-readonly） ----------
 ;;; 约定：**基础名 = 用户编辑（守只读）**；**-ignore-readonly = 程序编辑（不守）**。
-;;; 两者签名与返回一致，切换只改后缀：
-;;;     (document-insert bd line col text …)                  ; 用户：命中只读则拒
-;;;     (document-insert-ignore-readonly bd line col text …)   ; 程序：直接改
-;;; 都返回 (values document change ok?)：
-;;;     change = 本次变更描述（span->change）；**无实际变更时 change = #f**；
-;;;     ok? = #f 表示被只读挡住（仅守版会），此时 change 也是 #f；
-;;;     change = #f 且 ok? = #t = 空编辑（如 insert ""）：通过但什么都没改。
-;;; 底层闭包 edit-* 是更原始的一层（无 document、无守卫）。
+;;; 都返回 (values document change ok?)。空编辑（change = #f 且 ok? = #t）不产生新 document。
 
 ;; 零宽插入看插入点的格（行尾除外）；非空区间看区间内是否有只读格。
 (define (document-readonly-block? bd l0 c0 l1 c1)
@@ -186,21 +223,17 @@
 
 ;;; ---------- 取文本（按区间） ----------
 
-;; 取区间 [start,end) 的文本。range 是纯位置，故从文本轨切。
 (define (document-range-text bd r)
   (define r* (range-normalize r))
   (lines->string (range-lines (document-text bd)
                               (point-line (range-start r*)) (point-col (range-start r*))
-                              (point-line (range-end r*)) (point-col (range-end r*)))))
+                              (point-line (range-end r*))   (point-col (range-end r*)))))
 
 ;; 取一次变更插入的文本 = 新文档在 change.after 区间上的切片。
-;; change 不存文本，要内容时用这个现取。
 (define (document-change-text bd ch)
   (document-range-text bd (change-after ch)))
 
 ;;; ---------- 复制 / 粘贴（剪贴板） ----------
-;;; 剪贴板 clipboard 携带**与文本行对齐**的三样：文本行、高亮行、只读行（富粘贴）。
-;;; 只要文本时用 clipboard-of-text（属性全 default）或直接用 document-insert。
 
 ;; 从一个文档区间 [l0,c0)..(l1,c1) 抽出某条轨的行片段。
 (define (range-lines t l0 c0 l1 c1)
@@ -250,16 +283,17 @@
                     (list (line-append (last pieces) tail)))]))
   (track-splice t line (add1 line) new-lines))
 
+;; 粘贴是文本编辑：产出**新 document**（新 text + 新属性 box）。
 (define (document-paste* bd line col cp guard?)
   (define text (lines->string (clipboard-text cp)))
   (cond
     [(and guard? (document-readonly-block? bd line col line col)) (values bd #f #f)]
     [(string=? text "") (values bd #f #t)]                            ; 空剪贴板 = 无变更
     [else
-     (values (document (splice-clipboard-lines (document-text bd) line col (clipboard-text cp))
-                       (paste-attr (document-highlight bd) (document-text bd) line col (clipboard-highlight cp))
-                       (paste-attr (document-readonly bd) (document-text bd) line col (clipboard-readonly cp)))
-             ;; 粘贴 = 在 (line,col) 零宽插入一段文本。
+     (values (make-document
+              (splice-clipboard-lines (document-text bd) line col (clipboard-text cp))
+              (paste-attr (document-highlight bd) (document-text bd) line col (clipboard-highlight cp))
+              (paste-attr (document-readonly bd) (document-text bd) line col (clipboard-readonly cp)))
              (span->change (span (point line col) (point line col) text))
              #t)]))
 

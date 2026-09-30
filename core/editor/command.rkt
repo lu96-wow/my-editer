@@ -15,9 +15,12 @@
 ;;;            changes 为空 = 无实际变更（如文首退格）：不记步、不动选区，原样返回。
 ;;;   视口     每次改动某视图视口后（编辑 / 导航 / 滚动 / 定位 / 切 mode / 尺寸）
 ;;;            调 editor-sync-viewports：sync='follow / link 相同的视图跟随。
-;;;   作者态   高亮 / readonly：改文档但**不记步**，只同步 history 的 current（tip）。
-;;;            于是文本 undo/redo 恢复的快照里就带着「那一刻的高亮 / 只读」——
-;;;            高亮不需要单独账本；文本没变时怎么改高亮都算在当前这一步。
+;;;   作者态   高亮 / readonly：**就地**改 document 的 box（不记步、不换 document），
+;;;            并同步 history 的 current（document/who/selections），使作者态随快照搭车：
+;;;            文本 undo/redo 恢复的快照里带着那一刻的高亮 / 只读。
+;;;            注意：属性是**就地**改的，editor-view-set 的 eq? 检测看不到它，
+;;;            所以作者态必须走 editor-view-author-edit，不能走 editor-view-set。
+;;;            异步结果（LSP 高亮 / 诊断）可直接改句柄（editor/attributes.rkt），O(1)。
 ;;;   导航     只动选区 + ensure；不记步。
 ;;;   撤销/重做  换文档 + 还原发起视图的选区；**不动视口**（pin）。
 ;;;            undo/redo 没有变更描述 → 同文档其它视图的选区只做一次 clamp（防越界）。
@@ -424,17 +427,23 @@
 
 ;;; ---------- 属性（作者态：不记步，随快照搭车） ----------
 
-;; 改指定视图的文档但不记步：只同步 history 的 current（tip）。
+;; 改指定视图的文档但不记步。属性是**就地**改在 document 的 box 里（doc* 通常 eq? 原文档），
+;; 这里只需把 current 的 (document, selections, who) 同步成发起作者态的视图，保持
+;; "作者态随快照搭车 + undo/redo 还到发起视图" 的语义（O(1)，不新增步）。
 (define (editor-view-author-edit ed vid op [ensure? #f])
   (define v (editor-view-ref ed vid))
-  (define e (editor-document-entry ed (view-did v)))
+  (define did (view-did v))
+  (define e (editor-document-entry ed did))
   (define-values (doc* sels* ok?) (op (document-entry-document e) (view-selections v)))
   (cond
     [(not ok?) ed]
     [else
-     (define-values (ed* _step)
-       (editor-view-set ed vid doc* #:selections sels* #:change #f #:ensure? ensure?))
-     ed*]))
+     (define ed* (editor-set-history ed did
+                    (history-set-current (document-entry-history e) doc* sels* vid)))
+     ;; 选区 / ensure（作者态一般不动选区；保持通用）
+     (if (and (not ensure?) (equal? sels* (view-selections v)))
+         ed*
+         (editor-view-set-selections ed* vid sels* #:ensure? ensure?))]))
 
 ;; op : document × l0 c0 l1 c1 → document（区间填充）。
 (define (editor-fill l0 c0 l1 c1 op)
