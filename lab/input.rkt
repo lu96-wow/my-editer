@@ -23,14 +23,20 @@
 (provide (struct-out key)
          (struct-out text)
          (struct-out pointer)
-         (struct-out resize))
+         (struct-out resize)
+         key-of)
 
 ;;; ---------- 类型 ----------
 
 (struct key (name ctrl? alt? shift? meta?) #:transparent)
 ;; name  : (or/c char? symbol?)
 ;; ctrl? / alt? / shift? / meta? : bool
-;; 例：(key 'enter #f #f #f #f)  (key #\o #t #f #f #f)  (key 'down #t #f #t #f)
+;; 约定：带 Ctrl 的字母一律**小写**（终端给的是大写），用 key-of 构造。
+
+;; 规范构造：Ctrl+字母 → 小写（"Ctrl-Q" 统一成 #\q）。
+(define (key-of name ctrl? alt? shift? meta?)
+  (key (if (and ctrl? (char? name)) (char-downcase name) name)
+       ctrl? alt? shift? meta?))
 
 (struct text (s) #:transparent)
 ;; s : string（粘贴 / 输入法 / 一次多个字符）
@@ -59,6 +65,9 @@
 
   (check-equal? (text-s (text "你好")) "你好")
   (check-equal? (resize-rows (resize 20 80)) 20)
+  ;; 规范构造：Ctrl+字母归一为小写
+  (check-equal? (key-of #\Q #t #f #f #f) (key #\q #t #f #f #f))
+  (check-equal? (key-of #\A #f #f #f #f) (key #\A #f #f #f #f))
   (check-true (pointer? (pointer 'press 'left 3 7 #f #f #f #f)))
   (check-equal? (pointer-row (pointer 'move #f 3 7 #f #f #f #f)) 3)
 

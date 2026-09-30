@@ -1,32 +1,35 @@
 #lang racket
 
-(require racket/file)
-
-;;; fs.rkt —— 文件系统抽象（读 + 写）
+;;; ============================================================================
+;;; fs.rkt —— 文件系统
+;;; ============================================================================
 ;;;
-;;; 树不认识真实文件系统，只认识这个 fs 记录；于是「列目录 / 建目录 / 建文件 / 删」
-;;; 都能在测试里换成内存实现，树组件保持可测。
+;;; 只有文件树文档认识它；别的文档不碰文件系统。
 ;;;
 ;;;   entry = 名字 ⊕ 绝对路径 ⊕ 是否目录
-;;;   fs    = list ⊕ mkdir ⊕ create ⊕ delete
-;;;   fs-real / fs-memory
+;;;   fs 操作：列目录 / 读文件 / 建文件 / 建目录 / 删（目录递归）
+;;;
+;;; 为什么单独一层：把「文件系统」和「树的状态/投影」分开，树只依赖这组函数。
+;;; 路径一律用绝对 path；目录键统一去掉尾斜杠（canon-path），避免同目录两个键。
 
-(provide
- (struct-out entry)
- (struct-out fs)
- name-of canon-path
- fs-real fs-memory)
+(require racket/file)
+
+(provide entry entry? entry-name entry-path entry-dir? name-of canon-path
+         fs-list fs-read fs-create fs-mkdir fs-delete)
 
 ;;; ---------- 条目 ----------
 
 (struct entry (name path dir?) #:transparent)
+;; name : string（显示名）
+;; path : path（绝对路径）
+;; dir? : bool
 
-;; 路径的显示名（目录带尾斜杠时 file-name-from-path 会返回 #f，用 split-path 兜底）。
+;; 显示名（目录带尾斜杠时 file-name-from-path 返回 #f，用 split-path 兜底）。
 (define (name-of p)
   (define-values (_base name _dir?) (split-path p))
   (if name (path->string name) (path->string p)))
 
-;; 去掉尾斜杠，统一目录键（split-path 的 base 会带尾斜杠，root 不带）。
+;; 去掉尾斜杠，统一目录键。
 (define (canon-path p)
   (define s (path->string p))
   (define n (string-length s))
@@ -34,86 +37,53 @@
       (string->path (substring s 0 (sub1 n)))
       (string->path s)))
 
-;;; ---------- fs ----------
+;;; ---------- 操作（对缺失路径要稳：不抛异常） ----------
 
-(struct fs (list mkdir create delete) #:transparent)
-;; list   : path → (listof entry)   目录下的条目（**绝对**路径），目录 / 文件都有
-;; mkdir  : path → void             建目录
-;; create : path → void             建空文件
-;; delete : path → void             删文件 / 目录（目录递归）
+(define (fs-list dir)
+  (if (directory-exists? dir)
+      (for/list ([p (in-list (directory-list dir #:build? #t))])
+        (entry (name-of p) p (directory-exists? p)))
+      '()))
 
-;;; ---------- 真实文件系统 ----------
+;; 读文件；不是普通文件（不存在 / 是目录）→ #f。
+(define (fs-read p)
+  (if (and (file-exists? p) (not (directory-exists? p)))
+      (file->string p)
+      #f))
 
-(define (fs-real)
-  (fs (lambda (dir)
-        (for/list ([p (in-list (directory-list dir #:build? #t))])
-          (entry (name-of p) p (directory-exists? p))))
-      (lambda (p) (make-directory p))
-      (lambda (p) (call-with-output-file p #:exists 'error void))
-      (lambda (p)
-        (define-values (_base name _dir?) (split-path p))
-        (when (not name) (error 'fs-real "拒绝删除文件系统根目录: ~a" p))
-        (if (directory-exists? p)
-            (delete-directory/files p)
-            (delete-file p)))))
+(define (fs-create p) (call-with-output-file p #:exists 'error void))
+(define (fs-mkdir p) (make-directory p))
 
-;;; ---------- 内存文件系统（测试 / 演示） ----------
-
-;; init : (listof (cons path (or/c 'dir 'file)))
-(define (fs-memory init)
-  (define tbl (box (for/hash ([pr (in-list init)]) (values (string->path (car pr)) (cdr pr)))))
-  (define (inside? root p)
-    (and (not (equal? root p))
-         (regexp-match? (regexp (string-append "^" (regexp-quote (path->string root)) "/"))
-                        (path->string p))))
-  (fs (lambda (dir)
-        (define dd (canon-path dir))
-        (for/list ([(p k) (in-hash (unbox tbl))]
-                   #:when (equal? (canon-path (let-values ([(base _name _d) (split-path p)]) base)) dd))
-          (entry (name-of p) p (eq? k 'dir))))
-      (lambda (p) (set-box! tbl (hash-set (unbox tbl) p 'dir)))
-      (lambda (p) (set-box! tbl (hash-set (unbox tbl) p 'file)))
-      (lambda (p)
-        (set-box! tbl (for/hash ([(q k) (in-hash (unbox tbl))]
-                                 #:unless (or (equal? q p) (inside? p q)))
-                       (values q k))))))
+;; 删除；不存在就静默（健壮性）。仍拒绝删文件系统根。
+(define (fs-delete p)
+  (define-values (_base name _dir?) (split-path p))
+  (when (not name) (error 'fs-delete "拒绝删除文件系统根目录: ~a" p))
+  (cond
+    [(directory-exists? p) (delete-directory/files p)]
+    [(file-exists? p) (delete-file p)]
+    [else (void)]))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   (require rackunit)
 
-  (define d (make-temporary-file "fsdir-~a" 'directory))
+  (define d (make-temporary-file "rbfs-~a" 'directory))
   (define f (build-path d "a.txt"))
-  (define f2 (build-path d "b.txt"))
-
-  (define F (fs-real))
-  ((fs-create F) f)
-  ((fs-create F) f2)
-  ((fs-mkdir F) (build-path d "sub"))
-
-  (define es ((fs-list F) d))
-  (check-equal? (length es) 3)
-  (check-true (for/and ([e (in-list es)]) (absolute-path? (entry-path e))))
-  (check-true (for/or ([e (in-list es)]) (and (entry-dir? e) (equal? (entry-name e) "sub"))))
+  (fs-create f)
   (check-true (file-exists? f))
-
-  ((fs-delete F) f)
+  (check-equal? (fs-read f) "")
+  (fs-mkdir (build-path d "sub"))
+  (check-equal? (length (fs-list d)) 2)
+  (check-true (for/or ([e (in-list (fs-list d))]) (and (entry-dir? e) (equal? (entry-name e) "sub"))))
+  (fs-delete (build-path d "sub"))
+  (check-equal? (length (fs-list d)) 1)
+  (fs-delete f)
   (check-false (file-exists? f))
-  ((fs-delete F) (build-path d "sub"))
-  (check-equal? (length ((fs-list F) d)) 1)
-
-  ;; 内存实现
-  (define M (fs-memory (list (cons "/r" 'dir) (cons "/r/a" 'dir) (cons "/r/a/x" 'file)
-                             (cons "/r/b" 'file))))
-  (check-equal? (length ((fs-list M) (string->path "/r"))) 2)
-  ((fs-create M) (string->path "/r/c"))
-  (check-equal? (length ((fs-list M) (string->path "/r"))) 3)
-  ((fs-delete M) (string->path "/r/a"))                        ; 目录递归
-  (check-equal? (sort (map entry-name ((fs-list M) (string->path "/r"))) string<?) '("b" "c"))
-
-  ;; 拒绝删文件系统根
-  (check-exn exn:fail? (lambda () ((fs-delete F) (string->path "/"))))
-
+  (check-exn exn:fail? (lambda () (fs-delete (string->path "/"))))
+  ;; 缺失路径：列目录 → '()；读 → #f；删 → 静默
+  (check-equal? (fs-list (build-path d "nope")) '())
+  (check-false (fs-read (build-path d "nope")))
+  (fs-delete (build-path d "nope"))
   (delete-directory/files d)
-  (displayln "lab/fs.rkt: all tests passed"))
+  (displayln "lab-rebuild/fs.rkt: all tests passed"))

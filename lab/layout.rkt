@@ -1,64 +1,51 @@
 #lang racket
 
-(require "../core/editor.rkt")
-
-;;; layout.rkt —— 声明式布局：把一块区域切成若干 pane
+;;; layout.rkt —— 布局：纯数据
 ;;;
-;;; 只跟 **pane-id** 和 core 的 **rect** 打交道，不认识 document / 组件 / 渲染。
-;;; 它是纯数据 + 纯函数：布局值 → rect 列表（给 core）/ 命中结果（给鼠标）。
+;;; 叶是**稳定的 pane-id**（数字），节点是切分。pane 的 vid 会随「打开文件换视图」
+;;; 而变，但 pane-id 不变 —— 所以焦点 / 命中 / 循环都记 pane-id，不记 vid。
 ;;;
-;;;   (pane id)                          ; 叶子
-;;;   (hsplit left right [gap])          ; 左右均分，中间留 gap 列
-;;;   (hsplit-left left-w left right [gap])   ; 左固定宽
-;;;   (vsplit top bottom [gap])          ; 上下均分
-;;;   (vsplit-bottom bottom-h top bottom [gap]); 下固定高（状态栏常用）
+;;;   (lpane id)                            叶子
+;;;   (hsplit left right [gap])             左右均分
+;;;   (hsplit-left w left right [gap])      左固定宽
+;;;   (vsplit top bottom [gap])             上下均分
+;;;   (vsplit-bottom h top bottom [gap])    下固定高（状态栏）
 ;;;
-;;;   (layout->rects l x y w h) → (listof rect)          ; 给 editor-render-layout
-;;;   (layout-gaps   l x y w h) → (listof gap)           ; 给宿主画分隔线（可选）
-;;;   (layout-hit    l w h row col) → (list id local-row local-col) | #f
+;;;   (layout->rects l x y w h) → (listof lrect)   ; lrect = (id x y w h)
+;;;   (layout-leaves l)         → (listof pane-id) ; 深度优先 = 焦点循环顺序
+;;;   (layout-hit l w h row col)→ pane-id | #f
+;;;
+;;; 不认识文档、不认识渲染、不认识输入。
 
-(provide
- ;; ---------- 布局值 ----------
- (struct-out pane)
- hsplit hsplit-left
- vsplit vsplit-bottom
- layout?
+(provide (struct-out lpane) hsplit hsplit-left vsplit vsplit-bottom layout?
+         (struct-out lrect)
+         layout->rects layout-leaves layout-hit
+         layout-replace layout-remove
+         layout-contains? layout-resize)
 
- ;; ---------- 解析 ----------
- layout->rects layout-gaps layout-hit
- (struct-out gap))
-
-;;; ---------- 布局值 ----------
-
-(struct pane (id) #:transparent)
-
+(struct lpane (id) #:transparent)
 (struct hsplit-node (left right gap left-w) #:transparent)
 (struct vsplit-node (top bottom gap top-h bottom-h) #:transparent)
 
-;; 左右均分（gap = 中间留白列数）。
+(struct lrect (id x y w h) #:transparent)
+
 (define (hsplit left right [gap 0]) (hsplit-node left right gap #f))
-;; 左固定宽 left-w，右吃掉剩余。
-(define (hsplit-left left-w left right [gap 0]) (hsplit-node left right gap left-w))
-;; 上下均分（gap = 中间留白行数）。
+(define (hsplit-left w left right [gap 0]) (hsplit-node left right gap w))
 (define (vsplit top bottom [gap 0]) (vsplit-node top bottom gap #f #f))
-;; 下固定高 bottom-h，上吃掉剩余（状态栏写在最底）。
-(define (vsplit-bottom bottom-h top bottom [gap 0]) (vsplit-node top bottom gap #f bottom-h))
+(define (vsplit-bottom h top bottom [gap 0]) (vsplit-node top bottom gap #f h))
 
-;; 叶子也可以是裸 pane-id（数字），省一层 (pane id)。
-(define (leaf? l) (or (pane? l) (exact-nonnegative-integer? l)))
-(define (leaf-id l) (if (pane? l) (pane-id l) l))
-
-(define (layout? l) (or (leaf? l) (hsplit-node? l) (vsplit-node? l)))
-
-;;; ---------- 解析：布局值 → rect 列表 ----------
+(define (layout? l)
+  (or (lpane? l) (hsplit-node? l) (vsplit-node? l)))
 
 (define (layout->rects l x y w h)
   (cond
-    [(leaf? l) (list (rect (leaf-id l) x y w h))]
+    [(lpane? l) (list (lrect (lpane-id l) x y w h))]
     [(hsplit-node? l)
      (define g (hsplit-node-gap l))
      (define avail (max 0 (- w g)))
-     (define lw (if (hsplit-node-left-w l) (min avail (hsplit-node-left-w l)) (quotient avail 2)))
+     (define lw (if (hsplit-node-left-w l)
+                    (min avail (hsplit-node-left-w l))
+                    (quotient avail 2)))
      (append (layout->rects (hsplit-node-left l) x y lw h)
              (layout->rects (hsplit-node-right l) (+ x lw g) y (max 0 (- avail lw)) h))]
     [(vsplit-node? l)
@@ -71,73 +58,122 @@
              (layout->rects (vsplit-node-bottom l) x (+ y th g) w (max 0 (- avail th))))]
     [else (error 'layout->rects "不是布局值: ~a" l)]))
 
-;;; ---------- 分隔带（宿主可用来画竖线 / 横线） ----------
-
-(struct gap (orient x y w h) #:transparent)
-;; orient : 'v（竖带，宽 w、高 h）| 'h（横带）
-
-(define (layout-gaps l x y w h)
+(define (layout-leaves l)
   (cond
-    [(leaf? l) '()]
-    [(hsplit-node? l)
-     (define g (hsplit-node-gap l))
-     (define avail (max 0 (- w g)))
-     (define lw (if (hsplit-node-left-w l) (min avail (hsplit-node-left-w l)) (quotient avail 2)))
-     (append (layout-gaps (hsplit-node-left l) x y lw h)
-             (if (> g 0) (list (gap 'v (+ x lw) y g h)) '())
-             (layout-gaps (hsplit-node-right l) (+ x lw g) y (max 0 (- avail lw)) h))]
-    [(vsplit-node? l)
-     (define g (vsplit-node-gap l))
-     (define avail (max 0 (- h g)))
-     (define th (cond [(vsplit-node-top-h l)]
-                      [(vsplit-node-bottom-h l) (max 0 (- avail (vsplit-node-bottom-h l)))]
-                      [else (quotient avail 2)]))
-     (append (layout-gaps (vsplit-node-top l) x y w th)
-             (if (> g 0) (list (gap 'h x (+ y th) w g)) '())
-             (layout-gaps (vsplit-node-bottom l) x (+ y th g) w (max 0 (- avail th))))]
+    [(lpane? l) (list (lpane-id l))]
+    [(hsplit-node? l) (append (layout-leaves (hsplit-node-left l))
+                              (layout-leaves (hsplit-node-right l)))]
+    [(vsplit-node? l) (append (layout-leaves (vsplit-node-top l))
+                              (layout-leaves (vsplit-node-bottom l)))]
     [else '()]))
 
-;;; ---------- 命中：屏幕 (row,col) → pane ----------
-
-;; → (list pane-id local-row local-col) | #f
 (define (layout-hit l w h row col)
   (for/first ([r (in-list (layout->rects l 0 0 w h))]
-              #:when (and (>= col (rect-x r)) (< col (+ (rect-x r) (rect-w r)))
-                          (>= row (rect-y r)) (< row (+ (rect-y r) (rect-h r)))))
-    (list (rect-vid r) (- row (rect-y r)) (- col (rect-x r)))))
+              #:when (and (>= col (lrect-x r)) (< col (+ (lrect-x r) (lrect-w r)))
+                          (>= row (lrect-y r)) (< row (+ (lrect-y r) (lrect-h r)))))
+    (lrect-id r)))
+
+;;; ---------- 改写布局（分格 / 关格用） ----------
+
+;; 把叶 pid 替换成子树 new。
+(define (layout-replace l pid new)
+  (cond
+    [(lpane? l) (if (= (lpane-id l) pid) new l)]
+    [(hsplit-node? l) (hsplit-node (layout-replace (hsplit-node-left l) pid new)
+                                   (layout-replace (hsplit-node-right l) pid new)
+                                   (hsplit-node-gap l) (hsplit-node-left-w l))]
+    [(vsplit-node? l) (vsplit-node (layout-replace (vsplit-node-top l) pid new)
+                                   (layout-replace (vsplit-node-bottom l) pid new)
+                                   (vsplit-node-gap l) (vsplit-node-top-h l) (vsplit-node-bottom-h l))]
+    [else l]))
+
+;; 删掉叶 pid；父节点只剩一个子就塌缩。#f = 整棵树被删空。
+(define (layout-remove l pid)
+  (cond
+    [(lpane? l) (if (= (lpane-id l) pid) #f l)]
+    [(hsplit-node? l)
+     (define a (layout-remove (hsplit-node-left l) pid))
+     (define b (layout-remove (hsplit-node-right l) pid))
+     (cond [(not a) b] [(not b) a]
+           [else (hsplit-node a b (hsplit-node-gap l) (hsplit-node-left-w l))])]
+    [(vsplit-node? l)
+     (define a (layout-remove (vsplit-node-top l) pid))
+     (define b (layout-remove (vsplit-node-bottom l) pid))
+     (cond [(not a) b] [(not b) a]
+           [else (vsplit-node a b (vsplit-node-gap l) (vsplit-node-top-h l) (vsplit-node-bottom-h l))])]
+    [else l]))
+
+;;; ---------- 查 / 调宽 ----------
+
+(define (layout-contains? l pid)
+  (cond
+    [(lpane? l) (= (lpane-id l) pid)]
+    [(hsplit-node? l) (or (layout-contains? (hsplit-node-left l) pid)
+                          (layout-contains? (hsplit-node-right l) pid))]
+    [(vsplit-node? l) (or (layout-contains? (vsplit-node-top l) pid)
+                          (layout-contains? (vsplit-node-bottom l) pid))]
+    [else #f]))
+
+;; 找包含 pid 的**最深**水平切分，按其左右调宽：
+;;   pid 在左 → 左宽 + delta；pid 在右 → 左宽 - delta（即右变宽）。
+;; 只调有明确左宽的切分（hsplit-left）；均分切分不调，交给外层。
+;; → (values layout 是否调过)
+(define (layout-resize l pid delta)
+  (cond
+    [(lpane? l) (values l #f)]
+    [(hsplit-node? l)
+     (define lw (hsplit-node-left-w l))
+     (cond
+       [(layout-contains? (hsplit-node-left l) pid)
+        (define-values (l* done?) (layout-resize (hsplit-node-left l) pid delta))
+        (cond [done? (values (struct-copy hsplit-node l [left l*]) #t)]
+              [lw (values (struct-copy hsplit-node l [left-w (max 1 (+ lw delta))]) #t)]
+              [else (values l #f)])]
+       [(layout-contains? (hsplit-node-right l) pid)
+        (define-values (r* done?) (layout-resize (hsplit-node-right l) pid delta))
+        (cond [done? (values (struct-copy hsplit-node l [right r*]) #t)]
+              [lw (values (struct-copy hsplit-node l [left-w (max 1 (- lw delta))]) #t)]
+              [else (values l #f)])]
+       [else (values l #f)])]
+    [(vsplit-node? l)
+     (define-values (t* done?) (layout-resize (vsplit-node-top l) pid delta))
+     (cond
+       [done? (values (struct-copy vsplit-node l [top t*]) #t)]
+       [else
+        (define-values (b* done2?) (layout-resize (vsplit-node-bottom l) pid delta))
+        (values (if done2? (struct-copy vsplit-node l [bottom b*]) l) done2?)])]
+    [else (values l #f)]))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   (require rackunit)
 
-  (define (rects l w h)
-    (for/list ([r (in-list (layout->rects l 0 0 w h))])
-      (list (rect-vid r) (rect-x r) (rect-y r) (rect-w r) (rect-h r))))
+  ;; 左 30 | gap 1 | 右 29；上 9 行 | 下 1 行状态栏
+  (define L (vsplit-bottom 1 (hsplit-left 30 (lpane 0) (lpane 1) 1) (lpane 2)))
+  (check-equal? (layout-leaves L) '(0 1 2))
+  (define rs (layout->rects L 0 0 60 10))
+  (check-equal? (map (lambda (r) (list (lrect-id r) (lrect-x r) (lrect-y r) (lrect-w r) (lrect-h r))) rs)
+                '((0 0 0 30 9) (1 31 0 29 9) (2 0 9 60 1)))
 
-  ;; 均分 + gap
-  (check-equal? (rects (hsplit 0 1 1) 10 5) '((0 0 0 4 5) (1 5 0 5 5)))
-  ;; 左固定宽
-  (check-equal? (rects (hsplit-left 3 0 1 1) 10 5) '((0 0 0 3 5) (1 4 0 6 5)))
-  ;; 下固定高（状态栏）
-  (check-equal? (rects (vsplit-bottom 1 0 2) 10 5) '((0 0 0 10 4) (2 0 4 10 1)))
-  ;; 嵌套：内容两格 + 底行状态栏
-  (check-equal? (rects (vsplit-bottom 1 (hsplit 0 1 1) 2) 10 5)
-                '((0 0 0 4 4) (1 5 0 5 4) (2 0 4 10 1)))
-  ;; 裸数字 = (pane id)
-  (check-equal? (rects (hsplit (pane 0) 1 0) 10 5) (rects (hsplit 0 1 0) 10 5))
+  (check-equal? (layout-hit L 60 10 3 5) 0)
+  (check-equal? (layout-hit L 60 10 3 35) 1)
+  (check-equal? (layout-hit L 60 10 9 5) 2)
+  (check-equal? (layout-hit L 60 10 3 30) #f)     ; gap 列
 
-  ;; 命中：内容 / 状态栏 / gap
-  (define L (vsplit-bottom 1 (hsplit 0 1 1) 2))
-  (check-equal? (layout-hit L 10 5 0 6) (list 1 0 1))
-  (check-equal? (layout-hit L 10 5 4 3) (list 2 0 3))
-  (check-equal? (layout-hit L 10 5 0 4) #f)                   ; gap 列没有 pane
+  ;; 均分也保留
+  (check-equal? (map lrect-w (layout->rects (hsplit (lpane 0) (lpane 1) 0) 0 0 10 4)) '(5 5))
 
-  ;; 分隔带：只有中间那条竖带
-  (define g (layout-gaps L 0 0 10 5))
-  (check-equal? (length g) 1)
-  (check-equal? (list (gap-orient (car g)) (gap-x (car g)) (gap-y (car g))
-                      (gap-w (car g)) (gap-h (car g)))
-                '(v 4 0 1 4))
+  ;; 改写：替换叶 / 删除叶
+  (define L2 (layout-replace L 1 (vsplit (lpane 1) (lpane 3))))
+  (check-equal? (layout-leaves L2) '(0 1 3 2))
+  (check-equal? (layout-leaves (layout-remove L 1)) '(0 2))
 
-  (displayln "lab/layout.rkt: all tests passed"))
+  ;; 调宽：左固定 30；焦点在左（0）→ 左变宽；焦点在右（1）→ 左变窄（右变宽）
+  (define-values (L3 d3) (layout-resize L 0 5))
+  (check-true d3)
+  (check-equal? (lrect-w (car (layout->rects L3 0 0 60 10))) 35)
+  (define-values (L4 d4) (layout-resize L 1 5))
+  (check-equal? (lrect-w (car (layout->rects L4 0 0 60 10))) 25)
+
+  (displayln "lab-rebuild/layout.rkt: all tests passed"))
