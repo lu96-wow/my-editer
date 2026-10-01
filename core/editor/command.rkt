@@ -299,25 +299,22 @@
 
 ;;; ---------- 视口设置 ----------
 
-;; 切 mode：先按旧 mode 取锚点，再按新 mode 落回同锚（水平位置不丢）。
-(define (editor-view-set-mode ed vid mode)
+;; 改视口字段的公共壳：先按旧 mode 取锚点 (行, 显示列)，改完后落回同锚
+;; （旧 mode 的水平位置不丢），再同步跟随者。
+(define (editor-view-viewport-update ed vid f)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (define-values (line dc) (viewport-anchor t (view-viewport v)))
-  (define vp* (viewport-set-anchor t (viewport-set-mode (view-viewport v) mode) line dc))
+  (define vp* (viewport-set-anchor t (f (view-viewport v)) line dc))
   (editor-sync-viewports (editor-set-view ed (struct-copy view v [viewport vp*])) vid))
 
+;; 切 mode（水平位置不丢）。
+(define (editor-view-set-mode ed vid mode)
+  (editor-view-viewport-update ed vid (lambda (vp) (viewport-set-mode vp mode))))
 
 (define (editor-view-toggle-line-numbers ed vid)
-  (define v (editor-view-ref ed vid))
-  (define t (document-text (editor-view-document ed vid)))
-  (define-values (line dc) (viewport-anchor t (view-viewport v)))
-  (define vp* (viewport-set-anchor
-               t
-               (viewport-set-line-numbers (view-viewport v)
-                                          (not (viewport-line-numbers? (view-viewport v))))
-               line dc))
-  (editor-sync-viewports (editor-set-view ed (struct-copy view v [viewport vp*])) vid))
+  (editor-view-viewport-update
+   ed vid (lambda (vp) (viewport-set-line-numbers vp (not (viewport-line-numbers? vp))))))
 
 
 ;; 显式滚到某行 / 某显示列（程序面；同步跟随者）。
@@ -337,34 +334,24 @@
 
 ;;; ---------- 撤销 / 重做（按 vid 所属 document） ----------
 
-(define (editor-view-undo ed vid)
+;; undo/redo 共用的时穿：step : history -> (values history ok?)。
+;; 成功则换文档 + 夹回选区（无变更描述）+ 把选区还原到发起视图（若还在）；不动视口。
+(define (editor-view-time-travel ed vid step)
   (define v (editor-view-ref ed vid))
   (define did (view-did v))
-  (define-values (hist* ok?) (history-undo (editor-document-history ed did)))
+  (define-values (hist* ok?) (step (editor-document-history ed did)))
   (cond
     [(not ok?) ed]
     [else
      (define-values (_doc sels* who) (history-state hist*))
      (define ed* (editor-views-clamp (editor-set-history ed did hist*) did))
-     ;; 把选区还原到发起视图（若还在）；不动视口
      (cond
        [(and who (for/or ([x (in-list (editor-views ed*))] #:when (= (view-id x) who)) #t))
         (editor-set-view ed* (struct-copy view (editor-view-ref ed* who) [selections sels*]))]
        [else ed*])]))
 
-(define (editor-view-redo ed vid)
-  (define v (editor-view-ref ed vid))
-  (define did (view-did v))
-  (define-values (hist* ok?) (history-redo (editor-document-history ed did)))
-  (cond
-    [(not ok?) ed]
-    [else
-     (define-values (_doc sels* who) (history-state hist*))
-     (define ed* (editor-views-clamp (editor-set-history ed did hist*) did))
-     (cond
-       [(and who (for/or ([x (in-list (editor-views ed*))] #:when (= (view-id x) who)) #t))
-        (editor-set-view ed* (struct-copy view (editor-view-ref ed* who) [selections sels*]))]
-       [else ed*])]))
+(define (editor-view-undo ed vid) (editor-view-time-travel ed vid history-undo))
+(define (editor-view-redo ed vid) (editor-view-time-travel ed vid history-redo))
 
 ;; 清掉指定视图所属文档的撤销 / 重做栈（只留当前快照）。
 (define (editor-view-clear-history ed vid)
@@ -495,21 +482,21 @@
   (define len (line-length (track-ref (document-text (editor-view-document ed vid)) line)))
   (editor-view-readonly-range ed vid (range-of (point line 0) (point line len)) flag))
 
-;; 对**所有选区**写（多光标）。
+;; 对**所有选区**写（多光标）。属性是就地改的，这里只遍历写入。
 (define (editor-view-highlight-selections ed vid face)
   (editor-view-author-edit ed vid
     (lambda (d s)
-      (values (for/fold ([d d]) ([sel (in-list (selections-items s))])
-                (let-values ([(a b) (selection-range sel)])
-                  (document-highlight-fill d (point-line a) (point-col a) (point-line b) (point-col b) face)))
-              s #t))))
+      (for ([sel (in-list (selections-items s))])
+        (define-values (a b) (selection-range sel))
+        (document-highlight-fill d (point-line a) (point-col a) (point-line b) (point-col b) face))
+      (values d s #t))))
 (define (editor-view-readonly-selections ed vid flag)
   (editor-view-author-edit ed vid
     (lambda (d s)
-      (values (for/fold ([d d]) ([sel (in-list (selections-items s))])
-                (let-values ([(a b) (selection-range sel)])
-                  (document-readonly-fill d (point-line a) (point-col a) (point-line b) (point-col b) flag)))
-              s #t))))
+      (for ([sel (in-list (selections-items s))])
+        (define-values (a b) (selection-range sel))
+        (document-readonly-fill d (point-line a) (point-col a) (point-line b) (point-col b) flag))
+      (values d s #t))))
 
 ;; 批量：fills : (listof (list l0 c0 l1 c1 val))，一次 materialize、一次写 box。
 ;; 作者态（不记步）；与逐个调用 editor-view-highlight-range 等价，但只 materialize 一次。
@@ -532,11 +519,7 @@
 
 ;; 设定某个视图的尺寸（重锚，保住水平位置），并同步跟随者。
 (define (editor-view-set-size ed vid width height)
-  (define v (editor-view-ref ed vid))
-  (define t (document-text (editor-view-document ed vid)))
-  (define-values (line dc) (viewport-anchor t (view-viewport v)))
-  (define vp* (viewport-set-anchor t (viewport-set-size (view-viewport v) width height) line dc))
-  (editor-sync-viewports (editor-set-view ed (struct-copy view v [viewport vp*])) vid))
+  (editor-view-viewport-update ed vid (lambda (vp) (viewport-set-size vp width height))))
 
 
 ;;; ---------- 投影（单视图 / 多视图）在 render.rkt ----------

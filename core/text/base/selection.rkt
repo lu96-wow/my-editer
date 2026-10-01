@@ -99,6 +99,11 @@
 (define (selections-count ss) (length (selections-items ss)))
 (define (selections-primary ss) (list-ref (selections-items ss) (selections-primary-index ss)))
 
+;; primary 在 items 中的下标；找不到 → 0。
+(define (index-of-primary items primary)
+  (or (for/first ([x (in-list items)] [i (in-naturals)] #:when (equal? x primary)) i)
+      0))
+
 ;; 追加（primary 不变）。
 (define (selections-add ss new-items)
   (struct-copy selections ss [items (append (selections-items ss) new-items)]))
@@ -108,12 +113,7 @@
   (define old (selections-items ss))
   (define primary (selections-primary ss))
   (define kept (remove* drops old))
-  (cond
-    [(null? kept) ss]
-    [else (selections kept
-                     (or (for/first ([x (in-list kept)] [i (in-naturals)]
-                                     #:when (equal? x primary)) i)
-                         0))]))
+  (if (null? kept) ss (selections kept (index-of-primary kept primary))))
 
 (define (selections-set-primary ss i)
   (selections (selections-items ss)
@@ -154,25 +154,23 @@
   (define old (selections-items ss))
   (define primary (selections-primary ss))
   (define kept (remove-duplicates old))
-  (selections kept
-              (or (for/first ([x (in-list kept)] [i (in-naturals)] #:when (equal? x primary)) i)
-                  0)))
+  (selections kept (index-of-primary kept primary)))
 
 ;; 排序 + 合并重叠（首尾相接不合并），primary 追到包含它的那一项。
 (define (selections-normalize ss)
   (define target (selections-primary ss))
   (define items
-    (reverse
-     (for/fold ([acc '()]) ([s (in-list (sort (remove-duplicates (selections-items ss)) selection<?))])
-       (cond
-         [(null? acc) (list s)]
-         [else
-          (define prev (car acc))
-          (define-values (ps pe) (selection-range prev))
-          (define-values (ss_ se) (selection-range s))
-          (if (point<? ss_ pe)
-              (cons (selection ps (if (point<? pe se) se pe)) (cdr acc))
-              (cons s acc))]))))
+    (for/fold ([acc '()] #:result (reverse acc))
+              ([s (in-list (sort (remove-duplicates (selections-items ss)) selection<?))])
+      (cond
+        [(null? acc) (list s)]
+        [else
+         (define prev (car acc))
+         (define-values (ps pe) (selection-range prev))
+         (define-values (ss_ se) (selection-range s))
+         (if (point<? ss_ pe)
+             (cons (selection ps (if (point<? pe se) se pe)) (cdr acc))
+             (cons s acc))])))
   (selections items (primary-index-of items target)))
 
 ;; target 落到归一后的哪一项：

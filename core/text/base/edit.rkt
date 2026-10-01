@@ -31,9 +31,11 @@
 ;;; ---------- 多轨 ----------
 
 (define (map-edits edits tracks)
-  (unless (= (length edits) (length tracks))
-    (error 'map-edits "edits 与 tracks 数量不一致: ~a vs ~a" (length edits) (length tracks)))
-  (map (lambda (ed t) (ed t)) edits tracks))
+  (define ne (length edits))
+  (define nt (length tracks))
+  (unless (= ne nt)
+    (error 'map-edits "edits 与 tracks 数量不一致: ~a vs ~a" ne nt))
+  (for/list ([ed (in-list edits)] [t (in-list tracks)]) (ed t)))
 
 ;;; ---------- 行级编辑（对所有轨道都是同一个函数） ----------
 
@@ -54,7 +56,7 @@
   (cond
     [(= k 1) (list (string-append head (car pieces) tail))]
     [else (append (list (string-append head (car pieces)))
-                  (take (drop pieces 1) (- k 2))
+                  (drop-right (rest pieces) 1)
                   (list (string-append (last pieces) tail)))]))
 
 ;; 属性行：与文本同样的行划分；每行插入「该文本行字符数」个符号（按 sticky）。
@@ -73,7 +75,7 @@
   (cond
     [(= k 1) (list (line-append (line-append head (cells (car pieces))) tail))]
     [else (append (list (line-append head (cells (car pieces))))
-                  (map cells (take (drop pieces 1) (- k 2)))
+                  (map cells (drop-right (rest pieces) 1))
                   (list (line-append (cells (last pieces)) tail)))]))
 
 ;; 把文档区间 [l0,c0) .. (l1,c1) 换成 text（可含 \n，可跨行）。

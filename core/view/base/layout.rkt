@@ -41,9 +41,11 @@
            [else (loop (add1 i) (+ col w) seg-start acc)])])))     ; 空段总接受（单字>width也放）
   (cond
     [(null? segs) (list (cons 0 0))]
-    [(= (- (cdr (last segs)) (car (last segs))) width)
-     (append segs (list (cons (cdr (last segs)) (cdr (last segs)))))]
-    [else segs]))
+    [else
+     (define last-seg (last segs))
+     (if (= (- (cdr last-seg) (car last-seg)) width)
+         (append segs (list (cons (cdr last-seg) (cdr last-seg))))
+         segs)]))
 
 ;; 一行的视觉段（display-col 半开区间）：clip → 整行一段；wrap → 折行段。
 (define (segments-of-line text width mode)

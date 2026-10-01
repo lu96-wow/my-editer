@@ -167,10 +167,11 @@
 ;; 批量（range 版）：runs : (listof (list range val))。range 先规范化，再折成坐标。
 (define (ranges->fills runs)
   (for/list ([run (in-list runs)])
-    (define r (range-normalize (car run)))
-    (list (point-line (range-start r)) (point-col (range-start r))
-          (point-line (range-end r))   (point-col (range-end r))
-          (cadr run))))
+    (match-define (list r v) run)
+    (define r* (range-normalize r))
+    (list (point-line (range-start r*)) (point-col (range-start r*))
+          (point-line (range-end r*))   (point-col (range-end r*))
+          v)))
 
 (define (document-highlight-fill-range-batch bd runs)
   (document-highlight-fill-batch bd (ranges->fills runs)))
@@ -179,15 +180,14 @@
 
 ;;; ---------- 属性查询（高亮 / 只读成对） ----------
 
-;; 高亮格：face / #f。整轨 #f（全默认）→ #f。
-(define (document-highlight-at bd line col)
-  (define a (document-highlight bd))
-  (and a (let ([l (track-ref a line)]) (and (< col (line-length l)) (line-ref l col)))))
+;; 高亮 / 只读格：整轨 #f（全默认）→ #f；否则取该格（越界 → #f）。
+(define (document-attr-at t line col)
+  (and t (let ([l (track-ref t line)]) (and (< col (line-length l)) (line-ref l col)))))
 
-;; 只读格：#t / #f。整轨 #f（全默认）→ #f。
+(define (document-highlight-at bd line col)
+  (document-attr-at (document-highlight bd) line col))
 (define (document-readonly-at? bd line col)
-  (define a (document-readonly bd))
-  (and a (let ([l (track-ref a line)]) (and (< col (line-length l)) (line-ref l col)))))
+  (document-attr-at (document-readonly bd) line col))
 
 ;; 整行属性格（向量视图）：真轨取行；整轨 #f → 按文本行长造全默认向量。
 ;; 纯读、不改惰性；让"读整行"的调用方不必知道 #f。
@@ -311,7 +311,7 @@
     (cond
       [(= k 1) (list (line-append (line-append head (car pieces)) tail))]
       [else (append (list (line-append head (car pieces)))
-                    (take (drop pieces 1) (- k 2))
+                    (drop-right (rest pieces) 1)
                     (list (line-append (last pieces) tail)))]))
   (track-splice t line (add1 line) new-lines))
 

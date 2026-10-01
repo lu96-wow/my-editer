@@ -41,7 +41,7 @@
 
 (define (point-clamp p line-count line-length)
   (unless (and (exact-nonnegative-integer? line-count) (>= line-count 1))
-    (error 'point-clamp "line-count must be >= 1, got ~a" line-count))
+    (error 'point-clamp "line-count 需 >= 1，得到 ~a" line-count))
   (define l (max 0 (min (point-line p) (sub1 line-count))))
   (point l (max 0 (min (point-col p) (line-length l)))))
 

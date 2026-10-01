@@ -71,6 +71,9 @@
   (unless (memq s '(free follow))
     (error who "sync 必须是 'free / 'follow，得到 ~a" s)))
 
+;; 新视图 / 新文档的初始选区：文首光标。
+(define (initial-selections) (selections-one (caret (point 0 0))))
+
 ;; 入口多态：string → 现开纯文本文档；document → 原样使用（带属性）。
 (define (->document x chunk-lines)
   (if (document? x) x (document-open x chunk-lines)))
@@ -87,7 +90,7 @@
                      #:history-limit [history-limit default-history-limit]
                      #:history? [history? #t])
   (define doc (->document text chunk-lines))
-  (define sels (selections-one (caret (point 0 0))))
+  (define sels (initial-selections))
   (editor (list (document-entry 0 name (history-open doc sels history-limit history?)))
           (list (view 0 0 (viewport-open width height mode line-numbers?) sels 'free #f))
           1 1 #f))
@@ -104,7 +107,7 @@
    (struct-copy editor ed
      [views (append (editor-views ed)
                     (list (view vid did (viewport-open width height mode line-numbers?)
-                                (selections-one (caret (point 0 0))) sync link)))]
+                                (initial-selections) sync link)))]
      [next-view (add1 vid)])
    vid))
 
@@ -131,7 +134,7 @@
                              #:history-limit [history-limit default-history-limit]
                              #:history? [history? #t])
   (define doc (->document text chunk-lines))
-  (define sels (selections-one (caret (point 0 0))))
+  (define sels (initial-selections))
   (define did (editor-next-document ed))
   (values (struct-copy editor ed
             [documents (append (editor-documents ed)

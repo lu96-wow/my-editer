@@ -87,16 +87,15 @@
 
 ;; 相邻块合并：合并后 ≤ max 且其中至少一块 < min。避免块碎成一两行。
 (define (normalize chunks max min)
-  (reverse
-   (for/fold ([acc '()]) ([c (in-list chunks)])
-     (cond
-       [(null? acc) (list c)]
-       [else
-        (define p (car acc))
-        (if (and (<= (+ (chunk-nlines p) (chunk-nlines c)) max)
-                 (or (< (chunk-nlines p) min) (< (chunk-nlines c) min)))
-            (cons (chunk-append p c) (cdr acc))
-            (cons c acc))]))))
+  (for/fold ([acc '()] #:result (reverse acc)) ([c (in-list chunks)])
+    (cond
+      [(null? acc) (list c)]
+      [else
+       (define p (car acc))
+       (if (and (<= (+ (chunk-nlines p) (chunk-nlines c)) max)
+                (or (< (chunk-nlines p) min) (< (chunk-nlines c) min)))
+           (cons (chunk-append p c) (cdr acc))
+           (cons c acc))])))
 
 (define (partition-lines lines max)
   (define v (list->vector lines))

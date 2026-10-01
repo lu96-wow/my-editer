@@ -48,8 +48,7 @@
       [(null? cells)
        (reverse (if start (cons (run start (list->string (reverse chars)) face) acc) acc))]
       [else
-       (define cell (car cells))
-       (define sc (car cell)) (define ch (cadr cell)) (define fc (caddr cell))
+       (match-define (list sc ch fc) (car cells))
        (define cw (char-display-width ch))
        (cond
          [(and start (equal? fc face) (= (+ start width) sc))
