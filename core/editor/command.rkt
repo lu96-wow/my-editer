@@ -85,11 +85,13 @@
  editor-view-highlight-cell
  editor-view-highlight-line
  editor-view-highlight-selections
+ editor-view-highlight-batch
  editor-view-readonly
  editor-view-readonly-range
  editor-view-readonly-cell
  editor-view-readonly-line
  editor-view-readonly-selections
+ editor-view-readonly-batch
 
 ;; ---------- 历史 ----------
  editor-view-undo
@@ -506,6 +508,15 @@
                 (let-values ([(a b) (selection-range sel)])
                   (document-readonly-fill d (point-line a) (point-col a) (point-line b) (point-col b) flag)))
               s #t))))
+
+;; 批量：fills : (listof (list l0 c0 l1 c1 val))，一次 materialize、一次写 box。
+;; 作者态（不记步）；与逐个调用 editor-view-highlight-range 等价，但只 materialize 一次。
+(define (editor-view-highlight-batch ed vid fills)
+  (editor-view-author-edit ed vid
+    (lambda (d s) (values (document-highlight-fill-batch d fills) s #t))))
+(define (editor-view-readonly-batch ed vid fills)
+  (editor-view-author-edit ed vid
+    (lambda (d s) (values (document-readonly-fill-batch d fills) s #t))))
 
 ;;; ---------- 视图尺寸 ----------
 

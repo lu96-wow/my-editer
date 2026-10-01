@@ -115,4 +115,29 @@
 (define m2 (editor-view-highlight-range m1 1 (range-of (point 0 1) (point 0 2)) 'ro))
 (check-equal? (editor-view-highlight-at m2 0 0 1) 'ro)
 
+;;; ---------- 8. 批量属性写入（一次 materialize） ----------
+
+(define b0 (editor-open "abcdef" 20 5))
+(define bdoc (editor-view-document-handle b0 0))
+;; 句柄版：一串区间一次写
+(void (editor-document-highlight-batch! bdoc (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
+(check-equal? (editor-view-highlight-row b0 0 0) (vector 'a 'a #f #f 'b 'b))
+;; 空表 = 不改（返回同一 document）
+(check-eq? (editor-document-highlight-batch! bdoc '()) bdoc)
+
+;; 命令版（作者态）：与逐个 editor-view-highlight-range 等价
+(define b1 (editor-open "abcdef" 20 5))
+(define b2 (editor-view-highlight-batch b1 0 (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
+(define b3 (editor-view-highlight-range
+            (editor-view-highlight-range b1 0 (range-of (point 0 0) (point 0 2)) 'a)
+            0 (range-of (point 0 4) (point 0 6)) 'b))
+(check-equal? (editor-view-highlight-row b2 0 0) (vector 'a 'a #f #f 'b 'b))
+(check-equal? (editor-view-highlight-row b2 0 0) (editor-view-highlight-row b3 0 0))
+(check-equal? (editor-view-depth b2 0) 0 "批量写不记步")
+;; 跨行批量
+(define c0 (editor-open "abc\ndef" 20 5))
+(define c1 (editor-view-highlight-batch c0 0 (list (list 0 1 1 2 'x))))
+(check-equal? (editor-view-highlight-row c1 0 0) (vector #f 'x 'x))
+(check-equal? (editor-view-highlight-row c1 0 1) (vector 'x 'x #f))
+
 (displayln "editor/attributes.rkt: all tests passed")

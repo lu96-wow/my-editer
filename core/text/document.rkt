@@ -59,6 +59,7 @@
  ;; ---------- 写：属性轨 ----------
  document-edit-highlight document-edit-readonly
  document-highlight-fill document-readonly-fill
+ document-highlight-fill-batch document-readonly-fill-batch
 
  ;; ---------- 剪贴板 ----------
  document-copy document-copy-text
@@ -144,6 +145,21 @@
   (document-edit-highlight bd (edit-fill l0 c0 l1 c1 face)))
 (define (document-readonly-fill bd l0 c0 l1 c1 flag)
   (document-edit-readonly bd (edit-fill l0 c0 l1 c1 flag)))
+
+;;; ---------- 批量属性填充（一次 materialize、一次写 box） ----------
+
+;; fills : (listof (list l0 c0 l1 c1 val))，坐标须已规范化（l0<=l1，同行 c0<=c1）。
+;; 同一批里重叠处后者覆盖前者；空表 = 不改（返回同一个 document）。
+(define (fills->edit fills)
+  (lambda (t)
+    (for/fold ([t t]) ([f (in-list fills)])
+      (match-define (list l0 c0 l1 c1 v) f)
+      ((edit-fill l0 c0 l1 c1 v) t))))
+
+(define (document-highlight-fill-batch bd fills)
+  (if (null? fills) bd (document-edit-highlight bd (fills->edit fills))))
+(define (document-readonly-fill-batch bd fills)
+  (if (null? fills) bd (document-edit-readonly bd (fills->edit fills))))
 
 ;;; ---------- 属性查询（高亮 / 只读成对） ----------
 

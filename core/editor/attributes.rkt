@@ -21,7 +21,9 @@
          editor-view-highlight-atom
          editor-view-readonly-atom
          editor-document-set-highlight!
-         editor-document-set-readonly!)
+         editor-document-set-readonly!
+         editor-document-highlight-batch!
+         editor-document-readonly-batch!)
 
 ;; 取某视图当前文档的句柄（= 连同不可变文本 + 可变属性原子）。
 (define (editor-view-document-handle ed vid)
@@ -38,3 +40,10 @@
   (document-set-highlight! doc hl))
 (define (editor-document-set-readonly! doc ro)
   (document-set-readonly! doc ro))
+
+;; 批量写回：fills : (listof (list l0 c0 l1 c1 val))，一次 materialize、一次写 box。
+;; 用于语义 token / 诊断这类"一串区间"的结果；仍不碰 history、不换 document。
+(define (editor-document-highlight-batch! doc fills)
+  (document-highlight-fill-batch doc fills))
+(define (editor-document-readonly-batch! doc fills)
+  (document-readonly-fill-batch doc fills))
