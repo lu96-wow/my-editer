@@ -148,6 +148,9 @@
   (document-edit-readonly bd (edit-fill l0 c0 l1 c1 flag)))
 
 ;;; ---------- 批量属性填充（一次 materialize、一次写 box） ----------
+;;
+;; 约定：**坐标是原始面，range 是派生面**（详见 core/editor/attributes.rkt）。
+;; 坐标版是底层；range 版先 range-normalize 再折成坐标走同一实现。
 
 ;; fills : (listof (list l0 c0 l1 c1 val))，坐标须已规范化（l0<=l1，同行 c0<=c1）。
 ;; 同一批里重叠处后者覆盖前者；空表 = 不改（返回同一个 document）。
