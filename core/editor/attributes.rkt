@@ -23,7 +23,9 @@
          editor-document-set-highlight!
          editor-document-set-readonly!
          editor-document-highlight-batch!
-         editor-document-readonly-batch!)
+         editor-document-readonly-batch!
+         editor-document-highlight-range-batch!
+         editor-document-readonly-range-batch!)
 
 ;; 取某视图当前文档的句柄（= 连同不可变文本 + 可变属性原子）。
 (define (editor-view-document-handle ed vid)
@@ -47,3 +49,9 @@
   (document-highlight-fill-batch doc fills))
 (define (editor-document-readonly-batch! doc fills)
   (document-readonly-fill-batch doc fills))
+
+;; 批量（range 版）：runs : (listof (list range val))。
+(define (editor-document-highlight-range-batch! doc runs)
+  (document-highlight-fill-range-batch doc runs))
+(define (editor-document-readonly-range-batch! doc runs)
+  (document-readonly-fill-range-batch doc runs))

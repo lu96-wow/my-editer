@@ -86,12 +86,14 @@
  editor-view-highlight-line
  editor-view-highlight-selections
  editor-view-highlight-batch
+ editor-view-highlight-range-batch
  editor-view-readonly
  editor-view-readonly-range
  editor-view-readonly-cell
  editor-view-readonly-line
  editor-view-readonly-selections
  editor-view-readonly-batch
+ editor-view-readonly-range-batch
 
 ;; ---------- 历史 ----------
  editor-view-undo
@@ -517,6 +519,14 @@
 (define (editor-view-readonly-batch ed vid fills)
   (editor-view-author-edit ed vid
     (lambda (d s) (values (document-readonly-fill-batch d fills) s #t))))
+
+;; 批量（range 版）：runs : (listof (list range val))。range 先规范化。
+(define (editor-view-highlight-range-batch ed vid runs)
+  (editor-view-author-edit ed vid
+    (lambda (d s) (values (document-highlight-fill-range-batch d runs) s #t))))
+(define (editor-view-readonly-range-batch ed vid runs)
+  (editor-view-author-edit ed vid
+    (lambda (d s) (values (document-readonly-fill-range-batch d runs) s #t))))
 
 ;;; ---------- 视图尺寸 ----------
 

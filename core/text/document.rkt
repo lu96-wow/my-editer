@@ -60,6 +60,7 @@
  document-edit-highlight document-edit-readonly
  document-highlight-fill document-readonly-fill
  document-highlight-fill-batch document-readonly-fill-batch
+ document-highlight-fill-range-batch document-readonly-fill-range-batch
 
  ;; ---------- 剪贴板 ----------
  document-copy document-copy-text
@@ -160,6 +161,20 @@
   (if (null? fills) bd (document-edit-highlight bd (fills->edit fills))))
 (define (document-readonly-fill-batch bd fills)
   (if (null? fills) bd (document-edit-readonly bd (fills->edit fills))))
+
+;; 批量（range 版）：runs : (listof (list range val))。range 会先规范化，
+;; 再折成坐标走同一实现（坐标是原始表示，range 是便于表达的壳）。
+(define (ranges->fills runs)
+  (for/list ([run (in-list runs)])
+    (define r (range-normalize (car run)))
+    (list (point-line (range-start r)) (point-col (range-start r))
+          (point-line (range-end r))   (point-col (range-end r))
+          (cadr run))))
+
+(define (document-highlight-fill-range-batch bd runs)
+  (document-highlight-fill-batch bd (ranges->fills runs)))
+(define (document-readonly-fill-range-batch bd runs)
+  (document-readonly-fill-batch bd (ranges->fills runs)))
 
 ;;; ---------- 属性查询（高亮 / 只读成对） ----------
 

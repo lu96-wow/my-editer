@@ -140,4 +140,16 @@
 (check-equal? (editor-view-highlight-row c1 0 0) (vector #f 'x 'x))
 (check-equal? (editor-view-highlight-row c1 0 1) (vector 'x 'x #f))
 
+;; range 版批量（与坐标版等价；range 自动规范化）
+(define d0 (editor-open "abcdef" 20 5))
+(define d1 (editor-view-highlight-range-batch d0 0
+             (list (list (range-of (point 0 0) (point 0 2)) 'a)
+                   (list (range-of (point 0 4) (point 0 6)) 'b))))
+(check-equal? (editor-view-highlight-row d1 0 0) (vector 'a 'a #f #f 'b 'b))
+(define r0 (editor-open "abcdef" 20 5))
+(define r1 (editor-view-highlight-range-batch r0 0
+             (list (list (range-of (point 0 2) (point 0 0)) 'c))))
+(check-equal? (editor-view-highlight-row r1 0 0) (vector 'c 'c #f #f #f #f)
+              "乱序 range 自动规范化")
+
 (displayln "editor/attributes.rkt: all tests passed")
