@@ -36,4 +36,5 @@
                name)]))
   ;; 整行一个 'status face（配色由后端决定）。
   (define doc (document-highlight-fill (document-open txt) 0 0 0 (string-length txt) 'status))
-  (struct-copy app a [editor (editor-view-assign (app-editor a) (app-pane-vid a pid) doc)]))
+  (editor-view-assign! (app-editor a) (app-pane-vid a pid) doc)
+  (struct-copy app a))

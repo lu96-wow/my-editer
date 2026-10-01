@@ -10,8 +10,15 @@
          "../../core/text/base/range.rkt")
 
 ;; 插入并取新 editor
-(define (ins ed text [tag #f])
-  (let-values ([(e _) (editor-view-insert ed 0 text tag)]) e))
+(define (ins ed text [tag #f]) (editor-view-insert! ed 0 text tag) ed)
+
+;; adapter：新 API（就地、不返回 ed）
+(define (editor-view-undo ed vid) (editor-view-undo! ed vid) ed)
+(define (editor-view-redo ed vid) (editor-view-redo! ed vid) ed)
+(define (editor-view-highlight-range ed vid r face) (editor-view-highlight-range! ed vid r face) ed)
+(define (editor-view-readonly-range ed vid r f) (editor-view-readonly-range! ed vid r f) ed)
+(define (editor-view-highlight-batch ed vid fills) (editor-view-highlight-batch! ed vid fills) ed)
+(define (editor-view-highlight-range-batch ed vid runs) (editor-view-highlight-range-batch! ed vid runs) ed)
 
 ;; 造一条与 text 对齐的高亮轨（模拟解析器输出）
 (define (hl-track text l0 c0 l1 c1 face)
@@ -32,11 +39,11 @@
 
 ;;; ---------- 2. 写回 redo 栈里的版本：redo 回去可见 ----------
 
-(define e2 (ins e1 "Y"))                                    ; "YXabc"，depth 2；fork 自 e1（无属性）
-(define doc-e1 (editor-view-document-handle e1 0))          ; 仍指 e1 的 D1
+(define e2 (ins e1 "Y"))                                    ; "YXabc"，depth 2
 (define e3 (editor-view-undo e2 0))                         ; current D1
+(define doc-d1 (editor-view-document-handle e3 0))          ; 抓 D1 的 doc（此时是 current）
 (define e4 (editor-view-undo e3 0))                         ; current D0, future [D1, D2]
-(void (editor-document-set-highlight! doc-e1 (hl-track "Xabc" 0 1 0 2 'hl2)))  ; 写 future 里的 D1
+(void (editor-document-set-highlight! doc-d1 (hl-track "Xabc" 0 1 0 2 'hl2)))  ; 写 future 里的 D1
 (check-false (document-highlight (editor-view-document e4 0))
              "当前 D0 不受写回 future 的影响")
 (define e5 (editor-view-redo e4 0))                         ; current D1（同一对象）
@@ -151,5 +158,29 @@
              (list (list (range-of (point 0 2) (point 0 0)) 'c))))
 (check-equal? (editor-view-highlight-row r1 0 0) (vector 'c 'c #f #f #f #f)
               "乱序 range 自动规范化")
+
+;;; ---------- 9. CAS：异步写文本（版本命中才应用） ----------
+
+(define cv0 (editor-open "abc" 20 5))
+(define cv-base (document-text (editor-view-document cv0 0)))
+(define cv1 cv0)
+(define applied1 (editor-view-apply-text-if-version! cv1 0 cv-base (document-open "xyz")))
+(check-true applied1 "版本命中 → applied?=#t")
+(check-equal? (editor-view-string cv1 0) "xyz")
+(check-equal? (editor-view-depth cv1 0) 1 "异步应用记一步")
+;; 过期 base → 丢弃
+(define cv2 cv1)
+(define applied2 (editor-view-apply-text-if-version! cv2 0 cv-base (document-open "nope")))
+(check-false applied2 "版本不匹配 → applied?=#f")
+(check-equal? (editor-view-string cv2 0) "xyz")
+(check-eq? cv2 cv1 "可变下返回同一 editor（靠 applied? 区分）")
+;; 不同文档独立：写 A 不动 B
+(define dv0 (editor-open "aaa" 20 5 "A"))
+(define-values (dv1 didb) (editor-add-document dv0 "bbb" "B"))
+(define-values (dv2 _) (editor-add-view dv1 didb 20 5))
+(void (editor-view-apply-text-if-version! dv2 0 (document-text (editor-view-document dv2 0))
+                                         (document-open "AAA")))
+(check-equal? (editor-view-string dv2 0) "AAA")
+(check-equal? (editor-view-string dv2 1) "bbb" "写 A 不动 B")
 
 (displayln "editor/attributes.rkt: all tests passed")

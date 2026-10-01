@@ -35,14 +35,14 @@
 
 ;;; ---------- 写：尺寸落到 view ----------
 
-;; 逐个 rect：w/h 与 view 当前视口不同才重锚（editor-view-set-size 会同步跟随者）。
+;; 逐个 rect：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 会同步跟随者）。就地、返回 ed。
 (define (editor-set-layout ed rects)
-  (for/fold ([e ed]) ([r (in-list rects)])
-    (define vp (view-viewport (editor-view-ref e (rect-vid r))))
-    (if (and (= (rect-w r) (viewport-width vp))
-             (= (rect-h r) (viewport-height vp)))
-        e
-        (editor-view-set-size e (rect-vid r) (rect-w r) (rect-h r)))))
+  (for ([r (in-list rects)])
+    (define vp (view-viewport (editor-view-ref ed (rect-vid r))))
+    (unless (and (= (rect-w r) (viewport-width vp))
+                 (= (rect-h r) (viewport-height vp)))
+      (editor-view-set-size! ed (rect-vid r) (rect-w r) (rect-h r))))
+  ed)
 
 ;;; ---------- 读：纯渲染 ----------
 

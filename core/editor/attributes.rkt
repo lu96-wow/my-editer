@@ -17,10 +17,10 @@
 ;;;
 ;;; 不新增 history 步、不重建快照、不做任何按版本查找（没有 O(深度)）。
 ;;;
-;;; 属性写口的输入形态：
-;;;   坐标版   -batch / -batch! 吃 (listof (list l0 c0 l1 c1 val))；本层不规范化坐标。
-;;;   range 版 -range / -range-batch 吃 range；进入时 range-normalize。
-;;; 两者经 range-of 互转；range 版折成坐标后走 document 层的同一条路径。
+;;; 属性写口的输入形态（本层是**句柄式**：吃 document + 区间）：
+;;;   坐标版   editor-document-*-batch!       吃 (listof (list l0 c0 l1 c1 val))；不规范化坐标。
+;;;   range 版 editor-document-*-range-batch! 吃 range；进入时 range-normalize。
+;;; （同步的作者态命令在 command.rkt：editor-view-highlight! 等；本层用于异步写回。）
 ;;; change（before 区间 ⊕ after 区间 ⊕ kind）在 core/text/base/change.rkt。
 
 (provide editor-view-document-handle

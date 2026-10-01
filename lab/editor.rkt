@@ -128,9 +128,8 @@
      (define a1 (app-set-pane a pid (struct-copy pane p [vid vid])))
      (define a2 (struct-copy app a1 [editor-pane pid]))
      ;; 视图尺寸对齐当前窗格（ensure / 鼠标换算依赖它）。
-     (struct-copy app a2 [editor (editor-view-set-size (app-editor a2) vid
-                                                       (rect-w-or a2 pid 40)
-                                                       (rect-h-or a2 pid 10))])]))
+     (editor-view-set-size! (app-editor a2) vid (rect-w-or a2 pid 40) (rect-h-or a2 pid 10))
+     a2]))
 
 ;; 若 pane 当前显示的是一个**空且非文件**的占位 scratch（且是该文档唯一视图），
 ;; 就把它连同文档一起丢掉 —— 切到真正要显示的文档前先清掉，避免视图表里长长一串 *scratch*。
@@ -396,12 +395,11 @@
 (define (ctrl? k c) (and (key-ctrl? k) (not (key-alt? k)) (not (key-meta? k)) (eqv? (key-name k) c)))
 
 (define (buf-do a pid f)
-  (define ed (app-editor a))
-  (define vid (app-pane-vid a pid))
-  (define ed* (call-with-values (lambda () (f ed vid)) (lambda (v . _) v)))
-  (struct-copy app a [editor ed*]))
+  ;; f 是新 API 的命令式操作（就地改 editor，不返回 editor）。
+  (f (app-editor a) (app-pane-vid a pid))
+  (struct-copy app a))
 
-(define (buf-insert a pid s) (buf-do a pid (lambda (e v) (editor-view-insert e v s))))
+(define (buf-insert a pid s) (buf-do a pid (lambda (e v) (editor-view-insert! e v s))))
 
 (define (buf-key a pid k)
   (define n (key-name k))
@@ -410,20 +408,20 @@
     [(and (plain? k) (char? n)) (buf-insert a pid (string n))]
     [(and (plain? k) (eq? n 'enter)) (buf-insert a pid "\n")]
     [(and (plain? k) (eq? n 'tab)) (buf-insert a pid "    ")]
-    [(and (plain? k) (eq? n 'backspace)) (buf-do a pid (lambda (e v) (editor-view-backspace e v 'backspace)))]
-    [(and (plain? k) (memq n '(del delete))) (buf-do a pid (lambda (e v) (editor-view-delete e v 'delete)))]
-    [(and (bare? k) (eq? n 'left)) (buf-do a pid (lambda (e v) (editor-view-left e v ext)))]
-    [(and (bare? k) (eq? n 'right)) (buf-do a pid (lambda (e v) (editor-view-right e v ext)))]
-    [(and (bare? k) (eq? n 'up)) (buf-do a pid (lambda (e v) (editor-view-up e v ext)))]
-    [(and (bare? k) (eq? n 'down)) (buf-do a pid (lambda (e v) (editor-view-down e v ext)))]
-    [(and (plain? k) (eq? n 'home)) (buf-do a pid (lambda (e v) (editor-view-home e v ext)))]
-    [(and (plain? k) (eq? n 'end)) (buf-do a pid (lambda (e v) (editor-view-end e v ext)))]
-    [(and (plain? k) (eq? n 'pageup)) (buf-do a pid (lambda (e v) (editor-view-scroll e v (- (editor-view-height e v)))))]
-    [(and (plain? k) (eq? n 'pagedown)) (buf-do a pid (lambda (e v) (editor-view-scroll e v (editor-view-height e v))))]
-    [(ctrl? k #\z) (buf-do a pid (lambda (e v) (editor-view-undo e v)))]
-    [(ctrl? k #\y) (buf-do a pid (lambda (e v) (editor-view-redo e v)))]
-    [(ctrl? k #\c) (buf-do a pid (lambda (e v) (editor-view-copy e v)))]
-    [(ctrl? k #\v) (buf-do a pid (lambda (e v) (editor-view-paste e v)))]
+    [(and (plain? k) (eq? n 'backspace)) (buf-do a pid (lambda (e v) (editor-view-backspace! e v 'backspace)))]
+    [(and (plain? k) (memq n '(del delete))) (buf-do a pid (lambda (e v) (editor-view-delete! e v 'delete)))]
+    [(and (bare? k) (eq? n 'left)) (buf-do a pid (lambda (e v) (editor-view-left! e v ext)))]
+    [(and (bare? k) (eq? n 'right)) (buf-do a pid (lambda (e v) (editor-view-right! e v ext)))]
+    [(and (bare? k) (eq? n 'up)) (buf-do a pid (lambda (e v) (editor-view-up! e v ext)))]
+    [(and (bare? k) (eq? n 'down)) (buf-do a pid (lambda (e v) (editor-view-down! e v ext)))]
+    [(and (plain? k) (eq? n 'home)) (buf-do a pid (lambda (e v) (editor-view-home! e v ext)))]
+    [(and (plain? k) (eq? n 'end)) (buf-do a pid (lambda (e v) (editor-view-end! e v ext)))]
+    [(and (plain? k) (eq? n 'pageup)) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (- (editor-view-height e v)))))]
+    [(and (plain? k) (eq? n 'pagedown)) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (editor-view-height e v))))]
+    [(ctrl? k #\z) (buf-do a pid (lambda (e v) (editor-view-undo! e v)))]
+    [(ctrl? k #\y) (buf-do a pid (lambda (e v) (editor-view-redo! e v)))]
+    [(ctrl? k #\c) (buf-do a pid (lambda (e v) (editor-view-copy! e v)))]
+    [(ctrl? k #\v) (buf-do a pid (lambda (e v) (editor-view-paste! e v)))]
     [(ctrl? k #\s) (app-save a pid)]
     [(ctrl? k #\w) (app-close a (editor-view-document-id (app-editor a) (app-pane-vid a pid)))]
     [else a]))
@@ -439,19 +437,19 @@
   (define ed (app-editor a))
   (define vid (app-pane-vid a pid))
   (case (pointer-action in)
-    [(scroll) (buf-do a pid (lambda (e v) (editor-view-scroll e v (if (eq? (pointer-button in) 'up) -3 3))))]
+    [(scroll) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (if (eq? (pointer-button in) 'up) -3 3))))]
     [else
      (define-values (line col) (editor-view-screen-pos->point ed vid lr lc))
      (cond
        [(not line) a]
        [(eq? (pointer-action in) 'press)
-        (struct-copy app a [editor (editor-view-set-point ed vid (point line col))])]
+        (editor-view-set-point! ed vid (point line col))
+        (struct-copy app a)]
        [(eq? (pointer-action in) 'move)
         (define prim (selections-primary (editor-view-selections ed vid)))
         (define anchor (selection-anchor prim))
-        (struct-copy app a
-          [editor (editor-view-set-selections ed vid
-                    (selections-one (selection anchor (point line col))))])]
+        (editor-view-set-selections! ed vid (selections-one (selection anchor (point line col))))
+        (struct-copy app a)]
        [else a])]))
 
 ;;; ============================================================================
@@ -478,8 +476,8 @@
   ;; 文档管理：打开 / 显示 / 保存 / 关闭
   (define a1 (app-open a f))
   (check-equal? (editor-view-string (app-editor a1) (app-pane-vid a1 1)) "hello\nworld\n")
-  (define-values (ed* _ch) (editor-view-insert (app-editor a1) (app-pane-vid a1 1) "X"))
-  (define a3 (app-save (struct-copy app a1 [editor ed*]) 1))
+  (define-values (_c-a1 _o-a1) (editor-view-insert! (app-editor a1) (app-pane-vid a1 1) "X"))
+  (define a3 (app-save a1 1))
   (check-equal? (file->string f) "Xhello\nworld\n")
   (define a4 (app-close a3 (hash-ref (app-opened a3) f)))
   (check-false (hash-has-key? (app-opened a4) f))
@@ -507,10 +505,10 @@
   (define g (build-path d "b.txt"))
   (display-to-file "b\n" g #:exists 'replace)
   (define b1 (app-open a f))                                    ; 打开 f
-  (define-values (e1 _ch1) (editor-view-insert (app-editor b1) (app-pane-vid b1 1) "X"))
-  (define b2 (app-open (struct-copy app b1 [editor e1]) g))     ; 打开 g（f 已脏）
-  (define-values (e2 _ch2) (editor-view-insert (app-editor b2) (app-pane-vid b2 1) "Y"))
-  (define b3 (struct-copy app b2 [editor e2]))
+  (define-values (_c-b1 _o-b1) (editor-view-insert! (app-editor b1) (app-pane-vid b1 1) "X"))
+  (define b2 (app-open b1 g))     ; 打开 g（f 已脏）
+  (define-values (_c-b2 _o-b2) (editor-view-insert! (app-editor b2) (app-pane-vid b2 1) "Y"))
+  (define b3 b2)
   (define q1 (quit-request b3))
   (check-false (app-quit? q1))
   (check-true (and (app-quit-ask q1) #t))
@@ -520,8 +518,8 @@
   (check-equal? (file->string f) "XXhello\nworld\n")
   (check-equal? (file->string g) "Yb\n")
   ;; Esc 取消（先把当前文档再改脏）
-  (define b4 (let-values ([(ed _ch3) (editor-view-insert (app-editor b3) (app-pane-vid b3 1) "Z")])
-               (struct-copy app b3 [editor ed])))
+  (define-values (_c-b3 _o-b3) (editor-view-insert! (app-editor b3) (app-pane-vid b3 1) "Z"))
+  (define b4 b3)
   (define q4 (quit-request b4))
   (check-true (and (app-quit-ask q4) #t))
   (check-false (app-quit-ask (quit-cancel q4)))

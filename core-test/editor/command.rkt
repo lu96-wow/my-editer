@@ -3,9 +3,9 @@
 ;; 与 core/editor/command.rkt 对应的外部测试（经 core/editor.rkt 入口）。
 (require rackunit
          "../../core/editor.rkt"
+         "../../core/editor/state.rkt"   ; 裸 box setter（适配层用）
          (prefix-in c: "../../core/editor.rkt")
          (prefix-in base: "../../core/editor.rkt")
-         "../../core/editor/write.rkt"     ; editor-set-view（测试直接摆弄视图）
          "../../core/text/document.rkt"
          "../../core/editor/history.rkt"
          "../../core/text/command.rkt"
@@ -38,71 +38,134 @@
   (c:editor-open text w h name #:mode mode #:line-numbers? ln
                  #:chunk-lines cl #:history-limit hl #:history? hi))
 
-;; 编辑命令返回 (values editor changes)；多数测试只关心 editor，包一层丢弃 changes。
+;; 新 API：命令式操作就地改 box、不返回 ed。测试 shim 保留旧的调用形状
+;; （返回 ed，或 (values ed ...)），让下面的测试用例基本不用动。
 (define (editor-edit ed op [tag #f] [ensure? #t])
-  (let-values ([(e _) (base:editor-view-edit ed (focus-of ed) op tag ensure?)]) e))
+  (base:editor-view-edit! ed (focus-of ed) op tag ensure?) ed)
 (define (editor-insert ed text [tag #f])
-  (let-values ([(e _) (base:editor-view-insert ed (focus-of ed) text tag)]) e))
+  (base:editor-view-insert! ed (focus-of ed) text tag) ed)
 (define (editor-backspace ed [tag #f])
-  (let-values ([(e _) (base:editor-view-backspace ed (focus-of ed) tag)]) e))
+  (base:editor-view-backspace! ed (focus-of ed) tag) ed)
 (define (editor-delete ed [tag #f])
-  (let-values ([(e _) (base:editor-view-delete ed (focus-of ed) tag)]) e))
+  (base:editor-view-delete! ed (focus-of ed) tag) ed)
 (define (editor-paste ed [tag #f])
-  (let-values ([(e _) (base:editor-view-paste ed (focus-of ed) tag)]) e))
+  (base:editor-view-paste! ed (focus-of ed) tag) ed)
 (define (editor-paste-text ed text [tag #f])
-  (let-values ([(e _) (base:editor-view-paste-text ed (focus-of ed) text tag)]) e))
+  (base:editor-view-paste-text! ed (focus-of ed) text tag) ed)
 (define (editor-cut ed [tag #f])
-  (let-values ([(e _) (base:editor-view-cut ed (focus-of ed) tag)]) e))
+  (base:editor-view-cut! ed (focus-of ed) tag) ed)
 (define (editor-view-edit ed vid op [tag #f] [ensure? #t])
-  (let-values ([(e _) (base:editor-view-edit ed vid op tag ensure?)]) e))
+  (base:editor-view-edit! ed vid op tag ensure?) ed)
 (define (editor-view-insert ed vid text [tag #f])
-  (let-values ([(e _) (base:editor-view-insert ed vid text tag)]) e))
+  (base:editor-view-insert! ed vid text tag) ed)
 (define (editor-view-backspace ed vid [tag #f])
-  (let-values ([(e _) (base:editor-view-backspace ed vid tag)]) e))
+  (base:editor-view-backspace! ed vid tag) ed)
 (define (editor-view-delete ed vid [tag #f])
-  (let-values ([(e _) (base:editor-view-delete ed vid tag)]) e))
+  (base:editor-view-delete! ed vid tag) ed)
 (define (editor-view-paste ed vid [tag #f])
-  (let-values ([(e _) (base:editor-view-paste ed vid tag)]) e))
+  (base:editor-view-paste! ed vid tag) ed)
 (define (editor-view-paste-text ed vid text [tag #f])
-  (let-values ([(e _) (base:editor-view-paste-text ed vid text tag)]) e))
+  (base:editor-view-paste-text! ed vid text tag) ed)
 (define (editor-view-cut ed vid [tag #f])
-  (let-values ([(e _) (base:editor-view-cut ed vid tag)]) e))
+  (base:editor-view-cut! ed vid tag) ed)
 (define (editor-add-view ed did w h [sync 'free] [link #f]
                          #:mode [m 'clip] #:line-numbers? [ln #f])
   (let-values ([(e _) (base:editor-add-view ed did w h sync link #:mode m #:line-numbers? ln)]) e))
-(define (editor-insert-ignore-readonly ed text [tag #f]) (editor-view-insert-ignore-readonly ed (focus-of ed) text tag))
-(define (editor-backspace-ignore-readonly ed [tag #f]) (editor-view-backspace-ignore-readonly ed (focus-of ed) tag))
-(define (editor-delete-ignore-readonly ed [tag #f]) (editor-view-delete-ignore-readonly ed (focus-of ed) tag))
-(define (editor-paste-ignore-readonly ed [tag #f]) (editor-view-paste-ignore-readonly ed (focus-of ed) tag))
-(define (editor-paste-text-ignore-readonly ed text [tag #f]) (editor-view-paste-text-ignore-readonly ed (focus-of ed) text tag))
-(define (editor-cut-ignore-readonly ed [tag #f]) (editor-view-cut-ignore-readonly ed (focus-of ed) tag))
 
-(define (editor-left ed [x #f]) (editor-view-left ed (focus-of ed) x))
-(define (editor-right ed [x #f]) (editor-view-right ed (focus-of ed) x))
-(define (editor-home ed [x #f]) (editor-view-home ed (focus-of ed) x))
-(define (editor-end ed [x #f]) (editor-view-end ed (focus-of ed) x))
-(define (editor-up ed [x #f]) (editor-view-up ed (focus-of ed) x))
-(define (editor-down ed [x #f]) (editor-view-down ed (focus-of ed) x))
-(define (editor-scroll ed d) (editor-view-scroll ed (focus-of ed) d))
-(define (editor-goto ed p) (editor-view-set-point ed (focus-of ed) p))
-(define (editor-set-selections ed x) (editor-view-set-selections ed (focus-of ed) x))
-(define (editor-select-all ed) (editor-view-select-all ed (focus-of ed)))
-(define (editor-set-point ed p) (editor-view-set-point ed (focus-of ed) p))
-(define (editor-set-mode ed m) (editor-view-set-mode ed (focus-of ed) m))
-(define (editor-toggle-line-numbers ed) (editor-view-toggle-line-numbers ed (focus-of ed)))
-(define (editor-set-top-line ed n) (editor-view-set-top-line ed (focus-of ed) n))
-(define (editor-set-left-col ed n) (editor-view-set-left-col ed (focus-of ed) n))
-(define (editor-undo ed) (editor-view-undo ed (focus-of ed)))
-(define (editor-redo ed) (editor-view-redo ed (focus-of ed)))
-(define (editor-clear-history ed) (editor-view-clear-history ed (focus-of ed)))
-(define (editor-reset-history ed [enabled? #f]) (editor-view-reset-history ed (focus-of ed) enabled?))
-(define (editor-seal ed) (editor-view-seal ed (focus-of ed)))
-(define (editor-set-history-enabled ed flag) (editor-view-set-history-enabled ed (focus-of ed) flag))
-(define (editor-copy ed) (editor-view-copy ed (focus-of ed)))
-(define (editor-highlight ed face) (editor-view-highlight ed (focus-of ed) face))
-(define (editor-highlight-range ed r face) (editor-view-highlight-range ed (focus-of ed) r face))
-(define (editor-readonly ed flag) (editor-view-readonly ed (focus-of ed) flag))
-(define (editor-readonly-range ed r flag) (editor-view-readonly-range ed (focus-of ed) r flag))
+;; vid 版命令（测试直接调 editor-view-*）：adapter → 就地、返回 ed
+(define (editor-view-select-all ed vid) (base:editor-view-select-all! ed vid) ed)
+(define (editor-view-set-point ed vid p) (base:editor-view-set-point! ed vid p) ed)
+(define (editor-view-goto ed vid p) (base:editor-view-goto! ed vid p) ed)
+(define (editor-view-set-selections ed vid s #:ensure? [e #t]) (base:editor-view-set-selections! ed vid s #:ensure? e) ed)
+(define (editor-view-scroll ed vid d) (base:editor-view-scroll! ed vid d) ed)
+(define (editor-view-set-top-line ed vid n) (base:editor-view-set-top-line! ed vid n) ed)
+(define (editor-view-set-left-col ed vid n) (base:editor-view-set-left-col! ed vid n) ed)
+(define (editor-view-set-mode ed vid m) (base:editor-view-set-mode! ed vid m) ed)
+(define (editor-view-toggle-line-numbers ed vid) (base:editor-view-toggle-line-numbers! ed vid) ed)
+(define (editor-view-set-size ed vid w h) (base:editor-view-set-size! ed vid w h) ed)
+(define (editor-view-undo ed vid) (base:editor-view-undo! ed vid) ed)
+(define (editor-view-redo ed vid) (base:editor-view-redo! ed vid) ed)
+(define (editor-view-clear-history ed vid) (base:editor-view-clear-history! ed vid) ed)
+(define (editor-view-reset-history ed vid [e #f]) (base:editor-view-reset-history! ed vid e) ed)
+(define (editor-view-seal ed vid) (base:editor-view-seal! ed vid) ed)
+(define (editor-view-set-history-enabled ed vid f) (base:editor-view-set-history-enabled! ed vid f) ed)
+(define (editor-view-copy ed vid) (base:editor-view-copy! ed vid) ed)
+(define (editor-view-left ed vid [x #f]) (base:editor-view-left! ed vid x) ed)
+(define (editor-view-right ed vid [x #f]) (base:editor-view-right! ed vid x) ed)
+(define (editor-view-up ed vid [x #f]) (base:editor-view-up! ed vid x) ed)
+(define (editor-view-down ed vid [x #f]) (base:editor-view-down! ed vid x) ed)
+(define (editor-view-home ed vid [x #f]) (base:editor-view-home! ed vid x) ed)
+(define (editor-view-end ed vid [x #f]) (base:editor-view-end! ed vid x) ed)
+(define (editor-view-highlight ed vid face) (base:editor-view-highlight! ed vid face) ed)
+(define (editor-view-highlight-range ed vid r face) (base:editor-view-highlight-range! ed vid r face) ed)
+(define (editor-view-highlight-cell ed vid l c face) (base:editor-view-highlight-cell! ed vid l c face) ed)
+(define (editor-view-highlight-line ed vid l face) (base:editor-view-highlight-line! ed vid l face) ed)
+(define (editor-view-highlight-selections ed vid face) (base:editor-view-highlight-selections! ed vid face) ed)
+(define (editor-view-readonly ed vid f) (base:editor-view-readonly! ed vid f) ed)
+(define (editor-view-readonly-range ed vid r f) (base:editor-view-readonly-range! ed vid r f) ed)
+(define (editor-view-readonly-cell ed vid l c f) (base:editor-view-readonly-cell! ed vid l c f) ed)
+(define (editor-view-readonly-line ed vid l f) (base:editor-view-readonly-line! ed vid l f) ed)
+(define (editor-view-readonly-selections ed vid f) (base:editor-view-readonly-selections! ed vid f) ed)
+(define (editor-view-set-sync ed vid sy) (base:editor-view-set-sync! ed vid sy) ed)
+(define (editor-view-set-link ed vid l) (base:editor-view-set-link! ed vid l) ed)
+
+;; 测试用：从旧 API 的 view-with-* / editor-set-view 适配到就地 setter
+(define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s (view-sync v) (view-link v)))
+(define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v) (view-sync v) (view-link v)))
+(define (editor-set-view ed v)
+  (define cur (editor-view-ref ed (view-id v)))
+  (view-set-selections! cur (view-selections v))
+  (view-set-viewport! cur (view-viewport v))
+  ed)
+;; 通用原语：保留旧形状 (values ed step)
+(define (editor-view-set ed vid value #:selections [s #f] #:change [c #f] #:ensure? [ens #t])
+  (values ed (base:editor-view-set! ed vid value #:selections s #:change c #:ensure? ens)))
+(define (editor-history-record ed did step [tag #f])
+  (base:editor-history-record! ed did step tag) ed)
+(define (editor-view-assign ed vid value #:selections [s #f] #:ensure? [ens #f])
+  (base:editor-view-assign! ed vid value #:selections s #:ensure? ens) ed)
+;; -ignore-readonly 版：测试用 (values ed changes)
+(define (ig-ro f ed a b)
+  (define-values (ch _) (f ed a b)) (values ed ch))
+(define (editor-insert-ignore-readonly ed text [tag #f])
+  (define-values (ch _) (base:editor-view-insert-ignore-readonly! ed (focus-of ed) text tag)) (values ed ch))
+(define (editor-backspace-ignore-readonly ed [tag #f])
+  (define-values (ch _) (base:editor-view-backspace-ignore-readonly! ed (focus-of ed) tag)) (values ed ch))
+(define (editor-delete-ignore-readonly ed [tag #f])
+  (define-values (ch _) (base:editor-view-delete-ignore-readonly! ed (focus-of ed) tag)) (values ed ch))
+(define (editor-paste-ignore-readonly ed [tag #f])
+  (define-values (ch _) (base:editor-view-paste-ignore-readonly! ed (focus-of ed) tag)) (values ed ch))
+(define (editor-paste-text-ignore-readonly ed text [tag #f])
+  (define-values (ch _) (base:editor-view-paste-text-ignore-readonly! ed (focus-of ed) text tag)) (values ed ch))
+(define (editor-cut-ignore-readonly ed [tag #f])
+  (define-values (ch _) (base:editor-view-cut-ignore-readonly! ed (focus-of ed) tag)) (values ed ch))
+
+(define (editor-left ed [x #f]) (base:editor-view-left! ed (focus-of ed) x) ed)
+(define (editor-right ed [x #f]) (base:editor-view-right! ed (focus-of ed) x) ed)
+(define (editor-home ed [x #f]) (base:editor-view-home! ed (focus-of ed) x) ed)
+(define (editor-end ed [x #f]) (base:editor-view-end! ed (focus-of ed) x) ed)
+(define (editor-up ed [x #f]) (base:editor-view-up! ed (focus-of ed) x) ed)
+(define (editor-down ed [x #f]) (base:editor-view-down! ed (focus-of ed) x) ed)
+(define (editor-scroll ed d) (base:editor-view-scroll! ed (focus-of ed) d) ed)
+(define (editor-goto ed p) (base:editor-view-set-point! ed (focus-of ed) p) ed)
+(define (editor-set-selections ed x) (base:editor-view-set-selections! ed (focus-of ed) x) ed)
+(define (editor-select-all ed) (base:editor-view-select-all! ed (focus-of ed)) ed)
+(define (editor-set-point ed p) (base:editor-view-set-point! ed (focus-of ed) p) ed)
+(define (editor-set-mode ed m) (base:editor-view-set-mode! ed (focus-of ed) m) ed)
+(define (editor-toggle-line-numbers ed) (base:editor-view-toggle-line-numbers! ed (focus-of ed)) ed)
+(define (editor-set-top-line ed n) (base:editor-view-set-top-line! ed (focus-of ed) n) ed)
+(define (editor-set-left-col ed n) (base:editor-view-set-left-col! ed (focus-of ed) n) ed)
+(define (editor-undo ed) (base:editor-view-undo! ed (focus-of ed)) ed)
+(define (editor-redo ed) (base:editor-view-redo! ed (focus-of ed)) ed)
+(define (editor-clear-history ed) (base:editor-view-clear-history! ed (focus-of ed)) ed)
+(define (editor-reset-history ed [enabled? #f]) (base:editor-view-reset-history! ed (focus-of ed) enabled?) ed)
+(define (editor-seal ed) (base:editor-view-seal! ed (focus-of ed)) ed)
+(define (editor-set-history-enabled ed flag) (base:editor-view-set-history-enabled! ed (focus-of ed) flag) ed)
+(define (editor-copy ed) (base:editor-view-copy! ed (focus-of ed)) ed)
+(define (editor-highlight ed face) (base:editor-view-highlight! ed (focus-of ed) face) ed)
+(define (editor-highlight-range ed r face) (base:editor-view-highlight-range! ed (focus-of ed) r face) ed)
+(define (editor-readonly ed flag) (base:editor-view-readonly! ed (focus-of ed) flag) ed)
+(define (editor-readonly-range ed r flag) (base:editor-view-readonly-range! ed (focus-of ed) r flag) ed)
 (define (editor-string ed) (editor-view-string ed (focus-of ed)))
 (define (editor-point ed) (editor-view-point ed (focus-of ed)))
 (define (editor-primary ed) (editor-view-primary ed (focus-of ed)))
@@ -130,46 +193,60 @@
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed (focus-of ed) l c))
 (define (editor-readonly-range? ed l0 c0 l1 c1) (editor-view-readonly-range? ed (focus-of ed) l0 c0 l1 c1))
 (define (editor-editable? ed l0 c0 l1 c1) (editor-view-editable? ed (focus-of ed) l0 c0 l1 c1))
-(define (editor-set-size ed w h) (editor-view-set-size ed (focus-of ed) w h))
+(define (editor-set-size ed w h) (base:editor-view-set-size! ed (focus-of ed) w h) ed)
 
 (define (doc-str ed) (document->string (focused-doc ed)))
 (define (caret-pos ed) (selection-head (selections-primary (view-selections (focused-view ed)))))
 (define (depth ed) (history-depth (editor-document-history ed (view-did (focused-view ed)))))
+
+;; editor 值不再是快照（写就地改绑定），测试要显式深拷贝才留得住旧值。
+;; 只复制可变绑定（history / viewport / selections 的 box），不可变值共享。
+(define (snap ed)
+  (struct-copy editor ed
+    [documents (for/list ([e (in-list (editor-documents ed))])
+                 (document-entry (document-entry-im e)
+                                 (entry-mutable (box (document-entry-name e))
+                                                (box (document-entry-history e)))))]
+    [views (for/list ([v (in-list (editor-views ed))])
+             (view (view-im v)
+                   (view-mutable (box (view-viewport v)) (box (view-selections v))
+                                 (box (view-sync v)) (box (view-link v)))))]
+    [clipboard-box (box (editor-clipboard ed))]))
 
 ;; 宿主策略：打字用 'typing（形状门会把多字符挡掉）；这里显式传 tag，core 不预设。
 (define (type-it ed text) (editor-insert ed text 'typing))
 
 ;; ---------- 打字：进文档 + 选区前进；连续单字符打字并成一步 ----------
 (define ed0 (editor-open "abc" 40 10))
-(define e1 (type-it ed0 "X"))
+(define e1 (type-it (snap ed0) "X"))
 (check-equal? (doc-str e1) "Xabc")
 (check-equal? (caret-pos e1) (point 0 1))
 (check-equal? (depth e1) 1)
-(define e2 (type-it e1 "Y"))
+(define e2 (type-it (snap e1) "Y"))
 (check-equal? (doc-str e2) "XYabc")
 (check-equal? (depth e2) 1)                       ; 连续打字合并
-(define e3 (editor-insert e2 "ZZ"))                 ; 不传 tag → 一步一条
+(define e3 (editor-insert (snap e2) "ZZ"))                 ; 不传 tag → 一步一条
 (check-equal? (doc-str e3) "XYZZabc")
 (check-equal? (caret-pos e3) (point 0 4))
 (check-equal? (depth e3) 2)
 
 ;; ---------- 退格 / 删除 ----------
-(check-equal? (doc-str (editor-backspace e3)) "XYZabc")
-(check-equal? (doc-str (editor-delete e1)) "Xbc")   ; 光标在 (0,1)，删 'a'
+(check-equal? (doc-str (editor-backspace (snap e3))) "XYZabc")
+(check-equal? (doc-str (editor-delete (snap e1))) "Xbc")   ; 光标在 (0,1)，删 'a'
 
 ;; ---------- 导航：不改文本、不记步 ----------
-(define e4 (editor-right e3))
+(define e4 (editor-right (snap e3)))
 (check-equal? (doc-str e4) "XYZZabc")
 (check-equal? (caret-pos e4) (point 0 5))
-(define e5 (type-it e4 "Q"))
+(define e5 (type-it (snap e4) "Q"))
 (check-equal? (doc-str e5) "XYZZaQbc")           ; 光标在 (0,5) = 'a' 与 'b' 之间
 (check-equal? (depth e5) 3)                        ; 导航后选区变了 → 不并
 
 ;; ---------- undo / redo ----------
-(define e6 (editor-undo e5))
+(define e6 (editor-undo (snap e5)))
 (check-equal? (doc-str e6) "XYZZabc")             ; 回退一步
 (check-equal? (caret-pos e6) (point 0 5))         ; 还原该步发起时的选区
-(define e7 (editor-redo e6))
+(define e7 (editor-redo (snap e6)))
 (check-equal? (doc-str e7) (doc-str e5))
 (check-equal? (caret-pos e7) (point 0 6))
 
@@ -177,7 +254,7 @@
 (check-eq? (editor-undo ed0) ed0)
 
 ;; ---------- 多视图共享文档：undo 还原发起视图的选区 ----------
-(define edv (editor-add-view e3 0 40 10))         ; vid 1，选区在 (0,0)
+(define edv (editor-add-view (snap e3) 0 40 10))         ; vid 1，选区在 (0,0)
 (define edv1 (editor-set-focus edv 1))
 (define edv2 (type-it edv1 "M"))
 (check-equal? (doc-str edv2) "MXYZZabc")
@@ -202,28 +279,28 @@
 (define (hl-row ed) (document-highlight-row (editor-focused-document ed) 0))
 
 (define ha0 (editor-open "abc" 40 10))
-(define ha1 (type-it ha0 "X"))               ; "Xabc"（文本步，depth 1）
-(define ha2 (editor-left ha1 #t))                  ; 扩选 'X'
-(define ha3 (editor-highlight ha2 'kw))            ; 高亮 'X'
+(define ha1 (type-it (snap ha0) "X"))               ; "Xabc"（文本步，depth 1）
+(define ha2 (editor-left (snap ha1) #t))                  ; 扩选 'X'
+(define ha3 (editor-highlight (snap ha2) 'kw))            ; 高亮 'X'
 (check-equal? (depth ha3) 1)                       ; 高亮不记步
 (check-equal? (hl-row ha3) (vector 'kw #f #f #f))
 
 ;; 再打一个文本步；之后 undo 撤这一步 → 保留高亮（它在该步的 pre 里）
-(define ha3b (editor-end ha3))
-(define ha4 (type-it ha3b "Y"))               ; "XabcY"（depth 2）
+(define ha3b (editor-end (snap ha3)))
+(define ha4 (type-it (snap ha3b) "Y"))               ; "XabcY"（depth 2）
 (check-equal? (depth ha4) 2)
-(define ha5 (editor-undo ha4))
+(define ha5 (editor-undo (snap ha4)))
 (check-equal? (doc-str ha5) "Xabc")
 (check-equal? (hl-row ha5) (vector 'kw #f #f #f))
-(define ha6 (editor-redo ha5))
+(define ha6 (editor-redo (snap ha5)))
 (check-equal? (doc-str ha6) "XabcY")
 (check-equal? (hl-row ha6) (vector (quote kw) #f #f #f #f))
 
 ;; 再 undo 撤掉高亮所在的那一步文本 → 高亮随该步一起回退；redo 复原
-(define ha7 (editor-undo ha5))
+(define ha7 (editor-undo (snap ha5)))
 (check-equal? (doc-str ha7) "abc")
 (check-equal? (hl-row ha7) (vector #f #f #f))
-(define ha8 (editor-redo ha7))
+(define ha8 (editor-redo (snap ha7)))
 (check-equal? (doc-str ha8) "Xabc")
 (check-equal? (hl-row ha8) (vector 'kw #f #f #f))
 
@@ -340,8 +417,8 @@
 ;; ---------- 编辑传播到同文档其它视图（选区重基准，不越界） ----------
 (define mv0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 20 5))
 (define mv1 (editor-add-view mv0 0 20 5))
-(define mv2 (editor-set-view mv1 (struct-copy view (editor-view-ref mv1 1)
-                                              [selections (selections-one (caret (point 4 0)))])))
+(define mv2 (editor-set-view mv1 (view-with-selections
+                                 (editor-view-ref mv1 1) (selections-one (caret (point 4 0))))))
 ;; 焦点 vid0：删前 3 行
 (define mv3 (editor-edit mv2 (lambda (d s) (command-type-ignore-readonly d (selections-one (selection (point 0 0) (point 2 1))) ""))))
 (check-equal? (document->string (editor-focused-document mv3)) "2\nl3\nl4\nl5")
@@ -352,8 +429,8 @@
 ;; undo 后文档回退：同文档其它视图的选区被 clamp 回合法域
 (define un0 (editor-open "a\nb\nc\nd" 20 5))
 (define un1 (editor-add-view un0 0 20 5))
-(define un2 (editor-set-view un1 (struct-copy view (editor-view-ref un1 1)
-                                              [selections (selections-one (caret (point 3 0)))])))
+(define un2 (editor-set-view un1 (view-with-selections
+                                 (editor-view-ref un1 1) (selections-one (caret (point 3 0))))))
 (define un3 (editor-edit un2 (lambda (d s) (command-type-ignore-readonly d (selections-one (caret (point 3 1))) "\n\n\n"))))
 (define un4 (editor-undo un3))
 (check-equal? (view-selections (editor-view-ref un4 1))
@@ -530,7 +607,7 @@
 ;; ---------- 按 vid：插入 / 全选 / 剪贴板 / 属性（焦点不动）----------
 (define vc0 (editor-add-view (editor-open "abc\ndef" 20 5) 0 20 5))
 (define vc1 (editor-set-focus vc0 0))
-(check-equal? (doc-str (editor-view-insert vc1 1 "Z")) "Zabc\ndef")   ; 按 vid 插入
+(check-equal? (doc-str (editor-view-insert (snap vc1) 1 "Z")) "Zabc\ndef")   ; 按 vid 插入
 (define vc2 (editor-view-select-all vc1 1))
 (define vc3 (editor-view-copy vc2 1))
 (check-equal? (clipboard-text (editor-clipboard vc3)) '("abc" "def"))
@@ -570,43 +647,48 @@
 (check-equal? (editor-view-point (editor-view-set-point cl1 0 (point 5 5)) 0) (point 1 2))
 (check-true (screen? (editor-view-render (editor-set-point cl1 (point 99 99)) 0)))
 
-;; ---------- 编辑命令返回 change（直接用 base:，不丢弃）---------
-(define-values (cge cgs) (base:editor-view-insert (editor-open "abc" 20 5) 0 "XY\nZ"))
+;; ---------- 编辑命令返回 change + ok? ----------
+(define cge (editor-open "abc" 20 5))
+(define-values (cgs cge-ok?) (base:editor-view-insert! cge 0 "XY\nZ"))
+(check-true cge-ok?)
 (check-equal? (document->string (editor-focused-document cge)) "XY\nZabc")
 (check-equal? (length cgs) 1)
 (check-equal? (editor-change-post-range (car cgs)) (editor-range (point 0 0) (point 1 1)))
 (check-equal? (editor-view-change-text cge 0 (car cgs)) "XY\nZ")
 (check-equal? (editor-change-map-point (car cgs) (point 0 2)) (point 1 3))
-;; 被只读拒绝 → changes = '()
+;; 被只读拒绝 → changes = '()、ok? = #f
 (define ro-chg (editor-readonly (editor-right (editor-open "a" 20 5) #t) #t))
-(define-values (cge2 cgs2) (base:editor-view-insert ro-chg 0 "Q"))
-(check-eq? cge2 ro-chg)
+(define-values (cgs2 ro-ok?) (base:editor-view-insert! ro-chg 0 "Q"))
+(check-false ro-ok?)
 (check-equal? cgs2 '())
+(check-equal? (document->string (editor-focused-document ro-chg)) "a")
 ;; 无变更（文首退格）→ changes = '()
-(define-values (cge3 cgs3) (base:editor-view-backspace (editor-open "abc" 20 5) 0))
+(define cge3 (editor-open "abc" 20 5))
+(define-values (cgs3 _ok3) (base:editor-view-backspace! cge3 0))
 (check-equal? cgs3 '())
 ;; 多光标：一次命令 → 多个 change
 (define mc-chg (editor-set-selections (editor-open "abc\ndef" 20 5)
                                       (selections-of (list (caret (point 0 1)) (caret (point 1 1))) 0)))
-(define-values (cge4 cgs4) (base:editor-view-insert mc-chg 0 "!"))
+(define-values (cgs4 _ok4) (base:editor-view-insert! mc-chg 0 "!"))
 (check-equal? (length cgs4) 2)
-(check-equal? (editor-view-change-text cge4 0 (car cgs4)) "!")
+(check-equal? (editor-view-change-text mc-chg 0 (car cgs4)) "!")
 
 ;; ---------- 程序编辑（-ignore-readonly）：绕只读守卫 ----------
 (define ro-doc (document-readonly-fill (document-open "abc") 0 0 0 3 #t))
 (define io-ed (editor-open ro-doc 20 5))
-;; 守版：整体拒绝（editor 原样返回，changes '()）
-(define-values (io-g io-gc) (base:editor-view-insert io-ed 0 "X"))
-(check-true (eq? io-g io-ed))
+;; 守版：整体拒绝 → ok? #f, changes '()
+(define-values (io-gc io-gok?) (base:editor-view-insert! io-ed 0 "X"))
+(check-false io-gok?)
 (check-equal? io-gc '())
+(check-equal? (doc-str io-ed) "abc")
 ;; 程序版：绕只读、成功；历史开着 → 照常记一步
-(define-values (io1 io1c) (editor-insert-ignore-readonly io-ed "X"))
+(define-values (io1 io1c) (editor-insert-ignore-readonly (snap io-ed) "X"))
 (check-equal? (doc-str io1) "Xabc")
 (check-equal? (depth io1) 1)
 (check-equal? (length io1c) 1)
 (define-values (io2 io2c) (editor-backspace-ignore-readonly io1))
 (check-equal? (doc-str io2) "abc")
-(define-values (io3 io3c) (editor-paste-text-ignore-readonly io-ed "Z"))
+(define-values (io3 io3c) (editor-paste-text-ignore-readonly (snap io-ed) "Z"))
 (check-equal? (doc-str io3) "Zabc")
 (define io-sel (editor-right (editor-right io-ed #t) #t))   ; 扩选 "ab"
 (define-values (io4 io4c) (editor-cut-ignore-readonly io-sel))
@@ -646,7 +728,7 @@
 (define sb1 (editor-set-history-enabled sb0 #t))       ; 进入输入模式
 (define sb2 (type-it sb1 "x"))                        ; 可 undo/redo
 (check-equal? (depth sb2) 1)
-(check-equal? (doc-str (editor-undo sb2)) "abc")
+(check-equal? (doc-str (editor-undo (snap sb2))) "abc")
 ;; 结束输入：关历史 + 清空（保留当前内容）
 (define sb3 (editor-reset-history sb2))
 (check-false (editor-history-enabled? sb3))
@@ -670,11 +752,12 @@
 ;; ---------- 通用变更原语：editor-view-set / -record / -assign ----------
 (define su0 (editor-open "abc" 20 5))
 (define su-doc (document-open "xyz"))
+(define su-pre (editor-focused-document su0))          ; 就地改之前先抓
 (define-values (su1 su-step) (editor-view-set su0 0 su-doc))
 (check-equal? (doc-str su1) "xyz")
 (check-equal? (depth su1) 0)                                  ; set 不记步
 (check-true (step? su-step))
-(check-equal? (step-pre-value su-step) (editor-focused-document su0))
+(check-equal? (step-pre-value su-step) su-pre)
 (check-equal? (step-post-value su-step) su-doc)
 (check-equal? (step-who su-step) 0)
 ;; 新值 eq? 旧值 → 无变化，原样返回 + step = #f
@@ -685,16 +768,17 @@
 (define as0 (editor-open "abc" 20 5))
 (check-equal? (doc-str (editor-view-assign as0 0 (document-open "Q"))) "Q")
 (check-equal? (depth (editor-view-assign as0 0 (document-open "Q"))) 0)
-;; assign 后封口：之后的编辑不跨过赋值并入旧步
-(define asg1 (type-it as0 "X"))                       ; depth 1，tag 'typing
+;; assign 后封口：之后的编辑不跨过赋值并入旧步（新开一个，避开上面就地改）
+(define asg1 (type-it (editor-open "abc" 20 5) "X"))  ; depth 1，tag 'typing
 (define asg2 (editor-view-assign asg1 0 (document-open "Q")))
 (define asg3 (type-it asg2 "Y"))
 (check-equal? (depth asg3) 2)                         ; 没有并进 X 那步
 ;; assign 的选区用 #:selections（与 editor-view-set 一致）
-(define asgsel (editor-view-assign as0 0 (document-open "Q") #:selections (selections-one (caret (point 0 1)))))
+(define asgsel (editor-view-assign (editor-open "abc" 20 5) 0 (document-open "Q")
+                                   #:selections (selections-one (caret (point 0 1)))))
 (check-equal? (editor-view-point asgsel 0) (point 0 1))
 ;; record：把 step 记进账本；undo 回旧值
-(define-values (sr1 sr-step) (editor-view-set as0 0 (document-open "Q")))
+(define-values (sr1 sr-step) (editor-view-set (editor-open "abc" 20 5) 0 (document-open "Q")))
 (define sr2 (editor-history-record sr1 0 sr-step))
 (check-equal? (depth sr2) 1)
 (check-equal? (doc-str (editor-undo sr2)) "abc")

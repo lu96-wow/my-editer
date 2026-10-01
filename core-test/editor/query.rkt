@@ -21,7 +21,7 @@
 (define (editor-point->screen-pos ed p) (editor-view-point->screen-pos ed 0 p))
 (define (editor-screen-pos->point ed r c) (editor-view-screen-pos->point ed 0 r c))
 (define (editor-mode ed) (editor-view-mode ed 0))
-(define (editor-set-mode ed m) (editor-view-set-mode ed 0 m))
+(define (editor-set-mode ed m) (editor-view-set-mode! ed 0 m) ed)
 (define (editor-line-numbers? ed) (editor-view-line-numbers? ed 0))
 (define (editor-top-line ed) (editor-view-top-line ed 0))
 (define (editor-top-seg ed) (editor-view-top-seg ed 0))
@@ -32,7 +32,7 @@
 (define (editor-can-redo? ed) (editor-view-can-redo? ed 0))
 (define (editor-depth ed) (editor-view-depth ed 0))
 (define (editor-history-enabled? ed) (editor-view-history-enabled? ed 0))
-(define (editor-set-history-enabled ed f) (editor-view-set-history-enabled ed 0 f))
+(define (editor-set-history-enabled ed f) (editor-view-set-history-enabled! ed 0 f) ed)
 (define (editor-highlight-at ed l c) (editor-view-highlight-at ed 0 l c))
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed 0 l c))
 (define (editor-highlight-row ed l) (editor-view-highlight-row ed 0 l))
@@ -40,10 +40,10 @@
 (define (editor-highlight-range? ed l0 c0 l1 c1) (editor-view-highlight-range? ed 0 l0 c0 l1 c1))
 (define (editor-readonly-range? ed l0 c0 l1 c1) (editor-view-readonly-range? ed 0 l0 c0 l1 c1))
 (define (editor-editable? ed l0 c0 l1 c1) (editor-view-editable? ed 0 l0 c0 l1 c1))
-(define (editor-highlight-range ed r f) (editor-view-highlight-range ed 0 r f))
-(define (editor-readonly-range ed r f) (editor-view-readonly-range ed 0 r f))
-(define (editor-insert ed text [tag #f]) (editor-view-insert ed 0 text tag))
-(define (editor-undo ed) (editor-view-undo ed 0))
+(define (editor-highlight-range ed r f) (editor-view-highlight-range! ed 0 r f) ed)
+(define (editor-readonly-range ed r f) (editor-view-readonly-range! ed 0 r f) ed)
+(define (editor-insert ed text [tag #f]) (editor-view-insert! ed 0 text tag) ed)
+(define (editor-undo ed) (editor-view-undo! ed 0) ed)
 
 (define ed (editor-open "abc\ndef" 20 4 "doc"))
 
@@ -58,7 +58,8 @@
 (check-equal? (editor-view-point-col ed 0) 0)
 
 ;; 屏幕坐标往返
-(define ed2 (editor-view-set-point ed 0 (point 1 2)))
+(editor-view-set-point! ed 0 (point 1 2))
+(define ed2 ed)
 (check-equal? (call-with-values (lambda () (editor-view-point->screen-pos ed2 0 (point 1 2))) list) '(1 2))
 (check-equal? (call-with-values (lambda () (editor-view-screen-pos->point ed2 0 1 2)) list) '(1 2))
 ;; 行越界 → #f
@@ -136,7 +137,7 @@
 (check-false (editor-can-undo? ed))
 (check-false (editor-can-redo? ed))
 (check-equal? (editor-depth ed) 0)
-(define-values (ed3 _) (editor-insert ed "X" 'typing))
+(define ed3 (editor-insert ed "X" 'typing))
 (check-true (editor-can-undo? ed3))
 (check-equal? (editor-depth ed3) 1)
 (check-true (editor-can-redo? (editor-undo ed3)))
@@ -147,7 +148,8 @@
 (check-false (editor-history-enabled? (editor-set-history-enabled ed #f)))
 
 ;; 主选区两端点
-(define pr1 (editor-view-set-selections ed 0 (selections-of (list (selection (point 0 0) (point 1 2))) 0)))
+(editor-view-set-selections! ed 0 (selections-of (list (selection (point 0 0) (point 1 2))) 0))
+(define pr1 ed)
 (check-equal? (editor-range-start (editor-view-primary-range pr1 0)) (point 0 0))
 (check-equal? (editor-range-end (editor-view-primary-range pr1 0)) (point 1 2))
 

@@ -195,7 +195,8 @@
                    (document-highlight-fill doc (sub1 (length ls)) 0 (sub1 (length ls))
                                             (string-length (last ls)) 'tree-prompt)
                    doc))
-  (define a1 (struct-copy app a [editor (editor-view-assign (app-editor a) (tv a pid) doc*)]))
+  (editor-view-assign! (app-editor a) (tv a pid) doc*)
+  (define a1 (struct-copy app a))
   (cond
     [(not in) a1]
     [else
@@ -203,10 +204,10 @@
      (define vid (tv a1 pid))
      (define line (sub1 (length ls)))
      (define h (max 1 (app-pane-height a1 pid)))
-     (define ed1 (editor-view-set-point (app-editor a1) vid (point line (string-length in))))
+     (editor-view-set-point! (app-editor a1) vid (point line (string-length in)))
      (define top (max 0 (- line (sub1 h))))
-     (define ed2 (editor-view-set-top-line ed1 vid top))
-     (struct-copy app a1 [editor ed2])]))
+     (editor-view-set-top-line! (app-editor a1) vid top)
+     (struct-copy app a1)]))
 
 ;;; ---------- 光标处 ----------
 
@@ -225,12 +226,11 @@
     [else (canon-path (let-values ([(base _n _d) (split-path (entry-path e))]) base))]))
 
 (define (tree-do a pid f)
-  (define ed (app-editor a))
-  (define ed* (call-with-values (lambda () (f ed (tv a pid))) (lambda (v . _) v)))
-  (struct-copy app a [editor ed*]))
+  (f (app-editor a) (tv a pid))
+  (struct-copy app a))
 
 (define (tree-goto a pid line)
-  (tree-do a pid (lambda (e v) (editor-view-set-point e v (point line 0)))))
+  (tree-do a pid (lambda (e v) (editor-view-set-point! e v (point line 0)))))
 
 ;;; ---------- 输入（提示行） ----------
 
@@ -250,9 +250,9 @@
   (define a2 (tree-project! a1 pid))
   (define vid (tv a2 pid))
   (define line (structure-count (ts a2 pid)))
-  (define ed (editor-view-readonly-range (app-editor a2) vid
-              (range-of (point line 0) (point line (string-length label))) #t))
-  (struct-copy app a2 [editor ed]))
+  (editor-view-readonly-range! (app-editor a2) vid
+                               (range-of (point line 0) (point line (string-length label))) #t)
+  (struct-copy app a2))
 
 (define (prompt-clear a pid)
   (ts-set a pid (struct-copy tree (ts a pid) [prompt #f])))
@@ -317,13 +317,13 @@
 (define (tree-edit a pid k)
   (define n (key-name k))
   (cond
-    [(and (plain? k) (char? n)) (tree-do a pid (lambda (e v) (editor-view-insert e v (string n))))]
-    [(and (plain? k) (eq? n 'backspace)) (tree-do a pid (lambda (e v) (editor-view-backspace e v 'backspace)))]
-    [(and (plain? k) (eq? n 'del)) (tree-do a pid (lambda (e v) (editor-view-delete e v 'delete)))]
-    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left e v)))]
-    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right e v)))]
-    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up e v)))]
-    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down e v)))]
+    [(and (plain? k) (char? n)) (tree-do a pid (lambda (e v) (editor-view-insert! e v (string n))))]
+    [(and (plain? k) (eq? n 'backspace)) (tree-do a pid (lambda (e v) (editor-view-backspace! e v 'backspace)))]
+    [(and (plain? k) (eq? n 'del)) (tree-do a pid (lambda (e v) (editor-view-delete! e v 'delete)))]
+    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left! e v)))]
+    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right! e v)))]
+    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up! e v)))]
+    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down! e v)))]
     [else a]))
 
 (define (tree-toggle! a pid e)
@@ -387,8 +387,8 @@
      (define-values (ed2 nvid)
        (editor-add-view ed did (if r (lrect-w r) 40) (if r (lrect-h r) 10)
                         'free #f #:line-numbers? #t))
-     (define ed3 (editor-view-set-point ed2 nvid (editor-view-point ed vid)))
-     (define a1 (app-show-view (struct-copy app a [editor ed3]) target nvid))
+     (editor-view-set-point! ed2 nvid (editor-view-point ed vid))
+     (define a1 (app-show-view (struct-copy app a [editor ed2]) target nvid))
      (focus-set a1 target)]))
 
 (define (tree-delete a pid)
@@ -410,10 +410,10 @@
 (define (tree-file-key a pid k)
   (define n (key-name k))
   (cond
-    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up e v)))]
-    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down e v)))]
-    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left e v)))]
-    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right e v)))]
+    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up! e v)))]
+    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down! e v)))]
+    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left! e v)))]
+    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right! e v)))]
     [(and (plain? k) (eq? n 'enter)) (tree-activate a pid)]
     [(and (plain? k) (char? n) (char=? (char-downcase n) #\v)) (tree-toggle-mode a pid)]
     [(and (plain? k) (char? n) (char=? n #\n)) (prompt-start a pid 'file "新建文件: " (tree-target-dir a pid))]
@@ -425,10 +425,10 @@
 (define (tree-view-key a pid k)
   (define n (key-name k))
   (cond
-    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up e v)))]
-    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down e v)))]
-    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left e v)))]
-    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right e v)))]
+    [(and (plain? k) (eq? n 'up)) (tree-do a pid (lambda (e v) (editor-view-up! e v)))]
+    [(and (plain? k) (eq? n 'down)) (tree-do a pid (lambda (e v) (editor-view-down! e v)))]
+    [(and (plain? k) (eq? n 'left)) (tree-do a pid (lambda (e v) (editor-view-left! e v)))]
+    [(and (plain? k) (eq? n 'right)) (tree-do a pid (lambda (e v) (editor-view-right! e v)))]
     [(and (plain? k) (eq? n 'enter)) (tree-view-activate a pid)]
     [(and (plain? k) (eq? n 'escape)) (tree-toggle-mode a pid)]
     [(and (plain? k) (char? n) (char=? (char-downcase n) #\v)) (tree-toggle-mode a pid)]
@@ -439,7 +439,7 @@
 (define (tree-input a pid in)
   (cond
     [(prompt-active? (ts a pid))
-     (cond [(text? in) (tree-do a pid (lambda (e v) (editor-view-insert e v (text-s in))))]
+     (cond [(text? in) (tree-do a pid (lambda (e v) (editor-view-insert! e v (text-s in))))]
            [(key? in) (prompt-input a pid in)]
            [else a])]
     [(key? in) (tree-key a pid in)]
@@ -447,7 +447,7 @@
 
 (define (tree-pointer a pid in lr lc)
   (case (pointer-action in)
-    [(scroll) (tree-do a pid (lambda (e v) (editor-view-scroll e v (if (eq? (pointer-button in) 'up) -3 3))))]
+    [(scroll) (tree-do a pid (lambda (e v) (editor-view-scroll! e v (if (eq? (pointer-button in) 'up) -3 3))))]
     [else
      (define-values (line _col) (editor-view-screen-pos->point (app-editor a) (tv a pid) lr lc))
      (cond

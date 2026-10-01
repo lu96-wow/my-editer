@@ -2,10 +2,17 @@
 
 ;;; editor.rkt —— editor 平台入口
 ;;;
-;;;   state   数据 + 查找 + 构造 + 生命周期 + 安全写口（core/editor/state.rkt）
+;;; **API 约定（可变）**：
+;;;     结构操作（增/删文档、视图）→ 返回新 editor（editor-add-* / editor-close-*）
+;;;     命令式操作（editor-view-*!）→ 就地改 box、**不返回 editor**：
+;;;         编辑   → (values changes ok?)
+;;;         undo/redo → ok?；CAS → applied?；其余 → void
+;;;     box 引用一经创建不再替换，只 set-box! 内容（身份不可变，其余全在 box）。
+;;;
+;;;   state   数据 + 查找 + 构造 + 结构操作 + 就地写槽（core/editor/state.rkt）
 ;;;   history 撤销/重做账本（core/editor/history.rkt）
 ;;;   view    单视图维护 / 同文档视图传播（core/editor/view.rkt，内部用）
-;;;   command 用户命令（core/editor/command.rkt）
+;;;   command 命令式操作 editor-view-*!（core/editor/command.rkt）
 ;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（core/editor/query.rkt）
 ;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（core/editor/attributes.rkt）
 ;;;   change  读：编辑命令返回的 change（core/editor/change.rkt）
@@ -15,8 +22,9 @@
 ;;;
 ;;; **editor 不持焦点**：哪个 view 当前被操作由宿主决定，接口一律显式 vid/did。
 ;;;
-;;; **不导出**能破坏结构一致的低层写口（core/editor/write.rkt：editor-set-view /
-;;; -history）；它们只给 command / sync / view 内部用。
+;;; **裸 box setter**（document-entry-set-history! / view-set-selections! …）不在入口：
+;;; 它们绕过 clamp / 账本不变量，只给 command / view / sync 内部用。
+;;; 公开面是命令式 editor-view-*! 与结构操作 editor-add/close-*。
 ;;;
 ;;; 低层（document / viewport / screen / edit / …）在各自模块；需要时单独 require。
 
@@ -42,8 +50,11 @@
          "editor/render.rkt" "editor/sync.rkt" "editor/layout.rkt")
 
 (provide
- ;; ---------- 数据 + 生命周期 + 安全写口 ----------
- (all-from-out "editor/state.rkt")
+ ;; ---------- 数据 + 结构操作 + 读（排除裸 box setter：只内部用） ----------
+ (except-out (all-from-out "editor/state.rkt")
+             document-entry-set-name! document-entry-set-history!
+             view-set-viewport! view-set-selections! view-set-sync! view-set-link!
+             editor-set-clipboard!)
  ;; ---------- 撤销 / 重做 ----------
  (all-from-out "editor/history.rkt")
  ;; ---------- 用户命令 ----------

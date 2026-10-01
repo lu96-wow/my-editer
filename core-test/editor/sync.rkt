@@ -4,8 +4,8 @@
 ;; 只同步视口，绝不动选区；锚点 = (行, 显示列)，跨 mode / 跨文档按各自 mode 落位。
 (require rackunit
          "../../core/editor.rkt"
+         "../../core/editor/state.rkt"   ; 裸 box setter（适配层用）
          (prefix-in c: "../../core/editor.rkt")
-         "../../core/editor/write.rkt"   ; editor-set-view（摆弄视口锚点的低层写口）
          "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
          "../../core/text/base/selection.rkt"
@@ -26,11 +26,24 @@
   (c:editor-open text w h name #:mode mode #:line-numbers? ln
                  #:chunk-lines cl #:history-limit hl #:history? hi))
 (define (editor-set-focus ed v) (focus v) ed)
-(define (editor-scroll ed d) (editor-view-scroll ed (focus-of ed) d))
-(define (editor-goto ed p) (editor-view-set-point ed (focus-of ed) p))
-(define (editor-set-mode ed m) (editor-view-set-mode ed (focus-of ed) m))
+(define (editor-scroll ed d) (editor-view-scroll! ed (focus-of ed) d) ed)
+(define (editor-goto ed p) (editor-view-set-point! ed (focus-of ed) p) ed)
+(define (editor-set-mode ed m) (editor-view-set-mode! ed (focus-of ed) m) ed)
 (define (editor-add-view ed did w h [sync 'free] [link #f] #:mode [m 'clip] #:line-numbers? [ln #f])
   (let-values ([(e _) (c:editor-add-view ed did w h sync link #:mode m #:line-numbers? ln)]) e))
+
+;; adapter：vid 版命令（就地、返回 ed）+ view-with-* / editor-set-view
+(define (editor-view-scroll ed vid d) (editor-view-scroll! ed vid d) ed)
+(define (editor-view-set-link ed vid l) (editor-view-set-link! ed vid l) ed)
+(define (editor-view-set-sync ed vid sy) (editor-view-set-sync! ed vid sy) ed)
+(define (editor-sync-viewports ed vid) (editor-sync-viewports! ed vid) ed)
+(define (editor-set-view ed v)
+  (define cur (editor-view-ref ed (view-id v)))
+  (view-set-selections! cur (view-selections v))
+  (view-set-viewport! cur (view-viewport v))
+  ed)
+(define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s (view-sync v) (view-link v)))
+(define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v) (view-sync v) (view-link v)))
 
 (define many (string-join (for/list ([i (in-range 40)]) (format "line ~a" i)) "\n"))
 
@@ -54,7 +67,8 @@
 (check-equal? (vtl e4 1) 8)
 
 ;; ---------- 跨文档 link ----------
-(define-values (d1 did1) (editor-add-document e0 "aaa\nbbb\nccc"))
+;; 可变绑定下 view 对象会被就地改，跨小节要开新的 base。
+(define-values (d1 did1) (editor-add-document (editor-open many 20 5) "aaa\nbbb\nccc"))
 (define e5 (editor-add-view d1 did1 20 5))              ; vid1 看 doc1
 (define e6 (editor-view-set-link e5 0 'g))
 (define e7 (editor-view-set-link e6 1 'g))
@@ -74,8 +88,8 @@
 (define m3 (editor-set-focus m2 0))                     ; 回到 vid0（clip）
 (define tl (document-text (editor-view-document m3 0)))
 (define lv (editor-view-ref m3 0))
-(define m4 (editor-set-view m3 (struct-copy view lv
-                               [viewport (viewport-set-left-col tl (view-viewport lv) 7)])))
+(define m4 (editor-set-view m3 (view-with-viewport lv
+                               (viewport-set-left-col tl (view-viewport lv) 7))))
 (define m5 (editor-sync-viewports m4 0))
 (check-equal? (vlc m5 0) 7)                             ; leader 保留 left-col
 (check-equal? (vts m5 1) 1)                             ; follower wrap 段 1（列 7 在 6..10）
@@ -89,8 +103,8 @@
 ;; ---------- 同步不动选区 ----------
 (define s0 (editor-open "abc\ndef\nghi" 20 5))
 (define s1 (editor-add-view s0 0 20 5 'follow))
-(define s2 (editor-set-view s1 (struct-copy view (editor-view-ref s1 1)
-                                            [selections (selections-one (caret (point 2 1)))])))
+(define s2 (editor-set-view s1 (view-with-selections
+                               (editor-view-ref s1 1) (selections-one (caret (point 2 1))))))
 (define s3 (editor-scroll s2 1))
 (check-equal? (vsels s3 1) (vsels s2 1))                 ; follow 后选区原样
 
@@ -98,11 +112,12 @@
 ;; 同文档：空顶行上的软滚动列原样保留（不走比例，否则会被抹成 0）
 (define qa (editor-open "\nabcdefghij" 20 5))
 (define q1 (editor-add-view qa 0 20 5 'follow))
-(define q2 (editor-set-view q1 (let ([lv (editor-view-ref q1 0)])
-                                 (struct-copy view lv
-                                   [viewport (viewport-set-left-col
-                                              (document-text (editor-view-document q1 0))
-                                              (view-viewport lv) 5)]))))
+(define q2 (editor-set-view q1
+             (let ([lv (editor-view-ref q1 0)])
+               (view-with-viewport
+                lv
+                (viewport-set-left-col (document-text (editor-view-document q1 0))
+                                       (view-viewport lv) 5)))))
 (define q3 (editor-sync-viewports q2 0))
 (check-equal? (vlc q3 0) 5)
 (check-equal? (vlc q3 1) 5)                             ; follow 精确保留，不被比例化
@@ -113,11 +128,12 @@
 (define p1 (editor-add-view pb didb 20 5))              ; vid1 看 doc1
 (define p2 (editor-view-set-link p1 0 'g))
 (define p3 (editor-view-set-link p2 1 'g))
-(define p4 (editor-set-view p3 (let ([lv (editor-view-ref p3 0)])
-                                 (struct-copy view lv
-                                   [viewport (viewport-set-left-col
-                                              (document-text (editor-view-document p3 0))
-                                              (view-viewport lv) 6)]))))
+(define p4 (editor-set-view p3
+             (let ([lv (editor-view-ref p3 0)])
+               (view-with-viewport
+                lv
+                (viewport-set-left-col (document-text (editor-view-document p3 0))
+                                       (view-viewport lv) 6)))))
 (define p5 (editor-sync-viewports p4 0))
 (check-equal? (vlc p5 0) 6)                             ; leader
 (check-equal? (vlc p5 1) 3)                             ; round(6 * 5/10)

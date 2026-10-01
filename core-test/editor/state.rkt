@@ -66,7 +66,8 @@
 ;; ---------- 生命周期：改名 / 关视图 / 关文档（焦点由宿主自理，core 不管） ----------
 (define ls0 (editor-open "abc\ndef" 20 5 "d0"))
 (define-values (ls1 ls1-vid) (editor-add-view ls0 0 20 5))                 ; vid1
-(define ls2 (editor-document-set-name ls1 0 "renamed"))
+(define ls2 ls1)
+(editor-document-set-name! ls2 0 "renamed")
 (check-equal? (document-entry-name (editor-document-entry ls2 0)) "renamed")
 
 (define ls3 (editor-close-view ls2 1))
