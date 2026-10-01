@@ -18,7 +18,7 @@
 ;;;
 ;;; 规则不变：**一行一项**；树就是一个普通 core 文档；需要动全局结构时只返回 effect。
 
-(require "state.rkt"
+(require "host.rkt"
          "tree-model.rkt"
          "tree-project.rkt"
          "tree-input.rkt")
@@ -36,7 +36,8 @@
 ;;; ---------- ctx → 投影输入 ----------
 
 (define (ctx->tree-view ctx)
-  (tree-view (ctx-editor ctx) (ctx-editor-vid ctx) (ctx-pane-w ctx) (ctx-pane-h ctx)
+  (tree-view (ctx-editor ctx) (ctx-vid ctx) (ctx-editor-vid ctx)
+             (ctx-pane-w ctx) (ctx-pane-h ctx)
              (ctx-opened ctx) (ctx-open-views ctx) (ctx-shown-views ctx)))
 
 ;;; ---------- 组件接口 ----------
@@ -71,7 +72,7 @@
   (define ed0 (editor-open "" 10 6 #:line-numbers? #t))
   (define-values (ed1 _did tvid) (editor-add-document-view ed0 "" 10 6 "*tree*" #:line-numbers? #f))
   (define (mk-ctx #:opened [opened (hash)] #:open-views [ov '()] #:shown [sh '()] #:editor-vid [ev 0])
-    (ctx 0 tvid 10 6 ed1 1 ev 0 sh ov opened #f #f))
+    (ctx 0 tvid 10 6 ed1 1 ev 0 ov opened sh))
   (define C (mk-ctx))
 
   ;; 投影一次（模仿 project!：把文档写回 + 落光标）
@@ -138,7 +139,7 @@
   (define-values (ved1 _vtdid vtvid) (editor-add-document-view ved0 "" 10 6 "*tree*" #:line-numbers? #f))
   (define-values (ved2 vfdid vfv) (editor-add-document-view ved1 "hello\n" 20 5 "a.txt" #:line-numbers? #t))
   (define-values (ved3 vfv2) (editor-add-view ved2 vfdid 20 5 'free #f #:line-numbers? #t))
-  (define VC (ctx 0 vtvid 10 6 ved3 1 vfv 0 (list vfv vfv2) (list vfv vfv2) (hash) #f #f))
+  (define VC (ctx 0 vtvid 10 6 ved3 1 vfv 0 (list vfv vfv2) (hash) (list vfv vfv2)))
   (define (vrun st)
     (define-values (doc st* cur) (tree-sync VC st))
     (editor-view-assign! (ctx-editor VC) (ctx-vid VC) doc)

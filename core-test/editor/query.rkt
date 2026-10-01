@@ -153,4 +153,33 @@
 (check-equal? (editor-range-start (editor-view-primary-range pr1 0)) (point 0 0))
 (check-equal? (editor-range-end (editor-view-primary-range pr1 0)) (point 1 2))
 
+;; ---------- 可见文档区间 editor-view-visible-range ----------
+;; clip：10 行、视口高 3、top=5 → 覆盖第 5..7 行
+(define vr-ed (editor-open "l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9" 20 3 "vr"))
+(editor-view-set-top-line! vr-ed 0 5)
+(define vr1 (editor-view-visible-range vr-ed 0))
+(check-equal? (editor-range-start vr1) (point 5 0))
+(check-equal? (editor-range-end vr1) (point 7 2))
+;; 软滚过文末：底行空白不算，只剩最后一行
+(editor-view-set-top-line! vr-ed 0 9)
+(define vr2 (editor-view-visible-range vr-ed 0))
+(check-equal? (editor-range-start vr2) (point 9 0))
+(check-equal? (editor-range-end vr2) (point 9 2))
+;; 完全在文末之后 → 零宽
+(editor-view-set-top-line! vr-ed 0 10)
+(check-equal? (editor-view-visible-range vr-ed 0) (editor-range (point 0 0) (point 0 0)))
+
+;; wrap：宽 8 的两条长行 → 底行落在第 1 行、第 8 列
+(define vw-ed (editor-open "aaaaaaaaaaaa\nbbbbbbbbbbbb" 8 3 "vw" #:mode 'wrap))
+(define vw (editor-view-visible-range vw-ed 0))
+(check-equal? (editor-range-start vw) (point 0 0))
+(check-equal? (editor-range-end vw) (point 1 8))
+
+;; 有行号栏时按正文列取（栏宽不影响区间）
+(define vl-ed (editor-open "abcdefghij\nklmnopqrst" 10 2 "vl" #:line-numbers? #t))
+(editor-view-set-left-col! vl-ed 0 3)
+(define vl (editor-view-visible-range vl-ed 0))
+(check-equal? (editor-range-start vl) (point 0 3))
+(check-equal? (editor-range-end vl) (point 1 10))
+
 (displayln "editor/query.rkt: all tests passed")

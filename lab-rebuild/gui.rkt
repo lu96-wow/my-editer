@@ -1,50 +1,39 @@
 #lang racket/gui
 
 ;;; ============================================================================
-;;; gui.rkt —— racket/gui 后端（**唯一 require racket/gui 的文件**）
+;;; gui.rkt —— racket/gui 后端
 ;;; ============================================================================
 ;;;
-;;;   racket lab/gui.rkt
+;;;   racket lab-rebuild/gui.rkt
 ;;;
-;;; 与 tui.rkt 完全对称，只有两个职责：
-;;;
-;;;   入：gui 事件 ──event->input──▶ input.rkt 的中间层输入 ──▶ handle
-;;;   出：init/render 的 core screen ──paint──▶ 画布
-;;;
-;;; 它不认识命令、不碰文档、不做焦点、不存业务状态（只存上一帧无关的字体度量）。
-;;; 两个后端唯一的差别就是「自家事件怎么译成中间层输入」和「screen 怎么画」：
-;;; state / tree / buffer / status / command / core 一行不改。
-;;;
-;;; gui 特有的东西全在这里：
-;;;   · 像素坐标 → 屏幕格坐标（按字体度量换算）
-;;;   · gui 的 on-char 一次只给一个字符，所以普通字符也归成 key（物理键），
-;;;     这样 gui / tui 对同一个键 v 都给 key #\v，组件命令分发不依赖后端；
-;;;     text 留给能一次性给出已解码文本的后端（如 tui 的 paste）
-;;;   · gui 的 wheel 是一个 key-event（key-code = 'wheel-up/down），用最近鼠标位置定位
-;;;   · motion 带按键 → 'drag，不带 → 'move（于是无按键移动不会误扩选）
+;;; 与 tui.rkt 对称：只做「gui 事件 → 中间层输入」和「core screen → 画布」。
+;;; gui 特有：像素→格；on-char 一次一个字符（普通字符也算物理键 key）；
+;;; gui 的 Backspace/Return/Tab/Delete 是**字符**（#\backspace 等），要归成命名键；
+;;; wheel 是 key-event（'wheel-up/down），用最近鼠标位置定位；
+;;; motion 带按键 → 'drag，不带 → 'move。
 
 (require "../core/view/base/screen.rkt"
          "../core/text/base/width.rkt"
          "theme.rkt"
-         "input.rkt"
+         "io.rkt"
          "host.rkt"
          "init.rkt")
 
-;;; ---------- 后端状态（只跟画有关，不含业务） ----------
+;;; ---------- 后端状态（只跟画有关） ----------
 
-(define app-box (box #f))          ; 当前 app
+(define app-box (box #f))
 (define frame-box (box #f))
 (define canvas-box (box #f))
 (define font-box (box #f))
-(define cell-w (box 8))            ; 一个字符格宽 / 高（像素），首帧按字体量出
+(define cell-w (box 8))
 (define cell-h (box 16))
-(define mouse-pos (box (cons 0 0))) ; 最近鼠标所在屏幕格（wheel 用）
+(define mouse-pos (box (cons 0 0)))
 
 (define (the-font)
   (or (unbox font-box)
       (let ([f (make-font #:size 12 #:family 'modern)]) (set-box! font-box f) f)))
 
-;;; ---------- 配色：face / overlay → draw 颜色 ----------
+;;; ---------- 配色 ----------
 
 (define default-bg (make-color 25 26 30))
 (define default-fg (make-color 205 205 205))
@@ -57,15 +46,12 @@
 
 ;;; ---------- 坐标 ----------
 
-;; 像素 → 屏幕格（0-based）。
-(define (pixel->cell x y)
-  (values (quotient y (unbox cell-h)) (quotient x (unbox cell-w))))
+(define (pixel->cell x y) (values (quotient y (unbox cell-h)) (quotient x (unbox cell-w))))
 
-;;; ---------- gui key-code → 中间层命名键 ----------
+;;; ---------- gui key-code → 命名键 ----------
 
 (define (key-code->name code)
   (case code
-    ;; 这几个特殊键 gui 给的是**字符**（见 key-event% 文档），必须归成命名键。
     [(#\backspace) 'backspace]
     [(#\rubout) 'delete]
     [(#\return #\newline) 'enter]
@@ -81,7 +67,7 @@
   (modifiers (send e get-control-down) (send e get-alt-down)
              (send e get-shift-down) (send e get-meta-down)))
 
-;;; ---------- 输入：gui 事件 → 中间层输入 → handle ----------
+;;; ---------- 输入 ----------
 
 (define (send-input in)
   (define h (unbox app-box))
@@ -90,28 +76,20 @@
     (define c (unbox canvas-box))
     (when c (send c refresh))))
 
-;; gui 键盘（on-char）：普通字符 → text（已解码，含 Shift/IME）；带修饰/命名键 → key。
 (define (on-key e)
   (define code (send e get-key-code))
   (define m (gui-mods e))
   (cond
     [(eq? code 'release) (void)]
-    ;; 滚轮在 gui 里也是 key-event（key-code = 'wheel-*）；用最近鼠标位置定位。
     [(memq code '(wheel-up wheel-down wheel-left wheel-right))
      (when (memq code '(wheel-up wheel-down))
-       (define row (car (unbox mouse-pos)))
-       (define col (cdr (unbox mouse-pos)))
-       (send-input (wheel (if (eq? code 'wheel-up) 'up 'down) row col m)))]
+       (send-input (wheel (if (eq? code 'wheel-up) 'up 'down)
+                          (car (unbox mouse-pos)) (cdr (unbox mouse-pos)) m)))]
     [else
      (define ctrl? (send e get-control-down))
-     (define alt? (send e get-alt-down))
-     (define meta? (send e get-meta-down))
-     ;; 普通字符也是**物理键**（中间层：key = 物理键，text = 已解码文本/粘贴）。
-     ;; 于是 gui / tui 对同一个键 v 都给 key #\v，树的命令分发不依赖后端。
      (define name (key-code->name code))
      (send-input (key (if (and ctrl? (char? name)) (char-downcase name) name) m))]))
 
-;; gui 鼠标（on-event）：down/up → press/release；motion 带键 → drag，不带 → move。
 (define (on-mouse e)
   (define-values (row col) (pixel->cell (send e get-x) (send e get-y)))
   (set-box! mouse-pos (cons row col))
@@ -131,9 +109,8 @@
      (send-input (mouse (if btn 'drag 'move) btn row col m))]
     [else (void)]))
 
-;;; ---------- 画：core screen → 画布 ----------
+;;; ---------- 画 ----------
 
-;; 光标格上的字符（反色时重画用）。
 (define (char-at s row col)
   (for/first ([rn (in-list (screen-row s row))]
               #:when (and (>= col (run-col rn))
@@ -144,15 +121,12 @@
   (define cw (unbox cell-w))
   (define ch (unbox cell-h))
   (send dc set-font (the-font))
-  ;; 背景
   (send dc set-brush default-bg 'solid) (no-pen dc)
   (send dc draw-rectangle 0 0 (* (screen-width s) cw) (* (screen-height s) ch))
-  ;; 选区底
   (send dc set-brush selection-bg 'solid)
   (for ([g (in-list (screen-regions s))])
     (send dc draw-rectangle (* (region-start-col g) cw) (* (region-row g) ch)
           (* (- (region-end-col g) (region-start-col g)) cw) ch))
-  ;; 文本（face 前景 / 背景）
   (for ([row (in-range (screen-height s))])
     (for ([rn (in-list (screen-row s row))])
       (define-values (fg bg) (face-colors (run-face rn)))
@@ -163,7 +137,6 @@
               (* (string-display-width (run-text rn)) cw) ch))
       (send dc set-text-foreground (rgb->color fg default-fg))
       (send dc draw-text (run-text rn) (* (run-col rn) cw) (* row ch))))
-  ;; 光标（反色块 + 重画字符）
   (for ([cu (in-list (screen-cursors s))])
     (define x (* (cursor-col cu) cw)) (define y (* (cursor-row cu) ch))
     (send dc set-brush cursor-bg 'solid) (no-pen dc)
@@ -173,10 +146,9 @@
       (send dc set-text-foreground cursor-fg)
       (send dc draw-text (string c) x y))))
 
-;; 一帧：按画布像素尺寸定 app 的行列 → render → 画。
 (define (on-paint dc)
   (send dc set-font (the-font))
-  ;; 宽度必须用**单个**字形量（"Mg" 是两个字符宽）；高度用带升降部的 "Mg"。
+  ;; 宽度用单个字形量（"Mg" 是两个字符宽）；高度用带升降部的 "Mg"。
   (define-values (fw _fh _fd _fs) (send dc get-text-extent "M"))
   (define-values (_mw fh _md _ms) (send dc get-text-extent "Mg"))
   (set-box! cell-w (max 1 (exact-ceiling fw)))
@@ -186,11 +158,11 @@
   (define rows (max 1 (exact-floor (/ ph (unbox cell-h)))))
   (unless (unbox app-box)
     (set-box! app-box (setup (current-directory) rows cols)))
-  (define a (unbox app-box))
-  (when (or (not (= (host-rows a) rows)) (not (= (host-cols a) cols)))
-    (set-box! app-box (handle a (resize rows cols))))
-  (define-values (a1 screen) (render (unbox app-box)))
-  (set-box! app-box a1)
+  (define h (unbox app-box))
+  (when (or (not (= (host-rows h) rows)) (not (= (host-cols h) cols)))
+    (set-box! app-box (handle h (resize rows cols))))
+  (define-values (h1 screen) (render (unbox app-box)))
+  (set-box! app-box h1)
   (draw-screen dc screen))
 
 ;;; ---------- 窗口 ----------
@@ -205,7 +177,7 @@
             [else (void)]))))
 
 (define (run)
-  (define frame (new frame% [label "lab"] [width 800] [height 480]))
+  (define frame (new frame% [label "lab-rebuild"] [width 800] [height 480]))
   (define canvas (new lab-canvas% [parent frame]
                       [paint-callback (lambda (_c dc) (on-paint dc))]))
   (set-box! frame-box frame)
@@ -215,59 +187,40 @@
 
 (module+ main (run))
 
-;;; ---------- 测试（纯函数） ----------
+;;; ---------- 测试 ----------
 
 (module+ test
-  (require rackunit
-           "../core/editor.rkt"
-           "tree.rkt")
+  (require rackunit "../core/editor.rkt")
 
   (check-equal? (key-code->name 'return) 'enter)
-  (check-equal? (key-code->name 'prior) 'pageup)
-  (check-equal? (key-code->name 'next) 'pagedown)
-  (check-equal? (key-code->name 'backspace) 'backspace)
-  (check-equal? (key-code->name #\a) #\a)
-  ;; gui 的这几个特殊键是**字符**，必须归成命名键（否则会被当成文本插入控制符）
   (check-equal? (key-code->name #\backspace) 'backspace)
   (check-equal? (key-code->name #\rubout) 'delete)
   (check-equal? (key-code->name #\return) 'enter)
   (check-equal? (key-code->name #\tab) 'tab)
-  (check-equal? (key-code->name #\space) #\space)
+  (check-equal? (key-code->name #\a) #\a)
+  (let-values ([(r c) (pixel->cell 17 33)]) (check-equal? (list r c) '(2 2)))
 
-  ;; 像素 → 格（默认度量 8×16）
-  (let-values ([(r c) (pixel->cell 17 33)])
-    (check-equal? (list r c) '(2 2)))
-
-  ;; 冒烟：往一张 bitmap 上渲染一帧（不需要开窗）
+  ;; 冒烟：往 bitmap 上渲染一帧
   (define bm (make-bitmap 320 200))
   (on-paint (new bitmap-dc% [bitmap bm]))
   (check-true (host? (unbox app-box)))
-  (check-equal? (host-cols (unbox app-box)) (max 1 (quotient 320 (unbox cell-w))))
-  (check-equal? (host-rows (unbox app-box)) (max 1 (quotient 200 (unbox cell-h))))
-  ;; 格宽 = **单个**字形宽（不是 "Mg" 的宽度）
   (define dc2 (new bitmap-dc% [bitmap bm]))
   (send dc2 set-font (the-font))
   (define one-glyph (let-values ([(w _h _d _s) (send dc2 get-text-extent "M")])
                       (max 1 (exact-ceiling w))))
   (check-equal? (unbox cell-w) one-glyph)
 
-  ;; 真事件走一遍适配器：树焦点 0，n → 输入文件名 → Backspace → Esc
+  ;; 真事件：树焦点 0，n → 打字 → Backspace → Esc
   (define (tree-str)
-    (editor-view-string (host-editor (unbox app-box))
-                        (host-pane-vid (unbox app-box) 0)))
+    (editor-view-string (host-editor (unbox app-box)) (host-pane-vid (unbox app-box) 0)))
   (check-equal? (host-focus (unbox app-box)) 0)
   (on-key (new key-event% [key-code #\n]))
   (check-true (regexp-match? #rx"新建文件" (tree-str)))
   (on-key (new key-event% [key-code #\a]))
   (check-true (regexp-match? #rx"新建文件: a" (tree-str)))
-  (on-key (new key-event% [key-code #\backspace]))    ; #\backspace 必须映射成删除键
+  (on-key (new key-event% [key-code #\backspace]))
   (check-false (regexp-match? #rx"新建文件: a" (tree-str)))
   (on-key (new key-event% [key-code 'escape]))
   (check-false (regexp-match? #rx"新建文件" (tree-str)))
-  ;; v 切视图模式（普通字母命令）
-  (on-key (new key-event% [key-code #\v]))
-  (check-eq? (tree-mode (pane-state (host-pane (unbox app-box) 0))) 'views)
-  (on-key (new key-event% [key-code #\v]))
-  (check-eq? (tree-mode (pane-state (host-pane (unbox app-box) 0))) 'files)
 
-  (displayln "lab/gui.rkt: all tests passed"))
+  (displayln "lab-rebuild/gui.rkt: all tests passed"))

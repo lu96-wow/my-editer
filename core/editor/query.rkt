@@ -3,7 +3,8 @@
 (require "state.rkt"
          "../text/document.rkt" "history.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt" "../text/base/range.rkt"
-         "../view/base/viewport.rkt")
+         "../text/base/track.rkt" "../text/base/width.rkt"
+         "../view/base/viewport.rkt" "../view/base/layout.rkt")
 
 ;;; editor/query.rkt —— 读（按 vid / did 读 view / document）
 ;;;
@@ -57,6 +58,7 @@
  editor-view-left-col
  editor-view-width
  editor-view-height
+ editor-view-visible-range
 
  ;; ---------- 历史 ----------
  editor-view-can-undo?
@@ -139,6 +141,27 @@
 (define (editor-view-left-col ed vid) (viewport-left-col (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-width ed vid) (viewport-width (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-height ed vid) (viewport-height (view-viewport (editor-view-ref ed vid))))
+
+;; 视口里**真实显示出来的**文档区间（半开 [start, end)）：
+;;   start = 顶行第一个显示位置；end = 底行可见内容之后的第一个位置。
+;; clip 按 left-col ⊕ 可见宽取；wrap 按折行段取；文末之后的空白行不算。
+;; 视口完全在文末之后 / 空内容 → 零宽 range（首行首列）。
+(define (editor-view-visible-range ed vid)
+  (define t (document-text (editor-view-document ed vid)))
+  (define n (track-length t))
+  (define vrows (viewport-vrows t (view-viewport (editor-view-ref ed vid))))
+  (define first (vector-ref vrows 0))
+  (cond
+    [(>= (vrow-line first) n) (range-of (point 0 0) (point 0 0))]
+    [else
+     ;; 底行：从下往上找第一条**真实存在**的文档行（跳过文末后的空白行）。
+     (define last-i (for/last ([i (in-range (vector-length vrows))]
+                               #:when (< (vrow-line (vector-ref vrows i)) n)) i))
+     (define last (vector-ref vrows last-i))
+     (define fl (vrow-line first))
+     (define ll (vrow-line last))
+     (range-of (point fl (display-col->index (track-ref t fl) (vrow-start-col first)))
+               (point ll (display-col->index (track-ref t ll) (vrow-end-col last))))]))
 
 ;;; ---------- 历史 ----------
 

@@ -19,8 +19,8 @@
          tree-open-view-vid
          tree-structure-count*)
 
-;; 投影所需的只读上下文。
-(struct tree-view (editor editor-vid pane-w pane-h
+;; 投影所需的只读上下文。self-vid = 树自己的视图（写视口）；editor-vid = 当前编辑格视图（视图模式标活动）。
+(struct tree-view (editor self-vid editor-vid pane-w pane-h
                     opened open-views shown-views)
   #:transparent)
 
@@ -96,7 +96,7 @@
        (define line (sub1 (length ls)))
        (define h (max 1 (tree-view-pane-h tv)))
        ;; 输入行 = 最后一行；视口顶到让最后一行恰在可见区底。
-       (editor-view-set-top-line! (tree-view-editor tv) (tree-view-editor-vid tv)
+       (editor-view-set-top-line! (tree-view-editor tv) (tree-view-self-vid tv)
                                   (max 0 (- line (sub1 h))))
        (point line (string-length in))]
       [(tree-goto st)
