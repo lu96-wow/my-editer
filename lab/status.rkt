@@ -1,40 +1,39 @@
 #lang racket
 
 ;;; ============================================================================
-;;; status.rkt —— 状态栏：只读文档，无输入
+;;; status.rkt —— 状态栏组件：只读投影，无输入
 ;;; ============================================================================
 ;;;
-;;; 状态栏是一个**没有输入的 pane**：
-;;;   · 它的 pane input / pointer 都是 #f（壳不会把输入交给它）；
-;;;   · 壳在每帧渲染前调 status-project! 把它投影一次；
-;;;   · 它只读 app，不反向影响任何东西。
+;;; 状态栏是一个**没有输入的 pane**（pane 的 input / pointer = #f）：
+;;;   · 它的 sync 每帧把「编辑格正在编辑的文档」的 L/C + 文件名投影成一行；
+;;;   · 它只读 ctx，不反向影响任何东西。
 ;;;
-;;; 投影内容 = **编辑格正在编辑的文档**的 L/C + 文件名（不是"焦点在哪个 pane"）。
-;;; 这样焦点在树上的时候，状态栏也不会浪费一行去写"文件树"之类的标签 —— 它始终
-;;; 显示你正在编辑的那个文件的定位信息。
+;;; 投影内容不以「焦点在哪个 pane」为准，而是**编辑格 pane**，于是焦点在树上时
+;;; 也不会浪费一行写"文件树"之类的标签。
+;;;
+;;; 退出问答时优先显示问题（y/n）。
 
 (require "../core/editor.rkt"
          "../core/text/document.rkt"
-         "editor.rkt")
+         "state.rkt")
 
-(provide status-project!)
+(provide status-sync)
 
-(define (status-project! a pid)
-  (define ed (app-editor a))
+(define (status-sync ctx st)
   (define txt
     (cond
-      [(app-quit-ask a) (app-quit-message a)]                    ; 退出问答优先显示
+      [(ctx-quit-ask ctx) (ctx-quit-message ctx)]
       [else
-       (define vid (app-pane-vid a (app-editor-pane a)))        ; 编辑格（不随焦点变）
+       (define ed (ctx-editor ctx))
+       (define vid (ctx-editor-vid ctx))
        (define did (editor-view-document-id ed vid))
-       (define path (app-path a did))
+       (define path (for/first ([(p d) (in-hash (ctx-opened ctx))] #:when (= d did)) p))
        (define name (if path (path->string (file-name-from-path path))
-                        (editor-view-document-name ed did)))
+                        (editor-document-name ed did)))
        (format "  L~a C~a   ~a"
                (editor-view-point-line ed vid)
                (editor-view-point-col ed vid)
                name)]))
   ;; 整行一个 'status face（配色由后端决定）。
   (define doc (document-highlight-fill (document-open txt) 0 0 0 (string-length txt) 'status))
-  (editor-view-assign! (app-editor a) (app-pane-vid a pid) doc)
-  (struct-copy app a))
+  (values doc st #f))

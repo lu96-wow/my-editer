@@ -1,66 +1,90 @@
 #lang racket
 
 ;;; ============================================================================
-;;; editor.rkt —— 编辑器主体：状态 + 焦点 + 布局 + 文档管理 + 编辑格输入
+;;; state.rkt —— 全局状态 + 生命周期 + 组件运行时
 ;;; ============================================================================
 ;;;
-;;; 这是「编辑器主体」这一块（配 layout.rkt 的布局代数、tree.rkt 的文件树）。
-;;; 它持有唯一的状态值 app：
+;;; 这是 lab 的「状态块」：**唯一**持有并改写全局状态的地方。
+;;; 别的块（tree / buffer / status / command）都只经这里定义的语言说话。
 ;;;
-;;;   editor         core 的 editor（所有文档 + 视图）
-;;;   opened         hash（path → did）── 已打开的文件
-;;;   panes          pane-id → pane（每个 pane 是一个文档实例）
-;;;   layout         布局值（叶 = pane-id；见 layout.rkt）
-;;;   focus          pane-id（当前焦点）
-;;;   editor-pane    pane-id（"打开文件"落到哪个编辑格）
-;;;   rows / cols    窗口尺寸
+;;; ── 全局状态 app ──────────────────────────────────────────────────────────
+;;;   editor       core 的 editor（所有文档 + 视图）
+;;;   opened       hash（path → did）
+;;;   panes        pane-id → pane（每个 pane 是一个组件 + 它的局部状态）
+;;;   layout       布局值（叶 = pane-id；见 layout.rkt）
+;;;   focus        pane-id
+;;;   editor-pane  pane-id（打开文件落到哪个编辑格）
+;;;   rows / cols  屏幕尺寸
+;;;   quit? …      退出流程
 ;;;
-;;; ── pane ─────────────────────────────────────────────────────────────────
-;;;   (pane kind vid state input pointer focusable?)
-;;;     kind        'tree | 'editor | 'status
-;;;     vid         它现在用的 core 视图 id
-;;;     state       它自己的状态（本模块不解释）
-;;;     input       app × pane-id × input → app
-;;;     pointer     app × pane-id × input × 局部行 × 局部列 → app
-;;;     focusable?  能否获得焦点（状态栏 #f）
+;;; ── pane（组件）────────────────────────────────────────────────────────────
+;;;   (pane kind vid sync input pointer focusable? state)
+;;;     sync       ctx × state → (values document state cursor)   投影（#f = 不投影）
+;;;     input      ctx × state × input        → (values state effects)
+;;;     pointer    ctx × state × input × 行 × 列 → (values state effects)
+;;;   **组件不碰 app**：它拿到只读 ctx + 自己的 state，只返回 (state ⊕ effects)。
+;;;   凡是会动全局结构的动作（开/关文档、加/关视图、切焦点、分格、退出）都表达成
+;;;   effect，由本模块统一解释。于是每个组件都能独立实现、独立测试。
 ;;;
-;;; 打开文件会换掉编辑格 pane 的 vid（旧视图关掉、新视图加上），但 pane-id 不变；
-;;; 焦点 / 布局 / 命中都记 pane-id，所以换视图对它们透明。
+;;; ── 投影 / 分发 ───────────────────────────────────────────────────────────
+;;;   project!   跑每个 pane 的 sync，把文档写进它的 view（**每处都重建**，幂等）
+;;;   dispatch   把输入交给焦点 pane 的 input，然后 apply-effects
 ;;;
-;;; ── 本模块负责 ───────────────────────────────────────────────────────────
-;;;   状态存取 + 文档管理（打开 / 显示 / 关闭 / 保存）
-;;;   焦点（set / 循环 / 方向）
-;;;   布局（分格 / 关格 / 加格）
-;;;   编辑格文档的输入（buffer-input / buffer-pointer）
-;;;
-;;; 本模块不 require tree.rkt / status.rkt / command.rkt，避免环。
+;;; 结构操作（增/删文档、视图）走 core 的 editor-*（返回新 editor）；
+;;; 编辑 / 光标 / 视口是 core 的就地命令（box 改），不动 app 值。
 
 (require "../core/editor.rkt"
          "../core/text/document.rkt"
          "../core/text/base/point.rkt"
          "../core/text/base/selection.rkt"
-         "fs.rkt"
          "layout.rkt"
          "input.rkt"
+         "fs.rkt"
          racket/file)
 
-(provide (struct-out app)
-         (struct-out pane)
-         app-pane app-set-pane app-pane-vid app-focus-vid
-         app-pane-rect app-pane-height app-pid-of-kind
-         app-path app-first-editor-pane
-         app-open app-show app-close app-save app-save-did app-dirty?
-         app-show-view app-close-view app-pane-of-view app-open-views
-         quit-request quit-save-current quit-skip-current quit-cancel app-quit-message
-         focus-set focusable-leaves focus-step focus-next! focus-prev! focus-direction!
-         add-editor-pane layout-split! layout-close! editor-resize-focus
-         buffer-input buffer-pointer)
+(provide
+ ;; ---------- 类型 ----------
+ (struct-out pane)
+ (struct-out app)
+ (struct-out ctx)
+
+ ;; ---------- pane / app 存取 ----------
+ app-pane app-set-pane app-pane-vid app-focus-vid app-pid-of-kind
+ app-pane-rect app-pane-height app-pane-kind
+ make-ctx
+
+ ;; ---------- 文档管理 ----------
+ app-path app-first-editor-pane
+ app-open app-show app-close app-save app-save-did app-dirty?
+ app-show-view app-close-view app-new-view app-focus-view
+ app-pane-of-view app-open-views
+
+ ;; ---------- 退出流程 ----------
+ quit-request quit-save-current quit-skip-current quit-cancel
+ quit-answer app-quit-message
+
+ ;; ---------- 焦点 ----------
+ focus-set focusable-leaves focus-step focus-next! focus-prev! focus-direction!
+
+ ;; ---------- 布局 ----------
+ add-editor-pane layout-split! layout-close! editor-resize-focus
+
+ ;; ---------- 运行时 ----------
+ dispatch project! apply-effects)
 
 ;;; ============================================================================
-;;; 状态
+;;; 全局状态
 ;;; ============================================================================
 
-(struct pane (kind vid state input pointer focusable?) #:transparent)
+;; 一个组件注册项。sync / input / pointer 都是注入的纯逻辑（见文件头）。
+(struct pane (kind vid sync input pointer focusable? state) #:transparent)
+;; kind       : symbol                        组件种类（'tree / 'buffer / 'status …）
+;; vid        : vid                           它渲染到哪个 core 视图
+;; sync       : #f | (ctx state → (values document state cursor))
+;; input      : #f | (ctx state input → (values state (listof effect)))
+;; pointer    : #f | (ctx state input 行 列 → (values state (listof effect)))
+;; focusable? : bool
+
 (struct app (editor opened panes layout focus editor-pane rows cols
               quit? quit-ask quit-rest)
   #:transparent)
@@ -68,11 +92,18 @@
 ;; quit-ask  : #f | did —— 正在问"是否保存"的文档
 ;; quit-rest : (listof did) —— 还没问的文档
 
+;; 组件投影 / 处理时拿到的**只读**上下文。
+(struct ctx (pid vid pane-w pane-h
+             editor editor-pane editor-vid focus
+             shown-views open-views opened quit-ask quit-message)
+  #:transparent)
+
 ;;; ---------- pane / app 存取 ----------
 
 (define (app-pane a pid) (hash-ref (app-panes a) pid))
 (define (app-set-pane a pid p) (struct-copy app a [panes (hash-set (app-panes a) pid p)]))
 (define (app-pane-vid a pid) (pane-vid (app-pane a pid)))
+(define (app-pane-kind a pid) (pane-kind (app-pane a pid)))
 (define (app-focus-vid a) (app-pane-vid a (app-focus a)))
 
 (define (app-pid-of-kind a kind)
@@ -89,21 +120,37 @@
 (define (rect-h-or a pid fallback)
   (if (app-pane-rect a pid) (lrect-h (app-pane-rect a pid)) fallback))
 
-;; pane 的高度（树用它把输入行钉在最下面一行）。
 (define (app-pane-height a pid)
   (if (app-pane-rect a pid) (lrect-h (app-pane-rect a pid)) (app-rows a)))
 
-;;; ---------- 文档管理 ----------
+;; 组件的只读 ctx：把全局状态投影成它需要的那几个量。
+(define (make-ctx a pid)
+  (define p (app-pane a pid))
+  (define r (app-pane-rect a pid))
+  (define epid (app-editor-pane a))
+  (ctx pid (pane-vid p)
+       (if r (lrect-w r) 40) (if r (lrect-h r) 10)
+       (app-editor a) epid (and epid (app-pane-vid a epid)) (app-focus a)
+       (app-shown-views a) (app-open-views a) (app-opened a)
+       (app-quit-ask a) (app-quit-message a)))
+
+;;; ============================================================================
+;;; 文档管理（文件路径 ↔ editor 文档 + 显示 / 保存 / 关闭）
+;;; ============================================================================
 
 (define (app-path a did)
   (for/first ([(p d) (in-hash (app-opened a))] #:when (= d did)) p))
 
 (define (app-first-editor-pane a)
-  (for/first ([(id p) (in-hash (app-panes a))] #:when (eq? (pane-kind p) 'editor)) id))
+  (for/first ([(id p) (in-hash (app-panes a))] #:when (eq? (pane-kind p) 'buffer)) id))
 
 ;; 某个视图现在被哪个 pane 显示（#f = 没有任何 pane 显示它）。
 (define (app-pane-of-view a vid)
   (for/first ([(pid p) (in-hash (app-panes a))] #:when (equal? vid (pane-vid p))) pid))
+
+;; 当前被某个 pane 显示的视图集合。
+(define (app-shown-views a)
+  (for/list ([(pid p) (in-hash (app-panes a))]) (pane-vid p)))
 
 ;; 树里该列出的「已打开视图」：Editor 里除树 / 状态栏这些内部文档之外的视图，
 ;; 按 editor 顺序（含当前没被任何 pane 显示的视图）。
@@ -117,7 +164,6 @@
     (view-id v)))
 
 ;; 让某个 pane 显示一个**已经存在**的视图（复用，不新建、不关旧视图）。
-;; 视图已在别的 pane → 原样返回（调用方自己聚焦那个 pane）。
 (define (app-show-view a pid vid)
   (define shown (app-pane-of-view a vid))
   (cond
@@ -126,7 +172,7 @@
      (editor-view-ref (app-editor a) vid)          ; 校验 vid
      (define p (app-pane a pid))
      (define a1 (app-set-pane a pid (struct-copy pane p [vid vid])))
-     (define a2 (struct-copy app a1 [editor-pane pid]))
+     (define a2 (struct-copy app a1 [editor-pane (if (eq? (pane-kind p) 'buffer) pid (app-editor-pane a1))]))
      ;; 视图尺寸对齐当前窗格（ensure / 鼠标换算依赖它）。
      (editor-view-set-size! (app-editor a2) vid (rect-w-or a2 pid 40) (rect-h-or a2 pid 10))
      a2]))
@@ -163,7 +209,6 @@
      (app-show-view (struct-copy app a0 [editor ed2]) pid vid)]))
 
 ;; 打开路径：已开复用；否则读文件建文档，再显示到 editor-pane。
-;; 不存在 / 非普通文件 / 无编辑格 → 原样返回。
 (define (app-open a path)
   (define target (app-editor-pane a))
   (define existing (hash-ref (app-opened a) path #f))
@@ -185,7 +230,7 @@
   (define ed (app-editor a))
   (define pids
     (for/list ([(pid p) (in-hash (app-panes a))]
-               #:when (and (eq? (pane-kind p) 'editor)
+               #:when (and (eq? (pane-kind p) 'buffer)
                            (= did (editor-view-document-id ed (pane-vid p)))))
       pid))
   (define ed1 (editor-close-document ed did))
@@ -228,6 +273,26 @@
      (struct-copy app a2
        [editor (editor-close-document (app-editor a2) did)]
        [opened (for/hash ([(p d) (in-hash (app-opened a2))] #:unless (= d did)) (values p d))])]))
+
+;; 给某文档再开一个视图，显示到 editor-pane 并聚焦。
+(define (app-new-view a did point)
+  (define target (app-editor-pane a))
+  (cond
+    [(not target) a]
+    [else
+     (define-values (ed2 vid)
+       (editor-add-view (app-editor a) did (rect-w-or a target 40) (rect-h-or a target 10)
+                        'free #f #:line-numbers? #t))
+     (when point (editor-view-set-point! ed2 vid point))
+     (focus-set (app-show-view (struct-copy app a [editor ed2]) target vid) target)]))
+
+;; 聚焦显示某视图的窗格；没显示就显示到 editor-pane 再聚焦。
+(define (app-focus-view a vid)
+  (define pid (app-editor-pane a))
+  (cond
+    [(app-pane-of-view a vid) (focus-set a (app-pane-of-view a vid))]
+    [(not pid) a]
+    [else (focus-set (app-show-view a pid vid) pid)]))
 
 ;; 保存某个编辑格当前文档（有路径才写）。
 (define (app-save a pid)
@@ -282,7 +347,22 @@
        (let ([path (app-path a did)])
          (format "保存 ~a？(y/n)  Esc 取消"
                  (if path (path->string (file-name-from-path path))
-                     (editor-view-document-name (app-editor a) did))))))
+                     (editor-document-name (app-editor a) did))))))
+
+;; 退出问答的按键处理（y 保存 / n 跳过 / Esc 取消）。
+(define (plain-key? in)
+  (and (key? in) (not (key-ctrl? in)) (not (key-alt? in)) (not (key-meta? in))))
+
+(define (quit-answer a in)
+  (cond
+    [(plain-key? in)
+     (define n (key-name in))
+     (cond
+       [(and (char? n) (char=? (char-downcase n) #\y)) (quit-save-current a)]
+       [(and (char? n) (char=? (char-downcase n) #\n)) (quit-skip-current a)]
+       [(eq? n 'escape) (quit-cancel a)]
+       [else a])]
+    [else a]))
 
 ;;; ============================================================================
 ;;; 焦点
@@ -291,7 +371,7 @@
 (define (focus-set a pid)
   (define p (app-pane a pid))
   (struct-copy app a [focus pid]
-               [editor-pane (if (eq? (pane-kind p) 'editor) pid (app-editor-pane a))]))
+               [editor-pane (if (eq? (pane-kind p) 'buffer) pid (app-editor-pane a))]))
 
 (define (focusable-leaves a)
   (filter (lambda (pid) (pane-focusable? (app-pane a pid))) (layout-leaves (app-layout a))))
@@ -348,14 +428,13 @@
   (define-values (ed2 _did vid)
     (editor-add-document-view (app-editor a) "" 40 10 "*scratch*" #:line-numbers? #t))
   (define a1 (struct-copy app a [editor ed2]))
-  (values (app-set-pane a1 npid (pane 'editor vid #f buffer-input buffer-pointer #t)) npid))
+  (values (app-set-pane a1 npid (pane 'buffer vid #f #f #f #t #f)) npid))
 
 ;; dir = 'h（左右分）| 'v（上下分）；只对编辑格生效。
-;; 横向分格用 hsplit-left（带明确左宽），这样之后可以调宽。
 (define (layout-split! a dir)
   (define pid (app-focus a))
   (cond
-    [(not (eq? (pane-kind (app-pane a pid)) 'editor)) a]
+    [(not (eq? (pane-kind (app-pane a pid)) 'buffer)) a]
     [else
      (define w (if (app-pane-rect a pid) (lrect-w (app-pane-rect a pid)) 20))
      (define-values (a1 npid) (add-editor-pane a))
@@ -373,7 +452,7 @@
 (define (layout-close! a)
   (define pid (app-focus a))
   (cond
-    [(not (eq? (pane-kind (app-pane a pid)) 'editor)) a]
+    [(not (eq? (pane-kind (app-pane a pid)) 'buffer)) a]
     [else
      (define ed (editor-close-view (app-editor a) (pane-vid (app-pane a pid))))
      (define layout* (or (layout-remove (app-layout a) pid) (app-layout a)))
@@ -387,89 +466,111 @@
      (focus-set a2 (if (null? leaves) (app-focus a2) (car leaves)))]))
 
 ;;; ============================================================================
-;;; 编辑格文档的输入
+;;; 运行时：投影 + 分发 + effect 解释
 ;;; ============================================================================
 
-(define (plain? k) (and (not (key-ctrl? k)) (not (key-alt? k)) (not (key-meta? k))))
-(define (bare? k) (and (not (key-ctrl? k)) (not (key-alt? k)) (not (key-meta? k))))
-(define (ctrl? k c) (and (key-ctrl? k) (not (key-alt? k)) (not (key-meta? k)) (eqv? (key-name k) c)))
+;; 跑每个 pane 的 sync，把文档写进它的 view（幂等；cursor 非 #f 时落点）。
+(define (project! a)
+  (for/fold ([a a]) ([pid (in-list (hash-keys (app-panes a)))])
+    (define p (app-pane a pid))
+    (define sync (pane-sync p))
+    (cond
+      [(not sync) a]
+      [else
+       (define-values (doc st cur) (sync (make-ctx a pid) (pane-state p)))
+       (define a1 (app-set-pane a pid (struct-copy pane p [state st])))
+       (cond
+         [(not doc) a1]
+         [else
+          (editor-view-assign! (app-editor a1) (pane-vid p) doc)
+          (when cur (editor-view-set-point! (app-editor a1) (pane-vid p) cur))
+          a1])])))
 
-(define (buf-do a pid f)
-  ;; f 是新 API 的命令式操作（就地改 editor，不返回 editor）。
-  (f (app-editor a) (app-pane-vid a pid))
-  (struct-copy app a))
-
-(define (buf-insert a pid s) (buf-do a pid (lambda (e v) (editor-view-insert! e v s))))
-
-(define (buf-key a pid k)
-  (define n (key-name k))
-  (define ext (key-shift? k))
+;; 输入 → 命中 pane（鼠标）或焦点 pane（键盘）→ state + effects → 解释 effects。
+(define (dispatch a in)
   (cond
-    [(and (plain? k) (char? n)) (buf-insert a pid (string n))]
-    [(and (plain? k) (eq? n 'enter)) (buf-insert a pid "\n")]
-    [(and (plain? k) (eq? n 'tab)) (buf-insert a pid "    ")]
-    [(and (plain? k) (eq? n 'backspace)) (buf-do a pid (lambda (e v) (editor-view-backspace! e v 'backspace)))]
-    [(and (plain? k) (memq n '(del delete))) (buf-do a pid (lambda (e v) (editor-view-delete! e v 'delete)))]
-    [(and (bare? k) (eq? n 'left)) (buf-do a pid (lambda (e v) (editor-view-left! e v ext)))]
-    [(and (bare? k) (eq? n 'right)) (buf-do a pid (lambda (e v) (editor-view-right! e v ext)))]
-    [(and (bare? k) (eq? n 'up)) (buf-do a pid (lambda (e v) (editor-view-up! e v ext)))]
-    [(and (bare? k) (eq? n 'down)) (buf-do a pid (lambda (e v) (editor-view-down! e v ext)))]
-    [(and (plain? k) (eq? n 'home)) (buf-do a pid (lambda (e v) (editor-view-home! e v ext)))]
-    [(and (plain? k) (eq? n 'end)) (buf-do a pid (lambda (e v) (editor-view-end! e v ext)))]
-    [(and (plain? k) (eq? n 'pageup)) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (- (editor-view-height e v)))))]
-    [(and (plain? k) (eq? n 'pagedown)) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (editor-view-height e v))))]
-    [(ctrl? k #\z) (buf-do a pid (lambda (e v) (editor-view-undo! e v)))]
-    [(ctrl? k #\y) (buf-do a pid (lambda (e v) (editor-view-redo! e v)))]
-    [(ctrl? k #\c) (buf-do a pid (lambda (e v) (editor-view-copy! e v)))]
-    [(ctrl? k #\v) (buf-do a pid (lambda (e v) (editor-view-paste! e v)))]
-    [(ctrl? k #\s) (app-save a pid)]
-    [(ctrl? k #\w) (app-close a (editor-view-document-id (app-editor a) (app-pane-vid a pid)))]
-    [else a]))
-
-(define (buffer-input a pid in)
-  (cond
-    [(text? in) (buf-insert a pid (text-s in))]
-    [(key? in) (buf-key a pid in)]
-    [else a]))
-
-;; 鼠标：press 定位；move 从 core 选区里的锚点扩选；scroll 滚动。
-(define (buffer-pointer a pid in lr lc)
-  (define ed (app-editor a))
-  (define vid (app-pane-vid a pid))
-  (case (pointer-action in)
-    [(scroll) (buf-do a pid (lambda (e v) (editor-view-scroll! e v (if (eq? (pointer-button in) 'up) -3 3))))]
-    [else
-     (define-values (line col) (editor-view-screen-pos->point ed vid lr lc))
+    [(pointer? in)
+     (define pid (layout-hit (app-layout a) (app-cols a) (app-rows a)
+                             (pointer-row in) (pointer-col in)))
      (cond
-       [(not line) a]
-       [(eq? (pointer-action in) 'press)
-        (editor-view-set-point! ed vid (point line col))
-        (struct-copy app a)]
-       [(eq? (pointer-action in) 'move)
-        (define prim (selections-primary (editor-view-selections ed vid)))
-        (define anchor (selection-anchor prim))
-        (editor-view-set-selections! ed vid (selections-one (selection anchor (point line col))))
-        (struct-copy app a)]
-       [else a])]))
+       [(not pid) a]
+       [else
+        (define p (app-pane a pid))
+        (define a1 (if (pane-focusable? p) (focus-set a pid) a))
+        (define f (pane-pointer p))
+        (cond
+          [(not f) a1]
+          [else
+           (define r (app-pane-rect a1 pid))
+           (define-values (st eff)
+             (f (make-ctx a1 pid) (pane-state p) in
+                (- (pointer-row in) (lrect-y r))
+                (- (pointer-col in) (lrect-x r))))
+           (apply-effects (app-set-pane a1 pid (struct-copy pane p [state st])) eff)])])]
+    [else
+     (define pid (app-focus a))
+     (define p (app-pane a pid))
+     (define f (pane-input p))
+     (cond
+       [(not f) a]
+       [else
+        (define-values (st eff) (f (make-ctx a pid) (pane-state p) in))
+        (apply-effects (app-set-pane a pid (struct-copy pane p [state st])) eff)])]))
+
+;;; ---------- effects ----------
+
+;; effect = 会动全局结构的动作。组件只描述，本模块执行。
+;;   (list 'open path)
+;;   (list 'close-document did)
+;;   (list 'close-view vid)
+;;   (list 'new-view did point)
+;;   (list 'show-view pid vid)
+;;   (list 'focus pid)
+;;   (list 'focus-view vid)
+;;   (list 'save pid)
+;;   (list 'split dir)          ; dir = 'h | 'v
+;;   (list 'close-pane pid)
+;;   (list 'resize-focus delta)
+;;   (list 'quit)
+
+(define (apply-effects a effs)
+  (for/fold ([a a]) ([e (in-list effs)]) (apply-effect a e)))
+
+(define (apply-effect a e)
+  (match e
+    [(list 'open path)            (app-open a path)]
+    [(list 'close-document did)   (app-close a did)]
+    [(list 'close-view vid)       (app-close-view a vid)]
+    [(list 'new-view did point)   (app-new-view a did point)]
+    [(list 'show-view pid vid)    (app-show-view a pid vid)]
+    [(list 'focus pid)            (focus-set a pid)]
+    [(list 'focus-view vid)       (app-focus-view a vid)]
+    [(list 'save pid)             (app-save a pid)]
+    [(list 'split dir)            (layout-split! a dir)]
+    [(list 'close-pane pid)       (if (= pid (app-focus a)) (layout-close! a) a)]
+    [(list 'resize-focus delta)   (editor-resize-focus a delta)]
+    [(list 'quit)                 (quit-request a)]
+    [else a]))
 
 ;;; ============================================================================
-;;; 测试
+;;; 测试（文档管理 / 焦点 / 布局 / 退出 / 视图）
 ;;; ============================================================================
 
 (module+ test
-  (require rackunit)
+  (require rackunit
+           "../core/text/document.rkt")
 
-  (define d (make-temporary-file "rbed-~a" 'directory))
+  (define d (make-temporary-file "rbst-~a" 'directory))
   (define f (build-path d "a.txt"))
   (display-to-file "hello\nworld\n" f #:exists 'replace)
 
-  ;; 三个 pane：0 树 / 1 编辑格 / 2 状态栏
+  ;; 三个 pane：0 树 / 1 编辑格 / 2 状态栏（组件逻辑用 #f 代替，只测全局状态）
   (define ed0 (editor-open "" 10 5 #:line-numbers? #t))
   (define-values (ed1 _tdid tvid) (editor-add-document-view ed0 "" 10 4 "*tree*" #:line-numbers? #f))
   (define-values (ed2 _sdid svid) (editor-add-document-view ed1 "" 40 1 "*status*" #:line-numbers? #f))
-  (define panes (hash 0 (pane 'tree tvid #f #f #f #t)
-                      1 (pane 'editor 0 #f #f #f #t)
-                      2 (pane 'status svid #f #f #f #f)))
+  (define panes (hash 0 (pane 'tree tvid #f #f #f #t #f)
+                      1 (pane 'buffer 0 #f #f #f #t #f)
+                      2 (pane 'status svid #f #f #f #f #f)))
   (define a (app ed2 (hash) panes (vsplit-bottom 1 (hsplit-left 30 (lpane 0) (lpane 1) 1) (lpane 2))
                  0 1 5 40 #f #f '()))
 
@@ -529,8 +630,8 @@
   ;; ---------- 视图管理（一个文档多个视图） ----------
   (define m0 (editor-open "" 10 4 #:line-numbers? #t))
   (define-values (m1 _mdid mtv) (editor-add-document-view m0 "" 8 4 "*tree*" #:line-numbers? #f))
-  (define panes* (hash 0 (pane 'tree mtv #f #f #f #t)
-                       1 (pane 'editor 0 #f buffer-input buffer-pointer #t)))
+  (define panes* (hash 0 (pane 'tree mtv #f #f #f #t #f)
+                       1 (pane 'buffer 0 #f #f #f #t #f)))
   (define va (app m1 (hash) panes* (hsplit-left 8 (lpane 0) (lpane 1) 1)
                  1 1 4 30 #f #f '()))
   ;; 打开 f：空占位 scratch 被丢掉，f 拿到一个视图（不残留 *scratch*）
@@ -552,6 +653,8 @@
   ;; 已在别的 pane 显示的视图：app-show-view 不动 pane（由调用方聚焦）
   (define vx (app-show-view ve 1 v2))
   (check-equal? (app-pane-of-view vx v2) 1)
+  ;; app-focus-view：显示并聚焦
+  (check-equal? (app-focus (app-focus-view vd v2)) 1)
   ;; 关一个视图：文档还有另一个视图 → 文档保留
   (define vf (app-close-view ve (app-pane-vid vb 1)))
   (check-equal? (length (app-open-views vf)) 1)
@@ -560,5 +663,10 @@
   (define vg (app-close-view vf (app-pane-vid vf 1)))
   (check-false (hash-has-key? (app-opened vg) f))
 
+  ;; effect 解释：open + focus 一步到位
+  (define ae (apply-effects vd (list (list 'focus 1) (list 'open f))))
+  (check-equal? (app-focus ae) 1)
+  (check-true (hash-has-key? (app-opened ae) f))
+
   (delete-directory/files d)
-  (displayln "lab-rebuild/editor.rkt: all tests passed"))
+  (displayln "lab/state.rkt: all tests passed"))

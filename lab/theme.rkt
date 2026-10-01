@@ -16,7 +16,8 @@
 (provide theme face-colors)
 
 (define theme
-  (hash 'tree-dir    '((120 180 240) . #f)   ; 文件夹
+  (hash 'tree-root   '((240 150 60) . #f)    ; 根目录（橙，标题）
+        'tree-dir    '((120 180 240) . #f)   ; 文件夹
         'tree-file   '((200 200 200) . #f)   ; 文件（未打开）
         'tree-open   '((150 210 150) . #f)   ; 已打开的文件
         'tree-prompt '((229 192 123) . #f)   ; 输入行
@@ -39,6 +40,8 @@
   (define-values (fg bg) (face-colors 'tree-dir))
   (check-equal? fg '(120 180 240))
   (check-false bg)
+  (define-values (rfg _rbg) (face-colors 'tree-root))
+  (check-equal? rfg '(240 150 60))
   (define-values (sfg sbg) (face-colors 'status))
   (check-equal? sbg '(40 44 52))
   (define-values (ufg _) (face-colors 'nope))

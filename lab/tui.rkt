@@ -19,7 +19,7 @@
          "../core/view/patch.rkt"
          "theme.rkt"
          "input.rkt"
-         "editor.rkt"
+         "state.rkt"
          "init.rkt")
 
 (define app-box (box #f))        ; 当前 app
