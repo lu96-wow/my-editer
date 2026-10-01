@@ -61,6 +61,8 @@
            "input.rkt"
            racket/file)
 
+  (define (k name) (key name modifiers-none))
+
   (define d (make-temporary-file "rbinit-~a" 'directory))
   (define f (build-path d "a.txt"))
   (display-to-file "hello\nworld\n" f #:exists 'replace)
@@ -74,26 +76,26 @@
   (check-true (for/or ([rn (in-list (screen-row screen0 9))]) (eq? (run-face rn) 'status)))
 
   ;; 编辑格打字
-  (define a1 (handle a0 (key #\X #f #f #f #f)))
+  (define a1 (handle a0 (k #\X)))
   (check-equal? (substring (editor-view-string (app-editor a1) (app-pane-vid a1 1)) 0 1) "X")
 
   ;; 点树切焦点 → 下移 → 回车打开
-  (define a2 (handle a1 (pointer 'press 'left 0 5 #f #f #f #f)))
+  (define a2 (handle a1 (mouse 'press 'left 0 5 modifiers-none)))
   (check-equal? (app-focus a2) 0)
-  (define a4 (handle (handle a2 (key 'down #f #f #f #f)) (key 'enter #f #f #f #f)))
+  (define a4 (handle (handle a2 (k 'down)) (k 'enter)))
   (check-equal? (editor-view-string (app-editor a4) (app-pane-vid a4 1)) "hello\nworld\n")
   (check-equal? (app-focus a4) 0)                                   ; 打开不抢焦点
   (check-eq? (document-highlight-at (editor-view-document (app-editor a4) (app-pane-vid a4 0)) 1 0)
              'tree-open)
 
   ;; 树里新建文件（提示 = 文档里一行；**手敲字符走 key 路径**，value 存在树状态里）
-  (define a7 (handle a4 (key #\n #f #f #f #f)))
+  (define a7 (handle a4 (k #\n)))
   (check-true (regexp-match? #rx"新建文件" (editor-view-string (app-editor a7) (app-pane-vid a7 0))))
   (define a8 (for/fold ([x a7]) ([c (in-list '(#\m #\a #\d #\e))])
-               (handle x (key c #f #f #f #f))))
+               (handle x (k c))))
   (check-true (regexp-match? #rx"新建文件: made"
                              (editor-view-string (app-editor a8) (app-pane-vid a8 0))))
-  (define a9 (handle a8 (key 'enter #f #f #f #f)))
+  (define a9 (handle a8 (k 'enter)))
   (check-true (file-exists? (build-path d "made")))
 
   ;; 状态栏显示编辑格文档
@@ -108,14 +110,14 @@
 
   ;; 视图表：v 切换 → 回车把选中视图显示到编辑格并聚焦（可编辑）→ v 切回文件树
   (check-equal? (app-focus a11) 0)                          ; 焦点还在树上
-  (define v1 (handle a11 (key #\v #f #f #f #f)))
+  (define v1 (handle a11 (k #\v)))
   (check-eq? (tree-mode (pane-state (app-pane v1 0))) 'views)
   (check-true (regexp-match? #rx"a.txt"
                 (editor-view-string (app-editor v1) (app-pane-vid v1 0))))
-  (define v2 (handle v1 (key 'enter #f #f #f #f)))
+  (define v2 (handle v1 (k 'enter)))
   (check-equal? (app-focus v2) 1)                           ; 选中视图 → 编辑格获焦
   (check-equal? (editor-view-string (app-editor v2) (app-pane-vid v2 1)) "hello\nworld\n")
-  (define v3 (handle (focus-set v2 0) (key #\v #f #f #f #f)))
+  (define v3 (handle (focus-set v2 0) (k #\v)))
   (check-eq? (tree-mode (pane-state (app-pane v3 0))) 'files)
 
   (delete-directory/files d)

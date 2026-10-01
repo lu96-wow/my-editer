@@ -1,77 +1,110 @@
 #lang racket
 
 ;;; ============================================================================
-;;; input.rkt —— 抽象输入（后端无关）
+;;; input.rkt —— 中间层：后端无关的输入事件
 ;;; ============================================================================
 ;;;
-;;; 这一层是「后端」和「文档」之间唯一的接口。任何后端（终端 / GUI / headless
-;;; 测试）都只做一件事：把它自己的原始事件翻译成这里的四种值之一。
-;;; 文档和壳只认这四种值，因此永远不依赖任何具体后端。
+;;; 这是后端（racket-tui / racket/gui / headless 测试）与编辑器之间**唯一**的接口。
+;;; 事件按 racket/gui 的模型定型，**不按终端**：后端负责在自己的边界把原始事件
+;;; 翻译成这里的值，编辑器只认这里，永远不依赖任何具体后端。
 ;;;
-;;;   key      按键：名字（char 或 symbol）+ 四个修饰位
-;;;   text     一段文本（粘贴 / 输入法 / 多字符输入）
-;;;   pointer  鼠标：动作 + 按键 + 屏幕坐标（0-based）+ 修饰位
-;;;   resize   窗口尺寸变化
+;;;   modifiers  修饰键（control alt shift meta）
+;;;   key        物理键（char 或命名键）+ 修饰键 —— 与已解码文本分离
+;;;   text       已解码文本（IME / 粘贴 / 多字符）—— 消除「Ctrl+B 分屏 vs 输入 b」
+;;;   mouse      指针：press / release / move / drag
+;;;   wheel      滚轮（独立于 mouse，方向 up / down）
+;;;   resize     尺寸变化
 ;;;
-;;; 约定：
-;;;   · 名字用 char 表示普通字符（#\a、#\n…），用 symbol 表示命名键（'enter、
-;;;     'escape、'up…）；修饰位用四个布尔，后端直接填。
-;;;   · **没有「键编码」函数**（不存在把 Ctrl+A 拼成某个 token 的步骤）——
-;;;     文档要匹配的就是 struct 字段本身。
-;;;   · 都是不可变纯值，可比较、可打印、可单测；后端 → 文档 → 壳之间只传值。
+;;; 坐标一律 **0-based 屏幕格**（整屏左上角为原点）。像素后端（gui）在边界按字体
+;;; 度量换算成格坐标。
+;;;
+;;; 后端映射示例（**后端特化只发生在后端**，本层不做任何归一/猜测）：
+;;;
+;;;   tui    key-event      → key（终端 Ctrl+字母给大写 → 后端自己归一成小写）
+;;;          paste-event    → text
+;;;          mouse move     → mouse 'drag（终端只在按住键拖动时上报 move）
+;;;          mouse scroll   → wheel（终端 scroll 带 up/down 按钮）
+;;;   gui    on-char（单个字符/命名键）→ key（普通字符也是物理键；一次一个）
+;;;          若后端能拿到批量已解码文本 → text
+;;;          motion 带按键   → mouse 'drag
+;;;          motion 不带按键 → mouse 'move
+;;;          wheel          → wheel
+;;;
+;;; 命名键：'up 'down 'left 'right 'home 'end 'pageup 'pagedown
+;;;         'backspace 'delete 'enter 'tab 'escape 'f1…'f12
 
-(provide (struct-out key)
+(provide (struct-out modifiers)
+         modifiers-none
+         (struct-out key)
          (struct-out text)
-         (struct-out pointer)
+         (struct-out mouse)
+         (struct-out wheel)
          (struct-out resize)
-         key-of)
+         pointer-position)
 
-;;; ---------- 类型 ----------
+;;; ---------- 修饰键 ----------
 
-(struct key (name ctrl? alt? shift? meta?) #:transparent)
-;; name  : (or/c char? symbol?)
-;; ctrl? / alt? / shift? / meta? : bool
-;; 约定：带 Ctrl 的字母一律**小写**（终端给的是大写），用 key-of 构造。
+(struct modifiers (control alt shift meta) #:transparent)
+(define modifiers-none (modifiers #f #f #f #f))
 
-;; 规范构造：Ctrl+字母 → 小写（"Ctrl-Q" 统一成 #\q）。
-(define (key-of name ctrl? alt? shift? meta?)
-  (key (if (and ctrl? (char? name)) (char-downcase name) name)
-       ctrl? alt? shift? meta?))
+;;; ---------- 键盘 ----------
 
-(struct text (s) #:transparent)
-;; s : string（粘贴 / 输入法 / 一次多个字符）
+;; name : char（可打印键 / 带修饰的字母键）
+;;      | symbol（命名键，见文件头）
+(struct key (name modifiers) #:transparent)
 
-(struct pointer (action button row col ctrl? alt? shift? meta?) #:transparent)
-;; action : 'press | 'release | 'move | 'scroll
-;; button : 'left | 'middle | 'right（press/release）
-;;          'up | 'down（scroll）
-;;          #f（move）
-;; row / col : 屏幕坐标（0-based，整屏左上角为原点）
-;; 说明：终端用「按钮事件跟踪」，只有按住键拖动时才会上报 move —— 所以 move
-;;       就等价于「拖拽」。
+;; 已解码文本（IME / 粘贴 / 一次多个字符）。
+(struct text (s modifiers) #:transparent)
+
+;;; ---------- 指针 ----------
+
+;; kind   : 'press | 'release | 'move | 'drag
+;; button : 'left | 'middle | 'right（press/release/drag 携带）；#f（无按键的 move）
+(struct mouse (kind button row col modifiers) #:transparent)
+
+;; direction : 'up | 'down
+(struct wheel (direction row col modifiers) #:transparent)
+
+;;; ---------- 尺寸 ----------
 
 (struct resize (rows cols) #:transparent)
+
+;;; ---------- 坐标 ----------
+
+;; mouse / wheel 的屏幕坐标（命中测试用）。→ (values row col)
+(define (pointer-position in)
+  (cond [(mouse? in) (values (mouse-row in) (mouse-col in))]
+        [(wheel? in) (values (wheel-row in) (wheel-col in))]
+        [else (values #f #f)]))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   (require rackunit)
 
-  (define k (key #\o #t #f #f #f))
-  (check-true (key? k))
-  (check-equal? (key-name k) #\o)
-  (check-true (key-ctrl? k))
-  (check-false (key-alt? k))
+  ;; 修饰键
+  (define ctrl-b (key #\b (modifiers #t #f #f #f)))
+  (check-true (key? ctrl-b))
+  (check-equal? (key-name ctrl-b) #\b)
+  (check-true (modifiers-control (key-modifiers ctrl-b)))
+  (check-false (modifiers-alt (key-modifiers ctrl-b)))
 
-  (check-equal? (text-s (text "你好")) "你好")
+  ;; 物理键与文本分离：Ctrl+B 是 key，输入 b 是 text
+  (check-true (key? (key 'enter modifiers-none)))
+  (check-equal? (text-s (text "你好" modifiers-none)) "你好")
+
+  ;; 指针：press / drag / move 三种，靠 kind 区分（后端自己分类，不经本层猜）
+  (check-equal? (mouse-kind (mouse 'press 'left 3 7 modifiers-none)) 'press)
+  (check-equal? (mouse-kind (mouse 'drag 'left 4 7 modifiers-none)) 'drag)
+  (check-equal? (mouse-kind (mouse 'move #f 4 9 modifiers-none)) 'move)
+  (let-values ([(r c) (pointer-position (mouse 'press 'left 3 7 modifiers-none))])
+    (check-equal? (list r c) '(3 7)))
+  (let-values ([(r c) (pointer-position (wheel 'down 2 5 modifiers-none))])
+    (check-equal? (list r c) '(2 5)))
+
   (check-equal? (resize-rows (resize 20 80)) 20)
-  ;; 规范构造：Ctrl+字母归一为小写
-  (check-equal? (key-of #\Q #t #f #f #f) (key #\q #t #f #f #f))
-  (check-equal? (key-of #\A #f #f #f #f) (key #\A #f #f #f #f))
-  (check-true (pointer? (pointer 'press 'left 3 7 #f #f #f #f)))
-  (check-equal? (pointer-row (pointer 'move #f 3 7 #f #f #f #f)) 3)
 
-  ;; 纯值可比较（后端与文档之间只传值）
-  (check-equal? (key 'enter #f #f #f #f) (key 'enter #f #f #f #f))
+  ;; 纯值可比较（后端与编辑器之间只传值）
+  (check-equal? (key 'enter modifiers-none) (key 'enter modifiers-none))
 
-  (displayln "lab-rebuild/input.rkt: all tests passed"))
+  (displayln "lab/input.rkt: all tests passed"))

@@ -83,7 +83,9 @@
 (define (tree-toggle-mode st)
   (struct-copy tree st [mode (if (eq? (tree-mode st) 'files) 'views 'files)] [prompt #f] [goto #f]))
 
-(define (plain? k) (and (not (key-ctrl? k)) (not (key-alt? k)) (not (key-meta? k))))
+(define (plain? k)
+  (let ([m (key-modifiers k)])
+    (and (not (modifiers-control m)) (not (modifiers-alt m)) (not (modifiers-meta m)))))
 
 ;; 文件模式：导航 / 回车开合 / n 新建文件 / m 新建目录 / d 删除 / v 切视图表。
 (define (tree-file-key ctx st k)
@@ -135,13 +137,16 @@
     [else (values st '())]))
 
 (define (handle-pointer ctx st in lr lc)
-  (case (pointer-action in)
-    [(scroll) (core-do ctx st (lambda (e v) (editor-view-scroll! e v (if (eq? (pointer-button in) 'up) -3 3))))]
-    [else
-     (define-values (line _col) (editor-view-screen-pos->point (ctx-editor ctx) (ctx-vid ctx) lr lc))
-     (cond
-       [(not line) (values st '())]
-       [(memq (pointer-action in) '(press move))
-        (editor-view-set-point! (ctx-editor ctx) (ctx-vid ctx) (point line 0))
-        (values st '())]
-       [else (values st '())])]))
+  (cond
+    [(wheel? in)
+     (core-do ctx st (lambda (e v) (editor-view-scroll! e v (if (eq? (wheel-direction in) 'up) -3 3))))]
+    [(mouse? in)
+     (case (mouse-kind in)
+       [(press drag)
+        (define-values (line _col) (editor-view-screen-pos->point (ctx-editor ctx) (ctx-vid ctx) lr lc))
+        (if line
+            (begin (editor-view-set-point! (ctx-editor ctx) (ctx-vid ctx) (point line 0))
+                   (values st '()))
+            (values st '()))]
+       [else (values st '())])]
+    [else (values st '())]))

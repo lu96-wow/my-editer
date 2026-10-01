@@ -25,10 +25,11 @@
 ;;; ---------- 全局键位表 ----------
 
 ;; Ctrl-, / Ctrl+. 调焦点窗口宽度；Ctrl-Q 退出（先逐个问未保存的编辑器）。
+(define ctrl (modifiers #t #f #f #f))
 (define global-keys
-  (hash (key #\, #t #f #f #f) (lambda (a) (editor-resize-focus a -1))
-        (key #\. #t #f #f #f) (lambda (a) (editor-resize-focus a +1))
-        (key #\q #t #f #f #f) quit-request))
+  (hash (key #\, ctrl) (lambda (a) (editor-resize-focus a -1))
+        (key #\. ctrl) (lambda (a) (editor-resize-focus a +1))
+        (key #\q ctrl) quit-request))
 
 (define (global-action in) (and (key? in) (hash-ref global-keys in #f)))
 

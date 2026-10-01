@@ -351,7 +351,9 @@
 
 ;; 退出问答的按键处理（y 保存 / n 跳过 / Esc 取消）。
 (define (plain-key? in)
-  (and (key? in) (not (key-ctrl? in)) (not (key-alt? in)) (not (key-meta? in))))
+  (and (key? in)
+       (let ([m (key-modifiers in)])
+         (and (not (modifiers-control m)) (not (modifiers-alt m)) (not (modifiers-meta m))))))
 
 (define (quit-answer a in)
   (cond
@@ -489,9 +491,9 @@
 ;; 输入 → 命中 pane（鼠标）或焦点 pane（键盘）→ state + effects → 解释 effects。
 (define (dispatch a in)
   (cond
-    [(pointer? in)
-     (define pid (layout-hit (app-layout a) (app-cols a) (app-rows a)
-                             (pointer-row in) (pointer-col in)))
+    [(or (mouse? in) (wheel? in))
+     (define-values (pr pc) (pointer-position in))
+     (define pid (layout-hit (app-layout a) (app-cols a) (app-rows a) pr pc))
      (cond
        [(not pid) a]
        [else
@@ -504,8 +506,8 @@
            (define r (app-pane-rect a1 pid))
            (define-values (st eff)
              (f (make-ctx a1 pid) (pane-state p) in
-                (- (pointer-row in) (lrect-y r))
-                (- (pointer-col in) (lrect-x r))))
+                (- pr (lrect-y r))
+                (- pc (lrect-x r))))
            (apply-effects (app-set-pane a1 pid (struct-copy pane p [state st])) eff)])])]
     [else
      (define pid (app-focus a))

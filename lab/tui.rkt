@@ -8,13 +8,14 @@
 ;;;
 ;;; 后端只有两个职责，别的一概不做：
 ;;;
-;;;   入：tui 事件 ──event->input──▶ input.rkt 的抽象输入 ──▶ shell/handle
-;;;   出：shell/render 的 core screen ──screen-patch──▶ 终端字节
+;;;   入：tui 事件 ──event->input──▶ input.rkt 的中间层输入 ──▶ handle
+;;;   出：init/render 的 core screen ──screen-patch──▶ 终端字节
 ;;;
 ;;; 它不认识命令、不碰文档、不做焦点、不存业务状态（只存上一帧用于增量）。
-;;; 换 GUI 后端 = 另写一个这样的文件，app/tree/buffer/status/shell/core 一行不改。
+;;; 换 racket/gui 后端 = 另写一个这样的适配器：把 gui 事件译成 input.rkt 的输入，
+;;; 把 core screen 画进画布；state/tree/buffer/status/command/core 一行不改。
 
-(require (except-in tui cursor-col)
+(require (except-in tui cursor-col mouse-modifiers)
          "../core/view/base/screen.rkt"
          "../core/view/patch.rkt"
          "theme.rkt"
@@ -70,22 +71,28 @@
   (flush!)
   (set-box! last-screen screen))
 
-;;; ---------- tui 事件 → 抽象输入 ----------
+;;; ---------- tui 事件 → 中间层输入 ----------
+;;; tui 特有的东西全在这里：终端把 Ctrl+字母给成大写（归一成小写）；终端只在
+;;; 按住键拖动时上报 move（所以它就是 'drag）；终端 scroll 带 up/down 按钮（转 wheel）。
+
+(define (tui-mods m) (modifiers (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f))
 
 (define (event->input ev)
   (match ev
-    [(key-event k m) (key-of k (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f)]
-    [(paste-event _ s) (text s)]
-    ;; 鼠标 x/y 是 1-based → 转成 0-based 屏幕坐标。
-    ;; move 的 button 为 #f：终端只在按住键拖动时上报 move，所以它=拖拽。
+    ;; Ctrl+字母：终端给大写 → 归一为小写（后端特化，中间层不做）。
+    [(key-event k m) (key (if (and (mods-ctrl? m) (char? k)) (char-downcase k) k) (tui-mods m))]
+    [(paste-event _ s) (text s modifiers-none)]
+    ;; 鼠标 x/y 是 1-based → 转成 0-based 屏幕格。
     [(mouse-event action button x y m)
      (define row (max 0 (sub1 y)))
      (define col (max 0 (sub1 x)))
      (case action
-       [(press)   (pointer 'press button row col (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f)]
-       [(release) (pointer 'release button row col (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f)]
-       [(move)    (pointer 'move #f row col (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f)]
-       [(scroll)  (pointer 'scroll button row col (mods-ctrl? m) (mods-alt? m) (mods-shift? m) #f)]
+       [(press)   (mouse 'press button row col (tui-mods m))]
+       [(release) (mouse 'release button row col (tui-mods m))]
+       ;; 终端只在按住键拖动时上报 move → 'drag（按钮未知，给 #f）。
+       [(move)    (mouse 'drag #f row col (tui-mods m))]
+       ;; 终端滚轮：scroll 带 up/down 按钮 → 独立 wheel 事件。
+       [(scroll)  (wheel (if (eq? button 'up) 'up 'down) row col (tui-mods m))]
        [else #f])]
     [(resize-event r c) (resize r c)]
     [_ #f]))

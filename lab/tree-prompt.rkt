@@ -39,7 +39,9 @@
 
 (define (prompt-cancel st) (tree-clear-prompt st))
 
-(define (plain? k) (and (not (key-ctrl? k)) (not (key-alt? k)) (not (key-meta? k))))
+(define (plain? k)
+  (let ([m (key-modifiers k)])
+    (and (not (modifiers-control m)) (not (modifiers-alt m)) (not (modifiers-meta m)))))
 
 ;; 提示行里只认：普通字符（追加）、退格、回车、Esc；其余忽略。
 (define (prompt-key st opened k)

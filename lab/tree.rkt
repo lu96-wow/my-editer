@@ -60,6 +60,8 @@
            "../core/text/base/point.rkt"
            "input.rkt")
 
+  (define (k name) (key name modifiers-none))
+
   (define d (make-temporary-file "rbtree-~a" 'directory))
   (define f (build-path d "a.txt"))
   (display-to-file "hello\n" f #:exists 'replace)
@@ -98,24 +100,24 @@
   (check-eq? (document-highlight-at (editor-view-document ed1 tvid) 2 0) 'tree-open)
 
   ;; 回车开文件 → effect，不自己动全局
-  (define stF (feed C (run C (tree-open d)) (key 'down #f #f #f #f)))   ; 到 sub
-  (define stF2 (feed C stF (key 'down #f #f #f #f)))                     ; 到 a.txt
-  (define-values (_st eff) (tree-input C stF2 (key 'enter #f #f #f #f)))
+  (define stF (feed C (run C (tree-open d)) (k 'down)))   ; 到 sub
+  (define stF2 (feed C stF (k 'down)))                     ; 到 a.txt
+  (define-values (_st eff) (tree-input C stF2 (k 'enter)))
   (check-equal? eff (list (list 'open f)))
 
   ;; 展开目录（回车在 sub 上）
-  (define stD (feed C stF (key 'enter #f #f #f #f)))
+  (define stD (feed C stF (k 'enter)))
   (check-true (regexp-match? #rx"sub" (doc-string stD)))
 
   ;; 新建文件：n → **手敲字符** → 回车（字符走 key 路径，paste 走 text 路径）
-  (define stP (feed C (run C (tree-open d)) (key #\n #f #f #f #f)))
+  (define stP (feed C (run C (tree-open d)) (k #\n)))
   (check-true (regexp-match? #rx"新建文件" (doc-string stP)))
-  (define stP2 (feed C stP (key #\x #f #f #f #f)))
-  (define stP3 (feed C stP2 (key #\y #f #f #f #f)))
+  (define stP2 (feed C stP (k #\x)))
+  (define stP3 (feed C stP2 (k #\y)))
   (check-true (regexp-match? #rx"新建文件: xy" (doc-string stP3)))
-  (define stP4 (feed C stP3 (key 'backspace #f #f #f #f)))
+  (define stP4 (feed C stP3 (k 'backspace)))
   (check-true (regexp-match? #rx"新建文件: x" (doc-string stP4)))
-  (define stP5 (feed C stP3 (key 'enter #f #f #f #f)))
+  (define stP5 (feed C stP3 (k 'enter)))
   (check-true (file-exists? (build-path d "xy")))
   (check-false (regexp-match? #rx"新建文件" (doc-string stP5)))
   (check-true (for/or ([l (in-list (tree-lines stP5))]) (string-suffix? l "xy")))
@@ -124,10 +126,10 @@
   (define xy (build-path d "xy"))
   (define line (tree-line-of stP5 xy))
   (editor-view-set-point! ed1 tvid (point line 0))
-  (define stQ (feed C stP5 (key #\d #f #f #f #f)))
+  (define stQ (feed C stP5 (k #\d)))
   (check-true (regexp-match? #rx"删除" (doc-string stQ)))
-  (define stQ2 (feed C stQ (key #\y #f #f #f #f)))
-  (define stQ3 (feed C stQ2 (key 'enter #f #f #f #f)))
+  (define stQ2 (feed C stQ (k #\y)))
+  (define stQ3 (feed C stQ2 (k 'enter)))
   (check-false (file-exists? xy))
   (check-false (for/or ([l (in-list (tree-lines stQ3))]) (string-suffix? l "xy")))
 
@@ -145,7 +147,7 @@
   (define (vfeed st in)
     (define-values (st* _e) (tree-input VC st in))
     (vrun st*))
-  (define vs (vfeed (tree-open d) (key #\v #f #f #f #f)))
+  (define vs (vfeed (tree-open d) (k #\v)))
   (check-eq? (tree-mode vs) 'views)
   (check-equal? (tree-structure-count* (ctx->tree-view VC) vs) 2)
   (check-equal? (tree-line-vid VC 0) vfv)
@@ -154,10 +156,10 @@
   (check-eq? (document-highlight-at (editor-view-document ved3 vtvid) 0 0) 'tree-view-active)
   (check-eq? (document-highlight-at (editor-view-document ved3 vtvid) 1 0) 'tree-view)
   ;; 回车选 vfv2 → focus-view effect
-  (define-values (_vs2 eff2) (tree-input VC (vfeed vs (key 'down #f #f #f #f)) (key 'enter #f #f #f #f)))
+  (define-values (_vs2 eff2) (tree-input VC (vfeed vs (k 'down)) (k 'enter)))
   (check-equal? eff2 (list (list 'focus-view vfv2)))
   ;; v 切回文件
-  (check-eq? (tree-mode (vfeed vs (key #\v #f #f #f #f))) 'files)
+  (check-eq? (tree-mode (vfeed vs (k #\v))) 'files)
 
   (delete-directory/files d)
   (displayln "lab/tree.rkt: all tests passed"))
