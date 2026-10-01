@@ -12,7 +12,7 @@
 ;;;     (struct document (im mut))                      ; ★ document 本身不可变
 ;;;
 ;;; document 的值永不改变：写属性只动 document-mutable 里的 box。
-;;; 于是异步结果（LSP 高亮 / 诊断）写回 = 改句柄，O(1)，不需要在 history 上找版本。
+;;; 异步结果（LSP 高亮 / 诊断）写回 = 改句柄，O(1)，不经过 history。
 ;;;
 ;;; 两条属性轨语义不变：
 ;;;     高亮 highlight   每字符一个 face（#f = 无）
@@ -149,10 +149,9 @@
 
 ;;; ---------- 批量属性填充（一次 materialize、一次写 box） ----------
 ;;
-;; 约定：**坐标是原始面，range 是派生面**（详见 core/editor/attributes.rkt）。
-;; 坐标版是底层；range 版先 range-normalize 再折成坐标走同一实现。
+;; 坐标版是底层实现；range 版先 range-normalize，再折成坐标走同一条路径。
 
-;; fills : (listof (list l0 c0 l1 c1 val))，坐标须已规范化（l0<=l1，同行 c0<=c1）。
+;; fills : (listof (list l0 c0 l1 c1 val))。本层不规范化坐标。
 ;; 同一批里重叠处后者覆盖前者；空表 = 不改（返回同一个 document）。
 (define (fills->edit fills)
   (lambda (t)
@@ -165,8 +164,7 @@
 (define (document-readonly-fill-batch bd fills)
   (if (null? fills) bd (document-edit-readonly bd (fills->edit fills))))
 
-;; 批量（range 版）：runs : (listof (list range val))。range 会先规范化，
-;; 再折成坐标走同一实现（坐标是原始表示，range 是便于表达的壳）。
+;; 批量（range 版）：runs : (listof (list range val))。range 先规范化，再折成坐标。
 (define (ranges->fills runs)
   (for/list ([run (in-list runs)])
     (define r (range-normalize (car run)))

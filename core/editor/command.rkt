@@ -15,12 +15,12 @@
 ;;;            changes 为空 = 无实际变更（如文首退格）：不记步、不动选区，原样返回。
 ;;;   视口     每次改动某视图视口后（编辑 / 导航 / 滚动 / 定位 / 切 mode / 尺寸）
 ;;;            调 editor-sync-viewports：sync='follow / link 相同的视图跟随。
-;;;   作者态   高亮 / readonly：**就地**改 document 的 box（不记步、不换 document），
-;;;            并同步 history 的 current（document/who/selections），使作者态随快照搭车：
+;;;   作者态   高亮 / readonly：就地改 document 的 box（不记步、不换 document），
+;;;            并同步 history 的 current（document/who/selections），作者态随快照搭车：
 ;;;            文本 undo/redo 恢复的快照里带着那一刻的高亮 / 只读。
-;;;            注意：属性是**就地**改的，editor-view-set 的 eq? 检测看不到它，
-;;;            所以作者态必须走 editor-view-author-edit，不能走 editor-view-set。
-;;;            异步结果（LSP 高亮 / 诊断）可直接改句柄（editor/attributes.rkt），O(1)。
+;;;            属性是就地改的，editor-view-set 用 eq? 判「值变了没」；作者态走
+;;;            editor-view-author-edit，编辑仍走 editor-view-set。
+;;;            异步结果（LSP 高亮 / 诊断）走句柄（editor/attributes.rkt）。
 ;;;   导航     只动选区 + ensure；不记步。
 ;;;   撤销/重做  换文档 + 还原发起视图的选区；**不动视口**（pin）。
 ;;;            undo/redo 没有变更描述 → 同文档其它视图的选区只做一次 clamp（防越界）。

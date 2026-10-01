@@ -17,20 +17,11 @@
 ;;;
 ;;; 不新增 history 步、不重建快照、不做任何按版本查找（没有 O(深度)）。
 ;;;
-;;; ---------- 坐标 vs range：约定（属性写口） ----------
-;;;
-;;;   坐标 (l0 c0 l1 c1)  = **原始 I/O 面**：查询、LSP / 鼠标 / 程序输入、底层 edit-fill。
-;;;                         无分配、可直接映射外部坐标；输入须已规范化。
-;;;   range (start,end)   = **派生/组合面**：已算好的区间（selection-range / change 区间 /
-;;;                         手写 region）。会先 range-normalize；是写口的糖。
-;;;
-;;; 两者经 range-of 互转，不互相替代：不强制全坐标，也不强制全 range。
-;;;   单区间：编辑命令用 range 版（editor-view-highlight-range）；
-;;;           原始坐标用 batch-of-1（editor-document-highlight-batch! doc (list (list ...))）。
-;;;   多区间：两版都有（-batch 吃坐标，-range-batch 吃 range）。
-;;;
-;;; `change` 是另一回事：它天生是「before 区间 ⊕ after 区间 ⊕ kind」，属于派生面，
-;;; 不摊成坐标（见 core/text/base/change.rkt）。
+;;; 属性写口的输入形态：
+;;;   坐标版   -batch / -batch! 吃 (listof (list l0 c0 l1 c1 val))；本层不规范化坐标。
+;;;   range 版 -range / -range-batch 吃 range；进入时 range-normalize。
+;;; 两者经 range-of 互转；range 版折成坐标后走 document 层的同一条路径。
+;;; change（before 区间 ⊕ after 区间 ⊕ kind）在 core/text/base/change.rkt。
 
 (provide editor-view-document-handle
          editor-view-highlight-atom
