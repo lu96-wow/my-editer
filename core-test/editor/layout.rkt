@@ -9,7 +9,7 @@
 (define-values (ed1 _) (editor-add-view ed0 0 20 4))              ; vid1
 
 ;; 两窗格：左 (0,0) 20×4，右 x=20 20×3；active = vid0
-(define rects (list (rect 0 0 0 20 4) (rect 1 20 0 20 3)))
+(define rects (list (rect 0 0 0 20 4 0) (rect 1 20 0 20 3 0)))
 
 ;; ---------- set-layout：w h 落到 view（x y 忽略） ----------
 (define laid (editor-set-layout ed1 rects))

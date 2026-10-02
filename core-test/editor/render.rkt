@@ -13,7 +13,7 @@
 (check-equal? (map run-text (screen-row (editor-view-render ed0 0) 0)) '("abc"))
 
 ;; ---------- 多视图合成（rect 布局）----------
-(define rects (list (rect 0 0 0 20 4) (rect 1 20 0 20 4)))
+(define rects (list (rect 0 0 0 20 4 0) (rect 1 20 0 20 4 0)))
 (define comp (editor-render-layout ed1 rects 0 40 4))
 (check-equal? (map (lambda (r) (list (run-col r) (run-text r))) (screen-row comp 0))
               '((0 "abc") (20 "abc")))

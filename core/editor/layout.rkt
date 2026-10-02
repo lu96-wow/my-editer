@@ -30,8 +30,8 @@
  ;; ---------- 增量（rect 版） ----------
  editor-render-layout-patch)
 
-;; 窗格矩形：x = 屏幕列，y = 屏幕行，w/h = 尺寸。
-(struct rect (vid x y w h) #:transparent)
+;; 窗格矩形：x = 屏幕列，y = 屏幕行，w/h = 尺寸；deep = 深度（大 = 在上）。
+(struct rect (vid x y w h deep) #:transparent)
 
 ;;; ---------- 写：尺寸落到 view ----------
 
@@ -53,13 +53,14 @@
           (viewport-set-size (view-viewport v) w h)
           (view-selections v)))
 
-;; 一份 rects → 一屏；active（单个 vid / vid 列表）对应窗格的光标透出，其余只带选区。
+;; 一份 rects → 一屏；只有 active（单个 vid / vid 列表）对应窗格的光标 / 选区透出，其余只出文本。
 (define (editor-render-layout ed rects active total-w total-h)
   (composition-screen
    (panes->composition total-w total-h
      (for/list ([r (in-list rects)])
        (pane (rect-vid r) (rect-y r) (rect-x r)
-             (view-render-sized ed (rect-vid r) (rect-w r) (rect-h r))))
+             (view-render-sized ed (rect-vid r) (rect-w r) (rect-h r))
+             (rect-deep r)))
      active)))
 
 ;;; ---------- 合 ----------

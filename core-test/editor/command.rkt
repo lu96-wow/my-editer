@@ -357,16 +357,16 @@
 (check-equal? (screen->string (editor-view-render mw2 0)) (screen->string (editor-view-render mw2 0)))
 
 ;; 左右并排：位置、active 由调用方给；合成由 editor 负责
-(define comp (editor-render-layout mw2 (list (rect 0 0 0 20 5) (rect 1 20 0 20 5)) 0 40 5))
+(define comp (editor-render-layout mw2 (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 0 40 5))
 (check-equal? (map (lambda (r) (list (run-col r) (run-text r))) (screen-row comp 0))
               '((0 "abc") (20 "two")))
 ;; 只有 active pane 的光标透出
 (check-equal? (screen-cursors comp) (list (cursor 0 0 #t)))
-(check-equal? (screen-cursors (editor-render-layout mw2 (list (rect 0 0 0 20 5) (rect 1 20 0 20 5)) 1 40 5))
+(check-equal? (screen-cursors (editor-render-layout mw2 (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 1 40 5))
               (list (cursor 0 20 #t)))
 ;; 多视图增量：首帧 → 全量
 (define-values (cpN cpRn cpSn)
-  (editor-render-layout-patch mw2 #f (list (rect 0 0 0 20 5) (rect 1 20 0 20 5)) 0 40 5))
+  (editor-render-layout-patch mw2 #f (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 0 40 5))
 (check-equal? (screen->string cpN) (screen->string comp))
 
 ;; ---------- 增量投影：旧帧 → (新帧, clear, render, selection) ----------

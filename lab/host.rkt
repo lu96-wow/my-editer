@@ -279,7 +279,7 @@
   (define lrs (layout->rects (host-layout h1) 0 0 (host-cols h1) (host-rows h1)))
   (define rects (for/list ([r (in-list lrs)])
                   (rect (host-pane-vid h1 (lrect-id r))
-                        (lrect-x r) (lrect-y r) (lrect-w r) (lrect-h r))))
+                        (lrect-x r) (lrect-y r) (lrect-w r) (lrect-h r) 0)))
   (define ed (editor-set-layout (host-editor h1) rects))
   (define h2 (struct-copy host h1 [editor ed]))
   (values h2
