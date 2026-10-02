@@ -7,8 +7,8 @@
 ;;;   pane        贴在合成屏上的一块子屏（id 供 active 匹配；row/col 可负，超出按合成宽度裁掉）
 ;;;   composition 合成后的屏幕 + 参与合成的 pane + active（单个 id 或 id 列表）
 ;;;
-;;; run / region 按 (x,y) 平移并**裁剪到合成宽度**；active（单个 id / id 列表 / #f）
-;;; 命中的 pane 的光标都透出，选区来自所有 pane。**假定 pane 不重叠**（重叠按列交错，不保证层序）。
+;;; run / region 按 (x,y) 平移并**裁剪到合成宽度**；只有 active（单个 id / id 列表 / #f）
+;;; 命中的 pane 的光标与选区才透出，其余 pane 只出文本。**假定 pane 不重叠**（重叠按列交错，不保证层序）。
 
 (provide
  ;; ---------- 类型 ----------
@@ -76,7 +76,7 @@
   (define c1 (min width (region-end-col g)))
   (if (>= c0 c1) #f (struct-copy region g [start-col c0] [end-col c1])))
 
-;; overlay：所有 active pane 的光标 + 所有 pane 的选区。
+;; overlay：只有 active pane 的光标 + 选区（其余 pane 只出文本）。
 (define (compose-overlay width panes active)
   (define acts (active->list active))
   (values
@@ -87,7 +87,7 @@
                 (define c* (shift-cursor c (pane-col p) (pane-row p)))
                 (and (>= (cursor-col c*) 0) (< (cursor-col c*) width) c*)))))
    (append*
-    (for/list ([p (in-list panes)])
+    (for/list ([p (in-list panes)] #:when (member (pane-id p) acts))
       (filter values
               (for/list ([g (in-list (screen-regions (pane-screen p)))])
                 (clip-region (shift-region g (pane-col p) (pane-row p)) width)))))))
