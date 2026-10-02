@@ -92,8 +92,14 @@
 (define (tree-sync ctx st)
   (define structs (structure-lines st))
   (define faces (for/list ([x (in-list (visible st))]) (struct-face (ctx-opened ctx) x)))
+  (define h (max 1 (ctx-pane-h ctx)))
   (define in (prompt-line st))
-  (define raw (if in (append structs (list in)) structs))
+  ;; 输入行**锚到视口底**：内容不足时先用空行把输入行顶到第 (h-1) 行。
+  (define prompt-idx (and in (max (length structs) (sub1 h))))
+  (define body (if prompt-idx
+                   (append structs (make-list (- prompt-idx (length structs)) ""))
+                   structs))
+  (define raw (if in (append body (list in)) body))
   (define w (for/fold ([m (ctx-pane-w ctx)]) ([l (in-list raw)]) (max m (string-length l))))
   (define ls (for/list ([l (in-list raw)]) (pad-to l w)))
   (define doc0 (document-open (if (null? ls) "" (string-join ls "\n"))))
@@ -108,7 +114,6 @@
     (cond
       [in
        (define line (sub1 (length ls)))
-       (define h (max 1 (ctx-pane-h ctx)))
        (editor-view-set-top-line! (ctx-editor ctx) (ctx-vid ctx) (max 0 (- line (sub1 h))))
        (point line (string-length in))]
       [(tree-goto st) (define line (tree-line-of st (tree-goto st))) (and line (point line 0))]
@@ -294,6 +299,9 @@
   ;; 新建文件：n → 手敲 → 回车
   (define st1 (feed C (run C (tree-open d)) (k #\n)))
   (check-true (regexp-match? #rx"新建文件" (doc-str)))
+  ;; 输入行锚到视口底：ctx 高 6，内容不足 → 输入行在第 5 行（最后一行）
+  (check-equal? (editor-view-point-line ed 0) 5)
+  (check-equal? (length (string-split (doc-str) "\n")) 6)
   (define st2 (feed C st1 (k #\x)))
   (define st3 (feed C st2 (k #\y)))
   (check-true (regexp-match? #rx"新建文件: xy" (doc-str)))

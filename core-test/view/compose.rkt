@@ -24,6 +24,14 @@
 ;; active 不存在 → 无光标
 (check-equal? (screen-cursors (panes->screen 8 2 (list (pane 'a 0 0 sa)) 'x)) '())
 
+;; active 为列表 → 多个 pane 的光标都透出（按 pane 顺序）
+(check-equal? (screen-cursors (panes->screen 8 2 (list (pane 'a 0 0 sa) (pane 'b 0 4 sb)) '(a b)))
+              (list (cursor 1 1 #t) (cursor 0 4 #t)))
+;; #f / '() → 无光标（选区仍来自所有 pane）
+(check-equal? (screen-cursors (panes->screen 8 2 (list (pane 'a 0 0 sa) (pane 'b 0 4 sb)) #f)) '())
+(check-equal? (screen-regions (panes->screen 8 2 (list (pane 'a 0 0 sa) (pane 'b 0 4 sb)) #f))
+              (list (region 0 0 2 #f)))
+
 ;; 平移：pane 贴到 (2,1)
 (define comp2 (panes->screen 8 4 (list (pane 'a 1 2 sa)) 'a))
 (check-equal? (screen-row comp2 1) (list (run 2 "ab" 'f)))
@@ -32,7 +40,7 @@
 
 ;; panes->composition 返回 composition（含屏幕）
 (define c (panes->composition 8 2 (list (pane 'a 0 0 sa)) 'a))
-(check-equal? (composition-active-id c) 'a)
+(check-equal? (composition-active c) 'a)
 (check-equal? (composition-screen c) (panes->screen 8 2 (list (pane 'a 0 0 sa)) 'a))
 
 (displayln "compose.rkt: all tests passed")

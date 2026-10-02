@@ -53,23 +53,23 @@
           (viewport-set-size (view-viewport v) w h)
           (view-selections v)))
 
-;; 一份 rects → 一屏；active-vid 的光标透出，其余只带选区。
-(define (editor-render-layout ed rects active-vid total-w total-h)
+;; 一份 rects → 一屏；active（单个 vid / vid 列表）对应窗格的光标透出，其余只带选区。
+(define (editor-render-layout ed rects active total-w total-h)
   (composition-screen
    (panes->composition total-w total-h
      (for/list ([r (in-list rects)])
        (pane (rect-vid r) (rect-y r) (rect-x r)
              (view-render-sized ed (rect-vid r) (rect-w r) (rect-h r))))
-     active-vid)))
+     active)))
 
 ;;; ---------- 合 ----------
 
-(define (editor-render-layout* ed rects active-vid total-w total-h)
+(define (editor-render-layout* ed rects active total-w total-h)
   (define ed* (editor-set-layout ed rects))
-  (values ed* (editor-render-layout ed* rects active-vid total-w total-h)))
+  (values ed* (editor-render-layout ed* rects active total-w total-h)))
 
 ;; 增量：旧帧 + 新帧 → (新帧, render, selection)。
-(define (editor-render-layout-patch ed old rects active-vid total-w total-h)
-  (define new (editor-render-layout ed rects active-vid total-w total-h))
+(define (editor-render-layout-patch ed old rects active total-w total-h)
+  (define new (editor-render-layout ed rects active total-w total-h))
   (define-values (render selection) (screen-patch old new))
   (values new render selection))

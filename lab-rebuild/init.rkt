@@ -53,6 +53,9 @@
   ;; 新建文件（手敲字符走 key 路径）
   (define h2 (handle h1 (k #\n)))
   (check-true (regexp-match? #rx"新建文件" (editor-view-string (host-editor h2) (host-pane-vid h2 0))))
+  ;; 输入行在视口最后一行（内容不足时补空行）
+  (check-equal? (editor-view-point-line (host-editor h2) (host-pane-vid h2 0))
+                (max (length (tree-lines (pane-state (host-pane h2 0)))) 9))
   (define h3 (for/fold ([x h2]) ([c (in-list '(#\m #\a #\d #\e))]) (handle x (k c))))
   (check-true (regexp-match? #rx"新建文件: made" (editor-view-string (host-editor h3) (host-pane-vid h3 0))))
   (define h4 (handle h3 (k 'enter)))

@@ -20,6 +20,9 @@
 (check-equal? (screen-cursors comp) (list (cursor 0 0 #t)))     ; 只 active 的光标透出
 (check-equal? (screen-cursors (editor-render-layout ed1 rects 1 40 4))
               (list (cursor 0 20 #t)))
+;; active 为 vid 列表 → 多个窗格的光标都透出（按 rect 顺序）
+(check-equal? (screen-cursors (editor-render-layout ed1 rects '(0 1) 40 4))
+              (list (cursor 0 0 #t) (cursor 0 20 #t)))
 
 ;; ---------- 增量 ----------
 (define-values (n0 r0 s0) (editor-render-patch ed0 0 (editor-view-render ed0 0)))
