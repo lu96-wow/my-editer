@@ -183,4 +183,20 @@
 (check-equal? (editor-view-string dv2 0) "AAA")
 (check-equal? (editor-view-string dv2 1) "bbb" "写 A 不动 B")
 
+;;; ---------- did 版属性写：当前文档；0 view 也能写 ----------
+(define dw (editor-open "abcd" 20 5 "W"))
+(editor-document-set-highlight! dw 0 (hl-track "abcd" 0 0 0 2 'kw))
+(check-equal? (editor-view-highlight-at dw 0 0 0) 'kw)
+(editor-document-highlight-batch! dw 0 (list (list 0 2 0 4 'hl2)))
+(check-equal? (editor-view-highlight-at dw 0 0 3) 'hl2)
+(editor-document-readonly-batch! dw 0 (list (list 0 0 0 1 #t)))
+(check-true (editor-view-readonly-at? dw 0 0 0))
+;; 写 did 不记 step（与 name/history 同类）
+(check-equal? (editor-view-depth dw 0) 0)
+;; 0 个 view 的文档：没有 vid，只有 did 能写
+(define-values (dv0-ed dv0-did) (editor-add-document (editor-blank) "xyz" "nv"))
+(check-false (first-view-of-document dv0-ed dv0-did))
+(editor-document-highlight-batch! dv0-ed dv0-did (list (list 0 0 0 2 'kw)))
+(check-equal? (document-highlight-at (document-entry-document (editor-document-entry dv0-ed dv0-did)) 0 0) 'kw)
+
 (displayln "editor/attributes.rkt: all tests passed")

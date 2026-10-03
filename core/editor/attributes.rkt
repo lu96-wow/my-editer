@@ -26,6 +26,15 @@
 (provide editor-view-document-handle
          editor-view-highlight-atom
          editor-view-readonly-atom
+
+         ;; did 版：文档级属性写（程序态；与 editor-document-set-name! 同类）
+         editor-document-set-highlight!
+         editor-document-set-readonly!
+         editor-document-highlight-batch!
+         editor-document-readonly-batch!
+         editor-document-highlight-range-batch!
+         editor-document-readonly-range-batch!
+
          ;; 句柄式写回：吃 document handle（不是 ed/did）。用 document-handle 前缀，
          ;; 让 editor-document-* 保持「按 did」单义（命名约定见 query.rkt 头）。
          editor-document-handle-set-highlight!
@@ -34,6 +43,30 @@
          editor-document-handle-readonly-batch!
          editor-document-handle-highlight-range-batch!
          editor-document-handle-readonly-range-batch!)
+
+;;; ---------- did 版：文档级属性写（程序态，不碰 history / 选区） ----------
+;;; 属性是**文档级** box 状态，与 view / 选区无关，所以按 did 写与
+;;; editor-document-set-name! / set-history-enabled! 同类；0 个 view 的文档也能写。
+;;; 与 handle 版的分工：
+;;;   did 版    → 写**当前**文档（写时按 did 现取）；
+;;;   handle 版 → 写**抓取时那一个**文档值（版本敏感，不可达时静默失效）。
+
+(define (document-of ed did) (document-entry-document (editor-document-entry ed did)))
+
+(define (editor-document-set-highlight! ed did hl)
+  (editor-document-handle-set-highlight! (document-of ed did) hl) (void))
+(define (editor-document-set-readonly! ed did ro)
+  (editor-document-handle-set-readonly! (document-of ed did) ro) (void))
+(define (editor-document-highlight-batch! ed did fills)
+  (editor-document-handle-highlight-batch! (document-of ed did) fills) (void))
+(define (editor-document-readonly-batch! ed did fills)
+  (editor-document-handle-readonly-batch! (document-of ed did) fills) (void))
+(define (editor-document-highlight-range-batch! ed did runs)
+  (editor-document-handle-highlight-range-batch! (document-of ed did) runs) (void))
+(define (editor-document-readonly-range-batch! ed did runs)
+  (editor-document-handle-readonly-range-batch! (document-of ed did) runs) (void))
+
+;;; ---------- 句柄式写回（版本敏感；异步用） ----------
 
 ;; 取某视图当前文档的句柄（= 连同不可变文本 + 可变属性原子）。
 (define (editor-view-document-handle ed vid)
