@@ -620,7 +620,7 @@
 (check-false (editor-document-can-undo? hd0 0))
 (check-equal? (doc-str hd0) "Xab")                             ; 清史不改文档
 ;; 0 个 view 的文档：没有 vid，只有 did
-(define-values (dhnv dhnv-did) (editor-add-document (editor-blank) "q" "nv"))
+(define-values (dhnv dhnv-did) (editor-add-document (make-blank-editor) "q" "nv"))
 (check-equal? (editor-document-depth dhnv dhnv-did) 0)
 (check-true (editor-document-history-enabled? dhnv dhnv-did))     ; 默认开
 (editor-document-reset-history! dhnv dhnv-did #f)

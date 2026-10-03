@@ -198,7 +198,7 @@
 ;; 写 did 不记 step（与 name/history 同类）
 (check-equal? (editor-view-depth dw 0) 0)
 ;; 0 个 view 的文档：没有 vid，只有 did 能写
-(define-values (dv0-ed dv0-did) (editor-add-document (editor-blank) "xyz" "nv"))
+(define-values (dv0-ed dv0-did) (editor-add-document (make-blank-editor) "xyz" "nv"))
 (check-false (first-view-of-document dv0-ed dv0-did))
 (editor-document-highlight-batch! dv0-ed dv0-did (list (list 0 0 0 2 'kw)))
 (check-equal? (document-highlight-at (document-entry-document (editor-document-entry dv0-ed dv0-did)) 0 0) 'kw)

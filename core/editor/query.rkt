@@ -16,7 +16,7 @@
 ;;;   `editor-view-* ed vid`            按 vid
 ;;;   `editor-document-* ed did`        按 did
 ;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 attributes.rkt）
-;;;   全局（无 id）：`editor-blank` / `editor-open` / `editor-documents` / `editor-views` / …
+;;;   全局（无 id）：`make-blank-editor` / `editor-open` / `editor-documents` / `editor-views` / …
 
 (provide
  ;; ---------- 文本 / 名称 ----------

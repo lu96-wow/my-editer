@@ -51,7 +51,7 @@
 
  ;; ---------- 结构操作（返回新 editor） ----------
  editor-open
- editor-blank
+ make-blank-editor
  editor-add-document
  editor-add-view
  editor-add-document-view
@@ -157,7 +157,7 @@
 
 ;; 空 editor：无文档、无视图（宿主默认不打开 scratch 的起点）。
 ;; 新视图/文档的尺寸由 editor-add-view / editor-add-document-view 显式给。
-(define (editor-blank)
+(define (make-blank-editor)
   (editor '() '() 0 0 (box #f)))
 
 (define (editor-open text width height [name default-name]

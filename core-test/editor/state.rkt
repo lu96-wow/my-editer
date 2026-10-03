@@ -129,7 +129,7 @@
 (check-equal? (document->string (document-entry-document (editor-document-entry ed 0))) "abc\ndef")   ; 原 editor 不变
 
 ;; ---------- 空 editor（无文档 / 无视图） ----------
-(define eb (editor-blank))
+(define eb (make-blank-editor))
 (check-equal? (length (editor-documents eb)) 0)
 (check-equal? (length (editor-views eb)) 0)
 (check-false (editor-clipboard eb))
