@@ -1,50 +1,65 @@
 #lang racket
 
-;;; ============================================================================
-;;; theme.rkt —— 主题：face → 真彩色（纯数据）
-;;; ============================================================================
+;;; lab/theme.rkt —— face / overlay → style（纯数据）
 ;;;
-;;; core 的 face 是不透明值（'tree-dir、'tree-file、'status …）；只有这里知道
-;;; 它们对应什么颜色。后端把 RGB 变成终端的真彩色（tui 用 format-rgb-*-base）。
+;;; core 的 face 是不透明值；只有这里知道它对应什么颜色。后端拿到的是 style（RGB），
+;;; 再由后端自己变成终端真彩色 / 画布颜色。
 ;;;
-;;; 放成数据：
-;;;   theme : hash（face → (fg . bg)）
-;;;   fg / bg : (list r g b) | #f（#f = 用终端默认）
-;;;
-;;; 加一种 face 的配色，只改这张表。
+;;; overlay（cursor / selection）在 face 的 style 之上叠一层。
 
-(provide theme face-colors)
+(require "output.rkt")
 
+(provide face->style overlay-style attr->style theme)
+
+;; face → 基础 style（fg/bg/attrs）。加一种 face 只改这张表。
 (define theme
-  (hash 'tree-root   '((240 150 60) . #f)    ; 根目录（橙，标题）
-        'tree-dir    '((120 180 240) . #f)   ; 文件夹
-        'tree-file   '((200 200 200) . #f)   ; 文件（未打开）
-        'tree-open   '((150 210 150) . #f)   ; 已打开的文件
-        'tree-prompt '((229 192 123) . #f)   ; 输入行
-        'tree-view        '((190 190 205) . #f) ; 已打开视图
-        'tree-view-active '((255 214 120) . #f) ; 编辑格正在显示的视图
-        'tree-view-hidden '((120 120 135) . #f) ; 当前没显示的视图
-        'status      '((225 225 225) . (40 44 52))
-        'separator   '((80 85 95) . #f)))
+  (hash 'line-number      (style '(110 115 130) #f #f #f #f #f)
+        'status           (style '(230 230 230) '(40 44 52) #f #f #f #f)
+        'separator        (style '(80 85 95) #f #f #f #f #f)
+        ;; 两棵树
+        'tree-dir         (style '(120 180 240) #f #t #f #f #f)   ; 目录（蓝、粗）
+        'tree-file        (style '(190 190 200) #f #f #f #f #f)   ; 文件（灰）
+        'tree-open        (style '(90 220 120) #f #f #f #f #f)    ; 已打开的文件（绿）
+        'tree-doc         (style '(225 225 235) #f #t #f #f #f)   ; 文档
+        'tree-view        (style '(170 170 185) #f #f #f #f #f)   ; 视图
+        'tree-view-active (style '(255 214 120) #f #t #f #f #f))) ; 焦点视图（黄）
 
-;; → (values fg bg)；未知 face 用浅灰。
-(define (face-colors face)
-  (define p (hash-ref theme face #f))
-  (if p (values (car p) (cdr p)) (values '(205 205 205) #f)))
+(define (face->style face)
+  (if (and face (hash-has-key? theme face))
+      (hash-ref theme face)
+      default-style))
+
+;; overlay：光标 = 反显；选中 = 蓝色底。其余透传。
+(define (overlay-style channel st)
+  (case channel
+    [(cursor)    (struct-copy style st [reverse? #t])]
+    [(selection) (struct-copy style st [bg '(58 74 128)])]
+    [else st]))
+
+;; core piece 的 attr → style。attr = (channel . face)（已由 output.rkt 归一）或裸 face。
+(define (attr->style attr)
+  (cond
+    [(not (pair? attr)) (face->style attr)]
+    [else (overlay-style (car attr) (face->style (cdr attr)))]))
 
 ;;; ---------- 测试 ----------
 
 (module+ test
   (require rackunit)
 
-  (define-values (fg bg) (face-colors 'tree-dir))
-  (check-equal? fg '(120 180 240))
-  (check-false bg)
-  (define-values (rfg _rbg) (face-colors 'tree-root))
-  (check-equal? rfg '(240 150 60))
-  (define-values (sfg sbg) (face-colors 'status))
-  (check-equal? sbg '(40 44 52))
-  (define-values (ufg _) (face-colors 'nope))
-  (check-equal? ufg '(205 205 205))
+  (check-equal? (face->style 'line-number) (style '(110 115 130) #f #f #f #f #f))
+  (check-equal? (face->style 'unknown) default-style)
 
-  (displayln "lab-rebuild/theme.rkt: all tests passed"))
+  ;; 光标在 face 上叠反显
+  (define cs (attr->style (cons 'cursor 'line-number)))
+  (check-true (style-reverse? cs))
+  (check-equal? (style-fg cs) '(110 115 130))
+
+  ;; 选中叠蓝底
+  (define ss (attr->style (list 'selection #f)))
+  (check-equal? (style-bg ss) '(58 74 128))
+
+  ;; render 透传 face（output 归一后 render 也是 (render . face)）
+  (check-equal? (attr->style (cons 'render 'tree-dir)) (face->style 'tree-dir))
+
+  (displayln "lab/theme.rkt: all tests passed"))
