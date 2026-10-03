@@ -16,7 +16,7 @@
 ;;; 作用**选区**的属性命令（editor-view-highlight! / -readonly! …）在 command.rkt：
 ;;; 它们是视图态命令，算完区间后调这里的 editor-document-*。
 ;;;
-;;; 低层逃逸口（原子句柄 / 视图文档句柄）保留在底部：入口 editor.rkt 已 except-out，
+;;; 低层逃逸口（原子句柄 / 视图文档句柄）保留在底部：入口 editor.rkt 不导出这三者，
 ;;; 只供 core 内部与测试用（host 一律走 editor-document-* 的 did 寻址）。
 
 (provide

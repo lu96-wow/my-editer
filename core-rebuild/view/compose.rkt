@@ -10,7 +10,7 @@
 ;;; **不透明 + 显式深度**：每个 pane 有 deep（大 = 在上）。合成按 deep 决定每一格归谁 ——
 ;;; 上层 pane 的**整块矩形**（含空白格）遮住下层；同 deep 时列表靠后者在上。
 ;;; active（单个 id / id 列表 / #f）命中的 pane 的光标 / 选区才透出，且同样被上层遮挡。
-;;; 不在任何 pane 矩形内的格透明（露出背景）。panes 允许重叠，不再要求互不覆盖。
+;;; 不在任何 pane 矩形内的格透明（露出背景）。panes 允许重叠。
 
 (provide
  ;; ---------- 类型 ----------
@@ -33,7 +33,7 @@
         [else (list active)]))
 
 (define (panes->screen width height panes active)
-  ;; 单 pane：无遮挡，直接走 run 路径（等同旧版，省掉 cell 往返）。
+  ;; 单 pane：无遮挡，直接走 run 路径（省掉 cell 往返）。
   ;; 多 pane：建 owner 网格，按格遮挡。
   (define single? (and (pair? panes) (null? (cdr panes))))
   (define owner (if single? #f (and (pair? panes) (build-owner width height panes))))

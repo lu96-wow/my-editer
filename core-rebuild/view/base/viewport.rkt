@@ -148,7 +148,7 @@
                     [else (viewport-top-line v)]))
   (define top* (max 0 (min top (max 0 (- n h)))))
   ;; 正文宽依赖 top-line（行号栏位数）：重算 top 后栏宽可能变，必须用**新顶行**的宽；
-  ;; 否则左移/右滚会差一列（原先用旧宽会在换顶行后把光标挤出可视区）。
+  ;; 否则左移/右滚会差一列。
   (define v-top (struct-copy viewport v [top-line top*]))
   (define w (viewport-content-width t v-top))
   (define lc (viewport-left-column v))
