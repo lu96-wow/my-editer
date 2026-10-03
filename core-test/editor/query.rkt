@@ -148,6 +148,10 @@
 (check-true (editor-document-history-enabled? ed 0))
 (check-false (editor-history-enabled? (editor-set-history-enabled ed #f)))
 (check-false (editor-document-history-enabled? ed 0))
+;; did 版 can-undo/redo/depth 与 vid 版一致
+(check-equal? (editor-document-can-undo? ed 0) (editor-view-can-undo? ed 0))
+(check-equal? (editor-document-can-redo? ed 0) (editor-view-can-redo? ed 0))
+(check-equal? (editor-document-depth ed 0) (editor-view-depth ed 0))
 
 ;; 主选区两端点
 (editor-view-set-selections! ed 0 (selections-of (list (selection (point 0 0) (point 1 2))) 0))

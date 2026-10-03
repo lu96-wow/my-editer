@@ -68,6 +68,9 @@
  editor-view-can-redo?
  editor-view-depth
  editor-view-history-enabled?
+ editor-document-can-undo?
+ editor-document-can-redo?
+ editor-document-depth
  editor-document-history-enabled?)
 
 ;;; ---------- 文本 / 名称 ----------
@@ -169,15 +172,21 @@
 
 ;;; ---------- 历史 ----------
 
-(define (editor-view-can-undo? ed vid)
-  (history-can-undo? (editor-document-history ed (view-did (editor-view-ref ed vid)))))
-(define (editor-view-can-redo? ed vid)
-  (history-can-redo? (editor-document-history ed (view-did (editor-view-ref ed vid)))))
-(define (editor-view-depth ed vid)
-  (history-depth (editor-document-history ed (view-did (editor-view-ref ed vid)))))
-(define (editor-view-history-enabled? ed vid)
-  (history-enabled? (editor-document-history ed (view-did (editor-view-ref ed vid)))))
-
+(define (editor-document-can-undo? ed did)
+  (history-can-undo? (editor-document-history ed did)))
+(define (editor-document-can-redo? ed did)
+  (history-can-redo? (editor-document-history ed did)))
+(define (editor-document-depth ed did)
+  (history-depth (editor-document-history ed did)))
 ;; 同上，按 did（history 是文档级属性；无 view 的文档也能读）。
 (define (editor-document-history-enabled? ed did)
   (history-enabled? (editor-document-history ed did)))
+
+(define (editor-view-can-undo? ed vid)
+  (editor-document-can-undo? ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-can-redo? ed vid)
+  (editor-document-can-redo? ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-depth ed vid)
+  (editor-document-depth ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-history-enabled? ed vid)
+  (editor-document-history-enabled? ed (view-did (editor-view-ref ed vid))))

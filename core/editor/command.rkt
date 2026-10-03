@@ -25,7 +25,7 @@
 (provide
  ;; ---------- 通用变更原语 ----------
  (struct-out step)
- editor-view-set! editor-history-record! editor-view-assign!
+ editor-view-set! editor-document-history-record! editor-view-assign!
 
  ;; ---------- 编辑 ----------
  editor-view-edit!
@@ -63,7 +63,9 @@
 
  ;; ---------- 历史 ----------
  editor-view-undo! editor-view-redo!
+ editor-document-undo! editor-document-redo!
  editor-view-clear-history! editor-view-reset-history! editor-view-seal!
+ editor-document-clear-history! editor-document-reset-history! editor-document-seal!
  editor-view-set-history-enabled!)
 
 ;;; ---------- 通用内容原语（就地） ----------
@@ -102,7 +104,7 @@
      (step old pre-sels value* sels* vid pre-tip)]))
 
 ;; 把一次 step 记进账本（哑栈原语；是否并步由 merge-tag 判定）。
-(define (editor-history-record! ed did step [merge-tag #f])
+(define (editor-document-history-record! ed did step [merge-tag #f])
   (cond
     [(not step) (void)]
     [else
@@ -149,7 +151,7 @@
      (define step (editor-view-set! ed vid doc* #:selections sels* #:change changes #:ensure? ensure?))
      (cond
        [(not step) (values '() #t)]
-       [else (editor-history-record! ed did step merge-tag) (values changes #t)])]))
+       [else (editor-document-history-record! ed did step merge-tag) (values changes #t)])]))
 
 (define (editor-view-insert! ed vid text [merge-tag #f])
   (editor-view-edit! ed vid (lambda (d s) (command-type d s text)) merge-tag))
@@ -175,7 +177,7 @@
     [else
      (define did (view-did (editor-view-ref ed vid)))
      (define step (editor-view-set! ed vid new-doc))
-     (when step (editor-history-record! ed did step merge-tag))
+     (when step (editor-document-history-record! ed did step merge-tag))
      #t]))
 
 ;;; ---------- 剪贴板 ----------
@@ -403,10 +405,10 @@
   (editor-view-author-edit! ed vid (lambda (d s) (values (document-readonly-fill-range-batch d runs) s #t))))
 
 ;;; ---------- 撤销 / 重做 ----------
+;;; history 是**文档级**状态，所以这些操作一律按 did；vid 版只是「就地取 did」的糖。
 
 ;; undo/redo 共用：step : history -> (values history ok?)。→ ok?
-(define (editor-view-time-travel! ed vid step)
-  (define did (view-did (editor-view-ref ed vid)))
+(define (editor-document-time-travel! ed did step)
   (define-values (h* ok?) (step (editor-document-history ed did)))
   (cond
     [(not ok?) #f]
@@ -414,30 +416,37 @@
      (define-values (_doc sels* who) (history-state h*))
      (document-entry-set-history! (editor-document-entry ed did) h*)
      (editor-views-clamp! ed did)
+     ;; 选区还原到**发起那次编辑的视图**（快照里的 who），与调用者传的 vid 无关。
      (when (and who (for/or ([x (in-list (editor-views ed))] #:when (= (view-id x) who)) #t))
        (view-set-selections! (editor-view-ref ed who) sels*))
      #t]))
 
-(define (editor-view-undo! ed vid) (editor-view-time-travel! ed vid history-undo))
-(define (editor-view-redo! ed vid) (editor-view-time-travel! ed vid history-redo))
+(define (editor-document-undo! ed did) (editor-document-time-travel! ed did history-undo))
+(define (editor-document-redo! ed did) (editor-document-time-travel! ed did history-redo))
+(define (editor-view-undo! ed vid)
+  (editor-document-undo! ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-redo! ed vid)
+  (editor-document-redo! ed (view-did (editor-view-ref ed vid))))
 
-(define (editor-view-clear-history! ed vid)
-  (define did (view-did (editor-view-ref ed vid)))
+(define (editor-document-clear-history! ed did)
   (document-entry-set-history! (editor-document-entry ed did)
                                (history-clear (editor-document-history ed did)))
   (void))
-
-(define (editor-view-reset-history! ed vid [enabled? #f])
-  (define did (view-did (editor-view-ref ed vid)))
+(define (editor-document-reset-history! ed did [enabled? #f])
   (document-entry-set-history! (editor-document-entry ed did)
                                (history-set-enabled (history-clear (editor-document-history ed did)) enabled?))
   (void))
-
-(define (editor-view-seal! ed vid)
-  (define did (view-did (editor-view-ref ed vid)))
+(define (editor-document-seal! ed did)
   (document-entry-set-history! (editor-document-entry ed did)
                                (history-seal (editor-document-history ed did)))
   (void))
+
+(define (editor-view-clear-history! ed vid)
+  (editor-document-clear-history! ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-reset-history! ed vid [enabled? #f])
+  (editor-document-reset-history! ed (view-did (editor-view-ref ed vid)) enabled?))
+(define (editor-view-seal! ed vid)
+  (editor-document-seal! ed (view-did (editor-view-ref ed vid))))
 
 (define (editor-view-set-history-enabled! ed vid flag)
   (editor-document-set-history-enabled! ed (view-did (editor-view-ref ed vid)) flag))

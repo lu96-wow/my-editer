@@ -122,7 +122,7 @@
                          #:chunk-lines [cl default-chunk-lines])
   (values ed (base:editor-view-set! ed vid value #:selections s #:change c #:ensure? ens #:chunk-lines cl)))
 (define (editor-history-record ed did step [tag #f])
-  (base:editor-history-record! ed did step tag) ed)
+  (base:editor-document-history-record! ed did step tag) ed)
 (define (editor-view-assign ed vid value #:selections [s #f] #:ensure? [ens #f]
                             #:chunk-lines [cl default-chunk-lines])
   (base:editor-view-assign! ed vid value #:selections s #:ensure? ens #:chunk-lines cl) ed)
@@ -605,6 +605,26 @@
 (check-false (editor-can-undo? ch1))
 (check-false (editor-can-redo? ch1))
 (check-equal? (doc-str ch1) "Xab")
+
+;; ---------- did 版 history：与 vid 版等价；0-view 文档也能用 ----------
+(define hd0 (type-it (editor-open "ab" 20 5) "X"))            ; depth 1
+(check-equal? (editor-document-depth hd0 0) 1)
+(check-true (editor-document-can-undo? hd0 0))
+(editor-document-undo! hd0 0)
+(check-equal? (doc-str hd0) "ab")
+(editor-document-redo! hd0 0)
+(check-equal? (doc-str hd0) "Xab")
+(editor-document-seal! hd0 0)
+(editor-document-clear-history! hd0 0)
+(check-false (editor-document-can-undo? hd0 0))
+(check-equal? (doc-str hd0) "Xab")                             ; 清史不改文档
+;; 0 个 view 的文档：没有 vid，只有 did
+(define-values (dhnv dhnv-did) (editor-add-document (editor-blank) "q" "nv"))
+(check-equal? (editor-document-depth dhnv dhnv-did) 0)
+(check-true (editor-document-history-enabled? dhnv dhnv-did))     ; 默认开
+(editor-document-reset-history! dhnv dhnv-did #f)
+(check-false (editor-document-history-enabled? dhnv dhnv-did))
+(check-false (editor-document-can-undo? dhnv dhnv-did))
 
 ;; ---------- 按 vid：插入 / 全选 / 剪贴板 / 属性（焦点不动）----------
 (define vc0 (editor-add-view (editor-open "abc\ndef" 20 5) 0 20 5))
