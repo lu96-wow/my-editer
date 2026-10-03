@@ -17,7 +17,7 @@
 (define (overlay-cursors t vp vrows sels)
   (filter values
           (for/list ([s (in-list (selections-items sels))] [i (in-naturals)])
-            (define-values (r c) (viewport-point->screen-pos/vrows t vp vrows (selection-head s)))
+            (define-values (r c) (viewport-point->screen-position/vrows t vp vrows (selection-head s)))
             (and r (cursor r c (= i (selections-primary-index sels)))))))
 
 ;; 每个非空选区 → 每条可见屏幕行切一段 region（clip/wrap 通吃：按 vrow 切）。
@@ -38,12 +38,12 @@
        [(or (< line (point-line a)) (> line (point-line b)) (>= line (track-length t))) '()]
        [else
         (define s (track-ref t line))
-        (define x (if (= line (point-line a)) (point-col a) 0))
-        (define y (if (= line (point-line b)) (point-col b) (string-length s)))
-        (define dc0 (index->display-col s x))
-        (define dc1 (index->display-col s y))
-        (define vs (vrow-start-col vr))
-        (define ve (vrow-end-col vr))
+        (define x (if (= line (point-line a)) (point-column a) 0))
+        (define y (if (= line (point-line b)) (point-column b) (string-length s)))
+        (define dc0 (index->display-column s x))
+        (define dc1 (index->display-column s y))
+        (define vs (vrow-start-column vr))
+        (define ve (vrow-end-column vr))
         (define c0 (max 0 (- dc0 vs)))
         (define c1 (min (- ve vs) (- dc1 vs)))
         (if (>= c0 c1) '() (list (region r (+ gutter c0) (+ gutter c1) primary?)))]))))

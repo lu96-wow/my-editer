@@ -12,8 +12,8 @@
 (check-equal? (screen-width s) 10)
 (check-equal? (screen-row s 0) (list (run 0 "ab" 'bold) (run 2 "中" 'kw)))
 (check-equal? (screen->string s) "ab中\n")
-(check-equal? (map cursor-col (screen-cursors s)) '(3))
-(check-equal? (map region-end-col (screen-regions s)) '(2))
+(check-equal? (map cursor-column (screen-cursors s)) '(3))
+(check-equal? (map region-end-column (screen-regions s)) '(2))
 (check-exn exn:fail? (lambda () (screen-row s 9)))
 
 (displayln "screen.rkt: all tests passed")

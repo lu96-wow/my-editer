@@ -13,9 +13,9 @@
 (check-true  (point<=? (point 1 2) (point 1 2)))
 (check-equal? (point=? (point 4 0) (point 4 0)) #t)
 (check-equal? (point=? (point 4 0) (point 0 4)) #f)
-(check-true (pos<? 0 5 1 0))
-(check-true (pos=? 3 2 3 2))
-(check-true (pos<=? 3 2 3 2))
+(check-true (position<? 0 5 1 0))
+(check-true (position=? 3 2 3 2))
+(check-true (position<=? 3 2 3 2))
 
 (define (len l) (list-ref '(2 3 5) l))
 (check-equal? (point-clamp (point 1 1) 3 len) (point 1 1))

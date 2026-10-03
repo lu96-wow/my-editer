@@ -22,13 +22,13 @@
 
 ;; vrows clip：每屏行 = 一行
 (define tc (track-of-list (list "abc" "def" "ghi")))
-(check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-col v) (vrow-end-col v)))
+(check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-column v) (vrow-end-column v)))
                    (vector->list (vrows tc 0 0 1 5 3 'clip)))
               '((0 1 6) (1 1 6) (2 1 6)))     ; end = left+width（render 会按行长裁）
 
 ;; vrows wrap：一行折成多屏幕行
 (define tw (track-of-list (list "aaaaa" "b")))
-(check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-col v) (vrow-end-col v)))
+(check-equal? (map (lambda (v) (list (vrow-line v) (vrow-start-column v) (vrow-end-column v)))
                    (vector->list (vrows tw 0 0 0 4 3 'wrap)))
               '((0 0 4) (0 4 5) (1 0 1)))
 

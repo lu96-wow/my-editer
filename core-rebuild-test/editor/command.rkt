@@ -80,7 +80,7 @@
 (define (editor-view-set-selections ed vid s #:ensure? [e #t]) (base:editor-view-set-selections! ed vid s #:ensure? e) ed)
 (define (editor-view-scroll ed vid d) (base:editor-view-scroll! ed vid d) ed)
 (define (editor-view-set-top-line ed vid n) (base:editor-view-set-top-line! ed vid n) ed)
-(define (editor-view-set-left-col ed vid n) (base:editor-view-set-left-col! ed vid n) ed)
+(define (editor-view-set-left-column ed vid n) (base:editor-view-set-left-column! ed vid n) ed)
 (define (editor-view-set-mode ed vid m) (base:editor-view-set-mode! ed vid m) ed)
 (define (editor-view-toggle-line-numbers ed vid) (base:editor-view-toggle-line-numbers! ed vid) ed)
 (define (editor-view-set-size ed vid w h) (base:editor-view-set-size! ed vid w h) ed)
@@ -157,7 +157,7 @@
 (define (editor-set-mode ed m) (base:editor-view-set-mode! ed (focus-of ed) m) ed)
 (define (editor-toggle-line-numbers ed) (base:editor-view-toggle-line-numbers! ed (focus-of ed)) ed)
 (define (editor-set-top-line ed n) (base:editor-view-set-top-line! ed (focus-of ed) n) ed)
-(define (editor-set-left-col ed n) (base:editor-view-set-left-col! ed (focus-of ed) n) ed)
+(define (editor-set-left-column ed n) (base:editor-view-set-left-column! ed (focus-of ed) n) ed)
 (define (editor-undo ed) (base:editor-view-undo! ed (focus-of ed)) ed)
 (define (editor-redo ed) (base:editor-view-redo! ed (focus-of ed)) ed)
 (define (editor-clear-history ed) (base:editor-view-clear-history! ed (focus-of ed)) ed)
@@ -175,7 +175,7 @@
 (define (editor-selections ed) (editor-view-selections ed (focus-of ed)))
 (define (editor-selection-count ed) (editor-view-selection-count ed (focus-of ed)))
 (define (editor-point-line ed) (editor-view-point-line ed (focus-of ed)))
-(define (editor-point-col ed) (editor-view-point-col ed (focus-of ed)))
+(define (editor-point-column ed) (editor-view-point-column ed (focus-of ed)))
 (define (editor-mode ed) (editor-view-mode ed (focus-of ed)))
 (define (editor-line-numbers? ed) (editor-view-line-numbers? ed (focus-of ed)))
 (define (editor-depth ed) (editor-view-depth ed (focus-of ed)))
@@ -184,22 +184,22 @@
 (define (editor-history-enabled? ed) (editor-view-history-enabled? ed (focus-of ed)))
 (define (editor-highlight-range? ed l0 c0 l1 c1) (editor-view-highlight-range? ed (focus-of ed) l0 c0 l1 c1))
 (define (editor-top-line ed) (editor-view-top-line ed (focus-of ed)))
-(define (editor-top-seg ed) (editor-view-top-seg ed (focus-of ed)))
-(define (editor-left-col ed) (editor-view-left-col ed (focus-of ed)))
+(define (editor-top-segment ed) (editor-view-top-segment ed (focus-of ed)))
+(define (editor-left-column ed) (editor-view-left-column ed (focus-of ed)))
 (define (editor-width ed) (editor-view-width ed (focus-of ed)))
 (define (editor-height ed) (editor-view-height ed (focus-of ed)))
 (define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
 (define (editor-sync ed) (editor-view-sync ed (focus-of ed)))
 (define (editor-link ed) (editor-view-link ed (focus-of ed)))
-(define (editor-point->screen-pos ed p) (editor-view-point->screen-pos ed (focus-of ed) p))
-(define (editor-screen-pos->point ed r c) (editor-view-screen-pos->point ed (focus-of ed) r c))
+(define (editor-point->screen-position ed p) (editor-view-point->screen-position ed (focus-of ed) p))
+(define (editor-screen-position->point ed r c) (editor-view-screen-position->point ed (focus-of ed) r c))
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed (focus-of ed) l c))
 (define (editor-readonly-range? ed l0 c0 l1 c1) (editor-view-readonly-range? ed (focus-of ed) l0 c0 l1 c1))
 (define (editor-editable? ed l0 c0 l1 c1) (editor-view-editable? ed (focus-of ed) l0 c0 l1 c1))
 (define (editor-set-size ed w h) (base:editor-view-set-size! ed (focus-of ed) w h) ed)
 
 (define (doc-str ed) (document->string (focused-doc ed)))
-(define (caret-pos ed) (selection-head (selections-primary (view-selections (focused-view ed)))))
+(define (caret-position ed) (selection-head (selections-primary (view-selections (focused-view ed)))))
 (define (depth ed) (history-depth (editor-document-history ed (view-did (focused-view ed)))))
 
 ;; editor 值不再是快照（写就地改绑定），测试要显式深拷贝才留得住旧值。
@@ -223,14 +223,14 @@
 (define ed0 (editor-open "abc" 40 10))
 (define e1 (type-it (snap ed0) "X"))
 (check-equal? (doc-str e1) "Xabc")
-(check-equal? (caret-pos e1) (point 0 1))
+(check-equal? (caret-position e1) (point 0 1))
 (check-equal? (depth e1) 1)
 (define e2 (type-it (snap e1) "Y"))
 (check-equal? (doc-str e2) "XYabc")
 (check-equal? (depth e2) 1)                       ; 连续打字合并
 (define e3 (editor-insert (snap e2) "ZZ"))                 ; 不传 tag → 一步一条
 (check-equal? (doc-str e3) "XYZZabc")
-(check-equal? (caret-pos e3) (point 0 4))
+(check-equal? (caret-position e3) (point 0 4))
 (check-equal? (depth e3) 2)
 
 ;; ---------- 退格 / 删除 ----------
@@ -240,7 +240,7 @@
 ;; ---------- 导航：不改文本、不记步 ----------
 (define e4 (editor-right (snap e3)))
 (check-equal? (doc-str e4) "XYZZabc")
-(check-equal? (caret-pos e4) (point 0 5))
+(check-equal? (caret-position e4) (point 0 5))
 (define e5 (type-it (snap e4) "Q"))
 (check-equal? (doc-str e5) "XYZZaQbc")           ; 光标在 (0,5) = 'a' 与 'b' 之间
 (check-equal? (depth e5) 3)                        ; 导航后选区变了 → 不并
@@ -248,10 +248,10 @@
 ;; ---------- undo / redo ----------
 (define e6 (editor-undo (snap e5)))
 (check-equal? (doc-str e6) "XYZZabc")             ; 回退一步
-(check-equal? (caret-pos e6) (point 0 5))         ; 还原该步发起时的选区
+(check-equal? (caret-position e6) (point 0 5))         ; 还原该步发起时的选区
 (define e7 (editor-redo (snap e6)))
 (check-equal? (doc-str e7) (doc-str e5))
-(check-equal? (caret-pos e7) (point 0 6))
+(check-equal? (caret-position e7) (point 0 6))
 
 ;; 空历史 undo 不动
 (check-eq? (editor-undo ed0) ed0)
@@ -261,10 +261,10 @@
 (define edv1 (editor-set-focus edv 1))
 (define edv2 (type-it edv1 "M"))
 (check-equal? (doc-str edv2) "MXYZZabc")
-(check-equal? (caret-pos edv2) (point 0 1))
+(check-equal? (caret-position edv2) (point 0 1))
 (define edv3 (editor-undo edv2))
 (check-equal? (doc-str edv3) "XYZZabc")
-(check-equal? (caret-pos edv3) (point 0 0))       ; vid1 自己的选区被还原（不是 vid0 的）
+(check-equal? (caret-position edv3) (point 0 0))       ; vid1 自己的选区被还原（不是 vid0 的）
 
 ;; ---------- 视口设置 ----------
 (define ew (editor-set-mode ed0 'wrap))
@@ -360,16 +360,16 @@
 (check-equal? (screen->string (editor-view-render mw2 0)) (screen->string (editor-view-render mw2 0)))
 
 ;; 左右并排：位置、active 由调用方给；合成由 editor 负责
-(define comp (editor-render-layout mw2 (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 0 40 5))
-(check-equal? (map (lambda (r) (list (run-col r) (run-text r))) (screen-row comp 0))
+(define comp (editor-render-layout mw2 (list (rectangle 0 0 0 20 5 0) (rectangle 1 20 0 20 5 0)) 0 40 5))
+(check-equal? (map (lambda (r) (list (run-column r) (run-text r))) (screen-row comp 0))
               '((0 "abc") (20 "two")))
 ;; 只有 active pane 的光标透出
 (check-equal? (screen-cursors comp) (list (cursor 0 0 #t)))
-(check-equal? (screen-cursors (editor-render-layout mw2 (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 1 40 5))
+(check-equal? (screen-cursors (editor-render-layout mw2 (list (rectangle 0 0 0 20 5 0) (rectangle 1 20 0 20 5 0)) 1 40 5))
               (list (cursor 0 20 #t)))
 ;; 多视图增量：首帧 → 全量
 (define-values (cpN cpRn cpSn)
-  (editor-render-layout-patch mw2 #f (list (rect 0 0 0 20 5 0) (rect 1 20 0 20 5 0)) 0 40 5))
+  (editor-render-layout-patch mw2 #f (list (rectangle 0 0 0 20 5 0) (rectangle 1 20 0 20 5 0)) 0 40 5))
 (check-equal? (screen->string cpN) (screen->string comp))
 
 ;; ---------- 增量投影：旧帧 → (新帧, clear, render, selection) ----------
@@ -393,16 +393,16 @@
 ;; 粘到同文档（光标处插入）
 (define cb3 (editor-paste (editor-goto cb2 (point 0 2))))
 (check-equal? (doc-str cb3) "XYXY\nZ")
-(check-equal? (caret-pos cb3) (point 0 4))
+(check-equal? (caret-position cb3) (point 0 4))
 (check-equal? (depth cb3) 1)                            ; paste 记一步
 (define cb4 (editor-undo cb3))
 (check-equal? (doc-str cb4) "XY\nZ")
-(check-equal? (caret-pos cb4) (point 0 2))
+(check-equal? (caret-position cb4) (point 0 2))
 
 ;; 选区上粘贴 = 替换（不是插入）
 (define cb5 (editor-paste (editor-right (editor-goto cb2 (point 1 0)) #t)))   ; 选 "Z"，粘 "XY"
 (check-equal? (doc-str cb5) "XY\nXY")
-(check-equal? (caret-pos cb5) (point 1 2))
+(check-equal? (caret-position cb5) (point 1 2))
 
 ;; 跨文档：同一 editor 的剪贴板可在另一个 document 粘贴
 (define-values (xd0 xdid) (editor-add-document cb2 ".\n."))
@@ -448,7 +448,7 @@
 (define cf2 (editor-cut cf1))
 (check-equal? (doc-str cf2) "")
 (check-equal? (clipboard-text (editor-clipboard cf2)) '("abc" "def"))
-(check-equal? (caret-pos cf2) (point 0 0))
+(check-equal? (caret-position cf2) (point 0 0))
 ;; 空选区 cut = 不动
 (define cf3 (editor-open "abc" 20 5))
 (check-eq? (editor-cut cf3) cf3)
@@ -468,13 +468,13 @@
 
 ;; 按 vid 显式滚
 (check-equal? (editor-view-top-line (editor-view-set-top-line pv1 0 1) 0) 1)
-(check-equal? (editor-view-left-col (editor-view-set-left-col pv1 0 2) 0) 2)
+(check-equal? (editor-view-left-column (editor-view-set-left-column pv1 0 2) 0) 2)
 
-;; 焦点糖：set-point / set-top-line / set-left-col（与 editor-view-* 一致）
+;; 焦点糖：set-point / set-top-line / set-left-column（与 editor-view-* 一致）
 (define fz0 (editor-open "abcdef\ngh" 5 5))
-(check-equal? (caret-pos (editor-set-point fz0 (point 0 3))) (point 0 3))
+(check-equal? (caret-position (editor-set-point fz0 (point 0 3))) (point 0 3))
 (check-equal? (editor-top-line (editor-set-top-line fz0 1)) 1)
-(check-equal? (editor-left-col (editor-set-left-col fz0 2)) 2)
+(check-equal? (editor-left-column (editor-set-left-column fz0 2)) 2)
 
 ;; ---------- editor-insert：回车 / 制表 / 程序插入的统一入口（一次 = 一步） ----------
 (define ip0 (editor-open "ab" 20 5))
@@ -561,7 +561,7 @@
 (define ss0 (type-it (editor-open "ab" 20 5) "X"))                ; depth 1
 (define ss1 (editor-set-selections ss0 (selections-one (caret (point 0 1)))))
 (check-equal? (depth ss1) 1)                                           ; 装选区不记步
-(check-equal? (caret-pos ss1) (point 0 1))
+(check-equal? (caret-position ss1) (point 0 1))
 (define vs0 (editor-set-focus (editor-add-view ss0 0 20 5) 1))
 (define vs1 (editor-view-set-point vs0 1 (point 0 1)))
 (check-equal? (depth vs1) 1)
@@ -572,7 +572,7 @@
 (define ve1 (editor-set-focus ve0 0))                            ; 焦点回到 vid0
 (define ve2 (editor-view-edit ve1 1 (lambda (d s) (command-type d s "Z"))))
 (check-equal? (doc-str ve2) "Zabc")
-(check-equal? (caret-pos ve2) (point 0 0))                       ; 焦点 vid0 光标未被带跑
+(check-equal? (caret-position ve2) (point 0 0))                       ; 焦点 vid0 光标未被带跑
 (check-equal? (selection-head (selections-primary (view-selections (editor-view-ref ve2 1)))) (point 0 1))
 (define ve3 (editor-undo ve2))                                   ; undo 还原发起视图 vid1 的选区
 (check-equal? (doc-str ve3) "abc")
@@ -583,7 +583,7 @@
 (define vn1 (editor-set-focus vn0 0))                       ; 焦点 vid0
 (define vn2 (editor-view-right vn1 1))
 (check-equal? (selection-head (selections-primary (view-selections (editor-view-ref vn2 1)))) (point 0 1))
-(check-equal? (caret-pos vn2) (point 0 0))                 ; 焦点 vid0 未被带跑
+(check-equal? (caret-position vn2) (point 0 0))                 ; 焦点 vid0 未被带跑
 (check-equal? (editor-view-top-line (editor-view-scroll vn1 1 2) 1) 2)
 
 (define vu0 (editor-add-view (editor-open "abc" 20 5) 0 20 5))
@@ -597,7 +597,7 @@
 (define pp0 (editor-open "ab" 20 5))
 (define pp1 (editor-paste-text pp0 "X\nY"))
 (check-equal? (doc-str pp1) "X\nYab")
-(check-equal? (caret-pos pp1) (point 1 1))
+(check-equal? (caret-position pp1) (point 1 1))
 
 ;; ---------- 清历史（只留当前快照，不改文档） ----------
 (define ch0 (type-it (editor-open "ab" 20 5) "X"))
@@ -663,7 +663,7 @@
 
 ;; ---------- 程序面装选区 / 装点自动夹进合法域（越界不崩）----------
 (define cl0 (editor-open "abc" 20 5))
-(check-equal? (caret-pos (editor-set-point cl0 (point 9 9))) (point 0 3))
+(check-equal? (caret-position (editor-set-point cl0 (point 9 9))) (point 0 3))
 (define cl1 (editor-open "ab\ncd" 20 5))
 (check-equal? (editor-view-point (editor-view-set-point cl1 0 (point 5 5)) 0) (point 1 2))
 (check-true (screen? (editor-view-render (editor-set-point cl1 (point 99 99)) 0)))

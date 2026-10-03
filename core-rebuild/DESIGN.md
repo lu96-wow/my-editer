@@ -307,6 +307,33 @@ editor-view-highlight-at / -readonly-at? / … ; 保留为糖（→ did 版）
 
 入口现在只剩：**操作（`editor-*`）+ 值词汇（裸名）**。测试 1529 全绿。
 
+**命名：全称（反缩写）**
+
+缩写一律展开（32 文件，440/440）：
+- `ids` → `id-list` · `views` → `view-list`
+- `col` → `column` · `pos` → `position` · `seg` → `segment`
+- `rect` → `rectangle`（连同 accessors / 字段）
+- `pos<? /=? / <=?` → `position<? / =? / <=?`
+- 复合：`editor-view-{point,left}-column` · `editor-view-set-left-column!` ·
+  `editor-view-top-segment` · `editor-view-{point,screen-position}->…`
+
+**不能展开的参数**（Racket 单命名空间，会与 struct/accessor 名相撞）：
+| 参数 | 想叫 | 与何相撞 |
+|---|---|---|
+| `ed` | `editor` | struct `editor`（`struct-copy` 会炸） |
+| `doc` | `document` | struct `document` |
+| `sels` | `selections` | struct `selections` |
+| `chg` | `change` | struct `change` |
+| `vp` | `viewport` | struct `viewport` |
+| `vid` | `view-id` | accessor `view-id` |
+
+→ 规则：**函数 / 类型 / accessor = 全称；字段名 = 全称；参数 / 局部变量 = 短名**。
+
+注意：struct **字段名**会决定自动生成的 accessor 名（`(struct point (line column))` → `point-column`），
+而字段名和局部变量名在源码里是**同一个字符串**（同一 token）。所以改字段时不能一刀切：
+- 字段位置（struct 字段表 / `struct-copy` 的 `[field …]`）→ 保留全称；
+- 其余同名 token（参数、`let`、局部）→ 回退短名（`column`→`col`、`segment`→`seg`、`position`→`pos`、`operation`→`op`）。
+
 ### 关键决定：属性写不碰 history（以前的 who 标记是 artifact）
 
 旧实现让属性写更新 `current` 的 `who=vid`，于是 redo 会还原到「发起那次属性写的视图」。

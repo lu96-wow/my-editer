@@ -49,8 +49,8 @@
 (define many (string-join (for/list ([i (in-range 40)]) (format "line ~a" i)) "\n"))
 
 (define (vtl ed vid) (viewport-top-line (view-viewport (editor-view-ref ed vid))))
-(define (vlc ed vid) (viewport-left-col (view-viewport (editor-view-ref ed vid))))
-(define (vts ed vid) (viewport-top-seg (view-viewport (editor-view-ref ed vid))))
+(define (vlc ed vid) (viewport-left-column (view-viewport (editor-view-ref ed vid))))
+(define (vts ed vid) (viewport-top-segment (view-viewport (editor-view-ref ed vid))))
 (define (vsels ed vid) (view-selections (editor-view-ref ed vid)))
 
 ;; ---------- 同文档 follow：滚动跟随 ----------
@@ -90,9 +90,9 @@
 (define tl (document-text (editor-view-document m3 0)))
 (define lv (editor-view-ref m3 0))
 (define m4 (editor-set-view m3 (view-with-viewport lv
-                               (viewport-set-left-col tl (view-viewport lv) 7))))
+                               (viewport-set-left-column tl (view-viewport lv) 7))))
 (define m5 (editor-sync-viewports m4 0))
-(check-equal? (vlc m5 0) 7)                             ; leader 保留 left-col
+(check-equal? (vlc m5 0) 7)                             ; leader 保留 left-column
 (check-equal? (vts m5 1) 1)                             ; follower wrap 段 1（列 7 在 6..10）
 
 ;; ---------- 混合 mode：wrap 锚（段起点列）→ clip ----------
@@ -117,13 +117,13 @@
              (let ([lv (editor-view-ref q1 0)])
                (view-with-viewport
                 lv
-                (viewport-set-left-col (document-text (editor-view-document q1 0))
+                (viewport-set-left-column (document-text (editor-view-document q1 0))
                                        (view-viewport lv) 5)))))
 (define q3 (editor-sync-viewports q2 0))
 (check-equal? (vlc q3 0) 5)
 (check-equal? (vlc q3 1) 5)                             ; follow 精确保留，不被比例化
 
-;; 跨文档：列按两侧锚行显示宽比例（src 10 宽、left-col 6 → dst 5 宽、left-col 3）
+;; 跨文档：列按两侧锚行显示宽比例（src 10 宽、left-column 6 → dst 5 宽、left-column 3）
 (define pa (editor-open "aaaaaaaaaa\nsecond" 20 5))
 (define-values (pb didb) (editor-add-document pa "bbbbb\nsecond line"))
 (define p1 (editor-add-view pb didb 20 5))              ; vid1 看 doc1
@@ -133,7 +133,7 @@
              (let ([lv (editor-view-ref p3 0)])
                (view-with-viewport
                 lv
-                (viewport-set-left-col (document-text (editor-view-document p3 0))
+                (viewport-set-left-column (document-text (editor-view-document p3 0))
                                        (view-viewport lv) 6)))))
 (define p5 (editor-sync-viewports p4 0))
 (check-equal? (vlc p5 0) 6)                             ; leader

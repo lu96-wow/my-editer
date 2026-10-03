@@ -20,7 +20,7 @@
  string-display-width
 
  ;; ---------- 索引 ↔ 显示列 ----------
- index->display-col
+ index->display-column
  display-col->index
  snap-display-col-forward)
 
@@ -73,7 +73,7 @@
   (for/sum ([c (in-string s)]) (char-display-width c)))
 
 ;; 字符索引 i 处的显示列（i 是字符边界；i = 长度 → 总列数）。
-(define (index->display-col s i)
+(define (index->display-column s i)
   (let loop ([j 0] [col 0])
     (cond [(>= j i) col]
           [else (loop (add1 j) (+ col (char-display-width (string-ref s j))))])))
@@ -99,5 +99,5 @@
   (cond
     [(>= i n) (string-display-width s)]
     [else
-     (define c (index->display-col s i))
+     (define c (index->display-column s i))
      (if (= c L*) L* (+ c (char-display-width (string-ref s i))))]))

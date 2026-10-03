@@ -42,8 +42,8 @@
  editor-view-editable?
 
  ;; ---------- 身份 ----------
- editor-document-ids editor-view-ids
- editor-document-views
+ editor-document-id-list editor-view-id-list
+ editor-document-view-list
  editor-view-document-id
  editor-view-sync
  editor-view-link
@@ -51,7 +51,7 @@
  ;; ---------- 点 / 选区 ----------
  editor-view-point
  editor-view-point-line
- editor-view-point-col
+ editor-view-point-column
  editor-view-primary
  editor-view-primary-index
  editor-view-primary-range
@@ -59,15 +59,15 @@
  editor-view-selection-count
 
  ;; ---------- 坐标换算 ----------
- editor-view-point->screen-pos
- editor-view-screen-pos->point
+ editor-view-point->screen-position
+ editor-view-screen-position->point
 
  ;; ---------- 视口状态 ----------
  editor-view-mode
  editor-view-line-numbers?
  editor-view-top-line
- editor-view-top-seg
- editor-view-left-col
+ editor-view-top-segment
+ editor-view-left-column
  editor-view-width
  editor-view-height
  editor-view-visible-range
@@ -132,11 +132,11 @@
 (define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
 
 ;; 枚举：只给 id，不吐内部 struct（editor-documents / editor-views 是内部件）。
-(define (editor-document-ids ed)
+(define (editor-document-id-list ed)
   (for/list ([e (in-list (editor-documents ed))]) (document-entry-id e)))
-(define (editor-view-ids ed)
+(define (editor-view-id-list ed)
   (for/list ([v (in-list (editor-views ed))]) (view-id v)))
-(define (editor-document-views ed did)
+(define (editor-document-view-list ed did)
   (for/list ([v (in-list (editor-views ed))] #:when (= did (view-did v))) (view-id v)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
 (define (editor-view-link ed vid) (view-link (editor-view-ref ed vid)))
@@ -147,7 +147,7 @@
 (define (editor-view-point ed vid)
   (selection-head (selections-primary (editor-view-selections ed vid))))
 (define (editor-view-point-line ed vid) (point-line (editor-view-point ed vid)))
-(define (editor-view-point-col ed vid) (point-col (editor-view-point ed vid)))
+(define (editor-view-point-column ed vid) (point-column (editor-view-point ed vid)))
 (define (editor-view-primary ed vid) (selections-primary (editor-view-selections ed vid)))
 (define (editor-view-primary-range ed vid)
   (define-values (a b) (selection-range (editor-view-primary ed vid)))
@@ -157,12 +157,12 @@
 
 ;;; ---------- 屏幕坐标 ↔ 点（鼠标 / 投影用） ----------
 
-(define (editor-view-point->screen-pos ed vid p)
-  (viewport-point->screen-pos (document-text (editor-view-document ed vid))
+(define (editor-view-point->screen-position ed vid p)
+  (viewport-point->screen-position (document-text (editor-view-document ed vid))
                               (view-viewport (editor-view-ref ed vid)) p))
 
-(define (editor-view-screen-pos->point ed vid row col)
-  (viewport-screen-pos->point (document-text (editor-view-document ed vid))
+(define (editor-view-screen-position->point ed vid row col)
+  (viewport-screen-position->point (document-text (editor-view-document ed vid))
                               (view-viewport (editor-view-ref ed vid)) row col))
 
 ;;; ---------- 视口状态 ----------
@@ -170,14 +170,14 @@
 (define (editor-view-mode ed vid) (viewport-mode (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-line-numbers? ed vid) (viewport-line-numbers? (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-top-line ed vid) (viewport-top-line (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-top-seg ed vid) (viewport-top-seg (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-left-col ed vid) (viewport-left-col (view-viewport (editor-view-ref ed vid))))
+(define (editor-view-top-segment ed vid) (viewport-top-segment (view-viewport (editor-view-ref ed vid))))
+(define (editor-view-left-column ed vid) (viewport-left-column (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-width ed vid) (viewport-width (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-height ed vid) (viewport-height (view-viewport (editor-view-ref ed vid))))
 
 ;; 视口里**真实显示出来的**文档区间（半开 [start, end)）：
 ;;   start = 顶行第一个显示位置；end = 底行可见内容之后的第一个位置。
-;; clip 按 left-col ⊕ 可见宽取；wrap 按折行段取；文末之后的空白行不算。
+;; clip 按 left-column ⊕ 可见宽取；wrap 按折行段取；文末之后的空白行不算。
 ;; 视口完全在文末之后 / 空内容 → 零宽 range（首行首列）。
 (define (editor-view-visible-range ed vid)
   (define t (document-text (editor-view-document ed vid)))
@@ -193,8 +193,8 @@
      (define last (vector-ref vrows last-i))
      (define fl (vrow-line first))
      (define ll (vrow-line last))
-     (range-of (point fl (display-col->index (track-ref t fl) (vrow-start-col first)))
-               (point ll (display-col->index (track-ref t ll) (vrow-end-col last))))]))
+     (range-of (point fl (display-col->index (track-ref t fl) (vrow-start-column first)))
+               (point ll (display-col->index (track-ref t ll) (vrow-end-column last))))]))
 
 ;;; ---------- 历史 ----------
 

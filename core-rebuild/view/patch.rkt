@@ -20,7 +20,7 @@
  ;; ---------- 差量 ----------
  screen-patch)
 
-(struct piece (row col text attr) #:transparent)
+(struct piece (row column text attr) #:transparent)
 
 ;;; ---------- 对外 ----------
 
@@ -43,7 +43,7 @@
   (define w (screen-width s))
   (define cells (make-vector w #f))
   (for ([rn (in-list (screen-row s r))])
-    (define col (run-col rn))
+    (define col (run-column rn))
     (for ([ch (in-string (run-text rn))])
       (define cw (char-display-width ch))
       (when (and (> cw 0) (>= col 0) (< col w))
@@ -51,11 +51,11 @@
         (when (= cw 2) (when (< (add1 col) w) (vector-set! cells (add1 col) 'tail))))
       (set! col (+ col cw))))
   (for ([g (in-list (screen-regions s))] #:when (= (region-row g) r))
-    (for ([c (in-range (max 0 (region-start-col g)) (min w (region-end-col g)))])
+    (for ([c (in-range (max 0 (region-start-column g)) (min w (region-end-column g)))])
       (set-overlay! cells c 'selection)))
   (for ([cu (in-list (screen-cursors s))] #:when (= (cursor-row cu) r))
-    (when (and (>= (cursor-col cu) 0) (< (cursor-col cu) w))
-      (set-overlay! cells (cursor-col cu) 'cursor)))
+    (when (and (>= (cursor-column cu) 0) (< (cursor-column cu) w))
+      (set-overlay! cells (cursor-column cu) 'cursor)))
   cells)
 
 (define (set-overlay! cells c ov)

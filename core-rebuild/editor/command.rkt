@@ -54,7 +54,7 @@
  editor-view-set-selections! editor-view-select-all! editor-view-set-point! editor-view-goto!
 
  ;; ---------- 滚动 / 视口 ----------
- editor-view-scroll! editor-view-set-top-line! editor-view-set-left-col!
+ editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
 
  ;; ---------- 属性（只在「作用选区」时需要 vid；坐标/整轨写在 attributes.rkt） ----------
@@ -187,7 +187,7 @@
   (define doc (document-entry-document (editor-document-entry ed (view-did v))))
   (define s (selections-primary (view-selections v)))
   (define-values (a b) (selection-range s))
-  (editor-set-clipboard! ed (document-copy doc (point-line a) (point-col a) (point-line b) (point-col b)))
+  (editor-set-clipboard! ed (document-copy doc (point-line a) (point-column a) (point-line b) (point-column b)))
   (void))
 
 (define (editor-view-paste! ed vid [merge-tag #f])
@@ -315,10 +315,10 @@
   (editor-sync-viewports! ed vid)
   (void))
 
-(define (editor-view-set-left-col! ed vid n)
+(define (editor-view-set-left-column! ed vid n)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
-  (view-set-viewport! v (viewport-set-left-col t (view-viewport v) n))
+  (view-set-viewport! v (viewport-set-left-column t (view-viewport v) n))
   (editor-sync-viewports! ed vid)
   (void))
 

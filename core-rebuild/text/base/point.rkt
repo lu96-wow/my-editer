@@ -16,7 +16,7 @@
 
  ;; ---------- 比较 ----------
  point<? point=? point<=?
- pos<? pos=? pos<=?
+ position<? position=? position<=?
 
  ;; ---------- 夹紧 ----------
  point-clamp
@@ -24,18 +24,18 @@
  ;; ---------- 字符级导航 ----------
  point-left point-right point-home point-end)
 
-(struct point (line col) #:transparent)
+(struct point (line column) #:transparent)
 ;; line / col : nat（0-based）
 
 ;;; ---------- 比较 ----------
 
-(define (pos<? l1 c1 l2 c2) (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
-(define (pos=? l1 c1 l2 c2) (and (= l1 l2) (= c1 c2)))
-(define (pos<=? l1 c1 l2 c2) (or (pos<? l1 c1 l2 c2) (pos=? l1 c1 l2 c2)))
+(define (position<? l1 c1 l2 c2) (or (< l1 l2) (and (= l1 l2) (< c1 c2))))
+(define (position=? l1 c1 l2 c2) (and (= l1 l2) (= c1 c2)))
+(define (position<=? l1 c1 l2 c2) (or (position<? l1 c1 l2 c2) (position=? l1 c1 l2 c2)))
 
-(define (point<? a b) (pos<? (point-line a) (point-col a) (point-line b) (point-col b)))
-(define (point=? a b) (pos=? (point-line a) (point-col a) (point-line b) (point-col b)))
-(define (point<=? a b) (pos<=? (point-line a) (point-col a) (point-line b) (point-col b)))
+(define (point<? a b) (position<? (point-line a) (point-column a) (point-line b) (point-column b)))
+(define (point=? a b) (position=? (point-line a) (point-column a) (point-line b) (point-column b)))
+(define (point<=? a b) (position<=? (point-line a) (point-column a) (point-line b) (point-column b)))
 
 ;;; ---------- 夹紧 ----------
 
@@ -43,18 +43,18 @@
   (unless (and (exact-nonnegative-integer? line-count) (>= line-count 1))
     (error 'point-clamp "line-count 需 >= 1，得到 ~a" line-count))
   (define l (max 0 (min (point-line p) (sub1 line-count))))
-  (point l (max 0 (min (point-col p) (line-length l)))))
+  (point l (max 0 (min (point-column p) (line-length l)))))
 
 ;;; ---------- 字符级导航 ----------
 
 (define (point-left t p)
-  (define l (point-line p)) (define c (point-col p))
+  (define l (point-line p)) (define c (point-column p))
   (cond [(> c 0) (point l (sub1 c))]
         [(> l 0) (point (sub1 l) (line-length (track-ref t (sub1 l))))]
         [else p]))
 
 (define (point-right t p)
-  (define l (point-line p)) (define c (point-col p))
+  (define l (point-line p)) (define c (point-column p))
   (cond [(< c (line-length (track-ref t l))) (point l (add1 c))]
         [(< l (sub1 (track-length t))) (point (add1 l) 0)]
         [else p]))

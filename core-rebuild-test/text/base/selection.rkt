@@ -26,7 +26,7 @@
 ;; map 端点
 (check-equal? (selection-map-anchor (lambda (x) (p 9 9)) (selection (p 0 1) (p 0 2)))
               (selection (p 9 9) (p 0 2)))
-(check-equal? (selection-map-both (lambda (x) (point (point-line x) (+ 10 (point-col x))))
+(check-equal? (selection-map-both (lambda (x) (point (point-line x) (+ 10 (point-column x))))
                                   (selection (p 0 1) (p 0 2)))
               (selection (p 0 11) (p 0 12)))
 

@@ -17,7 +17,7 @@
 ;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（core/editor/attributes.rkt）
 ;;;   change  读：编辑命令返回的 change（core/editor/change.rkt）
 ;;;   render  单视图渲染 + 增量投影（core/editor/render.rkt）
-;;;   layout  rect 布局：尺寸落到 view、位置用于贴屏（core/editor/layout.rkt）
+;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（core/editor/layout.rkt）
 ;;;   sync    视口同步（core/editor/sync.rkt）
 ;;;
 ;;; **editor 不持焦点**：哪个 view 当前被操作由宿主决定，接口一律显式 vid/did。
@@ -82,11 +82,11 @@
  (all-from-out "editor/render.rkt")
  ;; ---------- 视口同步 ----------
  (all-from-out "editor/sync.rkt")
- ;; ---------- 布局（rects → view 尺寸 + 屏幕） ----------
+ ;; ---------- 布局（rectangles → view 尺寸 + 屏幕） ----------
  (all-from-out "editor/layout.rkt")
 
  ;; ---------- 值词汇表（裸名：类型 + 构造 / 读 / 建） ----------
- ;; 规则：操作 = editor-*；值词汇 = 裸名（与已有的 rect 一致）。
+ ;; 规则：操作 = editor-*；值词汇 = 裸名（与已有的 rectangle 一致）。
  (except-out (all-from-out "text/base/point.rkt")
              point-left point-right point-home point-end)   ; 需要 track，宿主拿不到
  (all-from-out "text/base/selection.rkt")
