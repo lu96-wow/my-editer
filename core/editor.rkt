@@ -85,8 +85,7 @@
  ;; ---------- 布局（rectangles → view 尺寸 + 屏幕） ----------
  (all-from-out "editor/layout.rkt")
 
- ;; ---------- 值词汇表（裸名：类型 + 构造 / 读 / 建） ----------
- ;; 规则：操作 = editor-*；值词汇 = 裸名（与已有的 rectangle 一致）。
+ ;; ---------- 值词汇表（类型 + 构造 / 读 / 建） ----------
  (except-out (all-from-out "text/base/point.rkt")
              point-left point-right point-home point-end)   ; 需要 track，宿主拿不到
  (all-from-out "text/base/selection.rkt")
