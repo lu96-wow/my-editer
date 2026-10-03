@@ -9,9 +9,9 @@
 ;;; 一份 rect 列表就是**宿主的唯一布局输入**：尺寸归 view，位置归渲染。
 ;;;
 ;;; 三个入口（可拆可合）：
-;;;   editor-set-layout      写：w h → 各 view（变了才重锚 + 同步跟随者）；x y 忽略
+;;;   editor-set-layout!      写：w h → 各 view（变了才重锚 + 同步跟随者）；x y 忽略
 ;;;   editor-render-layout   读：纯渲染。x y 贴屏，w h 定该帧视口大小（**不改 view 状态**）
-;;;   editor-render-layout*  组合：先 set-layout 再 render，→ (values editor screen)
+;;;   editor-render-layout*!  组合：先 set-layout 再 render，→ (values editor screen)
 ;;;
 ;;; 为什么要 set-layout：ensure / 上下移动 / 滚动 / 鼠标换算用 view 里存的尺寸，
 ;;; 所以布局要把尺寸落到 view；纯渲染只覆盖本帧，供出屏。
@@ -21,11 +21,11 @@
  (struct-out rect)
 
  ;; ---------- 拆 ----------
- editor-set-layout
+ editor-set-layout!
  editor-render-layout
 
  ;; ---------- 合 ----------
- editor-render-layout*
+ editor-render-layout*!
 
  ;; ---------- 增量（rect 版） ----------
  editor-render-layout-patch)
@@ -36,7 +36,7 @@
 ;;; ---------- 写：尺寸落到 view ----------
 
 ;; 逐个 rect：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 会同步跟随者）。就地、返回 ed。
-(define (editor-set-layout ed rects)
+(define (editor-set-layout! ed rects)
   (for ([r (in-list rects)])
     (define vp (view-viewport (editor-view-ref ed (rect-vid r))))
     (unless (and (= (rect-w r) (viewport-width vp))
@@ -65,8 +65,8 @@
 
 ;;; ---------- 合 ----------
 
-(define (editor-render-layout* ed rects active total-w total-h)
-  (define ed* (editor-set-layout ed rects))
+(define (editor-render-layout*! ed rects active total-w total-h)
+  (define ed* (editor-set-layout! ed rects))
   (values ed* (editor-render-layout ed* rects active total-w total-h)))
 
 ;; 增量：旧帧 + 新帧 → (新帧, render, selection)。

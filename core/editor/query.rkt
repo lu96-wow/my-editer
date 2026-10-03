@@ -16,7 +16,7 @@
 ;;;   `editor-view-* ed vid`            按 vid
 ;;;   `editor-document-* ed did`        按 did
 ;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 attributes.rkt）
-;;;   计数是全局总数（不带 id）：`editor-document-count` / `editor-view-count`。
+;;;   全局（无 id）：`editor-blank` / `editor-open` / `editor-documents` / `editor-views` / …
 
 (provide
  ;; ---------- 文本 / 名称 ----------
@@ -33,8 +33,7 @@
  editor-view-readonly-range?
  editor-view-editable?
 
- ;; ---------- 计数 / 身份 ----------
- editor-document-count editor-view-count
+ ;; ---------- 身份 ----------
  editor-view-document-id
  editor-view-sync
  editor-view-link
@@ -109,8 +108,6 @@
 
 ;;; ---------- 计数 / 身份 ----------
 
-(define (editor-document-count ed) (length (editor-documents ed)))
-(define (editor-view-count ed) (length (editor-views ed)))
 (define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
 (define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
 (define (editor-view-link ed vid) (view-link (editor-view-ref ed vid)))

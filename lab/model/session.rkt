@@ -186,7 +186,7 @@
   (layout-rects (session-layout s) 0 0 (session-cols s) (session-rows s) 1 (lambda (_) #t)))
 
 (define (session-apply-layout! s)
-  (editor-set-layout
+  (editor-set-layout!
    (session-editor s)
    (for/list ([r (in-list (session-rects s))]
               #:unless (eq? (pane-rect-id r) 'status))

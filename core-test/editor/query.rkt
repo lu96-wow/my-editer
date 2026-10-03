@@ -77,8 +77,8 @@
 ;; 名称 / 计数 / 身份
 (check-equal? (editor-document-name ed) "doc")
 (check-equal? (editor-view-document-name ed 0) "doc")
-(check-equal? (editor-document-count ed) 1)
-(check-equal? (editor-view-count ed) 1)
+(check-equal? (length (editor-documents ed)) 1)
+(check-equal? (length (editor-views ed)) 1)
 (check-equal? (editor-view-document-id ed 0) 0)
 (check-equal? (editor-document-id ed) 0)
 (check-equal? (editor-view-sync ed 0) 'free)

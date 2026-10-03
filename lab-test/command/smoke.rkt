@@ -55,9 +55,9 @@
 (check-true (quit? (car e12)))
 
 ;; 分屏：焦点在 vid 0，C-\ → 同文档新视图
-(define before (core:editor-view-count (session-editor s12)))
+(define before (length (core:editor-views (session-editor s12))))
 (define-values (s13 e13) (dispatch s12 (key #\\ mC)))
-(check-equal? (core:editor-view-count (session-editor s13)) (add1 before))
+(check-equal? (length (core:editor-views (session-editor s13))) (add1 before))
 (check-equal? (view-document-id s13 (session-active s13)) 0)
 
 (printf "ALL COMMAND SMOKE OK\n")

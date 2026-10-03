@@ -21,7 +21,7 @@
 ;; 空白会话 + 两棵树 → 默认没有任何编辑器文档
 (define s0 (trees-init (session-blank 60 15 tmp)))
 (check-equal? (hash-count (session-docs s0)) 2)                 ; 只有两棵树
-(check-equal? (editor-view-count (session-editor s0)) 2)
+(check-equal? (length (editor-views (session-editor s0))) 2)
 
 (define vids (session-tree-vids s0))
 (define ftree (tree-of-view s0 (car vids)))

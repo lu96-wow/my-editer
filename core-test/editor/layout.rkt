@@ -12,12 +12,12 @@
 (define rects (list (rect 0 0 0 20 4 0) (rect 1 20 0 20 3 0)))
 
 ;; ---------- set-layout：w h 落到 view（x y 忽略） ----------
-(define laid (editor-set-layout ed1 rects))
+(define laid (editor-set-layout! ed1 rects))
 (check-equal? (editor-view-width laid 1) 20)
 (check-equal? (editor-view-height laid 1) 3)           ; 被 rect 改成 3
 (check-equal? (editor-view-width laid 0) 20)
 ;; 尺寸没变 → 原样返回（不重锚）
-(check-true (eq? (editor-set-layout laid rects) laid))
+(check-true (eq? (editor-set-layout! laid rects) laid))
 ;; set-layout 不动位置 / 不渲染
 (check-equal? (editor-view-height laid 0) 4)
 
@@ -38,7 +38,7 @@
 (check-false (for/or ([rn (in-list (screen-row comp 3))]) (>= (run-col rn) 20)))
 
 ;; ---------- 组合：返回 (values editor screen) ----------
-(define-values (laid2 comp2) (editor-render-layout* edr rects 0 40 4))
+(define-values (laid2 comp2) (editor-render-layout*! edr rects 0 40 4))
 (check-equal? (editor-view-height laid2 1) 3)
 (check-equal? (screen->string comp2) (screen->string (editor-render-layout laid2 rects 0 40 4)))
 

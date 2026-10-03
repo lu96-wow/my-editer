@@ -11,8 +11,8 @@
          "../../core/view/base/screen.rkt")
 
 (define s0 (session-open "abc\ndef" 80 24 "d0"))
-(check-equal? (editor-document-count (session-editor s0)) 1)
-(check-equal? (editor-view-count (session-editor s0)) 1)
+(check-equal? (length (editor-documents (session-editor s0))) 1)
+(check-equal? (length (editor-views (session-editor s0))) 1)
 (check-equal? (session-active s0) 0)
 (check-equal? (editor-view-document-id (session-editor s0) 0) 0)
 
@@ -30,8 +30,8 @@
 
 ;; 关 view：document 必须还在（生命周期独立）
 (define s1 (session-close-view s0 0))
-(check-equal? (editor-view-count (session-editor s1)) 0)
-(check-equal? (editor-document-count (session-editor s1)) 1)
+(check-equal? (length (editor-views (session-editor s1))) 0)
+(check-equal? (length (editor-documents (session-editor s1))) 1)
 (check-equal? (session-main s1) '())
 (check-false (session-active s1))
 
@@ -39,13 +39,13 @@
 (define-values (s2 did vid) (session-open-document s0 "hello\nworld" "d1"))
 (check-equal? did 1)
 (check-equal? vid 1)
-(check-equal? (editor-document-count (session-editor s2)) 2)
+(check-equal? (length (editor-documents (session-editor s2))) 2)
 (check-equal? (session-active s2) 1)
 
 ;; 关 doc：级联关它的 view
 (define s3 (session-close-document s2 0))
-(check-equal? (editor-document-count (session-editor s3)) 1)
-(check-equal? (editor-view-count (session-editor s3)) 1)
+(check-equal? (length (editor-documents (session-editor s3))) 1)
+(check-equal? (length (editor-views (session-editor s3))) 1)
 (check-equal? (session-active s3) 1)
 
 ;; 插入有变更
