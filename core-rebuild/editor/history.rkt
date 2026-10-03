@@ -23,9 +23,9 @@
 ;;; 关闭记步时（widget / 程序改写）：保留 past、清 future、把 current 的 merge-tag 封掉，
 ;;; 避免重开后与旧步合并或 redo 覆盖；undo/redo 在关闭期间一律 no-op。
 ;;;
-;;; highlight / readonly 这类作者态不产生独立步：属性存放在 document 的 box 里，
-;;; **就地**修改，再用 history-set-current 同步 current（document/who/selections），
-;;; 于是随快照搭车回退。异步写回直接改 box 句柄，不经过这里（见 editor/attributes.rkt）。
+;;; highlight / readonly 这类作者态不产生独立步，也**不经过这里**：属性存放在 document 的
+;;; box 里，就地修改（文档级、出带）。因为 document 是 box 的持有者，同一 document 值的所有
+;;; 快照都看到新属性；undo/redo 只还原文本文档值，不还原属性（见 editor/attributes.rkt）。
 
 (provide
  ;; ---------- 类型 ----------
@@ -140,11 +140,11 @@
     [current (struct-copy snapshot (history-current h) [merge-tag #f])]))
 
 ;; 改 current 的 document / selections / who（不记步、不动 merge-tag）。
-;; 用于 readonly / highlight 这类「随设随删」的作者态：
-;;   · 不改 merge-tag —— 作者态**既不并进**打字段、也**不打断**它（连续性由选区决定）。
+;; 用于把一次内容写「装上」current（editor-view-install!）：
+;;   · 不改 merge-tag —— 内容写**既不并进**打字段、也**不打断**它（连续性由选区决定）。
 ;;   · who 必须和新的 selections **一起**换：snapshot 的 (who, selections) 是
 ;;     「发起该步的视图 ⊕ 它当时的选区」这一对，拆开改会让 undo→redo 把
-;;     别的视图的选区还到 who 上（cross-view 作者态的经典 bug）。
+;;     别的视图的选区还到 who 上（cross-view 的经典 bug）。
 (define (history-set-current h doc sels who)
   (struct-copy history h
     [current (struct-copy snapshot (history-current h)

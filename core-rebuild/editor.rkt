@@ -9,16 +9,16 @@
 ;;;         undo/redo → ok?；CAS → applied?；其余 → void
 ;;;     box 引用一经创建不再替换，只 set-box! 内容（身份不可变，其余全在 box）。
 ;;;
-;;;   state   数据 + 查找 + 构造 + 结构操作 + 就地写槽（core/editor/state.rkt）
-;;;   history 撤销/重做账本（core/editor/history.rkt）
-;;;   view    单视图维护 / 同文档视图传播（core/editor/view.rkt，内部用）
-;;;   command 命令式操作 editor-view-*!（core/editor/command.rkt）
-;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（core/editor/query.rkt）
-;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（core/editor/attributes.rkt）
-;;;   change  读：编辑命令返回的 change（core/editor/change.rkt）
-;;;   render  单视图渲染 + 增量投影（core/editor/render.rkt）
-;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（core/editor/layout.rkt）
-;;;   sync    视口同步（core/editor/sync.rkt）
+;;;   state   数据 + 查找 + 构造 + 结构操作 + 就地写槽（editor/state.rkt）
+;;;   history 撤销/重做账本（editor/history.rkt）
+;;;   view    单视图维护 / 同文档视图传播（editor/view.rkt，内部用）
+;;;   command 命令式操作 editor-view-*!（editor/command.rkt）
+;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（editor/query.rkt）
+;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（editor/attributes.rkt）
+;;;   change  读：编辑命令返回的 change（editor/change.rkt）
+;;;   render  单视图渲染 + 增量投影（editor/render.rkt）
+;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（editor/layout.rkt）
+;;;   sync    视口同步（editor/sync.rkt）
 ;;;
 ;;; **editor 不持焦点**：哪个 view 当前被操作由宿主决定，接口一律显式 vid/did。
 ;;;
@@ -98,6 +98,8 @@
    document document-im document-mut
    document-immutable document-immutable? document-immutable-text
    document-mutable document-mutable? document-mutable-highlight document-mutable-readonly
+   ;; 属性轨是内部表示（读用 document-highlight-at / -row / -range?）
+   document-highlight document-readonly
    document-set-highlight! document-set-readonly! document-highlight-atom document-readonly-atom
    document-edit-tracks document-edit-highlight document-edit-readonly
    document-insert document-insert-ignore-readonly

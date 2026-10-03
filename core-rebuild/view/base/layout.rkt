@@ -16,7 +16,7 @@
  (struct-out vrow)
 
  ;; ---------- 折行 / 段 ----------
- wrap-segments segments-of-line seg-index-of
+ wrap-segments segments-of-line segment-index-of
 
  ;; ---------- 视觉行 ----------
  vrows vrow-distance vrow-move)
@@ -54,10 +54,10 @@
     [(wrap) (wrap-segments text width)]
     [else (error 'segments-of-line "mode 必须是 'clip / 'wrap，得到 ~a" mode)]))
 
-(define (seg-count text width mode) (length (segments-of-line text width mode)))
+(define (segment-count text width mode) (length (segments-of-line text width mode)))
 
 ;; dc 落在第几段（wrap 下不在任何段内 → 末段）。
-(define (seg-index-of text width mode dc)
+(define (segment-index-of text width mode dc)
   (case mode
     [(clip) 0]
     [(wrap)
@@ -65,16 +65,16 @@
      (or (for/first ([s (in-list segs)] [i (in-naturals)]
                      #:when (and (<= (car s) dc) (< dc (cdr s)))) i)
          (sub1 (length segs)))]
-    [else (error 'seg-index-of "mode 必须是 'clip / 'wrap，得到 ~a" mode)]))
+    [else (error 'segment-index-of "mode 必须是 'clip / 'wrap，得到 ~a" mode)]))
 
 ;; 从 (from-line,from-segment) 到 (to-line,to-segment) 的有向视觉行数。
 (define (vrow-distance t width mode from-line from-segment to-line to-segment)
   (cond
     [(= from-line to-line) (- to-segment from-segment)]
     [(< from-line to-line)
-     (+ (- (seg-count (track-ref t from-line) width mode) from-segment)
+     (+ (- (segment-count (track-ref t from-line) width mode) from-segment)
         (for/sum ([l (in-range (add1 from-line) to-line)])
-          (seg-count (track-ref t l) width mode))
+          (segment-count (track-ref t l) width mode))
         to-segment)]
     [else (- (vrow-distance t width mode to-line to-segment from-line from-segment))]))
 
@@ -112,7 +112,7 @@
   (define text (track-ref t line))
   (define dc (index->display-column text (point-column p)))
   (define segs (segments-of-line text width mode))
-  (define si (seg-index-of text width mode dc))
+  (define si (segment-index-of text width mode dc))
   (define seg (list-ref segs si))
   (define vc (- dc (car seg)))
   (define target
@@ -135,9 +135,9 @@
      (define tw (- te ts))
      (define ttext (track-ref t tl))
      (define line-width (string-display-width ttext))
-     (define tdc (snap-display-col-forward ttext (+ ts (min vc tw))))
+     (define tdc (snap-display-column-forward ttext (+ ts (min vc tw))))
      ;; tdc == te 有两个来源：夹到段尾，或段尾宽字符右半格被吸附。都取段内最后一个字符。
      (define tcol (if (and (= tdc te) (< te line-width))
-                      (display-col->index ttext (sub1 te))
-                      (display-col->index ttext tdc)))
+                      (display-column->index ttext (sub1 te))
+                      (display-column->index ttext tdc)))
      (point tl tcol)]))

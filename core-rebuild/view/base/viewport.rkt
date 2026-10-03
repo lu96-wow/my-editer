@@ -80,7 +80,7 @@
 ;; **不夹到行尾** —— 超过行长时原样保留（滚过短行尾部合法）。
 (define (snap-left t top-line L)
   (define s (track-ref t top-line))
-  (if (<= L (string-display-width s)) (snap-display-col-forward s L) L))
+  (if (<= L (string-display-width s)) (snap-display-column-forward s L) L))
 
 (define (viewport-set-left-column t v n)
   (struct-copy viewport v [left-column (snap-left t (viewport-top-line v) (max 0 n))]))
@@ -141,7 +141,7 @@
   (define text (track-ref t l))
   (define dc (index->display-column text (point-column p)))
   ;; 光标字符宽度（行尾插入点算 1 格）：右滚要让它**整字**可见
-  (define ci (display-col->index text dc))
+  (define ci (display-column->index text dc))
   (define cw (if (= ci (string-length text)) 1 (char-display-width (string-ref text ci))))
   (define top (cond [(< l (viewport-top-line v)) l]
                     [(>= l (+ (viewport-top-line v) h)) (- l h -1)]
@@ -167,7 +167,7 @@
     (define width (viewport-content-width t v)) (define height (viewport-height v))
     (define l (point-line p))
     (define dc (index->display-column (track-ref t l) (point-column p)))
-    (define seg (seg-index-of (track-ref t l) width 'wrap dc))
+    (define seg (segment-index-of (track-ref t l) width 'wrap dc))
     (define top-line (viewport-top-line v)) (define top-segment (viewport-top-segment v))
     (cond
       [(< l top-line) (struct-copy viewport v [top-line l] [top-segment 0])]
@@ -234,8 +234,8 @@
      (cond
        [(>= line (track-length t)) (values #f #f)]
        [else (values line
-                     (display-col->index (track-ref t line)
-                                         (+ (vrow-start-column vr) (max 0 (- col g)))))])]))
+                     (display-column->index (track-ref t line)
+                                            (+ (vrow-start-column vr) (max 0 (- col g)))))])]))
 
 (define (viewport-screen-position->point t v row col)
   (viewport-screen-position->point/vrows t v (viewport-vrows t v) row col))
@@ -267,7 +267,7 @@
     [(clip) (struct-copy viewport v [top-line l] [left-column (snap-left t l dc*)])]
     [(wrap) (struct-copy viewport v
                          [top-line l]
-                         [top-segment (seg-index-of (track-ref t l) (viewport-content-width t v) 'wrap dc*)])]
+                         [top-segment (segment-index-of (track-ref t l) (viewport-content-width t v) 'wrap dc*)])]
     [else (check-mode 'viewport-set-anchor (viewport-mode v))]))
 
 ;; 跨文档投锚：行号固定（越界夹），列按**两侧锚行显示宽**比例缩放；源锚行为空 → 列 0。

@@ -19,8 +19,8 @@
 ;;;
 ;;; 结构操作（增/删文档、视图）在 state.rkt，**返回新 editor**。
 ;;;
-;;; 内容写原语 editor-view-set!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
-;;; 作者态（高亮 / readonly）：改 document 的 box，不记步，只同步 current 的 (who, selections)。
+;;; 内容写原语 editor-view-install!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
+;;; 作者态（高亮 / readonly）不在这里：属性写是文档级、出带，见 attributes.rkt。
 
 (provide
  ;; ---------- 内部件（只 core 内部 / 测试用；入口 editor.rkt 会 except-out） ----------
@@ -90,8 +90,7 @@
     [else
      (define t (document-text value*))
      (define n (track-length t))
-     (define (line-len l) (line-length (track-ref t l)))
-     (define sels* (selections-clamp (or sels (view-selections v)) n line-len))
+     (define sels* (selections-clamp (or sels (view-selections v)) n (curry track-line-length t)))
      (define pre-sels (view-selections v))                            ; 就地改之前先抓
      (define pre-tip (history-current (document-entry-history e)))
      (view-set-selections! v sels*)
@@ -264,8 +263,7 @@
   (define doc (document-entry-document (editor-document-entry ed did)))
   (define t (document-text doc))
   (define n (track-length t))
-  (define (line-len l) (line-length (track-ref t l)))
-  (view-set-selections! v (selections-clamp sels n line-len))
+  (view-set-selections! v (selections-clamp sels n (curry track-line-length t)))
   (when ensure? (view-ensure! doc v))
   (editor-sync-viewports! ed vid)
   (void))
@@ -274,7 +272,7 @@
   (define t (document-text (editor-view-document ed vid)))
   (define last (sub1 (track-length t)))
   (editor-view-set-selections! ed vid
-    (selections-one (selection (point 0 0) (point last (line-length (track-ref t last)))))))
+    (selections-one (selection (point 0 0) (point last (track-line-length t last))))))
 
 (define (editor-view-set-point! ed vid p)
   (editor-view-set-selections! ed vid (selections-one (caret p))))

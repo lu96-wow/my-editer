@@ -193,8 +193,8 @@
      (define last (vector-ref vrows last-i))
      (define fl (vrow-line first))
      (define ll (vrow-line last))
-     (range-of (point fl (display-col->index (track-ref t fl) (vrow-start-column first)))
-               (point ll (display-col->index (track-ref t ll) (vrow-end-column last))))]))
+     (range-of (point fl (display-column->index (track-ref t fl) (vrow-start-column first)))
+               (point ll (display-column->index (track-ref t ll) (vrow-end-column last))))]))
 
 ;;; ---------- 历史 ----------
 

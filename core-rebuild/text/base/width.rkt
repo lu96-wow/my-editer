@@ -21,8 +21,8 @@
 
  ;; ---------- 索引 ↔ 显示列 ----------
  index->display-column
- display-col->index
- snap-display-col-forward)
+ display-column->index
+ snap-display-column-forward)
 
 ;;; ---------- 宽字符区间（East Asian Wide/Fullwidth），升序二分 ----------
 (define wide-ranges
@@ -80,7 +80,7 @@
 
 ;; 显示列 col 落在哪个字符上 → 字符索引。
 ;; 约定：宽字符右半格命中同一字符；0 宽字符附在前一基字符上；越界 → 字符串长度。
-(define (display-col->index s col)
+(define (display-column->index s col)
   (define n (string-length s))
   (let loop ([j 0] [start 0])
     (cond
@@ -92,10 +92,10 @@
              [else (loop (add1 j) (+ start w))])])))
 
 ;; 把显示列 L 吸附到「字符起点列」：落在宽字符右半 → 后移到下一字符起点。
-(define (snap-display-col-forward s L)
+(define (snap-display-column-forward s L)
   (define L* (max 0 L))
   (define n (string-length s))
-  (define i (display-col->index s L*))
+  (define i (display-column->index s L*))
   (cond
     [(>= i n) (string-display-width s)]
     [else

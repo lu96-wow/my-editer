@@ -16,7 +16,8 @@
 ;;; 作用**选区**的属性命令（editor-view-highlight! / -readonly! …）在 command.rkt：
 ;;; 它们是视图态命令，算完区间后调这里的 editor-document-*。
 ;;;
-;;; 低层逃逸口（原子句柄 / 视图文档句柄）保留在底部，待后续讨论归属。
+;;; 低层逃逸口（原子句柄 / 视图文档句柄）保留在底部：入口 editor.rkt 已 except-out，
+;;; 只供 core 内部与测试用（host 一律走 editor-document-* 的 did 寻址）。
 
 (provide
  ;; ---------- did 版：文档级属性写（坐标 / 整轨） ----------
@@ -87,23 +88,24 @@
 
 ;; 格 / 行：由当前文本算出行长，再折成 range。
 (define (editor-document-highlight-cell! ed did line col face)
-  (define len (line-length (track-ref (document-text (editor-document-handle ed did)) line)))
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
   (unless (>= col len)
     (editor-document-highlight-range! ed did (range-of (point line col) (point line (add1 col))) face)))
 (define (editor-document-readonly-cell! ed did line col flag)
-  (define len (line-length (track-ref (document-text (editor-document-handle ed did)) line)))
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
   (unless (>= col len)
     (editor-document-readonly-range! ed did (range-of (point line col) (point line (add1 col))) flag)))
 (define (editor-document-highlight-line! ed did line face)
-  (define len (line-length (track-ref (document-text (editor-document-handle ed did)) line)))
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
   (editor-document-highlight-range! ed did (range-of (point line 0) (point line len)) face))
 (define (editor-document-readonly-line! ed did line flag)
-  (define len (line-length (track-ref (document-text (editor-document-handle ed did)) line)))
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
   (editor-document-readonly-range! ed did (range-of (point line 0) (point line len)) flag))
 
 ;;; ---------- 低层逃逸口 ----------
 
 ;; 取某视图当前文档的句柄（= 连同不可变文本 + 可变属性原子）。
+;; 仅供内部 / 测试：host 用 editor-document-handle ed (editor-view-document-id ed vid)。
 (define (editor-view-document-handle ed vid)
   (editor-view-document ed vid))
 

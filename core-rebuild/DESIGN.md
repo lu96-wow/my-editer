@@ -70,10 +70,10 @@ host 原始事件
   └─▶ 选 vid（宿主决定焦点）
         └─▶ editor-view-*!  （就地改 box）
               ├─ 编辑类  : text/command 算 (新 doc, selections, changes)
-              │            └─ editor-view-set! → step
+              │            └─ editor-view-install! → step
               │                 └─ editor-document-history-record!（记步）
               ├─ 导航/视口: view-ensure!（滚进光标）+ sync 传播
-              ├─ 作者属性: document 属性 box 就地改 + history-set-current
+              ├─ 作者属性: document 属性 box 就地改（出带，不碰 history）
               └─ 结构类  : state 增/删 → 新 editor（返回）
 ```
 
@@ -208,7 +208,7 @@ editor-document-handle-set-highlight!  doc track
 
 **删除纯转发 / 重复**
 ```racket
-editor-view-document-handle        ; 删（= editor-view-document）        B5
+editor-view-document-handle        ; 入口 except-out（保留为内部/测试口） B5
 editor-view-string                 ; 保留为糖，或删
 editor-view-highlight-at / -readonly-at? / … ; 保留为糖（→ did 版）
 ```
@@ -217,13 +217,13 @@ editor-view-highlight-at / -readonly-at? / … ; 保留为糖（→ did 版）
 
 ## 5.1 重建进展（core-rebuild/）
 
-已落地（`core-rebuild-test` 1530 全绿）：
+已落地（`core-rebuild-test` 1529 全绿）：
 
 **A 组（文档级读补 did，vid 变糖）**
 - 新增：`editor-document-string` · `-highlight-at` · `-readonly-at?` · `-highlight-row`
   · `-readonly-row` · `-highlight-range?` · `-readonly-range?` · `-editable?`
-  · `-change-text` · `-handle` · `-views`
-- `editor-document-handle` 落在 state.rkt（对称于 `editor-view-document-handle`）
+  · `-change-text` · `-handle` · `-view-list`
+- `editor-document-handle` 落在 state.rkt（对称于内部的 `editor-view-document-handle`；后者入口 except-out）
 
 **B 组（属性写：只有 did，vid 只管选区）**
 - `editor-document-*`（did）= 属性写唯一入口：`set` / `batch` / `range-batch` / `range` /
@@ -272,7 +272,7 @@ editor-view-highlight-at / -readonly-at? / … ; 保留为糖（→ did 版）
 
 **C 组（部分）：返回约定统一**
 
-一条规则（公开 147 个 `editor-*`，除逃逸口）：
+一条规则（公开 137 个 `editor-*`，除逃逸口）：
 
 > **`*!` = 就地改。返回 `void`，除非该操作有「结果」或「失败状态」：**
 > - 结果 + 状态 → `(values 结果 ok?)`（编辑：`(values changes ok?)`）
@@ -298,20 +298,25 @@ editor-view-highlight-at / -readonly-at? / … ; 保留为糖（→ did 版）
   - **history 哑栈**：`history`/`snapshot` + 全部 `history-*`/`default-history-limit`
   - **属性裸原子/视图句柄**：`editor-view-document-handle` · `editor-view-highlight-atom` · `editor-view-readonly-atom`
   - **document 内部**：表示（`-immutable/-mutable/-im/-mut`）· 裸写口（`document-set-*!`/`-*-atom`）·
-    编辑机制（`document-edit-*`/`-insert/-delete/-replace/-paste*`）· `document-text`（返回 track）· `document-aligned?`
+    编辑机制（`document-edit-*`/`-insert/-delete/-replace/-paste*`）· `document-text`（返回 track）·
+    `document-highlight`/`document-readonly`（返回属性轨）· `document-aligned?`
   - **point 字符导航**：`point-left/right/home/end`（吃 track）
 - 保留的公开值：`editor?` · `editor-document-handle`（异步句柄）· `editor-clipboard` ·
   `document?`/`document-open`/`document->string`/`document-*-fill(-batch)` · `clipboard` · `point`/`selection`/`range`/`change` · `screen`/`piece`/`pane`/`rect`。
 - 决定：`editor-view-document` 收掉（统一 `editor-document-handle ed (editor-view-document-id ed vid)`）；
   文本层值编辑（`document-insert/…`）收掉（编辑是 editor 的事，构造值才是 document 的事）。
+- 备注：`except-out` 不除 `struct:` **语法绑定**（`struct:editor`/`struct:view`/`struct:document-entry` …）。
+  这些是不可作值的语法名（accessor 已除，`match` 结构模式也用不了），不构成逃逸口。
 
 入口现在只剩：**操作（`editor-*`）+ 值词汇（裸名）**。测试 1529 全绿。
 
 **命名：全称（反缩写）**
 
-缩写一律展开（32 文件，440/440）：
+缩写一律展开（32 文件）：
 - `ids` → `id-list` · `views` → `view-list`
 - `col` → `column` · `pos` → `position` · `seg` → `segment`
+  （含补漏：`display-col->index` → `display-column->index` · `snap-display-col-forward` →
+  `snap-display-column-forward` · `seg-count` → `segment-count` · `seg-index-of` → `segment-index-of`）
 - `rect` → `rectangle`（连同 accessors / 字段）
 - `pos<? /=? / <=?` → `position<? / =? / <=?`
 - 复合：`editor-view-{point,left}-column` · `editor-view-set-left-column!` ·
