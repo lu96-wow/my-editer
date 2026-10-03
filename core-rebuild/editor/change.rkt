@@ -1,0 +1,18 @@
+#lang racket
+
+(require "state.rkt" "../text/document.rkt")
+
+;;; editor/change.rkt —— change 的 editor 侧读
+;;;
+;;; change / range 词汇表由入口从 text/base/* **直接按裸名转发**；本模块只留
+;;; 「需要 editor 解析文档」的两个取文本操作。
+
+(provide
+ editor-document-change-text
+ view-change-text)
+
+;; 取一次变更插入的文本（从该文档读；须紧接着该次编辑使用）。
+(define (editor-document-change-text ed did ch)
+  (document-change-text (editor-document-handle ed did) ch))
+(define (view-change-text ed vid ch)
+  (editor-document-change-text ed (view-did (editor-view-ref ed vid)) ch))
