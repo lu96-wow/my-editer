@@ -130,14 +130,14 @@
 
 ;; ---------- 空 editor（无文档 / 无视图） ----------
 (define eb (editor-blank))
-(check-equal? (editor-document-count eb) 0)
-(check-equal? (editor-view-count eb) 0)
+(check-equal? (length (editor-documents eb)) 0)
+(check-equal? (length (editor-views eb)) 0)
 (check-false (editor-clipboard eb))
 ;; 从空 editor 建第一个文档 + 视图，id 从 0 开始
 (define-values (eb2 eb-did eb-vid) (editor-add-document-view eb "x" 10 5 "n"))
 (check-equal? eb-did 0)
 (check-equal? eb-vid 0)
-(check-equal? (editor-document-count eb2) 1)
+(check-equal? (length (editor-documents eb2)) 1)
 (check-equal? (document->string (editor-view-document eb2 0)) "x")
 
 (displayln "editor/state.rkt: all tests passed")

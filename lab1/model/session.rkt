@@ -187,7 +187,7 @@
   (check-false (session-active s7))
 
   ;; 程序生成文档：可关 history
-  (define-values (s8 _did _vid) (session-open-document s7 "gen" "tree" #f #:history? #f))
-  (check-false (editor-document-history-enabled? (session-editor s8) 0))
+  (define-values (s8 did8 _vid8) (session-open-document s7 "gen" "tree" #f #:history? #f))
+  (check-false (editor-document-history-enabled? (session-editor s8) did8))
 
   (displayln "lab1/model/session.rkt: all tests passed"))

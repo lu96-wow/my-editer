@@ -12,8 +12,11 @@
 ;;; 不必自己拆 view / viewport / document。都是纯读，不改任何东西。
 ;;;
 ;;; **无焦点糖**：焦点由宿主持有。
-;;; 命名：`editor-view-* ed vid` 按 vid；`editor-document-* ed did` 按 did；
-;;; **计数是全局总数**（不带 id）：`editor-document-count` / `editor-view-count`。
+;;; 命名（按**寻址键**，不按用途）：
+;;;   `editor-view-* ed vid`            按 vid
+;;;   `editor-document-* ed did`        按 did
+;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 attributes.rkt）
+;;;   计数是全局总数（不带 id）：`editor-document-count` / `editor-view-count`。
 
 (provide
  ;; ---------- 文本 / 名称 ----------

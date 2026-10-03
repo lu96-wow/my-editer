@@ -33,7 +33,7 @@
 (define e1 (ins e0 "X"))                                    ; "Xabc"，depth 1
 (define doc1 (editor-view-document-handle e1 0))
 (check-false (document-highlight doc1))
-(void (editor-document-set-highlight! doc1 (hl-track "Xabc" 0 0 0 1 'kw)))
+(void (editor-document-handle-set-highlight! doc1 (hl-track "Xabc" 0 0 0 1 'kw)))
 (check-equal? (editor-view-highlight-at e1 0 0 0) 'kw)
 (check-equal? (editor-view-depth e1 0) 1 "属性写回不记步")
 
@@ -43,7 +43,7 @@
 (define e3 (editor-view-undo e2 0))                         ; current D1
 (define doc-d1 (editor-view-document-handle e3 0))          ; 抓 D1 的 doc（此时是 current）
 (define e4 (editor-view-undo e3 0))                         ; current D0, future [D1, D2]
-(void (editor-document-set-highlight! doc-d1 (hl-track "Xabc" 0 1 0 2 'hl2)))  ; 写 future 里的 D1
+(void (editor-document-handle-set-highlight! doc-d1 (hl-track "Xabc" 0 1 0 2 'hl2)))  ; 写 future 里的 D1
 (check-false (document-highlight (editor-view-document e4 0))
              "当前 D0 不受写回 future 的影响")
 (define e5 (editor-view-redo e4 0))                         ; current D1（同一对象）
@@ -58,7 +58,7 @@
 (define f2 (editor-view-undo f1 0))                         ; current D0, future [D1]
 (define f3 (ins f2 "Z"))                                    ; 编辑 → 清 future
 (check-equal? (editor-view-string f3 0) "Zabc")
-(void (editor-document-set-highlight! fdoc1 (hl-track "Xabc" 0 0 0 1 'kw)))  ; 写已丢弃的 D1
+(void (editor-document-handle-set-highlight! fdoc1 (hl-track "Xabc" 0 0 0 1 'kw)))  ; 写已丢弃的 D1
 (check-false (document-highlight (editor-view-document f3 0))
              "目标已被 redo 丢弃，写回不影响当前")
 (check-true (document-highlight-range? fdoc1 0 0 0 1)
@@ -71,14 +71,14 @@
 (define gdid (editor-view-document-id g1 0))
 (define gdoc (editor-view-document-handle g1 0))
 (define h-before (editor-document-history g1 gdid))
-(void (editor-document-set-highlight! gdoc (hl-track "Xabc" 0 0 0 1 'kw)))
+(void (editor-document-handle-set-highlight! gdoc (hl-track "Xabc" 0 0 0 1 'kw)))
 (check-eq? (editor-document-history g1 gdid) h-before "写回不重建 history")
 
 ;;; ---------- 5. 原子句柄 + 只读写回 ----------
 
 (check-true (box? (editor-view-highlight-atom g1 0)))
 (check-true (box? (editor-view-readonly-atom g1 0)))
-(void (editor-document-set-readonly! gdoc (ro-track "Xabc" 0 0 0 1 #t)))
+(void (editor-document-handle-set-readonly! gdoc (ro-track "Xabc" 0 0 0 1 #t)))
 (check-true (editor-view-readonly-at? g1 0 0 0))
 
 ;;; ---------- 6. 历史移到目标版本之前 + 编辑丢 redo → 写回旧版本安全 ----------
@@ -101,7 +101,7 @@
 (define q2 (ins q1 "Z"))
 (check-equal? (history-future (editor-document-history q2 (editor-view-document-id q2 0))) '())
 ;; 现在写回已丢弃的 D3：不得出错、不得影响当前
-(void (editor-document-set-highlight! pd3 (hl-track "dcba" 0 0 0 1 'kw)))
+(void (editor-document-handle-set-highlight! pd3 (hl-track "dcba" 0 0 0 1 'kw)))
 (check-false (document-highlight (editor-view-document q2 0))
              "写回被丢弃的版本不影响当前文档")
 (check-true (document-highlight-range? pd3 0 0 0 1)
@@ -115,7 +115,7 @@
 (check-eq? (editor-view-document m1 0) (editor-view-document m1 1)
            "两个视图看同一份 document 对象")
 (define mdoc (editor-view-document-handle m1 1))
-(void (editor-document-set-highlight! mdoc (hl-track "abc" 0 0 0 1 'kw)))
+(void (editor-document-handle-set-highlight! mdoc (hl-track "abc" 0 0 0 1 'kw)))
 (check-equal? (editor-view-highlight-at m1 0 0 0) 'kw "vid0 看到 vid1 写回的属性")
 (check-equal? (editor-view-highlight-at m1 1 0 0) 'kw)
 ;; 作者态写 vid1：current 的 who 变 vid1，但文档共享，undo/redo 后两边都一致
@@ -127,10 +127,10 @@
 (define b0 (editor-open "abcdef" 20 5))
 (define bdoc (editor-view-document-handle b0 0))
 ;; 句柄版：一串区间一次写
-(void (editor-document-highlight-batch! bdoc (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
+(void (editor-document-handle-highlight-batch! bdoc (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
 (check-equal? (editor-view-highlight-row b0 0 0) (vector 'a 'a #f #f 'b 'b))
 ;; 空表 = 不改（返回同一 document）
-(check-eq? (editor-document-highlight-batch! bdoc '()) bdoc)
+(check-eq? (editor-document-handle-highlight-batch! bdoc '()) bdoc)
 
 ;; 命令版（作者态）：与逐个 editor-view-highlight-range 等价
 (define b1 (editor-open "abcdef" 20 5))
