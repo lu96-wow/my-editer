@@ -97,3 +97,26 @@
                   (define in (tui-event->input ev))
                   (when in (handle! in))))))
       (lambda () (when disp (display-exit! disp)))))))
+
+;;; ---------- 输入翻译单测（无需终端） ----------
+
+(module+ test
+  (require rackunit)
+
+  (check-equal? (tui-event->input (key-event #\a no-mods)) (key #\a modifiers-none))
+  ;; 终端把 Ctrl+字母给成大写 → 后端归一为小写
+  (check-equal? (tui-event->input (key-event #\B (mods #t #f #f)))
+                (key #\b (modifiers #t #f #f #f)))
+  (check-equal? (tui-event->input (resize-event 24 80)) (resize 24 80))
+  (check-equal? (tui-event->input (paste-event #"hi" "hi")) (text "hi" modifiers-none))
+  ;; 鼠标 x/y 是 1-based → 0-based
+  (check-equal? (tui-event->input (mouse-event 'press 'left 3 5 no-mods))
+                (mouse 'press 'left 4 2 modifiers-none))
+  (check-equal? (tui-event->input (mouse-event 'move #f 3 5 no-mods))
+                (mouse 'drag #f 4 2 modifiers-none))
+  (check-equal? (tui-event->input (mouse-event 'scroll 'up 1 1 no-mods))
+                (wheel 'up 0 0 modifiers-none))
+  (check-equal? (tui-event->input (mouse-event 'scroll 'down 1 1 no-mods))
+                (wheel 'down 0 0 modifiers-none))
+
+  (displayln "lab/io/tui.rkt: all tests passed"))

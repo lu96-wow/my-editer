@@ -13,16 +13,16 @@
 
 ;; face → 基础 style（fg/bg/attrs）。加一种 face 只改这张表。
 (define theme
-  (hash 'line-number      (style '(110 115 130) #f #f #f #f #f)
-        'status           (style '(230 230 230) '(40 44 52) #f #f #f #f)
-        'separator        (style '(80 85 95) #f #f #f #f #f)
+  (hash 'line-number      (style* #:fg '(110 115 130))
+        'status           (style* #:fg '(230 230 230) #:bg '(40 44 52))
+        'separator        (style* #:fg '(80 85 95))
         ;; 两棵树
-        'tree-dir         (style '(120 180 240) #f #t #f #f #f)   ; 目录（蓝、粗）
-        'tree-file        (style '(190 190 200) #f #f #f #f #f)   ; 文件（灰）
-        'tree-open        (style '(90 220 120) #f #f #f #f #f)    ; 已打开的文件（绿）
-        'tree-doc         (style '(225 225 235) #f #t #f #f #f)   ; 文档
-        'tree-view        (style '(170 170 185) #f #f #f #f #f)   ; 视图
-        'tree-view-active (style '(255 214 120) #f #t #f #f #f))) ; 焦点视图（黄）
+        'tree-dir         (style* #:fg '(120 180 240) #:bold? #t)      ; 目录（蓝、粗）
+        'tree-file        (style* #:fg '(190 190 200))                  ; 文件（灰）
+        'tree-open        (style* #:fg '(90 220 120))                   ; 已打开的文件（绿）
+        'tree-doc         (style* #:fg '(225 225 235) #:bold? #t)      ; 文档
+        'tree-view        (style* #:fg '(170 170 185))                  ; 视图
+        'tree-view-active (style* #:fg '(255 214 120) #:bold? #t)))    ; 焦点视图（黄）
 
 (define (face->style face)
   (if (and face (hash-has-key? theme face))

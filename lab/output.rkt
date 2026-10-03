@@ -23,6 +23,7 @@
 (provide
  ;; ---------- 样式 / span ----------
  (struct-out style)
+ style*
  default-style
  (struct-out span)
 
@@ -40,6 +41,12 @@
 ;; fg / bg : (or/c #f (list r g b))；attrs 是布尔。
 (struct style (fg bg bold? italic? underline? reverse?) #:transparent)
 (define default-style (style #f #f #f #f #f #f))
+
+;; 关键字构造器：位置参数太吵（6 个），主题表用它更好读。
+(define (style* #:fg [fg #f] #:bg [bg #f]
+                #:bold? [bold? #f] #:italic? [italic? #f]
+                #:underline? [underline? #f] #:reverse? [reverse? #f])
+  (style fg bg bold? italic? underline? reverse?))
 
 ;; 屏幕上一段同一样式的文本；col 是**显示列**（0-based）。
 (struct span (row col text style) #:transparent)

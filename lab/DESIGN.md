@@ -76,17 +76,15 @@ lab/
 │   └── dispatch.rkt     session × input → session × effects
 ├── driver.rkt       组装根：input → dispatch → render → present → effects
 ├── main.rkt         TUI 入口（racket-tui）
-├── main-gui.rkt     GUI 入口（racket/gui）
-└── io/              后端适配器：唯一碰 io / 终端 / GUI 的地方
+└── io/              后端适配器：唯一碰 io / 终端的地方
     ├── tui.rkt        racket-tui 后端（实现 display + 事件→input）
-    ├── gui.rkt        racket/gui 后端（同协议）
     └── headless.rkt   测试后端（记录 span）
 ```
 
 依赖只许向下：
 
 ```
-io/{tui,gui,headless} ──► command ──► model ──► core（编辑器数据）
+io/{tui,headless} ──► command ──► model ──► core（编辑器数据）
         │                    │
         │                    └──► output ──► core（纯输出类型 screen / piece）
         └──── input / effect / span / style ────►（纯值协议，人人可引）
@@ -216,13 +214,20 @@ core screen / piece ──patch->spans(attr->style)──▶ (listof span) ─�
 - core 的 `piece` attr 有两种构造（render 用 list、overlay 用 cons），在 `output.rkt`
   归一为 `(channel . face)`；`theme.rkt` 提供 `attr->style`（face → 基础样式，overlay 叠反显 / 蓝底）。
 
-### 5.3 后端
+### 5.3 后端（输入映射是关键差异）
 
-| 后端 | display 实现 | 输入翻译 | 备注 |
+| 后端 | display 实现 | 输入来源 | 映射到中性 input |
 |---|---|---|---|
-| `io/tui.rkt` | tui `format-*` → 终端字节；`put-bytes`/`flush!` | `tui-event->input`：Ctrl+字母归一小写；move→drag；scroll→wheel | 唯一 require `tui` 的文件 |
-| `io/gui.rkt` | retained 网格 + `canvas%` on-paint | `gui-mouse->input` / `on-char` | 同协议，回调驱动 |
+| `io/tui.rkt` | tui `format-*` → 终端字节 | `key-event` / `paste-event` / `mouse-event` / `resize-event` | Ctrl+字母归一小写 → `key`；paste → `text`；mouse `(x,y)` 1-based→0-based 且 move→`drag`；scroll 的 button `'up/'down` → `wheel`；resize → `resize` |
 | `io/headless.rkt` | 把 span 记进 box | — | 无头测试 |
+
+> **GUI 后端暂时移除**（代码已删）。接口设计不变：另写一个实现同一 `display` 协议 + 事件翻译的适配器即可，
+> 模型/命令/core 一行不改。已知差异（当时实测）：`mouse-event%` **没有 `get-button`/`get-wheel-delta`**；
+> GTK 下滚轮是 `key-event%`（`key-code`=wheel-up/down）从 **on-char** 来且无坐标；`canvas%` 的
+> `on-event`/`on-char`/`on-size` 是**方法**（不是初始化参数），需匿名子类 `define/override`。
+
+TUI 侧差异全部吸收在 `tui-event->input` 里（Ctrl+字母归一、move→drag、scroll→wheel、1-based→0-based），
+并有 `module+ test` 无头输入翻译单测。
 
 ### 5.4 副作用（`lab/effect.rkt`，纯值）
 
@@ -289,7 +294,7 @@ app-input app input → app'  dispatch → execute-effects → app-draw
 两个入口共用 driver，只差「怎么造 display、怎么驱动事件」：
 
 - `main.rkt`（TUI）：`make-tui-display` + `run-tui!`（阻塞循环，`loop-input/stop` 由 `app-quit?` 终止）。
-- `main-gui.rkt`（GUI）：`make-gui-display #:on-input`（回调式，事件直接喂 `app-input`）。
+  （GUI 入口已暂时移除；同一 driver 换个 display + 回调即接入。）
 
 ---
 
@@ -353,8 +358,8 @@ tnode = name ⊕ id ⊕ kind('dir|'file|'doc|'view) ⊕ depth ⊕ expanded? ⊕ 
 |---|---|---|
 | **P0** | 设计定稿 | 完成 |
 | **P1** | `model/{layout,session,document,view,render}` | 完成 |
-| **P1.5** | IO 抽象：`input` / `output` / `theme` / `effect` + `io/{tui,gui,headless}` | 完成 |
+| **P1.5** | IO 抽象：`input` / `output` / `theme` / `effect` + `io/{tui,headless}` | 完成 |
 | **P2** | `command/{base,table,default,dispatch}` + `model/edit` | 完成 |
-| **P3** | `driver` + `main.rkt` / `main-gui.rkt` 入口 | 完成 |
+| **P3** | `driver` + `main.rkt` 入口 | 完成 |
 | **P4** | 两棵自托管树（文件树 / 文档树）+ fs 操作 + 输入行 + 状态栏 | 完成 |
-| **P5** | 打开 / 保存对话框、更多编辑命令、模式命令表、GUI 打磨 | 下一步 |
+| **P5** | 打开 / 保存对话框、更多编辑命令、模式命令表（GUI 后端待定） | 下一步 |
