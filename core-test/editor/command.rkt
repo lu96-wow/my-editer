@@ -118,12 +118,14 @@
   (view-set-viewport! cur (view-viewport v))
   ed)
 ;; 通用原语：保留旧形状 (values ed step)
-(define (editor-view-set ed vid value #:selections [s #f] #:change [c #f] #:ensure? [ens #t])
-  (values ed (base:editor-view-set! ed vid value #:selections s #:change c #:ensure? ens)))
+(define (editor-view-set ed vid value #:selections [s #f] #:change [c #f] #:ensure? [ens #t]
+                         #:chunk-lines [cl default-chunk-lines])
+  (values ed (base:editor-view-set! ed vid value #:selections s #:change c #:ensure? ens #:chunk-lines cl)))
 (define (editor-history-record ed did step [tag #f])
   (base:editor-history-record! ed did step tag) ed)
-(define (editor-view-assign ed vid value #:selections [s #f] #:ensure? [ens #f])
-  (base:editor-view-assign! ed vid value #:selections s #:ensure? ens) ed)
+(define (editor-view-assign ed vid value #:selections [s #f] #:ensure? [ens #f]
+                            #:chunk-lines [cl default-chunk-lines])
+  (base:editor-view-assign! ed vid value #:selections s #:ensure? ens #:chunk-lines cl) ed)
 ;; -ignore-readonly 版：测试用 (values ed changes)
 (define (ig-ro f ed a b)
   (define-values (ch _) (f ed a b)) (values ed ch))
@@ -777,6 +779,14 @@
 (define asgsel (editor-view-assign (editor-open "abc" 20 5) 0 (document-open "Q")
                                    #:selections (selections-one (caret (point 0 1)))))
 (check-equal? (editor-view-point asgsel 0) (point 0 1))
+;; assign 接受 string（与 editor-open / editor-add-document 的入口多态一致）
+(check-equal? (doc-str (editor-view-assign as0 0 "Qstr")) "Qstr")
+(check-equal? (track-max (document-text (editor-focused-document
+                                          (editor-view-assign as0 0 "a\nb\nc" #:chunk-lines 4))))
+              4)
+;; 传 document 仍原样装入（不经 string 重建）
+(define aspre (document-open "P"))
+(check-true (eq? (editor-focused-document (editor-view-assign as0 0 aspre)) aspre))
 ;; record：把 step 记进账本；undo 回旧值
 (define-values (sr1 sr-step) (editor-view-set (editor-open "abc" 20 5) 0 (document-open "Q")))
 (define sr2 (editor-history-record sr1 0 sr-step))

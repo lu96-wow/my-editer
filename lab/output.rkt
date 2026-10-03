@@ -26,6 +26,8 @@
  style*
  default-style
  (struct-out span)
+ ;; ---------- face / overlay → style ----------
+ theme face->style overlay-style attr->style
 
  ;; ---------- display 协议 ----------
  make-display display?
@@ -33,7 +35,6 @@
 
  ;; ---------- core screen/piece → span ----------
  patch->spans
- screen->spans
  present!)
 
 ;;; ---------- 样式 ----------
@@ -50,6 +51,41 @@
 
 ;; 屏幕上一段同一样式的文本；col 是**显示列**（0-based）。
 (struct span (row col text style) #:transparent)
+
+;;; ---------- face / overlay → style ----------
+;;; core 的 face 是不透明值；只有这里知道它对应什么颜色。overlay（cursor/selection）
+;;; 在 face 的 style 之上叠一层。
+
+;; face → 基础 style（fg/bg/attrs）。加一种 face 只改这张表。
+(define theme
+  (hash 'line-number      (style* #:fg '(110 115 130))
+        'status           (style* #:fg '(230 230 230) #:bg '(40 44 52))
+        'separator        (style* #:fg '(80 85 95))
+        ;; 两棵树
+        'tree-dir         (style* #:fg '(120 180 240) #:bold? #t)      ; 目录（蓝、粗）
+        'tree-file        (style* #:fg '(190 190 200))                  ; 文件（灰）
+        'tree-open        (style* #:fg '(90 220 120))                   ; 已打开的文件（绿）
+        'tree-doc         (style* #:fg '(225 225 235) #:bold? #t)      ; 文档
+        'tree-view        (style* #:fg '(170 170 185))                  ; 视图
+        'tree-view-active (style* #:fg '(255 214 120) #:bold? #t)))    ; 焦点视图（黄）
+
+(define (face->style face)
+  (if (and face (hash-has-key? theme face))
+      (hash-ref theme face)
+      default-style))
+
+;; overlay：光标 = 反显；选中 = 蓝色底。其余透传。
+(define (overlay-style channel st)
+  (case channel
+    [(cursor)    (struct-copy style st [reverse? #t])]
+    [(selection) (struct-copy style st [bg '(58 74 128)])]
+    [else st]))
+
+;; core piece 的 attr → style。attr = (channel . face)（已由 normalize-attr 归一）或裸 face。
+(define (attr->style attr)
+  (cond
+    [(not (pair? attr)) (face->style attr)]
+    [else (overlay-style (car attr) (face->style (cdr attr)))]))
 
 ;;; ---------- display 协议 ----------
 
@@ -89,9 +125,6 @@
     (span (piece-row p) (piece-col p) (piece-text p)
           (attr->style (normalize-attr (piece-attr p))))))
 
-(define (screen->spans screen attr->style)
-  (patch->spans #f screen attr->style))
-
 ;;; ---------- 呈现一帧 ----------
 
 ;; 旧帧 old（可为 #f）→ 新帧 new：算差量，尺寸变了 / 首帧先清屏，逐 span 画，最后 flush。
@@ -129,5 +162,12 @@
   (check-true (eq? s scr))
   (check-true (for/or ([sp (in-list (unbox recorded))] #:when (equal? (span-text sp) "hi")) #t))
   (check-true (for/or ([sp (in-list (unbox recorded))] #:when (equal? (span-text sp) "there")) #t))
+
+  ;; face / overlay → style
+  (check-equal? (face->style 'line-number) (style '(110 115 130) #f #f #f #f #f))
+  (check-equal? (face->style 'unknown) default-style)
+  (check-true (style-reverse? (attr->style (cons 'cursor 'line-number))))
+  (check-equal? (style-bg (attr->style (list 'selection #f))) '(58 74 128))
+  (check-equal? (attr->style (cons 'render 'tree-dir)) (face->style 'tree-dir))
 
   (displayln "lab/output.rkt: all tests passed"))

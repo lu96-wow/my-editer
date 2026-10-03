@@ -5,12 +5,10 @@
 (require rackunit racket/file racket/path
          "../../lab/model/session.rkt"
          "../../lab/model/tree.rkt"
-         "../../lab/model/document.rkt"
-         "../../lab/model/edit.rkt"
+         "../../lab/model/ops.rkt"
          "../../lab/command/dispatch.rkt"
-         "../../lab/input.rkt"
-         "../../lab/effect.rkt"
-         "../../lab/driver.rkt"
+         "../../lab/protocol.rkt"
+         "../../lab/main.rkt"
          "../../core/editor.rkt")
 
 (define m0 (modifiers #f #f #f #f))

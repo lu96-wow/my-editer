@@ -54,7 +54,7 @@
  (except-out (all-from-out "editor/state.rkt")
              document-entry-set-name! document-entry-set-history!
              view-set-viewport! view-set-selections! view-set-sync! view-set-link!
-             editor-set-clipboard!)
+             editor-set-clipboard! ->document)
  ;; ---------- 撤销 / 重做 ----------
  (all-from-out "editor/history.rkt")
  ;; ---------- 用户命令 ----------

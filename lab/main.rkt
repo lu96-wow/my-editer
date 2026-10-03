@@ -1,18 +1,113 @@
 #lang racket
 
-;;; lab/main.rkt —— TUI 入口：造 display → 跑 driver 主循环
+;;; lab/main.rkt —— 组装根 + TUI 入口
+;;;
+;;;   app = session ⊕ 上一帧 ⊕ display ⊕ quit?
+;;;
+;;; 顶层（app-open / app-draw / app-input / execute-effects）是后端无关的组装根：
+;;; 唯一同时认识 model / command / output / protocol，但很薄——只做
+;;; 「派发 → 呈现 → 执行 effect」。真正的终端后端只在 module+ main 里接入。
+;;;
+;;; 后端只需：造一个 display、把原生事件译成 input、调 app-input。换后端不改这里。
 
-(require "driver.rkt"
-         "io/tui.rkt"
-         "output.rkt")
+(require racket/file racket/path
+         "protocol.rkt"
+         "output.rkt"
+         "command/dispatch.rkt"
+         "model/session.rkt"
+         "model/ops.rkt"
+         "model/render.rkt"
+         "model/tree.rkt")
 
-(define (run!)
-  (define disp (make-tui-display))
-  (define-values (rows cols) (display-size disp))
-  (define app-box (box (app-open disp rows cols)))
-  (run-tui! (lambda () (set-box! app-box (app-draw (unbox app-box))))
-            (lambda (in) (set-box! app-box (app-input (unbox app-box) in)))
-            (lambda () (app-quit? (unbox app-box)))
-            #:display disp))
+(provide
+ (struct-out app)
+ app-open
+ app-draw
+ app-input
+ execute-effects)
 
-(module+ main (run!))
+(struct app (session screen display quit?) #:transparent)
+
+;; display 由后端提供；rows/cols 由后端查询后传入。两棵树在 app-open 时装配。
+;; 默认不打开任何编辑器文档（空白）；需要时显式 #:text 开一个。
+(define (app-open display rows cols [project #f] #:text [text #f] #:name [name "*scratch*"])
+  (define s0 (trees-init (session-blank cols rows project)))
+  (define s1 (if text
+                 (let-values ([(s* _did _vid) (session-open-document s0 text name)]) s*)
+                 s0))
+  (app s1 #f display #f))
+
+;; 渲染当前 session 并增量呈现；更新基线帧。
+(define (app-draw a)
+  (define new (session-render (app-session a)))
+  (define drawn (present! (app-display a) (app-screen a) new attr->style))
+  (struct-copy app a [screen drawn]))
+
+;; 处理一个输入：派发 → 执行 effects → 刷新树 → 重绘。
+(define (app-input a in)
+  (define-values (s1 effs) (dispatch (app-session a) in))
+  (define-values (s2 q?) (execute-effects s1 effs))
+  (app-draw (struct-copy app a
+              [session (trees-refresh s2)]
+              [quit? (or (app-quit? a) q?)])))
+
+;; 执行副作用（返回新 session + 是否退出）。io-load 可能新增文档（结构性）。
+(define (execute-effects s effs)
+  (for/fold ([s s] [q? #f] #:result (values s q?)) ([e (in-list effs)])
+    (cond
+      [(quit? e) (values s #t)]
+      [(io-save? e)
+       (display-to-file (document-text s (io-save-did e))
+                        (io-save-path e) #:exists 'replace)
+       (values s q?)]
+      [(io-load? e)
+       (define path (io-load-path e))          ; 字符串
+       (define text (file->string path))
+       (define name (path->string (file-name-from-path (string->path path))))
+       (define-values (s* did _vid) (session-open-document s text name))
+       (values (document-set-path s* did path) q?)]
+      [else (values s q?)])))
+
+;;; ---------- 测试（headless） ----------
+
+(module+ test
+  (require rackunit
+           "../lab-test/io/headless.rkt")
+
+  (define mC (modifiers #t #f #f #f))
+
+  (define-values (disp _spans) (make-headless-display 10 40))
+  (define a0 (app-open disp 10 40 #f #:text "hello" #:name "d0"))
+  (define a1 (app-draw a0))
+  (check-false (app-quit? a1))
+
+  (define s (app-session a1))
+  (define did (for/first ([d (in-hash-keys (session-docs s))]
+                          #:when (equal? (document-name s d) "d0"))
+                d))
+
+  ;; 输入文本 "X" → 文档变成 "Xhello"
+  (define a2 (app-input a1 (text "X" modifiers-none)))
+  (check-equal? (document-text (app-session a2) did) "Xhello")
+
+  ;; C-q → quit
+  (define a3 (app-input a2 (key #\q mC)))
+  (check-true (app-quit? a3))
+
+  (displayln "lab/main.rkt: all tests passed"))
+
+;;; ---------- TUI 入口 ----------
+
+(module+ main
+  (require "io/tui.rkt")
+
+  (define (run!)
+    (define disp (make-tui-display))
+    (define-values (rows cols) (display-size disp))
+    (define app-box (box (app-open disp rows cols)))
+    (run-tui! (lambda () (set-box! app-box (app-draw (unbox app-box))))
+              (lambda (in) (set-box! app-box (app-input (unbox app-box) in)))
+              (lambda () (app-quit? (unbox app-box)))
+              #:display disp))
+
+  (run!))

@@ -23,11 +23,11 @@
  (struct-out pane-rect)
 
  ;; ---------- 构造 ----------
- view-pane file-tree-pane split-of
+ view-pane
 
  ;; ---------- 求值 / 查询 ----------
  layout-rects layout-ids layout-has-visible? layout-find layout-neighbor
- layout-hit pane-ids
+ layout-hit
 
  ;; ---------- 结构操作 ----------
  layout-replace layout-remove layout-split-pane layout-append)
@@ -51,14 +51,8 @@
 ;;; ---------- 构造 ----------
 
 (define (view-pane vid) (leaf (pane vid (view-ref vid))))
-(define (file-tree-pane) (leaf (pane 'file-tree 'file-tree)))
-
-(define (split-of dir children [sizes #f])
-  (split dir children (or sizes (make-list (length children) (flex 1)))))
 
 ;;; ---------- 查询 ----------
-
-(define (pane-ids node) (layout-ids node))
 
 (define (layout-ids node)
   (cond

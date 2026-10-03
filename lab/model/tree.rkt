@@ -12,10 +12,9 @@
 ;;;
 ;;; 两棵树在 editor 里就是两个 document + 两个 view（sidebar-vids），不搞特殊面板。
 
-(require racket/list racket/path
+(require racket/list racket/path racket/file
          "session.rkt"
-         "../fs.rkt"
-         "../effect.rkt"
+         "../protocol.rkt"
          "../../core/editor.rkt"
          "../../core/text/document.rkt")
 
@@ -55,13 +54,12 @@
     (editor-add-document-view ed "" default-view-width default-view-height "files"))
   (define-values (ed2 did2 vid2)
     (editor-add-document-view ed1 "" default-view-width default-view-height "documents"))
-  (define (doc-of e d) (document-entry-document (editor-document-entry e d)))
   (session-normalize-focus
    (trees-refresh
     (struct-copy session s
       [editor ed2]
-      [docs (hash-set (hash-set (session-docs s) did1 (doc-meta #f (doc-of ed2 did1) #f))
-                      did2 (doc-meta #f (doc-of ed2 did2) #f))]
+      [docs (hash-set (hash-set (session-docs s) did1 (doc-meta #f))
+                      did2 (doc-meta #f))]
       [project project]
       [tree-vids (list vid1 vid2)]
       [sidebar-kind 'files]))))
@@ -158,6 +156,38 @@
 (define (document-open-by-path? s path)
   (for/or ([did (in-hash-keys (session-docs s))])
     (equal? (doc-meta-path (hash-ref (session-docs s) did)) path)))
+
+;;; ---------- 文件系统（本模块唯一碰盘的地方） ----------
+
+(define (fs-exists? p) (or (file-exists? p) (directory-exists? p)))
+(define (fs-dir? p) (directory-exists? p))
+(define (fs-name p)
+  (define parts (explode-path p))
+  (if (null? parts) (path->string p) (path->string (last parts))))
+
+;; 目录在前、文件在后，各自按名字排序。
+(define (fs-list dir)
+  (define entries
+    (for/list ([e (in-list (directory-list dir))])
+      (build-path dir (file-name-from-path e))))
+  (define dirs (sort (filter directory-exists? entries) string<? #:key path->string))
+  (define files (sort (filter file-exists? entries) string<? #:key path->string))
+  (append dirs files))
+
+(define (fs-create-file p)
+  (when (fs-exists? p) (error 'fs-create-file "已存在: ~a" p))
+  (display-to-file "" p #:exists 'error)
+  p)
+
+(define (fs-create-dir p)
+  (when (fs-exists? p) (error 'fs-create-dir "已存在: ~a" p))
+  (make-directory p)
+  p)
+
+(define (fs-delete p)
+  (cond [(directory-exists? p) (delete-directory/files p)]
+        [(file-exists? p) (delete-file p)]
+        [else (error 'fs-delete "不存在: ~a" p)]))
 
 ;;; ---------- 文件树节点 ----------
 

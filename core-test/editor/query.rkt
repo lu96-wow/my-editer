@@ -145,7 +145,9 @@
 ;; 历史开关读口
 (check-true (editor-history-enabled? ed))
 (check-equal? (editor-view-history-enabled? ed 0) (editor-history-enabled? ed))
+(check-true (editor-document-history-enabled? ed 0))
 (check-false (editor-history-enabled? (editor-set-history-enabled ed #f)))
+(check-false (editor-document-history-enabled? ed 0))
 
 ;; 主选区两端点
 (editor-view-set-selections! ed 0 (selections-of (list (selection (point 0 0) (point 1 2))) 0))

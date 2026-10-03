@@ -36,6 +36,9 @@
  ;; ---------- 构造 ----------
  make-document-entry make-view
 
+ ;; ---------- 多态入口：string | document → document（内部共享；core 入口 except-out） ----------
+ ->document
+
  ;; ---------- 裸 box setter（入口 except-out，内部用） ----------
  document-entry-set-name! document-entry-set-history!
  view-set-viewport! view-set-selections! view-set-sync! view-set-link!
@@ -43,10 +46,12 @@
 
  ;; ---------- 字段元数据写口（公开；只改一个 box） ----------
  editor-document-set-name!
+ editor-document-set-history-enabled!
  editor-view-set-sync! editor-view-set-link!
 
  ;; ---------- 结构操作（返回新 editor） ----------
  editor-open
+ editor-blank
  editor-add-document
  editor-add-view
  editor-add-document-view
@@ -113,6 +118,12 @@
 (define (editor-document-set-name! ed did name)
   (document-entry-set-name! (editor-document-entry ed did) name))
 
+;; history 是**文档级**属性，所以开关也按 did（与 set-name! 一致）；
+;; 任意该 did 的 view 都能调，没有 view 的文档同样能调。
+(define (editor-document-set-history-enabled! ed did flag)
+  (document-entry-set-history! (editor-document-entry ed did)
+                               (history-set-enabled (editor-document-history ed did) flag)))
+
 ;; 视图配置（只改一个 box）。
 (define (editor-view-set-sync! ed vid sync)
   (check-sync 'editor-view-set-sync! sync)
@@ -142,6 +153,11 @@
 ;; 入口多态：string → 现开纯文本文档；document → 原样使用（带属性）。
 (define (->document x chunk-lines)
   (if (document? x) x (document-open x chunk-lines)))
+
+;; 空 editor：无文档、无视图（宿主默认不打开 scratch 的起点）。
+;; 新视图/文档的尺寸由 editor-add-view / editor-add-document-view 显式给。
+(define (editor-blank)
+  (editor '() '() 0 0 (box #f)))
 
 (define (editor-open text width height [name default-name]
                      #:mode [mode 'clip]

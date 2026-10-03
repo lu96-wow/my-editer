@@ -6,8 +6,7 @@
          "../../lab/model/session.rkt"
          "../../lab/model/render.rkt"
          "../../lab/output.rkt"
-         "../../lab/theme.rkt"
-         "../../lab/io/headless.rkt"
+         "headless.rkt"
          "../../core/view/base/screen.rkt")
 
 (define s0 (session-open "abc\ndef" 40 10 "d0"))

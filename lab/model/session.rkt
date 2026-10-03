@@ -47,15 +47,12 @@
  session-normalize-focus
 
  ;; ---------- lab 侧字段写口 ----------
- session-set-trees
- session-set-tree-vids
- session-set-sidebar-kind
  session-set-prompt)
 
 ;;; ---------- 数据 ----------
 
-(struct doc-meta (path saved-doc commands) #:transparent)
-;; path / saved-doc / commands（commands 类型由命令层定义，本层不透明）
+(struct doc-meta (path) #:transparent)
+;; path : string / #f（未落盘）
 
 ;; 输入行：label 前缀 + 已输入文本 + 回车回调 (session → string → session)。
 (struct prompt (label text on-confirm) #:transparent)
@@ -74,9 +71,8 @@
 ;; 只建主编辑区（scratch）；两棵树由 model/tree 的 trees-init 追加。
 (define (session-open text width height [name "*scratch*"])
   (define ed (editor-open text width height name))
-  (define doc (document-entry-document (editor-document-entry ed 0)))
   (session ed
-           (hash 0 (doc-meta #f doc #f))
+           (hash 0 (doc-meta #f))
            (view-pane 0)
            '()                    ; tree-vids
            '()                    ; trees
@@ -111,10 +107,9 @@
   (define ed (session-editor s))
   (define-values (ed* did vid)
     (editor-add-document-view ed text default-view-width default-view-height name))
-  (define doc (document-entry-document (editor-document-entry ed* did)))
   (values (struct-copy session s
             [editor ed*]
-            [docs (hash-set (session-docs s) did (doc-meta #f doc #f))]
+            [docs (hash-set (session-docs s) did (doc-meta #f))]
             [main (layout-append (session-main s) (view-pane vid))]
             [active vid])
           did vid))
@@ -164,9 +159,6 @@
 (define (session-resize s rows cols)
   (struct-copy session s [rows (max 1 rows)] [cols (max 1 cols)]))
 
-(define (session-set-trees s ts) (struct-copy session s [trees ts]))
-(define (session-set-tree-vids s vs) (struct-copy session s [tree-vids vs]))
-(define (session-set-sidebar-kind s k) (struct-copy session s [sidebar-kind k]))
 (define (session-set-prompt s p) (struct-copy session s [prompt p]))
 
 ;; 侧栏：**单个** pane，显示 sidebar-kind 对应的树视图（tree-vids = [files, documents]）。

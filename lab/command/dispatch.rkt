@@ -6,35 +6,25 @@
 ;;;   0. 输入行激活 → 作为 prompt 输入（回车确认 / Esc 取消）
 ;;;   1. resize → 更新 session 尺寸
 ;;;   2. session-apply-layout! 把尺寸落到各 view
-;;;   3. 焦点 pane：树视图 → 树命令表；否则 → 该文档的每文档命令表
+;;;   3. 焦点 pane 是树视图 → 树命令表；否则 → #f（回落默认表）
 ;;;   4. 未命中 → 默认命令表
-;;;   5. 仍未命中 → 自插入（text / 无 Ctrl·Alt·Meta 的可打印键）
+;;;   5. 仍未命中 → 自插入（只认 text：可打印键由后端归为 text，见 io/tui.rkt）
 ;;;   6. 最后 trees-refresh（打开标记 / 焦点高亮 / 文档树结构保持最新）
 
 (require
- "base.rkt"
  "table.rkt"
- "default.rkt"
- "tree.rkt"
- "../input.rkt"
+ "keys.rkt"
+ "../protocol.rkt"
  "../model/session.rkt"
- "../model/document.rkt"
- "../model/edit.rkt"
- "../model/view.rkt"
+ "../model/ops.rkt"
  "../model/tree.rkt")
 
 (provide dispatch active-command-table)
 
-;; 焦点视图的命令表：树视图 → 树表；否则查该文档的每文档表。
+;; 焦点视图的命令表：树视图 → 树表；其余 → #f（回落到默认表）。
 (define (active-command-table s)
   (define a (active-view-id s))
-  (cond
-    [(not a) #f]
-    [(tree-of-view s a) tree-table]
-    [else (document-commands s (view-document-id s a))]))
-
-(define (plain-mods? m)
-  (not (or (modifiers-control m) (modifiers-alt m) (modifiers-meta m))))
+  (and a (tree-of-view s a) tree-table))
 
 (define (dispatch s in)
   (cond
@@ -73,8 +63,6 @@
   (define (set-text x) (session-set-prompt s (struct-copy prompt p [text x])))
   (cond
     [(text? in) (values (set-text (string-append t (text-string in))) '())]
-    [(and (key? in) (char? (key-name in)) (plain-mods? (key-modifiers in)))
-     (values (set-text (string-append t (string (key-name in)))) '())]
     [(and (key? in) (eq? (key-name in) 'backspace))
      (values (set-text (if (string=? t "") t (substring t 0 (sub1 (string-length t))))) '())]
     [(and (key? in) (eq? (key-name in) 'escape))
@@ -91,6 +79,4 @@
   (cond
     [(not a) (values s '())]
     [(text? in) (values (view-insert! s a (text-string in)) '())]
-    [(and (key? in) (char? (key-name in)) (plain-mods? (key-modifiers in)))
-     (values (view-insert! s a (string (key-name in))) '())]
     [else (values s '())]))

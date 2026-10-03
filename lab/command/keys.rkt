@@ -1,29 +1,28 @@
 #lang racket
 
-;;; lab/command/default.rkt —— 默认命令表（通用操作）
+;;; lab/command/keys.rkt —— 命令表（默认表 + 树表）
 ;;;
-;;; 统一操作：切换焦点、移动指针 / 翻页、基本编辑、撤销、剪贴板、视图、保存、退出。
-;;; 每文档表可以覆盖这里的同名 binding；未命中的回落到这里。
-;;; 文本 / 可打印键的「自插入」不在这张表里，是派发层的兜底（见 dispatch.rkt）。
+;;; 默认表 `default-table`：通用操作——移动指针 / 扩选 / 翻页 / 基本编辑 / 撤销 /
+;;; 剪贴板 / 切换焦点 / 侧栏 / 分屏 / 保存 / 退出。
+;;; 树表 `tree-table`：焦点在树视图上时用（Enter/Backspace/C-n/C-m/C-d）。
+;;; 文本 / 可打印键的「自插入」不在这两张表里，是派发层的兜底（见 dispatch.rkt）。
 
 (require
- "base.rkt"
  "table.rkt"
- "../effect.rkt"
- "../input.rkt"
- "../model/edit.rkt"
+ "../protocol.rkt"
+ "../model/ops.rkt"
  "../model/session.rkt"
- "../model/view.rkt"
- "../model/document.rkt"
  "../model/tree.rkt")
 
-(provide default-table)
+(provide default-table tree-table)
 
 ;; 修饰键常量
 (define m0 (modifiers #f #f #f #f))
 (define mS (modifiers #f #f #t #f))
 (define mC (modifiers #t #f #f #f))
 (define mA (modifiers #f #t #f #f))
+
+;;; ================= 默认表 =================
 
 ;; 作用在焦点视图上的命令：f : (session vid -> session)。
 (define (view-cmd name f)
@@ -36,7 +35,7 @@
 (define (session-cmd name f)
   (make-command name (lambda (s ctx in) (values (f s) '()))))
 
-;; 保存焦点文档：有路径 → 发 io-save，并（乐观）标保存点；无路径 → 无操作。
+;; 保存焦点文档：有路径 → 发 io-save；无路径 → 无操作。
 (define (save-active s ctx in)
   (define a (active-view-id s))
   (cond
@@ -44,9 +43,7 @@
     [else
      (define did (view-document-id s a))
      (define path (document-path s did))
-     (if path
-         (values (document-mark-saved s did) (list (io-save path did)))
-         (values s '()))]))
+     (if path (values s (list (io-save path did))) (values s '()))]))
 
 (define default-table
   (make-table
@@ -104,3 +101,23 @@
     (cons (binding #\s mC) (make-command 'save save-active))
     (cons (binding #\q mC) (make-command 'quit
                                          (lambda (s ctx in) (values s (list (quit)))))))))
+
+;;; ================= 树表 =================
+
+;; f : session -> (values session effects)
+(define (cmd name f)
+  (make-command name (lambda (s ctx in) (f s))))
+
+;; f : session -> session
+(define (cmd/s name f)
+  (make-command name (lambda (s ctx in) (values (f s) '()))))
+
+(define tree-table
+  (make-table
+   (list
+    (cons (binding 'enter m0)      (cmd   'open       tree-activate!))
+    (cons (binding 'backspace m0)  (cmd/s 'close      tree-close!))
+    (cons (binding 'tab m0)        (cmd/s 'switch     sidebar-switch!))   ; 切换文件树 / 文档树
+    (cons (binding #\n mC)         (cmd/s 'new-file   (lambda (s) (tree-create! s 'file))))
+    (cons (binding #\m mC)         (cmd/s 'new-dir    (lambda (s) (tree-create! s 'dir))))
+    (cons (binding #\d mC)         (cmd/s 'delete     tree-delete!)))))

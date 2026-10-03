@@ -1,10 +1,10 @@
 #lang racket
 
-;;; lab/io/headless.rkt —— 测试用 display：把 span 记下来，不画任何东西
+;;; lab-test/io/headless.rkt —— 测试用 display：把 span 记下来，不画任何东西
 ;;;
 ;;; 用来在无终端 / 无窗口环境下验证「open → 编辑 → 渲染 → 呈现」整条链路。
 
-(require "../output.rkt")
+(require "../../lab/output.rkt")
 
 (provide make-headless-display)
 

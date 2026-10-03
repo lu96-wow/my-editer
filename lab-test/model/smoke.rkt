@@ -3,10 +3,9 @@
 ;;; lab-test/model/smoke.rkt —— P1 模型层冒烟测试
 
 (require rackunit
-         (prefix-in lv: "../../lab/model/view.rkt")
          "../../lab/model/layout.rkt"
          "../../lab/model/session.rkt"
-         "../../lab/model/document.rkt"
+         "../../lab/model/ops.rkt"
          "../../lab/model/render.rkt"
          "../../core/editor.rkt"
          "../../core/view/base/screen.rkt")
@@ -15,8 +14,7 @@
 (check-equal? (editor-document-count (session-editor s0)) 1)
 (check-equal? (editor-view-count (session-editor s0)) 1)
 (check-equal? (session-active s0) 0)
-(check-equal? (lv:view-document-id s0 0) 0)
-(check-false (document-dirty? s0 0))
+(check-equal? (editor-view-document-id (session-editor s0) 0) 0)
 
 ;; 布局：无侧栏时 main 占满，底部固定 1 行状态栏
 (define rects (session-rects s0))
@@ -50,11 +48,9 @@
 (check-equal? (editor-view-count (session-editor s3)) 1)
 (check-equal? (session-active s3) 1)
 
-;; dirty：编辑后变脏，mark-saved 后干净
+;; 插入有变更
 (define-values (chs ok?) (editor-view-insert! (session-editor s2) 1 "XY"))
 (check-true ok?)
-(check-true (document-dirty? s2 1))
-(define s4 (document-mark-saved s2 1))
-(check-false (document-dirty? s4 1))
+(check-equal? (length chs) 1)
 
 (printf "ALL SMOKE OK\n")

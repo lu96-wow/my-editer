@@ -70,6 +70,19 @@
 (editor-document-set-name! ls2 0 "renamed")
 (check-equal? (document-entry-name (editor-document-entry ls2 0)) "renamed")
 
+;; ---------- did 版 history 开关（与 vid 版等价；无 view 的文档也能用） ----------
+(define hs0 (editor-open "abc" 20 5 "h0"))
+(editor-document-set-history-enabled! hs0 0 #f)
+(check-false (history-enabled? (editor-document-history hs0 0)))
+(editor-document-set-history-enabled! hs0 0 #t)
+(check-true (history-enabled? (editor-document-history hs0 0)))
+;; 0 个 view 的文档：没有 vid 可走，只能 did
+(define-values (hs1 hs-did) (editor-add-document hs0 "no-view" "nv"))
+(check-false (first-view-of-document hs1 hs-did))
+(check-true (history-enabled? (editor-document-history hs1 hs-did)))
+(editor-document-set-history-enabled! hs1 hs-did #f)
+(check-false (history-enabled? (editor-document-history hs1 hs-did)))
+
 (define ls3 (editor-close-view ls2 1))
 (check-equal? (length (editor-views ls3)) 1)
 (define ls4 (editor-close-view ls2 0))
@@ -114,5 +127,17 @@
 (check-equal? (document-highlight-row (document-entry-document (editor-document-entry av-ed av-did)) 1)
               (vector 'kw #f))
 (check-equal? (document->string (document-entry-document (editor-document-entry ed 0))) "abc\ndef")   ; 原 editor 不变
+
+;; ---------- 空 editor（无文档 / 无视图） ----------
+(define eb (editor-blank))
+(check-equal? (editor-document-count eb) 0)
+(check-equal? (editor-view-count eb) 0)
+(check-false (editor-clipboard eb))
+;; 从空 editor 建第一个文档 + 视图，id 从 0 开始
+(define-values (eb2 eb-did eb-vid) (editor-add-document-view eb "x" 10 5 "n"))
+(check-equal? eb-did 0)
+(check-equal? eb-vid 0)
+(check-equal? (editor-document-count eb2) 1)
+(check-equal? (document->string (editor-view-document eb2 0)) "x")
 
 (displayln "editor/state.rkt: all tests passed")

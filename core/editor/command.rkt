@@ -71,31 +71,35 @@
 (struct step (pre-value pre-sels post-value post-sels who pre-tip) #:transparent)
 
 ;; 换当前文档 + 传播视图 + 同步视口。→ step（#f = 无实际变化）。
+;; value : string | document（与 editor-open / editor-add-document 同构）：
+;; string 现开一篇纯文本，document 则原样装入（含属性轨）。
 (define (editor-view-set! ed vid value
                           #:selections [sels #f]
                           #:change [changes #f]
-                          #:ensure? [ensure? #t])
+                          #:ensure? [ensure? #t]
+                          #:chunk-lines [chunk-lines default-chunk-lines])
+  (define value* (->document value chunk-lines))
   (define v (editor-view-ref ed vid))
   (define did (view-did v))
   (define e (editor-document-entry ed did))
   (define old (document-entry-document e))
   (cond
-    [(eq? value old) #f]
+    [(eq? value* old) #f]
     [else
-     (define t (document-text value))
+     (define t (document-text value*))
      (define n (track-length t))
      (define (line-len l) (line-length (track-ref t l)))
      (define sels* (selections-clamp (or sels (view-selections v)) n line-len))
      (define pre-sels (view-selections v))                            ; 就地改之前先抓
      (define pre-tip (history-current (document-entry-history e)))
      (view-set-selections! v sels*)
-     (when ensure? (view-ensure! value v))
-     (document-entry-set-history! e (history-set-current (document-entry-history e) value sels* vid))
+     (when ensure? (view-ensure! value* v))
+     (document-entry-set-history! e (history-set-current (document-entry-history e) value* sels* vid))
      (if (and changes (pair? changes))
          (editor-views-rebase! ed did vid changes)
          (editor-views-clamp! ed did))
      (editor-sync-viewports! ed vid)
-     (step old pre-sels value sels* vid pre-tip)]))
+     (step old pre-sels value* sels* vid pre-tip)]))
 
 ;; 把一次 step 记进账本（哑栈原语；是否并步由 merge-tag 判定）。
 (define (editor-history-record! ed did step [merge-tag #f])
@@ -120,9 +124,12 @@
      (void)]))
 
 ;; 程序赋值：不记步、默认不 ensure；整篇替换后封口。
-(define (editor-view-assign! ed vid value #:selections [sels #f] #:ensure? [ensure? #f])
+;; value : string | document。传 string 时可给 #:chunk-lines。
+(define (editor-view-assign! ed vid value #:selections [sels #f] #:ensure? [ensure? #f]
+                             #:chunk-lines [chunk-lines default-chunk-lines])
   (define did (view-did (editor-view-ref ed vid)))
-  (define step (editor-view-set! ed vid value #:selections sels #:change #f #:ensure? ensure?))
+  (define step (editor-view-set! ed vid value #:selections sels #:change #f #:ensure? ensure?
+                                 #:chunk-lines chunk-lines))
   (when step
     (document-entry-set-history! (editor-document-entry ed did)
                                  (history-seal (editor-document-history ed did))))
@@ -433,7 +440,4 @@
   (void))
 
 (define (editor-view-set-history-enabled! ed vid flag)
-  (define did (view-did (editor-view-ref ed vid)))
-  (document-entry-set-history! (editor-document-entry ed did)
-                               (history-set-enabled (editor-document-history ed did) flag))
-  (void))
+  (editor-document-set-history-enabled! ed (view-did (editor-view-ref ed vid)) flag))

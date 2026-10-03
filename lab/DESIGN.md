@@ -1,7 +1,7 @@
 # lab 编辑架构设计（v2）
 
 > 建立在 `core/` 之上的**编辑器应用层**。core 是后端无关的内核，lab 提供 app 语义
-> （文件、dirty、焦点、布局、键位）并把后端（TUI / GUI）隔离在外。core 不做任何改动。
+> （文件路径、焦点、布局、键位）并把后端（TUI / GUI）隔离在外。core 不做任何改动。
 
 ---
 
@@ -42,7 +42,7 @@ pane     :   (view vid) 或 'file-tree
 ```
 
 **原则：只存 delta。** core 已持有的文本 / 属性 / 撤销 / 选区 / 视口**不复制**；
-lab 只存 core 没有的（文件路径、dirty、布局、焦点）。读取一律经 core 现读，
+lab 只存 core 没有的（文件路径、布局、焦点）。读取一律经 core 现读，
 **永不缓存 document / view 值**（但可安全持有 `document-entry` / `view` 的 box 引用，身份稳定）。
 
 结论：**管理单位 = `(session, did)` / `(session, vid)` / `(session, pane-id)`；`editor` 是
@@ -55,39 +55,31 @@ session 持有的单一事实源，不作为管理对象。**
 ```
 lab/
 ├── DESIGN.md
-├── input.rkt        纯值：后端无关输入（modifiers / key / text / mouse / wheel / resize）
-├── effect.rkt       纯值：抽象副作用（redraw / quit / io-load / io-save）
-├── output.rkt       输出抽象：style / span / display 协议 + core screen→span
-├── theme.rkt        face / overlay → style（纯数据）
-├── fs.rkt           文件系统操作（列目录 / 建 / 删）
-├── model/           唯一接触 core **编辑器数据** 的层；纯函数、无 io、无后端
-│   ├── layout.rkt       分屏树 + pane 代数（纯数据）
+├── protocol.rkt     纯值协议：input（后端→编辑器）+ effect（编辑器→后端）
+├── output.rkt       输出：style / span / display 协议 + face→style（core screen→span）
+├── model/           唯一接触 core **编辑器数据** 的层；纯函数、无后端
+│   ├── layout.rkt       分屏树 + pane 代数 + 命中（纯数据）
 │   ├── session.rkt      session 结构 + 打开/关闭 + 焦点 + 尺寸
-│   ├── document.rkt     (session,did) 门面：文本 / dirty / 文件元数据
-│   ├── view.rkt         (session,vid) 门面：选区 / 视口 / 几何
-│   ├── edit.rkt         编辑 / 导航 / 焦点操作（包 core `editor-view-*!`）
-│   ├── tree.rkt         两棵树（文件树 / 文档管理树）—— 各自是一个 document
+│   ├── ops.rkt          每文档读（文本/名字/路径）+ 写（编辑/导航/焦点/结构）
+│   ├── tree.rkt         两棵树（文件树 / 文档管理树）+ 文件系统（唯一碰盘处）
 │   └── render.rkt       pane 树 → core screen（封 core 渲染 + compose）
 ├── command/         命令层：命令表 + 派发（不 require core）
-│   ├── base.rkt         binding / command / context
-│   ├── table.rkt        binding → command；覆盖合并
-│   ├── default.rkt      默认命令表（通用操作）
-│   ├── tree.rkt         树命令表（Enter / Backspace / C-n / C-m / C-d）
+│   ├── table.rkt        binding / command / context / table（覆盖合并）
+│   ├── keys.rkt         默认命令表 + 树命令表
 │   └── dispatch.rkt     session × input → session × effects
-├── driver.rkt       组装根：input → dispatch → render → present → effects
-├── main.rkt         TUI 入口（racket-tui）
-└── io/              后端适配器：唯一碰 io / 终端的地方
-    ├── tui.rkt        racket-tui 后端（实现 display + 事件→input）
-    └── headless.rkt   测试后端（记录 span）
+├── io/tui.rkt       racket-tui 后端（实现 display + 事件→input）
+└── main.rkt         组装根（后端无关）+ TUI 入口（module+ main）
 ```
+
+> 测试替身 `make-headless-display` 在 `lab-test/io/headless.rkt`。
 
 依赖只许向下：
 
 ```
-io/{tui,headless} ──► command ──► model ──► core（编辑器数据）
-        │                    │
-        │                    └──► output ──► core（纯输出类型 screen / piece）
-        └──── input / effect / span / style ────►（纯值协议，人人可引）
+io/tui ──► command ──► model ──► core（编辑器数据）
+   │            │
+   │            └──► output ──► core（纯输出类型 screen / piece）
+   └──── input / effect / span / style ────►（纯值协议，人人可引）
 ```
 
 - `model/` 是唯一 require core **编辑器状态**的层。
@@ -147,24 +139,17 @@ io/{tui,headless} ──► command ──► model ──► core（编辑器�
 | `session-close-view s vid` | `editor-close-view`；删叶子；**不动 document** | — |
 | `session-close-document s did` | 先逐个 `close-view`，再 `editor-close-document`；删 doc-meta | 级联 |
 | `session-focus s id` | — | — |
-| `session-toggle-file-tree s` | 切换 `'file-tree` 在 `hidden` 中 | — |
+| `session-toggle-file-tree s` | 开/关整个侧栏（`sidebar-hidden?`） | — |
 
 焦点回落：关掉 active 后取布局里下一个叶子；无叶子 → `#f`。
 
-### 3.3 `model/document.rkt` —— `(session, did)`
+### 3.3 `model/ops.rkt` —— 每文档 读 + 写
 
-读：`document-text` `document-name` `document-can-undo?` `document-can-redo?`。
-app 态：`document-path` `document-dirty?` `document-mode`。
-
-- **dirty 判定**（无需改 core）：保存时记 `saved-doc = 当前 document 值`；
-  `dirty? = (not (eq? saved-doc current-doc))`。document 不可变 + 结构共享 ⇒ O(1)。
-- `document-mark-saved` 更新 `saved-doc`。
-
-### 3.4 `model/view.rkt` —— `(session, vid)`
-
-转发 core 读：`view-document-id` `view-point` `view-point-line/col` `view-selections`
-`view-visible-range` `view-mode` `view-rect`。
-显示态写口直接转发 core `editor-view-*!`（就地改 box），lab 不存第二份。
+读：`document-text` `document-name` `document-path`（core 已持有文本/属性/撤销；lab 只多一个 path delta）。
+写：`view-insert!/backspace!/delete!/paste!/copy!/cut!/undo!/redo!/select-all!`、
+`view-move!/scroll!/page!/goto!`、`focus-neighbor!/cycle!/pane!`、`click!/wheel!`、
+`split-active-view!/close-active-view!` —— 全是包 core `editor-view-*!` 的薄封装。
+命令层只调这里，**不直接 require core**。
 
 ---
 
@@ -184,7 +169,7 @@ app 态：`document-path` `document-dirty?` `document-mode`。
 
 **目标**：换后端（racket-tui ↔ racket/gui ↔ headless）不改模型与命令。
 
-### 5.1 输入（`lab/input.rkt`，纯值）
+### 5.1 输入（`lab/protocol.rkt`，纯值）
 
 按 **racket/gui 的事件模型**定型（不按终端）：
 
@@ -212,26 +197,29 @@ core screen / piece ──patch->spans(attr->style)──▶ (listof span) ─�
 - `present! disp old new attr->style`：算 core `screen-patch` → span，首帧 / 尺寸变则 `clear!`，
   最后 `flush!`；返回 `new` 作下次基线。**增量是默认**。
 - core 的 `piece` attr 有两种构造（render 用 list、overlay 用 cons），在 `output.rkt`
-  归一为 `(channel . face)`；`theme.rkt` 提供 `attr->style`（face → 基础样式，overlay 叠反显 / 蓝底）。
+  归一为 `(channel . face)`；`output.rkt` 提供 `attr->style`（face → 基础样式，overlay 叠反显 / 蓝底）。
 
 ### 5.3 后端（输入映射是关键差异）
 
 | 后端 | display 实现 | 输入来源 | 映射到中性 input |
 |---|---|---|---|
-| `io/tui.rkt` | tui `format-*` → 终端字节 | `key-event` / `paste-event` / `mouse-event` / `resize-event` | Ctrl+字母归一小写 → `key`；paste → `text`；mouse `(x,y)` 1-based→0-based 且 move→`drag`；scroll 的 button `'up/'down` → `wheel`；resize → `resize` |
-| `io/headless.rkt` | 把 span 记进 box | — | 无头测试 |
+| `io/tui.rkt` | tui `format-*` → 终端字节 | `build-input` 的 `#:key / #:text / #:mouse / #:resize` 回调 | 分类交给 `build-input`（可打印键→`#:text`、粘贴→`#:text`、命名键/Ctrl 组合→`#:key`）；`normalize-key` 做 Ctrl+字母大→小写，`normalize-mouse` 做 1-based→0-based、move→`drag`、scroll 的 button → `wheel` |
+| `lab-test/io/headless.rkt` | 把 span 记进 box | — | 无头测试 |
 
 > **GUI 后端暂时移除**（代码已删）。接口设计不变：另写一个实现同一 `display` 协议 + 事件翻译的适配器即可，
 > 模型/命令/core 一行不改。已知差异（当时实测）：`mouse-event%` **没有 `get-button`/`get-wheel-delta`**；
 > GTK 下滚轮是 `key-event%`（`key-code`=wheel-up/down）从 **on-char** 来且无坐标；`canvas%` 的
 > `on-event`/`on-char`/`on-size` 是**方法**（不是初始化参数），需匿名子类 `define/override`。
 
-TUI 侧差异全部吸收在 `tui-event->input` 里（Ctrl+字母归一、move→drag、scroll→wheel、1-based→0-based），
-并有 `module+ test` 无头输入翻译单测。
+TUI 侧差异全部吸收在 `normalize-key` / `normalize-mouse` 里（Ctrl+字母归一、move→drag、scroll→wheel、1-based→0-based），
+并有 `module+ test` 无头单测。**分类不在这里重做**：`build-input` 已经区分「可打印键 vs 命名键 vs
+粘贴」，所以 `run-tui!` 直接用它的 `#:key/#:text/#:mouse/#:resize` 回调（不用 `#:any`），
+可打印键因此以 `(text "a")` 而非 `(key #\a)` 进入协议——与 `protocol.rkt` 「物理键与文本分离」
+的约定一致，派发层也就不再有 `(char? name)+plain-mods?` 这条重复判定。
 
-### 5.4 副作用（`lab/effect.rkt`，纯值）
+### 5.4 副作用（`lab/protocol.rkt`，纯值）
 
-`'redraw` / `(quit)` / `(io-load path)` / `(io-save path did)`。命令层只返回 effect 列表，
+`(quit)` / `(io-load path)` / `(io-save path did)`。命令层只返回 effect 列表，
 由后端解释执行。
 
 ---
@@ -243,24 +231,26 @@ TUI 侧差异全部吸收在 `tui-event->input` 里（Ctrl+字母归一、move�
 
 **命令表 = `binding → command`**（不可变）：`binding = (name mods)`，`table-merge` 做覆盖（over 优先）。
 
-**两张表**：
-- **默认表** `command/default.rkt`：通用操作——移动指针 / 扩选 / 翻页 / 基本编辑 / 撤销 / 剪贴板 /
-  切换焦点 / 分屏 / 关视图 / 保存 / 退出。
-- **每文档表**：存在 `doc-meta.commands`（类型由命令层定义，model 层不透明）；`#f` = 只用默认表。
-  同一张表可被多个文档共享（不可变），所以「模式」= 共享的命令表。
+**两张表**（`command/keys.rkt`）：
+- **默认表** `default-table`：通用操作——移动指针 / 扩选 / 翻页 / 基本编辑 / 撤销 / 剪贴板 /
+  切换焦点 / 侧栏 / 分屏 / 关视图 / 保存 / 退出。
+- **树表** `tree-table`：焦点在树视图上时用（`Enter` / `Backspace` / `C-n` / `C-m` / `C-d`）。
+
+（「每文档命令表」暂不需要：当前没有文档用自定义键位，所以先不引入存储；
+真实的「模式」出现时再加一张按 did 查的表即可。）
 
 **派发** `command/dispatch.rkt`：
 
 ```
 1. resize              → 更新 session 尺寸
 2. session-apply-layout! → 把尺寸落到各 view（几何命令 / ensure 要用）
-3. 焦点 pane → 其文档表；命中执行
+3. 焦点 pane 是树视图 → 树表；否则 → 无表
 4. 未命中 → 默认表
 5. 仍未命中 → 自插入（text / 无 Ctrl·Alt·Meta 的可打印键）
 ```
 
-**职责边界**：编辑 / 导航 / 焦点操作在 `model/edit.rkt`（包 core `editor-view-*!`）；
-命令层只做「表 + 派发」，**不 require core**。改键位只动表，改语义只动 model/edit。
+**职责边界**：编辑 / 导航 / 焦点操作在 `model/ops.rkt`（包 core `editor-view-*!`）；
+命令层只做「表 + 派发」，**不 require core**。改键位只动表，改语义只动 model/ops。
 
 **默认键位（节选）**：方向 / home / end 移动；`Shift+方向` 扩选；`PgUp/PgDn` 翻页；
 `Backspace/Delete/Enter/Tab`；`C-z/C-y` 撤销重做；`C-c/C-v/C-x/C-a`；`M-方向` 切焦点；
@@ -271,12 +261,13 @@ TUI 侧差异全部吸收在 `tui-event->input` 里（Ctrl+字母归一、move�
 
 ## 7. 组装与运行（P3）
 
-`driver.rkt` 是组装根（唯一同时认识 model / command / output / effect 的层），但很薄：
+`main.rkt` 顶层是组装根（唯一同时认识 model / command / output / protocol 的层），但很薄；
+TUI 后端只在 `module+ main` 里接。
 
 ```
 app = session ⊕ 上一帧 screen ⊕ display ⊕ quit?
 
-app-open  display text rows cols name → app（screen = #f）
+app-open  display rows cols [project] #:text #:name → app（screen = #f）
 app-draw  app → app'        渲染 + present!（增量）+ 更新基线帧
 app-input app input → app'  dispatch → execute-effects → app-draw
 ```
@@ -291,10 +282,8 @@ app-input app input → app'  dispatch → execute-effects → app-draw
                          session-render → screen ──present!──▶ span ──▶ display ──▶ 终端/画布
 ```
 
-两个入口共用 driver，只差「怎么造 display、怎么驱动事件」：
-
-- `main.rkt`（TUI）：`make-tui-display` + `run-tui!`（阻塞循环，`loop-input/stop` 由 `app-quit?` 终止）。
-  （GUI 入口已暂时移除；同一 driver 换个 display + 回调即接入。）
+TUI 入口（`module+ main`）：`make-tui-display` + `run-tui!`（阻塞循环，`loop-input/stop` 由 `app-quit?` 终止）。
+换后端 = 另造一个 display + 把原生事件译成 input，组装根与模型/命令不动。
 
 ---
 
@@ -320,7 +309,7 @@ tnode = name ⊕ id ⊕ kind('dir|'file|'doc|'view) ⊕ depth ⊕ expanded? ⊕ 
 
 - `tree->document`：把可见行渲染成文本 + 每行 face 高亮 + 整篇只读，`editor-view-assign!` 写回（不记步）。
 - 颜色区分类型：`tree-dir`（蓝）/ `tree-file`（灰）/ `tree-open`（绿）/ `tree-doc` / `tree-view-active`（黄）。
-- 命令表 `command/tree.rkt`（焦点是树视图时优先于默认表）：
+- 命令表 `command/keys.rkt`（焦点是树视图时优先于默认表）：
   `Enter` 打开（目录=展开/折叠、文件=打开、文档/视图=聚焦）、`Backspace` 关闭（已打开文件=关文档、视图=关视图）、
   `C-n` 新建文件、`C-m` 新建文件夹、`C-d` 删除（y/n 确认）。
 - 建 / 删 / 打开需要输入：`session.prompt` 输入行状态；派发层优先处理 prompt（`text`/可打印键/退格/回车/Esc），
@@ -339,7 +328,7 @@ tnode = name ⊕ id ⊕ kind('dir|'file|'doc|'view) ⊕ depth ⊕ expanded? ⊕ 
 点击切焦点是一个纯几何问题 + 一个焦点语义问题，两侧各管一半：
 
 - **layout**：`layout-hit rects row col → pane-rect / #f`——只回答「屏幕 (row,col) 落在哪个 pane」。纯几何，不认识焦点。
-- **command / model/edit**：
+- **command / model/ops**：
   - `focus-pane!`：命中 pane → `session-focus`（右键/中键，不落光标）。
   - `click!`：命中 view pane → 聚焦 + 把屏幕坐标换算成 view 内的点（`editor-view-screen-pos->point`）并落光标；
     `Shift+点击` → 原地扩选（两棵树也是 view，所以点树同样能落光标）。
@@ -359,7 +348,7 @@ tnode = name ⊕ id ⊕ kind('dir|'file|'doc|'view) ⊕ depth ⊕ expanded? ⊕ 
 | **P0** | 设计定稿 | 完成 |
 | **P1** | `model/{layout,session,document,view,render}` | 完成 |
 | **P1.5** | IO 抽象：`input` / `output` / `theme` / `effect` + `io/{tui,headless}` | 完成 |
-| **P2** | `command/{base,table,default,dispatch}` + `model/edit` | 完成 |
-| **P3** | `driver` + `main.rkt` 入口 | 完成 |
+| **P2** | `command/{table,keys,dispatch}` + `model/ops` | 完成 |
+| **P3** | `main.rkt`（组装根 + TUI 入口） | 完成 |
 | **P4** | 两棵自托管树（文件树 / 文档树）+ fs 操作 + 输入行 + 状态栏 | 完成 |
 | **P5** | 打开 / 保存对话框、更多编辑命令、模式命令表（GUI 后端待定） | 下一步 |
