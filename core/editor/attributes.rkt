@@ -1,74 +1,111 @@
 #lang racket
 
-(require "state.rkt" "../text/document.rkt")
+(require "state.rkt" "../text/document.rkt"
+         "../text/base/range.rkt" "../text/base/point.rkt"
+         "../text/base/line.rkt" "../text/base/track.rkt")
 
-;;; editor/attributes.rkt —— 属性覆盖层：句柄式读写（O(1)，不碰 history）
+;;; editor/attributes.rkt —— 属性覆盖层（高亮 / 只读）
 ;;;
-;;; 高亮 / 只读存放在 document 的 box 里，是**可变覆盖层**。异步结果（LSP 高亮 /
-;;; 诊断）写回 = 抓住请求时的 document 句柄，直接改 box：
+;;; 属性存在 document 的 box 里，是**文档级**可变覆盖层。所有属性写都是
+;;; 「就地改 box、O(1)、不记 history 步」。两种寻址：
 ;;;
-;;;     (define doc (editor-view-document ed vid))    ; 请求时抓句柄
-;;;     ...                                           ; 等解析
-;;;     (editor-document-handle-set-highlight! doc hl)  ; 结果回来 O(1)
+;;;   editor-document-*          ed did   写**当前**文档（写时按 did 现取）
+;;;   editor-document-handle-*   doc      写**抓取时那一个**文档值
+;;;                                       （版本敏感；不可达时静默失效 —— 异步写回用）
 ;;;
-;;;   · 当前版本        → 同一对象，立刻可见；
-;;;   · redo / past 版本 → 同一对象，undo/redo 回去可见；
-;;;   · 版本已被丢弃     → 句柄仍指旧对象，但不可达 → 静默失效，无副作用。
+;;; 作用**选区**的属性命令（editor-view-highlight! / -readonly! …）在 command.rkt：
+;;; 它们是视图态命令，算完区间后调这里的 editor-document-*。
 ;;;
-;;; 不新增 history 步、不重建快照、不做任何按版本查找（没有 O(深度)）。
-;;;
-;;; 属性写口的输入形态（本层是**句柄式**：吃 document handle + 区间）：
-;;;   坐标版   editor-document-handle-*-batch!       吃 (listof (list l0 c0 l1 c1 val))；不规范化坐标。
-;;;   range 版 editor-document-handle-*-range-batch! 吃 range；进入时 range-normalize。
-;;; （同步的作者态命令在 command.rkt：editor-view-highlight! 等；本层用于异步写回。）
-;;; change（before 区间 ⊕ after 区间 ⊕ kind）在 core/text/base/change.rkt。
+;;; 低层逃逸口（原子句柄 / 视图文档句柄）保留在底部：入口 editor.rkt 不导出这三者，
+;;; 只供 core 内部与测试用（host 一律走 editor-document-* 的 did 寻址）。
 
-(provide editor-view-document-handle
-         editor-view-highlight-atom
-         editor-view-readonly-atom
+(provide
+ ;; ---------- did 版：文档级属性写（坐标 / 整轨） ----------
+ editor-document-set-highlight! editor-document-set-readonly!
+ editor-document-highlight-range! editor-document-readonly-range!
+ editor-document-highlight-cell! editor-document-readonly-cell!
+ editor-document-highlight-line! editor-document-readonly-line!
+ editor-document-highlight-batch! editor-document-readonly-batch!
+ editor-document-highlight-range-batch! editor-document-readonly-range-batch!
 
-         ;; did 版：文档级属性写（程序态；与 editor-document-set-name! 同类）
-         editor-document-set-highlight!
-         editor-document-set-readonly!
-         editor-document-highlight-batch!
-         editor-document-readonly-batch!
-         editor-document-highlight-range-batch!
-         editor-document-readonly-range-batch!
+ ;; ---------- 句柄式写回（版本敏感；异步） ----------
+ editor-document-handle-set-highlight!
+ editor-document-handle-set-readonly!
+ editor-document-handle-highlight-batch!
+ editor-document-handle-readonly-batch!
+ editor-document-handle-highlight-range-batch!
+ editor-document-handle-readonly-range-batch!
 
-         ;; 句柄式写回：吃 document handle（不是 ed/did）。用 document-handle 前缀，
-         ;; 让 editor-document-* 保持「按 did」单义（命名约定见 query.rkt 头）。
-         editor-document-handle-set-highlight!
-         editor-document-handle-set-readonly!
-         editor-document-handle-highlight-batch!
-         editor-document-handle-readonly-batch!
-         editor-document-handle-highlight-range-batch!
-         editor-document-handle-readonly-range-batch!)
+ ;; ---------- 低层逃逸口 ----------
+ editor-view-document-handle
+ editor-view-highlight-atom
+ editor-view-readonly-atom)
 
-;;; ---------- did 版：文档级属性写（程序态，不碰 history / 选区） ----------
-;;; 属性是**文档级** box 状态，与 view / 选区无关，所以按 did 写与
-;;; editor-document-set-name! / set-history-enabled! 同类；0 个 view 的文档也能写。
-;;; 与 handle 版的分工：
-;;;   did 版    → 写**当前**文档（写时按 did 现取）；
-;;;   handle 版 → 写**抓取时那一个**文档值（版本敏感，不可达时静默失效）。
+;;; ---------- 句柄式写回（版本敏感） ----------
 
-(define (document-of ed did) (document-entry-document (editor-document-entry ed did)))
+(define (editor-document-handle-set-highlight! doc hl) (document-set-highlight! doc hl) (void))
+(define (editor-document-handle-set-readonly! doc ro) (document-set-readonly! doc ro) (void))
+(define (editor-document-handle-highlight-batch! doc fills)
+  (document-highlight-fill-batch doc fills) (void))
+(define (editor-document-handle-readonly-batch! doc fills)
+  (document-readonly-fill-batch doc fills) (void))
+(define (editor-document-handle-highlight-range-batch! doc runs)
+  (document-highlight-fill-range-batch doc runs) (void))
+(define (editor-document-handle-readonly-range-batch! doc runs)
+  (document-readonly-fill-range-batch doc runs) (void))
+
+;;; ---------- did 版：写当前文档 ----------
 
 (define (editor-document-set-highlight! ed did hl)
-  (editor-document-handle-set-highlight! (document-of ed did) hl) (void))
+  (editor-document-handle-set-highlight! (editor-document-handle ed did) hl))
 (define (editor-document-set-readonly! ed did ro)
-  (editor-document-handle-set-readonly! (document-of ed did) ro) (void))
-(define (editor-document-highlight-batch! ed did fills)
-  (editor-document-handle-highlight-batch! (document-of ed did) fills) (void))
-(define (editor-document-readonly-batch! ed did fills)
-  (editor-document-handle-readonly-batch! (document-of ed did) fills) (void))
-(define (editor-document-highlight-range-batch! ed did runs)
-  (editor-document-handle-highlight-range-batch! (document-of ed did) runs) (void))
-(define (editor-document-readonly-range-batch! ed did runs)
-  (editor-document-handle-readonly-range-batch! (document-of ed did) runs) (void))
+  (editor-document-handle-set-readonly! (editor-document-handle ed did) ro))
 
-;;; ---------- 句柄式写回（版本敏感；异步用） ----------
+(define (editor-document-highlight-batch! ed did fills)
+  (editor-document-handle-highlight-batch! (editor-document-handle ed did) fills))
+(define (editor-document-readonly-batch! ed did fills)
+  (editor-document-handle-readonly-batch! (editor-document-handle ed did) fills))
+(define (editor-document-highlight-range-batch! ed did runs)
+  (editor-document-handle-highlight-range-batch! (editor-document-handle ed did) runs))
+(define (editor-document-readonly-range-batch! ed did runs)
+  (editor-document-handle-readonly-range-batch! (editor-document-handle ed did) runs))
+
+;; 显式区间：range 先归一，再折成坐标。
+(define (editor-document-highlight-range! ed did r face)
+  (define r* (range-normalize r))
+  (document-highlight-fill (editor-document-handle ed did)
+                           (point-line (range-start r*)) (point-column (range-start r*))
+                           (point-line (range-end r*))   (point-column (range-end r*))
+                           face)
+  (void))
+(define (editor-document-readonly-range! ed did r flag)
+  (define r* (range-normalize r))
+  (document-readonly-fill (editor-document-handle ed did)
+                          (point-line (range-start r*)) (point-column (range-start r*))
+                          (point-line (range-end r*))   (point-column (range-end r*))
+                          flag)
+  (void))
+
+;; 格 / 行：由当前文本算出行长，再折成 range。
+(define (editor-document-highlight-cell! ed did line col face)
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
+  (unless (>= col len)
+    (editor-document-highlight-range! ed did (range-of (point line col) (point line (add1 col))) face)))
+(define (editor-document-readonly-cell! ed did line col flag)
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
+  (unless (>= col len)
+    (editor-document-readonly-range! ed did (range-of (point line col) (point line (add1 col))) flag)))
+(define (editor-document-highlight-line! ed did line face)
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
+  (editor-document-highlight-range! ed did (range-of (point line 0) (point line len)) face))
+(define (editor-document-readonly-line! ed did line flag)
+  (define len (track-line-length (document-text (editor-document-handle ed did)) line))
+  (editor-document-readonly-range! ed did (range-of (point line 0) (point line len)) flag))
+
+;;; ---------- 低层逃逸口 ----------
 
 ;; 取某视图当前文档的句柄（= 连同不可变文本 + 可变属性原子）。
+;; 仅供内部 / 测试：host 用 editor-document-handle ed (editor-view-document-id ed vid)。
 (define (editor-view-document-handle ed vid)
   (editor-view-document ed vid))
 
@@ -77,22 +114,3 @@
   (document-highlight-atom (editor-view-document ed vid)))
 (define (editor-view-readonly-atom ed vid)
   (document-readonly-atom (editor-view-document ed vid)))
-
-;; 写回：只动 box，editor 值不变，history 不动。
-(define (editor-document-handle-set-highlight! doc hl)
-  (document-set-highlight! doc hl))
-(define (editor-document-handle-set-readonly! doc ro)
-  (document-set-readonly! doc ro))
-
-;; 批量写回：fills : (listof (list l0 c0 l1 c1 val))，一次 materialize、一次写 box。
-;; 用于语义 token / 诊断这类"一串区间"的结果；仍不碰 history、不换 document。
-(define (editor-document-handle-highlight-batch! doc fills)
-  (document-highlight-fill-batch doc fills))
-(define (editor-document-handle-readonly-batch! doc fills)
-  (document-readonly-fill-batch doc fills))
-
-;; 批量（range 版）：runs : (listof (list range val))。
-(define (editor-document-handle-highlight-range-batch! doc runs)
-  (document-highlight-fill-range-batch doc runs))
-(define (editor-document-handle-readonly-range-batch! doc runs)
-  (document-readonly-fill-range-batch doc runs))

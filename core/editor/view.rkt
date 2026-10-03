@@ -28,7 +28,6 @@
 (define (editor-views-clamp! ed did)
   (define t (document-text (document-entry-document (editor-document-entry ed did))))
   (define n (track-length t))
-  (define (line-len l) (line-length (track-ref t l)))
   (for ([x (in-list (editor-views ed))] #:when (= did (view-did x)))
-    (view-set-selections! x (selections-clamp (view-selections x) n line-len)))
+    (view-set-selections! x (selections-clamp (view-selections x) n (curry track-line-length t))))
   (void))

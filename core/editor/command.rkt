@@ -1,6 +1,6 @@
 #lang racket
 
-(require "state.rkt" "view.rkt" "sync.rkt"
+(require "state.rkt" "attributes.rkt" "view.rkt" "sync.rkt"
          "../text/document.rkt" "history.rkt" "../text/command.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt" "../text/base/track.rkt"
          "../text/base/line.rkt" "../text/base/range.rkt"
@@ -19,13 +19,17 @@
 ;;;
 ;;; 结构操作（增/删文档、视图）在 state.rkt，**返回新 editor**。
 ;;;
-;;; 内容写原语 editor-view-set!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
-;;; 作者态（高亮 / readonly）：改 document 的 box，不记步，只同步 current 的 (who, selections)。
+;;; 内容写原语 editor-view-install!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
+;;; 作者态（高亮 / readonly）不在这里：属性写是文档级、出带，见 attributes.rkt。
 
 (provide
- ;; ---------- 通用变更原语 ----------
+ ;; ---------- 内部件（只 core 内部 / 测试用；入口 editor.rkt 会 except-out） ----------
  (struct-out step)
- editor-view-set! editor-document-history-record! editor-view-assign!
+ editor-view-install! editor-document-history-record!
+
+ ;; ---------- 内容写 ----------
+ ;; 值级程序替换（封口、不记步）；op 级记步编辑见 editor-view-edit!。
+ editor-view-assign!
 
  ;; ---------- 编辑 ----------
  editor-view-edit!
@@ -50,16 +54,12 @@
  editor-view-set-selections! editor-view-select-all! editor-view-set-point! editor-view-goto!
 
  ;; ---------- 滚动 / 视口 ----------
- editor-view-scroll! editor-view-set-top-line! editor-view-set-left-col!
+ editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
 
- ;; ---------- 属性（作者态） ----------
- editor-view-highlight! editor-view-highlight-range!
- editor-view-highlight-cell! editor-view-highlight-line! editor-view-highlight-selections!
- editor-view-highlight-batch! editor-view-highlight-range-batch!
- editor-view-readonly! editor-view-readonly-range!
- editor-view-readonly-cell! editor-view-readonly-line! editor-view-readonly-selections!
- editor-view-readonly-batch! editor-view-readonly-range-batch!
+ ;; ---------- 属性（只在「作用选区」时需要 vid；坐标/整轨写在 attributes.rkt） ----------
+ editor-view-highlight! editor-view-highlight-selections!
+ editor-view-readonly! editor-view-readonly-selections!
 
  ;; ---------- 历史 ----------
  editor-view-undo! editor-view-redo!
@@ -68,14 +68,14 @@
  editor-document-clear-history! editor-document-reset-history! editor-document-seal!
  editor-view-set-history-enabled!)
 
-;;; ---------- 通用内容原语（就地） ----------
+;;; ---------- 通用内容原语（就地；内部件，不导出） ----------
 
 (struct step (pre-value pre-sels post-value post-sels who pre-tip) #:transparent)
 
 ;; 换当前文档 + 传播视图 + 同步视口。→ step（#f = 无实际变化）。
 ;; value : string | document（与 editor-open / editor-add-document 同构）：
 ;; string 现开一篇纯文本，document 则原样装入（含属性轨）。
-(define (editor-view-set! ed vid value
+(define (editor-view-install! ed vid value
                           #:selections [sels #f]
                           #:change [changes #f]
                           #:ensure? [ensure? #t]
@@ -90,8 +90,7 @@
     [else
      (define t (document-text value*))
      (define n (track-length t))
-     (define (line-len l) (line-length (track-ref t l)))
-     (define sels* (selections-clamp (or sels (view-selections v)) n line-len))
+     (define sels* (selections-clamp (or sels (view-selections v)) n (curry track-line-length t)))
      (define pre-sels (view-selections v))                            ; 就地改之前先抓
      (define pre-tip (history-current (document-entry-history e)))
      (view-set-selections! v sels*)
@@ -130,8 +129,8 @@
 (define (editor-view-assign! ed vid value #:selections [sels #f] #:ensure? [ensure? #f]
                              #:chunk-lines [chunk-lines default-chunk-lines])
   (define did (view-did (editor-view-ref ed vid)))
-  (define step (editor-view-set! ed vid value #:selections sels #:change #f #:ensure? ensure?
-                                 #:chunk-lines chunk-lines))
+  (define step (editor-view-install! ed vid value #:selections sels #:change #f #:ensure? ensure?
+                                     #:chunk-lines chunk-lines))
   (when step
     (document-entry-set-history! (editor-document-entry ed did)
                                  (history-seal (editor-document-history ed did))))
@@ -148,7 +147,7 @@
     [(not ok?) (values '() #f)]                                  ; 被只读挡
     [(null? changes) (values '() #t)]                            ; 无变更
     [else
-     (define step (editor-view-set! ed vid doc* #:selections sels* #:change changes #:ensure? ensure?))
+     (define step (editor-view-install! ed vid doc* #:selections sels* #:change changes #:ensure? ensure?))
      (cond
        [(not step) (values '() #t)]
        [else (editor-document-history-record! ed did step merge-tag) (values changes #t)])]))
@@ -176,7 +175,7 @@
     [(not (eq? (document-text (editor-view-document ed vid)) base-text)) #f]
     [else
      (define did (view-did (editor-view-ref ed vid)))
-     (define step (editor-view-set! ed vid new-doc))
+     (define step (editor-view-install! ed vid new-doc))
      (when step (editor-document-history-record! ed did step merge-tag))
      #t]))
 
@@ -187,7 +186,7 @@
   (define doc (document-entry-document (editor-document-entry ed (view-did v))))
   (define s (selections-primary (view-selections v)))
   (define-values (a b) (selection-range s))
-  (editor-set-clipboard! ed (document-copy doc (point-line a) (point-col a) (point-line b) (point-col b)))
+  (editor-set-clipboard! ed (document-copy doc (point-line a) (point-column a) (point-line b) (point-column b)))
   (void))
 
 (define (editor-view-paste! ed vid [merge-tag #f])
@@ -264,8 +263,7 @@
   (define doc (document-entry-document (editor-document-entry ed did)))
   (define t (document-text doc))
   (define n (track-length t))
-  (define (line-len l) (line-length (track-ref t l)))
-  (view-set-selections! v (selections-clamp sels n line-len))
+  (view-set-selections! v (selections-clamp sels n (curry track-line-length t)))
   (when ensure? (view-ensure! doc v))
   (editor-sync-viewports! ed vid)
   (void))
@@ -274,7 +272,7 @@
   (define t (document-text (editor-view-document ed vid)))
   (define last (sub1 (track-length t)))
   (editor-view-set-selections! ed vid
-    (selections-one (selection (point 0 0) (point last (line-length (track-ref t last)))))))
+    (selections-one (selection (point 0 0) (point last (track-line-length t last))))))
 
 (define (editor-view-set-point! ed vid p)
   (editor-view-set-selections! ed vid (selections-one (caret p))))
@@ -315,94 +313,42 @@
   (editor-sync-viewports! ed vid)
   (void))
 
-(define (editor-view-set-left-col! ed vid n)
+(define (editor-view-set-left-column! ed vid n)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
-  (view-set-viewport! v (viewport-set-left-col t (view-viewport v) n))
+  (view-set-viewport! v (viewport-set-left-column t (view-viewport v) n))
   (editor-sync-viewports! ed vid)
   (void))
 
-;;; ---------- 作者态（不记步） ----------
+;;; ---------- 属性命令（视图级：只有「作用选区」需要 vid） ----------
+;;; 属性写一律是**文档级**（attributes.rkt 的 editor-document-*），不碰 history。
+;;; 这里只留「区间从当前选区来」的四个命令；vid 仅用于读选区，算完就转 did 版。
 
-(define (editor-view-author-edit! ed vid op [ensure? #f])
-  (define v (editor-view-ref ed vid))
-  (define did (view-did v))
-  (define e (editor-document-entry ed did))
-  (define-values (doc* sels* ok?) (op (document-entry-document e) (view-selections v)))
-  (cond
-    [(not ok?) (void)]
-    [else
-     ;; 属性已就地改在 document 的 box 里；同步 current 的 (document,selections,who)
-     (document-entry-set-history! e
-       (history-set-current (document-entry-history e) doc* sels* vid))
-     ;; 选区变了或要求 ensure → 走公开选区写口（含 clamp + ensure + 同步跟随者）
-     (unless (and (not ensure?) (equal? sels* (view-selections v)))
-       (editor-view-set-selections! ed vid sels* #:ensure? ensure?))
-     (void)]))
+(define (vid->did ed vid) (view-did (editor-view-ref ed vid)))
 
-(define (editor-fill l0 c0 l1 c1 op)
-  (lambda (d s) (values (op d l0 c0 l1 c1) s #t)))
-
-(define (editor-view-author-fill-range! ed vid r op)
-  (define r* (range-normalize r))
-  (editor-view-author-edit! ed vid
-    (editor-fill (point-line (range-start r*)) (point-col (range-start r*))
-                 (point-line (range-end r*))   (point-col (range-end r*))
-                 op)))
-
-(define (editor-view-author-fill-selection! ed vid op)
+;; 主选区 → range（选区是视图态，所以这个入口必须在 view 层）。
+(define (primary-range ed vid)
   (define-values (a b) (selection-range (selections-primary (view-selections (editor-view-ref ed vid)))))
-  (editor-view-author-fill-range! ed vid (range-of a b) op))
-
-(define (editor-view-highlight-range! ed vid r face)
-  (editor-view-author-fill-range! ed vid r (lambda (d l0 c0 l1 c1) (document-highlight-fill d l0 c0 l1 c1 face))))
-(define (editor-view-readonly-range! ed vid r flag)
-  (editor-view-author-fill-range! ed vid r (lambda (d l0 c0 l1 c1) (document-readonly-fill d l0 c0 l1 c1 flag))))
+  (range-of a b))
 
 (define (editor-view-highlight! ed vid face)
-  (editor-view-author-fill-selection! ed vid (lambda (d l0 c0 l1 c1) (document-highlight-fill d l0 c0 l1 c1 face))))
+  (editor-document-highlight-range! ed (vid->did ed vid) (primary-range ed vid) face))
 (define (editor-view-readonly! ed vid flag)
-  (editor-view-author-fill-selection! ed vid (lambda (d l0 c0 l1 c1) (document-readonly-fill d l0 c0 l1 c1 flag))))
-
-(define (editor-view-highlight-cell! ed vid line col face)
-  (define len (line-length (track-ref (document-text (editor-view-document ed vid)) line)))
-  (unless (>= col len)
-    (editor-view-highlight-range! ed vid (range-of (point line col) (point line (add1 col))) face)))
-(define (editor-view-readonly-cell! ed vid line col flag)
-  (define len (line-length (track-ref (document-text (editor-view-document ed vid)) line)))
-  (unless (>= col len)
-    (editor-view-readonly-range! ed vid (range-of (point line col) (point line (add1 col))) flag)))
-
-(define (editor-view-highlight-line! ed vid line face)
-  (define len (line-length (track-ref (document-text (editor-view-document ed vid)) line)))
-  (editor-view-highlight-range! ed vid (range-of (point line 0) (point line len)) face))
-(define (editor-view-readonly-line! ed vid line flag)
-  (define len (line-length (track-ref (document-text (editor-view-document ed vid)) line)))
-  (editor-view-readonly-range! ed vid (range-of (point line 0) (point line len)) flag))
+  (editor-document-readonly-range! ed (vid->did ed vid) (primary-range ed vid) flag))
 
 (define (editor-view-highlight-selections! ed vid face)
-  (editor-view-author-edit! ed vid
-    (lambda (d s)
-      (for ([sel (in-list (selections-items s))])
-        (define-values (a b) (selection-range sel))
-        (document-highlight-fill d (point-line a) (point-col a) (point-line b) (point-col b) face))
-      (values d s #t))))
+  (define did (vid->did ed vid))
+  (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
+    (define-values (a b) (selection-range sel))
+    (editor-document-highlight-range! ed did (range-of a b) face)))
 (define (editor-view-readonly-selections! ed vid flag)
-  (editor-view-author-edit! ed vid
-    (lambda (d s)
-      (for ([sel (in-list (selections-items s))])
-        (define-values (a b) (selection-range sel))
-        (document-readonly-fill d (point-line a) (point-col a) (point-line b) (point-col b) flag))
-      (values d s #t))))
+  (define did (vid->did ed vid))
+  (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
+    (define-values (a b) (selection-range sel))
+    (editor-document-readonly-range! ed did (range-of a b) flag)))
 
-(define (editor-view-highlight-batch! ed vid fills)
-  (editor-view-author-edit! ed vid (lambda (d s) (values (document-highlight-fill-batch d fills) s #t))))
-(define (editor-view-readonly-batch! ed vid fills)
-  (editor-view-author-edit! ed vid (lambda (d s) (values (document-readonly-fill-batch d fills) s #t))))
-(define (editor-view-highlight-range-batch! ed vid runs)
-  (editor-view-author-edit! ed vid (lambda (d s) (values (document-highlight-fill-range-batch d runs) s #t))))
-(define (editor-view-readonly-range-batch! ed vid runs)
-  (editor-view-author-edit! ed vid (lambda (d s) (values (document-readonly-fill-range-batch d runs) s #t))))
+;; 坐标 / 区间 / 整轨版一律走 editor-document-*（did）；
+;; 「选区版」是唯一需要 vid 的属性命令（选区是视图态）。
 
 ;;; ---------- 撤销 / 重做 ----------
 ;;; history 是**文档级**状态，所以这些操作一律按 did；vid 版只是「就地取 did」的糖。

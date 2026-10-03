@@ -26,8 +26,8 @@
      (define s (track-ref text line))
      (define hlt (document-highlight bd))       ; 整轨可为 #f（全默认）
      (define hs (and hlt (track-ref hlt line)))
-     (define start (vrow-start-col vr))
-     (define end (vrow-end-col vr))
+     (define start (vrow-start-column vr))
+     (define end (vrow-end-column vr))
      (define cells '())
      (define col 0)                                  ; 当前字符的显示列
      ;; 只扫到可见窗口右端：`end` 之后（含 == end）的字全不可见，
@@ -69,7 +69,7 @@
 (define (vrow-first? vp vrs r)
   (case (viewport-mode vp)
     [(clip) #t]
-    [(wrap) (= 0 (vrow-start-col (vector-ref vrs r)))]
+    [(wrap) (= 0 (vrow-start-column (vector-ref vrs r)))]
     [else #f]))
 
 ;;; ---------- 全屏文本行 ----------
@@ -85,7 +85,7 @@
     (if (= g 0)
         body
         (let ([shifted (for/list ([rn (in-list body)])
-                         (struct-copy run rn [col (+ g (run-col rn))]))])
+                         (struct-copy run rn [column (+ g (run-column rn))]))])
           (if (and (< line (track-length t)) (vrow-first? vp vrows r))
               (cons (run 0 (gutter-text line g) 'line-number) shifted)
               shifted))))

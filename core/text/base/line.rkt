@@ -1,5 +1,7 @@
 #lang racket
 
+(require "track.rkt")
+
 ;;; line.rkt —— 行：文本与属性的共同单位
 ;;;
 ;;; 一个「格」= 一个字符位：
@@ -16,7 +18,7 @@
 
 (provide
  ;; ---------- 判定 / 度量 ----------
- line? line-length
+ line? line-length track-line-length
 
  ;; ---------- 读 ----------
  line-ref line->list
@@ -53,6 +55,9 @@
   (cond [(string? l) (string-length l)]
         [(vector? l) (vector-length l)]
         [else (error 'line-length "不是行（string / vector）: ~a" l)]))
+
+;; 便捷：track 第 i 行的格数（track-ref + line-length 的组合；夹选区 / 算行长常用）。
+(define (track-line-length t i) (line-length (track-ref t i)))
 
 ;; 第 i 格的值：文本 → char，属性 → symbol。
 (define (line-ref l i)

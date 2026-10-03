@@ -85,7 +85,7 @@
   (selection a h))
 
 ;;; ---------- 选区集（多光标） ----------
-;;; 若干选区 + 一个 primary（“原来的那个”）。**不自动排序 / 合并**：保持顺序与身份，
+;;; 若干选区 + 一个 primary（主选区）。**不自动排序 / 合并**：保持顺序与身份，
 ;;; primary-index 稳定、边界不歧义。需要非重叠（编辑）时显式调 selections-normalize。
 
 (struct selections (items primary-index) #:transparent)

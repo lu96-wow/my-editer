@@ -63,9 +63,9 @@
     [else
      (cond
        [(= (point-line p) (point-line be))
-        (point (point-line ae) (+ (point-col ae) (- (point-col p) (point-col be))))]
+        (point (point-line ae) (+ (point-column ae) (- (point-column p) (point-column be))))]
        [else
-        (point (+ (point-line p) (- (point-line ae) (point-line be))) (point-col p))])]))
+        (point (+ (point-line p) (- (point-line ae) (point-line be))) (point-column p))])]))
 
 ;; 一组 change（**同一编辑前坐标系**、两两不重叠）从右往左依次映射 p。
 ;; 从右往左：右侧 change 只对「已在其右侧」的点生效，不会污染与左侧 change 的比较。

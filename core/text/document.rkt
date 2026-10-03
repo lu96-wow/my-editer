@@ -169,8 +169,8 @@
   (for/list ([run (in-list runs)])
     (match-define (list r v) run)
     (define r* (range-normalize r))
-    (list (point-line (range-start r*)) (point-col (range-start r*))
-          (point-line (range-end r*))   (point-col (range-end r*))
+    (list (point-line (range-start r*)) (point-column (range-start r*))
+          (point-line (range-end r*))   (point-column (range-end r*))
           v)))
 
 (define (document-highlight-fill-range-batch bd runs)
@@ -258,8 +258,8 @@
 (define (document-range-text bd r)
   (define r* (range-normalize r))
   (lines->string (range-lines (document-text bd)
-                              (point-line (range-start r*)) (point-col (range-start r*))
-                              (point-line (range-end r*))   (point-col (range-end r*)))))
+                              (point-line (range-start r*)) (point-column (range-start r*))
+                              (point-line (range-end r*))   (point-column (range-end r*)))))
 
 ;; 取一次变更插入的文本 = 新文档在 change.after 区间上的切片。
 (define (document-change-text bd ch)

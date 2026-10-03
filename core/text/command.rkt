@@ -58,8 +58,8 @@
 
 (define (span-blocked? doc sp)
   (not (document-editable? doc
-                           (point-line (span-start sp)) (point-col (span-start sp))
-                           (point-line (span-end sp)) (point-col (span-end sp)))))
+                           (point-line (span-start sp)) (point-column (span-start sp))
+                           (point-line (span-end sp)) (point-column (span-end sp)))))
 
 (define (span-start<? a b) (point<? (span-start a) (span-start b)))
 
@@ -107,11 +107,11 @@
 (define (paste-at d sp cp)
   (define-values (d1 _ch1 _ok1) (document-delete-ignore-readonly
                                  d
-                                 (point-line (span-start sp)) (point-col (span-start sp))
-                                 (point-line (span-end sp)) (point-col (span-end sp))))
+                                 (point-line (span-start sp)) (point-column (span-start sp))
+                                 (point-line (span-end sp)) (point-column (span-end sp))))
   (let-values ([(d2 _ch2 _ok2) (document-paste-ignore-readonly
                                 d1
-                                (point-line (span-start sp)) (point-col (span-start sp))
+                                (point-line (span-start sp)) (point-column (span-start sp))
                                 cp)])
     d2))
 

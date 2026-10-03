@@ -38,7 +38,7 @@
               (list (region 0 1 3 #t) (region 1 0 2 #t)))
 
 ;; clip 水平滚动 / 裁剪
-(check-equal? (screen-row (render bd (viewport-set-left-col (document-text bd) vp 1)) 0)
+(check-equal? (screen-row (render bd (viewport-set-left-column (document-text bd) vp 1)) 0)
               (list (run 0 "bc" #f)))
 (check-equal? (screen-row (render bd (viewport-open 2 2)) 0) (list (run 0 "ab" #f)))
 

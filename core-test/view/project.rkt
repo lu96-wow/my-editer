@@ -13,7 +13,7 @@
 ;; 无行号：project-row 给内容 run（正文坐标，不含栏）
 (define vp (viewport-open 6 2 'clip))
 (define vrs (viewport-vrows (document-text bd) vp))
-(check-equal? (map (lambda (r) (list (run-col r) (run-text r) (run-face r)))
+(check-equal? (map (lambda (r) (list (run-column r) (run-text r) (run-face r)))
                    (project-row bd (vector-ref vrs 0)))
               '((0 "abc" #f)))
 (define-values (rows g) (project bd vp vrs))
@@ -25,9 +25,9 @@
 (define vrsn (viewport-vrows (document-text bd) vpn))
 (define-values (rowsn gn) (project bd vpn vrsn))
 (check-equal? gn 2)
-(check-equal? (map (lambda (r) (list (run-col r) (run-text r))) (vector-ref rowsn 0))
+(check-equal? (map (lambda (r) (list (run-column r) (run-text r))) (vector-ref rowsn 0))
               '((0 "1 ") (2 "abc")))
-(check-equal? (map (lambda (r) (list (run-col r) (run-text r))) (vector-ref rowsn 1))
+(check-equal? (map (lambda (r) (list (run-column r) (run-text r))) (vector-ref rowsn 1))
               '((0 "2 ") (2 "def")))
 
 ;; 文末之外的行：无行号、无内容

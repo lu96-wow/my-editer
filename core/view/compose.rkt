@@ -10,7 +10,7 @@
 ;;; **不透明 + 显式深度**：每个 pane 有 deep（大 = 在上）。合成按 deep 决定每一格归谁 ——
 ;;; 上层 pane 的**整块矩形**（含空白格）遮住下层；同 deep 时列表靠后者在上。
 ;;; active（单个 id / id 列表 / #f）命中的 pane 的光标 / 选区才透出，且同样被上层遮挡。
-;;; 不在任何 pane 矩形内的格透明（露出背景）。panes 允许重叠，不再要求互不覆盖。
+;;; 不在任何 pane 矩形内的格透明（露出背景）。panes 允许重叠。
 
 (provide
  ;; ---------- 类型 ----------
@@ -20,7 +20,7 @@
  ;; ---------- 合成 ----------
  panes->screen panes->composition)
 
-(struct pane (id row col screen deep) #:transparent)
+(struct pane (id row column screen deep) #:transparent)
 ;; id : any/c（vid 等）；row/col : 屏幕坐标（可负）；deep : 深度（大 = 上）
 (struct composition (width height panes active screen) #:transparent)
 
@@ -33,7 +33,7 @@
         [else (list active)]))
 
 (define (panes->screen width height panes active)
-  ;; 单 pane：无遮挡，直接走 run 路径（等同旧版，省掉 cell 往返）。
+  ;; 单 pane：无遮挡，直接走 run 路径（省掉 cell 往返）。
   ;; 多 pane：建 owner 网格，按格遮挡。
   (define single? (and (pair? panes) (null? (cdr panes))))
   (define owner (if single? #f (and (pair? panes) (build-owner width height panes))))
@@ -52,26 +52,26 @@
   (if (and (>= lr 0) (< lr (screen-height (pane-screen p))))
       (filter values
               (for/list ([rn (in-list (screen-row (pane-screen p) lr))])
-                (clip-run (shift-run rn (pane-col p)) width)))
+                (clip-run (shift-run rn (pane-column p)) width)))
       '()))
 
-(define (shift-run rn x) (struct-copy run rn [col (+ x (run-col rn))]))
+(define (shift-run rn x) (struct-copy run rn [column (+ x (run-column rn))]))
 
 ;; 把 run 水平裁剪到 [0, limit)；整字丢弃（宽字符跨边界不切半）。
 (define (clip-run rn limit)
-  (define c0 (run-col rn))
+  (define c0 (run-column rn))
   (define s (run-text rn))
   (define out (open-output-string))
   (define col c0)
-  (define new-col #f)
+  (define new-column #f)
   (for ([ch (in-string s)])
     (define cw (char-display-width ch))
     (when (and (> cw 0) (>= col 0) (<= (+ col cw) limit))
-      (unless new-col (set! new-col col))
+      (unless new-column (set! new-column col))
       (write-char ch out))
     (set! col (+ col cw)))
   (define text* (get-output-string out))
-  (if (zero? (string-length text*)) #f (run new-col text* (run-face rn))))
+  (if (zero? (string-length text*)) #f (run new-column text* (run-face rn))))
 
 ;; owner[r][c]：覆盖该格的最高 pane（deep 大者；同 deep 列表靠后者）。#f = 无。
 ;; 只认 pane 的**矩形**，不看其内容 —— 所以空白格也算被上层遮挡。
@@ -80,14 +80,14 @@
   (for/vector ([r (in-range height)])
     (define rowv (make-vector width #f))
     (for ([p (in-list ordered)])
-      (pane-cols p width r (lambda (c) (vector-set! rowv c p))))
+      (pane-columns p width r (lambda (c) (vector-set! rowv c p))))
     rowv))
 
 ;; 对 pane 覆盖第 r 行的每个屏幕列 c（裁到 [0,width)）调 f。
-(define (pane-cols p width r f)
+(define (pane-columns p width r f)
   (define lr (- r (pane-row p)))
   (when (and (>= lr 0) (< lr (screen-height (pane-screen p))))
-    (define base (pane-col p))
+    (define base (pane-column p))
     (for ([c (in-range (max 0 base)
                        (min width (+ base (screen-width (pane-screen p)))))])
       (f c))))
@@ -98,9 +98,9 @@
   (for ([p (in-list panes)])
     (define lr (- row (pane-row p)))
     (when (and (>= lr 0) (< lr (screen-height (pane-screen p))))
-      (define base (pane-col p))
+      (define base (pane-column p))
       (for ([rn (in-list (screen-row (pane-screen p) lr))])
-        (define col (+ base (run-col rn)))
+        (define col (+ base (run-column rn)))
         (for ([ch (in-string (run-text rn))])
           (define cw (char-display-width ch))
           ;; 整字完整落在屏内，且两格归属都是 p，才画（宽字符不切半 / 不越界）。
@@ -149,7 +149,7 @@
       (filter values
               (for/list ([c (in-list (screen-cursors (pane-screen p)))])
                 (define r (+ (pane-row p) (cursor-row c)))
-                (define col (+ (pane-col p) (cursor-col c)))
+                (define col (+ (pane-column p) (cursor-column c)))
                 (and (>= r 0) (< r height) (>= col 0) (< col width)
                      (or (not owner) (eq? (vector-ref (vector-ref owner r) col) p))
                      (cursor r col (cursor-primary? c)))))))
@@ -161,8 +161,8 @@
          (if (or (< r 0) (>= r height))
              '()
              (visible-regions width owner p r
-                              (+ (pane-col p) (region-start-col g))
-                              (+ (pane-col p) (region-end-col g))
+                              (+ (pane-column p) (region-start-column g))
+                              (+ (pane-column p) (region-end-column g))
                               (region-primary? g)))))))))
 
 ;; 一条 region 在 [b0,b1) 上对 owner 可见的子段 → region 列表（owner=#f = 整段可见）。

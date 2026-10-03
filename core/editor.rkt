@@ -9,65 +9,104 @@
 ;;;         undo/redo → ok?；CAS → applied?；其余 → void
 ;;;     box 引用一经创建不再替换，只 set-box! 内容（身份不可变，其余全在 box）。
 ;;;
-;;;   state   数据 + 查找 + 构造 + 结构操作 + 就地写槽（core/editor/state.rkt）
-;;;   history 撤销/重做账本（core/editor/history.rkt）
-;;;   view    单视图维护 / 同文档视图传播（core/editor/view.rkt，内部用）
-;;;   command 命令式操作 editor-view-*!（core/editor/command.rkt）
-;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（core/editor/query.rkt）
-;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（core/editor/attributes.rkt）
-;;;   change  读：编辑命令返回的 change（core/editor/change.rkt）
-;;;   render  单视图渲染 + 增量投影（core/editor/render.rkt）
-;;;   layout  rect 布局：尺寸落到 view、位置用于贴屏（core/editor/layout.rkt）
-;;;   sync    视口同步（core/editor/sync.rkt）
+;;;   state   数据 + 查找 + 构造 + 结构操作 + 就地写槽（editor/state.rkt）
+;;;   history 撤销/重做账本（editor/history.rkt）
+;;;   view    单视图维护 / 同文档视图传播（editor/view.rkt，内部用）
+;;;   command 命令式操作 editor-view-*!（editor/command.rkt）
+;;;   query   读：文本 / 点 / 屏幕坐标 / 视口 / 历史（editor/query.rkt）
+;;;   attributes 属性覆盖层：高亮 / 只读的句柄式写回，O(1)（editor/attributes.rkt）
+;;;   change  读：编辑命令返回的 change（editor/change.rkt）
+;;;   render  单视图渲染 + 增量投影（editor/render.rkt）
+;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（editor/layout.rkt）
+;;;   sync    视口同步（editor/sync.rkt）
 ;;;
 ;;; **editor 不持焦点**：哪个 view 当前被操作由宿主决定，接口一律显式 vid/did。
 ;;;
 ;;; **裸 box setter**（document-entry-set-history! / view-set-selections! …）不在入口：
 ;;; 它们绕过 clamp / 账本不变量，只给 command / view / sync 内部用。
-;;; 公开面是命令式 editor-view-*! 与结构操作 editor-add/close-*。
+;;; **身份 struct 也不在入口**：`view` / `document-entry` / `history` / `editor` 的字段都是内部件，
+;;; 宿主用 `editor-*` 操作与 id 枚举；需要值就取 `editor-document-handle`。
 ;;;
 ;;; 低层（document / viewport / screen / edit / …）在各自模块；需要时单独 require。
 
-(require "editor/state.rkt" "editor/history.rkt" "editor/command.rkt"
+(require "editor/state.rkt" "editor/command.rkt"
          "editor/query.rkt" "editor/attributes.rkt"
-         ;; change 词汇表：入口统一改为 editor-* 名。
+         ;; view-change-text 是操作 → 入口改名；词汇表（change/range）改由下面裸名转发。
          (rename-in "editor/change.rkt"
-                    [change editor-change]
-                    [change? editor-change?]
-                    [change-before editor-change-before]
-                    [change-after editor-change-after]
-                    [range editor-range]
-                    [range? editor-range?]
-                    [range-start editor-range-start]
-                    [range-end editor-range-end]
-                    [change-post-range editor-change-post-range]
-                    [change-map-point editor-change-map-point]
-                    [changes-map-point editor-changes-map-point]
-                    [changes-map-point-literal editor-changes-map-point-literal]
-                    [change-empty? editor-change-empty?]
-                    [change-kind editor-change-kind]
                     [view-change-text editor-view-change-text])
-         "editor/render.rkt" "editor/sync.rkt" "editor/layout.rkt")
+         "editor/render.rkt" "editor/sync.rkt" "editor/layout.rkt"
+         ;; ---------- 值词汇表（宿主要构造 / 消费的值；入口按裸名转发） ----------
+         "text/base/point.rkt"
+         "text/base/selection.rkt"
+         "text/base/range.rkt"
+         "text/base/change.rkt"
+         "text/document.rkt"
+         "view/base/screen.rkt"
+         "view/patch.rkt"
+         "view/compose.rkt")
 
 (provide
- ;; ---------- 数据 + 结构操作 + 读（排除裸 box setter：只内部用） ----------
+ ;; ---------- 数据 + 结构操作 + 读（身份 struct / 裸 box / 内部查找 不对外） ----------
  (except-out (all-from-out "editor/state.rkt")
-             document-entry-set-name! document-entry-set-history!
-             view-set-viewport! view-set-selections! view-set-sync! view-set-link!
-             editor-set-clipboard! ->document)
- ;; ---------- 撤销 / 重做 ----------
- (all-from-out "editor/history.rkt")
- ;; ---------- 用户命令 ----------
- (all-from-out "editor/command.rkt")
+   ;; 裸 box setter
+   document-entry-set-name! document-entry-set-history!
+   view-set-viewport! view-set-selections! view-set-sync! view-set-link!
+   editor-set-clipboard! ->document
+   ;; editor 骨架的字段（只留 editor?）
+   editor editor-documents editor-views editor-next-document editor-next-view editor-clipboard-box
+   ;; 身份 struct 与其 accessors
+   document-entry document-entry? document-entry-im document-entry-mut
+   document-entry-id document-entry-name document-entry-history document-entry-document
+   entry-immutable entry-immutable? entry-immutable-id
+   entry-mutable entry-mutable? entry-mutable-name entry-mutable-history
+   view view? view-im view-mut view-id view-did view-viewport view-selections view-sync view-link
+   view-immutable view-immutable? view-immutable-id view-immutable-did
+   view-mutable view-mutable? view-mutable-viewport view-mutable-selections view-mutable-sync view-mutable-link
+   make-document-entry make-view
+   ;; 内部查找 / 解析
+   editor-document-entry editor-view-ref editor-view-document editor-document-history
+   document-id-of first-view-of-document)
+ ;; ---------- 用户命令（内部原语 step / install! / record! 不对外） ----------
+ (except-out (all-from-out "editor/command.rkt")
+             step step? step-pre-value step-pre-sels step-post-value step-post-sels
+             step-who step-pre-tip
+             editor-view-install! editor-document-history-record!)
  ;; ---------- 读 ----------
  (all-from-out "editor/query.rkt")
- ;; ---------- 属性覆盖层（句柄式写回，O(1)） ----------
- (all-from-out "editor/attributes.rkt")
+ ;; ---------- 属性覆盖层（裸原子 / 视图句柄 不对外；值句柄 editor-document-handle 留着） ----------
+ (except-out (all-from-out "editor/attributes.rkt")
+             editor-view-document-handle editor-view-highlight-atom editor-view-readonly-atom)
  ;; ---------- 变更（编辑命令返回的 change） ----------
  (all-from-out "editor/change.rkt")
  ;; ---------- 渲染 / 投影 ----------
  (all-from-out "editor/render.rkt")
  ;; ---------- 视口同步 ----------
  (all-from-out "editor/sync.rkt")
- ;; ---------- 布局（rects → view 尺寸 + 屏幕） ----------
- (all-from-out "editor/layout.rkt"))
+ ;; ---------- 布局（rectangles → view 尺寸 + 屏幕） ----------
+ (all-from-out "editor/layout.rkt")
+
+ ;; ---------- 值词汇表（裸名：类型 + 构造 / 读 / 建） ----------
+ ;; 规则：操作 = editor-*；值词汇 = 裸名（与已有的 rectangle 一致）。
+ (except-out (all-from-out "text/base/point.rkt")
+             point-left point-right point-home point-end)   ; 需要 track，宿主拿不到
+ (all-from-out "text/base/selection.rkt")
+ (all-from-out "text/base/range.rkt")
+ (all-from-out "text/base/change.rkt")
+ (except-out (all-from-out "text/document.rkt")
+   ;; 表示 / 裸 box / 编辑机制：不进入口。文档是**值**（document-open + *-fill-batch 构造），
+   ;; 编辑是 editor 的活。
+   document document-im document-mut
+   document-immutable document-immutable? document-immutable-text
+   document-mutable document-mutable? document-mutable-highlight document-mutable-readonly
+   ;; 属性轨是内部表示（读用 document-highlight-at / -row / -range?）
+   document-highlight document-readonly
+   document-set-highlight! document-set-readonly! document-highlight-atom document-readonly-atom
+   document-edit-tracks document-edit-highlight document-edit-readonly
+   document-insert document-insert-ignore-readonly
+   document-delete document-delete-ignore-readonly
+   document-replace document-replace-ignore-readonly
+   document-paste document-paste-ignore-readonly
+   document-aligned? document-text)
+ (all-from-out "view/base/screen.rkt")
+ (all-from-out "view/patch.rkt")
+ (all-from-out "view/compose.rkt"))

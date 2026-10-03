@@ -17,14 +17,14 @@
 ;; 字符索引 ↔ 显示列（宽字符 2 列）
 (define s "a中b")
 (for ([i (in-range 0 4)])
-  (check-equal? (display-col->index s (index->display-col s i)) i))
-(check-equal? (index->display-col s 1) 1)
-(check-equal? (index->display-col s 2) 3)
-(check-equal? (display-col->index s 2) 1)    ; 右半格命中同一字符
+  (check-equal? (display-column->index s (index->display-column s i)) i))
+(check-equal? (index->display-column s 1) 1)
+(check-equal? (index->display-column s 2) 3)
+(check-equal? (display-column->index s 2) 1)    ; 右半格命中同一字符
 
 ;; 吸附
-(check-equal? (snap-display-col-forward "中a中" 1) 2)
-(check-equal? (snap-display-col-forward "中a中" 3) 3)
-(check-equal? (snap-display-col-forward "中a中" 99) 5)
+(check-equal? (snap-display-column-forward "中a中" 1) 2)
+(check-equal? (snap-display-column-forward "中a中" 3) 3)
+(check-equal? (snap-display-column-forward "中a中" 99) 5)
 
 (displayln "width.rkt: all tests passed")

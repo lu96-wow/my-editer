@@ -5,7 +5,7 @@
 
 ;;; editor/render.rkt —— 单视图渲染 + 增量投影
 ;;;
-;;; 多视图合成在 layout.rkt（rect 版）。这里只有：
+;;; 多视图合成在 layout.rkt（rectangle 版）。这里只有：
 ;;;   editor-view-render   单视图 → screen
 ;;;   editor-render-patch  旧帧 + 新帧 → (新帧, render, selection)
 ;;;

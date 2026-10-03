@@ -3,6 +3,8 @@
 ;; 属性覆盖层：句柄式写回（O(1)，不碰 history）。
 (require rackunit
          "../../core/editor.rkt"
+         "../../core/editor/state.rkt"        ; editor-view-document（内部件）
+         "../../core/editor/attributes.rkt"   ; 裸原子 / 视图句柄（内部件）
          "../../core/editor/history.rkt"
          "../../core/text/document.rkt"
          "../../core/text/base/track.rkt"
@@ -15,10 +17,10 @@
 ;; adapter：新 API（就地、不返回 ed）
 (define (editor-view-undo ed vid) (editor-view-undo! ed vid) ed)
 (define (editor-view-redo ed vid) (editor-view-redo! ed vid) ed)
-(define (editor-view-highlight-range ed vid r face) (editor-view-highlight-range! ed vid r face) ed)
-(define (editor-view-readonly-range ed vid r f) (editor-view-readonly-range! ed vid r f) ed)
-(define (editor-view-highlight-batch ed vid fills) (editor-view-highlight-batch! ed vid fills) ed)
-(define (editor-view-highlight-range-batch ed vid runs) (editor-view-highlight-range-batch! ed vid runs) ed)
+(define (editor-view-highlight-range ed vid r face) (editor-document-highlight-range! ed (editor-view-document-id ed vid) r face) ed)
+(define (editor-view-readonly-range ed vid r f) (editor-document-readonly-range! ed (editor-view-document-id ed vid) r f) ed)
+(define (editor-view-highlight-batch ed vid fills) (editor-document-highlight-batch! ed (editor-view-document-id ed vid) fills) ed)
+(define (editor-view-highlight-range-batch ed vid runs) (editor-document-highlight-range-batch! ed (editor-view-document-id ed vid) runs) ed)
 
 ;; 造一条与 text 对齐的高亮轨（模拟解析器输出）
 (define (hl-track text l0 c0 l1 c1 face)
@@ -129,8 +131,10 @@
 ;; 句柄版：一串区间一次写
 (void (editor-document-handle-highlight-batch! bdoc (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
 (check-equal? (editor-view-highlight-row b0 0 0) (vector 'a 'a #f #f 'b 'b))
-;; 空表 = 不改（返回同一 document）
-(check-eq? (editor-document-handle-highlight-batch! bdoc '()) bdoc)
+;; 空表 = 不改（属性轨不变）
+(define b-hl (document-highlight bdoc))
+(editor-document-handle-highlight-batch! bdoc '())
+(check-eq? (document-highlight bdoc) b-hl)
 
 ;; 命令版（作者态）：与逐个 editor-view-highlight-range 等价
 (define b1 (editor-open "abcdef" 20 5))

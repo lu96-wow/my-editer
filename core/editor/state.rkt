@@ -63,6 +63,7 @@
  editor-document-entry
  editor-view-ref
  editor-view-document
+ editor-document-handle
  editor-document-history
  document-id-of
  first-view-of-document)
@@ -232,6 +233,10 @@
 
 (define (editor-view-document ed vid)
   (document-entry-document (editor-document-entry ed (view-did (editor-view-ref ed vid)))))
+
+;; 按 did 取当前文档句柄（对称于按 vid 的 editor-view-document）。
+(define (editor-document-handle ed did)
+  (document-entry-document (editor-document-entry ed did)))
 
 (define (editor-document-history ed did)
   (document-entry-history (editor-document-entry ed did)))

@@ -120,8 +120,8 @@
 ;; span → 编辑闭包（track -> track）。span 是**值**形态，edit-* 是闭包形态；
 ;; 这是二者唯一的桥（编辑既有可映射的值描述，也有可施加的闭包形式）。
 (define (span->edit sp [sticky 'none] [default #f])
-  (edit-range (point-line (span-start sp)) (point-col (span-start sp))
-              (point-line (span-end sp)) (point-col (span-end sp))
+  (edit-range (point-line (span-start sp)) (point-column (span-start sp))
+              (point-line (span-end sp)) (point-column (span-end sp))
               (span-text sp) sticky default))
 
 ;; 插入文本之后的点。
@@ -131,7 +131,7 @@
   (define lines (string->lines text))
   (define k (length lines))
   (cond
-    [(= k 1) (point (point-line s) (+ (point-col s) (string-length text)))]
+    [(= k 1) (point (point-line s) (+ (point-column s) (string-length text)))]
     [else (point (+ (point-line s) (sub1 k)) (string-length (last lines)))]))
 
 ;;; ---------- span → change ----------

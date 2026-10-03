@@ -11,9 +11,9 @@
 ;;; face 是不透明值（core 不解释），来自高亮轨。
 ;;;
 ;;; 坐标词汇：屏幕空间一律 **row / col**（col = 显示列）。
-;;; run.col 是行内列；cursor/region、pane、rect 都用 **(row, col)（先行再列）**。
+;;; run.col 是行内列；cursor/region、pane、rectangle 都用 **(row, col)（先行再列）**。
 ;;;
-;;; 名字约定：`segment` 在 view 里专指**显示列区间**（layout/width 用）；屏幕上的文本段叫 `run`。
+;;; 名字约定：`seg` 在 view 里专指**显示列区间**（layout/width 用）；屏幕上的文本段叫 `run`。
 
 (provide
  ;; ---------- 类型 ----------
@@ -25,11 +25,11 @@
  ;; ---------- 读 ----------
  screen-row screen->string)
 
-(struct run (col text face) #:transparent)
+(struct run (column text face) #:transparent)
 ;; col : 显示列（0-based，行内）；text : 不含换行；face : any/c（#f = 无）
 
-(struct cursor (row col primary?) #:transparent)
-(struct region (row start-col end-col primary?) #:transparent)
+(struct cursor (row column primary?) #:transparent)
+(struct region (row start-column end-column primary?) #:transparent)
 
 (struct screen (width height rows cursors regions) #:transparent)
 ;; rows : (vectorof (listof run))   长度 = height
@@ -48,8 +48,8 @@
      (define col 0)
      (for ([rn (in-list (screen-row s r))])
        (define txt (run-text rn))
-       (when (> (run-col rn) col) (display (make-string (- (run-col rn) col) #\space) out))
+       (when (> (run-column rn) col) (display (make-string (- (run-column rn) col) #\space) out))
        (display txt out)
-       (set! col (+ (run-col rn) (string-display-width txt))))
+       (set! col (+ (run-column rn) (string-display-width txt))))
      (get-output-string out))
    "\n"))
