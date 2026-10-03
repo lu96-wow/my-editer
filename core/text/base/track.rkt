@@ -85,7 +85,7 @@
 (define (chunk-append a b)
   (chunk (vector-append (chunk-lines a) (chunk-lines b))))
 
-;; 相邻块合并：合并后 ≤ max 且其中至少一块 < min。避免块碎成一两行。
+;; 相邻块合并：合并后 ≤ max 且其中至少一块 < min。
 (define (normalize chunks max min)
   (for/fold ([acc '()] #:result (reverse acc)) ([c (in-list chunks)])
     (cond
@@ -188,7 +188,7 @@
 (define (track-take t k) (let-values ([(l _) (track-split t k)]) l))
 (define (track-drop t k) (let-values ([(_ r) (track-split t k)]) r))
 
-;;; ---------- 写：唯一的范围重写（行区间） ----------
+;;; ---------- 写：范围重写（行区间） ----------
 
 ;; 把 [s,e) 行整体换成 new-lines（可长可短，空 = 删除行）。
 (define (track-splice t s e new-lines)

@@ -4,7 +4,7 @@
 
 ;;; editor/sync.rkt —— 视口同步（就地改 viewport box）
 ;;;
-;;; 两种同步关系（都只同步视口，绝不动选区）：
+;;; 两种同步关系（都只同步视口）：
 ;;;     sync='follow   同 document 的视图跟随「发起视图」的视口
 ;;;     link=k         所有 link 相等的视图互相跟随（可跨 document）
 ;;;

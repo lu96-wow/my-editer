@@ -10,13 +10,9 @@
 ;;;   view           = view-immutable(id, did)   ⊕ view-mutable(viewport box,
 ;;;                                                            selections box, sync box, link box)
 ;;;
-;;; 原则：**身份不可变，其余全进 box；box 引用一经创建不再替换，只 set-box! 内容。**
-;;; 所以只有 list 结构变化（增/删文档、增/删视图）产新 editor；其余全是就地（见 command.rkt）。
+;;; 只有 list 结构变化（增/删文档、增/删视图）产新 editor；其余就地改 box。
 ;;;
-;;; **editor 不持焦点**：哪个 view 当前被操作由宿主决定，接口一律显式 vid/did。
-;;;
-;;; document-entry 不另存一份 document：当前文档就是 history 的 current 快照
-;;; （单一事实源，避免与撤销账本各存一份而失同步）。
+;;; document-entry 的当前文档就是 history 的 current 快照。
 
 (provide
  ;; ---------- 类型 ----------
@@ -36,15 +32,15 @@
  ;; ---------- 构造 ----------
  make-document-entry make-view
 
- ;; ---------- 多态入口：string | document → document（内部共享；core 入口 except-out） ----------
+ ;; ---------- 多态入口：string | document → document ----------
  ->document
 
- ;; ---------- 裸 box setter（入口 except-out，内部用） ----------
+ ;; ---------- 裸 box setter ----------
  document-entry-set-name! document-entry-set-history!
  view-set-viewport! view-set-selections! view-set-sync! view-set-link!
  editor-set-clipboard!
 
- ;; ---------- 字段元数据写口（公开；只改一个 box） ----------
+ ;; ---------- 字段元数据写口 ----------
  editor-document-set-name!
  editor-document-set-history-enabled!
  editor-view-set-sync! editor-view-set-link!
@@ -74,7 +70,7 @@
 (struct entry-immutable (id) #:transparent)
 (struct view-immutable (id did) #:transparent)
 
-;; 可变状态（全在 box 里；box 引用不变）
+;; 可变状态（在 box 里）
 (struct entry-mutable (name history) #:transparent)                    ; 两个 box
 (struct view-mutable (viewport selections sync link) #:transparent)   ; 四个 box
 
@@ -100,7 +96,7 @@
 
 (define (editor-clipboard ed) (unbox (editor-clipboard-box ed)))
 
-;;; ---------- 裸 box setter（改 box 内容，不换 box；入口 except-out） ----------
+;;; ---------- 裸 box setter（改 box 内容） ----------
 
 (define (document-entry-set-name! e n)
   (set-box! (entry-mutable-name (document-entry-mut e)) n))
@@ -114,18 +110,17 @@
 
 (define (editor-set-clipboard! ed c) (set-box! (editor-clipboard-box ed) c))
 
-;;; ---------- 字段元数据写口（公开；只改一个 box） ----------
+;;; ---------- 字段元数据写口 ----------
 
 (define (editor-document-set-name! ed did name)
   (document-entry-set-name! (editor-document-entry ed did) name))
 
-;; history 是**文档级**属性，所以开关也按 did（与 set-name! 一致）；
-;; 任意该 did 的 view 都能调，没有 view 的文档同样能调。
+;; history 是文档级属性，开关按 did。
 (define (editor-document-set-history-enabled! ed did flag)
   (document-entry-set-history! (editor-document-entry ed did)
                                (history-set-enabled (editor-document-history ed did) flag)))
 
-;; 视图配置（只改一个 box）。
+;; 视图配置。
 (define (editor-view-set-sync! ed vid sync)
   (check-sync 'editor-view-set-sync! sync)
   (view-set-sync! (editor-view-ref ed vid) sync))
@@ -155,8 +150,7 @@
 (define (->document x chunk-lines)
   (if (document? x) x (document-open x chunk-lines)))
 
-;; 空 editor：无文档、无视图（宿主默认不打开 scratch 的起点）。
-;; 新视图/文档的尺寸由 editor-add-view / editor-add-document-view 显式给。
+;; 空 editor：无文档、无视图。
 (define (make-blank-editor)
   (editor '() '() 0 0 (box #f)))
 
@@ -234,7 +228,7 @@
 (define (editor-view-document ed vid)
   (document-entry-document (editor-document-entry ed (view-did (editor-view-ref ed vid)))))
 
-;; 按 did 取当前文档句柄（对称于按 vid 的 editor-view-document）。
+;; 按 did 取当前文档句柄。
 (define (editor-document-handle ed did)
   (document-entry-document (editor-document-entry ed did)))
 
@@ -252,13 +246,13 @@
 
 ;;; ---------- 生命周期（删） ----------
 
-;; 关一个视图（焦点由宿主自理，这里不管）。
+;; 关一个视图。
 (define (editor-close-view ed vid)
   (editor-view-ref ed vid)                          ; 校验 vid
   (struct-copy editor ed
     [views (for/list ([v (in-list (editor-views ed))] #:unless (= vid (view-id v))) v)]))
 
-;; 关一个文档：连带它的视图一起去掉（焦点由宿主自理）。
+;; 关一个文档：连带它的视图一起去掉。
 (define (editor-close-document ed did)
   (editor-document-entry ed did)                    ; 校验 did
   (struct-copy editor ed

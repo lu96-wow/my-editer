@@ -122,7 +122,7 @@
 (define (edit-attr a ed) (and a (ed a)))
 
 ;; 文本编辑：三条轨一起施同一个编辑，产物是**新的 document**（新 text + 新属性 box）。
-;; fork 保证旧版本的属性不被新版本共享（写回旧版本不污染新版本）。
+;; fork：旧版本的属性不被新版本共享。
 (define (document-edit-tracks bd ed)
   (make-document (ed (document-text bd))
                  (edit-attr (document-highlight bd) ed)
@@ -215,7 +215,6 @@
   (document-attr-range? (document-readonly bd) l0 c0 l1 c1))
 
 ;;; ---------- 用户编辑 / 程序编辑：成对（守 vs -ignore-readonly） ----------
-;;; 约定：**基础名 = 用户编辑（守只读）**；**-ignore-readonly = 程序编辑（不守）**。
 ;;; 都返回 (values document change ok?)。空编辑（change = #f 且 ok? = #t）不产生新 document。
 
 ;; 零宽插入看插入点的格（行尾除外）；非空区间看区间内是否有只读格。

@@ -117,8 +117,7 @@
 
 (struct span (start end text) #:transparent)
 
-;; span → 编辑闭包（track -> track）。span 是**值**形态，edit-* 是闭包形态；
-;; 这是二者唯一的桥（编辑既有可映射的值描述，也有可施加的闭包形式）。
+;; span → 编辑闭包（track -> track）。
 (define (span->edit sp [sticky 'none] [default #f])
   (edit-range (point-line (span-start sp)) (point-column (span-start sp))
               (point-line (span-end sp)) (point-column (span-end sp))

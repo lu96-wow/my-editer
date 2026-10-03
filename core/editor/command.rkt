@@ -6,24 +6,18 @@
          "../text/base/line.rkt" "../text/base/range.rkt"
          "../view/base/viewport.rkt")
 
-;;; editor/command.rkt —— 命令式操作（就地改 box，**不返回 editor**）
+;;; editor/command.rkt —— 命令式操作（就地改 box，不返回 editor）
 ;;;
-;;; 命名：全部按 vid（`editor-view-*!`）；**无焦点糖**（焦点由宿主自理）。
-;;;
-;;; 返回约定：
-;;;     编辑命令（insert/backspace/delete/paste/cut/edit）  → (values changes ok?)
-;;;                                                          changes 空 = 没改动；ok? #f = 被只读挡
-;;;     undo / redo                                        → ok?
-;;;     异步文本 CAS                                        → applied?
-;;;     其余（导航 / 视口 / 选区 / 作者态 / 清栈 / 改名 …）  → void
-;;;
-;;; 结构操作（增/删文档、视图）在 state.rkt，**返回新 editor**。
+;;; 编辑命令（insert/backspace/delete/paste/cut/edit）  → (values changes ok?)
+;;;                                                     changes 空 = 没改动；ok? #f = 被只读挡
+;;; undo / redo                                        → ok?
+;;; 异步文本 CAS                                        → applied?
+;;; 其余（导航 / 视口 / 选区 / 属性 / 清栈 …）           → void
 ;;;
 ;;; 内容写原语 editor-view-install!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
-;;; 作者态（高亮 / readonly）不在这里：属性写是文档级、出带，见 attributes.rkt。
 
 (provide
- ;; ---------- 内部件（只 core 内部 / 测试用；入口 editor.rkt 会 except-out） ----------
+ ;; ---------- 内部件 ----------
  (struct-out step)
  editor-view-install! editor-document-history-record!
 
@@ -57,7 +51,7 @@
  editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
 
- ;; ---------- 属性（只在「作用选区」时需要 vid；坐标/整轨写在 attributes.rkt） ----------
+ ;; ---------- 属性（作用选区） ----------
  editor-view-highlight! editor-view-highlight-selections!
  editor-view-readonly! editor-view-readonly-selections!
 
@@ -68,7 +62,7 @@
  editor-document-clear-history! editor-document-reset-history! editor-document-seal!
  editor-view-set-history-enabled!)
 
-;;; ---------- 通用内容原语（就地；内部件，不导出） ----------
+;;; ---------- 通用内容原语 ----------
 
 (struct step (pre-value pre-sels post-value post-sels who pre-tip) #:transparent)
 
@@ -102,7 +96,7 @@
      (editor-sync-viewports! ed vid)
      (step old pre-sels value* sels* vid pre-tip)]))
 
-;; 把一次 step 记进账本（哑栈原语；是否并步由 merge-tag 判定）。
+;; 把一次 step 记进账本（按 merge-tag 判定是否并步）。
 (define (editor-document-history-record! ed did step [merge-tag #f])
   (cond
     [(not step) (void)]
@@ -169,7 +163,7 @@
 ;;; ---------- 异步文本写：版本校验（CAS） ----------
 
 ;; base-text = 请求时抓的文本轨；命中才装（记一步），否则丢弃。→ applied?
-;; core 只做版本校验；**同 did 的串行 / 锁由调用方保证**。
+;; core 只做版本校验。
 (define (editor-view-apply-text-if-version! ed vid base-text new-doc [merge-tag #f])
   (cond
     [(not (eq? (document-text (editor-view-document ed vid)) base-text)) #f]
@@ -320,13 +314,13 @@
   (editor-sync-viewports! ed vid)
   (void))
 
-;;; ---------- 属性命令（视图级：只有「作用选区」需要 vid） ----------
-;;; 属性写一律是**文档级**（attributes.rkt 的 editor-document-*），不碰 history。
-;;; 这里只留「区间从当前选区来」的四个命令；vid 仅用于读选区，算完就转 did 版。
+;;; ---------- 属性命令（视图级） ----------
+;;; 属性写走 attributes.rkt 的 editor-document-*。
+;;; 这里保留「区间从当前选区来」的四个命令。
 
 (define (vid->did ed vid) (view-did (editor-view-ref ed vid)))
 
-;; 主选区 → range（选区是视图态，所以这个入口必须在 view 层）。
+;; 主选区 → range。
 (define (primary-range ed vid)
   (define-values (a b) (selection-range (selections-primary (view-selections (editor-view-ref ed vid)))))
   (range-of a b))
@@ -347,11 +341,8 @@
     (define-values (a b) (selection-range sel))
     (editor-document-readonly-range! ed did (range-of a b) flag)))
 
-;; 坐标 / 区间 / 整轨版一律走 editor-document-*（did）；
-;; 「选区版」是唯一需要 vid 的属性命令（选区是视图态）。
-
 ;;; ---------- 撤销 / 重做 ----------
-;;; history 是**文档级**状态，所以这些操作一律按 did；vid 版只是「就地取 did」的糖。
+;;; history 是文档级状态，这些操作按 did；vid 版就地取 did。
 
 ;; undo/redo 共用：step : history -> (values history ok?)。→ ok?
 (define (editor-document-time-travel! ed did step)
@@ -362,7 +353,7 @@
      (define-values (_doc sels* who) (history-state h*))
      (document-entry-set-history! (editor-document-entry ed did) h*)
      (editor-views-clamp! ed did)
-     ;; 选区还原到**发起那次编辑的视图**（快照里的 who），与调用者传的 vid 无关。
+     ;; 选区还原到发起那次编辑的视图（快照里的 who）。
      (when (and who (for/or ([x (in-list (editor-views ed))] #:when (= (view-id x) who)) #t))
        (view-set-selections! (editor-view-ref ed who) sels*))
      #t]))

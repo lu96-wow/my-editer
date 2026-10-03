@@ -8,15 +8,13 @@
 
 ;;; editor/query.rkt —— 读（按 vid / did 读 view / document）
 ;;;
-;;; 让 app 只经 editor API 取「文本 / 名称 / 点 / 选区 / 屏幕坐标 / 视口状态 / 历史状态」，
-;;; 不必自己拆 view / viewport / document。都是纯读，不改任何东西。
+;;; 取「文本 / 名称 / 点 / 选区 / 屏幕坐标 / 视口状态 / 历史状态」。都是纯读。
 ;;;
-;;; **无焦点糖**：焦点由宿主持有。
-;;; 命名（按**寻址键**，不按用途）：
+;;; 寻址：
 ;;;   `editor-view-* ed vid`            按 vid
 ;;;   `editor-document-* ed did`        按 did
 ;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 attributes.rkt）
-;;;   全局（无 id）：`make-blank-editor` / `editor-open` / `editor-documents` / `editor-views` / …
+;;;   全局（无 id）：`make-blank-editor` / `editor-open` / `editor-documents` / …
 
 (provide
  ;; ---------- 文本 / 名称 ----------
@@ -95,7 +93,7 @@
   (editor-document-name ed (view-did (editor-view-ref ed vid))))
 
 ;;; ---------- 属性（高亮 / 只读，读） ----------
-;;; 属性是文档级状态 → 真身按 did；vid 版是糖。
+;;; 属性是文档级状态，真身按 did；vid 版就地取 did。
 
 (define (editor-document-highlight-at ed did line col)
   (document-highlight-at (editor-document-handle ed did) line col))
@@ -131,7 +129,7 @@
 
 (define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
 
-;; 枚举：只给 id，不吐内部 struct（editor-documents / editor-views 是内部件）。
+;; 枚举：给 id。
 (define (editor-document-id-list ed)
   (for/list ([e (in-list (editor-documents ed))]) (document-entry-id e)))
 (define (editor-view-id-list ed)
@@ -204,7 +202,7 @@
   (history-can-redo? (editor-document-history ed did)))
 (define (editor-document-depth ed did)
   (history-depth (editor-document-history ed did)))
-;; 同上，按 did（history 是文档级属性；无 view 的文档也能读）。
+;; 按 did。
 (define (editor-document-history-enabled? ed did)
   (history-enabled? (editor-document-history ed did)))
 

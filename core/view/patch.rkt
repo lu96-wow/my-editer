@@ -8,10 +8,10 @@
 ;;;     render    →  变化的文本格（含被擦成空白的格：face = #f、text = 空格）
 ;;;     selection →  变化的光标 / 选区格，**携带完整外观** attr = (overlay . face)
 ;;;
-;;; 一格的外观 = 字符 ⊕ face ⊕ overlay 三个正交分量；overlay 格必须同时带上 face，
+;;; 一格的外观 = 字符 ⊕ face ⊕ overlay 三个正交分量；overlay 格同时带上 face，
 ;;; 否则「高亮 + 选中」这类格会丢 face。piece 自足：后端不需要回头查 screen。
 ;;; piece = (row col text attr)；row/col 是屏幕坐标（行 / 显示列），attr 不透明。
-;;; 坐标词汇统一为 row/col（先行再列，与 screen 的 run/cursor/region 一致）。
+;;; 坐标是 row/col（先行再列）。
 
 (provide
  ;; ---------- 类型 ----------

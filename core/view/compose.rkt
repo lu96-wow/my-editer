@@ -188,6 +188,6 @@
       [else (loop (add1 c))]))
   out)
 
-;; 全量合成 → composition（含屏幕）。永远可用（首帧 / 布局变时）。
+;; 全量合成 → composition（含屏幕）（首帧 / 布局变时用）。
 (define (panes->composition width height panes active)
   (composition width height panes active (panes->screen width height panes active)))

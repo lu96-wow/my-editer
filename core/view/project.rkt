@@ -30,8 +30,7 @@
      (define end (vrow-end-column vr))
      (define cells '())
      (define col 0)                                  ; 当前字符的显示列
-     ;; 只扫到可见窗口右端：`end` 之后（含 == end）的字全不可见，
-     ;; 不必继续扫描整行 —— 长行（压缩 JSON / 日志）下这是 O(整行) 的浪费。
+     ;; 只扫到可见窗口右端。
      (for ([i (in-range (string-length s))] #:break (>= col end))
        (define c (string-ref s i))
        (define cw (char-display-width c))

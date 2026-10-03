@@ -7,7 +7,7 @@
 ;;; 输入：一串 change（都同一「编辑前」坐标系、两两不重叠）+ 一份 selections。
 ;;; 输出：映射后的 selections（已排序 / 去重 / 合并，primary 按身份追踪）。
 ;;;
-;;; **不碰 document、不碰视口**：内容传播与滚动由调用方自己决定。
+;;; 只重基准选区（不碰 document / 视口）。
 ;;; 用途：非编辑者视图在同文档变更后重定位自己的选区（editor-edit 用 command-* 返回的
 ;;; changes 调 selections-rebase）；外部编辑同步。
 ;;;

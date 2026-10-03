@@ -9,7 +9,6 @@
 ;;;   editor-view-render   单视图 → screen
 ;;;   editor-render-patch  旧帧 + 新帧 → (新帧, render, selection)
 ;;;
-;;; **无焦点**：显式 vid。
 
 (provide
  ;; ---------- 单视图 ----------

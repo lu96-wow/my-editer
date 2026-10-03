@@ -147,8 +147,7 @@
                     [(>= l (+ (viewport-top-line v) h)) (- l h -1)]
                     [else (viewport-top-line v)]))
   (define top* (max 0 (min top (max 0 (- n h)))))
-  ;; 正文宽依赖 top-line（行号栏位数）：重算 top 后栏宽可能变，必须用**新顶行**的宽；
-  ;; 否则左移/右滚会差一列。
+  ;; 正文宽依赖 top-line（行号栏位数）：用新顶行的宽重算。
   (define v-top (struct-copy viewport v [top-line top*]))
   (define w (viewport-content-width t v-top))
   (define lc (viewport-left-column v))
@@ -156,8 +155,7 @@
                  [(< dc lc) dc]
                  [(> (+ dc cw) (+ lc w)) (max 0 (min dc (- (+ dc cw) w)))]
                  [else lc]))
-  ;; 水平吸附必须用**光标所在行**（text）：顶行与光标行的宽字符边界不同，
-  ;; 用顶行吸附会把 left-column 推过光标。
+  ;; 水平吸附用光标所在行（text）。
   (struct-copy viewport v-top [left-column (snap-left t l left)]))
 
 ;; 把 p 滚进可视区。wrap 下「栏宽 → 正文宽 → 折行 → 需要滚多少」互相依赖，
@@ -222,7 +220,7 @@
   (viewport-point->screen-position/vrows t v (viewport-vrows t v) p))
 
 ;; 屏幕 (行, 列) → buffer 点；越界 / 屏幕行落在文末之后 → (values #f #f)。
-;; 列含行号栏：col < 栏宽 → 一律视作正文列 0（点行号栏落到行首）。
+;; 列含行号栏：col < 栏宽 → 视作正文列 0（点行号栏落到行首）。
 ;; /vrows 版：接收已算好的 vrows。
 (define (viewport-screen-position->point/vrows t v vrows row col)
   (define g (viewport-gutter-width t v))
@@ -271,7 +269,7 @@
     [else (check-mode 'viewport-set-anchor (viewport-mode v))]))
 
 ;; 跨文档投锚：行号固定（越界夹），列按**两侧锚行显示宽**比例缩放；源锚行为空 → 列 0。
-;; **同文档不要用它** —— 精确取/放即可（见 sync 层）；空行上的软滚动列不应被比例抹成 0。
+;; 同文档用精确取/放（见 sync 层）；空行上的软滚动列按比例缩放会成 0。
 (define (viewport-mirror t-src src t-dst dst)
   (define-values (line dc) (viewport-anchor t-src src))
   (define ls (max 0 (min line (sub1 (track-length t-src)))))

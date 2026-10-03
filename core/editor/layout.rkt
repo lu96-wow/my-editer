@@ -6,15 +6,15 @@
 ;;; editor/layout.rkt —— 布局：把 (vid x y w h) 落到 view 与屏幕
 ;;;
 ;;; 一个 rectangle = 一块窗格：vid 看哪个视图，x y 贴在哪（屏幕列 / 行），w h 多大。
-;;; 一份 rectangle 列表就是**宿主的唯一布局输入**：尺寸归 view，位置归渲染。
+;;; 尺寸归 view，位置归渲染。
 ;;;
 ;;; 三个入口（可拆可合）：
 ;;;   editor-set-layout!      写：w h → 各 view（变了才重锚 + 同步跟随者）；x y 忽略
-;;;   editor-render-layout   读：纯渲染。x y 贴屏，w h 定该帧视口大小（**不改 view 状态**）
+;;;   editor-render-layout   读：纯渲染。x y 贴屏，w h 定该帧视口大小（不改 view 状态）
 ;;;   editor-render-layout*!  组合：先 set-layout! 再 render → screen
 ;;;
-;;; 为什么要 set-layout：ensure / 上下移动 / 滚动 / 鼠标换算用 view 里存的尺寸，
-;;; 所以布局要把尺寸落到 view；纯渲染只覆盖本帧，供出屏。
+;;; ensure / 上下移动 / 滚动 / 鼠标换算用 view 里存的尺寸，所以布局要把尺寸落到 view；
+;;; 纯渲染只覆盖本帧，供出屏。
 
 (provide
  ;; ---------- 类型 ----------
@@ -35,7 +35,7 @@
 
 ;;; ---------- 写：尺寸落到 view ----------
 
-;; 逐个 rectangle：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 会同步跟随者）。就地、返回 ed。
+;; 逐个 rectangle：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 会同步跟随者）。
 (define (editor-set-layout! ed rectangles)
   (for ([r (in-list rectangles)])
     (define vp (view-viewport (editor-view-ref ed (rectangle-view-id r))))

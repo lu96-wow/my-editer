@@ -34,8 +34,7 @@
 
 ;;; ---------- 字符串 ↔ 行序列（换行归一为 \n） ----------
 
-;; 换行归一：CRLF / 孤立 CR → LF。外部来源（系统剪贴板、外部文件等）可能带 \r，
-;; 统一在这里清掉，避免 \r 流进文本格。
+;; 换行归一：CRLF / 孤立 CR → LF。
 (define (string-normalize-newlines s)
   (regexp-replace* #rx"\r\n?" s "\n"))
 
@@ -92,7 +91,7 @@
         [(vector? a) (vector-append a b)]
         [else (error 'line-append "不是行（string / vector）: ~a" a)]))
 
-;; 把 [s,e) 的格换成 items（items 必须与 l 同类型）。
+;; 把 [s,e) 的格换成 items（items 与 l 同类型）。
 (define (line-splice l s e items)
   (line-append (line-append (line-slice l 0 s) items) (line-slice l e (line-length l))))
 

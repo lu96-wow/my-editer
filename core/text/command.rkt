@@ -16,10 +16,8 @@
 ;;; 返回 (values document selections changes ok?)。changes = 本次编辑的**变更描述**
 ;;; （listof change，before 在编辑前坐标、两两不重叠），供外部把**其它视图**的选区
 ;;; 重基准（见 editor）。change 只存结构、不存文本（要文本用 document-change-text）。
-;;; 与 document 的成对约定一致：基础名 = 用户（守），-ignore-readonly = 程序（不守）。
 
 (provide
- ;; 成对：基础名 = 用户（守只读）；-ignore-readonly = 程序（不守）
  command-type command-type-ignore-readonly
  command-backspace command-backspace-ignore-readonly
  command-delete command-delete-ignore-readonly
@@ -97,7 +95,7 @@
 
 ;;; ---------- 富粘贴：把 clipboard 的三轨片段在每个选区替换 ----------
 ;;; 与 command-type 同构（多光标、成对守卫），但插入的是**属性也带上的** clipboard，
-;;; 所以不能走 command-run（它只能填单一 default）；改用 document-paste 逐选区施加。
+;;; 所以改用 document-paste 逐选区施加（command-run 只能填单一 default）。
 
 (define (clipboard-info cp s)
   (define-values (a b) (selection-range s))

@@ -7,7 +7,7 @@
 ;;; overlay.rkt —— overlay 通道：selections × vrows → cursors / regions
 ;;;
 ;;; 与文本通道分开：光标/选区是**视图状态**（来自 selections），不是文档内容。
-;;; 全部基于已算好的 **vrows**，不重复派生；列一律是屏幕列（含行号栏偏移）。
+;;; 全部基于已算好的 **vrows**，不重复派生；列是屏幕列（含行号栏偏移）。
 
 (provide
  ;; overlay 通道：selections × vrows → cursors / regions

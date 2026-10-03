@@ -12,8 +12,8 @@
 ;;;     · 位置映射只需行结构，after 已编码（首行 / 末行的行列）；
 ;;;     · 文本内容用时从**新文档**的 after 区间取（document-change-text）。
 ;;;
-;;; 为什么必须留 before：纯 after 分不清「删除」和「无操作」——删除的 after 是零宽；
-;;; 且重基准要回答「旧位置现在在哪」，必须有 before。
+;;; before 用来区分「删除」和「无操作」（删除的 after 是零宽），也用于重基准
+;;; （旧位置现在在哪）。
 ;;;
 ;;; 两类用途，坐标相反：
 ;;;     重基准（选区 / marker）   change-map-point     before → after

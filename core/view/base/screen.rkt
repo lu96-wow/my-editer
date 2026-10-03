@@ -10,10 +10,10 @@
 ;;;   region  选中区段（一个跨行选区在每行切一段）
 ;;; face 是不透明值（core 不解释），来自高亮轨。
 ;;;
-;;; 坐标词汇：屏幕空间一律 **row / col**（col = 显示列）。
-;;; run.col 是行内列；cursor/region、pane、rectangle 都用 **(row, col)（先行再列）**。
+;;; 屏幕空间的坐标是 row / col（col = 显示列）。
+;;; run.col 是行内列；cursor/region、pane、rectangle 用 (row, col)（先行再列）。
 ;;;
-;;; 名字约定：`seg` 在 view 里专指**显示列区间**（layout/width 用）；屏幕上的文本段叫 `run`。
+;;; `seg` 指显示列区间（layout/width 用）；屏幕上的文本段叫 `run`。
 
 (provide
  ;; ---------- 类型 ----------
