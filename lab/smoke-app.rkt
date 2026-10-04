@@ -113,7 +113,7 @@
 
 ;;; ---------- minibuffer：Esc 取消 ----------
 
-(send (key-event 'm (mods #t #f #f)))                      ; Ctrl+M 新建目录
+(send (key-event 'l (mods #t #f #f)))                      ; Ctrl+L 新建目录
 (check-true (and (app-mode a) #t))
 (send (key-event 'escape no-mods))
 (check-false (app-mode a))

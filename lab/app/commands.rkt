@@ -109,7 +109,7 @@
           (key 'tab)       (lambda (e a) (app-toggle-left! a))
           (key 'enter)     (lambda (e a) (app-tree-activate! a))
           (key 'n 'ctrl)   (lambda (e a) (app-tree-new-file! a))
-          (key 'm 'ctrl)   (lambda (e a) (app-tree-new-dir! a))
+          (key 'l 'ctrl)   (lambda (e a) (app-tree-new-dir! a))
           (key 'backspace) (lambda (e a) (app-tree-delete! a))))))
 
 ;;; ================= 文档 / 视图列表 =================
