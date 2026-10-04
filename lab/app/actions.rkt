@@ -18,8 +18,9 @@
 
 (provide app-bufs-exclude
          app-tree-refresh! app-tree-activate! app-tree-new-file! app-tree-new-dir! app-tree-delete!
-         app-open-path! app-close-path! app-show-view! app-show-document! app-bufs-refresh!
-         app-bufs-activate! app-save!
+         app-open-path! app-close-path! app-close-view! app-close-document!
+         app-show-view! app-show-document!
+         app-bufs-refresh! app-bufs-activate! app-bufs-close! app-bufs-new-view! app-save!
          app-toggle-focus! app-toggle-left!
          app-begin! app-commit! app-answer! app-cancel! app-resize!)
 
@@ -115,11 +116,32 @@
     (for ([did (in-list closed)])
       (set-app-ed! a (editor-close-document (app-ed a) did))
       (path-table-remove! (app-paths a) did))
-    (when (and edit-did (memv edit-did closed))
-      (app-edit-vid-set! a (app-pick-edit-vid a))
-      (when (eqv? (app-focus a) old-edit)
-        (set-app-focus! a (app-left-vid a))))
-    (app-bufs-refresh! a)))
+    (app-edit-recover! a old-edit (and edit-did (memv edit-did closed) #t))))
+
+;; 关闭动作后：如果编辑格原来显示的东西被关了（edit-gone?），改显下一个还开着的 view。
+(define (app-edit-recover! a old-edit edit-gone?)
+  (when edit-gone?
+    (app-edit-vid-set! a (app-pick-edit-vid a))
+    (when (eqv? (app-focus a) old-edit)
+      (set-app-focus! a (app-left-vid a))))
+  (app-bufs-refresh! a))
+
+;; 关闭整个文档：连带它**所有** view。
+(define (app-close-document! a did)
+  (define ed (app-ed a))
+  (define old-edit (panes-edit (app-panes a)))
+  (define edit-gone? (and old-edit (eqv? (editor-view-document-id ed old-edit) did)))
+  (set-app-ed! a (editor-close-document ed did))
+  (path-table-remove! (app-paths a) did)
+  (buffers-collapse! (app-bufs a) did)
+  (app-edit-recover! a old-edit edit-gone?))
+
+;; 关闭单个 view：**文档保留**（即使这是它最后一个 view，也只是变成没有 view 的文档）。
+(define (app-close-view! a vid)
+  (define old-edit (panes-edit (app-panes a)))
+  (define edit-gone? (eqv? old-edit vid))
+  (set-app-ed! a (editor-close-view (app-ed a) vid))
+  (app-edit-recover! a old-edit edit-gone?))
 
 ;; 把某个 view 显示到编辑格（view 是持久对象，旧 view 不关）。
 ;; focus? = #f 时只换编辑格内容，不动焦点（文件树打开文件的默认行为）。
@@ -145,15 +167,38 @@
                     #:exclude (app-bufs-exclude a)
                     #:path-of (lambda (did) (path-table-path (app-paths a) did))))
 
-(define (app-bufs-activate! a)
+(define (app-bufs-row-at-focus a)
   (define line (editor-view-point-line (app-ed a) (panes-bufs (app-panes a))))
-  (define row (buffers-line->row (app-ed a) (app-bufs a) line
-                                 #:exclude (app-bufs-exclude a)
-                                 #:path-of (lambda (did) (path-table-path (app-paths a) did))))
+  (buffers-line->row (app-ed a) (app-bufs a) line
+                     #:exclude (app-bufs-exclude a)
+                     #:path-of (lambda (did) (path-table-path (app-paths a) did))))
+
+(define (app-bufs-activate! a)
+  (define row (app-bufs-row-at-focus a))
   (case (and row (buffer-row-kind row))
     [(doc)  (buffers-toggle! (app-bufs a) (buffer-row-did row)) (app-bufs-refresh! a)]
     [(view) (app-show-view! a (buffer-row-vid row))]
     [else (void)]))
+
+;; Backspace：view 行关 view（最后一个 view → 关文档），doc 行关文档。
+(define (app-bufs-close! a)
+  (define row (app-bufs-row-at-focus a))
+  (case (and row (buffer-row-kind row))
+    [(view) (app-close-view! a (buffer-row-vid row))]
+    [(doc)  (app-close-document! a (buffer-row-did row))]
+    [else (void)]))
+
+;; Ctrl+N：给当前行的文档再开一个 view（doc / view 行都行）。
+;; 不抢焦点：展开该文档让新 view 行可见，光标留在面板上。
+(define (app-bufs-new-view! a)
+  (define row (app-bufs-row-at-focus a))
+  (define did (and row (buffer-row-did row)))
+  (when did
+    (define-values (ed2 _v2) (editor-add-view (app-ed a) did (app-main-w a) (app-main-h a)
+                                              #:line-numbers? #t))
+    (set-app-ed! a ed2)
+    (buffers-expand! (app-bufs a) did)
+    (app-bufs-refresh! a)))
 
 ;;; ================= 焦点 =================
 

@@ -68,7 +68,9 @@ racket lab/smoke-app.rkt    # 集成（无终端）
 - `Ctrl+←/→/↑/↓` 移焦点；`Ctrl+O` 左栏 ↔ 编辑格；`Ctrl+S` 保存；`Ctrl+Q` 退出
 - 文件树：`↑/↓/←/→` 光标移动、`Enter` 打开文件 / 展开折叠目录、`Tab` 切左栏面板、
   `Ctrl+N` 新建文件、`Ctrl+L` 新建目录、`Backspace` 删除（y/n）
-- 文档列表：`Tab` 切左栏面板、`Enter` 展开/收起文档行、选 view 行 `Enter` 打开到编辑格
+- 文档列表：`Tab` 切左栏面板、`Enter` 展开/收起文档行、选 view 行 `Enter` 打开到编辑格、
+  `Ctrl+N` 给当前行的文档新建 view、`Backspace` 在 view 行只关 view（文档保留，即使最后一个 view）；
+  在 doc 行关文档（连带它所有 view）
 - 输入行：`Enter` 提交、`Esc` 取消；字符 / 退格直接编辑
 - 编辑格：常规编辑（方向 / 选择 / 剪贴板 / 撤销）
 

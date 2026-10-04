@@ -118,8 +118,10 @@
   (command-merge
    (list readonly-keys
          (command-table
-          (key 'tab)   (lambda (e a) (app-toggle-left! a))
-          (key 'enter) (lambda (e a) (app-bufs-activate! a))))))
+          (key 'tab)       (lambda (e a) (app-toggle-left! a))
+          (key 'enter)     (lambda (e a) (app-bufs-activate! a))
+          (key 'n 'ctrl)   (lambda (e a) (app-bufs-new-view! a))
+          (key 'backspace) (lambda (e a) (app-bufs-close! a))))))
 
 ;;; ================= 模态表 =================
 ;;

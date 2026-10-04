@@ -12,6 +12,7 @@
          "base/input.rkt"
          "base/layout/main.rkt"
          "ui/tree.rkt"
+         "ui/buffers.rkt"
          "ui/mode.rkt"
          "app/app.rkt"
          "app/state.rkt"
@@ -40,7 +41,7 @@
 
 (check-equal? (app-focus a) (tree-vid))
 (void (app-prepare! a))
-(check-true (string-contains? (editor-view-string (ed) (state-vid)) "tree"))
+(check-not-false (string-contains? (editor-view-string (ed) (state-vid)) "tree"))
 (check-false (edit-vid))                                   ; 不预开文档：主区空
 (define panes (layout-result-panes (app-layout-result a)))
 (check-equal? (map rectangle-view-id panes) (list (tree-vid) (state-vid)))
@@ -88,9 +89,9 @@
 (check-equal? (app-focus a) (edit-vid))
 (void (app-prepare! a))
 (define state-text (editor-view-string (ed) (state-vid)))
-(check-true (string-contains? state-text "edit"))         ; 焦点
-(check-true (string-contains? state-text "1:1"))          ; 行:列
-(check-true (string-contains? state-text "aaa.txt"))      ; view 对应 document 的文件名
+(check-not-false (string-contains? state-text "edit"))         ; 焦点
+(check-not-false (string-contains? state-text "1:1"))          ; 行:列
+(check-not-false (string-contains? state-text "aaa.txt"))      ; view 对应 document 的文件名
 (send (key-event 'left (mods #t #f #f)))
 (check-equal? (app-focus a) (tree-vid))
 
@@ -136,7 +137,7 @@
 (check-true (and (app-mode a) (not (prompt-editable? (app-mode a)))))
 (check-equal? (app-focus a) (input-vid))
 (check-equal? (app-bottom-vid a) (input-vid))
-(check-true (string-contains? (editor-view-string (ed) (input-vid)) "delete"))
+(check-not-false (string-contains? (editor-view-string (ed) (input-vid)) "delete"))
 (send (key-event #\n no-mods))                             ; n = 不删
 (check-false (app-mode a))
 (check-true (file-exists? (build-path root "aaa.txt")))
@@ -158,7 +159,7 @@
 (define bufs-text (editor-view-string (ed) (bufs-vid)))
 (check-false (string-contains? bufs-text "*scratch*"))
 (check-false (string-contains? bufs-text "*state*"))
-(check-true (string-contains? bufs-text "aaa.txt"))
+(check-not-false (string-contains? bufs-text "aaa.txt"))
 
 ;; 展开 aaa.txt 的 doc 行 → 出现 view 行；选 view 行 Enter 打开到编辑格
 (define (buf-line pred)
@@ -166,7 +167,7 @@
               [i (in-naturals)] #:when (pred s)) i))
 (editor-view-set-point! (ed) (bufs-vid) (point (buf-line (lambda (s) (equal? s "aaa.txt"))) 0))
 (send (key-event 'enter no-mods))
-(check-true (string-contains? (editor-view-string (ed) (bufs-vid)) "view"))
+(check-not-false (string-contains? (editor-view-string (ed) (bufs-vid)) "view"))
 (editor-view-set-point! (ed) (bufs-vid)
                         (point (buf-line (lambda (s) (string-contains? s "view"))) 0))
 (send (key-event 'enter no-mods))
@@ -241,6 +242,52 @@
 (check-false (path-table-did (app-paths a) (build-path root "sub" "inner.txt")))
 (check-false (string-contains? (editor-view-string (ed) (bufs-vid)) "inner.txt"))
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")  ; 回落到 aaa.txt
+
+;;; ---------- 文档列表：Backspace 关闭视图 / 文档 ----------
+
+(send (key-event 'tab no-mods))                            ; 切到文档列表
+(check-equal? (app-left a) 'bufs)
+(check-equal? (app-focus a) (bufs-vid))
+
+;; 展开 aaa.txt 的 doc 行 → view 行（前面可能已展开过）
+(define aaa-did (path-table-did (app-paths a) (build-path root "aaa.txt")))
+(unless (buffers-expanded? (app-bufs a) aaa-did)
+  (editor-view-set-point! (ed) (bufs-vid) (point (buf-line (lambda (s) (equal? s "aaa.txt"))) 0))
+  (send (key-event 'enter no-mods)))
+(check-not-false (string-contains? (editor-view-string (ed) (bufs-vid)) "view"))
+
+;; Ctrl+N：光标在 doc 行 → 给该文档再开一个 view
+(define (view-row-count)
+  (for/sum ([s (in-list (string-split (editor-view-string (ed) (bufs-vid)) "\n"))]
+            #:when (string-contains? s "view"))
+    1))
+(editor-view-set-point! (ed) (bufs-vid) (point (buf-line (lambda (s) (equal? s "aaa.txt"))) 0))
+(check-equal? (view-row-count) 1)
+(send (key-event 'n (mods #t #f #f)))                      ; Ctrl+N 新建 view
+(check-equal? (view-row-count) 2)
+
+;; 关一个 view → 还剩一个，文档保留
+(editor-view-set-point! (ed) (bufs-vid)
+                        (point (buf-line (lambda (s) (string-contains? s "view"))) 0))
+(send (key-event 'backspace no-mods))
+(check-equal? (view-row-count) 1)
+(check-not-false (path-table-did (app-paths a) (build-path root "aaa.txt")))
+
+;; 再关最后一个 view → 文档仍保留，只是变成没有 view
+(editor-view-set-point! (ed) (bufs-vid)
+                        (point (buf-line (lambda (s) (string-contains? s "view"))) 0))
+(send (key-event 'backspace no-mods))
+(check-equal? (view-row-count) 0)
+(check-not-false (path-table-did (app-paths a) (build-path root "aaa.txt")))   ; 文档还在
+(check-not-false (string-contains? (editor-view-string (ed) (bufs-vid)) "aaa.txt"))
+(check-false (edit-vid))                                   ; 没有 view 可显示了
+
+;; doc 行 Backspace：关文档（连带所有 view）
+(editor-view-set-point! (ed) (bufs-vid)
+                        (point (buf-line (lambda (s) (equal? s "aaa.txt"))) 0))
+(send (key-event 'backspace no-mods))
+(check-false (path-table-did (app-paths a) (build-path root "aaa.txt")))
+(check-false (string-contains? (editor-view-string (ed) (bufs-vid)) "aaa.txt"))
 
 ;;; ---------- 退出 ----------
 
