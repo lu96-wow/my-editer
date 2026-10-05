@@ -5,13 +5,13 @@
 ;;; lab/ui/mode.rkt —— 输入转移状态（纯）
 ;;;
 ;;; 底部那条是**共享槽位**，只放两份文档：
-;;;   空闲 → state 文档；有 prompt → input 文档（可编辑 / 确认都是它）。
-;;; 切换只改一个 `mode` 值（#f | prompt）；布局 / 命令表都是静态的。
+;;;   空闲 / 前缀 → state 文档；有 prompt → input 文档（可编辑 / 确认都是它）。
+;;; 切换只改一个 `mode` 值（#f | prompt | prefix）；布局 / 命令表都是静态的。
 ;;;
-;;; 三个东西分离：
-;;;   slot.rkt   文档（纯，复用）
-;;;   prompt     这次输入是什么 + 值往哪去（本文件）
-;;;   业务续延   发起方给，模态只管调用
+;;; 三种转移状态：
+;;;   #f      空闲
+;;;   prompt  要输入（续延回传值；见下）
+;;;   prefix  前缀键（如 C-p）：下一键只能命中它自己的表，用完即退；不改底部槽位
 ;;;
 ;;; ⚠ 值回传：命令表是事件驱动、不是调用栈，Enter handler 的返回值没人接。
 ;;;   所以发起时把**续延**放进 prompt，提交时调用它：
@@ -29,7 +29,8 @@
 ;;;   - 单槽：一次只允许一个 prompt（要嵌套再改栈）。
 
 (provide (struct-out prompt)
-         input-begin
+         (struct-out prefix)
+         input-begin prefix-begin
          input-commit input-answer input-cancel
          prompt-document prompt-value
          mode-bottom-vid mode-focus-vid mode-tables)
@@ -72,18 +73,26 @@
   (define k (prompt-on-cancel p))
   (when k (k)))
 
+;;; ================= 前缀键 =================
+
+;; 前缀：标签（底部提示用）+ 下一键只查这张表；不挂文档、不动焦点。
+(struct prefix (label tables) #:transparent)
+
+(define (prefix-begin label tables) (prefix label tables))
+
 ;;; ================= 模式 → 槽位 / 焦点 / 命令表 =================
 
-;; 底部槽位此刻挂哪个 vid（state-vid / input-vid 由 app 传）。
+;; 底部槽位此刻挂哪个 vid（state-vid / input-vid 由 app 传）；只有 prompt 占 input。
 (define (mode-bottom-vid m state-vid input-vid)
-  (if m input-vid state-vid))
+  (if (prompt? m) input-vid state-vid))
 
-;; 模态激活时焦点该在哪；空闲 → #f（表示不动 / 还原）。
+;; prompt 激活时焦点该在输入视图；空闲 / 前缀 → #f（不动焦点）。
 (define (mode-focus-vid m input-vid)
-  (and m input-vid))
+  (and (prompt? m) input-vid))
 
-;; 模态要额外叠的命令表（输入型 / 确认型）。dispatch 把它接在 did 表之后。
+;; 模态要额外叠的命令表（prompt 输入/确认/前缀）。
 (define (mode-tables m edit-table confirm-table)
   (cond [(not m) '()]
-        [(prompt-editable? m) (list edit-table)]
-        [else (list confirm-table)]))
+        [(prompt? m) (if (prompt-editable? m) (list edit-table) (list confirm-table))]
+        [(prefix? m) (prefix-tables m)]
+        [else '()]))

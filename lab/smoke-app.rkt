@@ -18,6 +18,7 @@
          "app/state.rkt"
          "app/panes.rkt"
          "app/edit-panes.rkt"
+         "app/actions.rkt"
          "app/paths.rkt")
 
 (define root (simplify-path (path->complete-path (make-temporary-file "app~a" 'directory))))
@@ -73,8 +74,10 @@
 
 ;;; ---------- 树：Enter 打开文件（懒建编辑视图，焦点留在树） ----------
 
-(send (key-event 'right (mods #t #f #f)))                  ; 主区空 → 焦点不动
+(send (key-event 'p (mods #t #f #f)))                      ; C-p 前缀
+(send (key-event 'right no-mods))                          ; 主区空 → 焦点不动
 (check-equal? (app-focus a) (tree-vid))
+(check-false (app-mode a))                                 ; 前缀用完即退
 
 (define l (tree-line-of "aaa.txt"))
 (check-true (exact-nonnegative-integer? l))
@@ -84,16 +87,28 @@
 (check-equal? (app-focus a) (tree-vid))
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")
 
-;;; ---------- 焦点移动（Ctrl+右）：主区出现后可用；state 行三段 ----------
+;;; ---------- 焦点移动（C-p 前缀 + 方向）：主区出现后可用；state 行三段 ----------
 
-(send (key-event 'right (mods #t #f #f)))
+(send (key-event 'p (mods #t #f #f)))                      ; C-p 前缀
+(check-true (prefix? (app-mode a)))                        ; 进入前缀
+(void (app-prepare! a))
+(check-not-false (string-contains? (editor-view-string (ed) (state-vid)) "[C-p-]"))
+(send (key-event 'right no-mods))                          ; C-p right → 到编辑格
+(check-false (app-mode a))                                 ; 前缀退出
 (check-equal? (app-focus a) (edit-vid))
 (void (app-prepare! a))
 (define state-text (editor-view-string (ed) (state-vid)))
 (check-not-false (string-contains? state-text "edit"))         ; 焦点
 (check-not-false (string-contains? state-text "1:1"))          ; 行:列
 (check-not-false (string-contains? state-text "aaa.txt"))      ; view 对应 document 的文件名
-(send (key-event 'left (mods #t #f #f)))
+;; 前缀里非方向键不回落 normal（类 Emacs）：C-p 后按字符不会插入
+(define before-prefix (editor-view-string (ed) (edit-vid)))
+(send (key-event 'p (mods #t #f #f)))
+(send (key-event #\Z no-mods))
+(check-equal? (editor-view-string (ed) (edit-vid)) before-prefix)
+(check-false (app-mode a))
+(send (key-event 'p (mods #t #f #f)))
+(send (key-event 'left no-mods))                           ; C-p left → 回树
 (check-equal? (app-focus a) (tree-vid))
 
 ;;; ---------- minibuffer：Ctrl+N 新建文件（模态表走 dispatch） ----------
@@ -343,10 +358,12 @@
 (define tv (car (tree-vids (app-edit-tree b))))
 (define bv (cadr (tree-vids (app-edit-tree b))))
 (check-equal? (app-focus b) bv)
-;; Ctrl+↑/↓ 移焦点
-(send2 (key-event 'up (mods #t #f #f)))
+;; C-p 前缀 + ↑/↓ 移焦点
+(send2 (key-event 'p (mods #t #f #f)))
+(send2 (key-event 'up no-mods))
 (check-equal? (app-focus b) tv)
-(send2 (key-event 'down (mods #t #f #f)))
+(send2 (key-event 'p (mods #t #f #f)))
+(send2 (key-event 'down no-mods))
 (check-equal? (app-focus b) bv)
 
 ;; Ctrl+L：垂直分隔（左右）——继续拆新的 active
@@ -366,5 +383,31 @@
 (check-true (>= (length (editor-document-view-list (b-ed)
                                                   (path-table-did (app-paths b) (build-path root2 "one.txt"))))
                 3))
+
+;; 「按焦点删」而不是按顺序/active：拆完焦点在上，删的就是上面那个
+(send2 (key-event 'k (mods #t #f #f)))                     ; 再拆成上下两叶
+(define pv (tree-vids (app-edit-tree b)))
+(check-equal? (length pv) 2)
+(send2 (key-event 'p (mods #t #f #f)))
+(send2 (key-event 'up no-mods))                            ; 焦点到上面那个
+(check-equal? (app-focus b) (car pv))
+(check-equal? (app-edit-active b) (car pv))               ; active 已跟随焦点
+(send2 (key-event 'd (mods #t #f #f)))                     ; 删焦点窗格（上面）
+(check-equal? (length (main-panes)) 1)
+(check-equal? (car (main-panes)) (cadr pv))               ; 剩下的是下面那个（不是 active 顺序）
+(check-equal? (app-focus b) (cadr pv))                    ; 焦点跟到剩下
+;; 重排：剩下的窗格补满主区
+(define (pane-rect vid)
+  (for/first ([r (in-list (layout-result-panes (app-layout-result b)))]
+              #:when (eqv? (rectangle-view-id r) vid)) r))
+(check-equal? (rectangle-height (pane-rect (cadr pv))) (app-main-h b))
+
+;; 回归：同一个 view 不能同时占两个编辑窗格（否则删一个会连带删、改一个会连带改）
+(send2 (key-event 'k (mods #t #f #f)))                     ; 再拆成两叶
+(define w (car (tree-vids (app-edit-tree b))))
+(app-show-view! b w)                                       ; 把已在树上的 w 再显示一次
+(define vv (tree-vids (app-edit-tree b)))
+(check-equal? (length vv) 2)
+(check-equal? (length (remove-duplicates vv)) 2)           ; 无重复 vid（会新建一个 view）
 
 (displayln "lab smoke-app: ok")

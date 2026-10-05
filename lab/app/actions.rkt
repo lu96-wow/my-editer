@@ -3,12 +3,14 @@
 (require racket/file
          racket/path
          "../../core/editor.rkt"
+         "../base/layout/main.rkt"
          "../ui/tree.rkt"
          "../ui/buffers.rkt"
          "../ui/slot.rkt"
          "../ui/mode.rkt"
          "state.rkt"
          "panes.rkt"
+         "edit-panes.rkt"
          "paths.rkt")
 
 ;;; lab/app/actions.rkt —— 业务动作：唯一改 app / editor 的地方
@@ -21,7 +23,8 @@
          app-open-path! app-close-path! app-close-view! app-close-document!
          app-show-view! app-show-document! app-split! app-pane-close!
          app-bufs-refresh! app-bufs-activate! app-bufs-close! app-bufs-new-view! app-save!
-         app-toggle-focus! app-toggle-left!
+         app-toggle-focus! app-toggle-left! app-move-focus!
+         app-prefix-begin! app-prefix-end!
          app-begin! app-commit! app-answer! app-cancel! app-resize!)
 
 ;;; ================= 小工具 =================
@@ -143,17 +146,30 @@
 
 ;; 把某个 view 显示到 active 编辑窗格（view 是持久对象，旧 view 不关）。
 ;; focus? = #f 时只换编辑格内容，不动焦点（文件树打开文件的默认行为）。
+;; 把某个 view 显示到 active 编辑窗格。
+;; ⚠ 同一 view 不能同时占两个编辑窗格：如果它已经在**别的** leaf 里显示，就为这个窗格
+;;    新建一个同文档的 view（保持两个窗格独立，且避免树里出现重复 vid）。
 (define (app-show-view! a vid [focus? #t])
-  (app-edit-open! a vid)
-  (when focus? (set-app-focus! a vid))
+  (define did (editor-view-document-id (app-ed a) vid))
+  (define active (app-edit-active a))
+  (define vid*
+    (if (and (edit-panes-contains? (app-edit a) vid) (not (eqv? vid active)))
+        (let-values ([(ed2 v2) (editor-add-view (app-ed a) did (app-main-w a) (app-main-h a)
+                                               #:line-numbers? #t)])
+          (set-app-ed! a ed2) v2)
+        vid))
+  (app-edit-open! a vid*)
+  (when focus? (set-app-focus! a vid*))
   (app-bufs-refresh! a))
 
-;; 把某个 did 显示到编辑格（复用它的第一个视图，没有再建）。
+;; 把某个 did 显示到 active 编辑窗格：优先用它**没被别的窗格占用**的 view，没有再建。
 (define (app-show-document! a did [focus? #t])
-  (define vids (editor-document-view-list (app-ed a) did))
-  (define vid (if (pair? vids) (car vids)
+  (define used (edit-panes-vids (app-edit a)))
+  (define free (for/first ([v (in-list (editor-document-view-list (app-ed a) did))]
+                           #:unless (memv v used)) v))
+  (define vid (or free
                   (let-values ([(ed2 v2) (editor-add-view (app-ed a) did (app-main-w a) (app-main-h a)
-                                                          #:line-numbers? #t)])
+                                                         #:line-numbers? #t)])
                     (set-app-ed! a ed2) v2)))
   (app-show-view! a vid focus?))
 
@@ -173,11 +189,16 @@
     (app-bufs-refresh! a)))
 
 ;; 关闭 active 编辑窗格：只撤窗格，**不关 view**（view 仍在文档列表里）。
+;; 关闭当前**有焦点**的编辑窗格（不是按顺序 / 不是 last-split）；
+;; 关完剩下那个会由 compute-layout 自动补满主区；焦点跟到新的 active，没有就回左栏。
+;; 焦点不在编辑区时，回落到 active 编辑窗格。
 (define (app-pane-close! a)
-  (define vid (app-edit-active a))
+  (define f (app-focus a))
+  (define vid (if (and f (edit-panes-contains? (app-edit a) f)) f (app-edit-active a)))
   (when vid
+    (define was-focus? (eqv? f vid))
     (app-edit-remove! a (list vid))
-    (when (eqv? (app-focus a) vid)
+    (when was-focus?
       (set-app-focus! a (or (app-edit-active a) (app-left-vid a))))
     (app-bufs-refresh! a)))
 
@@ -224,6 +245,11 @@
 
 ;;; ================= 焦点 =================
 
+;; 按几何邻居移焦点（前缀键方向用）。
+(define (app-move-focus! a dir)
+  (define vid (pane-dir (app-focus-panes a) (app-focus a) dir))
+  (when vid (set-app-focus! a vid)))
+
 (define (app-toggle-focus! a)
   (define p (app-panes a))
   (define ev (app-edit-active a))
@@ -242,6 +268,13 @@
 ;;
 ;; 命令表的选择交给 dispatch（mode-tables），这里只管「挂文档 / 聚焦 / 退出模态」。
 
+;; 前缀键：进入一个只认 tables 的瞬时状态；下一次按键后由 app 退出（见 app-dispatch!）。
+(define (app-prefix-begin! a label tables)
+  (app-mode-set! a (prefix-begin label tables)))
+
+(define (app-prefix-end! a)
+  (when (prefix? (app-mode a)) (app-mode-set! a #f)))
+
 (define (app-begin! a label editable? on-commit [on-cancel #f])
   (define p (input-begin label editable? (app-focus a) on-commit on-cancel))
   (app-mode-set! a p)
@@ -252,7 +285,7 @@
 
 (define (app-commit! a)
   (define p (app-mode a))
-  (when (and p (prompt-editable? p))
+  (when (and (prompt? p) (prompt-editable? p))
     (define s (editor-view-string (app-ed a) (app-modal-vid a)))
     (app-mode-set! a #f)
     (set-app-focus! a (prompt-prev-focus p))
@@ -260,14 +293,14 @@
 
 (define (app-answer! a yes?)
   (define p (app-mode a))
-  (when p
+  (when (prompt? p)
     (app-mode-set! a #f)
     (set-app-focus! a (prompt-prev-focus p))
     (input-answer p yes?)))
 
 (define (app-cancel! a)
   (define p (app-mode a))
-  (when p
+  (when (prompt? p)
     (app-mode-set! a #f)
     (set-app-focus! a (prompt-prev-focus p))
     (input-cancel p)))

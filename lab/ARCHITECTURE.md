@@ -16,7 +16,7 @@ lab/
     tree.rkt        文件树模型 → document
     buffers.rkt     文档/视图两级列表 → document
     slot.rkt        底部槽位文档（state / input）
-    mode.rkt        输入转移状态（prompt + 续延），不认识 vid/布局
+    mode.rkt        输入转移状态（#f | prompt | prefix 前缀键），不认识 vid/布局
   app/       应用层（唯一状态 + 动作）
     panes.rkt       单值 pane registry：role → vid（tree/bufs/state/input）
     edit-panes.rkt  **编辑区分屏模型**：split 树 + active leaf
@@ -56,10 +56,19 @@ lab/
 - `edit-panes-open!`：用新 vid 替换 active leaf（树空则建根 leaf）——打开文件的语义。
 - `edit-panes-split!`：在 active leaf 上 `tree-split` 出新窗格（'lr 左右 / 'tb 上下），active 转新窗格。
 - `edit-panes-remove!`：删若干 vid，active 被删就回落到第一个剩余 leaf。
+
+**不变式：一个 view 只能占一个编辑 leaf**。把已经在别的窗格显示的 view 再显示到某窗格时，
+`app-show-view!` / `app-show-document!` 会**新建一个同文档的 view**，绝不复用 —— 否则两个
+窗格共享同一个 view（光标 / 滚动 / 尺寸耦合），而且 `tree-remove` 按 vid 删会把两块一起删掉。
+（删除任意窗格 + 重排：`tree-remove` 只删那个 leaf、兄弟顶替，`compute-layout` 重新铺满。）
 - `app-layout-result` 直接把 `tree` 交给 `compute-layout`；多窗格时**一次铺出多个 rectangle**。
 
-命令：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关 active 窗格。
+命令：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关**焦点所在**的编辑窗格。
 拆分时新窗格显示**同一文档的新 view**（独立光标 / 滚动）；关窗格**不关 view**（view 仍在文档列表里）。
+
+active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就把它设为 active（app-handle-input 末尾同步）。
+所以「打开文件 / 拆分 / 关窗格」都作用于**当前焦点**那块，而不是最后拆分的那块；关完剩下的由
+`compute-layout` 重新铺满。
 
 分隔线渲染：`compute-layout` 的 `bars`（1 格宽/高）作为**装饰图层**交给 core 的
 `editor-render-layout*!` / `editor-render-layout-patch`（可选 `decorations` 参数）合成进 screen，
@@ -73,6 +82,8 @@ lab/
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
 - **动作只在 `actions.rkt`**；`commands.rkt` 仅做「事件 → 动作」。
 - 模态表在 dispatch 时叠在 did 表之后，优先级最高。
+- **前缀键**（如 `C-p`）：`mode` 的第三种状态 `prefix`；下一键只查它自己的表（不回落 normal），用完即退；
+  底部仍显 state（带 `[C-p-]` 提示）。用来绕开「终端不发 `Ctrl+↑/↓`」。
 
 ## 跑 / 测
 
@@ -84,9 +95,9 @@ racket lab/smoke-app.rkt    # 集成（无终端）
 
 ## 键位
 
-- 焦点移动：`Ctrl+←/→/↑/↓`（注：部分终端不发修饰方向键的 CSI 序列，真机上 ↑/↓ 可能收不到）
+- 焦点移动：`C-p` 前缀 + `←/→/↑/↓`（`C-p` = 控制字节 0x10，方向键无修饰，任何终端都送得到）
 - `Ctrl+O` 左栏 ↔ 编辑格；`Ctrl+S` 保存；`Ctrl+Q` 退出
-- 编辑区分屏：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关 active 窗格
+- 编辑区分屏：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关焦点所在编辑窗格（剩下自动补满）
 - 编辑格：`Ctrl+A` 全选；常规编辑（方向 / Shift+方向选择 / 剪贴板 / 撤销）
 - 文件树：`↑/↓/←/→` 光标移动、`Enter` 打开文件 / 展开折叠目录、`Tab` 切左栏面板、
   `Ctrl+N` 新建文件、`Ctrl+L` 新建目录、`Backspace` 删除（y/n）

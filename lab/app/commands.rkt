@@ -3,7 +3,6 @@
 (require "../../core/editor.rkt"
          "../base/input.rkt"
          "../base/command.rkt"
-         "../base/layout/main.rkt"
          "state.rkt"
          "actions.rkt")
 
@@ -17,7 +16,7 @@
 ;;;   按 did      树 / 文档列表 / state 槽（覆盖 global）
 ;;;   模态表      input-edit-keys / confirm-keys，由 mode-tables 在 dispatch 时叠上
 
-(provide edit-keys focus-keys app-keys readonly-keys
+(provide edit-keys app-keys readonly-keys
          tree-keys bufs-keys
          input-edit-keys confirm-keys)
 
@@ -64,21 +63,18 @@
    (key 'z 'ctrl)      (lambda (e a) (editor-view-undo! (ed* a) (focused a)))
    (key 'y 'ctrl)      (lambda (e a) (editor-view-redo! (ed* a) (focused a)))))
 
-;;; ================= global：焦点移动 =================
-
-(define (move-focus dir)
-  (lambda (e a)
-    (define vid (pane-dir (app-focus-panes a) (app-focus a) dir))
-    (when vid (set-app-focus! a vid))))
-
-;; 焦点移动 = Ctrl+方向键。（注：部分终端/复用器不一定会发修饰方向键的 CSI 序列，
-;; 真机上 Ctrl+↑/↓ 可能收不到；那是终端层的事，racket-tui 的解析本身是对的。）
-(define focus-keys
+;;; ================= global：焦点移动（C-p 前缀） =================
+;;
+;; 终端里 Ctrl+↑/↓ 常收不到（VTE 直接吞），所以用前缀键：
+;;   C-p 然后 left/right/up/down → 移焦点
+;; C-p 是普通控制字节（0x10），方向键无修饰，都能可靠送到。
+(define focus-prefix-keys
   (command-table
-   (key 'left 'ctrl)  (move-focus 'left)
-   (key 'right 'ctrl) (move-focus 'right)
-   (key 'up 'ctrl)    (move-focus 'up)
-   (key 'down 'ctrl)  (move-focus 'down)))
+   (key 'left)   (lambda (e a) (app-move-focus! a 'left))
+   (key 'right)  (lambda (e a) (app-move-focus! a 'right))
+   (key 'up)     (lambda (e a) (app-move-focus! a 'up))
+   (key 'down)   (lambda (e a) (app-move-focus! a 'down))
+   (key 'escape) (lambda (e a) (void))))    ; 退出前缀（app 会自动清）
 
 ;;; ================= global：app =================
 
@@ -86,6 +82,7 @@
   (command-table
    (key 'q 'ctrl) (lambda (e a) (set-app-quit?! a #t))
    (key 'o 'ctrl) (lambda (e a) (app-toggle-focus! a))
+   (key 'p 'ctrl) (lambda (e a) (app-prefix-begin! a "C-p" (list focus-prefix-keys)))  ; 前缀：移焦点
    (key 's 'ctrl) (lambda (e a) (app-save! a))
    ;; 编辑区分屏：K 水平（上下）/ L 垂直（左右）分隔，D 关窗格
    (key 'k 'ctrl) (lambda (e a) (app-split! a 'tb))

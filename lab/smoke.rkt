@@ -134,7 +134,12 @@
 (input-answer p2 #f)
 (check-false (unbox got2))
 
-;; 底部槽位：布局的 bottom-vid 也随模式切换
+;; 前缀（如 C-p）：不占 input，不动焦点，只叠自己的表
+(define pf (prefix-begin "C-p" (list (command-table (key 'up) (lambda (e a) 'x)))))
+(check-equal? (mode-bottom-vid pf state-vid input-vid) state-vid)
+(check-false (mode-focus-vid pf input-vid))
+(check-equal? (length (mode-tables pf (command-table) (command-table))) 1)
+
 ;; 底部槽位：布局的 bottom-vid 也随模式切换
 (define lay (compute-layout (leaf 0) 80 24 #:left-vid #f #:bottom-vid input-vid))
 (check-equal? (layout-vid-at lay 30 23) input-vid)

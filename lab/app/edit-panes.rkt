@@ -13,12 +13,22 @@
 ;;; 之后要加「拆分」时，只需在这里加 split!（tree-split），app 层不用动结构知识。
 
 (provide (struct-out edit-panes)
-         edit-panes-empty edit-panes-tree edit-panes-active
+         edit-panes-empty edit-panes-tree edit-panes-active edit-panes-contains? edit-panes-vids
          edit-panes-open! edit-panes-split! edit-panes-remove!)
 
 (struct edit-panes (tree active) #:mutable #:transparent)
 
 (define (edit-panes-empty) (edit-panes #f #f))
+
+;; vid 是否是当前树里的一个 leaf。
+(define (edit-panes-contains? ep vid)
+  (define t (edit-panes-tree ep))
+  (and t vid (tree-contains? t vid)))
+
+;; 当前编辑区用到的所有 vid（不重复）。
+(define (edit-panes-vids ep)
+  (define t (edit-panes-tree ep))
+  (if t (tree-vids t) '()))
 
 ;; 把 active leaf 换成一个新 vid；没有树就建根 leaf。→ 新 active
 (define (edit-panes-open! ep vid)

@@ -3,6 +3,7 @@
 (require "../../core/editor.rkt"
          "../base/layout/main.rkt"
          "../ui/slot.rkt"
+         "../ui/mode.rkt"
          "state.rkt"
          "panes.rkt")
 
@@ -25,23 +26,26 @@
         [(eqv? vid (panes-bufs p)) "buffers"]
         [else "edit"]))
 
-;; 状态栏：焦点 + 行:列 + 该 view 对应 document 的文件名。
+;; 状态栏：焦点 + 行:列 + 该 view 对应 document 的文件名；前缀激活时附提示。
 (define (state-line a)
   (define vid (app-focus a))
   (define ed (app-ed a))
-  (cond
-    [(not vid) ""]
-    [else
-     (define did (editor-view-document-id ed vid))
-     (format "~a  ~a:~a  ~a"
-             (focus-label a vid)
-             (add1 (editor-view-point-line ed vid))
-             (add1 (editor-view-point-column ed vid))
-             (editor-document-name ed did))]))
+  (define base
+    (cond
+      [(not vid) ""]
+      [else
+       (define did (editor-view-document-id ed vid))
+       (format "~a  ~a:~a  ~a"
+               (focus-label a vid)
+               (add1 (editor-view-point-line ed vid))
+               (add1 (editor-view-point-column ed vid))
+               (editor-document-name ed did))]))
+  (define m (app-mode a))
+  (if (prefix? m) (format "~a  [~a-]" base (prefix-label m)) base))
 
-;; 空闲（无 prompt）时把 state 文档刷成当前状态；输入中不动（底部显示 input）。
+;; prompt 时底部显示 input（不刷 state）；空闲 / 前缀都刷 state。
 (define (app-state-refresh! a)
-  (unless (app-mode a)
+  (unless (prompt? (app-mode a))
     (define ed (app-ed a))
     (define vid (panes-state (app-panes a)))
     (define s (pad-right (state-line a) (app-main-w a)))

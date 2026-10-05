@@ -47,7 +47,7 @@
   (define cs (command-set-add-doc
               (command-set-add-doc
                (command-set-add-doc
-                (command-set (list focus-keys edit-keys app-keys))
+                (command-set (list edit-keys app-keys))
                 tdid tree-keys)
                bdid bufs-keys)
               stdid readonly-keys))
@@ -59,9 +59,16 @@
 ;;; ================= 事件入口 =================
 
 (define (app-dispatch! a ev)
-  (dispatch-run (app-cs a) (focused-did a)
-                (mode-tables (app-mode a) input-edit-keys confirm-keys)
-                ev a))
+  (define m (app-mode a))
+  (cond
+    ;; 前缀（如 C-p）：只看它自己的表，不回落 normal；一次派发后退出。
+    [(prefix? m)
+     (command-run (prefix-tables m) (event->binding ev) ev a)
+     (app-prefix-end! a)]
+    [else
+     (dispatch-run (app-cs a) (focused-did a)
+                   (mode-tables m input-edit-keys confirm-keys)
+                   ev a)]))
 
 (define (app-handle-input a ev)
   (cond
@@ -69,10 +76,14 @@
     [(resize-event? ev) (app-resize! a (resize-event-cols ev) (resize-event-rows ev))]
     [(mouse-event? ev) (app-handle-mouse a ev)]
     [else (app-dispatch! a ev)])
-  ;; 模态：焦点一旦离开输入视图 → 取消。
-  (when (and (app-mode a)
+  ;; 模态：prompt 时焦点一旦离开输入视图 → 取消（前缀不改焦点，不受此影响）。
+  (when (and (prompt? (app-mode a))
              (not (eqv? (app-focus a) (app-modal-vid a))))
-    (app-cancel! a)))
+    (app-cancel! a))
+  ;; 焦点落在某个编辑窗格 → 它就是 active（打开 / 拆分 / 删除都按它来）。
+  (define f (app-focus a))
+  (when (and f (edit-panes-contains? (app-edit a) f))
+    (set-edit-panes-active! (app-edit a) f)))
 
 ;;; ================= 鼠标 =================
 
@@ -86,11 +97,13 @@
   (when line (editor-view-set-point! (app-ed a) vid (point line col))))
 
 (define (app-handle-mouse a ev)
+  (when (prefix? (app-mode a))                 ; 前缀中点击 → 先退出前缀
+    (app-prefix-end! a))
   (define p (pane-at (layout-result-panes (app-layout-result a))
                      (mouse-col ev) (mouse-row ev)))
   (cond
     ;; 输入激活：点输入行 → 定位光标；其它任何**按下** → 取消输入。
-    [(app-mode a)
+    [(prompt? (app-mode a))
      (define input-vid (app-modal-vid a))
      (cond
        [(and p (eqv? (rectangle-view-id p) input-vid))
