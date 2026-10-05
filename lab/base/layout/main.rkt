@@ -3,7 +3,8 @@
 (require "../../../core/editor.rkt"
          (except-in racket/list range)
          "area.rkt"
-         "split.rkt")
+         "split.rkt"
+         "focus.rkt")
 
 ;;; lab/base/layout/main.rkt —— 窗口布局（骨架）
 ;;;
@@ -22,13 +23,13 @@
 
 (provide (all-from-out "area.rkt")
          (all-from-out "split.rkt")
+         (all-from-out "focus.rkt")
          (struct-out regions)
          (struct-out layout-result)
          compute-regions compute-layout
          default-sidebar-width default-statusbar-height
          pane-at pane-vid-at bar-at region-at
          layout-vid-at layout-bar-at layout-region-at layout-hit-at
-         pane-dir pane-left pane-right pane-up pane-down
          layout-dir layout-left layout-right layout-up layout-down)
 
 ;;; ================= 区域 =================
@@ -125,45 +126,12 @@
   (or (layout-vid-at result x y) (layout-bar-at result x y)
       (layout-region-at result x y)))
 
-;;; ================= 方向移动焦点（纯几何） =================
+;;; ================= 方向移动焦点的实现在 focus.rkt（纯几何） =================
 
-(define (rect-right r) (+ (rectangle-x r) (rectangle-width r)))
-(define (rect-bottom r) (+ (rectangle-y r) (rectangle-height r)))
-(define (rect-cx r) (+ (rectangle-x r) (quotient (rectangle-width r) 2)))
-(define (rect-cy r) (+ (rectangle-y r) (quotient (rectangle-height r) 2)))
-
-(define (v-overlap? r0 r1) (and (< (rectangle-y r0) (rect-bottom r1))
-                                (< (rectangle-y r1) (rect-bottom r0))))
-(define (h-overlap? r0 r1) (and (< (rectangle-x r0) (rect-right r1))
-                                (< (rectangle-x r1) (rect-right r0))))
-
-;; panes : (listof rectangle)；dir : 'left | 'right | 'up | 'down
-(define (pane-dir panes vid dir)
-  (define cur (for/first ([r (in-list panes)] #:when (eqv? (rectangle-view-id r) vid)) r))
-  (and cur
-       (let ([cx (rect-cx cur)] [cy (rect-cy cur)])
-         (define cands
-           (for/list ([r (in-list panes)]
-                      #:unless (eqv? (rectangle-view-id r) vid)
-                      #:when (case dir
-                               [(left)  (and (< (rect-cx r) cx) (v-overlap? cur r))]
-                               [(right) (and (> (rect-cx r) cx) (v-overlap? cur r))]
-                               [(up)    (and (< (rect-cy r) cy) (h-overlap? cur r))]
-                               [(down)  (and (> (rect-cy r) cy) (h-overlap? cur r))]
-                               [else (error 'pane-dir "dir 必须是 left/right/up/down，得到 ~a" dir)]))
-             r))
-         (and (pair? cands)
-              (rectangle-view-id
-               (argmin (lambda (r) (+ (abs (- (rect-cx r) cx)) (abs (- (rect-cy r) cy))))
-                       cands))))))
-
-(define (pane-left  panes vid) (pane-dir panes vid 'left))
-(define (pane-right panes vid) (pane-dir panes vid 'right))
-(define (pane-up    panes vid) (pane-dir panes vid 'up))
-(define (pane-down  panes vid) (pane-dir panes vid 'down))
-
+;; layout-result 版的方向移动（panes 由 layout-result 取）。
 (define (layout-dir   result vid dir) (pane-dir (layout-result-panes result) vid dir))
 (define (layout-left  result vid) (layout-dir result vid 'left))
 (define (layout-right result vid) (layout-dir result vid 'right))
 (define (layout-up    result vid) (layout-dir result vid 'up))
 (define (layout-down  result vid) (layout-dir result vid 'down))
+

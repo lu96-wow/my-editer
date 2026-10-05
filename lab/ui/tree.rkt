@@ -2,7 +2,7 @@
 
 (require "../../core/editor.rkt"
          (except-in racket/list range)
-         (only-in racket/path file-name-from-path)
+         "../base/path.rkt"
          racket/file)
 
 ;;; lab/ui/tree.rkt —— 文件树（core 原生 document）
@@ -56,10 +56,6 @@
 (define tree-toggle! file-tree-toggle!)
 
 ;;; ---------- 扫描 ----------
-
-(define (basename p)
-  (define n (file-name-from-path p))
-  (if n (path->string n) (path->string p)))
 
 (define (entry-of p depth)
   (define np (simplify-path p))

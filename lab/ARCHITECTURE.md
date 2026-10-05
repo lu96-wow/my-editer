@@ -13,7 +13,8 @@ lab/
     dispatch.rkt    did + extra(模态) + event → 跑 handler（不认识 core / 焦点）
     face.rkt        动态 face（palette-color）+ 分层外观（face-stack），#:prefab 可跨进程
     brackets.rkt    括号配对 + 深度 → 高亮填充（纯）；含**增量** bracket-change
-    layout/         area / split / main（纯几何）
+    path.rkt        路径小工具（basename，ui / app 共用）
+    layout/         area / split / focus / main（纯几何；focus = 方向找邻 pane）
   plugin/    插件层（不认识 app / 终端）
     api.rkt         插件协议：plugin(name, open, change)（无优先级，注册顺序即层叠顺序）
     brackets.rkt    内置插件：括号按深度背景高亮（open/change 增量）
@@ -37,7 +38,13 @@ lab/
     edit-panes.rkt  **编辑区分屏模型**：split 树 + active leaf
     paths.rkt       did ↔ 规范化路径
     state.rkt       app 结构 + 派生量 + layout 缓存
-    actions.rkt     功能核心：唯一改 state/editor 的地方
+    actions/        功能核心：唯一改 state/editor 的地方（按域拆，聚合出口 actions.rkt）
+      core.rkt        枢纽：打开 / 关闭 / 显示 / 分屏 / 文档列表（各模块共享的原语与不变量）
+      tree.rkt        文件树动作（依赖 core + modal）
+      modal.rkt       前缀键 / prompt（不依赖其它动作）
+      file.rkt        保存 / 退出 / 尺寸
+      focus.rkt       焦点移动 / 左栏切换（依赖 core）
+    actions.rkt     聚合出口（re-export actions/*，外部 require 不变）
     commands.rkt    命令转发：功能 → 命名命令（handler 收 (event app)）
     keys/           默认命令表（纯数据：binding → 命令），按用途分开
       edit.rkt       编辑键
@@ -54,7 +61,7 @@ lab/
   backend/
     tui.rkt         racket-tui：screen patch → ANSI（颜色查 theme/）；读事件
   theme/      主题配置（纯数据，不依赖终端）
-    theme.rkt       主题机制：face / overlay → 颜色
+    theme.rkt       主题机制：face / palette-color / face-stack / overlay → 颜色
     dark.rkt        默认深色主题
     light.rkt       浅色主题
     main.rkt        汇总 + current-theme
@@ -64,6 +71,48 @@ lab/
 
 依赖方向是 DAG：`base → (tui)`、`ui → core`、`plugin → core + base`、`app → ui + base + plugin + core`、
 `backend → app + plugin + theme`、`theme → base/face`。
+`actions/` 内部也是 DAG：**spoke → core**，core 不 require 任何 spoke。
+
+## 设计主线（端到端）
+
+**一、事件 → 动作**
+
+```
+backend/tui  read-event
+  → app-handle-input  (resize / mouse 先分流)
+     → app-dispatch!  前缀模式只看 prefix-tables（不回落）；否则
+         dispatch-run(cs, did, (mode-tables m …))   ← did 表 + 模态表叠在一起
+           → command（commands.rkt：功能 → 命名命令）
+             → action（actions/*：唯一改 state / editor）
+```
+
+- 「当前是谁」= did（不是焦点）：树 / 文档列表 / 状态栏各有自己的 did 表，编辑文档用全局表。
+- 模态（输入 / 确认 / 前缀）只是 dispatch 的**额外表**，不再悄悄改 command-set。
+- 事件后兜底：prompt 焦点跑掉就取消；焦点落在编辑 leaf 就设为 active；再 tick 插件。
+
+**二、编辑 → 插件 → 属性**
+
+```
+编辑命令 editor-view-*! → 返回 core 的 change
+  app-plugin-note-change!  change → (l0 c0 l1 c1 inserted) 存进 manager.pending
+app-prepare! → app-plugin-tick!
+  manager-sync!  按 document 版本 token 派活（新版本才发；发 diff 不发整篇）
+  manager-poll!  结果回来，token 仍是当前版本才写回
+    → 逐格 face-compose 叠层 → document-highlight-fill-batch*
+      （括号背景 + 语法前景共存；同分量后层覆盖前层）
+```
+
+属性随 document 值存在 box 里：undo/redo 回到旧版本时影子 / 结果 / 属性都还在，不重算不重发。
+
+**三、渲染**
+
+```
+app-prepare!  刷 state 槽位 + tick 插件 + 取本帧窗格（唯一入口，全量 / 增量后端都走）
+app-bar-panes 从布局算分隔线（装饰图层）
+  → core editor-render-layout-patch（文本通道 project ⊕ overlay ⊕ 装饰）
+    → backend style-bytes：face → (fg bg)（theme/），overlay 叠上
+      → ANSI 写出（只写变化的格）
+```
 
 ## 与 lab-rebuild 的耦合点对照
 
@@ -109,14 +158,15 @@ active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就�
 ## 命令的三层
 
 ```
-功能核心  actions.rkt    唯一改 state / editor；一个能力一个函数
+功能核心  actions/*.rkt   唯一改 state / editor；一个能力一个函数（聚合出口 actions.rkt）
    ↓
 命令转发  commands.rkt   把能力包成统一命令 (event app) -> any
    ↓
 默认命令表 keys/*.rkt    binding → 命令；纯数据，不 require core/actions/state
 ```
 
-- `actions.rkt` 不理解按键 / 事件，也不认识命令表：只暴露「动作」。
+- `actions/` 按域拆（core / tree / modal / file / focus）；**spoke → core**，core 不 require 任何 spoke。
+  它不理解按键 / 事件，也不认识命令表：只暴露「动作」。
 - `commands.rkt` 是唯一的转发点：所有 handler 形状统一 `(event app)`，参数化的用工厂
   （`cmd-nav` / `cmd-insert-string` / `cmd-prefix`）。命令表只认这里的名字。
 - `keys/` 每张表独立成文件，`keys/main.rkt` 汇总；装配点 `app.rkt` 只 require 汇总。
@@ -247,7 +297,8 @@ signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它
 - **一个事实只存一处**：pane 身份在 `panes`、路径在 `paths`、模态在 `app.mode`、布局在 `app.layout`。
 - **改 layout 输入必须走 state.rkt 的 setter**（否则缓存过期）。
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
-- **动作只在 `actions.rkt`**；`commands.rkt` 只做「功能 → 命令」转发；`keys/` 只做「binding → 命令」。
+- 动作只在 `actions/`（聚合出口 `actions.rkt`）；`commands.rkt` 只做「功能 → 命令」转发；
+  `keys/` 只做「binding → 命令」。
 - **颜色只在 `theme/`**；后端 / view-model 不写死 RGB。
 - **插件不改 text**；装饰只写属性轨，且必须过 `manager` 的版本闸门（不直接调 `document-*`）。
 - 模态表在 dispatch 时叠在 did 表之后，优先级最高。
@@ -281,7 +332,6 @@ racket lab/smoke-app.rkt    # 集成（无终端）
 ## 还没动（以后）
 
 - `base/input.rkt` 仍直接依赖 racket-tui 的事件类型（换后端要改这里）。
-- `basename` 在 `ui/tree.rkt` 与 `app/actions.rkt` 各一份。
 - 绑定词表把可打印字符塌成 `'text`，所以 y/n 仍要回看原始 event（`cmd-answer`）。
   要彻底解决需给绑定加「按字符」形态。
 - state 行每变一次就整篇 `editor-view-assign!`，可用 `editor-view-change-text` 增量。

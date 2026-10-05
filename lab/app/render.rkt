@@ -79,11 +79,11 @@
              #:when (and (positive? (bar-width b)) (positive? (bar-height b))))
     (bar->pane b)))
 
-;; 一次性全量渲染（测试 / 非增量后端用）。
+;; 一次性全量渲染（测试 / 非增量后端用）：与增量后端走**同一个** app-prepare! 入口
+;; （刷 state 槽位 + 插件 tick + 取本帧窗格）。
 (define (app-render a)
-  (app-state-refresh! a)
-  (define lr (app-layout-result a))
+  (define panes (app-prepare! a))
   (editor-render-layout*! (app-ed a)
-                          (layout-result-panes lr)
+                          panes
                           (app-focus a) (app-width a) (app-height a)
                           (app-bar-panes a)))
