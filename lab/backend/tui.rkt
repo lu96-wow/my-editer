@@ -6,7 +6,8 @@
          "../../core/view/patch.rkt"
          "../app/app.rkt"
          "../app/state.rkt"
-         "../app/render.rkt")
+         "../app/render.rkt"
+         "../theme/main.rkt")
 
 ;;; lab/backend/tui.rkt —— racket-tui 后端
 ;;;
@@ -22,27 +23,9 @@
 (define (rgb-fg rgb) (if rgb (apply tui:format-rgb-fg-base rgb) #""))
 (define (rgb-bg rgb) (if rgb (apply tui:format-rgb-bg-base rgb) #""))
 
-(define (face-colors face)
-  (case face
-    [(line-number) (values '(90 96 110) #f)]
-    [(tree-dir)    (values '(120 180 240) #f)]
-    [(tree-file)   (values '(200 200 200) #f)]
-    [(tree-link)   (values '(120 200 200) #f)]
-    [(tree-hidden) (values '(120 120 130) #f)]
-    [(tree-open)   (values '(120 210 130) #f)]
-    [(input)       (values '(20 20 20) '(230 200 90))]
-    [(state)       (values '(225 225 225) '(40 44 52))]
-    [(bar)         (values '(90 96 110) #f)]
-    [(buf-current) (values '(120 210 130) #f)]
-    [(buf-file)    (values '(200 200 200) #f)]
-    [(buf-untitled)(values '(170 170 170) #f)]
-    [(buf-view)    (values '(140 160 190) #f)]
-    [else          (values '(205 205 205) #f)]))
-
-(define (overlay-colors ov)
-  (case ov
-    [(selection) (values #f '(58 74 128))]
-    [else        (values #f #f)]))
+;; 颜色全在 theme/ 下配置；后端只把主题颜色翻成 ANSI。
+(define (face-colors face) (theme-face-colors (current-theme) face))
+(define (overlay-colors ov) (theme-overlay-colors (current-theme) ov))
 
 (define (style-bytes attr)
   (define ov (and (pair? attr) (car attr)))

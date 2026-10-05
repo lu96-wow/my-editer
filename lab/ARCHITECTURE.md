@@ -36,12 +36,17 @@ lab/
     render.rkt      state 行 + 每帧准备 app-prepare!
     app.rkt         装配 init + 事件入口（薄壳）
   backend/
-    tui.rkt         racket-tui：screen patch → ANSI；读事件
+    tui.rkt         racket-tui：screen patch → ANSI（颜色查 theme/）；读事件
+  theme/      主题配置（纯数据，不依赖终端）
+    theme.rkt       主题机制：face / overlay → 颜色
+    dark.rkt        默认深色主题
+    light.rkt       浅色主题
+    main.rkt        汇总 + current-theme
   main.rkt
   smoke.rkt / smoke-app.rkt
 ```
 
-依赖方向是 DAG：`base → (tui)`、`ui → core`、`app → ui + base + core`、`backend → app`。
+依赖方向是 DAG：`base → (tui)`、`ui → core`、`app → ui + base + core`、`backend → app + theme`、`theme → 无`。
 
 ## 与 lab-rebuild 的耦合点对照
 
@@ -100,12 +105,31 @@ active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就�
 - `keys/` 每张表独立成文件，`keys/main.rkt` 汇总；装配点 `app.rkt` 只 require 汇总。
   `C-p` 前缀表（`focus.rkt`）被 `app.rkt` 的 `cmd-prefix` 引用，键表之间可以组合。
 
+## 主题
+
+颜色配置从后端挪到 `theme/`，与终端渲染解耦：
+
+```
+theme/theme.rkt   机制：theme 结构（faces / overlays / default-face）+ 查询
+theme/dark.rkt    默认深色（原 backend/tui.rkt 里的硬编码配色）
+theme/light.rkt   浅色
+theme/main.rkt    汇总 + (current-theme) 参数
+```
+
+- 颜色值是 #f 或 `(r g b)`，**纯数据**，不认识 ANSI / racket-tui。
+- `backend/tui.rkt` 只负责把当前主题的颜色翻成转义序列（`face-colors` / `overlay-colors` →
+  `theme-face-colors` / `theme-overlay-colors`）。
+- face / overlay 名由各 view-model 定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
+  `app/render.rkt`、core 的 `line-number`）；主题把它们映射到颜色。
+- 换主题：`(current-theme light-theme)`（`current-theme` 是 parameter）。
+
 ## 关键约定
 
 - **一个事实只存一处**：pane 身份在 `panes`、路径在 `paths`、模态在 `app.mode`、布局在 `app.layout`。
 - **改 layout 输入必须走 state.rkt 的 setter**（否则缓存过期）。
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
 - **动作只在 `actions.rkt`**；`commands.rkt` 只做「功能 → 命令」转发；`keys/` 只做「binding → 命令」。
+- **颜色只在 `theme/`**；后端 / view-model 不写死 RGB。
 - 模态表在 dispatch 时叠在 did 表之后，优先级最高。
 - **前缀键**：`mode` 的第三种状态 `prefix`（记 label + tables）。下一键只查这些表（不回落 normal）；
   处理完**若还是同一个前缀就退出**，否则（处理器又进了新前缀 / 开了 prompt）就保留 → **支持任意层级嵌套**。
