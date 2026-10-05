@@ -3,14 +3,20 @@
 (require "../base/brackets.rkt"
          "api.rkt")
 
-;;; lab/plugin/brackets.rkt —— 括号按深度背景高亮（第一个内置插件）
+;;; lab/plugin/brackets.rkt —— 括号按深度背景高亮（内置插件）
 ;;;
-;;; compute 就是纯扫描：文本 → 整对区间的 (bracket-depth n) 填充。
+;;; open 走整篇扫描；change 走 base/brackets.rkt 的增量（只用编辑位置重建被破坏的一段）。
 
 (provide bracket-plugin)
 
-(define (bracket-compute j)
-  (bracket-fills (job-text j)))
+(define (br-open text path)
+  (bracket-open text path))
+
+(define (br-change state edits lines path)
+  (cond
+    [(null? edits) (values state (bstate-fills state))]
+    [(null? (cdr edits)) (bracket-change state (car edits) lines path)]
+    [else (bracket-open* lines path)]))          ; 一批多个编辑 → 整篇（罕见）
 
 (define bracket-plugin
-  (plugin 'brackets 0 bracket-compute))
+  (plugin 'brackets 0 br-open br-change))

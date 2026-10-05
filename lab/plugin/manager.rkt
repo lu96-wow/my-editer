@@ -73,9 +73,9 @@
       (cond
         [(memv token tracked) (void)]                       ; 旧版本：影子还在，什么都不用发
         [(and (pair? tracked) (pair? edits))
-         (runner-change! (manager-runner m) did (car tracked) token edits)]
+         (runner-change! (manager-runner m) did (car tracked) token path edits)]
         [else
-         (runner-open! (manager-runner m) did token (document->string doc))])
+         (runner-open! (manager-runner m) did token path (document->string doc))])
       ;; 版本表：新 token 置顶；超界淘汰 → runner drop + 清结果缓存。
       (define all (cons token (remove* (list token) tracked)))
       (define kept (take all (min (length all) history-bound)))

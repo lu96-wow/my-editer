@@ -35,8 +35,8 @@
   (define ws (list->vector workers))
   (define (w did) (vector-ref ws (modulo did (vector-length ws))))
   (make-runner
-   (lambda (did token text) (place-channel-put (w did) (list 'open did token text)))
-   (lambda (did from to edits) (place-channel-put (w did) (list 'change did from to edits)))
+   (lambda (did token path text) (place-channel-put (w did) (list 'open did token path text)))
+   (lambda (did from to path edits) (place-channel-put (w did) (list 'change did from to path edits)))
    (lambda (did token) (place-channel-put (w did) (list 'drop did token)))
    (lambda (did) (place-channel-put (w did) (list 'close did)))
    (lambda (tag name did token path) (place-channel-put (w did) (list 'job tag name did token path)))

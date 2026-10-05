@@ -12,15 +12,17 @@ lab/
     command.rkt     纯表：binding → handler + command-set
     dispatch.rkt    did + extra(模态) + event → 跑 handler（不认识 core / 焦点）
     face.rkt        动态 face 值（bracket-depth，#:prefab 可跨进程）
-    brackets.rkt    括号配对 + 深度 → 高亮填充（纯，插件的 compute）
+    brackets.rkt    括号配对 + 深度 → 高亮填充（纯）；含**增量** bracket-change
     layout/         area / split / main（纯几何）
   plugin/    插件层（不认识 app / 终端）
     api.rkt         插件协议：plugin（name/priority/compute）+ job（#:prefab）
-    brackets.rkt    内置插件：括号按深度背景高亮
+    brackets.rkt    内置插件：括号按深度背景高亮（open/change 增量）
+    shadow.rkt      影子文本：open/apply/text
+    machine.rkt     每 did：影子（按 token）+ 插件状态/fills（最新 token）
     registry.rkt    内置插件表（主进程与 worker 共用）
     runner.rkt      执行器接口 + 同步 runner
     runner-place.rkt 后台 place 进程执行器（worker 池，按 did 分派 + 唤醒源）
-    worker.rkt      place 入口：维护影子文本，收 open/change/close/job
+    worker.rkt      place 入口：维护影子 + 插件状态，收 open/change/close/job
     manager.rkt     影子同步 + 版本跟踪 + 调度 + 合并 + 写回文档
   ui/        view-model（纯，只依赖 core）
     tree.rkt        文件树模型 → document
@@ -54,7 +56,7 @@ lab/
     light.rkt       浅色主题
     main.rkt        汇总 + current-theme
   main.rkt
-  smoke.rkt / smoke-plugin.rkt / smoke-app.rkt
+  smoke.rkt / smoke-plugin.rkt / smoke-bracket.rkt / smoke-app.rkt
 ```
 
 依赖方向是 DAG：`base → (tui)`、`ui → core`、`plugin → core + base`、`app → ui + base + plugin + core`、
@@ -142,11 +144,13 @@ theme/main.rkt    汇总 + (current-theme) 参数
 插件层把这件事收成一个协议：
 
 ```
-plugin/api.rkt      plugin(name, priority, compute) + job(text, path)
-                     compute : job → (listof fill)   —— 纯函数，可跨进程
-plugin/shadow.rkt   影子文本：open(text) / apply(edits) / text   —— 增量同步的基础
+plugin/api.rkt      plugin(name, priority, open, change)   —— 带状态的纯函数
+                     open   : text path            → state + fills（首次 / 整篇）
+                     change : state edits lines path → state + fills（增量）
+plugin/shadow.rkt   影子文本：open(text) / apply(edits) / text
+plugin/machine.rkt  每个 did：影子（按 token）+ 各插件状态/fills（最新 token）
      ↓
-plugin/manager.rkt  每 tick：sync! 派活（发 open/change + submit）/ poll! 收结果 + 写回
+plugin/manager.rkt  每 tick：sync! 派活（open/change + submit）/ poll! 收结果 + 写回
      ├─ runner.rkt       同步 runner（测试）
      └─ runner-place.rkt place 后台进程（worker 池 + 唤醒源）
 ```
@@ -159,8 +163,8 @@ plugin/manager.rkt  每 tick：sync! 派活（发 open/change + submit）/ poll!
 app-handle-input / app-prepare!  →  app-plugin-tick!
   manager-sync!  有路径的文档：为当前 document 版本取 token
      token 已在缓存（undo/redo 回到旧版本）→ 什么都不发
-     token 新 + 有本 tick 的 diff → runner-change!(did from to edits)
-     否则（open/CAS…）            → runner-open!(did token text)
+     token 新 + 有本 tick 的 diff → runner-change!(did from to path edits)   ← 只发五元组
+     否则（open/CAS…）            → runner-open!(did token path text)       ← 才读整篇
      → 对「该 token 还没算过」的插件 runner-submit!(tag name did token path)
   manager-poll!  收 (tag name fills)，token 仍是当前版本才存/合并写回
 ```
@@ -169,13 +173,29 @@ app-handle-input / app-prepare!  →  app-plugin-tick!
   `(did, token)` 缓存影子，结果也按 token 缓存（每 did 保留最近 `history-bound=64` 个）。
 - **undo/redo 完全免费**：旧版本回到 token 时，影子还在、结果还在 → 不重发文本、不重算、
   不写属性。（属性本来就随 document 值存在 box 里，恢复出来就是算好的。）
-- **主线程每次编辑只付 O(编辑长度)**：core 的 `change` 只存结构（`before`/`after` 点区间），
-  插入文本从新文档读一次（`editor-view-change-text`），发过去的就这五元组。
+- **主线程每次编辑只付 O(编辑长度)**：编辑时 **不再 `document->string`**，只发
+  `(l0 c0 l1 c1 inserted)` 五元组；插入文本从新文档读一次（`editor-view-change-text`）。
+  只有当新版本需要 `open`（首次 / CAS / 淘汰后）才读整篇。
+- **插件增量**：`plugin-open`/`plugin-change` 维护自己的状态；括号插件用编辑位置只重建
+  “被破坏的最浅深度”那一段（见下），worker / 同步 runner 不用重扫整篇。
 - **影子文本**（`plugin/shadow.rkt`）在 worker 和同步 runner 各自维护：`vector of lines`，
   `apply` 用同一批 change（同一编辑前坐标系）从右往左 splice。用 core 的 `string->lines` /
   `lines->string`（保尾部空行，`racket/string` 的 split 会吞）。
-- **按 did 固定分派**：同一文档的消息都进同一个 worker（它的版本表在那里）；
+- **按 did 固定分派**：同一文档的消息都进同一个 worker（它的状态在那里）；
   超界版本由 manager 发 `drop!` 通知 worker 释放。
+
+**括号增量（“找到破坏平衡的最小深度并重建”）**：
+
+- `bracket-open` 全量扫，返回 `bstate`（文本行 + 每行入口栈 + 匹配对区间 fills）。
+- `bracket-change`（只处理**行内编辑**；跨行 / 含换行的文本直接整篇重算）：
+  - **D** = 编辑点处栈里**最外层（最底）**那个开括号的位置 —— 这就是被破坏的最浅深度。
+  - 从 D 重建到 **E**：第一个（在编辑行之后的）行边界，使栈完全等于**旧入口栈**；
+    这保证 E 之后的嵌套 / 层号 / fills 不变。
+  - fills = 保留 `open < D` 和 `open >= E` 以及“在 E 处仍开着（位置与旧一致）”的旧对；
+    `[D,E)` 内开的重建段重新产出。
+- 因为 E 处整个栈（不只深度）与旧一致，所以 E 后的层号不会漂；因为保留“仍开着的旧对”，
+  所以跨越 E 的对不会被丟。
+- 等价性用 `lab/smoke-bracket.rkt` 的随机对比（增量 vs 全量，固定种子）守住。
 
 **版本闸门（异步安全的核心）**：版本用 **document 值身份 → token**（不是文本哈希）。
 core 里文本编辑（`document-edit-tracks`）会 fork 一个**新的 document 值**，而属性编辑
@@ -221,6 +241,7 @@ signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它
 racket lab/main.rkt [根目录]
 racket lab/smoke.rkt        # base / ui 协议
 racket lab/smoke-plugin.rkt # 插件层（含后台 place runner）
+racket lab/smoke-bracket.rkt # 括号增量 vs 全量 等价（随机）
 racket lab/smoke-app.rkt    # 集成（无终端）
 ```
 
