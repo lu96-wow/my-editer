@@ -457,9 +457,12 @@
 ;; 编辑后自动重算
 (send3 (key-event 'o (mods #t #f #f)))                      ; 焦点到编辑格
 (send3 (key-event 'end no-mods))
-(send3 (key-event #\{ no-mods))                             ; 暂不配对 → 不上色
-(check-false (hl-at 0 6))
-(send3 (key-event #\} no-mods))
+;; 输入插件的自动配对：输 { 直接得到 {}（光标在中间）
+(send3 (key-event #\{ no-mods))
+(check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b]){}")
+(check-equal? (bracket-index (hl-at 0 6)) 0)
+(send3 (key-event #\} no-mods))                             ; 跳过已有闭括号，不重复插
+(check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b]){}")
 (check-equal? (bracket-index (hl-at 0 6)) 0)
 
 ;;; ---------- 终端括弧粘贴（paste 事件） ----------
@@ -490,5 +493,44 @@
 (check-false (buffers-expanded? (app-bufs c) br-did))      ; 关键：展开状态不残留
 (check-false (path-table-did (app-paths c) (build-path root3 "br.txt")))
 (check-false (memv br-did (editor-document-id-list (c-ed))))
+
+;;; ---------- 输入插件：自动配对 ----------
+
+(define root4 (simplify-path (path->complete-path (make-temporary-file "pair~a" 'directory))))
+(with-output-to-file (build-path root4 "p.rkt") #:exists 'replace (lambda () (display "")))
+(define d (app-init root4 80 24 #:sidebar-width 24))
+(define (send4 e) (app-handle-input d e))
+(define (d-ed) (app-ed d))
+(define (d-edit) (app-edit-active d))
+(define (d-point) (editor-view-point (d-ed) (d-edit)))
+(app-open-path! d (build-path root4 "p.rkt"))
+(send4 (key-event 'o (mods #t #f #f)))                     ; 焦点到编辑格
+(check-true (and (d-edit) #t))
+
+(send4 (key-event #\( no-mods))                            ; ( → 自动补 )
+(check-equal? (editor-view-string (d-ed) (d-edit)) "()")
+(check-equal? (d-point) (point 0 1))                       ; 光标在中间
+(send4 (key-event #\) no-mods))                            ; ) 跳过，不重复
+(check-equal? (editor-view-string (d-ed) (d-edit)) "()")
+(check-equal? (d-point) (point 0 2))
+(send4 (key-event #\[ no-mods))                            ; [ → ]
+(check-equal? (editor-view-string (d-ed) (d-edit)) "()[]")
+(check-equal? (d-point) (point 0 3))
+(send4 (key-event #\> no-mods))                            ; 右邻不是 > → 当普通字符插
+(check-equal? (editor-view-string (d-ed) (d-edit)) "()[>]")
+
+;; 有选区时不插手（否则会把选区当普通字符覆盖）
+(send4 (key-event 'a (mods #t #f #f)))                     ; 全选
+(send4 (key-event #\( no-mods))
+(check-equal? (editor-view-string (d-ed) (d-edit)) "(")
+
+;; prompt 里不自动配对
+(send4 (key-event 'o (mods #t #f #f)))                     ; 回左栏（树）
+(send4 (key-event 'n (mods #t #f #f)))                     ; Ctrl+N 新建文件 prompt
+(check-true (prompt? (app-mode d)))
+(send4 (key-event #\( no-mods))
+(check-equal? (editor-view-string (d-ed) (panes-input (app-panes d))) "new file: (")
+(send4 (key-event 'escape no-mods))                        ; 取消 prompt
+(check-false (app-mode d))
 
 (displayln "lab smoke-app: ok")

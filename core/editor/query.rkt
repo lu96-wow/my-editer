@@ -3,7 +3,7 @@
 (require "state.rkt"
          "../text/document.rkt" "history.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt" "../text/base/range.rkt"
-         "../text/base/track.rkt" "../text/base/width.rkt"
+         "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
          "../view/base/viewport.rkt" "../view/base/layout.rkt")
 
 ;;; editor/query.rkt —— 读（按 vid / did 读 view / document）
@@ -22,6 +22,8 @@
  editor-document-string
  editor-view-document-name
  editor-document-name
+ editor-document-char-at
+ editor-view-char-at
 
  ;; ---------- 属性（高亮 / 只读，读） ----------
  editor-document-highlight-at
@@ -91,6 +93,16 @@
   (document-entry-name (editor-document-entry ed did)))
 (define (editor-view-document-name ed vid)
   (editor-document-name ed (view-did (editor-view-ref ed vid))))
+
+;; 某位置的字符（越界 → #f）；行内 O(1)，不整篇取串。
+(define (editor-document-char-at ed did line col)
+  (define t (document-text (editor-document-handle ed did)))
+  (and (exact-nonnegative-integer? line) (< line (track-length t))
+       (let ([l (track-ref t line)])
+         (and (exact-nonnegative-integer? col) (< col (line-length l))
+              (line-ref l col)))))
+(define (editor-view-char-at ed vid line col)
+  (editor-document-char-at ed (view-did (editor-view-ref ed vid)) line col))
 
 ;;; ---------- 属性（高亮 / 只读，读） ----------
 ;;; 属性是文档级状态，真身按 did；vid 版就地取 did。

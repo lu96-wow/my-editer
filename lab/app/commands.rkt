@@ -4,6 +4,7 @@
          "../base/input.rkt"
          "state.rkt"
          "actions.rkt"
+         "input-plugins.rkt"
          "plugins.rkt")
 
 ;;; lab/app/commands.rkt —— 命令转发层
@@ -48,7 +49,12 @@
   (when (pair? changes) (app-plugin-note-change! a (focus a) changes)))
 
 (define (cmd-insert e a)
-  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) (event-text e)))))
+  (define text (event-text e))
+  (define r (input-plugins-text! a text))
+  (cond
+    [(not r) (edit! a (lambda () (editor-view-insert! (ed a) (focus a) text)))]
+    [(pair? r) (app-plugin-note-change! a (focus a) r)]   ; 插件已改好，只需同步影子
+    [else (void)]))                                        ; 插手但没改文本（如跳过闭括号）
 
 ;; 终端括弧粘贴（bracketed paste）：插事件里的文本；走富粘贴（多行 / 属性）。
 (define (cmd-paste-text e a)
@@ -62,7 +68,12 @@
 (define cmd-newline (cmd-insert-string "\n"))
 (define cmd-tab     (cmd-insert-string "\t"))
 
-(define (cmd-backspace _ a) (edit! a (lambda () (editor-view-backspace! (ed a) (focus a)))))
+(define (cmd-backspace _ a)
+  (define r (input-plugins-backspace! a))
+  (cond
+    [(not r) (edit! a (lambda () (editor-view-backspace! (ed a) (focus a))))]
+    [(pair? r) (app-plugin-note-change! a (focus a) r)]
+    [else (void)]))
 (define (cmd-delete _ a)    (edit! a (lambda () (editor-view-delete! (ed a) (focus a)))))
 
 ;; 方向移动：extend? = #t 时带选扩展（Shift+方向）。

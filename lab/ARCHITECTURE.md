@@ -56,7 +56,8 @@ lab/
       modal.rkt      输入 / 确认模态
       main.rkt       汇总 provide
     render.rkt      state 行 + 每帧准备 app-prepare!
-    plugins.rkt     app ↔ 插件层接缝：哪些文档跑插件 / 每 tick sync+poll
+    plugins.rkt     app ↔ 属性插件层接缝：哪些文档跑插件 / 每 tick sync+poll
+    input-plugins.rkt 输入插件层（主进程同步）：每次按键改编辑（内置自动配对）
     app.rkt         装配 init + 事件入口（薄壳）
   backend/
     tui.rkt         racket-tui：screen patch → ANSI（颜色查 theme/）；读事件
@@ -291,6 +292,24 @@ signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它
 - 后台进程只拿到 `name`，用**同一份 registry** 查到同一个插件的 open/change，保证两边一致。
 - 没路径的文档（`*tree*` / `*state*` …）不跑插件（“哪些算真实文件”的策略在 app/plugins.rkt）。
 - 关文档时 `manager-forget!` 清状态；在途结果因 did 不在而丢。
+
+## 输入插件（主进程同步）
+
+`plugin/` 那层是**属性插件**：后台进程、只写属性、不改文本。**输入插件**是另一类：
+每次按键在**主进程同步**跑，会改编辑，所以留在 `app/input-plugins.rkt`。
+
+```
+input-plugin(name, on-text, on-backspace)
+  on-text      : (app string) -> #f | (listof change)   '() = 插手但不改文本
+  on-backspace : (app)        -> #f | (listof change)
+```
+
+- `commands.rkt` 的 `cmd-insert` / `cmd-backspace` 先问 `input-plugins-*!`：
+  命中就用插件改好的结果，并把它返回的 change `app-plugin-note-change!` 给属性插件层（影子同步）；
+  不命中（#f）才走默认 `editor-view-*!`。
+- 插件自己做编辑并返回 core 的 change（`'()` = 只移动光标等无文本变化）。
+- 内置 `auto-pair`：输 `( [ { <` 自动补 `) ] } >`、光标停中间；输闭括号且右边同字符→跳过；
+  有选区 / 在 prompt 里 / 只读→不插手。
 
 ## 关键约定
 
