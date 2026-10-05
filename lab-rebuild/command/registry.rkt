@@ -104,7 +104,7 @@
 ;;; ================= app =================
 
 (define (cmd-quit e a)          (app-quit! a))
-(define (cmd-toggle-focus e a)  (app-toggle-focus! a))
+(define (cmd-toggle-sidebar e a) (app-toggle-sidebar! a))
 (define (cmd-save e a)          (app-save! a))
 (define (cmd-split-tb e a)      (app-split! a 'tb))
 (define (cmd-split-lr e a)      (app-split! a 'lr))
@@ -157,7 +157,7 @@
 (define-command redo          cmd-redo)
 (define-command focus         cmd-focus)
 (define-command quit          cmd-quit)
-(define-command toggle-focus  cmd-toggle-focus)
+(define-command toggle-sidebar cmd-toggle-sidebar)
 (define-command save          cmd-save)
 (define-command split-tb      cmd-split-tb)
 (define-command split-lr      cmd-split-lr)

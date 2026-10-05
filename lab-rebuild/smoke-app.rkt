@@ -50,6 +50,15 @@
 (check-false (edit-vid))                                   ; 不预开文档：主区空
 (define panes (layout-result-panes (app-layout-result a)))
 (check-equal? (map rectangle-view-id panes) (list (tree-vid) (state-vid)))
+
+;; Ctrl+B：没有编辑窗格时关左栏 → 焦点置空（不放到底部 state）
+(send (key-event 'b (mods #t #f #f)))
+(check-false (app-sidebar? a))
+(check-false (app-focus a))
+(check-equal? (map rectangle-view-id (layout-result-panes (app-layout-result a))) (list (state-vid)))
+(send (key-event 'b (mods #t #f #f)))                      ; 开回来
+(check-true (app-sidebar? a))
+(check-equal? (app-focus a) (tree-vid))
 (define scr (app-render a))
 (check-equal? (screen-width scr) 80)
 (check-equal? (screen-height scr) 24)
@@ -164,11 +173,18 @@
 
 ;;; ---------- 左侧 Tab 切换 + 文档 / 视图列表 ----------
 
+;;; ---------- Ctrl+B：开 / 关左侧视图 ----------
+
 (check-equal? (app-focus a) (tree-vid))
-(send (key-event 'o (mods #t #f #f)))                     ; 焦点切到编辑格
+(check-true (app-sidebar? a))
+(send (key-event 'b (mods #t #f #f)))                     ; 关左栏 → 焦点到编辑格
+(check-false (app-sidebar? a))
 (check-equal? (app-focus a) (edit-vid))
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")
-(send (key-event 'o (mods #t #f #f)))                     ; 再切回左栏
+(check-not-false (memv (edit-vid) (map rectangle-view-id (layout-result-panes (app-layout-result a)))))
+(check-false (memv (tree-vid) (map rectangle-view-id (layout-result-panes (app-layout-result a)))))
+(send (key-event 'b (mods #t #f #f)))                     ; 开左栏 → 焦点回左栏
+(check-true (app-sidebar? a))
 (check-equal? (app-focus a) (tree-vid))
 (send (key-event 'tab no-mods))
 (check-equal? (app-left a) 'bufs)
@@ -194,7 +210,7 @@
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")
 
 ;; 再切回文件树
-(send (key-event 'o (mods #t #f #f)))                     ; 焦点回左栏
+(set-app-focus! a (bufs-vid))                              ; 焦点回左栏
 (check-equal? (app-focus a) (bufs-vid))
 (send (key-event 'tab no-mods))
 (check-equal? (app-left a) 'tree)
@@ -223,7 +239,7 @@
 
 ;;; ---------- 删除已打开的文件：同步关闭文档 / 视图 ----------
 
-(send (key-event 'o (mods #t #f #f)))                     ; 回左栏
+(set-app-focus! a (tree-vid))                              ; 回左栏
 (check-equal? (app-focus a) (tree-vid))
 (editor-view-set-point! (ed) (tree-vid) (point 0 0))       ; 根
 (send (key-event 'n (mods #t #f #f)))                     ; Ctrl+N 新建 gone.txt
@@ -456,7 +472,7 @@
 (check-false (hl-at 0 6))
 
 ;; 编辑后自动重算
-(send3 (key-event 'o (mods #t #f #f)))                      ; 焦点到编辑格
+(set-app-focus! c (c-edit))                                 ; 焦点到编辑格
 (send3 (key-event 'end no-mods))
 ;; 输入插件的自动配对：输 { 直接得到 {}（光标在中间）
 (send3 (key-event #\{ no-mods))
@@ -476,7 +492,7 @@
 
 ;; 只读面板（文件树）吞掉粘贴，不改树文档
 (define tree-before (editor-view-string (c-ed) (c-tree)))
-(send3 (key-event 'o (mods #t #f #f)))                 ; 焦点到左栏（树）
+(set-app-focus! c (c-tree))                            ; 焦点到左栏（树）
 (send3 (paste-event #"ZZ" "ZZ"))
 (check-equal? (editor-view-string (c-ed) (c-tree)) tree-before)
 
@@ -505,7 +521,7 @@
 (define (d-edit) (app-edit-active d))
 (define (d-point) (editor-view-point (d-ed) (d-edit)))
 (app-open-path! d (build-path root4 "p.rkt"))
-(send4 (key-event 'o (mods #t #f #f)))                     ; 焦点到编辑格
+(set-app-focus! d (d-edit))                                ; 焦点到编辑格
 (check-true (and (d-edit) #t))
 
 (send4 (key-event #\( no-mods))                            ; ( → 自动补 )
@@ -526,7 +542,7 @@
 (check-equal? (editor-view-string (d-ed) (d-edit)) "(")
 
 ;; prompt 里不自动配对
-(send4 (key-event 'o (mods #t #f #f)))                     ; 回左栏（树）
+(set-app-focus! d (panes-tree (app-panes d)))             ; 回左栏（树）
 (send4 (key-event 'n (mods #t #f #f)))                     ; Ctrl+N 新建文件 prompt
 (check-true (prompt? (app-mode d)))
 (send4 (key-event #\( no-mods))

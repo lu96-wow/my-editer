@@ -87,7 +87,7 @@ lab-rebuild/
 | 启用哪些属性 / 输入插件 | `config/plugins.rkt` | 增删插件（只给名字） |
 | 语法关键字表 / 扩展名 | `config/syntax.rkt` | 换语言 / 调色顺序 |
 | 布局默认、worker 数、history bound | `config/defaults.rkt` | 调运行参数 |
-| 主题（颜色） | `config/theme/` | 换配色 / `(current-theme …)` |
+| 主题（颜色） | `config/theme/` | 换配色 / `(current-theme …)`；槽位在 `slots.rkt` |
 
 要点：
 - `config/plugins.rkt` **只给名字**，实现由插件层的目录（`plugin/attr/registry.rkt`、
@@ -95,6 +95,23 @@ lab-rebuild/
 - 颜色只在 `config/theme/`；插件 / view-model 只产出**逻辑 face**（symbol 或 `palette-color`），
   文档存逻辑 face，不存 RGB。
 - 布局算法内在常量（`min-pane-width` / `split-gap`）留在 `base/layout`，不属于可配置状态。
+
+**主题结构（把「能定义颜色的地方」拆开）**：
+
+```
+config/theme/
+  slots.rkt   所有槽位声明：static-face-slots（13 个 face）/ palette-slots（bracket word keyword）
+              / overlay-slots（selection） + build-theme + theme-missing-slots
+  dark.rkt    固定颜色表（face-fg / face-bg / default / overlays / palettes）+ build-theme
+  light.rkt   同上
+  theme.rkt   机制：face / overlay / palette → (fg bg)
+  main.rkt    汇总 + (current-theme)
+```
+
+- 色值全是**固定字面量**（`#f` = 该维不设 / `(r g b)`），运行时不做任何颜色计算。
+- 要加一个可配色的 face / 色板：在 `slots.rkt` 加一行，两个主题补上颜色；
+  `smoke-theme.rkt` 会检查「两主题覆盖全部槽位」。
+- `cursor` 由后端按反色处理，不做主题槽位；`line-number` 由 core 发出，`selection` 由 core 发出。
 
 ### 三、事件 → 命令 → 动作
 
@@ -152,8 +169,20 @@ racket lab-rebuild/smoke-plugin.rkt  # 插件层（含后台 place runner）
 racket lab-rebuild/smoke-bracket.rkt # 括号增量 vs 全量（随机）
 racket lab-rebuild/smoke-app.rkt     # 集成（无终端）
 racket lab-rebuild/smoke-state.rkt   # state 行增量更新回归
-raco test lab-rebuild                # 303 + state tests
+raco test lab-rebuild                # 全部（含 state / theme 回归）
 ```
+
+## 左栏开 / 关（`Ctrl+B`）
+
+`app` 增加 `sidebar?`：`#f` 时 `compute-layout` 的左栏宽为 0、主区占满整宽；
+`app-main-w` 也随 `sidebar?` 变宽（state 行 padding 跟着变）。
+
+`Ctrl+B` → `toggle-sidebar`（`core/actions/focus.rkt` 的 `app-toggle-sidebar!`）：
+- 焦点在左栏 → 关掉，焦点移到当前编辑窗格（**没有编辑窗格则置空**，不放到底部槽）；
+- 左栏已关 → 打开并聚焦左栏。
+
+旧的 `Ctrl+O`（左右栏焦点切换）已删除；焦点移动用 `C-p` 前缀 + 方向键，
+或 `Ctrl+B` 连带（开→聚焦左栏，关→回编辑格）。
 
 ## 与 lab 的差异一览
 

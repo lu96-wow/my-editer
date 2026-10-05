@@ -47,9 +47,9 @@
 
 ;; 反复移动焦点：树 → 编辑 → 树 → …（触发多次增量拼接 / 删除）
 (for ([_ (in-range 3)])
-  (send (key-event 'o (mods #t #f #f)))
+  (send (key-event 'b (mods #t #f #f)))
   (check-state! "to-edit")
-  (send (key-event 'o (mods #t #f #f)))
+  (send (key-event 'b (mods #t #f #f)))
   (check-state! "to-tree"))
 
 ;; 打开文件并把光标右移，让 行:列 变化，文件名段也变
@@ -58,16 +58,16 @@
               #:when (equal? (entry-name e) name)) i))
 (editor-view-set-point! (ed) (tvid) (point (tree-line-of "aa.txt") 0))
 (send (key-event 'enter no-mods))
-(send (key-event 'o (mods #t #f #f)))                     ; 焦点到编辑格
+(send (key-event 'b (mods #t #f #f)))                     ; 焦点到编辑格
 (for ([_ (in-range 4)]) (send (key-event 'right no-mods)))
 (check-state! "edit-moved")
 (check-not-false (string-contains? (editor-view-string (ed) (svid)) "aa.txt"))
 
 ;; 换到更长的文件名（前缀相同 → 走 suffix 差异）；焦点先移回树再打开
-(send (key-event 'o (mods #t #f #f)))                      ; edit → tree
+(send (key-event 'b (mods #t #f #f)))                      ; edit → tree
 (editor-view-set-point! (ed) (tvid) (point (tree-line-of "bbbbbb.txt") 0))
 (send (key-event 'enter no-mods))
-(send (key-event 'o (mods #t #f #f)))
+(send (key-event 'b (mods #t #f #f)))
 (check-state! "long-name")
 (check-not-false (string-contains? (editor-view-string (ed) (svid)) "bbbbbb.txt"))
 

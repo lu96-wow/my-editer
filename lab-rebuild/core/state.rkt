@@ -29,7 +29,7 @@
          app-left-vid app-bottom-vid app-modal-vid
          app-edit-tree app-edit-active
          app-focus-panes app-layout-result app-invalidate-layout!
-         app-mode-set! app-left-set! app-edit-open! app-edit-split! app-edit-remove! app-size-set!
+         app-mode-set! app-left-set! app-sidebar-set! app-edit-open! app-edit-split! app-edit-remove! app-size-set!
          focused-did
          app-hook-add! app-notify!)
 
@@ -46,6 +46,7 @@
    paths                 ; did ↔ path 表
    width height
    sidebar-width
+   sidebar?              ; 左栏是否显示（#f = 关掉，主区占满整宽）
    layout                ; layout-result 缓存（#f = 失效）
    prev                  ; 上一帧 screen
    quit?
@@ -53,7 +54,8 @@
    hooks)                ; hash 事件名 -> (listof proc)
   #:mutable #:transparent)
 
-(define (app-main-w a) (max 1 (- (app-width a) (app-sidebar-width a))))
+(define (app-main-w a)
+  (max 1 (- (app-width a) (if (app-sidebar? a) (app-sidebar-width a) 0))))
 (define (app-main-h a) (max 1 (- (app-height a) default-statusbar-height)))
 
 ;;; ---------- 钩子 ----------
@@ -111,7 +113,7 @@
 (define (app-layout-result a)
   (or (app-layout a)
       (let ([lr (compute-layout (app-edit-tree a) (app-width a) (app-height a)
-                                #:sidebar? #t
+                                #:sidebar? (app-sidebar? a)
                                 #:sidebar-width (app-sidebar-width a)
                                 #:statusbar-height default-statusbar-height
                                 #:left-vid (app-left-vid a)
@@ -125,6 +127,7 @@
 
 (define (app-mode-set! a m) (set-app-mode! a m) (app-invalidate-layout! a))
 (define (app-left-set! a l) (set-app-left! a l) (app-invalidate-layout! a))
+(define (app-sidebar-set! a flag) (set-app-sidebar?! a flag) (app-invalidate-layout! a))
 
 (define (app-size-set! a w h)
   (set-app-width! a w)

@@ -68,7 +68,7 @@
 (define app-keys
   (command-table
    (key 'q 'ctrl) 'quit
-   (key 'o 'ctrl) 'toggle-focus
+   (key 'b 'ctrl) 'toggle-sidebar                              ; 开 / 关左侧视图
    (key 'p 'ctrl) (list 'prefix "C-p" (list focus-keys))   ; 前缀：移焦点
    (key 's 'ctrl) 'save
    ;; 编辑区分屏：K 水平（上下）/ L 垂直（左右）分隔，D 关窗格

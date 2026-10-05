@@ -64,7 +64,7 @@
                bdid bufs-keys)
               stdid readonly-keys))
   (define a (app ed4 tree p (edit-panes-empty) bmodel initial-left-panel tvid #f cs
-                 (make-path-table) width height sw #f #f #f plugins (make-hash)))
+                 (make-path-table) width height sw #t #f #f #f plugins (make-hash)))
   (app-plugin-attach! a)                                    ; 关文档 → 清插件状态（core 钩子）
   (app-bufs-refresh! a)
   a)
