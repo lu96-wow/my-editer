@@ -1,0 +1,58 @@
+#lang racket
+
+(require racket/runtime-path
+         racket/async-channel
+         "runner.rkt")
+
+;;; lab-rebuild/plugin/runner-place.rkt —— 后台 place 进程执行器
+;;;
+;;; 起 n 个 worker place。**按 did 固定分派**（同一个文档的 open/change/close/job 都
+;;; 送到同一个 worker），worker 各自维护影子文本，主进程只发增量。
+;;;
+;;;   poll!   非阻塞抽干 mailbox（+ signal）
+;;;   source  返回 signal —— 后端 on-source 注册它，结果到达即唤醒事件循环重绘
+;;;
+;;; worker 路径用 define-runtime-path 解析（编译后 / 换 CWD 都找得到）。
+
+(provide make-place-runner)
+
+(define-runtime-path worker.rkt "worker.rkt")
+
+(define (make-place-runner [n 2])
+  (define mailbox (make-async-channel))
+  (define signal (make-async-channel))
+  (define workers
+    (for/list ([_ (in-range (max 1 n))])
+      (define w (dynamic-place worker.rkt 'worker-main))
+      (thread (lambda ()
+                (with-handlers ([exn? (lambda (e) (void))])
+                  (let loop ()
+                    (define msg (place-channel-get w))
+                    (async-channel-put mailbox msg)
+                    (async-channel-put signal 'ready)
+                    (loop)))))
+      w))
+  (define ws (list->vector workers))
+  (define (w did) (vector-ref ws (modulo did (vector-length ws))))
+  (make-runner
+   (lambda (did token path text) (place-channel-put (w did) (list 'open did token path text)))
+   (lambda (did from to path edits) (place-channel-put (w did) (list 'change did from to path edits)))
+   (lambda (did token) (place-channel-put (w did) (list 'drop did token)))
+   (lambda (did) (place-channel-put (w did) (list 'close did)))
+   (lambda (tag name did token path) (place-channel-put (w did) (list 'job tag name did token path)))
+   (lambda ()
+     ;; ⚠ 顺序要紧：**先抽 signal，再抽 mailbox**。
+     ;; reader 是 mailbox 先写、signal 后写；如果反过来（先 mailbox 后 signal）：
+     ;; 抽 mailbox 的当口新到的结果会被写进 mailbox，紧接着的 signal 抽干又把它唯一的
+     ;; 唤醒信号抹了 —— 结果就躺在 mailbox 里，直到下一次按键才被 poll 到（表现为
+     ;; “着色算完了却不上屏”）。先抽 signal 就不会抹掉“后到消息”的唤醒：
+     ;; 后到消息的 signal 在 signal 抽干之后才写，因而保留。
+     (let drain-signal () (when (async-channel-try-get signal) (drain-signal)))
+     (let loop ([acc '()])
+       (define v (async-channel-try-get mailbox))
+       (if v (loop (cons v acc)) (reverse acc))))
+   (lambda () signal)
+   (lambda ()
+     (for ([p (in-list workers)])
+       (with-handlers ([exn? (lambda (e) (void))])
+         (place-channel-put p 'stop))))))
