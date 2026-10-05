@@ -61,10 +61,11 @@
 (define (app-dispatch! a ev)
   (define m (app-mode a))
   (cond
-    ;; 前缀（如 C-p）：只看它自己的表，不回落 normal；一次派发后退出。
+    ;; 前缀（如 C-p）：只看它自己的表，不回落 normal。
+    ;; 处理完若还是同一个前缀，就退出；若处理器又进了一个新前缀 / 开了 prompt，就留着（支持嵌套）。
     [(prefix? m)
      (command-run (prefix-tables m) (event->binding ev) ev a)
-     (app-prefix-end! a)]
+     (when (eq? (app-mode a) m) (app-prefix-end! a))]
     [else
      (dispatch-run (app-cs a) (focused-did a)
                    (mode-tables m input-edit-keys confirm-keys)

@@ -82,8 +82,9 @@ active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就�
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
 - **动作只在 `actions.rkt`**；`commands.rkt` 仅做「事件 → 动作」。
 - 模态表在 dispatch 时叠在 did 表之后，优先级最高。
-- **前缀键**（如 `C-p`）：`mode` 的第三种状态 `prefix`；下一键只查它自己的表（不回落 normal），用完即退；
-  底部仍显 state（带 `[C-p-]` 提示）。用来绕开「终端不发 `Ctrl+↑/↓`」。
+- **前缀键**：`mode` 的第三种状态 `prefix`（记 label + tables）。下一键只查这些表（不回落 normal）；
+  处理完**若还是同一个前缀就退出**，否则（处理器又进了新前缀 / 开了 prompt）就保留 → **支持任意层级嵌套**。
+  `app-prefix-begin! a label (list table ...)` 可挂任意命令表；底部显示 `[label-]`。
 
 ## 跑 / 测
 

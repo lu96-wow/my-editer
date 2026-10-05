@@ -10,6 +10,7 @@
          "../core/editor.rkt"
          "../core/view/base/screen.rkt"
          "base/input.rkt"
+         "base/command.rkt"
          "base/layout/main.rkt"
          "ui/tree.rkt"
          "ui/buffers.rkt"
@@ -409,5 +410,18 @@
 (define vv (tree-vids (app-edit-tree b)))
 (check-equal? (length vv) 2)
 (check-equal? (length (remove-duplicates vv)) 2)           ; 无重复 vid（会新建一个 view）
+
+;; 任意前缀 & 嵌套前缀：C-x → C-y → ...（外层没被提前清掉）
+(define inner-keys (command-table (key 'up) (lambda (e a) (void))))
+(define outer-keys
+  (command-table
+   (key 'y 'ctrl) (lambda (e a) (app-prefix-begin! a "C-y" (list inner-keys)))))
+(app-prefix-begin! b "C-x" (list outer-keys))
+(check-true (prefix? (app-mode b)))
+(send2 (key-event 'y (mods #t #f #f)))                     ; C-x C-y → 进内层前缀
+(check-true (prefix? (app-mode b)))
+(check-equal? (prefix-label (app-mode b)) "C-y")
+(send2 (key-event 'up no-mods))                            ; 内层用完退出
+(check-false (app-mode b))
 
 (displayln "lab smoke-app: ok")
