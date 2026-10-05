@@ -437,15 +437,21 @@
 (define (c-edit) (app-edit-active c))
 (define (c-did) (editor-view-document-id (c-ed) (c-edit)))
 (define (hl-at line col) (editor-document-highlight-at (c-ed) (c-did) line col))
+;; 一格可能是叠层（face-stack）：取某类的最上层 palette-color。
+(define (last-palette v kind)
+  (for/last ([l (in-list (face-layers v))]
+             #:when (and (palette-color? l) (eq? (palette-color-kind l) kind))) l))
+(define (bracket-index v) (palette-color-index (last-palette v 'bracket)))
 (define cl (for/first ([e (in-list (tree-entries (app-tree c)))] [i (in-naturals)]
                        #:when (equal? (entry-name e) "br.txt")) i))
 (editor-view-set-point! (c-ed) (c-tree) (point cl 0))
 (send3 (key-event 'enter no-mods))                          ; 打开（事件末尾 app-plugin-tick!）
 (check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b])")
-(check-equal? (bracket-depth-n (hl-at 0 0)) 0)
-(check-equal? (bracket-depth-n (hl-at 0 1)) 0)
-(check-equal? (bracket-depth-n (hl-at 0 2)) 1)
-(check-equal? (bracket-depth-n (hl-at 0 4)) 1)
+(check-equal? (bracket-index (hl-at 0 0)) 0)           ; (
+(check-not-false (last-palette (hl-at 0 1) 'word))     ; a → 词着色（背景仍在）
+(check-equal? (bracket-index (hl-at 0 1)) 0)           ; a 的括号背景不被前景覆盖
+(check-equal? (bracket-index (hl-at 0 2)) 1)           ; [
+(check-equal? (bracket-index (hl-at 0 4)) 1)           ; ]
 (check-false (hl-at 0 6))
 
 ;; 编辑后自动重算
@@ -454,7 +460,7 @@
 (send3 (key-event #\{ no-mods))                             ; 暂不配对 → 不上色
 (check-false (hl-at 0 6))
 (send3 (key-event #\} no-mods))
-(check-equal? (bracket-depth-n (hl-at 0 6)) 0)
+(check-equal? (bracket-index (hl-at 0 6)) 0)
 
 ;;; ---------- 终端括弧粘贴（paste 事件） ----------
 

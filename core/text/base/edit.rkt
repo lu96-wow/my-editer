@@ -23,7 +23,7 @@
  edit-lines edit-insert-lines edit-delete-lines edit-rewrite-line
 
  ;; ---------- 格级编辑（跨行） ----------
- edit-range edit-cells edit-insert-text edit-delete-range edit-delete-cells edit-fill
+ edit-range edit-cells edit-insert-text edit-delete-range edit-delete-cells edit-fill edit-fill*
 
  ;; ---------- span / 位置代数 ----------
  (struct-out span) span->edit span-after-position span->change)
@@ -100,13 +100,20 @@
 
 ;; 把 [l0,c0)..(l1,c1) 的所有格设为 val（不改行结构）。用于属性赋值（也可用于文本行）。
 (define (edit-fill l0 c0 l1 c1 val)
+  (edit-fill* l0 c0 l1 c1 val (lambda (_old new) new)))
+
+;; 与 edit-fill 相同，但每格用 (combine 旧格 新值) 合成，而不是直接覆盖。
+;; 用于“分层属性”（如前景叠在背景上）：combine 由上层给，本层不解释格的语义。
+(define (edit-fill* l0 c0 l1 c1 val combine)
   (lambda (t)
     (define new-lines
       (for/list ([i (in-range l0 (add1 l1))])
         (define l (track-ref t i))
         (define a (if (= i l0) c0 0))
         (define b (if (= i l1) c1 (line-length l)))
-        (line-splice l a b (line-of-like l (make-list (- b a) val)))))
+        (line-splice l a b
+                     (line-of-like l (for/list ([j (in-range a b)])
+                                       (combine (line-ref l j) val))))))
     (track-splice t l0 (add1 l1) new-lines)))
 
 ;;; ---------- span：区间替换 + 位置代数（多光标编辑用） ----------

@@ -1,6 +1,7 @@
 #lang racket
 
 (require "../../core/editor.rkt"
+         "../base/face.rkt"
          "api.rkt"
          "runner.rkt")
 
@@ -121,16 +122,21 @@
                      (cons (cons token (make-hash (list (cons name fills)))) rs))]))
 
 ;; 把该 token 的所有插件结果合并写入高亮轨。
+;; 应用顺序 = registry 顺序（registry-plugins 的次序）。不做优先级排序：
+;; 同名属性写同一格时不去掉谁，而是把 face 叠成层次（face-compose），
+;; 主题逐分量合并 → 括号背景与语法前景共存。
 (define (apply-results! m ed did)
   (define doc (editor-document-handle ed did))
   (define token (token-of m doc))
   (define cached (assv token (hash-ref (manager-results m) did '())))
   (define merged
-    (append* (for/list ([p (in-list (sort (manager-plugins m) < #:key plugin-priority))])
+    (append* (for/list ([p (in-list (manager-plugins m))])
                (define r (and cached (hash-ref (cdr cached) (plugin-name p) #f)))
                (if r r '()))))
   (editor-document-handle-set-highlight! doc #f)
-  (editor-document-handle-highlight-batch! doc merged))
+  ;; 逐格分层合成（face-compose）：不同插件的 face 叠起来，不再互相覆盖——
+  ;; 括号背景与语法前景可以同时存在，主题按分量合并。
+  (editor-document-handle-highlight-compose! doc merged face-compose))
 
 ;; 清掉一个文档的全部状态：版本跟踪、待发增量、结果缓存、在途 job，并通知 runner
 ;; 释放 worker 侧的影子 / 插件状态。这是「按 document 清理」在插件层的唯一入口。

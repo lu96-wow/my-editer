@@ -11,9 +11,13 @@
 ;;;
 ;;; 因为不改文本，state/fills 可以放在后台进程里维护；只有 job 取回 fills。
 ;;; plugin 结构体留在主进程；后台进程按 name 查同一份 registry。
+;;;
+;;; **应用顺序 = registry 顺序**（无优先级字段）。多个插件写同一格时不去掉谁，
+;;; 而是把 face 依次叠成 face-stack；主题逐分量合并（后层覆盖前层，某层 #f 的分量不覆盖），
+;;; 所以「括号背景」和「语法前景」可以共存。
 
 (provide (struct-out plugin))
 
-(struct plugin (name priority open change) #:transparent)
-;; name     : symbol              后台进程按名字查同一个 open/change
-;; priority : exact-integer       越大越后应用（覆盖小 priority）
+(struct plugin (name open change) #:transparent)
+;; name : symbol         后台进程按名字查同一个 open/change
+;; open / change : 见上

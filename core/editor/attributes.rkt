@@ -30,6 +30,7 @@
  editor-document-handle-set-readonly!
  editor-document-handle-highlight-batch!
  editor-document-handle-readonly-batch!
+ editor-document-handle-highlight-compose!
  editor-document-handle-highlight-range-batch!
  editor-document-handle-readonly-range-batch!
 
@@ -44,6 +45,9 @@
 (define (editor-document-handle-set-readonly! doc ro) (document-set-readonly! doc ro) (void))
 (define (editor-document-handle-highlight-batch! doc fills)
   (document-highlight-fill-batch doc fills) (void))
+;; 分层写回：fills 逐格与已有值用 combine 合成（前景叠背景时用）。
+(define (editor-document-handle-highlight-compose! doc fills combine)
+  (document-highlight-fill-batch* doc fills combine) (void))
 (define (editor-document-handle-readonly-batch! doc fills)
   (document-readonly-fill-batch doc fills) (void))
 (define (editor-document-handle-highlight-range-batch! doc runs)

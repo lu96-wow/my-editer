@@ -6,7 +6,7 @@
 
 ;;; lab/base/brackets.rkt —— 括号配对 + 嵌套深度
 ;;;
-;;; 表示：匹配对 → 整段区间 (list ol oc cl cc (bracket-depth level))，level = 嵌套层
+;;; 表示：匹配对 → 整段区间 (list ol oc cl cc (palette-color 'bracket level))，level = 嵌套层
 ;;; （最外层 = 0）。外层先写、内层后写覆盖 → 每字符取最内层包围它的对。
 ;;;
 ;;;   bracket-fills   朴素全量（参考 / 测试）
@@ -53,7 +53,8 @@
          (when (and (pair? stack) (matches? (car stack) ch))
            (define e (car stack))
            (set! stack (cdr stack))
-           (set! fills (cons (list (cadr e) (caddr e) ln (add1 col) (bracket-depth (list-ref e 3)))
+           (set! fills (cons (list (cadr e) (caddr e) ln (add1 col)
+                                   (palette-color 'bracket (list-ref e 3)))
                              fills)))])))
   fills)
 
@@ -89,7 +90,7 @@
            (set! stack (cdr stack))
            (when (pos<=? start-pos (entry-pos e))
              (set! fills (cons (list (cadr e) (caddr e) i (add1 col)
-                                     (bracket-depth (list-ref e 3)))
+                                     (palette-color 'bracket (list-ref e 3)))
                                fills))))])))
   (values entries fills stack))
 

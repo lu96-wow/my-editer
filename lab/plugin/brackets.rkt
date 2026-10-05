@@ -6,6 +6,7 @@
 ;;; lab/plugin/brackets.rkt —— 括号按深度背景高亮（内置插件）
 ;;;
 ;;; open 走整篇扫描；change 走 base/brackets.rkt 的增量（只用编辑位置重建被破坏的一段）。
+;;; 产出 face = (palette-color 'bracket level)，颜色由主题决定。
 
 (provide bracket-plugin)
 
@@ -19,4 +20,4 @@
     [else (bracket-open* lines path)]))          ; 一批多个编辑 → 整篇（罕见）
 
 (define bracket-plugin
-  (plugin 'brackets 0 br-open br-change))
+  (plugin 'brackets br-open br-change))

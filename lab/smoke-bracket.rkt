@@ -18,7 +18,7 @@
 
 (define (norm fills)
   (sort (map (lambda (f) (list (car f) (cadr f) (caddr f) (cadddr f)
-                               (bracket-depth-n (list-ref f 4))))
+                               (palette-color-index (list-ref f 4))))
              fills)
         (lambda (a b)
           (or (< (car a) (car b))

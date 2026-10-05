@@ -60,6 +60,7 @@
  document-edit-highlight document-edit-readonly
  document-highlight-fill document-readonly-fill
  document-highlight-fill-batch document-readonly-fill-batch
+ document-highlight-fill-batch*
  document-highlight-fill-range-batch document-readonly-fill-range-batch
 
  ;; ---------- 剪贴板 ----------
@@ -159,8 +160,17 @@
       (match-define (list l0 c0 l1 c1 v) f)
       ((edit-fill l0 c0 l1 c1 v) t))))
 
+;; 组合版：combine : 旧格 新值 -> 新格。每格不直接覆盖，而是与已有值合成（分层外观）。
+(define (fills->edit* fills combine)
+  (lambda (t)
+    (for/fold ([t t]) ([f (in-list fills)])
+      (match-define (list l0 c0 l1 c1 v) f)
+      ((edit-fill* l0 c0 l1 c1 v combine) t))))
+
 (define (document-highlight-fill-batch bd fills)
   (if (null? fills) bd (document-edit-highlight bd (fills->edit fills))))
+(define (document-highlight-fill-batch* bd fills combine)
+  (if (null? fills) bd (document-edit-highlight bd (fills->edit* fills combine))))
 (define (document-readonly-fill-batch bd fills)
   (if (null? fills) bd (document-edit-readonly bd (fills->edit fills))))
 

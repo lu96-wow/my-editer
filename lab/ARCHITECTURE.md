@@ -11,12 +11,15 @@ lab/
     input.rkt       事件 → 绑定键（依赖 racket-tui 的事件类型）
     command.rkt     纯表：binding → handler + command-set
     dispatch.rkt    did + extra(模态) + event → 跑 handler（不认识 core / 焦点）
-    face.rkt        动态 face 值（bracket-depth，#:prefab 可跨进程）
+    face.rkt        动态 face（palette-color）+ 分层外观（face-stack），#:prefab 可跨进程
     brackets.rkt    括号配对 + 深度 → 高亮填充（纯）；含**增量** bracket-change
     layout/         area / split / main（纯几何）
   plugin/    插件层（不认识 app / 终端）
-    api.rkt         插件协议：plugin（name/priority/compute）+ job（#:prefab）
+    api.rkt         插件协议：plugin(name, open, change)（无优先级，注册顺序即层叠顺序）
     brackets.rkt    内置插件：括号按深度背景高亮（open/change 增量）
+    lex.rkt         极简词法：扫标识符 token（词 / 关键字插件共用）
+    words.rkt       内置插件：词着色（同词同色）
+    syntax.rkt      内置插件：Racket 关键字固定前景色
     shadow.rkt      影子文本：open/apply/text
     machine.rkt     每 did：影子（按 token）+ 插件状态/fills（最新 token）
     registry.rkt    内置插件表（主进程与 worker 共用）
@@ -124,7 +127,7 @@ active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就�
 颜色配置从后端挪到 `theme/`，与终端渲染解耦：
 
 ```
-theme/theme.rkt   机制：theme 结构（faces / overlays / default-face）+ 查询
+theme/theme.rkt   机制：theme 结构（faces / overlays / default-face / palettes）+ 查询
 theme/dark.rkt    默认深色（原 backend/tui.rkt 里的硬编码配色）
 theme/light.rkt   浅色
 theme/main.rkt    汇总 + (current-theme) 参数
@@ -133,10 +136,14 @@ theme/main.rkt    汇总 + (current-theme) 参数
 - 颜色值是 #f 或 `(r g b)`，**纯数据**，不认识 ANSI / racket-tui。
 - `backend/tui.rkt` 只负责把当前主题的颜色翻成转义序列（`face-colors` / `overlay-colors` →
   `theme-face-colors` / `theme-overlay-colors`）。
-- face / overlay 名由各 view-model 定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
-  `app/render.rkt`、core 的 `line-number`）；主题把它们映射到颜色。
+- face / overlay 名由各 view-model / 插件定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
+  `app/render.rkt`、`plugin/syntax.rkt` 的 `syn-keyword`、core 的 `line-number`）；主题把它们映射到颜色。
 - 换主题：`(current-theme light-theme)`（`current-theme` 是 parameter）。
-- 动态 face：`bracket-depth` 按嵌套深度在 `bracket-colors` 色板上取模取背景色（深度无上限）。
+- **静态 face** 用 symbol → 主题 `faces` 表。
+- **动态 face** 用 `palette-color`（kind + index）→ 主题 `palettes` 表按 kind 选色板、按 index 取模；
+  色板项也是 `(list fg bg)`，`#f` = 该维不设。所以同一个机制既能只写背景（括号）又能只写前景（词）。
+- **分层 face** 用 `face-stack`（一格的多个 face 叠起）→ 主题逐层解析 `(fg bg)`、逐分量合并
+  （后层覆盖前层，某层 `#f` 的分量不覆盖）。于是“括号背景 + 语法前景”能同时存在。
 
 ## 插件层
 
@@ -144,7 +151,7 @@ theme/main.rkt    汇总 + (current-theme) 参数
 插件层把这件事收成一个协议：
 
 ```
-plugin/api.rkt      plugin(name, priority, open, change)   —— 带状态的纯函数
+plugin/api.rkt      plugin(name, open, change)   —— 带状态的纯函数（无优先级字段）
                      open   : text path            → state + fills（首次 / 整篇）
                      change : state edits lines path → state + fills（增量）
 plugin/shadow.rkt   影子文本：open(text) / apply(edits) / text
@@ -204,21 +211,34 @@ core 里文本编辑（`document-edit-tracks`）会 fork 一个**新的 document
 - 派活时记下当时的 token；结果回来时 token 仍对应当前 document ⇒ 写回安全。
 - 不等 ⇒ 丢掉（新版本会在下一次 tick 重新派活）。迟到的结果不会写错文本版本。
 
-**合并**：多个插件的结果按 `priority` 升序拼接（低的先写、高的覆盖），
-manager 是真实文件高亮轨的**唯一写者**。
+**合并与层叠**：`registry-plugins` 的**列表顺序就是应用顺序**（无 priority 字段）。
+多个插件写同一格时**不去掉谁**：`face-compose` 把各插件的 face 依次叠成 `face-stack`，
+主题逐分量解析 `(fg bg)` 并合并（后层覆盖前层，某层 `#f` 的分量不覆盖）。
+所以**括号背景（bg）和语法前景（fg）共存**，只有同一分量才会后写覆盖前写。
+manager 是真实文件高亮轨的**唯一写者**。当前内置顺序：
+
+```
+brackets  括号背景（bg）
+words     词前景（fg，同词同色）
+syntax    Racket 关键字前景（fg，后层覆盖词色）
+```
+
+词着色：每个标识符 → `(palette-color 'word (equal-hash-code 词))`，所以**同一个词永远同一色**
+（hash 确定性、跨版本 / undo 稳定）。关键字：命中关键字表 → 固定 `'syn-keyword`。
+两者都无状态，`change` 直接整篇重扫。
 
 **后台进程（place）**：
 
 ```
 manager → runner-place → worker place（独立进程）
-                              └─ registry 按 name 查同一个 compute
+                              └─ registry 按 name 查到同一个插件的 open/change
 主进程 reader 线程：place 结果 → mailbox(async-channel) + signal(async-channel)
 signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它，
 于是 read-event 的 sync 会等它 —— 后台结果一到，事件循环醒来、写回、重绘。
 ```
 
-- `job` / `bracket-depth` 用 `#:prefab`：能跨 place 序列化（普通 struct 也行，prefab 更稳）。
-- 后台进程只拿到 `name`，用**同一份 registry** 查 `compute`，保证两边一致。
+- `palette-color` 用 `#:prefab`：能跨 place 序列化（普通 struct 也行，prefab 更稳）。
+- 后台进程只拿到 `name`，用**同一份 registry** 查到同一个插件的 open/change，保证两边一致。
 - 没路径的文档（`*tree*` / `*state*` …）不跑插件（“哪些算真实文件”的策略在 app/plugins.rkt）。
 - 关文档时 `manager-forget!` 清状态；在途结果因 did 不在而丢。
 
