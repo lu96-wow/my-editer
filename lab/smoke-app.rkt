@@ -20,7 +20,9 @@
          "app/panes.rkt"
          "app/edit-panes.rkt"
          "app/actions.rkt"
-         "app/paths.rkt")
+         "app/paths.rkt"
+         "app/plugins.rkt"
+         "base/face.rkt")
 
 (define root (simplify-path (path->complete-path (make-temporary-file "app~a" 'directory))))
 (with-output-to-file (build-path root "aaa.txt") #:exists 'replace (lambda () (display "AAA")))
@@ -423,5 +425,35 @@
 (check-equal? (prefix-label (app-mode b)) "C-y")
 (send2 (key-event 'up no-mods))                            ; 内层用完退出
 (check-false (app-mode b))
+
+;;; ---------- 插件层：打开带括号的文件 → 按深度背景高亮 ----------
+
+(define root3 (simplify-path (path->complete-path (make-temporary-file "plug~a" 'directory))))
+(with-output-to-file (build-path root3 "br.txt") #:exists 'replace (lambda () (display "(a[b])")))
+(define c (app-init root3 80 24 #:sidebar-width 24))        ; 默认同步 runner
+(define (send3 e) (app-handle-input c e))
+(define (c-ed) (app-ed c))
+(define (c-tree) (panes-tree (app-panes c)))
+(define (c-edit) (app-edit-active c))
+(define (c-did) (editor-view-document-id (c-ed) (c-edit)))
+(define (hl-at line col) (editor-document-highlight-at (c-ed) (c-did) line col))
+(define cl (for/first ([e (in-list (tree-entries (app-tree c)))] [i (in-naturals)]
+                       #:when (equal? (entry-name e) "br.txt")) i))
+(editor-view-set-point! (c-ed) (c-tree) (point cl 0))
+(send3 (key-event 'enter no-mods))                          ; 打开（事件末尾 app-plugin-tick!）
+(check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b])")
+(check-equal? (bracket-depth-n (hl-at 0 0)) 0)
+(check-equal? (bracket-depth-n (hl-at 0 1)) 0)
+(check-equal? (bracket-depth-n (hl-at 0 2)) 1)
+(check-equal? (bracket-depth-n (hl-at 0 4)) 1)
+(check-false (hl-at 0 6))
+
+;; 编辑后自动重算
+(send3 (key-event 'o (mods #t #f #f)))                      ; 焦点到编辑格
+(send3 (key-event 'end no-mods))
+(send3 (key-event #\{ no-mods))                             ; 暂不配对 → 不上色
+(check-false (hl-at 0 6))
+(send3 (key-event #\} no-mods))
+(check-equal? (bracket-depth-n (hl-at 0 6)) 0)
 
 (displayln "lab smoke-app: ok")

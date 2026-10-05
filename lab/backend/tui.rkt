@@ -7,6 +7,10 @@
          "../app/app.rkt"
          "../app/state.rkt"
          "../app/render.rkt"
+         "../app/plugins.rkt"
+         "../plugin/manager.rkt"
+         "../plugin/runner-place.rkt"
+         "../plugin/registry.rkt"
          "../theme/main.rkt")
 
 ;;; lab/backend/tui.rkt —— racket-tui 后端
@@ -72,11 +76,21 @@
   (tui:with-tui
    (lambda ()
      (define-values (rows cols) (tui:get-window-size))
-     (define a (app-init root (or cols 80) (or rows 24)))
-     (app-draw! a)
-     (let loop ([a a])
-       (define ev (tui:read-event))
-       (app-handle-input a ev)
-       (unless (app-quit? a)
+     ;; 插件层：后台 place 进程算装饰（括号高亮……），主进程只写回。
+     (define plugins (make-manager registry-plugins (make-place-runner)))
+     (define a (app-init root (or cols 80) (or rows 24) #:plugins plugins))
+     ;; 后台结果到达 → 事件循环醒来（on-source）→ 写回 + 重绘。
+     (define src (app-plugin-source a))
+     (when src
+       (tui:on-source src (lambda (_) (app-plugin-tick! a) (app-draw! a))))
+     (dynamic-wind
+       void
+       (lambda ()
          (app-draw! a)
-         (loop a))))))
+         (let loop ([a a])
+           (define ev (tui:read-event))
+           (app-handle-input a ev)
+           (unless (app-quit? a)
+             (app-draw! a)
+             (loop a))))
+       (lambda () (manager-stop! plugins))))))

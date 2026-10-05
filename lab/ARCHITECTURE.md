@@ -1,7 +1,7 @@
 # lab 架构
 
 `lab/` 是 lab-rebuild 的重构版：功能不变，把 app 层从「24 字段 god-object + 手工不变量」
-拆成 **base / ui / app / backend** 四层，耦合点各自收口。
+拆成 **base / plugin / ui / app / backend** 五层，耦合点各自收口。
 
 ```
         core/  （编辑器平台，无终端）
@@ -11,7 +11,17 @@ lab/
     input.rkt       事件 → 绑定键（依赖 racket-tui 的事件类型）
     command.rkt     纯表：binding → handler + command-set
     dispatch.rkt    did + extra(模态) + event → 跑 handler（不认识 core / 焦点）
+    face.rkt        动态 face 值（bracket-depth，#:prefab 可跨进程）
+    brackets.rkt    括号配对 + 深度 → 高亮填充（纯，插件的 compute）
     layout/         area / split / main（纯几何）
+  plugin/    插件层（不认识 app / 终端）
+    api.rkt         插件协议：plugin（name/priority/compute）+ job（#:prefab）
+    brackets.rkt    内置插件：括号按深度背景高亮
+    registry.rkt    内置插件表（主进程与 worker 共用）
+    runner.rkt      执行器接口 + 同步 runner
+    runner-place.rkt 后台 place 进程执行器（worker 池，按 did 分派 + 唤醒源）
+    worker.rkt      place 入口：维护影子文本，收 open/change/close/job
+    manager.rkt     影子同步 + 版本跟踪 + 调度 + 合并 + 写回文档
   ui/        view-model（纯，只依赖 core）
     tree.rkt        文件树模型 → document
     buffers.rkt     文档/视图两级列表 → document
@@ -34,6 +44,7 @@ lab/
       modal.rkt      输入 / 确认模态
       main.rkt       汇总 provide
     render.rkt      state 行 + 每帧准备 app-prepare!
+    plugins.rkt     app ↔ 插件层接缝：哪些文档跑插件 / 每 tick sync+poll
     app.rkt         装配 init + 事件入口（薄壳）
   backend/
     tui.rkt         racket-tui：screen patch → ANSI（颜色查 theme/）；读事件
@@ -43,10 +54,11 @@ lab/
     light.rkt       浅色主题
     main.rkt        汇总 + current-theme
   main.rkt
-  smoke.rkt / smoke-app.rkt
+  smoke.rkt / smoke-plugin.rkt / smoke-app.rkt
 ```
 
-依赖方向是 DAG：`base → (tui)`、`ui → core`、`app → ui + base + core`、`backend → app + theme`、`theme → 无`。
+依赖方向是 DAG：`base → (tui)`、`ui → core`、`plugin → core + base`、`app → ui + base + plugin + core`、
+`backend → app + plugin + theme`、`theme → base/face`。
 
 ## 与 lab-rebuild 的耦合点对照
 
@@ -122,6 +134,73 @@ theme/main.rkt    汇总 + (current-theme) 参数
 - face / overlay 名由各 view-model 定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
   `app/render.rkt`、core 的 `line-number`）；主题把它们映射到颜色。
 - 换主题：`(current-theme light-theme)`（`current-theme` 是 parameter）。
+- 动态 face：`bracket-depth` 按嵌套深度在 `bracket-colors` 色板上取模取背景色（深度无上限）。
+
+## 插件层
+
+**对 text 无影响的插件**（高亮 / 诊断……）不改文本，可以整个丢到后台进程算。
+插件层把这件事收成一个协议：
+
+```
+plugin/api.rkt      plugin(name, priority, compute) + job(text, path)
+                     compute : job → (listof fill)   —— 纯函数，可跨进程
+plugin/shadow.rkt   影子文本：open(text) / apply(edits) / text   —— 增量同步的基础
+     ↓
+plugin/manager.rkt  每 tick：sync! 派活（发 open/change + submit）/ poll! 收结果 + 写回
+     ├─ runner.rkt       同步 runner（测试）
+     └─ runner-place.rkt place 后台进程（worker 池 + 唤醒源）
+```
+
+**数据流（按版本 token 同步，不整篇搬文本）**：
+
+```
+编辑命令 (editor-view-*!)  → 返回 core 的 change
+  app-plugin-note-change!  change → (l0 c0 l1 c1 inserted) 存进 manager.pending
+app-handle-input / app-prepare!  →  app-plugin-tick!
+  manager-sync!  有路径的文档：为当前 document 版本取 token
+     token 已在缓存（undo/redo 回到旧版本）→ 什么都不发
+     token 新 + 有本 tick 的 diff → runner-change!(did from to edits)
+     否则（open/CAS…）            → runner-open!(did token text)
+     → 对「该 token 还没算过」的插件 runner-submit!(tag name did token path)
+  manager-poll!  收 (tag name fills)，token 仍是当前版本才存/合并写回
+```
+
+- **版本 token**：每个 document 值一个编号（主进程弱表 doc→token）。worker / 同步 runner 按
+  `(did, token)` 缓存影子，结果也按 token 缓存（每 did 保留最近 `history-bound=64` 个）。
+- **undo/redo 完全免费**：旧版本回到 token 时，影子还在、结果还在 → 不重发文本、不重算、
+  不写属性。（属性本来就随 document 值存在 box 里，恢复出来就是算好的。）
+- **主线程每次编辑只付 O(编辑长度)**：core 的 `change` 只存结构（`before`/`after` 点区间），
+  插入文本从新文档读一次（`editor-view-change-text`），发过去的就这五元组。
+- **影子文本**（`plugin/shadow.rkt`）在 worker 和同步 runner 各自维护：`vector of lines`，
+  `apply` 用同一批 change（同一编辑前坐标系）从右往左 splice。用 core 的 `string->lines` /
+  `lines->string`（保尾部空行，`racket/string` 的 split 会吞）。
+- **按 did 固定分派**：同一文档的消息都进同一个 worker（它的版本表在那里）；
+  超界版本由 manager 发 `drop!` 通知 worker 释放。
+
+**版本闸门（异步安全的核心）**：版本用 **document 值身份 → token**（不是文本哈希）。
+core 里文本编辑（`document-edit-tracks`）会 fork 一个**新的 document 值**，而属性编辑
+（插件写回 `document-highlight-fill-batch`）就地改 box、值不变。所以：
+
+- 派活时记下当时的 token；结果回来时 token 仍对应当前 document ⇒ 写回安全。
+- 不等 ⇒ 丢掉（新版本会在下一次 tick 重新派活）。迟到的结果不会写错文本版本。
+
+**合并**：多个插件的结果按 `priority` 升序拼接（低的先写、高的覆盖），
+manager 是真实文件高亮轨的**唯一写者**。
+
+**后台进程（place）**：
+
+```
+manager → runner-place → worker place（独立进程）
+                              └─ registry 按 name 查同一个 compute
+主进程 reader 线程：place 结果 → mailbox(async-channel) + signal(async-channel)
+signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它，
+于是 read-event 的 sync 会等它 —— 后台结果一到，事件循环醒来、写回、重绘。
+```
+
+- `job` / `bracket-depth` 用 `#:prefab`：能跨 place 序列化（普通 struct 也行，prefab 更稳）。
+- 后台进程只拿到 `name`，用**同一份 registry** 查 `compute`，保证两边一致。
+- 没路径的文档（`*tree*` / `*state*` …）不跑插件（“哪些算真实文件”的策略在 app/plugins.rkt）。
+- 关文档时 `manager-forget!` 清状态；在途结果因 did 不在而丢。
 
 ## 关键约定
 
@@ -130,6 +209,7 @@ theme/main.rkt    汇总 + (current-theme) 参数
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
 - **动作只在 `actions.rkt`**；`commands.rkt` 只做「功能 → 命令」转发；`keys/` 只做「binding → 命令」。
 - **颜色只在 `theme/`**；后端 / view-model 不写死 RGB。
+- **插件不改 text**；装饰只写属性轨，且必须过 `manager` 的版本闸门（不直接调 `document-*`）。
 - 模态表在 dispatch 时叠在 did 表之后，优先级最高。
 - **前缀键**：`mode` 的第三种状态 `prefix`（记 label + tables）。下一键只查这些表（不回落 normal）；
   处理完**若还是同一个前缀就退出**，否则（处理器又进了新前缀 / 开了 prompt）就保留 → **支持任意层级嵌套**。
@@ -140,6 +220,7 @@ theme/main.rkt    汇总 + (current-theme) 参数
 ```
 racket lab/main.rkt [根目录]
 racket lab/smoke.rkt        # base / ui 协议
+racket lab/smoke-plugin.rkt # 插件层（含后台 place runner）
 racket lab/smoke-app.rkt    # 集成（无终端）
 ```
 

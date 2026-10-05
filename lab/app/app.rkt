@@ -15,7 +15,11 @@
          "paths.rkt"
          "actions.rkt"
          "keys/main.rkt"
-         "render.rkt")
+         "render.rkt"
+         "plugins.rkt"
+         "../plugin/manager.rkt"
+         "../plugin/runner.rkt"
+         "../plugin/registry.rkt")
 
 ;;; lab/app/app.rkt —— 应用装配 + 事件入口（薄壳）
 ;;;
@@ -29,7 +33,8 @@
 
 ;;; ================= 初始化 =================
 
-(define (app-init root width height #:sidebar-width [sw default-sidebar-width])
+(define (app-init root width height #:sidebar-width [sw default-sidebar-width]
+                  #:plugins [plugins (make-manager registry-plugins (make-sync-runner))])
   (define tree (file-tree root))
   (define mw (max 1 (- width sw)))
   (define ed0 (make-blank-editor))                          ; 不预开 *scratch*，开文件才有内容
@@ -53,7 +58,7 @@
                bdid bufs-keys)
               stdid readonly-keys))
   (define a (app ed4 tree p (edit-panes-empty) bmodel 'tree tvid #f cs (make-path-table)
-                 width height sw #f #f #f))
+                 width height sw #f #f #f plugins))
   (app-bufs-refresh! a)
   a)
 
@@ -85,7 +90,9 @@
   ;; 焦点落在某个编辑窗格 → 它就是 active（打开 / 拆分 / 删除都按它来）。
   (define f (app-focus a))
   (when (and f (edit-panes-contains? (app-edit a) f))
-    (set-edit-panes-active! (app-edit a) f)))
+    (set-edit-panes-active! (app-edit a) f))
+  ;; 插件：为新版本派活 + 收结果写回（同步 runner 在这里就生效）。
+  (app-plugin-tick! a))
 
 ;;; ================= 鼠标 =================
 

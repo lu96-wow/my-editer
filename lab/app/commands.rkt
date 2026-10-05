@@ -3,7 +3,8 @@
 (require "../../core/editor.rkt"
          "../base/input.rkt"
          "state.rkt"
-         "actions.rkt")
+         "actions.rkt"
+         "plugins.rkt")
 
 ;;; lab/app/commands.rkt —— 命令转发层
 ;;;
@@ -41,18 +42,24 @@
 
 ;;; ================= 编辑 =================
 
+;; 跑一次编辑并把它产生的增量交给插件层（只有文本编辑会返回 changes）。
+(define (edit! a thunk)
+  (define-values (changes _ok?) (thunk))
+  (when (pair? changes) (app-plugin-note-change! a (focus a) changes)))
+
 (define (cmd-insert e a)
-  (editor-view-insert! (ed a) (focus a) (event-text e)))
+  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) (event-text e)))))
 
 ;; 插入固定串（enter / tab）。
 (define (cmd-insert-string s)
-  (lambda (e a) (editor-view-insert! (ed a) (focus a) s)))
+  (lambda (e a)
+    (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s)))))
 
 (define cmd-newline (cmd-insert-string "\n"))
 (define cmd-tab     (cmd-insert-string "\t"))
 
-(define (cmd-backspace _ a) (editor-view-backspace! (ed a) (focus a)))
-(define (cmd-delete _ a)    (editor-view-delete! (ed a) (focus a)))
+(define (cmd-backspace _ a) (edit! a (lambda () (editor-view-backspace! (ed a) (focus a)))))
+(define (cmd-delete _ a)    (edit! a (lambda () (editor-view-delete! (ed a) (focus a)))))
 
 ;; 方向移动：extend? = #t 时带选扩展（Shift+方向）。
 (define (cmd-nav f [extend? #f])
@@ -74,8 +81,9 @@
 
 (define (cmd-select-all _ a) (editor-view-select-all! (ed a) (focus a)))
 (define (cmd-copy _ a)       (editor-view-copy! (ed a) (focus a)))
-(define (cmd-cut _ a)        (editor-view-cut! (ed a) (focus a)))
-(define (cmd-paste _ a)      (editor-view-paste! (ed a) (focus a)))
+(define (cmd-cut _ a)        (edit! a (lambda () (editor-view-cut! (ed a) (focus a)))))
+(define (cmd-paste _ a)      (edit! a (lambda () (editor-view-paste! (ed a) (focus a)))))
+;; undo/redo 只返回 ok?，没有 change → 插件层下个 tick 整篇重发（开/重置影子）。
 (define (cmd-undo _ a)       (editor-view-undo! (ed a) (focus a)))
 (define (cmd-redo _ a)       (editor-view-redo! (ed a) (focus a)))
 

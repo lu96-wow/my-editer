@@ -11,7 +11,8 @@
          "state.rkt"
          "panes.rkt"
          "edit-panes.rkt"
-         "paths.rkt")
+         "paths.rkt"
+         "plugins.rkt")
 
 ;;; lab/app/actions.rkt —— 业务动作：唯一改 app / editor 的地方
 ;;;
@@ -118,7 +119,8 @@
                             (editor-document-view-list ed did))))
     (for ([did (in-list closed)])
       (set-app-ed! a (editor-close-document (app-ed a) did))
-      (path-table-remove! (app-paths a) did))
+      (path-table-remove! (app-paths a) did)
+      (app-plugin-forget! a did))
     (app-edit-remove! a vids)
     (app-edit-recover! a)))
 
@@ -136,6 +138,7 @@
   (set-app-ed! a (editor-close-document ed did))
   (app-edit-remove! a vids)
   (path-table-remove! (app-paths a) did)
+  (app-plugin-forget! a did)
   (buffers-collapse! (app-bufs a) did)
   (app-edit-recover! a))
 

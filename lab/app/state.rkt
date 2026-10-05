@@ -40,7 +40,8 @@
    sidebar-width
    layout                ; layout-result 缓存（#f = 失效）
    prev                  ; 上一帧 screen
-   quit?)
+   quit?
+   plugins)              ; 插件管理器（见 app/plugins.rkt）
   #:mutable #:transparent)
 
 (define (app-main-w a) (max 1 (- (app-width a) (app-sidebar-width a))))

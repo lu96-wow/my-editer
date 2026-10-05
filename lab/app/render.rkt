@@ -5,7 +5,8 @@
          "../ui/slot.rkt"
          "../ui/mode.rkt"
          "state.rkt"
-         "panes.rkt")
+         "panes.rkt"
+         "plugins.rkt")
 
 ;;; lab/app/render.rkt —— 每帧准备 + 分隔线 + 底部 state 行
 ;;;
@@ -54,6 +55,7 @@
 
 (define (app-prepare! a)
   (app-state-refresh! a)
+  (app-plugin-tick! a)                                  ; 插件：派活 + 收结果
   (layout-result-panes (app-layout-result a)))
 
 ;;; ---------- 分屏分隔线（装饰图层） ----------
