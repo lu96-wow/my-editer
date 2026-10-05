@@ -456,4 +456,18 @@
 (send3 (key-event #\} no-mods))
 (check-equal? (bracket-depth-n (hl-at 0 6)) 0)
 
+;;; ---------- 终端括弧粘贴（paste 事件） ----------
+
+(send3 (key-event 'end no-mods))
+(send3 (paste-event #"XY" "XY"))
+(check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b]){}XY")
+(send3 (paste-event #"1\n2" "1\n2"))                 ; 多行走富粘贴
+(check-equal? (editor-view-string (c-ed) (c-edit)) "(a[b]){}XY1\n2")
+
+;; 只读面板（文件树）吞掉粘贴，不改树文档
+(define tree-before (editor-view-string (c-ed) (c-tree)))
+(send3 (key-event 'o (mods #t #f #f)))                 ; 焦点到左栏（树）
+(send3 (paste-event #"ZZ" "ZZ"))
+(check-equal? (editor-view-string (c-ed) (c-tree)) tree-before)
+
 (displayln "lab smoke-app: ok")

@@ -13,6 +13,7 @@
 (define readonly-keys
   (command-table
    text-binding     cmd-noop
+   paste-binding    cmd-noop
    (key 'enter)     cmd-noop
    (key 'tab)       cmd-noop
    (key 'backspace) cmd-noop

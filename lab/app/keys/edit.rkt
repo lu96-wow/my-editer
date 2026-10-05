@@ -13,6 +13,7 @@
 (define edit-keys
   (command-table
    text-binding        cmd-insert
+   paste-binding       cmd-paste-text
    (key 'enter)        cmd-newline
    (key 'tab)          cmd-tab
    (key 'backspace)    cmd-backspace

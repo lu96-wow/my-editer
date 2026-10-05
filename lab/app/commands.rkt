@@ -21,7 +21,7 @@
          cmd-left cmd-right cmd-up cmd-down cmd-home cmd-end
          cmd-left-select cmd-right-select cmd-up-select cmd-down-select
          cmd-home-select cmd-end-select
-         cmd-select-all cmd-copy cmd-cut cmd-paste cmd-undo cmd-redo
+         cmd-select-all cmd-copy cmd-cut cmd-paste cmd-paste-text cmd-undo cmd-redo
          cmd-focus-left cmd-focus-right cmd-focus-up cmd-focus-down
          cmd-toggle-focus cmd-quit cmd-prefix cmd-save
          cmd-split-tb cmd-split-lr cmd-pane-close
@@ -49,6 +49,10 @@
 
 (define (cmd-insert e a)
   (edit! a (lambda () (editor-view-insert! (ed a) (focus a) (event-text e)))))
+
+;; 终端括弧粘贴（bracketed paste）：插事件里的文本；走富粘贴（多行 / 属性）。
+(define (cmd-paste-text e a)
+  (edit! a (lambda () (editor-view-paste-text! (ed a) (focus a) (event-text e)))))
 
 ;; 插入固定串（enter / tab）。
 (define (cmd-insert-string s)
