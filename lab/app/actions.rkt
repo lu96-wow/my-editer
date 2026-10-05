@@ -22,6 +22,7 @@
 (provide app-bufs-exclude
          app-tree-refresh! app-tree-activate! app-tree-new-file! app-tree-new-dir! app-tree-delete!
          app-open-path! app-close-path! app-close-view! app-close-document!
+         app-forget-document!
          app-show-view! app-show-document! app-split! app-pane-close!
          app-bufs-refresh! app-bufs-activate! app-bufs-close! app-bufs-new-view! app-save!
          app-toggle-focus! app-toggle-left! app-move-focus!
@@ -110,18 +111,30 @@
     (define vids (editor-document-view-list (app-ed a) did))
     (and (pair? vids) (car vids))))
 
+;; 关一个文档的**全部** per-did 资源，返回它原来的 view 列表。
+;;
+;; 这是「按 document 清理」的**唯一入口**：任何关文档的语义都必须走这里，
+;; 否则容易漏掉某张 per-did 表（历史上 app-close-path! 就漏过 buffers 的展开状态）。
+;; 收拢的东西：
+;;   · core editor    文档条目 + 它的所有 view（连带 history）
+;;   · app/paths      did ↔ path 双向条目
+;;   · plugin/manager 版本跟踪 / 待发增量 / 结果缓存 + 通知 runner 释放 worker 影子
+;;   · ui/buffers     文档列表的展开状态
+;; 调用方负责：把返回的 view 从编辑区移除（app-edit-remove!）+ 恢复焦点（app-edit-recover!）。
+(define (app-forget-document! a did)
+  (define vids (editor-document-view-list (app-ed a) did))
+  (set-app-ed! a (editor-close-document (app-ed a) did))
+  (path-table-remove! (app-paths a) did)
+  (app-plugin-forget! a did)
+  (buffers-collapse! (app-bufs a) did)
+  vids)
+
 ;; 路径被删 → 同步关掉它（及子路径）对应的文档 / 视图，并从编辑区移除。
 (define (app-close-path! a path)
   (define closed (path-table-dids-under (app-paths a) path))
-  (when (pair? closed)
-    (define ed (app-ed a))
-    (define vids (append* (for/list ([did (in-list closed)])
-                            (editor-document-view-list ed did))))
-    (for ([did (in-list closed)])
-      (set-app-ed! a (editor-close-document (app-ed a) did))
-      (path-table-remove! (app-paths a) did)
-      (app-plugin-forget! a did))
-    (app-edit-remove! a vids)
+  (unless (null? closed)
+    (app-edit-remove! a (append* (for/list ([did (in-list closed)])
+                                   (app-forget-document! a did))))
     (app-edit-recover! a)))
 
 ;; 关闭动作后：编辑区空了但还有 view → 把第一个可用的放进 active 窗格。
@@ -133,13 +146,7 @@
 
 ;; 关闭整个文档：连带它**所有** view。
 (define (app-close-document! a did)
-  (define ed (app-ed a))
-  (define vids (editor-document-view-list ed did))
-  (set-app-ed! a (editor-close-document ed did))
-  (app-edit-remove! a vids)
-  (path-table-remove! (app-paths a) did)
-  (app-plugin-forget! a did)
-  (buffers-collapse! (app-bufs a) did)
+  (app-edit-remove! a (app-forget-document! a did))
   (app-edit-recover! a))
 
 ;; 关闭单个 view：**文档保留**（即使这是它最后一个 view，也只是变成没有 view 的文档）。

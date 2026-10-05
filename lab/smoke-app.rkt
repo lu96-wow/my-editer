@@ -470,4 +470,19 @@
 (send3 (paste-event #"ZZ" "ZZ"))
 (check-equal? (editor-view-string (c-ed) (c-tree)) tree-before)
 
+;;; ---------- 回归：按 document 清理（树删除路径也要清干净）----------
+
+(define br-did (path-table-did (app-paths c) (build-path root3 "br.txt")))
+(check-not-false br-did)
+(buffers-expand! (app-bufs c) br-did)                      ; 展开它的文档行
+(check-true (buffers-expanded? (app-bufs c) br-did))
+;; 从文件树删 br.txt → app-close-path! → app-forget-document!
+(editor-view-set-point! (c-ed) (c-tree) (point cl 0))
+(send3 (key-event 'backspace no-mods))
+(send3 (key-event #\y no-mods))
+(check-false (file-exists? (build-path root3 "br.txt")))
+(check-false (buffers-expanded? (app-bufs c) br-did))      ; 关键：展开状态不残留
+(check-false (path-table-did (app-paths c) (build-path root3 "br.txt")))
+(check-false (memv br-did (editor-document-id-list (c-ed))))
+
 (displayln "lab smoke-app: ok")

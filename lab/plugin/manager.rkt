@@ -132,8 +132,14 @@
   (editor-document-handle-set-highlight! doc #f)
   (editor-document-handle-highlight-batch! doc merged))
 
+;; 清掉一个文档的全部状态：版本跟踪、待发增量、结果缓存、在途 job，并通知 runner
+;; 释放 worker 侧的影子 / 插件状态。这是「按 document 清理」在插件层的唯一入口。
 (define (manager-forget! m did)
   (hash-remove! (manager-tracked m) did)
   (hash-remove! (manager-pending m) did)
   (hash-remove! (manager-results m) did)
+  ;; 在途 job 也一并清：worker 迟到结果回来时查不到 job → 直接丢。
+  (define doomed
+    (for/list ([(tag job) (in-hash (manager-jobs m))] #:when (eqv? did (car job))) tag))
+  (for ([tag (in-list doomed)]) (hash-remove! (manager-jobs m) tag))
   (runner-close! (manager-runner m) did))
