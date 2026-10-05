@@ -30,7 +30,7 @@
          event?
          ;; 绑定键
          key mouse text-binding paste-binding resize-binding
-         normalize-mods
+         normalize-mods char->key-symbol
          ;; 鼠标坐标：racket-tui 是 1-based → 统一转成 0-based 屏幕格
          mouse-col mouse-row
          event->binding)

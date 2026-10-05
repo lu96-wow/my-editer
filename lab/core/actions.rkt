@@ -4,7 +4,8 @@
          "actions/tree.rkt"
          "actions/modal.rkt"
          "actions/file.rkt"
-         "actions/focus.rkt")
+         "actions/focus.rkt"
+         "actions/lang.rkt")
 
 ;;; lab-rebuild/app/actions.rkt —— 业务动作**聚合出口**
 ;;;
@@ -15,6 +16,7 @@
 ;;;   actions/modal.rkt   前缀键 / prompt（不依赖其它动作）
 ;;;   actions/file.rkt    保存 / 退出 / 尺寸
 ;;;   actions/focus.rkt   焦点移动 / 左栏切换（依赖 core）
+;;;   actions/lang.rkt    语言服务：文档查询 / 补全（依赖 lang/ 纯层）
 ;;;
 ;;; 依赖方向是 DAG：spoke → core，core 不 require 任何 spoke（没有环）。
 
@@ -22,4 +24,5 @@
          (all-from-out "actions/tree.rkt")
          (all-from-out "actions/modal.rkt")
          (all-from-out "actions/file.rkt")
-         (all-from-out "actions/focus.rkt"))
+         (all-from-out "actions/focus.rkt")
+         (all-from-out "actions/lang.rkt"))

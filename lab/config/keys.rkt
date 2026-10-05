@@ -19,7 +19,7 @@
 ;;;   confirm-keys     确认型模态（y / n）
 
 (provide edit-keys focus-keys app-keys readonly-keys tree-keys bufs-keys
-         input-edit-keys confirm-keys)
+         input-edit-keys confirm-keys complete-keys docs-keys)
 
 ;;; ---------- 编辑 ----------
 
@@ -48,7 +48,9 @@
    (key 'x 'ctrl)       'cut
    (key 'v 'ctrl)       'paste
    (key 'z 'ctrl)       'undo
-   (key 'y 'ctrl)       'redo))
+   (key 'y 'ctrl)       'redo
+   ;; 语言服务：Ctrl+N 补全（树面板的 Ctrl+N 是新建文件，那里按 did 优先）
+   (key 'n 'ctrl)       'complete))
 
 ;;; ---------- 焦点移动（C-p 前缀下的默认表） ----------
 ;;; 终端里 Ctrl+↑/↓ 常被吞（VTE 直接丢），所以用前缀键：
@@ -61,6 +63,8 @@
    (key 'right)  '(focus right)
    (key 'up)     '(focus up)
    (key 'down)   '(focus down)
+   (key 'd)      'show-docs          ; 文档查询
+   (key 'c)      'complete           ; 补全
    (key 'escape) 'noop))     ; 退出前缀（app 会自动清）
 
 ;;; ---------- 全局 ----------
@@ -131,3 +135,32 @@
          (command-table
           text-binding  'answer
           (key 'escape) 'cancel))))
+
+;;; ---------- 补全菜单 ----------
+;;; 上下选择、Tab/Enter/右 接受、Esc 取消；字符 / 退格继续输入并实时过滤。
+
+(define complete-keys
+  (command-table
+   (key 'up)        '(complete-move -1)
+   (key 'down)      '(complete-move 1)
+   (key 'tab)       'complete-accept
+   (key 'enter)     'complete-accept
+   (key 'right)     'complete-accept
+   (key 'escape)    'complete-cancel
+   (key 'c 'ctrl)   'complete-cancel
+   text-binding     'complete-type
+   (key 'backspace) 'complete-backspace))
+
+;;; ---------- 文档浮窗 ----------
+;;; Enter / Esc 关闭；上下 / PageUp·PageDown 滚动；其余吞掉（不编辑下面文档）。
+
+(define docs-keys
+  (command-table
+   (key 'enter)     'docs-close
+   (key 'escape)    'docs-close
+   (key 'up)        '(docs-scroll -1)
+   (key 'down)      '(docs-scroll 1)
+   (key 'pageup)    '(docs-scroll -10)
+   (key 'pagedown)  '(docs-scroll 10)
+   text-binding     'noop
+   (key 'backspace) 'noop))

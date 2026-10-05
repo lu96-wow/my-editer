@@ -60,8 +60,9 @@
 (check-equal? (doc-name d) "add-between")
 (check-not-false (doc-signature d))
 (check-not-false (and (string-contains? (doc-signature d) "add-between") #t))
-(check-not-false (and (doc-description d) (string-contains? (doc-description d) "between each pair") #t))
-(check-not-false (and (doc-url d) (string-prefix? (doc-url d) "https://docs.racket-lang.org/") #t))
+;; DrRacket 式：整个 bluebox 列表都显示，首行是类别
+(check-not-false (and (string-prefix? (doc-signature d) "procedure") #t))
 (check-false (docs-for "definitely-not-a-racket-identifier-xyz" #:modules '(racket/base)))
-;; doc->text 至少含名字与签名
+;; doc->text 至少含名字与签名；无 HTML 正文（不抽 prose / 不去 markdown）
 (check-not-false (and (doc->text d) (string-contains? (doc->text d) "add-between") #t))
+(check-false (string-contains? (doc->text d) "https://"))

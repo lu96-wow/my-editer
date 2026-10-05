@@ -30,6 +30,14 @@
   (and spec (begin (command-invoke spec event app) #t)))
 
 ;; 直接给一张表（前缀键只查它自己的表，不按 did / 不回落）。
+;; 额外做一次「按字符」回退：无修饰字符在绑定词表里塌成 'text（编辑命令用），
+;; 但前缀 / 模态表可能按字符绑（如 C-p 后 d / c），所以查不到时拿字符自己的键再查。
 (define (dispatch-run-direct tables event app)
-  (define spec (command-lookup tables (event->binding event)))
+  (define spec
+    (or (command-lookup tables (event->binding event))
+        (char-binding-fallback tables event)))
   (and spec (begin (command-invoke spec event app) #t)))
+
+(define (char-binding-fallback tables event)
+  (define k (and (key-event? event) (key-event-key event)))
+  (and (char? k) (command-lookup tables (key (char->key-symbol k)))))

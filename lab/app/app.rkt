@@ -33,7 +33,7 @@
 
 (provide app-init app-handle-input
          ;; 从 render.rkt 重导出：调用方只需 require app/app.rkt
-         app-render app-prepare! app-state-refresh! app-bar-panes)
+         app-render app-prepare! app-state-refresh! app-bar-panes app-overlay-panes)
 
 ;;; ================= 初始化 =================
 

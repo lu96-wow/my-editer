@@ -30,7 +30,9 @@
 
 (provide (struct-out prompt)
          (struct-out prefix)
-         input-begin prefix-begin
+         (struct-out complete)
+         (struct-out docs)
+         input-begin prefix-begin complete-begin docs-begin
          input-commit input-answer input-cancel
          prompt-document prompt-value
          mode-bottom-vid mode-focus-vid mode-tables)
@@ -80,6 +82,34 @@
 
 (define (prefix-begin label tables) (prefix label tables))
 
+;;; ================= 补全 =================
+
+;; 补全菜单：不占底部槽位、不改焦点，只在渲染时叠一个弹层（见 app/render.rkt）。
+;;   candidates : (listof string)   候选（有序）
+;;   index      : 当前选中下标（在 [0, length) 内）
+;;   start      : 前缀起点（point），接受时替换 [start, 光标) 为候选
+;;   prev-focus : 发起补全时的编辑 view（接受 / 取消都看它）
+;;   tables     : 本模态的键表（config/keys.rkt 提供）
+(struct complete (candidates index start prev-focus tables) #:transparent)
+
+(define (complete-begin candidates index start prev-focus tables)
+  (complete candidates index start prev-focus tables))
+
+;;; ================= 文档浮窗 =================
+
+;; 只读文本浮窗（文档查询）：贴在光标下一行，Enter / Esc 关闭，上下滚动。
+;;   vid    : 发起时的编辑 view（拿光标屏幕位置做锚点）
+;;   point  : 发起时光标位置
+;;   lines  : (vectorof string)   已按 width 折行好的内容行
+;;   offset : 首行下标（在 [0, n - rows] 内）
+;;   width  : 内容列宽（不含左右边框）
+;;   rows   : 可见内容行数
+;;   tables : 本模态的键表
+(struct docs (vid point lines offset width rows tables) #:transparent)
+
+(define (docs-begin vid point lines offset width rows tables)
+  (docs vid point lines offset width rows tables))
+
 ;;; ================= 模式 → 槽位 / 焦点 / 命令表 =================
 
 ;; 底部槽位此刻挂哪个 vid（state-vid / input-vid 由 app 传）；只有 prompt 占 input。
@@ -95,4 +125,6 @@
   (cond [(not m) '()]
         [(prompt? m) (if (prompt-editable? m) (list edit-table) (list confirm-table))]
         [(prefix? m) (prefix-tables m)]
+        [(complete? m) (list (complete-tables m))]
+        [(docs? m) (list (docs-tables m))]
         [else '()]))

@@ -14,7 +14,7 @@
 ;;; 纯渲染（app-render）和增量渲染（backend/tui）都必须走它，别各写一份。
 ;;; 分屏的分隔线（bars）作为**装饰图层**参与合成（app-bar-panes），也走同一条 patch 路径。
 
-(provide app-state-refresh! app-prepare! app-bar-panes app-render)
+(provide app-state-refresh! app-prepare! app-bar-panes app-complete-panes app-overlay-panes app-render)
 
 (define (pad-right s n)
   (define len (string-length s))
@@ -127,10 +127,93 @@
              #:when (and (positive? (bar-width b)) (positive? (bar-height b))))
     (bar->pane b)))
 
+;;; ---------- 补全弹层（装饰图层） ----------
+;;;
+;;; 不占布局、不动焦点：直接贴在光标下一行、光标列处的一个高 deep pane（合成时压在最上）。
+;;; 选中项用 cursor overlay（反色）+ state face；其余用 state face。
+
+(define complete-face 'state)
+(define complete-max-rows 10)
+
+(define (app-complete-panes a)
+  (define m (app-mode a))
+  (cond
+    [(not (complete? m)) '()]
+    [else
+     (define ed (app-ed a))
+     (define vid (complete-prev-focus m))
+     (define cands (complete-candidates m))
+     (define idx (complete-index m))
+     (define n (length cands))
+     (define h (min complete-max-rows n))
+     ;; 让选中项大致居中，并按窗口夹在 [0, n-h]
+     (define start (max 0 (min (- idx (quotient h 2)) (- n h))))
+     (define shown (take (drop cands start) h))
+     (define w (+ 2 (for/fold ([mx 0]) ([s (in-list shown)]) (max mx (string-length s)))))
+     (define-values (row col)
+       (editor-view-point->screen-position ed vid (editor-view-point ed vid)))
+     (define rows
+       (for/vector ([i (in-range h)])
+         (define s (list-ref shown i))
+         (define selected? (= (+ start i) idx))
+         (define pad (max 0 (- w (add1 (string-length s)))))
+         (list (run 0 (string-append " " s (make-string pad #\space))
+                    (if selected? (cons 'cursor complete-face) complete-face)))))
+     (list (pane 'complete (add1 row) col (screen w h rows '() '()) 10))]))
+
+;; 本帧全部装饰图层：分隔线 + 补全弹层 + 文档浮窗。纯渲染与增量后端都走这一个入口。
+(define (app-overlay-panes a)
+  (append (app-bar-panes a) (app-complete-panes a) (app-docs-panes a)))
+
+;;; ---------- 文档浮窗（装饰图层） ----------
+;;;
+;;; 居中一个带边框的框，内容已折好行；Enter/Esc 关、上下滚（键表在 config/keys）。
+
+(define docs-border-face 'bar)
+(define docs-text-face 'state)
+
+(define (app-docs-panes a)
+  (define m (app-mode a))
+  (cond
+    [(not (docs? m)) '()]
+    [else
+     (define lines (docs-lines m))
+     (define n (vector-length lines))
+     (define cw (docs-width m))
+     (define content-rows (max 1 (min (docs-rows m) n)))
+     (define off (max 0 (min (docs-offset m) (max 0 (- n content-rows)))))
+     (define w (+ cw 2))
+     (define h (+ content-rows 2))
+     ;; 锚点：光标下一行、光标列（加窗格偏移 → 屏幕绝对坐标）；放不下就贴边。
+     (define ed (app-ed a))
+     (define vid (docs-vid m))
+     (define rect
+       (for/first ([r (in-list (layout-result-panes (app-layout-result a)))]
+                   #:when (eqv? (rectangle-view-id r) vid)) r))
+     (define-values (crow ccol) (editor-view-point->screen-position ed vid (docs-point m)))
+     (define anchor-row (if rect (+ (rectangle-y rect) crow) crow))
+     (define anchor-col (if rect (+ (rectangle-x rect) ccol) ccol))
+     (define top-row (max 0 (min (add1 anchor-row) (max 0 (- (app-height a) h)))))
+     (define left-col (max 0 (min anchor-col (max 0 (- (app-width a) w)))))
+     (define (hborder) (run 0 (string-append "+" (make-string cw #\-) "+") docs-border-face))
+     (define (content-row i)
+       (define s (vector-ref lines (+ off i)))
+       (define pad (make-string (max 0 (- cw (string-length s))) #\space))
+       (list (run 0 "|" docs-border-face)
+             (run 1 (string-append s pad) docs-text-face)
+             (run (add1 cw) "|" docs-border-face)))
+     (define rows
+       (for/vector ([i (in-range h)])
+         (cond
+           [(zero? i) (list (hborder))]
+           [(= i (sub1 h)) (list (hborder))]
+           [else (content-row (sub1 i))])))
+     (list (pane 'docs top-row left-col (screen w h rows '() '()) 11))]))
+
 ;; 一次性全量渲染（测试 / 非增量后端用）：与增量后端走**同一个** app-prepare! 入口。
 (define (app-render a)
   (define panes (app-prepare! a))
   (editor-render-layout*! (app-ed a)
                           panes
                           (app-focus a) (app-width a) (app-height a)
-                          (app-bar-panes a)))
+                          (app-overlay-panes a)))

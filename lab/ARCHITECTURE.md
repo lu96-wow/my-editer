@@ -15,11 +15,16 @@ lab-rebuild/
     layout/         area / split / focus / main（纯几何）
   ui/          view-model（纯，只依赖 core 平台）
     tree.rkt buffers.rkt slot.rkt mode.rkt
+  lang/        语言服务（纯：文本 → 文档 / 候选；不认识 app / editor）
+    ident.rkt       行 / 光标处标识符 / 补全前缀
+    source.rkt      #lang + require 模块路径 + 顶层定义名（启发式，不做展开）
+    docs.rkt        标识符 → bluebox（DrRacket 式，不抽 HTML 正文）
+    complete.rkt    前缀 → 候选（基础命名空间 + require 导出 + 本地定义）
   core/        ★应用核心：唯一的状态 + 唯一的动作
     state.rkt       app 结构 + 派生量 + layout 缓存 + **钩子**
     panes.rkt edit-panes.rkt paths.rkt
     actions/        唯一改 state / editor 的地方（按域拆）
-      core.rkt  tree.rkt  modal.rkt  file.rkt  focus.rkt
+      core.rkt  tree.rkt  modal.rkt  file.rkt  focus.rkt  lang.rkt
     actions.rkt     聚合出口
   command/     ★命令层
     table.rkt       binding → 命令描述（符号 / (符号 . 参数)），不认识行为
@@ -41,7 +46,7 @@ lab-rebuild/
     theme/          主题机制 + dark / light + (current-theme)
   app/         装配层（唯一把上面全部接起来的地方）
     app.rkt         init + 事件入口
-    render.rkt      每帧准备 + 分隔线 + state 行
+    render.rkt      每帧准备 + 分隔线 + 补全弹层 + state 行
   backend/tui.rkt   racket-tui：patch → ANSI；读事件
   main.rkt
   smoke*.rkt
@@ -76,6 +81,7 @@ lab-rebuild/
 依赖方向是 DAG：`base → (tui)`、`ui → core`、`core → base + ui`、
 `command → base + core + plugin`、`plugin → base + core(平台) + core(state)`、
 `config → base`、`app → 全部`、`backend → app + config + plugin`。
+`lang` 是纯库（只吃文本 / 模块名），`core/actions/lang.rkt` → `lang`。
 
 ### 二、可配置状态集中在 `config/`
 
@@ -146,6 +152,37 @@ app-prepare! → app-plugin-tick!（seam）
 `(app-notify! a 'document-closed did)`；`plugin/seam.rkt` 在装配时用
 `app-hook-add!` 把 `manager-forget!` 挂上去。于是 core 不 require 插件层。
 
+### 语言服务（文档查询 / 补全）
+
+只做两件事，**不做 LSP、不做诊断 / 纠错**；数据管线参照 racket-langserver，但
+只取它“查文档 / 给候选”那部分，按 lab 的分层重写：
+
+```
+光标/前缀  lang/ident + lang/source ─► lang/docs | lang/complete
+                                           │
+                       core/actions/lang.rkt（开 *docs* 缓冲 / 进 complete 模态）
+                                           │
+                       command/registry（命令）/ config/keys（键位）
+```
+
+- **文档查询**（`C-p d`）：取光标处标识符，用 `setup/xref` 按「(候选模块, 名字)」
+  反查定义 tag（会跟到 re-export 的原始定义），再取 `scribble/blueboxes` 的字符串
+  （类别 + 签名 / 契约）。**照 DrRacket 的做法：只展示 bluebox**，不抓文档 HTML、
+  不剥 markdown（所以查文档不联网、不依赖 racket-langserver，首次数十毫秒）。结果在
+  光标**下一行的浮窗**显示（`docs` 模态，`app/render.rkt` 的 `app-docs-panes`）：
+  Enter/Esc 关，上下 / PageUp·PageDown 滚。
+- **补全**（`Ctrl+N` 或 `C-p c`）：前缀来自 `lang/ident`，候选 = 基础命名空间 + 各
+  require 导出（`module->exports`，按模块缓存）+ 文件顶层定义名（`lang/source` 启发式扫描），
+  过滤排序。上下选择、Tab/Enter/右 接受、Esc 取消；继续打字/退格会实时重算（前缀空则退出）。
+- 两个浮层都是**高 deep 的装饰 pane**（`app/render.rkt` 的 `app-complete-panes` /
+  `app-docs-panes`，由 `app-overlay-panes` 汇总），不占布局、不动焦点、不碰 editor，
+  只改 `mode`（`complete` / `docs`）。
+- **候选模块**由 `lang/source` 估出来（`#lang` 语言 + 顶层 `(require …)`，剥掉
+  `only-in` / `prefix-in` / `for-syntax` 等包装，相对字符串路径按文档所在目录解析）；
+  不做宏展开，因此白盒 / 生成名可能漏，但普通文件够用。
+- **依赖**：只用 Racket 自带的 `setup/xref` / `scribble/xref` / `scribble/blueboxes`；
+  不依赖 racket-langserver（只借鉴了它 / DrRacket 的思路）。
+
 ## 关键约定
 
 - **一个事实只存一处**：pane 身份在 `core/panes`、路径在 `core/paths`、模态在 `app.mode`、
@@ -156,7 +193,8 @@ app-prepare! → app-plugin-tick!（seam）
   `config/keys.rkt` 只做「binding → 命令名」。
 - **core 不 require command / plugin**（反向用钩子 + seam）。
 - **插件不改 text**；只写属性轨，且必须过 manager 的版本闸门。
-- **前缀键**：`mode` 第三种状态 `prefix`；下一键只查它自己的表（不回落 normal）；
+- **前缀键**：`mode` 用 `#f | prompt | prefix | complete | docs` 表达输入转移态；前缀下一键
+  只查它自己的表（不回落 normal）；
   处理完若还是同一个前缀就退出，否则保留 → 支持任意嵌套。
 - **命令描述**统一 `(event app . args) -> any`；前缀表里放命令名（不是裸 lambda）。
 
@@ -169,6 +207,8 @@ racket lab-rebuild/smoke-plugin.rkt  # 插件层（含后台 place runner）
 racket lab-rebuild/smoke-bracket.rkt # 括号增量 vs 全量（随机）
 racket lab-rebuild/smoke-app.rkt     # 集成（无终端）
 racket lab-rebuild/smoke-state.rkt   # state 行增量更新回归
+racket lab-rebuild/smoke-lang.rkt    # 语言层（ident / source / docs / complete）
+racket lab-rebuild/smoke-lang-app.rkt # 语言服务集成（补全 / 文档）
 raco test lab-rebuild                # 全部（含 state / theme 回归）
 ```
 

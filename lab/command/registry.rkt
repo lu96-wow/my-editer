@@ -4,6 +4,7 @@
          "../base/input.rkt"
          "../core/state.rkt"
          "../core/actions.rkt"
+         "../config/keys.rkt"
          "../plugin/seam.rkt"
          "../plugin/input/api.rkt"
          "../plugin/input/registry.rkt")
@@ -141,6 +142,28 @@
 
 (define (cmd-noop e a) (void))
 
+;;; ================= 语言服务（文档查询 / 补全） =================
+
+(define (cmd-show-docs e a) (app-show-docs! a docs-keys))
+(define (cmd-docs-close e a) (app-docs-close! a))
+(define (cmd-docs-scroll e a delta) (app-docs-scroll! a delta))
+(define (cmd-complete e a) (app-complete-begin! a complete-keys))
+(define (cmd-complete-move e a delta) (app-complete-move! a delta))
+(define (cmd-complete-cancel e a) (app-complete-cancel! a))
+
+;; 接受候选会改文本 → 把 change 交给插件层同步影子（与其它编辑命令一致）。
+(define (cmd-complete-accept e a)
+  (define r (app-complete-accept! a))
+  (when r (plugin-note-change! a (cadr r) (car r))))
+
+;; 继续打字 / 退格：先当普通编辑，再按新前缀重新过滤。
+(define (cmd-complete-type e a)
+  (cmd-insert e a)
+  (app-complete-refine! a complete-keys))
+(define (cmd-complete-backspace e a)
+  (cmd-backspace e a)
+  (app-complete-refine! a complete-keys))
+
 ;;; ================= 注册 =================
 
 (define-command insert        cmd-insert)
@@ -175,3 +198,12 @@
 (define-command cancel        cmd-cancel)
 (define-command answer        cmd-answer)
 (define-command noop          cmd-noop)
+(define-command show-docs     cmd-show-docs)
+(define-command docs-close    cmd-docs-close)
+(define-command docs-scroll   cmd-docs-scroll)
+(define-command complete      cmd-complete)
+(define-command complete-move cmd-complete-move)
+(define-command complete-accept cmd-complete-accept)
+(define-command complete-cancel cmd-complete-cancel)
+(define-command complete-type cmd-complete-type)
+(define-command complete-backspace cmd-complete-backspace)

@@ -49,7 +49,7 @@
   (define w (app-width a))
   (define h (app-height a))
   (define panes (app-prepare! a))           ; 刷新 state 槽位 + 取本帧窗格
-  (define decorations (app-bar-panes a))    ; 分屏分隔线（装饰图层）
+  (define decorations (app-overlay-panes a)) ; 分隔线 + 补全弹层（装饰图层）
   (define prev (app-prev a))
   (define fresh? (or (not prev)
                      (not (= (screen-width prev) w))
