@@ -14,13 +14,14 @@
          "edit-panes.rkt"
          "paths.rkt"
          "actions.rkt"
-         "commands.rkt"
+         "keys/main.rkt"
          "render.rkt")
 
 ;;; lab/app/app.rkt —— 应用装配 + 事件入口（薄壳）
 ;;;
 ;;; 这里只做三件事：init 把各部件接起来；handle-input 把事件分派到鼠标 / dispatch；
-;;; 事件后兜底检查模态焦点。业务动作在 actions.rkt，状态在 state.rkt。
+;;; 事件后兜底检查模态焦点。业务动作在 actions.rkt，命令转发在 commands.rkt，
+;;; 键表在 keys/，状态在 state.rkt。
 ;;;
 ;;; 布局：左 = 文件树 / 文档列表，右 = 当前文件，底 = state / input 共享槽位。
 

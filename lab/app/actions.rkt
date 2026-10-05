@@ -15,7 +15,7 @@
 
 ;;; lab/app/actions.rkt —— 业务动作：唯一改 app / editor 的地方
 ;;;
-;;; 命令表（commands.rkt）只做「事件 → 调这里的函数」；这里负责所有状态变更，
+;;; 命令转发（commands.rkt）只做「命令 → 调这里的函数」；这里负责所有状态变更，
 ;;; 并把生命周期不变量收在少数几个函数里（打开 / 关闭 / 聚焦 / 提示）。
 
 (provide app-bufs-exclude
@@ -25,7 +25,8 @@
          app-bufs-refresh! app-bufs-activate! app-bufs-close! app-bufs-new-view! app-save!
          app-toggle-focus! app-toggle-left! app-move-focus!
          app-prefix-begin! app-prefix-end!
-         app-begin! app-commit! app-answer! app-cancel! app-resize!)
+         app-begin! app-commit! app-answer! app-cancel! app-resize!
+         app-quit!)
 
 ;;; ================= 小工具 =================
 
@@ -305,7 +306,9 @@
     (set-app-focus! a (prompt-prev-focus p))
     (input-cancel p)))
 
-;;; ================= 保存 / 尺寸 =================
+;;; ================= 保存 / 退出 / 尺寸 =================
+
+(define (app-quit! a) (set-app-quit?! a #t))
 
 (define (app-save! a)
   (define did (focused-did a))

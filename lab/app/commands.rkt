@@ -2,150 +2,129 @@
 
 (require "../../core/editor.rkt"
          "../base/input.rkt"
-         "../base/command.rkt"
          "state.rkt"
          "actions.rkt")
 
-;;; lab/app/commands.rkt —— 命令表（binding → handler）
+;;; lab/app/commands.rkt —— 命令转发层
 ;;;
-;;; handler 约定 (event app)：dispatch 直接把 app 当 ctx 透传。
-;;; 表本身是纯数据；动作都在 actions.rkt，这里只做「事件 → 调动作」。
+;;; 三层里的中间层：
+;;;   功能核心   actions.rkt   唯一改 app / editor 的地方
+;;;   命令转发   commands.rkt  本文件：把「功能能力」包成命名命令
+;;;   默认命令表 keys/*.rkt    binding → 命令，纯数据
 ;;;
-;;; 分层：
-;;;   global      焦点移动 + 编辑 + app 级（对所有文档生效）
-;;;   按 did      树 / 文档列表 / state 槽（覆盖 global）
-;;;   模态表      input-edit-keys / confirm-keys，由 mode-tables 在 dispatch 时叠上
+;;; 命令统一约定 (event app) -> any：event 原样透传（文本 / 字符在事件里），app 是唯一状态。
+;;; 默认命令表只认这里的名字，**不直接 require core / actions / state**。
+;;; 需要参数的命令用工厂： (cmd-nav f) / (cmd-insert-string s) / (cmd-prefix label tables)。
 
-(provide edit-keys app-keys readonly-keys
-         tree-keys bufs-keys
-         input-edit-keys confirm-keys)
+(provide cmd-insert cmd-newline cmd-tab cmd-backspace cmd-delete
+         cmd-left cmd-right cmd-up cmd-down cmd-home cmd-end
+         cmd-left-select cmd-right-select cmd-up-select cmd-down-select
+         cmd-home-select cmd-end-select
+         cmd-select-all cmd-copy cmd-cut cmd-paste cmd-undo cmd-redo
+         cmd-focus-left cmd-focus-right cmd-focus-up cmd-focus-down
+         cmd-toggle-focus cmd-quit cmd-prefix cmd-save
+         cmd-split-tb cmd-split-lr cmd-pane-close
+         cmd-tree-toggle-left cmd-tree-activate cmd-tree-new-file
+         cmd-tree-new-dir cmd-tree-delete
+         cmd-bufs-toggle-left cmd-bufs-activate cmd-bufs-new-view cmd-bufs-close
+         cmd-commit cmd-cancel cmd-answer cmd-noop)
 
-;;; ================= 编辑助手 =================
+;;; ================= 小工具 =================
 
-(define (ed* a) (app-ed a))
-(define (focused a) (app-focus a))
+(define (ed a) (app-ed a))
+(define (focus a) (app-focus a))
 
-(define (ev-text e)
+(define (event-text e)
   (cond [(key-event? e) (string (key-event-key e))]
         [(paste-event? e) (paste-event-text e)]
         [else ""]))
 
-(define (do-insert e a)
-  (editor-view-insert! (ed* a) (focused a) (ev-text e)))
-(define (do-nav a f [extend? #f])
-  (f (ed* a) (focused a) extend?))
+;;; ================= 编辑 =================
 
-;;; ================= global：编辑 =================
+(define (cmd-insert e a)
+  (editor-view-insert! (ed a) (focus a) (event-text e)))
 
-(define edit-keys
-  (command-table
-   text-binding        (lambda (e a) (do-insert e a))
-   (key 'enter)        (lambda (e a) (editor-view-insert! (ed* a) (focused a) "\n"))
-   (key 'tab)          (lambda (e a) (editor-view-insert! (ed* a) (focused a) "\t"))
-   (key 'backspace)    (lambda (e a) (editor-view-backspace! (ed* a) (focused a)))
-   (key 'delete)       (lambda (e a) (editor-view-delete! (ed* a) (focused a)))
-   (key 'left)         (lambda (e a) (do-nav a editor-view-left!))
-   (key 'right)        (lambda (e a) (do-nav a editor-view-right!))
-   (key 'up)           (lambda (e a) (do-nav a editor-view-up!))
-   (key 'down)         (lambda (e a) (do-nav a editor-view-down!))
-   (key 'home)         (lambda (e a) (do-nav a editor-view-home!))
-   (key 'end)          (lambda (e a) (do-nav a editor-view-end!))
-   (key 'left 'shift)  (lambda (e a) (do-nav a editor-view-left! #t))
-   (key 'right 'shift) (lambda (e a) (do-nav a editor-view-right! #t))
-   (key 'up 'shift)    (lambda (e a) (do-nav a editor-view-up! #t))
-   (key 'down 'shift)  (lambda (e a) (do-nav a editor-view-down! #t))
-   (key 'home 'shift)  (lambda (e a) (do-nav a editor-view-home! #t))
-   (key 'end 'shift)   (lambda (e a) (do-nav a editor-view-end! #t))
-   (key 'a 'ctrl)      (lambda (e a) (editor-view-select-all! (ed* a) (focused a)))
-   (key 'c 'ctrl)      (lambda (e a) (editor-view-copy! (ed* a) (focused a)))
-   (key 'x 'ctrl)      (lambda (e a) (editor-view-cut! (ed* a) (focused a)))
-   (key 'v 'ctrl)      (lambda (e a) (editor-view-paste! (ed* a) (focused a)))
-   (key 'z 'ctrl)      (lambda (e a) (editor-view-undo! (ed* a) (focused a)))
-   (key 'y 'ctrl)      (lambda (e a) (editor-view-redo! (ed* a) (focused a)))))
+;; 插入固定串（enter / tab）。
+(define (cmd-insert-string s)
+  (lambda (e a) (editor-view-insert! (ed a) (focus a) s)))
 
-;;; ================= global：焦点移动（C-p 前缀） =================
-;;
-;; 终端里 Ctrl+↑/↓ 常收不到（VTE 直接吞），所以用前缀键：
-;;   C-p 然后 left/right/up/down → 移焦点
-;; C-p 是普通控制字节（0x10），方向键无修饰，都能可靠送到。
-(define focus-prefix-keys
-  (command-table
-   (key 'left)   (lambda (e a) (app-move-focus! a 'left))
-   (key 'right)  (lambda (e a) (app-move-focus! a 'right))
-   (key 'up)     (lambda (e a) (app-move-focus! a 'up))
-   (key 'down)   (lambda (e a) (app-move-focus! a 'down))
-   (key 'escape) (lambda (e a) (void))))    ; 退出前缀（app 会自动清）
+(define cmd-newline (cmd-insert-string "\n"))
+(define cmd-tab     (cmd-insert-string "\t"))
 
-;;; ================= global：app =================
+(define (cmd-backspace _ a) (editor-view-backspace! (ed a) (focus a)))
+(define (cmd-delete _ a)    (editor-view-delete! (ed a) (focus a)))
 
-(define app-keys
-  (command-table
-   (key 'q 'ctrl) (lambda (e a) (set-app-quit?! a #t))
-   (key 'o 'ctrl) (lambda (e a) (app-toggle-focus! a))
-   (key 'p 'ctrl) (lambda (e a) (app-prefix-begin! a "C-p" (list focus-prefix-keys)))  ; 前缀：移焦点
-   (key 's 'ctrl) (lambda (e a) (app-save! a))
-   ;; 编辑区分屏：K 水平（上下）/ L 垂直（左右）分隔，D 关窗格
-   (key 'k 'ctrl) (lambda (e a) (app-split! a 'tb))
-   (key 'l 'ctrl) (lambda (e a) (app-split! a 'lr))
-   (key 'd 'ctrl) (lambda (e a) (app-pane-close! a))))
+;; 方向移动：extend? = #t 时带选扩展（Shift+方向）。
+(define (cmd-nav f [extend? #f])
+  (lambda (e a) (f (ed a) (focus a) extend?)))
 
-;;; ================= 只读面板基表 =================
+(define cmd-left (cmd-nav editor-view-left!))
+(define cmd-right (cmd-nav editor-view-right!))
+(define cmd-up (cmd-nav editor-view-up!))
+(define cmd-down (cmd-nav editor-view-down!))
+(define cmd-home (cmd-nav editor-view-home!))
+(define cmd-end (cmd-nav editor-view-end!))
 
-(define readonly-keys
-  (command-table
-   text-binding     (lambda (e a) (void))
-   (key 'enter)     (lambda (e a) (void))
-   (key 'tab)       (lambda (e a) (void))
-   (key 'backspace) (lambda (e a) (void))
-   (key 'delete)    (lambda (e a) (void))
-   (key 'v 'ctrl)   (lambda (e a) (void))
-   (key 'x 'ctrl)   (lambda (e a) (void))
-   (key 'z 'ctrl)   (lambda (e a) (void))
-   (key 'y 'ctrl)   (lambda (e a) (void))))
+(define cmd-left-select (cmd-nav editor-view-left! #t))
+(define cmd-right-select (cmd-nav editor-view-right! #t))
+(define cmd-up-select (cmd-nav editor-view-up! #t))
+(define cmd-down-select (cmd-nav editor-view-down! #t))
+(define cmd-home-select (cmd-nav editor-view-home! #t))
+(define cmd-end-select (cmd-nav editor-view-end! #t))
+
+(define (cmd-select-all _ a) (editor-view-select-all! (ed a) (focus a)))
+(define (cmd-copy _ a)       (editor-view-copy! (ed a) (focus a)))
+(define (cmd-cut _ a)        (editor-view-cut! (ed a) (focus a)))
+(define (cmd-paste _ a)      (editor-view-paste! (ed a) (focus a)))
+(define (cmd-undo _ a)       (editor-view-undo! (ed a) (focus a)))
+(define (cmd-redo _ a)       (editor-view-redo! (ed a) (focus a)))
+
+;;; ================= 焦点移动 =================
+
+(define (cmd-focus-left _ a)  (app-move-focus! a 'left))
+(define (cmd-focus-right _ a) (app-move-focus! a 'right))
+(define (cmd-focus-up _ a)    (app-move-focus! a 'up))
+(define (cmd-focus-down _ a)  (app-move-focus! a 'down))
+
+;;; ================= app =================
+
+(define (cmd-quit _ a)         (app-quit! a))
+(define (cmd-toggle-focus _ a) (app-toggle-focus! a))
+(define (cmd-save _ a)         (app-save! a))
+(define (cmd-split-tb _ a)     (app-split! a 'tb))
+(define (cmd-split-lr _ a)     (app-split! a 'lr))
+(define (cmd-pane-close _ a)   (app-pane-close! a))
+
+;; 前缀键：label 只是底部提示；tables 是下一键只查的命令表（可嵌套）。
+(define (cmd-prefix label tables)
+  (lambda (e a) (app-prefix-begin! a label tables)))
 
 ;;; ================= 文件树 =================
 
-(define tree-keys
-  (command-merge
-   (list readonly-keys
-         (command-table
-          (key 'tab)       (lambda (e a) (app-toggle-left! a))
-          (key 'enter)     (lambda (e a) (app-tree-activate! a))
-          (key 'n 'ctrl)   (lambda (e a) (app-tree-new-file! a))
-          (key 'l 'ctrl)   (lambda (e a) (app-tree-new-dir! a))
-          (key 'backspace) (lambda (e a) (app-tree-delete! a))))))
+(define (cmd-tree-toggle-left _ a) (app-toggle-left! a))
+(define (cmd-tree-activate _ a)    (app-tree-activate! a))
+(define (cmd-tree-new-file _ a)    (app-tree-new-file! a))
+(define (cmd-tree-new-dir _ a)     (app-tree-new-dir! a))
+(define (cmd-tree-delete _ a)      (app-tree-delete! a))
 
 ;;; ================= 文档 / 视图列表 =================
 
-(define bufs-keys
-  (command-merge
-   (list readonly-keys
-         (command-table
-          (key 'tab)       (lambda (e a) (app-toggle-left! a))
-          (key 'enter)     (lambda (e a) (app-bufs-activate! a))
-          (key 'n 'ctrl)   (lambda (e a) (app-bufs-new-view! a))
-          (key 'backspace) (lambda (e a) (app-bufs-close! a))))))
+(define (cmd-bufs-toggle-left _ a) (app-toggle-left! a))
+(define (cmd-bufs-activate _ a)    (app-bufs-activate! a))
+(define (cmd-bufs-new-view _ a)    (app-bufs-new-view! a))
+(define (cmd-bufs-close _ a)       (app-bufs-close! a))
 
-;;; ================= 模态表 =================
-;;
-;; 输入型：enter 提交、escape 取消、tab 吞掉；字符 / 退格落全局 edit-keys。
-;; 确认型：y / n 收 bool，其余吞掉。
+;;; ================= 模态 =================
 
-(define input-edit-keys
-  (command-table
-   (key 'enter)  (lambda (e a) (app-commit! a))
-   (key 'escape) (lambda (e a) (app-cancel! a))
-   (key 'tab)    (lambda (e a) (void))))
+(define (cmd-commit _ a) (app-commit! a))
+(define (cmd-cancel _ a) (app-cancel! a))
 
-(define (confirm-text e a)
+;; 确认型：y / n 收 bool，其余吞掉。绑定词表把字符塌成 'text，所以回看原始事件。
+(define (cmd-answer e a)
   (define k (and (key-event? e) (key-event-key e)))
   (cond [(eqv? k #\y) (app-answer! a #t)]
         [(eqv? k #\n) (app-answer! a #f)]
         [else (void)]))
 
-(define confirm-keys
-  (command-merge
-   (list readonly-keys
-         (command-table
-          text-binding  confirm-text
-          (key 'escape) (lambda (e a) (app-cancel! a))))))
+;; 显式吞键（只读面板 / 模态占位）。
+(define (cmd-noop e a) (void))
