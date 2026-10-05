@@ -2,7 +2,7 @@
 
 (require "../../../core/editor.rkt")
 
-;;; lab/base/layout/focus.rkt —— 按几何方向找邻居 pane（纯）
+;;; lab-rebuild/base/layout/focus.rkt —— 按几何方向找邻居 pane（纯）
 ;;;
 ;;; 只认 rectangle 列表，不认识 editor / 焦点语义：给定当前 vid 和方向，
 ;;; 找中心曼哈顿距离最近的邻 pane。空 / 无邻居 → #f。

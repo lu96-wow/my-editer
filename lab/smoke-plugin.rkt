@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab/smoke-plugin.rkt —— 插件层冒烟
+;;; lab-rebuild/smoke-plugin.rkt —— 插件层冒烟
 ;;;
 ;;; 覆盖：括号纯扫描 / 插件协议 / 版本闸门 / 合并（同步 runner）/ 后台 place runner。
 
@@ -9,16 +9,16 @@
          "../core/text/base/line.rkt"
          "base/face.rkt"
          "base/brackets.rkt"
-         "plugin/api.rkt"
-         "plugin/brackets.rkt"
-         "plugin/words.rkt"
-         "plugin/syntax.rkt"
-         "plugin/manager.rkt"
-         "plugin/runner.rkt"
-         "plugin/runner-place.rkt"
-         "plugin/registry.rkt"
-         "plugin/shadow.rkt"
-         "theme/main.rkt")
+         "plugin/attr/api.rkt"
+         "plugin/attr/brackets.rkt"
+         "plugin/attr/words.rkt"
+         "plugin/attr/syntax.rkt"
+         "plugin/attr/manager.rkt"
+         "plugin/attr/runner.rkt"
+         "plugin/attr/runner-place.rkt"
+         "plugin/attr/registry.rkt"
+         "plugin/attr/shadow.rkt"
+         "config/theme/main.rkt")
 
 ;;; ---------- 纯扫描：整对区间上色，内层覆盖外层 ----------
 
@@ -80,7 +80,7 @@
 (define ed (make-blank-editor))
 (define-values (ed1 did vid) (editor-add-document-view ed "(a[b])" 40 10 "t.txt"))
 ;; 只跑括号插件：本段验证的是版本闸门 / 增量，不受词 / 关键字插件干扰。
-(define m (make-manager (list bracket-plugin) (make-sync-runner)))
+(define m (make-manager (list bracket-plugin) (make-sync-runner plugin-catalog)))
 
 (manager-sync! m ed1 (list (list did "/t.txt")))
 (check-not-false (member did (manager-poll! m ed1)))
@@ -111,7 +111,7 @@
 ;; 增量路径：编辑命令记下 change → sync 发 change!（而不是整篇 open）
 (define ed2 (make-blank-editor))
 (define-values (ed2* did2 vid2) (editor-add-document-view ed2 "(a)" 40 10 "i.txt"))
-(define m3 (make-manager (list bracket-plugin) (make-sync-runner)))
+(define m3 (make-manager (list bracket-plugin) (make-sync-runner plugin-catalog)))
 (manager-sync! m3 ed2* (list (list did2 "/i.txt")))
 (check-not-false (member did2 (manager-poll! m3 ed2*)))
 (check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 1)) 0)
@@ -144,7 +144,7 @@
 (define ed4 (make-blank-editor))
 (define-values (ed4* did4 vid4)
   (editor-add-document-view ed4 "(define (a b) a)" 40 10 "k.rkt"))
-(define m4 (make-manager registry-plugins (make-sync-runner)))
+(define m4 (make-manager plugin-catalog (make-sync-runner plugin-catalog)))
 (manager-sync! m4 ed4* (list (list did4 "/k.rkt")))
 (check-not-false (member did4 (manager-poll! m4 ed4*)))
 (define (face4 line col) (editor-document-highlight-at ed4* did4 line col))
@@ -216,7 +216,7 @@
 (define ed5 (make-blank-editor))
 (define-values (ed5* did5 vid5)
   (editor-add-document-view ed5 "(define (a b) a)" 40 10 "k.txt"))
-(define m5 (make-manager registry-plugins (make-sync-runner)))
+(define m5 (make-manager plugin-catalog (make-sync-runner plugin-catalog)))
 (manager-sync! m5 ed5* (list (list did5 "/k.txt")))
 (check-not-false (member did5 (manager-poll! m5 ed5*)))
 (check-not-false (last-palette (editor-document-highlight-at ed5* did5 0 1) 'word))
@@ -225,7 +225,7 @@
 ;;; 关键字应直接是关键字色；若先只拿到词插件结果就写回，会先显示词色再被关键字色覆盖（紫↔橙跳）。
 
 (define (make-staged-runner)                 ; 同步 runner，但每次 poll 只放一条结果
-  (define inner (make-sync-runner))
+  (define inner (make-sync-runner plugin-catalog))
   (define pending '())
   (make-runner
    (lambda (did token path text) (runner-open! inner did token path text))
@@ -242,7 +242,7 @@
 
 (define edA (make-blank-editor))
 (define-values (edA* didA vidA) (editor-add-document-view edA "define foo" 40 10 "a.rkt"))
-(define mA (make-manager registry-plugins (make-staged-runner)))
+(define mA (make-manager plugin-catalog (make-staged-runner)))
 (manager-sync! mA edA* (list (list didA "/a.rkt")))
 (manager-poll! mA edA*)                                        ; bracket 结果到（无括号）
 (check-false (editor-document-highlight-at edA* didA 0 1))

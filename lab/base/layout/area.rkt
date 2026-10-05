@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab/base/layout/area.rkt —— 屏幕矩形区域与切分（骨架）
+;;; lab-rebuild/base/layout/area.rkt —— 屏幕矩形区域与切分（骨架）
 ;;;
 ;;; 纯几何：一块 area（列 x、行 y、宽 w、高 h）按方向切成两段。
 ;;; 不认识 pane、不认识 view、不认识窗口其它部分。

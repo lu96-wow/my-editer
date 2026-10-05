@@ -2,7 +2,7 @@
 
 (require "slot.rkt")
 
-;;; lab/ui/mode.rkt —— 输入转移状态（纯）
+;;; lab-rebuild/ui/mode.rkt —— 输入转移状态（纯）
 ;;;
 ;;; 底部那条是**共享槽位**，只放两份文档：
 ;;;   空闲 / 前缀 → state 文档；有 prompt → input 文档（可编辑 / 确认都是它）。

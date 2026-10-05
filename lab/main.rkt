@@ -2,7 +2,7 @@
 
 (require "backend/tui.rkt")
 
-;;; lab/main.rkt —— TUI 入口
+;;; lab-rebuild/main.rkt —— TUI 入口
 ;;;
 ;;;   racket lab/main.rkt [根目录]
 

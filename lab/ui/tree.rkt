@@ -5,7 +5,7 @@
          "../base/path.rkt"
          racket/file)
 
-;;; lab/ui/tree.rkt —— 文件树（core 原生 document）
+;;; lab-rebuild/ui/tree.rkt —— 文件树（core 原生 document）
 ;;;
 ;;; 一行一个文件 / 文件夹，缩进区分层次，highlight 属性区分类型。整树只读。
 ;;; 成品的树就是一篇普通 document：core 的渲染 / 选区 / 滚动全套照用。

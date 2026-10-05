@@ -2,7 +2,7 @@
 
 (require tui)
 
-;;; lab/base/input.rkt —— 输入协议（骨架）
+;;; lab-rebuild/base/input.rkt —— 输入协议（骨架）
 ;;;
 ;;; 事件直接用 **racket-tui 的规范化事件**（`key / paste / mouse / resize / null / other`
 ;;; + `mods`），我们不再自造事件类型；本文件只多做一件事：

@@ -6,7 +6,7 @@
          "split.rkt"
          "focus.rkt")
 
-;;; lab/base/layout/main.rkt —— 窗口布局（骨架）
+;;; lab-rebuild/base/layout/main.rkt —— 窗口布局（骨架）
 ;;;
 ;;; 把窗口切成三块区域 + 主区按分裂树铺窗格：
 ;;;

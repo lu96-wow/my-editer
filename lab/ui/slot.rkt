@@ -3,7 +3,7 @@
 (require racket/string
          "../../core/editor.rkt")
 
-;;; lab/ui/slot.rkt —— 底部槽位的文档（纯，复用）
+;;; lab-rebuild/ui/slot.rkt —— 底部槽位的文档（纯，复用）
 ;;;
 ;;; 底部状态栏那条是**共享槽位**：空闲显示 state，输入时切成输入文档，结束切回。
 ;;; 本文件只负责「文字 → document」，不认识模式、焦点、业务续延。

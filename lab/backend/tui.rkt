@@ -5,17 +5,18 @@
          "../../core/view/base/screen.rkt"
          "../../core/view/patch.rkt"
          "../app/app.rkt"
-         "../app/state.rkt"
          "../app/render.rkt"
-         "../app/plugins.rkt"
-         "../plugin/manager.rkt"
-         "../plugin/runner-place.rkt"
-         "../plugin/registry.rkt"
-         "../theme/main.rkt")
+         "../plugin/seam.rkt"
+         "../plugin/attr/manager.rkt"
+         "../plugin/attr/runner-place.rkt"
+         "../plugin/attr/registry.rkt"
+         "../config/defaults.rkt"
+         "../config/theme/main.rkt"
+         "../core/state.rkt")
 
-;;; lab/backend/tui.rkt —— racket-tui 后端
+;;; lab-rebuild/backend/tui.rkt —— racket-tui 后端
 ;;;
-;;;   racket lab/main.rkt [根目录]
+;;;   racket lab-rebuild/main.rkt [根目录]
 ;;;
 ;;; 只做两件事：把 screen patch 变成 ANSI 写出去；读事件喂 app-handle-input。
 ;;; 每帧先 app-prepare!（刷 state 槽位 + 取窗格），再增量 patch。
@@ -27,7 +28,7 @@
 (define (rgb-fg rgb) (if rgb (apply tui:format-rgb-fg-base rgb) #""))
 (define (rgb-bg rgb) (if rgb (apply tui:format-rgb-bg-base rgb) #""))
 
-;; 颜色全在 theme/ 下配置；后端只把主题颜色翻成 ANSI。
+;; 颜色全在 config/theme 下配置；后端只把主题颜色翻成 ANSI。
 (define (face-colors face) (theme-face-colors (current-theme) face))
 (define (overlay-colors ov) (theme-overlay-colors (current-theme) ov))
 
@@ -77,7 +78,9 @@
    (lambda ()
      (define-values (rows cols) (tui:get-window-size))
      ;; 插件层：后台 place 进程算装饰（括号高亮……），主进程只写回。
-     (define plugins (make-manager registry-plugins (make-place-runner)))
+     (define plugins (make-manager enabled-attr-plugins
+                                   (make-place-runner plugin-worker-count)
+                                   #:history-bound plugin-history-bound))
      (define a (app-init root (or cols 80) (or rows 24) #:plugins plugins))
      ;; 后台结果到达 → 事件循环醒来（on-source）→ 写回 + 重绘。
      (define src (app-plugin-source a))

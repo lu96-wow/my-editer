@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab/smoke-bracket.rkt —— 括号增量扫描的等价性回归
+;;; lab-rebuild/smoke-bracket.rkt —— 括号增量扫描的等价性回归
 ;;;
 ;;; 随机生成文本 + 随机编辑，验证 bracket-change（增量）与全量扫描结果一致。
 ;;; 用固定随机种子，可复现。
@@ -10,7 +10,7 @@
          "../core/text/base/line.rkt"
          "base/face.rkt"
          "base/brackets.rkt"
-         "plugin/shadow.rkt")
+         "plugin/attr/shadow.rkt")
 
 (define alphabet (list #\( #\) #\[ #\] #\{ #\} #\a #\b #\space #\newline #\newline))
 (define (rnd-char) (list-ref alphabet (random (length alphabet))))

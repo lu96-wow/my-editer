@@ -3,7 +3,7 @@
 (require "../../../core/editor.rkt"
          "area.rkt")
 
-;;; lab/base/layout/split.rkt —— 主区分屏树（骨架）
+;;; lab-rebuild/base/layout/split.rkt —— 主区分屏树（骨架）
 ;;;
 ;;; 纯数据 + 纯函数：树只描述「怎么切」，铺进一块 area 得到窗格矩形 + 分割条。
 ;;; 叶子绑定 vid（一块屏幕格显示哪个 view）。不认识 editor / 焦点 / 命令。

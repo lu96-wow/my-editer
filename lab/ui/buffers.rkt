@@ -2,7 +2,7 @@
 
 (require "../../core/editor.rkt")
 
-;;; lab/ui/buffers.rkt —— 打开的文档 + 其视图（两级，像文件树）
+;;; lab-rebuild/ui/buffers.rkt —— 打开的文档 + 其视图（两级，像文件树）
 ;;;
 ;;;   buffers    模型：哪些 document 展开了（默认收起）
 ;;;   buffer-row 一行：kind（'doc | 'view）+ did [+ vid] + 名字 + depth

@@ -2,7 +2,7 @@
 
 (require racket/path)
 
-;;; lab/base/path.rkt —— 路径小工具（ui / app 共用，无上层依赖）
+;;; lab-rebuild/base/path.rkt —— 路径小工具（ui / app 共用，无上层依赖）
 
 (provide basename)
 

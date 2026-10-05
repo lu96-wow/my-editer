@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab/smoke-app.rkt —— app 集成冒烟（无终端）：模拟 racket-tui 事件，验证
+;;; lab-rebuild/smoke-app.rkt —— app 集成冒烟（无终端）：模拟 racket-tui 事件，验证
 ;;; 文件树打开 / minibuffer 新建 / 输入转移 / 焦点 / 增删同步。
 
 (require rackunit
@@ -10,18 +10,18 @@
          "../core/editor.rkt"
          "../core/view/base/screen.rkt"
          "base/input.rkt"
-         "base/command.rkt"
+         "command/table.rkt"
          "base/layout/main.rkt"
          "ui/tree.rkt"
          "ui/buffers.rkt"
          "ui/mode.rkt"
          "app/app.rkt"
-         "app/state.rkt"
-         "app/panes.rkt"
-         "app/edit-panes.rkt"
-         "app/actions.rkt"
-         "app/paths.rkt"
-         "app/plugins.rkt"
+         "core/state.rkt"
+         "core/panes.rkt"
+         "core/edit-panes.rkt"
+         "core/actions.rkt"
+         "core/paths.rkt"
+         "plugin/seam.rkt"
          "base/face.rkt")
 
 (define root (simplify-path (path->complete-path (make-temporary-file "app~a" 'directory))))
@@ -50,6 +50,15 @@
 (check-false (edit-vid))                                   ; 不预开文档：主区空
 (define panes (layout-result-panes (app-layout-result a)))
 (check-equal? (map rectangle-view-id panes) (list (tree-vid) (state-vid)))
+
+;; Ctrl+B：没有编辑窗格时关左栏 → 焦点置空（不放到底部 state）
+(send (key-event 'b (mods #t #f #f)))
+(check-false (app-sidebar? a))
+(check-false (app-focus a))
+(check-equal? (map rectangle-view-id (layout-result-panes (app-layout-result a))) (list (state-vid)))
+(send (key-event 'b (mods #t #f #f)))                      ; 开回来
+(check-true (app-sidebar? a))
+(check-equal? (app-focus a) (tree-vid))
 (define scr (app-render a))
 (check-equal? (screen-width scr) 80)
 (check-equal? (screen-height scr) 24)
@@ -164,11 +173,18 @@
 
 ;;; ---------- 左侧 Tab 切换 + 文档 / 视图列表 ----------
 
+;;; ---------- Ctrl+B：开 / 关左侧视图 ----------
+
 (check-equal? (app-focus a) (tree-vid))
-(send (key-event 'o (mods #t #f #f)))                     ; 焦点切到编辑格
+(check-true (app-sidebar? a))
+(send (key-event 'b (mods #t #f #f)))                     ; 关左栏 → 焦点到编辑格
+(check-false (app-sidebar? a))
 (check-equal? (app-focus a) (edit-vid))
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")
-(send (key-event 'o (mods #t #f #f)))                     ; 再切回左栏
+(check-not-false (memv (edit-vid) (map rectangle-view-id (layout-result-panes (app-layout-result a)))))
+(check-false (memv (tree-vid) (map rectangle-view-id (layout-result-panes (app-layout-result a)))))
+(send (key-event 'b (mods #t #f #f)))                     ; 开左栏 → 焦点回左栏
+(check-true (app-sidebar? a))
 (check-equal? (app-focus a) (tree-vid))
 (send (key-event 'tab no-mods))
 (check-equal? (app-left a) 'bufs)
@@ -194,7 +210,7 @@
 (check-equal? (editor-view-string (ed) (edit-vid)) "AAA")
 
 ;; 再切回文件树
-(send (key-event 'o (mods #t #f #f)))                     ; 焦点回左栏
+(set-app-focus! a (bufs-vid))                              ; 焦点回左栏
 (check-equal? (app-focus a) (bufs-vid))
 (send (key-event 'tab no-mods))
 (check-equal? (app-left a) 'tree)
@@ -223,7 +239,7 @@
 
 ;;; ---------- 删除已打开的文件：同步关闭文档 / 视图 ----------
 
-(send (key-event 'o (mods #t #f #f)))                     ; 回左栏
+(set-app-focus! a (tree-vid))                              ; 回左栏
 (check-equal? (app-focus a) (tree-vid))
 (editor-view-set-point! (ed) (tree-vid) (point 0 0))       ; 根
 (send (key-event 'n (mods #t #f #f)))                     ; Ctrl+N 新建 gone.txt
@@ -414,10 +430,11 @@
 (check-equal? (length (remove-duplicates vv)) 2)           ; 无重复 vid（会新建一个 view）
 
 ;; 任意前缀 & 嵌套前缀：C-x → C-y → ...（外层没被提前清掉）
-(define inner-keys (command-table (key 'up) (lambda (e a) (void))))
+;; 前缀表里放的是**命令描述**（这里是内置命名命令），不再是裸 lambda。
+(define inner-keys (command-table (key 'up) '(focus up)))
 (define outer-keys
   (command-table
-   (key 'y 'ctrl) (lambda (e a) (app-prefix-begin! a "C-y" (list inner-keys)))))
+   (key 'y 'ctrl) (list 'prefix "C-y" (list inner-keys))))
 (app-prefix-begin! b "C-x" (list outer-keys))
 (check-true (prefix? (app-mode b)))
 (send2 (key-event 'y (mods #t #f #f)))                     ; C-x C-y → 进内层前缀
@@ -455,7 +472,7 @@
 (check-false (hl-at 0 6))
 
 ;; 编辑后自动重算
-(send3 (key-event 'o (mods #t #f #f)))                      ; 焦点到编辑格
+(set-app-focus! c (c-edit))                                 ; 焦点到编辑格
 (send3 (key-event 'end no-mods))
 ;; 输入插件的自动配对：输 { 直接得到 {}（光标在中间）
 (send3 (key-event #\{ no-mods))
@@ -475,7 +492,7 @@
 
 ;; 只读面板（文件树）吞掉粘贴，不改树文档
 (define tree-before (editor-view-string (c-ed) (c-tree)))
-(send3 (key-event 'o (mods #t #f #f)))                 ; 焦点到左栏（树）
+(set-app-focus! c (c-tree))                            ; 焦点到左栏（树）
 (send3 (paste-event #"ZZ" "ZZ"))
 (check-equal? (editor-view-string (c-ed) (c-tree)) tree-before)
 
@@ -504,7 +521,7 @@
 (define (d-edit) (app-edit-active d))
 (define (d-point) (editor-view-point (d-ed) (d-edit)))
 (app-open-path! d (build-path root4 "p.rkt"))
-(send4 (key-event 'o (mods #t #f #f)))                     ; 焦点到编辑格
+(set-app-focus! d (d-edit))                                ; 焦点到编辑格
 (check-true (and (d-edit) #t))
 
 (send4 (key-event #\( no-mods))                            ; ( → 自动补 )
@@ -525,7 +542,7 @@
 (check-equal? (editor-view-string (d-ed) (d-edit)) "(")
 
 ;; prompt 里不自动配对
-(send4 (key-event 'o (mods #t #f #f)))                     ; 回左栏（树）
+(set-app-focus! d (panes-tree (app-panes d)))             ; 回左栏（树）
 (send4 (key-event 'n (mods #t #f #f)))                     ; Ctrl+N 新建文件 prompt
 (check-true (prompt? (app-mode d)))
 (send4 (key-event #\( no-mods))

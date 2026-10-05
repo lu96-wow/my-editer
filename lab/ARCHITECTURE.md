@@ -1,372 +1,223 @@
-# lab 架构
+# lab-rebuild 架构
 
-`lab/` 是 lab-rebuild 的重构版：功能不变，把 app 层从「24 字段 god-object + 手工不变量」
-拆成 **base / plugin / ui / app / backend** 五层，耦合点各自收口。
+`lab/` 的重构版：功能不变，但把三件事显式拆开 —— **核心 / 命令 / 插件**，并把
+**可配置状态**收进 `config/`。骨架先立，细节再填。
 
 ```
-        core/  （编辑器平台，无终端）
-          ↑
-lab/
-  base/      可复用、无 app 依赖
-    input.rkt       事件 → 绑定键（依赖 racket-tui 的事件类型）
-    command.rkt     纯表：binding → handler + command-set
-    dispatch.rkt    did + extra(模态) + event → 跑 handler（不认识 core / 焦点）
-    face.rkt        动态 face（palette-color）+ 分层外观（face-stack），#:prefab 可跨进程
-    brackets.rkt    括号配对 + 深度 → 高亮填充（纯）；含**增量** bracket-change
-    path.rkt        路径小工具（basename，ui / app 共用）
-    layout/         area / split / focus / main（纯几何；focus = 方向找邻 pane）
-  plugin/    插件层（不认识 app / 终端）
-    api.rkt         插件协议：plugin(name, open, change)（无优先级，注册顺序即层叠顺序）
-    brackets.rkt    内置插件：括号按深度背景高亮（open/change 增量）
-    lex.rkt         极简词法：扫标识符 token（词 / 关键字插件共用）
-    words.rkt       内置插件：词着色（持久 词→色号 表；输入中的词暂不上色）
-    syntax.rkt      内置插件：Racket 关键字高亮（每个关键字固定色号）
-    shadow.rkt      影子文本：open/apply/text
-    machine.rkt     每 did：影子（按 token）+ 插件状态/fills（最新 token）
-    registry.rkt    内置插件表（主进程与 worker 共用）
-    runner.rkt      执行器接口 + 同步 runner
-    runner-place.rkt 后台 place 进程执行器（worker 池，按 did 分派 + 唤醒源）
-    worker.rkt      place 入口：维护影子 + 插件状态，收 open/change/close/job
-    manager.rkt     影子同步 + 版本跟踪 + 调度 + 合并 + 写回文档
-  ui/        view-model（纯，只依赖 core）
-    tree.rkt        文件树模型 → document
-    buffers.rkt     文档/视图两级列表 → document
-    slot.rkt        底部槽位文档（state / input）
-    mode.rkt        输入转移状态（#f | prompt | prefix 前缀键），不认识 vid/布局
-  app/       应用层（唯一状态 + 动作）
-    panes.rkt       单值 pane registry：role → vid（tree/bufs/state/input）
-    edit-panes.rkt  **编辑区分屏模型**：split 树 + active leaf
-    paths.rkt       did ↔ 规范化路径
-    state.rkt       app 结构 + 派生量 + layout 缓存
-    actions/        功能核心：唯一改 state/editor 的地方（按域拆，聚合出口 actions.rkt）
-      core.rkt        枢纽：打开 / 关闭 / 显示 / 分屏 / 文档列表（各模块共享的原语与不变量）
-      tree.rkt        文件树动作（依赖 core + modal）
-      modal.rkt       前缀键 / prompt（不依赖其它动作）
-      file.rkt        保存 / 退出 / 尺寸
-      focus.rkt       焦点移动 / 左栏切换（依赖 core）
-    actions.rkt     聚合出口（re-export actions/*，外部 require 不变）
-    commands.rkt    命令转发：功能 → 命名命令（handler 收 (event app)）
-    keys/           默认命令表（纯数据：binding → 命令），按用途分开
-      edit.rkt       编辑键
-      focus.rkt      C-p 前缀下的焦点移动
-      app.rkt        app 级全局键
-      readonly.rkt   只读基表
-      tree.rkt       文件树
-      bufs.rkt       文档 / 视图列表
-      modal.rkt      输入 / 确认模态
-      main.rkt       汇总 provide
-    render.rkt      state 行 + 每帧准备 app-prepare!
-    plugins.rkt     app ↔ 属性插件层接缝：哪些文档跑插件 / 每 tick sync+poll
-    input-plugins.rkt 输入插件层（主进程同步）：每次按键改编辑（内置自动配对）
-    app.rkt         装配 init + 事件入口（薄壳）
-  backend/
-    tui.rkt         racket-tui：screen patch → ANSI（颜色查 theme/）；读事件
-  theme/      主题配置（纯数据，不依赖终端）
-    theme.rkt       主题机制：face / palette-color / face-stack / overlay → 颜色
-    dark.rkt        默认深色主题
-    light.rkt       浅色主题
-    main.rkt        汇总 + current-theme
+                    core/  （仓库根的编辑器平台，无终端）
+                      ↑
+lab-rebuild/
+  base/        可复用原语（无 app 依赖）
+    input.rkt       事件 → 绑定键（依赖 racket-tui 事件类型）
+    face.rkt        动态 face（palette-color）+ 分层外观（face-stack），#:prefab
+    brackets.rkt    括号配对 + 深度高亮填充（纯，含增量）
+    path.rkt        路径小工具（basename）
+    layout/         area / split / focus / main（纯几何）
+  ui/          view-model（纯，只依赖 core 平台）
+    tree.rkt buffers.rkt slot.rkt mode.rkt
+  core/        ★应用核心：唯一的状态 + 唯一的动作
+    state.rkt       app 结构 + 派生量 + layout 缓存 + **钩子**
+    panes.rkt edit-panes.rkt paths.rkt
+    actions/        唯一改 state / editor 的地方（按域拆）
+      core.rkt  tree.rkt  modal.rkt  file.rkt  focus.rkt
+    actions.rkt     聚合出口
+  command/     ★命令层
+    table.rkt       binding → 命令描述（符号 / (符号 . 参数)），不认识行为
+    registry.rkt    命令名 → handler（转发到 core actions + 插件接缝）
+    dispatch.rkt    did + 额外表（模态）+ 事件 → 选表 → 跑命令
+  plugin/      ★插件层
+    attr/           属性插件（后台 place，只写属性、不改文本）
+      api.rkt brackets.rkt lex.rkt words.rkt syntax.rkt
+      shadow.rkt machine.rkt registry.rkt
+      runner.rkt runner-place.rkt worker.rkt manager.rkt
+    input/          输入插件（主进程同步，会改文本）
+      api.rkt auto-pair.rkt registry.rkt
+    seam.rkt        core ↔ 插件层接缝（唯一认识两边的地方）
+  config/      ★可配置状态（纯数据 / 参数）
+    defaults.rkt    布局默认、初始编辑格尺寸、插件 worker 数 / history bound
+    keys.rkt        binding → 命令描述（默认键位表）
+    plugins.rkt     启用哪些属性 / 输入插件（只给名字）
+    syntax.rkt      关键字表 / 参与高亮的扩展名
+    theme/          主题机制 + dark / light + (current-theme)
+  app/         装配层（唯一把上面全部接起来的地方）
+    app.rkt         init + 事件入口
+    render.rkt      每帧准备 + 分隔线 + state 行
+  backend/tui.rkt   racket-tui：patch → ANSI；读事件
   main.rkt
-  smoke.rkt / smoke-plugin.rkt / smoke-bracket.rkt / smoke-app.rkt
+  smoke*.rkt
 ```
 
-依赖方向是 DAG：`base → (tui)`、`ui → core`、`plugin → core + base`、`app → ui + base + plugin + core`、
-`backend → app + plugin + theme`、`theme → base/face`。
-`actions/` 内部也是 DAG：**spoke → core**，core 不 require 任何 spoke。
+## 三条主线
 
-## 设计主线（端到端）
+### 一、核心 / 命令 / 插件 分开
 
-**一、事件 → 动作**
+```
+   app 层
+     │  装配：cs（键位表）+ plugins（manager）+ hooks
+     ▼
+  command/  ── 命令名 ──►  core/actions  ──►  editor / state
+     │                         ▲
+     │  输入插件钩子            │ 关文档钩子（反向）
+     ▼                         │
+  plugin/input             core/state（hooks）
+  plugin/attr  ◄── seam ──►  core/state
+```
+
+- **core** 只做「改状态」：`core/actions/*` 是唯一写 `app` / `editor` 的地方。
+  core **不认识**命令名、binding、插件实现；需要跨层副作用（如关文档清插件状态）时，
+  通过 `core/state.rkt` 的**钩子**（`app-hook-add!` / `app-notify!`）反向通知。
+- **command** 把「功能」包成「命名命令」：`table.rkt`（数据）+ `registry.rkt`（行为）+
+  `dispatch.rkt`（选择）。键位表只写命令名，命令名与行为在 registry 一处对应。
+- **plugin** 分两类：
+  - `plugin/attr/`：不碰文本，可丢后台进程算（括号 / 词 / 关键字高亮）。
+  - `plugin/input/`：按键同步、会改文本（自动配对）。
+  - `plugin/seam.rkt`：唯一同时认识 core 与 manager 的模块。
+
+依赖方向是 DAG：`base → (tui)`、`ui → core`、`core → base + ui`、
+`command → base + core + plugin`、`plugin → base + core(平台) + core(state)`、
+`config → base`、`app → 全部`、`backend → app + config + plugin`。
+
+### 二、可配置状态集中在 `config/`
+
+以前散落在各处的「可调项」现在只有一处事实源：
+
+| 项 | 位置 | 谁能改 |
+|----|------|--------|
+| 键位表（binding → 命令名） | `config/keys.rkt` | 改键位 / 换命令名 |
+| 启用哪些属性 / 输入插件 | `config/plugins.rkt` | 增删插件（只给名字） |
+| 语法关键字表 / 扩展名 | `config/syntax.rkt` | 换语言 / 调色顺序 |
+| 布局默认、worker 数、history bound | `config/defaults.rkt` | 调运行参数 |
+| 主题（颜色） | `config/theme/` | 换配色 / `(current-theme …)`；槽位在 `slots.rkt` |
+
+要点：
+- `config/plugins.rkt` **只给名字**，实现由插件层的目录（`plugin/attr/registry.rkt`、
+  `plugin/input/registry.rkt`）解析。于是主进程与后台 worker 读同一份启用集，两边一致。
+- 颜色只在 `config/theme/`；插件 / view-model 只产出**逻辑 face**（symbol 或 `palette-color`），
+  文档存逻辑 face，不存 RGB。
+- 布局算法内在常量（`min-pane-width` / `split-gap`）留在 `base/layout`，不属于可配置状态。
+
+**主题结构（把「能定义颜色的地方」拆开）**：
+
+```
+config/theme/
+  slots.rkt   所有槽位声明：static-face-slots（13 个 face）/ palette-slots（bracket word keyword）
+              / overlay-slots（selection） + build-theme + theme-missing-slots
+  dark.rkt    固定颜色表（face-fg / face-bg / default / overlays / palettes）+ build-theme
+  light.rkt   同上
+  theme.rkt   机制：face / overlay / palette → (fg bg)
+  main.rkt    汇总 + (current-theme)
+```
+
+- 色值全是**固定字面量**（`#f` = 该维不设 / `(r g b)`），运行时不做任何颜色计算。
+- 要加一个可配色的 face / 色板：在 `slots.rkt` 加一行，两个主题补上颜色；
+  `smoke-theme.rkt` 会检查「两主题覆盖全部槽位」。
+- `cursor` 由后端按反色处理，不做主题槽位；`line-number` 由 core 发出，`selection` 由 core 发出。
+
+### 三、事件 → 命令 → 动作
 
 ```
 backend/tui  read-event
   → app-handle-input  (resize / mouse 先分流)
-     → app-dispatch!  前缀模式只看 prefix-tables（不回落）；否则
-         dispatch-run(cs, did, (mode-tables m …))   ← did 表 + 模态表叠在一起
-           → command（commands.rkt：功能 → 命名命令）
-             → action（actions/*：唯一改 state / editor）
+     → app-dispatch!
+         前缀模式：dispatch-run-direct（只看该前缀的表，不回落）
+         否则：   dispatch-run cs did (mode-tables m …) ev app
+                   → command/table 选出「命令描述」
+                     → command/registry 解释成 handler
+                       → core/actions 改 state / editor
 ```
 
 - 「当前是谁」= did（不是焦点）：树 / 文档列表 / 状态栏各有自己的 did 表，编辑文档用全局表。
-- 模态（输入 / 确认 / 前缀）只是 dispatch 的**额外表**，不再悄悄改 command-set。
-- 事件后兜底：prompt 焦点跑掉就取消；焦点落在编辑 leaf 就设为 active；再 tick 插件。
+- 模态（输入 / 确认 / 前缀）是 dispatch 的**额外表**，不是偷偷换 command-set。
+- 后缀兜底：prompt 焦点跑掉就取消；焦点落在编辑 leaf 就设为 active；再 tick 插件。
 
-**二、编辑 → 插件 → 属性**
+### 编辑 → 插件 → 属性
 
 ```
-编辑命令 editor-view-*! → 返回 core 的 change
-  app-plugin-note-change!  change → (l0 c0 l1 c1 inserted) 存进 manager.pending
-app-prepare! → app-plugin-tick!
+编辑命令 editor-view-*!  → 返回 core 的 change
+  command/registry 把 change 交给 plugin/seam 的 plugin-note-change!
+    → manager.pending 存 (l0 c0 l1 c1 inserted)
+app-prepare! → app-plugin-tick!（seam）
   manager-sync!  按 document 版本 token 派活（新版本才发；发 diff 不发整篇）
-  manager-poll!  结果回来，token 仍是当前版本才写回
-    → 逐格 face-compose 叠层 → document-highlight-fill-batch*
-      （括号背景 + 语法前景共存；同分量后层覆盖前层）
+  manager-poll!  结果回来，token 仍是当前版本 + 全插件到齐 才写回
+    → 逐格 face-compose 叠层 → 文档高亮轨（括号背景 + 语法前景共存）
 ```
 
-属性随 document 值存在 box 里：undo/redo 回到旧版本时影子 / 结果 / 属性都还在，不重算不重发。
-
-**三、渲染**
-
-```
-app-prepare!  刷 state 槽位 + tick 插件 + 取本帧窗格（唯一入口，全量 / 增量后端都走）
-app-bar-panes 从布局算分隔线（装饰图层）
-  → core editor-render-layout-patch（文本通道 project ⊕ overlay ⊕ 装饰）
-    → backend style-bytes：face → (fg bg)（theme/），overlay 叠上
-      → ANSI 写出（只写变化的格）
-```
-
-## 与 lab-rebuild 的耦合点对照
-
-| # | 旧耦合 | 现在 |
-|---|--------|------|
-| 1 | mode 存两份：`app.mode` + 偷偷改 command-set | `dispatch` 接 **extra-tables**（`mode-tables`），模态只是 dispatch 的一个显式维度；`app-set-input-keys!` 删除 |
-| 2 | pane 身份散落（tree-vid/tree-did/…） | `app/panes.rkt` 一处登记 role → vid；did 用 editor 现推 |
-| 3 | `app-paths` + `app-by-path` 手工双写 | `app/paths.rkt` 管双向表 + `dids-under`（删目录级联） |
-| 4 | `ctx` 的 editor/width/height 是死字段 | 干掉 `ctx`，handler 直接收 `app` |
-| 5 | `app-layout-result` 每事件算多次 | layout 缓存在 `app.layout`，只有改 layout 输入的 setter 失效它（`app-mode-set! / app-left-set! / app-edit-open! / app-edit-remove! / app-size-set!`） |
-| 6 | 关文档后手工修 edit-vid/focus/bufs | 收在 `app-close-path!` / `app-show-view!` 等少数动作里 |
-| 7 | `mode?` / `mode-tables`(app) 死代码 | 删除 `mode?`；`mode-tables` 真正用在 dispatch |
-| 8 | 死 `slot` 结构体（mode 认识容器） | `mode-bottom-vid` / `mode-focus-vid` 直接收 vid |
-| 9 | 模块名 `input-doc.rkt` 名不符实 | 改名 `ui/slot.rkt` |
-
-## 编辑区分屏
-
-编辑区是**二叉分屏树**（`base/layout` 的 `node/leaf`），app 层用 `app/edit-panes.rkt` 管
-`tree + active`：
-
-- `edit-panes-open!`：用新 vid 替换 active leaf（树空则建根 leaf）——打开文件的语义。
-- `edit-panes-split!`：在 active leaf 上 `tree-split` 出新窗格（'lr 左右 / 'tb 上下），active 转新窗格。
-- `edit-panes-remove!`：删若干 vid，active 被删就回落到第一个剩余 leaf。
-
-**不变式：一个 view 只能占一个编辑 leaf**。把已经在别的窗格显示的 view 再显示到某窗格时，
-`app-show-view!` / `app-show-document!` 会**新建一个同文档的 view**，绝不复用 —— 否则两个
-窗格共享同一个 view（光标 / 滚动 / 尺寸耦合），而且 `tree-remove` 按 vid 删会把两块一起删掉。
-（删除任意窗格 + 重排：`tree-remove` 只删那个 leaf、兄弟顶替，`compute-layout` 重新铺满。）
-- `app-layout-result` 直接把 `tree` 交给 `compute-layout`；多窗格时**一次铺出多个 rectangle**。
-
-命令：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关**焦点所在**的编辑窗格。
-拆分时新窗格显示**同一文档的新 view**（独立光标 / 滚动）；关窗格**不关 view**（view 仍在文档列表里）。
-
-active 跟随焦点：任何事件后如果焦点落在某个编辑 leaf，就把它设为 active（app-handle-input 末尾同步）。
-所以「打开文件 / 拆分 / 关窗格」都作用于**当前焦点**那块，而不是最后拆分的那块；关完剩下的由
-`compute-layout` 重新铺满。
-
-分隔线渲染：`compute-layout` 的 `bars`（1 格宽/高）作为**装饰图层**交给 core 的
-`editor-render-layout*!` / `editor-render-layout-patch`（可选 `decorations` 参数）合成进 screen，
-`│`（lr）/ `─`（tb），所以**增量 patch 也是一致的**。装饰由 `app/render.rkt` 的
-`app-bar-panes` 从布局算出（face `bar`）。
-
-## 命令的三层
-
-```
-功能核心  actions/*.rkt   唯一改 state / editor；一个能力一个函数（聚合出口 actions.rkt）
-   ↓
-命令转发  commands.rkt   把能力包成统一命令 (event app) -> any
-   ↓
-默认命令表 keys/*.rkt    binding → 命令；纯数据，不 require core/actions/state
-```
-
-- `actions/` 按域拆（core / tree / modal / file / focus）；**spoke → core**，core 不 require 任何 spoke。
-  它不理解按键 / 事件，也不认识命令表：只暴露「动作」。
-- `commands.rkt` 是唯一的转发点：所有 handler 形状统一 `(event app)`，参数化的用工厂
-  （`cmd-nav` / `cmd-insert-string` / `cmd-prefix`）。命令表只认这里的名字。
-- `keys/` 每张表独立成文件，`keys/main.rkt` 汇总；装配点 `app.rkt` 只 require 汇总。
-  `C-p` 前缀表（`focus.rkt`）被 `app.rkt` 的 `cmd-prefix` 引用，键表之间可以组合。
-
-## 主题
-
-颜色配置从后端挪到 `theme/`，与终端渲染解耦：
-
-```
-theme/theme.rkt   机制：theme 结构（faces / overlays / default-face / palettes）+ 查询
-theme/dark.rkt    默认深色（原 backend/tui.rkt 里的硬编码配色）
-theme/light.rkt   浅色
-theme/main.rkt    汇总 + (current-theme) 参数
-```
-
-- 颜色值是 #f 或 `(r g b)`，**纯数据**，不认识 ANSI / racket-tui。
-- `backend/tui.rkt` 只负责把当前主题的颜色翻成转义序列（`face-colors` / `overlay-colors` →
-  `theme-face-colors` / `theme-overlay-colors`）。
-- face / overlay 名由各 view-model / 插件定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
-  `app/render.rkt`、`plugin/syntax.rkt` 的 `keyword` 调色板、core 的 `line-number`）；主题把它们映射到颜色。
-- 换主题：`(current-theme light-theme)`（`current-theme` 是 parameter）。
-- **静态 face** 用 symbol → 主题 `faces` 表。
-- **动态 face** 用 `palette-color`（kind + index）→ 主题 `palettes` 表按 kind 选色板、按 index 取模；
-  色板项也是 `(list fg bg)`，`#f` = 该维不设。所以同一个机制既能只写背景（括号）又能只写前景（词）。
-- **分层 face** 用 `face-stack`（一格的多个 face 叠起）→ 主题逐层解析 `(fg bg)`、逐分量合并
-  （后层覆盖前层，某层 `#f` 的分量不覆盖）。于是“括号背景 + 语法前景”能同时存在。
-
-## 插件层
-
-**对 text 无影响的插件**（高亮 / 诊断……）不改文本，可以整个丢到后台进程算。
-插件层把这件事收成一个协议：
-
-```
-plugin/api.rkt      plugin(name, open, change)   —— 带状态的纯函数（无优先级字段）
-                     open   : text path            → state + fills（首次 / 整篇）
-                     change : state edits lines path → state + fills（增量）
-plugin/shadow.rkt   影子文本：open(text) / apply(edits) / text
-plugin/machine.rkt  每个 did：影子（按 token）+ 各插件状态/fills（最新 token）
-     ↓
-plugin/manager.rkt  每 tick：sync! 派活（open/change + submit）/ poll! 收结果 + 写回
-     ├─ runner.rkt       同步 runner（测试）
-     └─ runner-place.rkt place 后台进程（worker 池 + 唤醒源）
-```
-
-**数据流（按版本 token 同步，不整篇搬文本）**：
-
-```
-编辑命令 (editor-view-*!)  → 返回 core 的 change
-  app-plugin-note-change!  change → (l0 c0 l1 c1 inserted) 存进 manager.pending
-app-handle-input / app-prepare!  →  app-plugin-tick!
-  manager-sync!  有路径的文档：为当前 document 版本取 token
-     token 已在缓存（undo/redo 回到旧版本）→ 什么都不发
-     token 新 + 有本 tick 的 diff → runner-change!(did from to path edits)   ← 只发五元组
-     否则（open/CAS…）            → runner-open!(did token path text)       ← 才读整篇
-     → 对「该 token 还没算过」的插件 runner-submit!(tag name did token path)
-  manager-poll!  收 (tag name fills)，token 仍是当前版本才存/合并写回
-```
-
-- **版本 token**：每个 document 值一个编号（主进程弱表 doc→token）。worker / 同步 runner 按
-  `(did, token)` 缓存影子，结果也按 token 缓存（每 did 保留最近 `history-bound=64` 个）。
-- **undo/redo 完全免费**：旧版本回到 token 时，影子还在、结果还在 → 不重发文本、不重算、
-  不写属性。（属性本来就随 document 值存在 box 里，恢复出来就是算好的。）
-- **主线程每次编辑只付 O(编辑长度)**：编辑时 **不再 `document->string`**，只发
-  `(l0 c0 l1 c1 inserted)` 五元组；插入文本从新文档读一次（`editor-view-change-text`）。
-  只有当新版本需要 `open`（首次 / CAS / 淘汰后）才读整篇。
-- **插件增量**：`plugin-open`/`plugin-change` 维护自己的状态；括号插件用编辑位置只重建
-  “被破坏的最浅深度”那一段（见下），worker / 同步 runner 不用重扫整篇。
-- **影子文本**（`plugin/shadow.rkt`）在 worker 和同步 runner 各自维护：`vector of lines`，
-  `apply` 用同一批 change（同一编辑前坐标系）从右往左 splice。用 core 的 `string->lines` /
-  `lines->string`（保尾部空行，`racket/string` 的 split 会吞）。
-- **按 did 固定分派**：同一文档的消息都进同一个 worker（它的状态在那里）；
-  超界版本由 manager 发 `drop!` 通知 worker 释放。
-- **poll 先抽 signal 再抽 mailbox**（`runner-place.rkt`）：reader 是“mailbox 先写、signal 后写”；
-  若反过来（先 mailbox 后 signal），在抽 mailbox 的当口新到的结果会被写进 mailbox，
-  紧接着的 signal 抽干又把它唯一的唤醒抹了 —— 结果躺在 mailbox 里，直到**下次按键**才被 poll 到
-  （表现为“着色算完了却不上屏”）。先抽 signal 则不会抹掉后到消息的唤醒。
-- **全插件到齐才写回**：异步 runner 是一个插件一个插件地回结果的；`manager-poll!` 必须等该 token
-  的**所有**插件结果到齐（`token-complete?`）才 `apply-results!`。否则先到的（词色）会先写一遍、
-  后到的（关键字色）再盖一次 → 关键字会在两种颜色间跳（`face-compose` 叠层也救不了，因为中途就是“半套”）。
-
-**括号增量（“找到破坏平衡的最小深度并重建”）**：
-
-- `bracket-open` 全量扫，返回 `bstate`（文本行 + 每行入口栈 + 匹配对区间 fills）。
-- `bracket-change`（只处理**行内编辑**；跨行 / 含换行的文本直接整篇重算）：
-  - **D** = 编辑点处栈里**最外层（最底）**那个开括号的位置 —— 这就是被破坏的最浅深度。
-  - 从 D 重建到 **E**：第一个（在编辑行之后的）行边界，使栈完全等于**旧入口栈**；
-    这保证 E 之后的嵌套 / 层号 / fills 不变。
-  - fills = 保留 `open < D` 和 `open >= E` 以及“在 E 处仍开着（位置与旧一致）”的旧对；
-    `[D,E)` 内开的重建段重新产出。
-- 因为 E 处整个栈（不只深度）与旧一致，所以 E 后的层号不会漂；因为保留“仍开着的旧对”，
-  所以跨越 E 的对不会被丟。
-- 等价性用 `lab/smoke-bracket.rkt` 的随机对比（增量 vs 全量，固定种子）守住。
-
-**版本闸门（异步安全的核心）**：版本用 **document 值身份 → token**（不是文本哈希）。
-core 里文本编辑（`document-edit-tracks`）会 fork 一个**新的 document 值**，而属性编辑
-（插件写回 `document-highlight-fill-batch`）就地改 box、值不变。所以：
-
-- 派活时记下当时的 token；结果回来时 token 仍对应当前 document ⇒ 写回安全。
-- 不等 ⇒ 丢掉（新版本会在下一次 tick 重新派活）。迟到的结果不会写错文本版本。
-
-**合并与层叠**：`registry-plugins` 的**列表顺序就是应用顺序**（无 priority 字段）。
-多个插件写同一格时**不去掉谁**：`face-compose` 把各插件的 face 依次叠成 `face-stack`，
-主题逐分量解析 `(fg bg)` 并合并（后层覆盖前层，某层 `#f` 的分量不覆盖）。
-所以**括号背景（bg）和语法前景（fg）共存**，只有同一分量才会后写覆盖前写。
-manager 是真实文件高亮轨的**唯一写者**。当前内置顺序：
-
-```
-brackets  括号背景（bg）
-words     词前景（fg，持久 词→色号 表；输入中的词暂不上色）
-syntax    Racket 关键字前景（fg，每个关键字按位置取固定色号）
-```
-
-词着色：颜色来自一张**持久表** `word → 色号`（不是整词 hash）：首次见到取“下一个号”
-（= 表里已有词数），以后照用。同词同色；不同词拿不同号（相邻词不会撞）；表只增不减，
-所以**在词前插入新词不会让后面的词变色**。
-“输入中不闪”：学编辑器插件（LSP 语义高亮）不跟“增长的词”硬碰 ——
-`change` 带编辑位置，取光标（插入文本末尾）前一个字符所在的**活动词**，本次**跳过它**（不占号、不上色）；
-其余词照常用表上色。于是 a→ad→add→adding 全程颜色不动，敲下分隔符 / 移开后一次上色。
-关键字：每个关键字在 `keyword-list` 里的**位置**就是它的色号 → `(palette-color 'keyword 位置)`，
-所以在主题 `'keyword` 色板下每个关键字有固定颜色（位置不动就不变色）。
-**关键字也跳过活动词**（和词着色一样）：否则打 `for` 会先上色、再加 `m`（`format`）又掉色。
-两者都无状态，`change` 直接整篇重扫（用 `lex.rkt` 的 `active-token` 算要跳过的词）。
-
-**后台进程（place）**：
-
-```
-manager → runner-place → worker place（独立进程）
-                              └─ registry 按 name 查到同一个插件的 open/change
-主进程 reader 线程：place 结果 → mailbox(async-channel) + signal(async-channel)
-signal 就是 runner 的 source；backend 用 racket-tui 的 on-source 注册它，
-于是 read-event 的 sync 会等它 —— 后台结果一到，事件循环醒来、写回、重绘。
-```
-
-- `palette-color` 用 `#:prefab`：能跨 place 序列化（普通 struct 也行，prefab 更稳）。
-- 后台进程只拿到 `name`，用**同一份 registry** 查到同一个插件的 open/change，保证两边一致。
-- 没路径的文档（`*tree*` / `*state*` …）不跑插件（“哪些算真实文件”的策略在 app/plugins.rkt）。
-- 关文档时 `manager-forget!` 清状态；在途结果因 did 不在而丢。
-
-## 输入插件（主进程同步）
-
-`plugin/` 那层是**属性插件**：后台进程、只写属性、不改文本。**输入插件**是另一类：
-每次按键在**主进程同步**跑，会改编辑，所以留在 `app/input-plugins.rkt`。
-
-```
-input-plugin(name, on-text, on-backspace)
-  on-text      : (app string) -> #f | (listof change)   '() = 插手但不改文本
-  on-backspace : (app)        -> #f | (listof change)
-```
-
-- `commands.rkt` 的 `cmd-insert` / `cmd-backspace` 先问 `input-plugins-*!`：
-  命中就用插件改好的结果，并把它返回的 change `app-plugin-note-change!` 给属性插件层（影子同步）；
-  不命中（#f）才走默认 `editor-view-*!`。
-- 插件自己做编辑并返回 core 的 change（`'()` = 只移动光标等无文本变化）。
-- 内置 `auto-pair`：输 `( [ { <` 自动补 `) ] } >`、光标停中间；输闭括号且右边同字符→跳过；
-  有选区 / 在 prompt 里 / 只读→不插手。
+**钩子**：`core/actions/core.rkt` 的 `app-forget-document!` 在清理 core 资源后
+`(app-notify! a 'document-closed did)`；`plugin/seam.rkt` 在装配时用
+`app-hook-add!` 把 `manager-forget!` 挂上去。于是 core 不 require 插件层。
 
 ## 关键约定
 
-- **一个事实只存一处**：pane 身份在 `panes`、路径在 `paths`、模态在 `app.mode`、布局在 `app.layout`。
-- **改 layout 输入必须走 state.rkt 的 setter**（否则缓存过期）。
+- **一个事实只存一处**：pane 身份在 `core/panes`、路径在 `core/paths`、模态在 `app.mode`、
+  布局在 `app.layout`、命令名对应行为在 `command/registry`、可调项在 `config/`。
+- **改 layout 输入必须走 `core/state.rkt` 的 setter**（否则缓存过期）。
 - **渲染前必须走 `app-prepare!`**（刷 state 槽位 + 取窗格）；增量后端也不能绕。
-- 动作只在 `actions/`（聚合出口 `actions.rkt`）；`commands.rkt` 只做「功能 → 命令」转发；
-  `keys/` 只做「binding → 命令」。
-- **颜色只在 `theme/`**；后端 / view-model 不写死 RGB。
-- **插件不改 text**；装饰只写属性轨，且必须过 `manager` 的版本闸门（不直接调 `document-*`）。
-- 模态表在 dispatch 时叠在 did 表之后，优先级最高。
-- **前缀键**：`mode` 的第三种状态 `prefix`（记 label + tables）。下一键只查这些表（不回落 normal）；
-  处理完**若还是同一个前缀就退出**，否则（处理器又进了新前缀 / 开了 prompt）就保留 → **支持任意层级嵌套**。
-  `app-prefix-begin! a label (list table ...)` 可挂任意命令表；底部显示 `[label-]`。
+- **动作只在 `core/actions/`**；`command/registry.rkt` 只做「功能 → 命令」转发；
+  `config/keys.rkt` 只做「binding → 命令名」。
+- **core 不 require command / plugin**（反向用钩子 + seam）。
+- **插件不改 text**；只写属性轨，且必须过 manager 的版本闸门。
+- **前缀键**：`mode` 第三种状态 `prefix`；下一键只查它自己的表（不回落 normal）；
+  处理完若还是同一个前缀就退出，否则保留 → 支持任意嵌套。
+- **命令描述**统一 `(event app . args) -> any`；前缀表里放命令名（不是裸 lambda）。
 
 ## 跑 / 测
 
 ```
-racket lab/main.rkt [根目录]
-racket lab/smoke.rkt        # base / ui 协议
-racket lab/smoke-plugin.rkt # 插件层（含后台 place runner）
-racket lab/smoke-bracket.rkt # 括号增量 vs 全量 等价（随机）
-racket lab/smoke-app.rkt    # 集成（无终端）
+racket lab-rebuild/main.rkt [根目录]
+racket lab-rebuild/smoke.rkt         # base / command / ui 协议
+racket lab-rebuild/smoke-plugin.rkt  # 插件层（含后台 place runner）
+racket lab-rebuild/smoke-bracket.rkt # 括号增量 vs 全量（随机）
+racket lab-rebuild/smoke-app.rkt     # 集成（无终端）
+racket lab-rebuild/smoke-state.rkt   # state 行增量更新回归
+raco test lab-rebuild                # 全部（含 state / theme 回归）
 ```
 
-## 键位
+## 左栏开 / 关（`Ctrl+B`）
 
-- 焦点移动：`C-p` 前缀 + `←/→/↑/↓`（`C-p` = 控制字节 0x10，方向键无修饰，任何终端都送得到）
-- `Ctrl+O` 左栏 ↔ 编辑格；`Ctrl+S` 保存；`Ctrl+Q` 退出
-- 编辑区分屏：`Ctrl+K` 水平（上下）分隔、`Ctrl+L` 垂直（左右）分隔、`Ctrl+D` 关焦点所在编辑窗格（剩下自动补满）
-- 编辑格：`Ctrl+A` 全选；常规编辑（方向 / Shift+方向选择 / 剪贴板 / 撤销）；终端括弧粘贴（paste 事件）走富粘贴，多行也成
-- 文件树：`↑/↓/←/→` 光标移动、`Enter` 打开文件 / 展开折叠目录、`Tab` 切左栏面板、
-  `Ctrl+N` 新建文件、`Ctrl+L` 新建目录、`Backspace` 删除（y/n）
-- 文档列表：`Tab` 切左栏面板、`Enter` 展开/收起文档行、选 view 行 `Enter` 打开到编辑格、
-  `Ctrl+N` 给当前行的文档新建 view、`Backspace` 在 view 行只关 view（文档保留，即使最后一个 view）；
-  在 doc 行关文档（连带它所有 view）
-- 输入行：`Enter` 提交、`Esc` 取消；字符 / 退格 / 粘贴直接编辑
+`app` 增加 `sidebar?`：`#f` 时 `compute-layout` 的左栏宽为 0、主区占满整宽；
+`app-main-w` 也随 `sidebar?` 变宽（state 行 padding 跟着变）。
+
+`Ctrl+B` → `toggle-sidebar`（`core/actions/focus.rkt` 的 `app-toggle-sidebar!`）：
+- 焦点在左栏 → 关掉，焦点移到当前编辑窗格（**没有编辑窗格则置空**，不放到底部槽）；
+- 左栏已关 → 打开并聚焦左栏。
+
+旧的 `Ctrl+O`（左右栏焦点切换）已删除；焦点移动用 `C-p` 前缀 + 方向键，
+或 `Ctrl+B` 连带（开→聚焦左栏，关→回编辑格）。
+
+## 与 lab 的差异一览
+
+| # | lab | lab-rebuild |
+|---|-----|-------------|
+| 1 | 命令表直接存 handler lambda | 表存**命令描述**；行为在 `command/registry` |
+| 2 | `app/commands.rkt` 与 `keys/` 都在 app | 拆成 `command/`（行为 + 派发）与 `config/keys.rkt`（数据） |
+| 3 | 插件清单硬编码在 `plugin/registry.rkt` | 启用集在 `config/plugins.rkt`（名字），目录在插件层 |
+| 4 | 输入插件在 `app/input-plugins.rkt` | 独立 `plugin/input/`（api + auto-pair + registry） |
+| 5 | core 动作直接调 `app-plugin-forget!` | core 只 `app-notify!`，`plugin/seam` 挂钩子 |
+| 6 | 主题在顶层 `theme/` | 收进 `config/theme/` |
+| 7 | 语法关键字表写死在 `plugin/syntax.rkt` | 移到 `config/syntax.rkt` |
+| 8 | `history-bound` / worker 数写死 | `config/defaults.rkt` |
+
+## state 行增量更新
+
+底部 state 行（焦点 / 行列 / 文件名）以前每变一次就 `state->document` 重建整篇 +
+`editor-view-assign!`。现在 `app/render.rkt` 只算 old→new 的**最小 diff**：
+
+1. 公共前缀 / 后缀 → 旧中间段与 `new-mid`；
+2. 选中旧中间段，`editor-view-insert-ignore-readonly!` 插 `new-mid` 替换（空 = 纯删）；
+3. 只给**新插入**的字符补 `state` face + 只读（其余格随编辑平移）；
+4. `editor-view-clear-history!`（状态栏不进撤销栈）；
+5. `editor-view-set-left-column! / -top-line!` 钉回 0。
+
+第 5 步是必须的：插字后光标落在行尾（列 = 宽度），`editor-view-insert-ignore-readonly!`
+内部的 `ensure` 会把 `left-column` 推到 1 —— 渲染就从第 2 列开始，`tree/edit` 变成 `ree/dit`。
+state 行是展示槽，永远钉在左上角。
+
+回归在 `lab-rebuild/smoke-state.rkt`（长度 / 整行只读 / 整行 face / undo 不变）。
 
 ## 还没动（以后）
 
 - `base/input.rkt` 仍直接依赖 racket-tui 的事件类型（换后端要改这里）。
-- 绑定词表把可打印字符塌成 `'text`，所以 y/n 仍要回看原始 event（`cmd-answer`）。
+- 绑定词表把可打印字符塌成 `'text`，y/n 仍要回看原始 event（`cmd-answer`）。
   要彻底解决需给绑定加「按字符」形态。
-- state 行每变一次就整篇 `editor-view-assign!`，可用 `editor-view-change-text` 增量。
 - `size-warning` 仍未显示。
 - prompt 单槽（要嵌套再改栈）。

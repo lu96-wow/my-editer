@@ -2,39 +2,45 @@
 
 (require "../../core/editor.rkt"
          "../base/input.rkt"
-         "../base/command.rkt"
-         "../base/dispatch.rkt"
          "../base/layout/main.rkt"
          "../ui/tree.rkt"
          "../ui/buffers.rkt"
          "../ui/slot.rkt"
          "../ui/mode.rkt"
-         "state.rkt"
-         "panes.rkt"
-         "edit-panes.rkt"
-         "paths.rkt"
-         "actions.rkt"
-         "keys/main.rkt"
-         "render.rkt"
-         "plugins.rkt"
-         "../plugin/manager.rkt"
-         "../plugin/runner.rkt"
-         "../plugin/registry.rkt")
+         "../command/table.rkt"
+         "../command/dispatch.rkt"
+         "../config/defaults.rkt"
+         "../config/keys.rkt"
+         "../plugin/attr/manager.rkt"
+         "../plugin/attr/runner.rkt"
+         "../plugin/attr/registry.rkt"
+         "../plugin/seam.rkt"
+         "../core/state.rkt"
+         "../core/panes.rkt"
+         "../core/edit-panes.rkt"
+         "../core/paths.rkt"
+         "../core/actions.rkt"
+         "render.rkt")
 
-;;; lab/app/app.rkt —— 应用装配 + 事件入口（薄壳）
+;;; lab-rebuild/app/app.rkt —— 应用装配 + 事件入口（薄壳）
 ;;;
-;;; 这里只做三件事：init 把各部件接起来；handle-input 把事件分派到鼠标 / dispatch；
-;;; 事件后兜底检查模态焦点。业务动作在 actions.rkt，命令转发在 commands.rkt，
-;;; 键表在 keys/，状态在 state.rkt。
+;;; 这是**唯一的装配点**：把 core（状态 / 动作）、command（表 / 注册 / 派发）、
+;;; plugin（属性 + 输入 + 接缝）、config（键位 / 默认值 / 主题）、ui、backend 接起来。
 ;;;
-;;; 布局：左 = 文件树 / 文档列表，右 = 当前文件，底 = state / input 共享槽位。
+;;; 这里只做三件事：init 接线；handle-input 把事件分派到鼠标 / dispatch；
+;;; 事件后兜底检查模态焦点。业务动作在 core/actions，命令在 command/registry，
+;;; 键表在 config/keys。
 
-(provide app-init app-handle-input app-render app-prepare! app-state-refresh!)
+(provide app-init app-handle-input
+         ;; 从 render.rkt 重导出：调用方只需 require app/app.rkt
+         app-render app-prepare! app-state-refresh! app-bar-panes)
 
 ;;; ================= 初始化 =================
 
 (define (app-init root width height #:sidebar-width [sw default-sidebar-width]
-                  #:plugins [plugins (make-manager registry-plugins (make-sync-runner))])
+                  #:plugins [plugins (make-manager enabled-attr-plugins
+                                                   (make-sync-runner enabled-attr-plugins)
+                                                   #:history-bound plugin-history-bound)])
   (define tree (file-tree root))
   (define mw (max 1 (- width sw)))
   (define ed0 (make-blank-editor))                          ; 不预开 *scratch*，开文件才有内容
@@ -57,8 +63,9 @@
                 tdid tree-keys)
                bdid bufs-keys)
               stdid readonly-keys))
-  (define a (app ed4 tree p (edit-panes-empty) bmodel 'tree tvid #f cs (make-path-table)
-                 width height sw #f #f #f plugins))
+  (define a (app ed4 tree p (edit-panes-empty) bmodel initial-left-panel tvid #f cs
+                 (make-path-table) width height sw #t #f #f #f plugins (make-hash)))
+  (app-plugin-attach! a)                                    ; 关文档 → 清插件状态（core 钩子）
   (app-bufs-refresh! a)
   a)
 
@@ -70,7 +77,7 @@
     ;; 前缀（如 C-p）：只看它自己的表，不回落 normal。
     ;; 处理完若还是同一个前缀，就退出；若处理器又进了一个新前缀 / 开了 prompt，就留着（支持嵌套）。
     [(prefix? m)
-     (command-run (prefix-tables m) (event->binding ev) ev a)
+     (dispatch-run-direct (prefix-tables m) ev a)
      (when (eq? (app-mode a) m) (app-prefix-end! a))]
     [else
      (dispatch-run (app-cs a) (focused-did a)

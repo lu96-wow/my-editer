@@ -1,14 +1,14 @@
 #lang racket
 
-;;; lab/smoke.rkt —— 骨架冒烟：确认 base / ui 的协议装得上、能跑通。
+;;; lab-rebuild/smoke.rkt —— 骨架冒烟：确认 base / ui 的协议装得上、能跑通。
 ;;; 不测业务细节（那些在 smoke-app.rkt）。
 
 (require rackunit
          "../core/editor.rkt"
-         "base/input.rkt" "base/command.rkt" "base/dispatch.rkt"
+         "base/input.rkt" "command/table.rkt" "command/dispatch.rkt"
          "base/layout/main.rkt"
          "ui/slot.rkt" "ui/mode.rkt"
-         "app/edit-panes.rkt")
+         "core/edit-panes.rkt")
 
 ;;; ---------- input（事件 = racket-tui 规范事件；绑定键 = 匿名列表） ----------
 
@@ -29,30 +29,28 @@
 (check-equal? (mouse-row (mouse-event 'press 'left 31 24 no-mods)) 23)
 
 ;;; ---------- command ----------
+;;; 表里存的是**命令描述**（符号 / (符号 . 参数)）；「谁跑」在 command/registry。
+;;; 这里只验证表的组合 / 覆盖 / did / 模态维度。
 
-(define calls (box '()))
-(define (h tag) (lambda (e ctx) (set-box! calls (cons (list tag (event->binding e) ctx) (unbox calls)))))
-(define (reset!) (set-box! calls '()))
-
-(define global (command-table (key 'tab) (h 'g-tab) (key 'enter) (h 'g-enter)))
-(define doc-t  (command-table (key 'enter) (h 'd-enter) (key 'backspace) (h 'd-bs)))
-(define extra  (command-table (key 'enter) (h 'm-enter)))                 ; 模态表
+(define global (command-table (key 'tab) 'g-tab (key 'enter) 'g-enter))
+(define doc-t  (command-table (key 'enter) 'd-enter (key 'backspace) 'd-bs))
+(define extra  (command-table (key 'enter) 'm-enter))                     ; 模态表
 (define cs (command-set-add-doc (command-set (list global)) 7 doc-t))
 
 (check-equal? (command-set-tables cs 7) (list global doc-t))
-(reset!)
-(check-true (dispatch-run cs 7 '() (key-event 'enter no-mods) 'CTX))
-(check-equal? (car (unbox calls)) '(d-enter (key enter ()) CTX))          ; did 表覆盖 global
-(reset!)
-(check-true (dispatch-run cs 7 '() (key-event 'tab no-mods) 'CTX))
-(check-equal? (car (unbox calls)) '(g-tab (key tab ()) CTX))
-(check-false (dispatch-run cs 9 '() (key-event 'backspace no-mods) 'CTX)) ; 别的 did 没这张表
+(check-equal? (dispatch-lookup cs 7 '() (key-event 'enter no-mods)) 'd-enter)  ; did 表覆盖 global
+(check-equal? (dispatch-lookup cs 7 '() (key-event 'tab no-mods)) 'g-tab)
+(check-false (dispatch-lookup cs 9 '() (key-event 'backspace no-mods)))        ; 别的 did 没这张表
 
 ;; 模态维度：extra-tables 接在 did 表之后、优先级最高
-(check-equal? (length (dispatch-tables cs 7 (list extra))) 3)
-(reset!)
-(check-true (dispatch-run cs 7 (list extra) (key-event 'enter no-mods) 'CTX))
-(check-equal? (car (unbox calls)) '(m-enter (key enter ()) CTX))
+(check-equal? (dispatch-tables cs 7 (list extra)) (list global doc-t extra))
+(check-equal? (dispatch-lookup cs 7 (list extra) (key-event 'enter no-mods)) 'm-enter)
+
+;; merge：后面的覆盖前面的
+(check-equal? (command-lookup (list (command-table (key 'enter) 'a)
+                                    (command-table (key 'enter) 'b))
+                              (key 'enter))
+              'b)
 
 ;;; ---------- layout ----------
 
