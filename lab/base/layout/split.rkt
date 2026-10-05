@@ -28,7 +28,7 @@
          (struct-out bar)
          (struct-out size-warning)
          tree? tree-vids tree-contains?
-         tree-split tree-remove tree-resize tree->rectangles
+         tree-split tree-remove tree-replace tree-resize tree->rectangles
          min-pane-width min-pane-height split-gap)
 
 (define min-pane-width 4)
@@ -87,6 +87,14 @@
     [else (struct-copy node t
                        [a (tree-split (node-a t) vid dir new-vid size)]
                        [b (tree-split (node-b t) vid dir new-vid size)])]))
+
+;; 把 vid 那个 leaf 换成同位置的 new-vid（不改变结构）。
+(define (tree-replace t vid new-vid)
+  (cond
+    [(leaf? t) (if (eqv? (leaf-vid t) vid) (leaf new-vid) t)]
+    [else (struct-copy node t
+                       [a (tree-replace (node-a t) vid new-vid)]
+                       [b (tree-replace (node-b t) vid new-vid)])]))
 
 ;; 删掉 vid 那个 leaf。→ 新树 / #f（空，即删的是最后一个）。
 (define (tree-remove t vid)

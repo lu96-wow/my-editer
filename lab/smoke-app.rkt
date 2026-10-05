@@ -17,6 +17,7 @@
          "app/app.rkt"
          "app/state.rkt"
          "app/panes.rkt"
+         "app/edit-panes.rkt"
          "app/paths.rkt")
 
 (define root (simplify-path (path->complete-path (make-temporary-file "app~a" 'directory))))
@@ -30,7 +31,7 @@
 (define (ed) (app-ed a))
 (define (tree-vid) (panes-tree (app-panes a)))
 (define (bufs-vid) (panes-bufs (app-panes a)))
-(define (edit-vid) (panes-edit (app-panes a)))
+(define (edit-vid) (app-edit-active a))
 (define (state-vid) (panes-state (app-panes a)))
 (define (input-vid) (panes-input (app-panes a)))
 (define (tree-line-of name)
@@ -266,6 +267,20 @@
 (send (key-event 'n (mods #t #f #f)))                      ; Ctrl+N 新建 view
 (check-equal? (view-row-count) 2)
 
+;; 手工分屏：编辑区换成两叶树 → app 一次铺出两个编辑窗格（为后续拆分命令铺路）
+(define aaa-views (editor-document-view-list (ed) aaa-did))
+(check-equal? (length aaa-views) 2)
+(set-edit-panes-tree! (app-edit a) (node 'lr #f (leaf (first aaa-views)) (leaf (second aaa-views))))
+(set-edit-panes-active! (app-edit a) (first aaa-views))
+(app-invalidate-layout! a)
+(define split-ids (map rectangle-view-id (layout-result-panes (app-layout-result a))))
+(check-true (and (memv (first aaa-views) split-ids) (memv (second aaa-views) split-ids) #t))
+(void (app-render a))                                       ; 多窗格渲染不崩
+;; 还原成单窗格，继续后面的关闭用例
+(set-edit-panes-tree! (app-edit a) (leaf (first aaa-views)))
+(set-edit-panes-active! (app-edit a) (first aaa-views))
+(app-invalidate-layout! a)
+
 ;; 关一个 view → 还剩一个，文档保留
 (editor-view-set-point! (ed) (bufs-vid)
                         (point (buf-line (lambda (s) (string-contains? s "view"))) 0))
@@ -293,5 +308,63 @@
 
 (send (key-event 'q (mods #t #f #f)))
 (check-true (app-quit? a))
+
+;;; ---------- 编辑区分屏：Ctrl+K/L 分，Ctrl+D 关窗格 ----------
+
+(define root2 (simplify-path (path->complete-path (make-temporary-file "split~a" 'directory))))
+(with-output-to-file (build-path root2 "one.txt") #:exists 'replace (lambda () (display "ONE")))
+(define b (app-init root2 80 24 #:sidebar-width 24))
+(define (send2 e) (app-handle-input b e))
+(define (b-ed) (app-ed b))
+(define (b-tree) (panes-tree (app-panes b)))
+(define (b-edit) (app-edit-active b))
+;; 当前编辑区里显示的窗格 vid（按树里的顺序）
+(define (main-panes)
+  (for/list ([r (in-list (layout-result-panes (app-layout-result b)))]
+             #:when (memv (rectangle-view-id r) (tree-vids (app-edit-tree b))))
+    (rectangle-view-id r)))
+
+(define ol (for/first ([e (in-list (tree-entries (app-tree b)))] [i (in-naturals)]
+                       #:when (equal? (entry-name e) "one.txt")) i))
+(editor-view-set-point! (b-ed) (b-tree) (point ol 0))
+(send2 (key-event 'enter no-mods))
+(check-equal? (editor-view-string (b-ed) (b-edit)) "ONE")
+(check-equal? (length (main-panes)) 1)
+
+;; Ctrl+K：水平分隔（上下）——拆 active 窗格
+(send2 (key-event 'k (mods #t #f #f)))
+(check-equal? (length (main-panes)) 2)
+(check-true (node? (app-edit-tree b)))
+(check-equal? (node-dir (app-edit-tree b)) 'tb)
+(check-equal? (app-edit-active b) (b-edit))               ; active 转到新窗格
+(check-not-false (string-contains? (screen->string (app-render b)) "─"))  ; 水平分隔线
+
+;; 上下窗格：Ctrl+↑/↓ 移焦点
+(define tv (car (tree-vids (app-edit-tree b))))
+(define bv (cadr (tree-vids (app-edit-tree b))))
+(check-equal? (app-focus b) bv)
+;; Ctrl+↑/↓ 移焦点
+(send2 (key-event 'up (mods #t #f #f)))
+(check-equal? (app-focus b) tv)
+(send2 (key-event 'down (mods #t #f #f)))
+(check-equal? (app-focus b) bv)
+
+;; Ctrl+L：垂直分隔（左右）——继续拆新的 active
+(send2 (key-event 'l (mods #t #f #f)))
+(check-equal? (length (main-panes)) 3)
+(define scr-b (app-render b))                              ; 3 窗格渲染不崩
+(check-not-false (string-contains? (screen->string scr-b) "─"))
+(check-not-false (string-contains? (screen->string scr-b) "│"))
+
+;; Ctrl+D：关窗格（不关 view）
+(send2 (key-event 'd (mods #t #f #f)))
+(check-equal? (length (main-panes)) 2)
+(send2 (key-event 'd (mods #t #f #f)))
+(check-equal? (length (main-panes)) 1)
+;; 窗格关了，view 还在（分屏时建的 view 不随窗格消失）
+(check-not-false (path-table-did (app-paths b) (build-path root2 "one.txt")))
+(check-true (>= (length (editor-document-view-list (b-ed)
+                                                  (path-table-did (app-paths b) (build-path root2 "one.txt"))))
+                3))
 
 (displayln "lab smoke-app: ok")

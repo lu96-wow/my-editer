@@ -4,29 +4,32 @@
          "../base/layout/main.rkt"
          "../ui/mode.rkt"
          "panes.rkt"
+         "edit-panes.rkt"
          "paths.rkt")
 
 ;;; lab/app/state.rkt —— 应用状态（唯一的数据源）+ 派生量
 ;;;
-;;; 只放「数据 + 读」，不放业务动作（那些在 actions.rkt）。三个不变量集中在这：
-;;;   1) pane 身份只在 panes registry 一处；
-;;;   2) did ↔ path 只在 path-table 一处；
+;;; 只放「数据 + 读」，不放业务动作（那些在 actions.rkt）。不变量集中在这：
+;;;   1) 单值 pane 身份在 panes registry；编辑区（可分屏）在 edit-panes；
+;;;   2) did ↔ path 只在 path-table；
 ;;;   3) layout 每帧只算一次（缓存在 app.layout，改动 layout 输入的 setter 会失效它）。
 ;;;
-;;; 改 layout 输入必须走 app-mode-set! / app-left-set! / app-edit-vid-set! / app-size-set!，
-;;; 否则缓存会过期。
+;;; 改 layout 输入必须走 app-mode-set! / app-left-set! / app-edit-open! /
+;;; app-edit-remove! / app-size-set!，否则缓存会过期。
 
 (provide (struct-out app)
          app-main-w app-main-h
          app-left-vid app-bottom-vid app-modal-vid
+         app-edit-tree app-edit-active
          app-focus-panes app-layout-result app-invalidate-layout!
-         app-mode-set! app-left-set! app-edit-vid-set! app-size-set!
+         app-mode-set! app-left-set! app-edit-open! app-edit-split! app-edit-remove! app-size-set!
          focused-did)
 
 (struct app
   (ed                    ; core editor 值
    tree                  ; file-tree 模型
-   panes                 ; pane registry（vid）
+   panes                 ; 单值 pane registry（tree/bufs/state/input）
+   edit                  ; 编辑区分屏模型（edit-panes：tree + active）
    bufs                  ; 文档列表面板的展开模型
    left                  ; 左侧显示哪个面板：'tree | 'bufs
    focus                 ; 当前焦点 vid
@@ -42,6 +45,26 @@
 
 (define (app-main-w a) (max 1 (- (app-width a) (app-sidebar-width a))))
 (define (app-main-h a) (max 1 (- (app-height a) default-statusbar-height)))
+
+;;; ---------- 编辑区（分屏树） ----------
+
+(define (app-edit-tree a) (edit-panes-tree (app-edit a)))
+(define (app-edit-active a) (edit-panes-active (app-edit a)))
+
+;; 把 view 放到 active 编辑窗格（没有窗格就建一个）。会失效 layout。
+(define (app-edit-open! a vid)
+  (edit-panes-open! (app-edit a) vid)
+  (app-invalidate-layout! a))
+
+;; 从编辑区删掉若干 view（关 view / 文档时用）。会失效 layout。
+(define (app-edit-remove! a vids)
+  (edit-panes-remove! (app-edit a) vids)
+  (app-invalidate-layout! a))
+
+;; 拆分 active 编辑窗格，新窗格用 new-vid（view 由 actions 建）。会失效 layout。
+(define (app-edit-split! a dir new-vid)
+  (edit-panes-split! (app-edit a) dir new-vid)
+  (app-invalidate-layout! a))
 
 ;;; ---------- pane / 焦点派生 ----------
 
@@ -68,14 +91,12 @@
 
 (define (app-layout-result a)
   (or (app-layout a)
-      (let* ([p (app-panes a)]
-             [ev (panes-edit p)]
-             [lr (compute-layout (and ev (leaf ev)) (app-width a) (app-height a)
-                                 #:sidebar? #t
-                                 #:sidebar-width (app-sidebar-width a)
-                                 #:statusbar-height default-statusbar-height
-                                 #:left-vid (app-left-vid a)
-                                 #:bottom-vid (app-bottom-vid a))])
+      (let ([lr (compute-layout (app-edit-tree a) (app-width a) (app-height a)
+                                #:sidebar? #t
+                                #:sidebar-width (app-sidebar-width a)
+                                #:statusbar-height default-statusbar-height
+                                #:left-vid (app-left-vid a)
+                                #:bottom-vid (app-bottom-vid a))])
         (set-app-layout! a lr)
         lr)))
 
@@ -85,10 +106,6 @@
 
 (define (app-mode-set! a m) (set-app-mode! a m) (app-invalidate-layout! a))
 (define (app-left-set! a l) (set-app-left! a l) (app-invalidate-layout! a))
-
-(define (app-edit-vid-set! a v)
-  (set-panes-edit! (app-panes a) v)
-  (app-invalidate-layout! a))
 
 (define (app-size-set! a w h)
   (set-app-width! a w)

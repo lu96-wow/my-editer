@@ -11,6 +11,7 @@
          "../ui/mode.rkt"
          "state.rkt"
          "panes.rkt"
+         "edit-panes.rkt"
          "paths.rkt"
          "actions.rkt"
          "commands.rkt"
@@ -41,7 +42,7 @@
     (editor-add-document-view ed2 (state->document "") mw 1 "*state*"))
   (define-values (ed4 indid invid)
     (editor-add-document-view ed3 (input->document (input "" #t)) mw 1 "*input*"))
-  (define p (panes tvid bvid #f stvid invid))
+  (define p (panes tvid bvid stvid invid))
   ;; 输入文档不挂 did 表：模态表由 mode-tables 在 dispatch 时叠上（见 app-dispatch!）。
   (define cs (command-set-add-doc
               (command-set-add-doc
@@ -50,7 +51,7 @@
                 tdid tree-keys)
                bdid bufs-keys)
               stdid readonly-keys))
-  (define a (app ed4 tree p bmodel 'tree tvid #f cs (make-path-table)
+  (define a (app ed4 tree p (edit-panes-empty) bmodel 'tree tvid #f cs (make-path-table)
                  width height sw #f #f #f))
   (app-bufs-refresh! a)
   a)

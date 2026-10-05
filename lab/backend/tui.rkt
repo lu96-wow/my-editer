@@ -5,7 +5,8 @@
          "../../core/view/base/screen.rkt"
          "../../core/view/patch.rkt"
          "../app/app.rkt"
-         "../app/state.rkt")
+         "../app/state.rkt"
+         "../app/render.rkt")
 
 ;;; lab/backend/tui.rkt —— racket-tui 后端
 ;;;
@@ -31,6 +32,7 @@
     [(tree-open)   (values '(120 210 130) #f)]
     [(input)       (values '(20 20 20) '(230 200 90))]
     [(state)       (values '(225 225 225) '(40 44 52))]
+    [(bar)         (values '(90 96 110) #f)]
     [(buf-current) (values '(120 210 130) #f)]
     [(buf-file)    (values '(200 200 200) #f)]
     [(buf-untitled)(values '(170 170 170) #f)]
@@ -59,13 +61,14 @@
   (define w (app-width a))
   (define h (app-height a))
   (define panes (app-prepare! a))           ; 刷新 state 槽位 + 取本帧窗格
+  (define decorations (app-bar-panes a))    ; 分屏分隔线（装饰图层）
   (define prev (app-prev a))
   (define fresh? (or (not prev)
                      (not (= (screen-width prev) w))
                      (not (= (screen-height prev) h))))
   (editor-set-layout! ed panes)
   (define-values (new render selection)
-    (editor-render-layout-patch ed (and (not fresh?) prev) panes (app-focus a) w h))
+    (editor-render-layout-patch ed (and (not fresh?) prev) panes (app-focus a) w h decorations))
   (set-app-prev! a new)
   (define parts '())
   (define (add! b) (set! parts (cons b parts)))

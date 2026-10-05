@@ -54,23 +54,26 @@
           (view-selections v)))
 
 ;; 一份 rectangles → 一屏；只有 active（单个 vid / vid 列表）对应窗格的光标 / 选区透出，其余只出文本。
-(define (editor-render-layout ed rectangles active total-w total-h)
+;; decorations：(listof pane)，不在 rectangles 里的额外图层（如分屏分隔线），同样参与合成 / 增量 patch。
+(define (editor-render-layout ed rectangles active total-w total-h [decorations '()])
   (composition-screen
    (panes->composition total-w total-h
-     (for/list ([r (in-list rectangles)])
-       (pane (rectangle-view-id r) (rectangle-y r) (rectangle-x r)
-             (view-render-sized ed (rectangle-view-id r) (rectangle-width r) (rectangle-height r))
-             (rectangle-deep r)))
+     (append
+      (for/list ([r (in-list rectangles)])
+        (pane (rectangle-view-id r) (rectangle-y r) (rectangle-x r)
+              (view-render-sized ed (rectangle-view-id r) (rectangle-width r) (rectangle-height r))
+              (rectangle-deep r)))
+      decorations)
      active)))
 
 ;;; ---------- 合 ----------
 
-(define (editor-render-layout*! ed rectangles active total-w total-h)
+(define (editor-render-layout*! ed rectangles active total-w total-h [decorations '()])
   (editor-set-layout! ed rectangles)
-  (editor-render-layout ed rectangles active total-w total-h))
+  (editor-render-layout ed rectangles active total-w total-h decorations))
 
 ;; 增量：旧帧 + 新帧 → (新帧, render, selection)。
-(define (editor-render-layout-patch ed old rectangles active total-w total-h)
-  (define new (editor-render-layout ed rectangles active total-w total-h))
+(define (editor-render-layout-patch ed old rectangles active total-w total-h [decorations '()])
+  (define new (editor-render-layout ed rectangles active total-w total-h decorations))
   (define-values (render selection) (screen-patch old new))
   (values new render selection))

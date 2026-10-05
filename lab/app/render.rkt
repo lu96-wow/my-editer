@@ -6,12 +6,13 @@
          "state.rkt"
          "panes.rkt")
 
-;;; lab/app/render.rkt —— 每帧准备 + 底部 state 行
+;;; lab/app/render.rkt —— 每帧准备 + 分隔线 + 底部 state 行
 ;;;
 ;;; app-prepare! 是渲染前**唯一入口**：先刷新底部 state 槽位，再返回本帧窗格。
 ;;; 纯渲染（app-render）和增量渲染（backend/tui）都必须走它，别各写一份。
+;;; 分屏的分隔线（bars）作为**装饰图层**参与合成（app-bar-panes），也走同一条 patch 路径。
 
-(provide app-state-refresh! app-prepare! app-render)
+(provide app-state-refresh! app-prepare! app-bar-panes app-render)
 
 (define (pad-right s n)
   (define len (string-length s))
@@ -51,8 +52,32 @@
   (app-state-refresh! a)
   (layout-result-panes (app-layout-result a)))
 
+;;; ---------- 分屏分隔线（装饰图层） ----------
+
+(define bar-face 'bar)
+
+;; 一条 bar → 一块 1 格宽 / 高的子屏（lr 竖线 │，tb 横线 ─）。
+(define (bar->pane b)
+  (define vertical? (eq? (bar-dir b) 'lr))
+  (define w (bar-width b))
+  (define h (bar-height b))
+  (define ch (if vertical? #\u2502 #\u2500))
+  (define rows
+    (if vertical?
+        (for/vector ([_ (in-range h)]) (list (run 0 (string ch) bar-face)))
+        (vector (list (run 0 (make-string w ch) bar-face)))))
+  (pane 'bar (bar-y b) (bar-x b) (screen w h rows '() '()) 1))
+
+(define (app-bar-panes a)
+  (for/list ([b (in-list (layout-result-bars (app-layout-result a)))]
+             #:when (and (positive? (bar-width b)) (positive? (bar-height b))))
+    (bar->pane b)))
+
 ;; 一次性全量渲染（测试 / 非增量后端用）。
 (define (app-render a)
+  (app-state-refresh! a)
+  (define lr (app-layout-result a))
   (editor-render-layout*! (app-ed a)
-                          (app-prepare! a)
-                          (app-focus a) (app-width a) (app-height a)))
+                          (layout-result-panes lr)
+                          (app-focus a) (app-width a) (app-height a)
+                          (app-bar-panes a)))

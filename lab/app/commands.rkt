@@ -71,6 +71,8 @@
     (define vid (pane-dir (app-focus-panes a) (app-focus a) dir))
     (when vid (set-app-focus! a vid))))
 
+;; 焦点移动 = Ctrl+方向键。（注：部分终端/复用器不一定会发修饰方向键的 CSI 序列，
+;; 真机上 Ctrl+↑/↓ 可能收不到；那是终端层的事，racket-tui 的解析本身是对的。）
 (define focus-keys
   (command-table
    (key 'left 'ctrl)  (move-focus 'left)
@@ -84,7 +86,11 @@
   (command-table
    (key 'q 'ctrl) (lambda (e a) (set-app-quit?! a #t))
    (key 'o 'ctrl) (lambda (e a) (app-toggle-focus! a))
-   (key 's 'ctrl) (lambda (e a) (app-save! a))))
+   (key 's 'ctrl) (lambda (e a) (app-save! a))
+   ;; 编辑区分屏：K 水平（上下）/ L 垂直（左右）分隔，D 关窗格
+   (key 'k 'ctrl) (lambda (e a) (app-split! a 'tb))
+   (key 'l 'ctrl) (lambda (e a) (app-split! a 'lr))
+   (key 'd 'ctrl) (lambda (e a) (app-pane-close! a))))
 
 ;;; ================= 只读面板基表 =================
 

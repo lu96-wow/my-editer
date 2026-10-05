@@ -7,7 +7,8 @@
          "../core/editor.rkt"
          "base/input.rkt" "base/command.rkt" "base/dispatch.rkt"
          "base/layout/main.rkt"
-         "ui/slot.rkt" "ui/mode.rkt")
+         "ui/slot.rkt" "ui/mode.rkt"
+         "app/edit-panes.rkt")
 
 ;;; ---------- input（事件 = racket-tui 规范事件；绑定键 = 匿名列表） ----------
 
@@ -81,6 +82,15 @@
 (define empty-main (compute-layout #f 80 24 #:left-vid 10 #:bottom-vid 11))
 (check-equal? (map rectangle-view-id (layout-result-panes empty-main)) '(10 11))
 
+;; 水平（tb）拆分也铺得出来
+(define-values (ps2 _b2 _w2) (tree->rectangles (node 'tb #f (leaf 0) (leaf 1)) main))
+(check-equal? (rects ps2) '((0 24 0 56 11) (1 24 12 56 11)))
+
+;; 原地替换 leaf 内容（不改变结构）
+(check-equal? (tree-replace (node 'tb #f (leaf 0) (leaf 1)) 1 9)
+              (node 'tb #f (leaf 0) (leaf 9)))
+(check-equal? (tree-vids (node 'lr #f (leaf 0) (leaf 1))) '(0 1))
+
 ;; 空间不足：不静默夹紧，输出 size-warning
 (define tiny (compute-layout (node 'lr #f (leaf 0) (leaf 1)) 8 4
                              #:sidebar-width 0 #:statusbar-height 0))
@@ -125,7 +135,31 @@
 (check-false (unbox got2))
 
 ;; 底部槽位：布局的 bottom-vid 也随模式切换
+;; 底部槽位：布局的 bottom-vid 也随模式切换
 (define lay (compute-layout (leaf 0) 80 24 #:left-vid #f #:bottom-vid input-vid))
 (check-equal? (layout-vid-at lay 30 23) input-vid)
+
+;;; ---------- edit-panes：编辑区分屏树 + active ----------
+
+(define ep (edit-panes-empty))
+(check-false (edit-panes-tree ep))
+(check-false (edit-panes-active ep))
+(edit-panes-open! ep 5)
+(check-equal? (edit-panes-tree ep) (leaf 5))
+(check-equal? (edit-panes-active ep) 5)
+(edit-panes-open! ep 6)                                   ; 无分屏时=替换 active
+(check-equal? (edit-panes-tree ep) (leaf 6))
+
+;; 两个 leaf：open 只换 active，remove 只删对应 leaf
+(define ep2 (edit-panes (node 'lr #f (leaf 1) (leaf 2)) 2))
+(edit-panes-open! ep2 9)
+(check-equal? (edit-panes-tree ep2) (node 'lr #f (leaf 1) (leaf 9)))
+(check-equal? (edit-panes-active ep2) 9)
+(edit-panes-remove! ep2 (list 9))
+(check-equal? (edit-panes-tree ep2) (leaf 1))
+(check-equal? (edit-panes-active ep2) 1)                  ; active 被删 → 回落
+(edit-panes-remove! ep2 (list 1))
+(check-false (edit-panes-tree ep2))
+(check-false (edit-panes-active ep2))
 
 (displayln "lab smoke: ok")
