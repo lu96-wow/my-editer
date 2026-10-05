@@ -41,14 +41,16 @@
    (lambda (did) (place-channel-put (w did) (list 'close did)))
    (lambda (tag name did token path) (place-channel-put (w did) (list 'job tag name did token path)))
    (lambda ()
+     ;; ⚠ 顺序要紧：**先抽 signal，再抽 mailbox**。
+     ;; reader 是 mailbox 先写、signal 后写；如果反过来（先 mailbox 后 signal）：
+     ;; 抽 mailbox 的当口新到的结果会被写进 mailbox，紧接着的 signal 抽干又把它唯一的
+     ;; 唤醒信号抹了 —— 结果就躺在 mailbox 里，直到下一次按键才被 poll 到（表现为
+     ;; “着色算完了却不上屏”）。先抽 signal 就不会抹掉“后到消息”的唤醒：
+     ;; 后到消息的 signal 在 signal 抽干之后才写，因而保留。
+     (let drain-signal () (when (async-channel-try-get signal) (drain-signal)))
      (let loop ([acc '()])
        (define v (async-channel-try-get mailbox))
-       (if v
-           (loop (cons v acc))
-           (begin
-             ;; 抽干多余唤醒 token（一次 poll 只留一个 source 就绪即可）
-             (let drain () (when (async-channel-try-get signal) (drain)))
-             (reverse acc)))))
+       (if v (loop (cons v acc)) (reverse acc))))
    (lambda () signal)
    (lambda ()
      (for ([p (in-list workers)])

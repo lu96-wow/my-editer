@@ -19,8 +19,8 @@ lab/
     api.rkt         插件协议：plugin(name, open, change)（无优先级，注册顺序即层叠顺序）
     brackets.rkt    内置插件：括号按深度背景高亮（open/change 增量）
     lex.rkt         极简词法：扫标识符 token（词 / 关键字插件共用）
-    words.rkt       内置插件：词着色（同词同色）
-    syntax.rkt      内置插件：Racket 关键字固定前景色
+    words.rkt       内置插件：词着色（持久 词→色号 表；输入中的词暂不上色）
+    syntax.rkt      内置插件：Racket 关键字高亮（每个关键字固定色号）
     shadow.rkt      影子文本：open/apply/text
     machine.rkt     每 did：影子（按 token）+ 插件状态/fills（最新 token）
     registry.rkt    内置插件表（主进程与 worker 共用）
@@ -188,7 +188,7 @@ theme/main.rkt    汇总 + (current-theme) 参数
 - `backend/tui.rkt` 只负责把当前主题的颜色翻成转义序列（`face-colors` / `overlay-colors` →
   `theme-face-colors` / `theme-overlay-colors`）。
 - face / overlay 名由各 view-model / 插件定义（`ui/tree.rkt`、`ui/buffers.rkt`、`ui/slot.rkt`、
-  `app/render.rkt`、`plugin/syntax.rkt` 的 `syn-keyword`、core 的 `line-number`）；主题把它们映射到颜色。
+  `app/render.rkt`、`plugin/syntax.rkt` 的 `keyword` 调色板、core 的 `line-number`）；主题把它们映射到颜色。
 - 换主题：`(current-theme light-theme)`（`current-theme` 是 parameter）。
 - **静态 face** 用 symbol → 主题 `faces` 表。
 - **动态 face** 用 `palette-color`（kind + index）→ 主题 `palettes` 表按 kind 选色板、按 index 取模；
@@ -241,6 +241,13 @@ app-handle-input / app-prepare!  →  app-plugin-tick!
   `lines->string`（保尾部空行，`racket/string` 的 split 会吞）。
 - **按 did 固定分派**：同一文档的消息都进同一个 worker（它的状态在那里）；
   超界版本由 manager 发 `drop!` 通知 worker 释放。
+- **poll 先抽 signal 再抽 mailbox**（`runner-place.rkt`）：reader 是“mailbox 先写、signal 后写”；
+  若反过来（先 mailbox 后 signal），在抽 mailbox 的当口新到的结果会被写进 mailbox，
+  紧接着的 signal 抽干又把它唯一的唤醒抹了 —— 结果躺在 mailbox 里，直到**下次按键**才被 poll 到
+  （表现为“着色算完了却不上屏”）。先抽 signal 则不会抹掉后到消息的唤醒。
+- **全插件到齐才写回**：异步 runner 是一个插件一个插件地回结果的；`manager-poll!` 必须等该 token
+  的**所有**插件结果到齐（`token-complete?`）才 `apply-results!`。否则先到的（词色）会先写一遍、
+  后到的（关键字色）再盖一次 → 关键字会在两种颜色间跳（`face-compose` 叠层也救不了，因为中途就是“半套”）。
 
 **括号增量（“找到破坏平衡的最小深度并重建”）**：
 
@@ -270,13 +277,20 @@ manager 是真实文件高亮轨的**唯一写者**。当前内置顺序：
 
 ```
 brackets  括号背景（bg）
-words     词前景（fg，同词同色）
-syntax    Racket 关键字前景（fg，后层覆盖词色）
+words     词前景（fg，持久 词→色号 表；输入中的词暂不上色）
+syntax    Racket 关键字前景（fg，每个关键字按位置取固定色号）
 ```
 
-词着色：每个标识符 → `(palette-color 'word (equal-hash-code 词))`，所以**同一个词永远同一色**
-（hash 确定性、跨版本 / undo 稳定）。关键字：命中关键字表 → 固定 `'syn-keyword`。
-两者都无状态，`change` 直接整篇重扫。
+词着色：颜色来自一张**持久表** `word → 色号`（不是整词 hash）：首次见到取“下一个号”
+（= 表里已有词数），以后照用。同词同色；不同词拿不同号（相邻词不会撞）；表只增不减，
+所以**在词前插入新词不会让后面的词变色**。
+“输入中不闪”：学编辑器插件（LSP 语义高亮）不跟“增长的词”硬碰 ——
+`change` 带编辑位置，取光标（插入文本末尾）前一个字符所在的**活动词**，本次**跳过它**（不占号、不上色）；
+其余词照常用表上色。于是 a→ad→add→adding 全程颜色不动，敲下分隔符 / 移开后一次上色。
+关键字：每个关键字在 `keyword-list` 里的**位置**就是它的色号 → `(palette-color 'keyword 位置)`，
+所以在主题 `'keyword` 色板下每个关键字有固定颜色（位置不动就不变色）。
+**关键字也跳过活动词**（和词着色一样）：否则打 `for` 会先上色、再加 `m`（`format`）又掉色。
+两者都无状态，`change` 直接整篇重扫（用 `lex.rkt` 的 `active-token` 算要跳过的词）。
 
 **后台进程（place）**：
 

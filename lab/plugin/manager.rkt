@@ -108,10 +108,20 @@
       (when (memv did (editor-document-id-list ed))        ; 文档还开着
         (when (eqv? token (token-of m (editor-document-handle ed did)))  ; 版本没变
           (put-result! m did token name fills)
-          (set-add! changed did)))))
+          ;; 必须**所有插件都到齐**才写回：否则先到的（词色）会先写一遍，
+          ;; 后到的（关键字色）再盖一次 —— 关键字会在两种颜色间跳（每一步都重演）。
+          (when (token-complete? m did token)
+            (set-add! changed did))))))
   (for ([did (in-list (set->list changed))])
     (apply-results! m ed did))
   (set->list changed))
+
+;; 该 token 的**所有**插件结果都到齐了吗？（异步 runner 会一个插件一个插件地回）
+(define (token-complete? m did token)
+  (define cached (assv token (hash-ref (manager-results m) did '())))
+  (and cached
+       (for/and ([p (in-list (manager-plugins m))])
+         (hash-has-key? (cdr cached) (plugin-name p)))))
 
 (define (put-result! m did token name fills)
   (define rs (hash-ref (manager-results m) did '()))

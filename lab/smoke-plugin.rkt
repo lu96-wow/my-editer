@@ -6,6 +6,7 @@
 
 (require rackunit
          "../core/editor.rkt"
+         "../core/text/base/line.rkt"
          "base/face.rkt"
          "base/brackets.rkt"
          "plugin/api.rkt"
@@ -149,7 +150,7 @@
 (define (face4 line col) (editor-document-highlight-at ed4* did4 line col))
 ;; 列：0( 1-6define 7空格 8( 9a 10空格 11b 12) 13空格 14a 15)
 ;; define 是关键字：同一格既有括号背景，又有语法前景（叠层，不再互相覆盖）
-(check-true (has-face? (face4 0 1) 'syn-keyword))       ; 关键字前景层
+(check-not-false (last-palette (face4 0 1) 'keyword))       ; 关键字前景层
 (check-equal? (bracket-index (face4 0 1)) 0)            ; 背景层仍在（括号深度）
 (check-not-false (last-palette (face4 0 9) 'word))      ; a → 词色前景
 (check-not-false (last-palette (face4 0 11) 'word))     ; b → 词色前景
@@ -158,13 +159,59 @@
 (check-equal? (bracket-index (face4 0 0)) 0)            ; ( 仍是括号背景
 (check-equal? (bracket-index (face4 0 8)) 1)            ; 内层 ( 的背景深度 1
 
-;; 主题逐分量合并：前景取语法层，背景取括号层
+;; 主题逐分量合并：前景取关键字层，背景取括号层
 (check-equal? (call-with-values
-               (lambda () (theme-face-colors (current-theme)
-                            (face-stack (list (palette-color 'bracket 0) 'syn-keyword))))
+               (lambda ()
+                 (theme-face-colors (current-theme)
+                                    (face-stack (list (palette-color 'bracket 0)
+                                                      (palette-color 'keyword 0)))))
                list)
               '((230 160 90) (70 56 90)))
 
+;; 词色 = 持久表：首次出现顺次取号（同词同色、相邻词不同色）
+(define (word-faces text)
+  (let-values ([(_ fl) ((plugin-open word-plugin) text "/w.rkt")]) fl))
+(define (word-change-faces text edits [state #f])
+  (let-values ([(_ fl) ((plugin-change word-plugin) state edits
+                        (list->vector (string->lines text)) "/w.rkt")]) fl))
+(define (fill-idx f) (palette-color-index (list-ref f 4)))
+(define (indices fl) (map fill-idx fl))
+
+(check-equal? (indices (word-faces "x y z")) '(0 1 2))              ; 首见顺序取号
+(check-equal? (indices (word-faces "x y x")) '(0 1 0))              ; 同词同色
+(check-equal? (indices (word-faces "apple banana")) '(0 1))      ; 不同词不同色（同篇内）
+
+;; 持久表：在词前插入新词，旧词颜色不变（新词拿新号）
+(define wst (let-values ([(s _) ((plugin-open word-plugin) "x y" "/w.rkt")]) s))
+(check-equal? (indices (word-change-faces "z x y" (list (list 0 0 0 0 "z ")) wst))
+              '(2 0 1))                                               ; z 新号，x/y 不变
+
+;; 输入中：活动词（光标所在词）跳过 → 本次没有它的 fill，也不占号
+(check-equal? (word-change-faces "add" (list (list 0 2 0 2 "d"))) '())
+(check-equal? (word-change-faces "adding" (list (list 0 5 0 5 "n"))) '())
+;; 其它词不受影响：xfoo 是活动词，bar 照常表色（从空表取号 0）
+(check-equal? (word-change-faces "xfoo bar" (list (list 0 0 0 0 "x")))
+              (list (list 0 5 0 8 (palette-color 'word 0))))
+;; 敲下分隔符（活动词定下来）→ 整词上色
+(check-equal? (indices (word-change-faces "add " (list (list 0 3 0 3 " ")))) '(0))
+
+;; 每个关键字固定颜色：按 keyword-list 位置取号，不同关键字不同色号
+(define (syntax-faces text)
+  (let-values ([(_ fl) ((plugin-open syntax-plugin) text "/k.rkt")]) fl))
+(define sf (syntax-faces "define let if"))
+(check-equal? (length sf) 3)
+(define sf-idx (map (lambda (f) (palette-color-index (list-ref f 4))) sf))
+(check-not-equal? (list-ref sf-idx 0) (list-ref sf-idx 1))
+(check-not-equal? (list-ref sf-idx 1) (list-ref sf-idx 2))
+(check-not-equal? (list-ref sf-idx 0) (list-ref sf-idx 2))
+
+;; 输入中：正在打的词即使是关键字也先不上色（否则 for→format 会闪）
+(define (syntax-change-faces text edits)
+  (let-values ([(_ fl) ((plugin-change syntax-plugin) #f edits
+                        (list->vector (string->lines text)) "/k.rkt")]) fl))
+(check-equal? (syntax-change-faces "for" (list (list 0 2 0 2 "r"))) '())
+(check-equal? (syntax-change-faces "define" (list (list 0 5 0 5 "e"))) '())
+(check-equal? (length (syntax-change-faces "for " (list (list 0 3 0 3 " ")))) 1)
 ;; 非 .rkt 文件：关键字插件不生效，define 仍是词色
 (define ed5 (make-blank-editor))
 (define-values (ed5* did5 vid5)
@@ -173,6 +220,36 @@
 (manager-sync! m5 ed5* (list (list did5 "/k.txt")))
 (check-not-false (member did5 (manager-poll! m5 ed5*)))
 (check-not-false (last-palette (editor-document-highlight-at ed5* did5 0 1) 'word))
+
+;;; ---------- 回归：异步 runner 分插件回结果时，不能先写“半套”颜色 ----------
+;;; 关键字应直接是关键字色；若先只拿到词插件结果就写回，会先显示词色再被关键字色覆盖（紫↔橙跳）。
+
+(define (make-staged-runner)                 ; 同步 runner，但每次 poll 只放一条结果
+  (define inner (make-sync-runner))
+  (define pending '())
+  (make-runner
+   (lambda (did token path text) (runner-open! inner did token path text))
+   (lambda (did from to path edits) (runner-change! inner did from to path edits))
+   (lambda (did token) (runner-drop! inner did token))
+   (lambda (did) (runner-close! inner did))
+   (lambda (tag name did token path) (runner-submit! inner tag name did token path))
+   (lambda ()
+     (when (null? pending) (set! pending (runner-poll! inner)))
+     (cond [(null? pending) '()]
+           [else (define one (car pending)) (set! pending (cdr pending)) (list one)]))
+   (lambda () (runner-source inner))
+   (lambda () (runner-stop! inner))))
+
+(define edA (make-blank-editor))
+(define-values (edA* didA vidA) (editor-add-document-view edA "define foo" 40 10 "a.rkt"))
+(define mA (make-manager registry-plugins (make-staged-runner)))
+(manager-sync! mA edA* (list (list didA "/a.rkt")))
+(manager-poll! mA edA*)                                        ; bracket 结果到（无括号）
+(check-false (editor-document-highlight-at edA* didA 0 1))
+(manager-poll! mA edA*)                                        ; words 到，syntax 未到 → 不能写回
+(check-false (editor-document-highlight-at edA* didA 0 1))
+(manager-poll! mA edA*)                                        ; syntax 到 → 全齐 → 写回
+(check-not-false (last-palette (editor-document-highlight-at edA* didA 0 1) 'keyword))
 
 ;;; ---------- 后台 place runner（真·独立进程） ----------
 

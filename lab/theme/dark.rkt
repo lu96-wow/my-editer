@@ -9,7 +9,7 @@
 ;;;   ui/buffers.rkt buf-current / buf-file / buf-untitled / buf-view
 ;;;   ui/slot.rkt    input / state
 ;;;   app/render.rkt bar
-;;;   plugin/syntax  syn-keyword
+;;;   plugin/syntax  关键字按位置取 'keyword 色板
 ;;;   core           line-number
 ;;; overlay 名：selection（cursor 由后端按反色处理，不走主题）。
 ;;;
@@ -33,8 +33,7 @@
          'buf-current  (list '(120 210 130) #f)
          'buf-file     (list '(200 200 200) #f)
          'buf-untitled (list '(170 170 170) #f)
-         'buf-view     (list '(140 160 190) #f)
-         'syn-keyword  (list '(230 160 90) #f))        ; Racket 关键字前景
+         'buf-view     (list '(140 160 190) #f))
    (hash 'selection '(#f (58 74 128)))
    (list '(205 205 205) #f)
    (hash 'bracket (vector (list #f '(70 56 90))
@@ -46,4 +45,21 @@
                           (list '(200 130 210) #f)
                           (list '(120 200 200) #f)
                           (list '(220 190 120) #f)
-                          (list '(200 150 120) #f)))))
+                          (list '(200 150 120) #f))
+         ;; 关键字：按位置取模（只设前景），相邻关键字不同色；16 档降低撞色
+         'keyword (vector (list '(230 160 90) #f)
+                          (list '(120 180 240) #f)
+                          (list '(200 130 210) #f)
+                          (list '(120 200 200) #f)
+                          (list '(220 190 120) #f)
+                          (list '(120 210 130) #f)
+                          (list '(200 150 120) #f)
+                          (list '(170 170 220) #f)
+                          (list '(240 150 150) #f)
+                          (list '(140 220 180) #f)
+                          (list '(200 200 130) #f)
+                          (list '(170 150 230) #f)
+                          (list '(230 170 200) #f)
+                          (list '(130 210 230) #f)
+                          (list '(210 185 140) #f)
+                          (list '(150 205 140) #f)))))
