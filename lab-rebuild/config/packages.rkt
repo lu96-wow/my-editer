@@ -22,5 +22,6 @@
         (pkg 'buffers   "buffers.rkt")
         (pkg 'complete  "complete.rkt"  'complete-init!)
         (pkg 'docs      "docs.rkt"      'docs-init!)
+        (pkg 'indent    "indent.rkt")                  ; 加载即覆盖 newline-and-indent
         (pkg 'highlight "highlight.rkt" 'highlight-init!)
         (pkg 'autopair  "autopair.rkt"  'autopair-init!)))

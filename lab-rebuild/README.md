@@ -12,6 +12,8 @@
   （auto-pair）按扩展点接入；启用集在 `config/plugins.rkt`。
 - **Phase 5（已完成）配置驱动加载 + 补全内嵌文档** —— 包表 `config/packages.rkt` +
   `platform/package.rkt` 动态加载；补全菜单复用 `doc-job` 内嵌 bluebox。
+- **Phase 6（已完成）编辑细节** —— Tab = 两个空格；补全改为 C-n / 打字触发（空前缀不弹）；
+  `newline-and-indent` 语法缩进插件（按括号嵌套深度，加载即覆盖基础换行）。
 
 ## 扩展点 API
 
@@ -76,6 +78,12 @@ handler 第一参数永远是 `app`。`before-*` 用于输入改写（auto-pair�
 顶层注册：命令 / 键表 / mode / overlay / panel / 插件），再调它的 init 导出。
 基础编辑包 `builtin/edit.rkt` 例外（提供 `app-resize!` 等，直接 require）。
 
+### 默认键位（编辑）
+
+`Tab` = 两个空格；`Enter` = `newline-and-indent`（缩进插件加载时按语法缩进，否则纯换行）；
+补全：打字自动弹，显式用 `C-n`（光标不在词上 / 前缀为空时不弹、不拉全量）；
+补全菜单里 `Tab`/`Enter` 接受、`↑↓` 选择、`Esc` 取消。
+
 ## 目录
 
 ```
@@ -104,6 +112,7 @@ builtin/
   buffers.rkt          文档 / 视图列表面板
   complete.rkt         补全包（mode + 键表 + overlay + 菜单内嵌文档 + 钩子）
   docs.rkt             文档浮窗包（mode + overlay + 异步）
+  indent.rkt           换行语法缩进（覆盖 newline-and-indent）
   doc-job.rkt          异步查文档服务（单例，惰性起 place）
   doc-worker.rkt       异步查文档 place 入口
   autopair.rkt         自动配对（输入插件，走 before-insert）

@@ -13,6 +13,7 @@
          "app/app.rkt"
          "builtin/edit.rkt"
          "builtin/highlight/bracket-pair.rkt"
+         "builtin/indent.rkt"
          "platform/face.rkt"
          "platform/state.rkt"
          "platform/panes.rkt"
@@ -109,5 +110,20 @@
 (check-equal? (palette-color-index
                (palette-of (editor-document-highlight-at (app-ed a2) did3 1 8) 'bracket))
               1)
+
+;;; ---------- 换行语法缩进 ----------
+
+(check-equal? (indent-for "(define (f x)" 0 13) 2)
+(check-equal? (indent-for "(define x 1)" 0 12) 0)
+(check-equal? (indent-for "(let ([x 1])" 0 12) 2)
+(check-equal? (indent-for "\"(\" x" 0 5) 0)           ; 字符串里的 ( 不算
+
+(define f3 (build-path root "indent.rkt"))
+(with-output-to-file f3 #:exists 'replace (lambda () (display "(define (f x)")))
+(app-open-path! a f3)
+(define vid4 (app-focus a))
+(editor-view-set-point! (ed) vid4 (point 0 13))
+(send (key-event 'enter no-mods))
+(check-equal? (editor-view-string (ed) vid4) "(define (f x)\n  ")
 
 (displayln "plugin smoke: ok")

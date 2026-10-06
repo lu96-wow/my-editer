@@ -52,8 +52,7 @@
    (key 'enter)  'complete-accept
    (key 'escape) 'complete-cancel))
 
-;; 往编辑表补触发键（运行时 keymap 可变 → 立即生效）。
-(keymap-add! (keymap-ensure! 'edit) (key 'tab) 'complete)
+;; 往编辑表补显式触发键（Tab 现在是“两个空格”，补全用 C-n / 自动打字触发）。
 (keymap-add! (keymap-ensure! 'edit) (key 'n 'ctrl) 'complete)
 
 ;;; ================= 上下文 / 候选池 =================
@@ -93,14 +92,16 @@
   (define ctx (edit-context a))
   (when ctx
     (define-values (vid text mods0) (apply values ctx))
-    (define-values (mods pool) (build-pool text mods0))
     (define ed (app-ed a))
     (define p (editor-view-point ed vid))
     (define prefix (prefix-at text (point-line p) (point-column p)))
-    (define cands (filter-pool pool prefix))
-    (when (pair? cands)
-      (app-mode-set! a (complete cands 0 (prefix-start p prefix) vid mods pool
-                                 #f (pending-for a vid mods (car cands)))))))
+    ;; 光标不在词上（前缀为空）→ 不弹、不拉全量。
+    (when (positive? (string-length prefix))
+      (define-values (mods pool) (build-pool text mods0))
+      (define cands (filter-pool pool prefix))
+      (when (pair? cands)
+        (app-mode-set! a (complete cands 0 (prefix-start p prefix) vid mods pool
+                                   #f (pending-for a vid mods (car cands))))))))
 
 (define (complete-refine! a)
   (define ctx (edit-context a))

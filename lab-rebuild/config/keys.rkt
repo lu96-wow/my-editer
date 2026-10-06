@@ -22,7 +22,8 @@
   (keymap-define 'edit
    text-binding         'insert
    paste-binding        'paste-text
-   (key 'enter)         '(insert-string "\n")
+   (key 'enter)         'newline-and-indent
+   (key 'tab)           '(insert-string "  ")      ; 普通输入 Tab = 两个空格
    (key 'backspace)     'backspace
    (key 'delete)        'delete
    (key 'left)          '(nav left #f)

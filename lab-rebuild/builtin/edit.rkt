@@ -29,7 +29,7 @@
 
 (provide app-open-path! app-close-path! app-close-view! app-close-document!
          app-show-view! app-show-document! app-split! app-pane-close!
-         app-save! app-quit! app-resize!
+         app-save! app-quit! app-resize! app-insert-typed!
          app-move-focus! app-toggle-sidebar! app-toggle-left!
          app-prefix-begin! app-prefix-end! app-begin!
          app-commit! app-answer! app-cancel!)
@@ -240,6 +240,14 @@
 (define (undo-typing-policy text)
   (values 'lab-typing #f (break-text? text)))
 
+;; 以「打字」方式插入一段文本：带合并 tag，并广播 after-edit / after-insert。
+;; 插件（如缩进）复用这个入口，不重复 undo / 钩子逻辑。
+(define (app-insert-typed! a s)
+  (define-values (tag seal-before? seal-after?) (undo-typing-policy s))
+  (when seal-before? (editor-view-seal! (ed a) (focus a)))
+  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s tag)) #t)
+  (when seal-after? (editor-view-seal! (ed a) (focus a))))
+
 ;;; ================= 编辑命令 =================
 
 (define (cmd-insert e a)
@@ -260,10 +268,10 @@
   (edit! a (lambda () (editor-view-paste-text! (ed a) (focus a) (event-text e))) #t))
 
 (define (cmd-insert-string e a s)
-  (define-values (tag seal-before? seal-after?) (undo-typing-policy s))
-  (when seal-before? (editor-view-seal! (ed a) (focus a)))
-  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s tag)) #t)
-  (when seal-after? (editor-view-seal! (ed a) (focus a))))
+  (app-insert-typed! a s))
+
+;; 普通换行（缩进插件会覆盖成 syntax-aware 版本；未加载插件时回落到纯换行）。
+(define (cmd-newline-and-indent e a) (app-insert-typed! a "\n"))
 
 (define (cmd-backspace e a)
   (define handled (hook-run-first! a 'before-backspace))
@@ -322,6 +330,7 @@
 (define-command insert        cmd-insert)
 (define-command paste-text    cmd-paste-text)
 (define-command insert-string cmd-insert-string)
+(define-command newline-and-indent cmd-newline-and-indent)
 (define-command backspace     cmd-backspace)
 (define-command delete        cmd-delete)
 (define-command nav           cmd-nav)

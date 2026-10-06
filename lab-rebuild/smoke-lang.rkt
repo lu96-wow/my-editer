@@ -7,6 +7,7 @@
 (require rackunit
          racket/file
          racket/path
+         racket/string
          "../core/editor.rkt"
          "../core/view/base/screen.rkt"
          "app/app.rkt"
@@ -66,12 +67,23 @@
 ;; 渲染含补全浮层时不崩
 (check-not-false (screen? (app-render a)))
 
-;;; ---------- 显式 Tab + 取消 ----------
+;;; ---------- 显式补全触发（C-n）+ 取消；Tab = 两个空格 ----------
 
 (editor-view-set-point! (ed) vid (point 2 (string-length "(add-between")))
-(send (key-event 'tab no-mods))
+(send (key-event 'n (mods #t #f #f)))                    ; C-n 显式补全
 (check-true (complete? (app-mode a)))
 (send (key-event 'escape no-mods))
+(check-false (app-mode a))
+
+;; Tab 普通输入 = 两个空格（不再弹补全）
+(define len-before (string-length (editor-view-string (ed) vid)))
+(send (key-event 'tab no-mods))
+(check-equal? (string-length (editor-view-string (ed) vid)) (+ len-before 2))
+(check-false (app-mode a))
+
+;; 空前缀（光标不在词上）C-n → 不弹、不拉全量
+(send (key-event 'enter no-mods))                        ; newline-and-indent → 新行
+(send (key-event 'n (mods #t #f #f)))
 (check-false (app-mode a))
 
 ;;; ---------- 文档浮窗（异步） ----------
