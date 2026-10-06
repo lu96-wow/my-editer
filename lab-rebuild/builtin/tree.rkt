@@ -220,7 +220,8 @@
                 (lambda (yes?)
                   (when yes?
                     (tree-delete-path! p)
-                    (app-close-path! a p)
+                    ;; 盘上已删：强制关（不再弹保存，否则会把它写回来）。
+                    (app-close-path! a p #:save? #f)
                     (tree-panel-refresh! a))))))
 
 ;;; ================= 键表 + 命令 =================

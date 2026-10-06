@@ -21,6 +21,7 @@
          "platform/edit-panes.rkt"
          "platform/state.rkt"
          "platform/panes.rkt"
+         "platform/paths.rkt"
          "app/app.rkt"
          "builtin/edit.rkt"
          "config/keys.rkt")
@@ -211,6 +212,65 @@
 (check-equal? (overlay-panes a) '(fake-overlay))
 (overlay-unregister! fake-overlay)
 (check-equal? (overlay-panes a) '())
+
+;;; ---------- 关闭 / 退出：修改过先问保存 ----------
+
+(define root2 (simplify-path (path->complete-path (make-temporary-file "pl~a" 'directory))))
+(define d1 (build-path root2 "one.rkt"))
+(define d2 (build-path root2 "two.rkt"))
+(with-output-to-file d1 #:exists 'replace (lambda () (display "one")))
+(with-output-to-file d2 #:exists 'replace (lambda () (display "two")))
+
+(define a2 (app-init root2 80 24))
+(define (send2 e) (app-handle-input a2 e))
+
+;; 未改过的文档不算脏，直接关、不弹提示
+(app-open-path! a2 d1)
+(define did1 (focused-did a2))
+(check-false (document-modified? a2 did1))
+(app-close-document! a2 did1)
+(check-false (prompt? (app-mode a2)))
+(check-false (path-table-open? (app-paths a2) d1))
+
+;; 改一下 → 脏；关文档先弹提示，还没真关
+(app-open-path! a2 d1)
+(define did1b (focused-did a2))
+(send2 (key-event #\x no-mods))                    ; d1 = "xone"
+(check-true (document-modified? a2 did1b))
+(app-close-document! a2 did1b)
+(check-true (prompt? (app-mode a2)))
+(check-true (path-table-open? (app-paths a2) d1))
+;; 输入 n + ⏎ → 不保存，关闭
+(send2 (key-event #\n no-mods))
+(send2 (key-event 'enter no-mods))
+(check-false (app-mode a2))
+(check-false (path-table-open? (app-paths a2) d1))
+(check-equal? (file->string d1) "one")
+
+;; esc 放弃退出：不保存、不关、不退出
+(app-open-path! a2 d1)
+(define did1c (focused-did a2))
+(send2 (key-event #\y no-mods))                    ; d1 = "yone"
+(app-quit! a2)
+(check-true (prompt? (app-mode a2)))
+(send2 (key-event 'escape no-mods))
+(check-false (app-quit? a2))
+(check-true (path-table-open? (app-paths a2) d1))
+(check-equal? (file->string d1) "one")
+
+;; all：两个脏文档全部保存后再退出
+(app-open-path! a2 d2)
+(define did2 (focused-did a2))
+(send2 (key-event #\b no-mods))                    ; d2 = "btwo"
+(app-quit! a2)
+(check-true (prompt? (app-mode a2)))
+(for ([c (string->list "all")]) (send2 (key-event c no-mods)))
+(send2 (key-event 'enter no-mods))
+(check-true (app-quit? a2))
+(check-false (path-table-open? (app-paths a2) d1))
+(check-false (path-table-open? (app-paths a2) d2))
+(check-equal? (file->string d1) "yone")
+(check-equal? (file->string d2) "btwo")
 
 (void (app-render a))
 (displayln "platform smoke: ok")

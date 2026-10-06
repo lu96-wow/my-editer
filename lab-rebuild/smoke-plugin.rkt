@@ -9,6 +9,7 @@
          racket/file
          racket/path
          "../core/editor.rkt"
+         "../core/text/base/line.rkt"
          "../core/view/base/screen.rkt"
          "app/app.rkt"
          "builtin/edit.rkt"
@@ -41,6 +42,44 @@
 (check-equal? (palette-color-index (face-at bf 0 4)) 1)   ; ] 在内层
 (check-equal? (palette-color-index (face-at bf 0 5)) 0)   ; c 在外层
 (check-false (face-at (bracket-fills "(]") 0 0))
+
+;;; ---------- Racket 语法：字符串 / 注释里的括号不参与配对 ----------
+
+(define (coords fl) (map (lambda (f) (list (car f) (cadr f) (caddr f) (cadddr f))) fl))
+(define (sorted-coords fl)
+  (sort (coords fl) (lambda (a b) (string<? (format "~s" a) (format "~s" b)))))
+
+;; 字符串里的 [b] 不算（只剩最外层圆括号）
+(let-values ([(_ fl) (bracket-open "(a \"[b]\" c)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 0 11))))
+(let-values ([(_ fl) (bracket-open "(a \"[b]\" c)" "x.txt")])
+  (check-equal? (length fl) 2))                 ; 非 Racket 文件：照常配对
+
+;; 行注释 ; 到行尾
+(let-values ([(_ fl) (bracket-open "(a ; )\n b)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 1 3))))
+;; 块注释 #| … |#
+(let-values ([(_ fl) (bracket-open "(a #| ) |# b)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 0 13))))
+
+;; 增量（行内编辑）与全量一致
+(let* ([t0 "(a \"[\" ; )\n c)"]
+       [st (let-values ([(st _) (bracket-open t0 "x.rkt")]) st)]
+       [t1 "(ax \"[\" ; )\n c)"]
+       [lines1 (list->vector (string->lines t1))])
+  (define-values (_st2 inc) (bracket-change st (list 0 1 0 1 "x") lines1 "x.rkt"))
+  (define-values (_st3 full) (bracket-open t1 "x.rkt"))
+  (check-equal? (sorted-coords inc) (sorted-coords full)))
+
+;; 输入 " 打开字符串 → 后面的 ) 不再配对（增量 = 全量）
+(let* ([t0 "(a b)"]
+       [st (let-values ([(st _) (bracket-open t0 "x.rkt")]) st)]
+       [t1 "(\"a b)"]
+       [lines1 (list->vector (string->lines t1))])
+  (define-values (_st2 inc) (bracket-change st (list 0 1 0 1 "\"") lines1 "x.rkt"))
+  (define-values (_st3 full) (bracket-open t1 "x.rkt"))
+  (check-equal? (coords inc) '())
+  (check-equal? (sorted-coords inc) (sorted-coords full)))
 
 ;;; ---------- 词法：Unicode 字母（中文等 CJK）也能成词 ----------
 

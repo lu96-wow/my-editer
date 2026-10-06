@@ -2,6 +2,7 @@
 
 (require racket/file
          racket/path
+         racket/string
          "../../core/editor.rkt"
          "../platform/layout/main.rkt"
          "../platform/state.rkt"
@@ -26,10 +27,13 @@
 ;;; 文本编辑后的跨层副作用（属性插件同步 / 补全过滤）以钩子形式发出：
 ;;;   'after-edit     (vid changes)
 ;;;   'document-closed (did)
+;;;
+;;; 关文档 / 退出会先做**保存确认**：改过的文档（内容 != 磁盘）逐个弹底部输入框，
+;;; ⏎/y 保存、n 跳过、all 剩余全部保存、esc 放弃整个关闭 / 退出。
 
 (provide app-open-path! app-close-path! app-close-view! app-close-document!
          app-show-view! app-show-document! app-split! app-pane-close!
-         app-save! app-quit! app-resize! app-insert-typed!
+         app-save! app-save-document! document-modified? app-quit! app-resize! app-insert-typed!
          app-move-focus! app-toggle-sidebar! app-toggle-left!
          app-prefix-begin! app-prefix-end! app-begin!
          app-commit! app-answer! app-cancel!)
@@ -114,16 +118,93 @@
   (hook-run! a 'document-closed did)
   vids)
 
-(define (app-close-path! a path)
+;;; ---------- 关闭：修改过先问保存 ----------
+;;;
+;;; 任何「关文档」都从这里走：改过的文档（内容 != 磁盘）逐个弹底部输入框问
+;;;   ⏎ / y     保存这个
+;;;   n / 其它  不保存这个
+;;;   all / a   剩下全部保存
+;;;   esc       放弃整个关闭 / 退出操作
+;;; 全部问完才真正关。Ctrl+Q 退出也走这条，所以退出前会逐个确认。
+
+;; 文档内容与磁盘不一致（或磁盘上还没有、但已有内容）→ 需要问。
+(define (document-modified? a did)
+  (define p (path-table-path (app-paths a) did))
+  (and p
+       (let ([text (editor-document-string (app-ed a) did)])
+         (cond
+           [(not (file-exists? p)) (positive? (string-length text))]
+           [else
+            (define disk (with-handlers ([exn:fail? (lambda (_) #f)]) (file->string p)))
+            (or (not disk) (not (string=? text disk)))]))))
+
+(define (app-save-document! a did)
+  (define p (and did (path-table-path (app-paths a) did)))
+  (when p
+    (call-with-output-file p #:exists 'replace
+      (lambda (out) (display (editor-document-string (app-ed a) did) out)))))
+
+(define (document-display-name a did)
+  (define p (path-table-path (app-paths a) did))
+  (if p (path->string p) (editor-document-name (app-ed a) did)))
+
+;; 正在逐个询问的关闭流程（防止嵌套 / 重复触发，如提示框里再按 Ctrl+Q）。
+(define closing? (make-weak-hasheq))
+
+;; 依次询问 pending 里的文档；空表直接 on-done。
+(define (ask-save-each! a pending on-done on-cancel)
+  (cond
+    [(null? pending) (on-done)]
+    [else
+     (define did (car pending))
+     (define rest (cdr pending))
+     (define label (format "save ~a? (y/n/all, esc abort) " (document-display-name a did)))
+     (app-begin! a label #t
+                 (lambda (ans)
+                   (define s (string-downcase (string-trim ans)))
+                   (cond
+                     [(member s '("all" "a"))
+                      (for ([d (in-list pending)]) (app-save-document! a d))
+                      (on-done)]
+                     [(member s '("" "y" "yes"))
+                      (app-save-document! a did)
+                      (ask-save-each! a rest on-done on-cancel)]
+                     [else
+                      (ask-save-each! a rest on-done on-cancel)]))
+                 on-cancel)]))
+
+;; 关闭 dids 里所有文档：修改过的先逐个问，处理完再统一关。
+;; on-cancel 在 esc 放弃时调用（此时什么都不关）。
+(define (close-documents! a dids [on-done void] [on-cancel #f])
+  (cond
+    [(null? dids) (on-done)]
+    [(hash-ref closing? a #f) (void)]
+    [else
+     (hash-set! closing? a #t)
+     (define (finish!) (hash-remove! closing? a))
+     (define pending (filter (lambda (d) (document-modified? a d)) dids))
+     (ask-save-each! a pending
+                     (lambda ()
+                       (app-edit-remove! a (append* (for/list ([did (in-list dids)])
+                                                      (app-forget-document! a did))))
+                       (app-edit-recover! a)
+                       (finish!)
+                       (on-done))
+                     (lambda () (finish!) (when on-cancel (on-cancel))))]))
+
+;; 关 path 下所有已打开文档。save? #f = 已删盘等场景，不再问保存。
+(define (app-close-path! a path #:save? [save? #t])
   (define closed (path-table-dids-under (app-paths a) path))
-  (unless (null? closed)
-    (app-edit-remove! a (append* (for/list ([did (in-list closed)])
-                                   (app-forget-document! a did))))
-    (app-edit-recover! a)))
+  (cond
+    [(null? closed) (void)]
+    [save? (close-documents! a closed)]
+    [else
+     (app-edit-remove! a (append* (for/list ([did (in-list closed)])
+                                    (app-forget-document! a did))))
+     (app-edit-recover! a)]))
 
 (define (app-close-document! a did)
-  (app-edit-remove! a (app-forget-document! a did))
-  (app-edit-recover! a))
+  (close-documents! a (list did)))
 
 (define (app-close-view! a vid)
   (set-app-ed! a (editor-close-view (app-ed a) vid))
@@ -152,14 +233,15 @@
 
 ;;; ================= 文件 =================
 
-(define (app-quit! a) (set-app-quit?! a #t))
+;; Ctrl+Q：先把所有已打开的用户文档走一遍「要不要保存」，全部处理完再退出；
+;; 提示中按 esc 则放弃退出（什么都不关）。
+(define (app-quit! a)
+  (define dids (for/list ([did (in-list (editor-document-id-list (app-ed a)))]
+                          #:when (path-table-path (app-paths a) did))
+                 did))
+  (close-documents! a dids (lambda () (set-app-quit?! a #t))))
 
-(define (app-save! a)
-  (define did (focused-did a))
-  (define p (and did (path-table-path (app-paths a) did)))
-  (when p
-    (call-with-output-file p #:exists 'replace
-      (lambda (out) (display (editor-document-string (app-ed a) did) out)))))
+(define (app-save! a) (app-save-document! a (focused-did a)))
 
 (define (app-resize! a w h)
   (app-size-set! a (max 20 w) (max 5 h))
