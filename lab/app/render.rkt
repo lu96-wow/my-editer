@@ -132,14 +132,18 @@
 ;;; ---------- 浮层公共 ----------
 ;;
 ;; 光标所在编辑 view 的屏幕绝对坐标（视口内坐标 + 窗格 x/y）。
+;; ⚠ 光标被滚出视口时，editor-view-point->screen-position 返回 (values #f #f)；
+;; 此处原样透传 → 调用方跳过浮层（否则对 #f 做算术会崩）。
 (define (anchor-screen-pos a vid p)
   (define ed (app-ed a))
   (define rect
     (for/first ([r (in-list (layout-result-panes (app-layout-result a)))]
                 #:when (eqv? (rectangle-view-id r) vid)) r))
   (define-values (row col) (editor-view-point->screen-position ed vid p))
-  (values (if rect (+ (rectangle-y rect) row) row)
-          (if rect (+ (rectangle-x rect) col) col)))
+  (if row
+      (values (if rect (+ (rectangle-y rect) row) row)
+              (if rect (+ (rectangle-x rect) col) col))
+      (values #f #f)))
 
 ;; 实线框（box-drawing）——补全面板 / 文档浮窗共用，比 +-| 好看。
 (define box-bface 'bar)         ; 边框 face
@@ -178,6 +182,58 @@
 (define complete-max-rows 10)
 (define complete-doc-max-rows 18)
 
+;; 光标在视口内时：按锚点 (arow, acol) 拼补全弹层。
+(define (complete-panes-at a m vid d arow acol)
+  (define cands (complete-candidates m))
+  (define idx (complete-index m))
+  (define n (length cands))
+  ;; 可见窗口高度有限：光标行上 / 下各有多少行可用（不含光标行本身）。
+  (define avail-below (- (app-height a) (add1 arow)))
+  (define avail-above arow)
+  ;; 内容行预算取上 / 下更大的那侧（先定高度，再决定放哪侧，保证至少一侧放得下）
+  (define budget (max 1 (- (max avail-above avail-below) 2)))
+  (define mrows (min complete-max-rows n budget))
+  ;; 让选中项大致居中，并按窗口夹在 [0, n-mrows]
+  (define start (max 0 (min (- idx (quotient mrows 2)) (- n mrows))))
+  (define shown (take (drop cands start) mrows))
+  (define menu-cw (+ 2 (for/fold ([mx 0]) ([s (in-list shown)]) (max mx (string-length s)))))
+  (define max-cw (max 10 (- (app-width a) 4)))
+  (define inner (min max-cw (max menu-cw (if d 48 0))))
+  ;; 文档行数：预算内、上限 18
+  (define doc-budget (max 0 (- budget mrows (if d 1 0))))
+  (define doc-lines (and d (list->vector (wrap-lines (doc->text d) inner))))
+  (define doc-rows
+    (if doc-lines (max 0 (min complete-doc-max-rows (vector-length doc-lines) doc-budget)) 0))
+  (define show-doc? (and d (positive? doc-rows)))
+  ;; 先拼内容行（text . face）
+  (define menu-rows
+    (for/list ([i (in-range mrows)])
+      (define s (list-ref shown i))
+      (define selected? (= (+ start i) idx))
+      (cons (string-append " " s) (if selected? (cons 'cursor complete-face) complete-face))))
+  (define doc-row-list
+    (if show-doc?
+        (for/list ([i (in-range doc-rows)]) (cons (vector-ref doc-lines i) complete-face))
+        '()))
+  (define menu-body (for/list ([c (in-list menu-rows)]) (box-line inner (car c) (cdr c))))
+  (define doc-body (for/list ([c (in-list doc-row-list)]) (box-line inner (car c) (cdr c))))
+  (define sep (list (list (box-hline inner box-lt box-rt))))   ; 一条分隔**行**（body 是行的列表）
+  (define h (+ mrows (if show-doc? (+ 1 doc-rows) 0) 2))
+  ;; 位置：优先光标行**下侧**；下侧放不下就翻到**上侧**（箱底贴着光标行），
+  ;; 两侧都不够时取更宽的那侧，绝不遮住光标所在输入行。
+  ;; 菜单始终贴光标行：下侧时菜单在上，上侧时菜单在下（文档放远端）。
+  (define above? (> h avail-below))
+  (define body
+    (if above?
+        (append doc-body (if show-doc? sep '()) menu-body)
+        (append menu-body (if show-doc? sep '()) doc-body)))
+  (define top (if above? (max 0 (- arow h)) (add1 arow)))
+  (define left (max 0 (min acol (max 0 (- (app-width a) (+ inner 2))))))
+  (define rws (list->vector (append (list (list (box-hline inner box-tl box-tr)))
+                                    body
+                                    (list (list (box-hline inner box-bl box-br))))))
+  (list (pane 'complete top left (screen (+ inner 2) h rws '() '()) 10)))
+
 (define (app-complete-panes a)
   (define m (app-mode a))
   (cond
@@ -185,57 +241,11 @@
     [else
      (define ed (app-ed a))
      (define vid (complete-prev-focus m))
-     (define cands (complete-candidates m))
-     (define idx (complete-index m))
-     (define n (length cands))
-     (define d (complete-doc m))
-     ;; 可见窗口高度有限：光标行上 / 下各有多少行可用（不含光标行本身）。
+     ;; 光标被滚出视口 → 没地方贴，先不画（滚回来再出现）。
      (define-values (arow acol) (anchor-screen-pos a vid (editor-view-point ed vid)))
-     (define avail-below (- (app-height a) (add1 arow)))
-     (define avail-above arow)
-     ;; 内容行预算取上 / 下更大的那侧（先定高度，再决定放哪侧，保证至少一侧放得下）
-     (define budget (max 1 (- (max avail-above avail-below) 2)))
-     (define mrows (min complete-max-rows n budget))
-     ;; 让选中项大致居中，并按窗口夹在 [0, n-mrows]
-     (define start (max 0 (min (- idx (quotient mrows 2)) (- n mrows))))
-     (define shown (take (drop cands start) mrows))
-     (define menu-cw (+ 2 (for/fold ([mx 0]) ([s (in-list shown)]) (max mx (string-length s)))))
-     (define max-cw (max 10 (- (app-width a) 4)))
-     (define inner (min max-cw (max menu-cw (if d 48 0))))
-     ;; 文档行数：预算内、上限 18
-     (define doc-budget (max 0 (- budget mrows (if d 1 0))))
-     (define doc-lines (and d (list->vector (wrap-lines (doc->text d) inner))))
-     (define doc-rows
-       (if doc-lines (max 0 (min complete-doc-max-rows (vector-length doc-lines) doc-budget)) 0))
-     (define show-doc? (and d (positive? doc-rows)))
-     ;; 先拼内容行（text . face）
-     (define menu-rows
-       (for/list ([i (in-range mrows)])
-         (define s (list-ref shown i))
-         (define selected? (= (+ start i) idx))
-         (cons (string-append " " s) (if selected? (cons 'cursor complete-face) complete-face))))
-     (define doc-row-list
-       (if show-doc?
-           (for/list ([i (in-range doc-rows)]) (cons (vector-ref doc-lines i) complete-face))
-           '()))
-     (define menu-body (for/list ([c (in-list menu-rows)]) (box-line inner (car c) (cdr c))))
-     (define doc-body (for/list ([c (in-list doc-row-list)]) (box-line inner (car c) (cdr c))))
-     (define sep (list (list (box-hline inner box-lt box-rt))))   ; 一条分隔**行**（body 是行的列表）
-     (define h (+ mrows (if show-doc? (+ 1 doc-rows) 0) 2))
-     ;; 位置：优先光标行**下侧**；下侧放不下就翻到**上侧**（箱底贴着光标行），
-     ;; 两侧都不够时取更宽的那侧，绝不遮住光标所在输入行。
-     ;; 菜单始终贴光标行：下侧时菜单在上，上侧时菜单在下（文档放远端）。
-     (define above? (> h avail-below))
-     (define body
-       (if above?
-           (append doc-body (if show-doc? sep '()) menu-body)
-           (append menu-body (if show-doc? sep '()) doc-body)))
-     (define top (if above? (max 0 (- arow h)) (add1 arow)))
-     (define left (max 0 (min acol (max 0 (- (app-width a) (+ inner 2))))))
-     (define rws (list->vector (append (list (list (box-hline inner box-tl box-tr)))
-                                      body
-                                      (list (list (box-hline inner box-bl box-br))))))
-     (list (pane 'complete top left (screen (+ inner 2) h rws '() '()) 10))]))
+     (if arow
+         (complete-panes-at a m vid (complete-doc m) arow acol)
+         '())]))
 
 ;; 本帧全部装饰图层：分隔线 + 补全弹层 + 文档浮窗。纯渲染与增量后端都走这一个入口。
 (define (app-overlay-panes a)
@@ -257,13 +267,16 @@
      (define rows (max 1 (min (docs-rows m) n)))
      (define h (+ rows 2))
      (define-values (arow acol) (anchor-screen-pos a (docs-vid m) (docs-point m)))
-     ;; 优先光标行下侧；放不下就翻到上侧（底边贴光标行），不遮输入行。
-     (define avail-below (- (app-height a) (add1 arow)))
-     (define top (if (<= h avail-below) (add1 arow) (max 0 (- arow h))))
-     (define left (max 0 (min acol (max 0 (- (app-width a) (+ cw 2))))))
-     (define off (max 0 (min (docs-offset m) (max 0 (- n rows)))))
-     (define content (for/list ([i (in-range rows)]) (cons (vector-ref lines (+ off i)) box-tface)))
-     (list (frame-pane 'docs top left cw content 11))]))
+     (cond
+       [(not arow) '()]                                ; 光标滚出视口 → 先不画
+       [else
+        ;; 优先光标行下侧；放不下就翻到上侧（底边贴光标行），不遮输入行。
+        (define avail-below (- (app-height a) (add1 arow)))
+        (define top (if (<= h avail-below) (add1 arow) (max 0 (- arow h))))
+        (define left (max 0 (min acol (max 0 (- (app-width a) (+ cw 2))))))
+        (define off (max 0 (min (docs-offset m) (max 0 (- n rows)))))
+        (define content (for/list ([i (in-range rows)]) (cons (vector-ref lines (+ off i)) box-tface)))
+        (list (frame-pane 'docs top left cw content 11))])]))
 
 ;; 一次性全量渲染（测试 / 非增量后端用）：与增量后端走**同一个** app-prepare! 入口。
 (define (app-render a)

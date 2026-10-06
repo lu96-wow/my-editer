@@ -40,6 +40,10 @@
 ;; reader 指令头剥掉后还能读后面的表单
 (check-equal? (source-requires "#reader scribble/reader\n(require racket/list)")
               '(racket/list))
+;; 编辑中的半成品 / 非法 require 不能让扫描器抛错（曾经 (require "") 触发 build-path 违约）
+(check-equal? (source-requires "#lang racket\n(require \"\")") '(racket))
+(check-equal? (source-requires "#lang racket\n(require . x)") '(racket))
+(check-equal? (source-requires "#lang racket\n(require racket/list . x)") '(racket racket/list))
 
 ;;; ---------- complete ----------
 

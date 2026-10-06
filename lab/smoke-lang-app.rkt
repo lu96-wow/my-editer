@@ -213,3 +213,23 @@
 (check-true (<= (+ drow dh) darow))                      ; 贴底 → 上侧
 (send (key-event 'escape no-mods))
 (check-false (app-mode a))
+
+;;; ---------- 滚轮把光标滚出视口：浮层不崩、暂时不画 ----------
+
+(editor-view-set-point! (ed) vid4 (point 41 4))          ; 末尾 "add-"
+(send (key-event #\b no-mods))
+(check-not-false (complete? (app-mode a)))
+(editor-view-scroll! (ed) vid4 -30)                       ; 光标滚出视口
+(check-equal? (app-complete-panes a) '())                 ; 没地方贴 → 先不画
+(check-not-false (screen? (app-render a)))                ; 渲染不崩
+(send (key-event 'escape no-mods))
+
+;; 文档浮窗同理
+(editor-view-set-point! (ed) vid4 (point 41 2))
+(send (key-event 'p (mods #t #f #f)))
+(send (key-event #\d no-mods))
+(check-not-false (docs? (app-mode a)))
+(editor-view-scroll! (ed) vid4 -30)
+(check-equal? (for/list ([p (in-list (app-overlay-panes a))] #:when (eq? (pane-id p) 'docs)) p) '())
+(check-not-false (screen? (app-render a)))
+(send (key-event 'escape no-mods))
