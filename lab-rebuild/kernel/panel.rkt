@@ -9,7 +9,7 @@
          panel-name panel-vid)
 
 (struct panel-spec (name priority make keys refresh) #:transparent)
-;; make    : (ed w h) -> (values ed vid data)
+;; make    : (root ed w h) -> (values ed vid data)
 ;; keys    : (listof keytable)   该面板视图的 per-did 键表
 ;; refresh : (ctx vid data) -> (listof effect)
 

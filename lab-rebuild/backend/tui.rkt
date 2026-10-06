@@ -47,7 +47,7 @@
            (style-bytes (piece-attr p))
            (tui:format-content (piece-text p))
            tui:format-reset)))
-  (add! tui:format-cursor-show)
+  ;; 光标由“反色格”（cursor overlay）软件绘制；不再显示硬件光标，否则会多出一个块（两格宽）。
   (tui:put-bytes (apply bytes-append (reverse parts)))
   (tui:flush!)
   ctx1)

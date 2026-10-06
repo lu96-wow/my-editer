@@ -11,6 +11,7 @@
          "../builtin/prompt.rkt"
          "../builtin/prefix.rkt"
          "../builtin/panels.rkt"
+         "../builtin/tree.rkt"
          "../builtin/mouse.rkt"
          "../builtin/autopair.rkt"
          "../builtin/indent.rkt"
@@ -27,6 +28,7 @@
         (cons 'mouse       register-mouse!)
         (cons 'prefix      register-prefix!)
         (cons 'panels      register-panels!)
+        (cons 'tree        register-tree!)
         (cons 'prompt      register-prompt!)
         (cons 'autopair    register-autopair!)
         (cons 'indent      register-indent!)      ; 覆盖 newline

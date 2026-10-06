@@ -10,9 +10,9 @@
          e-type e-backspace e-delete e-nav e-undo e-redo e-select-all
          e-copy e-cut e-paste e-move e-reload
          ;; 文档 / 视图
-         e-show e-close e-save
+         e-show e-close e-save e-show-view e-view-new e-view-close
          ;; 工作区
-         e-focus e-focus-push e-sidebar
+         e-focus e-focus-push e-sidebar e-active-panel
          e-split e-pane-close e-pane-swap e-pane-resize
          e-pointer e-scroll
          ;; 输入
@@ -41,6 +41,9 @@
 
 ;; 文档 / 视图：show 接受 path（现开）或 did；placement = 'replace | (list 'split dir)
 (define (e-show id placement focus?) (fx 'show id placement focus?))
+(define (e-show-view vid focus?)  (fx 'show-view vid focus?))   ; 显示指定 view（已存在）
+(define (e-view-new did)          (fx 'view-new did))           ; 新建 view（不放置）
+(define (e-view-close vid)        (fx 'view-close vid))         ; 关单个 view
 (define (e-close ids)              (fx 'close ids))
 (define (e-save did)               (fx 'save did))
 
@@ -54,6 +57,7 @@
 (define (e-focus target)           (fx 'focus target))
 (define (e-focus-push target)      (fx 'focus-push target))
 (define (e-sidebar v)              (fx 'sidebar v))
+(define (e-active-panel name)     (fx 'active-panel name))
 
 ;; 输入
 (define (e-input-push spec-id state) (fx 'input (list 'push spec-id state)))

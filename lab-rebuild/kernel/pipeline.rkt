@@ -238,12 +238,42 @@
     [(show)
      (match-define (list id placement focus?) args)
      (cond
-       [(string? id)
+       ;; path 对象或字符串均可（文件树传 path，find-file 传 string）
+       [(or (string? id) (path? id))
         (define-values (ctx1 did) (let-values ([(ed2 did) (open-into ctx id)])
                                     (values (set-editor ctx ed2) did)))
         (show-document ctx1 did focus? placement)]
        [(number? id) (show-document ctx id focus? placement)]
        [else ctx])]
+
+    [(show-view)
+     (match-define (list vid focus?) args)
+     (define s0 (sess ctx))
+     (define fr (place-view (session-frame s0) (session-focus-vid s0) vid 'replace))
+     (define ctx1 (update ctx (λ (s) (struct-copy session s [frame fr]))))
+     (if focus?
+         (update ctx1 (λ (s) (struct-copy session s [focus (focus-set (session-focus s) vid)])))
+         ctx1)]
+
+    [(view-new)
+     (define did (car args))
+     (define s (sess ctx))
+     (define-values (ed2 _v) (editor-add-view (session-editor s) did
+                                              (session-width s) (max 1 (sub1 (session-height s)))
+                                              #:line-numbers? #t))
+     (set-editor ctx ed2)]
+
+    [(view-close)
+     (define vid (car args))
+     (define s (sess ctx))
+     (define ed2 (editor-close-view (session-editor s) vid))
+     (define fr (frame-remove (session-frame s) vid))
+     (define leaves (frame-leaves fr))
+     (define next (if (pair? leaves) (leaf-vid (car leaves)) #f))
+     (define ctx1 (set-editor (update ctx (λ (s) (struct-copy session s [frame fr]))) ed2))
+     (if (eqv? vid (session-focus-vid (sess ctx1)))
+         (update ctx1 (λ (s) (struct-copy session s [focus (focus-set (session-focus s) next)])))
+         ctx1)]
 
     [(save)
      (define did (car args))
@@ -258,6 +288,7 @@
      (define s (sess ctx))
      (define dids (filter number? ids))
      (define ed2 (for/fold ([ed (session-editor s)]) ([d (in-list dids)]) (editor-close-document ed d)))
+     (for ([d (in-list dids)]) (path-table-remove! (session-paths s) d))
      (define fr (for/fold ([fr (session-frame s)]) ([v (in-list (frame-leaves (session-frame s)))])
                   (if (memv (leaf-vid v) ids) (frame-remove fr (leaf-vid v)) fr)))
      (define ctx1 (set-editor ctx ed2))
@@ -279,6 +310,8 @@
      (update ctx (λ (s) (struct-copy session s [focus (focus-push (session-focus s) target)])))]
 
     [(sidebar) (update ctx (λ (s) (struct-copy session s [sidebar? (car args)])))]
+
+    [(active-panel) (update ctx (λ (s) (struct-copy session s [active-panel (car args)])))]
 
     [(input)
      (define op (car args))

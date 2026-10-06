@@ -61,7 +61,7 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - 基础编辑（打字 / 退格 / 删除 / 导航 / 撤销 / 重做 / 全选 / 复制 / 剪切 / 粘贴 / 打开 / 保存 / 退出）。
 - **prompt**（输入/确认）+ 保存确认（`quit-confirm` + Interaction）。
 - **前缀层**（`C-p` / `M-m` / `M-s`）+ 窗格交换 / 缩放。
-- **左栏面板**（buffers）+ 鼠标（命中测试走 resolve）。
+- **左栏面板**：文件树（tree）+ 文档/视口两级树（buffers）；鼠标命中测试走 resolve。
 - **indent**（覆盖 newline）+ **autopair**（before-insert 钩子）。
 - **属性高亮**：3 个纯插件 + 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
 - **补全菜单**：layer + deco 浮层 + 候选池 refine。
@@ -86,14 +86,17 @@ Ctrl-D  pane-close       Ctrl-N  补全                 Ctrl-A/C/X/V 选择/复�
 Ctrl-Z  undo / Ctrl-Y redo
 C-p     焦点前缀         M-m     窗格互换前缀        M-s     窗格缩放宽前缀
 方向/Home/End/Tab/Enter  鼠标：点击聚焦+定位、滚轮滚动
+面板内：Tab 在 tree ↔ buffers 轮换
+  tree:    Enter 展开/打开，C-n 新建文件，C-l 新建目录，Backspace 删除
+  buffers: Enter 展开文档/显示 view，C-n 新建 view，Backspace 关闭（view/文档）
 ```
 
 ## 尚未实现（骨架留白）
 
-- **tree 面板**（文件树）/ 多面板轮换。
-- **高亮的 place 传输**（目前 sync；machine/shadow 已具备，差 runner 接线）。
 - **补全菜单内嵌文档**（doc 已具备，差拼接）。
-- `emit` 逃逸副作用。
+- **高亮的 place 传输**（目前 sync；machine/shadow 已具备，差 runner 接线）。
+- `emit` 独立通道（当前 `save` 就地写盘）。
+- 多工作区 / 窗口。
 
 ## 硬约束（实现时遵守）
 

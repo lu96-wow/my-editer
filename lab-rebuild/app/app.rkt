@@ -49,7 +49,7 @@
   (define-values (ed3 panels-rev)
     (for/fold ([ed ed2] [ps '()]) ([c (in-list (reg-kind reg 'panel))])
       (define spec (contrib-value c))
-      (define-values (ed* vid data) ((panel-spec-make spec) ed width (max 1 (sub1 height))))
+      (define-values (ed* vid data) ((panel-spec-make spec) root ed width (max 1 (sub1 height))))
       (values ed* (cons (panel spec vid data) ps))))
   (define panels (reverse panels-rev))
   (define cs3 (for/fold ([cs cs2]) ([p (in-list panels)])

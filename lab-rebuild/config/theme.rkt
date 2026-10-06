@@ -15,12 +15,16 @@
   (hash 'line-number  '(90 96 110)
         'tree-dir     '(120 180 240)
         'tree-file    '(200 200 200)
+        'tree-link    '(120 200 200)
+        'tree-hidden  '(120 120 130)
         'tree-open    '(120 210 130)
         'input        '(20 20 20)
         'state        '(225 225 225)
         'bar          '(90 96 110)
         'buf-current  '(120 210 130)
-        'buf-file     '(200 200 200)))
+        'buf-file     '(200 200 200)
+        'buf-untitled '(170 170 170)
+        'buf-view     '(140 160 190)))
 
 (define dark-face-bg
   (hash 'input '(230 200 90)

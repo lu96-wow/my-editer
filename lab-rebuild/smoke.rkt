@@ -149,14 +149,19 @@
 (check-equal? (length (frame-leaves (session-frame (ctx-session ctxS3)))) 1 "关窗格")
 
 ;;; ================= 面板 / 侧栏 =================
-(check-equal? (length (session-panels (ctx-session ctx0))) 1 "有 buffers 面板")
+(check-equal? (length (session-panels (ctx-session ctx0))) 2 "有 tree + buffers 面板")
 (check-false (session-sidebar? (ctx-session ctx0)) "侧栏默认隐藏")
 (define ctxPan1 (press-ctrl ctx0 #\b))
 (check-true (session-sidebar? (ctx-session ctxPan1)) "侧栏显示")
 (check-equal? (session-focus-vid (ctx-session ctxPan1))
               (panel-vid (car (session-panels (ctx-session ctxPan1)))) "焦点到面板")
 (define-values (_c1 scr) (app-render ctxPan1))
-(check-true (regexp-match? #rx"scratch" (screen->string scr)) "侧栏渲染文档列表")
+(check-true (regexp-match? #rx"core" (screen->string scr)) "侧栏渲染文件树")
+;; Tab 在面板间轮换（tree ↔ buffers）
+(define ctxPanT (step ctxPan1 (key-event 'tab no-mods)))
+(check-equal? (session-active-panel (ctx-session ctxPanT)) 'buffers "Tab 轮换到 buffers")
+(define-values (_ct scrT) (app-render ctxPanT))
+(check-true (regexp-match? #rx"scratch" (screen->string scrT)) "buffers 显示文档列表")
 (define ctxPan2 (press-ctrl ctxPan1 #\b))
 (check-false (session-sidebar? (ctx-session ctxPan2)) "侧栏隐藏")
 (check-equal? (session-focus-vid (ctx-session ctxPan2)) vid "隐藏后焦点还原")
@@ -247,5 +252,73 @@
 (check-true (docs? (layer-inst-state (input-find (session-input (ctx-session ctxDoc)) 'docs))) "docs 层")
 (define-values (_cd scrD) (app-render ctxDoc))
 (check-true (regexp-match? #rx"hello docs" (screen->string scrD)) "docs 浮层渲染")
+
+;;; ================= 文件树 Enter 打开文件 =================
+(define tdir (make-temporary-file "lab-treedir-~a" 'directory))
+(call-with-output-file (build-path tdir "hello.txt") #:exists 'truncate (lambda (o) (display "hi tree" o)))
+(define ctxTD (app-init (path->string tdir) 40 10))
+(define ctxTD1 (step ctxTD (key-event #\b (mods #t #f #f))))   ; 侧栏 + 焦点到 tree
+(define-values (ctxTD1r _scrTD) (app-render ctxTD1))          ; 先渲染：面板内容在此刷新
+(define tv (session-focus-vid (ctx-session ctxTD1r)))
+(check-equal? tv (panel-vid (car (session-panels (ctx-session ctxTD1r)))) "焦点在 tree 面板")
+(define ctxTD2 (apply-effects! ctxTD1r (list (e-move tv (selections-one (caret (point 1 0)))))))
+(define ctxTD3 (step ctxTD2 (key-event 'enter no-mods)))
+(check-equal? (view-string ctxTD3) "hi tree" "文件树 Enter 打开文件")
+(delete-directory/files tdir)
+
+;;; ================= 文档/视口树（buffers 两级） =================
+(define ctxBV0 (fresh))
+(define ctxBV1 (step ctxBV0 (key-event #\b (mods #t #f #f))))   ; 侧栏（默认 tree）
+(define ctxBV2 (step ctxBV1 (key-event 'tab no-mods)))          ; 轮到 buffers
+(check-equal? (session-active-panel (ctx-session ctxBV2)) 'buffers "轮到 buffers")
+(define-values (ctxBV3 _sB) (app-render ctxBV2))
+(define bv (session-focus-vid (ctx-session ctxBV3)))
+(define (scratch-did ctx)
+  (define ed (session-editor (ctx-session ctx)))
+  (for/first ([d (in-list (editor-document-id-list ed))]
+              #:when (equal? "*scratch*" (editor-document-name ed d))) d))
+(define didS (scratch-did ctxBV3))
+(define views0 (length (editor-document-view-list (session-editor (ctx-session ctxBV3)) didS)))
+(define ctxBV4 (step (apply-effects! ctxBV3 (list (e-move bv (selections-one (caret (point 0 0))))))
+                     (key-event #\n (mods #t #f #f))))          ; C-n 新建视图
+(check-equal? (length (editor-document-view-list (session-editor (ctx-session ctxBV4)) didS))
+              (add1 views0) "C-n 新建视图")
+(define-values (ctxBV5 _sB2) (app-render ctxBV4))
+(define ctxBV6 (step (apply-effects! ctxBV5 (list (e-move bv (selections-one (caret (point 1 0))))))
+                     (key-event 'backspace no-mods)))           ; Backspace 关闭视图
+(check-equal? (length (editor-document-view-list (session-editor (ctx-session ctxBV6)) didS))
+              views0 "Backspace 关闭视图")
+
+;;; ================= 保存询问：焦点/光标置到输入视图（长 label 可左右滚） =================
+(define tdir2 (make-temporary-file "lab-long-~a" 'directory))
+(define longname2 (string-append (make-string 60 #\a) ".rkt"))
+(define fpath2 (build-path tdir2 longname2))
+(call-with-output-file fpath2 #:exists 'truncate (lambda (o) (display "x" o)))
+(define ctxSV (app-open (app-init (path->string tdir2) 40 10) fpath2))
+(define ctxSV1 (press ctxSV #\X))                              ; 弄脏
+(define ctxSV2 (step ctxSV1 (key-event #\q (mods #t #f #f))))  ; Ctrl-Q → 保存询问
+(define sSV (ctx-session ctxSV2))
+(check-equal? (session-focus-vid sSV) (session-input-vid sSV) "保存询问焦点在 input 视图")
+(check-true (> (editor-view-point-column (session-editor sSV) (session-input-vid sSV)) 40)
+            "光标在长 label 末尾")
+(check-true (> (editor-view-left-column (session-editor sSV) (session-input-vid sSV)) 0)
+            "视口横向滚动到光标")
+(define ctxSV3 (step ctxSV2 (key-event 'home no-mods)))
+(check-equal? (editor-view-left-column (session-editor (ctx-session ctxSV3))
+                                       (session-input-vid (ctx-session ctxSV3)))
+              0 "Home 滚回开头")
+(delete-directory/files tdir2)
+
+;;; ================= patch 路径：布局尺寸生效 → 视口跟随光标 =================
+(define fL (make-temporary-file "lab-long-~a.rkt"))
+(call-with-output-file fL #:exists 'truncate (lambda (o) (display (make-string 200 #\z) o)))
+(define ctxL (app-open (app-init (current-directory) 40 10) fL))
+(define lv (session-focus-vid (ctx-session ctxL)))
+(define ctxL2 (apply-effects! ctxL (list (e-session-size 20 10))))   ; 缩窗
+(define-values (ctxL3 _nL _rL _sL) (app-render-patch ctxL2 #f))      ; TUI 走 patch
+(define ctxL4 (step ctxL3 (key-event 'end no-mods)))
+(check-true (> (editor-view-left-column (session-editor (ctx-session ctxL4)) lv) 170)
+            "patch 路径：视口尺寸生效、跟随光标")
+(delete-file fL)
 
 (displayln "smoke: all passed")
