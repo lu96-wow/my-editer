@@ -9,8 +9,10 @@
          racket/string
          "../core/editor.rkt"
          "app/app.rkt"
+         "app/render.rkt"
          "base/input.rkt"
          "ui/mode.rkt"
+         "lang/docs.rkt"
          "core/state.rkt"
          "core/panes.rkt"
          "core/edit-panes.rkt"
@@ -30,18 +32,23 @@
 (set-app-focus! a vid)
 (check-true (edit-panes-contains? (app-edit a) vid))
 
-;;; ---------- 补全：C-p c 进入 ----------
+;;; ---------- 补全：Tab 进入 + 选中项文档面板 ----------
 
 (editor-view-set-point! (ed) vid (point 2 6))            ; 光标在 "add-b" 之后
-(send (key-event 'p (mods #t #f #f)))                    ; C-p 前缀
-(send (key-event #\c no-mods))                           ; c = complete（真实终端送字符）
+(send (key-event 'tab no-mods))                          ; Tab 触发补全
 (check-not-false (complete? (app-mode a)))
 (define cands (complete-candidates (app-mode a)))
 (check-not-false (member "add-between" cands))
+;; 选中项带 bluebox 文档；菜单 + 文档在同一个实线框 pane 里
+(check-not-false (complete-doc (app-mode a)))
+(check-not-false (and (doc-signature (complete-doc (app-mode a)))
+                      (string-contains? (doc-signature (complete-doc (app-mode a))) "add-between")
+                      #t))
+(check-equal? (length (app-complete-panes a)) 1)
 ;; 弹层渲染不崩
 (check-not-false (screen? (app-render a)))
 
-;;; ---------- 补全：接受 ----------
+;;; ---------- 补全：接受（菜单内 Tab 也是接受） ----------
 
 (send (key-event 'tab no-mods))
 (check-false (app-mode a))

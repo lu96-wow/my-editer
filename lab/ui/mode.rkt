@@ -90,10 +90,12 @@
 ;;   start      : 前缀起点（point），接受时替换 [start, 光标) 为候选
 ;;   prev-focus : 发起补全时的编辑 view（接受 / 取消都看它）
 ;;   tables     : 本模态的键表（config/keys.rkt 提供）
-(struct complete (candidates index start prev-focus tables) #:transparent)
+;;   mods       : 查文档用的候选模块列表
+;;   doc        : 当前选中项的文档（bluebox；#f = 没有），弹层右侧展示
+(struct complete (candidates index start prev-focus tables mods doc) #:transparent)
 
-(define (complete-begin candidates index start prev-focus tables)
-  (complete candidates index start prev-focus tables))
+(define (complete-begin candidates index start prev-focus tables mods doc)
+  (complete candidates index start prev-focus tables mods doc))
 
 ;;; ================= 文档浮窗 =================
 

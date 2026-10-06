@@ -28,7 +28,7 @@
    text-binding         'insert
    paste-binding        'paste-text
    (key 'enter)         '(insert-string "\n")
-   (key 'tab)           '(insert-string "\t")
+   (key 'tab)           'complete                              ; Tab 触发补全（菜单内 Tab 是接受）
    (key 'backspace)     'backspace
    (key 'delete)        'delete
    (key 'left)          '(nav left #f)
@@ -49,7 +49,7 @@
    (key 'v 'ctrl)       'paste
    (key 'z 'ctrl)       'undo
    (key 'y 'ctrl)       'redo
-   ;; 语言服务：Ctrl+N 补全（树面板的 Ctrl+N 是新建文件，那里按 did 优先）
+   ;; 语言服务：Ctrl+N 也能触发补全（Tab 是主键）
    (key 'n 'ctrl)       'complete))
 
 ;;; ---------- 焦点移动（C-p 前缀下的默认表） ----------

@@ -2,8 +2,10 @@
 
 (require "../../core/editor.rkt"
          "../base/layout/main.rkt"
+         "../base/wrap.rkt"
          "../ui/slot.rkt"
          "../ui/mode.rkt"
+         "../lang/docs.rkt"
          "../plugin/seam.rkt"
          "../core/state.rkt"
          "../core/panes.rkt")
@@ -127,13 +129,53 @@
              #:when (and (positive? (bar-width b)) (positive? (bar-height b))))
     (bar->pane b)))
 
+;;; ---------- 浮层公共 ----------
+;;
+;; 光标所在编辑 view 的屏幕绝对坐标（视口内坐标 + 窗格 x/y）。
+(define (anchor-screen-pos a vid p)
+  (define ed (app-ed a))
+  (define rect
+    (for/first ([r (in-list (layout-result-panes (app-layout-result a)))]
+                #:when (eqv? (rectangle-view-id r) vid)) r))
+  (define-values (row col) (editor-view-point->screen-position ed vid p))
+  (values (if rect (+ (rectangle-y rect) row) row)
+          (if rect (+ (rectangle-x rect) col) col)))
+
+;; 实线框（box-drawing）——补全面板 / 文档浮窗共用，比 +-| 好看。
+(define box-bface 'bar)         ; 边框 face
+(define box-tface 'state)       ; 文本 face
+(define box-h #\u2500) (define box-v #\u2502)
+(define box-tl #\u250c) (define box-tr #\u2510)
+(define box-bl #\u2514) (define box-br #\u2518)
+(define box-lt #\u251c) (define box-rt #\u2524)
+
+;; 一条横框线（left / right 选角或分隔接点），内宽 cw。
+(define (box-hline cw left right)
+  (run 0 (string-append (string left) (make-string cw box-h) (string right)) box-bface))
+
+;; 一条内容行：│ text ␣… │；face 可带 overlay（选中行）。
+(define (box-line cw text face)
+  (list (run 0 (string box-v) box-bface)
+        (run 1 (string-append text (make-string (max 0 (- cw (string-length text))) #\space)) face)
+        (run (add1 cw) (string box-v) box-bface)))
+
+;; 一个实线框 pane：content 是内容行（每行 (text . face)）。
+(define (frame-pane id row col cw content deep)
+  (define rws
+    (list->vector
+     (append (list (list (box-hline cw box-tl box-tr)))
+             (for/list ([c (in-list content)]) (box-line cw (car c) (cdr c)))
+             (list (list (box-hline cw box-bl box-br))))))
+  (pane id row col (screen (+ cw 2) (+ (length content) 2) rws '() '()) deep))
+
 ;;; ---------- 补全弹层（装饰图层） ----------
 ;;;
-;;; 不占布局、不动焦点：直接贴在光标下一行、光标列处的一个高 deep pane（合成时压在最上）。
-;;; 选中项用 cursor overlay（反色）+ state face；其余用 state face。
+;;; 不占布局、不动焦点：贴在光标下一行。菜单在上、选中项的 bluebox 文档在**下侧**，
+;;; 同一个实线框；选中行用 cursor overlay（反色）。
 
 (define complete-face 'state)
 (define complete-max-rows 10)
+(define complete-doc-max-rows 18)
 
 (define (app-complete-panes a)
   (define m (app-mode a))
@@ -145,21 +187,45 @@
      (define cands (complete-candidates m))
      (define idx (complete-index m))
      (define n (length cands))
-     (define h (min complete-max-rows n))
-     ;; 让选中项大致居中，并按窗口夹在 [0, n-h]
-     (define start (max 0 (min (- idx (quotient h 2)) (- n h))))
-     (define shown (take (drop cands start) h))
-     (define w (+ 2 (for/fold ([mx 0]) ([s (in-list shown)]) (max mx (string-length s)))))
-     (define-values (row col)
-       (editor-view-point->screen-position ed vid (editor-view-point ed vid)))
-     (define rows
-       (for/vector ([i (in-range h)])
+     (define d (complete-doc m))
+     ;; 可见窗口高度有限：先按屏幕预算夹总行数
+     (define-values (arow acol) (anchor-screen-pos a vid (editor-view-point ed vid)))
+     (define budget (max 1 (- (app-height a) (add1 arow) 2)))   ; 内容行预算（不含上下边框）
+     (define mrows (min complete-max-rows n budget))
+     ;; 让选中项大致居中，并按窗口夹在 [0, n-mrows]
+     (define start (max 0 (min (- idx (quotient mrows 2)) (- n mrows))))
+     (define shown (take (drop cands start) mrows))
+     (define menu-cw (+ 2 (for/fold ([mx 0]) ([s (in-list shown)]) (max mx (string-length s)))))
+     (define max-cw (max 10 (- (app-width a) 4)))
+     (define inner (min max-cw (max menu-cw (if d 48 0))))
+     ;; 文档行数：预算内、上限 18
+     (define doc-budget (max 0 (- budget mrows (if d 1 0))))
+     (define doc-lines (and d (list->vector (wrap-lines (doc->text d) inner))))
+     (define doc-rows
+       (if doc-lines (max 0 (min complete-doc-max-rows (vector-length doc-lines) doc-budget)) 0))
+     (define show-doc? (and d (positive? doc-rows)))
+     ;; 先拼内容行（text . face）
+     (define menu-rows
+       (for/list ([i (in-range mrows)])
          (define s (list-ref shown i))
          (define selected? (= (+ start i) idx))
-         (define pad (max 0 (- w (add1 (string-length s)))))
-         (list (run 0 (string-append " " s (make-string pad #\space))
-                    (if selected? (cons 'cursor complete-face) complete-face)))))
-     (list (pane 'complete (add1 row) col (screen w h rows '() '()) 10))]))
+         (cons (string-append " " s) (if selected? (cons 'cursor complete-face) complete-face))))
+     (define doc-row-list
+       (if show-doc?
+           (for/list ([i (in-range doc-rows)]) (cons (vector-ref doc-lines i) complete-face))
+           '()))
+     ;; 菜单行 + 分隔线 + 文档行
+     (define body
+       (append (for/list ([c (in-list menu-rows)]) (box-line inner (car c) (cdr c)))
+               (if show-doc? (list (list (box-hline inner box-lt box-rt))) '())
+               (for/list ([c (in-list doc-row-list)]) (box-line inner (car c) (cdr c)))))
+     (define h (+ (length body) 2))
+     (define top (max 0 (min (add1 arow) (max 0 (- (app-height a) h)))))
+     (define left (max 0 (min acol (max 0 (- (app-width a) (+ inner 2))))))
+     (define rws (list->vector (append (list (list (box-hline inner box-tl box-tr)))
+                                      body
+                                      (list (list (box-hline inner box-bl box-br))))))
+     (list (pane 'complete top left (screen (+ inner 2) h rws '() '()) 10))]))
 
 ;; 本帧全部装饰图层：分隔线 + 补全弹层 + 文档浮窗。纯渲染与增量后端都走这一个入口。
 (define (app-overlay-panes a)
@@ -167,10 +233,7 @@
 
 ;;; ---------- 文档浮窗（装饰图层） ----------
 ;;;
-;;; 居中一个带边框的框，内容已折好行；Enter/Esc 关、上下滚（键表在 config/keys）。
-
-(define docs-border-face 'bar)
-(define docs-text-face 'state)
+;;; 贴在光标下一行；内容已折好行；Enter/Esc 关、上下滚（键表在 config/keys）。
 
 (define (app-docs-panes a)
   (define m (app-mode a))
@@ -180,35 +243,14 @@
      (define lines (docs-lines m))
      (define n (vector-length lines))
      (define cw (docs-width m))
-     (define content-rows (max 1 (min (docs-rows m) n)))
-     (define off (max 0 (min (docs-offset m) (max 0 (- n content-rows)))))
-     (define w (+ cw 2))
-     (define h (+ content-rows 2))
-     ;; 锚点：光标下一行、光标列（加窗格偏移 → 屏幕绝对坐标）；放不下就贴边。
-     (define ed (app-ed a))
-     (define vid (docs-vid m))
-     (define rect
-       (for/first ([r (in-list (layout-result-panes (app-layout-result a)))]
-                   #:when (eqv? (rectangle-view-id r) vid)) r))
-     (define-values (crow ccol) (editor-view-point->screen-position ed vid (docs-point m)))
-     (define anchor-row (if rect (+ (rectangle-y rect) crow) crow))
-     (define anchor-col (if rect (+ (rectangle-x rect) ccol) ccol))
-     (define top-row (max 0 (min (add1 anchor-row) (max 0 (- (app-height a) h)))))
-     (define left-col (max 0 (min anchor-col (max 0 (- (app-width a) w)))))
-     (define (hborder) (run 0 (string-append "+" (make-string cw #\-) "+") docs-border-face))
-     (define (content-row i)
-       (define s (vector-ref lines (+ off i)))
-       (define pad (make-string (max 0 (- cw (string-length s))) #\space))
-       (list (run 0 "|" docs-border-face)
-             (run 1 (string-append s pad) docs-text-face)
-             (run (add1 cw) "|" docs-border-face)))
-     (define rows
-       (for/vector ([i (in-range h)])
-         (cond
-           [(zero? i) (list (hborder))]
-           [(= i (sub1 h)) (list (hborder))]
-           [else (content-row (sub1 i))])))
-     (list (pane 'docs top-row left-col (screen w h rows '() '()) 11))]))
+     (define rows (max 1 (min (docs-rows m) n)))
+     (define h (+ rows 2))
+     (define-values (arow acol) (anchor-screen-pos a (docs-vid m) (docs-point m)))
+     (define top (max 0 (min (add1 arow) (max 0 (- (app-height a) h)))))
+     (define left (max 0 (min acol (max 0 (- (app-width a) (+ cw 2))))))
+     (define off (max 0 (min (docs-offset m) (max 0 (- n rows)))))
+     (define content (for/list ([i (in-range rows)]) (cons (vector-ref lines (+ off i)) box-tface)))
+     (list (frame-pane 'docs top left cw content 11))]))
 
 ;; 一次性全量渲染（测试 / 非增量后端用）：与增量后端走**同一个** app-prepare! 入口。
 (define (app-render a)

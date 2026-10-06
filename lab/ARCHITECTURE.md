@@ -171,12 +171,14 @@ app-prepare! → app-plugin-tick!（seam）
   不剥 markdown（所以查文档不联网、不依赖 racket-langserver，首次数十毫秒）。结果在
   光标**下一行的浮窗**显示（`docs` 模态，`app/render.rkt` 的 `app-docs-panes`）：
   Enter/Esc 关，上下 / PageUp·PageDown 滚。
-- **补全**（`Ctrl+N` 或 `C-p c`）：前缀来自 `lang/ident`，候选 = 基础命名空间 + 各
+- **补全**（`Tab`，`Ctrl+N` / `C-p c` 同效）：前缀来自 `lang/ident`，候选 = 基础命名空间 + 各
   require 导出（`module->exports`，按模块缓存）+ 文件顶层定义名（`lang/source` 启发式扫描），
   过滤排序。上下选择、Tab/Enter/右 接受、Esc 取消；继续打字/退格会实时重算（前缀空则退出）。
+  选中项的 bluebox 文档展在菜单**下侧**（同一个实线框，中间一条分隔线）；菜单 / 文档都是
+  高 deep 的装饰 pane，不占布局、不动焦点。
 - 两个浮层都是**高 deep 的装饰 pane**（`app/render.rkt` 的 `app-complete-panes` /
   `app-docs-panes`，由 `app-overlay-panes` 汇总），不占布局、不动焦点、不碰 editor，
-  只改 `mode`（`complete` / `docs`）。
+  只改 `mode`（`complete` / `docs`）；都用 box-drawing 实线框（`frame-pane` / `box-line`）。
 - **候选模块**由 `lang/source` 估出来（`#lang` 语言 + 顶层 `(require …)`，剥掉
   `only-in` / `prefix-in` / `for-syntax` 等包装，相对字符串路径按文档所在目录解析）；
   不做宏展开，因此白盒 / 生成名可能漏，但普通文件够用。

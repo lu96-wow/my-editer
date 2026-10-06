@@ -1,13 +1,13 @@
 #lang racket
 
 (require racket/path
-         (only-in racket/string string-split string-trim)
          "../../../core/editor.rkt"
          "../state.rkt"
          "core.rkt"
          "../panes.rkt"
          "../edit-panes.rkt"
          "../paths.rkt"
+         "../../base/wrap.rkt"
          "../../ui/mode.rkt"
          "../../lang/ident.rkt"
          "../../lang/source.rkt"
@@ -48,22 +48,6 @@
 
 ;;; ================= 文档查询（浮窗） =================
 
-;; 单行按内容宽 w 折行：尽量在空格断，断不了就硬断。
-(define (wrap-line s w)
-  (let loop ([s s] [acc '()])
-    (cond
-      [(<= (string-length s) w) (reverse (cons s acc))]
-      [else
-       (define cut
-         (or (for/first ([i (in-range (sub1 w) 0 -1)]
-                         #:when (char=? (string-ref s i) #\space))
-               i)
-             w))
-       (loop (string-trim (substring s cut)) (cons (substring s 0 cut) acc))])))
-
-(define (wrap-lines text w)
-  (append* (for/list ([l (in-list (string-split text "\n"))]) (wrap-line l w))))
-
 ;; 取文档 → 折成浮窗内容行 → 进 docs 模态。
 (define (app-show-docs! a tables)
   (define ctx (app-text-context a))
@@ -95,10 +79,13 @@
 
 ;;; ================= 补全 =================
 
+;; 候选 = 基础命名空间 + require 导出 + 本地定义；mods 已含兜底模块。
 (define (lang-candidates prefix locals mods)
-  (completions prefix
-               #:modules (context-modules mods)
-               #:locals locals))
+  (completions prefix #:modules mods #:locals locals))
+
+;; 选中候选的 bluebox 文档（#f = 没有）。
+(define (cand-doc cands i mods)
+  (and (< i (length cands)) (docs-for (list-ref cands i) #:modules mods)))
 
 ;; 前缀起点（point）：光标左侧 string-length prefix 个字符。
 (define (prefix-start p prefix)
@@ -108,13 +95,16 @@
 (define (app-complete-begin! a tables)
   (define ctx (app-text-context a))
   (when ctx
-    (define-values (vid text mods) (apply values ctx))
+    (define-values (vid text mods0) (apply values ctx))
+    (define mods (context-modules mods0))
     (define ed (app-ed a))
     (define p (editor-view-point ed vid))
     (define prefix (prefix-at text (point-line p) (point-column p)))
     (define cands (lang-candidates prefix (source-definitions text) mods))
     (when (pair? cands)
-      (app-mode-set! a (complete-begin cands 0 (prefix-start p prefix) vid tables)))))
+      (app-mode-set!
+       a (complete-begin cands 0 (prefix-start p prefix) vid tables mods
+                          (cand-doc cands 0 mods))))))
 
 ;; 边打字边过滤：前缀为空 / 无候选 → 退出补全。
 (define (app-complete-refine! a tables)
@@ -122,22 +112,29 @@
   (cond
     [(not ctx) (app-complete-cancel! a)]
     [else
-     (define-values (vid text mods) (apply values ctx))
+     (define-values (vid text mods0) (apply values ctx))
+     (define mods (context-modules mods0))
      (define ed (app-ed a))
      (define p (editor-view-point ed vid))
      (define prefix (prefix-at text (point-line p) (point-column p)))
      (define cands (and (positive? (string-length prefix))
                         (lang-candidates prefix (source-definitions text) mods)))
      (if (pair? cands)
-         (app-mode-set! a (complete-begin cands 0 (prefix-start p prefix) vid tables))
+         (app-mode-set!
+          a (complete-begin cands 0 (prefix-start p prefix) vid tables mods
+                             (cand-doc cands 0 mods)))
          (app-complete-cancel! a))]))
 
 (define (app-complete-move! a delta)
   (define m (app-mode a))
   (when (complete? m)
-    (define n (length (complete-candidates m)))
+    (define cands (complete-candidates m))
+    (define n (length cands))
     (when (positive? n)
-      (app-mode-set! a (struct-copy complete m [index (modulo (+ (complete-index m) delta) n)])))))
+      (define i (modulo (+ (complete-index m) delta) n))
+      (app-mode-set! a (struct-copy complete m
+                                    [index i]
+                                    [doc (cand-doc cands i (complete-mods m))])))))
 
 (define (app-complete-cancel! a)
   (when (complete? (app-mode a)) (app-mode-set! a #f)))
