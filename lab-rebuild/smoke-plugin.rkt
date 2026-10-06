@@ -13,6 +13,9 @@
          "app/app.rkt"
          "builtin/edit.rkt"
          "builtin/highlight/bracket-pair.rkt"
+         "builtin/highlight/lex.rkt"
+         "builtin/highlight/api.rkt"
+         "builtin/highlight/words.rkt"
          "builtin/indent.rkt"
          "platform/face.rkt"
          "platform/state.rkt"
@@ -38,6 +41,16 @@
 (check-equal? (palette-color-index (face-at bf 0 4)) 1)   ; ] 在内层
 (check-equal? (palette-color-index (face-at bf 0 5)) 0)   ; c 在外层
 (check-false (face-at (bracket-fills "(]") 0 0))
+
+;;; ---------- 词法：Unicode 字母（中文等 CJK）也能成词 ----------
+
+(check-equal? (map (lambda (t) (list-ref t 3)) (scan-words "你好 世界 abc 变量2"))
+              '("你好" "世界" "abc" "变量2"))
+(let-values ([(_ fl) ((plugin-open word-plugin) "你好 世界 你好" "/w.txt")])
+  (check-equal? (length fl) 3)
+  (check-equal? (list-ref (car fl) 4) (palette-color 'word 0))       ; 你好
+  (check-equal? (list-ref (cadr fl) 4) (palette-color 'word 1))      ; 世界
+  (check-equal? (list-ref (caddr fl) 4) (palette-color 'word 0)))    ; 你好（同词同色）
 
 ;;; ---------- app：属性插件写回高亮 ----------
 

@@ -2,26 +2,47 @@
 
 (require "../../../core/text/base/line.rkt")
 
-;;; lab-rebuild/plugin/lex.rkt —— 极简词法：按行扫标识符 token（词着色 / 关键字插件共用）
+;;; lab-rebuild/builtin/highlight/lex.rkt —— 极简词法：按行扫标识符 token
+;;; （词着色 / 关键字插件共用）
 ;;;
 ;;; token = (list line start end text)。只认「标识符样」的连续段：
-;;;   首字符：字母 / 下划线 / λ
-;;;   后续  ：字母 / 数字 / 下划线 / ? ! * / < > = + : . -
+;;;   首字符：Unicode 字母 / 下划线
+;;;   后续  ：Unicode 字母 / 数字 / 下划线 / ? ! * / < > = + : . -
 ;;; 不处理字符串 / 注释 / 字符字面量 —— 玩具级，够语法高亮用。
+;;;
+;;; ⚠ 用 char-alphabetic? / char-numeric? 而不是正则字符类：Racket 的 regexp
+;;; 引擎不支持 \p{L}（POSIX [:alpha:] 也是 ASCII-only），中文等 CJK 会被漏掉。
+;;; 这里的判定与 lang/ident.rkt 一致，保证「补全认的词」和「着色的词」是同一套。
 
 (provide scan-words word-token-at active-token)
 
-(define ident-rx #px"[A-Za-z_\u03BB][A-Za-z0-9_\u03BB?!*/<>=+:.-]*")
+(define symbol-extra (string->list "?!*/<>=+:.-"))
+
+(define (ident-start? c) (or (char-alphabetic? c) (char=? c #\_)))
+(define (ident-char? c)
+  (or (char-alphabetic? c) (char-numeric? c) (memv c symbol-extra)))
+
+;; 一行里的标识符区间 (start end)。
+(define (line-tokens line)
+  (define n (string-length line))
+  (let loop ([i 0] [acc '()])
+    (cond
+      [(>= i n) (reverse acc)]
+      [(ident-start? (string-ref line i))
+       (define j (let next ([j (add1 i)])
+                   (if (and (< j n) (ident-char? (string-ref line j))) (next (add1 j)) j)))
+       (loop j (cons (cons i j) acc))]
+      [else (loop (add1 i) acc)])))
 
 (define (scan-words text)
   (append*
    (for/list ([line (in-list (string->lines text))] [ln (in-naturals)])
-     (for/list ([m (in-list (regexp-match-positions* ident-rx line))])
+     (for/list ([m (in-list (line-tokens line))])
        (list ln (car m) (cdr m) (substring line (car m) (cdr m)))))))
 
 ;; 第 line 行第 col 个字符落在哪个标识符 token 里 → (list start end) / #f。
 (define (word-token-at line col)
-  (for/first ([m (in-list (regexp-match-positions* ident-rx line))]
+  (for/first ([m (in-list (line-tokens line))]
               #:when (and (<= (car m) col) (< col (cdr m))))
     (list (car m) (cdr m))))
 
