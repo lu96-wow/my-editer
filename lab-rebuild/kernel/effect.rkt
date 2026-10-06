@@ -16,7 +16,7 @@
          e-split e-pane-close e-pane-swap e-pane-resize
          e-pointer e-scroll
          ;; 输入
-         e-input-push e-input-pop e-input-set e-resume
+         e-input-push e-input-pop e-input-set e-resume e-interaction-end
          ;; 生命周期 / 会话
          e-notify e-quit e-session-size
          ;; 属性 / 异步闸门
@@ -64,6 +64,9 @@
 (define (e-input-pop spec-id)        (fx 'input (list 'pop spec-id)))
 (define (e-input-set spec-id state)  (fx 'input (list 'set spec-id state)))
 (define (e-resume sid response)      (fx 'resume sid response))
+;; 结束一个挂起的 interaction（kernel 移除登记）。多步交互的最后一步发它，
+;; 否则登记会一直留着。
+(define (e-interaction-end sid)      (fx 'interaction-end sid))
 
 ;; 生命周期 / 会话
 (define (e-notify hook args)       (fx 'notify hook args))

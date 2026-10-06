@@ -60,19 +60,20 @@
 ;; pending : 还没问的 did（第一个就是当前在问的）。
 (define (ask-next ctx sid pending)
   (cond
-    [(null? pending) (list (e-quit))]
+    [(null? pending) (list (e-interaction-end sid) (e-quit))]
     [else
      (define did (car pending))
      (list (e-prompt (format "save ~a? (y/n/all/esc) " (doc-name ctx did)) #t
                      (λ (ans) (list (e-resume sid (list pending ans))))
-                     (λ () '())))]))
+                     (λ () (list (e-interaction-end sid)))))]))
 
 (define (save-step ctx sid resp)
   (match-define (list pending ans) resp)
   (define a (string-downcase (string-trim ans)))
   (cond
     [(member a '("all" "a"))
-     (append (for/list ([d (in-list pending)]) (e-save d)) (list (e-quit)))]
+     (append (for/list ([d (in-list pending)]) (e-save d))
+             (list (e-interaction-end sid) (e-quit)))]
     [(member a '("" "y" "yes"))
      (append (list (e-save (car pending))) (ask-next ctx sid (cdr pending)))]
     [else (ask-next ctx sid (cdr pending))]))

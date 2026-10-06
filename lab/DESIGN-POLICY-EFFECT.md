@@ -268,10 +268,12 @@ Policy 与其它扩展点同构，走同一个注册表：
   然后施加 `(start ctx sid)`。
 - `start` 通常发出 `prompt` effect，prompt 的提交回调会发出 `('resume sid answer)`
   effect（回调返回 effects）。
-- kernel 收到 `('resume sid response)` 时：取出 interaction、删除登记、
+- kernel 收到 `('resume sid response)` 时：取出 interaction（**不移除登记**）、
   施加 `(resume ctx sid response)` 的产物。
 - `resume` 可以再次发出 `('resume sid …)`（**同一个 sid**）实现多步循环，
   也可以发出原来的命令效果（通过 `run-unchecked`）、或任何其它 effect。
+- 交互结束由它自己发 `('interaction-end sid)` 显式宣告，kernel 才移除登记
+  （**单步交互也要发**，否则登记会残留）。这样挂起在整条多步链上一直可枚举、可清理。
 
 ### 6.2 为什么用显式状态机，而不是续延 / 阻塞
 
@@ -333,10 +335,13 @@ policy confirm-save 匹配 → interact
   = effs1 = fold after-policies (priority 高→低, 匹配者) over effs
     for e in effs1: apply-effect ctx e     ; 顺序
 
-;; resume
+;; resume（不自动移除：多步交互用同一 sid 反复 resume）
 (on-effect ('resume sid resp))
-  = it = take(suspensions, sid); remove
+  = it = find(suspensions, sid)
     handle-effects ctx (action '(resume sid) resp) (resume it ctx sid resp)
+
+;; end（交互自己宣告结束）
+(on-effect ('interaction-end sid)) = remove(suspensions, sid)
 ```
 
 ### 7.2 为什么挂起续做不再走 before-policies

@@ -3,12 +3,13 @@
 (require "../../../core/text/base/line.rkt"
          "../../kernel/face.rkt"
          "syntax-config.rkt"
+         "file-kind.rkt"
          "api.rkt"
          "lex.rkt")
 
 ;;; lab-rebuild/plugin/attr/syntax.rkt —— Racket 关键字高亮（内置属性插件）
 ;;;
-;;; 只对 Racket 源文件生效 —— 由 `applies?`（`racket-file?`，扩展名在 config/syntax.rkt）
+;;; 只对 Racket 源文件生效 —— 由 `applies?`（`racket-file?`，扩展名在 file-kind.rkt）
 ;;; 声明；机器/管理器按文档过滤，不适用时根本不会开这个插件。
 ;;; 每个关键字用**固定颜色**：按它在 keyword-list 里的位置取色号 →
 ;;; face = (palette-color 'keyword 位置)，颜色由主题 'keyword 色板决定。
@@ -41,4 +42,4 @@
   (values #f (syntax-fills (lines->string (vector->list lines)) (active-token lines edits))))
 
 (define syntax-plugin
-  (plugin 'syntax (λ (path text) (racket-file? path)) syntax-open syntax-change))
+  (plugin 'syntax racket-applies? syntax-open syntax-change))

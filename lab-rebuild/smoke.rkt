@@ -138,6 +138,27 @@
 (check-equal? (file->string tmp2) "abc" "未保存时盘上仍是旧内容")
 (delete-file tmp2)
 
+;; 多文件：逐次答 n，最后一答才退出；挂起整个多步链上保持可枚举、结束清理
+(define tmpA (make-temporary-file "lab-rebuild-qa-~a.rkt"))
+(define tmpB (make-temporary-file "lab-rebuild-qb-~a.rkt"))
+(for ([f (list tmpA tmpB)]) (call-with-output-file f #:exists 'truncate (λ (o) (display "z" o))))
+(define ctxQA (press (app-open (fresh) (path->string tmpA)) #\A))
+(define ctxQB (press (app-open ctxQA (path->string tmpB)) #\B))
+(define ctxQ1 (press-ctrl ctxQB #\q))
+(check-equal? (length (session-interactions (ctx-session ctxQ1))) 1 "挂起登记 1 条")
+(define ctxQ2 (step (step ctxQ1 (key-event #\n no-mods)) (key-event 'enter no-mods)))
+(check-false (session-quit? (ctx-session ctxQ2)) "第一答不退出（还有下一个文件）")
+(check-equal? (length (session-interactions (ctx-session ctxQ2))) 1 "多步链仍同一挂起")
+(define ctxQ3 (step (step ctxQ2 (key-event #\n no-mods)) (key-event 'enter no-mods)))
+(check-true (session-quit? (ctx-session ctxQ3)) "最后一答才退出")
+(check-equal? (length (session-interactions (ctx-session ctxQ3))) 0 "退出后挂起清理")
+;; esc 取消：结束挂起但不退出
+(define ctxQ4 (press-ctrl ctxQB #\q))
+(define ctxQ5 (step ctxQ4 (key-event 'escape no-mods)))
+(check-false (session-quit? (ctx-session ctxQ5)) "esc 不退出")
+(check-equal? (length (session-interactions (ctx-session ctxQ5))) 0 "esc 也结束挂起")
+(delete-file tmpA) (delete-file tmpB)
+
 ;;; ================= 分屏 / 焦点方向 =================
 (define ctxS1 (press-ctrl ctx0 #\l))          ; split-lr
 (define leaves1 (frame-leaves (session-frame (ctx-session ctxS1))))
@@ -253,13 +274,13 @@
 (check-equal? (names (plugins-for enabled-attr-plugins (string->path "/tmp/a.rkt") "(define x 1)"))
               '(brackets words syntax) ".rkt 启用全部插件")
 (check-equal? (names (plugins-for enabled-attr-plugins (string->path "/tmp/a.txt") "hello"))
-              '(brackets words) ".txt 不启用 syntax（无 applies?）")
+              '() ".txt 不启用任何插件（均 applies? = .rkt）")
 (check-equal? (names (plugins-for enabled-attr-plugins #f "hello"))
-              '(brackets words) "无路径不启用 syntax")
+              '() "无路径不启用任何插件")
 ;; machine 按文档存适用插件集
 (define hmach (make-machine enabled-attr-plugins))
 (machine-open! hmach 1 0 (string->path "/tmp/a.txt") "hello (world)")
-(check-equal? (names (machine-plugins-for hmach 1)) '(brackets words) "machine 按文档过滤")
+(check-equal? (names (machine-plugins-for hmach 1)) '() "machine 按文档过滤（.txt 空集）")
 (machine-open! hmach 2 0 (string->path "/tmp/a.rkt") "(define x 1)")
 (check-equal? (names (machine-plugins-for hmach 2)) '(brackets words syntax) "machine .rkt 全启用")
 

@@ -148,14 +148,21 @@
                                                          (session-interactions s))]))))
   (handle-effects ctx1 action ((interaction-start it) ctx1 sid)))
 
+;; 挂起在 resume 后**不自动移除**：交互可多步（如逐个问保存），每步用同一 sid 再 resume。
+;; 结束由交互自己发 `e-interaction-end`（见 end-interaction），否则登记会残留。
 (define (resume-interaction ctx sid response)
   (define s (sess ctx))
   (define sus (for/first ([x (in-list (session-interactions s))] #:when (= sid (suspension-id x))) x))
   (cond
     [(not sus) ctx]
-    [else
-     (define ctx1 (update ctx (λ (s) (struct-copy session s [interactions (remove sus (session-interactions s))]))))
-     (handle-effects ctx1 (action (list 'resume sid) response) ((suspension-resume sus) ctx1 sid response))]))
+    [else (handle-effects ctx (action (list 'resume sid) response)
+                          ((suspension-resume sus) ctx sid response))]))
+
+(define (end-interaction ctx sid)
+  (update ctx (λ (s) (struct-copy session s
+                        [interactions (for/list ([x (in-list (session-interactions s))]
+                                                 #:unless (= sid (suspension-id x)))
+                                        x)]))))
 
 ;;; ================= notify =================
 
@@ -322,6 +329,7 @@
        [else ctx])]
 
     [(resume) (resume-interaction ctx (car args) (cadr args))]
+    [(interaction-end) (end-interaction ctx (car args))]
 
     [(await)
      (match-define (list id version current? on-result) args)

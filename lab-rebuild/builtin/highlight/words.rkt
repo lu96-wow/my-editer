@@ -2,6 +2,7 @@
 
 (require "../../../core/text/base/line.rkt"
          "../../kernel/face.rkt"
+         "file-kind.rkt"
          "api.rkt"
          "lex.rkt")
 
@@ -54,4 +55,4 @@
                 (or state (hash))))
 
 (define word-plugin
-  (plugin 'words (λ (path text) #t) word-open word-change))
+  (plugin 'words racket-applies? word-open word-change))
