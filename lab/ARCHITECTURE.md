@@ -183,8 +183,13 @@ app-prepare! → app-plugin-tick!（seam）
   async-channel 回来，由 `app-complete-tick!` 按「请求 id + 发起时的不可变 document 值
   （`eq?` = 版本比较）」装回 mode（`doc-pending`）。打字时旧结果自动作废，手指停下才上屏；
   主进程不再同步查 xref，输入不卡。
-  选中项的 bluebox 文档展在菜单**下侧**（同一个实线框，中间一条分隔线）；菜单 / 文档都是
+  选中项的 bluebox 文档展在菜单旁（同一个实线框，中间一条分隔线）；菜单 / 文档都是
   高 deep 的装饰 pane，不占布局、不动焦点。
+- **浮层位置**（`app/render.rkt`）：补全弹层 / 文档浮窗优先贴在光标行**下侧**；
+  下侧放不下就翻到**上侧**（箱底贴光标行），绝不遮住光标所在输入行；两侧都不够时
+  取更宽的一侧并将高度夹进去。补全的菜单始终贴光标行（下侧时菜单在上，上侧时菜单在下），
+  bluebox 文档放远端。
+  
 - 两个浮层都是**高 deep 的装饰 pane**（`app/render.rkt` 的 `app-complete-panes` /
   `app-docs-panes`，由 `app-overlay-panes` 汇总），不占布局、不动焦点、不碰 editor，
   只改 `mode`（`complete` / `docs`）；都用 box-drawing 实线框（`frame-pane` / `box-line`）。

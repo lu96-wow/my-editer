@@ -8,9 +8,11 @@
          racket/path
          racket/string
          "../core/editor.rkt"
+         "../core/view/base/screen.rkt"
          "app/app.rkt"
          "app/render.rkt"
          "base/input.rkt"
+         "base/layout/main.rkt"
          "ui/mode.rkt"
          "lang/docs.rkt"
          "core/state.rkt"
@@ -142,3 +144,72 @@
 (check-not-false (string-contains? (editor-view-string (ed) vid2) "(add-between)"))
 ;; 渲染整帧不崩
 (check-not-false (screen? (app-render a)))
+
+;;; ---------- 补全弹层位置：贴近光标且不遮挡输入行 ----------
+
+;; 光标屏幕行（与 app/render.rkt 的 anchor-screen-pos 同算法）。
+(define (anchor-row a vid)
+  (define ed (app-ed a))
+  (define p (editor-view-point ed vid))
+  (define rect (for/first ([r (in-list (layout-result-panes (app-layout-result a)))]
+                           #:when (eqv? (rectangle-view-id r) vid)) r))
+  (define-values (row _col) (editor-view-point->screen-position ed vid p))
+  (+ (rectangle-y rect) row))
+
+;; 断言：弹层在屏内，且整块不压住光标所在输入行（下侧或上侧皆可）。
+(define (check-popup-clear! a vid)
+  (define arow (anchor-row a vid))
+  (define p (car (app-complete-panes a)))
+  (define prow (pane-row p))
+  (define ph (screen-height (pane-screen p)))
+  (check-true (and (>= prow 0) (<= (+ prow ph) (app-height a))))
+  (check-true (or (> prow arow) (<= (+ prow ph) arow)))
+  (values arow prow ph))
+
+;; 光标在顶部：弹层放输入行下侧。
+(define code3 (build-path root "top.rkt"))
+(with-output-to-file code3 #:exists 'replace
+  (lambda () (display "#lang racket/base\n(require racket/list)\n(add-\n")))
+(app-open-path! a code3)
+(define vid3 (app-edit-active a))
+(set-app-focus! a vid3)
+(editor-view-set-point! (ed) vid3 (point 2 5))
+(send (key-event #\b no-mods))
+(check-not-false (complete? (app-mode a)))
+(define-values (arow3 prow3 _ph3) (check-popup-clear! a vid3))
+(check-equal? prow3 (add1 arow3))                        ; 下侧：顶边贴光标行下一行
+(send (key-event 'escape no-mods))
+
+;; 光标贴近视口底部（长文件末尾）：弹层应翻到输入行上侧。
+(define code4 (build-path root "bottom.rkt"))
+(with-output-to-file code4 #:exists 'replace
+  (lambda ()
+    (display "#lang racket/base\n")
+    (for ([i (in-range 40)]) (display (format "(define v~a ~a)\n" i i)))
+    (display "add-\n")))
+(app-open-path! a code4)
+(define vid4 (app-edit-active a))
+(set-app-focus! a vid4)
+(editor-view-set-point! (ed) vid4 (point 41 4))          ; 最后一行 "add-" 末尾
+(send (key-event #\b no-mods))
+(check-not-false (complete? (app-mode a)))
+(define-values (arow4 prow4 ph4) (check-popup-clear! a vid4))
+(check-true (<= (+ prow4 ph4) arow4))                    ; 整块在光标行上方
+(check-equal? (+ prow4 ph4) arow4)                       ; 底边贴光标行
+(send (key-event 'escape no-mods))
+
+;; 文档浮窗（C-p d）用同一条规则：光标贴底时翻到上侧，不遮输入行。
+(editor-view-set-point! (ed) vid4 (point 41 2))          ; "add-" 中间
+(send (key-event 'p (mods #t #f #f)))
+(send (key-event #\d no-mods))
+(check-not-false (docs? (app-mode a)))
+(define docs-p
+  (for/first ([p (in-list (app-overlay-panes a))] #:when (eq? (pane-id p) 'docs)) p))
+(check-not-false docs-p)
+(define darow (anchor-row a vid4))
+(define drow (pane-row docs-p))
+(define dh (screen-height (pane-screen docs-p)))
+(check-true (or (> drow darow) (<= (+ drow dh) darow)))
+(check-true (<= (+ drow dh) darow))                      ; 贴底 → 上侧
+(send (key-event 'escape no-mods))
+(check-false (app-mode a))
