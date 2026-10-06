@@ -28,7 +28,7 @@
    text-binding         'insert
    paste-binding        'paste-text
    (key 'enter)         '(insert-string "\n")
-   (key 'tab)           'complete                              ; Tab 触发补全（菜单内 Tab 是接受）
+   (key 'tab)           'complete                              ; Tab 显式展开补全（菜单内 Tab 是接受；平时打字也会自动弹）
    (key 'backspace)     'backspace
    (key 'delete)        'delete
    (key 'left)          '(nav left #f)
@@ -137,7 +137,9 @@
           (key 'escape) 'cancel))))
 
 ;;; ---------- 补全菜单 ----------
-;;; 上下选择、Tab/Enter/右 接受、Esc 取消；字符 / 退格继续输入并实时过滤。
+;;; 自动补全：打字时弹层自动出现 / 更新（命令层在编辑后调 refine）。
+;;; 弹层只截获上下 / Tab / Enter / Esc，其余按键落回普通编辑表 —— 不阻塞输入。
+;;; 左右移动 / 退格等由 edit-keys 处理，处理完自动重算或退出。
 
 (define complete-keys
   (command-table
@@ -145,11 +147,7 @@
    (key 'down)      '(complete-move 1)
    (key 'tab)       'complete-accept
    (key 'enter)     'complete-accept
-   (key 'right)     'complete-accept
-   (key 'escape)    'complete-cancel
-   (key 'c 'ctrl)   'complete-cancel
-   text-binding     'complete-type
-   (key 'backspace) 'complete-backspace))
+   (key 'escape)    'complete-cancel))
 
 ;;; ---------- 文档浮窗 ----------
 ;;; Enter / Esc 关闭；上下 / PageUp·PageDown 滚动；其余吞掉（不编辑下面文档）。

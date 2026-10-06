@@ -171,9 +171,13 @@ app-prepare! → app-plugin-tick!（seam）
   不剥 markdown（所以查文档不联网、不依赖 racket-langserver，首次数十毫秒）。结果在
   光标**下一行的浮窗**显示（`docs` 模态，`app/render.rkt` 的 `app-docs-panes`）：
   Enter/Esc 关，上下 / PageUp·PageDown 滚。
-- **补全**（`Tab`，`Ctrl+N` / `C-p c` 同效）：前缀来自 `lang/ident`，候选 = 基础命名空间 + 各
-  require 导出（`module->exports`，按模块缓存）+ 文件顶层定义名（`lang/source` 启发式扫描），
-  过滤排序。上下选择、Tab/Enter/右 接受、Esc 取消；继续打字/退格会实时重算（前缀空则退出）。
+- **补全**（自动，输入即触发；`Tab` / `Ctrl+N` / `C-p c` 仍可显式触发）：前缀来自 `lang/ident`，
+  候选 = 基础命名空间 + 各 require 导出（`module->exports`，按模块缓存）+ 文件顶层定义名
+  （`lang/source` 启发式扫描），过滤排序。弹层在每次输入 / 退格 / 删除后自动出现 / 更新；
+  **只截获上下 / Tab / Enter / Esc**，其余按键（字符、左右、退格……）落回普通编辑表并重算，
+  所以弹层**不阻塞输入**。上下选择、Tab/Enter 接受、Esc 取消（只关弹层，保留已输入文本）。
+  候选池（模块导出 + 本地定义）一个补全会话只建一次，之后每个字符只按前缀过滤；
+  自动路径不查 bluebox 文档（首次 xref 查询几十毫秒，逐字查会卡），显式 Tab / 上下选择时才查。
   选中项的 bluebox 文档展在菜单**下侧**（同一个实线框，中间一条分隔线）；菜单 / 文档都是
   高 deep 的装饰 pane，不占布局、不动焦点。
 - 两个浮层都是**高 deep 的装饰 pane**（`app/render.rkt` 的 `app-complete-panes` /

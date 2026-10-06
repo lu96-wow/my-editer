@@ -78,10 +78,14 @@
       (struct-copy docs m [offset (max 0 (min max-off (+ (docs-offset m) delta)))]))))
 
 ;;; ================= 补全 =================
-
-;; 候选 = 基础命名空间 + require 导出 + 本地定义；mods 已含兜底模块。
-(define (lang-candidates prefix locals mods)
-  (completions prefix #:modules mods #:locals locals))
+;;;
+;;; 自动补全：命令层在每次「输入 / 退格 / 删除」后调 app-complete-refine!，
+;;; 于是补全弹层随打字自动出现 / 更新，不再需要先按 Tab。弹层只截获
+;;; 上/下/Enter/Esc（见 config/keys.rkt 的 complete-keys），其余按键一律
+;;; 落回普通编辑表 → **不阻塞输入**。
+;;;
+;;; 候选池（基础命名空间 + require 导出 + 本地定义）一次补全会话只建一次，
+;;; 之后的每个字符只 filter-pool；否则大文件每个字符都重解析会很卡。
 
 ;; 选中候选的 bluebox 文档（#f = 没有）。
 (define (cand-doc cands i mods)
@@ -91,38 +95,60 @@
 (define (prefix-start p prefix)
   (point (point-line p) (max 0 (- (point-column p) (string-length prefix)))))
 
-;; 显式触发：前缀为空也允许（拉全量候选）。
+;; 当前编辑 view 的 (vid . text)；不解析 require（refine 热路径用）。
+(define (app-edit-view+text a)
+  (define ed (app-ed a))
+  (define vid (app-focus a))
+  (and vid (edit-panes-contains? (app-edit a) vid)
+       (cons vid (editor-view-string ed vid))))
+
+;; 建一次候选池：解析 require / 本地定义（贵；由 session 复用）。
+(define (build-pool text mods0)
+  (define mods (context-modules mods0))
+  (values mods (completion-pool #:modules mods #:locals (source-definitions text))))
+
+;; 显式触发（Tab / Ctrl+N）：前缀为空也允许（拉全量候选），并取选中项文档。
 (define (app-complete-begin! a tables)
   (define ctx (app-text-context a))
   (when ctx
     (define-values (vid text mods0) (apply values ctx))
-    (define mods (context-modules mods0))
+    (define-values (mods pool) (build-pool text mods0))
     (define ed (app-ed a))
     (define p (editor-view-point ed vid))
     (define prefix (prefix-at text (point-line p) (point-column p)))
-    (define cands (lang-candidates prefix (source-definitions text) mods))
+    (define cands (filter-pool pool prefix))
     (when (pair? cands)
       (app-mode-set!
-       a (complete-begin cands 0 (prefix-start p prefix) vid tables mods
+       a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool
                           (cand-doc cands 0 mods))))))
 
-;; 边打字边过滤：前缀为空 / 无候选 → 退出补全。
+;; 自动过滤：前缀为空 / 无候选 → 退出补全。
+;; 已有会话（同一个 view）则复用池；否则建池（每个词第一次）。
+;; ⚠ 自动路径不查文档：docs-for 首次可能几十毫秒，逐字查会阻塞输入；
+;;   文档在显式 Tab / 上下选择时才取（app-complete-begin! / app-complete-move!）。
 (define (app-complete-refine! a tables)
-  (define ctx (app-text-context a))
+  (define et (app-edit-view+text a))
   (cond
-    [(not ctx) (app-complete-cancel! a)]
+    [(not et) (app-complete-cancel! a)]
     [else
-     (define-values (vid text mods0) (apply values ctx))
-     (define mods (context-modules mods0))
+     (define vid (car et))
+     (define text (cdr et))
      (define ed (app-ed a))
      (define p (editor-view-point ed vid))
      (define prefix (prefix-at text (point-line p) (point-column p)))
-     (define cands (and (positive? (string-length prefix))
-                        (lang-candidates prefix (source-definitions text) mods)))
+     (define m (app-mode a))
+     (define reuse? (and (complete? m) (eqv? (complete-prev-focus m) vid)))
+     (define-values (mods pool)
+       (cond
+         [reuse? (values (complete-mods m) (complete-pool m))]
+         [else (define ctx (app-text-context a))
+               (if ctx
+                   (build-pool (cadr ctx) (caddr ctx))
+                   (values '() '()))]))
+     (define cands (and (positive? (string-length prefix)) (filter-pool pool prefix)))
      (if (pair? cands)
          (app-mode-set!
-          a (complete-begin cands 0 (prefix-start p prefix) vid tables mods
-                             (cand-doc cands 0 mods)))
+          a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool #f))
          (app-complete-cancel! a))]))
 
 (define (app-complete-move! a delta)

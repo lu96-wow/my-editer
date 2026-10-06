@@ -8,8 +8,11 @@
 ;;;   3) 文件里顶层定义的名字（lang/source 扫出来）。
 ;;;
 ;;; module->exports 不需要实例化模块，且按模块缓存，够快；本文件不认识 app / editor。
+;;;
+;;; 自动补全每个字符都会过滤一次：把「候选池」与「按前缀过滤」拆开，
+;;; 一次补全会话只建一次池（见 core/actions/lang.rkt），之后只 filter-pool。
 
-(provide completions module-exports)
+(provide completions completion-pool filter-pool module-exports)
 
 (require racket/list racket/string)
 
@@ -30,18 +33,26 @@
 
 ;;; ================= 补全 =================
 
-;; prefix : string（光标左侧的词）。返回排序后的候选（最多 limit 个）。
-(define (completions prefix
-                     #:modules [mods '()]
-                     #:locals [locals '()]
-                     #:limit [limit 500])
-  (define pool
-    (remove-duplicates
-     (append (append* (for/list ([m (in-list mods)]) (module-exports m)))
-             (map symbol->string (force base-syms))
-             (map symbol->string locals))
-     equal?))
+;; 候选池：基础命名空间 + 各候选模块导出 + 本地定义（去重、未排序）。
+;; 「建池」会调 module->exports / 读本地定义，较贵；一个补全会话只建一次。
+(define (completion-pool #:modules [mods '()] #:locals [locals '()])
+  (remove-duplicates
+   (append (append* (for/list ([m (in-list mods)]) (module-exports m)))
+           (map symbol->string (force base-syms))
+           (map symbol->string locals))
+   equal?))
+
+;; 在已有池里按前缀过滤（排序 + 截断）。每次按键只走这里，够快。
+(define (filter-pool pool prefix #:limit [limit 500])
   (define matches
     (sort (for/list ([s (in-list pool)] #:when (string-prefix? s prefix)) s)
           string<?))
   (if (> (length matches) limit) (take matches limit) matches))
+
+;; prefix : string（光标左侧的词）。返回排序后的候选（最多 limit 个）。
+;; 一次性便捷入口：建池 + 过滤；分多次过滤时用 completion-pool / filter-pool。
+(define (completions prefix
+                     #:modules [mods '()]
+                     #:locals [locals '()]
+                     #:limit [limit 500])
+  (filter-pool (completion-pool #:modules mods #:locals locals) prefix #:limit limit))

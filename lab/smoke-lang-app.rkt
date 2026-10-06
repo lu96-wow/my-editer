@@ -85,3 +85,50 @@
 ;; Enter 关闭
 (send (key-event 'enter no-mods))
 (check-false (app-mode a))
+
+;;; ---------- 自动补全：输入即触发（无需 Tab，且不阻塞输入） ----------
+
+;; 另开一个文件，避免干扰上面的状态。
+(define code2 (build-path root "auto.rkt"))
+(with-output-to-file code2 #:exists 'replace
+  (lambda () (display "#lang racket/base\n(require racket/list)\n(add-\n")))
+(app-open-path! a code2)
+(define vid2 (app-edit-active a))
+(set-app-focus! a vid2)
+(editor-view-set-point! (ed) vid2 (point 2 5))          ; "add-" 之后
+
+;; 打一个字符 → 弹层自动出现（不需要先按 Tab）。
+(send (key-event #\b no-mods))
+(check-not-false (complete? (app-mode a)))
+(check-not-false (member "add-between" (complete-candidates (app-mode a))))
+;; 自动路径不查文档（避免逐字查 xref 卡输入）；显式 Tab 才带文档。
+(check-false (complete-doc (app-mode a)))
+;; 继续打字：字符照常进文档（不阻塞输入），前缀跟着变。
+(send (key-event #\e no-mods))
+(check-true (complete? (app-mode a)))
+(check-not-false (string-contains? (editor-view-string (ed) vid2) "(add-be"))
+
+;; 上下选择不退出弹层。
+(send (key-event 'down no-mods))
+(check-not-false (complete? (app-mode a)))
+(send (key-event 'up no-mods))
+(check-not-false (complete? (app-mode a)))
+
+;; Esc 取消：只关弹层，已输入文本保留。
+(send (key-event 'escape no-mods))
+(check-false (app-mode a))
+(check-not-false (string-contains? (editor-view-string (ed) vid2) "(add-be"))
+
+;; 再次打字重新触发，Enter 接受候选。
+(send (key-event #\t no-mods))
+(check-not-false (complete? (app-mode a)))
+(send (key-event 'enter no-mods))
+(check-false (app-mode a))
+(check-not-false (string-contains? (editor-view-string (ed) vid2) "(add-between"))
+
+;; 普通字符照常插入并关掉弹层（不阻塞输入）。
+(send (key-event #\) no-mods))
+(check-false (app-mode a))
+(check-not-false (string-contains? (editor-view-string (ed) vid2) "(add-between)"))
+;; 渲染整帧不崩
+(check-not-false (screen? (app-render a)))

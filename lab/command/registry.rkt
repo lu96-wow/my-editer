@@ -55,6 +55,9 @@
   (define-values (changes _ok?) (thunk))
   (when (and vid (pair? changes)) (plugin-note-change! a vid changes)))
 
+;; 编辑后刷新补全弹层（自动补全：输入即触发；候选池复用见 core/actions/lang.rkt）。
+(define (complete-refresh! a) (app-complete-refine! a complete-keys))
+
 ;;; ================= 编辑 =================
 
 (define (cmd-insert e a)
@@ -63,22 +66,28 @@
   (cond
     [(not r) (edit! a (lambda () (editor-view-insert! (ed a) (focus a) text)))]
     [(pair? r) (plugin-note-change! a (focus a) r)]     ; 插件已改好，只需同步影子
-    [else (void)]))                                      ; 插手但没改文本（如跳过闭括号）
+    [else (void)])                                      ; 插手但没改文本（如跳过闭括号）
+  (complete-refresh! a))
 
 (define (cmd-paste-text e a)
-  (edit! a (lambda () (editor-view-paste-text! (ed a) (focus a) (event-text e)))))
+  (edit! a (lambda () (editor-view-paste-text! (ed a) (focus a) (event-text e))))
+  (complete-refresh! a))
 
 (define (cmd-insert-string e a s)
-  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s))))
+  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s)))
+  (complete-refresh! a))
 
 (define (cmd-backspace e a)
   (define r (input-plugins-backspace! enabled-input-plugins a))
   (cond
     [(not r) (edit! a (lambda () (editor-view-backspace! (ed a) (focus a))))]
     [(pair? r) (plugin-note-change! a (focus a) r)]
-    [else (void)]))
+    [else (void)])
+  (complete-refresh! a))
 
-(define (cmd-delete e a) (edit! a (lambda () (editor-view-delete! (ed a) (focus a)))))
+(define (cmd-delete e a)
+  (edit! a (lambda () (editor-view-delete! (ed a) (focus a))))
+  (complete-refresh! a))
 
 ;; 方向移动：dir = left/right/up/down/home/end；extend? = #t 时带选扩展（Shift+方向）。
 (define nav-procs
@@ -88,15 +97,25 @@
 
 (define (cmd-nav e a dir extend?)
   (define p (hash-ref nav-procs dir))
-  (p (ed a) (focus a) extend?))
+  (p (ed a) (focus a) extend?)
+  ;; 光标移动不算「输入」：直接关掉弹层（避免弹层停在旧前缀上）。
+  (app-complete-cancel! a))
 
 (define (cmd-select-all e a) (editor-view-select-all! (ed a) (focus a)))
 (define (cmd-copy e a)       (editor-view-copy! (ed a) (focus a)))
-(define (cmd-cut e a)        (edit! a (lambda () (editor-view-cut! (ed a) (focus a)))))
-(define (cmd-paste e a)      (edit! a (lambda () (editor-view-paste! (ed a) (focus a)))))
+(define (cmd-cut e a)
+  (edit! a (lambda () (editor-view-cut! (ed a) (focus a))))
+  (complete-refresh! a))
+(define (cmd-paste e a)
+  (edit! a (lambda () (editor-view-paste! (ed a) (focus a))))
+  (complete-refresh! a))
 ;; undo/redo 只返回 ok?，没有 change → 插件层下个 tick 整篇重发（开 / 重置影子）。
-(define (cmd-undo e a)       (editor-view-undo! (ed a) (focus a)))
-(define (cmd-redo e a)       (editor-view-redo! (ed a) (focus a)))
+(define (cmd-undo e a)
+  (editor-view-undo! (ed a) (focus a))
+  (app-complete-cancel! a))
+(define (cmd-redo e a)
+  (editor-view-redo! (ed a) (focus a))
+  (app-complete-cancel! a))
 
 ;;; ================= 焦点移动 =================
 
@@ -156,14 +175,6 @@
   (define r (app-complete-accept! a))
   (when r (plugin-note-change! a (cadr r) (car r))))
 
-;; 继续打字 / 退格：先当普通编辑，再按新前缀重新过滤。
-(define (cmd-complete-type e a)
-  (cmd-insert e a)
-  (app-complete-refine! a complete-keys))
-(define (cmd-complete-backspace e a)
-  (cmd-backspace e a)
-  (app-complete-refine! a complete-keys))
-
 ;;; ================= 注册 =================
 
 (define-command insert        cmd-insert)
@@ -205,5 +216,3 @@
 (define-command complete-move cmd-complete-move)
 (define-command complete-accept cmd-complete-accept)
 (define-command complete-cancel cmd-complete-cancel)
-(define-command complete-type cmd-complete-type)
-(define-command complete-backspace cmd-complete-backspace)
