@@ -54,4 +54,4 @@
                 (or state (hash))))
 
 (define word-plugin
-  (plugin 'words word-open word-change))
+  (plugin 'words (λ (path text) #t) word-open word-change))

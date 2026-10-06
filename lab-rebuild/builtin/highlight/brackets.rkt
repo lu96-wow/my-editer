@@ -22,4 +22,4 @@
     [else (bracket-open* lines path)]))          ; 一批多个编辑 → 整篇（罕见）
 
 (define bracket-plugin
-  (plugin 'brackets br-open br-change))
+  (plugin 'brackets (λ (path text) #t) br-open br-change))

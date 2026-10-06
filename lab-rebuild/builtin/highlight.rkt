@@ -50,11 +50,11 @@
              #:when (path-table-path (session-paths s) did))
     (list did (path-table-path (session-paths s) did))))
 
-(define (merge-fills all)
-  (append* (for/list ([p (in-list enabled-attr-plugins)])
+(define (merge-fills ps all)
+  (append* (for/list ([p (in-list ps)])
              (hash-ref all (plugin-name p) '()))))
 
-;; 对每个真实文件：token 变了就推进到新版本，再为每个插件取 fills 入队。
+;; 对每个真实文件：token 变了就推进到新版本，再为「该文档适用的插件集」取 fills 入队。
 ;; 有上一版本 + 增量 edits → machine-change!（增量）；否则整篇重开。
 (define (hm-sync! hm ctx)
   (define s (ctx-session ctx))
@@ -71,12 +71,12 @@
         [(and tracked (pair? edits)) (machine-change! (hm-mach hm) did tracked token path edits)]
         [else (machine-open! (hm-mach hm) did token path (document->string doc))])
       (hash-set! (hm-tracked hm) did token)
-      (for ([p (in-list enabled-attr-plugins)])
+      (for ([p (in-list (machine-plugins-for (hm-mach hm) did))])
         (define name (plugin-name p))
         (define fl (machine-job (hm-mach hm) did token name path))
         (set-box! (hm-queue hm) (cons (list did token name (or fl '())) (unbox (hm-queue hm))))))))
 
-;; 抽干队列：版本仍当前才收；该 (did,token) 的所有插件到齐才写回。
+;; 抽干队列：版本仍当前才收；该 (did,token) 的**适用插件**到齐才写回。
 (define (hm-poll! hm ctx)
   (define items (reverse (unbox (hm-queue hm))))
   (set-box! (hm-queue hm) '())
@@ -91,14 +91,16 @@
        (define prev (hash-ref (hm-results hm) key (hash)))
        (define now (hash-set prev name fl))
        (hash-set! (hm-results hm) key now)
-       (if (for/and ([p (in-list enabled-attr-plugins)]) (hash-has-key? now (plugin-name p)))
-           (append effs (list (e-attr-highlight! did (merge-fills now) face-compose)))
+       (define ps (machine-plugins-for (hm-mach hm) did))
+       (if (for/and ([p (in-list ps)]) (hash-has-key? now (plugin-name p)))
+           (append effs (list (e-attr-highlight! did (merge-fills ps now) face-compose)))
            effs)])))
 
 (define (hm-forget! hm did)
   (hash-remove! (hm-tracked hm) did)
   (hash-remove! (hm-pending hm) did)
-  (hash-remove! (hm-results hm) did))
+  (hash-remove! (hm-results hm) did)
+  (machine-close! (hm-mach hm) did))
 
 ;; after-edit：把一次编辑的增记下来（插入文本从新文档读），供下次 sync 增量推进。
 (define (note-change-hook ctx args)

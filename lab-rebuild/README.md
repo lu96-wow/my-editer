@@ -63,7 +63,7 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **前缀层**（`C-p` / `M-m` / `M-s`）+ 窗格交换 / 缩放。
 - **左栏面板**：文件树（tree）+ 文档/视口两级树（buffers）；鼠标命中测试走 resolve。
 - **indent**（覆盖 newline）+ **autopair**（before-insert 钩子）。
-- **属性高亮**：3 个纯插件 + 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
+- **属性高亮**：3 个纯插件（`plugin.applies?` 按文档过滤启用）+ 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
 - **补全菜单**：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出，选中项内嵌 bluebox 文档（异步）。
 - **文档浮窗**：`C-p d`（layer + deco + 异步；bluebox）。
 - **通用异步执行器**：sync / place runner（服务惰性创建）；后端 on-source 唤醒。

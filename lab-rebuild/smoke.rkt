@@ -247,6 +247,22 @@
             "增量同步后高亮仍在")
 (delete-file tmpH)
 
+;;; ================= 属性插件：按文档过滤启用 =================
+(require "builtin/highlight/registry.rkt" "builtin/highlight/api.rkt" "builtin/highlight/machine.rkt")
+(define (names ps) (map plugin-name ps))
+(check-equal? (names (plugins-for enabled-attr-plugins (string->path "/tmp/a.rkt") "(define x 1)"))
+              '(brackets words syntax) ".rkt 启用全部插件")
+(check-equal? (names (plugins-for enabled-attr-plugins (string->path "/tmp/a.txt") "hello"))
+              '(brackets words) ".txt 不启用 syntax（无 applies?）")
+(check-equal? (names (plugins-for enabled-attr-plugins #f "hello"))
+              '(brackets words) "无路径不启用 syntax")
+;; machine 按文档存适用插件集
+(define hmach (make-machine enabled-attr-plugins))
+(machine-open! hmach 1 0 (string->path "/tmp/a.txt") "hello (world)")
+(check-equal? (names (machine-plugins-for hmach 1)) '(brackets words) "machine 按文档过滤")
+(machine-open! hmach 2 0 (string->path "/tmp/a.rkt") "(define x 1)")
+(check-equal? (names (machine-plugins-for hmach 2)) '(brackets words syntax) "machine .rkt 全启用")
+
 ;;; ================= 补全（打字自动弹 + deco 浮层 + layer） =================
 (define ctxC0 (press (press (press (fresh) #\d) #\e) #\f))
 (check-equal? (length (input-instances (session-input (ctx-session ctxC0)))) 1 "打字自动弹补全")
