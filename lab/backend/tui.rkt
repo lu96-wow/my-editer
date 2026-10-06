@@ -6,13 +6,10 @@
          "../../core/view/patch.rkt"
          "../app/app.rkt"
          "../app/render.rkt"
-         "../plugin/seam.rkt"
-         "../plugin/attr/manager.rkt"
-         "../plugin/attr/runner-place.rkt"
-         "../plugin/attr/registry.rkt"
+         "../builtin/edit.rkt"
          "../config/defaults.rkt"
          "../config/theme/main.rkt"
-         "../core/state.rkt")
+         "../platform/state.rkt")
 
 ;;; lab-rebuild/backend/tui.rkt —— racket-tui 后端
 ;;;
@@ -20,6 +17,9 @@
 ;;;
 ;;; 只做两件事：把 screen patch 变成 ANSI 写出去；读事件喂 app-handle-input。
 ;;; 每帧先 app-prepare!（刷 state 槽位 + 取窗格），再增量 patch。
+;;;
+;;; 插件的异步结果源（高亮 / 文档）在 Phase 4 接进来：届时后端只注册统一的
+;;; job source，不再单独认识某个功能。
 
 (provide app-draw! app-run)
 
@@ -28,7 +28,6 @@
 (define (rgb-fg rgb) (if rgb (apply tui:format-rgb-fg-base rgb) #""))
 (define (rgb-bg rgb) (if rgb (apply tui:format-rgb-bg-base rgb) #""))
 
-;; 颜色全在 config/theme 下配置；后端只把主题颜色翻成 ANSI。
 (define (face-colors face) (theme-face-colors (current-theme) face))
 (define (overlay-colors ov) (theme-overlay-colors (current-theme) ov))
 
@@ -49,7 +48,7 @@
   (define w (app-width a))
   (define h (app-height a))
   (define panes (app-prepare! a))           ; 刷新 state 槽位 + 取本帧窗格
-  (define decorations (app-overlay-panes a)) ; 分隔线 + 补全弹层（装饰图层）
+  (define decorations (app-overlay-panes a)) ; 分隔线 + 装饰图层
   (define prev (app-prev a))
   (define fresh? (or (not prev)
                      (not (= (screen-width prev) w))
@@ -73,23 +72,17 @@
 
 ;;; ================= 主循环 =================
 
-(define (app-run root)
+(define (app-run root [open-path #f])
   (tui:with-tui
    (lambda ()
      (define-values (rows cols) (tui:get-window-size))
-     ;; 插件层：后台 place 进程算装饰（括号高亮……），主进程只写回。
-     (define plugins (make-manager enabled-attr-plugins
-                                   (make-place-runner plugin-worker-count)
-                                   #:history-bound plugin-history-bound))
-     (define a (app-init root (or cols 80) (or rows 24) #:plugins plugins))
-     ;; 后台结果到达 → 事件循环醒来（on-source）→ 写回 + 重绘。
-     (define src (app-plugin-source a))
-     (when src
-       (tui:on-source src (lambda (_) (app-plugin-tick! a) (app-draw! a))))
-     ;; 语言服务：后台文档结果到达 → 装回 mode + 重绘。
-     (define lsrc (app-lang-source a))
-     (when lsrc
-       (tui:on-source lsrc (lambda (_) (app-complete-tick! a) (app-draw! a))))
+     (define a (app-init root (or cols 80) (or rows 24) #:background? #t))
+     (when open-path (app-open-path! a open-path))
+     ;; 异步任务结果到达 → 唤醒事件循环：装回 mode + 重绘。
+     (for ([src-proc (in-list (app-job-sources a))])
+       (define src (src-proc))
+       (when src
+         (tui:on-source src (lambda (_) (app-job-tick! a) (app-draw! a)))))
      (dynamic-wind
        void
        (lambda ()
@@ -100,4 +93,4 @@
            (unless (app-quit? a)
              (app-draw! a)
              (loop a))))
-       (lambda () (manager-stop! plugins))))))
+       (lambda () (void))))))

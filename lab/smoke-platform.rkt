@@ -150,7 +150,7 @@
 (check-equal? (string-length (editor-view-string (app-ed a) svid)) (app-main-w a))
 ;; 渲染不崩
 (check-not-false (screen? (app-render a)))
-;; 保存
+;; 保存（C-s）
 (send (key-event 's (mods #t #f #f)))
 (check-true (string-contains? (file->string f) "(define x 1)"))
 ;; 分屏 + 关窗格
@@ -163,6 +163,96 @@
 (check-true (prefix? (app-mode a)))
 (send (key-event 'escape no-mods))
 (check-false (app-mode a))
+
+;;; ---------- 编辑窗格：移动 / 调整大小 ----------
+
+;; 纯树：交换两个 leaf 的 vid（位置不变，只换内容）
+(check-equal? (tree-swap (node 'lr 5 (leaf 1) (leaf 2)) 1 2)
+              (node 'lr 5 (leaf 2) (leaf 1)))
+(check-equal? (tree-swap (node 'lr 5 (leaf 1) (node 'tb #f (leaf 2) (leaf 3))) 1 3)
+              (node 'lr 5 (leaf 3) (node 'tb #f (leaf 2) (leaf 1))))
+
+;; edit-panes：swap / resize
+(define ep2 (edit-panes-empty))
+(void (edit-panes-open! ep2 1))
+(void (edit-panes-split! ep2 'lr 2))
+(edit-panes-swap! ep2 1 2)
+(check-equal? (edit-panes-tree ep2) (node 'lr #f (leaf 2) (leaf 1)))
+(edit-panes-resize! ep2 2 'width 1 (area 0 0 40 10))
+(check-equal? (node-size (edit-panes-tree ep2)) 20)
+
+;; 上下：下格 active 时 down 放大 → 上段高度 4→3，up 缩小 → 3→4
+(define ep3 (edit-panes-empty))
+(void (edit-panes-open! ep3 1))
+(void (edit-panes-split! ep3 'tb 2))
+(check-false (node-size (edit-panes-tree ep3)))
+(edit-panes-resize! ep3 2 'height 1 (area 0 0 40 10))
+(check-equal? (node-size (edit-panes-tree ep3)) 3)
+(edit-panes-resize! ep3 2 'height -1 (area 0 0 40 10))
+(check-equal? (node-size (edit-panes-tree ep3)) 4)
+
+;; app：拆左右两格 → M-m + left 交换；M-s + right 变大
+(define root3 (simplify-path (path->complete-path (make-temporary-file "pl~a" 'directory))))
+(define f3 (build-path root3 "panes.rkt"))
+(with-output-to-file f3 #:exists 'replace (lambda () (display "")))
+(define a3 (app-init root3 80 24))
+(define (send3 e) (app-handle-input a3 e))
+(app-open-path! a3 f3)
+(send3 (key-event 'l (mods #t #f #f)))            ; C-l 左右拆
+(check-equal? (length (edit-panes-vids (app-edit a3))) 2)
+(define rvid (app-edit-active a3))
+(define lvid (for/first ([v (in-list (edit-panes-vids (app-edit a3)))] #:unless (eqv? v rvid)) v))
+;; M-m 前缀 + left → 与左格交换
+(send3 (key-event #\m (mods #f #t #f)))
+(check-true (prefix? (app-mode a3)))
+(send3 (key-event 'left no-mods))
+(check-false (app-mode a3))
+(check-equal? (leaf-vid (node-a (edit-panes-tree (app-edit a3)))) rvid)
+(check-equal? (leaf-vid (node-b (edit-panes-tree (app-edit a3)))) lvid)
+;; active（rvid）现在在 a；M-s + right → size +1（第一次落定具体值，第二次 +1）
+(send3 (key-event #\s (mods #f #t #f)))
+(check-true (prefix? (app-mode a3)))
+(send3 (key-event 'right no-mods))
+(check-false (app-mode a3))
+(define s1 (node-size (edit-panes-tree (app-edit a3))))
+(check-true (positive? s1))
+(send3 (key-event #\s (mods #f #t #f)))
+(send3 (key-event 'right no-mods))
+(check-equal? (node-size (edit-panes-tree (app-edit a3))) (add1 s1))
+
+;; 路径（a）：任意两个编辑窗格直接互换
+(app-swap-panes! a3 rvid lvid)
+(check-equal? (leaf-vid (node-a (edit-panes-tree (app-edit a3)))) lvid)
+(check-equal? (leaf-vid (node-b (edit-panes-tree (app-edit a3)))) rvid)
+(app-swap-panes! a3 rvid lvid)                    ; 换回：rvid 在 a
+(check-equal? (leaf-vid (node-a (edit-panes-tree (app-edit a3)))) rvid)
+
+;; 路径（b）：M-m 前缀 + 点击右格 → 互换
+(define target-rect
+  (for/first ([r (in-list (layout-result-panes (app-layout-result a3)))]
+              #:when (eqv? (rectangle-view-id r) lvid))
+    r))
+(define tx (+ (rectangle-x target-rect) (quotient (rectangle-width target-rect) 2)))
+(define ty (+ (rectangle-y target-rect) (quotient (rectangle-height target-rect) 2)))
+(send3 (key-event #\m (mods #f #t #f)))            ; M-m 前缀
+(check-true (prefix? (app-mode a3)))
+(send3 (mouse-event 'press #f (add1 tx) (add1 ty) no-mods))   ; 1-based 点击
+(check-false (app-mode a3))
+(check-equal? (leaf-vid (node-a (edit-panes-tree (app-edit a3)))) lvid)
+(check-equal? (leaf-vid (node-b (edit-panes-tree (app-edit a3)))) rvid)
+
+;; 只限编辑区：点击左栏不换
+(define left-rect
+  (for/first ([r (in-list (layout-result-panes (app-layout-result a3)))]
+              #:when (eqv? (rectangle-view-id r) (app-left-vid a3)))
+    r))
+(when left-rect
+  (define lx (+ (rectangle-x left-rect) (quotient (rectangle-width left-rect) 2)))
+  (define ly (+ (rectangle-y left-rect) (quotient (rectangle-height left-rect) 2)))
+  (send3 (key-event #\m (mods #f #t #f)))
+  (send3 (mouse-event 'press #f (add1 lx) (add1 ly) no-mods))
+  (check-equal? (leaf-vid (node-a (edit-panes-tree (app-edit a3)))) lvid)
+  (check-equal? (leaf-vid (node-b (edit-panes-tree (app-edit a3)))) rvid))
 
 ;;; ---------- prompt：走 mode 注册表 + dispatch 回落 ----------
 

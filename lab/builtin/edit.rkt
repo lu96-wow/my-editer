@@ -33,6 +33,7 @@
 
 (provide app-open-path! app-close-path! app-close-view! app-close-document!
          app-show-view! app-show-document! app-split! app-pane-close!
+         app-move-pane! app-resize-pane! app-swap-panes! app-move-click! pane-move-prefix?
          app-save! app-save-document! document-modified? app-quit! app-resize! app-insert-typed!
          app-move-focus! app-toggle-sidebar! app-toggle-left!
          app-prefix-begin! app-prefix-end! app-begin!
@@ -231,6 +232,59 @@
     (app-edit-remove! a (list vid))
     (when was-focus? (set-app-focus! a (app-edit-active a)))))
 
+;;; ================= 移动 / 调整编辑窗格 =================
+;;;
+;;; 只作用于编辑区 split 树里的窗格（不碰左栏面板 / 底部槽位）。
+;;;   互换 = 任意两个编辑窗格交换内容（tree-swap）—— 两条路径共用：
+;;;     · 方向键：找到该方向上最近的编辑邻窗格再互换
+;;;     · M-m 前缀 + 鼠标点击：与点到的编辑窗格互换
+;;;   调整 = 沿方向收放：right / down 变大，left / up 变小（tree-resize）
+
+(define (active-edit-vid a)
+  (define f (app-focus a))
+  (if (and f (edit-panes-contains? (app-edit a) f)) f (app-edit-active a)))
+
+;; 当前布局里属于编辑树的窗格矩形（排除左栏 / 底部）。
+(define (edit-pane-rects a)
+  (define vids (edit-panes-vids (app-edit a)))
+  (for/list ([r (in-list (layout-result-panes (app-layout-result a)))]
+             #:when (memv (rectangle-view-id r) vids))
+    r))
+
+;; 两个指定编辑窗格互换；任一不在编辑区 → 不动。
+(define (app-swap-panes! a v1 v2)
+  (define vids (edit-panes-vids (app-edit a)))
+  (when (and v1 v2 (not (eqv? v1 v2)) (memv v1 vids) (memv v2 vids))
+    (edit-panes-swap! (app-edit a) v1 v2)
+    (app-invalidate-layout! a)))
+
+;; 路径（a）：方向键 → 找该方向最近的编辑邻窗格 → 互换。
+(define (app-move-pane! a dir)
+  (define vid (active-edit-vid a))
+  (when vid
+    (define other (pane-dir (edit-pane-rects a) vid dir))
+    (when other (app-swap-panes! a vid other))))
+
+;; 路径（b）：M-m 前缀下点击 → 与点到的编辑窗格互换（屏幕坐标 x/y）。
+(define (app-move-click! a x y)
+  (define vid (active-edit-vid a))
+  (define target (layout-vid-at (app-layout-result a) x y))
+  (when (and vid target (memv target (edit-panes-vids (app-edit a))))
+    (app-swap-panes! a vid target)))
+
+;; 当前模态是不是「移动窗格」前缀（app 的鼠标分支用）。
+(define (pane-move-prefix? m)
+  (and (prefix? m) (eq? (prefix-kind m) 'pane-move)))
+
+(define (app-resize-pane! a dir)
+  (define vid (active-edit-vid a))
+  (when vid
+    (define area (regions-main (layout-result-regions (app-layout-result a))))
+    (define axis (if (memq dir '(left right)) 'width 'height))
+    (define delta (if (memq dir '(right down)) 1 -1))
+    (edit-panes-resize! (app-edit a) vid axis delta area)
+    (app-invalidate-layout! a)))
+
 ;;; ================= 文件 =================
 
 ;; Ctrl+Q：先把所有已打开的用户文档走一遍「要不要保存」，全部处理完再退出；
@@ -278,8 +332,8 @@
 
 ;;; ================= 模态（前缀 / prompt） =================
 
-(define (app-prefix-begin! a label tables)
-  (app-mode-set! a (prefix-begin label tables)))
+(define (app-prefix-begin! a label tables [kind #f])
+  (app-mode-set! a (prefix-begin label tables kind)))
 
 (define (app-prefix-end! a)
   (when (prefix? (app-mode a)) (app-mode-set! a #f)))
@@ -390,7 +444,9 @@
 (define (cmd-split-tb e a) (app-split! a 'tb))
 (define (cmd-split-lr e a) (app-split! a 'lr))
 (define (cmd-pane-close e a) (app-pane-close! a))
-(define (cmd-prefix e a label tables) (app-prefix-begin! a label tables))
+(define (cmd-pane-move e a dir) (app-move-pane! a dir))
+(define (cmd-pane-resize e a dir) (app-resize-pane! a dir))
+(define (cmd-prefix e a label tables [kind #f]) (app-prefix-begin! a label tables kind))
 (define (cmd-toggle-sidebar e a) (app-toggle-sidebar! a))
 (define (cmd-toggle-left e a) (app-toggle-left! a))
 
@@ -428,6 +484,8 @@
 (define-command split-tb      cmd-split-tb)
 (define-command split-lr      cmd-split-lr)
 (define-command pane-close    cmd-pane-close)
+(define-command pane-move     cmd-pane-move)
+(define-command pane-resize   cmd-pane-resize)
 (define-command prefix        cmd-prefix)
 (define-command toggle-sidebar cmd-toggle-sidebar)
 (define-command toggle-left   cmd-toggle-left)

@@ -1,113 +1,123 @@
 #lang racket
 
 (require "../../core/editor.rkt"
-         "../base/input.rkt"
-         "../base/layout/main.rkt"
-         "../ui/tree.rkt"
-         "../ui/buffers.rkt"
-         "../ui/slot.rkt"
-         "../ui/mode.rkt"
-         "../command/table.rkt"
-         "../command/dispatch.rkt"
+         "../platform/input.rkt"
+         "../platform/layout/main.rkt"
+         "../platform/slot.rkt"
+         "../platform/mode.rkt"
+         "../platform/hooks.rkt"
+         "../platform/keymap.rkt"
+         "../platform/dispatch.rkt"
+         "../platform/command.rkt"
+         "../platform/state.rkt"
+         "../platform/panes.rkt"
+         "../platform/panel.rkt"
+         "../platform/edit-panes.rkt"
+         "../platform/paths.rkt"
+         "../platform/package.rkt"
          "../config/defaults.rkt"
          "../config/keys.rkt"
-         "../plugin/attr/manager.rkt"
-         "../plugin/attr/runner.rkt"
-         "../plugin/attr/registry.rkt"
-         "../plugin/seam.rkt"
-         "../core/state.rkt"
-         "../core/panes.rkt"
-         "../core/edit-panes.rkt"
-         "../core/paths.rkt"
-         "../core/actions.rkt"
+         "../config/packages.rkt"
+         "../builtin/edit.rkt"
          "render.rkt")
 
-;;; lab-rebuild/app/app.rkt —— 应用装配 + 事件入口（薄壳）
+;;; lab-rebuild/app/app.rkt —— 应用装配 + 事件入口（平台薄壳）
 ;;;
-;;; 这是**唯一的装配点**：把 core（状态 / 动作）、command（表 / 注册 / 派发）、
-;;; plugin（属性 + 输入 + 接缝）、config（键位 / 默认值 / 主题）、ui、backend 接起来。
+;;; 唯一的装配点：把 core（编辑器引擎）、platform（状态 / 命令 / 派发 / 模态）、
+;;; config（键位 / 默认值 / 包表）、基础编辑包接起来。
 ;;;
-;;; 这里只做三件事：init 接线；handle-input 把事件分派到鼠标 / dispatch；
-;;; 事件后兜底检查模态焦点。业务动作在 core/actions，命令在 command/registry，
-;;; 键表在 config/keys。
+;;; 功能包（文件树 / 列表 / 补全 / 文档 / 高亮 / 自动配对）**不在这里 require**：
+;;; 按 config/packages.rkt 的 package 表 dynamic-require 加载（触发顶层注册），
+;;; 再调各自的 init 导出。要加 / 撤功能只改配置。
+;;; 基础编辑包 builtin/edit.rkt 例外：它提供 app-resize! 等平台动作，直接 require。
 
-(provide app-init app-handle-input
+(provide app-init app-handle-input app-job-tick!
          ;; 从 render.rkt 重导出：调用方只需 require app/app.rkt
-         app-render app-prepare! app-state-refresh! app-bar-panes app-overlay-panes
-         ;; 语言服务：后台文档结果轮询 + 事件源
-         app-complete-tick! app-lang-source)
+         app-render app-prepare! app-state-refresh! app-bar-panes app-overlay-panes)
 
 ;;; ================= 初始化 =================
 
-(define (app-init root width height #:sidebar-width [sw default-sidebar-width]
-                  #:plugins [plugins (make-manager enabled-attr-plugins
-                                                   (make-sync-runner enabled-attr-plugins)
-                                                   #:history-bound plugin-history-bound)])
-  (define tree (file-tree root))
-  (define mw (max 1 (- width sw)))
-  (define ed0 (make-blank-editor))                          ; 不预开 *scratch*，开文件才有内容
-  (define-values (ed1 tdid tvid)
-    (editor-add-document-view ed0 (tree->document tree) sw height "*tree*"))
-  (define bmodel (buffers))
-  (define-values (ed2 bdid bvid)
-    (editor-add-document-view ed1 (buffers->document ed1 bmodel #f #:exclude (list tdid))
-                              sw height "*buffers*"))
-  (define-values (ed3 stdid stvid)
-    (editor-add-document-view ed2 (state->document "") mw 1 "*state*"))
-  (define-values (ed4 indid invid)
-    (editor-add-document-view ed3 (input->document (input "" #t)) mw 1 "*input*"))
-  (define p (panes tvid bvid stvid invid))
-  ;; 输入文档不挂 did 表：模态表由 mode-tables 在 dispatch 时叠上（见 app-dispatch!）。
-  (define cs (command-set-add-doc
-              (command-set-add-doc
-               (command-set-add-doc
-                (command-set (list edit-keys app-keys))
-                tdid tree-keys)
-               bdid bufs-keys)
-              stdid readonly-keys))
-  (define a (app ed4 tree p (edit-panes-empty) bmodel initial-left-panel tvid #f cs
-                 (make-path-table) width height sw #t #f #f #f plugins (make-hash)))
-  (app-plugin-attach! a)                                    ; 关文档 → 清插件状态（core 钩子）
-  (app-bufs-refresh! a)
-  a)
+(define (app-init root width height #:background? [background? #f])
+  ;; 0) 按配置加载功能包（触发顶层注册），并让插件 init 能读到后台开关。
+  ;;    parameterize 内是 app-init 全程，所以后续 init 也在同一开关下。
+  (parameterize ([current-background? background?])
+    (for ([entry (in-list package-catalog)]) (load-package! entry))
+    (define ed0 (make-blank-editor))                        ; 不预开 *scratch*，开文件才有内容
+    ;; 1) 创建所有已注册左栏面板（provider 按注册顺序；后创建的排后面）
+    (define-values (ed-panels panels-rev)
+      (for/fold ([ed ed0] [ps '()]) ([make (in-list (panel-providers))])
+        (define-values (ed2 p) (make (panel-context root ed width height)))
+        (values ed2 (cons p ps))))
+    (define panels (reverse panels-rev))
+    (define sidebar? (pair? panels))
+    (define sw default-sidebar-width)
+    (define mw (max 1 (- width (if sidebar? sw 0))))
+    ;; 2) 底部共享槽位的两份文档
+    (define-values (ed1 stdid stvid)
+      (editor-add-document-view ed-panels (state->document "") mw 1 "*state*"))
+    (define-values (ed2 _indid invid)
+      (editor-add-document-view ed1 (input->document (input "" #t)) mw 1 "*input*"))
+    (define p (panes stvid invid))
+    ;; 3) command-set：global + 每个面板 view 的 per-did 键表
+    (define cs0 (command-set-add-doc (command-set (list edit-keys app-keys)) stdid readonly-keys))
+    (define cs
+      (for/fold ([cs cs0]) ([pn (in-list panels)])
+        (command-set-add-doc cs (editor-view-document-id ed2 (panel-vid pn)) (panel-keys pn))))
+    ;; 4) 左栏默认显示第一个面板，焦点先落在它上面
+    (define left (and sidebar? (panel-name (car panels))))
+    (define left-vid (and sidebar? (panel-vid (car panels))))
+    (define a (app ed2 p (edit-panes-empty) left-vid #f cs (make-path-table)
+                   panels left sw sidebar? width height #f #f #f (make-hash) '()))
+    ;; 5) 装配完成后调各面板 init（注册钩子 / 首次刷新）
+    (for ([pn (in-list panels)])
+      (define init (panel-init pn))
+      (when init (init a)))
+    ;; 6) 各功能包 init（注册钩子 / 异步源 / 插件）
+    (for ([entry (in-list package-catalog)])
+      (define init (package-init-proc entry))
+      (when init (init a)))
+    a))
 
 ;;; ================= 事件入口 =================
 
 (define (app-dispatch! a ev)
   (define m (app-mode a))
   (cond
-    ;; 前缀（如 C-p）：只看它自己的表，不回落 normal。
-    ;; 处理完若还是同一个前缀，就退出；若处理器又进了一个新前缀 / 开了 prompt，就留着（支持嵌套）。
-    [(prefix? m)
-     (dispatch-run-direct (prefix-tables m) ev a)
-     (when (eq? (app-mode a) m) (app-prefix-end! a))]
+    ;; 独占模态（前缀等）：只看它自己的表，不回落 did / global。
+    ;; transient 模态处理完一个事件就退出。
+    [(mode-exclusive? m)
+     (dispatch-run-direct (mode-tables m) ev a)
+     (when (and (eq? (app-mode a) m) (mode-transient? m))
+       (app-mode-set! a #f))]
     [else
-     (dispatch-run (app-cs a) (focused-did a)
-                   (mode-tables m input-edit-keys confirm-keys)
-                   ev a)]))
+     (dispatch-run (app-cs a) (focused-did a) (mode-tables m) ev a)]))
 
 (define (app-handle-input a ev)
+  (define focus0 (app-focus a))
   (cond
     [(or (null-event? ev) (other-event? ev)) (void)]
     [(resize-event? ev) (app-resize! a (resize-event-cols ev) (resize-event-rows ev))]
     [(mouse-event? ev) (app-handle-mouse a ev)]
     [else (app-dispatch! a ev)])
-  ;; 模态：prompt 时焦点一旦离开输入视图 → 取消（前缀不改焦点，不受此影响）。
+  ;; 模态：prompt 时焦点一旦离开输入视图 → 取消。
   (when (and (prompt? (app-mode a))
              (not (eqv? (app-focus a) (app-modal-vid a))))
     (app-cancel! a))
-  ;; 焦点落在某个编辑窗格 → 它就是 active（打开 / 拆分 / 删除都按它来）。
+  ;; 焦点落在某个编辑窗格 → 它就是 active。
   (define f (app-focus a))
   (when (and f (edit-panes-contains? (app-edit a) f))
     (set-edit-panes-active! (app-edit a) f))
-  ;; 插件：为新版本派活 + 收结果写回（同步 runner 在这里就生效）。
-  (app-plugin-tick! a)
-  ;; 语言服务：收后台文档结果（按请求 id + document 版本闸门装回 mode）。
-  (app-complete-tick! a))
+  ;; 焦点变化通知（插件可能要重新取文档上下文）。
+  (unless (eqv? focus0 (app-focus a)) (hook-run! a 'focus-changed (app-focus a)))
+  ;; 异步结果（可能刚到）→ 让功能包装回。
+  (app-job-tick! a)
+  ;; post-command：每个事件派发后统一通知（补全过滤 / 状态刷新等）。
+  (hook-run! a 'post-command))
+
+(define (app-job-tick! a) (hook-run! a 'job-tick))
 
 ;;; ================= 鼠标 =================
 
-;; 鼠标落点 → 视图内坐标 → 落光标。
 (define (app-move-point-to-mouse a rect ev)
   (define vid (rectangle-view-id rect))
   (define-values (line col)
@@ -117,27 +127,31 @@
   (when line (editor-view-set-point! (app-ed a) vid (point line col))))
 
 (define (app-handle-mouse a ev)
-  (when (prefix? (app-mode a))                 ; 前缀中点击 → 先退出前缀
-    (app-prefix-end! a))
-  (define p (pane-at (layout-result-panes (app-layout-result a))
-                     (mouse-col ev) (mouse-row ev)))
+  (define m (app-mode a))
   (cond
-    ;; 输入激活：点输入行 → 定位光标；其它任何**按下** → 取消输入。
-    [(prompt? (app-mode a))
-     (define input-vid (app-modal-vid a))
-     (cond
-       [(and p (eqv? (rectangle-view-id p) input-vid))
-        (when (eq? (mouse-event-action ev) 'press) (app-move-point-to-mouse a p ev))]
-       [(eq? (mouse-event-action ev) 'press) (app-cancel! a)]
-       [else (void)])]
-    ;; 正常模式：按下 / 滚轮 → 聚焦并作用；空闲状态栏不是交互区。
+    ;; M-m 前缀下点击编辑窗格 → 与 active 互换（只限编辑区），然后退出前缀。
+    [(and (pane-move-prefix? m) (eq? (mouse-event-action ev) 'press))
+     (app-prefix-end! a)
+     (app-move-click! a (mouse-col ev) (mouse-row ev))]
     [else
-     (when p
-       (define vid (rectangle-view-id p))
-       (unless (eqv? vid (panes-state (app-panes a)))
-         (set-app-focus! a vid)
-         (case (mouse-event-action ev)
-           [(scroll) (editor-view-scroll! (app-ed a) vid
-                                          (if (eq? (mouse-event-button ev) 'up) -1 1))]
-           [(press)  (app-move-point-to-mouse a p ev)]
-           [else (void)])))]))
+     (when (prefix? m) (app-prefix-end! a))
+     (define p (pane-at (layout-result-panes (app-layout-result a))
+                        (mouse-col ev) (mouse-row ev)))
+     (cond
+       [(prompt? (app-mode a))
+        (define input-vid (app-modal-vid a))
+        (cond
+          [(and p (eqv? (rectangle-view-id p) input-vid))
+           (when (eq? (mouse-event-action ev) 'press) (app-move-point-to-mouse a p ev))]
+          [(eq? (mouse-event-action ev) 'press) (app-cancel! a)]
+          [else (void)])]
+       [else
+        (when p
+          (define vid (rectangle-view-id p))
+          (unless (eqv? vid (panes-state (app-panes a)))
+            (set-app-focus! a vid)
+            (case (mouse-event-action ev)
+              [(scroll) (editor-view-scroll! (app-ed a) vid
+                                             (if (eq? (mouse-event-button ev) 'up) -1 1))]
+              [(press)  (app-move-point-to-mouse a p ev)]
+              [else (void)])))])]))

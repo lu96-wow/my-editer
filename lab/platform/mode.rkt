@@ -75,9 +75,10 @@
   (when k (k)))
 
 ;; 前缀：标签（底部提示用）+ 下一键只查这张表；不挂文档、不动焦点。
-(struct prefix (label tables) #:transparent)
+;; kind 是可选的**用途标签**（如 'pane-move），让 app 层知道这个前缀该不该对鼠标点击做特殊处理。
+(struct prefix (label tables kind) #:transparent)
 
-(define (prefix-begin label tables) (prefix label tables))
+(define (prefix-begin label tables [kind #f]) (prefix label tables kind))
 
 ;;; ================= mode type 注册表 =================
 ;;;

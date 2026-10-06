@@ -1,26 +1,30 @@
 #lang racket
 
-;;; lab-rebuild/smoke-plugin.rkt —— 插件层冒烟
+;;; lab-rebuild/smoke-plugin.rkt —— 属性插件（高亮）+ 输入插件（自动配对）冒烟
 ;;;
-;;; 覆盖：括号纯扫描 / 插件协议 / 版本闸门 / 合并（同步 runner）/ 后台 place runner。
+;;; 验证：括号纯扫描；app 里 before-render 把高亮写回 document；
+;;; 打字触发 auto-pair（插成对 / 跳过闭括号）。
 
 (require rackunit
+         racket/file
+         racket/path
          "../core/editor.rkt"
          "../core/text/base/line.rkt"
-         "base/face.rkt"
-         "base/brackets.rkt"
-         "plugin/attr/api.rkt"
-         "plugin/attr/brackets.rkt"
-         "plugin/attr/words.rkt"
-         "plugin/attr/syntax.rkt"
-         "plugin/attr/manager.rkt"
-         "plugin/attr/runner.rkt"
-         "plugin/attr/runner-place.rkt"
-         "plugin/attr/registry.rkt"
-         "plugin/attr/shadow.rkt"
+         "../core/view/base/screen.rkt"
+         "app/app.rkt"
+         "builtin/edit.rkt"
+         "builtin/highlight/bracket-pair.rkt"
+         "builtin/highlight/lex.rkt"
+         "builtin/highlight/api.rkt"
+         "builtin/highlight/words.rkt"
+         "builtin/indent.rkt"
+         "platform/face.rkt"
+         "platform/state.rkt"
+         "platform/panes.rkt"
+         "platform/input.rkt"
          "config/theme/main.rkt")
 
-;;; ---------- 纯扫描：整对区间上色，内层覆盖外层 ----------
+;;; ---------- 纯括号扫描 ----------
 
 (define (covers? f line col)
   (match-define (list l0 c0 l1 c1 _) f)
@@ -32,239 +36,146 @@
   (for/fold ([acc #f]) ([f (in-list fills)] #:when (covers? f line col))
     (list-ref f 4)))
 
-;; 一格的层（单 face / face-stack）：多个插件写同一格时不去掉谁，而是叠层。
-(define (last-palette v kind)
+(define bf (bracket-fills "(a[b]c)"))
+(check-equal? (palette-color-index (face-at bf 0 0)) 0)
+(check-equal? (palette-color-index (face-at bf 0 2)) 1)
+(check-equal? (palette-color-index (face-at bf 0 4)) 1)   ; ] 在内层
+(check-equal? (palette-color-index (face-at bf 0 5)) 0)   ; c 在外层
+(check-false (face-at (bracket-fills "(]") 0 0))
+
+;;; ---------- Racket 语法：字符串 / 注释里的括号不参与配对 ----------
+
+(define (coords fl) (map (lambda (f) (list (car f) (cadr f) (caddr f) (cadddr f))) fl))
+(define (sorted-coords fl)
+  (sort (coords fl) (lambda (a b) (string<? (format "~s" a) (format "~s" b)))))
+
+;; 字符串里的 [b] 不算（只剩最外层圆括号）
+(let-values ([(_ fl) (bracket-open "(a \"[b]\" c)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 0 11))))
+(let-values ([(_ fl) (bracket-open "(a \"[b]\" c)" "x.txt")])
+  (check-equal? (length fl) 2))                 ; 非 Racket 文件：照常配对
+
+;; 行注释 ; 到行尾
+(let-values ([(_ fl) (bracket-open "(a ; )\n b)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 1 3))))
+;; 块注释 #| … |#
+(let-values ([(_ fl) (bracket-open "(a #| ) |# b)" "x.rkt")])
+  (check-equal? (coords fl) '((0 0 0 13))))
+
+;; 增量（行内编辑）与全量一致
+(let* ([t0 "(a \"[\" ; )\n c)"]
+       [st (let-values ([(st _) (bracket-open t0 "x.rkt")]) st)]
+       [t1 "(ax \"[\" ; )\n c)"]
+       [lines1 (list->vector (string->lines t1))])
+  (define-values (_st2 inc) (bracket-change st (list 0 1 0 1 "x") lines1 "x.rkt"))
+  (define-values (_st3 full) (bracket-open t1 "x.rkt"))
+  (check-equal? (sorted-coords inc) (sorted-coords full)))
+
+;; 输入 " 打开字符串 → 后面的 ) 不再配对（增量 = 全量）
+(let* ([t0 "(a b)"]
+       [st (let-values ([(st _) (bracket-open t0 "x.rkt")]) st)]
+       [t1 "(\"a b)"]
+       [lines1 (list->vector (string->lines t1))])
+  (define-values (_st2 inc) (bracket-change st (list 0 1 0 1 "\"") lines1 "x.rkt"))
+  (define-values (_st3 full) (bracket-open t1 "x.rkt"))
+  (check-equal? (coords inc) '())
+  (check-equal? (sorted-coords inc) (sorted-coords full)))
+
+;;; ---------- 词法：Unicode 字母（中文等 CJK）也能成词 ----------
+
+(check-equal? (map (lambda (t) (list-ref t 3)) (scan-words "你好 世界 abc 变量2"))
+              '("你好" "世界" "abc" "变量2"))
+(let-values ([(_ fl) ((plugin-open word-plugin) "你好 世界 你好" "/w.txt")])
+  (check-equal? (length fl) 3)
+  (check-equal? (list-ref (car fl) 4) (palette-color 'word 0))       ; 你好
+  (check-equal? (list-ref (cadr fl) 4) (palette-color 'word 1))      ; 世界
+  (check-equal? (list-ref (caddr fl) 4) (palette-color 'word 0)))    ; 你好（同词同色）
+
+;;; ---------- app：属性插件写回高亮 ----------
+
+(define root (simplify-path (path->complete-path (make-temporary-file "pl~a" 'directory))))
+(define f (build-path root "code.rkt"))
+(with-output-to-file f #:exists 'replace
+  (lambda () (display "#lang racket\n(define (a b) a)\n")))
+
+(define a (app-init root 100 30))
+(define (send e) (app-handle-input a e))
+(define (ed) (app-ed a))
+(app-open-path! a f)
+(define vid (app-focus a))
+(define did (editor-view-document-id (ed) vid))
+
+;; app-render 内部走 before-render → 插件同步 + 写回
+(void (app-render a))
+
+(define (palette-of v kind)
+  ;; 括号区间会叠层（外层 + 内层），取最内层（last），与 core 写回一致。
   (for/last ([l (in-list (face-layers v))]
-             #:when (and (palette-color? l) (eq? (palette-color-kind l) kind)))
-    l))
-(define (bracket-index v) (palette-color-index (last-palette v 'bracket)))
-(define (word-index v) (palette-color-index (last-palette v 'word)))
-(define (has-face? v f) (for/or ([l (in-list (face-layers v))]) (equal? l f)))
+             #:when (and (palette-color? l) (eq? (palette-color-kind l) kind))) l))
 
-(define bf (bracket-fills "(a[b]c)\n((x))\n"))
-(check-equal? (palette-color-index (face-at bf 0 0)) 0)        ; (
-(check-equal? (palette-color-index (face-at bf 0 1)) 0)        ; a 在 (…) 内
-(check-equal? (palette-color-index (face-at bf 0 2)) 1)        ; [
-(check-equal? (palette-color-index (face-at bf 0 3)) 1)        ; b 在 […] 内
-(check-equal? (palette-color-index (face-at bf 0 5)) 0)        ; c 在 (…) 内
-(check-equal? (palette-color-index (face-at bf 1 2)) 1)        ; x 在内层
-(check-equal? (palette-color-index (face-at bf 1 4)) 0)        ; ) 外层
-(check-false (face-at (bracket-fills "(a[b])z") 0 6))      ; 括号外不上色
-(check-false (face-at (bracket-fills "(]") 0 0))           ; 未配对不产生区间
-(check-equal? (length (bracket-fills "no brackets")) 0)
+;; define 的 d 上：既有括号背景，也有关键字前景（叠层）
+(define hl (editor-document-highlight-at (ed) did 1 1))
+(check-not-false (palette-of hl 'keyword))
+(check-equal? (palette-color-index (palette-of hl 'bracket)) 0)
+;; 内层 ( 起始：括号深度 1
+(check-equal? (palette-color-index
+               (palette-of (editor-document-highlight-at (ed) did 1 8) 'bracket))
+              1)
 
-;;; ---------- 主题：动态 face 取模取背景色 ----------
+;;; ---------- 输入插件：自动配对 ----------
 
-(check-equal? (call-with-values (lambda () (theme-face-colors (current-theme) (palette-color 'bracket 0))) list)
-              '(#f (70 56 90)))
-(check-equal? (call-with-values (lambda () (theme-face-colors (current-theme) (palette-color 'bracket 4))) list)
-              '(#f (70 56 90)))                      ; 深度 4 回到色板第 0 个
-(check-equal? (call-with-values (lambda () (theme-face-colors light-theme (palette-color 'bracket 1))) list)
-              '(#f (214 238 230)))
+(define f2 (build-path root "pair.txt"))
+(with-output-to-file f2 #:exists 'replace (lambda () (void)))
+(app-open-path! a f2)
+(define vid2 (app-focus a))
 
-;;; ---------- 影子文本：增量 splice ----------
+(send (key-event #\( no-mods))
+(check-equal? (editor-view-string (ed) vid2) "()")
+(check-equal? (editor-view-point-column (ed) vid2) 1)      ; 光标在中间
+(send (key-event #\) no-mods))                              ; 右边已是 ) → 跳过
+(check-equal? (editor-view-string (ed) vid2) "()")
+(check-equal? (editor-view-point-column (ed) vid2) 2)
+(send (key-event #\[ no-mods))
+(check-equal? (editor-view-string (ed) vid2) "()[]")
 
-(check-equal? (shadow-text (shadow-open "a\nb\n")) "a\nb\n")     ; 保留行尾空行
-(check-equal? (shadow-text (shadow-open "")) "")
-(check-equal? (shadow-text (shadow-apply (shadow-open "ab\ncd\nef") (list (list 0 1 1 1 "X"))))
-              "aXd\nef")                                            ; 跨行 replace
-(check-equal? (shadow-text (shadow-apply (shadow-open "abc") (list (list 0 1 0 2 ""))))
-              "ac")                                                 ; 行内删除
-(check-equal? (shadow-text (shadow-apply (shadow-open "ab") (list (list 0 1 0 1 "\n"))))
-              "a\nb")                                               ; 插入换行
-(check-equal? (shadow-text (shadow-apply (shadow-open "a\nb") (list (list 0 1 1 0 ""))))
-              "ab")                                                 ; 删换行合并行
+;; 渲染不崩
+(check-not-false (screen? (app-render a)))
 
-;;; ---------- manager + 同步 runner ----------
+;;; ---------- 后台 place runner（#:background? #t） ----------
 
-(define ed (make-blank-editor))
-(define-values (ed1 did vid) (editor-add-document-view ed "(a[b])" 40 10 "t.txt"))
-;; 只跑括号插件：本段验证的是版本闸门 / 增量，不受词 / 关键字插件干扰。
-(define m (make-manager (list bracket-plugin) (make-sync-runner plugin-catalog)))
+(define a2 (app-init root 100 30 #:background? #t))
+(app-open-path! a2 f)
+(define vid3 (app-focus a2))
+(define did3 (editor-view-document-id (app-ed a2) vid3))
 
-(manager-sync! m ed1 (list (list did "/t.txt")))
-(check-not-false (member did (manager-poll! m ed1)))
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 0)) 0)
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 2)) 1)
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 1)) 0)
-(check-false (editor-document-highlight-at ed1 did 0 6))    ; 越界 → 无
-
-;; 同版本不重复派活
-(check-equal? (manager-poll! m ed1) '())
-(check-equal? (manager-poll! m ed1) '())
-
-;; 版本闸门：派活后、poll 前文本又变 → 旧结果被丢，不写回
-(editor-view-insert! ed1 vid "x")                           ; → "x(a[b])"（新 doc 值）
-(manager-sync! m ed1 (list (list did "/t.txt")))            ; 为 D1 派活（同步算完入队）
-(editor-view-insert! ed1 vid "y")                           ; → "xy(a[b])"（D2）
-(check-equal? (manager-poll! m ed1) '())                    ; D1 结果过期 → 丢
-(manager-sync! m ed1 (list (list did "/t.txt")))            ; 为 D2 派活
-(check-not-false (member did (manager-poll! m ed1)))
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 2)) 0)  ; (
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 4)) 1)  ; [
-(check-false (editor-document-highlight-at ed1 did 0 0))                     ; x 在括号外
-
-;; forget：不再写回（文档列表里已无该 did）
-(manager-forget! m did)
-(check-equal? (manager-poll! m ed1) '())
-
-;; 增量路径：编辑命令记下 change → sync 发 change!（而不是整篇 open）
-(define ed2 (make-blank-editor))
-(define-values (ed2* did2 vid2) (editor-add-document-view ed2 "(a)" 40 10 "i.txt"))
-(define m3 (make-manager (list bracket-plugin) (make-sync-runner plugin-catalog)))
-(manager-sync! m3 ed2* (list (list did2 "/i.txt")))
-(check-not-false (member did2 (manager-poll! m3 ed2*)))
-(check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 1)) 0)
-(define-values (chs2 _ok2) (editor-view-insert! ed2* vid2 "b"))    ; → "b(a)"
-(manager-note-change! m3 did2
-  (for/list ([ch (in-list chs2)])
-    (define b (change-before ch))
-    (list (point-line (range-start b)) (point-column (range-start b))
-          (point-line (range-end b)) (point-column (range-end b))
-          (editor-view-change-text ed2* vid2 ch))))
-(manager-sync! m3 ed2* (list (list did2 "/i.txt")))
-(check-not-false (member did2 (manager-poll! m3 ed2*)))
-(check-false (editor-document-highlight-at ed2* did2 0 0))          ; b 在括号外
-(check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 1)) 0)  ; (
-(check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 2)) 0)  ; a
-
-;; undo：属性已在恢复出的 document 里 → 影子在、结果在 → 不重发、不重算
-(editor-view-undo! ed2* vid2)                                       ; "b(a)" → "(a)"
-(manager-sync! m3 ed2* (list (list did2 "/i.txt")))
-(check-equal? (manager-poll! m3 ed2*) '())                          ; 没派活
-(check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 1)) 0)  ; 恢复的旧属性
-;; redo 也一样
-(editor-view-redo! ed2* vid2)
-(manager-sync! m3 ed2* (list (list did2 "/i.txt")))
-(check-equal? (manager-poll! m3 ed2*) '())
-(check-equal? (bracket-index (editor-document-highlight-at ed2* did2 0 1)) 0)
-
-;;; ---------- 两个语法插件：词着色 + Racket 关键字（覆盖顺序 = registry 顺序）----------
-
-(define ed4 (make-blank-editor))
-(define-values (ed4* did4 vid4)
-  (editor-add-document-view ed4 "(define (a b) a)" 40 10 "k.rkt"))
-(define m4 (make-manager plugin-catalog (make-sync-runner plugin-catalog)))
-(manager-sync! m4 ed4* (list (list did4 "/k.rkt")))
-(check-not-false (member did4 (manager-poll! m4 ed4*)))
-(define (face4 line col) (editor-document-highlight-at ed4* did4 line col))
-;; 列：0( 1-6define 7空格 8( 9a 10空格 11b 12) 13空格 14a 15)
-;; define 是关键字：同一格既有括号背景，又有语法前景（叠层，不再互相覆盖）
-(check-not-false (last-palette (face4 0 1) 'keyword))       ; 关键字前景层
-(check-equal? (bracket-index (face4 0 1)) 0)            ; 背景层仍在（括号深度）
-(check-not-false (last-palette (face4 0 9) 'word))      ; a → 词色前景
-(check-not-false (last-palette (face4 0 11) 'word))     ; b → 词色前景
-(check-equal? (last-palette (face4 0 9) 'word)          ; 同一个词 a → 同一个颜色
-              (last-palette (face4 0 14) 'word))
-(check-equal? (bracket-index (face4 0 0)) 0)            ; ( 仍是括号背景
-(check-equal? (bracket-index (face4 0 8)) 1)            ; 内层 ( 的背景深度 1
-
-;; 主题逐分量合并：前景取关键字层，背景取括号层
-(check-equal? (call-with-values
-               (lambda ()
-                 (theme-face-colors (current-theme)
-                                    (face-stack (list (palette-color 'bracket 0)
-                                                      (palette-color 'keyword 0)))))
-               list)
-              '((230 160 90) (70 56 90)))
-
-;; 词色 = 持久表：首次出现顺次取号（同词同色、相邻词不同色）
-(define (word-faces text)
-  (let-values ([(_ fl) ((plugin-open word-plugin) text "/w.rkt")]) fl))
-(define (word-change-faces text edits [state #f])
-  (let-values ([(_ fl) ((plugin-change word-plugin) state edits
-                        (list->vector (string->lines text)) "/w.rkt")]) fl))
-(define (fill-idx f) (palette-color-index (list-ref f 4)))
-(define (indices fl) (map fill-idx fl))
-
-(check-equal? (indices (word-faces "x y z")) '(0 1 2))              ; 首见顺序取号
-(check-equal? (indices (word-faces "x y x")) '(0 1 0))              ; 同词同色
-(check-equal? (indices (word-faces "apple banana")) '(0 1))      ; 不同词不同色（同篇内）
-
-;; 持久表：在词前插入新词，旧词颜色不变（新词拿新号）
-(define wst (let-values ([(s _) ((plugin-open word-plugin) "x y" "/w.rkt")]) s))
-(check-equal? (indices (word-change-faces "z x y" (list (list 0 0 0 0 "z ")) wst))
-              '(2 0 1))                                               ; z 新号，x/y 不变
-
-;; 输入中：活动词（光标所在词）跳过 → 本次没有它的 fill，也不占号
-(check-equal? (word-change-faces "add" (list (list 0 2 0 2 "d"))) '())
-(check-equal? (word-change-faces "adding" (list (list 0 5 0 5 "n"))) '())
-;; 其它词不受影响：xfoo 是活动词，bar 照常表色（从空表取号 0）
-(check-equal? (word-change-faces "xfoo bar" (list (list 0 0 0 0 "x")))
-              (list (list 0 5 0 8 (palette-color 'word 0))))
-;; 敲下分隔符（活动词定下来）→ 整词上色
-(check-equal? (indices (word-change-faces "add " (list (list 0 3 0 3 " ")))) '(0))
-
-;; 每个关键字固定颜色：按 keyword-list 位置取号，不同关键字不同色号
-(define (syntax-faces text)
-  (let-values ([(_ fl) ((plugin-open syntax-plugin) text "/k.rkt")]) fl))
-(define sf (syntax-faces "define let if"))
-(check-equal? (length sf) 3)
-(define sf-idx (map (lambda (f) (palette-color-index (list-ref f 4))) sf))
-(check-not-equal? (list-ref sf-idx 0) (list-ref sf-idx 1))
-(check-not-equal? (list-ref sf-idx 1) (list-ref sf-idx 2))
-(check-not-equal? (list-ref sf-idx 0) (list-ref sf-idx 2))
-
-;; 输入中：正在打的词即使是关键字也先不上色（否则 for→format 会闪）
-(define (syntax-change-faces text edits)
-  (let-values ([(_ fl) ((plugin-change syntax-plugin) #f edits
-                        (list->vector (string->lines text)) "/k.rkt")]) fl))
-(check-equal? (syntax-change-faces "for" (list (list 0 2 0 2 "r"))) '())
-(check-equal? (syntax-change-faces "define" (list (list 0 5 0 5 "e"))) '())
-(check-equal? (length (syntax-change-faces "for " (list (list 0 3 0 3 " ")))) 1)
-;; 非 .rkt 文件：关键字插件不生效，define 仍是词色
-(define ed5 (make-blank-editor))
-(define-values (ed5* did5 vid5)
-  (editor-add-document-view ed5 "(define (a b) a)" 40 10 "k.txt"))
-(define m5 (make-manager plugin-catalog (make-sync-runner plugin-catalog)))
-(manager-sync! m5 ed5* (list (list did5 "/k.txt")))
-(check-not-false (member did5 (manager-poll! m5 ed5*)))
-(check-not-false (last-palette (editor-document-highlight-at ed5* did5 0 1) 'word))
-
-;;; ---------- 回归：异步 runner 分插件回结果时，不能先写“半套”颜色 ----------
-;;; 关键字应直接是关键字色；若先只拿到词插件结果就写回，会先显示词色再被关键字色覆盖（紫↔橙跳）。
-
-(define (make-staged-runner)                 ; 同步 runner，但每次 poll 只放一条结果
-  (define inner (make-sync-runner plugin-catalog))
-  (define pending '())
-  (make-runner
-   (lambda (did token path text) (runner-open! inner did token path text))
-   (lambda (did from to path edits) (runner-change! inner did from to path edits))
-   (lambda (did token) (runner-drop! inner did token))
-   (lambda (did) (runner-close! inner did))
-   (lambda (tag name did token path) (runner-submit! inner tag name did token path))
-   (lambda ()
-     (when (null? pending) (set! pending (runner-poll! inner)))
-     (cond [(null? pending) '()]
-           [else (define one (car pending)) (set! pending (cdr pending)) (list one)]))
-   (lambda () (runner-source inner))
-   (lambda () (runner-stop! inner))))
-
-(define edA (make-blank-editor))
-(define-values (edA* didA vidA) (editor-add-document-view edA "define foo" 40 10 "a.rkt"))
-(define mA (make-manager plugin-catalog (make-staged-runner)))
-(manager-sync! mA edA* (list (list didA "/a.rkt")))
-(manager-poll! mA edA*)                                        ; bracket 结果到（无括号）
-(check-false (editor-document-highlight-at edA* didA 0 1))
-(manager-poll! mA edA*)                                        ; words 到，syntax 未到 → 不能写回
-(check-false (editor-document-highlight-at edA* didA 0 1))
-(manager-poll! mA edA*)                                        ; syntax 到 → 全齐 → 写回
-(check-not-false (last-palette (editor-document-highlight-at edA* didA 0 1) 'keyword))
-
-;;; ---------- 后台 place runner（真·独立进程） ----------
-
-(define m2 (make-manager (list bracket-plugin) (make-place-runner 1)))
-(manager-sync! m2 ed1 (list (list did "/t.txt")))
-(define (wait-applied! n)
+(define (wait-hl! n)
   (cond
     [(zero? n) #f]
     [else
-     (manager-poll! m2 ed1)
-     (if (last-palette (editor-document-highlight-at ed1 did 0 2) 'bracket)
+     (app-prepare! a2)                                  ; before-render → sync + poll
+     (define v (editor-document-highlight-at (app-ed a2) did3 1 1))
+     (if (and v (palette-of v 'keyword))
          #t
-         (begin (sleep 0.05) (wait-applied! (sub1 n))))]))
-(check-true (wait-applied! 200))                            ; ≤10s
-(check-equal? (bracket-index (editor-document-highlight-at ed1 did 0 4)) 1)
-(manager-stop! m2)
+         (begin (sleep 0.05) (wait-hl! (sub1 n))))]))
 
-(displayln "lab smoke-plugin: ok")
+(check-true (wait-hl! 200))                             ; ≤10s 内高亮写回
+(check-equal? (palette-color-index
+               (palette-of (editor-document-highlight-at (app-ed a2) did3 1 8) 'bracket))
+              1)
+
+;;; ---------- 换行语法缩进 ----------
+
+(check-equal? (indent-for "(define (f x)" 0 13) 2)
+(check-equal? (indent-for "(define x 1)" 0 12) 0)
+(check-equal? (indent-for "(let ([x 1])" 0 12) 2)
+(check-equal? (indent-for "\"(\" x" 0 5) 0)           ; 字符串里的 ( 不算
+
+(define f3 (build-path root "indent.rkt"))
+(with-output-to-file f3 #:exists 'replace (lambda () (display "(define (f x)")))
+(app-open-path! a f3)
+(define vid4 (app-focus a))
+(editor-view-set-point! (ed) vid4 (point 0 13))
+(send (key-event 'enter no-mods))
+(check-equal? (editor-view-string (ed) vid4) "(define (f x)\n  ")
+
+(displayln "plugin smoke: ok")

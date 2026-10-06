@@ -28,7 +28,7 @@
          (struct-out bar)
          (struct-out size-warning)
          tree? tree-vids tree-contains?
-         tree-split tree-remove tree-replace tree-resize tree->rectangles
+         tree-split tree-swap tree-remove tree-replace tree-resize tree->rectangles
          min-pane-width min-pane-height split-gap)
 
 (define min-pane-width 4)
@@ -95,6 +95,17 @@
     [else (struct-copy node t
                        [a (tree-replace (node-a t) vid new-vid)]
                        [b (tree-replace (node-b t) vid new-vid)])]))
+
+;; 交换 v1 / v2 两个 leaf 的 vid（位置不变，只换内容）——“移动窗格”的底层。
+;; 单趟同时改，避免先换成对方再被第二次匹配的环。
+(define (tree-swap t v1 v2)
+  (cond
+    [(leaf? t) (cond [(eqv? (leaf-vid t) v1) (leaf v2)]
+                     [(eqv? (leaf-vid t) v2) (leaf v1)]
+                     [else t])]
+    [else (struct-copy node t
+                       [a (tree-swap (node-a t) v1 v2)]
+                       [b (tree-swap (node-b t) v1 v2)])]))
 
 ;; 删掉 vid 那个 leaf。→ 新树 / #f（空，即删的是最后一个）。
 (define (tree-remove t vid)

@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../../base/face.rkt")
+(require "../../platform/face.rkt")
 
 ;;; lab-rebuild/config/theme/theme.rkt —— 主题机制（纯）
 ;;;
