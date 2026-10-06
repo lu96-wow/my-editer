@@ -9,7 +9,7 @@
 ;;; 逐个 `read`。遇到读不了的（非 s-表达式语言 / 语法错误）就停在出错处，返回已有结果。
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
-(provide source-lang source-requires source-definitions)
+(provide source-lang source-requires source-definitions require-context?)
 
 (require racket/list racket/path racket/string)
 
@@ -112,3 +112,67 @@
   (remove-duplicates
    (append* (for/list ([f (in-list (read-forms text))]) (def-names f)))
    eq?))
+
+;;; ================= require 补全的上下文判定 =================
+
+;; 光标前的文本（line/col 为 0-based）。
+(define (text-before text line col)
+  (define lines (string-split text "\n"))
+  (define n (length lines))
+  (string-append
+   (string-join (take lines (min line n)) "\n")
+   (if (positive? line) "\n" "")
+   (let ([l (if (< line n) (list-ref lines line) "")])
+     (substring l 0 (min (max 0 col) (string-length l))))))
+
+;; 最近一个未闭合 '(' 的下标；跳过字符串 / ';' 行注释 / '#|…|#' 块注释。
+(define (last-open-paren s)
+  (define n (string-length s))
+  (let loop ([i 0] [stack '()] [str? #f] [esc? #f] [line? #f] [blk 0])
+    (cond
+      [(>= i n) (and (pair? stack) (car stack))]
+      [else
+       (define c (string-ref s i))
+       (cond
+         [line? (loop (add1 i) stack #f #f (not (char=? c #\newline)) blk)]
+         [(> blk 0)
+          (cond [(and (char=? c #\#) (< (add1 i) n) (char=? (string-ref s (add1 i)) #\|))
+                 (loop (+ i 2) stack #f #f #f (add1 blk))]
+                [(and (char=? c #\|) (< (add1 i) n) (char=? (string-ref s (add1 i)) #\#))
+                 (loop (+ i 2) stack #f #f #f (sub1 blk))]
+                [else (loop (add1 i) stack #f #f #f blk)])]
+         [str? (cond [esc? (loop (add1 i) stack #t #f #f blk)]
+                     [(char=? c #\\) (loop (add1 i) stack #t #t #f blk)]
+                     [(char=? c #\") (loop (add1 i) stack #f #f #f blk)]
+                     [else (loop (add1 i) stack #t #f #f blk)])]
+         [(char=? c #\") (loop (add1 i) stack #t #f #f blk)]
+         [(char=? c #\;) (loop (add1 i) stack #f #f #t blk)]
+         [(and (char=? c #\#) (< (add1 i) n) (char=? (string-ref s (add1 i)) #\|))
+          (loop (+ i 2) stack #f #f #f 1)]
+         [(memv c '(#\( #\[ #\{)) (loop (add1 i) (cons i stack) #f #f #f blk)]
+         [(memv c '(#\) #\] #\})) (loop (add1 i) (if (pair? stack) (cdr stack) '()) #f #f #f blk)]
+         [else (loop (add1 i) stack #f #f #f blk)])])))
+
+(define (tokens s)
+  (for/list ([t (in-list (string-split s #px"[\\s()\\[\\]{}]+"))]
+             #:unless (string=? t ""))
+    t))
+
+;; require 的模块路径位置（直接子表单 / 包装器的模块参数）。
+(define module-heads '(require for-syntax for-template for-label for-meta combine-in))
+(define first-arg-heads '(only-in except-in rename-in prefix-in prefix-rename-in submod))
+
+;; 光标是否处于 require 的模块路径位置。
+(define (require-context? text line col)
+  (define before (text-before text line col))
+  (define open (last-open-paren before))
+  (and open
+       (let* ([inside (substring before (add1 open))]
+              [toks (tokens inside)])
+         (and (pair? toks)
+              (let ([head (string->symbol (car toks))]
+                    [rest (cdr toks)])
+                (cond
+                  [(memq head module-heads) #t]
+                  [(memq head first-arg-heads) (<= (length rest) 1)]
+                  [else #f]))))))

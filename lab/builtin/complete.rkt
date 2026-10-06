@@ -21,9 +21,10 @@
          "../kernel/table.rkt"
          "../kernel/binding.rkt"
          "../kernel/overlay.rkt"
-         "../kernel/paths.rkt"
          "../kernel/wrap.rkt"
          "lang/ident.rkt" "lang/source.rkt" "lang/complete.rkt" "lang/docs.rkt" "lang/file-kind.rkt"
+         "lang/module-index.rkt"
+         "doc-scope.rkt"
          "doc-job.rkt")
 
 (provide register-complete! (struct-out cs))
@@ -67,31 +68,40 @@
                                                   [pending #f])))]
        [else '()])]))
 
-;; 新菜单状态：候选 + 选中候选的异步文档。
+;; 新菜单状态：候选 + 选中候选的异步文档（模块路径补全 mods = #f → 不查文档）。
+;; 第二个返回值是 effect 列表（可为空）。
 (define (make-cs ctx vid mods pool cands idx start)
-  (define req-id (doc-request! ctx (list-ref cands idx) mods))
-  (values (cs cands idx start vid mods pool #f req-id)
-          (doc-await ctx vid req-id (install-doc req-id))))
+  (cond
+    [mods
+     (define req-id (doc-request! ctx (list-ref cands idx) mods))
+     (values (cs cands idx start vid mods pool #f req-id)
+             (list (doc-await ctx vid req-id (install-doc req-id))))]
+    [else
+     (values (cs cands idx start vid mods pool #f #f) '())]))
 
 ;;; ================= 命令 =================
 
-;; 补全只在「编辑视图 + Racket 文件」上启用（无路径的 scratch 允许）。
+;; 补全只在「编辑视图 + 该文档适用」上启用（适用范围由 doc-scope 声明：当前 = Racket）。
 ;; 非 .rkt（如 a.c）不弹菜单、不 auto-pop，也不响应 C-n。
 (define (completable-view? ctx vid)
   (and vid
        (frame-contains? (session-frame (ctx-session ctx)) vid)
-       (let* ([s (ctx-session ctx)]
-              [did (editor-view-document-id (session-editor s) vid)]
-              [path (path-table-path (session-paths s) did)])
-         (or (not path) (racket-file? path)))))
+       (doc-applies? ctx 'complete)))
 
 ;; 现算模块 / 池 / 前缀 / 候选（新建会话用）。→ (values mods pool prefix cands)
+;; require 位置 → 模块路径补全（mods = #f：不做文档查询）。
 (define (fresh-candidates ctx vid text p)
-  (define mods (view-modules ctx vid))
-  (define pool (completion-pool #:modules mods #:locals (source-definitions text)))
   (define prefix (prefix-at text (point-line p) (point-column p)))
-  (values mods pool prefix
-          (and (positive? (string-length prefix)) (filter-pool pool prefix))))
+  (cond
+    [(require-context? text (point-line p) (point-column p))
+     (define pool (force module-paths))
+     (values #f pool prefix
+             (and (positive? (string-length prefix)) (filter-pool pool prefix)))]
+    [else
+     (define mods (view-modules ctx vid))
+     (define pool (completion-pool #:modules mods #:locals (source-definitions text)))
+     (values mods pool prefix
+             (and (positive? (string-length prefix)) (filter-pool pool prefix)))]))
 
 (define (prefix-start p prefix)
   (point (point-line p) (max 0 (- (point-column p) (string-length prefix)))))
@@ -99,9 +109,8 @@
 ;; 用候选建菜单；push? = 新建会话（入栈），否则刷新（set）。
 (define (menu-effects ctx vid mods pool cands p prefix push?)
   (define-values (st await) (make-cs ctx vid mods pool cands 0 (prefix-start p prefix)))
-  (if push?
-      (list (e-input-push 'complete st) await)
-      (list (e-input-set 'complete st) await)))
+  (append (list (if push? (e-input-push 'complete st) (e-input-set 'complete st)))
+          await))
 
 (define (cmd-complete ctx ev)
   (define s (ctx-session ctx))
@@ -133,7 +142,7 @@
         (define i (modulo (+ (cs-idx st) delta) n))
         (define-values (st* await)
           (make-cs ctx (cs-vid st) (cs-mods st) (cs-pool st) (cs-cands st) i (cs-start st)))
-        (list (e-input-set 'complete st*) await)])]))
+        (append (list (e-input-set 'complete st*)) await)])]))
 
 (define (cmd-complete-accept ctx ev)
   (define s (ctx-session ctx))
@@ -244,7 +253,8 @@
 (define (register-complete! r)
   (for/fold ([r (register-doc-job! r)])
             ([c (in-list
-                 (list (contrib 'deco 'complete 0 (deco 'complete complete-panes))
+                 (list (contrib 'doc-scope 'complete 0 (doc-scope racket-buffer?))
+                       (contrib 'deco 'complete 0 (deco 'complete complete-panes))
                        (contrib 'layer-spec 'complete 0 complete-layer)
                        (contrib 'binding 'complete 0 (keybinding 'edit (key 'n 'ctrl) 'complete))
                        (contrib 'command 'complete 0 cmd-complete)

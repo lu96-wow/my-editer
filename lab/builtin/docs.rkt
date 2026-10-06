@@ -3,7 +3,7 @@
 ;;; lab-rebuild/builtin/docs.rkt —— 文档浮窗（layer + deco + 异步）。
 ;;;
 ;;; C-p d → 查光标处标识符的 bluebox 文档（组合 doc-job 的 `view-modules` / `doc-await`）：
-;;;   · view-modules 给出候选模块（#lang/require + racket/racket/base）
+;;;   · view-modules 给出候选模块（严格 = #lang + 顶层 require；无则 racket/base）
 ;;;   · doc-request! 提交异步请求（place / sync）
 ;;;   · doc-await 登记文档句柄闸门；doc-job 统一 job-tick 轮询 → e-deliver
 ;;;   · on-result 命中则更新 docs 层状态
@@ -19,7 +19,8 @@
          "../kernel/binding.rkt"
          "../kernel/overlay.rkt"
          "../kernel/wrap.rkt"
-         "lang/ident.rkt" "lang/docs.rkt"
+         "lang/ident.rkt" "lang/docs.rkt" "lang/file-kind.rkt"
+         "doc-scope.rkt"
          "doc-job.rkt")
 
 (provide register-docs! (struct-out docs))
@@ -49,6 +50,7 @@
   (define vid (session-focus-vid s))
   (cond
     [(not vid) '()]
+    [(not (doc-applies? ctx 'docs)) '()]      ; 文档查询也只对适用文档（当前 = Racket）
     [else
      (define ed (session-editor s))
      (define text (editor-view-string ed vid))
@@ -111,7 +113,8 @@
 (define (register-docs! r)
   (for/fold ([r (register-doc-job! r)])
             ([c (in-list
-                 (list (contrib 'deco 'docs 0 (deco 'docs docs-panes))
+                 (list (contrib 'doc-scope 'docs 0 (doc-scope racket-buffer?))
+                       (contrib 'deco 'docs 0 (deco 'docs docs-panes))
                        (contrib 'layer-spec 'docs 0 docs-layer)
                        (contrib 'binding 'docs 0 (keybinding 'focus (key 'd) 'show-docs))
                        (contrib 'command 'show-docs 0 cmd-show-docs)

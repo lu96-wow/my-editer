@@ -10,7 +10,9 @@
          "../kernel/effect.rkt"
          "../kernel/session.rkt"
          "../kernel/runtime.rkt"
-         "../kernel/registry.rkt")
+         "../kernel/registry.rkt"
+         "lang/file-kind.rkt"
+         "doc-scope.rkt")
 
 (provide register-indent! indent-for)
 
@@ -47,10 +49,18 @@
   (cond
     [(not vid) '()]
     [else
-     (define ed (session-editor s))
-     (define text (editor-view-string ed vid))
-     (define p (editor-view-point ed vid))
-     (list (e-type vid (string-append "\n" (make-string (indent-for text (point-line p) (point-column p)) #\space)) #f))]))
+     (define ins
+       (cond
+         [(not (doc-applies? ctx 'indent)) "\n"]        ; 不适用 → 纯换行
+         [else
+          (define ed (session-editor s))
+          (define text (editor-view-string ed vid))
+          (define p (editor-view-point ed vid))
+          (string-append "\n" (make-string (indent-for text (point-line p) (point-column p)) #\space))]))
+     (list (e-type vid ins #f))]))
 
 (define (register-indent! r)
-  (reg-add r (contrib 'command 'newline 0 cmd-newline)))
+  (for/fold ([r r])
+            ([c (in-list (list (contrib 'doc-scope 'indent 0 (doc-scope racket-buffer?))
+                               (contrib 'command 'newline 0 cmd-newline)))])
+    (reg-add r c)))

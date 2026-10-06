@@ -63,8 +63,9 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **前缀层**（`C-p` / `M-m` / `M-s`）+ 窗格交换 / 缩放。
 - **左栏面板**：文件树（tree）+ 文档/视口两级树（buffers）；鼠标命中测试走 resolve。
 - **indent**（覆盖 newline）+ **autopair**（before-insert 钩子）。
-- **属性高亮**：3 个纯插件（当前 `applies?` 均限定 Racket 文件）+ 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
-- **补全菜单**（仅 Racket 文件，`lang/file-kind.rkt` 判定）：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出，选中项内嵌 bluebox 文档（异步）。
+- **属性高亮**：3 个纯插件（per-plugin `applies?`，当前均限定 Racket 文件）+ 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
+- **按文档启用（`doc-scope.rkt`）**：功能包声明 `contrib 'doc-scope name (doc-scope applies?)`，`doc-applies? ctx name` 取当前编辑文档查询；补全 / 文档浮窗 / 缩进均按此限定（当前 = Racket，scratch 允许）。
+- **补全菜单**（按文档启用⇒当前仅 Racket）：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出，选中项内嵌 bluebox 文档（异步）。
 - **文档浮窗**：`C-p d`（layer + deco + 异步；bluebox）。
 - **通用异步执行器**：sync / place runner（服务惰性创建）；后端 on-source 唤醒。
 - **主题配色**：face/palette → ANSI（后端）。

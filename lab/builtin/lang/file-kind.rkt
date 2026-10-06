@@ -5,12 +5,16 @@
 ;;; 「哪些文件算 Racket 源文件」的单一来源：高亮插件用它声明 `applies?`，
 ;;; 补全用它决定是否启用。按扩展名判断。
 
-(provide racket-exts racket-file? racket-applies?)
+(provide racket-exts racket-file? racket-applies? racket-buffer?)
 
 (define racket-exts '(#".rkt" #".rktl" #".rktd" #".scrbl"))
 
 (define (racket-file? path)
-  (and path (member (path-get-extension path) racket-exts)))
+  (and path (if (member (path-get-extension path) racket-exts) #t #f)))
 
 ;; plugin.applies? 协议是 (path text) -> bool；按扩展名判断只需 path。
+;; 插件只对真实文件跑，故无路径 = 不适用。
 (define (racket-applies? path text) (racket-file? path))
+
+;; 功能级（补全 / 缩进 / 文档查询）：无路径的 scratch 也允许，有路径须是 Racket。
+(define (racket-buffer? path text) (or (not path) (racket-file? path)))

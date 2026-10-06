@@ -70,11 +70,9 @@
 
 ;;; ================= 查询上下文（原子，complete / docs 共用） =================
 
-;; 语言服务默认模块集：调用方模块 + racket/racket/base。
-(define (context-modules mods)
-  (remove-duplicates (append mods '(racket racket/base)) equal?))
-
-;; 当前 view 的候选模块：文件目录 + #lang/require 扫出来的模块。
+;; 当前 view 的模块上下文：严格 = 文件自己的 `#lang` + 顶层 `(require …)`。
+;; 不再无条件追加 racket / racket/base（否则 `#lang racket/base` 也会命中 racket 的导出，
+;; 如 `second`）。都没有（scratch / 无 lang 无 require）→ 以 racket/base 作基线。
 (define (view-modules ctx vid)
   (define s (ctx-session ctx))
   (define ed (session-editor s))
@@ -82,7 +80,8 @@
   (define path (path-table-path (session-paths s) did))
   (define base-dir (if path (let-values ([(d _n _m) (split-path path)]) d) (current-directory)))
   (define text (editor-view-string ed vid))
-  (context-modules (source-requires text #:base-dir base-dir)))
+  (define mods (source-requires text #:base-dir base-dir))
+  (if (null? mods) '(racket/base) mods))
 
 ;;; ================= 版本组合子（请求 + 文档句柄闸门） =================
 
