@@ -1,12 +1,10 @@
 #lang racket
 
-(require "backend/tui.rkt")
+;;; lab-rebuild/main.rkt —— TUI 入口。
+;;;
+;;;   racket lab-rebuild/main.rkt [文件 | 根目录]
 
-;;; lab-rebuild/main.rkt —— TUI 入口
-;;;
-;;;   racket lab-rebuild/main.rkt [文件 / 根目录]
-;;;
-;;; 有参数且是文件 → 打开它；否则当作根目录启动空编辑器。
+(require "backend/tui.rkt")
 
 (module+ main
   (define args (current-command-line-arguments))

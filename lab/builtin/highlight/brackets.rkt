@@ -1,6 +1,7 @@
 #lang racket
 
 (require "bracket-pair.rkt"
+         "../lang/file-kind.rkt"
          "api.rkt")
 
 ;;; lab-rebuild/builtin/highlight/brackets.rkt —— 括号按深度背景高亮（内置插件）
@@ -22,4 +23,4 @@
     [else (bracket-open* lines path)]))          ; 一批多个编辑 → 整篇（罕见）
 
 (define bracket-plugin
-  (plugin 'brackets br-open br-change))
+  (plugin 'brackets racket-applies? br-open br-change))

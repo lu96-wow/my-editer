@@ -1,139 +1,210 @@
-# 新设计整体审视：端到端装配图与去重
+# lab-rebuild 整体体检：配合、别扭点、组合手感
 
-> 对 `DESIGN.md` / `DESIGN-POLICY-EFFECT.md` / `DESIGN-LAYER.md` 三份设计做一次整体审视。
-> 目标：一张从 `main` 到一帧画面的端到端管线图；逐条定位隐式契约；消除重复与歧义。
-
----
-
-## 1. 端到端管线
-
-```
-main
- └─ driver/run(runtime)
-     ├─ assemble: 加载包 → registry 贡献；建 session（editor / frame / focus / input / cs）
-     └─ loop:
-         ev = read()
-         session' = pipeline/step(ctx, ev)
-         ┌──────────────────────────────────────────────────────────────────┐
-         │ 1. 特殊事件：resize → effect(Session-size)                          │
-         │ 2. resolve(ctx, ev):                                              │
-         │      did    = did-of(focus)                                       │
-         │      base   = command-set-tables(cs, did)                         │
-         │      tables = base ⊕ 层栈（capture 短路 + 字符回退）  ← I10 I11 I20 I24│
-         │      → (spec, owner-layer)                                        │
-         │ 3. action = (command spec)                          ← I19 upsert      │
-         │ 4. perform(ctx, action):                                          │
-         │      before-policies（priority 高→低，首个决定者）   ← I5 I6 I14       │
-         │         pass / abort / effects / interact                          │
-         │      invoke command → effects                                     │
-         │      after-policies（全部，变换 effect 列表）        ← I14 I15        │
-         │ 5. handle-effects:                                                │
-         │      edit/type/backspace/delete → core；notify after-edit/insert ← I16│
-         │      open/close → core + 内建 notify(document-opened/closed)     ← I16│
-         │      show   → open + ensure-view + place + focus                  │
-         │      focus  → focus 值                            ← I1 I4 I8         │
-         │      input push/pop → 层栈；入栈自派生 focus/slot  ← I9 I10          │
-         │      reload/slot → 视图内容（面板 / 状态行）                        │
-         │      job    → runner + 内建版本闸门                ← I13             │
-         │      resume → interaction 续做                    ← I5              │
-         │      notify → 钩子（产 effects，递归过 after）      ← I16             │
-         │      emit   → 逃逸到驱动（写盘 / place / 响铃）                     │
-         │ 6. post: 声明式 pop（never/next/handled）            ← I10            │
-         │ 7. post: on-blur（焦点离开声明焦点目标的层）          ← I9             │
-         │ 8. post: job poll → job-result action              ← I13            │
-         │ 9. post: notify post-command                       ← I16            │
-         └──────────────────────────────────────────────────────────────────┘
-         frame' = render(ctx):
-         ┌──────────────────────────────────────────────────────────────────┐
-         │ notify before-render                                 ← I22          │
-         │ layout(frame, size) → rects + bars（纯派生，按 frame 值 memo）← I7    │
-         │ decoration(scope frame) → 浮层 panes                 ← I12          │
-         │ decoration(scope slot)  → 状态行内容                 ← I22          │
-         │ core render(panes, focus) → screen                                │
-         └──────────────────────────────────────────────────────────────────┘
-         present(frame')
-```
-
-**隐式契约覆盖核对**：I1–I25 在图中都有唯一归属；无「无人认领」的契约。
+> 基于当前实现（kernel 1555 行，其中 `pipeline.rkt` 539 行）+ 各 feature 的依赖面与
+> 状态落点实测。结论：**四通道组合子本身很好用、配合顺畅；别扭点集中在"注册与状态落点"
+> 三处，其中一处是设计需要调整的**。
 
 ---
 
-## 2. 去重与定死（16 条）
+## 1. 一句话结论
 
-| # | 重复 / 歧义 | 决议 |
+- **组合子（registry / effect / policy / layer / frame / focus / overlay / runner+gate）配合良好**：
+  高亮、补全、文档浮窗、前缀、保存确认这些新功能**没有改动任何组合子的语义**。
+- **摩擦集中在**：
+  1. **effect 集合是封闭的** → 每加一个功能都要改 `kernel/effect.rkt` + `kernel/pipeline.rkt`；
+  2. **feature 键位集中在 `config/keys.rkt`** → 功能不能自带默认键；
+  3. **feature 状态有三种落点**（layer 实例 / service / session 字段）→ 不统一。
+- 还有一批**死参数 / 死 effect**在误导读者。
+
+---
+
+## 2. 好的部分（有证据）
+
+| 观察 | 证据 |
+|---|---|
+| effect 语义无歧义 | 37 个 tag，`pipeline` 每个恰好一个 case（实测 `case=1`） |
+| 组合子语义稳定 | 高亮/补全/文档/前缀/剪贴板/indent/autopair 接入**未改组合子语义** |
+| layer 真能承载多模态 | prompt（fallthrough、on-blur）、prefix（capture all、pop next）、complete（fallthrough）、docs（capture all）共存且测试过 |
+| policy 与 effect 正交 | 保存确认（before+Interaction）、撤销合并（after）都不在命令里 |
+| 异步闸门一处实现 | `e-await`/`e-deliver` 被 docs 复用；`kernel/runner` 被 doc-job 复用 |
+| 命中测试统一 | 鼠标走 resolve，无特判分支 |
+| 装配可配置 | `config/packages.rkt` 折叠 register 过程，app 不认识具体包 |
+
+**结论**：作为"组合子基石"，方向是对的、也能用。
+
+---
+
+## 3. 别扭点（按影响排序）
+
+### P1（设计要调整）effect 集合封闭 → 功能必须改 kernel
+
+**现象**：每个新功能都要在 **两个 kernel 文件**各改一处：
+
+| 功能 | kernel/effect.rkt | kernel/pipeline.rkt |
 |---|---|---|
-| D1 | `frame.active` 与 `focus.target` | **frame 只存结构（root）；focus 存 target + history**。active（编辑叶）由 focus 派生 |
-| D2 | `session.panels` 与 frame 里 role=panel 的叶 | panel 贡献只存**模型/状态**；视图与放置归 frame 叶。panel-vid 从 frame 派生 |
-| D3 | slot 的三种表示（layer.slot / decoration(scope slot) / reload） | **layer.slot = 选哪个槽位视图（目标选择）**；decoration(scope slot) = 状态行**内容**；reload = 一次性内容写入。分工见 §3 |
-| D4 | `prompt` 既是 layer-spec 又是 effect | **prompt 只是一个 layer-spec**，通过 `input push` 入栈；删除独立 prompt effect |
-| D5 | `view-new` + `place` + `open` | 保留**复合 effect `show`**（open + ensure-view + place + focus）；`place` 只用于移动已有视图 |
-| D6 | effect 无返回值，但 show 需要 did/vid | **复合 effect** 内部完成，不让调用方拿返回值；需要跨 effect 传递时写 `session.temp`（受控） |
-| D7 | job.merge 与 decoration(scope document) | **删除 decoration scope=document**；属性写回是 effect `attr!`（O(1) 写 box，不进 history）；job 的 on-result 产 `attr!` |
-| D8 | policy 与 hook/notify | hook = 生命周期**通知**（notify effect）；policy = 动作**门控/变换**。互不替代 |
-| D9 | layer.focus 字段与 focus effect | layer.focus 是**声明**，入栈时 kernel **自动**产 focus effect；on-enter 不再写 focus |
-| D10 | input push/pop 与 layer on-enter/on-exit | push 是操作；on-enter/on-exit 是层的反应（产 effects）。不重复 |
-| D11 | `session.meta` 万能袋 | 改为**具名字段**：width/height/sidebar?/sidebar-width/last-focus/temp |
-| D12 | `route` struct | 不需要；`routes` 用双向 hash（did↔path）即可 |
-| D13 | `emit` 与 `save` | save = 编辑器状态相关（按 did 取内容）；emit = 状态无关副作用。保留两者 |
-| D14 | `service` 与 job.runner | job.runner 存**服务名**（`'sync` / `(place name n)`），runtime 解析；不在 registry 里放句柄 |
-| D15 | bars 归 frame 还是 decoration | bars 是 frame 的**几何派生**，归 frame layout；不进 decoration |
-| D16 | focus 的多处来源（层派生 / 命令 effect / 恢复） | focus 只有**一个写入点**：kernel 施加 focus effect。层派生与恢复都是产 focus effect |
+| 前缀 | +e-pane-swap / e-pane-resize / e-focus-push | +3 case |
+| 剪贴板 | +e-copy/cut/paste | +3 case |
+| 高亮 | +e-attr-highlight! | +1 case |
+| 补全/文档 | +e-input-set / e-await / e-deliver | +3 case |
+| 鼠标 | +e-pointer / e-scroll | +2 case |
 
-### 2.1 由去重得到的三条「单一来源」原则
+这与"功能包只通过扩展点接入、不 require 平台内部"的目标**矛盾**：功能不能自造 effect。
 
-1. **状态只有一个写入点**：session 的每个字段只由 kernel 的一处 effect-apply 写。
-2. **派生不进 session**：layout / active-edit / slot-vid / panel-vid 都是纯派生，不缓存真身。
-3. **选择是字段，内容是 effect**：目标选择（slot/focus/sidebar）是声明字段；具体内容用 effect。
+**为什么当初封闭**：`DESIGN` §3.2 说"kernel 可穷举 apply 语义、可测"。
 
----
-
-## 3. 槽位（底部条）的最终模型
-
-底部条只有**一个叶**，role = `'slot`：
-
+**修正（推荐）**：effect **处理器**开放注册，但**施加入口仍唯一**：
+```racket
+;; kernel: 默认处理框架 effect（edit/open/show/focus/input/notify/await/deliver/quit…）
+;; feature: 注册自己的 effect 处理器
+(reg-add r (contrib 'effect 'attr-highlight 0
+  (lambda (ctx did fills combine) ...)))   ; 返回新 ctx
 ```
-叶的视图 = 若某层声明 slot='input' → input-view（持久、可编辑）
-           否则                     → status-view（派生、只读）
+`pipeline` 的 `apply-effect` 先查 `'effect` registry，命中则调用，否则走内建。
+- 保留"单一写入点 + 可枚举"；
+- 功能自带 effect 构造器（用 `fx`）与处理器，不再改 kernel；
+- 框架 effect 仍内建（安全/顺序敏感）。
 
-status-view 的内容 = decoration(scope 'slot) 的最高优先级产出（每帧）
-input-view  的内容 = prompt 层 on-enter 写入，之后由用户编辑
+### P2（设计要调整）feature 键位集中在 config
+
+**现象**：`config/keys.rkt` 里出现 `(key 'n 'ctrl) 'complete`、`(key 'd) 'show-docs`。
+即 feature 的默认键写在**配置**里，删掉包后键位残留。
+
+**修正**：把当初删掉的 `contrib 'binding` 补回来（只做组装期）：
+```racket
+(contrib 'binding 'complete 0 (binding 'edit (key 'n 'ctrl) 'complete))
+(contrib 'binding 'docs 0 (binding 'focus (key 'd) 'show-docs))
 ```
+`app-init` 把 `'binding` 贡献折进 `command-set`/命名表。config 只留**覆盖**用途。
 
-- **目标选择**：`layer.slot`（字段）；
-- **内容**：状态行走 decoration；输入行走真实编辑；
-- **无三套 API**：属性写回（D7）已移出，slot 只剩「视图选择 + 内容」。
+### P3（一致性）feature 状态有三种落点
 
----
-
-## 4. 控制流三件套 + 输出/状态
-
-| 组合子 | 唯一职责 | 写入 |
+| 落点 | 谁在用 | 适合 |
 |---|---|---|
-| **layer** | 事件归属 | 不写 session，产 Action |
-| **policy** | 动作门控 / 效果变换 | 不写 session，产 / 改 effects |
-| **job** | 异步 + 版本闸门 | 产 effects（on-result） |
-| **effect** | 状态变换描述 | kernel 唯一写入 session |
-| **decoration** | 每帧输出 | 只读 |
+| layer 实例 state | prompt / prefix / complete / docs | 模态会话态 |
+| runtime.services | highlight（machine/token）、doc-job（runner） | 长生命周期 |
+| session 字段 | `panels` / `active-panel` / `status-vid` / `input-vid` | 框架？ |
+
+`panels`/`active-panel` 其实是 **buffers 面板这个 feature 的状态**，却占用了 kernel 的
+`session` 结构。后果：加功能可能要在 `session` 加字段（kernel 又被 feature 牵动）。
+
+**修正**：`session` 只留框架状态（editor/frame/focus/input/cs/paths/awaiting/pending/
+尺寸）。面板状态放进 `service 'panels`，或泛化为"装饰内容来源"。
+
+### P4（清理）死参数 / 死 effect
+
+实测：
+- `e-place` / `e-arrange`：**pipeline case 是 no-op**，且无人调用；
+- `e-emit`：no-op 且无人调用；`save` 直接在 pipeline 里写文件（**状态与 IO 混一起**）；
+- `e-show` 的 `placement` 参数被忽略（`show-document` 永远 replace-active）；
+- `kernel/job.rkt` 的 `job` struct：**无人使用**（异步已走 runner + `e-await/e-deliver`）；
+- `session.temp`：只存过 `'last-did`，且从不清理。
+
+**修正**：删掉死 effect（或实现）；`save` 改为产 `(e-emit (write-file …))`，由 driver 执行
+（pipeline 回归纯施加）；`job` struct 删除；`temp` 要么删，要么 step 末尾清空。
+
+### P5（体量）`pipeline.rkt` 成了 god module
+
+`pipeline` 539 行，`apply-effect` 约 284 行。它是唯一写入点（设计如此），但继续长会难维护。
+
+**修正**：`apply-effect` 按通道拆到 `kernel/apply/{edit,workspace,input,async,io}.rkt`，
+pipeline 保留 resolve/perform/post + 分派。配合 P1 后会更小。
+
+### P6（手感）require 样板
+
+feature 包 require 5–12 个 kernel 模块（docs 12 个）。没有门面。
+
+**修正**：`kernel/api.rkt` 重导出稳定公开面（registry/effect/policy/layer/table/binding/
+hooks/overlay/session/runtime/paths/frame/focus + editor-api）。feature 只 require 一个模块。
+
+### P7（命名陷阱）构造器 / 访问器 / 参数同名
+
+已踩 4 次：`ctx`、`area`、`runner-source`、`runtime-sources`。
+**修正**：约定 struct 变量用短名（`c`/`r`/`a`），访问器不当函数名用；给 `ctx` 构造点加注释。
+
+### P8（一致性）异步两处"pending"命名
+
+`session.pending`（Interaction 挂起） vs `session.awaiting`（版本闸门）。
+**修正**：改名 `interactions` / `awaiting`。
+
+### P9（半接线）deco 的 overlay 未上屏
+
+补全菜单选中行标 `(cons 'cursor 'state)`，但后端只画 `run-face`、**忽略 overlay**，
+选中态不可见。
+**修正**：后端处理 pane 的 overlay attr（或在菜单里改用高亮 face）。
+
+### P10（宣称 vs 实际）高亮"增量"未接线
+
+`machine-change!` / `shadow` 支持增量，但 `highlight.rkt` 每个 token 变化都**整篇重开**。
+**修正**：用 `after-edit` 的 edits 走 `machine-change!`，或干脆删掉 shadow/change 的骨架
+（避免"有增量 API 却不用"的误导）。
+
+### P11（小）面板模型重复
+
+`refresh-buffers` 与 `cmd-panel-activate` 各自重算 `doc-list`。
+**修正**：模型放 service/state，两者共用。
 
 ---
 
-## 5. 「无返回值」的代价与边界（D6 补充）
+## 4. "组合是否顺手"的量化
 
-effect 不返回值的唯一痛点：复合流程（打开→显示）需要中间 did/vid。
-决议：
+**加一个功能要动几处？**
 
-- 常见流程做成**复合 effect**（`show` 内部完成 open+view+place+focus）；
-- 极少数高级组合用 `session.temp` 作**显式命名槽**（如 `open :as 'x` + `show (ref 'x)`），
-  temp 在每次 step 结束清空；
-- **绝不**用返回值破坏 effect 列表的顺序语义。
+| 功能类型 | 现在要动 | 目标 |
+|---|---|---|
+| 纯命令（如 indent） | feature + packages +（键位改 config） | feature + packages |
+| 带键位（如 complete） | feature + packages + config/keys + effect + pipeline | feature + packages |
+| 带新状态（如 docs） | 上面 + 可能 session/effect | feature + packages（状态进 layer/service） |
+| 带新 effect（如 attr） | feature + packages + effect.rkt + pipeline.rkt | feature + packages（effect 处理器开放） |
+
+**目标态**：功能只需改 **feature 模块 + `config/packages.rkt`**。
+现在的差距 = P1（effect 开放）+ P2（binding 贡献）+ P3（状态落点）。
 
 ---
 
-## 6. 结论
+## 5. 建议的处理顺序
 
-- 25 条隐式契约全部有唯一归属；
-- 16 处重复/歧义全部定死；
-- 三件套（layer/policy/job）职责正交，effect 是唯一写入通道，decoration 只读；
-- 三条单一来源原则可作实现时的硬约束与测试项。
+1. **P4 清理死代码**（低风险，立刻让 API 诚实）。
+2. **P8 改名 + P7 约定**（低风险，消除持续踩坑）。
+3. **P2 binding 贡献**（中，解锁"功能自带键位"）。
+4. **P1 effect 处理器注册**（中，最关键，解锁"功能自带 effect"）。
+5. **P3 状态落点收敛**（中，稳定 kernel `session`）。
+6. **P5 拆 pipeline + P6 kernel 门面**（结构整理）。
+7. **P9/P10/P11**（收尾一致性）。
 
-设计可进入实现。
+---
+
+## 6. 总评
+
+- **组合子层：优**。四通道职责清晰，交叉功能（prompt×layer×slot、save×policy×interaction、
+  highlight×gate×attr、docs×deco×runner）都能组合，且测试覆盖。
+- **扩展接缝：中**。影响最大的是 effect 封闭与键位集中——这正好是我们当初"收得太拢"的
+  两处（`DESIGN-NEXT §3.5` 已预见 binding，effect 封闭则低估了）。
+- **实现卫生：中**。死 effect、god module、同名陷阱、半接线需要清理。
+
+一句话：**基石没问题，把"扩展接缝"再打开一点（effect 处理器 + binding 贡献 + 状态落点），
+功能包就真正做到"只改自己 + 目录"。**
+
+---
+
+## 7. 处理结果（本次已做）
+
+| 项 | 处理 | 结果 |
+|---|---|---|
+| P1 effect 封闭 | **改成处理器注册**：`contrib 'effect tag handler`，`apply-effect` 先查 registry 再走内建 | ✅ 高亮/鼠标的 effect 已移到功能包，不再改 kernel |
+| P2 键位集中 | **补回 `contrib 'binding`**：组装期折进命名表；前缀键按表名解析；features 自带键 | ✅ complete 的 `C-n`、docs 的 `C-p d` 移出 config |
+| P3 状态落点 | 约定：`session` 只放框架状态；feature 放 layer 实例 / service | ✅ 本次无 feature 新增 session 字段 |
+| P4 死代码 | 删 `e-open`/`e-place`/`e-arrange`/`e-emit`/`e-job`/`job` struct/`session.temp` | ✅ 并修正 `show` 会破坏分屏的 bug（place 进 active 叶） |
+| P5 pipeline 体量 | 未做（apply 仍 524 行，但已分出 `apply-builtin-effect`） | ⏳ 留待（可用 P1 的门面继续） |
+| P6 require 样板 | **`kernel/api.rkt` 门面**；13 个 builtin 收敛为 `../kernel/api.rkt` | ✅ feature 只多 require lang/config |
+| P7 同名陷阱 | 本次已消除；约定访问器不当函数名用 | ✅ |
+| P8 两处 pending | `session.pending` → `interactions`；`suspension` 移入 `policy.rkt`；删 `job.rkt` | ✅ |
+| P9 overlay 未上屏 | 后端改成 **patch 绘制**（`app-render-patch`），处理 `(overlay . face)`（cursor→反色、region→背景） | ✅ 选区/菜单选中态可显示 |
+| P10 高亮增量 | 接上 `after-edit → machine-change!`（有上一版本 + edits 则增量） | ✅ 测试覆盖 |
+| P11 面板模型 | `refresh` 与 `activate` 已共用 `doc-list` | ✅ 本已满足 |
+
+**量化改善**：新增一个带键位 + 新 effect 的功能，现在只需改
+**feature 模块 + `config/packages.rkt`**（之前还要改 `config/keys.rkt` + `kernel/effect.rkt` + `kernel/pipeline.rkt`）。
+
+**验证**：`raco make main.rkt smoke.rkt` 通过；`smoke.rkt` 全绿（含新增的增量同步断言）；TUI 编译通过。
+
+**仍留**：P5（拆 pipeline）、以及 `emit` 独立通道（当前 `save` 仍就地写盘）——不影响组合手感。

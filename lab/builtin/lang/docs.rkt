@@ -13,7 +13,7 @@
 ;;; 本文件只认「标识符 + 候选模块」，不认识 app / editor；候选模块由 lang/source 给出。
 ;;; 结果全量缓存（tag → doc），xref 懒加载。
 
-(provide (struct-out doc) docs-for doc->text)
+(provide (struct-out doc) docs-for doc->text doc->result result->doc)
 
 (require racket/list racket/string
          (only-in setup/xref load-collections-xref)
@@ -59,3 +59,8 @@
 ;; 浮窗内容：bluebox；没有 bluebox 就退回名字。
 (define (doc->text d)
   (string-append (or (doc-signature d) (doc-name d)) "\n"))
+
+;;; ================= 跨 place 编解码（结果只用普通 list，避免 struct 身份问题） =================
+
+(define (doc->result d) (and d (list (doc-name d) (doc-signature d))))
+(define (result->doc r) (and r (apply doc r)))

@@ -1,51 +1,48 @@
 #lang racket
 
-(require "../../core/editor.rkt"
-         "../platform/state.rkt"
-         "../platform/mode.rkt"
-         "../platform/hooks.rkt"
-         "../config/plugins.rkt")
-
-;;; lab-rebuild/builtin/autopair.rkt —— 自动配对（内置输入插件）
+;;; lab-rebuild/builtin/autopair.rkt —— 自动配对（输入插件，走 before-insert）。
 ;;;
-;;; 输入开括号 ( [ { < → 自动补对应闭括号，光标停中间；
-;;; 输入闭括号且右边就是同一个 → 跳过（不重复插入）。
-;;; 有选区 / 在 prompt 里 / 只读 → 不插手。
-;;;
-;;; 实现方式：注册 before-insert 钩子。返回 #f = 不插手（默认插入）；
-;;; '() = 插手但不改文本（跳过闭括号）；(list changes) = 已改文本。
+;;; 输入开括号 ( [ { → 自动补闭括号、光标停中间；
+;;; 输入闭括号且右边就是同一个 → 跳过（右移）。
+;;; 返回 effects（#f = 不插手，默认插入）。
 
-(provide autopair-init! auto-pair-text)
+(require "../kernel/editor-api.rkt"
+         "../kernel/binding.rkt"
+         "../kernel/effect.rkt"
+         "../kernel/layer.rkt"
+         "../kernel/session.rkt"
+         "../kernel/runtime.rkt"
+         "../kernel/hooks.rkt"
+         "../kernel/registry.rkt")
+
+(provide register-autopair! auto-pair-effects)
 
 (define open->close (hash #\( #\) #\[ #\] #\{ #\} #\< #\>))
 (define closer? (hash #\) #t #\] #t #\} #t #\> #t))
 
-(define (auto-pair-text a text)
-  (define vid (app-focus a))
-  (define ed (app-ed a))
+(define (auto-pair-effects ctx args)
+  (define text (car args))
+  (define s (ctx-session ctx))
+  (define vid (session-focus-vid s))
+  (define ed (session-editor s))
   (cond
-    [(or (not vid) (prompt? (app-mode a))) #f]
-    [(not (= 1 (string-length text))) #f]
+    [(or (not vid) (not (= 1 (string-length text)))) #f]
+    [(input-find (session-input s) 'prompt) #f]
     [(not (selection-empty? (editor-view-primary ed vid))) #f]
     [else
      (define ch (string-ref text 0))
      (define line (editor-view-point-line ed vid))
      (define col (editor-view-point-column ed vid))
      (cond
-       ;; 开括号：插入「开+闭」，光标回中间
        [(hash-has-key? open->close ch)
-        (define-values (changes _ok?)
-          (editor-view-insert! ed vid (string ch (hash-ref open->close ch))))
-        (cond [(null? changes) #f]                       ; 只读挡 → 不插手
-              [else (editor-view-left! ed vid) changes])]
-       ;; 闭括号且右边同字符：跳过
+        (if (editor-view-editable? ed vid line col line col)
+            (list (e-type vid (string ch (hash-ref open->close ch)) #f)
+                  (e-nav vid 'left #f))
+            #f)]
        [(and (hash-has-key? closer? ch)
              (eqv? ch (editor-view-char-at ed vid line col)))
-        (editor-view-right! ed vid)
-        '()]
+        (list (e-nav vid 'right #f))]
        [else #f])]))
 
-(define (autopair-init! a)
-  (when (memq 'auto-pair input-plugin-names)
-    (hook-add! a 'before-insert (lambda (app text) (auto-pair-text app text))))
-  a)
+(define (register-autopair! r)
+  (reg-add r (contrib 'hook 'autopair 0 (make-hook 'before-insert auto-pair-effects))))

@@ -1,28 +1,21 @@
 #lang racket
 
-(require "../../core/editor.rkt"
-         "../platform/state.rkt"
-         "../platform/command.rkt"
-         "edit.rkt")
+;;; lab-rebuild/builtin/indent.rkt —— 换行语法缩进（覆盖 newline 命令）。
+;;;
+;;; 同名命令 upsert：后注册的覆盖先注册的。按光标前的括号嵌套深度决定缩进。
+;;; 可从 config/packages 撤掉 → 回落纯换行。
 
-;;; lab-rebuild/builtin/indent.rkt —— 换行语法缩进（内置包）
-;;;
-;;; 覆盖基础编辑包注册的 newline-and-indent：按光标前的括号嵌套深度决定新行缩进。
-;;; 规则（Racket 风格、够用）：缩进 = 2 × 光标前未闭合的 ( [ { 数。
-;;;
-;;;   (define (f x)⏎   → 缩进 2（外层 define）
-;;;   (define x 1)⏎    → 缩进 0
-;;;   (let ([x 1])⏎    → 缩进 2
-;;;
-;;; 粗略跳过字符串（含 \\ 转义）与行注释（; 到行尾）。不做 reader 级精确解析。
-;;;
-;;; 加载即生效（命令注册是覆盖式）。可从 config/packages.rkt 撤掉 → 回落纯换行。
+(require racket/string
+         "../kernel/editor-api.rkt"
+         "../kernel/effect.rkt"
+         "../kernel/session.rkt"
+         "../kernel/runtime.rkt"
+         "../kernel/registry.rkt")
 
-(provide indent-width indent-for cmd-newline-and-indent)
+(provide register-indent! indent-for)
 
 (define indent-width 2)
 
-;; 光标前文本（到 line/col 为止）。
 (define (text-before text line col)
   (define lines (string-split text "\n"))
   (define n (length lines))
@@ -32,7 +25,6 @@
    (let ([l (if (< line n) (list-ref lines line) "")])
      (substring l 0 (min (max 0 col) (string-length l))))))
 
-;; 光标前的括号嵌套深度。
 (define (indent-for text line col)
   (define before (text-before text line col))
   (let loop ([cs (string->list before)] [d 0] [in-str? #f] [in-comment? #f])
@@ -49,13 +41,16 @@
       [(memv (car cs) '(#\) #\] #\})) (loop (cdr cs) (max 0 (sub1 d)) #f #f)]
       [else (loop (cdr cs) d #f #f)])))
 
-(define (cmd-newline-and-indent e a)
-  (define ed (app-ed a))
-  (define vid (app-focus a))
-  (define text (editor-view-string ed vid))
-  (define p (editor-view-point ed vid))
-  (define indent (indent-for text (point-line p) (point-column p)))
-  (app-insert-typed! a (string-append "\n" (make-string indent #\space))))
+(define (cmd-newline ctx ev)
+  (define s (ctx-session ctx))
+  (define vid (session-focus-vid s))
+  (cond
+    [(not vid) '()]
+    [else
+     (define ed (session-editor s))
+     (define text (editor-view-string ed vid))
+     (define p (editor-view-point ed vid))
+     (list (e-type vid (string-append "\n" (make-string (indent-for text (point-line p) (point-column p)) #\space)) #f))]))
 
-;; 覆盖基础编辑包的纯换行实现。
-(define-command newline-and-indent cmd-newline-and-indent)
+(define (register-indent! r)
+  (reg-add r (contrib 'command 'newline 0 cmd-newline)))

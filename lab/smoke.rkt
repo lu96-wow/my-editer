@@ -318,6 +318,26 @@
 (check-true (regexp-match? #rx"second" (screen->string scrMC)) "补全菜单渲染")
 (delete-directory/files cdir)
 
+;;; ================= 补全：非 Racket 文件不启用 =================
+(define cgdir (make-temporary-file "lab-cgate-~a" 'directory))
+(define cgfile (build-path cgdir "a.c"))
+(call-with-output-file cgfile #:exists 'truncate (λ (o) (display "int main(){}\n" o)))
+(define ctxCG0 (app-open (app-init (path->string cgdir) 40 10) (path->string cgfile)))
+(define cgv (session-focus-vid (ctx-session ctxCG0)))
+(define ctxCG1 (apply-effects! ctxCG0 (list (e-move cgv (selections-one (caret (point 0 5)))))))
+(define ctxCG2 (press (press ctxCG1 #\d) #\e))
+(check-equal? (length (input-instances (session-input (ctx-session ctxCG2)))) 0 "a.c 打字不弹补全")
+(define ctxCG3 (step ctxCG2 (key-event #\n (mods #t #f #f))))
+(check-equal? (length (input-instances (session-input (ctx-session ctxCG3)))) 0 "a.c C-n 不弹补全")
+(delete-directory/files cgdir)
+
+;;; ================= 浮层落位：不覆盖锚点行（顶行刚好放得下 → 放下方） =================
+(require "kernel/overlay.rkt")
+(define-values (fp-top _fl) (anchor-placement 0 5 40 11 60 12))
+(check-true (> fp-top 0) "浮层不覆盖锚点行")
+(define-values (fp-top2 _fl2) (anchor-placement 10 5 40 8 60 12))
+(check-equal? fp-top2 2 "下方放不下 → 翻上方且不覆盖锚点")
+
 ;;; ================= 异步版本闸门（内核统一） =================
 (define gotG (box #f))
 (define ctxAw (apply-effects! (fresh) (list (e-await 'j1 1 (λ (c v) #t) (λ (c r) (set-box! gotG r) '())))))

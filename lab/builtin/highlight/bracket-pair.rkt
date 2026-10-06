@@ -2,15 +2,15 @@
 
 (require racket/string
          "../../../core/text/base/line.rkt"
-         "../../platform/face.rkt"
-         "syntax-config.rkt")
+         "../../kernel/face.rkt"
+         "../lang/file-kind.rkt")
 
 ;;; lab-rebuild/builtin/highlight/bracket-pair.rkt —— 括号配对 + 嵌套深度
 ;;;
 ;;; 表示：匹配对 → 整段区间 (list ol oc cl cc (palette-color 'bracket level))，level = 嵌套层
 ;;; （最外层 = 0）。外层先写、内层后写覆盖 → 每字符取最内层包围它的对。
 ;;;
-;;; Racket 文件（扩展名见 syntax-config.rkt）按词法**跳过**字符串 "…"、行注释 ;…、
+;;; Racket 文件（扩展名见 file-kind.rkt）按词法**跳过**字符串 "…"、行注释 ;…、
 ;;; 块注释 #| … |#（可嵌套）、字符字面量 #\x 里的括号；其它文件仍按裸括号配对。
 ;;; 跳过用**哨兵栈项**表示（'string / 'block 压在括号栈顶，随行边界保存），
 ;;; 于是跨行字符串 / 注释也能被增量算法原样处理（栈相等即状态相等）。

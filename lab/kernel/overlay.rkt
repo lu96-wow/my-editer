@@ -30,11 +30,12 @@
 ;; 光标屏幕绝对坐标（供浮层定位）；不可见 → (values #f #f)。由 layout.rkt 提供。
 
 ;; 把 w×h 的框放在锚点下方；下方放不下则翻到上方；水平夹取到屏内。
+;; ⚠ 条件必须是 `h <= 可用下方行数`（不是 h+1）—— 否则刚好放得下时会误翻到上方、
+;;   在锚点靠顶时把光标行盖住（曾导致补全菜单盖住光标行）。
 ;; 浮层 provider 共用同一套「落位」组合。 → (values top left)
 (define (anchor-placement arow acol w h screen-w screen-h)
-  (values (if (<= (+ h 1) (- screen-h (add1 arow)))
-              (add1 arow)
-              (max 0 (- arow h)))
+  (define below (- screen-h (add1 arow)))
+  (values (if (<= h below) (add1 arow) (max 0 (- arow h)))
           (max 0 (min acol (max 0 (- screen-w (+ w 2)))))))
 
 ;;; ================= 实线框 =================

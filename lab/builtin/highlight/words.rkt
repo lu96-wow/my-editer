@@ -1,7 +1,8 @@
 #lang racket
 
 (require "../../../core/text/base/line.rkt"
-         "../../platform/face.rkt"
+         "../../kernel/face.rkt"
+         "../lang/file-kind.rkt"
          "api.rkt"
          "lex.rkt")
 
@@ -54,4 +55,4 @@
                 (or state (hash))))
 
 (define word-plugin
-  (plugin 'words word-open word-change))
+  (plugin 'words racket-applies? word-open word-change))
