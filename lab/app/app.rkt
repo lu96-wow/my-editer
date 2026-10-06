@@ -33,7 +33,9 @@
 
 (provide app-init app-handle-input
          ;; 从 render.rkt 重导出：调用方只需 require app/app.rkt
-         app-render app-prepare! app-state-refresh! app-bar-panes app-overlay-panes)
+         app-render app-prepare! app-state-refresh! app-bar-panes app-overlay-panes
+         ;; 语言服务：后台文档结果轮询 + 事件源
+         app-complete-tick! app-lang-source)
 
 ;;; ================= 初始化 =================
 
@@ -99,7 +101,9 @@
   (when (and f (edit-panes-contains? (app-edit a) f))
     (set-edit-panes-active! (app-edit a) f))
   ;; 插件：为新版本派活 + 收结果写回（同步 runner 在这里就生效）。
-  (app-plugin-tick! a))
+  (app-plugin-tick! a)
+  ;; 语言服务：收后台文档结果（按请求 id + document 版本闸门装回 mode）。
+  (app-complete-tick! a))
 
 ;;; ================= 鼠标 =================
 

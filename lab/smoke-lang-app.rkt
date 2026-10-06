@@ -27,6 +27,14 @@
 (define (send e) (app-handle-input a e))
 (define (ed) (app-ed a))
 
+;; 文档查询是后台 place 异步做的：轮询 tick 直到选中项文档回来（或超时）。
+(define (wait-doc! a)
+  (let loop ([n 0])
+    (app-complete-tick! a)
+    (cond [(and (complete? (app-mode a)) (complete-doc (app-mode a))) (void)]
+          [(> n 500) (void)]
+          [else (sleep 0.01) (loop (add1 n))])))
+
 (app-open-path! a code)
 (define vid (app-edit-active a))
 (set-app-focus! a vid)
@@ -39,7 +47,8 @@
 (check-not-false (complete? (app-mode a)))
 (define cands (complete-candidates (app-mode a)))
 (check-not-false (member "add-between" cands))
-;; 选中项带 bluebox 文档；菜单 + 文档在同一个实线框 pane 里
+;; 选中项带 bluebox 文档（后台异步取，等一下）；菜单 + 文档在同一个实线框 pane 里
+(wait-doc! a)
 (check-not-false (complete-doc (app-mode a)))
 (check-not-false (and (doc-signature (complete-doc (app-mode a)))
                       (string-contains? (doc-signature (complete-doc (app-mode a))) "add-between")
@@ -101,7 +110,8 @@
 (send (key-event #\b no-mods))
 (check-not-false (complete? (app-mode a)))
 (check-not-false (member "add-between" (complete-candidates (app-mode a))))
-;; 自动路径也同步取文档（选中项与候选一起更新）。
+;; 自动路径也取文档（后台异步，等一下）。
+(wait-doc! a)
 (check-not-false (complete-doc (app-mode a)))
 ;; 继续打字：字符照常进文档（不阻塞输入），前缀跟着变。
 (send (key-event #\e no-mods))

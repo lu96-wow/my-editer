@@ -31,6 +31,7 @@
 (provide (struct-out prompt)
          (struct-out prefix)
          (struct-out complete)
+         (struct-out doc-pending)
          (struct-out docs)
          input-begin prefix-begin complete-begin docs-begin
          input-commit input-answer input-cancel
@@ -92,11 +93,19 @@
 ;;   tables     : 本模态的键表（config/keys.rkt 提供）
 ;;   mods       : 查文档用的候选模块列表
 ;;   pool       : 本次补全会话的完整候选池（复用，避免每个字符重算 / 重解析）
-;;   doc        : 当前选中项的文档（bluebox；#f = 没有），弹层右侧展示
-(struct complete (candidates index start prev-focus tables mods pool doc) #:transparent)
+;;   doc        : 当前选中项的文档（bluebox；#f = 没有 / 还没回来），弹层右侧展示
+;;   doc-pending: 在途的异步文档请求（doc-pending / #f）；结果回来时按它做版本闸门
+(struct complete (candidates index start prev-focus tables mods pool doc doc-pending) #:transparent)
 
-(define (complete-begin candidates index start prev-focus tables mods pool doc)
-  (complete candidates index start prev-focus tables mods pool doc))
+(define (complete-begin candidates index start prev-focus tables mods pool doc doc-pending)
+  (complete candidates index start prev-focus tables mods pool doc doc-pending))
+
+;; 在途文档请求：
+;;   id  : exact-nonnegative-integer   请求编号（结果按它匹配当前 mode）
+;;   ver : document                    发起时的**不可变 document 值**（版本身份）
+;; 文档是纯粹的「名字 + 模块表」的函数，与本 buffer 文本无关；但仍用 ver 做闸门，
+;; 保证结果只装回它「出发时」的那份文档状态（eq? 即版本比较）。
+(struct doc-pending (id ver) #:transparent)
 
 ;;; ================= 文档浮窗 =================
 

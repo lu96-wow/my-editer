@@ -12,7 +12,8 @@
          "../../lang/ident.rkt"
          "../../lang/source.rkt"
          "../../lang/docs.rkt"
-         "../../lang/complete.rkt")
+         "../../lang/complete.rkt"
+         "../../lang/doc-runner.rkt")
 
 ;;; lab-rebuild/core/actions/lang.rkt —— 语言服务动作（文档查询 / 补全）
 ;;;
@@ -25,7 +26,8 @@
 
 (provide app-show-docs! app-docs-close! app-docs-scroll!
          app-complete-begin! app-complete-refine!
-         app-complete-move! app-complete-cancel! app-complete-accept!)
+         app-complete-move! app-complete-cancel! app-complete-accept!
+         app-complete-tick! app-lang-source)
 
 ;;; ================= 公共：当前编辑上下文 =================
 
@@ -87,20 +89,12 @@
 ;;; 候选池（基础命名空间 + require 导出 + 本地定义）一次补全会话只建一次，
 ;;; 之后的每个字符只 filter-pool；否则大文件每个字符都重解析会很卡。
 
-;; 选中候选的 bluebox 文档（#f = 没有）。
-(define (cand-doc cands i mods)
-  (and (< i (length cands)) (docs-for (list-ref cands i) #:modules mods)))
-
-;; 自动路径取文档：若上一步的候选首项与文档都还在，直接复用（省一次 xref 查询）。
-;; 文档缓存（docs.rkt 的 doc-cache）已按键名 memo，这里只避免频繁重查。
-(define (cand-doc-reuse m cands mods)
-  (cond
-    [(and (complete? m) (complete-doc m)
-          (pair? (complete-candidates m)) (pair? cands)
-          (equal? (car (complete-candidates m)) (car cands))
-          (equal? (complete-mods m) mods))
-     (complete-doc m)]
-    [else (cand-doc cands 0 mods)]))
+;; 发起一次异步文档请求：返回 doc-pending（id + 发起时的不可变 document 值）。
+;; 文档在 worker place 里查（xref / bluebox 缓存在那边），主进程不阻塞。
+(define (request-doc a vid name mods)
+  (define ed (app-ed a))
+  (define doc (editor-document-handle ed (editor-view-document-id ed vid)))
+  (doc-pending (doc-runner-request! name mods) doc))
 
 ;; 前缀起点（point）：光标左侧 string-length prefix 个字符。
 (define (prefix-start p prefix)
@@ -118,7 +112,7 @@
   (define mods (context-modules mods0))
   (values mods (completion-pool #:modules mods #:locals (source-definitions text))))
 
-;; 显式触发（Tab / Ctrl+N）：前缀为空也允许（拉全量候选），并取选中项文档。
+;; 显式触发（Tab / Ctrl+N）：前缀为空也允许（拉全量候选）；文档异步取。
 (define (app-complete-begin! a tables)
   (define ctx (app-text-context a))
   (when ctx
@@ -131,11 +125,11 @@
     (when (pair? cands)
       (app-mode-set!
        a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool
-                          (cand-doc cands 0 mods))))))
+                          #f (request-doc a vid (car cands) mods))))))
 
 ;; 自动过滤：前缀为空 / 无候选 → 退出补全。
 ;; 已有会话（同一个 view）则复用池；否则建池（每个词第一次）。
-;; 文档：选中项与上一步相同时复用，否则同步查（bluebox 缓存在 docs.rkt）。
+;; 文档异步取：先清空、记下 doc-pending，结果回来时由 app-complete-tick! 装上。
 (define (app-complete-refine! a tables)
   (define et (app-edit-view+text a))
   (cond
@@ -159,7 +153,7 @@
      (if (pair? cands)
          (app-mode-set!
           a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool
-                             (cand-doc-reuse m cands mods)))
+                             #f (request-doc a vid (car cands) mods)))
          (app-complete-cancel! a))]))
 
 (define (app-complete-move! a delta)
@@ -169,9 +163,36 @@
     (define n (length cands))
     (when (positive? n)
       (define i (modulo (+ (complete-index m) delta) n))
+      (define mods (complete-mods m))
       (app-mode-set! a (struct-copy complete m
                                     [index i]
-                                    [doc (cand-doc cands i (complete-mods m))])))))
+                                    [doc #f]
+                                    [doc-pending
+                                     (request-doc a (complete-prev-focus m)
+                                                  (list-ref cands i) mods)])))))
+
+;; 后台文档结果回来：只装回「请求 id 还是当前 mode 的」且「发起时的不可变 document
+;; 还是当前 document」的那一个（版本闸门）。doc 是纯函数（名字 + 模块表），
+;; document 版本用来挡住 mode 已经陈旧的情况。
+(define (app-complete-tick! a)
+  (for ([msg (in-list (doc-runner-poll!))])
+    (define id (car msg))
+    (define name (cadr msg))
+    (define sig (caddr msg))
+    (define m (app-mode a))
+    (define p (and (complete? m) (complete-doc-pending m)))
+    (when (and p (eqv? id (doc-pending-id p)))
+      (define ed (app-ed a))
+      (define vid (complete-prev-focus m))
+      (when (and (edit-panes-contains? (app-edit a) vid)
+                 (eq? (doc-pending-ver p)
+                      (editor-document-handle ed (editor-view-document-id ed vid))))
+        (app-mode-set! a (struct-copy complete m
+                                      [doc (and name (doc name sig))]
+                                      [doc-pending #f]))))))
+
+;; 后端 on-source 用：文档结果到达的事件源（与 app-plugin-source 同形，收 app 参数）。
+(define (app-lang-source _a) (doc-runner-source))
 
 (define (app-complete-cancel! a)
   (when (complete? (app-mode a)) (app-mode-set! a #f)))

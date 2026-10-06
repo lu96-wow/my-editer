@@ -86,6 +86,10 @@
      (define src (app-plugin-source a))
      (when src
        (tui:on-source src (lambda (_) (app-plugin-tick! a) (app-draw! a))))
+     ;; 语言服务：后台文档结果到达 → 装回 mode + 重绘。
+     (define lsrc (app-lang-source a))
+     (when lsrc
+       (tui:on-source lsrc (lambda (_) (app-complete-tick! a) (app-draw! a))))
      (dynamic-wind
        void
        (lambda ()

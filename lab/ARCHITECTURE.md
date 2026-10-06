@@ -19,6 +19,8 @@ lab-rebuild/
     ident.rkt       行 / 光标处标识符 / 补全前缀
     source.rkt      #lang + require 模块路径 + 顶层定义名（启发式，不做展开）
     docs.rkt        标识符 → bluebox（DrRacket 式，不抽 HTML 正文）
+    doc-runner.rkt  后台文档查询执行器：惰性 place + async-channel + on-source 事件源
+    doc-worker.rkt  文档查询 place 进程入口
     complete.rkt    前缀 → 候选（基础命名空间 + require 导出 + 本地定义）
   core/        ★应用核心：唯一的状态 + 唯一的动作
     state.rkt       app 结构 + 派生量 + layout 缓存 + **钩子**
@@ -177,7 +179,10 @@ app-prepare! → app-plugin-tick!（seam）
   **只截获上下 / Tab / Enter / Esc**，其余按键（字符、左右、退格……）落回普通编辑表并重算，
   所以弹层**不阻塞输入**。上下选择、Tab/Enter 接受、Esc 取消（只关弹层，保留已输入文本）。
   候选池（模块导出 + 本地定义）一个补全会话只建一次，之后每个字符只按前缀过滤；
-  自动路径不查 bluebox 文档（首次 xref 查询几十毫秒，逐字查会卡），显式 Tab / 上下选择时才查。
+  bluebox 文档在**后台 place** 里查（`lang/doc-runner.rkt` + `doc-worker.rkt`），结果经
+  async-channel 回来，由 `app-complete-tick!` 按「请求 id + 发起时的不可变 document 值
+  （`eq?` = 版本比较）」装回 mode（`doc-pending`）。打字时旧结果自动作废，手指停下才上屏；
+  主进程不再同步查 xref，输入不卡。
   选中项的 bluebox 文档展在菜单**下侧**（同一个实线框，中间一条分隔线）；菜单 / 文档都是
   高 deep 的装饰 pane，不占布局、不动焦点。
 - 两个浮层都是**高 deep 的装饰 pane**（`app/render.rkt` 的 `app-complete-panes` /
