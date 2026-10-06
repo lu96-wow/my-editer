@@ -4,10 +4,10 @@
          "../../kernel/face.rkt"
          "syntax-config.rkt"
          "../lang/file-kind.rkt"
-         "api.rkt"
-         "lex.rkt")
+         "../lang/lex.rkt"
+         "api.rkt")
 
-;;; lab-rebuild/plugin/attr/syntax.rkt —— Racket 关键字高亮（内置属性插件）
+;;; lab/builtin/highlight/syntax.rkt —— Racket 关键字高亮（内置属性插件）
 ;;;
 ;;; 只对 Racket 源文件生效 —— 由 `applies?`（`racket-file?`，扩展名在 file-kind.rkt）
 ;;; 声明；机器/管理器按文档过滤，不适用时根本不会开这个插件。

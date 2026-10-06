@@ -383,6 +383,24 @@
 (check-true (pool-has? "#lang racket/base\n(require racket/list)\n" "second")
             "(require racket/list) 后含 second")
 
+;;; ================= 词补全（复用共享词法器 lang/lex） =================
+(require "builtin/lang/lex.rkt")
+;; 共享词法：与高亮词色同一套（foo_bar 是一个词，$ 在前缀里也算词字符）。
+(check-equal? (map cadddr (scan-words "foo_bar baz$qux"))
+              '("foo_bar" "baz$qux") "lex：标识符含 _ 与 $")
+(check-equal? (document-words "(define foobar 1) fo fo")
+              '("define" "foobar" "fo") "document-words：去重、滤 1 字符")
+(check-equal? (document-words "id x id") '("id") "document-words：默认 min-length 2")
+(check-true (if (member "foobar"
+                    (completion-pool #:words (document-words "(define foobar 1)")))
+                #t #f)
+            "补全池含出现过的词")
+;; 集成：先把定义打进文件，再打前缀，菜单应含文件里的词。
+(define ctxWD (type-all (fresh) "(define foobar 1)\nfoo"))
+(define wd-inst (input-find (session-input (ctx-session ctxWD)) 'complete))
+(check-true (and wd-inst (if (member "foobar" (cs-cands (layer-inst-state wd-inst))) #t #f))
+            "菜单含文件里出现过的词 foobar")
+
 ;;; ================= 异步版本闸门（内核统一） =================
 (define gotG (box #f))
 (define ctxAw (apply-effects! (fresh) (list (e-await 'j1 1 (λ (c v) #t) (λ (c r) (set-box! gotG r) '())))))

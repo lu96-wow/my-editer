@@ -1,28 +1,37 @@
 #lang racket
 
-(require "../../../core/text/base/line.rkt")
-
-;;; lab-rebuild/builtin/highlight/lex.rkt —— 极简词法：按行扫标识符 token
-;;; （词着色 / 关键字插件共用）
+;;; lab/builtin/lang/lex.rkt —— 共享词法器：按行扫标识符 token（纯原子）
 ;;;
-;;; token = (list line start end text)。只认「标识符样」的连续段：
+;;; 「什么算一个词」的**单一来源**。属性插件（词着色 / 关键字）与补全都 require 本文件，
+;;; 保证「着色的词」「补全认的词」「前缀取的词」完全一致。
+;;; （此前 highlight/lex.rkt 与 lang/ident.rkt 各有一套字符集，已经漂移：
+;;;   `foo_bar` 在一处是一个词、在另一处是两个；`$%&^~#@\` 有的认有的不认。）
+;;;
+;;; token = (list line start end text)。
 ;;;   首字符：Unicode 字母 / 下划线
-;;;   后续  ：Unicode 字母 / 数字 / 下划线 / ? ! * / < > = + : . -
-;;; 不处理字符串 / 注释 / 字符字面量 —— 玩具级，够语法高亮用。
+;;;   后续  ：Unicode 字母 / 数字 / symbol-char?（含 !$%&*/:<=>?^_~#@+-.\）
+;;; 不处理字符串 / 注释 / 字符字面量 —— 玩具级，够高亮与补全用。
 ;;;
 ;;; ⚠ 用 char-alphabetic? / char-numeric? 而不是正则字符类：Racket 的 regexp
 ;;; 引擎不支持 \p{L}（POSIX [:alpha:] 也是 ASCII-only），中文等 CJK 会被漏掉。
-;;; 这里的判定与 lang/ident.rkt 一致，保证「补全认的词」和「着色的词」是同一套。
 
-(provide scan-words word-token-at active-token)
+(require "../../../core/text/base/line.rkt")
 
-(define symbol-extra (string->list "?!*/<>=+:.-"))
+(provide symbol-char? ident-start? ident-char?
+         line-tokens scan-words word-token-at active-token)
 
-(define (ident-start? c) (or (char-alphabetic? c) (char=? c #\_)))
-(define (ident-char? c)
+(define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
+
+;; Racket 标识符里允许出现的字符（近似）。前缀切分（lang/ident）也用它。
+(define (symbol-char? c)
   (or (char-alphabetic? c) (char-numeric? c) (memv c symbol-extra)))
 
-;; 一行里的标识符区间 (start end)。
+(define (ident-start? c) (or (char-alphabetic? c) (char=? c #\_)))
+
+;; 标识符后续字符 = symbol-char?（与补全前缀同一套）。
+(define (ident-char? c) (symbol-char? c))
+
+;; 一行里的标识符区间 (start . end)。
 (define (line-tokens line)
   (define n (string-length line))
   (let loop ([i 0] [acc '()])

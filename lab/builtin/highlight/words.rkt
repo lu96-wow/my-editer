@@ -3,10 +3,10 @@
 (require "../../../core/text/base/line.rkt"
          "../../kernel/face.rkt"
          "../lang/file-kind.rkt"
-         "api.rkt"
-         "lex.rkt")
+         "../lang/lex.rkt"
+         "api.rkt")
 
-;;; lab-rebuild/plugin/words.rkt —— 词着色（内置插件）
+;;; lab/builtin/highlight/words.rkt —— 词着色（内置插件）
 ;;;
 ;;; 颜色来自一张**持久表** word → 色号，而不是整词 hash：
 ;;;   · 首次见到某个词 → 取“下一个号”（= 表里已有词数），插进表；
@@ -44,7 +44,7 @@
   (values new-map fills))
 
 ;;; ---------- 活动词（光标所在词） ----------
-;; 在 lex.rkt 里（词着色 / 关键字插件共用）。
+;; 词法在共享原子 lang/lex.rkt 里（词着色 / 关键字 / 补全共用）。
 
 (define (word-open text _path)
   (assign-fills (scan-words text) #f (hash)))

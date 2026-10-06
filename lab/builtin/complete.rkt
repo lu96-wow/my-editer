@@ -1,11 +1,11 @@
 #lang racket
 
-;;; lab-rebuild/builtin/complete.rkt —— 补全菜单（layer + deco 浮层 + 异步内嵌文档）。
+;;; lab/builtin/complete.rkt —— 补全菜单（layer + deco 浮层 + 异步内嵌文档）。
 ;;;
 ;;; 触发：after-insert（打字 / 退格 / 粘贴）自动弹，C-n 显式弹；Escape / 导航 / 失焦取消。
 ;;; layer 'complete：fallthrough（打字仍落 base）+ pop never（显式 accept/cancel）。
 ;;; deco 'complete：每帧纯函数产菜单 pane（锚在光标），选中项内嵌 bluebox 文档。
-;;; 候选来自 lang：基础命名空间 + 当前文件的 #lang/require 导出 + 本地定义。
+;;; 候选来自 lang：当前文件的 #lang/require 导出 + 本地定义 + **文件里出现过的词**。
 ;;;
 ;;; 组合方式：模块上下文用 `doc-job` 的 `view-modules`，异步文档用 `doc-await`
 ;;; （请求 + 文档句柄闸门）；本文件只负责「菜单状态 + 装文档」。轮询由 doc-job 统一。
@@ -90,18 +90,25 @@
 
 ;; 现算模块 / 池 / 前缀 / 候选（新建会话用）。→ (values mods pool prefix cands)
 ;; require 位置 → 模块路径补全（mods = #f：不做文档查询）。
+;; 词候选用共享词法器 document-words —— 与高亮词色同一套词法，不读高亮的私有状态表。
 (define (fresh-candidates ctx vid text p)
   (define prefix (prefix-at text (point-line p) (point-column p)))
   (cond
     [(require-context? text (point-line p) (point-column p))
      (define pool (force module-paths))
-     (values #f pool prefix
-             (and (positive? (string-length prefix)) (filter-pool pool prefix)))]
+     (values #f pool prefix (candidates-for pool prefix))]
     [else
      (define mods (view-modules ctx vid))
-     (define pool (completion-pool #:modules mods #:locals (source-definitions text)))
-     (values mods pool prefix
-             (and (positive? (string-length prefix)) (filter-pool pool prefix)))]))
+     (define pool (completion-pool #:modules mods
+                                   #:locals (source-definitions text)
+                                   #:words (document-words text)))
+     (values mods pool prefix (candidates-for pool prefix))]))
+
+;; 过滤 + 去掉与前缀一模一样的候选（已经打完，不必再提示自己）。
+(define (candidates-for pool prefix)
+  (and (positive? (string-length prefix))
+       (let ([cs (filter-pool pool prefix)])
+         (if (member prefix cs) (remove prefix cs) cs))))
 
 (define (prefix-start p prefix)
   (point (point-line p) (max 0 (- (point-column p) (string-length prefix)))))
@@ -180,7 +187,7 @@
      (cond
        [(and st0 (eqv? (cs-vid st0) vid))
         (define prefix (prefix-at text (point-line p) (point-column p)))
-        (define cands (and (positive? (string-length prefix)) (filter-pool (cs-pool st0) prefix)))
+        (define cands (candidates-for (cs-pool st0) prefix))
         (cond
           [(not (pair? cands)) (list (e-input-pop 'complete))]
           [else (menu-effects ctx vid (cs-mods st0) (cs-pool st0) cands p prefix #f)])]

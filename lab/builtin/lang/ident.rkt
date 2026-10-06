@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/lang/ident.rkt —— 文本层：行 / 光标处的标识符 / 前缀（纯）
+;;; lab/builtin/lang/ident.rkt —— 文本层：行 / 光标处的标识符 / 前缀（纯）
 ;;;
 ;;; 语言服务（文档查询 / 补全）只吃「纯文本 + 行号列号」。本文件不认识
 ;;; editor / app / 插件，只做词法切分：
@@ -9,18 +9,12 @@
 ;;;   identifier-at text line col -> 光标处标识符（可含左右半边；无 -> #f）
 ;;;   prefix-at     text line col -> 光标左侧的标识符前缀（补全用；无 -> ""）
 ;;;
-;;; 列号是 0-based。标识符字符集取 Racket 常见范围（字母 / 数字 / 一批符号字符），
-;;; 足够做「词下取词」，不追求与 reader 完全一致的边界。
+;;; 列号是 0-based。标识符字符集见 lex.rkt（唯一来源）：字母 / 数字 / 一批符号字符。
 
 (provide symbol-char? line-at identifier-at prefix-at)
 
-(require racket/string)
-
-(define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
-
-;; Racket 标识符里允许出现的字符（近似）。
-(define (symbol-char? c)
-  (or (char-alphabetic? c) (char-numeric? c) (memv c symbol-extra)))
+(require racket/string
+         "lex.rkt")
 
 (define (line-at text line)
   (define lines (string-split text "\n"))
