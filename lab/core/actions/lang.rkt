@@ -91,6 +91,17 @@
 (define (cand-doc cands i mods)
   (and (< i (length cands)) (docs-for (list-ref cands i) #:modules mods)))
 
+;; 自动路径取文档：若上一步的候选首项与文档都还在，直接复用（省一次 xref 查询）。
+;; 文档缓存（docs.rkt 的 doc-cache）已按键名 memo，这里只避免频繁重查。
+(define (cand-doc-reuse m cands mods)
+  (cond
+    [(and (complete? m) (complete-doc m)
+          (pair? (complete-candidates m)) (pair? cands)
+          (equal? (car (complete-candidates m)) (car cands))
+          (equal? (complete-mods m) mods))
+     (complete-doc m)]
+    [else (cand-doc cands 0 mods)]))
+
 ;; 前缀起点（point）：光标左侧 string-length prefix 个字符。
 (define (prefix-start p prefix)
   (point (point-line p) (max 0 (- (point-column p) (string-length prefix)))))
@@ -124,8 +135,7 @@
 
 ;; 自动过滤：前缀为空 / 无候选 → 退出补全。
 ;; 已有会话（同一个 view）则复用池；否则建池（每个词第一次）。
-;; ⚠ 自动路径不查文档：docs-for 首次可能几十毫秒，逐字查会阻塞输入；
-;;   文档在显式 Tab / 上下选择时才取（app-complete-begin! / app-complete-move!）。
+;; 文档：选中项与上一步相同时复用，否则同步查（bluebox 缓存在 docs.rkt）。
 (define (app-complete-refine! a tables)
   (define et (app-edit-view+text a))
   (cond
@@ -148,7 +158,8 @@
      (define cands (and (positive? (string-length prefix)) (filter-pool pool prefix)))
      (if (pair? cands)
          (app-mode-set!
-          a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool #f))
+          a (complete-begin cands 0 (prefix-start p prefix) vid tables mods pool
+                             (cand-doc-reuse m cands mods)))
          (app-complete-cancel! a))]))
 
 (define (app-complete-move! a delta)

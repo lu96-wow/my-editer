@@ -101,8 +101,8 @@
 (send (key-event #\b no-mods))
 (check-not-false (complete? (app-mode a)))
 (check-not-false (member "add-between" (complete-candidates (app-mode a))))
-;; 自动路径不查文档（避免逐字查 xref 卡输入）；显式 Tab 才带文档。
-(check-false (complete-doc (app-mode a)))
+;; 自动路径也同步取文档（选中项与候选一起更新）。
+(check-not-false (complete-doc (app-mode a)))
 ;; 继续打字：字符照常进文档（不阻塞输入），前缀跟着变。
 (send (key-event #\e no-mods))
 (check-true (complete? (app-mode a)))
