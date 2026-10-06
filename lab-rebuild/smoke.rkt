@@ -166,12 +166,36 @@
 (check-false (session-sidebar? (ctx-session ctxPan2)) "侧栏隐藏")
 (check-equal? (session-focus-vid (ctx-session ctxPan2)) vid "隐藏后焦点还原")
 
+;; 侧栏展开时方向焦点：覆盖 panel rect + shown-panel（active=buffers）选择
+(define ctxFx0 ctxPanT)                                        ; active=buffers，焦点在 buffers
+(define fx-panel (panel-vid (shown-panel (session-panels (ctx-session ctxFx0))
+                                         (session-active-panel (ctx-session ctxFx0)))))
+(check-equal? (session-focus-vid (ctx-session ctxFx0)) fx-panel "焦点在 buffers 面板")
+(define ctxFx1 (apply-effects! ctxFx0 (list (e-focus (list 'dir 'right)))))
+(check-true (frame-contains? (session-frame (ctx-session ctxFx1))
+                             (session-focus-vid (ctx-session ctxFx1)))
+            "方向焦点：面板 → 主区")
+(define ctxFx2 (apply-effects! ctxFx1 (list (e-focus (list 'dir 'left)))))
+(check-equal? (session-focus-vid (ctx-session ctxFx2)) fx-panel
+              "方向焦点：主区 → buffers 面板（不是 tree）")
+
+;;; ================= 状态行：显示活动编辑视图（vN），不被面板焦点带跑 =================
+(require "builtin/status.rkt")
+(check-true (regexp-match? #rx"edit v[0-9]+" (status-text ctx0)) "状态行显示编辑视图 id")
+(check-true (regexp-match? #rx"edit v[0-9]+" (status-text ctxPan1))
+            "面板焦点下状态行仍显示编辑视图")
+(check-true (regexp-match? #rx"tree \\|" (status-text ctxPan1)) "状态行前缀提示面板焦点")
+(check-true (regexp-match? #rx"buffers \\|" (status-text ctxPanT)) "状态行前缀提示 buffers 焦点")
+
 ;;; ================= 鼠标（同一 resolve） =================
 (check-equal? (rectangle-view-id (hit-pane ctx0 3 0)) vid "鼠标命中主视图")
 (check-equal? (rectangle-view-id (hit-pane ctxPan1 3 0))
               (panel-vid (car (session-panels (ctx-session ctxPan1)))) "鼠标命中面板")
-(define ctxM (step (press (step (press ctx0 #\a) (key-event 'enter no-mods)) #\b)
-                   (mouse-event 5 2 'press 'left no-mods)))
+(define ctxM1 (press ctx0 #\a))                                  ; 打字自动弹补全
+(define ctxM2 (step ctxM1 (key-event 'escape no-mods)))          ; Esc 取消菜单
+(define ctxM3 (step ctxM2 (key-event 'enter no-mods)))           ; 无菜单时 Enter 换行
+(define ctxM4 (step (press ctxM3 #\b) (key-event 'escape no-mods)))  ; 第二行 + 取消
+(define ctxM (step ctxM4 (mouse-event 5 2 'press 'left no-mods)))
 (check-equal? (session-focus-vid (ctx-session ctxM)) vid "鼠标点击聚焦")
 (check-equal? (editor-view-point-line (session-editor (ctx-session ctxM)) vid) 1 "鼠标点击定位行")
 
@@ -203,7 +227,7 @@
 (check-equal? (view-string (press ctxAp #\x)) "(x)" "autopair 中间输入")
 
 (define ctxI (press (press (fresh) #\() #\x))
-(define ctxI2 (step ctxI (key-event 'enter no-mods)))
+(define ctxI2 (step (step ctxI (key-event 'escape no-mods)) (key-event 'enter no-mods)))
 (check-true (regexp-match? #rx"\n  " (view-string ctxI2)) "Enter 按括号缩进两格")
 
 ;;; ================= 属性高亮（版本闸门 + 分层写回） =================
@@ -223,16 +247,39 @@
             "增量同步后高亮仍在")
 (delete-file tmpH)
 
-;;; ================= 补全（deco 浮层 + layer） =================
+;;; ================= 补全（打字自动弹 + deco 浮层 + layer） =================
 (define ctxC0 (press (press (press (fresh) #\d) #\e) #\f))
-(define ctxC1 (step ctxC0 (key-event #\n (mods #t #f #f))))   ; C-n
-(check-equal? (length (input-instances (session-input (ctx-session ctxC1)))) 1 "C-n 弹补全")
+(check-equal? (length (input-instances (session-input (ctx-session ctxC0)))) 1 "打字自动弹补全")
+(define-values (_cc0 scrC0) (app-render ctxC0))
+(check-true (regexp-match? #rx"define" (screen->string scrC0)) "自动弹菜单显示候选")
+(define ctxC1 (step ctxC0 (key-event #\n (mods #t #f #f))))   ; C-n 显式刷新
+(check-equal? (length (input-instances (session-input (ctx-session ctxC1)))) 1 "C-n 不重复入栈")
 (define-values (_cc scrC) (app-render ctxC1))
 (check-true (regexp-match? #rx"define" (screen->string scrC)) "菜单显示候选")
 (define ctxC2 (step ctxC1 (key-event 'tab no-mods)))          ; accept
 (check-true (string-prefix? (view-string ctxC2) "def") "接受候选（前缀保留）")
 (check-true (> (string-length (view-string ctxC2)) 3) "接受候选（变长）")
 (check-equal? (input-instances (session-input (ctx-session ctxC2))) '() "接受后出栈")
+
+;;; ================= 补全：模块感知 + 内嵌 bluebox 文档 =================
+(require "builtin/complete.rkt" "builtin/lang/docs.rkt")
+(define cdir (make-temporary-file "lab-cpl-~a" 'directory))
+(define cfile (build-path cdir "sample.rkt"))
+(call-with-output-file cfile #:exists 'truncate
+  (λ (o) (display "#lang racket\n(require racket/list)\nsecon" o)))
+(define ctxMC (app-open (app-init (path->string cdir) 40 10) (path->string cfile)))
+(define mcvid (session-focus-vid (ctx-session ctxMC)))
+(define ctxMC0 (apply-effects! ctxMC (list (e-move mcvid (selections-one (caret (point 2 5)))))))
+(define ctxMC1 (step ctxMC0 (key-event #\n (mods #t #f #f))))   ; C-n
+(define mc-inst (input-find (session-input (ctx-session ctxMC1)) 'complete))
+(check-true (and mc-inst (if (member "second" (cs-cands (layer-inst-state mc-inst))) #t #f))
+            "候选池含 #lang/require 模块导出（racket/list）")
+(define ctxMC2 (run-notify ctxMC1 'job-tick '()))               ; 异步结果 → e-deliver
+(define mc-st (layer-inst-state (input-find (session-input (ctx-session ctxMC2)) 'complete)))
+(check-true (doc? (cs-doc mc-st)) "补全选中项内嵌 bluebox 文档已装")
+(define-values (_mcc scrMC) (app-render ctxMC2))
+(check-true (regexp-match? #rx"second" (screen->string scrMC)) "补全菜单渲染")
+(delete-directory/files cdir)
 
 ;;; ================= 异步版本闸门（内核统一） =================
 (define gotG (box #f))
@@ -288,6 +335,31 @@
                      (key-event 'backspace no-mods)))           ; Backspace 关闭视图
 (check-equal? (length (editor-document-view-list (session-editor (ctx-session ctxBV6)) didS))
               views0 "Backspace 关闭视图")
+
+;;; ================= 布局：buffers 选中 view 后分屏插入 / 不塔掉分屏 =================
+(define ctxLV0 (press-ctrl (fresh) #\l))                 ; 编辑区先分屏（2 叶）
+(define lv-main (session-focus-vid (ctx-session ctxLV0)))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxLV0)))) 2 "初始 2 叶")
+(define ctxLV1 (press-ctrl ctxLV0 #\b))                  ; 侧栏 → tree
+(define ctxLV2 (step ctxLV1 (key-event 'tab no-mods)))    ; → buffers
+(define-values (ctxLV3 _sLV) (app-render ctxLV2))
+(define lv-bufs (session-focus-vid (ctx-session ctxLV3)))
+(define ctxLV4 (press-ctrl ctxLV3 #\n))                  ; C-n 新建（未入布局）视图
+(define-values (ctxLV5 _sLV2) (app-render ctxLV4))
+;; Enter：只替换活动编辑叶，不塔掉 2 叶分屏（旧 bug：frame-set-root → 1 叶）
+(define ctxLV6 (step (apply-effects! ctxLV5 (list (e-move lv-bufs (selections-one (caret (point 2 0))))))
+                     (key-event 'enter no-mods)))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxLV6)))) 2 "Enter 不塔分屏")
+(check-true (frame-contains? (session-frame (ctx-session ctxLV6)) lv-main) "Enter 保留原叶")
+;; C-l：把选中的 view 分屏插入（叶 +1）
+(define ctxLV7 (press-ctrl ctxLV6 #\n))                  ; 又一个未入布局视图
+(define-values (ctxLV8 _sLV3) (app-render ctxLV7))
+(define ctxLV9 (apply-effects! ctxLV8 (list (e-move lv-bufs (selections-one (caret (point 3 0)))))))
+(define ctxLV10 (step ctxLV9 (key-event 'l (mods #t #f #f))))   ; C-l
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxLV10)))) 3 "C-l 分屏插入新叶")
+(check-true (frame-contains? (session-frame (ctx-session ctxLV10)) lv-main) "C-l 保留原叶")
+(check-true (frame-contains? (session-frame (ctx-session ctxLV10))
+                             (session-focus-vid (ctx-session ctxLV10))) "C-l 焦点在新叶")
 
 ;;; ================= 保存询问：焦点/光标置到输入视图（长 label 可左右滚） =================
 (define tdir2 (make-temporary-file "lab-long-~a" 'directory))

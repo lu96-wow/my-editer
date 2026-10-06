@@ -10,7 +10,7 @@
 (require "frame.rkt" "focus.rkt" "layer.rkt" "table.rkt" "paths.rkt" "policy.rkt" "panel.rkt")
 
 (provide (struct-out session) make-session
-         session-focus-vid)
+         session-focus-vid session-edit-vid)
 
 (struct session
   (editor        ; core editor 值（固定层，内部有 box）
@@ -39,3 +39,15 @@
 
 ;; 焦点视图（focus.target 是一个 pane/vid）。
 (define (session-focus-vid s) (focus-target (session-focus s)))
+
+;; 当前“活动编辑视图”：焦点在 frame 叶上则就是它；焦点在面板 / 内部视图（非 frame 叶）时，
+;; 回退到焦点历史里最近的编辑叶，再退回第一个叶。
+;; 这是派生查询（不进 session 字段），供状态栏 / 放置锚点等共用。
+(define (session-edit-vid s)
+  (define fr (session-frame s))
+  (define f (session-focus s))
+  (define (in-frame? v) (and v (frame-contains? fr v)))
+  (or (and (in-frame? (focus-target f)) (focus-target f))
+      (for/first ([v (in-list (focus-stack f))] #:when (in-frame? v)) v)
+      (and (pair? (frame-leaves fr)) (leaf-vid (car (frame-leaves fr))))
+      #f))

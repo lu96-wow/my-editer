@@ -23,8 +23,7 @@
   (for/first ([p (in-list (session-panels s))] #:when (eq? (panel-name p) name)) p))
 
 (define (current-panel s)
-  (or (panel-by-name s (session-active-panel s))
-      (and (pair? (session-panels s)) (car (session-panels s)))))
+  (shown-panel (session-panels s) (session-active-panel s)))
 
 ;;; ================= buffers 模型 =================
 
@@ -97,6 +96,15 @@
     [(view) (list (e-show-view (buffer-row-vid row) #t))]
     [else '()]))
 
+;; 把选中的 view / 文档按 dir 分屏插入布局（而非覆盖当前编辑区）。
+(define (cmd-bufs-open ctx ev dir)
+  (define row (buf-row-at-focus ctx))
+  (cond
+    [(not row) '()]
+    [(eq? (buffer-row-kind row) 'view)
+     (list (e-show-view (buffer-row-vid row) #t (list 'split dir)))]
+    [else (list (e-show (buffer-row-did row) (list 'split dir) #t))]))
+
 (define (cmd-bufs-new-view ctx ev)
   (define row (buf-row-at-focus ctx))
   (define did (and row (buffer-row-did row)))
@@ -126,6 +134,8 @@
               (list (kbd (key 'enter)     'panel-activate
                          (key 'tab)       'toggle-left
                          (key 'n 'ctrl)   'bufs-new-view
+                         (key 'l 'ctrl)   '(bufs-open lr)
+                         (key 'k 'ctrl)   '(bufs-open tb)
                          (key 'backspace) 'bufs-close))
               refresh-buffers))
 
@@ -162,6 +172,7 @@
 (define (register-panels! r)
   (for/fold ([r r]) ([c (in-list (list (contrib 'panel 'buffers 0 buffers-panel)
                                        (contrib 'command 'panel-activate 0 cmd-panel-activate)
+                                       (contrib 'command 'bufs-open 0 cmd-bufs-open)
                                        (contrib 'command 'bufs-new-view 0 cmd-bufs-new-view)
                                        (contrib 'command 'bufs-close 0 cmd-bufs-close)
                                        (contrib 'command 'toggle-sidebar 0 cmd-toggle-sidebar)

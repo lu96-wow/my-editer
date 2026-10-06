@@ -195,10 +195,10 @@
      (update ctx (λ (s) (struct-copy session s [width (max 20 w)] [height (max 5 h)])))]
 
     [(type)
-     (match-define (list vid text mt) args)
+     (match-define (list vid text mt typing?) args)
      (define ed (session-editor (sess ctx)))
      (define-values (changes _ok?) (editor-view-insert! ed vid text mt))
-     (edit-notify ctx vid changes #t)]
+     (edit-notify ctx vid changes typing?)]
     [(backspace)
      (match-define (list vid mt) args)
      (define ed (session-editor (sess ctx)))
@@ -247,9 +247,9 @@
        [else ctx])]
 
     [(show-view)
-     (match-define (list vid focus?) args)
+     (match-define (list vid focus? placement) args)
      (define s0 (sess ctx))
-     (define fr (place-view (session-frame s0) (session-focus-vid s0) vid 'replace))
+     (define fr (place-view (session-frame s0) (session-edit-vid s0) vid placement))
      (define ctx1 (update ctx (λ (s) (struct-copy session s [frame fr]))))
      (if focus?
          (update ctx1 (λ (s) (struct-copy session s [focus (focus-set (session-focus s) vid)])))
@@ -355,9 +355,10 @@
      (cond
        [(not v) ctx]
        [else
-        (define left? (and (session-sidebar? s) (pair? (session-panels s))))
-        (define sw (if left? (session-sidebar-width s) 0))
-        (define main (area 0 0 (max 1 (- (session-width s) sw)) (max 1 (sub1 (session-height s)))))
+        (define p (and (session-sidebar? s) (shown-panel (session-panels s) (session-active-panel s))))
+        (define-values (_sw main)
+          (workspace-main-area (session-width s) (session-height s)
+                               (and p #t) (session-sidebar-width s)))
         (define axis (if (memq dir '(left right)) 'width 'height))
         (define delta (if (memq dir '(right down)) 1 -1))
         (update ctx (λ (s) (struct-copy session s
@@ -369,7 +370,7 @@
 
 (define (do-split ctx dir)
   (define s (sess ctx))
-  (define vid (session-focus-vid s))
+  (define vid (session-edit-vid s))
   (cond
     [(not vid) ctx]
     [else
@@ -435,7 +436,7 @@
                                                   #:line-numbers? #t))
        (values (set-editor ctx ed2) vid)]))
   (define s1 (sess ctx1))
-  (define fr (place-view (session-frame s1) (session-focus-vid s1) vid placement))
+  (define fr (place-view (session-frame s1) (session-edit-vid s1) vid placement))
   (define ctx2 (update ctx1 (λ (s) (struct-copy session s [frame fr]))))
   (define ctx3 (run-notify ctx2 'document-opened (list did)))
   (if focus?
@@ -447,14 +448,12 @@
 (define (focus-rects s)
   (define w (session-width s))
   (define h (session-height s))
-  (define left? (and (session-sidebar? s) (pair? (session-panels s))))
-  (define sw (if left? (min (session-sidebar-width s) (max 0 (- w 1))) 0))
-  (define mw (max 1 (- w sw)))
-  (define main (area sw 0 mw (max 1 (sub1 h))))
+  (define p (and (session-sidebar? s) (shown-panel (session-panels s) (session-active-panel s))))
+  (define-values (sw main) (workspace-main-area w h (and p #t) (session-sidebar-width s)))
   (define-values (rects _) (frame->rectangles (session-frame s) main))
   (define base (for/list ([r (in-list rects)]) (cons (rectangle-view-id r) r)))
-  (if left?
-      (cons (cons (panel-vid (car (session-panels s))) (rectangle 0 0 sw h 0)) base)
+  (if p
+      (cons (cons (panel-vid p) (rectangle (panel-vid p) 0 0 sw h 0)) base)
       base))
 
 (define (pane-dir s dir)

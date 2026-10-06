@@ -14,5 +14,4 @@
    ch
    (lambda (req)
      (match-define (list name mods) req)
-     (define d (docs-for name #:modules mods))
-     (and d (list (doc-name d) (doc-signature d))))))
+     (doc->result (docs-for name #:modules mods)))))

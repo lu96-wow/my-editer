@@ -2,34 +2,29 @@
 
 ;;; lab-rebuild/builtin/docs.rkt —— 文档浮窗（layer + deco + 异步）。
 ;;;
-;;; C-p d → 查光标处标识符的 bluebox 文档：
-;;;   · doc-job 提交异步请求（place / sync）
-;;;   · e-await 登记版本闸门（version = 发起时的 document 句柄）
-;;;   · job-tick 抽结果 → e-deliver → 命中则更新 docs 层状态
+;;; C-p d → 查光标处标识符的 bluebox 文档（组合 doc-job 的 `view-modules` / `doc-await`）：
+;;;   · view-modules 给出候选模块（#lang/require + racket/racket/base）
+;;;   · doc-request! 提交异步请求（place / sync）
+;;;   · doc-await 登记文档句柄闸门；doc-job 统一 job-tick 轮询 → e-deliver
+;;;   · on-result 命中则更新 docs 层状态
 ;;;   · deco 'docs 每帧画浮窗
 
-(require racket/path
-         "../kernel/editor-api.rkt"
+(require "../kernel/editor-api.rkt"
          "../kernel/effect.rkt"
          "../kernel/layer.rkt"
          "../kernel/session.rkt"
-         "../kernel/paths.rkt"
          "../kernel/runtime.rkt"
          "../kernel/registry.rkt"
-         "../kernel/hooks.rkt"
          "../kernel/table.rkt"
          "../kernel/binding.rkt"
          "../kernel/overlay.rkt"
          "../kernel/wrap.rkt"
-         "lang/ident.rkt" "lang/source.rkt" "lang/docs.rkt"
+         "lang/ident.rkt" "lang/docs.rkt"
          "doc-job.rkt")
 
 (provide register-docs! (struct-out docs))
 
 (struct docs (vid point lines offset width rows name) #:transparent)
-
-(define (context-modules mods)
-  (remove-duplicates (append mods '(racket racket/base)) equal?))
 
 (define docs-keys
   (kbd (key 'enter)    'docs-close
@@ -56,31 +51,23 @@
     [(not vid) '()]
     [else
      (define ed (session-editor s))
-     (define did (editor-view-document-id ed vid))
-     (define path (path-table-path (session-paths s) did))
-     (define base-dir (if path (let-values ([(d _n _m) (split-path path)]) d) (current-directory)))
      (define text (editor-view-string ed vid))
      (define p (editor-view-point ed vid))
      (define id (identifier-at text (point-line p) (point-column p)))
-     (define mods (context-modules (source-requires text #:base-dir base-dir)))
+     (define mods (view-modules ctx vid))
      (define req-id (doc-request! ctx (or id "") mods))
      (define width (max 20 (min 88 (- (session-width s) 6))))
      (define rows (max 1 (min 20 (- (session-height s) 4))))
      (define placeholder (cond [(not id) "（光标处没有标识符）"] [else "查询文档…"]))
      (define st (docs vid p (list->vector (wrap-lines placeholder width)) 0 width rows (or id "")))
-     (define ver (editor-document-handle ed did))
-     (define (current? c v)
-       (define s* (ctx-session c))
-       (and (memv did (editor-document-id-list (session-editor s*)))
-            (eq? v (editor-document-handle (session-editor s*) did))))
      (define (on-result c result)
-       (define d (and result (apply doc result)))
+       (define d (result->doc result))
        (define body (if d (doc->text d) (format "~a\n\n（未找到文档）" (or id ""))))
        (list (e-input-set 'docs (struct-copy docs st
                                              [lines (list->vector (wrap-lines body width))]
                                              [offset 0]))))
      (list (e-input-push 'docs st)
-           (e-await req-id ver current? on-result))]))
+           (doc-await ctx vid req-id on-result))]))
 
 (define (cmd-docs-close ctx ev) (list (e-input-pop 'docs)))
 
@@ -113,16 +100,13 @@
        [(not arow) '()]
        [else
         (define h (+ rows 2))
-        (define avail-below (- (session-height s) (add1 arow)))
-        (define top (if (<= h avail-below) (add1 arow) (max 0 (- arow h))))
-        (define left (max 0 (min acol (max 0 (- (session-width s) (+ cw 2))))))
+        (define-values (top left)
+          (anchor-placement arow acol cw h (session-width s) (session-height s)))
         (define off (max 0 (min (docs-offset st) (max 0 (- n rows)))))
         (define content (for/list ([i (in-range rows)]) (cons (vector-ref lines (+ off i)) 'state)))
         (list (frame-pane 'docs top left cw content 11))])]))
 
 ;;; ================= 钩子 / 注册 =================
-
-(define (docs-tick-hook ctx _args) (doc-poll! ctx))
 
 (define (register-docs! r)
   (for/fold ([r (register-doc-job! r)])
@@ -132,6 +116,5 @@
                        (contrib 'binding 'docs 0 (keybinding 'focus (key 'd) 'show-docs))
                        (contrib 'command 'show-docs 0 cmd-show-docs)
                        (contrib 'command 'docs-close 0 cmd-docs-close)
-                       (contrib 'command 'docs-scroll 0 cmd-docs-scroll)
-                       (contrib 'hook 'docs-tick 0 (make-hook 'job-tick docs-tick-hook))))])
+                       (contrib 'command 'docs-scroll 0 cmd-docs-scroll)))])
     (reg-add r c)))

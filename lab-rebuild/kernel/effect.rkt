@@ -26,7 +26,7 @@
 (define (fx tag . args) (effect tag args))
 
 ;; 编辑
-(define (e-type vid text tag)      (fx 'type vid text tag))
+(define (e-type vid text tag [typing? #t]) (fx 'type vid text tag typing?))
 (define (e-backspace vid tag)      (fx 'backspace vid tag))
 (define (e-delete vid tag)         (fx 'delete vid tag))
 (define (e-nav vid dir extend?)    (fx 'nav vid dir extend?))
@@ -41,7 +41,7 @@
 
 ;; 文档 / 视图：show 接受 path（现开）或 did；placement = 'replace | (list 'split dir)
 (define (e-show id placement focus?) (fx 'show id placement focus?))
-(define (e-show-view vid focus?)  (fx 'show-view vid focus?))   ; 显示指定 view（已存在）
+(define (e-show-view vid focus? [placement 'replace]) (fx 'show-view vid focus? placement))   ; 显示指定 view（已存在）
 (define (e-view-new did)          (fx 'view-new did))           ; 新建 view（不放置）
 (define (e-view-close vid)        (fx 'view-close vid))         ; 关单个 view
 (define (e-close ids)              (fx 'close ids))

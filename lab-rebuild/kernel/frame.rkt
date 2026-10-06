@@ -12,7 +12,7 @@
          frame-empty frame-new frame-root frame-set-root
          frame-leaves frame-find frame-contains?
          frame-split frame-remove frame-replace frame-swap frame-resize
-         area-split frame->rectangles)
+         area-split workspace-main-area frame->rectangles)
 
 (struct area (x y w h) #:transparent)
 
@@ -24,6 +24,12 @@
     [(tb) (values (area (area-x a) (area-y a) (area-w a) size)
                   (area (area-x a) (+ (area-y a) size) (area-w a) (- (area-h a) size)))]
     [else (error 'area-split "dir 必须是 'lr / 'tb")]))
+
+;; 屏尺寸 + 左栏状态 → (values 左栏宽 主区区域)。
+;; layout / focus 几何 / pane-resize 共用，避免三处各算一套（曾出现 x 偏移与 clamp 不一致）。
+(define (workspace-main-area w h sidebar? sidebar-width)
+  (define sw (if sidebar? (min sidebar-width (max 0 (- w 1))) 0))
+  (values sw (area sw 0 (max 1 (- w sw)) (max 1 (sub1 h)))))
 
 (struct leaf (vid role) #:transparent)
 (struct split (dir size a b) #:transparent)

@@ -11,6 +11,7 @@
 (provide (struct-out deco)
          overlay-panes
          anchor-screen-pos
+         anchor-placement
          box-line box-hline frame-pane
          box-bface box-tface
          box-tl box-tr box-bl box-br box-lt box-rt)
@@ -27,6 +28,14 @@
 ;;; ================= 锚点 =================
 
 ;; 光标屏幕绝对坐标（供浮层定位）；不可见 → (values #f #f)。由 layout.rkt 提供。
+
+;; 把 w×h 的框放在锚点下方；下方放不下则翻到上方；水平夹取到屏内。
+;; 浮层 provider 共用同一套「落位」组合。 → (values top left)
+(define (anchor-placement arow acol w h screen-w screen-h)
+  (values (if (<= (+ h 1) (- screen-h (add1 arow)))
+              (add1 arow)
+              (max 0 (- arow h)))
+          (max 0 (min acol (max 0 (- screen-w (+ w 2)))))))
 
 ;;; ================= 实线框 =================
 

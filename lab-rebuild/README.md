@@ -64,7 +64,7 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **左栏面板**：文件树（tree）+ 文档/视口两级树（buffers）；鼠标命中测试走 resolve。
 - **indent**（覆盖 newline）+ **autopair**（before-insert 钩子）。
 - **属性高亮**：3 个纯插件 + 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
-- **补全菜单**：layer + deco 浮层 + 候选池 refine。
+- **补全菜单**：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出，选中项内嵌 bluebox 文档（异步）。
 - **文档浮窗**：`C-p d`（layer + deco + 异步；bluebox）。
 - **通用异步执行器**：sync / place runner（服务惰性创建）；后端 on-source 唤醒。
 - **主题配色**：face/palette → ANSI（后端）。
@@ -88,12 +88,11 @@ C-p     焦点前缀         M-m     窗格互换前缀        M-s     窗格缩
 方向/Home/End/Tab/Enter  鼠标：点击聚焦+定位、滚轮滚动
 面板内：Tab 在 tree ↔ buffers 轮换
   tree:    Enter 展开/打开，C-n 新建文件，C-l 新建目录，Backspace 删除
-  buffers: Enter 展开文档/显示 view，C-n 新建 view，Backspace 关闭（view/文档）
+  buffers: Enter 展开文档/显示 view（替换活动编辑叶），C-l / C-k 分屏插入选中 view，C-n 新建 view，Backspace 关闭（view/文档）
 ```
 
 ## 尚未实现（骨架留白）
 
-- **补全菜单内嵌文档**（doc 已具备，差拼接）。
 - **高亮的 place 传输**（目前 sync；machine/shadow 已具备，差 runner 接线）。
 - `emit` 独立通道（当前 `save` 就地写盘）。
 - 多工作区 / 窗口。

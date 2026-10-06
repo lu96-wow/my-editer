@@ -10,24 +10,16 @@
 
 (provide layout-info hit-pane anchor-screen-pos)
 
-(define (shown-panel s)
-  (define ps (session-panels s))
-  (or (for/first ([p (in-list ps)] #:when (eq? (panel-name p) (session-active-panel s))) p)
-      (and (pair? ps) (car ps))))
-
 ;; → (values (listof rectangle) width height)
 (define (layout-info ctx)
   (define s (ctx-session ctx))
   (define w (session-width s))
   (define h (session-height s))
-  (define p (and (session-sidebar? s) (shown-panel s)))
-  (define left? (and p #t))
-  (define sw (if left? (min (session-sidebar-width s) (max 0 (- w 1))) 0))
-  (define mw (max 1 (- w sw)))
-  (define main (area sw 0 mw (max 1 (sub1 h))))
+  (define p (and (session-sidebar? s) (shown-panel (session-panels s) (session-active-panel s))))
+  (define-values (sw main) (workspace-main-area w h (and p #t) (session-sidebar-width s)))
   (define-values (rects _bars) (frame->rectangles (session-frame s) main))
-  (define left-rects (if left? (list (rectangle (panel-vid p) 0 0 sw h 0)) '()))
-  (define slot-rect (rectangle (effective-slot-vid ctx) sw (sub1 h) mw 1 0))
+  (define left-rects (if p (list (rectangle (panel-vid p) 0 0 sw h 0)) '()))
+  (define slot-rect (rectangle (effective-slot-vid ctx) sw (sub1 h) (area-w main) 1 0))
   (values (append left-rects rects (list slot-rect)) w h))
 
 ;; 屏幕坐标 → 命中的窗格矩形 / #f（鼠标用）。
