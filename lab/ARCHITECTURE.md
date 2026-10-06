@@ -215,6 +215,7 @@ racket lab-rebuild/smoke-app.rkt     # 集成（无终端）
 racket lab-rebuild/smoke-state.rkt   # state 行增量更新回归
 racket lab-rebuild/smoke-lang.rkt    # 语言层（ident / source / docs / complete）
 racket lab-rebuild/smoke-lang-app.rkt # 语言服务集成（补全 / 文档）
+racket lab-rebuild/smoke-undo.rkt    # 撤销粒度（输入合并）回归
 raco test lab-rebuild                # 全部（含 state / theme 回归）
 ```
 
@@ -259,6 +260,25 @@ raco test lab-rebuild                # 全部（含 state / theme 回归）
 state 行是展示槽，永远钉在左上角。
 
 回归在 `lab-rebuild/smoke-state.rkt`（长度 / 整行只读 / 整行 face / undo 不变）。
+
+## 撤销粒度（输入合并）
+
+core 的 `editor-view-*-!` 都收一个可选的 `merge-tag`：当「tag 相同 + 同一个视图 +
+上一步终点选区 = 这一步起点选区」时 `history-merge` 并进上一步，否则新起一步。
+core 只提供**机制**，粒度策略在外部编辑层：`command/registry.rkt` 的
+`undo-typing-policy` 返回 `(values merge-tag seal-before? seal-after?)`。
+
+默认策略：连续非空白字符合并成一步；空白（空格 / 换行）是中断 —— 空白自身并进
+前一段，随后 `editor-view-seal!` 封口，下一段另起一步：
+
+```
+f o o ␠ b a r   →   ["foo "]  ["bar"]
+undo："foo bar" → "foo " → ""
+```
+
+要改粒度（空白单独成步 / 一律不合并 / 尾随空白归下一段）只改这个策略函数。
+`insert-string`（换行）走同一策略；补全接受 / 粘贴 / 输入插件（括号配对）各成一步，
+不与打字合并。
 
 ## 还没动（以后）
 

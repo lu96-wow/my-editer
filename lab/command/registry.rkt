@@ -58,13 +58,44 @@
 ;; 编辑后刷新补全弹层（自动补全：输入即触发；候选池复用见 core/actions/lang.rkt）。
 (define (complete-refresh! a) (app-complete-refine! a complete-keys))
 
+;;; ================= 撤销粒度（合并策略） =================
+;;;
+;;; core 的 `editor-view-*-!` 都收一个 merge-tag：当「tag 相同 + 同一个视图 + 上一步
+;;; 终点选区 = 这一步起点选区」时，把新编辑 history-merge 进上一步；否则新起一步。
+;;; core 只提供机制，**粒度完全由这一层（外部编辑层）决定**。
+;;;
+;;; 默认策略：连续「非空白」字符合并成一步；空白（空格 / Tab / 换行）是中断——
+;;; 空白自身并进前一段，随后封口（`editor-view-seal!`），下一段另起一步。
+;;;
+;;;   f o o ␠ b a r   →   ["foo "]  ["bar"]
+;;;   undo 依次："foo bar" → "foo " → ""
+;;;
+;;; 想换粒度（比如空白单独成步 / 一律不合并 / 尾随空格归下一段）只改
+;;; `undo-typing-policy`：返回 merge-tag + 插前是否封口 + 插后是否封口。
+
+;; 插入文本里是否含空白（空白 = 中断）。
+(define (break-text? text)
+  (for/or ([ch (in-string text)]) (char-whitespace? ch)))
+
+;; 输入合并策略：文本 → (values merge-tag seal-before? seal-after?)。
+;; 默认：普通字符合并成 'lab-typing 一步；空白并进前一段，随后封口（中断）。
+;; 想让空白归下一段（undo 后不留尾随空格）：
+;;   (values 'lab-typing (break-text? text) #f)
+;; 想每个字符各成一步：直接返回 #f 作 merge-tag。
+(define (undo-typing-policy text)
+  (values 'lab-typing #f (break-text? text)))
+
 ;;; ================= 编辑 =================
 
 (define (cmd-insert e a)
   (define text (event-text e))
   (define r (input-plugins-text! enabled-input-plugins a text))
   (cond
-    [(not r) (edit! a (lambda () (editor-view-insert! (ed a) (focus a) text)))]
+    [(not r)
+     (define-values (tag seal-before? seal-after?) (undo-typing-policy text))
+     (when seal-before? (editor-view-seal! (ed a) (focus a)))
+     (edit! a (lambda () (editor-view-insert! (ed a) (focus a) text tag)))
+     (when seal-after? (editor-view-seal! (ed a) (focus a)))]
     [(pair? r) (plugin-note-change! a (focus a) r)]     ; 插件已改好，只需同步影子
     [else (void)])                                      ; 插手但没改文本（如跳过闭括号）
   (complete-refresh! a))
@@ -74,7 +105,10 @@
   (complete-refresh! a))
 
 (define (cmd-insert-string e a s)
-  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s)))
+  (define-values (tag seal-before? seal-after?) (undo-typing-policy s))
+  (when seal-before? (editor-view-seal! (ed a) (focus a)))
+  (edit! a (lambda () (editor-view-insert! (ed a) (focus a) s tag)))
+  (when seal-after? (editor-view-seal! (ed a) (focus a)))
   (complete-refresh! a))
 
 (define (cmd-backspace e a)
