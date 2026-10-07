@@ -569,4 +569,67 @@
             "patch 路径：视口尺寸生效、跟随光标")
 (delete-file fL)
 
+;;; ================= 对照翻译（内容双向 + 视口同步） =================
+(require "builtin/translate.rkt")
+(define tdict (for/hash ([p (in-list (list (cons "printf" "打印") (cons "display" "显示")))]) (values (car p) (cdr p))))
+(check-equal? (translate-string tdict "printf(x);\ndisplay(y);\n") "打印(x);\n显示(y);\n"
+              "整词翻译保持空白 / 换行")
+(check-equal? (translate-string tdict "printf_safe") "printf_safe" "不匹配子串")
+
+(define ctxTR0 (type-all (fresh) "printf(a);\ndisplay(b);\nprintf(c);"))
+(define srcTR (session-focus-vid (ctx-session ctxTR0)))
+(define src-did (editor-view-document-id (session-editor (ctx-session ctxTR0)) srcTR))
+;; C-t 开译文文档
+(define ctxTR1 (step ctxTR0 (key-event #\t (mods #t #f #f))))
+(define sTR (ctx-session ctxTR1))
+(define edTR (session-editor sTR))
+(define mirror-vid (session-focus-vid sTR))
+(define mirror-did (editor-view-document-id edTR mirror-vid))
+(check-true (not (eqv? srcTR mirror-vid)) "C-t 新开译文视图")
+(check-equal? (length (frame-leaves (session-frame sTR))) 2 "译文左右分屏")
+(check-equal? (editor-document-string edTR mirror-did) "打印(a);\n显示(b);\n打印(c);"
+              "开译文文档（正向）")
+(check-equal? (editor-view-string edTR srcTR) "printf(a);\ndisplay(b);\nprintf(c);"
+              "源文档不变")
+
+;; 源编辑 → 译文同步
+(define ctxTR2 (apply-effects! ctxTR1
+                 (list (e-move srcTR (selections-one (caret (point 2 10))))
+                       (e-type srcTR "\nprintf(d);" #f))))
+(check-equal? (editor-document-string (session-editor (ctx-session ctxTR2)) mirror-did)
+              "打印(a);\n显示(b);\n打印(c);\n打印(d);" "源编辑 → 译文同步")
+
+;; 译文编辑 → 源同步（反向）
+(define ctxTR3 (apply-effects! ctxTR2
+                 (list (e-move mirror-vid (selections-one (caret (point 3 6))))
+                       (e-type mirror-vid "\n显示(e);" #f))))
+(check-equal? (editor-document-string (session-editor (ctx-session ctxTR3)) src-did)
+              "printf(a);\ndisplay(b);\nprintf(c);\nprintf(d);\ndisplay(e);" "译文编辑 → 源同步")
+
+;; 视口同步：先渲染一次让 anchor 快照对齐，再动源侧
+(define ctxTR4 (run-notify ctxTR3 'before-render '()))
+(editor-view-set-anchor! (session-editor (ctx-session ctxTR4)) srcTR 2 0)
+(define ctxTR5 (run-notify ctxTR4 'before-render '()))
+(check-equal? (editor-view-top-line (session-editor (ctx-session ctxTR5)) mirror-vid) 2
+              "视口同步：源滚动 → 译文跟随")
+;; 反向：动译文侧
+(editor-view-set-anchor! (session-editor (ctx-session ctxTR5)) mirror-vid 0 0)
+(define ctxTR6 (run-notify ctxTR5 'before-render '()))
+(check-equal? (editor-view-top-line (session-editor (ctx-session ctxTR6)) srcTR) 0
+              "视口同步：译文滚动 → 源跟随")
+
+;; 关配对：走管线 e-close 关译文文档 → 帧叶同步移除 + 配对清理
+(define trSvc (service-ref ctxTR6 'translate))
+(check-equal? (length (tr-pairs trSvc)) 1 "登记一对")
+(define ctxTR7 (apply-effects! ctxTR6 (list (e-close (list mirror-did)))))
+(check-equal? (length (tr-pairs (service-ref ctxTR7 'translate))) 0 "关闭文档后清配对")
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxTR7)))) 1 "关闭文档后只剩一叶")
+
+;; 再开一次，用 translate-close 关配对
+(define ctxTR8 (apply-effects! ctxTR7 (list (fx 'translate-open))))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxTR8)))) 2 "重新开译文")
+(define ctxTR9 (apply-effects! ctxTR8 (list (fx 'translate-close))))
+(check-equal? (length (tr-pairs (service-ref ctxTR9 'translate))) 0 "translate-close 清配对")
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxTR9)))) 1 "translate-close 只剩一叶")
+
 (displayln "smoke: all passed")

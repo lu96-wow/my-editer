@@ -18,6 +18,7 @@
          "../builtin/complete.rkt"
          "../builtin/docs.rkt"
          "../builtin/highlight.rkt"
+         "../builtin/translate.rkt"
          "../builtin/policy.rkt")
 
 (provide package-catalog)
@@ -35,4 +36,5 @@
         (cons 'complete    register-complete!)
         (cons 'docs        register-docs!)
         (cons 'highlight   register-highlight!)
+        (cons 'translate   register-translate!)
         (cons 'policy      register-policies!)))

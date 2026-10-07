@@ -71,6 +71,12 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **通用异步执行器**：sync / place runner（服务惰性创建）；后端 on-source 唤醒。
 - **主题配色**：face/palette → ANSI（后端）。
 - **配置驱动包加载**：`config/packages.rkt` 折叠 register 过程。
+- **对照翻译（`builtin/translate.rkt`）**：`C-t` 给当前文档另开「译文文档」并左右分屏；
+  两边**任一侧编辑都同步到另一侧**。词典在 `config/translate.rkt`（整词替换，保持行数）。
+  内容转换：`after-edit` → 自定义 effect → `editor-view-assign!` 写对侧；`assign` 不触发
+  `after-edit` ⇒ 天然单向无回环。视口同步：`before-render` 每帧对账 anchor（用「上次快照」
+  判定哪侧动了，两侧都动用焦点裁决）→ 自定义 effect → `editor-view-set-anchor!`。
+  `M-t` 关配对。全程只加 effect / hook，不改 kernel。
 
 ## 异步边界（重要）
 
@@ -86,6 +92,7 @@ Ctrl-O  find-file        Ctrl-B  toggle-sidebar      Ctrl-S  save
 Ctrl-Q  quit（改脏先问）  Ctrl-L  split-lr            Ctrl-K  split-tb
 Ctrl-D  pane-close       Ctrl-N  补全                 Ctrl-A/C/X/V 选择/复制/剪切/粘贴
 Ctrl-Z  undo / Ctrl-Y redo
+Ctrl-T  开对照翻译（另开译文文档，双向同步）   M-t  关对照翻译
 C-p     焦点前缀         M-m     窗格互换前缀        M-s     窗格缩放宽前缀
 方向/Home/End/Tab/Enter  鼠标：点击聚焦+定位、滚轮滚动
 面板内：Tab 在 tree ↔ buffers 轮换

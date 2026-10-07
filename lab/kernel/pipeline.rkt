@@ -294,12 +294,20 @@
      (define ids (car args))
      (define s (sess ctx))
      (define dids (filter number? ids))
-     (define ed2 (for/fold ([ed (session-editor s)]) ([d (in-list dids)]) (editor-close-document ed d)))
+     (define ed0 (session-editor s))
+     ;; frame 叶存的是 vid，而 e-close 传的是 did —— 先把待关文档的视图收齐再删叶。
+     (define close-vids (append* (for/list ([d (in-list dids)]) (editor-document-view-list ed0 d))))
+     (define ed2 (for/fold ([ed ed0]) ([d (in-list dids)]) (editor-close-document ed d)))
      (for ([d (in-list dids)]) (path-table-remove! (session-paths s) d))
      (define fr (for/fold ([fr (session-frame s)]) ([v (in-list (frame-leaves (session-frame s)))])
-                  (if (memv (leaf-vid v) ids) (frame-remove fr (leaf-vid v)) fr)))
-     (define ctx1 (set-editor ctx ed2))
-     (for/fold ([c ctx1]) ([d (in-list dids)]) (run-notify c 'document-closed (list d)))]
+                  (if (memv (leaf-vid v) close-vids) (frame-remove fr (leaf-vid v)) fr)))
+     (define leaves (frame-leaves fr))
+     (define next (if (pair? leaves) (leaf-vid (car leaves)) #f))
+     (define ctx1 (set-editor (update ctx (λ (s) (struct-copy session s [frame fr]))) ed2))
+     (define ctx2 (if (memv (session-focus-vid (sess ctx1)) close-vids)
+                      (update ctx1 (λ (s) (struct-copy session s [focus (focus-set (session-focus s) next)])))
+                      ctx1))
+     (for/fold ([c ctx2]) ([d (in-list dids)]) (run-notify c 'document-closed (list d)))]
 
     [(focus)
      (define target (car args))
