@@ -27,7 +27,7 @@
          "lang/docs.rkt")
 
 (provide register-doc-job! doc-request! doc-poll!
-         view-modules doc-await)
+         view-modules view-modules/context doc-await)
 
 (struct doc-svc (runner-box) #:transparent)
 
@@ -76,11 +76,19 @@
 (define (view-modules ctx vid)
   (define s (ctx-session ctx))
   (define ed (session-editor s))
+  (define text (editor-view-string ed vid))
+  (define-values (lang forms) (module-context text))
+  (view-modules/context ctx vid lang forms))
+
+;; 已解析的 (`module-context`) 版本：调用方已读过 text、解析过 lang/forms，
+;; 就不再重复 read 整个文档。
+(define (view-modules/context ctx vid lang forms)
+  (define s (ctx-session ctx))
+  (define ed (session-editor s))
   (define did (editor-view-document-id ed vid))
   (define path (path-table-path (session-paths s) did))
   (define base-dir (if path (let-values ([(d _n _m) (split-path path)]) d) (current-directory)))
-  (define text (editor-view-string ed vid))
-  (define mods (source-requires text #:base-dir base-dir))
+  (define mods (requires-of-forms lang forms #:base-dir base-dir))
   (if (null? mods) '(racket/base) mods))
 
 ;;; ================= 版本组合子（请求 + 文档句柄闸门） =================

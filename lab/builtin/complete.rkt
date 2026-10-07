@@ -10,7 +10,8 @@
 ;;; 组合方式：模块上下文用 `doc-job` 的 `view-modules`，异步文档用 `doc-await`
 ;;; （请求 + 文档句柄闸门）；本文件只负责「菜单状态 + 装文档」。轮询由 doc-job 统一。
 
-(require "../kernel/editor-api.rkt"
+(require racket/string
+         "../kernel/editor-api.rkt"
          "../kernel/effect.rkt"
          "../kernel/layer.rkt"
          "../kernel/session.rkt"
@@ -88,21 +89,61 @@
        (frame-contains? (session-frame (ctx-session ctx)) vid)
        (doc-applies? ctx 'complete)))
 
-;; 现算模块 / 池 / 前缀 / 候选（新建会话用）。→ (values mods pool prefix cands)
+;; 候选池缓存：同一个 vid + 同一个词的词首 → 复用上次的池。
+;; 打字时菜单一没候选就 pop，下一个键又重建整池（read 全文 + 扫词）——这是快速
+;; 打字卡顿的根源。缓存后每个词只在第一个字符建一次池。
+;; 形状：(vector vid line word-start prefix mods pool) 或 #f。
+;; prefix 只用于校验：词只能向前长，若当前前缀不再以缓存前缀开头（退格 / 改词）→ 失效。
+(define pool-cache (box #f))
+
+(define (pool-cache-hit vid line word-start prefix)
+  (define c (unbox pool-cache))
+  (and (vector? c)
+       (eqv? (vector-ref c 0) vid)
+       (= (vector-ref c 1) line)
+       (= (vector-ref c 2) word-start)
+       (string-prefix? prefix (vector-ref c 3))
+       c))
+
+;; 光标处的前缀：只读一行（O(行)），不整篇取串。
+(define (view-prefix ed vid p)
+  (define s (editor-view-line-before ed vid p))
+  (prefix-at s 0 (string-length s)))
+
+;; 现算模块 / 池 / 前缀 / 候选（新建会话用）。→ (values mods pool cands)
+;; prefix 由调用方用 `view-prefix` 算好（它只需一行）；get-text 是取全文的 thunk，
+;; 只在缓存未命中、真要建池时才调用 —— 命中的每键不再 `editor-view-string` 整篇。
 ;; require 位置 → 模块路径补全（mods = #f：不做文档查询）。
-;; 词候选用共享词法器 document-words —— 与高亮词色同一套词法，不读高亮的私有状态表。
-(define (fresh-candidates ctx vid text p)
-  (define prefix (prefix-at text (point-line p) (point-column p)))
+(define (fresh-candidates ctx vid get-text p prefix)
+  (define line (point-line p))
+  (define col (point-column p))
   (cond
-    [(require-context? text (point-line p) (point-column p))
-     (define pool (force module-paths))
-     (values #f pool prefix (candidates-for pool prefix))]
+    [(zero? (string-length prefix))
+     ;; 空前缀永远没有候选；不建池，打字里的空格 / 括号就不会白扫全文。
+     (values #f '() #f)]
     [else
-     (define mods (view-modules ctx vid))
-     (define pool (completion-pool #:modules mods
-                                   #:locals (source-definitions text)
-                                   #:words (document-words text)))
-     (values mods pool prefix (candidates-for pool prefix))]))
+     (define word-start (- col (string-length prefix)))
+     (define hit (pool-cache-hit vid line word-start prefix))
+     (cond
+       [hit (values (vector-ref hit 4) (vector-ref hit 5)
+                    (candidates-for (vector-ref hit 5) prefix))]
+       [else
+        (define text (get-text))
+        (cond
+          [(require-context? text line col)
+           (define pool (force module-paths))
+           (define cands (candidates-for pool prefix))
+           (set-box! pool-cache (vector vid line word-start prefix #f pool))
+           (values #f pool cands)]
+          [else
+           ;; 文档只解析一次：语言/模块体同时喂给 requires 与 definitions。
+           (define-values (lang forms) (module-context text))
+           (define mods (view-modules/context ctx vid lang forms))
+           (define pool (completion-pool #:modules mods
+                                         #:locals (definitions-of-forms forms)
+                                         #:words (document-words text)))
+           (set-box! pool-cache (vector vid line word-start prefix mods pool))
+           (values mods pool (candidates-for pool prefix))])])]))
 
 ;; 过滤 + 去掉与前缀一模一样的候选（已经打完，不必再提示自己）。
 (define (candidates-for pool prefix)
@@ -126,9 +167,10 @@
     [(not (completable-view? ctx vid)) '()]
     [else
      (define ed (session-editor s))
-     (define text (editor-view-string ed vid))
      (define p (editor-view-point ed vid))
-     (define-values (mods pool prefix cands) (fresh-candidates ctx vid text p))
+     (define prefix (view-prefix ed vid p))
+     (define-values (mods pool cands)
+       (fresh-candidates ctx vid (λ () (editor-view-string ed vid)) p prefix))
      (cond
        [(not (pair? cands)) '()]
        ;; 已弹出会话时 C-n 只刷新，不重复入栈。
@@ -180,19 +222,19 @@
     [(not (completable-view? ctx vid)) (list (e-input-pop 'complete))]
     [else
      (define ed (session-editor s))
-     (define text (editor-view-string ed vid))
      (define p (editor-view-point ed vid))
+     (define prefix (view-prefix ed vid p))
      (define inst (input-find (session-input s) 'complete))
      (define st0 (and inst (layer-inst-state inst)))
      (cond
        [(and st0 (eqv? (cs-vid st0) vid))
-        (define prefix (prefix-at text (point-line p) (point-column p)))
         (define cands (candidates-for (cs-pool st0) prefix))
         (cond
           [(not (pair? cands)) (list (e-input-pop 'complete))]
           [else (menu-effects ctx vid (cs-mods st0) (cs-pool st0) cands p prefix #f)])]
        [else
-        (define-values (mods pool prefix cands) (fresh-candidates ctx vid text p))
+        (define-values (mods pool cands)
+          (fresh-candidates ctx vid (λ () (editor-view-string ed vid)) p prefix))
         (cond
           [(not (pair? cands)) (list (e-input-pop 'complete))]
           [else (menu-effects ctx vid mods pool cands p prefix #t)])])]))

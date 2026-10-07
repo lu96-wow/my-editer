@@ -37,24 +37,32 @@
 
 ;;; ================= 补全 =================
 
+;; 保持首次出现顺序的字符串去重。用哈希 O(n)；remove-duplicates 是 O(n²)，
+;; 大文件（几千行 → 上万词）建池会因此慢上百 ms。
+(define (distinct-strings ss)
+  (define seen (make-hash))
+  (define rev
+    (for/fold ([acc '()]) ([s (in-list ss)])
+      (cond [(hash-ref seen s #f) acc]
+            [else (hash-set! seen s #t) (cons s acc)])))
+  (reverse rev))
+
 ;; 候选池：各候选模块导出 + 本地定义 + 出现过的词（去重、未排序）。
 ;; 模块列表已含文件的语言基座（`view-modules`）；无 lang 无 require 时那边会默认
 ;; racket/base，所以这里不再无条件加基础命名空间。
 ;; 「建池」会调 module->exports / 读本地定义 / 扫全篇词，较贵；一个补全会话只建一次。
 (define (completion-pool #:modules [mods '()] #:locals [locals '()] #:words [words '()])
-  (remove-duplicates
+  (distinct-strings
    (append (append* (for/list ([m (in-list mods)]) (module-exports m)))
            (map symbol->string locals)
-           words)
-   equal?))
+           words)))
 
 ;; 文件里出现过的词（去重）。单字符词噪声大，默认只收 >= min-length 个字符。
 (define (document-words text #:min-length [min-length 2])
-  (remove-duplicates
+  (distinct-strings
    (for/list ([tok (in-list (scan-words text))]
               #:when (>= (string-length (cadddr tok)) min-length))
-     (cadddr tok))
-   equal?))
+     (cadddr tok))))
 
 ;; 在已有池里按前缀过滤（排序 + 截断）。每次按键只走这里，够快。
 (define (filter-pool pool prefix #:limit [limit 500])

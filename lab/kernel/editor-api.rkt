@@ -7,4 +7,13 @@
 
 (require "../../core/editor.rkt")
 
-(provide (all-from-out "../../core/editor.rkt"))
+(provide (all-from-out "../../core/editor.rkt")
+         editor-view-line-before)
+
+;; lab 附加便利：光标前该行的文本（不含换行）。
+;; core 没暴露「按行取文本」（内部 document-text / track-ref 被 except-out 挡了），
+;; 但暴露了按区间的 document-range-text —— 用它把「整篇取串 + 切行」降成 O(行)。
+(define (editor-view-line-before ed vid p)
+  (define did (editor-view-document-id ed vid))
+  (define doc (editor-document-handle ed did))
+  (document-range-text doc (range (point (point-line p) 0) p)))

@@ -17,4 +17,5 @@
 (define (racket-applies? path text) (racket-file? path))
 
 ;; 功能级（补全 / 缩进 / 文档查询）：无路径的 scratch 也允许，有路径须是 Racket。
-(define (racket-buffer? path text) (or (not path) (racket-file? path)))
+;; 谓词吃 (path get-text)；本谓词只看扩展名，不 force get-text。
+(define (racket-buffer? path get-text) (or (not path) (racket-file? path)))

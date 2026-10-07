@@ -13,7 +13,8 @@
 ;;; 这种写法）。遇到读不了的（非 s-表达式语言 / 语法错误）就停在出错处，返回已有结果。
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
-(provide source-lang source-requires source-definitions require-context?)
+(provide source-lang source-requires source-definitions require-context?
+         module-context requires-of-forms definitions-of-forms)
 
 (require racket/list racket/path racket/string)
 
@@ -160,6 +161,11 @@
 ;; 候选模块路径：语言模块 + 所有 require（去重，语言模块排最前）。
 (define (source-requires text #:base-dir [base-dir (current-directory)])
   (define-values (lang forms) (module-context text))
+  (requires-of-forms lang forms #:base-dir base-dir))
+
+;; 已解析的「语言 + 模块体」版本：补全要同时要 requires 与 definitions 时，
+;; 只需 `module-context` 解析一次，不要各自再 read 一遍全文。
+(define (requires-of-forms lang forms #:base-dir [base-dir (current-directory)])
   (define reqs
     (append*
      (for/list ([f (in-list forms)]
@@ -192,11 +198,23 @@
           (if (symbol? t) (list t) '()))]
        [else '()])]))
 
+;; 符号去重（哈希 O(n)）；大文件里定义多时 remove-duplicates 的 O(n²) 会卡。
+(define (distinct-symbols ss)
+  (define seen (make-hasheq))
+  (define rev
+    (for/fold ([acc '()]) ([s (in-list ss)])
+      (cond [(hash-ref seen s #f) acc]
+            [else (hash-set! seen s #t) (cons s acc)])))
+  (reverse rev))
+
 (define (source-definitions text)
   (define-values (_lang forms) (module-context text))
-  (remove-duplicates
-   (append* (for/list ([f (in-list forms)]) (def-names f)))
-   eq?))
+  (definitions-of-forms forms))
+
+;; 已解析的模块体版本（与 requires-of-forms 共享同一次 read）。
+(define (definitions-of-forms forms)
+  (distinct-symbols
+   (append* (for/list ([f (in-list forms)]) (def-names f)))))
 
 ;;; ================= require 补全的上下文判定 =================
 

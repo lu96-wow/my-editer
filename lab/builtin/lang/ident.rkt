@@ -16,9 +16,16 @@
 (require racket/string
          "lex.rkt")
 
+;; 第 line 行字符串（不含换行；越界 = ""）。
+;; 不用 string-split（它要切整篇、分配所有行）：直接扫到目标行，只做一次 substring。
 (define (line-at text line)
-  (define lines (string-split text "\n" #:trim? #f))
-  (if (and (>= line 0) (< line (length lines))) (list-ref lines line) ""))
+  (define n (string-length text))
+  (define (scan-nl j) (if (or (>= j n) (char=? (string-ref text j) #\newline)) j (scan-nl (add1 j))))
+  (let loop ([i 0] [ln 0])
+    (cond
+      [(= ln line) (substring text i (scan-nl i))]
+      [(>= i n) ""]
+      [else (define nl (scan-nl i)) (loop (add1 nl) (add1 ln))])))
 
 ;; 光标处标识符：光标正好在某字符上 → 连左右；光标紧跟在词尾 → 只取左侧。
 (define (identifier-at text line col)
