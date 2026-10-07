@@ -1,9 +1,9 @@
 #lang racket
 
-(require "state.rkt" "attributes.rkt" "view.rkt" "sync.rkt"
+(require "state.rkt" "attributes.rkt" "view.rkt"
          "../text/document.rkt" "history.rkt" "../text/command.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt" "../text/base/track.rkt"
-         "../text/base/line.rkt" "../text/base/range.rkt"
+         "../text/base/line.rkt" "../text/base/range.rkt" "../text/base/width.rkt"
          "../view/base/viewport.rkt")
 
 ;;; editor/command.rkt —— 命令式操作（就地改 box，不返回 editor）
@@ -14,7 +14,7 @@
 ;;; 异步文本 CAS                                        → applied?
 ;;; 其余（导航 / 视口 / 选区 / 属性 / 清栈 …）           → void
 ;;;
-;;; 内容写原语 editor-view-install!：换当前文档 + 传播视图 + 同步视口；→ step（#f = 无变化）。
+;;; 内容写原语 editor-view-install!：换当前文档 + 传播视图。→ step（#f = 无变化）。
 
 (provide
  ;; ---------- 内部件 ----------
@@ -50,6 +50,9 @@
  ;; ---------- 滚动 / 视口 ----------
  editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
+
+ ;; ---------- 视口锚点（视口同步的原语：写） ----------
+ editor-view-set-anchor! editor-view-set-anchor-point!
 
  ;; ---------- 属性（作用选区） ----------
  editor-view-highlight! editor-view-highlight-selections!
@@ -93,7 +96,6 @@
      (if (and changes (pair? changes))
          (editor-views-rebase! ed did vid changes)
          (editor-views-clamp! ed did))
-     (editor-sync-viewports! ed vid)
      (step old pre-sels value* sels* vid pre-tip)]))
 
 ;; 把一次 step 记进账本（按 merge-tag 判定是否并步）。
@@ -224,7 +226,6 @@
   (define sels* ((if extend? selections-extend selections-go) (view-selections v) f))
   (view-set-selections! v sels*)
   (view-ensure! doc v)
-  (editor-sync-viewports! ed vid)
   (void))
 
 (define (editor-view-char-nav! ed vid which extend?)
@@ -259,7 +260,6 @@
   (define n (track-length t))
   (view-set-selections! v (selections-clamp sels n (curry track-line-length t)))
   (when ensure? (view-ensure! doc v))
-  (editor-sync-viewports! ed vid)
   (void))
 
 (define (editor-view-select-all! ed vid)
@@ -279,16 +279,14 @@
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-scroll t (view-viewport v) delta))
-  (editor-sync-viewports! ed vid)
   (void))
 
-;; 改视口字段的公共壳：按旧 mode 取锚点，改完落回同锚，再同步跟随者。
+;; 改视口字段的公共壳：按旧 mode 取锚点，改完落回同锚。
 (define (editor-view-viewport-update! ed vid f)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (define-values (line dc) (viewport-anchor t (view-viewport v)))
   (view-set-viewport! v (viewport-set-anchor t (f (view-viewport v)) line dc))
-  (editor-sync-viewports! ed vid)
   (void))
 
 (define (editor-view-set-mode! ed vid mode)
@@ -304,14 +302,33 @@
 (define (editor-view-set-top-line! ed vid n)
   (define v (editor-view-ref ed vid))
   (view-set-viewport! v (viewport-set-top-line (view-viewport v) n))
-  (editor-sync-viewports! ed vid)
   (void))
 
 (define (editor-view-set-left-column! ed vid n)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-set-left-column t (view-viewport v) n))
-  (editor-sync-viewports! ed vid)
+  (void))
+
+;;; ---------- 视口锚点（视口同步的原语：写） ----------
+;;; core 只提供「设视口左上角」。何时设、设到哪里、哪些 view 成组，全由 core 外决定。
+
+;; 把视口左上角设到 (buffer 行, 显示列)；按该 view 自己的 clip/wrap 落位；不碰其它 view。
+(define (editor-view-set-anchor! ed vid line dc)
+  (define v (editor-view-ref ed vid))
+  (define t (document-text (editor-view-document ed vid)))
+  (view-set-viewport! v (viewport-set-anchor t (view-viewport v) line dc))
+  (void))
+
+;; 同上，但要的锚点是字符坐标 point；core 折成显示列后落位。
+;; 外部对齐层只产 point，不需要知道宽字符占几列。
+(define (editor-view-set-anchor-point! ed vid p)
+  (define v (editor-view-ref ed vid))
+  (define t (document-text (editor-view-document ed vid)))
+  (view-set-viewport! v
+    (viewport-set-anchor t (view-viewport v)
+                         (point-line p)
+                         (index->display-column (track-ref t (point-line p)) (point-column p))))
   (void))
 
 ;;; ---------- 属性命令（视图级） ----------

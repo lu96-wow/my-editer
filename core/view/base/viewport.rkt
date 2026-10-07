@@ -38,8 +38,8 @@
  viewport-point->screen-position viewport-point->screen-position/vrows
  viewport-screen-position->point viewport-screen-position->point/vrows
 
- ;; ---------- 锚点 / 镜像（视口间同步） ----------
- viewport-anchor viewport-set-anchor viewport-mirror
+ ;; ---------- 锚点（视口间同步的原语） ----------
+ viewport-anchor viewport-set-anchor
 
  ;; ---------- 视觉行上下 ----------
  point-up point-down)
@@ -238,11 +238,13 @@
 (define (viewport-screen-position->point t v row col)
   (viewport-screen-position->point/vrows t v (viewport-vrows t v) row col))
 
-;;; ---------- 锚点（视口间同步） ----------
+;;; ---------- 锚点（视口间同步的原语） ----------
 ;;; 锚 = 可见区左上角的逻辑位置 (buffer 行, 显示列)。用**显示列而非字符索引**：
 ;;; clip 的 left-column 与 wrap 的段起点本来就是显示列，于是同一个锚能跨 mode 直接落位。
-;;; 跨**文档**时文本不同，列需按锚行显示宽比例缩放（viewport-mirror）。
 ;;; 锚统一用**显示列**一种表示，省去字符索引 ↔ 列 ↔ 段号的来回换算。
+;;;
+;;; 本模块只提供「取锚 / 落锚」两个原语，不提供任何跨视口/跨文档的对应策略：
+;;; 一份文本内取/放是恒等的；两份文本之间怎么对应是语义问题，由 core 外决定。
 
 ;; 视口锚点。越界的 top-line / top-segment 先夹到合法域（软滚动可越过文末）。
 (define (viewport-anchor t v)
@@ -267,16 +269,6 @@
                          [top-line l]
                          [top-segment (segment-index-of (track-ref t l) (viewport-content-width t v) 'wrap dc*)])]
     [else (check-mode 'viewport-set-anchor (viewport-mode v))]))
-
-;; 跨文档投锚：行号固定（越界夹），列按**两侧锚行显示宽**比例缩放；源锚行为空 → 列 0。
-;; 同文档用精确取/放（见 sync 层）；空行上的软滚动列按比例缩放会成 0。
-(define (viewport-mirror t-src src t-dst dst)
-  (define-values (line dc) (viewport-anchor t-src src))
-  (define ls (max 0 (min line (sub1 (track-length t-src)))))
-  (define ld (max 0 (min line (sub1 (track-length t-dst)))))
-  (define ws (string-display-width (track-ref t-src ls)))
-  (define wd (string-display-width (track-ref t-dst ld)))
-  (viewport-set-anchor t-dst dst line (if (zero? ws) 0 (round (* dc (/ wd ws))))))
 
 ;;; ---------- 上下（视觉行，随视口模式） ----------
 

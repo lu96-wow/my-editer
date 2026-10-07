@@ -69,9 +69,8 @@
   (base:editor-view-paste-text! ed vid text tag) ed)
 (define (editor-view-cut ed vid [tag #f])
   (base:editor-view-cut! ed vid tag) ed)
-(define (editor-add-view ed did w h [sync 'free] [link #f]
-                         #:mode [m 'clip] #:line-numbers? [ln #f])
-  (let-values ([(e _) (base:editor-add-view ed did w h sync link #:mode m #:line-numbers? ln)]) e))
+(define (editor-add-view ed did w h #:mode [m 'clip] #:line-numbers? [ln #f])
+  (let-values ([(e _) (base:editor-add-view ed did w h #:mode m #:line-numbers? ln)]) e))
 
 ;; vid 版命令（测试直接调 editor-view-*）：adapter → 就地、返回 ed
 (define (editor-view-select-all ed vid) (base:editor-view-select-all! ed vid) ed)
@@ -107,12 +106,10 @@
 (define (editor-view-readonly-cell ed vid l c f) (base:editor-document-readonly-cell! ed (base:editor-view-document-id ed vid) l c f) ed)
 (define (editor-view-readonly-line ed vid l f) (base:editor-document-readonly-line! ed (base:editor-view-document-id ed vid) l f) ed)
 (define (editor-view-readonly-selections ed vid f) (base:editor-view-readonly-selections! ed vid f) ed)
-(define (editor-view-set-sync ed vid sy) (base:editor-view-set-sync! ed vid sy) ed)
-(define (editor-view-set-link ed vid l) (base:editor-view-set-link! ed vid l) ed)
 
 ;; 测试用：从旧 API 的 view-with-* / editor-set-view 适配到就地 setter
-(define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s (view-sync v) (view-link v)))
-(define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v) (view-sync v) (view-link v)))
+(define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s))
+(define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v)))
 (define (editor-set-view ed v)
   (define cur (editor-view-ref ed (view-id v)))
   (view-set-selections! cur (view-selections v))
@@ -189,8 +186,6 @@
 (define (editor-width ed) (editor-view-width ed (focus-of ed)))
 (define (editor-height ed) (editor-view-height ed (focus-of ed)))
 (define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
-(define (editor-sync ed) (editor-view-sync ed (focus-of ed)))
-(define (editor-link ed) (editor-view-link ed (focus-of ed)))
 (define (editor-point->screen-position ed p) (editor-view-point->screen-position ed (focus-of ed) p))
 (define (editor-screen-position->point ed r c) (editor-view-screen-position->point ed (focus-of ed) r c))
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed (focus-of ed) l c))
@@ -212,8 +207,7 @@
                                                 (box (document-entry-history e)))))]
     [views (for/list ([v (in-list (editor-views ed))])
              (view (view-im v)
-                   (view-mutable (box (view-viewport v)) (box (view-selections v))
-                                 (box (view-sync v)) (box (view-link v)))))]
+                   (view-mutable (box (view-viewport v)) (box (view-selections v)))))]
     [clipboard-box (box (editor-clipboard ed))]))
 
 ;; 宿主策略：打字用 'typing（形状门会把多字符挡掉）；这里显式传 tag，core 不预设。

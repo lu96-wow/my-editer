@@ -1,148 +1,130 @@
 #lang racket
 
-;; 视口同步（core/editor/sync.rkt）的外部测试。
-;; 只同步视口，绝不动选区；锚点 = (行, 显示列)，跨 mode / 跨文档按各自 mode 落位。
+;; 视口同步**原语**的外部测试（core/editor/query.rkt + command.rkt）。
+;;
+;; core 已不再包含任何"同步"策略：没有 editor-sync-viewports!，也没有 view 上的
+;; sync / link 字段。core 只提供两对原语：
+;;     editor-view-anchor        / editor-view-set-anchor!        （显示坐标）
+;;     editor-view-anchor-point  / editor-view-set-anchor-point!  （字符坐标）
+;;
+;; 本测试分两部分：
+;;   ① 原语本身：取/放、跨 mode、宽字符换算、不碰选区/其它 view、**不自动同步**；
+;;   ② 由测试自己（模拟 core 外的 lab/解析层）组装一个最小同步，证明这些原语够用。
+
 (require rackunit
          "../../core/editor.rkt"
-         "../../core/editor/state.rkt"   ; 裸 box setter（适配层用）
-         "../../core/editor/history.rkt" ; default-history-limit
-         (prefix-in c: "../../core/editor.rkt")
-         "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
-         "../../core/text/base/selection.rkt"
-         "../../core/text/base/track.rkt"
-         "../../core/view/base/viewport.rkt"
-         "../../core/view/base/layout.rkt")
+         "../../core/text/base/selection.rkt")
 
-;;; ---------- 焦点 shim（core 不再管焦点） ----------
+;;; ---------- 焦点 shim（core 不管焦点） ----------
 (define focus (make-parameter 0))
 (define (focus-of ed)
   (define f (focus))
-  (if (for/or ([v (in-list (editor-views ed))]) (= f (view-id v))) f 0))
-(define (editor-open text w h [name "*scratch*"]
-                     #:mode [mode 'clip] #:line-numbers? [ln #f]
-                     #:chunk-lines [cl default-chunk-lines]
-                     #:history-limit [hl default-history-limit] #:history? [hi #t])
-  (focus 0)
-  (c:editor-open text w h name #:mode mode #:line-numbers? ln
-                 #:chunk-lines cl #:history-limit hl #:history? hi))
-(define (editor-set-focus ed v) (focus v) ed)
-(define (editor-scroll ed d) (editor-view-scroll! ed (focus-of ed) d) ed)
-(define (editor-goto ed p) (editor-view-set-point! ed (focus-of ed) p) ed)
-(define (editor-set-mode ed m) (editor-view-set-mode! ed (focus-of ed) m) ed)
-(define (editor-add-view ed did w h [sync 'free] [link #f] #:mode [m 'clip] #:line-numbers? [ln #f])
-  (let-values ([(e _) (c:editor-add-view ed did w h sync link #:mode m #:line-numbers? ln)]) e))
+  (if (memv f (editor-view-id-list ed)) f 0))
 
-;; adapter：vid 版命令（就地、返回 ed）+ view-with-* / editor-set-view
-(define (editor-view-scroll ed vid d) (editor-view-scroll! ed vid d) ed)
-(define (editor-view-set-link ed vid l) (editor-view-set-link! ed vid l) ed)
-(define (editor-view-set-sync ed vid sy) (editor-view-set-sync! ed vid sy) ed)
-(define (editor-sync-viewports ed vid) (editor-sync-viewports! ed vid) ed)
-(define (editor-set-view ed v)
-  (define cur (editor-view-ref ed (view-id v)))
-  (view-set-selections! cur (view-selections v))
-  (view-set-viewport! cur (view-viewport v))
-  ed)
-(define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s (view-sync v) (view-link v)))
-(define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v) (view-sync v) (view-link v)))
+(define (eo text w h [name "*scratch*"] #:mode [m 'clip] #:line-numbers? [ln #f])
+  (focus 0)
+  (editor-open text w h name #:mode m #:line-numbers? ln))
+
+(define (add-view ed did w h #:mode [m 'clip] #:line-numbers? [ln #f])
+  (let-values ([(e _) (editor-add-view ed did w h #:mode m #:line-numbers? ln)]) e))
+
+(define (scroll ed d) (editor-view-scroll! ed (focus-of ed) d) ed)
+(define (goto ed p) (editor-view-set-point! ed (focus-of ed) p) ed)
+(define (set-mode ed m) (editor-view-set-mode! ed (focus-of ed) m) ed)
+
+(define (vtl ed vid) (editor-view-top-line ed vid))
+(define (vlc ed vid) (editor-view-left-column ed vid))
+(define (vts ed vid) (editor-view-top-segment ed vid))
+(define (anchor ed vid) (call-with-values (lambda () (editor-view-anchor ed vid)) list))
 
 (define many (string-join (for/list ([i (in-range 40)]) (format "line ~a" i)) "\n"))
 
-(define (vtl ed vid) (viewport-top-line (view-viewport (editor-view-ref ed vid))))
-(define (vlc ed vid) (viewport-left-column (view-viewport (editor-view-ref ed vid))))
-(define (vts ed vid) (viewport-top-segment (view-viewport (editor-view-ref ed vid))))
-(define (vsels ed vid) (view-selections (editor-view-ref ed vid)))
+;;; ================= ① 原语 =================
 
-;; ---------- 同文档 follow：滚动跟随 ----------
-(define e0 (editor-open many 20 5))                     ; vid0，focus
-(define e1 (editor-add-view e0 0 20 5 'follow))         ; vid1 follow（光标在 (0,0)）
-(define e2 (editor-add-view e1 0 20 5 'free))           ; vid2 free
-(define e3 (editor-scroll e2 6))
-(check-equal? (vtl e3 0) 6)                             ; 发起视图
-(check-equal? (vtl e3 1) 6)                             ; follow 跟随（虽光标在 (0,0)）
-(check-equal? (vtl e3 2) 0)                             ; free 不动
+;; 取 / 放：clip 锚 = (top-line, left-column)
+(define p0 (eo many 20 5))
+(check-equal? (anchor p0 0) '(0 0))
+(editor-view-set-anchor! p0 0 6 0)
+(check-equal? (vtl p0 0) 6)
+(editor-view-set-anchor-point! p0 0 (point 12 0))
+(check-equal? (anchor p0 0) '(12 0))
+(check-equal? (editor-view-anchor-point p0 0) (point 12 0))
+;; 行越界先夹
+(editor-view-set-anchor! p0 0 999 0)
+(check-equal? (vtl p0 0) 39)
 
-;; ---------- 编辑 / 导航 ensure 后同步 ----------
-(define e4 (editor-goto e1 (point 12 0)))               ; 高 5 → top = 8
-(check-equal? (vtl e4 0) 8)
-(check-equal? (vtl e4 1) 8)
+;; 落锚不碰选区、不碰其它 view
+(define p1 (add-view p0 0 20 5))
+(editor-view-set-point! p1 0 (point 3 0))
+(define sels-before (editor-view-selections p1 0))
+(editor-view-set-anchor! p1 0 10 0)
+(check-equal? (editor-view-selections p1 0) sels-before)
+(check-equal? (vtl p1 1) 0)                                     ; 跟随者没有被动过
 
-;; ---------- 跨文档 link ----------
-;; 可变绑定下 view 对象会被就地改，跨小节要开新的 base。
-(define-values (d1 did1) (editor-add-document (editor-open many 20 5) "aaa\nbbb\nccc"))
-(define e5 (editor-add-view d1 did1 20 5))              ; vid1 看 doc1
-(define e6 (editor-view-set-link e5 0 'g))
-(define e7 (editor-view-set-link e6 1 'g))
-(define e8 (editor-scroll e7 2))
-(check-equal? (vtl e8 0) 2)                             ; doc0
-(check-equal? (vtl e8 1) 2)                             ; doc1 同步到同行号
-(check-equal? (view-link (editor-view-ref e8 1)) 'g)
+;; 同一个锚跨 mode：clip 落 left-column；wrap 落段
+(define pm (eo "abcdefghij\nsecond line here" 6 3))
+(editor-view-set-anchor! pm 0 0 7)
+(check-equal? (vlc pm 0) 7)
+(void (set-mode pm 'wrap))
+(editor-view-set-anchor! pm 0 0 7)
+(check-equal? (vts pm 0) 1)                                     ; 列 7 → 段 1
 
-;; 不同 link 键不互相同步
-(define e9 (editor-view-set-link e8 1 'other))
-(check-equal? (vtl (editor-scroll e9 1) 1) 2)           ; vid0 走 2→3；vid1 留在 2
+;; 字符坐标：宽字符换算由 core 负责，外部只给 point
+(define pc (eo "中文中文中\n第二行" 10 3))
+(editor-view-set-anchor-point! pc 0 (point 0 3))
+(check-equal? (editor-view-anchor-point pc 0) (point 0 3))      ; 字符 3
+(check-equal? (anchor pc 0) '(0 6))                             ; 显示列 = 3×2
+(editor-view-set-anchor! pc 0 0 4)                              ; 显示列 4 → 字符 2
+(check-equal? (editor-view-anchor-point pc 0) (point 0 2))
 
-;; ---------- 混合 mode：clip 锚（显示列）→ wrap 段 ----------
-(define m0 (editor-open "abcdefghij\nsecond line here" 6 3))
-(define m1 (editor-add-view m0 0 6 3 'follow))          ; vid1 follow
-(define m2 (editor-set-mode (editor-set-focus m1 1) 'wrap))   ; vid1 wrap
-(define m3 (editor-set-focus m2 0))                     ; 回到 vid0（clip）
-(define tl (document-text (editor-view-document m3 0)))
-(define lv (editor-view-ref m3 0))
-(define m4 (editor-set-view m3 (view-with-viewport lv
-                               (viewport-set-left-column tl (view-viewport lv) 7))))
-(define m5 (editor-sync-viewports m4 0))
-(check-equal? (vlc m5 0) 7)                             ; leader 保留 left-column
-(check-equal? (vts m5 1) 1)                             ; follower wrap 段 1（列 7 在 6..10）
+;; core **不**自动同步：两个 view 看同一文档，滚一个，另一个不动
+(define q0 (eo many 20 5))
+(define q1 (add-view q0 0 20 5))
+(void (scroll q1 8))
+(check-equal? (vtl q1 0) 8)
+(check-equal? (vtl q1 1) 0)
 
-;; ---------- 混合 mode：wrap 锚（段起点列）→ clip ----------
-(define m6 (editor-view-set-sync m5 0 'follow))         ; vid0 也 follow
-(define m7 (editor-sync-viewports m6 1))               ; 以 wrap 视图（段 1 = 列 6）为发起者
-(check-equal? (vts m7 1) 1)
-(check-equal? (vlc m7 0) 6)                             ; clip 跟随者拿到段起点列
+;;; ================= ② core 外组装一个最小同步 =================
+;; "何时同步" = 调用处自己决定；"怎么算目标视口" = 由外部 pos-map 决定。
+;; core 只负责把外部给的 point 落成视口锚。
 
-;; ---------- 同步不动选区 ----------
-(define s0 (editor-open "abc\ndef\nghi" 20 5))
-(define s1 (editor-add-view s0 0 20 5 'follow))
-(define s2 (editor-set-view s1 (view-with-selections
-                               (editor-view-ref s1 1) (selections-one (caret (point 2 1))))))
-(define s3 (editor-scroll s2 1))
-(check-equal? (vsels s3 1) (vsels s2 1))                 ; follow 后选区原样
+(define (sync-view! ed leader follower pos-map)
+  (define p (editor-view-anchor-point ed leader))
+  (define p* (pos-map p))
+  (when p* (editor-view-set-anchor-point! ed follower p*)))
 
-;; ---------- 跨文档比例映射 ----------
-;; 同文档：空顶行上的软滚动列原样保留（不走比例，否则会被抹成 0）
-(define qa (editor-open "\nabcdefghij" 20 5))
-(define q1 (editor-add-view qa 0 20 5 'follow))
-(define q2 (editor-set-view q1
-             (let ([lv (editor-view-ref q1 0)])
-               (view-with-viewport
-                lv
-                (viewport-set-left-column (document-text (editor-view-document q1 0))
-                                       (view-viewport lv) 5)))))
-(define q3 (editor-sync-viewports q2 0))
-(check-equal? (vlc q3 0) 5)
-(check-equal? (vlc q3 1) 5)                             ; follow 精确保留，不被比例化
+;; 同文档：恒等映射（旧 'follow 的语义，现在在 core 外）
+(define r0 (eo many 20 5))
+(define r1 (add-view r0 0 20 5))
+(editor-view-set-anchor! r1 0 12 0)
+(sync-view! r1 0 1 identity)
+(check-equal? (vtl r1 1) 12)
 
-;; 跨文档：列按两侧锚行显示宽比例（src 10 宽、left-column 6 → dst 5 宽、left-column 3）
-(define pa (editor-open "aaaaaaaaaa\nsecond" 20 5))
-(define-values (pb didb) (editor-add-document pa "bbbbb\nsecond line"))
-(define p1 (editor-add-view pb didb 20 5))              ; vid1 看 doc1
-(define p2 (editor-view-set-link p1 0 'g))
-(define p3 (editor-view-set-link p2 1 'g))
-(define p4 (editor-set-view p3
-             (let ([lv (editor-view-ref p3 0)])
-               (view-with-viewport
-                lv
-                (viewport-set-left-column (document-text (editor-view-document p3 0))
-                                       (view-viewport lv) 6)))))
-(define p5 (editor-sync-viewports p4 0))
-(check-equal? (vlc p5 0) 6)                             ; leader
-(check-equal? (vlc p5 1) 3)                             ; round(6 * 5/10)
+;; 跨文档：外部对应关系（模拟解析/对齐层）——只认字符坐标，不碰宽度
+;;   源文档 (doc0)                   目标文档 (doc1)
+;;   "aaaaaaaaaa"  ← 字符 6 → 字符 3 →  "中文中文中"
+(define-values (s1 s1-did) (editor-add-document r1 "中文中文中\n第二行"))
+(let-values ([(s2 s1-vid) (editor-add-view s1 s1-did 10 3)])
+  ;; 源视图锚到字符列 6
+  (editor-view-set-anchor-point! s2 0 (point 0 6))
+  ;; 外部映射：字符列 / 2（示例）
+  (define (en->zh p) (point (point-line p) (quotient (point-column p) 2)))
+  (sync-view! s2 0 s1-vid en->zh)
+  ;; follower（doc1）拿到外部 point (0,3)；显示列由 core 折成 6
+  (check-equal? (editor-view-anchor-point s2 s1-vid) (point 0 3))
+  (check-equal? (anchor s2 s1-vid) '(0 6))
+  ;; 映射返回 #f → 本方向不同步（单向 follow）
+  (sync-view! s2 0 s1-vid (lambda (_p) #f))
+  (check-equal? (vtl s2 s1-vid) 0))
 
-;; ---------- setter / 校验 ----------
-(check-equal? (view-sync (editor-view-ref (editor-view-set-sync e0 0 'follow) 0)) 'follow)
-(check-equal? (view-link (editor-view-ref (editor-view-set-link e0 0 'k) 0)) 'k)
-(check-exn exn:fail? (lambda () (editor-view-set-sync e0 0 'bad)))
-(check-exn exn:fail? (lambda () (editor-add-view e0 0 20 5 'bad)))
+;; 同步**不**动 follower 选区
+(define u0 (eo many 20 5))
+(define u1 (add-view u0 0 20 5))
+(editor-view-set-point! u1 1 (point 2 1))
+(editor-view-set-anchor! u1 0 9 0)
+(define u1-sels (editor-view-selections u1 1))
+(sync-view! u1 0 1 identity)
+(check-equal? (editor-view-selections u1 1) u1-sels)
 
 (displayln "editor/sync.rkt: all tests passed")

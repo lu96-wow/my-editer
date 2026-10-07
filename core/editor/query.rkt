@@ -45,8 +45,6 @@
  editor-document-id-list editor-view-id-list
  editor-document-view-list
  editor-view-document-id
- editor-view-sync
- editor-view-link
 
  ;; ---------- 点 / 选区 ----------
  editor-view-point
@@ -71,6 +69,10 @@
  editor-view-width
  editor-view-height
  editor-view-visible-range
+
+ ;; ---------- 视口锚点（视口同步的原语：取） ----------
+ editor-view-anchor
+ editor-view-anchor-point
 
  ;; ---------- 历史 ----------
  editor-view-can-undo?
@@ -148,8 +150,6 @@
   (for/list ([v (in-list (editor-views ed))]) (view-id v)))
 (define (editor-document-view-list ed did)
   (for/list ([v (in-list (editor-views ed))] #:when (= did (view-did v))) (view-id v)))
-(define (editor-view-sync ed vid) (view-sync (editor-view-ref ed vid)))
-(define (editor-view-link ed vid) (view-link (editor-view-ref ed vid)))
 
 ;;; ---------- 点 / 选区 ----------
 
@@ -184,6 +184,18 @@
 (define (editor-view-left-column ed vid) (viewport-left-column (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-width ed vid) (viewport-width (view-viewport (editor-view-ref ed vid))))
 (define (editor-view-height ed vid) (viewport-height (view-viewport (editor-view-ref ed vid))))
+
+;; 视口左上角锚点 (buffer 行, 显示列)。见 view/base/viewport.rkt。
+(define (editor-view-anchor ed vid)
+  (viewport-anchor (document-text (editor-view-document ed vid))
+                   (view-viewport (editor-view-ref ed vid))))
+
+;; 视口左上角锚点 (buffer 行, 行内字符列)。
+;; 外部组装跨文档同步时用这个：不碰显示宽度，宽字符换算留在 core。
+(define (editor-view-anchor-point ed vid)
+  (define t (document-text (editor-view-document ed vid)))
+  (define-values (line dc) (viewport-anchor t (view-viewport (editor-view-ref ed vid))))
+  (point line (display-column->index (track-ref t line) dc)))
 
 ;; 视口里**真实显示出来的**文档区间（半开 [start, end)）：
 ;;   start = 顶行第一个显示位置；end = 底行可见内容之后的第一个位置。

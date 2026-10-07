@@ -10,8 +10,6 @@
 (define (editor-string ed) (editor-view-string ed 0))
 (define (editor-document-name ed) (editor-view-document-name ed 0))
 (define (editor-document-id ed) (editor-view-document-id ed 0))
-(define (editor-sync ed) (editor-view-sync ed 0))
-(define (editor-link ed) (editor-view-link ed 0))
 (define (editor-point ed) (editor-view-point ed 0))
 (define (editor-point-line ed) (editor-view-point-line ed 0))
 (define (editor-point-column ed) (editor-view-point-column ed 0))
@@ -74,6 +72,19 @@
 (check-equal? (editor-view-left-column ed 0) 0)
 (check-equal? (editor-view-height ed 0) 4)
 
+;; 视口锚点原语：core 只取/放，不做任何同步策略
+(define an (editor-open "abcdefghij\nsecond line here" 6 4))
+(check-equal? (call-with-values (lambda () (editor-view-anchor an 0)) list) '(0 0))
+(check-equal? (editor-view-anchor-point an 0) (point 0 0))
+(editor-view-set-anchor! an 0 1 4)
+(check-equal? (call-with-values (lambda () (editor-view-anchor an 0)) list) '(1 4))
+(editor-view-set-anchor-point! an 0 (point 1 3))
+(check-equal? (editor-view-anchor-point an 0) (point 1 3))
+;; 同一个锚跨 mode：wrap 下落成段
+(editor-view-set-mode! an 0 'wrap)
+(editor-view-set-anchor-point! an 0 (point 0 7))
+(check-equal? (list (editor-view-top-line an 0) (editor-view-top-segment an 0)) '(0 1))
+
 ;; 名称 / 计数 / 身份
 (check-equal? (editor-document-name ed) "doc")
 (check-equal? (editor-view-document-name ed 0) "doc")
@@ -81,10 +92,6 @@
 (check-equal? (length (editor-view-id-list ed)) 1)
 (check-equal? (editor-view-document-id ed 0) 0)
 (check-equal? (editor-document-id ed) 0)
-(check-equal? (editor-view-sync ed 0) 'free)
-(check-equal? (editor-sync ed) 'free)
-(check-false (editor-view-link ed 0))
-(check-false (editor-link ed))
 
 ;; 焦点读口（editor-* 与 editor-view-* 成对）
 (check-equal? (editor-point ed) (editor-view-point ed 0))

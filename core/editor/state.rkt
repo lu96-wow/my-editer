@@ -8,7 +8,7 @@
 ;;;   editor         = 不可变骨架(documents, views, next-*, clipboard box)
 ;;;   document-entry = entry-immutable(id)      ⊕ entry-mutable(name box, history box)
 ;;;   view           = view-immutable(id, did)   ⊕ view-mutable(viewport box,
-;;;                                                            selections box, sync box, link box)
+;;;                                                            selections box)
 ;;;
 ;;; 只有 list 结构变化（增/删文档、增/删视图）产新 editor；其余就地改 box。
 ;;;
@@ -27,7 +27,7 @@
 
  ;; ---------- 绑定访问 ----------
  document-entry-id document-entry-name document-entry-history
- view-id view-did view-viewport view-selections view-sync view-link
+ view-id view-did view-viewport view-selections
 
  ;; ---------- 构造 ----------
  make-document-entry make-view
@@ -37,13 +37,12 @@
 
  ;; ---------- 裸 box setter ----------
  document-entry-set-name! document-entry-set-history!
- view-set-viewport! view-set-selections! view-set-sync! view-set-link!
+ view-set-viewport! view-set-selections!
  editor-set-clipboard!
 
  ;; ---------- 字段元数据写口 ----------
  editor-document-set-name!
  editor-document-set-history-enabled!
- editor-view-set-sync! editor-view-set-link!
 
  ;; ---------- 结构操作（返回新 editor） ----------
  editor-open
@@ -72,7 +71,7 @@
 
 ;; 可变状态（在 box 里）
 (struct entry-mutable (name history) #:transparent)                    ; 两个 box
-(struct view-mutable (viewport selections sync link) #:transparent)   ; 四个 box
+(struct view-mutable (viewport selections) #:transparent)               ; 两个 box
 
 (struct document-entry (im mut) #:transparent)
 (struct view (im mut) #:transparent)
@@ -91,8 +90,6 @@
 (define (view-did v) (view-immutable-did (view-im v)))
 (define (view-viewport v) (unbox (view-mutable-viewport (view-mut v))))
 (define (view-selections v) (unbox (view-mutable-selections (view-mut v))))
-(define (view-sync v) (unbox (view-mutable-sync (view-mut v))))
-(define (view-link v) (unbox (view-mutable-link (view-mut v))))
 
 (define (editor-clipboard ed) (unbox (editor-clipboard-box ed)))
 
@@ -105,8 +102,6 @@
 
 (define (view-set-viewport! v vp) (set-box! (view-mutable-viewport (view-mut v)) vp))
 (define (view-set-selections! v s) (set-box! (view-mutable-selections (view-mut v)) s))
-(define (view-set-sync! v s) (set-box! (view-mutable-sync (view-mut v)) s))
-(define (view-set-link! v l) (set-box! (view-mutable-link (view-mut v)) l))
 
 (define (editor-set-clipboard! ed c) (set-box! (editor-clipboard-box ed) c))
 
@@ -120,28 +115,17 @@
   (document-entry-set-history! (editor-document-entry ed did)
                                (history-set-enabled (editor-document-history ed did) flag)))
 
-;; 视图配置。
-(define (editor-view-set-sync! ed vid sync)
-  (check-sync 'editor-view-set-sync! sync)
-  (view-set-sync! (editor-view-ref ed vid) sync))
-(define (editor-view-set-link! ed vid link)
-  (view-set-link! (editor-view-ref ed vid) link))
-
 ;;; ---------- 构造（单条 entry / view，建 box） ----------
 
 (define (make-document-entry id name history)
   (document-entry (entry-immutable id) (entry-mutable (box name) (box history))))
-(define (make-view id did viewport selections sync link)
+(define (make-view id did viewport selections)
   (view (view-immutable id did)
-        (view-mutable (box viewport) (box selections) (box sync) (box link))))
+        (view-mutable (box viewport) (box selections))))
 
 ;;; ---------- 构造（editor） ----------
 
 (define default-name "*scratch*")
-
-(define (check-sync who s)
-  (unless (memq s '(free follow))
-    (error who "sync 必须是 'free / 'follow，得到 ~a" s)))
 
 ;; 新视图 / 新文档的初始选区：文首光标。
 (define (initial-selections) (selections-one (caret (point 0 0))))
@@ -163,21 +147,20 @@
   (define doc (->document text chunk-lines))
   (define sels (initial-selections))
   (editor (list (make-document-entry 0 name (history-open doc sels history-limit history?)))
-          (list (make-view 0 0 (viewport-open width height mode line-numbers?) sels 'free #f))
+          (list (make-view 0 0 (viewport-open width height mode line-numbers?) sels))
           1 1 (box #f)))
 
 ;; 给已有文档加一个视图。→ (values editor vid)
-(define (editor-add-view ed did width height [sync 'free] [link #f]
+(define (editor-add-view ed did width height
                          #:mode [mode 'clip]
                          #:line-numbers? [line-numbers? #f])
-  (check-sync 'editor-add-view sync)
   (editor-document-entry ed did)                    ; 校验 did
   (define vid (editor-next-view ed))
   (values
    (struct-copy editor ed
      [views (append (editor-views ed)
                     (list (make-view vid did (viewport-open width height mode line-numbers?)
-                                     (initial-selections) sync link)))]
+                                     (initial-selections))))]
      [next-view (add1 vid)])
    vid))
 
@@ -185,8 +168,6 @@
 (define (editor-add-document-view ed text width height [name default-name]
                                   #:mode [mode 'clip]
                                   #:line-numbers? [line-numbers? #f]
-                                  #:sync [sync 'free]
-                                  #:link [link #f]
                                   #:chunk-lines [chunk-lines default-chunk-lines]
                                   #:history-limit [history-limit default-history-limit]
                                   #:history? [history? #t])
@@ -194,7 +175,7 @@
     (editor-add-document ed text name
                          #:chunk-lines chunk-lines #:history-limit history-limit #:history? history?))
   (define-values (ed** vid)
-    (editor-add-view ed* did width height sync link #:mode mode #:line-numbers? line-numbers?))
+    (editor-add-view ed* did width height #:mode mode #:line-numbers? line-numbers?))
   (values ed** did vid))
 
 ;; 新增一个文档（不建视图）。→ (values editor did)

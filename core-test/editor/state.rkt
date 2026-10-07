@@ -107,7 +107,7 @@
 ;; ---------- 视图初始 mode / 行号 ----------
 (check-equal? (viewport-mode (view-viewport (editor-view-ref (editor-open "x" 20 5 #:mode 'wrap) 0))) 'wrap)
 (check-true (viewport-line-numbers? (view-viewport (editor-view-ref (editor-open "x" 20 5 #:line-numbers? #t) 0))))
-(define-values (mv-ed mv-vid) (editor-add-view ed 0 20 5 'free #f #:mode 'wrap #:line-numbers? #t))
+(define-values (mv-ed mv-vid) (editor-add-view ed 0 20 5 #:mode 'wrap #:line-numbers? #t))
 (check-equal? (viewport-mode (view-viewport (editor-view-ref mv-ed 1))) 'wrap)
 (check-true (viewport-line-numbers? (view-viewport (editor-view-ref mv-ed 1))))
 ;; 默认：clip + 关行号

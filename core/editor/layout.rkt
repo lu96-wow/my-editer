@@ -35,7 +35,7 @@
 
 ;;; ---------- 写：尺寸落到 view ----------
 
-;; 逐个 rectangle：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 会同步跟随者）。
+;; 逐个 rectangle：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 保持同锚）。
 (define (editor-set-layout! ed rectangles)
   (for ([r (in-list rectangles)])
     (define vp (view-viewport (editor-view-ref ed (rectangle-view-id r))))

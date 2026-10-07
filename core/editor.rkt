@@ -16,7 +16,6 @@
 ;;;   change  读：编辑命令返回的 change（editor/change.rkt）
 ;;;   render  单视图渲染 + 增量投影（editor/render.rkt）
 ;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（editor/layout.rkt）
-;;;   sync    视口同步（editor/sync.rkt）
 ;;;
 ;;; 低层（document / viewport / screen / edit / …）在各自模块；需要时单独 require。
 
@@ -25,7 +24,7 @@
          ;; view-change-text 在入口改名为 editor-view-change-text。
          (rename-in "editor/change.rkt"
                     [view-change-text editor-view-change-text])
-         "editor/render.rkt" "editor/sync.rkt" "editor/layout.rkt"
+         "editor/render.rkt" "editor/layout.rkt"
          ;; ---------- 值词汇表 ----------
          "text/base/point.rkt"
          "text/base/selection.rkt"
@@ -41,7 +40,7 @@
  (except-out (all-from-out "editor/state.rkt")
    ;; 裸 box setter
    document-entry-set-name! document-entry-set-history!
-   view-set-viewport! view-set-selections! view-set-sync! view-set-link!
+   view-set-viewport! view-set-selections!
    editor-set-clipboard! ->document
    ;; editor 骨架字段
    editor editor-documents editor-views editor-next-document editor-next-view editor-clipboard-box
@@ -50,9 +49,9 @@
    document-entry-id document-entry-name document-entry-history document-entry-document
    entry-immutable entry-immutable? entry-immutable-id
    entry-mutable entry-mutable? entry-mutable-name entry-mutable-history
-   view view? view-im view-mut view-id view-did view-viewport view-selections view-sync view-link
+   view view? view-im view-mut view-id view-did view-viewport view-selections
    view-immutable view-immutable? view-immutable-id view-immutable-did
-   view-mutable view-mutable? view-mutable-viewport view-mutable-selections view-mutable-sync view-mutable-link
+   view-mutable view-mutable? view-mutable-viewport view-mutable-selections
    make-document-entry make-view
    ;; 内部查找 / 解析
    editor-document-entry editor-view-ref editor-view-document editor-document-history
@@ -71,8 +70,6 @@
  (all-from-out "editor/change.rkt")
  ;; ---------- 渲染 / 投影 ----------
  (all-from-out "editor/render.rkt")
- ;; ---------- 视口同步 ----------
- (all-from-out "editor/sync.rkt")
  ;; ---------- 布局（rectangles → view 尺寸 + 屏幕） ----------
  (all-from-out "editor/layout.rkt")
 

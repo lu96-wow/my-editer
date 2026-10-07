@@ -146,25 +146,6 @@
                list)
               '(1 4))
 
-;; viewport-mirror：跨文档按锚行显示宽比例缩放列；行号固定 + 夹；源空行 → 列 0
-(define ma (track-of-list (list "aaaaaaaaaa" "second")))
-(define mb (track-of-list (list "bbbbb" "second line")))
-(check-equal? (viewport-left-column
-               (viewport-mirror ma (viewport-set-left-column ma (viewport-open 4 2) 6) mb (viewport-open 4 2)))
-              3)                                                     ; 6 * 5/10
-(check-equal? (viewport-top-line
-               (viewport-mirror ma (viewport-set-top-line (viewport-open 4 2) 1) (track-of-list (list "x")) (viewport-open 4 2)))
-              0)                                                     ; 目标更短 → 夹最近
-(define me (track-of-list (list "" "abc")))
-(check-equal? (viewport-left-column
-               (viewport-mirror me (viewport-set-left-column me (viewport-open 4 2) 5) mb (viewport-open 4 2)))
-              0)                                                     ; 源锚行空 → 无法定比例，取 0
-;; 跨文档 + 目标 wrap：比例后的列落到段
-(define mlong (track-of-list (list "bbbbbbbbbb")))
-(check-equal? (viewport-top-segment
-               (viewport-mirror ma (viewport-set-left-column ma (viewport-open 4 2) 6) mlong (viewport-open 4 2 'wrap)))
-              1)                                                     ; 6 → 列 6，段 1
-
 ;; ---------- 回归：ensure 的水平吸附用**光标行**，不用顶行 ----------
 ;; 顶行在显示列 [39,41) 有宽字符；光标在另一行（全窄）的列 40，left-col=41。
 ;; 用顶行吸附会把 left=40 推到 41（光标跑到视口左外）；用光标行则保持 40。
