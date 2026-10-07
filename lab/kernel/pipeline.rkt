@@ -295,12 +295,11 @@
      (define s (sess ctx))
      (define dids (filter number? ids))
      (define ed0 (session-editor s))
-     ;; frame 叶存的是 vid，而 e-close 传的是 did —— 先把待关文档的视图收齐再删叶。
+     ;; frame 叶存的是 vid，而 e-close 传的是 did —— 先收齐待关文档的**所有** view 再逐个摘。
      (define close-vids (append* (for/list ([d (in-list dids)]) (editor-document-view-list ed0 d))))
      (define ed2 (for/fold ([ed ed0]) ([d (in-list dids)]) (editor-close-document ed d)))
      (for ([d (in-list dids)]) (path-table-remove! (session-paths s) d))
-     (define fr (for/fold ([fr (session-frame s)]) ([v (in-list (frame-leaves (session-frame s)))])
-                  (if (memv (leaf-vid v) close-vids) (frame-remove fr (leaf-vid v)) fr)))
+     (define fr (for/fold ([fr (session-frame s)]) ([cv (in-list close-vids)]) (frame-remove fr cv)))
      (define leaves (frame-leaves fr))
      (define next (if (pair? leaves) (leaf-vid (car leaves)) #f))
      (define ctx1 (set-editor (update ctx (λ (s) (struct-copy session s [frame fr]))) ed2))
@@ -358,10 +357,10 @@
      (define dir (car args))
      (define s (sess ctx))
      (define v1 (session-focus-vid s))
-     (define v2 (pane-dir s dir))
+     (define v2 (pane-leaf-dir s dir))
      (cond
        [(and v1 v2)
-        (update ctx (λ (s) (struct-copy session s [frame (frame-swap (session-frame s) v1 v2)])))]
+        (update ctx (λ (s) (struct-copy session s [frame (frame-swap-leaf (session-frame s) v1 v2)])))]
        [else ctx])]
 
     [(pane-resize)
@@ -405,7 +404,7 @@
   (cond
     [(not vid) ctx]
     [else
-     (define fr (frame-remove (session-frame s) vid))
+     (define fr (frame-drop-leaf (session-frame s) vid))
      (define leaves (frame-leaves fr))
      (define next (if (pair? leaves) (leaf-vid (car leaves)) #f))
      (update ctx (lambda (s) (struct-copy session s
@@ -436,7 +435,7 @@
     [(and active (frame-contains? fr active))
      (if (and (pair? placement) (eq? (car placement) 'split))
          (frame-split fr active (cadr placement) vid)
-         (frame-replace fr active (leaf vid 'edit)))]
+         (frame-replace-view fr active vid))]
     [else (frame-set-root fr (leaf vid 'edit))]))
 
 (define (show-document ctx did focus? [placement 'replace])
@@ -461,31 +460,34 @@
 
 ;;; ================= focus 几何 =================
 
-(define (focus-rects s)
-  (define w (session-width s))
-  (define h (session-height s))
+;; 主区区域 + 左栏（三处共用）。
+(define (workspace-main-of s)
   (define p (and (session-sidebar? s) (shown-panel (session-panels s) (session-active-panel s))))
-  (define-values (sw main) (workspace-main-area w h (and p #t) (session-sidebar-width s)))
+  (define-values (sw main) (workspace-main-area (session-width s) (session-height s)
+                                                 (and p #t) (session-sidebar-width s)))
+  (values sw main p))
+
+(define (focus-rects s)
+  (define-values (sw main p) (workspace-main-of s))
   (define-values (rects _) (frame->rectangles (session-frame s) main))
   (define base (for/list ([r (in-list rects)]) (cons (rectangle-view-id r) r)))
   (if p
-      (cons (cons (panel-vid p) (rectangle (panel-vid p) 0 0 sw h 0)) base)
+      (cons (cons (panel-vid p) (rectangle (panel-vid p) 0 0 sw (session-height s) 0)) base)
       base))
 
-(define (pane-dir s dir)
-  (define all (focus-rects s))
-  (define cur (session-focus-vid s))
+;; entries : (listof (cons id rectangle))；按方向取最近的 id（中心曼哈顿距离）。
+(define (nearest-in-dir entries cur-id dir)
   (cond
-    [(or (not cur) (null? (cdr all))) #f]
+    [(or (not cur-id) (null? (cdr entries))) #f]
     [else
-     (define c (for/first ([p (in-list all)] #:when (eqv? (car p) cur)) (cdr p)))
+     (define c (for/first ([p (in-list entries)] #:when (equal? (car p) cur-id)) (cdr p)))
      (cond
        [(not c) #f]
        [else
         (define cx (+ (rectangle-x c) (quotient (rectangle-width c) 2)))
         (define cy (+ (rectangle-y c) (quotient (rectangle-height c) 2)))
         (define best
-          (for/fold ([best #f]) ([p (in-list all)] #:unless (eqv? (car p) cur))
+          (for/fold ([best #f]) ([p (in-list entries)] #:unless (equal? (car p) cur-id))
             (define r (cdr p))
             (define rx (+ (rectangle-x r) (quotient (rectangle-width r) 2)))
             (define ry (+ (rectangle-y r) (quotient (rectangle-height r) 2)))
@@ -498,6 +500,24 @@
                 (let ([d (+ (abs (- rx cx)) (abs (- ry cy)))])
                   (if (or (not best) (< d (car best))) (cons d (car p)) best)))))
         (and best (cdr best))])]))
+
+;; 焦点方向：**view 粒度**（可以在叶内 view 之间走）。
+(define (pane-dir s dir)
+  (nearest-in-dir (focus-rects s) (session-focus-vid s) dir))
+
+;; 窗格移动方向：**叶粒度**（整叶中心）。不把同叶内的 view 当邻居，
+;; 否则整叶会跟叶内单个 view 互换，把固定布局拆掉（错位）。
+(define (pane-leaf-dir s dir)
+  (define-values (_sw main _p) (workspace-main-of s))
+  (define entries (frame->leaf-rects (session-frame s) main))
+  (define cur (frame-find (session-frame s) (session-focus-vid s)))
+  (cond
+    [(not cur) #f]
+    [else
+     (define cur-id (leaf-vid cur))
+     (define entries* (for/list ([e (in-list entries)])
+                        (cons (leaf-vid (car e)) (cdr e))))
+     (nearest-in-dir entries* cur-id dir)]))
 
 ;;; ================= 层入栈 / 出栈 =================
 

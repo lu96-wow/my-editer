@@ -586,11 +586,17 @@
 (define mirror-vid (session-focus-vid sTR))
 (define mirror-did (editor-view-document-id edTR mirror-vid))
 (check-true (not (eqv? srcTR mirror-vid)) "C-t 新开译文视图")
-(check-equal? (length (frame-leaves (session-frame sTR))) 2 "译文左右分屏")
+(check-equal? (length (frame-leaves (session-frame sTR))) 1 "译文与原文件同在一个叶子")
+(check-equal? (leaf-views (car (frame-leaves (session-frame sTR)))) (list srcTR mirror-vid)
+              "叶子内固定左右布局")
 (check-equal? (editor-document-string edTR mirror-did) "打印(a);\n显示(b);\n打印(c);"
               "开译文文档（正向）")
 (check-equal? (editor-view-string edTR srcTR) "printf(a);\ndisplay(b);\nprintf(c);"
               "源文档不变")
+;; 渲染：一个叶子内两块都上屏
+(define-values (_trc trscr) (app-render ctxTR1))
+(check-true (regexp-match? #rx"printf" (screen->string trscr)) "渲染：原文窗格")
+(check-true (regexp-match? #rx"打印" (screen->string trscr)) "渲染：译文窗格")
 
 ;; 源编辑 → 译文同步
 (define ctxTR2 (apply-effects! ctxTR1
@@ -627,9 +633,93 @@
 
 ;; 再开一次，用 translate-close 关配对
 (define ctxTR8 (apply-effects! ctxTR7 (list (fx 'translate-open))))
-(check-equal? (length (frame-leaves (session-frame (ctx-session ctxTR8)))) 2 "重新开译文")
+(check-equal? (length (leaf-views (car (frame-leaves (session-frame (ctx-session ctxTR8)))))) 2
+              "重新开译文")
 (define ctxTR9 (apply-effects! ctxTR8 (list (fx 'translate-close))))
 (check-equal? (length (tr-pairs (service-ref ctxTR9 'translate))) 0 "translate-close 清配对")
 (check-equal? (length (frame-leaves (session-frame (ctx-session ctxTR9)))) 1 "translate-close 只剩一叶")
+
+;;; ================= 两层布局：叶子内固定布局 =================
+(require "kernel/frame.rkt")
+(define (rrects fr a)
+  (define-values (rs _bs) (frame->rectangles fr a))
+  (for/list ([r (in-list rs)]) (list (rectangle-view-id r) (rectangle-x r) (rectangle-y r)
+                                     (rectangle-width r) (rectangle-height r))))
+;; 叶内 左右 均分：1 格 gap，两视图各占一块
+(define fa (area 0 0 20 6))
+(define f-inner (frame-new (leaf (isplit* 'lr 0 1) 'edit)))
+(check-equal? (rrects f-inner fa) '((0 0 0 9 6) (1 10 0 10 6)) "叶内左右固定布局展开成两块")
+(check-true (frame-contains? f-inner 0) "frame-contains? 认叶内视图")
+(check-true (frame-contains? f-inner 1) "frame-contains? 认叶内视图（第二个）")
+(check-false (frame-contains? f-inner 2) "frame-contains? 不认未放入视图")
+(check-equal? (leaf-views (frame-find f-inner 1)) '(0 1) "frame-find 返回含该 view 的叶")
+;; 叶内 上下
+(define f-inner2 (frame-new (leaf (isplit* 'tb 0 1) 'edit)))
+(check-equal? (rrects f-inner2 fa) '((0 0 0 20 2) (1 0 3 20 3)) "叶内上下固定布局展开成两块")
+;; 删叶内一个视图：只摘掉它，叶还在
+(define f-inner3 (frame-remove f-inner 0))
+(check-equal? (length (frame-leaves f-inner3)) 1 "删叶内一个视图后叶还在")
+(check-equal? (leaf-views (car (frame-leaves f-inner3))) '(1) "删叶内一个视图只摘掉它")
+;; 叶内换 view / swap
+(check-equal? (leaf-views (car (frame-leaves (frame-replace-view f-inner 0 2)))) '(2 1)
+              "frame-replace-view 保叶内结构")
+(check-equal? (leaf-views (car (frame-leaves (frame-swap f-inner 0 1)))) '(1 0)
+              "frame-swap 叶内两视图互换位置")
+;; group / ungroup
+(define f-two (frame-new (split 'lr #f (leaf 0 'edit) (leaf 1 'edit))))
+(define f-grp (frame-group f-two 0 1 'tb))
+(check-equal? (length (frame-leaves f-grp)) 1 "group 后两叶合一叶")
+(check-equal? (leaf-views (car (frame-leaves f-grp))) '(0 1) "group 保留内层布局")
+(check-equal? (length (frame-leaves (frame-ungroup f-grp 0))) 2 "ungroup 还原成两叶")
+;; 对含内层布局的叶做外层分屏：叶整体作为一侧，外层叶数 +1
+(define f-split (frame-split f-grp 0 'lr 2))
+(check-equal? (length (frame-leaves f-split)) 2 "可以在组合叶外再分屏")
+(check-equal? (map leaf-views (frame-leaves f-split)) '((0 1) (2)) "外层分屏不动叶内布局")
+;; 整叶交换：结构随内容一起走，不拆开组合叶
+(check-equal? (map leaf-views (frame-leaves (frame-swap-leaf f-split 0 2))) '((2) (0 1))
+              "frame-swap-leaf 整叶交换")
+;; 整叶关闭：含内层布局的叶一次关掉
+(check-equal? (map leaf-views (frame-leaves (frame-drop-leaf f-split 0))) '((2))
+              "frame-drop-leaf 关整叶")
+;; 叶级几何：一个叶子一块（整叶包围盒），不受叶内 view 影响
+(define leaf-rects (frame->leaf-rects f-split fa))
+(check-equal? (map (λ (e) (list (leaf-views (car e))
+                                (rectangle-x (cdr e)) (rectangle-y (cdr e))
+                                (rectangle-width (cdr e)) (rectangle-height (cdr e))))
+                   leaf-rects)
+              '(((0 1) 0 0 9 6) ((2) 10 0 10 6))
+              "frame->leaf-rects 一个叶子一块")
+
+;; e2e：pane-swap 以叶为单位（组合叶整体移动，不被拆开）
+(define ctxGV0 (press-ctrl (type-all (fresh) "printf(a);") #\t))   ; translate → 一叶含两 view
+(define ctxGV1 (press-ctrl ctxGV0 #\l))                             ; split-lr → 组合叶 | 新叶
+(define gv-leaves1 (frame-leaves (session-frame (ctx-session ctxGV1))))
+(check-equal? (map (λ (l) (length (leaf-views l))) gv-leaves1) '(2 1) "split 后组合叶在左")
+(define gv-group-vid (car (leaf-views (car gv-leaves1))))
+(define ctxGV2 (apply-effects! ctxGV1 (list (e-focus gv-group-vid))))
+(define ctxGV3 (apply-effects! ctxGV2 (list (e-pane-swap 'right))))
+(define gv-leaves2 (frame-leaves (session-frame (ctx-session ctxGV3))))
+(check-equal? (map (λ (l) (length (leaf-views l))) gv-leaves2) '(1 2) "pane-swap 整叶移动不拆叶")
+(check-equal? (map leaf-views gv-leaves2) (list (leaf-views (cadr gv-leaves1)) (leaf-views (car gv-leaves1)))
+              "pane-swap 后组合叶完整地到了右侧")
+(define ctxGV4 (apply-effects! ctxGV3 (list (e-focus (car (leaf-views (cadr gv-leaves2)))))))
+(define ctxGV5 (apply-effects! ctxGV4 (list (e-pane-close))))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxGV5)))) 1 "pane-close 关整叶")
+(check-equal? (leaf-views (car (frame-leaves (session-frame (ctx-session ctxGV5)))))
+              (leaf-views (cadr gv-leaves1)) "pane-close 关掉组合叶后只剩另一叶")
+
+;; e-close 文档：组合叶里只摘该文档的 view，其它 view 保留；都关完叶才消失
+(define ctxCL0 (press-ctrl (type-all (fresh) "printf(a);") #\t))
+(define cl-s (ctx-session ctxCL0))
+(define cl-ed (session-editor cl-s))
+(define cl-vids (leaf-views (car (frame-leaves (session-frame cl-s)))))
+(define cl-src-did (editor-view-document-id cl-ed (car cl-vids)))
+(define cl-mir-did (editor-view-document-id cl-ed (cadr cl-vids)))
+(define ctxCL1 (apply-effects! ctxCL0 (list (e-close (list cl-src-did)))))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxCL1)))) 1 "关一个文档后叶还在")
+(check-equal? (leaf-views (car (frame-leaves (session-frame (ctx-session ctxCL1))))) (list (cadr cl-vids))
+              "组合叶只摘掉被关文档的 view")
+(define ctxCL2 (apply-effects! ctxCL1 (list (e-close (list cl-mir-did)))))
+(check-equal? (length (frame-leaves (session-frame (ctx-session ctxCL2)))) 0 "两个文档都关后叶消失")
 
 (displayln "smoke: all passed")

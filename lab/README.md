@@ -53,7 +53,12 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **Effect 即数据**：命令只返回 `(listof effect)`，`pipeline` 是唯一写入点。
 - **Policy**：before 门控 / after 变换；`Interaction` 挂起机制。
 - **Layer 栈**：`capture` 短路、声明式 `pop`、`on-blur`、`set`/`push`；模板/实例分离。
-- **Frame**：role 窗格树 + 纯派生 layout + swap/resize；`Focus` set/push/restore。
+- **Frame（两层布局）**：外层 `split` 管叶与叶，叶 `leaf` 内是固定布局
+  `inner = vid | (isplit dir size a b)`（`frame-group`/`frame-ungroup` 合并拆分）。
+  纯派生 layout 把叶内展开成多块 rectangle，所以叶内每个 view 各自可聚焦 / 命中 / 渲染 / 滚动。
+  **结构操作按叶算**：`frame-split`/`frame-resize`/`frame-swap-leaf`/`frame-drop-leaf` 都以整叶为单位
+  （`frame->leaf-rects` 提供整叶包围盒），只有 `Focus` 方向导航是 view 粒度（可走叶内 view）。
+  `Focus` set/push/restore。
 - **Overlay（deco）**：每帧纯 provider 产浮层 pane；`frame-pane`/`box-line`/`anchor`。
 - **异步版本闸门**：`pipeline-pending!` / `pipeline-deliver!`（内核统一；传输特性自管）。
 - **service**：runtime.services（per-runtime 特性状态）。

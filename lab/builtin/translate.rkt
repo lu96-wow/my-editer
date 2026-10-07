@@ -182,7 +182,9 @@
      (set-tr-pairs! tr (cons pair (tr-pairs tr)))
      (remember! tr ed3 src-vid)
      (remember! tr ed3 vid)
-     (define fr (frame-split (session-frame s) src-vid 'lr vid))
+     ;; 原文 | 译文 放进**同一个叶子**（固定左右布局），外层把它当一个窗格。
+     (define fr (frame-set-leaf (session-frame s) src-vid
+                                (leaf (isplit* 'lr src-vid vid) 'edit)))
      (ctx-with-session ctx
        (struct-copy session s
          [editor ed3] [frame fr]
