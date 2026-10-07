@@ -65,9 +65,9 @@ render: before-render 通知 → layout(frame) → decoration → core 合成
 - **indent**（覆盖 newline）+ **autopair**（before-insert 钩子）。
 - **属性高亮**：3 个纯插件（per-plugin `applies?`，当前均限定 Racket 文件）+ 版本闸门 + `face-stack` 分层写回 + `attr!` effect。
 - **按文档启用（`doc-scope.rkt`）**：功能包声明 `contrib 'doc-scope name (doc-scope applies?)`，`doc-applies? ctx name` 取当前编辑文档查询；补全 / 文档浮窗 / 缩进均按此限定（当前 = Racket，scratch 允许）。
-- **补全菜单**（按文档启用⇒当前仅 Racket）：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出、本地定义、**文件里出现过的词**（dabbrev），选中项内嵌 bluebox 文档（异步）。
+- **补全菜单**（按文档启用⇒当前仅 Racket）：打字自动弹（after-insert）+ `C-n` 显式；layer + deco 浮层 + 候选池 refine；候选含 `#lang`/`require` 导出、本地定义、**文件里出现过的词**（dabbrev），选中项内嵌文档（bluebox + HTML 正文，异步）。
 - **共享词法器（`builtin/lang/lex.rkt`）**：`scan-words`/`active-token` 等是「什么算一个词」的单一来源；高亮词色 / 关键字与补全共用它，因此**词补全直接复用高亮的词法**，不读高亮插件的私有状态表（那张表在特性内部、且可能位于 worker）。
-- **文档浮窗**：`C-p d`（layer + deco + 异步；bluebox）。
+- **文档浮窗**：`C-p d`（layer + deco + 异步；bluebox 优先，取不到时用 xref 的 HTML 路径抽正文兜底）。
 - **通用异步执行器**：sync / place runner（服务惰性创建）；后端 on-source 唤醒。
 - **主题配色**：face/palette → ANSI（后端）。
 - **配置驱动包加载**：`config/packages.rkt` 折叠 register 过程。
