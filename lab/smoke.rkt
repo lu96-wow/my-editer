@@ -382,6 +382,22 @@
 (check-true (pool-has? "#lang racket\n" "second") "#lang racket 含 second")
 (check-true (pool-has? "#lang racket/base\n(require racket/list)\n" "second")
             "(require racket/list) 后含 second")
+;; `#lang` 不必在第一行：空行 / 行注释 / 块注释 / `#;` 数据注释 / shebang 之后都要认
+;; （与 Racket 编译器一致：这些 trivia 可以有任意多个）。
+(check-true (pool-has? "\n\n#lang racket\n" "second") "空行后的 #lang 被识别")
+(check-true (pool-has? (string-append (make-string 50 #\newline) "#lang racket\n") "second")
+            "任意多空行后的 #lang 被识别")
+(check-true (pool-has? ";; c\n#lang racket\n" "second") "行注释后的 #lang 被识别")
+(check-true (pool-has? "#| c #| nested |# c |#\n#lang racket\n" "second") "块注释后的 #lang 被识别")
+(check-true (pool-has? "#;1 #;(a b)\n\n;; c\n#|x|#\n#lang racket\n" "second") "#; 数据注释后的 #lang 被识别")
+(check-true (pool-has? "#!/usr/bin/env racket\n#lang racket\n" "second") "shebang 后的 #lang 被识别")
+;; 无 #lang 的顶层 (module name lang …) 也是合法模块（loader 支持）。
+(check-true (pool-has? "(module m racket\n  (provide x)\n  (define x 1))\n" "second")
+            "顶层 module 的语言被识别")
+(check-true (and (member 'x (source-definitions "(module m racket\n  (define x 1))\n")) #t)
+            "module 体里的定义被识别")
+(check-true (and (member 'y (source-definitions "\n\n#lang racket\n(define y 1)\n")) #t)
+            "空行后的 #lang 之后定义被识别")
 
 ;;; ================= 词补全（复用共享词法器 lang/lex） =================
 (require "builtin/lang/lex.rkt")
@@ -400,6 +416,27 @@
 (define wd-inst (input-find (session-input (ctx-session ctxWD)) 'complete))
 (check-true (and wd-inst (if (member "foobar" (cs-cands (layer-inst-state wd-inst))) #t #f))
             "菜单含文件里出现过的词 foobar")
+
+;;; ================= 前导空行不能让「行号」移位（line-at / prefix-at） =================
+;; racket/string 的 string-split 默认 #:trim? #t 会吞掉首个空行，导致所有行号偏 1：
+;; 以空行开头的文件（如 a.rkt）补全/缩进全错位。这几条是回归测试。
+(require "builtin/lang/ident.rkt" "builtin/indent.rkt")
+(check-equal? (line-at "\n\nfoo" 2) "foo" "line-at：前导空行不移位")
+(check-equal? (prefix-at "\n\n(define )" 2 7) "define" "prefix-at：前导空行不移位")
+(check-equal? (indent-for "\n\n(define (f\n" 3 0) 4 "indent：前导空行不移位")
+;; 集成：打开一个以空行开头的 .rkt，在 (define ) 里打字应弹补全。
+(define lbdir (make-temporary-file "lab-leadblank-~a" 'directory))
+(define lbf (build-path lbdir "a.rkt"))
+(call-with-output-file lbf #:exists 'truncate
+  (λ (o) (display "\n\n#lang racket/base\n\n(define )\n" o)))
+(define ctxLB (app-open (app-init (path->string lbdir) 40 10) (path->string lbf)))
+(define lbvid (session-focus-vid (ctx-session ctxLB)))
+(define ctxLB2 (apply-effects! ctxLB (list (e-move lbvid (selections-one (caret (point 4 8)))))))
+(define ctxLB3 (press ctxLB2 #\s))
+(define lb-inst (input-find (session-input (ctx-session ctxLB3)) 'complete))
+(check-true (and lb-inst (pair? (cs-cands (layer-inst-state lb-inst))))
+            "以空行开头的文件里打字弹补全")
+(delete-directory/files lbdir)
 
 ;;; ================= 异步版本闸门（内核统一） =================
 (define gotG (box #f))

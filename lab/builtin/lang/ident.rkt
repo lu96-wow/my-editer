@@ -17,7 +17,7 @@
          "lex.rkt")
 
 (define (line-at text line)
-  (define lines (string-split text "\n"))
+  (define lines (string-split text "\n" #:trim? #f))
   (if (and (>= line 0) (< line (length lines))) (list-ref lines line) ""))
 
 ;; 光标处标识符：光标正好在某字符上 → 连左右；光标紧跟在词尾 → 只取左侧。

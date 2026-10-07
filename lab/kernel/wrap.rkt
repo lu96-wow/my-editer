@@ -20,4 +20,5 @@
        (loop (string-trim (substring s cut)) (cons (substring s 0 cut) acc))])))
 
 (define (wrap-lines text w)
-  (append* (for/list ([l (in-list (string-split text "\n"))]) (wrap-line l w))))
+  ;; #:trim? #f：保留开头的空行（文档正文可能是以空行开头的）。
+  (append* (for/list ([l (in-list (string-split text "\n" #:trim? #f))]) (wrap-line l w))))

@@ -19,7 +19,7 @@
 (define indent-width 2)
 
 (define (text-before text line col)
-  (define lines (string-split text "\n"))
+  (define lines (string-split text "\n" #:trim? #f))
   (define n (length lines))
   (string-append
    (string-join (take lines (min line n)) "\n")

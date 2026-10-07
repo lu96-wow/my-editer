@@ -2,11 +2,15 @@
 
 ;;; lab-rebuild/lang/source.rkt —— 从源码文本提取「需要哪些模块 / 定义了哪些名字」（纯）
 ;;;
-;;; 只做启发式扫描，不做展开：把 `#lang` 语言与顶层 `(require …)` 的模块路径找出来，
-;;; 供补全（module->exports）与文档查询（xref 反查定义）当候选集；再扫一遍顶层定义名。
+;;; 只做启发式扫描，不做展开：把语言（`#lang` 或顶层 `(module …)`）与顶层
+;;; `(require …)` 的模块路径找出来，供补全（module->exports）与文档查询（xref
+;;; 反查定义）当候选集；再扫一遍顶层定义名。
 ;;;
-;;; 读法：剥掉 `#lang` / `#reader` 首行（reader 指令不是 s-表达式），其余顶层表单
-;;; 逐个 `read`。遇到读不了的（非 s-表达式语言 / 语法错误）就停在出错处，返回已有结果。
+;;; 读法：先跳过开头的空白 / `;` 行注释 / `#|…|#` 块注释 / `#;` 数据注释 /
+;;; `#!` shebang（任意多个），再剥掉 `#lang` / `#reader` 行（reader 指令不是
+;;; s-表达式），其余顶层表单逐个 `read`。
+;;; 没有 `#lang` 时，顶层 `(module name lang body …)` 也算模块上下文（loader 允许
+;;; 这种写法）。遇到读不了的（非 s-表达式语言 / 语法错误）就停在出错处，返回已有结果。
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
 (provide source-lang source-requires source-definitions require-context?)
@@ -15,17 +19,72 @@
 
 ;;; ================= reader =================
 
-;; `#lang foo` 里 foo 是语言模块名（如 racket/base）。
-(define (source-lang text)
-  (define m (regexp-match #px"^#lang\\s+(\\S+)" text))
+;; 从 i 起第一个 '\n' 的下标；没有则文本长度。用于一次跳过 ';' 注释 / shebang 行。
+(define (line-end text i)
+  (let loop ([j i])
+    (cond [(>= j (string-length text)) (string-length text)]
+          [(char=? (string-ref text j) #\newline) j]
+          [else (loop (add1 j))])))
+
+;; 跳过 '#;' 后的一个 datum，返回其后下标；读不出 / 到末尾返回 #f。
+;; 借 Racket reader 读（它会跳过 datum 内的注释与嵌套 '#;'），用端口位置求长度。
+(define (skip-sexp-comment text i)
+  (define in (open-input-string (substring text (+ i 2))))
+  (with-handlers ([exn:fail? (λ (_) #f)])
+    (read in)
+    (define used (file-position in))
+    (and (number? used) (+ i 2 used))))
+
+;; 跳过开头的空白 / `;` 行注释 / `#|…|#` 块注释（可嵌套）/ `#!` shebang 行 /
+;; `#;` 数据注释，返回第一个「有意义」字符的下标。Racket 编译器就是这么做的：
+;; `#lang` / `(module …)` 前面可以有任意多、任意种类的 trivia。
+(define (skip-leading-trivia text)
+  (define n (string-length text))
+  (let loop ([i 0] [blk 0])
+    (cond
+      [(>= i n) n]
+      [(positive? blk)
+       (cond
+         [(and (char=? (string-ref text i) #\#)
+               (< (add1 i) n)
+               (char=? (string-ref text (add1 i)) #\|))
+          (loop (+ i 2) (add1 blk))]
+         [(and (char=? (string-ref text i) #\|)
+               (< (add1 i) n)
+               (char=? (string-ref text (add1 i)) #\#))
+          (loop (+ i 2) (sub1 blk))]
+         [else (loop (add1 i) blk)])]
+      [(char-whitespace? (string-ref text i)) (loop (add1 i) blk)]
+      [(char=? (string-ref text i) #\;) (loop (line-end text i) blk)]
+      [(and (char=? (string-ref text i) #\#)
+            (< (add1 i) n)
+            (char=? (string-ref text (add1 i)) #\|))
+       (loop (+ i 2) 1)]
+      [(and (char=? (string-ref text i) #\#)
+            (< (add1 i) n)
+            (char=? (string-ref text (add1 i)) #\!))
+       (loop (line-end text i) blk)]
+      [(and (char=? (string-ref text i) #\#)
+            (< (add1 i) n)
+            (char=? (string-ref text (add1 i)) #\;))
+       (define next (skip-sexp-comment text i))
+       (if next (loop next blk) i)]
+      [else i])))
+
+;; `#lang foo`（跳过开头空白 / 注释后）里 foo 是语言模块名（如 racket/base）。
+(define (directive-lang text)
+  (define m (regexp-match #px"^#lang\\s+(\\S+)" (substring text (skip-leading-trivia text))))
   (and m (string->symbol (cadr m))))
 
+;; 剥掉开头的 reader 指令（`#lang` / `#reader` 行）：先跳过空白 / 注释 / shebang，
+;; 若随后是 `#lang` / `#reader` 就整行拿掉；否则从第一个有效字符起返回。
 (define (strip-reader-lines text)
-  (define lines (string-split text "\n"))
+  (define rest (substring text (skip-leading-trivia text)))
   (cond
-    [(and (pair? lines) (regexp-match? #rx"^#(lang|reader)" (car lines)))
-     (string-join (cdr lines) "\n")]
-    [else text]))
+    [(regexp-match? #rx"^#(lang|reader)" rest)
+     (define nl (line-end rest 0))
+     (if (< nl (string-length rest)) (substring rest (add1 nl)) "")]
+    [else rest]))
 
 ;; 顶层表单列表；读到一半出错就停（返回已读到的）。
 (define (read-forms text)
@@ -35,6 +94,31 @@
     (cond
       [(eof-object? d) (reverse acc)]
       [else (loop (cons d acc))])))
+
+;;; ================= 模块上下文（语言 + 模块体） =================
+
+;; 一个源码文件的模块上下文 → (values 语言spec 模块体表单)。
+;;   · 有 #lang        → 语言 = #lang 的模块名；体 = #lang 之后的顶层表单。
+;;   · 无 #lang，但首个表单是顶层 (module name lang body …)
+;;                     → 语言 = lang；体 = body（loader 允许这种「无 #lang」写法）。
+;;   · 都没有          → 语言 = #f；体 = 全部顶层表单（临时 / 半成品文本）。
+(define (module-context text)
+  (define forms (read-forms text))
+  (define lang (directive-lang text))
+  (cond
+    [lang (values lang forms)]
+    [else
+     (define f (and (pair? forms) (car forms)))
+     (cond
+       [(and (pair? f) (eq? (car f) 'module)
+             (pair? (cdr f)) (pair? (cddr f)))
+        (values (caddr f) (cdr (cddr f)))]
+       [else (values #f forms)])]))
+
+;; 文件自身的语言（#lang 模块名，或顶层 module 的语言 spec；无则 #f）。
+(define (source-lang text)
+  (define-values (lang _forms) (module-context text))
+  lang)
 
 ;;; ================= require 规格 → 模块路径 =================
 ;;; 结果可直接喂给 module->exports / xref：符号（'racket/list）或
@@ -75,13 +159,13 @@
 
 ;; 候选模块路径：语言模块 + 所有 require（去重，语言模块排最前）。
 (define (source-requires text #:base-dir [base-dir (current-directory)])
-  (define lang (source-lang text))
+  (define-values (lang forms) (module-context text))
   (define reqs
     (append*
-     (for/list ([f (in-list (read-forms text))]
+     (for/list ([f (in-list forms)]
                 #:when (and (pair? f) (eq? (car f) 'require)))
        (append* (for/list ([s (in-list (list-elems (cdr f)))]) (spec->paths s base-dir))))))
-  (remove-duplicates (append (if lang (list lang) '()) reqs) equal?))
+  (remove-duplicates (append (spec->paths lang base-dir) reqs) equal?))
 
 ;;; ================= 顶层定义名 =================
 
@@ -109,15 +193,16 @@
        [else '()])]))
 
 (define (source-definitions text)
+  (define-values (_lang forms) (module-context text))
   (remove-duplicates
-   (append* (for/list ([f (in-list (read-forms text))]) (def-names f)))
+   (append* (for/list ([f (in-list forms)]) (def-names f)))
    eq?))
 
 ;;; ================= require 补全的上下文判定 =================
 
 ;; 光标前的文本（line/col 为 0-based）。
 (define (text-before text line col)
-  (define lines (string-split text "\n"))
+  (define lines (string-split text "\n" #:trim? #f))
   (define n (length lines))
   (string-append
    (string-join (take lines (min line n)) "\n")
