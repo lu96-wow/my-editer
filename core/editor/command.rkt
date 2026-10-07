@@ -69,7 +69,7 @@
 
 (struct step (pre-value pre-sels post-value post-sels who pre-tip) #:transparent)
 
-;; 换当前文档 + 传播视图 + 同步视口。→ step（#f = 无实际变化）。
+;; 换当前文档 + 传播视图。→ step（#f = 无实际变化）。
 ;; value : string | document（与 editor-open / editor-add-document 同构）：
 ;; string 现开一篇纯文本，document 则原样装入（含属性轨）。
 (define (editor-view-install! ed vid value
@@ -322,13 +322,18 @@
 
 ;; 同上，但要的锚点是字符坐标 point；core 折成显示列后落位。
 ;; 外部对齐层只产 point，不需要知道宽字符占几列。
+;; 行/列越界先夹回合法域（与 viewport-set-anchor 对行的夹取一致）。
 (define (editor-view-set-anchor-point! ed vid p)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
+  (define n (track-length t))
+  (define line (max 0 (min (point-line p) (sub1 n))))
+  (define s (track-ref t line))
+  (define col (max 0 (min (point-column p) (string-length s))))
   (view-set-viewport! v
     (viewport-set-anchor t (view-viewport v)
-                         (point-line p)
-                         (index->display-column (track-ref t (point-line p)) (point-column p))))
+                         line
+                         (index->display-column s col)))
   (void))
 
 ;;; ---------- 属性命令（视图级） ----------

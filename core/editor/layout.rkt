@@ -9,7 +9,7 @@
 ;;; 尺寸归 view，位置归渲染。
 ;;;
 ;;; 三个入口（可拆可合）：
-;;;   editor-set-layout!      写：w h → 各 view（变了才重锚 + 同步跟随者）；x y 忽略
+;;;   editor-set-layout!      写：w h → 各 view（变了才重锚）；x y 忽略
 ;;;   editor-render-layout   读：纯渲染。x y 贴屏，w h 定该帧视口大小（不改 view 状态）
 ;;;   editor-render-layout*!  组合：先 set-layout! 再 render → screen
 ;;;

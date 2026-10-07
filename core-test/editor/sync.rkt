@@ -54,6 +54,12 @@
 (editor-view-set-anchor! p0 0 999 0)
 (check-equal? (vtl p0 0) 39)
 
+;; 字符坐标越界也夹回合法域（不崩）；末行 "line 39" 宽 7
+(editor-view-set-anchor-point! p0 0 (point 999 999))
+(check-equal? (anchor p0 0) '(39 7))
+(editor-view-set-anchor-point! p0 0 (point -1 0))
+(check-equal? (anchor p0 0) '(0 0))
+
 ;; 落锚不碰选区、不碰其它 view
 (define p1 (add-view p0 0 20 5))
 (editor-view-set-point! p1 0 (point 3 0))
