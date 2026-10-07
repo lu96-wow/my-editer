@@ -77,10 +77,10 @@
   (define s (ctx-session ctx))
   (define ed (session-editor s))
   (define text (editor-view-string ed vid))
-  (define-values (lang forms) (module-context text))
+  (define-values (lang forms) (requires-context text))
   (view-modules/context ctx vid lang forms))
 
-;; 已解析的 (`module-context`) 版本：调用方已读过 text、解析过 lang/forms，
+;; 已解析的 (`requires-context`) 版本：调用方已读过 text、解析过 lang/forms，
 ;; 就不再重复 read 整个文档。
 (define (view-modules/context ctx vid lang forms)
   (define s (ctx-session ctx))

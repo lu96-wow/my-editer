@@ -417,6 +417,25 @@
 (check-true (and wd-inst (if (member "foobar" (cs-cands (layer-inst-state wd-inst))) #t #f))
             "菜单含文件里出现过的词 foobar")
 
+;;; ================= 增量词表 / 每文档候选池 =================
+(require "builtin/lang/word-index.rkt")
+;; 纯：整篇建 + 增量加词
+(define wi0 (word-index-open "(define foobar 1)\n"))
+(check-true (and (member "foobar" (word-index-words wi0)) #t) "word-index：建表含 foobar")
+(define added0 (word-index-change wi0 (list (list 1 0 1 0 "baz"))))
+(check-true (and (member "baz" added0) #t) "word-index：增量返回新词 baz")
+(check-true (and (member "baz" (word-index-words wi0)) #t) "word-index：增量后含 baz")
+(define (menu-has? ctx name)
+  (define inst (input-find (session-input (ctx-session ctx)) 'complete))
+  (and inst (if (member name (cs-cands (layer-inst-state inst))) #t #f)))
+(check-true (menu-has? ctxWD "foobar") "增量词表：定义后仍能补出 foobar")
+;; header 新增 require → 每 did 池失效并重建，应补出新 require 的导出
+(define ctxHR (type-all (fresh) "(require racket/list)\nsec"))
+(check-true (menu-has? ctxHR "second") "header 新增 require → 补出 second")
+;; 多行 require：require-context 的窗口仍能识别
+(define ctxML (type-all (fresh) "(require\n  racket/l"))
+(check-true (menu-has? ctxML "racket/list") "多行 require 仍是模块上下文")
+
 ;;; ================= 前导空行不能让「行号」移位（line-at / prefix-at） =================
 ;; racket/string 的 string-split 默认 #:trim? #t 会吞掉首个空行，导致所有行号偏 1：
 ;; 以空行开头的文件（如 a.rkt）补全/缩进全错位。这几条是回归测试。

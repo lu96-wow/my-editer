@@ -14,7 +14,7 @@
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
 (provide source-lang source-requires source-definitions require-context?
-         module-context requires-of-forms definitions-of-forms)
+         module-context requires-context requires-of-forms definitions-of-forms)
 
 (require racket/list racket/path racket/string)
 
@@ -88,13 +88,19 @@
     [else rest]))
 
 ;; 顶层表单列表；读到一半出错就停（返回已读到的）。
-(define (read-forms text)
+;; #:max-forms / #:max-chars 可选上界：`require` 按惯例都在文件头部，
+;; 不必为了几行 require 把整篇 read 一遍（大文件 read 是超线性的）。
+(define (read-forms text #:max-forms [max-forms #f] #:max-chars [max-chars #f])
   (define in (open-input-string (strip-reader-lines text)))
-  (let loop ([acc '()])
-    (define d (with-handlers ([exn:fail? (λ (_) eof)]) (read in)))
+  (let loop ([acc '()] [n 0])
     (cond
-      [(eof-object? d) (reverse acc)]
-      [else (loop (cons d acc))])))
+      [(and max-forms (>= n max-forms)) (reverse acc)]
+      [(and max-chars (>= (file-position in) max-chars)) (reverse acc)]
+      [else
+       (define d (with-handlers ([exn:fail? (λ (_) eof)]) (read in)))
+       (cond
+         [(eof-object? d) (reverse acc)]
+         [else (loop (cons d acc) (add1 n))])])))
 
 ;;; ================= 模块上下文（语言 + 模块体） =================
 
@@ -103,8 +109,8 @@
 ;;   · 无 #lang，但首个表单是顶层 (module name lang body …)
 ;;                     → 语言 = lang；体 = body（loader 允许这种「无 #lang」写法）。
 ;;   · 都没有          → 语言 = #f；体 = 全部顶层表单（临时 / 半成品文本）。
-(define (module-context text)
-  (define forms (read-forms text))
+(define (module-context text #:max-forms [max-forms #f] #:max-chars [max-chars #f])
+  (define forms (read-forms text #:max-forms max-forms #:max-chars max-chars))
   (define lang (directive-lang text))
   (cond
     [lang (values lang forms)]
@@ -120,6 +126,13 @@
 (define (source-lang text)
   (define-values (lang _forms) (module-context text))
   lang)
+
+;; require 专用：只需读文件头部。超过上界就停（宁可少认几个尾部 require，
+;; 也不为它们把整篇 read 一遍）。
+(define requires-max-forms 200)
+(define requires-max-chars 131072)      ; 128KB
+(define (requires-context text)
+  (module-context text #:max-forms requires-max-forms #:max-chars requires-max-chars))
 
 ;;; ================= require 规格 → 模块路径 =================
 ;;; 结果可直接喂给 module->exports / xref：符号（'racket/list）或
@@ -160,7 +173,7 @@
 
 ;; 候选模块路径：语言模块 + 所有 require（去重，语言模块排最前）。
 (define (source-requires text #:base-dir [base-dir (current-directory)])
-  (define-values (lang forms) (module-context text))
+  (define-values (lang forms) (requires-context text))
   (requires-of-forms lang forms #:base-dir base-dir))
 
 ;; 已解析的「语言 + 模块体」版本：补全要同时要 requires 与 definitions 时，
