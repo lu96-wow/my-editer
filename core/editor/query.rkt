@@ -70,7 +70,7 @@
  editor-view-height
  editor-view-visible-range
 
- ;; ---------- 视口锚点（视口同步的原语：取） ----------
+ ;; ---------- 视口锚点 ----------
  editor-view-anchor
  editor-view-anchor-point
 
@@ -190,8 +190,7 @@
   (viewport-anchor (document-text (editor-view-document ed vid))
                    (view-viewport (editor-view-ref ed vid))))
 
-;; 视口左上角锚点 (buffer 行, 行内字符列)。
-;; 外部组装跨文档同步时用这个：不碰显示宽度，宽字符换算留在 core。
+;; 视口左上角锚点 (buffer 行, 行内字符列)，按显示宽折算。
 (define (editor-view-anchor-point ed vid)
   (define t (document-text (editor-view-document ed vid)))
   (define-values (line dc) (viewport-anchor t (view-viewport (editor-view-ref ed vid))))

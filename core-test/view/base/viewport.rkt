@@ -111,7 +111,7 @@
 (check-equal? (call-with-values (lambda () (viewport-point->screen-position/vrows t2 vw vrs2 (point 0 5))) list) '(1 1))
 (check-equal? (call-with-values (lambda () (viewport-screen-position->point/vrows t2 vw vrs2 1 1)) list) '(0 5))
 
-;; ---------- 锚点（视口间同步） ----------
+;; ---------- 锚点 ----------
 
 ;; clip：锚列 = left-column
 (define ta (track-of-list (list "abcdefghij" "short" "xxxxxxxxxx")))

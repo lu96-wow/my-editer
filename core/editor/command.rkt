@@ -51,7 +51,7 @@
  editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
 
- ;; ---------- 视口锚点（视口同步的原语：写） ----------
+ ;; ---------- 视口锚点 ----------
  editor-view-set-anchor! editor-view-set-anchor-point!
 
  ;; ---------- 属性（作用选区） ----------
@@ -310,19 +310,16 @@
   (view-set-viewport! v (viewport-set-left-column t (view-viewport v) n))
   (void))
 
-;;; ---------- 视口锚点（视口同步的原语：写） ----------
-;;; core 只提供「设视口左上角」。何时设、设到哪里、哪些 view 成组，全由 core 外决定。
+;;; ---------- 视口锚点 ----------
 
-;; 把视口左上角设到 (buffer 行, 显示列)；按该 view 自己的 clip/wrap 落位；不碰其它 view。
+;; 把该 view 的视口左上角设到 (buffer 行, 显示列)；按该 view 自己的 clip/wrap 落位。
 (define (editor-view-set-anchor! ed vid line dc)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-set-anchor t (view-viewport v) line dc))
   (void))
 
-;; 同上，但要的锚点是字符坐标 point；core 折成显示列后落位。
-;; 外部对齐层只产 point，不需要知道宽字符占几列。
-;; 行/列越界先夹回合法域（与 viewport-set-anchor 对行的夹取一致）。
+;; 同上，锚点用字符坐标 point，按显示宽折成显示列后落位；行 / 列越界先夹回合法域。
 (define (editor-view-set-anchor-point! ed vid p)
   (define v (editor-view-ref ed vid))
   (define t (document-text (editor-view-document ed vid)))

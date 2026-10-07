@@ -72,7 +72,7 @@
 (check-equal? (editor-view-left-column ed 0) 0)
 (check-equal? (editor-view-height ed 0) 4)
 
-;; 视口锚点原语：core 只取/放，不做任何同步策略
+;; 视口锚点：取 / 放
 (define an (editor-open "abcdefghij\nsecond line here" 6 4))
 (check-equal? (call-with-values (lambda () (editor-view-anchor an 0)) list) '(0 0))
 (check-equal? (editor-view-anchor-point an 0) (point 0 0))

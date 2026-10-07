@@ -38,7 +38,7 @@
  viewport-point->screen-position viewport-point->screen-position/vrows
  viewport-screen-position->point viewport-screen-position->point/vrows
 
- ;; ---------- 锚点（视口间同步的原语） ----------
+ ;; ---------- 锚点 ----------
  viewport-anchor viewport-set-anchor
 
  ;; ---------- 视觉行上下 ----------
@@ -238,13 +238,10 @@
 (define (viewport-screen-position->point t v row col)
   (viewport-screen-position->point/vrows t v (viewport-vrows t v) row col))
 
-;;; ---------- 锚点（视口间同步的原语） ----------
+;;; ---------- 锚点 ----------
 ;;; 锚 = 可见区左上角的逻辑位置 (buffer 行, 显示列)。用**显示列而非字符索引**：
 ;;; clip 的 left-column 与 wrap 的段起点本来就是显示列，于是同一个锚能跨 mode 直接落位。
 ;;; 锚统一用**显示列**一种表示，省去字符索引 ↔ 列 ↔ 段号的来回换算。
-;;;
-;;; 本模块只提供「取锚 / 落锚」两个原语，不提供任何跨视口/跨文档的对应策略：
-;;; 一份文本内取/放是恒等的；两份文本之间怎么对应是语义问题，由 core 外决定。
 
 ;; 视口锚点。越界的 top-line / top-segment 先夹到合法域（软滚动可越过文末）。
 (define (viewport-anchor t v)
