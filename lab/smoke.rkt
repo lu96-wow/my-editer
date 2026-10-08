@@ -722,4 +722,50 @@
 (define ctxCL2 (apply-effects! ctxCL1 (list (e-close (list cl-mir-did)))))
 (check-equal? (length (frame-leaves (session-frame (ctx-session ctxCL2)))) 0 "两个文档都关后叶消失")
 
+;;; ================= 词表影子过期（程序写入不过 after-edit） =================
+(require "builtin/lang/word-index.rkt")
+;; 纯：越界检测
+(check-true (word-index-fits? (word-index-open "abc\ndef") '((0 0 0 3 "X"))))
+(check-false (word-index-fits? (word-index-open "abc\ndef") '((0 0 0 9 "X"))))
+(check-false (word-index-fits? (word-index-open "abc\ndef") '((5 0 5 0 "X"))))
+
+(define wsdir (make-temporary-file "lab-wordstale-~a" 'directory))
+(define wsf (build-path wsdir "a.rkt"))
+(call-with-output-file wsf #:exists 'truncate
+  (λ (o) (display "#lang racket\n(define alpha 1)\n" o)))
+(define ctxWS0 (app-open (app-init (path->string wsdir) 40 10) (path->string wsf)))
+(define ws-vid (session-focus-vid (ctx-session ctxWS0)))
+(define ctxWS1 (type-all ctxWS0 "zul"))                ; 触发补全 → 建词表（影子）
+;; 程序写入（模拟 e-reload / translate 写回，不过 after-edit）：整行变长
+(define longline (string-append "#lang racket\n(define " (make-string 200 #\a) ")\n"))
+(define ctxWS2 (apply-effects! ctxWS1 (list (e-reload ws-vid longline))))
+(define cursor200 (selections-one (caret (point 1 208))))
+;; (a) 不渲染直接编辑：坐标超出旧影子 → 整篇重建，不崩
+(define ctxWS3 (apply-effects! ctxWS2 (list (e-move ws-vid cursor200))))
+(define ctxWS4 (step ctxWS3 (key-event 'backspace no-mods)))
+(check-true (number? (session-focus-vid (ctx-session ctxWS4))) "影子过期后直接编辑不崩")
+;; (b) 先渲染（before-render 里 resync）再编辑
+(define-values (ctxWS5 _scrWS) (app-render ctxWS2))
+(define ctxWS6 (apply-effects! ctxWS5 (list (e-move ws-vid cursor200))))
+(define ctxWS7 (step ctxWS6 (key-event 'backspace no-mods)))
+(check-true (number? (session-focus-vid (ctx-session ctxWS7))) "resync 后再编辑不崩")
+(delete-directory/files wsdir)
+
+;; 真实场景：.rkt 开对照翻译 → 编辑译文（assign 写回源）→ 再编辑源文档
+(define rtdir (make-temporary-file "lab-rt-~a" 'directory))
+(define rtf (build-path rtdir "a.rkt"))
+(call-with-output-file rtf #:exists 'truncate
+  (λ (o) (display "#lang racket\n(define alpha 1)\n" o)))
+(define ctxRT0 (app-open (app-init (path->string rtdir) 40 10) (path->string rtf)))
+(define rt-src (session-focus-vid (ctx-session ctxRT0)))
+(define ctxRT1 (type-all ctxRT0 "zul"))                 ; 建源文档词表
+(define ctxRT2 (press-ctrl ctxRT1 #\t))                 ; C-t 翻译（focus = 译文）
+(define rt-mirror (session-focus-vid (ctx-session ctxRT2)))
+(define ctxRT3 (apply-effects! ctxRT2 (list (e-type rt-mirror "\nprintf" #f))))  ; 编辑译文 → assign 源
+(define-values (ctxRT4 _scrRT) (app-render ctxRT3))      ; before-render resync 源词表
+(define ctxRT5 (apply-effects! ctxRT4 (list (e-focus rt-src))))
+(define ctxRT6 (type-all ctxRT5 "x"))                   ; 再编辑源：不崩
+(check-true (number? (session-focus-vid (ctx-session ctxRT6))) "翻译写回后继续编辑源文档不崩")
+(delete-directory/files rtdir)
+
 (displayln "smoke: all passed")

@@ -17,7 +17,7 @@
          "../../../core/text/base/line.rkt"
          "lex.rkt")
 
-(provide word-index-open word-index-change word-index-words)
+(provide word-index-open word-index-change word-index-words word-index-fits?)
 
 (struct wi (lines line-toks counts) #:mutable #:transparent)
 ;; lines     : vector string            影子文本（增量重建用）
@@ -37,6 +37,19 @@
   (for/list ([m (in-list (line-tokens line))]) (substring line (car m) (cdr m))))
 
 ;;; ================= 增量 =================
+
+;; edits 的坐标是否都落在影子文本合法域内。影子只由 after-edit 维护，
+;; 而程序写入（editor-view-assign!）不过 after-edit —— 一旦发生，坐标会越界，
+;; 调用方据此整篇重建，而不是拿旧影子硬算崩溃。
+(define (word-index-fits? w edits)
+  (define lines (wi-lines w))
+  (define n (vector-length lines))
+  (for/and ([e (in-list edits)])
+    (match-define (list l0 c0 l1 c1 _inserted) e)
+    (and (exact-nonnegative-integer? l0) (exact-nonnegative-integer? l1)
+         (<= l0 l1) (< l1 n)
+         (<= c0 (string-length (vector-ref lines l0)))
+         (<= c1 (string-length (vector-ref lines l1))))))
 
 (define (word-index-change w edits)
   (define added (make-hash))

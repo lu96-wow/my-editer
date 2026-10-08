@@ -103,18 +103,36 @@
        (string-prefix? prefix (vector-ref c 3))
        c))
 
-;; 每 editor 一份的 feature service：增量词表 + 每 did 的模块表 / 候选池。
+;; 每 editor 一份的 feature service：增量词表 + 每 did 的模块表 / 候选池 / 词表所反映的文档。
 ;; （did / vid 在不同 editor 间会从 0 重数，所以不能放模块级全局。）
-(struct c-svc (words mods pools) #:transparent)
+;; wdocs : hash did -> document 句柄（词表影子对应的版本；换了 → 影子过期，整篇重建）。
+(struct c-svc (words mods pools wdocs) #:transparent)
 (define (c-svc-of ctx) (service-ref ctx 'complete))
 (define (complete-svc-init ctx)
-  (service-put ctx 'complete (c-svc (make-hash) (make-hash) (make-hash))))
+  (service-put ctx 'complete (c-svc (make-hash) (make-hash) (make-hash) (make-hash))))
 
-;; 每 did 的增量词表：首次用就整篇建一次，之后 after-edit 增量维护。
+;; 整篇重建词表，并把版本钉到当前文档句柄。
+(define (word-index-rebuild! ctx did text)
+  (define svc (c-svc-of ctx))
+  (define ed (session-editor (ctx-session ctx)))
+  (hash-set! (c-svc-words svc) did (word-index-open text))
+  (hash-set! (c-svc-wdocs svc) did (editor-document-handle ed did)))
+
+;; 每 did 的增量词表：首次 / 影子过期就整篇建；否则 after-edit 增量维护。
 (define (word-index-for ctx did get-text)
-  (define tbl (c-svc-words (c-svc-of ctx)))
-  (or (hash-ref tbl did #f)
-      (let ([w (word-index-open (get-text))]) (hash-set! tbl did w) w)))
+  (define svc (c-svc-of ctx))
+  (define tbl (c-svc-words svc))
+  (define cur (editor-document-handle (session-editor (ctx-session ctx)) did))
+  (define w (hash-ref tbl did #f))
+  (cond
+    [(and w (eq? (hash-ref (c-svc-wdocs svc) did #f) cur)) w]
+    [else
+     ;; 影子过期 / 首次：重建词表，并让候选池失效（池含旧词）。
+     (define w* (word-index-open (get-text)))
+     (hash-set! tbl did w*)
+     (hash-set! (c-svc-wdocs svc) did cur)
+     (hash-remove! (c-svc-pools svc) did)
+     w*]))
 
 ;; 每 did 的模块表（require 只读文件头部，header 改了才失效）。
 (define (doc-mods ctx vid did get-text)
@@ -317,13 +335,15 @@
 
 ;; after-edit：把一次编辑的 diff 增量喂给该 did 的词表（没有词表就跳过，首用时才整篇建）；
 ;; 新词增量 append 到该 did 的候选池；header（前 header-lines 行）改了就让模块表/池失效。
+;; 坐标越界（影子因程序写入而过期）→ 整篇重建，不硬算。
 (define (word-note-hook ctx args)
   (define vid (car args))
   (define changes (cadr args))
   (define s (ctx-session ctx))
   (define ed (session-editor s))
   (define did (editor-view-document-id ed vid))
-  (define w (hash-ref (c-svc-words (c-svc-of ctx)) did #f))
+  (define svc (c-svc-of ctx))
+  (define w (hash-ref (c-svc-words svc) did #f))
   (when (and w (pair? changes))
     (define edits
       (for/list ([ch (in-list changes)])
@@ -331,15 +351,47 @@
         (list (point-line (range-start b)) (point-column (range-start b))
               (point-line (range-end b)) (point-column (range-end b))
               (editor-view-change-text ed vid ch))))
-    (define added (word-index-change w edits))
-    (doc-pool-add! ctx did added)
-    (when (for/or ([e (in-list edits)]) (< (car e) header-lines))
-      (doc-invalidate! ctx did)))
+    (cond
+      [(word-index-fits? w edits)
+       (define added (word-index-change w edits))
+       (doc-pool-add! ctx did added)
+       (when (for/or ([e (in-list edits)]) (< (car e) header-lines))
+         (doc-invalidate! ctx did))]
+      [else
+       ;; 影子与文档脱节（如 editor-view-assign! 不过 after-edit）→ 整篇重建。
+       (word-index-rebuild! ctx did (editor-view-string ed vid))
+       (doc-invalidate! ctx did)])
+    ;; 钉住本帧看到的文档版本，“已同步”。
+    (hash-set! (c-svc-wdocs svc) did (editor-document-handle ed did)))
+  '())
+
+;; before-render：程序写入（assign）不触发 after-edit，会绕过词表；
+;; 这里对每个已建词表的 did 校版本，换了就重建（正常编辑已在 after-edit 里钉过，不会重建）。
+(define (word-resync-hook ctx _args)
+  (define svc (c-svc-of ctx))
+  (define ed (session-editor (ctx-session ctx)))
+  (define tbl (c-svc-words svc))
+  (define wdocs (c-svc-wdocs svc))
+  ;; 防御：万一有直接关文档而没走 document-closed 的路径，清掉死 did。
+  (define live (editor-document-id-list ed))
+  (define dead (for/list ([(did _w) (in-hash tbl)] #:unless (memv did live)) did))
+  (for ([did (in-list dead)])
+    (hash-remove! tbl did)
+    (hash-remove! wdocs did))
+  (define stale
+    (for/list ([(did _w) (in-hash tbl)]
+               #:when (memv did live)
+               #:unless (eq? (hash-ref wdocs did #f) (editor-document-handle ed did)))
+      did))
+  (for ([did (in-list stale)])
+    (word-index-rebuild! ctx did (editor-document-string ed did))
+    (doc-invalidate! ctx did))
   '())
 
 (define (word-closed-hook ctx args)
   (define did (car args))
   (hash-remove! (c-svc-words (c-svc-of ctx)) did)
+  (hash-remove! (c-svc-wdocs (c-svc-of ctx)) did)
   (doc-invalidate! ctx did)
   '())
 
@@ -415,6 +467,7 @@
                        (contrib 'command 'complete-cancel 0 cmd-complete-cancel)
                        (contrib 'hook 'complete-refine 0 (make-hook 'after-insert complete-refine))
                        (contrib 'hook 'word-note 0 (make-hook 'after-edit word-note-hook))
+                       (contrib 'hook 'word-resync 0 (make-hook 'before-render word-resync-hook))
                        (contrib 'hook 'word-closed 0 (make-hook 'document-closed word-closed-hook))
                        (contrib 'hook 'complete-cancel-nav 0 (make-hook 'after-nav complete-cancel-hook))
                        (contrib 'hook 'complete-cancel-focus 0 (make-hook 'focus-changed complete-cancel-hook))))])

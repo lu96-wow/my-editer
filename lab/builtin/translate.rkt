@@ -208,10 +208,12 @@
      (define ed2 (editor-close-document ed tdid))
      (path-table-remove! (session-paths s) tdid)
      (translate-forget! tr pair)
-     (ctx-with-session ctx
-       (struct-copy session s
-         [editor ed2] [frame fr]
-         [focus (focus-set (session-focus s) keep-vid)]))]))
+     (define ctx1 (ctx-with-session ctx
+                    (struct-copy session s
+                      [editor ed2] [frame fr]
+                      [focus (focus-set (session-focus s) keep-vid)])))
+     ;; 直接关文档也要走 document-closed（特性靠它清影子状态），与 kernel 的 close 一致。
+     (run-notify ctx1 'document-closed (list tdid))]))
 
 ;;; ================= 生命周期 / 注册 =================
 
