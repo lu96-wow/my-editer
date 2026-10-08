@@ -1,13 +1,7 @@
+#lang racket
+
+(define a 2)
+
+(define c 3)
 
 
-#lang racket/base
-
-(define)
-
-
-(define )
-
-
-dadawd
-
-a.rkt
