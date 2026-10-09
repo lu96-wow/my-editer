@@ -12,10 +12,12 @@
          "command/session.rkt"
          "command/binding.rkt"
          "core/keymap.rkt"
+         "theme/theme.rkt"
+         "theme/style.rkt"
          "../core/view/base/screen.rkt"
          "../core/view/patch.rkt")
 
-(provide resolve render-pieces draw! run-tui)
+(provide resolve render-pieces piece-style draw! run-tui)
 
 ;;; ---------- 输入：event -> cmd ----------
 
@@ -54,10 +56,44 @@
   (define-values (_new rends sels) (session-patch s old))
   (append rends sels))
 
-;; piece 的外观：目前只处理光标 overlay（反色），face 配色留给主题。
+;; piece 的外观：face 来自 document 的 face 字段（经 core 带到 piece.attr）。
+;; attr 形态：普通文本 → face（symbol | #f）；overlay → (overlay . face)。
+;; 这里只把 theme 里的 style 翻成 racket-tui 转义序列（真彩色 + 按需属性）。
+(define (rgb-fg c) (if c (format-rgb-fg-base (rgb-r c) (rgb-g c) (rgb-b c)) #""))
+(define (rgb-bg c) (if c (format-rgb-bg-base (rgb-r c) (rgb-g c) (rgb-b c)) #""))
+
+(define (attr-bytes a)
+  (case a
+    [(bold)      format-bold]
+    [(dim)       format-dim]
+    [(italic)    format-italic]
+    [(underline) format-underline]
+    [(blink)     format-blink]
+    [(reverse)   format-reverse]
+    [else #""]))
+
+(define (style-bytes st)
+  (bytes-append
+   (rgb-fg (style-fg st))
+   (rgb-bg (style-bg st))
+   (for/fold ([b #""]) ([a (in-list (style-attrs st))])
+     (bytes-append b (attr-bytes a)))))
+
+;; overlay 逐分量盖到 face 上（overlay 的 #f 分量不覆盖 face），属性叠加。
+(define (merge-style f o)
+  (cond
+    [(not o) f]
+    [else (style (or (style-fg o) (style-fg f))
+                 (or (style-bg o) (style-bg f))
+                 (append (style-attrs f) (style-attrs o)))]))
+
 (define (piece-style attr)
-  (define ov (and (pair? attr) (car attr)))
-  (if (eq? ov 'cursor) format-reverse #""))
+  (define t (current-theme))
+  (cond
+    [(symbol? attr) (style-bytes (theme-style t attr))]
+    [(not (pair? attr)) (style-bytes (theme-style t #f))]
+    [else (style-bytes (merge-style (theme-style t (cdr attr))
+                                    (theme-overlay-style t (car attr))))]))
 
 ;;; ---------- 画一帧（增量） ----------
 
@@ -83,17 +119,18 @@
 
 ;;; ---------- 主循环 ----------
 
-(define (run-tui s0)
-  (with-tui
-   (lambda ()
-     (define-values (rows cols) (get-window-size))
-     (define s (struct-copy session s0
-                            [width (or cols (session-width s0))]
-                            [height (or rows (session-height s0))]))
-     (set-box! prev #f)
-     (let loop ([s s])
-       (draw! s)
-       (define ev (read-event))
-       (define c (resolve s ev))
-       (define s* (if c (step s c) s))
-       (unless (session-quit? s*) (loop s*))))))
+(define (run-tui s0 #:theme [theme default-theme])
+  (parameterize ([current-theme theme])
+    (with-tui
+     (lambda ()
+       (define-values (rows cols) (get-window-size))
+       (define s (struct-copy session s0
+                              [width (or cols (session-width s0))]
+                              [height (or rows (session-height s0))]))
+       (set-box! prev #f)
+       (let loop ([s s])
+         (draw! s)
+         (define ev (read-event))
+         (define c (resolve s ev))
+         (define s* (if c (step s c) s))
+         (unless (session-quit? s*) (loop s*)))))))
