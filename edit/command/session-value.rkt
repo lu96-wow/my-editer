@@ -14,7 +14,7 @@
 
 (require "../core/layout.rkt"      ; layout-fill
          "../core/focus.rkt"       ; focus-target
-         "../core/file-map.rkt")
+         "../core/doc-state.rkt")
 
 ;;; ---------- 值 ----------
 
@@ -34,7 +34,7 @@
 
 (struct session
   (ed layout bindings presentations panels
-   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix files saved-handles)
+   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; layout        : 布局具体树（装配后 slot 已填；叶子是 vid）
@@ -50,26 +50,24 @@
 ;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
 ;; prompt        : prompt | #f
 ;; prefix        : prefix | #f   活动前缀（多键序列）
-;; files         : file-map      did <-> path
-;; saved-handles : (hash did -> document-handle)   保存时的文档句柄（脏 = 当前句柄 != saved）
+;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 
 (provide (struct-out session) (struct-out presentation) (struct-out panel) (struct-out prompt)
          layer-base
          session-new session-assemble
          session-presentation session-set-presentation session-set-visible
          session-focus-vid session-set-prefix
-         ;; file-map 包装
-         session-files session-file-path session-file-did session-file-dids
+         ;; file-map 包装 + 保存句柄（doc-state）
+         session-docs session-file-path session-file-did session-file-dids
          session-set-file session-clear-file
-         ;; 保存句柄（脏标记用）
-         session-saved session-set-saved session-clear-saved)
+         session-saved session-set-saved session-clear-doc)
 
 ;;; ---------- 构造 / 纯变换 ----------
 
 (define (session-new ed layout bindings focus width height [keys '()])
   (session ed layout bindings (hash) '()
            focus (focus-target focus) width height #f keys (hash) '() #f #f
-           (file-map-empty) (hash)))
+           (doc-state-empty)))
 
 ;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
 (define (session-assemble s layout bindings)
@@ -88,18 +86,20 @@
 
 ;;; ---------- file-map 包装 ----------
 
-(define (session-file-path s did) (file-map-path (session-files s) did))
-(define (session-file-did s path) (file-map-did (session-files s) path))
-(define (session-file-dids s) (file-map-dids (session-files s)))
+;;; ---------- doc-state 包装（did <-> path + 保存句柄） ----------
+
+(define (session-file-path s did) (doc-state-path (session-docs s) did))
+(define (session-file-did s path) (doc-state-did (session-docs s) path))
+(define (session-file-dids s) (doc-state-dids (session-docs s)))
 (define (session-set-file s did path)
-  (struct-copy session s [files (file-map-add (session-files s) did path)]))
+  (struct-copy session s [docs (doc-state-set-path (session-docs s) did path)]))
 (define (session-clear-file s did)
-  (struct-copy session s [files (file-map-remove (session-files s) did)]))
+  (struct-copy session s [docs (doc-state-remove (session-docs s) did)]))
 
 ;;; ---------- 保存句柄 ----------
 
-(define (session-saved s did) (hash-ref (session-saved-handles s) did #f))
+(define (session-saved s did) (doc-state-saved (session-docs s) did))
 (define (session-set-saved s did h)
-  (struct-copy session s [saved-handles (hash-set (session-saved-handles s) did h)]))
-(define (session-clear-saved s did)
-  (struct-copy session s [saved-handles (hash-remove (session-saved-handles s) did)]))
+  (struct-copy session s [docs (doc-state-set-saved (session-docs s) did h)]))
+(define (session-clear-doc s did)
+  (struct-copy session s [docs (doc-state-remove (session-docs s) did)]))

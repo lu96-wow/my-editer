@@ -10,7 +10,7 @@
 ;;;
 ;;; 与「全局键」（global/base，见 keys.rkt）分开：编辑命令表可挂到 document 上。
 
-(require "../core/keymap.rkt" "binding.rkt" "command.rkt")
+(require "../core/keymap.rkt" "key.rkt" "command.rkt")
 
 (provide edit-command-keys focus-keys focus-prefix resize-prefix edit-keys)
 
@@ -19,7 +19,7 @@
 (define edit-command-keys
   (kbd
    ;; 文本输入
-   text-binding     (lambda (ev) (cmd-insert (event-text ev)))
+   text-binding     text-spec
    (key 'enter)     (cmd-insert "\n")
    (key 'backspace) (cmd-backspace)
    (key 'delete)    (cmd-delete)

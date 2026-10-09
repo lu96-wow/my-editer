@@ -79,10 +79,8 @@
      (define ed* (editor-close-document ed did))
      (define layout* (for/fold ([l (session-layout s)]) ([v (in-list vids)]) (layout-remove l v)))
      (define pres* (for/fold ([h (session-presentations s)]) ([v (in-list vids)]) (hash-remove h v)))
-     (define s* (session-clear-saved
-                 (session-clear-file
-                  (struct-copy session s [ed ed*] [layout layout*] [presentations pres*])
-                  did)
+     (define s* (session-clear-doc
+                 (struct-copy session s [ed ed*] [layout layout*] [presentations pres*])
                  did))
      (define fv (session-focus-vid s*))
      (cond

@@ -21,6 +21,7 @@
 
 (define (spec->cmd spec ev)
   (cond [(prefix? spec) (cmd-prefix spec)]
+        [(eq? spec text-spec) (cmd-insert (or (event-text ev) ""))]
         [(procedure? spec) (spec ev)]
         [else spec]))
 

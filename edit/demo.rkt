@@ -10,7 +10,7 @@
 (provide demo-session)
 
 (define (demo-session [w 80] [h 24])
-  (define s0 (session-blank w h (list base-keys)))
+  (define s0 (session-blank w h (list base-keys document-keys)))
 
   ;; 编辑文档
   (define-values (s1 did1) (session-open-document s0 "hello\nworld\nfoo\nbar\nbaz" #:name "main.rkt"))
@@ -37,7 +37,7 @@
                                                                (cons 2 (slot 'bottom))))))))
 
   (define bnd (hash 'side side 'editor editor 'bottom bottom))
-  (define s10 (document-install (session-assemble s9* base bnd)))
+  (define s10 (document-install (session-assemble s9* base bnd) edit-keys))
   ;; 初始焦点 / 活动编辑视图
   (session-set-focus s10 (focus-set (session-focus s10) v1)))
 

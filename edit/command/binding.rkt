@@ -1,39 +1,24 @@
 #lang racket
 
-;;; edit/binding.rkt —— 事件 → 匿名绑定键（纯，依赖 racket-tui 的事件结构）
+;;; edit/command/binding.rkt —— 事件 → 绑定键（tui 后端层）
 ;;;
-;;; 输入是 racket-tui 的规范化事件；输出是键表用的绑定键：
-;;;     (key k ctrl …)        命名键 / 带修饰的字符键
-;;;     text / paste / resize 特殊通道
-;;;     (mouse action button mods)
-;;; 键表与事件编码解耦：换后端只要换这一层。
+;;; 唯一把 racket-tui 事件解码成绑定键的模块。绑定键 / spec 的纯构造在 key.rkt，
+;;; 这里 re-export，方便只需构造的调用方少 require 一个模块。
+;;;
+;;; 输出：
+;;;     (key k ctrl …) / (mouse action button mods) / text / paste / resize
+;;; 换后端只要换这一层。
 
-(require tui)
+(require tui "key.rkt")
 
-(provide key mouse text-binding paste-binding resize-binding
-         mouse-col mouse-row
-         event->binding event-text)
-
-(define mod-order '(ctrl alt shift))
-
-(define (normalize-mods mods)
-  (for/list ([m (in-list mod-order)] #:when (memq m mods)) m))
+(provide event->binding event-text mouse-col mouse-row
+         (all-from-out "key.rkt"))
 
 (define (mods->symbols m)
   (for/list ([sym (in-list mod-order)]
              [on? (in-list (list (mods-ctrl? m) (mods-alt? m) (mods-shift? m)))]
              #:when on?)
     sym))
-
-(define (char->key-symbol c)
-  (if (char=? c #\space) 'space (string->symbol (string-downcase (string c)))))
-
-;; 构造绑定键（config 用）。
-(define (key k . mods) (list 'key k (normalize-mods mods)))
-(define (mouse action [button #f] [mods '()]) (list 'mouse action button (normalize-mods mods)))
-(define text-binding 'text)
-(define paste-binding 'paste)
-(define resize-binding 'resize)
 
 ;; 鼠标坐标（屏幕 0-based）：tui 是 1-based，减 1。
 (define (mouse-col ev) (max 0 (sub1 (mouse-event-x ev))))
@@ -56,7 +41,7 @@
     [(other-event? e) #f]
     [else (error 'event->binding "不是 racket-tui 事件: ~a" e)]))
 
-;; 文本通道取内容（#:text / #:paste 的 spec 用）。
+;; 文本通道取内容（text-spec 用）。
 (define (event-text ev)
   (cond
     [(key-event? ev) (define k (key-event-key ev)) (and (char? k) (string k))]

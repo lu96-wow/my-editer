@@ -9,7 +9,7 @@
 ;;; 状态窗口自带键表（panel keys）优先于 document / global。
 
 (require tui "binding.rkt" "../core/keymap.rkt" "command.rkt"
-         "tables.rkt" "../document/document.rkt")
+         "tables.rkt")
 
 (provide base-keys global-keys
          (all-from-out "tables.rkt"))
@@ -19,8 +19,7 @@
    (key 'q 'ctrl) (cmd-quit)
    (key 'b 'ctrl) (cmd-toggle 'side)
    (key 'tab)     (cmd-panel-swap)
-   (key 's 'ctrl) (cmd-save)
-   (key 'f 'ctrl) (cmd-open-file)
+   ;; 文件命令（cmd-save / cmd-open-file）由 document 层自带 document-keys，assembly 合并
    ;; resize 需要事件里的尺寸 → spec 用过程
    resize-binding (lambda (ev) (cmd-resize (resize-event-cols ev) (resize-event-rows ev)))
    ;; 鼠标：点击 = 聚焦 + 定位；滚轮 = 滚动光标所在视图

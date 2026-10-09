@@ -7,14 +7,14 @@
 
 (require "../command/session.rkt"
          "../command/command.rkt"
-         "../command/binding.rkt"
+         "../command/key.rkt"
          "../core/keymap.rkt")
 
 (provide prompt-install)
 
 (define input-keys
   (kbd
-   text-binding     (lambda (ev) (cmd-insert (event-text ev)))
+   text-binding     text-spec
    (key 'backspace) (cmd-backspace)
    (key 'delete)    (cmd-delete)
    (key 'left)      (cmd-nav 'left #f)

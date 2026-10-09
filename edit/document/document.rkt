@@ -3,20 +3,22 @@
 ;;; edit/document/document.rkt —— 文档 / 文件逻辑：打开 / 保存 + 脏
 ;;;
 ;;; 文件 I/O 与路径登记在这里（不在 session 内核）。
-;;;   打开：去重 → 读盘 → add-document → 分屏放置 → 记 path → 规则层 → 记 saved 句柄
+;;;   打开：去重 → 读盘 → add-document → 分屏放置 → 记 path → 默认命令表 → 规则层 → 记 saved
 ;;;   保存：写盘 → 记 saved 句柄
 ;;; 脏由 session-dirty? 从句柄身份派生；文件映射走 session-set-file（file-map）。
 ;;;
-;;; 命令走 feature/handler 模式：本模块自带 cmd-* + handler，demo 里 document-install 挂上。
+;;; 自带 command keys（document-keys）与 handler：assembly 里 document-install + 合并 keys。
+;;; 默认命令表由 assembly 注入（document-install 的参数），本层不依赖命令配置。
 
 (require racket/file
          racket/path
          "../command/session.rkt"
-         "../command/tables.rkt"
+         "../command/key.rkt"
+         "../core/keymap.rkt"
          "rules.rkt")
 
 (provide session-open-file session-save session-save-all
-         document-install
+         document-install document-keys
          (struct-out cmd-save) (struct-out cmd-open-file))
 
 ;;; ---------- 工具 ----------
@@ -27,8 +29,8 @@
 ;;; ---------- 打开 ----------
 
 ;; 打开文件到编辑区：已有同 path → 聚焦已有视图；否则新建文档 + 分屏显示。
-;; axis：分屏方向（'lr | 'tb）。→ session
-(define (session-open-file s path [rules default-rules] [axis 'lr])
+;; keys：该文档的默认命令表（assembly 注入）。axis：分屏方向。
+(define (session-open-file s path [rules default-rules] [axis 'lr] #:keys [keys (kbd)])
   (define np (normalize path))
   (define existing (session-file-did s np))
   (cond
@@ -43,7 +45,7 @@
                     (session-place-view s1 base axis nvid)
                     s1))
      (define s3 (session-set-file s2 did np))
-     (define s4 (session-doc-set-keys s3 did edit-keys))   ; 默认命令表（先全部填默认）
+     (define s4 (session-doc-set-keys s3 did keys))        ; 默认命令表（先全部填默认）
      (define s5 (rules-apply rules s4 did np))             ; 规则层（暂空）可覆盖
      (define s6 (session-mark-saved s5 did))
      (session-show-view s6 nvid)]))
@@ -69,12 +71,17 @@
   (for/fold ([s s]) ([d (in-list (session-file-dids s))])
     (session-save s d)))
 
-;;; ---------- 命令 + handler ----------
+;;; ---------- 命令 + 键 + handler ----------
 
 (struct cmd-save () #:transparent)
 (struct cmd-open-file () #:transparent)
 
-(define (document-handler)
+;; 本层自带的全局键（assembly 合并进 session.keys）。
+(define document-keys
+  (kbd (key 's 'ctrl) (cmd-save)
+       (key 'f 'ctrl) (cmd-open-file)))
+
+(define (document-handler default-keys)
   (lambda (s cmd)
     (cond
       [(cmd-save? cmd) (session-save s)]
@@ -83,10 +90,12 @@
        (if iv
            (session-prompt-open s iv "find file: "
                                 (lambda (s path)
-                                  (if (string=? path "") s (session-open-file s path))))
+                                  (if (string=? path "")
+                                      s
+                                      (session-open-file s path #:keys default-keys))))
            s)]
       [else #f])))
 
-;; 把文档命令挂到 session（handler 链）。
-(define (document-install s)
-  (session-add-handler s (document-handler)))
+;; 挂 handler；default-keys 作为打开文件的默认命令表。
+(define (document-install s [default-keys (kbd)])
+  (session-add-handler s (document-handler default-keys)))

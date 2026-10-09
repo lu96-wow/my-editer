@@ -10,7 +10,7 @@
          racket/file
          "../command/session.rkt"
          "../command/command.rkt"
-         "../command/binding.rkt"
+         "../command/key.rkt"
          "../core/keymap.rkt"
          "../../core/text/document.rkt")
 
