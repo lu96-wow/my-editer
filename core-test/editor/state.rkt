@@ -3,6 +3,7 @@
 ;; 与 core/editor/state.rkt 对应的外部测试（**无焦点**：一律显式 vid/did）。
 (require rackunit
          "../../core/editor/state.rkt"
+         "../../core/editor/query.rkt"
          "../../core/text/document.rkt"
          "../../core/editor/history.rkt"
          "../../core/text/base/track.rkt"
@@ -18,15 +19,16 @@
 (check-equal? (document-entry-name (editor-document-entry ed 0)) "doc1")
 
 ;; 视图 / 文档（vid 0）
-(check-equal? (view-id (editor-view-ref ed 0)) 0)
-(check-equal? (view-did (editor-view-ref ed 0)) 0)
+(check-equal? (view-id (editor-view-handle ed 0)) 0)
+(check-equal? (view-did (editor-view-handle ed 0)) 0)
 (check-equal? (document->string (editor-view-document ed 0)) "abc\ndef")
-(check-equal? (document-id-of ed (editor-view-document ed 0)) 0)
+(check-equal? (editor-document-id-of ed (editor-view-document ed 0)) 0)
+(check-equal? (editor-view-id-of ed (editor-view-handle ed 0)) 0)
 (check-equal? (view-id (first-view-of-document ed 0)) 0)
 
 ;; 视口 / 选区 初值
-(check-true (viewport? (view-viewport (editor-view-ref ed 0))))
-(check-equal? (selections-count (view-selections (editor-view-ref ed 0))) 1)
+(check-true (viewport? (view-viewport (editor-view-handle ed 0))))
+(check-equal? (selections-count (view-selections (editor-view-handle ed 0))) 1)
 
 ;; 加视图
 (define-values (ed2 vid2) (editor-add-view ed 0 20 5))
@@ -39,16 +41,17 @@
 (define-values (dv1 dv-did dv-vid) (editor-add-document-view ed "status" 10 1 "sb" #:history? #f))
 (check-equal? dv-did 1)
 (check-equal? dv-vid 1)
-(check-equal? (view-did (editor-view-ref dv1 dv-vid)) dv-did)
+(check-equal? (view-did (editor-view-handle dv1 dv-vid)) dv-did)
 (check-equal? (document->string (editor-view-document dv1 dv-vid)) "status")
-(check-equal? (viewport-width (view-viewport (editor-view-ref dv1 dv-vid))) 10)
-(check-equal? (viewport-height (view-viewport (editor-view-ref dv1 dv-vid))) 1)
+(check-equal? (viewport-width (view-viewport (editor-view-handle dv1 dv-vid))) 10)
+(check-equal? (viewport-height (view-viewport (editor-view-handle dv1 dv-vid))) 1)
 (check-false (history-enabled? (editor-document-history dv1 dv-did)))
 
 ;; 错误
 (check-exn exn:fail? (lambda () (editor-document-entry ed 9)))
-(check-exn exn:fail? (lambda () (editor-view-ref ed 9)))
-(check-exn exn:fail? (lambda () (document-id-of ed (document-open "x"))))
+(check-exn exn:fail? (lambda () (editor-view-handle ed 9)))
+(check-exn exn:fail? (lambda () (editor-document-id-of ed (document-open "x"))))
+(check-exn exn:fail? (lambda () (editor-view-id-of ed (make-view 9 0 (viewport-open 1 1) (editor-view-selections ed 0)))))
 
 ;; 多文档：editor-add-document → (values editor did)
 (define-values (ed-m did1) (editor-add-document ed "second" "doc2"))
@@ -59,7 +62,7 @@
 (check-equal? (document->string (document-entry-document (editor-document-entry ed-m 1))) "second")
 ;; 给新文档加视图
 (define-values (ed-m2 em2-vid) (editor-add-view ed-m 1 20 5))
-(check-equal? (view-did (editor-view-ref ed-m2 1)) 1)
+(check-equal? (view-did (editor-view-handle ed-m2 1)) 1)
 (check-equal? (document->string (editor-view-document ed-m2 1)) "second")
 (check-equal? (document->string (editor-view-document ed-m2 0)) "abc\ndef")
 
@@ -105,14 +108,14 @@
 (check-equal? (history-limit (editor-document-history (editor-open "x" 20 5 #:history-limit 5) 0)) 5)
 
 ;; ---------- 视图初始 mode / 行号 ----------
-(check-equal? (viewport-mode (view-viewport (editor-view-ref (editor-open "x" 20 5 #:mode 'wrap) 0))) 'wrap)
-(check-true (viewport-line-numbers? (view-viewport (editor-view-ref (editor-open "x" 20 5 #:line-numbers? #t) 0))))
+(check-equal? (viewport-mode (view-viewport (editor-view-handle (editor-open "x" 20 5 #:mode 'wrap) 0))) 'wrap)
+(check-true (viewport-line-numbers? (view-viewport (editor-view-handle (editor-open "x" 20 5 #:line-numbers? #t) 0))))
 (define-values (mv-ed mv-vid) (editor-add-view ed 0 20 5 #:mode 'wrap #:line-numbers? #t))
-(check-equal? (viewport-mode (view-viewport (editor-view-ref mv-ed 1))) 'wrap)
-(check-true (viewport-line-numbers? (view-viewport (editor-view-ref mv-ed 1))))
+(check-equal? (viewport-mode (view-viewport (editor-view-handle mv-ed 1))) 'wrap)
+(check-true (viewport-line-numbers? (view-viewport (editor-view-handle mv-ed 1))))
 ;; 默认：clip + 关行号
-(check-equal? (viewport-mode (view-viewport (editor-view-ref ed 0))) 'clip)
-(check-false (viewport-line-numbers? (view-viewport (editor-view-ref ed 0))))
+(check-equal? (viewport-mode (view-viewport (editor-view-handle ed 0))) 'clip)
+(check-false (viewport-line-numbers? (view-viewport (editor-view-handle ed 0))))
 
 ;; ---------- 入口多态：直接喂现成 document（带属性） ----------
 (define pre-doc (document-face-fill (document-open "abcd\nef") 0 1 1 1 'kw))

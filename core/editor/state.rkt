@@ -56,11 +56,10 @@
  ;; ---------- 查找 / 读 ----------
  document-entry-document
  editor-document-entry
- editor-view-ref
+ editor-view-handle
  editor-view-document
  editor-document-handle
  editor-document-history
- document-id-of
  first-view-of-document)
 
 ;;; ---------- 数据 ----------
@@ -202,25 +201,20 @@
   (or (for/first ([e (in-list (editor-documents ed))] #:when (= did (document-entry-id e))) e)
       (error 'editor "没有这个 document id: ~a" did)))
 
-(define (editor-view-ref ed vid)
+;; 低层句柄口（公开）：按 vid 取 view 句柄。
+(define (editor-view-handle ed vid)
   (or (for/first ([v (in-list (editor-views ed))] #:when (= vid (view-id v))) v)
       (error 'editor "没有这个 view id: ~a" vid)))
 
 (define (editor-view-document ed vid)
-  (document-entry-document (editor-document-entry ed (view-did (editor-view-ref ed vid)))))
+  (document-entry-document (editor-document-entry ed (view-did (editor-view-handle ed vid)))))
 
-;; 按 did 取当前文档句柄。
+;; 低层句柄口（公开）：按 did 取当前 document 句柄。
 (define (editor-document-handle ed did)
   (document-entry-document (editor-document-entry ed did)))
 
 (define (editor-document-history ed did)
   (document-entry-history (editor-document-entry ed did)))
-
-(define (document-id-of ed d)
-  (define e (for/first ([e (in-list (editor-documents ed))]
-                        #:when (eq? d (document-entry-document e))) e))
-  (unless e (error 'document-id-of "这个 document 不在 editor 里"))
-  (document-entry-id e))
 
 (define (first-view-of-document ed did)
   (for/first ([v (in-list (editor-views ed))] #:when (= did (view-did v))) v))
@@ -229,7 +223,7 @@
 
 ;; 关一个视图。
 (define (editor-close-view ed vid)
-  (editor-view-ref ed vid)                          ; 校验 vid
+  (editor-view-handle ed vid)                          ; 校验 vid
   (struct-copy editor ed
     [views (for/list ([v (in-list (editor-views ed))] #:unless (= vid (view-id v))) v)]))
 

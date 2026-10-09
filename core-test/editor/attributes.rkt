@@ -33,7 +33,7 @@
 
 (define e0 (editor-open "abc" 20 5))
 (define e1 (ins e0 "X"))                                    ; "Xabc"，depth 1
-(define doc1 (editor-view-document-handle e1 0))
+(define doc1 (editor-view-document e1 0))
 (check-false (document-face doc1))
 (void (editor-document-handle-set-face! doc1 (hl-track "Xabc" 0 0 0 1 'kw)))
 (check-equal? (editor-view-face-at e1 0 0 0) 'kw)
@@ -43,7 +43,7 @@
 
 (define e2 (ins e1 "Y"))                                    ; "YXabc"，depth 2
 (define e3 (editor-view-undo e2 0))                         ; current D1
-(define doc-d1 (editor-view-document-handle e3 0))          ; 抓 D1 的 doc（此时是 current）
+(define doc-d1 (editor-view-document e3 0))          ; 抓 D1 的 doc（此时是 current）
 (define e4 (editor-view-undo e3 0))                         ; current D0, future [D1, D2]
 (void (editor-document-handle-set-face! doc-d1 (hl-track "Xabc" 0 1 0 2 'hl2)))  ; 写 future 里的 D1
 (check-false (document-face (editor-view-document e4 0))
@@ -56,7 +56,7 @@
 
 (define f0 (editor-open "abc" 20 5))
 (define f1 (ins f0 "X"))                                    ; D1
-(define fdoc1 (editor-view-document-handle f1 0))
+(define fdoc1 (editor-view-document f1 0))
 (define f2 (editor-view-undo f1 0))                         ; current D0, future [D1]
 (define f3 (ins f2 "Z"))                                    ; 编辑 → 清 future
 (check-equal? (editor-view-string f3 0) "Zabc")
@@ -71,7 +71,7 @@
 (define g0 (editor-open "abc" 20 5))
 (define g1 (ins g0 "X"))
 (define gdid (editor-view-document-id g1 0))
-(define gdoc (editor-view-document-handle g1 0))
+(define gdoc (editor-view-document g1 0))
 (define h-before (editor-document-history g1 gdid))
 (void (editor-document-handle-set-face! gdoc (hl-track "Xabc" 0 0 0 1 'kw)))
 (check-eq? (editor-document-history g1 gdid) h-before "写回不重建 history")
@@ -92,7 +92,7 @@
 (define p1 (ins p0 "b"))                                   ; D1
 (define p2 (ins p1 "c"))                                   ; D2
 (define p3 (ins p2 "d"))                                   ; D3
-(define pd3 (editor-view-document-handle p3 0))             ; 抓 D3 句柄
+(define pd3 (editor-view-document p3 0))             ; 抓 D3 句柄
 ;; 撤销 3 步 → current D0, future [D1,D2,D3]
 (define q0 (editor-view-undo (editor-view-undo (editor-view-undo p3 0) 0) 0))
 (check-equal? (editor-view-string q0 0) "a")
@@ -116,7 +116,7 @@
 (check-equal? mvid 1)
 (check-eq? (editor-view-document m1 0) (editor-view-document m1 1)
            "两个视图看同一份 document 对象")
-(define mdoc (editor-view-document-handle m1 1))
+(define mdoc (editor-view-document m1 1))
 (void (editor-document-handle-set-face! mdoc (hl-track "abc" 0 0 0 1 'kw)))
 (check-equal? (editor-view-face-at m1 0 0 0) 'kw "vid0 看到 vid1 写回的属性")
 (check-equal? (editor-view-face-at m1 1 0 0) 'kw)
@@ -127,7 +127,7 @@
 ;;; ---------- 8. 批量属性写入（一次 materialize） ----------
 
 (define b0 (editor-open "abcdef" 20 5))
-(define bdoc (editor-view-document-handle b0 0))
+(define bdoc (editor-view-document b0 0))
 ;; 句柄版：一串区间一次写
 (void (editor-document-handle-face-batch! bdoc (list (list 0 0 0 2 'a) (list 0 4 0 6 'b))))
 (check-equal? (editor-view-face-row b0 0 0) (vector 'a 'a #f #f 'b 'b))

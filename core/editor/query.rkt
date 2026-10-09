@@ -55,6 +55,7 @@
  editor-document-id-list editor-view-id-list
  editor-document-view-list
  editor-view-document-id
+ editor-view-id-of editor-document-id-of
 
  ;; ---------- 点 / 选区 ----------
  editor-view-point
@@ -99,12 +100,12 @@
 (define (editor-document-string ed did)
   (document->string (editor-document-handle ed did)))
 (define (editor-view-string ed vid)
-  (editor-document-string ed (view-did (editor-view-ref ed vid))))
+  (editor-document-string ed (view-did (editor-view-handle ed vid))))
 
 (define (editor-document-name ed did)
   (document-entry-name (editor-document-entry ed did)))
 (define (editor-view-document-name ed vid)
-  (editor-document-name ed (view-did (editor-view-ref ed vid))))
+  (editor-document-name ed (view-did (editor-view-handle ed vid))))
 
 ;; 某位置的字符（越界 → #f）；行内 O(1)，不整篇取串。
 (define (editor-document-char-at ed did line col)
@@ -114,13 +115,13 @@
          (and (exact-nonnegative-integer? col) (< col (line-length l))
               (line-ref l col)))))
 (define (editor-view-char-at ed vid line col)
-  (editor-document-char-at ed (view-did (editor-view-ref ed vid)) line col))
+  (editor-document-char-at ed (view-did (editor-view-handle ed vid)) line col))
 
 ;; 区间文本（纯文本；属性不随复制走）。
 (define (editor-document-range-text ed did r)
   (document-range-text (editor-document-handle ed did) r))
 (define (editor-view-range-text ed vid r)
-  (editor-document-range-text ed (view-did (editor-view-ref ed vid)) r))
+  (editor-document-range-text ed (view-did (editor-view-handle ed vid)) r))
 
 ;;; ---------- 读：端口 / 槽 ----------
 ;;; 端口 / 槽是文档级状态，真身按 did；vid 版取 did。
@@ -146,29 +147,41 @@
   (document-slot-ref (editor-document-handle ed did) sl))
 
 (define (editor-view-face ed vid)
-  (editor-document-face ed (view-did (editor-view-ref ed vid))))
+  (editor-document-face ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-readonly ed vid)
-  (editor-document-readonly ed (view-did (editor-view-ref ed vid))))
+  (editor-document-readonly ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-face-at ed vid line col)
-  (editor-document-face-at ed (view-did (editor-view-ref ed vid)) line col))
+  (editor-document-face-at ed (view-did (editor-view-handle ed vid)) line col))
 (define (editor-view-readonly-at? ed vid line col)
-  (editor-document-readonly-at? ed (view-did (editor-view-ref ed vid)) line col))
+  (editor-document-readonly-at? ed (view-did (editor-view-handle ed vid)) line col))
 (define (editor-view-face-row ed vid line)
-  (editor-document-face-row ed (view-did (editor-view-ref ed vid)) line))
+  (editor-document-face-row ed (view-did (editor-view-handle ed vid)) line))
 (define (editor-view-readonly-row ed vid line)
-  (editor-document-readonly-row ed (view-did (editor-view-ref ed vid)) line))
+  (editor-document-readonly-row ed (view-did (editor-view-handle ed vid)) line))
 (define (editor-view-face-range? ed vid l0 c0 l1 c1)
-  (editor-document-face-range? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
+  (editor-document-face-range? ed (view-did (editor-view-handle ed vid)) l0 c0 l1 c1))
 (define (editor-view-readonly-range? ed vid l0 c0 l1 c1)
-  (editor-document-readonly-range? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
+  (editor-document-readonly-range? ed (view-did (editor-view-handle ed vid)) l0 c0 l1 c1))
 (define (editor-view-slot-ref ed vid sl)
-  (editor-document-slot-ref ed (view-did (editor-view-ref ed vid)) sl))
+  (editor-document-slot-ref ed (view-did (editor-view-handle ed vid)) sl))
 (define (editor-view-editable? ed vid l0 c0 l1 c1)
-  (editor-document-editable? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
+  (editor-document-editable? ed (view-did (editor-view-handle ed vid)) l0 c0 l1 c1))
 
 ;;; ---------- 计数 / 身份 ----------
 
-(define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
+(define (editor-view-document-id ed vid) (view-did (editor-view-handle ed vid)))
+
+;; 反查：值 -> id（值必须属于本 editor，否则报错）。
+;; 与 editor-view-handle / editor-document-handle（id -> 值）互逆。
+(define (editor-view-id-of ed v)
+  (or (for/first ([x (in-list (editor-views ed))] #:when (eq? v x)) (view-id x))
+      (error 'editor-view-id-of "这个 view 不在 editor 里")))
+
+(define (editor-document-id-of ed d)
+  (or (for/first ([e (in-list (editor-documents ed))]
+                  #:when (eq? d (document-entry-document e)))
+        (document-entry-id e))
+      (error 'editor-document-id-of "这个 document 不在 editor 里")))
 
 ;; 枚举：给 id。
 (define (editor-document-id-list ed)
@@ -180,7 +193,7 @@
 
 ;;; ---------- 点 / 选区 ----------
 
-(define (editor-view-selections ed vid) (view-selections (editor-view-ref ed vid)))
+(define (editor-view-selections ed vid) (view-selections (editor-view-handle ed vid)))
 (define (editor-view-point ed vid)
   (selection-head (selections-primary (editor-view-selections ed vid))))
 (define (editor-view-point-line ed vid) (point-line (editor-view-point ed vid)))
@@ -196,31 +209,31 @@
 
 (define (editor-view-point->screen-position ed vid p)
   (viewport-point->screen-position (document-text (editor-view-document ed vid))
-                              (view-viewport (editor-view-ref ed vid)) p))
+                              (view-viewport (editor-view-handle ed vid)) p))
 
 (define (editor-view-screen-position->point ed vid row col)
   (viewport-screen-position->point (document-text (editor-view-document ed vid))
-                              (view-viewport (editor-view-ref ed vid)) row col))
+                              (view-viewport (editor-view-handle ed vid)) row col))
 
 ;;; ---------- 视口状态 ----------
 
-(define (editor-view-mode ed vid) (viewport-mode (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-line-numbers? ed vid) (viewport-line-numbers? (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-top-line ed vid) (viewport-top-line (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-top-segment ed vid) (viewport-top-segment (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-left-column ed vid) (viewport-left-column (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-width ed vid) (viewport-width (view-viewport (editor-view-ref ed vid))))
-(define (editor-view-height ed vid) (viewport-height (view-viewport (editor-view-ref ed vid))))
+(define (editor-view-mode ed vid) (viewport-mode (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-line-numbers? ed vid) (viewport-line-numbers? (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-top-line ed vid) (viewport-top-line (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-top-segment ed vid) (viewport-top-segment (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-left-column ed vid) (viewport-left-column (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-width ed vid) (viewport-width (view-viewport (editor-view-handle ed vid))))
+(define (editor-view-height ed vid) (viewport-height (view-viewport (editor-view-handle ed vid))))
 
 ;; 视口左上角锚点 (buffer 行, 显示列)。见 view/base/viewport.rkt。
 (define (editor-view-anchor ed vid)
   (viewport-anchor (document-text (editor-view-document ed vid))
-                   (view-viewport (editor-view-ref ed vid))))
+                   (view-viewport (editor-view-handle ed vid))))
 
 ;; 视口左上角锚点 (buffer 行, 行内字符列)，按显示宽折算。
 (define (editor-view-anchor-point ed vid)
   (define t (document-text (editor-view-document ed vid)))
-  (define-values (line dc) (viewport-anchor t (view-viewport (editor-view-ref ed vid))))
+  (define-values (line dc) (viewport-anchor t (view-viewport (editor-view-handle ed vid))))
   (point line (display-column->index (track-ref t line) dc)))
 
 ;; 视口里**真实显示出来的**文档区间（半开 [start, end)）：
@@ -230,7 +243,7 @@
 (define (editor-view-visible-range ed vid)
   (define t (document-text (editor-view-document ed vid)))
   (define n (track-length t))
-  (define vrows (viewport-vrows t (view-viewport (editor-view-ref ed vid))))
+  (define vrows (viewport-vrows t (view-viewport (editor-view-handle ed vid))))
   (define first (vector-ref vrows 0))
   (cond
     [(>= (vrow-line first) n) (range-of (point 0 0) (point 0 0))]
@@ -257,10 +270,10 @@
   (history-enabled? (editor-document-history ed did)))
 
 (define (editor-view-can-undo? ed vid)
-  (editor-document-can-undo? ed (view-did (editor-view-ref ed vid))))
+  (editor-document-can-undo? ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-can-redo? ed vid)
-  (editor-document-can-redo? ed (view-did (editor-view-ref ed vid))))
+  (editor-document-can-redo? ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-depth ed vid)
-  (editor-document-depth ed (view-did (editor-view-ref ed vid))))
+  (editor-document-depth ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-history-enabled? ed vid)
-  (editor-document-history-enabled? ed (view-did (editor-view-ref ed vid))))
+  (editor-document-history-enabled? ed (view-did (editor-view-handle ed vid))))

@@ -18,7 +18,7 @@
  editor-render-patch)
 
 (define (editor-view-render ed vid)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (render (editor-view-document ed vid) (view-viewport v) (view-selections v)))
 
 ;; 单视图：旧帧 → (新帧, render, selection)。

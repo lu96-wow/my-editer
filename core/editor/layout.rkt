@@ -38,7 +38,7 @@
 ;; 逐个 rectangle：w/h 与 view 当前视口不同才重锚（editor-view-set-size! 保持同锚）。
 (define (editor-set-layout! ed rectangles)
   (for ([r (in-list rectangles)])
-    (define vp (view-viewport (editor-view-ref ed (rectangle-view-id r))))
+    (define vp (view-viewport (editor-view-handle ed (rectangle-view-id r))))
     (unless (and (= (rectangle-width r) (viewport-width vp))
                  (= (rectangle-height r) (viewport-height vp)))
       (editor-view-set-size! ed (rectangle-view-id r) (rectangle-width r) (rectangle-height r))))
@@ -48,7 +48,7 @@
 
 ;; 按给定本帧尺寸渲染某视图（只覆盖视口的 w/h，不改 view 里存的尺寸 / 锚点）。
 (define (view-render-sized ed vid w h)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (render (editor-view-document ed vid)
           (viewport-set-size (view-viewport v) w h)
           (view-selections v)))

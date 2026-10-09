@@ -22,7 +22,7 @@
 (define (focus-of ed)
   (define f (focus))
   (if (for/or ([v (in-list (editor-views ed))]) (= f (view-id v))) f 0))
-(define (focused-view ed) (editor-view-ref ed (focus-of ed)))
+(define (focused-view ed) (editor-view-handle ed (focus-of ed)))
 (define (editor-focused-view ed) (focused-view ed))
 (define (focused-doc ed) (editor-view-document ed (focus-of ed)))
 (define (editor-focused-document ed) (focused-doc ed))
@@ -111,7 +111,7 @@
 (define (view-with-selections v s) (make-view (view-id v) (view-did v) (view-viewport v) s))
 (define (view-with-viewport v vp) (make-view (view-id v) (view-did v) vp (view-selections v)))
 (define (editor-set-view ed v)
-  (define cur (editor-view-ref ed (view-id v)))
+  (define cur (editor-view-handle ed (view-id v)))
   (view-set-selections! cur (view-selections v))
   (view-set-viewport! cur (view-viewport v))
   ed)
@@ -185,7 +185,7 @@
 (define (editor-left-column ed) (editor-view-left-column ed (focus-of ed)))
 (define (editor-width ed) (editor-view-width ed (focus-of ed)))
 (define (editor-height ed) (editor-view-height ed (focus-of ed)))
-(define (editor-view-document-id ed vid) (view-did (editor-view-ref ed vid)))
+(define (editor-view-document-id ed vid) (view-did (editor-view-handle ed vid)))
 (define (editor-point->screen-position ed p) (editor-view-point->screen-position ed (focus-of ed) p))
 (define (editor-screen-position->point ed r c) (editor-view-screen-position->point ed (focus-of ed) r c))
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed (focus-of ed) l c))
@@ -346,7 +346,7 @@
 (define-values (mw1 did1) (editor-add-document mw0 "two" "b"))
 (check-equal? did1 1)
 (define mw2 (editor-add-view mw1 did1 20 5))            ; vid 1 看文档 1
-(check-equal? (view-did (editor-view-ref mw2 1)) 1)
+(check-equal? (view-did (editor-view-handle mw2 1)) 1)
 (check-equal? (editor-focus mw2) 0)                     ; 焦点仍是 vid0
 ;; 显式渲染 vid1；焦点渲染 == vid0 渲染
 (check-equal? (map run-text (screen-row (editor-view-render mw2 1) 0)) '("two"))
@@ -415,11 +415,11 @@
 (define mv0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 20 5))
 (define mv1 (editor-add-view mv0 0 20 5))
 (define mv2 (editor-set-view mv1 (view-with-selections
-                                 (editor-view-ref mv1 1) (selections-one (caret (point 4 0))))))
+                                 (editor-view-handle mv1 1) (selections-one (caret (point 4 0))))))
 ;; 焦点 vid0：删前 3 行
 (define mv3 (editor-edit mv2 (lambda (d s) (command-type-ignore-readonly d (selections-one (selection (point 0 0) (point 2 1))) ""))))
 (check-equal? (document->string (editor-focused-document mv3)) "2\nl3\nl4\nl5")
-(check-equal? (view-selections (editor-view-ref mv3 1))
+(check-equal? (view-selections (editor-view-handle mv3 1))
               (selections-one (caret (point 2 0))))     ; 4 - 2 行
 (check-true (screen? (editor-view-render mv3 1)))        ; 不再越界崩溃
 
@@ -427,10 +427,10 @@
 (define un0 (editor-open "a\nb\nc\nd" 20 5))
 (define un1 (editor-add-view un0 0 20 5))
 (define un2 (editor-set-view un1 (view-with-selections
-                                 (editor-view-ref un1 1) (selections-one (caret (point 3 0))))))
+                                 (editor-view-handle un1 1) (selections-one (caret (point 3 0))))))
 (define un3 (editor-edit un2 (lambda (d s) (command-type-ignore-readonly d (selections-one (caret (point 3 1))) "\n\n\n"))))
 (define un4 (editor-undo un3))
-(check-equal? (view-selections (editor-view-ref un4 1))
+(check-equal? (view-selections (editor-view-handle un4 1))
               (selections-one (caret (point 3 0))))
 (check-true (screen? (editor-view-render un4 1)))
 
@@ -451,8 +451,8 @@
 (define pv0 (editor-open "abc\ndef" 20 5))
 (define pv1 (editor-add-view pv0 0 20 5))
 (define pv2 (editor-view-set-point pv1 1 (point 1 2)))
-(check-equal? (view-selections (editor-view-ref pv2 1)) (selections-one (caret (point 1 2))))
-(check-equal? (view-selections (editor-view-ref pv2 0)) (selections-one (caret (point 0 0))))
+(check-equal? (view-selections (editor-view-handle pv2 1)) (selections-one (caret (point 1 2))))
+(check-equal? (view-selections (editor-view-handle pv2 0)) (selections-one (caret (point 0 0))))
 
 ;; 按 vid 切 mode / 行号
 (check-equal? (editor-view-mode (editor-view-set-mode pv1 1 'wrap) 1) 'wrap)
@@ -567,16 +567,16 @@
 (define ve2 (editor-view-edit ve1 1 (lambda (d s) (command-type d s "Z"))))
 (check-equal? (doc-str ve2) "Zabc")
 (check-equal? (caret-position ve2) (point 0 0))                       ; 焦点 vid0 光标未被带跑
-(check-equal? (selection-head (selections-primary (view-selections (editor-view-ref ve2 1)))) (point 0 1))
+(check-equal? (selection-head (selections-primary (view-selections (editor-view-handle ve2 1)))) (point 0 1))
 (define ve3 (editor-undo ve2))                                   ; undo 还原发起视图 vid1 的选区
 (check-equal? (doc-str ve3) "abc")
-(check-equal? (selection-head (selections-primary (view-selections (editor-view-ref ve3 1)))) (point 0 0))
+(check-equal? (selection-head (selections-primary (view-selections (editor-view-handle ve3 1)))) (point 0 0))
 
 ;; ---------- 按 vid 导航 / 滚动 / 撤销（焦点不动）----------
 (define vn0 (editor-add-view (editor-open "abc" 20 5) 0 20 5))
 (define vn1 (editor-set-focus vn0 0))                       ; 焦点 vid0
 (define vn2 (editor-view-right vn1 1))
-(check-equal? (selection-head (selections-primary (view-selections (editor-view-ref vn2 1)))) (point 0 1))
+(check-equal? (selection-head (selections-primary (view-selections (editor-view-handle vn2 1)))) (point 0 1))
 (check-equal? (caret-position vn2) (point 0 0))                 ; 焦点 vid0 未被带跑
 (check-equal? (editor-view-top-line (editor-view-scroll vn1 1 2) 1) 2)
 
@@ -640,7 +640,7 @@
 ;; 属性写不碰 history：undo/redo 只还原**文本步**的视图，属性视图不受影响。
 (define cv0 (editor-add-view (editor-open "abc" 20 5) 0 20 5))       ; vid1
 (define cv1 (editor-insert (editor-set-focus cv0 0) "X" 'typing))     ; vid0 caret (0,1)
-(define (vid-caret ed vid) (selection-head (selections-primary (view-selections (editor-view-ref ed vid)))))
+(define (vid-caret ed vid) (selection-head (selections-primary (view-selections (editor-view-handle ed vid)))))
 (define cv2 (editor-view-set-selections cv1 1 (selections-one (selection (point 0 1) (point 0 2)))))  ; vid1 选 'a'
 (define cv3 (editor-view-face cv2 1 'kw))                         ; 属性写，不记步、不改 current
 (check-equal? (vid-caret cv3 0) (point 0 1))

@@ -78,7 +78,7 @@
                           #:ensure? [ensure? #t]
                           #:chunk-lines [chunk-lines default-chunk-lines])
   (define value* (->document value chunk-lines))
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define did (view-did v))
   (define e (editor-document-entry ed did))
   (define old (document-entry-document e))
@@ -124,7 +124,7 @@
 ;; value : string | document。传 string 时可给 #:chunk-lines。
 (define (editor-view-assign! ed vid value #:selections [sels #f] #:ensure? [ensure? #f]
                              #:chunk-lines [chunk-lines default-chunk-lines])
-  (define did (view-did (editor-view-ref ed vid)))
+  (define did (view-did (editor-view-handle ed vid)))
   (define step (editor-view-install! ed vid value #:selections sels #:change #f #:ensure? ensure?
                                      #:chunk-lines chunk-lines))
   (when step
@@ -135,7 +135,7 @@
 ;;; ---------- 编辑命令 ----------
 
 (define (editor-view-edit! ed vid op [merge-tag #f] [ensure? #t])
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define did (view-did v))
   (define e (editor-document-entry ed did))
   (define-values (doc* sels* changes ok?) (op (document-entry-document e) (view-selections v)))
@@ -170,7 +170,7 @@
   (cond
     [(not (eq? (document-text (editor-view-document ed vid)) base-text)) #f]
     [else
-     (define did (view-did (editor-view-ref ed vid)))
+     (define did (view-did (editor-view-handle ed vid)))
      (define step (editor-view-install! ed vid new-doc))
      (when step (editor-document-history-record! ed did step merge-tag))
      #t]))
@@ -178,7 +178,7 @@
 ;;; ---------- 剪贴板 ----------
 
 (define (editor-view-copy! ed vid)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define doc (document-entry-document (editor-document-entry ed (view-did v))))
   (define s (selections-primary (view-selections v)))
   (define-values (a b) (selection-range s))
@@ -194,7 +194,7 @@
   (editor-view-edit! ed vid (lambda (d s) (command-paste d s text)) merge-tag))
 
 (define (editor-view-cut! ed vid [merge-tag #f])
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (cond
     [(for/or ([s (in-list (selections-items (view-selections v)))]) (not (selection-empty? s)))
      (editor-view-copy! ed vid)
@@ -210,7 +210,7 @@
   (editor-view-edit! ed vid (lambda (d s) (command-paste-ignore-readonly d s text)) merge-tag))
 
 (define (editor-view-cut-ignore-readonly! ed vid [merge-tag #f])
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (cond
     [(for/or ([s (in-list (selections-items (view-selections v)))]) (not (selection-empty? s)))
      (editor-view-copy! ed vid)
@@ -220,7 +220,7 @@
 ;;; ---------- 导航 ----------
 
 (define (editor-view-nav! ed vid f extend?)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define did (view-did v))
   (define doc (document-entry-document (editor-document-entry ed did)))
   (define sels* ((if extend? selections-extend selections-go) (view-selections v) f))
@@ -244,7 +244,7 @@
 
 (define (editor-view-visual-nav! ed vid up? extend?)
   (define t (document-text (editor-view-document ed vid)))
-  (define vp (view-viewport (editor-view-ref ed vid)))
+  (define vp (view-viewport (editor-view-handle ed vid)))
   (editor-view-nav! ed vid (lambda (p) ((if up? point-up point-down) t vp p)) extend?))
 
 (define (editor-view-up! ed vid [extend? #f]) (editor-view-visual-nav! ed vid #t extend?))
@@ -253,7 +253,7 @@
 ;;; ---------- 选区 ----------
 
 (define (editor-view-set-selections! ed vid sels #:ensure? [ensure? #t])
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define did (view-did v))
   (define doc (document-entry-document (editor-document-entry ed did)))
   (define t (document-text doc))
@@ -276,14 +276,14 @@
 ;;; ---------- 视口 ----------
 
 (define (editor-view-scroll! ed vid delta)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-scroll t (view-viewport v) delta))
   (void))
 
 ;; 改视口字段的公共壳：按旧 mode 取锚点，改完落回同锚。
 (define (editor-view-viewport-update! ed vid f)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (define-values (line dc) (viewport-anchor t (view-viewport v)))
   (view-set-viewport! v (viewport-set-anchor t (f (view-viewport v)) line dc))
@@ -300,12 +300,12 @@
   (editor-view-viewport-update! ed vid (lambda (vp) (viewport-set-size vp width height))))
 
 (define (editor-view-set-top-line! ed vid n)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (view-set-viewport! v (viewport-set-top-line (view-viewport v) n))
   (void))
 
 (define (editor-view-set-left-column! ed vid n)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-set-left-column t (view-viewport v) n))
   (void))
@@ -314,14 +314,14 @@
 
 ;; 把该 view 的视口左上角设到 (buffer 行, 显示列)；按该 view 自己的 clip/wrap 落位。
 (define (editor-view-set-anchor! ed vid line dc)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-set-anchor t (view-viewport v) line dc))
   (void))
 
 ;; 同上，锚点用字符坐标 point，按显示宽折成显示列后落位；行 / 列越界先夹回合法域。
 (define (editor-view-set-anchor-point! ed vid p)
-  (define v (editor-view-ref ed vid))
+  (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (define n (track-length t))
   (define line (max 0 (min (point-line p) (sub1 n))))
@@ -337,11 +337,11 @@
 ;;; 属性写走 attributes.rkt 的 editor-document-*。
 ;;; 这里保留「区间从当前选区来」的四个命令。
 
-(define (vid->did ed vid) (view-did (editor-view-ref ed vid)))
+(define (vid->did ed vid) (view-did (editor-view-handle ed vid)))
 
 ;; 主选区 → range。
 (define (primary-range ed vid)
-  (define-values (a b) (selection-range (selections-primary (view-selections (editor-view-ref ed vid)))))
+  (define-values (a b) (selection-range (selections-primary (view-selections (editor-view-handle ed vid)))))
   (range-of a b))
 
 (define (editor-view-face! ed vid face)
@@ -351,12 +351,12 @@
 
 (define (editor-view-face-selections! ed vid face)
   (define did (vid->did ed vid))
-  (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
+  (for ([sel (in-list (selections-items (view-selections (editor-view-handle ed vid))))])
     (define-values (a b) (selection-range sel))
     (editor-document-face-range! ed did (range-of a b) face)))
 (define (editor-view-readonly-selections! ed vid flag)
   (define did (vid->did ed vid))
-  (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
+  (for ([sel (in-list (selections-items (view-selections (editor-view-handle ed vid))))])
     (define-values (a b) (selection-range sel))
     (editor-document-readonly-range! ed did (range-of a b) flag)))
 
@@ -374,15 +374,15 @@
      (editor-views-clamp! ed did)
      ;; 选区还原到发起那次编辑的视图（快照里的 who）。
      (when (and who (for/or ([x (in-list (editor-views ed))] #:when (= (view-id x) who)) #t))
-       (view-set-selections! (editor-view-ref ed who) sels*))
+       (view-set-selections! (editor-view-handle ed who) sels*))
      #t]))
 
 (define (editor-document-undo! ed did) (editor-document-time-travel! ed did history-undo))
 (define (editor-document-redo! ed did) (editor-document-time-travel! ed did history-redo))
 (define (editor-view-undo! ed vid)
-  (editor-document-undo! ed (view-did (editor-view-ref ed vid))))
+  (editor-document-undo! ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-redo! ed vid)
-  (editor-document-redo! ed (view-did (editor-view-ref ed vid))))
+  (editor-document-redo! ed (view-did (editor-view-handle ed vid))))
 
 (define (editor-document-clear-history! ed did)
   (document-entry-set-history! (editor-document-entry ed did)
@@ -398,11 +398,11 @@
   (void))
 
 (define (editor-view-clear-history! ed vid)
-  (editor-document-clear-history! ed (view-did (editor-view-ref ed vid))))
+  (editor-document-clear-history! ed (view-did (editor-view-handle ed vid))))
 (define (editor-view-reset-history! ed vid [enabled? #f])
-  (editor-document-reset-history! ed (view-did (editor-view-ref ed vid)) enabled?))
+  (editor-document-reset-history! ed (view-did (editor-view-handle ed vid)) enabled?))
 (define (editor-view-seal! ed vid)
-  (editor-document-seal! ed (view-did (editor-view-ref ed vid))))
+  (editor-document-seal! ed (view-did (editor-view-handle ed vid))))
 
 (define (editor-view-set-history-enabled! ed vid flag)
-  (editor-document-set-history-enabled! ed (view-did (editor-view-ref ed vid)) flag))
+  (editor-document-set-history-enabled! ed (view-did (editor-view-handle ed vid)) flag))

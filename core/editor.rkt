@@ -52,8 +52,8 @@
    view-mutable view-mutable? view-mutable-viewport view-mutable-selections
    make-document-entry make-view
    ;; 内部查找 / 解析
-   editor-document-entry editor-view-ref editor-view-document editor-document-history
-   document-id-of first-view-of-document)
+   editor-document-entry editor-view-document editor-document-history
+   first-view-of-document)
  ;; ---------- 用户命令 ----------
  (except-out (all-from-out "editor/command.rkt")
              step step? step-pre-value step-pre-sels step-post-value step-post-sels
@@ -66,7 +66,7 @@
  ;; ---------- 版本层：句柄式写回（原子句柄不属公共面） ----------
  (except-out (all-from-out "editor/version.rkt")
              editor-document-face-atom editor-document-readonly-atom editor-document-slot-atom
-             editor-view-document-handle editor-view-face-atom editor-view-readonly-atom editor-view-slot-atom)
+             editor-view-face-atom editor-view-readonly-atom editor-view-slot-atom)
  ;; ---------- 变更（编辑命令返回的 change） ----------
  (all-from-out "editor/change.rkt")
  ;; ---------- 渲染 / 投影 ----------

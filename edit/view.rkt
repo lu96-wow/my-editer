@@ -19,7 +19,6 @@
 ;;;     层深      = 大者在上；同深度按合成列表顺序，靠后在上
 
 (require "../core/text/base/point.rkt"
-         "../core/text/base/range.rkt"
          "../core/text/base/change.rkt"
          "../core/text/base/selection.rkt"
          "../core/text/base/line.rkt"
@@ -71,7 +70,7 @@
  view-set-point view-set-selections view-select-all view-nav view-clamp view-rebase
 
  ;; 投影 / 读
- view-render view-point->screen view-screen->point view-visible-range
+ view-render view-point->screen view-screen->point
 
  ;; 合成
  view-pane compose compose-patch)
@@ -166,9 +165,24 @@
     [selections (selections-one (selection (point 0 0)
                                            (point last (track-line-length t last))))]))
 
-;; dir : 'left 'right 'up 'down 'home 'end 'page-up 'page-down
-(define (view-nav v dir)
-  (error 'view-nav "TODO：定方向语义后实现（字符级 L/R/Home/End；视觉行 Up/Down/PgUp/PgDn）"))
+;; dir : 'left 'right 'up 'down 'home 'end
+;; extend? : #t = 只动 head（扩选）；#f = 收拢成光标（go）
+;; 移动后把新主光标 ensure 进视口。
+(define (view-nav v dir extend?)
+  (define t (view-doc-text v))
+  (define vp (view->viewport v))
+  (define f
+    (case dir
+      [(left)  (lambda (p) (point-left t p))]
+      [(right) (lambda (p) (point-right t p))]
+      [(home)  (lambda (p) (point-home t p))]
+      [(end)   (lambda (p) (point-end t p))]
+      [(up)    (lambda (p) (point-up t vp p))]
+      [(down)  (lambda (p) (point-down t vp p))]
+      [else (error 'view-nav "未知方向: ~a（'left 'right 'up 'down 'home 'end）" dir)]))
+  (define sels* ((if extend? selections-extend selections-go) (view-selections v) f))
+  (view-ensure (struct-copy view v [selections sels*])
+               (selection-head (selections-primary sels*))))
 
 (define (view-clamp v)
   (define t (view-doc-text v))
@@ -189,9 +203,6 @@
 
 (define (view-screen->point v row col)
   (viewport-screen-position->point (view-doc-text v) (view->viewport v) row col))
-
-(define (view-visible-range v)
-  (error 'view-visible-range "TODO：从 vrows 取真实显示的文档区间（含文末空白行处理）"))
 
 ;;; ---------- 合成 ----------
 

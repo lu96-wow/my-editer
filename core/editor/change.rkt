@@ -14,4 +14,4 @@
 (define (editor-document-change-text ed did ch)
   (document-change-text (editor-document-handle ed did) ch))
 (define (editor-view-change-text ed vid ch)
-  (editor-document-change-text ed (view-did (editor-view-ref ed vid)) ch))
+  (editor-document-change-text ed (view-did (editor-view-handle ed vid)) ch))

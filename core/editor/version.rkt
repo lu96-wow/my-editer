@@ -25,7 +25,6 @@
  editor-document-handle-slot-set!
 
  ;; ---------- 低层逃逸口（不属公共面） ----------
- editor-view-document-handle
  editor-document-face-atom editor-document-readonly-atom editor-document-slot-atom
  editor-view-face-atom editor-view-readonly-atom editor-view-slot-atom)
 
@@ -47,10 +46,6 @@
 (define (editor-document-handle-slot-set! doc sl value) (document-slot-set! doc sl value) (void))
 
 ;;; ---------- 低层逃逸口 ----------
-
-;; 取某视图当前文档的句柄（不可变文本 + 端口 / 槽）。
-(define (editor-view-document-handle ed vid)
-  (editor-view-document ed vid))
 
 ;; 取原子 box 句柄（想直接 set-box! / 交给别的线程读时用）。did 版按当前文档现取。
 (define (editor-document-face-atom ed did) (document-face-atom (editor-document-handle ed did)))
