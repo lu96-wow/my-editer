@@ -10,6 +10,7 @@
 (require "core/layout.rkt" "core/focus.rkt" "core/ids.rkt"
          "config/layout.rkt"
          "session.rkt" "command/keys.rkt"
+         "plugin/bind.rkt" "plugin/catalog.rkt"
          "document/document.rkt"
          "document/lifecycle.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt"
@@ -18,7 +19,9 @@
 (provide demo-session)
 
 (define (demo-session [w 80] [h 24] #:layout [layout layout-left])
-  (define s0 (session-blank w h (list base-keys document-keys)))
+  ;; 装配注入：打开文件时的文档绑定规则（把启用的 document 插件绑到文档）。
+  (define s0 (session-set-rules (session-blank w h (list base-keys document-keys))
+                                (list (doc-plugin-rule enabled-doc-plugins))))
 
   ;; 状态窗口：输入行 / 状态行 / 文件树 / 缓冲区 / 日志
   (define-values (s6 input)  (prompt-install s0 w 1))

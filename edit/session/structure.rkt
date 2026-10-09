@@ -11,6 +11,7 @@
          "doc.rkt"
          "core.rkt"
          "focus.rkt"
+         "plugin.rkt"
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt")
@@ -114,10 +115,12 @@
     [else
      (define pres* (for/fold ([h (session-presentations s)]) ([v (in-list vids)]) (hash-remove h v)))
      (define s0 (session-ed-close-document s did))
-     (define s* (session-clear-doc
-                 (session-set-editor
-                  (struct-copy session s0 [presentations pres*])
-                  (session-drop-editor-views s vids))
+     (define s* (session-doc-plugin-forget
+                 (session-clear-doc
+                  (session-set-editor
+                   (struct-copy session s0 [presentations pres*])
+                   (session-drop-editor-views s vids))
+                  did)
                  did))
      (define fv (session-focus-vid s*))
      (define s** (cond

@@ -46,7 +46,8 @@
 
 (struct session
   (ed frame bindings editor layout presentations panels floats
-   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs log)
+   focus edit-vid width height quit? keys rules doc-keymaps handlers prompt prefix docs log
+   plugin-bindings plugin-applied)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; frame         : 骨架（config 的 slot 树；#f = 未装配）
@@ -61,18 +62,21 @@
 ;; width height  : 屏幕尺寸
 ;; quit?         : 退出标志
 ;; keys          : (listof keymap)  全局键表叠
+;; rules         : (listof rule)    打开文件时的文档绑定规则（装配注入）
 ;; doc-keymaps   : (hash did -> keymap)
 ;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
 ;; prompt        : prompt | #f
 ;; prefix        : prefix | #f   活动前缀（多键序列）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
+;; plugin-bindings : (hash did -> (listof doc-plugin))  document 插件绑定（插件层）
+;; plugin-applied  : (hash did -> handle)               上次写回 fills 的句柄（lazy）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out float)
          session-new session-assemble session-set-frame
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
-         session-resize session-quit session-add-handler
+         session-resize session-quit session-add-handler session-set-rules
          ;; 编辑区子树（结构手术用）
          session-editor session-set-editor
          ;; 状态窗口查询（纯）
@@ -88,8 +92,9 @@
 (define (session-new ed frame bindings focus width height [keys '()])
   (session-rebuild
    (session ed frame bindings (blank) #f (hash) '() '()
-            focus (focus-target focus) width height #f keys (hash) '() #f #f
-            (doc-state-empty) '())))
+            focus (focus-target focus) width height #f keys '() (hash) '() #f #f
+            (doc-state-empty) '()
+            (hash) (hash))))
 
 ;; 重算派生 layout：把 panel 绑定与编辑区子树填进骨架的 slot。
 (define (session-rebuild s)
@@ -126,6 +131,7 @@
 (define (session-quit s) (struct-copy session s [quit? #t]))
 (define (session-add-handler s h)
   (struct-copy session s [handlers (cons h (session-handlers s))]))
+(define (session-set-rules s rules) (struct-copy session s [rules rules]))
 
 ;;; ---------- 状态窗口查询（纯） ----------
 

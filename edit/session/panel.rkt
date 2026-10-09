@@ -12,7 +12,7 @@
          "../core/ids.rkt")
 
 (provide session-panel-dids session-panel-swap
-         session-refresh session-prepare-render)
+         session-refresh)
 
 ;;; ---------- 状态窗口 ----------
 
@@ -51,10 +51,3 @@
       (define doc (f s))
       (when doc (session-ed-assign! s (panel-vid p) doc))))
   s)
-
-;;; ---------- 渲染前准备 ----------
-
-;; 刷新面板 + 应用 document 插件（懒：只对句柄变了的文档重写 face）。
-;; 后端每次画帧前调一次，返回值带回写回缓存。
-(define (session-prepare-render s)
-  (session-doc-plugins-apply (session-refresh s)))

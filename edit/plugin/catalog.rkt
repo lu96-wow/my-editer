@@ -7,7 +7,7 @@
 ;;; 目录随插件增多而增长；config 永远不认识实现。
 
 (require "registry.rkt"
-         "../feature/syntax.rkt"
+         "builtin/syntax.rkt"
          "../config/plugins.rkt")
 
 (provide plugin-catalog registry-ref plugins-by-names enabled-doc-plugins)

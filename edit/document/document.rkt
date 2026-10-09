@@ -35,8 +35,8 @@
 ;;; ---------- 打开 ----------
 
 ;; 打开文件到编辑区：已有同 path → 聚焦已有视图；否则新建文档 + 分屏显示。
-;; keys：该文档的默认命令表（assembly 注入）。axis：分屏方向。
-(define (session-open-file s path [rules default-rules] [axis 'lr] #:keys [keys (kbd)])
+;; keys：该文档的默认命令表（assembly 注入）。rules：文档绑定规则（默认取 session 里的装配配置）。
+(define (session-open-file s path [rules (session-rules s)] [axis 'lr] #:keys [keys (kbd)])
   (with-handlers ([exn:fail? (lambda (e) (session-error! s "open" path e))])
    (define np (normalize path))
    (define existing (session-file-did s np))
@@ -52,7 +52,7 @@
       (define s2 (if (eqv? base nvid) s1 (session-place-view s1 base axis nvid)))
       (define s3 (session-set-file s2 did np))
       (define s4 (session-doc-set-keys s3 did keys))        ; 默认命令表（先全部填默认）
-      (define s5 (rules-apply rules s4 did np))             ; 规则层（暂空）可覆盖
+      (define s5 (rules-apply rules s4 did np))             ; 文档绑定规则（装配注入）
       (define s6 (session-mark-saved s5 did))
       (session-show-view s6 nvid)])))
 

@@ -13,6 +13,8 @@
 ;;;   session/structure.rkt  结构手术：显示 / 分屏 / 关闭 / 显隐 / 尺寸 / 浮动窗口
 ;;;   session/edit.rkt       操作原语：焦点 / 滚动 / 编辑 / 选区 / 剪贴板
 ;;;   session/mouse.rkt      鼠标
+;;;   session/plugin.rkt     document 插件绑定 / 写回
+;;;   session/render.rkt     统一渲染入口（刷面板 + 应用插件）
 ;;;
 ;;; 命令层 / 特性 / 后端 require 本模块即可。
 
@@ -25,7 +27,9 @@
          "session/prompt.rkt"
          "session/structure.rkt"
          "session/edit.rkt"
-         "session/mouse.rkt")
+         "session/mouse.rkt"
+         "session/plugin.rkt"
+         "session/render.rkt")
 
 (provide (all-from-out "session/value.rkt"
                        "session/doc.rkt"
@@ -36,4 +40,6 @@
                        "session/prompt.rkt"
                        "session/structure.rkt"
                        "session/edit.rkt"
-                       "session/mouse.rkt"))
+                       "session/mouse.rkt"
+                       "session/plugin.rkt"
+                       "session/render.rkt"))
