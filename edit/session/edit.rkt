@@ -5,7 +5,7 @@
 ;;; 命令层需要的那几个原语：焦点移动 / 滚动 / 光标导航 / 选区 / 剪贴板 / 编辑 / 撤销。
 ;;; 都走 core.rkt 的内核适配，不直接碰 core/editor。
 ;;; 会改文本的原语在完成后发 'after-edit（所有改动）+ 'after-insert（仅直接编辑），
-;;; 参数 (vid changes)；供增量插件 / 补全等 hook 用。
+;;; 参数 (vid changes)；导航类原语发 'after-nav (vid)；供增量插件 / 补全等 hook 用。
 ;;; 会话级纯变换（resize / quit）与结构手术见 value.rkt / structure.rkt。
 
 (require "value.rkt"
@@ -23,6 +23,11 @@
 (define (with-focus-vid s proc)
   (define vid (session-focus-vid s))
   (if vid (proc s vid) s))
+
+;; 导航类原语：proc 完成后发 'after-nav (vid)（补全菜单等据此关单，避免错位）。
+(define (with-nav s proc)
+  (with-focus-vid s
+    (lambda (s vid) (session-run-hooks (proc s vid) 'after-nav (list vid)))))
 
 ;; 编辑类原语：proc 返回 (values session changes)；有改动时发
 ;;   'after-edit   (vid changes)
@@ -48,7 +53,7 @@
 
 (define (session-nav s dir extend?)
   (sync-layout! s)
-  (with-focus-vid s (lambda (s vid) (session-ed-nav! s vid dir extend?))))
+  (with-nav s (lambda (s vid) (session-ed-nav! s vid dir extend?))))
 
 ;; 选区 / 剪贴板（转发 core）
 (define (session-select-all s)

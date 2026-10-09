@@ -13,13 +13,20 @@
 ;;; （每次编辑产生新 handle），于是「文档没变才写回」。
 ;;;
 ;;; 传输（sync / place、请求合并）由插件用 plugin/runner.rkt 自管；这里只管闸门。
+;;;
+;;; async-wake：TUI 事件循环的异步唤醒通道。worker 有结果就往里放一个 'ready，
+;;; tui 用 (on-source async-wake proc) 注册；proc 在事件循环线程里刷新一帧。
+;;; 于是无需轮询（read-event 会把注册源并入等待集合）。
 
-(require "value.rkt")
+(require racket/async-channel
+         "value.rkt")
 
-(provide session-await session-deliver session-awaiting? session-awaiting-any?)
+(provide session-await session-deliver session-awaiting? async-wake)
 
 (define (session-awaiting? s id) (hash-has-key? (session-awaiting s) id))
-(define (session-awaiting-any? s) (positive? (hash-count (session-awaiting s))))
+
+;; TUI 事件循环的唤醒通道（每进程一个事件循环）。
+(define async-wake (make-async-channel))
 
 (define (session-await s id token current? on-result)
   (struct-copy session s

@@ -32,11 +32,12 @@
 
 ;;; ---------- 服务状态 ----------
 
-(struct c-svc (menu runner cache pending) #:transparent)
+(struct c-svc (menu runner cache pending parse) #:transparent)
 ;; menu    : box (menu | #f)      当前打开的菜单
 ;; runner  : box (runner | #f)    惰性创建（place 只能在 with-tui 之后建）
 ;; cache   : hash 上下文键 -> (listof string)   模块路径 / 导出名
 ;; pending : hash 上下文键 -> #t                已提交、未回来
+;; parse   : hash did -> parse-entry            头部（#lang/require/定义）解析缓存
 
 (struct menu (vid mvid did start cands idx pool) #:transparent)
 ;; vid   : 编辑器 view（发起补全者，接受时改它）
@@ -53,13 +54,38 @@
 ;; locals : (listof symbol)   文件顶层定义名
 ;; words  : (listof string)   文件里出现过的词
 
+;; 头部解析缓存项：签名 + 模块表 + 顶层定义名。
+(struct parse-entry (sig mods locals) #:transparent)
+
 (define (completion-svc s) (session-service-ref s 'complete))
 (define max-rows 10)
 (define menu-deep 2000)                            ; 远高于布局树
+(define header-lines 200)                          ; 缓存签名只看前 N 行
 
 ;;; ---------- 上下文 / 池 ----------
 
-(define (make-ctx s vid text line col)
+;; 前 N 行的文本作为头部签名（require / 定义都在文件头部）。
+(define (header-sig text)
+  (define lines (string-split text "\n" #:trim? #f))
+  (string-join (take lines (min header-lines (length lines))) "\n"))
+
+;; 头部解析（按 did 缓存；签名不变则复用）。→ parse-entry
+(define (parse-for svc did text path)
+  (define sig (header-sig text))
+  (define old (hash-ref (c-svc-parse svc) did #f))
+  (cond
+    [(and old (equal? sig (parse-entry-sig old))) old]
+    [else
+     (define base-dir (or (and path (let-values ([(d _f _m) (split-path path)]) d))
+                          (current-directory)))
+     (define-values (lang forms) (requires-context text))
+     (define e (parse-entry sig
+                            (requires-of-forms lang forms #:base-dir base-dir)
+                            (definitions-of-forms forms)))
+     (hash-set! (c-svc-parse svc) did e)
+     e]))
+
+(define (make-ctx s svc vid text line col)
   (cond
     [(require-context? text line col) (ctx 'module '() '())]
     [else
@@ -69,13 +95,10 @@
      (cond
        [(not (racket-file? path)) (ctx #f '() words)]
        [else
-        (define base-dir (or (and path (let-values ([(d _f _m) (split-path path)]) d))
-                             (current-directory)))
-        (define-values (lang forms) (requires-context text))
-        (define mods (requires-of-forms lang forms #:base-dir base-dir))
+        (define e (parse-for svc did text path))
         ;; 无 require/语言 → 不需要 worker（池只需本地词/定义）
-        (ctx (and (pair? mods) (list 'exports mods))
-             (definitions-of-forms forms)
+        (ctx (and (pair? (parse-entry-mods e)) (list 'exports (parse-entry-mods e)))
+             (parse-entry-locals e)
              words)])]))
 
 ;; 缓存命中（key #f 视为永远命中：只需本地词）。
@@ -98,7 +121,7 @@
 
 (define (ensure-runner svc)
   (or (unbox (c-svc-runner svc))
-      (let ([r (make-place-runner worker-path 'main)])
+      (let ([r (make-place-runner worker-path 'main #:wake async-wake)])
         (set-box! (c-svc-runner svc) r)
         r)))
 
@@ -177,7 +200,7 @@
         (cond
           [(zero? (string-length prefix)) s]
           [else
-           (define ctx (make-ctx s vid text line col))
+           (define ctx (make-ctx s svc vid text line col))
            (cond
              [(ctx-cached? svc ctx) (open-menu! s vid line col prefix (ctx-pool svc ctx))]
              [else (request-pool! s svc ctx)])])])]))
@@ -205,14 +228,18 @@
   (define line (session-view-point-line s vid))
   (define col (session-view-point-column s vid))
   (define prefix (prefix-at text line col))
-  (define cands (filter-pool (menu-pool m) prefix))
   (cond
-    [(null? cands) (close-menu s)]
+    ;; 前缀被删空（词删完）→ 关菜单
+    [(zero? (string-length prefix)) (close-menu s)]
     [else
-     (define idx (min (menu-idx m) (sub1 (length cands))))
-     (define start (cons line (- col (string-length prefix))))
-     (set-box! (c-svc-menu svc) (menu vid (menu-mvid m) (menu-did m) start cands idx (menu-pool m)))
-     (session-ed-assign! s (menu-mvid m) (menu-doc cands idx))]))
+     (define cands (filter-pool (menu-pool m) prefix))
+     (cond
+       [(null? cands) (close-menu s)]
+       [else
+        (define idx (min (menu-idx m) (sub1 (length cands))))
+        (define start (cons line (- col (string-length prefix))))
+        (set-box! (c-svc-menu svc) (menu vid (menu-mvid m) (menu-did m) start cands idx (menu-pool m)))
+        (session-ed-assign! s (menu-mvid m) (menu-doc cands idx))])]))
 
 (define (do-move s dir)
   (define svc (completion-svc s))
@@ -272,16 +299,18 @@
     [(unbox (c-svc-menu svc)) (do-refine s)]
     [else (maybe-open s)]))
 
-;; 焦点移开 → 取消菜单。
+;; 焦点移开 / 光标导航 → 取消菜单（否则候选与前缀错位）。
 (define (completion-cancel-hook s _args)
   (define svc (completion-svc s))
   (if (and svc (unbox (c-svc-menu svc))) (close-menu s) s))
 
-;; 菜单所属的编辑器文档关闭 → 取消菜单（避免叠加层悬空）。
+;; 菜单所属的编辑器文档关闭 → 取消菜单 + 清头部缓存。
 (define (completion-doc-closed-hook s args)
   (define svc (completion-svc s))
+  (define did (car args))
+  (when svc (hash-remove! (c-svc-parse svc) did))
   (define m (and svc (unbox (c-svc-menu svc))))
-  (if (and m (eqv? (car args) (menu-did m))) (close-menu s) s))
+  (if (and m (eqv? did (menu-did m))) (close-menu s) s))
 
 ;; before-render：轮询 worker，把到齐的结果交给闸门（session-deliver 会跑 on-result）。
 (define (completion-poll-hook s _args)
@@ -292,18 +321,21 @@
     [else
      (for/fold ([s s]) ([m (in-list (runner-poll! r))])
        (define res (cdr m))
-       (if (job-result-ok? res)
-           (session-deliver s (car m) (job-result-value res))
-           s))]))
+       (cond
+         [(job-result-ok? res) (session-deliver s (car m) (job-result-value res))]
+         ;; worker 出错：记日志，并以空池交付（清 pending + 不重试）。
+         [else (session-deliver (session-log! s (format "complete worker: ~a" (job-result-value res)))
+                                (car m) '())]))]))
 
 (define (completion-install s)
-  (let* ([svc (c-svc (box #f) (box #f) (make-hash) (make-hash))]
+  (let* ([svc (c-svc (box #f) (box #f) (make-hash) (make-hash) (make-hash))]
          [s1 (session-service-put s 'complete svc)]
          [s2 (session-add-handler s1 (completion-handler))]
          [s3 (session-add-hook s2 (hook 'after-insert completion-refine-hook))]
          [s4 (session-add-hook s3 (hook 'focus-changed completion-cancel-hook))]
-         [s5 (session-add-hook s4 (hook 'document-closed completion-doc-closed-hook))])
-    (session-add-hook s5 (hook 'before-render completion-poll-hook))))
+         [s5 (session-add-hook s4 (hook 'after-nav completion-cancel-hook))]
+         [s6 (session-add-hook s5 (hook 'document-closed completion-doc-closed-hook))])
+    (session-add-hook s6 (hook 'before-render completion-poll-hook))))
 
 (define completion-spec
   (plugin-spec 'completion completion-install '()))

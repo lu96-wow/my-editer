@@ -38,12 +38,12 @@
 (check-pred cmd-complete-accept? (keymap-lookup lk (key 'enter)))
 (check-pred cmd-complete-cancel? (keymap-lookup lk (key 'escape)))
 
-;; 打字 fallthrough：插入 + 刷新（"alpha" == 前缀被排除，只剩 "alphabet"）
+;; 打字 fallthrough：插入 + 刷新（前缀 "alpha" 本身也在候选里，长度最短排最前）
 (define s5 (step s4 (cmd-insert "a")))
 (check-equal? (session-view-string s5 vid) "alpha alphabet\nalpha")
 
-;; 接受：把前缀换成候选
-(define s6 (step s5 (cmd-complete-accept)))
+;; 接受：下移选 "alphabet"，把前缀替换掉
+(define s6 (step (step s5 (cmd-complete-move 1)) (cmd-complete-accept)))
 (check-equal? (session-view-string s6 vid) "alpha alphabet\nalphabet")
 (check-false (session-layer-active? s6 'complete))
 (check-equal? (session-overlays s6) '())
@@ -80,9 +80,18 @@
     [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
 (define g3 (pump-until-menu (step g2 (cmd-complete)) 500))
 (check-true (session-layer-active? g3 'complete))
-(define g4 (step g3 (cmd-complete-accept)))
+;; 候选里有正在输入的 "fir"（长度最短排最前）与 "first"；下移选 "first"
+(define g4 (step (step g3 (cmd-complete-move 1)) (cmd-complete-accept)))
 (check-equal? (session-view-string g4 gvid)
               "#lang racket/base\n(require racket/list)\n(define (my-fn) 1)\n(first")
+
+;; 光标导航（left/right 等）→ after-nav 关闭菜单（否则候选错位）
+(define h1 (session-ed-set-point! g4 gvid 3 5))
+(define h2 (step h1 (cmd-complete)))
+(check-true (session-layer-active? h2 'complete))
+(define h3 (step h2 (cmd-nav 'left #f)))
+(check-false (session-layer-active? h3 'complete))
+(check-equal? (session-overlays h3) '())
 (delete-file p2)
 
 (delete-file p)

@@ -16,10 +16,12 @@
 ;;; 在装配前加载，满足该约束。
 
 (require racket/list
+         racket/match
          "value.rkt"
          "doc.rkt"
          "core.rkt"
-         "../plugin/registry.rkt")
+         "../plugin/registry.rkt"
+         "../core/lex.rkt")
 
 (provide session-doc-plugins session-doc-bind-plugins
          session-doc-plugin-forget
@@ -48,6 +50,31 @@
 
 (define (dedupe-sorted ns) (sort (remove-duplicates ns) <))
 
+;; 本次编辑的脏行（升序去重；edits 为编辑后坐标的 (l0 c0 l1 c1)）。
+(define (edits->dirty-lines edits)
+  (define h (make-hash))
+  (for ([e (in-list edits)])
+    (match-define (list l0 _c0 l1 _c1) e)
+    (for ([l (in-range l0 (add1 l1))]) (hash-set! h l #t)))
+  (sort (hash-keys h) <))
+
+;; 活动词（本次编辑插入点前一个字符所在的词）→ (list line start end) | #f。
+;; 领域逻辑（词法）留在插件侧；core 边界只给中性的 edits / 行文本。
+(define (edits->active ctx edits)
+  (cond
+    [(not (= 1 (length edits))) #f]
+    [else
+     (match-define (list _l0 _c0 l1 c1) (car edits))
+     (define col (sub1 c1))
+     (cond
+       [(< col 0) #f]
+       [else
+        (define line (for/first ([p (in-list (fork-ctx-lines ctx (list l1)))]) (cdr p)))
+        (cond
+          [(or (not line) (>= col (string-length line))) #f]
+          [else (define tok (word-token-at line col))
+                (and tok (list l1 (car tok) (cdr tok)))])])]))
+
 ;; 首次整篇 open。
 (define (slot-open path plugins text line-count)
   (define entries
@@ -63,9 +90,10 @@
     [else
      (define path (plugin-slot-path old))
      (define plugins (plugin-slot-plugins old))
-     (define dirty (dedupe-sorted (append (plugin-slot-dirty old) (fork-ctx-dirty-lines ctx))))
+     (define edits (fork-ctx-edits ctx))
+     (define dirty (dedupe-sorted (append (plugin-slot-dirty old) (edits->dirty-lines edits))))
      (define lines (fork-ctx-lines ctx dirty))
-     (define active (fork-ctx-active ctx))
+     (define active (edits->active ctx edits))
      (define entries
        (for/hash ([p (in-list plugins)])
          (define name (doc-plugin-name p))

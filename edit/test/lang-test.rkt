@@ -41,8 +41,10 @@
 ;; 绝对路径模块路径不会让 module-exports 崩（取不到就空）
 (check-equal? (module-exports '(file "/no/such/module.rkt")) '())
 
-;; filter-pool：前缀过滤、排序、去掉与前缀相同的项
+;; filter-pool：前缀过滤、长度升序（同长字典序）、保留与前缀相同的项
 (check-equal? (filter-pool '("beta" "alpha" "alphabet") "alph")
               '("alpha" "alphabet"))
 (check-equal? (filter-pool '("alpha" "alphabet") "alpha")
-              '("alphabet"))
+              '("alpha" "alphabet"))
+(check-equal? (filter-pool '("bb" "a" "ccc" "ab" "aaa") "a")
+              '("a" "ab" "aaa"))

@@ -8,6 +8,7 @@
 (require "value.rkt"
          "core.rkt"
          "focus.rkt"
+         "hook.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt")
 
@@ -34,8 +35,9 @@
      (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
      (define-values (line c)
        (session-ed-screen->point s1 vid (- row (placed-y p)) (- col (placed-x p))))
-     (when line (session-ed-set-point! s1 vid line c))
-     s1]))
+     (define s2 (if line (session-ed-set-point! s1 vid line c) s1))
+     ;; 光标定位也算导航：发 'after-nav（补全菜单据此关单）。
+     (session-run-hooks s2 'after-nav (list vid))]))
 
 (define (session-mouse-scroll s col row delta)
   (sync-layout! s)

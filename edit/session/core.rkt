@@ -26,7 +26,6 @@
          "../core/layout.rkt"
          "../core/focus.rkt"
          "../core/keymap.rkt"
-         "../core/lex.rkt"
          "../core/face.rkt")
 
 (provide
@@ -52,7 +51,7 @@
  ;; 文档槽（opaque 值，随版本 fork；插件状态等）
  define-document-slot session-doc-slot-ref session-doc-slot-set!
  ;; fork 上下文（插件增量状态用）
- fork-ctx-dirty-lines fork-ctx-lines fork-ctx-active session-document-line-count
+ fork-ctx-edits fork-ctx-lines session-document-line-count
  ;; 写回原语（face；插件层用）
  session-doc-face-refill!
  ;; 按 vid 的区间替换（补全接受等）
@@ -183,15 +182,13 @@
 
 ;;; ---------- fork 上下文（供插件增量状态用） ----------
 
-;; 本次编辑的脏行号（升序去重；change 的 post-range 覆盖的行）。
-(define (fork-ctx-dirty-lines ctx)
-  (define h (make-hash))
-  (for ([ch (in-list (fork-ctx-changes ctx))])
+;; 本次编辑的变更描述（**编辑后坐标**）：每条 (list l0 c0 l1 c1)。
+;; l0c0 = after range 起点，l1c1 = after range 终点；中性，不含任何高亮语义。
+(define (fork-ctx-edits ctx)
+  (for/list ([ch (in-list (fork-ctx-changes ctx))])
     (define r (change-post-range ch))
-    (define l0 (point-line (range-start r)))
-    (define l1 (point-line (range-end r)))
-    (for ([l (in-range l0 (add1 l1))]) (hash-set! h l #t)))
-  (sort (hash-keys h) <))
+    (list (point-line (range-start r)) (point-column (range-start r))
+          (point-line (range-end r))   (point-column (range-end r)))))
 
 ;; 给定行号取 (cons line string)，只回合法行（< 新文本行数）。
 (define (fork-ctx-lines ctx nums)
@@ -199,26 +196,6 @@
   (define n (track-length t))
   (for/list ([l (in-list nums)] #:when (< l n))
     (cons l (track-ref t l))))
-
-;; 活动词（本次编辑插入点前一个字符所在的词）→ (list line start end) | #f。
-(define (fork-ctx-active ctx)
-  (define chs (fork-ctx-changes ctx))
-  (cond
-    [(not (= 1 (length chs))) #f]
-    [else
-     (define r (change-post-range (car chs)))
-     (define end (range-end r))
-     (define ln (point-line end))
-     (define col (sub1 (point-column end)))
-     (define t (fork-ctx-new-text ctx))
-     (cond
-       [(or (< col 0) (>= ln (track-length t))) #f]
-       [else
-        (define line (track-ref t ln))
-        (cond
-          [(>= col (string-length line)) #f]
-          [else (define tok (word-token-at line col))
-                (and tok (list ln (car tok) (cdr tok)))])])]))
 
 (define (session-document-line-count s did)
   (track-length (document-text (session-document-handle s did))))

@@ -61,7 +61,7 @@
  ;; 每-editor 命名状态（插件间共享 / 懒建服务）
  session-service-ref session-service-put
  ;; 异步结果阑门（runner 见 plugin/runner.rkt）
- session-await session-deliver session-awaiting? session-awaiting-any?
+ session-await session-deliver session-awaiting? async-wake
  session-prompt-open session-refresh
  session-log session-log! session-log-close session-log-toggle
 

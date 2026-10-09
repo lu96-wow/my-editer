@@ -52,7 +52,7 @@
 
 ;;; ================= place =================
 
-(define (make-place-runner worker-path worker-main [n 1])
+(define (make-place-runner worker-path worker-main [n 1] #:wake [wake #f])
   (define mailbox (make-async-channel))
   (define signal (make-async-channel))
   (define workers
@@ -64,6 +64,7 @@
                   (define msg (place-channel-get w))
                   (async-channel-put mailbox msg)
                   (async-channel-put signal 'ready)
+                  (when wake (async-channel-put wake 'ready))   ; 唤醒 tui 事件循环
                   (loop))))))
   (define ws (list->vector workers))
   (define next-id 0)

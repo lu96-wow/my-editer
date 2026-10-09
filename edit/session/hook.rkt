@@ -9,6 +9,7 @@
 ;;; 目前已接入的通知点：
 ;;;   'after-edit    改文本的原语完成后，args = (vid changes)
 ;;;   'after-insert  仅「直接编辑」（打字 / 删除 / 粘贴 / 剪切）完成后，args = (vid changes)
+;;;   'after-nav     光标导航 / 鼠标定位后，args = (vid)
 ;;;   'focus-changed 焦点改变后，args = (vid | #f)
 ;;;   'document-closed 关文档后，args = (did)
 ;;; 新点由「发通知的一方」决定（见 session/edit.rkt、session/focus.rkt）。

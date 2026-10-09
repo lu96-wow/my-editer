@@ -58,11 +58,14 @@
               #:when (>= (string-length (cadddr tok)) min-length))
      (cadddr tok))))
 
-;; 在已有池里按前缀过滤（排序 + 截断）。每次按键只走这里，够快。
-;; 去掉与前缀一模一样的候选（已打完，不必再提示自己）。
+;; 在已有池里按前缀过滤（按长度升序，短的在前；同长按字典序） + 截断。
+;; 保留与前缀完全相同的候选（如已输入完整的 define 仍在列表里）。
+(define (shorter? a b)
+  (or (< (string-length a) (string-length b))
+      (and (= (string-length a) (string-length b)) (string<? a b))))
+
 (define (filter-pool pool prefix #:limit [limit 500])
   (define matches
     (sort (for/list ([s (in-list pool)] #:when (string-prefix? s prefix)) s)
-          string<?))
-  (define cs (if (> (length matches) limit) (take matches limit) matches))
-  (if (member prefix cs) (remove prefix cs) cs))
+          shorter?))
+  (if (> (length matches) limit) (take matches limit) matches))

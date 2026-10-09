@@ -117,11 +117,6 @@
 
 ;;; ---------- 主循环 ----------
 
-(define (handle-event s ev)
-  (define c (resolve s ev))
-  (define s* (if c (step s c) s))
-  (and (not (session-quit? s*)) s*))
-
 (define (run-tui s0 #:theme [theme default-theme])
   (parameterize ([current-theme theme])
     (with-tui
@@ -132,16 +127,15 @@
                               [height (or rows (session-height s0))]))
        (set-box! prev #f)
        (set-box! prev-size #f)
-       (let loop ([s s])
-         (define s1 (draw! s))
-         (cond
-           ;; 有未决异步：小幅轮询重绘，结果到齐即装（read-event-noblock 不阻塞）。
-           [(session-awaiting-any? s1)
-            (sleep 0.02)
-            (define ev (read-event-noblock))
-            (cond
-              [(event-null? ev) (loop s1)]
-              [else (define s* (handle-event s1 ev)) (when s* (loop s*))])]
-           [else
-            (define s* (handle-event s1 (read-event)))
-            (when s* (loop s*))]))))))
+       ;; 会话放盒里：异步唤醒时在事件循环线程里刷新一帧（read-event 继续等 tui 事件）。
+       (define sbox (box s))
+       (on-source async-wake (lambda (_) (set-box! sbox (draw! (unbox sbox)))))
+       (let loop ()
+         (define s1 (draw! (unbox sbox)))
+         (set-box! sbox s1)
+         (define ev (read-event))
+         (define s2 (unbox sbox))
+         (define c (resolve s2 ev))
+         (define s* (if c (step s2 c) s2))
+         (set-box! sbox s*)
+         (unless (session-quit? s*) (loop)))))))
