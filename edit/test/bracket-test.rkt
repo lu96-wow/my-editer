@@ -25,15 +25,15 @@
 (define did (session-file-did s1 (normalize p)))
 (define s2 (session-prepare-render s1))
 
-;; 该格上括号背景的层（按叠加顺序）。
+;; 该格上括号背景的层（按叠加顺序）。每格只保留最内层，故至多一层。
 (define (bg-levels x row col)
   (for/list ([l (in-list (face-layers (document-face-at (editor-document-handle (session-ed x) did) row col)))]
              #:when (palette-bg? l))
     (palette-bg-index l)))
 
 (check-equal? (bg-levels s2 0 0) '(0))       ; "(" 只在外层
-(check-equal? (bg-levels s2 0 3) '(0 1))     ; "[" 外层 + 内层（内层最后叠加）
-(check-equal? (bg-levels s2 0 4) '(0 1))     ; "b"
+(check-equal? (bg-levels s2 0 3) '(1))       ; "[" 最内层
+(check-equal? (bg-levels s2 0 4) '(1))       ; "b"
 (check-equal? (bg-levels s2 0 8) '(0))       ; ")"
 
 ;; 括号背景重画后，同行词前景仍在（背景/前景分层）
@@ -48,6 +48,12 @@
 (define s4 (session-prepare-render s3))
 (check-equal? (session-view-string s4 vid) "(a  c)\n")
 (check-equal? (bg-levels s4 0 3) '(0))       ; 不再有内层
-(check-true (has-word? s4 0 1))               ; 词前景不受影响
+(check-not-false (has-word? s4 0 1))          ; 词前景不受影响
+
+;; 跨行编辑（插入换行）走全量重建路径，不应崩且深度正确
+(define s5 (session-ed-replace! s4 vid 0 3 0 3 "\n"))
+(define s6 (session-prepare-render s5))
+(check-equal? (session-view-string s6 vid) "(a \n c)\n")
+(check-equal? (bg-levels s6 1 1) '(0))       ; 换行后 "c" 仍在外层内
 
 (delete-file p)

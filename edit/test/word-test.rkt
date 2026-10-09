@@ -14,6 +14,7 @@
          "../feature/api.rkt"
          "../core/face.rkt"
          "../core/path.rkt"
+         "../plugin/builtin/words.rkt"
          "../../core/editor.rkt"
          "../../core/text/document.rkt")
 
@@ -52,4 +53,16 @@
 (define s6 (session-prepare-render (session-insert s5 " ")))
 (check-true (and (word-idx s6 0 0) #t))                    ; "xalpha" 现在上色
 
+;; hash 模式经 session 全链路：无状态、同词同色
+(define p2 (make-temporary-file "wd-hash-~a.rkt"))
+(display-to-file "alpha beta alpha\n" p2 #:exists 'replace)
+(define s7 (parameterize ([word-coloring-method 'hash])
+             (session-prepare-render (session-open-file s (normalize p2)))))
+(define did2 (session-file-did s7 (normalize p2)))
+(define (face-at2 row col)
+  (document-face-at (editor-document-handle (session-ed s7) did2) row col))
+(check-not-false (word-layer (face-at2 0 0)))              ; alpha 有色
+(check-equal? (face-at2 0 0) (face-at2 0 11))              ; 两处 alpha 同色
+
 (delete-file p)
+(delete-file p2)

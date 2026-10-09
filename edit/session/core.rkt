@@ -18,15 +18,16 @@
          "../../core/text/base/point.rkt"
          "../../core/text/base/range.rkt"
          "../../core/text/base/track.rkt"
-         (only-in "../../core/text/base/change.rkt" change-post-range)
+         "../../core/text/base/line.rkt"
          (only-in "../../core/text/slot-dsl.rkt" define-document-slot)
-         (only-in "../../core/text/slots.rkt" fork-ctx-changes fork-ctx-new-text)
+         (only-in "../../core/text/slots.rkt" fork-ctx-changes fork-ctx-new-text fork-ctx-old-text)
          racket/string
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt"
          "../core/keymap.rkt"
-         "../core/face.rkt")
+         "../core/face.rkt"
+         "../core/line-scan.rkt")
 
 (provide
  session-blank
@@ -45,15 +46,15 @@
  session-view-point-column session-view-point->screen session-view-cursor-screen
  session-view-width session-view-height session-view-line-numbers? session-view-string
  session-view-id-list session-document-view-list
- session-document-handle
+ session-document-handle session-document-track
  ;; 保存句柄 / 脏
  session-document-string session-mark-saved session-dirty?
  ;; 文档槽（opaque 值，随版本 fork；插件状态等）
  define-document-slot session-doc-slot-ref session-doc-slot-set!
  ;; fork 上下文（插件增量状态用）
- fork-ctx-edits fork-ctx-lines
+ fork-ctx-changes fork-ctx-old-text fork-ctx-new-text
  ;; 写回原语（face；插件层用）
- session-doc-face!
+ session-doc-face-lines!
  ;; 按 vid 的区间替换（补全接受等）
  session-ed-replace!
  ;; 内核适配
@@ -180,27 +181,39 @@
 (define (session-doc-slot-ref s did sl) (editor-document-slot-ref (session-ed s) did sl))
 (define (session-doc-slot-set! s did sl v) (editor-document-slot-set! (session-ed s) did sl v) s)
 
-;;; ---------- fork 上下文（供插件增量状态用） ----------
+;;; ---------- 文档文本轨（插件 open 用；不物化） ----------
 
-;; 本次编辑的变更描述（**编辑后坐标**）：每条 (list l0 c0 l1 c1)。
-;; l0c0 = after range 起点，l1c1 = after range 终点；中性，不含任何高亮语义。
-(define (fork-ctx-edits ctx)
-  (for/list ([ch (in-list (fork-ctx-changes ctx))])
-    (define r (change-post-range ch))
-    (list (point-line (range-start r)) (point-column (range-start r))
-          (point-line (range-end r))   (point-column (range-end r)))))
+(define (session-document-track s did)
+  (document-text (session-document-handle s did)))
 
-;; 新文本的全部行（vector）。
-(define (fork-ctx-lines ctx)
-  (list->vector (track->list (fork-ctx-new-text ctx))))
+;;; ---------- 写回原语（按行增量） ----------
 
-;;; ---------- 写回原语 ----------
-
-;; 清空整条 face 轨道，再按 fills 逐格 face-compose（lab 式整篇写回）。
-(define (session-doc-face! s did fills)
+;; 只清脏行，再按插件顺序把各插件的层叠加到这些行上。
+;; layers : (listof track)   各插件当前层（行 payload = (vectorof face) | #f）
+;; dirty  : dirty             脏区
+(define (session-doc-face-lines! s did layers dirty)
   (define doc (session-document-handle s did))
-  (document-set-face! doc #f)
-  (document-face-fill-batch* doc fills face-compose)
+  (define text (document-text doc))
+  (define n (track-length text))
+  (define lines (dirty->lines dirty n))
+  ;; 1) 清脏行：连续区间一条 fill 覆盖（半开 (lo,0)..(hi,0) = 覆盖 lo..hi-1 行）。
+  (document-face-fill-batch
+   doc
+   (for/list ([run (in-list (contiguous-runs lines))])
+     (define hi (sub1 (cdr run)))
+     (list (car run) 0 hi (track-line-length text hi) #f)))
+  ;; 2) 按目录顺序叠加各插件层（face-compose 保留分层）。
+  (for ([layer (in-list layers)])
+    (document-face-fill-batch*
+     doc
+     (append* (for/list ([ln (in-list lines)]
+                         #:when (< ln (track-length layer)))
+                (define vec (track-ref layer ln))
+                (if vec
+                    (for/list ([r (in-list (face-runs vec))])
+                      (list ln (car r) ln (cadr r) (caddr r)))
+                    '())))
+     face-compose))
   s)
 
 ;; 把 vid 的 [l0 c0, l1 c1) 替换成 text（选区 + 插入）。

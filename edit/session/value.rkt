@@ -74,7 +74,7 @@
 ;; layers        : (listof layer)  活动输入层（栈顶在前；模态键表优先，落空回落 base）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
-;; plugin-bindings : (hash did -> (listof doc-plugin))       document 插件绑定（插件层）
+;; plugin-bindings : (hash did -> (listof face-plugin))      document 插件绑定（插件层）
 ;; services        : (hash name -> any/c)   每-editor 命名状态（插件间共享 / 懒建服务）
 ;; hooks           : (listof hook)   生命周期通知处理器（见 hook.rkt）
 ;; awaiting        : (hash id -> (list token current? on-result))  异步结果闸门（见 async.rkt）

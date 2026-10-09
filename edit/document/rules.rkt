@@ -8,7 +8,7 @@
 ;;;     apply   : session did path -> session
 ;;;
 ;;; 本模块只提供机制，不含任何默认规则集 —— 「默认规则」由**装配层**注入
-;;; （见 plugin/bind.rkt 的 doc-plugin-rule + app 组装），于是 document 层
+;;; （见 plugin/bind.rkt 的 face-plugin-rule + app 组装），于是 document 层
 ;;; 不依赖任何具体插件实现。
 
 (provide (struct-out rule)
