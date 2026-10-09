@@ -114,10 +114,11 @@
 
 (define (tree-expand t p read-dir)
   (define np (normalize p))
+  ;; 已展开也要保证缓存存在（invalidate 后需重读）。
+  (define t1 (ensure-children t np read-dir))
   (cond
-    [(tree-expanded? t np) t]
-    [else (define t1 (ensure-children t np read-dir))
-          (struct-copy tree-state t1
+    [(tree-expanded? t1 np) t1]
+    [else (struct-copy tree-state t1
             [expanded (hash-set (tree-state-expanded t1) np #t)])]))
 
 (define (tree-collapse t p)

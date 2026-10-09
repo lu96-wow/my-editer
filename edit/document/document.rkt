@@ -15,11 +15,13 @@
          "../command/session.rkt"
          "../command/key.rkt"
          "../core/keymap.rkt"
+         "fs.rkt"
          "rules.rkt")
 
 (provide session-open-file session-save session-save-all
+         session-new-file session-new-dir session-delete-path
          document-install document-keys
-         (struct-out cmd-save) (struct-out cmd-open-file))
+         (struct-out cmd-save) (struct-out cmd-open-file) (struct-out cmd-open-file-path))
 
 ;;; ---------- 工具 ----------
 
@@ -41,9 +43,7 @@
      (define text (if (file-exists? np) (file->string np) ""))
      (define-values (s1 did nvid) (session-add-document s text 40 18 #:name (basename np)))
      (define base (session-edit-vid s1))
-     (define s2 (if (and base (not (eqv? base nvid)))
-                    (session-place-view s1 base axis nvid)
-                    s1))
+     (define s2 (if (eqv? base nvid) s1 (session-place-view s1 base axis nvid)))
      (define s3 (session-set-file s2 did np))
      (define s4 (session-doc-set-keys s3 did keys))        ; 默认命令表（先全部填默认）
      (define s5 (rules-apply rules s4 did np))             ; 规则层（暂空）可覆盖
@@ -71,10 +71,42 @@
   (for/fold ([s s]) ([d (in-list (session-file-dids s))])
     (session-save s d)))
 
+;;; ---------- 文件操作（tree 的新建 / 删除） ----------
+
+(define (path-under? base p)
+  (define b (explode-path (normalize base)))
+  (define q (explode-path (normalize p)))
+  (and (>= (length q) (length b)) (equal? b (take q (length b)))))
+
+;; 在 dir 下新建文件；已存在 → path = #f。→ (values session path|#f)
+(define (session-new-file s dir name)
+  (define p (simplify-path (build-path dir name)))
+  (cond
+    [(or (file-exists? p) (directory-exists? p)) (values s #f)]
+    [else (fs-create-file p) (values s p)]))
+
+(define (session-new-dir s dir name)
+  (define p (simplify-path (build-path dir name)))
+  (cond
+    [(or (file-exists? p) (directory-exists? p)) (values s #f)]
+    [else (fs-create-dir p) (values s p)]))
+
+;; 删除 path；连带关闭其下已打开的文档。→ session
+(define (session-delete-path s path)
+  (define np (normalize path))
+  (define dids (for/list ([d (in-list (session-file-dids s))]
+                          #:when (let ([p (session-file-path s d)])
+                                   (and p (path-under? np p))))
+                 d))
+  (define s1 (for/fold ([s s]) ([d (in-list dids)]) (session-close-document s d)))
+  (fs-delete np)
+  s1)
+
 ;;; ---------- 命令 + 键 + handler ----------
 
 (struct cmd-save () #:transparent)
-(struct cmd-open-file () #:transparent)
+(struct cmd-open-file () #:transparent)          ; 询问路径后再打开
+(struct cmd-open-file-path (path) #:transparent) ; 直接打开（文件树发来）
 
 ;; 本层自带的全局键（assembly 合并进 session.keys）。
 (define document-keys
@@ -85,6 +117,10 @@
   (lambda (s cmd)
     (cond
       [(cmd-save? cmd) (session-save s)]
+      ;; 直接打开（文件树发来）：不再询问路径。
+      [(cmd-open-file-path? cmd)
+       (session-open-file s (cmd-open-file-path-path cmd) #:keys default-keys)]
+      ;; 询问路径后再打开（C-f）。
       [(cmd-open-file? cmd)
        (define iv (session-panel-vid s 'input))
        (if iv

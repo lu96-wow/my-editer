@@ -9,8 +9,20 @@
          racket/path
          "../core/tree-state.rkt")
 
-(provide fs-read-dir)
+(provide fs-read-dir fs-create-file fs-create-dir fs-delete)
 
 (define (fs-read-dir p)
   (for/list ([c (in-list (directory-list p #:build? #t))])
     (direntry c (directory-exists? c) (link-exists? c))))
+
+(define (fs-create-file p)
+  (call-with-output-file p (lambda (out) (void)))
+  p)
+
+(define (fs-create-dir p)
+  (make-directory p)
+  p)
+
+(define (fs-delete p)
+  (cond [(directory-exists? p) (delete-directory/files p)]
+        [else (delete-file p)]))

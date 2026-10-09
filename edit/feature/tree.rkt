@@ -12,10 +12,12 @@
 (require racket/path
          "api.rkt"
          "../core/tree-state.rkt"
-         "../document/fs.rkt")
+         "../document/fs.rkt"
+         "../document/document.rkt")   ; 打开文件（资源命令）
 
 (provide tree-install
          (struct-out cmd-tree-activate) (struct-out cmd-tree-new-file)
+         (struct-out cmd-tree-new-dir) (struct-out cmd-tree-delete)
          (struct-out cmd-tree-refresh) (struct-out cmd-tree-toggle)
          (struct-out cmd-tree-search) (struct-out cmd-tree-search-next)
          (struct-out cmd-tree-search-prev) (struct-out cmd-tree-search-clear))
@@ -63,6 +65,8 @@
 
 (struct cmd-tree-activate      ()     #:transparent)
 (struct cmd-tree-new-file      ()     #:transparent)
+(struct cmd-tree-new-dir       ()     #:transparent)
+(struct cmd-tree-delete        ()     #:transparent)
 (struct cmd-tree-refresh       ()     #:transparent)
 (struct cmd-tree-toggle        ()     #:transparent)
 (struct cmd-tree-search        (text) #:transparent)
@@ -87,7 +91,8 @@
   (cond
     [(not e) s]
     [(entry-dir? e) (set-box! st (tree-toggle (unbox st) (entry-path e) fs-read-dir)) s]
-    [else s]))                              ; 文件打开：下一步接资源
+    ;; 文件：发资源命令；由 document handler 读盘打开（带默认命令表）。
+    [else (step s (cmd-open-file-path (entry-path e)))]))
 
 (define (do-search s st vid text)
   (set-box! st (tree-search-set (unbox st) text fs-read-dir))
@@ -102,13 +107,65 @@
   (session-refresh s)
   (goto-current! s st vid))
 
+;;; ---------- 新建 / 删除（资源操作） ----------
+
+;; 新建目标目录：目录项→自身；文件项→父；无焦点→根。
+(define (target-dir st e)
+  (cond
+    [(not e) (tree-state-root st)]
+    [(entry-dir? e) (entry-path e)]
+    [else (path-only (entry-path e))]))
+
+;; 目录内容变了：丢缓存 → 重读并展开 →（可选）reveal 新路径。
+(define (tree-after-change st dir [reveal #f])
+  (define t (tree-invalidate (unbox st) dir))
+  (define t2 (tree-expand t dir fs-read-dir))
+  (set-box! st (if reveal (tree-reveal t2 reveal fs-read-dir) t2)))
+
+(define (do-new-file s st vid)
+  (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
+  (session-prompt-open s (session-panel-vid s 'input) "new file: "
+    (lambda (s name)
+      (cond
+        [(zero? (string-length name)) s]
+        [else (define-values (s1 p) (session-new-file s dir name))
+              (when p (tree-after-change st dir p))
+              s1]))))
+
+(define (do-new-dir s st vid)
+  (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
+  (session-prompt-open s (session-panel-vid s 'input) "new folder: "
+    (lambda (s name)
+      (cond
+        [(zero? (string-length name)) s]
+        [else (define-values (s1 p) (session-new-dir s dir name))
+              (when p (tree-after-change st dir p))
+              s1]))))
+
+(define (do-delete s st vid)
+  (define e (entry-at-focus s st vid))
+  (cond
+    [(not e) s]
+    [else
+     (define p (entry-path e))
+     (define parent (path-only p))
+     (session-prompt-open s (session-panel-vid s 'input)
+       (format "delete ~a? (y/n) " (entry-name e))
+       (lambda (s ans)
+         (if (and (positive? (string-length ans))
+                  (char=? (char-downcase (string-ref ans 0)) #\y))
+             (let ([s1 (session-delete-path s p)])
+               (tree-after-change st parent)
+               s1)
+             s)))]))
+
 (define (tree-handler st vid)
   (lambda (s cmd)
     (cond
       [(cmd-tree-activate? cmd) (do-activate s st vid)]
-      [(cmd-tree-new-file? cmd)
-       (session-prompt-open s (session-panel-vid s 'input) "new file: "
-                            (lambda (s _name) s))]
+      [(cmd-tree-new-file? cmd) (do-new-file s st vid)]
+      [(cmd-tree-new-dir? cmd)  (do-new-dir s st vid)]
+      [(cmd-tree-delete? cmd)   (do-delete s st vid)]
       ;; 更新能力：外部（命令发起者）决定何时刷新。
       [(cmd-tree-refresh? cmd) (set-box! st (tree-refresh (unbox st) fs-read-dir)) s]
       [(cmd-tree-toggle? cmd) (session-set-visible s vid (not (session-visible? s vid)))]
@@ -126,6 +183,8 @@
    (key 'down)      (cmd-nav 'down #f)
    (key 'enter)     (cmd-tree-activate)
    (key 'n 'ctrl)   (cmd-tree-new-file)
+   (key 'l 'ctrl)   (cmd-tree-new-dir)
+   (key 'backspace) (cmd-tree-delete)
    (key 'escape)    (cmd-tree-toggle)
    (key 'tab)       (cmd-panel-swap)))
 

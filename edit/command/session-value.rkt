@@ -49,7 +49,7 @@
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt)
-         session-new session-assemble
+         session-new session-assemble session-fill-slot
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
          ;; 状态窗口查询（纯）
@@ -69,6 +69,13 @@
 ;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
 (define (session-assemble s layout bindings)
   (struct-copy session s [layout (layout-fill layout bindings)] [bindings bindings]))
+
+;; 运行时补一个 slot（如首次打开文件时填编辑器区）。
+(define (session-fill-slot s slot-id node)
+  (define bnd (hash-set (session-bindings s) slot-id node))
+  (struct-copy session s
+    [layout (layout-fill (session-layout s) bnd)]
+    [bindings bnd]))
 
 ;;; ---------- 展示态（显隐） ----------
 

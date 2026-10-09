@@ -39,13 +39,18 @@
                [layout (layout-split (session-layout s1) vid axis nvid)]))
   (session-show-view s2 nvid))
 
-;; 把已在 editor 里的视图 nvid 放到 vid 旁（分屏）；layout 为空则直接作为根。
+;; 把已在 editor 里的视图 nvid 放到 vid 旁（分屏）；
+;; 没有基准视图（编辑器区为空）则填第一个未解析的 slot；layout 为空则作为根。
 (define (session-place-view s vid axis nvid)
   (cond
     [(not (session-layout s)) (struct-copy session s [layout (leaf nvid)])]
-    [(layout-contains? (session-layout s) vid)
+    [(and vid (layout-contains? (session-layout s) vid))
      (struct-copy session s [layout (layout-split (session-layout s) vid axis nvid)])]
-    [else s]))
+    [else
+     (define slots (layout-slots (session-layout s)))
+     (cond
+       [(pair? slots) (session-fill-slot s (first slots) (leaf nvid))]
+       [else s])]))
 
 ;; 关一个编辑视图（状态窗口不受影响）。
 (define (session-close-view s vid)
