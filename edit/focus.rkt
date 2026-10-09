@@ -8,7 +8,7 @@
 ;;;     focus-restore  还原到历史顶端
 ;;;
 ;;; 焦点只存 target(vid) + stack，不含几何；方向移动的几何由调用方传
-;;; 「已放置的 view 列表」（frame-views），不落进 focus 值。
+;;; 「已放置的 view 列表」（layout-place 的结果），不落进 focus 值。
 
 (require "view.rkt")
 

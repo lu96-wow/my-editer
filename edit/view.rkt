@@ -1,22 +1,17 @@
 #lang racket
 
-;;; edit/view.rkt —— 视图骨架（纯函数）
+;;; edit/view.rkt —— 视图（纯函数）
 ;;;
-;;; 视图 = 已经放到屏幕上的一块「面」：
-;;;     content      看什么（目前是 core 的 document）
-;;;     window       看哪儿（滚动窗口；尺寸不在这里，尺寸 = view 的 w h）
-;;;     selections   选哪儿（core 纯值）
-;;;     x y w h      贴哪儿 / 多大
-;;;     depth        叠多深（命名层，见 layer-*）
-;;;     visible?     参不参与合成
+;;; 视图 = id + did + window + selections + 放置 + 层深。
+;;; **视图不揣 document**，只持 did；凡是要文本的操作都把 document 显式传进来
+;;;（和 core 的 viewport-* 收 track 一样）。
 ;;;
-;;; 纯：本模块所有函数都是 value -> value（或 value -> 派生值）；不 set-box!、不读全局、
-;;; 不碰焦点 / 历史 / 渲染缓存。状态替换与副作用留给命令层。
+;;; 纯：所有函数都是 value -> value（或派生值）；不 set-box!、不读全局。
 ;;;
 ;;; 坐标约定：
-;;;     point    = (buffer 行, 行内字符列)
-;;;     屏幕      = (row, col)，col 是显示列（含行号栏偏移）
-;;;     层深      = 大者在上；同深度按合成列表顺序，靠后在上
+;;;     point   = (buffer 行, 行内字符列)
+;;;     屏幕     = (row, col)，col 是显示列（含行号栏偏移）
+;;;     层深     = 大者在上；同深度按合成列表顺序，靠后在上
 
 (require "../core/text/base/point.rkt"
          "../core/text/base/change.rkt"
@@ -41,16 +36,15 @@
 ;; mode          : 'clip | 'wrap
 ;; line-numbers? : 是否显示行号栏
 
-;; 视图：内容 + 窗口 + 选区 + 放置 + 层深。
-(struct view (id content window selections x y w h depth visible?) #:transparent)
+;; 视图：did + 窗口 + 选区 + 放置 + 层深。（document 由调用方按 did 取）
+(struct view (id did window selections x y w h depth visible?) #:transparent)
 
 ;;; ---------- 层深（命名常量） ----------
-;;; 只表达**视图之间**的叠放；视图**内部**的光标 / 选区由 core 的 overlay 处理，
-;;; 不占独立层，外部不管理光标状态。
+;;; 只表达**视图之间**的叠放；视图**内部**的光标 / 选区由 core 的 overlay 处理。
 
-(define layer-base 0)       ; 普通编辑视图
-(define layer-deco 100)     ; 装饰（分隔线等）
-(define layer-overlay 200)  ; 浮层（补全 / 文档浮窗）
+(define layer-base 0)
+(define layer-deco 100)
+(define layer-overlay 200)
 
 (provide
  (struct-out window)
@@ -77,13 +71,13 @@
 
 ;;; ---------- 构造 ----------
 
-(define (view-open id content x y w h
+(define (view-open id did x y w h
                    #:mode [mode 'clip]
                    #:line-numbers? [line-numbers? #f]
                    #:depth [depth layer-base]
                    #:visible? [visible? #t]
                    #:selections [sels #f])
-  (view id content
+  (view id did
         (window 0 0 0 mode line-numbers?)
         (or sels (selections-one (caret (point 0 0))))
         x y w h depth visible?))
@@ -95,14 +89,14 @@
 (define (view-show v on?)   (struct-copy view v [visible? on?]))
 
 ;; 改尺寸后保持左上锚点（wrap 段号 / clip 左列会随新宽重算）。
-(define (view-resize v w h)
+(define (view-resize v doc w h)
   (cond
     [(and (= w (view-w v)) (= h (view-h v))) v]
     [else
-     (define-values (line dc) (view-anchor v))
-     (view-set-anchor (struct-copy view v [w w] [h h]) line dc)]))
+     (define-values (line dc) (view-anchor v doc))
+     (view-set-anchor (struct-copy view v [w w] [h h]) doc line dc)]))
 
-(define (view-set-rect v x y w h) (view-move (view-resize v w h) x y))
+(define (view-set-rect v doc x y w h) (view-move (view-resize v doc w h) x y))
 
 ;;; ---------- 窗口 ↔ core viewport 桥（内部） ----------
 
@@ -116,39 +110,38 @@
           (viewport-mode vp) (viewport-line-numbers? vp)))
 
 (define (view-with-window v w) (struct-copy view v [window w]))
-(define (view-doc-text v) (document-text (view-content v)))
 
-;;; ---------- 窗口变换 ----------
+;;; ---------- 窗口变换（要 doc） ----------
 
-(define (view-set-mode v m)
+(define (view-set-mode v doc m)
   (cond
     [(eq? m (window-mode (view-window v))) v]
     [else
-     (define-values (line dc) (view-anchor v))
+     (define-values (line dc) (view-anchor v doc))
      (view-set-anchor (view-with-window v (struct-copy window (view-window v) [mode m]))
-                      line dc)]))
+                      doc line dc)]))
 
-(define (view-set-line-numbers v on?)
+(define (view-set-line-numbers v doc on?)
   (cond
     [(eq? on? (window-line-numbers? (view-window v))) v]
     [else
-     (define-values (line dc) (view-anchor v))
+     (define-values (line dc) (view-anchor v doc))
      (view-set-anchor (view-with-window v (struct-copy window (view-window v) [line-numbers? on?]))
-                      line dc)]))
+                      doc line dc)]))
 
-(define (view-scroll v n)
-  (view-with-window v (viewport->window (viewport-scroll (view-doc-text v) (view->viewport v) n))))
+(define (view-scroll v doc n)
+  (view-with-window v (viewport->window (viewport-scroll (document-text doc) (view->viewport v) n))))
 
-(define (view-set-anchor v line dc)
+(define (view-set-anchor v doc line dc)
   (view-with-window v
-    (viewport->window (viewport-set-anchor (view-doc-text v) (view->viewport v) line dc))))
+    (viewport->window (viewport-set-anchor (document-text doc) (view->viewport v) line dc))))
 
-(define (view-anchor v)
-  (viewport-anchor (view-doc-text v) (view->viewport v)))
+(define (view-anchor v doc)
+  (viewport-anchor (document-text doc) (view->viewport v)))
 
-(define (view-ensure v p)
+(define (view-ensure v doc p)
   (view-with-window v
-    (viewport->window (viewport-ensure (view-doc-text v) (view->viewport v) p))))
+    (viewport->window (viewport-ensure (document-text doc) (view->viewport v) p))))
 
 ;;; ---------- 选区 / 导航 ----------
 
@@ -158,8 +151,8 @@
 (define (view-set-selections v sels)
   (struct-copy view v [selections sels]))
 
-(define (view-select-all v)
-  (define t (view-doc-text v))
+(define (view-select-all v doc)
+  (define t (document-text doc))
   (define last (sub1 (track-length t)))
   (struct-copy view v
     [selections (selections-one (selection (point 0 0)
@@ -168,8 +161,8 @@
 ;; dir : 'left 'right 'up 'down 'home 'end
 ;; extend? : #t = 只动 head（扩选）；#f = 收拢成光标（go）
 ;; 移动后把新主光标 ensure 进视口。
-(define (view-nav v dir extend?)
-  (define t (view-doc-text v))
+(define (view-nav v doc dir extend?)
+  (define t (document-text doc))
   (define vp (view->viewport v))
   (define f
     (case dir
@@ -181,11 +174,11 @@
       [(down)  (lambda (p) (point-down t vp p))]
       [else (error 'view-nav "未知方向: ~a（'left 'right 'up 'down 'home 'end）" dir)]))
   (define sels* ((if extend? selections-extend selections-go) (view-selections v) f))
-  (view-ensure (struct-copy view v [selections sels*])
+  (view-ensure (struct-copy view v [selections sels*]) doc
                (selection-head (selections-primary sels*))))
 
-(define (view-clamp v)
-  (define t (view-doc-text v))
+(define (view-clamp v doc)
+  (define t (document-text doc))
   (struct-copy view v
     [selections (selections-clamp (view-selections v) (track-length t)
                                   (curry track-line-length t))]))
@@ -193,29 +186,30 @@
 (define (view-rebase v changes)
   (struct-copy view v [selections (selections-rebase changes (view-selections v))]))
 
-;;; ---------- 投影 / 读 ----------
+;;; ---------- 投影 / 读（要 doc） ----------
 
-(define (view-render v)
-  (render (view-content v) (view->viewport v) (view-selections v)))
+(define (view-render v doc)
+  (render doc (view->viewport v) (view-selections v)))
 
-(define (view-point->screen v p)
-  (viewport-point->screen-position (view-doc-text v) (view->viewport v) p))
+(define (view-point->screen v doc p)
+  (viewport-point->screen-position (document-text doc) (view->viewport v) p))
 
-(define (view-screen->point v row col)
-  (viewport-screen-position->point (view-doc-text v) (view->viewport v) row col))
+(define (view-screen->point v doc row col)
+  (viewport-screen-position->point (document-text doc) (view->viewport v) row col))
 
-;;; ---------- 合成 ----------
+;;; ---------- 合成（doc-of : did -> document） ----------
 
-(define (view-pane v)
-  (pane (view-id v) (view-y v) (view-x v) (view-render v) (view-depth v)))
+(define (view-pane v doc)
+  (pane (view-id v) (view-y v) (view-x v) (view-render v doc) (view-depth v)))
 
-(define (compose views active total-w total-h)
+(define (compose views doc-of active total-w total-h)
   (panes->screen total-w total-h
-                 (for/list ([v (in-list views)] #:when (view-visible? v)) (view-pane v))
+                 (for/list ([v (in-list views)] #:when (view-visible? v))
+                   (view-pane v (doc-of (view-did v))))
                  active))
 
 ;; 增量：旧帧 + 本帧 -> (values 新帧 render selection)
-(define (compose-patch old views active total-w total-h)
-  (define new (compose views active total-w total-h))
+(define (compose-patch old views doc-of active total-w total-h)
+  (define new (compose views doc-of active total-w total-h))
   (define-values (render* selection) (screen-patch old new))
   (values new render* selection))
