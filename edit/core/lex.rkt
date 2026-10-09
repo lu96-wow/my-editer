@@ -14,7 +14,8 @@
 (require racket/string)
 
 (provide symbol-char? ident-start? ident-char?
-         line-tokens scan-words)
+         line-tokens scan-words active-token
+         line-at prefix-at)
 
 (define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
 
@@ -43,3 +44,33 @@
    (for/list ([line (in-list (string-split text "\n"))] [ln (in-naturals)])
      (for/list ([m (in-list (line-tokens line))])
        (list ln (car m) (cdr m) (substring line (car m) (cdr m)))))))
+
+;; 「正在输入的那个词」= 光标前一个字符所在的 token（point = (cons line col) | #f）。
+;; 词高亮 / 关键字都跳过它，等词定下来（敲分隔符 / 移开）再上色，免得边打边换色。
+(define (active-token tokens point)
+  (and point
+       (let ([line (car point)] [col (sub1 (cdr point))])
+         (and (>= col 0)
+              (for/first ([tok (in-list tokens)]
+                          #:when (and (= line (car tok)) (<= (cadr tok) col) (< col (caddr tok))))
+                tok)))))
+
+;; 第 line 行字符串（不含换行；越界 = ""）。
+(define (line-at text line)
+  (define n (string-length text))
+  (define (scan-nl j) (if (or (>= j n) (char=? (string-ref text j) #\newline)) j (scan-nl (add1 j))))
+  (let loop ([i 0] [ln 0])
+    (cond
+      [(= ln line) (substring text i (scan-nl i))]
+      [(>= i n) ""]
+      [else (define nl (scan-nl i)) (loop (add1 nl) (add1 ln))])))
+
+;; 光标左侧的标识符前缀（补全用；无 → ""）。
+(define (prefix-at text line col)
+  (define s (line-at text line))
+  (define n (string-length s))
+  (define c (max 0 (min col n)))
+  (define start
+    (let loop ([i c])
+      (if (and (> i 0) (symbol-char? (string-ref s (sub1 i)))) (loop (sub1 i)) i)))
+  (substring s start c))

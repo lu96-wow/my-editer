@@ -31,24 +31,34 @@
  session-add-document
  session-document-ids session-document-name
  session-view-ids-of session-view-did
- session-view-point-line session-view-point-column
+ session-view-point-line session-view-point-column session-view-string
  session-edit-vid session-focus-vid session-prefix
+ session-width session-height
  session-visible? session-set-visible
 
  ;; 视图结构（显示 / 分屏）
  session-show-view session-split-view
 
- ;; 浮动窗口（瞬态叠加）：构造 + 开关 + 锚点 + 去重
+ ;; 浮动窗口（瞬态叠加）：构造 + 开关 + 几何 + 去重
  float float? float-vid float-keys float-x float-y float-w float-h float-deep
- session-float session-float-open session-float-close session-float-move
+ session-floats session-float session-float-add session-float-remove
+ session-float-open session-float-close session-float-drop
+ session-float-move session-float-set
  session-view-cursor-screen session-view-point->screen
  session-float-dids
+
+ ;; 输入层（模态键表）
+ layer layer-id layer-keys session-layer-push session-layer-pop session-layer-active?
+
+ ;; 内容写回 / 区间替换
+ session-ed-assign! session-ed-replace!
 
  ;; 视图定位（面板内部光标定位）
  session-ed-set-point!
 
- ;; 键 / 命令消费
+ ;; 键 / 命令消费 + 生命周期通知
  session-add-handler
+ hook hook? hook-point hook-proc session-add-hook
  session-prompt-open session-refresh
  session-log session-log! session-log-close session-log-toggle
 

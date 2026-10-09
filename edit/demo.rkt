@@ -14,7 +14,7 @@
          "document/document.rkt"
          "document/lifecycle.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt"
-         "feature/log.rkt")
+         "feature/log.rkt" "feature/completion.rkt")
 
 (provide demo-session)
 
@@ -41,8 +41,10 @@
   (define bnd (hash slot-side side slot-bottom bottom))
 
   (define s10 (document-install (session-assemble s9* layout bnd) edit-keys))
+  ;; 词补全（M-/）
+  (define s11 (completion-install s10))
   ;; 初始焦点：文件树（编辑器区为空，打开文件后再进）
-  (session-set-focus s10 (focus-set (session-focus s10) tree)))
+  (session-set-focus s11 (focus-set (session-focus s11) tree)))
 
 (module+ main
   (require "tui.rkt")

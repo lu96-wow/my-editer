@@ -14,6 +14,7 @@
          "tree.rkt"
          "state.rkt"
          "syntax.rkt"
+         "words.rkt"
          "../core/face.rkt")
 
 (provide (struct-out theme)
@@ -47,7 +48,7 @@
 (define default-theme
   (theme (merge-hashes base-faces tree-faces state-faces)
          base-overlays
-         (merge-hashes syntax-palettes)
+         (merge-hashes syntax-palettes word-palettes)
          default-style))
 
 ;;; ---------- 查询 ----------

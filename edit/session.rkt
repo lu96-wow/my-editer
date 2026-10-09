@@ -14,6 +14,7 @@
 ;;;   session/edit.rkt       操作原语：焦点 / 滚动 / 编辑 / 选区 / 剪贴板
 ;;;   session/mouse.rkt      鼠标
 ;;;   session/plugin.rkt     document 插件绑定 / 写回
+;;;   session/hook.rkt       生命周期通知
 ;;;   session/render.rkt     统一渲染入口（刷面板 + 应用插件）
 ;;;
 ;;; 命令层 / 特性 / 后端 require 本模块即可。
@@ -29,6 +30,7 @@
          "session/edit.rkt"
          "session/mouse.rkt"
          "session/plugin.rkt"
+         "session/hook.rkt"
          "session/render.rkt")
 
 (provide (all-from-out "session/value.rkt"
@@ -42,4 +44,5 @@
                        "session/edit.rkt"
                        "session/mouse.rkt"
                        "session/plugin.rkt"
+                       "session/hook.rkt"
                        "session/render.rkt"))

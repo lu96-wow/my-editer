@@ -39,16 +39,23 @@
      (cond [spec (spec->cmd spec ev)]
            [else (cmd-prefix-cancel)])]
     [else
-     (define vid (session-focus-vid s))
-     (define did (session-focused-did s))
-     (define kms (append (filter values
-                                 (list (and vid (session-vid-keys s vid))
-                                       (and did (session-doc-keys s did))))
-                         (session-keys s)))
-     (and b
-          (for/or ([km (in-list kms)])
-            (define spec (keymap-lookup km b))
-            (and spec (spec->cmd spec ev))))]))
+     ;; 输入层优先（fallthrough）：层表命中就用，落空再走 panel / document / global。
+     (define layer-spec
+       (and b (for/or ([l (in-list (session-layers s))])
+                (keymap-lookup (layer-keys l) b))))
+     (cond
+       [layer-spec (spec->cmd layer-spec ev)]
+       [else
+        (define vid (session-focus-vid s))
+        (define did (session-focused-did s))
+        (define kms (append (filter values
+                                    (list (and vid (session-vid-keys s vid))
+                                          (and did (session-doc-keys s did))))
+                            (session-keys s)))
+        (and b
+             (for/or ([km (in-list kms)])
+               (define spec (keymap-lookup km b))
+               (and spec (spec->cmd spec ev))))])]))
 
 ;;; ---------- 输出：session -> pieces ----------
 

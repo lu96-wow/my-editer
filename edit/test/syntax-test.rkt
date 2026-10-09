@@ -36,11 +36,15 @@
 (define s2 (session-prepare-render s1))
 (define (face-at s row col)
   (document-face-at (editor-document-handle (session-ed s) did) row col))
+;; 现在 words + syntax 都启用，一格可能是 face-stack：找其中的 keyword 层。
+(define (kw-layer f)
+  (for/first ([l (in-list (face-layers f))]
+              #:when (and (palette-color? l) (eq? 'keyword (palette-color-kind l))))
+    l))
 
-(check-pred palette-color? (face-at s2 0 0))              ; "define" 上色
-(check-equal? (palette-color-kind (face-at s2 0 0)) 'keyword)
-(check-false (palette-color? (face-at s2 0 7)))           ; "x" 不上色
-(check-pred palette-color? (face-at s2 1 1))              ; "let" 上色
+(check-true (and (kw-layer (face-at s2 0 0)) #t))         ; "define" 关键字层
+(check-false (kw-layer (face-at s2 0 7)))                 ; "x" 无关键字层
+(check-true (and (kw-layer (face-at s2 1 1)) #t))         ; "let" 关键字层
 
 ;; --- lazy：同句柄不重算；编辑后句柄变 → 重算 ---
 (define before (session-doc-applied s2 did))
@@ -48,8 +52,8 @@
 (check-eq? before (session-doc-applied s3 did))           ; 未变，缓存命中
 (define s4 (session-insert s3 "lambda "))                 ; 光标在 0,0，插入
 (define s5 (session-prepare-render s4))
-(check-pred palette-color? (face-at s5 0 0))              ; 新文本 "lambda" 上色
-(check-equal? (palette-color-index (face-at s5 0 0)) 4)   ; keyword-list 里 lambda 的序号
+(check-true (and (kw-layer (face-at s5 0 0)) #t))         ; 新文本 "lambda" 关键字层
+(check-equal? (palette-color-index (kw-layer (face-at s5 0 0))) 4) ; keyword-list 里 lambda 的序号
 
 ;; --- 非 Racket 文件不绑插件 ---
 (define p2 (make-temporary-file "hl-~a.txt"))

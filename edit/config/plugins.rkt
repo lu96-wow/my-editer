@@ -8,4 +8,4 @@
 (provide enabled-doc-plugin-names)
 
 (define enabled-doc-plugin-names
-  '(syntax))
+  '(words syntax))

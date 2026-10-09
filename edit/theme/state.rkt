@@ -19,4 +19,6 @@
         'buf-view     (style (rgb 140 160 190) #f '())                 ; buffers：视图行
         'buf-dirty    (style (rgb 230 160 90) #f '(bold))              ; buffers：脏文档
         'log          (style (rgb 240 130 130) #f '())                 ; 日志行
-        'input        (style (rgb 20 20 20) (rgb 230 200 90) '())))    ; 输入行
+        'input        (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 输入行
+        'complete     (style (rgb 200 200 200) #f '())              ; 补全候选
+        'complete-selected (style (rgb 20 20 20) (rgb 120 180 240) '())))   ; 补全选中

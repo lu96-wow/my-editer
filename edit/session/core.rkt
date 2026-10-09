@@ -45,6 +45,8 @@
  session-document-string session-mark-saved session-dirty?
  ;; 写回原语（face；插件层用）
  session-doc-face!
+ ;; 按 vid 的区间替换（补全接受等）
+ session-ed-replace!
  ;; 内核适配
  session-ed-close-view session-ed-close-document
  session-ed-assign! session-ed-set-point! session-ed-screen->point
@@ -170,6 +172,13 @@
   (define doc (session-document-handle s did))
   (document-set-face! doc #f)
   (document-face-fill-batch* doc fills face-compose)
+  s)
+
+;; 把 vid 的 [l0 c0, l1 c1) 替换成 text（选区 + 插入）。
+(define (session-ed-replace! s vid l0 c0 l1 c1 text)
+  (define ed (session-ed s))
+  (editor-view-set-selections! ed vid (selections-one (selection (point l0 c0) (point l1 c1))))
+  (editor-view-insert! ed vid text)
   s)
 
 ;;; ---------- 保存句柄 / 脏 ----------

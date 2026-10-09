@@ -21,7 +21,7 @@
  session-close-view session-close-document
  session-hide-view session-hide-focused session-split-focused
  session-toggle-slot session-resize-view
- session-float-open session-float-close)
+ session-float-open session-float-close session-float-drop)
 
 ;; 把 vid 显示到编辑区并聚焦。
 (define (session-show-view s vid)
@@ -193,3 +193,10 @@
      (session-set-focus
       (session-close-document (session-float-remove s vid) did)
       (focus-restore (session-focus s)))]))
+
+;; 关闭（不改焦点）：菜单类浮层用。撤销登记 + 关掉它的文档。
+(define (session-float-drop s vid)
+  (define f (session-float s vid))
+  (cond
+    [(not f) s]
+    [else (session-close-document (session-float-remove s vid) (session-view-did s vid))]))

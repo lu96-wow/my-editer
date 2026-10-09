@@ -37,7 +37,9 @@
    (key 'v 'ctrl)   (cmd-paste)
    ;; 历史
    (key 'z 'ctrl)   (cmd-undo)
-   (key 'y 'ctrl)   (cmd-redo)))
+   (key 'y 'ctrl)   (cmd-redo)
+   ;; 补全（M-/）
+   (key '/ 'alt)    (cmd-complete)))
 
 ;;; ---------- 焦点前缀（C-p 后接方向） ----------
 

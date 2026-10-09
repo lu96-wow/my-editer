@@ -44,10 +44,15 @@
 ;; w h   : 尺寸
 ;; deep  : 深度（大 = 在上；建议远大于布局树）
 
+;; 输入层：短暂接管输入的模态键表（补全菜单等）。栈顶在前；落空则回落到 base（fallthrough）。
+(struct layer (id keys) #:transparent)
+;; id   : symbol
+;; keys : keymap     该层生效的键表
+
 (struct session
   (ed frame bindings editor layout presentations panels floats
    focus edit-vid width height quit? keys rules doc-keymaps handlers prompt prefix docs log
-   plugin-bindings plugin-applied)
+   layers plugin-bindings plugin-applied hooks)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; frame         : 骨架（config 的 slot 树；#f = 未装配）
@@ -67,23 +72,27 @@
 ;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
 ;; prompt        : prompt | #f
 ;; prefix        : prefix | #f   活动前缀（多键序列）
+;; layers        : (listof layer)  活动输入层（栈顶在前；模态键表优先，落空回落 base）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
-;; plugin-bindings : (hash did -> (listof doc-plugin))  document 插件绑定（插件层）
-;; plugin-applied  : (hash did -> handle)               上次写回 fills 的句柄（lazy）
+;; plugin-bindings : (hash did -> (listof doc-plugin))       document 插件绑定（插件层）
+;; plugin-applied  : (hash did -> (cons handle states))      上次写回的句柄 + 各插件 state
+;; hooks           : (listof hook)   生命周期通知处理器（见 hook.rkt）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out float)
+         (struct-out layer)
          session-new session-assemble session-set-frame
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
          session-resize session-quit session-add-handler session-set-rules
+         session-layer-push session-layer-pop session-layer-active?
          ;; 编辑区子树（结构手术用）
          session-editor session-set-editor
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
          ;; 浮动窗口注册表（打开 / 关闭见 structure.rkt）
          session-floats session-float session-float-add session-float-remove
-         session-float-move
+         session-float-move session-float-set
          ;; doc-state 值本身（包装见 doc.rkt）
          session-docs)
 
@@ -94,7 +103,7 @@
    (session ed frame bindings (blank) #f (hash) '() '()
             focus (focus-target focus) width height #f keys '() (hash) '() #f #f
             (doc-state-empty) '()
-            (hash) (hash))))
+            '() (hash) (hash) '())))
 
 ;; 重算派生 layout：把 panel 绑定与编辑区子树填进骨架的 slot。
 (define (session-rebuild s)
@@ -133,6 +142,17 @@
   (struct-copy session s [handlers (cons h (session-handlers s))]))
 (define (session-set-rules s rules) (struct-copy session s [rules rules]))
 
+;;; ---------- 输入层（模态键表，栈顶在前） ----------
+
+(define (session-layer-push s id keys)
+  (struct-copy session s [layers (cons (layer id keys) (session-layers s))]))
+(define (session-layer-pop s id)
+  (struct-copy session s
+    [layers (for/list ([l (in-list (session-layers s))]
+                       #:unless (eq? id (layer-id l))) l)]))
+(define (session-layer-active? s id)
+  (for/or ([l (in-list (session-layers s))]) (eq? id (layer-id l))))
+
 ;;; ---------- 状态窗口查询（纯） ----------
 
 (define (session-panel s vid)
@@ -163,3 +183,9 @@
   (struct-copy session s
     [floats (for/list ([f (in-list (session-floats s))])
               (if (eqv? vid (float-vid f)) (struct-copy float f [x x] [y y]) f))]))
+(define (session-float-set s vid x y w h)
+  (struct-copy session s
+    [floats (for/list ([f (in-list (session-floats s))])
+              (if (eqv? vid (float-vid f))
+                  (struct-copy float f [x x] [y y] [w w] [h h])
+                  f))]))

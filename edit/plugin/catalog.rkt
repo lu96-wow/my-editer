@@ -7,13 +7,15 @@
 ;;; 目录随插件增多而增长；config 永远不认识实现。
 
 (require "registry.rkt"
+         "builtin/words.rkt"
          "builtin/syntax.rkt"
          "../config/plugins.rkt")
 
 (provide plugin-catalog registry-ref plugins-by-names enabled-doc-plugins)
 
 (define plugin-catalog
-  (list syntax-plugin))
+  (list word-plugin
+        syntax-plugin))
 
 (define (registry-ref name)
   (for/first ([p (in-list plugin-catalog)] #:when (eq? name (doc-plugin-name p))) p))
