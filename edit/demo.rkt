@@ -4,6 +4,7 @@
 
 (require "core/layout.rkt" "core/focus.rkt"
          "command/session.rkt" "command/command.rkt" "command/keys.rkt" "command/binding.rkt"
+         "document/document.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt")
 
 (provide demo-session)
@@ -36,7 +37,7 @@
                                                                (cons 2 (slot 'bottom))))))))
 
   (define bnd (hash 'side side 'editor editor 'bottom bottom))
-  (define s10 (session-assemble s9* base bnd))
+  (define s10 (document-install (session-assemble s9* base bnd)))
   ;; 初始焦点 / 活动编辑视图
   (session-set-focus s10 (focus-set (session-focus s10) v1)))
 

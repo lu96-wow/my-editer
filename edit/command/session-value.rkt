@@ -1,0 +1,105 @@
+#lang racket
+
+;;; edit/command/session-value.rkt —— 会话值（纯）
+;;;
+;;; session 及其附属值（presentation / panel / prompt）的定义、构造、纯字段变换，
+;;; 以及 file-map 包装。不 require core editor、不 require tui、不涉及渲染。
+;;;
+;;; 上层：
+;;;   session-core.rkt    core 边界（文档 / 视图 / 几何 / 渲染 / 读）
+;;;   session-window.rkt  状态窗口 + 输入行 + 命令处理链 + refresh
+;;;   session-edit.rkt    焦点 / 结构手术 / 操作原语
+;;;   session-mouse.rkt   鼠标
+;;;   session.rkt         聚合出口
+
+(require "../core/layout.rkt"      ; layout-fill
+         "../core/focus.rkt"       ; focus-target
+         "../core/file-map.rkt")
+
+;;; ---------- 值 ----------
+
+;; 每个 vid 的展示态（core 的 view 不含这两样）。
+(struct presentation (depth visible?) #:transparent)
+(define layer-base 0)
+
+;; 状态窗口：一块停靠视图 + 内容生成函数 + 自己的键表。
+(struct panel (id vid refresh keys group) #:transparent)
+;; id      : symbol
+;; refresh : (session -> (or/c document #f))   ; #f = 不自动刷新（如输入行）
+;; group   : symbol | #f   同一组（同位置）互斥；#f = 独占一行的窗口
+
+;; 输入行状态。
+(struct prompt (vid label on-submit) #:transparent)
+;; on-submit : (session string -> session)
+
+(struct session
+  (ed layout bindings presentations panels
+   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix files saved-handles)
+  #:transparent)
+;; ed            : core editor（文档 / 视图真身仓）
+;; layout        : 布局具体树（装配后 slot 已填；叶子是 vid）
+;; bindings      : slot-id -> node（装配期声明，留作 slot 查询）
+;; presentations : (hash vid -> presentation)
+;; panels        : (listof panel)
+;; focus         : focus（输入焦点）
+;; edit-vid      : 活动编辑视图（粘性）
+;; width height  : 屏幕尺寸
+;; quit?         : 退出标志
+;; keys          : (listof keymap)  全局键表叠
+;; doc-keymaps   : (hash did -> keymap)
+;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
+;; prompt        : prompt | #f
+;; prefix        : prefix | #f   活动前缀（多键序列）
+;; files         : file-map      did <-> path
+;; saved-handles : (hash did -> document-handle)   保存时的文档句柄（脏 = 当前句柄 != saved）
+
+(provide (struct-out session) (struct-out presentation) (struct-out panel) (struct-out prompt)
+         layer-base
+         session-new session-assemble
+         session-presentation session-set-presentation session-set-visible
+         session-focus-vid session-set-prefix
+         ;; file-map 包装
+         session-files session-file-path session-file-did session-file-dids
+         session-set-file session-clear-file
+         ;; 保存句柄（脏标记用）
+         session-saved session-set-saved session-clear-saved)
+
+;;; ---------- 构造 / 纯变换 ----------
+
+(define (session-new ed layout bindings focus width height [keys '()])
+  (session ed layout bindings (hash) '()
+           focus (focus-target focus) width height #f keys (hash) '() #f #f
+           (file-map-empty) (hash)))
+
+;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
+(define (session-assemble s layout bindings)
+  (struct-copy session s [layout (layout-fill layout bindings)] [bindings bindings]))
+
+(define (session-presentation s vid)
+  (hash-ref (session-presentations s) vid (presentation layer-base #t)))
+(define (session-set-presentation s vid p)
+  (struct-copy session s [presentations (hash-set (session-presentations s) vid p)]))
+(define (session-set-visible s vid on?)
+  (session-set-presentation s vid
+    (struct-copy presentation (session-presentation s vid) [visible? on?])))
+
+(define (session-focus-vid s) (focus-target (session-focus s)))
+(define (session-set-prefix s p) (struct-copy session s [prefix p]))
+
+;;; ---------- file-map 包装 ----------
+
+(define (session-file-path s did) (file-map-path (session-files s) did))
+(define (session-file-did s path) (file-map-did (session-files s) path))
+(define (session-file-dids s) (file-map-dids (session-files s)))
+(define (session-set-file s did path)
+  (struct-copy session s [files (file-map-add (session-files s) did path)]))
+(define (session-clear-file s did)
+  (struct-copy session s [files (file-map-remove (session-files s) did)]))
+
+;;; ---------- 保存句柄 ----------
+
+(define (session-saved s did) (hash-ref (session-saved-handles s) did #f))
+(define (session-set-saved s did h)
+  (struct-copy session s [saved-handles (hash-set (session-saved-handles s) did h)]))
+(define (session-clear-saved s did)
+  (struct-copy session s [saved-handles (hash-remove (session-saved-handles s) did)]))
