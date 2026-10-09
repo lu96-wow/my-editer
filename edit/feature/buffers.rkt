@@ -7,12 +7,7 @@
 ;;;
 ;;; 状态窗口（panel）自身不算缓冲区。
 
-(require racket/string
-         "../command/session.rkt"
-         "../command/command.rkt"
-         "../command/key.rkt"
-         "../core/keymap.rkt"
-         "../../core/text/document.rkt")
+(require "api.rkt")
 
 (provide buffers-install
          (struct-out cmd-buffers-activate) (struct-out cmd-buffers-new-view)
@@ -50,21 +45,12 @@
     [else (if (eqv? (brow-did r) (edit-did s)) 'buf-current 'buf-file)]))
 
 (define (buffers-document s model)
-  (define rs (rows s model))
-  (define lines
-    (for/list ([r (in-list rs)])
-      (case (brow-kind r)
-        [(doc) (string-append (if (hash-ref model (brow-did r) #f) "▾ " "▸ ") (brow-name r))]
-        [else (string-append "   " (brow-name r))])))
-  (define text (string-join lines "\n"))
-  (define doc (document-open text))
-  (document-face-fill-batch
-   doc (for/list ([r (in-list rs)] [l (in-list lines)] [i (in-naturals)])
-         (list i 0 i (string-length l) (row-face s r))))
-  (document-readonly-fill-batch
-   doc (for/list ([l (in-list lines)] [i (in-naturals)])
-         (list i 0 i (string-length l) #t)))
-  doc)
+  (panel-doc
+   (for/list ([r (in-list (rows s model))])
+     (list (case (brow-kind r)
+             [(doc) (string-append (if (hash-ref model (brow-did r) #f) "▾ " "▸ ") (brow-name r))]
+             [else (string-append "   " (brow-name r))])
+           (row-face s r)))))
 
 ;; 内容（行 + 焦点 / 活动视图）没变就返回 #f，避免每帧重装。
 (define (make-refresh model last)

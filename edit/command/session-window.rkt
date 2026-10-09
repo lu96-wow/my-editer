@@ -8,7 +8,6 @@
 (require "session-value.rkt"
          "session-core.rkt"
          "session-focus.rkt"
-         "../../core/text/document.rkt"
          "../core/focus.rkt")
 
 (provide
@@ -62,10 +61,7 @@
 ;;; ---------- 输入行 ----------
 
 (define (prompt-document label)
-  (define doc (document-open label))
-  (when (positive? (string-length label))
-    (document-readonly-fill-batch doc (list (list 0 0 0 (string-length label) #t))))
-  doc)
+  (panel-doc (list (list label #f))))
 
 (define (session-prompt-open s vid label on-submit)
   (define s1 (session-ed-assign! s vid (prompt-document label)))

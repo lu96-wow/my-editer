@@ -13,7 +13,9 @@
 
 (require "session-value.rkt"
          "../../core/editor.rkt"
+         "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
+         racket/string
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt"
@@ -21,6 +23,8 @@
 
 (provide
  session-blank
+ ;; 面板文档构造（面板 = 只读、带 face 的文档）
+ panel-doc
  ;; 几何 / 渲染
  session-views session-rectangles session-screen session-patch sync-layout!
  session-focused-did
@@ -46,6 +50,22 @@
 
 (define (session-blank width height [keys '()])
   (session-new (make-blank-editor) #f #f (focus-new #f) width height keys))
+
+;;; ---------- 面板文档 ----------
+
+;; rows : (listof (list 文本 face|#f))
+;; → 只读文档：逐行文本 + face（face=#f 的行用默认）。所有面板内容生成共用这一处。
+(define (panel-doc rows)
+  (define lines (for/list ([r (in-list rows)]) (first r)))
+  (define doc (document-open (string-join lines "\n")))
+  (document-face-fill-batch
+   doc (for/list ([r (in-list rows)] [l (in-list lines)] [i (in-naturals)]
+                  #:when (second r))
+         (list i 0 i (string-length l) (second r))))
+  (document-readonly-fill-batch
+   doc (for/list ([l (in-list lines)] [i (in-naturals)])
+         (list i 0 i (string-length l) #t)))
+  doc)
 
 ;;; ---------- 几何 ----------
 

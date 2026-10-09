@@ -5,10 +5,7 @@
 ;;; label 作为只读前缀，用户输入在后；Enter 提交 / Escape 取消。
 ;;; 打开走 session-prompt-open（feature 调用），提交 / 取消是基础命令。
 
-(require "../command/session.rkt"
-         "../command/command.rkt"
-         "../command/key.rkt"
-         "../core/keymap.rkt")
+(require "api.rkt")
 
 (provide prompt-install)
 

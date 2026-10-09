@@ -8,11 +8,7 @@
 (require racket/string
          racket/path
          racket/file
-         "../command/session.rkt"
-         "../command/command.rkt"
-         "../command/key.rkt"
-         "../core/keymap.rkt"
-         "../../core/text/document.rkt")
+         "api.rkt")
 
 (provide tree-install
          (struct-out cmd-tree-activate) (struct-out cmd-tree-new-file)
@@ -50,21 +46,12 @@
   (and (< line (length es)) (list-ref es line)))
 
 (define (tree-document m)
-  (define es (entries m))
-  (define lines
-    (for/list ([e (in-list es)])
-      (string-append (make-string (* 2 (entry-depth e)) #\space)
-                     (entry-name e)
-                     (if (entry-dir? e) "/" ""))))
-  (define doc (document-open (string-join lines "\n")))
-  (document-face-fill-batch
-   doc (for/list ([e (in-list es)] [l (in-list lines)] [i (in-naturals)])
-         (list i 0 i (string-length l)
-               (cond [(entry-dir? e) 'tree-dir] [else 'tree-file]))))
-  (document-readonly-fill-batch
-   doc (for/list ([l (in-list lines)] [i (in-naturals)])
-         (list i 0 i (string-length l) #t)))
-  doc)
+  (panel-doc
+   (for/list ([e (in-list (entries m))])
+     (list (string-append (make-string (* 2 (entry-depth e)) #\space)
+                          (entry-name e)
+                          (if (entry-dir? e) "/" ""))
+           (if (entry-dir? e) 'tree-dir 'tree-file)))))
 
 (define (make-refresh m last)
   (lambda (s)

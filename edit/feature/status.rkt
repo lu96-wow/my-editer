@@ -5,10 +5,8 @@
 ;;; 显示**活动编辑视图**（粘性 edit-vid）：文档名 + 行:列。只读。
 ;;; 每帧由 panel refresh 重生成（内容没变则跳过）。
 
-(require "../command/session.rkt"
-         "../core/keymap.rkt"
-         "../../core/text/base/point.rkt"
-         "../../core/text/document.rkt")
+(require "api.rkt"
+         "../../core/text/base/point.rkt")
 
 (provide status-install)
 
@@ -33,7 +31,7 @@
                    (lambda (s)
                      (define t (status-text s))
                      (cond [(equal? t (unbox last)) #f]
-                           [else (set-box! last t) (document-open t)]))
+                           [else (set-box! last t) (panel-doc (list (list t #f)))]))
                    #f      ; group
                    #f))
   (values (session-add-panel s1 p) vid))
