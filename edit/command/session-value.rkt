@@ -57,6 +57,8 @@
          session-new session-assemble
          session-presentation session-set-presentation session-set-visible
          session-focus-vid session-set-prefix
+         ;; 状态窗口查询（纯）
+         session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
          ;; file-map 包装 + 保存句柄（doc-state）
          session-docs session-file-path session-file-did session-file-dids
          session-set-file session-clear-file
@@ -83,6 +85,20 @@
 
 (define (session-focus-vid s) (focus-target (session-focus s)))
 (define (session-set-prefix s p) (struct-copy session s [prefix p]))
+
+;;; ---------- 状态窗口查询（纯） ----------
+
+(define (session-panel s vid)
+  (for/first ([p (in-list (session-panels s))] #:when (eqv? vid (panel-vid p))) p))
+(define (session-panel-vid s id)
+  (for/first ([p (in-list (session-panels s))] #:when (eq? id (panel-id p))) (panel-vid p)))
+(define (session-vid-keys s vid)
+  (define p (session-panel s vid))
+  (and p (panel-keys p)))
+(define (session-dock-vid? s vid)
+  (and vid (and (session-panel s vid) #t)))
+(define (session-add-panel s p)
+  (struct-copy session s [panels (append (session-panels s) (list p))]))
 
 ;;; ---------- file-map 包装 ----------
 

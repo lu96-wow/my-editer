@@ -1,17 +1,19 @@
 #lang racket
 
-;;; edit/command/session-core.rkt —— core 边界：文档 / 视图 / 几何 / 渲染 / 读
+;;; edit/command/session-core.rkt —— core 边界：文档 / 视图 / 几何 / 渲染 / 读 + 内核适配
 ;;;
-;;; 唯一（连同 sibling 模块）碰 core 的层。提供会话真身仓的读写桥：
-;;;     · 文档 / 视图结构：open / add-document / add-view
-;;;     · 读：document ids / view ids / name / did / point
-;;;     · 文档级键表（命令挂 document）
-;;;     · 几何：layout-place -> placed / rectangle
-;;;     · 渲染：core 合成 + 增量
-;;;     · session-blank（空 editor）
+;;; **唯一 require core/editor 的模块**。其余 session-* / feature / document 都只走本模块的
+;;; 适配函数（session-ed-* / session-view-* / session-document-*），不直接碰 core。
+;;;
+;;; 提供：
+;;;     · session-blank
+;;;     · 几何：layout-place -> placed / rectangle；渲染：core 合成 + 增量
+;;;     · 文档 / 视图结构 + 读 + 文档键表
+;;;     · 内核适配：把 core 的编辑 / 导航 / 剪贴板 / 命中换算包成 session 变换
 
 (require "session-value.rkt"
          "../../core/editor.rkt"
+         "../../core/text/base/point.rkt"
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt"
@@ -26,10 +28,19 @@
  session-open-document session-add-document session-add-view
  session-document-ids session-view-ids-of session-document-name
  session-view-did session-view-point session-view-point-line
+ session-view-width session-view-height session-view-string
+ session-view-id-list session-document-view-list
  ;; 文档级键表
  session-doc-keys session-doc-add-key session-doc-set-keys
  ;; 保存句柄 / 脏
- session-document-string session-mark-saved session-dirty?)
+ session-document-string session-mark-saved session-dirty?
+ ;; 内核适配
+ session-ed-close-view session-ed-close-document
+ session-ed-assign! session-ed-set-point! session-ed-screen->point
+ session-ed-scroll! session-ed-nav!
+ session-ed-select-all! session-ed-copy! session-ed-cut! session-ed-paste!
+ session-ed-insert! session-ed-delete! session-ed-backspace!
+ session-ed-undo! session-ed-redo!)
 
 ;;; ---------- 空会话 ----------
 
@@ -101,16 +112,12 @@
 (define (session-view-did s vid) (editor-view-document-id (session-ed s) vid))
 (define (session-view-point s vid) (editor-view-point (session-ed s) vid))
 (define (session-view-point-line s vid) (editor-view-point-line (session-ed s) vid))
+(define (session-view-width s vid) (editor-view-width (session-ed s) vid))
+(define (session-view-height s vid) (editor-view-height (session-ed s) vid))
+(define (session-view-string s vid) (editor-view-string (session-ed s) vid))
+(define (session-view-id-list s) (editor-view-id-list (session-ed s)))
+(define (session-document-view-list s did) (editor-document-view-list (session-ed s) did))
 (define (session-document-string s did) (editor-document-string (session-ed s) did))
-
-;; 记录「已保存」句柄；核心文档不可变，之后编辑会产生新句柄 → 脏。
-(define (session-mark-saved s did)
-  (session-set-saved s did (editor-document-handle (session-ed s) did)))
-
-;; 脏 = 有 saved 且当前句柄 != saved（undo 回保存点若命中同一快照会自动变干净）。
-(define (session-dirty? s did)
-  (define saved (session-saved s did))
-  (and saved (not (eq? (editor-document-handle (session-ed s) did) saved))))
 
 ;;; ---------- 文档级键表 ----------
 
@@ -123,3 +130,50 @@
 ;; 整表替换（规则层用：文件打开匹配命令表）。
 (define (session-doc-set-keys s did km)
   (struct-copy session s [doc-keymaps (hash-set (session-doc-keymaps s) did km)]))
+
+;;; ---------- 保存句柄 / 脏 ----------
+
+;; 记录「已保存」句柄；核心文档不可变，之后编辑会产生新句柄 → 脏。
+(define (session-mark-saved s did)
+  (session-set-saved s did (editor-document-handle (session-ed s) did)))
+
+;; 脏 = 有 saved 且当前句柄 != saved（undo 回保存点若命中同一快照会自动变干净）。
+(define (session-dirty? s did)
+  (define saved (session-saved s did))
+  (and saved (not (eq? (editor-document-handle (session-ed s) did) saved))))
+
+;;; ---------- 内核适配（唯一碰 core/editor 的地方） ----------
+
+(define (session-ed-close-view s vid) (editor-close-view (session-ed s) vid) s)
+(define (session-ed-close-document s did) (editor-close-document (session-ed s) did) s)
+
+(define (session-ed-assign! s vid doc)
+  (editor-view-assign! (session-ed s) vid doc) s)
+(define (session-ed-set-point! s vid line col)
+  (editor-view-set-point! (session-ed s) vid (point line col)) s)
+(define (session-ed-screen->point s vid row col)
+  (editor-view-screen-position->point (session-ed s) vid row col))
+
+(define (session-ed-scroll! s vid n) (editor-view-scroll! (session-ed s) vid n) s)
+(define (session-ed-nav! s vid dir extend?)
+  (define ed (session-ed s))
+  (case dir
+    [(left)  (editor-view-left! ed vid extend?)]
+    [(right) (editor-view-right! ed vid extend?)]
+    [(up)    (editor-view-up! ed vid extend?)]
+    [(down)  (editor-view-down! ed vid extend?)]
+    [(home)  (editor-view-home! ed vid extend?)]
+    [(end)   (editor-view-end! ed vid extend?)]
+    [else (error 'session-ed-nav "未知方向: ~a（left/right/up/down/home/end）" dir)])
+  s)
+
+(define (session-ed-select-all! s vid) (editor-view-select-all! (session-ed s) vid) s)
+(define (session-ed-copy! s vid) (editor-view-copy! (session-ed s) vid) s)
+(define (session-ed-cut! s vid) (editor-view-cut! (session-ed s) vid) s)
+(define (session-ed-paste! s vid) (editor-view-paste! (session-ed s) vid) s)
+
+(define (session-ed-insert! s vid text) (editor-view-insert! (session-ed s) vid text) s)
+(define (session-ed-delete! s vid) (editor-view-delete! (session-ed s) vid) s)
+(define (session-ed-backspace! s vid) (editor-view-backspace! (session-ed s) vid) s)
+(define (session-ed-undo! s vid) (editor-view-undo! (session-ed s) vid) s)
+(define (session-ed-redo! s vid) (editor-view-redo! (session-ed s) vid) s)

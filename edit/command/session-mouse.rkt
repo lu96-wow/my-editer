@@ -3,12 +3,11 @@
 ;;; edit/command/session-mouse.rkt —— 鼠标（命中 / 点击定位 / 滚轮）
 ;;;
 ;;; 屏幕坐标命中已放置视图；点击 = 聚焦 + 定位光标；滚轮 = 滚命中视图（不改焦点）。
+;;; 走 session-core 的内核适配，不直接碰 core/editor。
 
 (require "session-value.rkt"
          "session-core.rkt"
-         "session-window.rkt"
-         "../../core/editor.rkt"
-         "../../core/text/base/point.rkt"
+         "session-focus.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt")
 
@@ -32,13 +31,12 @@
      (define vid (placed-vid p))
      (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
      (define-values (line c)
-       (editor-view-screen-position->point (session-ed s) vid
-                                           (- row (placed-y p)) (- col (placed-x p))))
-     (when line (editor-view-set-point! (session-ed s) vid (point line c)))
+       (session-ed-screen->point s1 vid (- row (placed-y p)) (- col (placed-x p))))
+     (when line (session-ed-set-point! s1 vid line c))
      s1]))
 
 (define (session-mouse-scroll s col row delta)
   (sync-layout! s)
   (define vid (session-view-at s col row))
-  (when vid (editor-view-scroll! (session-ed s) vid delta))
+  (when vid (session-ed-scroll! s vid delta))
   s)
