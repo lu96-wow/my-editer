@@ -17,8 +17,10 @@
                   session-resize session-quit session-nav
                   session-insert session-delete session-backspace
                   session-undo session-redo
+                  session-select-all session-copy session-cut session-paste
                   session-prompt-submit session-prompt-cancel
-                  session-panel-swap session-handlers))
+                  session-panel-swap session-handlers
+                  session-set-prefix))
 
 ;;; ---------- 基础命令 ----------
 
@@ -36,24 +38,42 @@
 (struct cmd-backspace () #:transparent)
 (struct cmd-undo () #:transparent)
 (struct cmd-redo () #:transparent)
+(struct cmd-select-all () #:transparent)
+(struct cmd-copy () #:transparent)
+(struct cmd-cut () #:transparent)
+(struct cmd-paste () #:transparent)
 
 ;; 输入行
 (struct cmd-prompt-submit () #:transparent)
 (struct cmd-prompt-cancel () #:transparent)
+
+;; 前缀（多键序列）
+(struct cmd-prefix (value) #:transparent)        ; value : prefix
+(struct cmd-prefix-cancel () #:transparent)
 
 (provide (struct-out cmd-focus) (struct-out cmd-scroll) (struct-out cmd-nav)
          (struct-out cmd-toggle) (struct-out cmd-panel-swap)
          (struct-out cmd-quit) (struct-out cmd-resize)
          (struct-out cmd-insert) (struct-out cmd-delete) (struct-out cmd-backspace)
          (struct-out cmd-undo) (struct-out cmd-redo)
+         (struct-out cmd-select-all) (struct-out cmd-copy) (struct-out cmd-cut) (struct-out cmd-paste)
          (struct-out cmd-prompt-submit) (struct-out cmd-prompt-cancel)
+         (struct-out cmd-prefix) (struct-out cmd-prefix-cancel)
          step)
 
-;;; ---------- 派发：feature handler 链 -> 基础命令 ----------
+;;; ---------- 派发：前缀 / feature handler 链 / 基础命令 ----------
 
 (define (step s cmd)
-  (or (for/or ([h (in-list (session-handlers s))]) (h s cmd))
-      (step-base s cmd)))
+  (cond
+    ;; 选中前缀：进入下一层键表（可嵌套）
+    [(cmd-prefix? cmd) (session-set-prefix s (cmd-prefix-value cmd))]
+    ;; 取消 / 未命中：清空前缀
+    [(cmd-prefix-cancel? cmd) (session-set-prefix s #f)]
+    ;; 其余命令：先清前缀，再走 handler 链 -> 基础命令
+    [else
+     (define s1 (session-set-prefix s #f))
+     (or (for/or ([h (in-list (session-handlers s1))]) (h s1 cmd))
+         (step-base s1 cmd))]))
 
 (define (step-base s cmd)
   (cond
@@ -69,6 +89,10 @@
     [(cmd-backspace? cmd) (session-backspace s)]
     [(cmd-undo? cmd)      (session-undo s)]
     [(cmd-redo? cmd)      (session-redo s)]
+    [(cmd-select-all? cmd) (session-select-all s)]
+    [(cmd-copy? cmd)      (session-copy s)]
+    [(cmd-cut? cmd)       (session-cut s)]
+    [(cmd-paste? cmd)     (session-paste s)]
     [(cmd-prompt-submit? cmd) (session-prompt-submit s)]
     [(cmd-prompt-cancel? cmd) (session-prompt-cancel s)]
     [else s]))

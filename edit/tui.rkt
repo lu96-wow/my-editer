@@ -19,18 +19,31 @@
 
 ;;; ---------- 输入：event -> cmd ----------
 
+(define (spec->cmd spec ev)
+  (cond [(prefix? spec) (cmd-prefix spec)]
+        [(procedure? spec) (spec ev)]
+        [else spec]))
+
 (define (resolve s ev)
   (define b (event->binding ev))
-  (define vid (session-focus-vid s))
-  (define did (session-focused-did s))
-  (define kms (append (filter values
-                              (list (and vid (session-vid-keys s vid))
-                                    (and did (session-doc-keys s did))))
-                      (session-keys s)))
-  (and b
-       (for/or ([km (in-list kms)])
-         (define spec (keymap-lookup km b))
-         (and spec (if (procedure? spec) (spec ev) spec)))))
+  (define pfx (session-prefix s))
+  (cond
+    ;; 前缀激活：只在当前前缀键表里查；未命中则取消
+    [pfx
+     (define spec (and b (keymap-lookup (prefix-keymap pfx) b)))
+     (cond [spec (spec->cmd spec ev)]
+           [else (cmd-prefix-cancel)])]
+    [else
+     (define vid (session-focus-vid s))
+     (define did (session-focused-did s))
+     (define kms (append (filter values
+                                 (list (and vid (session-vid-keys s vid))
+                                       (and did (session-doc-keys s did))))
+                         (session-keys s)))
+     (and b
+          (for/or ([km (in-list kms)])
+            (define spec (keymap-lookup km b))
+            (and spec (spec->cmd spec ev))))]))
 
 ;;; ---------- 输出：session -> pieces ----------
 

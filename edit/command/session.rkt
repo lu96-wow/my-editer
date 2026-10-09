@@ -43,7 +43,7 @@
 
 (struct session
   (ed layout bindings presentations panels
-   focus edit-vid width height quit? keys doc-keymaps handlers prompt)
+   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; layout        : 布局定义树（leaf(vid)/slot/split/stack/at）
@@ -58,6 +58,7 @@
 ;; doc-keymaps   : (hash did -> keymap)
 ;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
 ;; prompt        : prompt | #f
+;; prefix        : prefix | #f   活动前缀（多键序列）
 
 (provide (struct-out session) (struct-out presentation) (struct-out panel) (struct-out prompt)
          layer-base
@@ -65,6 +66,7 @@
          ;; 派生 / 渲染
          session-views session-rectangles session-screen session-patch session-refresh
          session-focus-vid session-edit-vid session-focused-did session-set-focus
+         session-prefix session-set-prefix
          ;; 展示态
          session-presentation session-set-presentation session-set-visible
          ;; 状态窗口
@@ -84,13 +86,14 @@
          ;; 操作原语（命令需要的就是这几个）
          session-focus-move session-scroll session-toggle-slot
          session-resize session-quit session-nav
+         session-select-all session-copy session-cut session-paste
          session-insert session-delete session-backspace
          session-undo session-redo)
 
 ;; 建一个空 session（layout / bindings 可先给 #f，之后再 struct-copy 填）。
 (define (session-new ed layout bindings focus width height [keys '()])
   (session ed layout bindings (hash) '()
-           focus (focus-target focus) width height #f keys (hash) '() #f))
+           focus (focus-target focus) width height #f keys (hash) '() #f #f))
 
 ;; 从头建一个空 session（内置空 editor；文档 / 视图随后用 session-open-document 加）。
 (define (session-blank width height [keys '()])
@@ -174,6 +177,8 @@
   (define vid (focus-target f))
   (define edit (if (and vid (not (session-dock-vid? s vid))) vid (session-edit-vid s)))
   (struct-copy session s [focus f] [edit-vid edit]))
+
+(define (session-set-prefix s p) (struct-copy session s [prefix p]))
 
 ;;; ---------- 渲染 ----------
 
@@ -373,6 +378,19 @@
 
 (define (session-resize s w h) (struct-copy session s [width w] [height h]))
 (define (session-quit s) (struct-copy session s [quit? #t]))
+
+;; 选区 / 剪贴板（转发 core）
+(define (session-select-all s)
+  (sync-layout! s)
+  (with-focus-vid s (lambda (vid) (editor-view-select-all! (session-ed s) vid))))
+(define (session-copy s)
+  (with-focus-vid s (lambda (vid) (editor-view-copy! (session-ed s) vid))))
+(define (session-cut s)
+  (sync-layout! s)
+  (with-focus-vid s (lambda (vid) (editor-view-cut! (session-ed s) vid))))
+(define (session-paste s)
+  (sync-layout! s)
+  (with-focus-vid s (lambda (vid) (editor-view-paste! (session-ed s) vid))))
 
 (define (session-insert s text)
   (sync-layout! s)

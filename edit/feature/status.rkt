@@ -6,6 +6,7 @@
 ;;; 每帧由 panel refresh 重生成（内容没变则跳过）。
 
 (require "../command/session.rkt"
+         "../core/keymap.rkt"
          "../../core/text/base/point.rkt"
          "../../core/text/document.rkt")
 
@@ -13,13 +14,16 @@
 
 (define (status-text s)
   (define vid (session-edit-vid s))
-  (cond
-    [(not vid) " edit"]
-    [else
-     (define did (session-view-did s vid))
-     (define name (session-document-name s did))
-     (define p (session-view-point s vid))
-     (format " ~a   ~a:~a" name (add1 (point-line p)) (add1 (point-column p)))]))
+  (define body
+    (cond
+      [(not vid) " edit"]
+      [else
+       (define did (session-view-did s vid))
+       (define name (session-document-name s did))
+       (define p (session-view-point s vid))
+       (format " ~a   ~a:~a" name (add1 (point-line p)) (add1 (point-column p)))]))
+  (define pfx (session-prefix s))
+  (string-append body (if pfx (format "  [~a]" (prefix-label pfx)) "")))
 
 ;; → (values session vid)
 (define (status-install s width height)

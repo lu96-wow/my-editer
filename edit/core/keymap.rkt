@@ -5,15 +5,21 @@
 ;;; spec 可以是
 ;;;     · 一个 cmd 值（静态绑定）
 ;;;     · 一个 (event -> cmd) 过程（需要事件数据的绑定，如 resize / 文本 / 鼠标）
+;;;     · 一个 prefix（多键序列的前缀，如 C-p 后接方向）
 ;;;
 ;;; 组合：keytable-merge 后面的覆盖前面的；session 里可放一叠键表（上下文），
 ;;; 查找自上而下，第一个命中的赢。
 
 
-(provide (struct-out keymap) kbd keymap-lookup keymap-merge keymap-add)
+(provide (struct-out keymap) (struct-out prefix)
+         kbd keymap-lookup keymap-merge keymap-add)
 
 (struct keymap (bindings) #:transparent)
 ;; bindings : (hash binding -> spec)
+
+;; 多键前缀：命中后把 keymap 设为下一层的活动键表（可嵌套）。
+(struct prefix (label keymap) #:transparent)
+;; label  : string   显示用（如 "C-p"）
 
 ;; 便捷构造：(kbd (key 'a 'ctrl) spec  binding spec …)
 (define (kbd . kvs)
