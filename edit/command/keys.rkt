@@ -9,7 +9,8 @@
 ;;; 状态窗口自带键表（panel keys）优先于 document / global。
 
 (require "key.rkt" "../core/keymap.rkt" "command.rkt"
-         "tables.rkt")
+         "tables.rkt"
+         "../core/ids.rkt")
 
 (provide base-keys global-keys
          (all-from-out "tables.rkt"))
@@ -18,7 +19,7 @@
   (kbd
    (key 'q 'ctrl) (cmd-quit)
    (key 'd 'ctrl) (cmd-close)
-   (key 'b 'ctrl) (cmd-toggle 'side)
+   (key 'b 'ctrl) (cmd-toggle slot-side)
    (key 'l 'ctrl) (cmd-log-toggle)
    (key 'tab)     (cmd-panel-swap)
    ;; 文件命令（cmd-save / cmd-open-file）由 document 层自带 document-keys，assembly 合并

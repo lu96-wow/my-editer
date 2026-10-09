@@ -17,6 +17,7 @@
          "../command/key.rkt"
          "../core/keymap.rkt"
          "../core/path.rkt"
+         "../core/ids.rkt"
          "fs.rkt"
          "rules.rkt")
 
@@ -118,7 +119,7 @@
        (session-open-file s (cmd-open-file-path-path cmd) #:keys default-keys)]
       ;; 询问路径后再打开（C-f）。
       [(cmd-open-file? cmd)
-       (define iv (session-panel-vid s 'input))
+       (define iv (session-panel-vid s panel-input))
        (if iv
            (session-prompt-open s iv "find file: "
                                 (lambda (s path)

@@ -27,12 +27,13 @@
 (define (status-install s width height)
   (define-values (s1 _did vid) (session-add-document s "" width height #:name "*status*"))
   (define last (box #f))
-  (define p (panel 'status vid
+  (define p (panel panel-status vid
                    (lambda (s)
                      (define t (status-text s))
                      (cond [(equal? t (unbox last)) #f]
                            [else (set-box! last t) (panel-doc (list (list t #f)))]))
-                   #f      ; keys
-                   'bottom ; group（与 input / log 同位置互斥）
+                   #f           ; keys
+                   slot-bottom  ; 与 input / log 同区域互斥
+                   'height
                    1))
   (values (session-add-panel s1 p) vid))

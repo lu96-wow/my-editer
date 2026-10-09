@@ -13,6 +13,7 @@
          "../session.rkt"
          "../command/command.rkt"
          "../core/keymap.rkt"
+         "../core/ids.rkt"
          "document.rkt")
 
 (provide session-close-doc session-close-view-checked session-quit-confirm
@@ -39,7 +40,7 @@
     [else
      (define did (first remaining))
      (define more (rest remaining))
-     (session-prompt-open s (session-panel-vid s 'input)
+     (session-prompt-open s (session-panel-vid s panel-input)
        (format "save ~a? (y/n/all/nall) " (session-document-name s did))
        (lambda (s ans)
          (case (quit-answer ans)
@@ -69,7 +70,7 @@
   (cond
     [(not (session-dirty? s did)) (session-close-document s did)]
     [else
-     (session-prompt-open s (session-panel-vid s 'input)
+     (session-prompt-open s (session-panel-vid s panel-input)
        (format "save ~a? (y/n) " (session-document-name s did))
        (lambda (s ans)
          (case (yes-no ans)

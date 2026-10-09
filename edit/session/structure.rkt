@@ -4,7 +4,7 @@
 ;;;
 ;;; 显示 / 分屏 / 关闭 / 显隐 / 尺寸。
 ;;; 编辑区手术全部在 **editor 子树**上做（session-set-editor），骨架 frame 不动；
-;;; 面板尺寸手术按 session-binding-of 找到所属 slot 的绑定再改。
+;;; 面板区域的尺寸在骨架里，见 session/bottom.rkt 的 session-fit-panel!。
 ;;; 都走 core.rkt 的内核适配，不直接碰 core/editor。
 
 (require "value.rkt"
@@ -19,7 +19,7 @@
  session-show-view session-split-view session-place-view
  session-close-view session-close-document
  session-hide-view session-hide-focused session-split-focused
- session-toggle-slot session-resize-view session-resize-region)
+ session-toggle-slot session-resize-view)
 
 ;; 把 vid 显示到编辑区并聚焦。
 (define (session-show-view s vid)
@@ -161,18 +161,13 @@
      (define s1 (for/fold ([s s]) ([v (in-list vids)]) (session-set-visible s v #f)))
      (if any-visible? s1 (session-set-visible s1 (first vids) #t))]))
 
-;; 改某视图所在区域的尺寸（编辑区子树或某个面板绑定）。axis : 'width | 'height
-(define (session-resize-region s vid axis delta)
-  (define reg (area 0 0 (session-width s) (session-height s)))
-  (define slot (session-binding-of s vid))
-  (cond
-    [slot (session-update-binding s slot
-            (lambda (t) (layout-resize t vid axis delta reg)))]
-    [(layout-contains? (session-editor s) vid)
-     (session-set-editor s (layout-resize (session-editor s) vid axis delta reg))]
-    [else s]))
-
-;; 改焦点视图尺寸。
+;; 改焦点编辑器视图尺寸（调整编辑区里最近的同向 split）。axis : 'width | 'height
 (define (session-resize-view s axis delta)
   (define vid (session-focus-vid s))
-  (if vid (session-resize-region s vid axis delta) s))
+  (cond
+    [(not vid) s]
+    [(layout-contains? (session-editor s) vid)
+     (session-set-editor s
+       (layout-resize (session-editor s) vid axis delta
+                      (area 0 0 (session-width s) (session-height s))))]
+    [else s]))

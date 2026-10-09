@@ -8,7 +8,8 @@
 (require "value.rkt"
          "core.rkt"
          "focus.rkt"
-         "../core/focus.rkt")
+         "../core/focus.rkt"
+         "../core/ids.rkt")
 
 (provide session-panel-dids session-panel-swap
          session-refresh)
@@ -19,20 +20,20 @@
   (for/list ([p (in-list (session-panels s))])
     (session-view-did s (panel-vid p))))
 
-;; 同组（同位置）窗口互换：Tab。底部组（'bottom）由底部选择机制管，不参与 Tab。
+;; 同区域窗口互换：Tab。底部区（slot-bottom）由底部选择机制管，不参与 Tab。
 (define (session-panel-swap s)
   (define cur (session-focus-vid s))
   (define curp (and cur (session-panel s cur)))
-  (define (usable? g) (and g (not (eq? g 'bottom))))
-  (define group
-    (cond [(and curp (usable? (panel-group curp))) (panel-group curp)]
-          [else (for/first ([p (in-list (session-panels s))] #:when (usable? (panel-group p)))
-                  (panel-group p))]))
+  (define (usable? p) (and p (not (eq? (panel-region p) slot-bottom))))
+  (define region
+    (cond [(and curp (usable? curp)) (panel-region curp)]
+          [else (for/first ([p (in-list (session-panels s))] #:when (usable? p))
+                  (panel-region p))]))
   (cond
-    [(not group) s]
+    [(not region) s]
     [else
      (define members (for/list ([p (in-list (session-panels s))]
-                               #:when (eq? group (panel-group p))) p))
+                               #:when (eq? region (panel-region p))) p))
      (define idx (for/first ([p (in-list members)] [i (in-naturals)]
                              #:when (eqv? (panel-vid p) cur)) i))
      (define chosen (list-ref members (if idx (modulo (add1 idx) (length members)) 0)))

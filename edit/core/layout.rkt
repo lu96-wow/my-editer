@@ -39,7 +39,7 @@
  (struct-out stack) (struct-out at) (struct-out blank) (struct-out placed)
  layout-place layout-slots
  layout-contains? layout-fill layout-vids layout-replace-first-blank
- layout-split layout-remove layout-replace layout-resize)
+ layout-split layout-remove layout-replace layout-resize layout-resize-slot)
 
 ;;; ---------- 查询 ----------
 
@@ -221,6 +221,14 @@
 
 ;; 调整 vid 所在、最近的同向 split 里那一项的尺寸。axis : 'width | 'height。
 (define (layout-resize node vid axis delta reg)
+  (layout-resize* node (lambda (n) (layout-contains? n vid)) axis delta reg))
+
+;; 同上，但按 **slot id** 定位（改骨架里某个命名区域的尺寸）。
+(define (layout-resize-slot node slot-id axis delta reg)
+  (layout-resize* node (lambda (n) (and (memq slot-id (layout-slots n)) #t)) axis delta reg))
+
+;; hit? 判断一个子树是否命中目标（vid 或 slot）；命中就沿树找最近的同向 split 改尺寸。
+(define (layout-resize* node hit? axis delta reg)
   (define target (if (eq? axis 'width) 'lr 'tb))
   (define (go n a)
     (cond
@@ -241,7 +249,7 @@
        (define parts (split-parts n))
        (define dim (if horiz? (area-w a) (area-h a)))
        (define idx (for/first ([p (in-list parts)] [i (in-naturals)]
-                               #:when (layout-contains? (cdr p) vid)) i))
+                               #:when (hit? (cdr p))) i))
        (cond
          [(not idx) (values n #f)]
          [else

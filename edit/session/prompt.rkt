@@ -8,7 +8,8 @@
          "core.rkt"
          "bottom.rkt"
          "focus.rkt"
-         "../core/focus.rkt")
+         "../core/focus.rkt"
+         "../core/ids.rkt")
 
 (provide session-prompt-open session-prompt-submit session-prompt-cancel)
 
@@ -18,7 +19,7 @@
 (define (session-prompt-open s vid label on-submit)
   (define s1 (session-ed-assign! s vid (prompt-document label)))
   (define s2 (session-ed-set-point! s1 vid 0 (string-length label)))
-  (define s3 (session-bottom-select s2 'input))
+  (define s3 (session-region-select s2 slot-bottom panel-input))
   (define s4 (session-set-focus s3 (focus-push (session-focus s3) vid)))
   (struct-copy session s4 [prompt (prompt vid label on-submit)]))
 
@@ -27,7 +28,7 @@
   (cond
     [(not p) s]
     [else
-     (define s1 (session-bottom-select s 'status))
+     (define s1 (session-region-select s slot-bottom panel-status))
      (define s2 (session-set-focus s1 (focus-restore (session-focus s1))))
      (struct-copy session s2 [prompt #f])]))
 

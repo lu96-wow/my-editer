@@ -134,7 +134,7 @@
 
 (define (do-new-file s st vid)
   (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
-  (session-prompt-open s (session-panel-vid s 'input) "new file: "
+  (session-prompt-open s (session-panel-vid s panel-input) "new file: "
     (lambda (s name)
       (cond
         [(zero? (string-length name)) s]
@@ -143,7 +143,7 @@
 
 (define (do-new-dir s st vid)
   (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
-  (session-prompt-open s (session-panel-vid s 'input) "new folder: "
+  (session-prompt-open s (session-panel-vid s panel-input) "new folder: "
     (lambda (s name)
       (cond
         [(zero? (string-length name)) s]
@@ -157,7 +157,7 @@
     [else
      (define p (entry-path e))
      (define parent (path-only p))
-     (session-prompt-open s (session-panel-vid s 'input)
+     (session-prompt-open s (session-panel-vid s panel-input)
        (format "delete ~a? (y/n) " (entry-name e))
        (lambda (s ans)
          (if (and (positive? (string-length ans))
@@ -204,6 +204,6 @@
                                  (values (session-log! s1 (format "tree: ~a" (exn-message e)))
                                          (box (tree-state (normalize root) (hash) (hash) #f))))])
       (values s1 (box (tree-state-open root fs-read-dir)))))
-  (define p (panel 'tree vid (make-refresh st) tree-keys 'left 1))
+  (define p (panel panel-tree vid (make-refresh st) tree-keys slot-side 'height 'flex))
   (define s3 (session-add-panel s2 p))
   (values (session-add-handler s3 (tree-handler st vid)) vid))

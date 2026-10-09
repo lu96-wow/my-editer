@@ -17,11 +17,12 @@
 (require "../session.rkt"
          "../command/command.rkt"
          "../command/key.rkt"
-         "../core/keymap.rkt")
+         "../core/keymap.rkt"
+         "../core/ids.rkt")
 
 (provide
  ;; 面板（状态窗口）构造与查询
- panel panel? panel-id panel-vid panel-refresh panel-keys panel-group panel-rows
+ panel panel? panel-id panel-vid panel-refresh panel-keys panel-region panel-axis panel-size
  panel-doc
  session-add-panel session-panel-vid session-panel-dids session-dock-vid?
 
@@ -50,4 +51,5 @@
  ;; 以下整包透出：命令数据与构造（cmd-* / key / kbd）、键表
  (all-from-out "../command/command.rkt"
                "../command/key.rkt"
-               "../core/keymap.rkt"))
+               "../core/keymap.rkt"
+               "../core/ids.rkt"))

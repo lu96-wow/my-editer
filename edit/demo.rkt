@@ -7,7 +7,7 @@
 ;;;   (demo-session)                      ; 默认：文件树在左
 ;;;   (demo-session #:layout layout-top)  ; 文件树在上
 
-(require "core/layout.rkt" "core/focus.rkt"
+(require "core/layout.rkt" "core/focus.rkt" "core/ids.rkt"
          "config/layout.rkt"
          "session.rkt" "command/keys.rkt"
          "document/document.rkt"
@@ -32,10 +32,10 @@
 
   ;; 内容（按 slot 名填进 config 的骨架）；编辑区由 session 自带的 editor 子树占位
   ;; （空时是 blank，占空间不产视图）。换 layout 只需换 layout 参数。
-  ;; 底部 status / input / log 同位置互斥，高度由 session-bottom-select 按 rows 适配
+  ;; 底部 status / input / log 同区域互斥，高度由 panel 声明的 axis/size 适配
   (define side   (stack (list (leaf tree) (leaf buf))))
   (define bottom (stack (list (leaf status) (leaf input) (leaf log))))
-  (define bnd (hash 'side side 'bottom bottom))
+  (define bnd (hash slot-side side slot-bottom bottom))
 
   (define s10 (document-install (session-assemble s9* layout bnd) edit-keys))
   ;; 初始焦点：文件树（编辑器区为空，打开文件后再进）

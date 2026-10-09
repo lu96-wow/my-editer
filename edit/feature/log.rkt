@@ -43,7 +43,7 @@
 ;; → (values session vid)
 (define (log-install s width height)
   (define-values (s1 _did vid) (session-add-document s "" width height #:name "*log*"))
-  (define p (panel 'log vid (make-refresh) log-keys 'bottom 3))
+  (define p (panel panel-log vid (make-refresh) log-keys slot-bottom 'height 3))
   (values (session-add-handler
            (session-set-visible (session-add-panel s1 p) vid #f)
            (log-handler vid))

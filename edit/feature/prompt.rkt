@@ -24,5 +24,5 @@
 ;; → (values session vid)
 (define (prompt-install s width height)
   (define-values (s1 _did vid) (session-add-document s "" width height #:name "*input*"))
-  (define p (panel 'input vid #f input-keys 'bottom 1))
+  (define p (panel panel-input vid #f input-keys slot-bottom 'height 1))
   (values (session-set-visible (session-add-panel s1 p) vid #f) vid))
