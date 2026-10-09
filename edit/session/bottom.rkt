@@ -10,9 +10,9 @@
          "core.rkt"
          "panel.rkt"
          "focus.rkt"
+         "structure.rkt"
          "../core/focus.rkt"
-         "../core/layout.rkt"
-         "../core/area.rkt")
+         "../core/layout.rkt")
 
 (provide session-bottom-select
          session-log! session-log-open session-log-close session-log-toggle)
@@ -22,14 +22,8 @@
   (define pl (for/first ([p (in-list (session-views s))] #:when (eqv? vid (placed-vid p))) p))
   (cond
     [(not pl) s]
-    [else
-     (define delta (- rows (placed-h pl)))
-     (cond
-       [(zero? delta) s]
-       [else
-        (struct-copy session s
-          [layout (layout-resize (session-layout s) vid 'height delta
-                                 (area 0 0 (session-width s) (session-height s)))])])]))
+    [else (define delta (- rows (placed-h pl)))
+          (if (zero? delta) s (session-resize-region s vid 'height delta))]))
 
 ;; 底部组（group='bottom'）互斥选择：只显示 id，并把高度适配到它的 rows。
 (define (session-bottom-select s id)

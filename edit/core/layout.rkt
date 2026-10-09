@@ -31,8 +31,8 @@
 (struct stack (nodes) #:transparent)
 (struct at    (x y w h node) #:transparent)
 
-;; 摊平结果：一个已落位的视图引用。
-(struct placed (vid x y w h) #:transparent)
+;; 摊平结果：一个已落位的视图引用。deep 大 = 在上（stack 里靠后者抬高）。
+(struct placed (vid x y w h deep) #:transparent)
 
 (provide
  (struct-out leaf) (struct-out slot) (struct-out split)
@@ -95,25 +95,28 @@
 
 ;;; ---------- 核心：求值 → (vid . area) ----------
 (define (layout-place node bindings visible? area)
-  (place-node node bindings visible? area))
+  (place-node node bindings visible? area 0))
 
-(define (place-node node bindings visible? a)
+(define (place-node node bindings visible? a [deep 0])
   (cond
     [(not node) '()]
     [(leaf? node) (if (visible? (leaf-vid node))
                       (list (placed (leaf-vid node)
-                                    (area-x a) (area-y a) (area-w a) (area-h a)))
+                                    (area-x a) (area-y a) (area-w a) (area-h a) deep))
                       '())]
     [(blank? node) '()]
     [(slot? node)
      (define b (hash-ref bindings (slot-id node) #f))
-     (if b (place-node b bindings visible? a) '())]
+     (if b (place-node b bindings visible? a deep) '())]
     [(stack? node)
-     (append* (for/list ([c (in-list (stack-nodes node))]) (place-node c bindings visible? a)))]
+     ;; 叠放：靠后的子节点叠在上面（deep 递增）；位置相同。
+     (append* (for/list ([c (in-list (stack-nodes node))] [i (in-naturals)])
+                (place-node c bindings visible? a (+ deep i))))]
     [(at? node)
      (place-node (at-node node) bindings visible?
                  (area (+ (area-x a) (at-x node)) (+ (area-y a) (at-y node))
-                       (at-w node) (at-h node)))]
+                       (at-w node) (at-h node))
+                 deep)]
     [(split? node)
      (define horiz? (eq? (split-axis node) 'lr))
      (define dim (if horiz? (area-w a) (area-h a)))
@@ -126,7 +129,7 @@
          (define sub (if horiz?
                          (area (+ (area-x a) off) (area-y a) sz (area-h a))
                          (area (area-x a) (+ (area-y a) off) (area-w a) sz)))
-         (values (+ off sz) (append out (place-node (cdr p) bindings visible? sub)))))
+         (values (+ off sz) (append out (place-node (cdr p) bindings visible? sub deep)))))
      out]
     [else (error 'layout-place "未知节点: ~a" node)]))
 

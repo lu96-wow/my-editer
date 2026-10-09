@@ -35,12 +35,14 @@
 ;; on-submit : (session string -> session)
 
 (struct session
-  (ed layout bindings presentations panels
+  (ed frame bindings editor layout presentations panels
    focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs log)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
-;; layout        : 布局具体树（装配后 slot 已填；叶子是 vid）
-;; bindings      : slot-id -> node（装配期声明，留作 slot 查询）
+;; frame         : 骨架（config 的 slot 树；#f = 未装配）
+;; bindings      : slot-id -> node（面板子树；'editor 单独由 editor 字段提供）
+;; editor        : 编辑区运行时子树（起于 (blank)，由 split/close 等手术生长）
+;; layout        : 派生缓存 = fill(frame, bindings + editor)；#f = 未装配
 ;; presentations : (hash vid -> boolean)   显隐（缺省 = 可见）
 ;; panels        : (listof panel)
 ;; focus         : focus（输入焦点）
@@ -56,10 +58,13 @@
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt)
-         session-new session-assemble
+         session-new session-assemble session-set-frame
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
          session-resize session-quit session-add-handler
+         ;; 编辑区 / 面板子树（结构手术用）
+         session-editor session-set-editor
+         session-binding-of session-update-binding
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
          ;; doc-state 值本身（包装见 doc.rkt）
@@ -67,14 +72,45 @@
 
 ;;; ---------- 构造 / 纯变换 ----------
 
-(define (session-new ed layout bindings focus width height [keys '()])
-  (session ed layout bindings (hash) '()
-           focus (focus-target focus) width height #f keys (hash) '() #f #f
-           (doc-state-empty) '()))
+(define (session-new ed frame bindings focus width height [keys '()])
+  (session-rebuild
+   (session ed frame bindings (blank) #f (hash) '()
+            focus (focus-target focus) width height #f keys (hash) '() #f #f
+            (doc-state-empty) '())))
 
-;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
-(define (session-assemble s layout bindings)
-  (struct-copy session s [layout (layout-fill layout bindings)] [bindings bindings]))
+;; 重算派生 layout：把 panel 绑定与编辑区子树填进骨架的 slot。
+(define (session-rebuild s)
+  (struct-copy session s
+    [layout (and (session-frame s)
+                 (layout-fill (session-frame s)
+                              (hash-set (or (session-bindings s) (hash))
+                                        'editor (session-editor s))))]))
+
+;; 装配 / 换骨架：用 bindings 把 frame 里的 slot 洞填成具体子树。
+;; 编辑区子树在 editor 字段，不受换骨架影响。
+(define (session-assemble s frame bindings)
+  (session-rebuild (struct-copy session s [frame frame] [bindings bindings])))
+
+;; 运行时换骨架（保留编辑区与面板）。
+(define (session-set-frame s frame)
+  (session-rebuild (struct-copy session s [frame frame])))
+
+;; 提交新的编辑区子树（结构手术的唯一写入口），并重算 layout。
+(define (session-set-editor s editor)
+  (session-rebuild (struct-copy session s [editor editor])))
+
+;; 找含 vid 的面板绑定 slot（编辑器视图不在 bindings 里）。
+(define (session-binding-of s vid)
+  (for/first ([(slot node) (in-hash (or (session-bindings s) (hash)))]
+              #:when (layout-contains? node vid))
+    slot))
+
+;; 对某 slot 的面板子树做变换，并重算 layout。
+(define (session-update-binding s slot f)
+  (session-rebuild
+   (struct-copy session s
+     [bindings (hash-set (session-bindings s) slot
+                         (f (hash-ref (session-bindings s) slot)))])))
 
 ;;; ---------- 展示态（显隐） ----------
 

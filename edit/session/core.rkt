@@ -78,8 +78,8 @@
 
 (define (session-rectangles s)
   (for/list ([p (in-list (session-views s))])
-    (define vid (placed-vid p))
-    (rectangle vid (placed-x p) (placed-y p) (placed-w p) (placed-h p) 0)))
+    (rectangle (placed-vid p) (placed-x p) (placed-y p) (placed-w p) (placed-h p)
+               (placed-deep p))))
 
 (define (session-focused-did s)
   (define vid (session-focus-vid s))

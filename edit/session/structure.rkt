@@ -2,7 +2,9 @@
 
 ;;; edit/session/structure.rkt —— 视图 / 布局结构手术
 ;;;
-;;; 显示 / 分屏 / 关闭 / 显隐 / 尺寸：改 view 真身 + layout 树。
+;;; 显示 / 分屏 / 关闭 / 显隐 / 尺寸。
+;;; 编辑区手术全部在 **editor 子树**上做（session-set-editor），骨架 frame 不动；
+;;; 面板尺寸手术按 session-binding-of 找到所属 slot 的绑定再改。
 ;;; 都走 core.rkt 的内核适配，不直接碰 core/editor。
 
 (require "value.rkt"
@@ -17,18 +19,17 @@
  session-show-view session-split-view session-place-view
  session-close-view session-close-document
  session-hide-view session-hide-focused session-split-focused
- session-toggle-slot session-resize-view)
+ session-toggle-slot session-resize-view session-resize-region)
 
 ;; 把 vid 显示到编辑区并聚焦。
 (define (session-show-view s vid)
   (define s1
     (cond
-      [(not (session-layout s)) (session-place-view s #f 'lr vid)]
-      [(layout-contains? (session-layout s) vid) s]
+      [(layout-contains? (session-editor s) vid) s]
       [else
        ;; 隐藏中的视图：放回编辑区（有编辑视图则分屏，否则填 blank）
        (define base (session-edit-vid s))
-       (if (and base (not (eqv? base vid)) (layout-contains? (session-layout s) base))
+       (if (and base (not (eqv? base vid)) (layout-contains? (session-editor s) base))
            (session-place-view s base 'lr vid)
            (session-place-view s #f 'lr vid))]))
   (session-set-focus s1 (focus-set (session-focus s1) vid)))
@@ -40,8 +41,7 @@
   (define h (max 3 (session-view-height s vid)))
   (define ln? (session-view-line-numbers? s vid))
   (define-values (s1 nvid) (session-add-view s did w h #:line-numbers? ln?))
-  (define s2 (struct-copy session s1
-               [layout (layout-split (session-layout s1) vid axis nvid)]))
+  (define s2 (session-set-editor s1 (layout-split (session-editor s1) vid axis nvid)))
   (session-show-view s2 nvid))
 
 ;; 分裂焦点编辑器（面板不分裂）。axis : 'lr（垂直分隔/左右）| 'tb（水平分隔/上下）。
@@ -52,29 +52,28 @@
       s))
 
 ;; 把已在 editor 里的视图 nvid 放到 vid 旁（分屏）；
-;; 没有基准视图（编辑器区为空）则把第一个 blank 占位换成新视图；layout 为空则作为根。
+;; 没有基准视图（编辑区为空）则把第一个 blank 占位换成新视图。
 (define (session-place-view s vid axis nvid)
-  (cond
-    [(not (session-layout s)) (struct-copy session s [layout (leaf nvid)])]
-    [(and vid (layout-contains? (session-layout s) vid))
-     (struct-copy session s [layout (layout-split (session-layout s) vid axis nvid)])]
-    [else
-     (struct-copy session s
-       [layout (layout-replace-first-blank (session-layout s) (leaf nvid))])]))
+  (define et (session-editor s))
+  (session-set-editor s
+    (cond
+      [(and vid (layout-contains? et vid)) (layout-split et vid axis nvid)]
+      [else (layout-replace-first-blank et (leaf nvid))])))
 
-;; 从 layout 移除若干编辑器视图；若移除后编辑器区就空了，保留一个 blank 占位
-;; （否则 split 会塌陷，底部区会占满整个编辑区）。
+;; 从编辑区子树移除若干视图；若编辑区就空了，保留一个 blank 占位
+;; （否则 split 会塌陷，底部区会占满整个编辑区）。→ 新 editor 子树
 (define (session-drop-editor-views s vids)
   (define remain (for/list ([v (in-list (session-view-id-list s))]
                             #:unless (or (memv v vids) (session-dock-vid? s v))) v))
+  (define et (session-editor s))
   (cond
-    [(null? vids) (session-layout s)]
+    [(null? vids) et]
     [(pair? remain)
-     (for/fold ([l (session-layout s)]) ([v (in-list vids)]) (layout-remove l v))]
+     (for/fold ([t et]) ([v (in-list vids)]) (layout-remove t v))]
     [else
-     (for/fold ([l (layout-replace (session-layout s) (first vids) (blank))])
+     (for/fold ([t (layout-replace et (first vids) (blank))])
                ([v (in-list (rest vids))])
-       (layout-remove l v))]))
+       (layout-remove t v))]))
 
 ;; 关视图后：若粘性 edit-vid 已不在，重置为第一个编辑器视图（或 #f）。
 (define (session-fix-edit-vid s)
@@ -97,9 +96,10 @@
        [(null? remaining) (session-close-document s did)]
        [else
         (define s0 (session-ed-close-view s vid))
-        (define s* (struct-copy session s0
-                     [layout (session-drop-editor-views s (list vid))]
-                     [presentations (hash-remove (session-presentations s) vid)]))
+        (define s* (session-set-editor
+                    (struct-copy session s0
+                      [presentations (hash-remove (session-presentations s) vid)])
+                    (session-drop-editor-views s (list vid))))
         (define s** (if (eqv? vid (session-focus-vid s*))
                         (session-show-view s* (first remaining))
                         s*))
@@ -114,9 +114,9 @@
      (define pres* (for/fold ([h (session-presentations s)]) ([v (in-list vids)]) (hash-remove h v)))
      (define s0 (session-ed-close-document s did))
      (define s* (session-clear-doc
-                 (struct-copy session s0
-                   [layout (session-drop-editor-views s vids)]
-                   [presentations pres*])
+                 (session-set-editor
+                  (struct-copy session s0 [presentations pres*])
+                  (session-drop-editor-views s vids))
                  did))
      (define fv (session-focus-vid s*))
      (define s** (cond
@@ -129,17 +129,17 @@
 
 ;; 隐藏视图：从编辑区移除（**不关 view、不关 document**）；焦点 / 活动视图移到仍在显示的编辑器视图。
 (define (session-hide-view s vid)
-  (define s1 (struct-copy session s [layout (session-drop-editor-views s (list vid))]))
+  (define s1 (session-set-editor s (session-drop-editor-views s (list vid))))
   (define placed (for/list ([v (in-list (session-view-id-list s1))]
                             #:unless (session-dock-vid? s1 v)
-                            #:when (layout-contains? (session-layout s1) v)) v))
+                            #:when (layout-contains? (session-editor s1) v)) v))
   (define target (and (pair? placed) (first placed)))
   (define s2 (if (eqv? vid (session-focus-vid s1))
                  (session-set-focus s1 (focus-set (session-focus s1) target))
                  s1))
   (struct-copy session s2
     [edit-vid (if (and (session-edit-vid s2)
-                       (layout-contains? (session-layout s2) (session-edit-vid s2)))
+                       (layout-contains? (session-editor s2) (session-edit-vid s2)))
                   (session-edit-vid s2)
                   target)]))
 
@@ -150,7 +150,7 @@
       (session-hide-view s vid)
       s))
 
-;; 切换 bindings 里某个洞（叶）的显隐。
+;; 切换 bindings 里某个洞（面板）的显隐。
 (define (session-toggle-slot s slot)
   (define node (hash-ref (session-bindings s) slot #f))
   (define vids (layout-vids node))
@@ -161,12 +161,18 @@
      (define s1 (for/fold ([s s]) ([v (in-list vids)]) (session-set-visible s v #f)))
      (if any-visible? s1 (session-set-visible s1 (first vids) #t))]))
 
-;; 改焦点视图尺寸：调整 layout 里最近的同向 split 那一项（axis : 'width | 'height）。
+;; 改某视图所在区域的尺寸（编辑区子树或某个面板绑定）。axis : 'width | 'height
+(define (session-resize-region s vid axis delta)
+  (define reg (area 0 0 (session-width s) (session-height s)))
+  (define slot (session-binding-of s vid))
+  (cond
+    [slot (session-update-binding s slot
+            (lambda (t) (layout-resize t vid axis delta reg)))]
+    [(layout-contains? (session-editor s) vid)
+     (session-set-editor s (layout-resize (session-editor s) vid axis delta reg))]
+    [else s]))
+
+;; 改焦点视图尺寸。
 (define (session-resize-view s axis delta)
   (define vid (session-focus-vid s))
-  (cond
-    [(not vid) s]
-    [else
-     (struct-copy session s
-       [layout (layout-resize (session-layout s) vid axis delta
-                              (area 0 0 (session-width s) (session-height s)))])]))
+  (if vid (session-resize-region s vid axis delta) s))
