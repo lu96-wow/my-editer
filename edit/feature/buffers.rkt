@@ -21,7 +21,7 @@
 ;; kind : 'doc | 'view
 
 (define (rows s model)
-  (define internal (session-panel-dids s))
+  (define internal (append (session-panel-dids s) (session-float-dids s)))
   (append*
    (for/list ([did (in-list (session-document-ids s))] #:unless (memv did internal))
      (define name (session-document-name s did))

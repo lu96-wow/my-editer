@@ -10,7 +10,7 @@
 ;;;   session/panel.rkt      状态窗口：枚举 / 互换 / refresh
 ;;;   session/bottom.rkt     底部区（status/input/log 互斥）+ log 通道
 ;;;   session/prompt.rkt     输入行
-;;;   session/structure.rkt  结构手术：显示 / 分屏 / 关闭 / 显隐 / 尺寸
+;;;   session/structure.rkt  结构手术：显示 / 分屏 / 关闭 / 显隐 / 尺寸 / 浮动窗口
 ;;;   session/edit.rkt       操作原语：焦点 / 滚动 / 编辑 / 选区 / 剪贴板
 ;;;   session/mouse.rkt      鼠标
 ;;;

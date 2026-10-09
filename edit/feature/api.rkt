@@ -10,6 +10,7 @@
 ;;;     · 自带 cmd-* + handler，挂到 handler 链（session-add-handler）
 ;;;     · handler 里对 session 的改动走这里白名单里的原语
 ;;;     · 需要别的功能时发命令，用 step 派发，而不是直接调操作函数
+;;;     · 需要瞬态叠加窗口（补全弹窗等）时用 float / session-float-open / -close
 ;;;
 ;;; 例外：需要**文件资源**的特性（tree / buffers / document）额外 require
 ;;; document/document.rkt 与 document/fs.rkt。这是「特性组合资源能力」的有意依赖。
@@ -36,6 +37,12 @@
 
  ;; 视图结构（显示 / 分屏）
  session-show-view session-split-view
+
+ ;; 浮动窗口（瞬态叠加）：构造 + 开关 + 锚点 + 去重
+ float float? float-vid float-keys float-x float-y float-w float-h float-deep
+ session-float session-float-open session-float-close session-float-move
+ session-view-cursor-screen session-view-point->screen
+ session-float-dids
 
  ;; 视图定位（面板内部光标定位）
  session-ed-set-point!

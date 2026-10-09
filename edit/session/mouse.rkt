@@ -11,20 +11,22 @@
          "../core/layout.rkt"
          "../core/focus.rkt")
 
-(provide session-mouse-press session-mouse-scroll)
+(provide session-view-at session-mouse-press session-mouse-scroll)
+
+;; 命中的最高窗格（浮层 deep 大，优先生效）。
+(define (session-pane-at s col row)
+  (for/last ([p (in-list (session-panes s))]
+             #:when (and (>= col (placed-x p)) (< col (+ (placed-x p) (placed-w p)))
+                         (>= row (placed-y p)) (< row (+ (placed-y p) (placed-h p))))) 
+    p))
 
 (define (session-view-at s col row)
-  (for/first ([p (in-list (session-views s))]
-              #:when (and (>= col (placed-x p)) (< col (+ (placed-x p) (placed-w p)))
-                          (>= row (placed-y p)) (< row (+ (placed-y p) (placed-h p)))))
-    (placed-vid p)))
+  (define p (session-pane-at s col row))
+  (and p (placed-vid p)))
 
 (define (session-mouse-press s col row)
   (sync-layout! s)
-  (define p (for/first ([p (in-list (session-views s))]
-                        #:when (and (>= col (placed-x p)) (< col (+ (placed-x p) (placed-w p)))
-                                    (>= row (placed-y p)) (< row (+ (placed-y p) (placed-h p)))))
-              p))
+  (define p (session-pane-at s col row))
   (cond
     [(not p) s]
     [else

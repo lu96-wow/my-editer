@@ -36,8 +36,16 @@
 (struct prompt (vid label on-submit) #:transparent)
 ;; on-submit : (session string -> session)
 
+;; 浮动窗口：瞬态叠加视图（补全弹窗等）。位置 / 尺寸 / 深度由调用方算，自带键表。
+(struct float (vid keys x y w h deep) #:transparent)
+;; vid   : 视图（内容是真身，走 engine）
+;; keys  : keymap | #f   自己的键表（优先于 document / global）
+;; x y   : 屏幕绝对位置（列 / 行）
+;; w h   : 尺寸
+;; deep  : 深度（大 = 在上；建议远大于布局树）
+
 (struct session
-  (ed frame bindings editor layout presentations panels
+  (ed frame bindings editor layout presentations panels floats
    focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs log)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
@@ -47,6 +55,7 @@
 ;; layout        : 派生缓存 = fill(frame, bindings + editor)；#f = 未装配
 ;; presentations : (hash vid -> boolean)   显隐（缺省 = 可见）
 ;; panels        : (listof panel)
+;; floats        : (listof float)   浮动窗口（在布局树之上，不占位）
 ;; focus         : focus（输入焦点）
 ;; edit-vid      : 活动编辑视图（粘性）
 ;; width height  : 屏幕尺寸
@@ -59,7 +68,7 @@
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
 
-(provide (struct-out session) (struct-out panel) (struct-out prompt)
+(provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out float)
          session-new session-assemble session-set-frame
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
@@ -68,6 +77,9 @@
          session-editor session-set-editor
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
+         ;; 浮动窗口注册表（打开 / 关闭见 structure.rkt）
+         session-floats session-float session-float-add session-float-remove
+         session-float-move
          ;; doc-state 值本身（包装见 doc.rkt）
          session-docs)
 
@@ -75,7 +87,7 @@
 
 (define (session-new ed frame bindings focus width height [keys '()])
   (session-rebuild
-   (session ed frame bindings (blank) #f (hash) '()
+   (session ed frame bindings (blank) #f (hash) '() '()
             focus (focus-target focus) width height #f keys (hash) '() #f #f
             (doc-state-empty) '())))
 
@@ -123,8 +135,25 @@
   (for/first ([p (in-list (session-panels s))] #:when (eq? id (panel-id p))) (panel-vid p)))
 (define (session-vid-keys s vid)
   (define p (session-panel s vid))
-  (and p (panel-keys p)))
+  (cond [p (panel-keys p)]
+        [else (define f (session-float s vid)) (and f (float-keys f))]))
+;; dock = 面板或浮层：焦点落到它们时不改变粘性 edit-vid，也不被编辑区手术当普通视图。
 (define (session-dock-vid? s vid)
-  (and vid (and (session-panel s vid) #t)))
+  (and vid (or (and (session-panel s vid) #t) (and (session-float s vid) #t))))
 (define (session-add-panel s p)
   (struct-copy session s [panels (append (session-panels s) (list p))]))
+
+;;; ---------- 浮动窗口注册表（纯） ----------
+
+(define (session-float s vid)
+  (for/first ([f (in-list (session-floats s))] #:when (eqv? vid (float-vid f))) f))
+(define (session-float-add s f)
+  (struct-copy session s [floats (append (session-floats s) (list f))]))
+(define (session-float-remove s vid)
+  (struct-copy session s
+    [floats (for/list ([f (in-list (session-floats s))]
+                       #:unless (eqv? vid (float-vid f))) f)]))
+(define (session-float-move s vid x y)
+  (struct-copy session s
+    [floats (for/list ([f (in-list (session-floats s))])
+              (if (eqv? vid (float-vid f)) (struct-copy float f [x x] [y y]) f))]))
