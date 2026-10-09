@@ -35,9 +35,8 @@
                                   (cons 'flex (split 'tb (list (cons 'flex (slot 'editor))
                                                                (cons 2 (slot 'bottom))))))))
 
-  (define s10 (struct-copy session s9*
-                [layout base]
-                [bindings (hash 'side side 'editor editor 'bottom bottom)]))
+  (define bnd (hash 'side side 'editor editor 'bottom bottom))
+  (define s10 (session-assemble s9* base bnd))
   ;; 初始焦点 / 活动编辑视图
   (session-set-focus s10 (focus-set (session-focus s10) v1)))
 

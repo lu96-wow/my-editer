@@ -13,7 +13,7 @@
 
 (require tui "binding.rkt" "../core/keymap.rkt" "command.rkt")
 
-(provide base-keys edit-keys edit-command-keys focus-keys focus-prefix global-keys)
+(provide base-keys edit-keys edit-command-keys focus-keys focus-prefix resize-prefix global-keys)
 
 ;;; ---------- core 编辑命令（方向键 = 光标） ----------
 
@@ -21,6 +21,7 @@
   (kbd
    ;; 文本输入
    text-binding     (lambda (ev) (cmd-insert (event-text ev)))
+   (key 'enter)     (cmd-insert "\n")
    (key 'backspace) (cmd-backspace)
    (key 'delete)    (cmd-delete)
    ;; 光标移动
@@ -50,6 +51,15 @@
    (key 'right)  (cmd-focus 'right)
    (key 'escape) (cmd-prefix-cancel)))
 
+;; C-o 前缀层：左右改宽、上下改高。
+(define resize-prefix
+  (kbd
+   (key 'left)   (cmd-resize-view 'width  -1)
+   (key 'right)  (cmd-resize-view 'width   1)
+   (key 'up)     (cmd-resize-view 'height -1)
+   (key 'down)   (cmd-resize-view 'height  1)
+   (key 'escape) (cmd-prefix-cancel)))
+
 (define focus-keys
   (kbd
    (key 'left 'alt)  (cmd-focus 'left)
@@ -57,7 +67,9 @@
    (key 'up 'alt)    (cmd-focus 'up)
    (key 'down 'alt)  (cmd-focus 'down)
    ;; 前缀：C-p 后接方向 = 焦点移动
-   (key 'p 'ctrl)    (prefix "C-p" focus-prefix)))
+   (key 'p 'ctrl)    (prefix "C-p" focus-prefix)
+   ;; 前缀：C-o 后接方向 = 改焦点视图尺寸（左/右宽，上/下高）
+   (key 'o 'ctrl)    (prefix "C-o" resize-prefix)))
 
 ;;; ---------- 编辑命令表 = 编辑 ⊕ 焦点 ----------
 
@@ -71,6 +83,10 @@
    (key 'b 'ctrl) (cmd-toggle 'side)
    (key 'tab)     (cmd-panel-swap)
    ;; resize 需要事件里的尺寸 → spec 用过程
-   resize-binding (lambda (ev) (cmd-resize (resize-event-cols ev) (resize-event-rows ev)))))
+   resize-binding (lambda (ev) (cmd-resize (resize-event-cols ev) (resize-event-rows ev)))
+   ;; 鼠标：点击 = 聚焦 + 定位；滚轮 = 滚动光标所在视图
+   (mouse 'press 'left '())  (lambda (ev) (cmd-mouse-press (mouse-col ev) (mouse-row ev)))
+   (mouse 'scroll 'up '())   (lambda (ev) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev) -1))
+   (mouse 'scroll 'down '()) (lambda (ev) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev)  1))))
 
 (define base-keys (keymap-merge (list edit-keys global-keys)))

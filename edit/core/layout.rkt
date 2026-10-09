@@ -35,7 +35,7 @@
  (struct-out leaf) (struct-out slot) (struct-out split)
  (struct-out stack) (struct-out at) (struct-out placed)
  layout-place layout-slots
- layout-contains? layout-find
+ layout-contains? layout-find layout-fill layout-vids
  layout-split layout-remove layout-replace layout-swap layout-resize)
 
 ;;; ---------- 查询 ----------
@@ -70,8 +70,33 @@
     [(split? node) (for/or ([p (in-list (split-parts node))]) (layout-find (cdr p) vid))]
     [else #f]))
 
-;;; ---------- 核心：求值 → (vid . area) ----------
+;; 用 bindings 把 slot 洞填成子树（装配期用），得到具体布局树。
+(define (layout-fill node bindings)
+  (cond
+    [(not node) #f]
+    [(leaf? node) node]
+    [(slot? node) (define b (hash-ref bindings (slot-id node) #f))
+                  (if b (layout-fill b bindings) node)]
+    [(stack? node) (struct-copy stack node
+                     [nodes (for/list ([c (in-list (stack-nodes node))]) (layout-fill c bindings))])]
+    [(at? node) (struct-copy at node [node (layout-fill (at-node node) bindings)])]
+    [(split? node) (struct-copy split node
+                     [parts (for/list ([p (in-list (split-parts node))])
+                              (cons (car p) (layout-fill (cdr p) bindings)))])]
+    [else node]))
 
+;; 子树里所有叶视图的 vid。
+(define (layout-vids node)
+  (cond
+    [(not node) '()]
+    [(leaf? node) (list (leaf-vid node))]
+    [(slot? node) '()]
+    [(stack? node) (append* (for/list ([c (in-list (stack-nodes node))]) (layout-vids c)))]
+    [(at? node) (layout-vids (at-node node))]
+    [(split? node) (append* (for/list ([p (in-list (split-parts node))]) (layout-vids (cdr p))))]
+    [else '()]))
+
+;;; ---------- 核心：求值 → (vid . area) ----------
 (define (layout-place node bindings visible? area)
   (place-node node bindings visible? area))
 
@@ -230,24 +255,27 @@
                                #:when (layout-contains? (cdr p) vid)) i))
        (cond
          [(not idx) (values n #f)]
-         [(eq? (split-axis n) target)
-          (define sizes (alloc-sizes parts dim))
-          (define new (max 1 (min (max 1 (sub1 dim)) (+ (list-ref sizes idx) delta))))
-          (define parts* (for/list ([p (in-list parts)] [i (in-naturals)])
-                           (if (= i idx) (cons new (cdr p)) p)))
-          (values (struct-copy split n [parts parts*]) #t)]
          [else
-          (define sizes (alloc-sizes parts dim))
-          (define subs
-            (for/fold ([subs '()] [off 0]) ([sz (in-list sizes)])
-              (define sub (if horiz?
-                              (area (+ (area-x a) off) (area-y a) sz (area-h a))
-                              (area (area-x a) (+ (area-y a) off) (area-w a) sz)))
-              (values (append subs (list sub)) (+ off sz))))
-          (define-values (c* h) (go (cdr (list-ref parts idx)) (list-ref subs idx)))
-          (define parts* (for/list ([p (in-list parts)] [i (in-naturals)])
-                           (if (= i idx) (cons (car p) c*) p)))
-          (values (struct-copy split n [parts parts*]) h)])]
+          (let ()
+            (define sizes (alloc-sizes parts dim))
+            (define-values (subs _off)
+              (for/fold ([subs '()] [off 0]) ([sz (in-list sizes)])
+                (define sub (if horiz?
+                                (area (+ (area-x a) off) (area-y a) sz (area-h a))
+                                (area (area-x a) (+ (area-y a) off) (area-w a) sz)))
+                (values (append subs (list sub)) (+ off sz))))
+            ;; 先往深里找：最近的同向 split 优先；子层没处理才在本层 resize。
+            (define-values (c* h) (go (cdr (list-ref parts idx)) (list-ref subs idx)))
+            (define parts* (for/list ([p (in-list parts)] [i (in-naturals)])
+                             (if (= i idx) (cons (car p) c*) p)))
+            (cond
+              [h (values (struct-copy split n [parts parts*]) #t)]
+              [(and (eq? (split-axis n) target) (>= (length parts) 2))
+               (let* ([new (max 1 (min (max 1 (sub1 dim)) (+ (list-ref sizes idx) delta)))]
+                      [parts** (for/list ([p (in-list parts*)] [i (in-naturals)])
+                                 (if (= i idx) (cons new (cdr p)) p))])
+                 (values (struct-copy split n [parts parts**]) #t))]
+              [else (values (struct-copy split n [parts parts*]) #f)]))])]
       [else (values n #f)]))
   (define-values (n* _) (go node reg))
   n*)

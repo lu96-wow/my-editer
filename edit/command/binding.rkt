@@ -11,6 +11,7 @@
 (require tui)
 
 (provide key mouse text-binding paste-binding resize-binding
+         mouse-col mouse-row
          event->binding event-text)
 
 (define mod-order '(ctrl alt shift))
@@ -33,6 +34,10 @@
 (define text-binding 'text)
 (define paste-binding 'paste)
 (define resize-binding 'resize)
+
+;; 鼠标坐标（屏幕 0-based）：tui 是 1-based，减 1。
+(define (mouse-col ev) (max 0 (sub1 (mouse-event-x ev))))
+(define (mouse-row ev) (max 0 (sub1 (mouse-event-y ev))))
 
 ;; 事件 → 绑定键（无法绑定的 → #f）。
 (define (event->binding e)

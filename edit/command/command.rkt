@@ -15,11 +15,13 @@
 (require (only-in "session.rkt"
                   session-focus-move session-scroll session-toggle-slot
                   session-resize session-quit session-nav
+                  session-resize-view
                   session-insert session-delete session-backspace
                   session-undo session-redo
                   session-select-all session-copy session-cut session-paste
                   session-prompt-submit session-prompt-cancel
                   session-panel-swap session-handlers
+                  session-mouse-press session-mouse-scroll
                   session-set-prefix))
 
 ;;; ---------- 基础命令 ----------
@@ -47,9 +49,16 @@
 (struct cmd-prompt-submit () #:transparent)
 (struct cmd-prompt-cancel () #:transparent)
 
+;; 改焦点视图尺寸（axis : 'width | 'height）
+(struct cmd-resize-view (axis delta) #:transparent)
+
 ;; 前缀（多键序列）
 (struct cmd-prefix (value) #:transparent)        ; value : prefix
 (struct cmd-prefix-cancel () #:transparent)
+
+;; 鼠标
+(struct cmd-mouse-press (col row) #:transparent)
+(struct cmd-mouse-scroll (col row delta) #:transparent)
 
 (provide (struct-out cmd-focus) (struct-out cmd-scroll) (struct-out cmd-nav)
          (struct-out cmd-toggle) (struct-out cmd-panel-swap)
@@ -58,7 +67,9 @@
          (struct-out cmd-undo) (struct-out cmd-redo)
          (struct-out cmd-select-all) (struct-out cmd-copy) (struct-out cmd-cut) (struct-out cmd-paste)
          (struct-out cmd-prompt-submit) (struct-out cmd-prompt-cancel)
+         (struct-out cmd-resize-view)
          (struct-out cmd-prefix) (struct-out cmd-prefix-cancel)
+         (struct-out cmd-mouse-press) (struct-out cmd-mouse-scroll)
          step)
 
 ;;; ---------- 派发：前缀 / feature handler 链 / 基础命令 ----------
@@ -83,6 +94,7 @@
     [(cmd-toggle? cmd)    (session-toggle-slot s (cmd-toggle-slot cmd))]
     [(cmd-panel-swap? cmd) (session-panel-swap s)]
     [(cmd-resize? cmd)    (session-resize s (cmd-resize-w cmd) (cmd-resize-h cmd))]
+    [(cmd-resize-view? cmd) (session-resize-view s (cmd-resize-view-axis cmd) (cmd-resize-view-delta cmd))]
     [(cmd-quit? cmd)      (session-quit s)]
     [(cmd-insert? cmd)    (session-insert s (cmd-insert-text cmd))]
     [(cmd-delete? cmd)    (session-delete s)]
@@ -95,4 +107,6 @@
     [(cmd-paste? cmd)     (session-paste s)]
     [(cmd-prompt-submit? cmd) (session-prompt-submit s)]
     [(cmd-prompt-cancel? cmd) (session-prompt-cancel s)]
+    [(cmd-mouse-press? cmd)  (session-mouse-press s (cmd-mouse-press-col cmd) (cmd-mouse-press-row cmd))]
+    [(cmd-mouse-scroll? cmd) (session-mouse-scroll s (cmd-mouse-scroll-col cmd) (cmd-mouse-scroll-row cmd) (cmd-mouse-scroll-delta cmd))]
     [else s]))

@@ -72,11 +72,13 @@
          ;; 状态窗口
          session-add-panel session-panel session-panel-vid session-vid-keys
          session-panel-dids session-dock-vid? session-panel-swap
+         session-view-at session-mouse-press session-mouse-scroll
          session-add-handler
          ;; 文档级键表
          session-doc-keys session-doc-add-key
          ;; 构造 / 结构操作
          session-open-document session-add-document session-add-view
+         session-assemble
          session-split-view session-close-view session-close-document session-show-view
          ;; 读（供 feature 用，不暴露 core）
          session-document-ids session-view-ids-of session-document-name
@@ -86,6 +88,7 @@
          ;; 操作原语（命令需要的就是这几个）
          session-focus-move session-scroll session-toggle-slot
          session-resize session-quit session-nav
+         session-resize-view
          session-select-all session-copy session-cut session-paste
          session-insert session-delete session-backspace
          session-undo session-redo)
@@ -98,6 +101,12 @@
 ;; 从头建一个空 session（内置空 editor；文档 / 视图随后用 session-open-document 加）。
 (define (session-blank width height [keys '()])
   (session-new (make-blank-editor) #f #f (focus-new #f) width height keys))
+
+;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
+;; 之后所有结构手术（分屏 / 关闭 / 缩放）都在具体树上做；bindings 仍保留，
+;; 供「按 slot 找视图」（如 C-b 开关侧栏）。
+(define (session-assemble s layout bindings)
+  (struct-copy session s [layout (layout-fill layout bindings)] [bindings bindings]))
 
 ;;; ---------- 展示态 ----------
 
@@ -371,13 +380,27 @@
 
 (define (session-toggle-slot s slot)
   (define node (hash-ref (session-bindings s) slot #f))
-  (define vid (and (leaf? node) (leaf-vid node)))
-  (if vid
-      (session-set-visible s vid (not (presentation-visible? (session-presentation s vid))))
-      s))
+  (define vids (layout-vids node))
+  (cond
+    [(null? vids) s]
+    [else
+     (define any-visible? (for/or ([v (in-list vids)])
+                            (presentation-visible? (session-presentation s v))))
+     (define s1 (for/fold ([s s]) ([v (in-list vids)]) (session-set-visible s v #f)))
+     (if any-visible? s1 (session-set-visible s1 (first vids) #t))]))
 
 (define (session-resize s w h) (struct-copy session s [width w] [height h]))
 (define (session-quit s) (struct-copy session s [quit? #t]))
+
+;; 改焦点视图尺寸：调整 layout 里最近的同向 split 那一项（axis : 'width | 'height）。
+(define (session-resize-view s axis delta)
+  (define vid (session-focus-vid s))
+  (cond
+    [(not vid) s]
+    [else
+     (struct-copy session s
+       [layout (layout-resize (session-layout s) vid axis delta
+                              (area 0 0 (session-width s) (session-height s)))])]))
 
 ;; 选区 / 剪贴板（转发 core）
 (define (session-select-all s)
@@ -407,3 +430,37 @@
 (define (session-redo s)
   (sync-layout! s)
   (with-focus-vid s (lambda (vid) (editor-view-redo! (session-ed s) vid))))
+
+;;; ---------- 鼠标 ----------
+
+;; 屏幕坐标命中哪个已放置视图。
+(define (session-view-at s col row)
+  (for/first ([p (in-list (session-views s))]
+              #:when (and (>= col (placed-x p)) (< col (+ (placed-x p) (placed-w p)))
+                          (>= row (placed-y p)) (< row (+ (placed-y p) (placed-h p)))))
+    (placed-vid p)))
+
+;; 点击：聚焦命中的视图 + 把光标定位到点击的字符。
+(define (session-mouse-press s col row)
+  (sync-layout! s)
+  (define p (for/first ([p (in-list (session-views s))]
+                        #:when (and (>= col (placed-x p)) (< col (+ (placed-x p) (placed-w p)))
+                                    (>= row (placed-y p)) (< row (+ (placed-y p) (placed-h p)))))
+              p))
+  (cond
+    [(not p) s]
+    [else
+     (define vid (placed-vid p))
+     (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
+     (define-values (line c)
+       (editor-view-screen-position->point (session-ed s) vid
+                                           (- row (placed-y p)) (- col (placed-x p))))
+     (when line (editor-view-set-point! (session-ed s) vid (point line c)))
+     s1]))
+
+;; 滚轮：滚命中的视图（不改焦点）。
+(define (session-mouse-scroll s col row delta)
+  (sync-layout! s)
+  (define vid (session-view-at s col row))
+  (when vid (editor-view-scroll! (session-ed s) vid delta))
+  s)
