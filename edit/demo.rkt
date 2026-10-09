@@ -1,15 +1,20 @@
 #lang racket
 
-;;; edit/demo.rkt —— 最小可跑装配：编辑区 + 四个状态窗口（输入 / 状态 / 文件树 / 缓冲区）。
+;;; edit/demo.rkt —— 装配：编辑区 + 四个状态窗口（输入 / 状态 / 文件树 / 缓冲区）
+;;;
+;;; 布局在 config/layout.rkt 里组合声明；这里只按 slot 名把内容填进去。
+;;;   (demo-session)                      ; 默认：文件树在左
+;;;   (demo-session #:layout layout-top)  ; 文件树在上
 
 (require "core/layout.rkt" "core/focus.rkt"
+         "config/layout.rkt"
          "command/session.rkt" "command/command.rkt" "command/keys.rkt" "command/binding.rkt"
          "document/document.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt")
 
 (provide demo-session)
 
-(define (demo-session [w 80] [h 24])
+(define (demo-session [w 80] [h 24] #:layout [layout layout-left])
   (define s0 (session-blank w h (list base-keys document-keys)))
 
   ;; 编辑文档
@@ -25,19 +30,17 @@
   (define-values (s7 status) (status-install s6 w 1))
   (define-values (s8 tree)   (tree-install s7 (current-directory) 26 18))
   (define-values (s9 buf)    (buffers-install s8 26 8))
-  ;; tree / buffers 共用左栏位置，默认显示 tree
+
+  ;; tree / buffers 共用同一位置，默认显示 tree
   (define s9* (session-set-visible s9 buf #f))
 
-  ;; 布局
+  ;; 内容（按 slot 名填进 config 的骨架）
   (define side   (stack (list (leaf tree) (leaf buf))))
   (define editor (split 'lr (list (cons 'flex (leaf v1)) (cons 'flex (leaf v2)))))
   (define bottom (split 'tb (list (cons 'flex (leaf status)) (cons 1 (leaf input)))))
-  (define base   (split 'lr (list (cons 26 (slot 'side))
-                                  (cons 'flex (split 'tb (list (cons 'flex (slot 'editor))
-                                                               (cons 2 (slot 'bottom))))))))
-
   (define bnd (hash 'side side 'editor editor 'bottom bottom))
-  (define s10 (document-install (session-assemble s9* base bnd) edit-keys))
+
+  (define s10 (document-install (session-assemble s9* layout bnd) edit-keys))
   ;; 初始焦点 / 活动编辑视图
   (session-set-focus s10 (focus-set (session-focus s10) v1)))
 
