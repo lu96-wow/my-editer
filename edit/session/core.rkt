@@ -20,7 +20,9 @@
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt"
-         "../core/keymap.rkt")
+         "../core/keymap.rkt"
+         "../core/face.rkt"
+         "../plugin/registry.rkt")
 
 (provide
  session-blank
@@ -41,6 +43,8 @@
  session-view-id-list session-document-view-list
  ;; 保存句柄 / 脏
  session-document-string session-mark-saved session-dirty?
+ ;; document 插件写回（懒：句柄变了才重算 fills）
+ session-doc-face! session-doc-plugins-apply
  ;; 内核适配
  session-ed-close-view session-ed-close-document
  session-ed-assign! session-ed-set-point! session-ed-screen->point
@@ -157,6 +161,34 @@
 (define (session-view-id-list s) (editor-view-id-list (session-ed s)))
 (define (session-document-view-list s did) (editor-document-view-list (session-ed s) did))
 (define (session-document-string s did) (editor-document-string (session-ed s) did))
+
+;;; ---------- document 插件写回 ----------
+
+;; 用 fills 重设某文档的 face 端口：先清空（整篇 #f），再按 fills 逐格 face-compose。
+(define (session-doc-face! s did fills)
+  (define doc (editor-document-handle (session-ed s) did))
+  (document-set-face! doc #f)
+  (document-face-fill-batch* doc fills face-compose)
+  s)
+
+;; 渲染前：对有 path 且绑了插件的文档，若句柄与上次写回不同则重算并写 face。
+;; 引擎在每次编辑时自动 rebase face 端口、并产生新句柄，所以「句柄变了」= 文本变了
+;; （undo 同理）—— 这就是 lazy 的判据，不需要捕获 change。
+(define (session-doc-plugins-apply s)
+  (for/fold ([s s]) ([did (in-list (session-document-ids s))])
+    (define path (session-file-path s did))
+    (define ps (session-doc-plugins s did))
+    (cond
+      [(or (not path) (null? ps)) s]
+      [else
+       (define h (editor-document-handle (session-ed s) did))
+       (cond
+         [(eq? h (session-doc-applied s did)) s]
+         [else
+          (define text (session-document-string s did))
+          (define fills (append* (for/list ([p (in-list ps)])
+                                   ((doc-plugin-fills p) text path))))
+          (session-doc-mark-applied (session-doc-face! s did fills) did h)])])))
 
 ;;; ---------- 保存句柄 / 脏 ----------
 

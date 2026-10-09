@@ -12,15 +12,18 @@
 
 (require "style.rkt"
          "tree.rkt"
-         "state.rkt")
+         "state.rkt"
+         "syntax.rkt"
+         "../core/face.rkt")
 
 (provide (struct-out theme)
          default-theme current-theme
          theme-style theme-overlay-style)
 
-(struct theme (faces overlays default-style) #:transparent)
+(struct theme (faces overlays palettes default-style) #:transparent)
 ;; faces         : hash face-symbol -> style
 ;; overlays      : hash overlay-symbol -> style
+;; palettes      : hash kind-symbol -> (vectorof rgb)   palette-color 取色用
 ;; default-style : style（face 缺失 / #f 时用）
 
 ;;; ---------- 基础分块 ----------
@@ -37,19 +40,36 @@
 
 ;;; ---------- 组装 ----------
 
-(define (merge-faces . hashes)
+(define (merge-hashes . hashes)
   (for/fold ([h (hash)]) ([x (in-list hashes)])
     (for/fold ([h h]) ([(k v) (in-hash x)]) (hash-set h k v))))
 
 (define default-theme
-  (theme (merge-faces base-faces tree-faces state-faces)
+  (theme (merge-hashes base-faces tree-faces state-faces)
          base-overlays
+         (merge-hashes syntax-palettes)
          default-style))
 
 ;;; ---------- 查询 ----------
 
+;; 调色板取色：index 对色板长度取模。
+(define (palette-ref t kind index)
+  (define v (hash-ref (theme-palettes t) kind #f))
+  (and v (positive? (vector-length v)) (vector-ref v (modulo index (vector-length v)))))
+
 (define (theme-style t face)
-  (hash-ref (theme-faces t) face (theme-default-style t)))
+  (cond
+    ;; 分层：逐层解析 style，逐分量叠加（后层覆盖前层）。
+    [(face-stack? face)
+     (define ls (face-stack-layers face))
+     (cond
+       [(null? ls) (theme-default-style t)]
+       [else (for/fold ([st (theme-style t (first ls))])
+                       ([lyr (in-list (rest ls))])
+               (style-over st (theme-style t lyr)))])]
+    [(palette-color? face) (style (palette-ref t (palette-color-kind face) (palette-color-index face))
+                                  #f '())]
+    [else (hash-ref (theme-faces t) face (theme-default-style t))]))
 
 (define (theme-overlay-style t ov)
   (and ov (hash-ref (theme-overlays t) ov #f)))

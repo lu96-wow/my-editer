@@ -7,7 +7,7 @@
 ;;;   session/doc.rkt        文档域状态：did<->path + 保存句柄 + 文档键表（纯）
 ;;;   session/focus.rkt      焦点 set
 ;;;   session/core.rkt       ★ 唯一 require core/editor：文档 / 视图 / 几何 / 渲染 / 读 + 内核适配
-;;;   session/panel.rkt      状态窗口：枚举 / 互换 / refresh
+;;;   session/panel.rkt      状态窗口：枚举 / 互换 / refresh / 渲染前准备
 ;;;   session/bottom.rkt     底部区（status/input/log 互斥）+ log 通道
 ;;;   session/prompt.rkt     输入行
 ;;;   session/structure.rkt  结构手术：显示 / 分屏 / 关闭 / 显隐 / 尺寸 / 浮动窗口

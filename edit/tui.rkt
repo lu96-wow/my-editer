@@ -53,7 +53,8 @@
 ;;; ---------- 输出：session -> pieces ----------
 
 ;; piece 的外观：face 来自 document 的 face 字段（经 core 带到 piece.attr）。
-;; attr 形态：普通文本 → face（symbol | #f）；overlay → (overlay . face)。
+;; attr 形态：普通文本 → face（symbol | palette-color | face-stack | #f）；
+;; overlay → (overlay . face)（pair）。
 ;; 这里只把 theme 里的 style 翻成 racket-tui 转义序列（真彩色 + 按需属性）。
 (define (rgb-fg c) (if c (format-rgb-fg-base (rgb-r c) (rgb-g c) (rgb-b c)) #""))
 (define (rgb-bg c) (if c (format-rgb-bg-base (rgb-r c) (rgb-g c) (rgb-b c)) #""))
@@ -75,21 +76,13 @@
    (for/fold ([b #""]) ([a (in-list (style-attrs st))])
      (bytes-append b (attr-bytes a)))))
 
-;; overlay 逐分量盖到 face 上（overlay 的 #f 分量不覆盖 face），属性叠加。
-(define (merge-style f o)
-  (cond
-    [(not o) f]
-    [else (style (or (style-fg o) (style-fg f))
-                 (or (style-bg o) (style-bg f))
-                 (append (style-attrs f) (style-attrs o)))]))
-
+;; overlay 逐分量盖到 face 上（overlay 的 #f 分量不覆盖 face）。
 (define (piece-style attr)
   (define t (current-theme))
-  (cond
-    [(symbol? attr) (style-bytes (theme-style t attr))]
-    [(not (pair? attr)) (style-bytes (theme-style t #f))]
-    [else (style-bytes (merge-style (theme-style t (cdr attr))
-                                    (theme-overlay-style t (car attr))))]))
+  (style-bytes
+   (cond
+     [(pair? attr) (style-over (theme-style t (cdr attr)) (theme-overlay-style t (car attr)))]
+     [else (theme-style t attr)])))
 
 ;;; ---------- 画一帧（增量） ----------
 
@@ -98,12 +91,12 @@
 (define prev-size (box #f))
 
 (define (draw! s)
-  (session-refresh s)
+  (define s1 (session-prepare-render s))
   (define old (unbox prev))
-  (define size (cons (session-width s) (session-height s)))
+  (define size (cons (session-width s1) (session-height s1)))
   (define fresh? (or (not old) (not (equal? size (unbox prev-size)))))
   (set-box! prev-size size)
-  (define-values (new rends sels) (session-patch s old))
+  (define-values (new rends sels) (session-patch s1 old))
   (set-box! prev new)
   (put-bytes format-cursor-hide)
   (when fresh? (put-bytes format-screen-clear))
@@ -113,7 +106,8 @@
                 (piece-style (piece-attr p))
                 (format-content (piece-text p))
                 format-reset)))
-  (flush!))
+  (flush!)
+  s1)
 
 ;;; ---------- 主循环 ----------
 
@@ -128,8 +122,8 @@
        (set-box! prev #f)
        (set-box! prev-size #f)
        (let loop ([s s])
-         (draw! s)
+         (define s1 (draw! s))
          (define ev (read-event))
-         (define c (resolve s ev))
-         (define s* (if c (step s c) s))
+         (define c (resolve s1 ev))
+         (define s* (if c (step s1 c) s1))
          (unless (session-quit? s*) (loop s*)))))))

@@ -8,7 +8,7 @@
 ;;; 这是 edit 的配置词汇，对齐 lab-rebuild 的 theme 思路（真彩色，后端不参与）：
 ;;; 颜色只存数据，后端（如 tui.rkt）负责翻成自己的转义序列。换后端只换翻译。
 
-(provide (struct-out rgb) (struct-out style))
+(provide (struct-out rgb) (struct-out style) style-over)
 
 ;;; ---------- 真彩色 ----------
 
@@ -27,6 +27,15 @@
   (for/and ([a (in-list attrs)]) (and (memq a known-attrs) #t)))
 
 ;;; ---------- style ----------
+
+;; 逐分量叠加：top 的非 #f 分量覆盖 base，属性追加（base 在前）。#f 表示空层。
+(define (style-over base top)
+  (cond
+    [(not base) top]
+    [(not top) base]
+    [else (style (or (style-fg top) (style-fg base))
+                 (or (style-bg top) (style-bg base))
+                 (append (style-attrs base) (style-attrs top)))]))
 
 ;; (style fg bg attrs)：fg/bg = rgb | #f；attrs = known-attrs 的子集（可 '()）。
 (struct style (fg bg attrs)
