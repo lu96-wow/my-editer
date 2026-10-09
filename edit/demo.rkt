@@ -5,18 +5,17 @@
 ;;; document / view 真身在 core editor；edit 只加布局树、focus、文档级键表。
 
 (require "core/layout.rkt" "core/focus.rkt"
-         "command/command.rkt" "command/keys.rkt" "command/binding.rkt"
-         "../core/editor.rkt")
+         "command/session.rkt" "command/command.rkt" "command/keys.rkt" "command/binding.rkt")
 
 (provide demo-session)
 
 (define (demo-session [w 80] [h 24])
-  ;; 开 4 篇文档
-  (define s0 (session-new (make-blank-editor) #f #f (focus-new #f) w h (list base-keys)))
-  (define-values (s1 pid)  (session-open-document s0 (document-open "file tree\nsrc/\n  main.rkt")))
-  (define-values (s2 bid)  (session-open-document s1 (document-open "  main.rkt  L1:C1")))
-  (define-values (s3 did1) (session-open-document s2 (document-open "hello\nworld\nfoo\nbar\nbaz")))
-  (define-values (s4 did2) (session-open-document s3 (document-open "second pane\nline2\nline3")))
+  ;; 开 4 篇文档（字符串直接开，core 自己包成 document）
+  (define s0 (session-blank w h (list base-keys)))
+  (define-values (s1 pid)  (session-open-document s0 "file tree\nsrc/\n  main.rkt"))
+  (define-values (s2 bid)  (session-open-document s1 "  main.rkt  L1:C1"))
+  (define-values (s3 did1) (session-open-document s2 "hello\nworld\nfoo\nbar\nbaz"))
+  (define-values (s4 did2) (session-open-document s3 "second pane\nline2\nline3"))
 
   ;; 每篇文档建一个视图（vid 由 core 分配）
   (define-values (s5 panel) (session-add-view s4 pid  30 24))

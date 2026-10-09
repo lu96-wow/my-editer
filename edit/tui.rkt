@@ -9,6 +9,7 @@
 
 (require tui
          "command/command.rkt"
+         "command/session.rkt"
          "command/binding.rkt"
          "core/keymap.rkt"
          "../core/view/base/screen.rkt"

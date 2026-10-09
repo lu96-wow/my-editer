@@ -10,6 +10,7 @@
          "core/focus.rkt"
          "core/keymap.rkt"
          "command/binding.rkt"
+         "command/session.rkt"
          "command/command.rkt"
          "command/keys.rkt")
 
@@ -18,5 +19,6 @@
                        "core/focus.rkt"
                        "core/keymap.rkt"
                        "command/binding.rkt"
+                       "command/session.rkt"
                        "command/command.rkt"
                        "command/keys.rkt"))
