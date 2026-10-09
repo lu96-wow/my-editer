@@ -24,9 +24,12 @@
 (define (registry-ref name)
   (for/first ([p (in-list plugin-catalog)] #:when (eq? name (plugin-spec-name p))) p))
 
+;; 名字 → 实现；未知名字直接报错（配置拼错不静默）。
 (define (plugins-by-names names)
-  (for/list ([n (in-list names)] #:when (registry-ref n))
-    (registry-ref n)))
+  (for/list ([n (in-list names)])
+    (or (registry-ref n)
+        (error 'plugins-by-names "未知插件名: ~a（可用: ~a）"
+               n (map plugin-spec-name plugin-catalog)))))
 
 (define enabled-plugins (plugins-by-names enabled-plugin-names))
 

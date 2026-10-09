@@ -46,10 +46,10 @@
 (check-false (kw-layer (face-at s2 0 7)))                 ; "x" 无关键字层
 (check-true (and (kw-layer (face-at s2 1 1)) #t))         ; "let" 关键字层
 
-;; --- lazy：同句柄不重算；编辑后句柄变 → 重算 ---
-(define before (session-doc-applied s2 did))
+;; --- lazy：本版本已写回 → 跳过（槽对象不变）---
+(define before (session-doc-slot-ref s2 did plugin-state))
 (define s3 (session-prepare-render s2))
-(check-eq? before (session-doc-applied s3 did))           ; 未变，缓存命中
+(check-eq? before (session-doc-slot-ref s3 did plugin-state))
 (define s4 (session-insert s3 "lambda "))                 ; 光标在 0,0，插入
 (define s5 (session-prepare-render s4))
 (check-true (and (kw-layer (face-at s5 0 0)) #t))         ; 新文本 "lambda" 关键字层

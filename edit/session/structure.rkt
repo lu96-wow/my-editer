@@ -11,6 +11,7 @@
          "doc.rkt"
          "core.rkt"
          "focus.rkt"
+         "hook.rkt"
          "plugin.rkt"
          "../core/area.rkt"
          "../core/layout.rkt"
@@ -128,7 +129,8 @@
                                             #:unless (session-dock-vid? s* v)) v))
                     (session-set-focus s* (focus-set (session-focus s*) (and (pair? rest) (first rest))))]
                    [else s*]))
-     (session-fix-edit-vid s**)]))
+     (session-run-hooks (session-fix-edit-vid s**) 'document-closed (list did))]))
+
 
 ;; 隐藏视图：从编辑区移除（**不关 view、不关 document**）；焦点 / 活动视图移到仍在显示的编辑器视图。
 (define (session-hide-view s vid)

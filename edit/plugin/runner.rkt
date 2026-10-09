@@ -7,6 +7,10 @@
 ;;;   place-runner : n 个 worker place 进程，主进程发请求、收结果（真并行）
 ;;; 版本闸门不在本层（由 session/async.rkt 统一）。
 ;;;
+;;; 结果统一包成 job-result：成功 (job-result #t 值)，失败 (job-result #f 错误消息)。
+;;; 于是「handler 返回 #f」与「handler 抛异常」可区分（不再把异常吞成 #f）；
+;;; 错误跨 place 只传字符串（exn 本身不保证可序列化）。
+;;;
 ;;; ⚠ place 只能在 tui:with-tui 之后创建；所以服务惰性创建 runner
 ;;;   （首次请求时），不要启动期就建。
 
@@ -14,11 +18,20 @@
          racket/place
          racket/match)
 
-(provide (struct-out runner)
+(provide (struct-out runner) (struct-out job-result)
          make-sync-runner make-place-runner job-worker-main
          runner-submit! runner-poll! runner-stop!)
 
 (struct runner (submit poll stop) #:transparent)
+
+;; 请求结果：ok? = #t 时 value = handler 返回值；ok? = #f 时 value = 错误消息。
+;; #:prefab 以便跨 place 序列化。
+(struct job-result (ok? value) #:prefab)
+
+;; 就地跑一个请求，异常也变成 job-result。
+(define (run-job handler request)
+  (with-handlers ([exn? (lambda (e) (job-result #f (exn-message e)))])
+    (job-result #t (handler request))))
 
 (define (runner-submit! r request) ((runner-submit r) request))
 (define (runner-poll! r) ((runner-poll r)))
@@ -32,8 +45,7 @@
   (runner
    (lambda (request)
      (define id (begin0 next-id (set! next-id (add1 next-id))))
-     (define result (with-handlers ([exn? (lambda (_) #f)]) (handler request)))
-     (set-box! q (cons (cons id result) (unbox q)))
+     (set-box! q (cons (cons id (run-job handler request)) (unbox q)))
      id)
    (lambda () (begin0 (reverse (unbox q)) (set-box! q '())))
    (lambda () (void))))
@@ -80,6 +92,5 @@
       [(eq? msg 'stop) (void)]
       [else
        (match-define (cons id request) msg)
-       (define result (with-handlers ([exn? (lambda (_) #f)]) (handler request)))
-       (place-channel-put ch (cons id result))
+       (place-channel-put ch (cons id (run-job handler request)))
        (loop)])))

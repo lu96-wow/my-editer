@@ -46,4 +46,10 @@
 (check-false (word-layer (face-at s4 0 0)))                ; "xalpha" 被跳过
 (check-true (and (word-idx s4 0 7) #t))                    ; "beta" 仍上色
 
+;; 敲分隔符让活动词“定下来” → 该词补上色
+(define vid (session-edit-vid s2))
+(define s5 (session-ed-set-point! s4 vid 0 6))
+(define s6 (session-prepare-render (session-insert s5 " ")))
+(check-true (and (word-idx s6 0 0) #t))                    ; "xalpha" 现在上色
+
 (delete-file p)

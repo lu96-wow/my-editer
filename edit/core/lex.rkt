@@ -11,10 +11,11 @@
 ;;; ⚠ 用 char-alphabetic? / char-numeric? 而不是正则字符类：Racket regexp 不支持
 ;;;    \p{L}（[:alpha:] 也是 ASCII-only），中文等 CJK 会被漏掉。
 
-(require racket/string)
+(require racket/string
+         "../../core/text/base/line.rkt")
 
 (provide symbol-char? ident-start? ident-char?
-         line-tokens scan-words active-token
+         line-tokens scan-words word-token-at
          line-at prefix-at)
 
 (define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
@@ -38,22 +39,18 @@
        (loop j (cons (cons i j) acc))]
       [else (loop (add1 i) acc)])))
 
-;; 整篇 → (listof token)。
+;; 整篇 → (listof token)。行切分与 document 一致（string->lines，保留空行）。
 (define (scan-words text)
   (append*
-   (for/list ([line (in-list (string-split text "\n"))] [ln (in-naturals)])
+   (for/list ([line (in-list (string->lines text))] [ln (in-naturals)])
      (for/list ([m (in-list (line-tokens line))])
        (list ln (car m) (cdr m) (substring line (car m) (cdr m)))))))
 
-;; 「正在输入的那个词」= 光标前一个字符所在的 token（point = (cons line col) | #f）。
-;; 词高亮 / 关键字都跳过它，等词定下来（敲分隔符 / 移开）再上色，免得边打边换色。
-(define (active-token tokens point)
-  (and point
-       (let ([line (car point)] [col (sub1 (cdr point))])
-         (and (>= col 0)
-              (for/first ([tok (in-list tokens)]
-                          #:when (and (= line (car tok)) (<= (cadr tok) col) (< col (caddr tok))))
-                tok)))))
+;; 第 line 行第 col 个字符落在哪个标识符 token 里 → (list start end) / #f。
+(define (word-token-at line col)
+  (for/first ([m (in-list (line-tokens line))]
+              #:when (and (<= (car m) col) (< col (cdr m))))
+    (list (car m) (cdr m))))
 
 ;; 第 line 行字符串（不含换行；越界 = ""）。
 (define (line-at text line)

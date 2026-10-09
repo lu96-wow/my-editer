@@ -4,7 +4,8 @@
 ;;;
 ;;; 命令层需要的那几个原语：焦点移动 / 滚动 / 光标导航 / 选区 / 剪贴板 / 编辑 / 撤销。
 ;;; 都走 core.rkt 的内核适配，不直接碰 core/editor。
-;;; 会改文本的原语在完成后发 'after-edit 通知（vid），供补全等 hook 用。
+;;; 会改文本的原语在完成后发 'after-edit（所有改动）+ 'after-insert（仅直接编辑），
+;;; 参数 (vid changes)；供增量插件 / 补全等 hook 用。
 ;;; 会话级纯变换（resize / quit）与结构手术见 value.rkt / structure.rkt。
 
 (require "value.rkt"
@@ -23,9 +24,20 @@
   (define vid (session-focus-vid s))
   (if vid (proc s vid) s))
 
-;; 编辑类原语：proc 做完后发 'after-edit 通知（返回值参与串接）。
+;; 编辑类原语：proc 返回 (values session changes)；有改动时发
+;;   'after-edit   (vid changes)
+;;   'after-insert (vid changes)   仅“直接编辑”（打字 / 删除 / 粘贴 / 剪切），
+;;                                 程序写入（接受补全等）不走这里 → 不触发自动弹。
 (define (with-edit s proc)
-  (with-focus-vid s (lambda (s vid) (session-run-hooks (proc s vid) 'after-edit (list vid)))))
+  (with-focus-vid s
+    (lambda (s vid)
+      (define-values (s* changes) (proc s vid))
+      (cond
+        [(null? changes) s*]
+        [else
+         (session-run-hooks
+          (session-run-hooks s* 'after-edit (list vid changes))
+          'after-insert (list vid changes))]))))
 
 (define (session-focus-move s dir)
   (session-set-focus s (focus-move (session-views s) (session-focus s) dir)))

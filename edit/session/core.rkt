@@ -16,11 +16,17 @@
          "../../core/editor.rkt"
          "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
+         "../../core/text/base/range.rkt"
+         "../../core/text/base/track.rkt"
+         (only-in "../../core/text/base/change.rkt" change-post-range)
+         (only-in "../../core/text/slot-dsl.rkt" define-document-slot)
+         (only-in "../../core/text/slots.rkt" fork-ctx-changes fork-ctx-new-text)
          racket/string
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt"
          "../core/keymap.rkt"
+         "../core/lex.rkt"
          "../core/face.rkt")
 
 (provide
@@ -43,8 +49,12 @@
  session-document-handle
  ;; 保存句柄 / 脏
  session-document-string session-mark-saved session-dirty?
+ ;; 文档槽（opaque 值，随版本 fork；插件状态等）
+ define-document-slot session-doc-slot-ref session-doc-slot-set!
+ ;; fork 上下文（插件增量状态用）
+ fork-ctx-dirty-lines fork-ctx-lines fork-ctx-active session-document-line-count
  ;; 写回原语（face；插件层用）
- session-doc-face!
+ session-doc-face-refill!
  ;; 按 vid 的区间替换（补全接受等）
  session-ed-replace!
  ;; 内核适配
@@ -164,13 +174,62 @@
 (define (session-document-string s did) (editor-document-string (session-ed s) did))
 (define (session-document-handle s did) (editor-document-handle (session-ed s) did))
 
+;;; ---------- 文档槽 ----------
+
+;; 槽 = opaque 值，随版本 fork（见 core/text/slots.rkt）；按 did 寻址当前文档。
+;; 声明（define-document-slot）由用方做，这里只提供读写。
+(define (session-doc-slot-ref s did sl) (editor-document-slot-ref (session-ed s) did sl))
+(define (session-doc-slot-set! s did sl v) (editor-document-slot-set! (session-ed s) did sl v) s)
+
+;;; ---------- fork 上下文（供插件增量状态用） ----------
+
+;; 本次编辑的脏行号（升序去重；change 的 post-range 覆盖的行）。
+(define (fork-ctx-dirty-lines ctx)
+  (define h (make-hash))
+  (for ([ch (in-list (fork-ctx-changes ctx))])
+    (define r (change-post-range ch))
+    (define l0 (point-line (range-start r)))
+    (define l1 (point-line (range-end r)))
+    (for ([l (in-range l0 (add1 l1))]) (hash-set! h l #t)))
+  (sort (hash-keys h) <))
+
+;; 给定行号取 (cons line string)，只回合法行（< 新文本行数）。
+(define (fork-ctx-lines ctx nums)
+  (define t (fork-ctx-new-text ctx))
+  (define n (track-length t))
+  (for/list ([l (in-list nums)] #:when (< l n))
+    (cons l (track-ref t l))))
+
+;; 活动词（本次编辑插入点前一个字符所在的词）→ (list line start end) | #f。
+(define (fork-ctx-active ctx)
+  (define chs (fork-ctx-changes ctx))
+  (cond
+    [(not (= 1 (length chs))) #f]
+    [else
+     (define r (change-post-range (car chs)))
+     (define end (range-end r))
+     (define ln (point-line end))
+     (define col (sub1 (point-column end)))
+     (define t (fork-ctx-new-text ctx))
+     (cond
+       [(or (< col 0) (>= ln (track-length t))) #f]
+       [else
+        (define line (track-ref t ln))
+        (cond
+          [(>= col (string-length line)) #f]
+          [else (define tok (word-token-at line col))
+                (and tok (list ln (car tok) (cdr tok)))])])]))
+
+(define (session-document-line-count s did)
+  (track-length (document-text (session-document-handle s did))))
+
 ;;; ---------- 写回原语 ----------
 
-;; 用 fills 重设某文档的 face 端口：先清空（整篇 #f），再按 fills 逐格 face-compose。
-(define (session-doc-face! s did fills)
-  (define doc (session-document-handle s did))
-  (document-set-face! doc #f)
-  (document-face-fill-batch* doc fills face-compose)
+;; 只重画给定行：先把这些行 face 清空，再按 fills 逐格 face-compose。
+(define (session-doc-face-refill! s did lines fills)
+  (define ed (session-ed s))
+  (for ([l (in-list lines)]) (editor-document-face-line! ed did l #f))
+  (document-face-fill-batch* (session-document-handle s did) fills face-compose)
   s)
 
 ;; 把 vid 的 [l0 c0, l1 c1) 替换成 text（选区 + 插入）。
@@ -220,11 +279,21 @@
 
 (define (session-ed-select-all! s vid) (editor-view-select-all! (session-ed s) vid) s)
 (define (session-ed-copy! s vid) (editor-view-copy! (session-ed s) vid) s)
-(define (session-ed-cut! s vid) (editor-view-cut! (session-ed s) vid) s)
-(define (session-ed-paste! s vid) (editor-view-paste! (session-ed s) vid) s)
+(define (session-ed-cut! s vid)
+  (define-values (changes _ok?) (editor-view-cut! (session-ed s) vid))
+  (values s changes))
+(define (session-ed-paste! s vid)
+  (define-values (changes _ok?) (editor-view-paste! (session-ed s) vid))
+  (values s changes))
 
-(define (session-ed-insert! s vid text) (editor-view-insert! (session-ed s) vid text) s)
-(define (session-ed-delete! s vid) (editor-view-delete! (session-ed s) vid) s)
-(define (session-ed-backspace! s vid) (editor-view-backspace! (session-ed s) vid) s)
-(define (session-ed-undo! s vid) (editor-view-undo! (session-ed s) vid) s)
-(define (session-ed-redo! s vid) (editor-view-redo! (session-ed s) vid) s)
+(define (session-ed-insert! s vid text)
+  (define-values (changes _ok?) (editor-view-insert! (session-ed s) vid text))
+  (values s changes))
+(define (session-ed-delete! s vid)
+  (define-values (changes _ok?) (editor-view-delete! (session-ed s) vid))
+  (values s changes))
+(define (session-ed-backspace! s vid)
+  (define-values (changes _ok?) (editor-view-backspace! (session-ed s) vid))
+  (values s changes))
+(define (session-ed-undo! s vid) (editor-view-undo! (session-ed s) vid) (values s '()))
+(define (session-ed-redo! s vid) (editor-view-redo! (session-ed s) vid) (values s '()))

@@ -50,7 +50,7 @@
 (struct session
   (ed frame bindings editor layout presentations panels decos overlays
    focus edit-vid width height quit? keys rules doc-keymaps handlers prompt prefix docs log
-   layers plugin-bindings plugin-applied hooks awaiting)
+   layers plugin-bindings services hooks awaiting)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; frame         : 骨架（config 的 slot 树；#f = 未装配）
@@ -75,7 +75,7 @@
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
 ;; plugin-bindings : (hash did -> (listof doc-plugin))       document 插件绑定（插件层）
-;; plugin-applied  : (hash did -> (cons handle states))      上次写回的句柄 + 各插件 state
+;; services        : (hash name -> any/c)   每-editor 命名状态（插件间共享 / 懒建服务）
 ;; hooks           : (listof hook)   生命周期通知处理器（见 hook.rkt）
 ;; awaiting        : (hash id -> (list token current? on-result))  异步结果闸门（见 async.rkt）
 
@@ -86,6 +86,8 @@
          session-focus-vid session-set-prefix
          session-resize session-quit session-add-handler session-set-rules
          session-layer-push session-layer-pop session-layer-active?
+         ;; 每-editor 命名状态（插件间共享 / 懒建服务）
+         session-service-ref session-service-put
          ;; 编辑区子树（结构手术用）
          session-editor session-set-editor
          ;; 状态窗口查询（纯）
@@ -141,6 +143,12 @@
 (define (session-add-handler s h)
   (struct-copy session s [handlers (cons h (session-handlers s))]))
 (define (session-set-rules s rules) (struct-copy session s [rules rules]))
+
+;;; ---------- 每-editor 命名状态 ----------
+
+(define (session-service-ref s name) (hash-ref (session-services s) name #f))
+(define (session-service-put s name v)
+  (struct-copy session s [services (hash-set (session-services s) name v)]))
 
 ;;; ---------- 输入层（模态键表，栈顶在前） ----------
 

@@ -56,4 +56,27 @@
 (check-false (session-layer-active? t3 'complete))
 (check-equal? (session-overlays t3) '())
 
+;; 菜单所属文档关闭 → document-closed hook 取消菜单
+(define u0 (session-set-focus t3 (focus-set (session-focus t3) vid)))
+(define u1 (step (session-ed-set-point! u0 vid 1 0) (cmd-insert "al")))
+(define u2 (step u1 (cmd-complete)))
+(check-true (session-layer-active? u2 'complete))
+(define u3 (session-close-document u2 (session-view-did u2 vid)))
+(check-false (session-layer-active? u3 'complete))
+(check-equal? (session-overlays u3) '())
+
+;; 语言补全：模块导出作为候选（#lang racket/base + (require racket/list)）
+(define p2 (make-temporary-file "cp2-~a.rkt"))
+(display-to-file "#lang racket/base\n(require racket/list)\n(define (my-fn) 1)\n(fir"
+                 p2 #:exists 'replace)
+(define g1 (session-open-file u3 (normalize p2)))
+(define gvid (session-edit-vid g1))
+(define g2 (session-ed-set-point! g1 gvid 3 4))
+(define g3 (step g2 (cmd-complete)))
+(check-true (session-layer-active? g3 'complete))
+(define g4 (step g3 (cmd-complete-accept)))
+(check-equal? (session-view-string g4 gvid)
+              "#lang racket/base\n(require racket/list)\n(define (my-fn) 1)\n(first")
+(delete-file p2)
+
 (delete-file p)

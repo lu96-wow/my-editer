@@ -5,7 +5,8 @@
 ;;;   raco test edit/test/async-test.rkt
 ;;;
 ;;; 覆盖：runner 提交 → before-render 轮询 → session-deliver 版本闸门；
-;;;       命中则施加 on-result，过期（current? #f）则丢弃；sync / place 两种 runner。
+;;;       命中则施加 on-result，过期（current? #f）则丢弃；sync / place 两种 runner；
+;;;       异常变成 (job-result #f msg)，与返回 #f 区分。
 
 (require rackunit
          racket/runtime-path
@@ -32,10 +33,25 @@
 ;; --- 命中：版本仍当前 → 交付 ---
 (define id (runner-submit! r 21))
 (define h1 (session-await base id 'token (lambda (s _t) #t)
-                          (lambda (s result) (set-box! delivered (cons result (unbox delivered))) s)))
+                          (lambda (s result)
+                            (when (job-result-ok? result)
+                              (set-box! delivered (cons (job-result-value result) (unbox delivered))))
+                            s)))
 (define h2 (session-prepare-render h1))
 (check-equal? (unbox delivered) '(42))
 (check-false (session-awaiting? h2 id))
+
+;; --- 异常：不再被吞成 #f，而是 (job-result #f 消息) ---
+(define re (make-sync-runner (lambda (_req) (error 'boom "炸了"))))
+(define eid (runner-submit! re 'x))
+(define er (let loop ([n 0])
+             (define m (runner-poll! re))
+             (cond [(pair? m) (cdar m)]
+                   [(> n 200) #f]
+                   [else (sleep 0.01) (loop (add1 n))])))
+(check-pred job-result? er)
+(check-false (job-result-ok? er))
+(check-true (string? (job-result-value er)))
 
 ;; --- 过期：current? 为假 → 丢弃 ---
 (define id2 (runner-submit! r 7))
@@ -51,7 +67,9 @@
 (define pres (let loop ([n 0])
                (define m (runner-poll! pr))
                (cond [(pair? m) (cdar m)]
-                     [(> n 500) 'timeout]
+                     [(> n 500) #f]
                      [else (sleep 0.01) (loop (add1 n))])))
-(check-equal? pres 10)
+(check-pred job-result? pres)
+(check-true (job-result-ok? pres))
+(check-equal? (job-result-value pres) 10)
 (runner-stop! pr)
