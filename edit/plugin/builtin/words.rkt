@@ -46,8 +46,11 @@
 (define (word-open text _path)
   (assign-fills (scan-words text) #f (hash)))
 
-(define (word-change state dirty active _path)
-  (assign-fills (dirty-tokens dirty) active (or state (hash))))
+(define (word-change state cctx)
+  (define dirty (change-ctx-dirty cctx))
+  (define-values (st fills)
+    (assign-fills (dirty-tokens dirty) (change-ctx-active cctx) (or state (hash))))
+  (values st (map car dirty) fills))
 
 (define word-plugin
   (doc-plugin 'words racket-applies? word-open word-change))

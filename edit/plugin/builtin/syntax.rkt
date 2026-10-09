@@ -33,10 +33,12 @@
             (match-define (list ln s e w) tok)
             (list ln s ln e (palette-color 'keyword (hash-ref keyword-index w))))))
 
-(define (syntax-change _state dirty active _path)
+(define (syntax-change _state cctx)
+  (define dirty (change-ctx-dirty cctx))
   (values #f
+          (map car dirty)
           (append* (for/list ([p (in-list dirty)])
-                     (line-fills (car p) (cdr p) active)))))
+                     (line-fills (car p) (cdr p) (change-ctx-active cctx))))))
 
 (define syntax-plugin
   (doc-plugin 'syntax racket-applies? syntax-open syntax-change))

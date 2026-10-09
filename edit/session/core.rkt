@@ -51,7 +51,7 @@
  ;; 文档槽（opaque 值，随版本 fork；插件状态等）
  define-document-slot session-doc-slot-ref session-doc-slot-set!
  ;; fork 上下文（插件增量状态用）
- fork-ctx-edits fork-ctx-lines session-document-line-count
+ fork-ctx-edits fork-ctx-lines fork-ctx-line fork-ctx-line-count session-document-line-count
  ;; 写回原语（face；插件层用）
  session-doc-face-refill!
  ;; 按 vid 的区间替换（补全接受等）
@@ -196,6 +196,13 @@
   (define n (track-length t))
   (for/list ([l (in-list nums)] #:when (< l n))
     (cons l (track-ref t l))))
+
+(define (fork-ctx-line-count ctx) (track-length (fork-ctx-new-text ctx)))
+
+;; 新文本第 n 行（越界 → ""）。
+(define (fork-ctx-line ctx n)
+  (define t (fork-ctx-new-text ctx))
+  (if (and (exact-nonnegative-integer? n) (< n (track-length t))) (track-ref t n) ""))
 
 (define (session-document-line-count s did)
   (track-length (document-text (session-document-handle s did))))

@@ -8,6 +8,7 @@
 ;;; 装配时 install-plugins 装全局贡献，enabled-doc-plugins 交给 rules 绑定。
 
 (require "registry.rkt"
+         "builtin/brackets.rkt"
          "builtin/words.rkt"
          "builtin/syntax.rkt"
          "builtin/completion.rkt"
@@ -17,7 +18,8 @@
          enabled-plugins enabled-doc-plugins install-plugins)
 
 (define plugin-catalog
-  (list word-spec
+  (list bracket-spec
+        word-spec
         syntax-spec
         completion-spec))
 

@@ -15,6 +15,7 @@
          "state.rkt"
          "syntax.rkt"
          "words.rkt"
+         "brackets.rkt"
          "../core/face.rkt")
 
 (provide (struct-out theme)
@@ -48,7 +49,7 @@
 (define default-theme
   (theme (merge-hashes base-faces tree-faces state-faces)
          base-overlays
-         (merge-hashes syntax-palettes word-palettes)
+         (merge-hashes syntax-palettes word-palettes bracket-palettes)
          default-style))
 
 ;;; ---------- 查询 ----------
@@ -70,6 +71,8 @@
                (style-over st (theme-style t lyr)))])]
     [(palette-color? face) (style (palette-ref t (palette-color-kind face) (palette-color-index face))
                                   #f '())]
+    [(palette-bg? face) (style #f (palette-ref t (palette-bg-kind face) (palette-bg-index face))
+                               '())]
     [else (hash-ref (theme-faces t) face (theme-default-style t))]))
 
 (define (theme-overlay-style t ov)
