@@ -2,10 +2,10 @@
 
 ;;; edit/tui.rkt —— racket-tui 输入 / 输出后端
 ;;;
-;;; 输入：read-event -> resolve（session 的键表叠）-> step（纯）-> session
-;;; 输出：session -> core 合成 -> pieces -> format-* 字节
+;;; 输入：read-event -> resolve（panel 键表 ⊕ 文档键表 ⊕ 全局）-> step（纯）-> session
+;;; 输出：session-refresh（刷新状态窗口）-> core 合成 -> pieces -> format-* 字节
 ;;;
-;;; 只有本模块碰终端 / FFI；command.rkt / layout.rkt / focus.rkt 保持纯。
+;;; 只有本模块碰终端 / FFI；session / layout / focus 保持纯。
 
 (require tui
          "command/command.rkt"
@@ -17,12 +17,15 @@
 
 (provide resolve render-pieces draw! run-tui)
 
-;;; ---------- 输入：event -> cmd（走 session 的键表叠） ----------
+;;; ---------- 输入：event -> cmd ----------
 
 (define (resolve s ev)
   (define b (event->binding ev))
+  (define vid (session-focus-vid s))
   (define did (session-focused-did s))
-  (define kms (append (if did (list (session-doc-keys s did)) '())
+  (define kms (append (filter values
+                              (list (and vid (session-vid-keys s vid))
+                                    (and did (session-doc-keys s did))))
                       (session-keys s)))
   (and b
        (for/or ([km (in-list kms)])
@@ -33,6 +36,7 @@
 
 ;; 一帧的全部 piece（render + selection）。old = #f 表示全量。
 (define (render-pieces s [old #f])
+  (session-refresh s)
   (define-values (_new rends sels) (session-patch s old))
   (append rends sels))
 
@@ -46,6 +50,7 @@
 (define prev (box #f))
 
 (define (draw! s)
+  (session-refresh s)
   (define old (unbox prev))
   (define-values (new rends sels) (session-patch s old))
   (define fresh? (or (not old)

@@ -30,7 +30,8 @@
 (define global-keys
   (kbd
    (key 'q 'ctrl) (cmd-quit)
-   (key 'b 'ctrl) (cmd-toggle 'panel)
+   (key 'b 'ctrl) (cmd-toggle 'side)
+   (key 'tab)     (cmd-panel-swap)
    ;; resize 需要事件里的尺寸 → spec 用过程
    resize-binding (lambda (ev) (cmd-resize (resize-event-cols ev) (resize-event-rows ev)))))
 
