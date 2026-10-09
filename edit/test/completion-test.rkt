@@ -72,7 +72,13 @@
 (define g1 (session-open-file u3 (normalize p2)))
 (define gvid (session-edit-vid g1))
 (define g2 (session-ed-set-point! g1 gvid 3 4))
-(define g3 (step g2 (cmd-complete)))
+;; 池在 worker 里算：轮询 before-render 直到菜单打开
+(define (pump-until-menu s n)
+  (cond
+    [(session-layer-active? s 'complete) s]
+    [(zero? n) s]
+    [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
+(define g3 (pump-until-menu (step g2 (cmd-complete)) 500))
 (check-true (session-layer-active? g3 'complete))
 (define g4 (step g3 (cmd-complete-accept)))
 (check-equal? (session-view-string g4 gvid)

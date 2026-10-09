@@ -16,9 +16,10 @@
 
 (require "value.rkt")
 
-(provide session-await session-deliver session-awaiting?)
+(provide session-await session-deliver session-awaiting? session-awaiting-any?)
 
 (define (session-awaiting? s id) (hash-has-key? (session-awaiting s) id))
+(define (session-awaiting-any? s) (positive? (hash-count (session-awaiting s))))
 
 (define (session-await s id token current? on-result)
   (struct-copy session s

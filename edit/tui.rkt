@@ -117,6 +117,11 @@
 
 ;;; ---------- 主循环 ----------
 
+(define (handle-event s ev)
+  (define c (resolve s ev))
+  (define s* (if c (step s c) s))
+  (and (not (session-quit? s*)) s*))
+
 (define (run-tui s0 #:theme [theme default-theme])
   (parameterize ([current-theme theme])
     (with-tui
@@ -129,7 +134,14 @@
        (set-box! prev-size #f)
        (let loop ([s s])
          (define s1 (draw! s))
-         (define ev (read-event))
-         (define c (resolve s1 ev))
-         (define s* (if c (step s1 c) s1))
-         (unless (session-quit? s*) (loop s*)))))))
+         (cond
+           ;; 有未决异步：小幅轮询重绘，结果到齐即装（read-event-noblock 不阻塞）。
+           [(session-awaiting-any? s1)
+            (sleep 0.02)
+            (define ev (read-event-noblock))
+            (cond
+              [(event-null? ev) (loop s1)]
+              [else (define s* (handle-event s1 ev)) (when s* (loop s*))])]
+           [else
+            (define s* (handle-event s1 (read-event)))
+            (when s* (loop s*))]))))))
