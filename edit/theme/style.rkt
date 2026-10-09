@@ -8,8 +8,7 @@
 ;;; 这是 edit 的配置词汇，对齐 lab-rebuild 的 theme 思路（真彩色，后端不参与）：
 ;;; 颜色只存数据，后端（如 tui.rkt）负责翻成自己的转义序列。换后端只换翻译。
 
-(provide (struct-out rgb) (struct-out style)
-         known-attrs style-attrs-known?)
+(provide (struct-out rgb) (struct-out style))
 
 ;;; ---------- 真彩色 ----------
 

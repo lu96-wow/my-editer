@@ -1,33 +1,25 @@
 #lang racket
 
-;;; edit/command/session-edit.rkt —— 结构手术 + 操作原语
+;;; edit/session/structure.rkt —— 视图 / 布局结构手术
 ;;;
-;;; 结构手术：视图的显示 / 分屏 / 关闭（改真身 + layout）。
-;;; 操作原语：命令层需要的那几个（焦点 / 滚动 / 导航 / 尺寸 / 选区 / 剪贴板 / 编辑）。
-;;; 都走 session-core 的内核适配，不直接碰 core/editor。
+;;; 显示 / 分屏 / 关闭 / 显隐 / 尺寸：改 view 真身 + layout 树。
+;;; 都走 core.rkt 的内核适配，不直接碰 core/editor。
 
-(require "session-value.rkt"
-         "session-doc.rkt"
-         "session-core.rkt"
-         "session-focus.rkt"
+(require "value.rkt"
+         "doc.rkt"
+         "core.rkt"
+         "focus.rkt"
          "../core/area.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt")
 
 (provide
- ;; 结构手术
  session-show-view session-split-view session-place-view
- session-close-view session-close-document session-hide-focused
- session-split-focused
- ;; 操作原语
- session-focus-move session-scroll session-toggle-slot
- session-resize session-quit session-nav session-resize-view
- session-select-all session-copy session-cut session-paste
- session-insert session-delete session-backspace
- session-undo session-redo)
+ session-close-view session-close-document
+ session-hide-view session-hide-focused session-split-focused
+ session-toggle-slot session-resize-view)
 
-;;; ---------- 结构手术 ----------
-
+;; 把 vid 显示到编辑区并聚焦。
 (define (session-show-view s vid)
   (define s1
     (cond
@@ -158,24 +150,7 @@
       (session-hide-view s vid)
       s))
 
-;;; ---------- 操作原语 ----------
-
-(define (with-focus-vid s proc)
-  (define vid (session-focus-vid s))
-  (when vid (proc vid))
-  s)
-
-(define (session-focus-move s dir)
-  (session-set-focus s (focus-move (session-views s) (session-focus s) dir)))
-
-(define (session-scroll s n)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-scroll! s vid n))))
-
-(define (session-nav s dir extend?)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-nav! s vid dir extend?))))
-
+;; 切换 bindings 里某个洞（叶）的显隐。
 (define (session-toggle-slot s slot)
   (define node (hash-ref (session-bindings s) slot #f))
   (define vids (layout-vids node))
@@ -186,9 +161,6 @@
      (define s1 (for/fold ([s s]) ([v (in-list vids)]) (session-set-visible s v #f)))
      (if any-visible? s1 (session-set-visible s1 (first vids) #t))]))
 
-(define (session-resize s w h) (struct-copy session s [width w] [height h]))
-(define (session-quit s) (struct-copy session s [quit? #t]))
-
 ;; 改焦点视图尺寸：调整 layout 里最近的同向 split 那一项（axis : 'width | 'height）。
 (define (session-resize-view s axis delta)
   (define vid (session-focus-vid s))
@@ -198,32 +170,3 @@
      (struct-copy session s
        [layout (layout-resize (session-layout s) vid axis delta
                               (area 0 0 (session-width s) (session-height s)))])]))
-
-;; 选区 / 剪贴板（转发 core）
-(define (session-select-all s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-select-all! s vid))))
-(define (session-copy s)
-  (with-focus-vid s (lambda (vid) (session-ed-copy! s vid))))
-(define (session-cut s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-cut! s vid))))
-(define (session-paste s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-paste! s vid))))
-
-(define (session-insert s text)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-insert! s vid text))))
-(define (session-delete s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-delete! s vid))))
-(define (session-backspace s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-backspace! s vid))))
-(define (session-undo s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-undo! s vid))))
-(define (session-redo s)
-  (sync-layout! s)
-  (with-focus-vid s (lambda (vid) (session-ed-redo! s vid))))

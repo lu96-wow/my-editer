@@ -1,17 +1,17 @@
 #lang racket
 
-;;; edit/command/session-mouse.rkt —— 鼠标（命中 / 点击定位 / 滚轮）
+;;; edit/session/mouse.rkt —— 鼠标（命中 / 点击定位 / 滚轮）
 ;;;
 ;;; 屏幕坐标命中已放置视图；点击 = 聚焦 + 定位光标；滚轮 = 滚命中视图（不改焦点）。
-;;; 走 session-core 的内核适配，不直接碰 core/editor。
+;;; 走 core.rkt 的内核适配，不直接碰 core/editor。
 
-(require "session-value.rkt"
-         "session-core.rkt"
-         "session-focus.rkt"
+(require "value.rkt"
+         "core.rkt"
+         "focus.rkt"
          "../core/layout.rkt"
          "../core/focus.rkt")
 
-(provide session-view-at session-mouse-press session-mouse-scroll)
+(provide session-mouse-press session-mouse-scroll)
 
 (define (session-view-at s col row)
   (for/first ([p (in-list (session-views s))]

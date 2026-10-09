@@ -8,7 +8,7 @@
 ;;; 状态窗口（panel）自身不算缓冲区。
 
 (require "api.rkt"
-         "../document/document.rkt")   ; 关闭（脏则问）
+         "../document/lifecycle.rkt")   ; 关闭（脏则问）
 
 (provide buffers-install
          (struct-out cmd-buffers-activate) (struct-out cmd-buffers-new-view)

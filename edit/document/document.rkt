@@ -1,19 +1,18 @@
 #lang racket
 
-;;; edit/document/document.rkt —— 文档 / 文件逻辑：打开 / 保存 + 脏
+;;; edit/document/document.rkt —— 文档 / 文件特征：打开 / 保存 + 脏
 ;;;
-;;; 文件 I/O 与路径登记在这里（不在 session 内核）。
+;;; 裸文件系统 I/O 在 fs.rkt，路径工具在 core/path.rkt；本层只编排 session：
 ;;;   打开：去重 → 读盘 → add-document → 分屏放置 → 记 path → 默认命令表 → 规则层 → 记 saved
 ;;;   保存：写盘 → 记 saved 句柄
 ;;; 脏由 session-dirty? 从句柄身份派生；文件映射走 session-set-file（file-map）。
 ;;;
-;;; 自带 command keys（document-keys）与 handler：assembly 里 document-install + 合并 keys。
-;;; 默认命令表由 assembly 注入（document-install 的参数），本层不依赖命令配置。
+;;; 自带 command keys（document-keys）与 handler（保存 / 打开发起）；关闭 / 退出策略
+;;; 在 lifecycle.rkt（它依赖本层的 session-save，不反向依赖）。
+;;; 默认命令表由 assembly 注入（document-handler 的参数），本层不依赖命令配置。
 
-(require racket/file
-         racket/path
-         racket/string
-         "../command/session.rkt"
+(require racket/string
+         "../session.rkt"
          "../command/command.rkt"
          "../command/key.rkt"
          "../core/keymap.rkt"
@@ -21,15 +20,12 @@
          "fs.rkt"
          "rules.rkt")
 
-(provide session-open-file session-save session-save-all
+(provide session-open-file session-save
          session-new-file session-new-dir session-delete-path
-         session-close-doc session-close-view-checked
-         document-install document-keys
+         document-handler document-keys
          (struct-out cmd-save) (struct-out cmd-open-file) (struct-out cmd-open-file-path))
 
 ;;; ---------- 工具 ----------
-
-(define (basename p) (path->string (or (file-name-from-path (path->complete-path p)) p)))
 
 ;; 资源操作出错 → 记日志（session-log!；prompt 进行中只追加不弹）。
 (define (session-error! s what path e)
@@ -48,9 +44,7 @@
       (define vs (session-view-ids-of s existing))
       (if (pair? vs) (session-show-view s (first vs)) s)]
      [else
-      (define text (cond [(directory-exists? np) (error 'open "是一个目录")]
-                         [(file-exists? np) (file->string np)]
-                         [else ""]))
+      (define text (fs-read-file np))
       (define-values (s1 did nvid) (session-add-document s text 40 18 #:name (basename np)
                                                        #:line-numbers? #t))
       (define base (session-edit-vid s1))
@@ -74,31 +68,25 @@
       (cond
         [(not path) s]                             ; 无路径：暂不实现另存为
         [else
-         (call-with-output-file path #:exists 'replace
-           (lambda (out) (display (session-document-string s d) out)))
+         (fs-write-file path (session-document-string s d))
          (session-mark-saved s d)])])))
-
-;; 全部有路径的文档存盘（错误退出用）。
-(define (session-save-all s)
-  (for/fold ([s s]) ([d (in-list (session-file-dids s))])
-    (session-save s d)))
 
 ;;; ---------- 文件操作（tree 的新建 / 删除） ----------
 
 ;; 在 dir 下新建文件；已存在 → path = #f。→ (values session path|#f)
 (define (session-new-file s dir name)
-  (with-handlers ([exn:fail? (lambda (e) (values (session-error! s "new file" (build-path dir name) e) #f))])
-   (define p (simplify-path (build-path dir name)))
+  (with-handlers ([exn:fail? (lambda (e) (values (session-error! s "new file" (join dir name) e) #f))])
+   (define p (join dir name))
    (cond
-     [(or (file-exists? p) (directory-exists? p))
+     [(fs-path-kind p)
       (values (session-log! s (format "new file ~a: 已存在" p)) #f)]
      [else (fs-create-file p) (values s p)])))
 
 (define (session-new-dir s dir name)
-  (with-handlers ([exn:fail? (lambda (e) (values (session-error! s "new dir" (build-path dir name) e) #f))])
-   (define p (simplify-path (build-path dir name)))
+  (with-handlers ([exn:fail? (lambda (e) (values (session-error! s "new dir" (join dir name) e) #f))])
+   (define p (join dir name))
    (cond
-     [(or (file-exists? p) (directory-exists? p))
+     [(fs-path-kind p)
       (values (session-log! s (format "new dir ~a: 已存在" p)) #f)]
      [else (fs-create-dir p) (values s p)])))
 
@@ -108,73 +96,6 @@
   (with-handlers ([exn:fail? (lambda (e) (session-error! s "delete" path e))])
    (fs-delete (normalize path))
    s))
-
-;;; ---------- 退出确认（有未保存修改时逐个询问） ----------
-;;; 交互用 prompt 回调链实现，不新增会话状态。
-
-;; 解析答案 -> 'yes | 'no | 'all | 'nall | 'invalid
-(define (quit-answer ans)
-  (define a (string-downcase (string-trim ans)))
-  (cond [(member a '("y" "yes")) 'yes]
-        [(member a '("n" "no")) 'no]
-        [(member a '("all" "a")) 'all]
-        [(member a '("nall" "none" "!")) 'nall]
-        [else 'invalid]))
-
-;; 有路径且脏的文档（无路径不可能脏）。
-(define (dirty-dids s)
-  (for/list ([d (in-list (session-file-dids s))] #:when (session-dirty? s d)) d))
-
-(define (session-quit-ask s remaining)
-  (cond
-    [(null? remaining) (session-quit s)]
-    [else
-     (define did (first remaining))
-     (define more (rest remaining))
-     (session-prompt-open s (session-panel-vid s 'input)
-       (format "save ~a? (y/n/all/nall) " (session-document-name s did))
-       (lambda (s ans)
-         (case (quit-answer ans)
-           [(yes)  (session-quit-ask (session-save s did) more)]
-           [(no)   (session-quit-ask s more)]
-           [(all)  (session-quit
-                    (for/fold ([s (session-save s did)]) ([d (in-list more)]) (session-save s d)))]
-           [(nall) (session-quit s)]
-           [else (session-quit-ask s remaining)])))]))   ; 无效输入：重问当前
-
-;; 退出入口：没有脏文档直接退，否则逐个问。
-(define (session-quit-confirm s)
-  (define ds (dirty-dids s))
-  (if (null? ds) (session-quit s) (session-quit-ask s ds)))
-
-;;; ---------- 关闭（统一入口；脏则问） ----------
-
-;; 'yes | 'no | 'invalid
-(define (yes-no ans)
-  (define a (string-downcase (string-trim ans)))
-  (cond [(member a '("y" "yes")) 'yes]
-        [(member a '("n" "no")) 'no]
-        [else 'invalid]))
-
-;; 关文档：脏则问是否保存。**唯一**的关文档入口。
-(define (session-close-doc s did)
-  (cond
-    [(not (session-dirty? s did)) (session-close-document s did)]
-    [else
-     (session-prompt-open s (session-panel-vid s 'input)
-       (format "save ~a? (y/n) " (session-document-name s did))
-       (lambda (s ans)
-         (case (yes-no ans)
-           [(yes) (session-close-document (session-save s did) did)]
-           [(no)  (session-close-document s did)]
-           [else  (session-close-doc s did)])))]))
-
-;; 关视图：该文档最后一个视图 → 走关文档（会问）；否则直接关视图。
-(define (session-close-view-checked s vid)
-  (define did (session-view-did s vid))
-  (if (null? (remove vid (session-document-view-list s did)))
-      (session-close-doc s did)
-      (session-close-view s vid)))
 
 ;;; ---------- 命令 + 键 + handler ----------
 
@@ -191,7 +112,6 @@
 (define (document-handler default-keys)
   (lambda (s cmd)
     (cond
-      [(cmd-quit? cmd) (session-quit-confirm s)]
       [(cmd-save? cmd) (session-save s)]
       ;; 直接打开（文件树发来）：不再询问路径。
       [(cmd-open-file-path? cmd)
@@ -207,7 +127,3 @@
                                       (session-open-file s path #:keys default-keys))))
            s)]
       [else #f])))
-
-;; 挂 handler；default-keys 作为打开文件的默认命令表。
-(define (document-install s [default-keys (kbd)])
-  (session-add-handler s (document-handler default-keys)))

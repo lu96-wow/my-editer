@@ -1,15 +1,15 @@
 #lang racket
 
-;;; edit/command/session-bottom.rkt —— 底部区（status / input / log 互斥）+ log 通道
+;;; edit/session/bottom.rkt —— 底部区（status / input / log 互斥）+ log 通道
 ;;;
 ;;; 底部三面板同位置；切换时按各 panel 的 rows 自动适配高度（只在切换时）。
 ;;; log 是只读日志通道：session-log! 追加，无 prompt 时弹出。
 
 (require racket/string
-         "session-value.rkt"
-         "session-core.rkt"
-         "session-panel.rkt"
-         "session-focus.rkt"
+         "value.rkt"
+         "core.rkt"
+         "panel.rkt"
+         "focus.rkt"
          "../core/focus.rkt"
          "../core/layout.rkt"
          "../core/area.rkt")

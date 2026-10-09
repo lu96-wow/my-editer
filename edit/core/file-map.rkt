@@ -12,7 +12,7 @@
          file-map-empty
          file-map-add file-map-remove
          file-map-path file-map-did
-         file-map-dids file-map-dids-under)
+         file-map-dids)
 
 (struct file-map (did->path path->did) #:transparent)
 ;; did->path : (hash did -> path)
@@ -38,11 +38,3 @@
 (define (file-map-did fm path) (hash-ref (file-map-path->did fm) (normalize path) #f))
 (define (file-map-dids fm) (for/list ([(d p) (in-hash (file-map-did->path fm))]) d))
 
-;; dir 目录下的 did（删目录用）。
-(define (file-map-dids-under fm dir)
-  (define nd (path->string (normalize dir)))
-  (define (under? p)
-    (define s (path->string (normalize p)))
-    (and (>= (string-length s) (string-length nd))
-         (string=? nd (substring s 0 (string-length nd)))))
-  (for/list ([(d p) (in-hash (file-map-did->path fm))] #:when (under? p)) d))

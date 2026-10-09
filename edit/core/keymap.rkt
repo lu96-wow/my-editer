@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/keymap.rkt —— 键表（纯）：绑定键 -> spec
+;;; edit/core/keymap.rkt —— 键表（纯）：绑定键 -> spec
 ;;;
 ;;; spec 可以是
 ;;;     · 一个 cmd 值（静态绑定）

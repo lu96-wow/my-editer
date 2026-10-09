@@ -1,19 +1,19 @@
 #lang racket
 
-;;; edit/command/session-doc.rkt —— 文档域会话状态（纯）
+;;; edit/session/doc.rkt —— 文档域会话状态（纯）
 ;;;
 ;;; did <-> path、保存句柄、文档级键表。全部纯（doc-state / keymap 都是 core 纯模块）。
-;;; 脏仍由 session-core 依「保存句柄 vs 当前句柄」派生。
+;;; 脏仍由 core.rkt 依「保存句柄 vs 当前句柄」派生。
 ;;;
-;;; 上层：session-core（借保存句柄算脏）、session-edit（关文档时清）、document 层。
+;;; 同层：core.rkt（借保存句柄算脏）、结构手术（关文档时清）、document 特征。
 
-(require "session-value.rkt"
+(require "value.rkt"
          "../core/doc-state.rkt"
          "../core/keymap.rkt")
 
 (provide session-file-path session-file-did session-file-dids session-set-file
          session-saved session-set-saved session-clear-doc
-         session-doc-keys session-doc-add-key session-doc-set-keys)
+         session-doc-keys session-doc-set-keys)
 
 ;;; ---------- did <-> path ----------
 
@@ -34,11 +34,6 @@
 ;;; ---------- 文档级键表 ----------
 
 (define (session-doc-keys s did) (hash-ref (session-doc-keymaps s) did (kbd)))
-(define (session-doc-add-key s did binding spec)
-  (struct-copy session s
-    [doc-keymaps (hash-set (session-doc-keymaps s) did
-                           (keymap-add (hash-ref (session-doc-keymaps s) did (kbd))
-                                       binding spec))]))
 ;; 整表替换（规则层用：文件打开匹配命令表）。
 (define (session-doc-set-keys s did km)
   (struct-copy session s [doc-keymaps (hash-set (session-doc-keymaps s) did km)]))

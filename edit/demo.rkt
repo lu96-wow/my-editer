@@ -9,8 +9,9 @@
 
 (require "core/layout.rkt" "core/focus.rkt"
          "config/layout.rkt"
-         "command/session.rkt" "command/keys.rkt"
+         "session.rkt" "command/keys.rkt"
          "document/document.rkt"
+         "document/lifecycle.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt"
          "feature/log.rkt")
 

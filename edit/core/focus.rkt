@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/focus.rkt —— 焦点（纯函数）
+;;; edit/core/focus.rkt —— 焦点（纯函数）
 ;;;
 ;;; 焦点 = 唯一活动目标 + 历史。语义分离（避免方向键 / 鼠标把历史越堆越深）：
 ;;;     focus-set      普通移动，不动历史

@@ -9,15 +9,13 @@
 
 (require tui
          "command/command.rkt"
-         "command/session.rkt"
+         "session.rkt"
          "command/binding.rkt"
          "core/keymap.rkt"
          "theme/theme.rkt"
-         "theme/style.rkt"
-         "../core/view/base/screen.rkt"
-         "../core/view/patch.rkt")
+         "theme/style.rkt")
 
-(provide resolve render-pieces piece-style draw! run-tui)
+(provide resolve piece-style draw! run-tui)
 
 ;;; ---------- 输入：event -> cmd ----------
 
@@ -53,12 +51,6 @@
             (and spec (spec->cmd spec ev))))]))
 
 ;;; ---------- 输出：session -> pieces ----------
-
-;; 一帧的全部 piece（render + selection）。old = #f 表示全量。
-(define (render-pieces s [old #f])
-  (session-refresh s)
-  (define-values (_new rends sels) (session-patch s old))
-  (append rends sels))
 
 ;; piece 的外观：face 来自 document 的 face 字段（经 core 带到 piece.attr）。
 ;; attr 形态：普通文本 → face（symbol | #f）；overlay → (overlay . face)。
@@ -102,14 +94,16 @@
 ;;; ---------- 画一帧（增量） ----------
 
 (define prev (box #f))
+;; 上一帧的逻辑尺寸（= session width/height）；帧对象只作不透明句柄回传给 session-patch。
+(define prev-size (box #f))
 
 (define (draw! s)
   (session-refresh s)
   (define old (unbox prev))
+  (define size (cons (session-width s) (session-height s)))
+  (define fresh? (or (not old) (not (equal? size (unbox prev-size)))))
+  (set-box! prev-size size)
   (define-values (new rends sels) (session-patch s old))
-  (define fresh? (or (not old)
-                     (not (= (screen-width old) (screen-width new)))
-                     (not (= (screen-height old) (screen-height new)))))
   (set-box! prev new)
   (put-bytes format-cursor-hide)
   (when fresh? (put-bytes format-screen-clear))
@@ -132,6 +126,7 @@
                               [width (or cols (session-width s0))]
                               [height (or rows (session-height s0))]))
        (set-box! prev #f)
+       (set-box! prev-size #f)
        (let loop ([s s])
          (draw! s)
          (define ev (read-event))

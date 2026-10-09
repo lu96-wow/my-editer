@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/keys.rkt —— 全局键表 + 组合（纯数据）
+;;; edit/command/keys.rkt —— 全局键表 + 组合（纯数据）
 ;;;
 ;;;   tables.rkt    编辑命令表（edit-keys）等可挂 document 的键表
 ;;;   global-keys   全局（退出 / 开关侧栏 / 状态窗口互换 / 文件 / resize / 鼠标）

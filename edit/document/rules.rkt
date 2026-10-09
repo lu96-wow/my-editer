@@ -13,8 +13,6 @@
 ;;;
 ;;; 默认规则集**先留空**，接真实 I/O 时再填（.rkt / .txt / …）。
 
-(require racket/path)
-
 (provide (struct-out rule)
          rules-for rules-apply
          default-rules)

@@ -7,10 +7,17 @@
 
 (require racket/path)
 
-(provide normalize path-under? path=?)
+(provide normalize path-under? path=? basename join)
 
 ;; 规范化：补成绝对路径 + 化简（去 . / .. / 尾斜杠）。
 (define (normalize p) (simplify-path (path->complete-path p)))
+
+;; 文件名（去目录部分）；无目录部分时取自身。
+(define (basename p)
+  (path->string (or (file-name-from-path (path->complete-path p)) p)))
+
+;; dir + name → 规范化路径（去 . / ..）。
+(define (join dir name) (simplify-path (build-path dir name)))
 
 ;; p 是否在 root 之下（含相等）。
 (define (path-under? root p)

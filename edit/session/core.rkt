@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/command/session-core.rkt —— core 边界：文档 / 视图 / 几何 / 渲染 / 读 + 内核适配
+;;; edit/session/core.rkt —— core 边界：文档 / 视图 / 几何 / 渲染 / 读 + 内核适配
 ;;;
 ;;; **唯一 require core/editor 的模块**。其余 session-* / feature / document 都只走本模块的
 ;;; 适配函数（session-ed-* / session-view-* / session-document-*），不直接碰 core。
@@ -11,8 +11,8 @@
 ;;;     · 文档 / 视图结构 + 读 + 文档键表
 ;;;     · 内核适配：把 core 的编辑 / 导航 / 剪贴板 / 命中换算包成 session 变换
 
-(require "session-value.rkt"
-         "session-doc.rkt"
+(require "value.rkt"
+         "doc.rkt"
          "../../core/editor.rkt"
          "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
@@ -27,10 +27,12 @@
  ;; 面板文档构造（面板 = 只读、带 face 的文档）
  panel-doc
  ;; 几何 / 渲染
- session-views session-rectangles session-screen session-patch sync-layout!
+ session-views session-rectangles session-patch sync-layout!
+ ;; session-patch 的产物词汇（piece）—— 由核心重导，后端不必下钻到 view/patch
+ piece piece? piece-row piece-column piece-text piece-attr
  session-focused-did
  ;; 文档 / 视图结构 + 读
- session-open-document session-add-document session-add-view
+ session-add-document session-add-view
  session-document-ids session-view-ids-of session-document-name
  session-view-did session-view-point session-view-point-line
  session-view-point-column
@@ -89,22 +91,11 @@
 
 ;;; ---------- 渲染 ----------
 
-(define (session-screen s)
-  (editor-render-layout (session-ed s) (session-rectangles s)
-                        (session-focus-vid s) (session-width s) (session-height s)))
-
 (define (session-patch s old)
   (editor-render-layout-patch (session-ed s) old (session-rectangles s)
                               (session-focus-vid s) (session-width s) (session-height s)))
 
 ;;; ---------- 文档 / 视图结构 ----------
-
-(define (session-open-document s doc [keys (kbd)] #:name [name "*scratch*"])
-  (define-values (ed* did) (editor-add-document (session-ed s) doc name))
-  (values (struct-copy session s
-            [ed ed*]
-            [doc-keymaps (hash-set (session-doc-keymaps s) did keys)])
-          did))
 
 (define (session-add-document s doc width height
                               #:name [name "*scratch*"]

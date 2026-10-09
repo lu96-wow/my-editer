@@ -1,17 +1,16 @@
 #lang racket
 
-;;; edit/command/session-panel.rkt —— 状态窗口机制：枚举 / 互换 / handler 链 / 刷新
+;;; edit/session/panel.rkt —— 状态窗口：枚举 / 互换 / 刷新
 ;;;
-;;; 纯查询（session-panel / -panel-vid / -vid-keys / -dock-vid? / -add-panel）在 session-value。
-;;; 这里只有需要内核 / 轮廓的机制。
+;;; 纯查询（session-panel / -panel-vid / -vid-keys / -dock-vid? / -add-panel / -add-handler）
+;;; 在 value.rkt。这里只有需要内核 / 轮廓的机制。
 
-(require "session-value.rkt"
-         "session-core.rkt"
-         "session-focus.rkt"
+(require "value.rkt"
+         "core.rkt"
+         "focus.rkt"
          "../core/focus.rkt")
 
 (provide session-panel-dids session-panel-swap
-         session-add-handler
          session-refresh)
 
 ;;; ---------- 状态窗口 ----------
@@ -41,11 +40,6 @@
      (define s1 (for/fold ([s s]) ([p (in-list members)])
                   (session-set-visible s (panel-vid p) (eqv? (panel-vid p) cvid))))
      (session-set-focus s1 (focus-set (session-focus s1) cvid))]))
-
-;;; ---------- 命令处理链 ----------
-
-(define (session-add-handler s h)
-  (struct-copy session s [handlers (cons h (session-handlers s))]))
 
 ;;; ---------- 刷新状态窗口 ----------
 

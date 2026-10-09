@@ -1,19 +1,21 @@
 #lang racket
 
-;;; edit/command/session-value.rkt —— 会话值（纯）
+;;; edit/session/value.rkt —— 会话值（纯）
 ;;;
 ;;; session 及其附属值（panel / prompt）的定义、构造、纯字段变换，
 ;;; 以及 file-map 包装。不 require core editor、不 require tui、不涉及渲染。
 ;;;
-;;; 上层：
-;;;   session-doc.rkt     文档域状态（did<->path / 保存句柄 / 文档键表）
-;;;   session-core.rkt    core 边界（文档 / 视图 / 几何 / 渲染 / 读）
-;;;   session-panel.rkt   状态窗口机制
-;;;   session-bottom.rkt  底部区 + log 通道
-;;;   session-prompt.rkt  输入行
-;;;   session-edit.rkt    焦点 / 结构手术 / 操作原语
-;;;   session-mouse.rkt   鼠标
-;;;   session.rkt         聚合出口
+;;; 同层：
+;;;   doc.rkt       文档域状态（did<->path / 保存句柄 / 文档键表）
+;;;   focus.rkt     焦点 set
+;;;   core.rkt      core 边界（文档 / 视图 / 几何 / 渲染 / 读）
+;;;   panel.rkt     状态窗口：枚举 / 互换 / 刷新
+;;;   bottom.rkt    底部区 + log 通道
+;;;   prompt.rkt    输入行
+;;;   structure.rkt 结构手术（显示 / 分屏 / 关闭 / 尺寸）
+;;;   edit.rkt      操作原语（焦点 / 滚动 / 编辑 / 选区 / 剪贴板）
+;;;   mouse.rkt     鼠标
+;;;   ../session.rkt 聚合出口
 
 (require "../core/layout.rkt"      ; layout-fill
          "../core/focus.rkt"       ; focus-target
@@ -57,9 +59,10 @@
          session-new session-assemble
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
+         session-resize session-quit session-add-handler
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
-         ;; doc-state 值本身（包装见 session-doc.rkt）
+         ;; doc-state 值本身（包装见 doc.rkt）
          session-docs)
 
 ;;; ---------- 构造 / 纯变换 ----------
@@ -81,6 +84,12 @@
 
 (define (session-focus-vid s) (focus-target (session-focus s)))
 (define (session-set-prefix s p) (struct-copy session s [prefix p]))
+
+;; 会话级纯字段变换。
+(define (session-resize s w h) (struct-copy session s [width w] [height h]))
+(define (session-quit s) (struct-copy session s [quit? #t]))
+(define (session-add-handler s h)
+  (struct-copy session s [handlers (cons h (session-handlers s))]))
 
 ;;; ---------- 状态窗口查询（纯） ----------
 

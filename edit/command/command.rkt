@@ -12,7 +12,7 @@
 ;;;
 ;;; 这里只 require 实现里**命令需要的那几个**操作函数（窄依赖）。
 
-(require (only-in "session.rkt"
+(require (only-in "../session.rkt"
                   session-focus-move session-scroll session-toggle-slot
                   session-resize session-quit session-nav
                   session-resize-view session-hide-focused session-split-focused

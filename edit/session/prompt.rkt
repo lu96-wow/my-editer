@@ -1,13 +1,13 @@
 #lang racket
 
-;;; edit/command/session-prompt.rkt —— 输入行（底部，与 status / log 互斥）
+;;; edit/session/prompt.rkt —— 输入行（底部，与 status / log 互斥）
 ;;;
 ;;; 打开 / 提交 / 取消。提交先关输入行再跑回调，所以回调里出错时 prompt 已 #f（会弹 log）。
 
-(require "session-value.rkt"
-         "session-core.rkt"
-         "session-bottom.rkt"
-         "session-focus.rkt"
+(require "value.rkt"
+         "core.rkt"
+         "bottom.rkt"
+         "focus.rkt"
          "../core/focus.rkt")
 
 (provide session-prompt-open session-prompt-submit session-prompt-cancel)

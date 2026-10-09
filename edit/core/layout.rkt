@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/layout.rkt —— 统一布局核心（可嵌套）
+;;; edit/core/layout.rkt —— 统一布局核心（可嵌套）
 ;;;
 ;;; 布局**只算几何**，不持 view 真身，叶子是 vid 引用：
 ;;;
@@ -38,8 +38,8 @@
  (struct-out leaf) (struct-out slot) (struct-out split)
  (struct-out stack) (struct-out at) (struct-out blank) (struct-out placed)
  layout-place layout-slots
- layout-contains? layout-find layout-fill layout-vids layout-replace-first-blank
- layout-split layout-remove layout-replace layout-swap layout-resize)
+ layout-contains? layout-fill layout-vids layout-replace-first-blank
+ layout-split layout-remove layout-replace layout-resize)
 
 ;;; ---------- 查询 ----------
 
@@ -63,17 +63,6 @@
     [(stack? node) (for/or ([c (in-list (stack-nodes node))]) (layout-contains? c vid))]
     [(at? node) (layout-contains? (at-node node) vid)]
     [(split? node) (for/or ([p (in-list (split-parts node))]) (layout-contains? (cdr p) vid))]
-    [else #f]))
-
-(define (layout-find node vid)
-  (cond
-    [(not node) #f]
-    [(leaf? node) (and (eqv? vid (leaf-vid node)) node)]
-    [(blank? node) #f]
-    [(slot? node) #f]
-    [(stack? node) (for/or ([c (in-list (stack-nodes node))]) (layout-find c vid))]
-    [(at? node) (layout-find (at-node node) vid)]
-    [(split? node) (for/or ([p (in-list (split-parts node))]) (layout-find (cdr p) vid))]
     [else #f]))
 
 ;; 用 bindings 把 slot 洞填成子树（装配期用），得到具体布局树。
@@ -226,23 +215,6 @@
                      [parts (for/list ([p (in-list (split-parts node))])
                               (cons (car p) (layout-replace (cdr p) vid new-node)))])]
     [else node]))
-
-;; 交换两个 vid 的位置。
-(define (layout-swap node v1 v2)
-  (define (go n)
-    (cond
-      [(not n) #f]
-      [(leaf? n) (cond [(eqv? v1 (leaf-vid n)) (leaf v2)]
-                       [(eqv? v2 (leaf-vid n)) (leaf v1)]
-                       [else n])]
-      [(blank? n) n]
-      [(slot? n) n]
-      [(stack? n) (struct-copy stack n [nodes (for/list ([c (in-list (stack-nodes n))]) (go c))])]
-      [(at? n) (struct-copy at n [node (go (at-node n))])]
-      [(split? n) (struct-copy split n
-                    [parts (for/list ([p (in-list (split-parts n))]) (cons (car p) (go (cdr p))))])]
-      [else n]))
-  (go node))
 
 ;; 调整 vid 所在、最近的同向 split 里那一项的尺寸。axis : 'width | 'height。
 (define (layout-resize node vid axis delta reg)
