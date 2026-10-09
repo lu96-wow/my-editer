@@ -25,6 +25,13 @@
 (define (norm p) (simplify-path (path->complete-path p)))
 (define (path=? a b) (equal? (norm a) (norm b)))
 
+;; 执行会读盘的树操作（可能抛文件系统异常）：成功写入 st 并返回会话；
+;; 失败 → 记日志（不弹出则已由 prompt 规则决定）、树状态不变。
+(define (tree-read! s st thunk)
+  (with-handlers ([exn:fail? (lambda (e) (session-log! s (format "tree: ~a" (exn-message e))))])
+    (set-box! st (thunk))
+    s))
+
 ;;; ---------- 文档（渲染） ----------
 
 (define (entry-line e)
@@ -90,22 +97,25 @@
   (define e (entry-at-focus s st vid))
   (cond
     [(not e) s]
-    [(entry-dir? e) (set-box! st (tree-toggle (unbox st) (entry-path e) fs-read-dir)) s]
+    [(entry-dir? e)
+     (tree-read! s st (lambda () (tree-toggle (unbox st) (entry-path e) fs-read-dir)))]
     ;; 文件：发资源命令；由 document handler 读盘打开（带默认命令表）。
     [else (step s (cmd-open-file-path (entry-path e)))]))
 
 (define (do-search s st vid text)
-  (set-box! st (tree-search-set (unbox st) text fs-read-dir))
+  (define s1 (tree-read! s st (lambda () (tree-search-set (unbox st) text fs-read-dir))))
   ;; 先让 panel document 反映新状态，光标才能落到新行
-  (session-refresh s)
-  (goto-current! s st vid))
+  (session-refresh s1)
+  (goto-current! s1 st vid))
 
 (define (do-search-step s st vid dir)
-  (set-box! st (if (> dir 0)
-                   (tree-search-next (unbox st) fs-read-dir)
-                   (tree-search-prev (unbox st) fs-read-dir)))
-  (session-refresh s)
-  (goto-current! s st vid))
+  (define s1 (tree-read! s st
+                         (lambda ()
+                           (if (> dir 0)
+                               (tree-search-next (unbox st) fs-read-dir)
+                               (tree-search-prev (unbox st) fs-read-dir)))))
+  (session-refresh s1)
+  (goto-current! s1 st vid))
 
 ;;; ---------- 新建 / 删除（资源操作） ----------
 
@@ -116,11 +126,13 @@
     [(entry-dir? e) (entry-path e)]
     [else (path-only (entry-path e))]))
 
-;; 目录内容变了：丢缓存 → 重读并展开 →（可选）reveal 新路径。
-(define (tree-after-change st dir [reveal #f])
-  (define t (tree-invalidate (unbox st) dir))
-  (define t2 (tree-expand t dir fs-read-dir))
-  (set-box! st (if reveal (tree-reveal t2 reveal fs-read-dir) t2)))
+;; 目录内容变了：丢缓存 → 重读并展开 →（可选）reveal 新路径。→ session
+(define (tree-after-change s st dir [reveal #f])
+  (tree-read! s st
+    (lambda ()
+      (define t (tree-invalidate (unbox st) dir))
+      (define t2 (tree-expand t dir fs-read-dir))
+      (if reveal (tree-reveal t2 reveal fs-read-dir) t2))))
 
 (define (do-new-file s st vid)
   (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
@@ -129,8 +141,7 @@
       (cond
         [(zero? (string-length name)) s]
         [else (define-values (s1 p) (session-new-file s dir name))
-              (when p (tree-after-change st dir p))
-              s1]))))
+              (if p (tree-after-change s1 st dir p) s1)]))))
 
 (define (do-new-dir s st vid)
   (define dir (target-dir (unbox st) (entry-at-focus s st vid)))
@@ -139,8 +150,7 @@
       (cond
         [(zero? (string-length name)) s]
         [else (define-values (s1 p) (session-new-dir s dir name))
-              (when p (tree-after-change st dir p))
-              s1]))))
+              (if p (tree-after-change s1 st dir p) s1)]))))
 
 (define (do-delete s st vid)
   (define e (entry-at-focus s st vid))
@@ -154,9 +164,7 @@
        (lambda (s ans)
          (if (and (positive? (string-length ans))
                   (char=? (char-downcase (string-ref ans 0)) #\y))
-             (let ([s1 (session-delete-path s p)])
-               (tree-after-change st parent)
-               s1)
+             (tree-after-change (session-delete-path s p) st parent)
              s)))]))
 
 (define (tree-handler st vid)
@@ -167,7 +175,8 @@
       [(cmd-tree-new-dir? cmd)  (do-new-dir s st vid)]
       [(cmd-tree-delete? cmd)   (do-delete s st vid)]
       ;; 更新能力：外部（命令发起者）决定何时刷新。
-      [(cmd-tree-refresh? cmd) (set-box! st (tree-refresh (unbox st) fs-read-dir)) s]
+      [(cmd-tree-refresh? cmd)
+       (tree-read! s st (lambda () (tree-refresh (unbox st) fs-read-dir)))]
       [(cmd-tree-toggle? cmd) (session-set-visible s vid (not (session-visible? s vid)))]
       [(cmd-tree-search? cmd) (do-search s st vid (cmd-tree-search-text cmd))]
       [(cmd-tree-search-next? cmd) (do-search-step s st vid 1)]
@@ -191,7 +200,11 @@
 ;; → (values session vid)
 (define (tree-install s root width height)
   (define-values (s1 _did vid) (session-add-document s "" width height #:name "*tree*"))
-  (define st (box (tree-state-open root fs-read-dir)))
-  (define p (panel 'tree vid (make-refresh st) tree-keys 'left))
-  (define s2 (session-add-panel s1 p))
-  (values (session-add-handler s2 (tree-handler st vid)) vid))
+  (define-values (s2 st)
+    (with-handlers ([exn:fail? (lambda (e)
+                                 (values (session-log! s1 (format "tree: ~a" (exn-message e)))
+                                         (box (tree-state (norm root) (hash) (hash) #f))))])
+      (values s1 (box (tree-state-open root fs-read-dir)))))
+  (define p (panel 'tree vid (make-refresh st) tree-keys 'left 1))
+  (define s3 (session-add-panel s2 p))
+  (values (session-add-handler s3 (tree-handler st vid)) vid))

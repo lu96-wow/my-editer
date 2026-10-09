@@ -49,6 +49,9 @@
 (struct cmd-prompt-submit () #:transparent)
 (struct cmd-prompt-cancel () #:transparent)
 
+;; 日志面板开关（实现见 feature/log.rkt）
+(struct cmd-log-toggle () #:transparent)
+
 ;; 改焦点视图尺寸（axis : 'width | 'height）
 (struct cmd-resize-view (axis delta) #:transparent)
 
@@ -67,6 +70,7 @@
          (struct-out cmd-undo) (struct-out cmd-redo)
          (struct-out cmd-select-all) (struct-out cmd-copy) (struct-out cmd-cut) (struct-out cmd-paste)
          (struct-out cmd-prompt-submit) (struct-out cmd-prompt-cancel)
+         (struct-out cmd-log-toggle)
          (struct-out cmd-resize-view)
          (struct-out cmd-prefix) (struct-out cmd-prefix-cancel)
          (struct-out cmd-mouse-press) (struct-out cmd-mouse-scroll)

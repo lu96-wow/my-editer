@@ -139,6 +139,6 @@
 (define (buffers-install s width height)
   (define-values (s1 _did vid) (session-add-document s "" width height #:name "*buffers*"))
   (define model (make-hash))
-  (define p (panel 'buffers vid (make-refresh model (box #f)) buffers-keys 'left))
+  (define p (panel 'buffers vid (make-refresh model (box #f)) buffers-keys 'left 1))
   (define s2 (session-add-panel s1 p))
   (values (session-add-handler s2 (buffers-handler model vid)) vid))

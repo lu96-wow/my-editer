@@ -18,6 +18,7 @@
   (kbd
    (key 'q 'ctrl) (cmd-quit)
    (key 'b 'ctrl) (cmd-toggle 'side)
+   (key 'l 'ctrl) (cmd-log-toggle)
    (key 'tab)     (cmd-panel-swap)
    ;; 文件命令（cmd-save / cmd-open-file）由 document 层自带 document-keys，assembly 合并
    ;; resize 需要事件里的尺寸 → spec 用过程

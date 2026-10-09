@@ -11,25 +11,28 @@
          "config/layout.rkt"
          "command/session.rkt" "command/command.rkt" "command/keys.rkt" "command/binding.rkt"
          "document/document.rkt"
-         "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt")
+         "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt"
+         "feature/log.rkt")
 
 (provide demo-session)
 
 (define (demo-session [w 80] [h 24] #:layout [layout layout-left])
   (define s0 (session-blank w h (list base-keys document-keys)))
 
-  ;; 状态窗口：输入行 / 状态行 / 文件树 / 缓冲区
+  ;; 状态窗口：输入行 / 状态行 / 文件树 / 缓冲区 / 日志
   (define-values (s6 input)  (prompt-install s0 w 1))
   (define-values (s7 status) (status-install s6 w 1))
   (define-values (s8 tree)   (tree-install s7 (current-directory) 26 18))
   (define-values (s9 buf)    (buffers-install s8 26 8))
+  (define-values (s9b log)   (log-install s9 w 3))
 
   ;; tree / buffers 共用同一位置，默认显示 tree
-  (define s9* (session-set-visible s9 buf #f))
+  (define s9* (session-set-visible s9b buf #f))
 
   ;; 内容（按 slot 名填进 config 的骨架）；editor 留空
+  ;; 底部 status / input / log 同位置互斥，高度由 session-bottom-select 按 rows 适配
   (define side   (stack (list (leaf tree) (leaf buf))))
-  (define bottom (split 'tb (list (cons 'flex (leaf status)) (cons 1 (leaf input)))))
+  (define bottom (stack (list (leaf status) (leaf input) (leaf log))))
   (define bnd (hash 'side side 'bottom bottom))
 
   (define s10 (document-install (session-assemble s9* layout bnd) edit-keys))

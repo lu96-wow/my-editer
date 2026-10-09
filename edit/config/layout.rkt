@@ -15,11 +15,11 @@
 (define layout-left
   (split 'lr (list (cons 26 (slot 'side))
                    (cons 'flex (split 'tb (list (cons 'flex (slot 'editor))
-                                                (cons 2 (slot 'bottom))))))))
+                                                (cons 1 (slot 'bottom))))))))
 
 ;; 上：side ───────
 ;;     (editor / bottom)
 (define layout-top
   (split 'tb (list (cons 8 (slot 'side))
                    (cons 'flex (split 'tb (list (cons 'flex (slot 'editor))
-                                                (cons 2 (slot 'bottom))))))))
+                                                (cons 1 (slot 'bottom))))))))

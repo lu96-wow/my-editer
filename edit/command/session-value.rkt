@@ -19,10 +19,11 @@
 ;;; ---------- 值 ----------
 
 ;; 状态窗口：一块停靠视图 + 内容生成函数 + 自己的键表。
-(struct panel (id vid refresh keys group) #:transparent)
+(struct panel (id vid refresh keys group rows) #:transparent)
 ;; id      : symbol
 ;; refresh : (session -> (or/c document #f))   ; #f = 不自动刷新（如输入行）
-;; group   : symbol | #f   同一组（同位置）互斥；#f = 独占一行的窗口
+;; group   : symbol | #f   同一组（同位置）互斥；#f = 独占
+;; rows    : positive-integer   希望占的高度（切换时自动适配；'bottom 组用）
 
 ;; 输入行状态。
 (struct prompt (vid label on-submit) #:transparent)
@@ -30,7 +31,7 @@
 
 (struct session
   (ed layout bindings presentations panels
-   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs)
+   focus edit-vid width height quit? keys doc-keymaps handlers prompt prefix docs log)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; layout        : 布局具体树（装配后 slot 已填；叶子是 vid）
@@ -47,6 +48,7 @@
 ;; prompt        : prompt | #f
 ;; prefix        : prefix | #f   活动前缀（多键序列）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
+;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt)
          session-new session-assemble session-fill-slot
@@ -64,7 +66,7 @@
 (define (session-new ed layout bindings focus width height [keys '()])
   (session ed layout bindings (hash) '()
            focus (focus-target focus) width height #f keys (hash) '() #f #f
-           (doc-state-empty)))
+           (doc-state-empty) '()))
 
 ;; 装配：用 bindings 把 layout 里的 slot 洞填成具体子树。
 (define (session-assemble s layout bindings)

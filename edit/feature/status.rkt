@@ -32,6 +32,7 @@
                      (define t (status-text s))
                      (cond [(equal? t (unbox last)) #f]
                            [else (set-box! last t) (panel-doc (list (list t #f)))]))
-                   #f      ; group
-                   #f))
+                   #f      ; keys
+                   'bottom ; group（与 input / log 同位置互斥）
+                   1))
   (values (session-add-panel s1 p) vid))
