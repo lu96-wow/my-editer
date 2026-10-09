@@ -12,6 +12,7 @@
 ;;;     · 内核适配：把 core 的编辑 / 导航 / 剪贴板 / 命中换算包成 session 变换
 
 (require "session-value.rkt"
+         "session-doc.rkt"
          "../../core/editor.rkt"
          "../../core/text/document.rkt"
          "../../core/text/base/point.rkt"
@@ -35,8 +36,6 @@
  session-view-point-column
  session-view-width session-view-height session-view-string
  session-view-id-list session-document-view-list
- ;; 文档级键表
- session-doc-keys session-doc-add-key session-doc-set-keys
  ;; 保存句柄 / 脏
  session-document-string session-mark-saved session-dirty?
  ;; 内核适配
@@ -139,18 +138,6 @@
 (define (session-view-id-list s) (editor-view-id-list (session-ed s)))
 (define (session-document-view-list s did) (editor-document-view-list (session-ed s) did))
 (define (session-document-string s did) (editor-document-string (session-ed s) did))
-
-;;; ---------- 文档级键表 ----------
-
-(define (session-doc-keys s did) (hash-ref (session-doc-keymaps s) did (kbd)))
-(define (session-doc-add-key s did binding spec)
-  (struct-copy session s
-    [doc-keymaps (hash-set (session-doc-keymaps s) did
-                           (keymap-add (hash-ref (session-doc-keymaps s) did (kbd))
-                                       binding spec))]))
-;; 整表替换（规则层用：文件打开匹配命令表）。
-(define (session-doc-set-keys s did km)
-  (struct-copy session s [doc-keymaps (hash-set (session-doc-keymaps s) did km)]))
 
 ;;; ---------- 保存句柄 / 脏 ----------
 

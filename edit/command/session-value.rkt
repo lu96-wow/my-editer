@@ -6,8 +6,11 @@
 ;;; 以及 file-map 包装。不 require core editor、不 require tui、不涉及渲染。
 ;;;
 ;;; 上层：
+;;;   session-doc.rkt     文档域状态（did<->path / 保存句柄 / 文档键表）
 ;;;   session-core.rkt    core 边界（文档 / 视图 / 几何 / 渲染 / 读）
-;;;   session-window.rkt  状态窗口 + 输入行 + 命令处理链 + refresh
+;;;   session-panel.rkt   状态窗口机制
+;;;   session-bottom.rkt  底部区 + log 通道
+;;;   session-prompt.rkt  输入行
 ;;;   session-edit.rkt    焦点 / 结构手术 / 操作原语
 ;;;   session-mouse.rkt   鼠标
 ;;;   session.rkt         聚合出口
@@ -56,10 +59,8 @@
          session-focus-vid session-set-prefix
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
-         ;; file-map 包装 + 保存句柄（doc-state）
-         session-docs session-file-path session-file-did session-file-dids
-         session-set-file session-clear-doc
-         session-saved session-set-saved session-clear-doc)
+         ;; doc-state 值本身（包装见 session-doc.rkt）
+         session-docs)
 
 ;;; ---------- 构造 / 纯变换 ----------
 
@@ -94,19 +95,3 @@
   (and vid (and (session-panel s vid) #t)))
 (define (session-add-panel s p)
   (struct-copy session s [panels (append (session-panels s) (list p))]))
-
-;;; ---------- doc-state 包装（did <-> path + 保存句柄） ----------
-
-(define (session-file-path s did) (doc-state-path (session-docs s) did))
-(define (session-file-did s path) (doc-state-did (session-docs s) path))
-(define (session-file-dids s) (doc-state-dids (session-docs s)))
-(define (session-set-file s did path)
-  (struct-copy session s [docs (doc-state-set-path (session-docs s) did path)]))
-
-;;; ---------- 保存句柄 ----------
-
-(define (session-saved s did) (doc-state-saved (session-docs s) did))
-(define (session-set-saved s did h)
-  (struct-copy session s [docs (doc-state-set-saved (session-docs s) did h)]))
-(define (session-clear-doc s did)
-  (struct-copy session s [docs (doc-state-remove (session-docs s) did)]))

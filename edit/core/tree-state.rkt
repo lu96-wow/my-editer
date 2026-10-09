@@ -13,7 +13,8 @@
 
 (require racket/path
          racket/list
-         racket/string)
+         racket/string
+         "path.rkt")
 
 (provide
  ;; 值
@@ -60,13 +61,6 @@
 ;; index   : exact-nonnegative-integer | #f   当前命中的下标
 
 ;;; ---------- 路径工具（纯） ----------
-
-(define (normalize p) (simplify-path (path->complete-path p)))
-
-(define (path-under? root p)
-  (define r (explode-path (normalize root)))
-  (define q (explode-path (normalize p)))
-  (and (>= (length q) (length r)) (equal? r (take q (length r)))))
 
 ;; root 到 p 的**父目录链**（含 root；不含 p 自身）；p 不在 root 下 → '()。
 (define (ancestor-dirs root p)

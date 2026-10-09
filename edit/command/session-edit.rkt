@@ -7,6 +7,7 @@
 ;;; 都走 session-core 的内核适配，不直接碰 core/editor。
 
 (require "session-value.rkt"
+         "session-doc.rkt"
          "session-core.rkt"
          "session-focus.rkt"
          "../core/area.rkt"

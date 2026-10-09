@@ -12,6 +12,7 @@
 (require racket/path
          "api.rkt"
          "../core/tree-state.rkt"
+         "../core/path.rkt"
          "../document/fs.rkt"
          "../document/document.rkt")   ; 打开文件（资源命令）
 
@@ -21,9 +22,6 @@
          (struct-out cmd-tree-refresh) (struct-out cmd-tree-toggle)
          (struct-out cmd-tree-search) (struct-out cmd-tree-search-next)
          (struct-out cmd-tree-search-prev) (struct-out cmd-tree-search-clear))
-
-(define (norm p) (simplify-path (path->complete-path p)))
-(define (path=? a b) (equal? (norm a) (norm b)))
 
 ;; 执行会读盘的树操作（可能抛文件系统异常）：成功写入 st 并返回会话；
 ;; 失败 → 记日志（不弹出则已由 prompt 规则决定）、树状态不变。
@@ -203,7 +201,7 @@
   (define-values (s2 st)
     (with-handlers ([exn:fail? (lambda (e)
                                  (values (session-log! s1 (format "tree: ~a" (exn-message e)))
-                                         (box (tree-state (norm root) (hash) (hash) #f))))])
+                                         (box (tree-state (normalize root) (hash) (hash) #f))))])
       (values s1 (box (tree-state-open root fs-read-dir)))))
   (define p (panel 'tree vid (make-refresh st) tree-keys 'left 1))
   (define s3 (session-add-panel s2 p))

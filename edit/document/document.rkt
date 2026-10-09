@@ -15,6 +15,7 @@
          "../command/session.rkt"
          "../command/key.rkt"
          "../core/keymap.rkt"
+         "../core/path.rkt"
          "fs.rkt"
          "rules.rkt")
 
@@ -25,7 +26,6 @@
 
 ;;; ---------- 工具 ----------
 
-(define (normalize p) (simplify-path (path->complete-path p)))
 (define (basename p) (path->string (or (file-name-from-path (path->complete-path p)) p)))
 
 ;; 资源操作出错 → 记日志（session-log!；prompt 进行中只追加不弹）。
@@ -80,11 +80,6 @@
     (session-save s d)))
 
 ;;; ---------- 文件操作（tree 的新建 / 删除） ----------
-
-(define (path-under? base p)
-  (define b (explode-path (normalize base)))
-  (define q (explode-path (normalize p)))
-  (and (>= (length q) (length b)) (equal? b (take q (length b)))))
 
 ;; 在 dir 下新建文件；已存在 → path = #f。→ (values session path|#f)
 (define (session-new-file s dir name)
