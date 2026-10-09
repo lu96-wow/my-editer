@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit/feature/completion.rkt —— 词补全（dabbrev 式）
+;;; edit/plugin/builtin/completion.rkt —— 词补全（dabbrev 式）插件
 ;;;
-;;; 菜单是**浮层视图**（不抢焦点）；打开时压一个输入层（模态键表）：
+;;; 菜单是**叠加层（deco）视图**（不抢焦点）；打开时压一个输入层（模态键表）：
 ;;;   · 上下/Enter/Tab/Esc 由层接管；
 ;;;   · 普通字符层里没有 → fallthrough 到文档键表 → cmd-insert → 本 handler 接手：
 ;;;     先插入再按新前缀刷新候选。
@@ -13,10 +13,11 @@
 
 (require racket/list
          racket/string
-         "api.rkt"
-         "../core/lex.rkt")
+         "../registry.rkt"
+         "../../feature/api.rkt"
+         "../../core/lex.rkt")
 
-(provide completion-install)
+(provide completion-install completion-spec)
 
 ;;; ---------- 菜单状态 ----------
 
@@ -72,9 +73,19 @@
 
 ;;; ---------- 打开 / 刷新 / 移动 / 接受 / 关闭 ----------
 
-(define (do-open s box)
+;; 每帧叠加层：菜单打开时把菜单视图摆在光标处。
+(define (menu-panes s state)
+  (define m (unbox state))
   (cond
-    [(unbox box) s]                                ; 已开则忽略
+    [(not m) '()]
+    [else
+     (define cands (menu-cands m))
+     (define-values (x y w h) (menu-rect s (menu-vid m) cands))
+     (list (placed (menu-mvid m) x y w h menu-deep))]))
+
+(define (do-open s state)
+  (cond
+    [(unbox state) s]                              ; 已开则忽略
     [else
      (define vid (session-focus-vid s))
      (cond
@@ -92,13 +103,14 @@
            (define-values (x y w h) (menu-rect s vid cands))
            (define-values (s1 _mdid mvid)
              (session-add-document s (menu-doc cands 0) w h #:name "*complete*"))
-           (define s2 (session-float-add s1 (float mvid #f x y w h menu-deep)))
-           (define s3 (session-layer-push s2 'complete complete-keys))
-           (set-box! box (menu vid mvid start cands 0))
-           s3])])]))
+           (set-box! state (menu vid mvid start cands 0))
+           ;; 登记叠加 vid（dock / 不入缓冲区）+ 叠加层（几何每帧算）
+           (define s2 (session-overlay-add s1 mvid))
+           (define s3 (session-deco-add s2 (deco 'complete (lambda (s) (menu-panes s state)))))
+           (session-layer-push s3 'complete complete-keys)])])]))
 
-(define (do-refine s box)
-  (define m (unbox box))
+(define (do-refine s state)
+  (define m (unbox state))
   (define vid (menu-vid m))
   (define text (session-view-string s vid))
   (define line (session-view-point-line s vid))
@@ -106,38 +118,39 @@
   (define prefix (prefix-at text line col))
   (define cands (candidates text prefix))
   (cond
-    [(null? cands) (do-close s box)]
+    [(null? cands) (do-close s state)]
     [else
      (define idx (min (menu-idx m) (sub1 (length cands))))
      (define start (cons line (- col (string-length prefix))))
-     (define s1 (session-ed-assign! s (menu-mvid m) (menu-doc cands idx)))
-     (define-values (x y w h) (menu-rect s1 vid cands))
-     (set-box! box (menu vid (menu-mvid m) start cands idx))
-     (session-float-set s1 (menu-mvid m) x y w h)]))
+     (set-box! state (menu vid (menu-mvid m) start cands idx))
+     (session-ed-assign! s (menu-mvid m) (menu-doc cands idx))]))
 
-(define (do-move s box dir)
-  (define m (unbox box))
+(define (do-move s state dir)
+  (define m (unbox state))
   (define n (length (menu-cands m)))
   (define idx (modulo (+ (menu-idx m) dir) n))
-  (set-box! box (struct-copy menu m [idx idx]))
+  (set-box! state (struct-copy menu m [idx idx]))
   (session-ed-assign! s (menu-mvid m) (menu-doc (menu-cands m) idx)))
 
-(define (do-accept s box)
-  (define m (unbox box))
+(define (do-accept s state)
+  (define m (unbox state))
   (define cand (list-ref (menu-cands m) (menu-idx m)))
   (define vid (menu-vid m))
   (define line (session-view-point-line s vid))
   (define col (session-view-point-column s vid))
   (define start (menu-start m))
-  (do-close (session-ed-replace! s vid (car start) (cdr start) line col cand) box))
+  (do-close (session-ed-replace! s vid (car start) (cdr start) line col cand) state))
 
-(define (do-close s box)
-  (define m (unbox box))
+(define (do-close s state)
+  (define m (unbox state))
   (cond
     [(not m) s]
     [else
-     (set-box! box #f)
-     (session-float-drop (session-layer-pop s 'complete) (menu-mvid m))]))
+     (set-box! state #f)
+     (define mvid (menu-mvid m))
+     (define did (session-view-did s mvid))
+     (define s1 (session-deco-remove (session-overlay-remove s mvid) 'complete))
+     (session-close-document (session-layer-pop s1 'complete) did)]))
 
 ;;; ---------- 命令 + 键 + handler ----------
 
@@ -165,3 +178,6 @@
                      (hook 'after-edit (lambda (s _args) (if (unbox state) (do-refine s state) s))))
    ;; 焦点移开 → 取消菜单
    (hook 'focus-changed (lambda (s _args) (if (unbox state) (do-close s state) s)))))
+
+(define completion-spec
+  (plugin-spec 'completion completion-install '()))

@@ -12,7 +12,7 @@
          "../../core/face.rkt"
          "../../config/syntax.rkt")
 
-(provide syntax-plugin)
+(provide syntax-plugin syntax-spec)
 
 (define keyword-index
   (for/hash ([k (in-list keyword-list)] [i (in-naturals)]) (values k i)))
@@ -30,3 +30,6 @@
 
 (define syntax-plugin
   (doc-plugin 'syntax racket-applies? syntax-run))
+
+(define syntax-spec
+  (plugin-spec 'syntax (lambda (s) s) (list syntax-plugin)))

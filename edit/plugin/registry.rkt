@@ -16,7 +16,8 @@
 ;;; **应用顺序 = 目录顺序**：多个插件写同一格时按顺序 face-compose 成 face-stack；
 ;;; 主题逐分量合并，于是「词色」和「关键字色」可以共存（后者后写覆盖前者）。
 
-(provide (struct-out doc-ctx) (struct-out doc-plugin) plugins-for)
+(provide (struct-out doc-ctx) (struct-out doc-plugin) (struct-out plugin-spec)
+         plugins-for)
 
 (struct doc-ctx (text path point) #:transparent)
 ;; text  : string
@@ -27,6 +28,10 @@
 ;; name     : symbol
 ;; applies? : path text -> boolean
 ;; run      : state ctx -> (values state (listof fill))
+
+;; 插件包：一个插件 = 名字 + 全局安装 + 它带的 document 插件。
+;; install : session -> session（注册 hook / layer / handler / panel 等贡献）
+(struct plugin-spec (name install doc-plugins) #:transparent)
 
 ;; 从启用目录里挑出适用于该文档的插件（保持目录顺序）。
 (define (plugins-for plugins path text)

@@ -13,7 +13,7 @@
          "../../core/file-kind.rkt"
          "../../core/face.rkt")
 
-(provide word-plugin)
+(provide word-plugin word-spec)
 
 ;; tokens 按出现顺序；skip = 活动 token | #f；map = 旧表。→ (values 新表 fills)
 (define (assign-fills tokens skip map)
@@ -39,3 +39,6 @@
 
 (define word-plugin
   (doc-plugin 'words racket-applies? word-run))
+
+(define word-spec
+  (plugin-spec 'words (lambda (s) s) (list word-plugin)))

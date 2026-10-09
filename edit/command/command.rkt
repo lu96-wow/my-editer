@@ -54,7 +54,7 @@
 ;; 日志面板开关（实现见 feature/log.rkt）
 (struct cmd-log-toggle () #:transparent)
 
-;; 补全（实现见 feature/completion.rkt）
+;; 补全（实现见 plugin/builtin/completion.rkt）
 (struct cmd-complete () #:transparent)
 (struct cmd-complete-move (dir) #:transparent)   ; dir = +1 / -1
 (struct cmd-complete-accept () #:transparent)

@@ -36,13 +36,11 @@
 (struct prompt (vid label on-submit) #:transparent)
 ;; on-submit : (session string -> session)
 
-;; 浮动窗口：瞬态叠加视图（补全弹窗等）。位置 / 尺寸 / 深度由调用方算，自带键表。
-(struct float (vid keys x y w h deep) #:transparent)
-;; vid   : 视图（内容是真身，走 engine）
-;; keys  : keymap | #f   自己的键表（优先于 document / global）
-;; x y   : 屏幕绝对位置（列 / 行）
-;; w h   : 尺寸
-;; deep  : 深度（大 = 在上；建议远大于布局树）
+;; 叠加层（deco）：每帧由 proc 产出一组已落位视图（placed）。几何随光标变时用 deco；
+;; 常值叠加窗口让 proc 返回固定 placed 即可。overlays 标记哪些 vid 是叠加层（dock / 不入缓冲区）。
+(struct deco (name proc) #:transparent)
+;; name : symbol
+;; proc : session -> (listof placed)
 
 ;; 输入层：短暂接管输入的模态键表（补全菜单等）。栈顶在前；落空则回落到 base（fallthrough）。
 (struct layer (id keys) #:transparent)
@@ -50,9 +48,9 @@
 ;; keys : keymap     该层生效的键表
 
 (struct session
-  (ed frame bindings editor layout presentations panels floats
+  (ed frame bindings editor layout presentations panels decos overlays
    focus edit-vid width height quit? keys rules doc-keymaps handlers prompt prefix docs log
-   layers plugin-bindings plugin-applied hooks)
+   layers plugin-bindings plugin-applied hooks awaiting)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; frame         : 骨架（config 的 slot 树；#f = 未装配）
@@ -61,7 +59,8 @@
 ;; layout        : 派生缓存 = fill(frame, bindings + editor)；#f = 未装配
 ;; presentations : (hash vid -> boolean)   显隐（缺省 = 可见）
 ;; panels        : (listof panel)
-;; floats        : (listof float)   浮动窗口（在布局树之上，不占位）
+;; decos         : (listof deco)    每帧叠加层（产 placed）
+;; overlays      : (listof vid)     叠加层 vid（dock / 不入缓冲区）
 ;; focus         : focus（输入焦点）
 ;; edit-vid      : 活动编辑视图（粘性）
 ;; width height  : 屏幕尺寸
@@ -78,8 +77,9 @@
 ;; plugin-bindings : (hash did -> (listof doc-plugin))       document 插件绑定（插件层）
 ;; plugin-applied  : (hash did -> (cons handle states))      上次写回的句柄 + 各插件 state
 ;; hooks           : (listof hook)   生命周期通知处理器（见 hook.rkt）
+;; awaiting        : (hash id -> (list token current? on-result))  异步结果闸门（见 async.rkt）
 
-(provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out float)
+(provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out deco)
          (struct-out layer)
          session-new session-assemble session-set-frame
          session-visible? session-set-visible
@@ -90,9 +90,9 @@
          session-editor session-set-editor
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
-         ;; 浮动窗口注册表（打开 / 关闭见 structure.rkt）
-         session-floats session-float session-float-add session-float-remove
-         session-float-move session-float-set
+         ;; 叠加层（deco）/ 叠加 vid 登记
+         session-decos session-deco-add session-deco-remove
+         session-overlays session-overlay-add session-overlay-remove
          ;; doc-state 值本身（包装见 doc.rkt）
          session-docs)
 
@@ -100,10 +100,10 @@
 
 (define (session-new ed frame bindings focus width height [keys '()])
   (session-rebuild
-   (session ed frame bindings (blank) #f (hash) '() '()
+   (session ed frame bindings (blank) #f (hash) '() '() '()
             focus (focus-target focus) width height #f keys '() (hash) '() #f #f
             (doc-state-empty) '()
-            '() (hash) (hash) '())))
+            '() (hash) (hash) '() (hash))))
 
 ;; 重算派生 layout：把 panel 绑定与编辑区子树填进骨架的 slot。
 (define (session-rebuild s)
@@ -161,31 +161,21 @@
   (for/first ([p (in-list (session-panels s))] #:when (eq? id (panel-id p))) (panel-vid p)))
 (define (session-vid-keys s vid)
   (define p (session-panel s vid))
-  (cond [p (panel-keys p)]
-        [else (define f (session-float s vid)) (and f (float-keys f))]))
-;; dock = 面板或浮层：焦点落到它们时不改变粘性 edit-vid，也不被编辑区手术当普通视图。
+  (and p (panel-keys p)))
+;; dock = 面板或叠加层 vid：焦点落到它们时不改变粘性 edit-vid。
 (define (session-dock-vid? s vid)
-  (and vid (or (and (session-panel s vid) #t) (and (session-float s vid) #t))))
+  (and vid (or (and (session-panel s vid) #t) (and (memv vid (session-overlays s)) #t))))
 (define (session-add-panel s p)
   (struct-copy session s [panels (append (session-panels s) (list p))]))
 
-;;; ---------- 浮动窗口注册表（纯） ----------
+;;; ---------- 叠加层（deco）/ 叠加 vid 登记（纯） ----------
 
-(define (session-float s vid)
-  (for/first ([f (in-list (session-floats s))] #:when (eqv? vid (float-vid f))) f))
-(define (session-float-add s f)
-  (struct-copy session s [floats (append (session-floats s) (list f))]))
-(define (session-float-remove s vid)
+(define (session-deco-add s d)
+  (struct-copy session s [decos (append (session-decos s) (list d))]))
+(define (session-deco-remove s name)
   (struct-copy session s
-    [floats (for/list ([f (in-list (session-floats s))]
-                       #:unless (eqv? vid (float-vid f))) f)]))
-(define (session-float-move s vid x y)
-  (struct-copy session s
-    [floats (for/list ([f (in-list (session-floats s))])
-              (if (eqv? vid (float-vid f)) (struct-copy float f [x x] [y y]) f))]))
-(define (session-float-set s vid x y w h)
-  (struct-copy session s
-    [floats (for/list ([f (in-list (session-floats s))])
-              (if (eqv? vid (float-vid f))
-                  (struct-copy float f [x x] [y y] [w w] [h h])
-                  f))]))
+    [decos (for/list ([d (in-list (session-decos s))] #:unless (eq? name (deco-name d))) d)]))
+(define (session-overlay-add s vid)
+  (struct-copy session s [overlays (cons vid (session-overlays s))]))
+(define (session-overlay-remove s vid)
+  (struct-copy session s [overlays (remove vid (session-overlays s))]))

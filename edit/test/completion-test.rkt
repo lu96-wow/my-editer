@@ -30,7 +30,7 @@
 ;; 打开补全菜单
 (define s4 (step s3 (cmd-complete)))
 (check-true (session-layer-active? s4 'complete))
-(check-true (pair? (session-floats s4)))
+(check-true (pair? (session-overlays s4)))
 
 ;; 输入层键表接管上下 / Enter / Esc（普通字符不在此，fallthrough 到文档键表）
 (define lk (for/first ([l (in-list (session-layers s4))]) (layer-keys l)))
@@ -46,7 +46,7 @@
 (define s6 (step s5 (cmd-complete-accept)))
 (check-equal? (session-view-string s6 vid) "alpha alphabet\nalphabet")
 (check-false (session-layer-active? s6 'complete))
-(check-equal? (session-floats s6) '())
+(check-equal? (session-overlays s6) '())
 
 ;; 焦点移开 → focus-changed hook 取消菜单
 (define t1 (step (session-ed-set-point! s6 vid 1 0) (cmd-insert "al")))
@@ -54,6 +54,6 @@
 (check-true (session-layer-active? t2 'complete))
 (define t3 (session-set-focus t2 (focus-set (session-focus t2) (session-panel-vid t2 panel-tree))))
 (check-false (session-layer-active? t3 'complete))
-(check-equal? (session-floats t3) '())
+(check-equal? (session-overlays t3) '())
 
 (delete-file p)

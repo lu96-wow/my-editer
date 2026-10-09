@@ -35,7 +35,7 @@
  ;; 文档 / 视图结构 + 读
  session-add-document session-add-view
  session-document-ids session-view-ids-of session-document-name
- session-float-dids
+ session-overlay-dids
  session-view-did session-view-point session-view-point-line
  session-view-point-column session-view-point->screen session-view-cursor-screen
  session-view-width session-view-height session-view-line-numbers? session-view-string
@@ -88,14 +88,13 @@
     (rectangle (placed-vid p) (placed-x p) (placed-y p) (placed-w p) (placed-h p)
                (placed-deep p))))
 
-;; 浮层 → placed（deep 用 float 自带的）。
-(define (session-float-placed s)
-  (for/list ([f (in-list (session-floats s))])
-    (placed (float-vid f) (float-x f) (float-y f) (float-w f) (float-h f) (float-deep f))))
+;; 叠加层 → placed（各 deco 每帧产出）。
+(define (session-deco-placed s)
+  (append* (for/list ([d (in-list (session-decos s))]) ((deco-proc d) s))))
 
-;; 所有已落位窗格：布局树 + 浮层，按 deep 升序（大的在上）。
+;; 所有已落位窗格：布局树 + 叠加层，按 deep 升序（大的在上）。
 (define (session-panes s)
-  (sort (append (session-views s) (session-float-placed s)) < #:key placed-deep))
+  (sort (append (session-views s) (session-deco-placed s)) < #:key placed-deep))
 
 (define (session-focused-did s)
   (define vid (session-focus-vid s))
@@ -154,8 +153,8 @@
   (session-view-point->screen s vid (session-view-point-line s vid)
                               (session-view-point-column s vid)))
 
-(define (session-float-dids s)
-  (for/list ([f (in-list (session-floats s))]) (session-view-did s (float-vid f))))
+(define (session-overlay-dids s)
+  (for/list ([vid (in-list (session-overlays s))]) (session-view-did s vid)))
 (define (session-view-width s vid) (editor-view-width (session-ed s) vid))
 (define (session-view-height s vid) (editor-view-height (session-ed s) vid))
 (define (session-view-line-numbers? s vid) (editor-view-line-numbers? (session-ed s) vid))

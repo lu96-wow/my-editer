@@ -15,6 +15,7 @@
 ;;;   session/mouse.rkt      鼠标
 ;;;   session/plugin.rkt     document 插件绑定 / 写回
 ;;;   session/hook.rkt       生命周期通知
+;;;   session/async.rkt      异步结果版本闸门
 ;;;   session/render.rkt     统一渲染入口（刷面板 + 应用插件）
 ;;;
 ;;; 命令层 / 特性 / 后端 require 本模块即可。
@@ -31,6 +32,7 @@
          "session/mouse.rkt"
          "session/plugin.rkt"
          "session/hook.rkt"
+         "session/async.rkt"
          "session/render.rkt")
 
 (provide (all-from-out "session/value.rkt"
@@ -45,4 +47,5 @@
                        "session/mouse.rkt"
                        "session/plugin.rkt"
                        "session/hook.rkt"
+                       "session/async.rkt"
                        "session/render.rkt"))

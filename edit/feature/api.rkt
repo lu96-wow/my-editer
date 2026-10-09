@@ -10,7 +10,7 @@
 ;;;     · 自带 cmd-* + handler，挂到 handler 链（session-add-handler）
 ;;;     · handler 里对 session 的改动走这里白名单里的原语
 ;;;     · 需要别的功能时发命令，用 step 派发，而不是直接调操作函数
-;;;     · 需要瞬态叠加窗口（补全弹窗等）时用 float / session-float-open / -close
+;;;     · 需要叠加窗口（补全弹窗等）时用 deco（每帧产 placed）+ overlay 标记 vid
 ;;;
 ;;; 例外：需要**文件资源**的特性（tree / buffers / document）额外 require
 ;;; document/document.rkt 与 document/fs.rkt。这是「特性组合资源能力」的有意依赖。
@@ -19,7 +19,8 @@
          "../command/command.rkt"
          "../command/key.rkt"
          "../core/keymap.rkt"
-         "../core/ids.rkt")
+         "../core/ids.rkt"
+         "../core/layout.rkt")
 
 (provide
  ;; 面板（状态窗口）构造与查询
@@ -36,16 +37,14 @@
  session-width session-height
  session-visible? session-set-visible
 
- ;; 视图结构（显示 / 分屏）
- session-show-view session-split-view
+ ;; 视图结构（显示 / 分屏 / 关闭）
+ session-show-view session-split-view session-close-document
 
- ;; 浮动窗口（瞬态叠加）：构造 + 开关 + 几何 + 去重
- float float? float-vid float-keys float-x float-y float-w float-h float-deep
- session-floats session-float session-float-add session-float-remove
- session-float-open session-float-close session-float-drop
- session-float-move session-float-set
- session-view-cursor-screen session-view-point->screen
- session-float-dids
+ ;; 叠加层（deco）：每帧产 placed；overlay 标记叠加 vid（dock / 不入缓冲区）
+ deco deco-name deco-proc session-decos session-deco-add session-deco-remove
+ session-overlays session-overlay-add session-overlay-remove
+ placed placed? placed-vid placed-x placed-y placed-w placed-h placed-deep
+ session-overlay-dids session-view-cursor-screen session-view-point->screen
 
  ;; 输入层（模态键表）
  layer layer-id layer-keys session-layer-push session-layer-pop session-layer-active?
@@ -59,6 +58,8 @@
  ;; 键 / 命令消费 + 生命周期通知
  session-add-handler
  hook hook? hook-point hook-proc session-add-hook
+ ;; 异步结果阑门（runner 见 plugin/runner.rkt）
+ session-await session-deliver session-awaiting?
  session-prompt-open session-refresh
  session-log session-log! session-log-close session-log-toggle
 
