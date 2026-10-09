@@ -15,7 +15,7 @@
 (require (only-in "session.rkt"
                   session-focus-move session-scroll session-toggle-slot
                   session-resize session-quit session-nav
-                  session-resize-view session-close-focused
+                  session-resize-view session-hide-focused session-split-focused
                   session-insert session-delete session-backspace
                   session-undo session-redo
                   session-select-all session-copy session-cut session-paste
@@ -33,6 +33,7 @@
 (struct cmd-panel-swap () #:transparent)    ; 同位置状态窗口互换（Tab）
 (struct cmd-quit () #:transparent)
 (struct cmd-close () #:transparent)         ; 关闭焦点窗口（面板不关）
+(struct cmd-split (axis) #:transparent)     ; 分裂焦点编辑器（axis : 'lr | 'tb）
 (struct cmd-resize (w h) #:transparent)
 
 ;; document 命令
@@ -67,6 +68,7 @@
 (provide (struct-out cmd-focus) (struct-out cmd-scroll) (struct-out cmd-nav)
          (struct-out cmd-toggle) (struct-out cmd-panel-swap)
          (struct-out cmd-quit) (struct-out cmd-resize) (struct-out cmd-close)
+         (struct-out cmd-split)
          (struct-out cmd-insert) (struct-out cmd-delete) (struct-out cmd-backspace)
          (struct-out cmd-undo) (struct-out cmd-redo)
          (struct-out cmd-select-all) (struct-out cmd-copy) (struct-out cmd-cut) (struct-out cmd-paste)
@@ -101,7 +103,8 @@
     [(cmd-resize? cmd)    (session-resize s (cmd-resize-w cmd) (cmd-resize-h cmd))]
     [(cmd-resize-view? cmd) (session-resize-view s (cmd-resize-view-axis cmd) (cmd-resize-view-delta cmd))]
     [(cmd-quit? cmd)      (session-quit s)]
-    [(cmd-close? cmd)     (session-close-focused s)]
+    [(cmd-close? cmd)     (session-hide-focused s)]
+    [(cmd-split? cmd)     (session-split-focused s (cmd-split-axis cmd))]
     [(cmd-insert? cmd)    (session-insert s (cmd-insert-text cmd))]
     [(cmd-delete? cmd)    (session-delete s)]
     [(cmd-backspace? cmd) (session-backspace s)]

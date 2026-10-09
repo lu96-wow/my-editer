@@ -7,7 +7,8 @@
 ;;;
 ;;; 状态窗口（panel）自身不算缓冲区。
 
-(require "api.rkt")
+(require "api.rkt"
+         "../document/document.rkt")   ; 关闭（脏则问）
 
 (provide buffers-install
          (struct-out cmd-buffers-activate) (struct-out cmd-buffers-new-view)
@@ -103,8 +104,8 @@
 (define (do-close s model vid)
   (define r (row-at-focus s model vid))
   (case (and r (brow-kind r))
-    [(view) (session-close-view s (brow-vid r))]
-    [(doc)  (session-close-document s (brow-did r))]
+    [(view) (session-close-view-checked s (brow-vid r))]
+    [(doc)  (session-close-doc s (brow-did r))]
     [else s]))
 
 (define (do-toggle s vid)
@@ -132,6 +133,7 @@
    (key 'l 'ctrl)   (cmd-buffers-open 'lr)
    (key 'k 'ctrl)   (cmd-buffers-open 'tb)
    (key 'backspace) (cmd-buffers-close)
+   (key 'd 'ctrl)   (cmd-buffers-close)
    (key 'escape)    (cmd-buffers-toggle)
    (key 'tab)       (cmd-panel-swap)))
 

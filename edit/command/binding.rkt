@@ -25,13 +25,17 @@
 (define (mouse-row ev) (max 0 (sub1 (mouse-event-y ev))))
 
 ;; 事件 → 绑定键（无法绑定的 → #f）。
-(define (event->binding e)
+;; chars-as-keys? #t（前缀激活时）：普通字符也解成命名键（如 - / \），不走文本通道。
+(define (event->binding e [chars-as-keys? #f])
   (cond
     [(key-event? e)
      (define k (key-event-key e))
      (define m (key-event-mods e))
      (cond
-       [(and (char? k) (not (mods-ctrl? m)) (not (mods-alt? m))) text-binding]
+       [(and (char? k) (not (mods-ctrl? m)) (not (mods-alt? m)))
+        (if chars-as-keys?
+            (list 'key (char->key-symbol k) '())
+            text-binding)]
        [else (list 'key (if (char? k) (char->key-symbol k) k) (mods->symbols m))])]
     [(paste-event? e) paste-binding]
     [(mouse-event? e) (list 'mouse (mouse-event-action e) (mouse-event-button e)

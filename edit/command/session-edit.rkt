@@ -17,7 +17,8 @@
 (provide
  ;; 结构手术
  session-show-view session-split-view session-place-view
- session-close-view session-close-document session-close-focused
+ session-close-view session-close-document session-hide-focused
+ session-split-focused
  ;; 操作原语
  session-focus-move session-scroll session-toggle-slot
  session-resize session-quit session-nav session-resize-view
@@ -28,17 +29,35 @@
 ;;; ---------- 结构手术 ----------
 
 (define (session-show-view s vid)
-  (session-set-focus s (focus-set (session-focus s) vid)))
+  (define s1
+    (cond
+      [(not (session-layout s)) (session-place-view s #f 'lr vid)]
+      [(layout-contains? (session-layout s) vid) s]
+      [else
+       ;; 隐藏中的视图：放回编辑区（有编辑视图则分屏，否则填 blank）
+       (define base (session-edit-vid s))
+       (if (and base (not (eqv? base vid)) (layout-contains? (session-layout s) base))
+           (session-place-view s base 'lr vid)
+           (session-place-view s #f 'lr vid))]))
+  (session-set-focus s1 (focus-set (session-focus s1) vid)))
 
-;; 在 vid 旁按 axis 分屏出一个新视图（同文档）；焦点移到新视图。
+;; 在 vid 旁按 axis 分屏出一个新视图（同文档，继承行号设置）；焦点移到新视图。
 (define (session-split-view s vid axis)
   (define did (session-view-did s vid))
   (define w (max 5 (session-view-width s vid)))
   (define h (max 3 (session-view-height s vid)))
-  (define-values (s1 nvid) (session-add-view s did w h))
+  (define ln? (session-view-line-numbers? s vid))
+  (define-values (s1 nvid) (session-add-view s did w h #:line-numbers? ln?))
   (define s2 (struct-copy session s1
                [layout (layout-split (session-layout s1) vid axis nvid)]))
   (session-show-view s2 nvid))
+
+;; 分裂焦点编辑器（面板不分裂）。axis : 'lr（垂直分隔/左右）| 'tb（水平分隔/上下）。
+(define (session-split-focused s axis)
+  (define vid (session-focus-vid s))
+  (if (and vid (not (session-dock-vid? s vid)))
+      (session-split-view s vid axis)
+      s))
 
 ;; 把已在 editor 里的视图 nvid 放到 vid 旁（分屏）；
 ;; 没有基准视图（编辑器区为空）则把第一个 blank 占位换成新视图；layout 为空则作为根。
@@ -116,10 +135,28 @@
                    [else s*]))
      (session-fix-edit-vid s**)]))
 
-;; 关闭焦点窗口（状态窗口是一类面板，不会关）。
-(define (session-close-focused s)
+;; 隐藏视图：从编辑区移除（**不关 view、不关 document**）；焦点 / 活动视图移到仍在显示的编辑器视图。
+(define (session-hide-view s vid)
+  (define s1 (struct-copy session s [layout (session-drop-editor-views s (list vid))]))
+  (define placed (for/list ([v (in-list (session-view-id-list s1))]
+                            #:unless (session-dock-vid? s1 v)
+                            #:when (layout-contains? (session-layout s1) v)) v))
+  (define target (and (pair? placed) (first placed)))
+  (define s2 (if (eqv? vid (session-focus-vid s1))
+                 (session-set-focus s1 (focus-set (session-focus s1) target))
+                 s1))
+  (struct-copy session s2
+    [edit-vid (if (and (session-edit-vid s2)
+                       (layout-contains? (session-layout s2) (session-edit-vid s2)))
+                  (session-edit-vid s2)
+                  target)]))
+
+;; 隐藏焦点编辑器视图（面板不动）。
+(define (session-hide-focused s)
   (define vid (session-focus-vid s))
-  (if vid (session-close-view s vid) s))
+  (if (and vid (not (session-dock-vid? s vid)))
+      (session-hide-view s vid)
+      s))
 
 ;;; ---------- 操作原语 ----------
 

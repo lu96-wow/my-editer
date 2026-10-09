@@ -34,7 +34,7 @@
  session-document-ids session-view-ids-of session-document-name
  session-view-did session-view-point session-view-point-line
  session-view-point-column
- session-view-width session-view-height session-view-string
+ session-view-width session-view-height session-view-line-numbers? session-view-string
  session-view-id-list session-document-view-list
  ;; 保存句柄 / 脏
  session-document-string session-mark-saved session-dirty?
@@ -134,6 +134,7 @@
 (define (session-view-point-column s vid) (editor-view-point-column (session-ed s) vid))
 (define (session-view-width s vid) (editor-view-width (session-ed s) vid))
 (define (session-view-height s vid) (editor-view-height (session-ed s) vid))
+(define (session-view-line-numbers? s vid) (editor-view-line-numbers? (session-ed s) vid))
 (define (session-view-string s vid) (editor-view-string (session-ed s) vid))
 (define (session-view-id-list s) (editor-view-id-list (session-ed s)))
 (define (session-document-view-list s did) (editor-document-view-list (session-ed s) did))

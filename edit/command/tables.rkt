@@ -12,7 +12,7 @@
 
 (require "../core/keymap.rkt" "key.rkt" "command.rkt")
 
-(provide edit-command-keys focus-keys focus-prefix resize-prefix edit-keys)
+(provide edit-command-keys focus-keys focus-prefix resize-prefix split-prefix edit-keys)
 
 ;;; ---------- core 编辑命令（方向键 = 光标） ----------
 
@@ -59,6 +59,15 @@
    (key 'down)   (cmd-resize-view 'height  1)
    (key 'escape) (cmd-prefix-cancel)))
 
+;;; ---------- 分裂前缀（C-s 后接 - / \\） ----------
+;;;   -  水平分隔（上下）   \  垂直分隔（左右）
+
+(define split-prefix
+  (kbd
+   (key '-)      (cmd-split 'tb)
+   (key '|\|)    (cmd-split 'lr)
+   (key 'escape) (cmd-prefix-cancel)))
+
 ;;; ---------- 焦点命令 ----------
 
 (define focus-keys
@@ -68,7 +77,8 @@
    (key 'up 'alt)    (cmd-focus 'up)
    (key 'down 'alt)  (cmd-focus 'down)
    (key 'p 'ctrl)    (prefix "C-p" focus-prefix)
-   (key 'o 'ctrl)    (prefix "C-o" resize-prefix)))
+   (key 'o 'ctrl)    (prefix "C-o" resize-prefix)
+   (key 's 'ctrl)    (prefix "C-s" split-prefix)))
 
 ;;; ---------- 编辑命令表 = 编辑 ⊕ 焦点 ----------
 

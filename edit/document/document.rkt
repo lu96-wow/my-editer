@@ -12,7 +12,9 @@
 
 (require racket/file
          racket/path
+         racket/string
          "../command/session.rkt"
+         "../command/command.rkt"
          "../command/key.rkt"
          "../core/keymap.rkt"
          "../core/path.rkt"
@@ -21,6 +23,7 @@
 
 (provide session-open-file session-save session-save-all
          session-new-file session-new-dir session-delete-path
+         session-close-doc session-close-view-checked
          document-install document-keys
          (struct-out cmd-save) (struct-out cmd-open-file) (struct-out cmd-open-file-path))
 
@@ -48,7 +51,8 @@
       (define text (cond [(directory-exists? np) (error 'open "是一个目录")]
                          [(file-exists? np) (file->string np)]
                          [else ""]))
-      (define-values (s1 did nvid) (session-add-document s text 40 18 #:name (basename np)))
+      (define-values (s1 did nvid) (session-add-document s text 40 18 #:name (basename np)
+                                                       #:line-numbers? #t))
       (define base (session-edit-vid s1))
       (define s2 (if (eqv? base nvid) s1 (session-place-view s1 base axis nvid)))
       (define s3 (session-set-file s2 did np))
@@ -110,6 +114,73 @@
    (fs-delete np)
    s1))
 
+;;; ---------- 退出确认（有未保存修改时逐个询问） ----------
+;;; 交互用 prompt 回调链实现，不新增会话状态。
+
+;; 解析答案 -> 'yes | 'no | 'all | 'nall | 'invalid
+(define (quit-answer ans)
+  (define a (string-downcase (string-trim ans)))
+  (cond [(member a '("y" "yes")) 'yes]
+        [(member a '("n" "no")) 'no]
+        [(member a '("all" "a")) 'all]
+        [(member a '("nall" "none" "!")) 'nall]
+        [else 'invalid]))
+
+;; 有路径且脏的文档（无路径不可能脏）。
+(define (dirty-dids s)
+  (for/list ([d (in-list (session-file-dids s))] #:when (session-dirty? s d)) d))
+
+(define (session-quit-ask s remaining)
+  (cond
+    [(null? remaining) (session-quit s)]
+    [else
+     (define did (first remaining))
+     (define more (rest remaining))
+     (session-prompt-open s (session-panel-vid s 'input)
+       (format "save ~a? (y/n/all/nall) " (session-document-name s did))
+       (lambda (s ans)
+         (case (quit-answer ans)
+           [(yes)  (session-quit-ask (session-save s did) more)]
+           [(no)   (session-quit-ask s more)]
+           [(all)  (session-quit
+                    (for/fold ([s (session-save s did)]) ([d (in-list more)]) (session-save s d)))]
+           [(nall) (session-quit s)]
+           [else (session-quit-ask s remaining)])))]))   ; 无效输入：重问当前
+
+;; 退出入口：没有脏文档直接退，否则逐个问。
+(define (session-quit-confirm s)
+  (define ds (dirty-dids s))
+  (if (null? ds) (session-quit s) (session-quit-ask s ds)))
+
+;;; ---------- 关闭（统一入口；脏则问） ----------
+
+;; 'yes | 'no | 'invalid
+(define (yes-no ans)
+  (define a (string-downcase (string-trim ans)))
+  (cond [(member a '("y" "yes")) 'yes]
+        [(member a '("n" "no")) 'no]
+        [else 'invalid]))
+
+;; 关文档：脏则问是否保存。**唯一**的关文档入口。
+(define (session-close-doc s did)
+  (cond
+    [(not (session-dirty? s did)) (session-close-document s did)]
+    [else
+     (session-prompt-open s (session-panel-vid s 'input)
+       (format "save ~a? (y/n) " (session-document-name s did))
+       (lambda (s ans)
+         (case (yes-no ans)
+           [(yes) (session-close-document (session-save s did) did)]
+           [(no)  (session-close-document s did)]
+           [else  (session-close-doc s did)])))]))
+
+;; 关视图：该文档最后一个视图 → 走关文档（会问）；否则直接关视图。
+(define (session-close-view-checked s vid)
+  (define did (session-view-did s vid))
+  (if (null? (remove vid (session-document-view-list s did)))
+      (session-close-doc s did)
+      (session-close-view s vid)))
+
 ;;; ---------- 命令 + 键 + handler ----------
 
 (struct cmd-save () #:transparent)
@@ -117,13 +188,15 @@
 (struct cmd-open-file-path (path) #:transparent) ; 直接打开（文件树发来）
 
 ;; 本层自带的全局键（assembly 合并进 session.keys）。
+;; 注意：C-s 已被 edit-keys 用作「分裂前缀」，所以保存改用 M-s。
 (define document-keys
-  (kbd (key 's 'ctrl) (cmd-save)
+  (kbd (key 's 'alt) (cmd-save)
        (key 'f 'ctrl) (cmd-open-file)))
 
 (define (document-handler default-keys)
   (lambda (s cmd)
     (cond
+      [(cmd-quit? cmd) (session-quit-confirm s)]
       [(cmd-save? cmd) (session-save s)]
       ;; 直接打开（文件树发来）：不再询问路径。
       [(cmd-open-file-path? cmd)

@@ -192,6 +192,7 @@
    (key 'n 'ctrl)   (cmd-tree-new-file)
    (key 'l 'ctrl)   (cmd-tree-new-dir)
    (key 'backspace) (cmd-tree-delete)
+   (key 'd 'ctrl)   (cmd-tree-delete)
    (key 'escape)    (cmd-tree-toggle)
    (key 'tab)       (cmd-panel-swap)))
 
