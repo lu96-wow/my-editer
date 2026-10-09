@@ -87,7 +87,7 @@
             (session-prompt-open s (session-panel-vid s 'input) "new file: "
                                  (lambda (s _name) s))]
            [(cmd-tree-toggle? cmd)
-            (session-set-visible s vid (not (presentation-visible? (session-presentation s vid))))]
+            (session-set-visible s vid (not (session-visible? s vid)))]
            [else #f]))))
 
 ;;; ---------- 装配 ----------

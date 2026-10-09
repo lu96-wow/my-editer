@@ -108,7 +108,7 @@
     [else s]))
 
 (define (do-toggle s vid)
-  (session-set-visible s vid (not (presentation-visible? (session-presentation s vid)))))
+  (session-set-visible s vid (not (session-visible? s vid))))
 
 (define (buffers-handler model vid)
   (lambda (s cmd)
@@ -118,7 +118,7 @@
            [(cmd-buffers-new-view? cmd)  (do-new-view s model vid)]
            [(cmd-buffers-open? cmd)      (do-open s model vid (cmd-buffers-open-dir cmd))]
            [(cmd-buffers-close? cmd)     (do-close s model vid)]
-           [(cmd-buffers-toggle? cmd)    (session-set-visible s vid (not (presentation-visible? (session-presentation s vid))))]
+           [(cmd-buffers-toggle? cmd)    (session-set-visible s vid (not (session-visible? s vid)))]
            [else #f]))))
 
 ;;; ---------- 装配 ----------

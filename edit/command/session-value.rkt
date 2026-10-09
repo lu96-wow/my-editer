@@ -2,7 +2,7 @@
 
 ;;; edit/command/session-value.rkt —— 会话值（纯）
 ;;;
-;;; session 及其附属值（presentation / panel / prompt）的定义、构造、纯字段变换，
+;;; session 及其附属值（panel / prompt）的定义、构造、纯字段变换，
 ;;; 以及 file-map 包装。不 require core editor、不 require tui、不涉及渲染。
 ;;;
 ;;; 上层：
@@ -17,10 +17,6 @@
          "../core/doc-state.rkt")
 
 ;;; ---------- 值 ----------
-
-;; 每个 vid 的展示态（core 的 view 不含这两样）。
-(struct presentation (depth visible?) #:transparent)
-(define layer-base 0)
 
 ;; 状态窗口：一块停靠视图 + 内容生成函数 + 自己的键表。
 (struct panel (id vid refresh keys group) #:transparent)
@@ -39,7 +35,7 @@
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; layout        : 布局具体树（装配后 slot 已填；叶子是 vid）
 ;; bindings      : slot-id -> node（装配期声明，留作 slot 查询）
-;; presentations : (hash vid -> presentation)
+;; presentations : (hash vid -> boolean)   显隐（缺省 = 可见）
 ;; panels        : (listof panel)
 ;; focus         : focus（输入焦点）
 ;; edit-vid      : 活动编辑视图（粘性）
@@ -52,16 +48,15 @@
 ;; prefix        : prefix | #f   活动前缀（多键序列）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 
-(provide (struct-out session) (struct-out presentation) (struct-out panel) (struct-out prompt)
-         layer-base
+(provide (struct-out session) (struct-out panel) (struct-out prompt)
          session-new session-assemble
-         session-presentation session-set-presentation session-set-visible
+         session-visible? session-set-visible
          session-focus-vid session-set-prefix
          ;; 状态窗口查询（纯）
          session-panel session-panel-vid session-vid-keys session-dock-vid? session-add-panel
          ;; file-map 包装 + 保存句柄（doc-state）
          session-docs session-file-path session-file-did session-file-dids
-         session-set-file session-clear-file
+         session-set-file session-clear-doc
          session-saved session-set-saved session-clear-doc)
 
 ;;; ---------- 构造 / 纯变换 ----------
@@ -75,13 +70,11 @@
 (define (session-assemble s layout bindings)
   (struct-copy session s [layout (layout-fill layout bindings)] [bindings bindings]))
 
-(define (session-presentation s vid)
-  (hash-ref (session-presentations s) vid (presentation layer-base #t)))
-(define (session-set-presentation s vid p)
-  (struct-copy session s [presentations (hash-set (session-presentations s) vid p)]))
+;;; ---------- 展示态（显隐） ----------
+
+(define (session-visible? s vid) (hash-ref (session-presentations s) vid #t))
 (define (session-set-visible s vid on?)
-  (session-set-presentation s vid
-    (struct-copy presentation (session-presentation s vid) [visible? on?])))
+  (struct-copy session s [presentations (hash-set (session-presentations s) vid on?)]))
 
 (define (session-focus-vid s) (focus-target (session-focus s)))
 (define (session-set-prefix s p) (struct-copy session s [prefix p]))
@@ -109,8 +102,6 @@
 (define (session-file-dids s) (doc-state-dids (session-docs s)))
 (define (session-set-file s did path)
   (struct-copy session s [docs (doc-state-set-path (session-docs s) did path)]))
-(define (session-clear-file s did)
-  (struct-copy session s [docs (doc-state-remove (session-docs s) did)]))
 
 ;;; ---------- 保存句柄 ----------
 

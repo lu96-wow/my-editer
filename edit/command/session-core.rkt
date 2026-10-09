@@ -71,14 +71,13 @@
 
 (define (session-views s)
   (layout-place (session-layout s) (session-bindings s)
-                (lambda (vid) (presentation-visible? (session-presentation s vid)))
+                (lambda (vid) (session-visible? s vid))
                 (area 0 0 (session-width s) (session-height s))))
 
 (define (session-rectangles s)
   (for/list ([p (in-list (session-views s))])
     (define vid (placed-vid p))
-    (rectangle vid (placed-x p) (placed-y p) (placed-w p) (placed-h p)
-               (presentation-depth (session-presentation s vid)))))
+    (rectangle vid (placed-x p) (placed-y p) (placed-w p) (placed-h p) 0)))
 
 (define (session-focused-did s)
   (define vid (session-focus-vid s))

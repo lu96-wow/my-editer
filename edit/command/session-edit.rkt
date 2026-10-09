@@ -109,8 +109,7 @@
   (cond
     [(null? vids) s]
     [else
-     (define any-visible? (for/or ([v (in-list vids)])
-                            (presentation-visible? (session-presentation s v))))
+     (define any-visible? (for/or ([v (in-list vids)]) (session-visible? s v)))
      (define s1 (for/fold ([s s]) ([v (in-list vids)]) (session-set-visible s v #f)))
      (if any-visible? s1 (session-set-visible s1 (first vids) #t))]))
 
