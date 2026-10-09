@@ -3,15 +3,14 @@
 ;;; edit/tui.rkt —— racket-tui 输入 / 输出后端
 ;;;
 ;;; 输入：read-event -> resolve（session 的键表叠）-> step（纯）-> session
-;;; 输出：session -> compose -> pieces -> format-* 字节
+;;; 输出：session -> core 合成 -> pieces -> format-* 字节
 ;;;
-;;; 只有本模块碰终端 / FFI；command.rkt / layout.rkt / view.rkt 保持纯。
+;;; 只有本模块碰终端 / FFI；command.rkt / layout.rkt / focus.rkt 保持纯。
 
 (require tui
-         "command.rkt"
-         "keymap.rkt"
-         "binding.rkt"
-         "view.rkt"
+         "command/command.rkt"
+         "command/binding.rkt"
+         "core/keymap.rkt"
          "../core/view/base/screen.rkt"
          "../core/view/patch.rkt")
 
@@ -22,7 +21,7 @@
 (define (resolve s ev)
   (define b (event->binding ev))
   (define did (session-focused-did s))
-  (define kms (append (if did (list (doc-entry-keys (session-doc-entry s did))) '())
+  (define kms (append (if did (list (session-doc-keys s did)) '())
                       (session-keys s)))
   (and b
        (for/or ([km (in-list kms)])
@@ -33,9 +32,7 @@
 
 ;; 一帧的全部 piece（render + selection）。old = #f 表示全量。
 (define (render-pieces s [old #f])
-  (define-values (_new rends sels)
-    (compose-patch old (session-views s) (session-focus-vid s)
-                   (session-width s) (session-height s)))
+  (define-values (_new rends sels) (session-patch s old))
   (append rends sels))
 
 ;; piece 的外观：目前只处理光标 overlay（反色），face 配色留给主题。
@@ -49,9 +46,7 @@
 
 (define (draw! s)
   (define old (unbox prev))
-  (define-values (new rends sels)
-    (compose-patch old (session-views s) (session-focus-vid s)
-                   (session-width s) (session-height s)))
+  (define-values (new rends sels) (session-patch s old))
   (define fresh? (or (not old)
                      (not (= (screen-width old) (screen-width new)))
                      (not (= (screen-height old) (screen-height new)))))

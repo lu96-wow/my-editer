@@ -8,9 +8,9 @@
 ;;;     focus-restore  还原到历史顶端
 ;;;
 ;;; 焦点只存 target(vid) + stack，不含几何；方向移动的几何由调用方传
-;;; 「已放置的 view 列表」（layout-place 的结果），不落进 focus 值。
+;;; 「已放置的 view 列表」（layout-place 的结果 placed），不落进 focus 值。
 
-(require "view.rkt")
+(require "layout.rkt")
 
 (struct focus (target stack) #:transparent)
 ;; target : vid | #f
@@ -37,27 +37,27 @@
 ;;; ---------- 方向移动（几何来自已放置的 view） ----------
 
 (define (rect-v-overlap? a b)
-  (and (< (view-y a) (+ (view-y b) (view-h b)))
-       (< (view-y b) (+ (view-y a) (view-h a)))))
+  (and (< (placed-y a) (+ (placed-y b) (placed-h b)))
+       (< (placed-y b) (+ (placed-y a) (placed-h a)))))
 (define (rect-h-overlap? a b)
-  (and (< (view-x a) (+ (view-x b) (view-w b)))
-       (< (view-x b) (+ (view-x a) (view-w a)))))
+  (and (< (placed-x a) (+ (placed-x b) (placed-w b)))
+       (< (placed-x b) (+ (placed-x a) (placed-w a)))))
 
 ;; dir : 'left 'right 'up 'down
 ;; 中心点在方向半平面内；正交轴重叠（同排 / 同列）优先 → 避免斜跳。
 (define (focus-move views f dir)
   (define cur (focus-target f))
-  (define c (for/first ([v (in-list views)] #:when (eqv? cur (view-id v))) v))
+  (define c (for/first ([v (in-list views)] #:when (eqv? cur (placed-vid v))) v))
   (cond
     [(or (not c) (< (length views) 2)) f]
     [else
-     (define cx (+ (view-x c) (quotient (view-w c) 2)))
-     (define cy (+ (view-y c) (quotient (view-h c) 2)))
+     (define cx (+ (placed-x c) (quotient (placed-w c) 2)))
+     (define cy (+ (placed-y c) (quotient (placed-h c) 2)))
      (define horiz? (memq dir '(left right)))
      (define best
-       (for/fold ([best #f]) ([v (in-list views)] #:unless (eqv? cur (view-id v)))
-         (define vx (+ (view-x v) (quotient (view-w v) 2)))
-         (define vy (+ (view-y v) (quotient (view-h v) 2)))
+       (for/fold ([best #f]) ([v (in-list views)] #:unless (eqv? cur (placed-vid v)))
+         (define vx (+ (placed-x v) (quotient (placed-w v) 2)))
+         (define vy (+ (placed-y v) (quotient (placed-h v) 2)))
          (define ok (case dir
                       [(left)  (< vx cx)]
                       [(right) (> vx cx)]
@@ -71,7 +71,7 @@
             (define primary (if horiz? (abs (- vx cx)) (abs (- vy cy))))
             (define score (+ primary (if overlap? 0 10000)))
             (if (or (not best) (< score (car best)))
-                (cons score (view-id v))
+                (cons score (placed-vid v))
                 best)])))
      (cond [(not best) f]
            [else (focus-set f (cdr best))])]))

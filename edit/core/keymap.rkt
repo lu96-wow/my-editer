@@ -9,7 +9,6 @@
 ;;; 组合：keytable-merge 后面的覆盖前面的；session 里可放一叠键表（上下文），
 ;;; 查找自上而下，第一个命中的赢。
 
-(require "binding.rkt")
 
 (provide (struct-out keymap) kbd keymap-lookup keymap-merge keymap-add)
 
