@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/main.rkt —— TUI 入口。
+;;; lab-re-rebuild/main.rkt —— TUI 入口。
 
 (require "backend/tui.rkt")
 

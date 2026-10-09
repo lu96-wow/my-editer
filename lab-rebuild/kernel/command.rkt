@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/command.rkt —— 命令调用。
+;;; lab-re-rebuild/kernel/command.rkt —— 命令调用。
 ;;;
 ;;; 命令是 registry 里 kind='command 的贡献；value : (Ctx ev . args) -> (listof effect)。
 ;;; spec = name | (name . args)。

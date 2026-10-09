@@ -13,33 +13,43 @@
 ;;; 寻址：
 ;;;   `editor-view-* ed vid`            按 vid
 ;;;   `editor-document-* ed did`        按 did
-;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 attributes.rkt）
+;;;   `editor-document-handle-* doc`    按 document 句柄（异步写回，见 version.rkt）
 ;;;   全局（无 id）：`make-blank-editor` / `editor-open` / `editor-documents` / …
 
 (provide
  ;; ---------- 文本 / 名称 ----------
  editor-view-string
  editor-document-string
+ editor-document-range-text
+ editor-view-range-text
  editor-view-document-name
  editor-document-name
  editor-document-char-at
  editor-view-char-at
 
- ;; ---------- 属性（高亮 / 只读，读） ----------
- editor-document-highlight-at
+ ;; ---------- 端口（读） ----------
+ editor-document-face
+ editor-document-readonly
+ editor-document-face-at
  editor-document-readonly-at?
- editor-document-highlight-row
+ editor-document-face-row
  editor-document-readonly-row
- editor-document-highlight-range?
+ editor-document-face-range?
  editor-document-readonly-range?
  editor-document-editable?
- editor-view-highlight-at
+ editor-view-face
+ editor-view-readonly
+ editor-view-face-at
  editor-view-readonly-at?
- editor-view-highlight-row
+ editor-view-face-row
  editor-view-readonly-row
- editor-view-highlight-range?
+ editor-view-face-range?
  editor-view-readonly-range?
  editor-view-editable?
+
+ ;; ---------- 槽（读，opaque 值） ----------
+ editor-document-slot-ref
+ editor-view-slot-ref
 
  ;; ---------- 身份 ----------
  editor-document-id-list editor-view-id-list
@@ -106,36 +116,53 @@
 (define (editor-view-char-at ed vid line col)
   (editor-document-char-at ed (view-did (editor-view-ref ed vid)) line col))
 
-;;; ---------- 属性（高亮 / 只读，读） ----------
-;;; 属性是文档级状态，真身按 did；vid 版就地取 did。
+;; 区间文本（纯文本；属性不随复制走）。
+(define (editor-document-range-text ed did r)
+  (document-range-text (editor-document-handle ed did) r))
+(define (editor-view-range-text ed vid r)
+  (editor-document-range-text ed (view-did (editor-view-ref ed vid)) r))
 
-(define (editor-document-highlight-at ed did line col)
-  (document-highlight-at (editor-document-handle ed did) line col))
+;;; ---------- 读：端口 / 槽 ----------
+;;; 端口 / 槽是文档级状态，真身按 did；vid 版取 did。
+
+(define (editor-document-face ed did) (document-face (editor-document-handle ed did)))
+(define (editor-document-readonly ed did) (document-readonly (editor-document-handle ed did)))
+(define (editor-document-face-at ed did line col)
+  (document-face-at (editor-document-handle ed did) line col))
 (define (editor-document-readonly-at? ed did line col)
   (document-readonly-at? (editor-document-handle ed did) line col))
-(define (editor-document-highlight-row ed did line)
-  (document-highlight-row (editor-document-handle ed did) line))
+(define (editor-document-face-row ed did line)
+  (document-face-row (editor-document-handle ed did) line))
 (define (editor-document-readonly-row ed did line)
   (document-readonly-row (editor-document-handle ed did) line))
-(define (editor-document-highlight-range? ed did l0 c0 l1 c1)
-  (document-highlight-range? (editor-document-handle ed did) l0 c0 l1 c1))
+(define (editor-document-face-range? ed did l0 c0 l1 c1)
+  (document-face-range? (editor-document-handle ed did) l0 c0 l1 c1))
 (define (editor-document-readonly-range? ed did l0 c0 l1 c1)
   (document-readonly-range? (editor-document-handle ed did) l0 c0 l1 c1))
 (define (editor-document-editable? ed did l0 c0 l1 c1)
   (document-editable? (editor-document-handle ed did) l0 c0 l1 c1))
 
-(define (editor-view-highlight-at ed vid line col)
-  (editor-document-highlight-at ed (view-did (editor-view-ref ed vid)) line col))
+(define (editor-document-slot-ref ed did sl)
+  (document-slot-ref (editor-document-handle ed did) sl))
+
+(define (editor-view-face ed vid)
+  (editor-document-face ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-readonly ed vid)
+  (editor-document-readonly ed (view-did (editor-view-ref ed vid))))
+(define (editor-view-face-at ed vid line col)
+  (editor-document-face-at ed (view-did (editor-view-ref ed vid)) line col))
 (define (editor-view-readonly-at? ed vid line col)
   (editor-document-readonly-at? ed (view-did (editor-view-ref ed vid)) line col))
-(define (editor-view-highlight-row ed vid line)
-  (editor-document-highlight-row ed (view-did (editor-view-ref ed vid)) line))
+(define (editor-view-face-row ed vid line)
+  (editor-document-face-row ed (view-did (editor-view-ref ed vid)) line))
 (define (editor-view-readonly-row ed vid line)
   (editor-document-readonly-row ed (view-did (editor-view-ref ed vid)) line))
-(define (editor-view-highlight-range? ed vid l0 c0 l1 c1)
-  (editor-document-highlight-range? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
+(define (editor-view-face-range? ed vid l0 c0 l1 c1)
+  (editor-document-face-range? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
 (define (editor-view-readonly-range? ed vid l0 c0 l1 c1)
   (editor-document-readonly-range? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
+(define (editor-view-slot-ref ed vid sl)
+  (editor-document-slot-ref ed (view-did (editor-view-ref ed vid)) sl))
 (define (editor-view-editable? ed vid l0 c0 l1 c1)
   (editor-document-editable? ed (view-did (editor-view-ref ed vid)) l0 c0 l1 c1))
 

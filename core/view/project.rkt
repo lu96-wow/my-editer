@@ -6,7 +6,7 @@
 ;;; project.rkt —— 文本通道：document × vrows → 屏幕文本行（含行号装饰）
 ;;;
 ;;; 每条屏幕行的来源是一条 **vrow**（buffer 行 + 显示列区间）。本层只做：
-;;;   · vrow 区间的字符 → 同 face 连续段 run（face 来自高亮轨；跨边界整字丢弃）
+;;;   · vrow 区间的字符 → 同 face 连续段 run（face 来自 face 端口；跨边界整字丢弃）
 ;;;   · 行号栏：每条 buffer 行的**首段**前加行号，正文整体右移栏宽
 ;;; overlay（光标 / 选区）在 overlay.rkt，二者由 render.rkt 合成。
 
@@ -24,7 +24,7 @@
     [(>= line (track-length text)) '()]
     [else
      (define s (track-ref text line))
-     (define hlt (document-highlight bd))       ; 整轨可为 #f（全默认）
+     (define hlt (document-face bd))            ; 整轨可为 #f（全默认）
      (define hs (and hlt (track-ref hlt line)))
      (define start (vrow-start-column vr))
      (define end (vrow-end-column vr))

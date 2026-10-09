@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/lang/docs.rkt —— 标识符 → 文档（DrRacket 式：bluebox 优先，HTML 兜底）
+;;; lab-re-rebuild/lang/docs.rkt —— 标识符 → 文档（DrRacket 式：bluebox 优先，HTML 兜底）
 ;;;
 ;;; 与 DrRacket 的 check-syntax 蓝框同一套数据：
 ;;;   setup/xref         按 (模块 符号) 反查定义 tag（会跟到 re-export 的原始定义）

@@ -4,7 +4,7 @@
          "../lang/file-kind.rkt"
          "api.rkt")
 
-;;; lab-rebuild/builtin/highlight/brackets.rkt —— 括号按深度背景高亮（内置插件）
+;;; lab-re-rebuild/builtin/highlight/brackets.rkt —— 括号按深度背景高亮（内置插件）
 ;;;
 ;;; open 走整篇扫描；change 走 base/brackets.rkt 的增量（只用编辑位置重建被破坏的一段）。
 ;;; 产出 face = (palette-color 'bracket level)，颜色由主题决定。

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab/builtin/lang/word-index.rkt —— 每文档增量词表（纯）
+;;; lab-re-rebuild/builtin/lang/word-index.rkt —— 每文档增量词表（纯）
 ;;;
 ;;; 维护「行 → token」+「词 → 词频」：整篇扫一次建表，之后每次编辑只重算被改动的
 ;;; 那几行，均摊 O(改动)。给补全的 dabbrev 用，避免每键/每词扫全文。

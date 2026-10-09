@@ -10,7 +10,7 @@
 ;;;   view           = view-immutable(id, did)   ⊕ view-mutable(viewport box,
 ;;;                                                            selections box)
 ;;;
-;;; 只有 list 结构变化（增/删文档、增/删视图）产新 editor；其余就地改 box。
+;;; 只有增/删文档、增/删视图产新 editor。
 ;;;
 ;;; document-entry 的当前文档就是 history 的 current 快照。
 
@@ -69,7 +69,7 @@
 (struct entry-immutable (id) #:transparent)
 (struct view-immutable (id did) #:transparent)
 
-;; 可变状态（在 box 里）
+;; 可变部分
 (struct entry-mutable (name history) #:transparent)                    ; 两个 box
 (struct view-mutable (viewport selections) #:transparent)               ; 两个 box
 
@@ -78,7 +78,7 @@
 
 (struct editor (documents views next-document next-view clipboard-box) #:transparent)
 ;; documents / views : 不可变列表（顺序稳定）；next-* : 分配器
-;; clipboard-box : box（#f = 空）
+;; clipboard-box : box（string = 剪贴板文本；#f = 空）
 
 ;;; ---------- 绑定访问（读 box 内容） ----------
 
@@ -93,7 +93,7 @@
 
 (define (editor-clipboard ed) (unbox (editor-clipboard-box ed)))
 
-;;; ---------- 裸 box setter（改 box 内容） ----------
+;;; ---------- 裸 box setter ----------
 
 (define (document-entry-set-name! e n)
   (set-box! (entry-mutable-name (document-entry-mut e)) n))

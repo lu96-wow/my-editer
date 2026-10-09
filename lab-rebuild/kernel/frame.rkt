@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/frame.rkt —— 主区编辑叶树 + 纯派生布局。
+;;; lab-re-rebuild/kernel/frame.rkt —— 主区编辑叶树 + 纯派生布局。
 ;;;
 ;;; 只存结构（root）；layout 是纯函数（area → (listof rectangle)）。
 ;;;   leaf(vid role) | split(dir size a b)

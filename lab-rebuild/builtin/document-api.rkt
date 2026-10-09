@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/document-api.rkt —— 文档元数据（did ↔ 路径、脏）的**读写接口**。
+;;; lab-re-rebuild/builtin/document-api.rkt —— 文档元数据（did ↔ 路径、脏）的**读写接口**。
 ;;;
 ;;; service 'document = (list path-table dirty-hash)。
 ;;; 实现写这里；status 等只读查询也走这里 —— 于是调用方不 require document 的实现。

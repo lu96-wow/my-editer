@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/overlay.rkt —— 浮层（frame decoration）注册 + 绘制原语。
+;;; lab-re-rebuild/kernel/overlay.rkt —— 浮层（frame decoration）注册 + 绘制原语。
 ;;;
 ;;; 浮层是**每帧纯函数** ctx -> (listof pane)，不经 effect、不进历史。
 ;;; 内容类输出（状态行 / 面板 / 输入行 / 属性高亮）不走这里，走 effect（reload/attr!）。

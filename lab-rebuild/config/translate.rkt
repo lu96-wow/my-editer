@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/config/translate.rkt —— 对照翻译词典（纯数据）。
+;;; lab-re-rebuild/config/translate.rkt —— 对照翻译词典（纯数据）。
 ;;;
 ;;; 每条 = (源词 . 译词)。按「整个词」匹配（见 builtin/translate.rkt 的词法），
 ;;; 不匹配子串；译词里不能含换行（保证逐行保持行数）。

@@ -8,7 +8,7 @@
 ;;;   run     一行里一段同 face 的文本（col 是显示列）
 ;;;   cursor  光标点（视图 overlay）
 ;;;   region  选中区段（一个跨行选区在每行切一段）
-;;; face 是不透明值（core 不解释），来自高亮轨。
+;;; face 是不透明值（core 不解释），来自 face 端口。
 ;;;
 ;;; 屏幕空间的坐标是 row / col（col = 显示列）。
 ;;; run.col 是行内列；cursor/region、pane、rectangle 用 (row, col)（先行再列）。

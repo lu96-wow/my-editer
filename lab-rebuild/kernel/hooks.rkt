@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/hooks.rkt —— 生命周期通知。
+;;; lab-re-rebuild/kernel/hooks.rkt —— 生命周期通知。
 ;;;
 ;;; hook 是 registry 里 kind='hook 的贡献；proc : (Ctx args) -> (listof effect)。
 ;;; run-hooks 只收集 effects；施加由 pipeline.run-notify 负责（保持唯一写入点）。

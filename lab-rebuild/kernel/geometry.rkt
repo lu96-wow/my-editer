@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/geometry.rkt —— 工作区几何：方向导航（主区叶 + dock 统一算）。
+;;; lab-re-rebuild/kernel/geometry.rkt —— 工作区几何：方向导航（主区叶 + dock 统一算）。
 
 (require "editor-api.rkt" "session.rkt" "runtime.rkt" "workspace.rkt")
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/indent.rkt —— 换行语法缩进（覆盖 newline 命令）。
+;;; lab-re-rebuild/builtin/indent.rkt —— 换行语法缩进（覆盖 newline 命令）。
 ;;;
 ;;; 同名命令 upsert：后注册的覆盖先注册的。按光标前的括号嵌套深度决定缩进。
 ;;; 从 config/packages 撤掉 → 回落纯换行。是否适用由 doc-scope 的 'indent 声明决定。

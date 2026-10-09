@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/pipeline.rkt —— 事件 → 命令 → 效果 → 会话（唯一写入点）。
+;;; lab-re-rebuild/kernel/pipeline.rkt —— 事件 → 命令 → 效果 → 会话（唯一写入点）。
 ;;;
 ;;; step:  resolve（事件 → binding → 焦点决定表 → spec） → perform（命令 → effects） → apply。
 ;;; apply-effect 先查 registry 的 'effect 处理器（特性写入点），否则走内建。

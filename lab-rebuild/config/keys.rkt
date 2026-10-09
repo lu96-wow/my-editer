@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/config/keys.rkt —— 基础键表（纯数据）。
+;;; lab-re-rebuild/config/keys.rkt —— 基础键表（纯数据）。
 ;;;
 ;;; edit   : 主区编辑键
 ;;; global : 框架全局键（分屏 / 关窗格 / 开关 dock / 退出）

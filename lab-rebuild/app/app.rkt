@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/app/app.rkt —— 唯一装配点。
+;;; lab-re-rebuild/app/app.rkt —— 唯一装配点。
 ;;;
 ;;; 组装 registry（功能包目录）→ 建主区视图 + 各 dock 视图（kind='dock 贡献）
 ;;; → 建 workspace / session / runtime / ctx。

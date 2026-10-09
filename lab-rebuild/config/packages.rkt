@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/config/packages.rkt —— 功能包目录（纯数据）。
+;;; lab-re-rebuild/config/packages.rkt —— 功能包目录（纯数据）。
 
 (require "../builtin/edit.rkt"
          "../builtin/indent.rkt"

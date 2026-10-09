@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/registry.rkt —— 统一贡献注册表（命令 / 钩子 / 将来更多）。
+;;; lab-re-rebuild/kernel/registry.rkt —— 统一贡献注册表（命令 / 钩子 / 将来更多）。
 ;;;
 ;;; 所有扩展点都是 contrib：kind 决定语义，name 唯一。取代模块级可变全局。
 ;;; 目前只有 'command；编辑 / 焦点 / 命令三根柱子里，命令走这里。

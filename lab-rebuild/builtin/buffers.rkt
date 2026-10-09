@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/buffers.rkt —— 缓冲区/视图树（left dock）。
+;;; lab-re-rebuild/builtin/buffers.rkt —— 缓冲区/视图树（left dock）。
 ;;;
 ;;; 两级树：每个 document 一行；展开的 document 紧跟它的每个 view 一行。
 ;;; 一个 document 可以有多个 view（分屏）——在这里新建 / 切换 / 关闭。
@@ -82,7 +82,7 @@
   (define lines (for/list ([r (in-list rows)]) (row-text ctx r)))
   (define text (if (null? lines) "" (string-join lines "\n")))
   (define doc (document-open text))
-  (document-highlight-fill-batch
+  (document-face-fill-batch
    doc (for/list ([r (in-list rows)] [l (in-list lines)] [i (in-naturals)])
          (list i 0 i (string-length l) (row-face ctx r))))
   (document-readonly-fill-batch

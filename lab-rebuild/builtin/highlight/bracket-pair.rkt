@@ -4,7 +4,7 @@
          "../../kernel/api.rkt"
          "../lang/file-kind.rkt")
 
-;;; lab-rebuild/builtin/highlight/bracket-pair.rkt —— 括号配对 + 嵌套深度
+;;; lab-re-rebuild/builtin/highlight/bracket-pair.rkt —— 括号配对 + 嵌套深度
 ;;;
 ;;; 表示：匹配对 → 整段区间 (list ol oc cl cc (palette-color 'bracket level))，level = 嵌套层
 ;;; （最外层 = 0）。外层先写、内层后写覆盖 → 每字符取最内层包围它的对。

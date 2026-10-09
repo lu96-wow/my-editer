@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/config/syntax.rkt —— 语法高亮关键字表（纯数据）
+;;; lab-re-rebuild/config/syntax.rkt —— 语法高亮关键字表（纯数据）
 ;;;
 ;;; 关键字顺序 = 取色顺序：想给某个关键字换色，挪它的位置即可。
 ;;; 「哪些文件参与」由各插件的 applies?（lang/file-kind.rkt）决定。

@@ -1,12 +1,12 @@
-# lab-rebuild
+# lab-re-rebuild
 
 在固定的 `../core`（编辑器平台）之上重建的编辑器。三根柱子：**编辑 / 焦点管理 / 命令**；
 布局是 **主区(frame) + 停靠区(dock)**，dock 机制共用、逻辑各自独立。
 设计见 `DESIGN-LAYOUT.md`；重构进度 / 耦合点 / 下一步见 `REFACTOR.md`。
 
 ```
-racket lab-rebuild/main.rkt        # TUI
-racket lab-rebuild/smoke.rkt       # 无头冒烟
+racket lab-re-rebuild/main.rkt        # TUI
+racket lab-re-rebuild/smoke.rkt       # 无头冒烟
 ```
 
 ## 分层

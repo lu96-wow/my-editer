@@ -6,7 +6,7 @@
          "../text/base/line.rkt" "../text/base/range.rkt" "../text/base/width.rkt"
          "../view/base/viewport.rkt")
 
-;;; editor/command.rkt —— 命令式操作（就地改 box，不返回 editor）
+;;; editor/command.rkt —— 命令式操作（不返回 editor）
 ;;;
 ;;; 编辑命令（insert/backspace/delete/paste/cut/edit）  → (values changes ok?)
 ;;;                                                     changes 空 = 没改动；ok? #f = 被只读挡
@@ -55,7 +55,7 @@
  editor-view-set-anchor! editor-view-set-anchor-point!
 
  ;; ---------- 属性（作用选区） ----------
- editor-view-highlight! editor-view-highlight-selections!
+ editor-view-face! editor-view-face-selections!
  editor-view-readonly! editor-view-readonly-selections!
 
  ;; ---------- 历史 ----------
@@ -88,7 +88,7 @@
      (define t (document-text value*))
      (define n (track-length t))
      (define sels* (selections-clamp (or sels (view-selections v)) n (curry track-line-length t)))
-     (define pre-sels (view-selections v))                            ; 就地改之前先抓
+     (define pre-sels (view-selections v))                            ; 改之前先抓
      (define pre-tip (history-current (document-entry-history e)))
      (view-set-selections! v sels*)
      (when ensure? (view-ensure! value* v))
@@ -191,7 +191,7 @@
         [else (editor-view-edit! ed vid (lambda (d s) (command-paste d s cp)) merge-tag)]))
 
 (define (editor-view-paste-text! ed vid text [merge-tag #f])
-  (editor-view-edit! ed vid (lambda (d s) (command-paste d s (clipboard-of-text text))) merge-tag))
+  (editor-view-edit! ed vid (lambda (d s) (command-paste d s text)) merge-tag))
 
 (define (editor-view-cut! ed vid [merge-tag #f])
   (define v (editor-view-ref ed vid))
@@ -207,7 +207,7 @@
         [else (editor-view-edit! ed vid (lambda (d s) (command-paste-ignore-readonly d s cp)) merge-tag)]))
 
 (define (editor-view-paste-text-ignore-readonly! ed vid text [merge-tag #f])
-  (editor-view-edit! ed vid (lambda (d s) (command-paste-ignore-readonly d s (clipboard-of-text text))) merge-tag))
+  (editor-view-edit! ed vid (lambda (d s) (command-paste-ignore-readonly d s text)) merge-tag))
 
 (define (editor-view-cut-ignore-readonly! ed vid [merge-tag #f])
   (define v (editor-view-ref ed vid))
@@ -344,16 +344,16 @@
   (define-values (a b) (selection-range (selections-primary (view-selections (editor-view-ref ed vid)))))
   (range-of a b))
 
-(define (editor-view-highlight! ed vid face)
-  (editor-document-highlight-range! ed (vid->did ed vid) (primary-range ed vid) face))
+(define (editor-view-face! ed vid face)
+  (editor-document-face-range! ed (vid->did ed vid) (primary-range ed vid) face))
 (define (editor-view-readonly! ed vid flag)
   (editor-document-readonly-range! ed (vid->did ed vid) (primary-range ed vid) flag))
 
-(define (editor-view-highlight-selections! ed vid face)
+(define (editor-view-face-selections! ed vid face)
   (define did (vid->did ed vid))
   (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
     (define-values (a b) (selection-range sel))
-    (editor-document-highlight-range! ed did (range-of a b) face)))
+    (editor-document-face-range! ed did (range-of a b) face)))
 (define (editor-view-readonly-selections! ed vid flag)
   (define did (vid->did ed vid))
   (for ([sel (in-list (selections-items (view-selections (editor-view-ref ed vid))))])
@@ -361,7 +361,7 @@
     (editor-document-readonly-range! ed did (range-of a b) flag)))
 
 ;;; ---------- 撤销 / 重做 ----------
-;;; history 是文档级状态，这些操作按 did；vid 版就地取 did。
+;;; history 是文档级状态，这些操作按 did；vid 版取 did。
 
 ;; undo/redo 共用：step : history -> (values history ok?)。→ ok?
 (define (editor-document-time-travel! ed did step)

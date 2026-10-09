@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/theme.rkt —— 主题机制（纯）。
+;;; lab-re-rebuild/kernel/theme.rkt —— 主题机制（纯）。
 ;;;
 ;;; 主题 = face / overlay 符号 → 颜色。颜色是 #f（不设，交给默认）或 (r g b)。
 ;;; 本文件不认识终端 / ANSI：后端负责翻成转义序列。

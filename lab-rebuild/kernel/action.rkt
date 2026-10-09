@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/action.rkt —— 一次「请求做某事」的意图。
+;;; lab-re-rebuild/kernel/action.rkt —— 一次「请求做某事」的意图。
 ;;;
 ;;; before-policy 匹配 Action（有来源与时序），after-policy 变换其产出的 Effect。
 ;;; 目前只有命令来源；将来异步结果（job-result）也走这里。

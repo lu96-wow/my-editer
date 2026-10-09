@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/translate.rkt —— 对照翻译（一个文档 ↔ 另一个文档）。
+;;; lab-re-rebuild/builtin/translate.rkt —— 对照翻译（一个文档 ↔ 另一个文档）。
 ;;;
 ;;; 针对当前文档另开一个「译文文档」，两边**任意一侧编辑都同步到另一侧**：
 ;;;   · 内容转换：after-edit（用户编辑）→ 自定义 effect → editor-view-assign! 写对侧；

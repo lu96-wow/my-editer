@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/doc-scope.rkt —— 「能力对哪些文档启用」的声明与查询。
+;;; lab-re-rebuild/builtin/doc-scope.rkt —— 「能力对哪些文档启用」的声明与查询。
 ;;;
 ;;; 一个**能力**（缩进 / 补全 / 文档查询 …）是否对当前文档启用，是一个独立关注点：
 ;;; 只做两件事，不与补全 / 菜单 / 异步耦合。

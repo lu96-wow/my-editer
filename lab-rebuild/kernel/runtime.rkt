@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/runtime.rkt —— 运行时（注册表 + 服务）与上下文。
+;;; lab-re-rebuild/kernel/runtime.rkt —— 运行时（注册表 + 服务）与上下文。
 
 (require "registry.rkt" "session.rkt")
 

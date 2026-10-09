@@ -115,16 +115,16 @@
 (check-false (viewport-line-numbers? (view-viewport (editor-view-ref ed 0))))
 
 ;; ---------- 入口多态：直接喂现成 document（带属性） ----------
-(define pre-doc (document-highlight-fill (document-open "abcd\nef") 0 1 1 1 'kw))
+(define pre-doc (document-face-fill (document-open "abcd\nef") 0 1 1 1 'kw))
 (define pv-ed (editor-open pre-doc 20 5 "pre"))
 (check-equal? (document->string (editor-view-document pv-ed 0)) "abcd\nef")
-(check-equal? (document-highlight-row (editor-view-document pv-ed 0) 0) (vector #f 'kw 'kw 'kw))
-(check-equal? (document-highlight-row (editor-view-document pv-ed 0) 1) (vector 'kw #f))
+(check-equal? (document-face-row (editor-view-document pv-ed 0) 0) (vector #f 'kw 'kw 'kw))
+(check-equal? (document-face-row (editor-view-document pv-ed 0) 1) (vector 'kw #f))
 ;; 同值 document 进 editor 后仍是该值（不经 string 重建）
 (check-true (eq? (editor-view-document pv-ed 0) pre-doc))
 ;; editor-add-document 同样多态
 (define-values (av-ed av-did) (editor-add-document ed pre-doc "pre2"))
-(check-equal? (document-highlight-row (document-entry-document (editor-document-entry av-ed av-did)) 1)
+(check-equal? (document-face-row (document-entry-document (editor-document-entry av-ed av-did)) 1)
               (vector 'kw #f))
 (check-equal? (document->string (document-entry-document (editor-document-entry ed 0))) "abc\ndef")   ; 原 editor 不变
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/mouse.rkt —— 鼠标命令（功能包）。
+;;; lab-re-rebuild/builtin/mouse.rkt —— 鼠标命令（功能包）。
 ;;;
 ;;; 鼠标事件走同一条 resolve：mouse 绑定 → 命令 → effect。
 ;;; 命中哪个窗格由 geometry 的 hit-pane 提供；命令不 require app / backend。

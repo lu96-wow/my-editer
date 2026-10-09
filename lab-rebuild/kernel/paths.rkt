@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/paths.rkt —— did ↔ 规范化路径（双向）。
+;;; lab-re-rebuild/kernel/paths.rkt —— did ↔ 规范化路径（双向）。
 
 (require racket/path)
 

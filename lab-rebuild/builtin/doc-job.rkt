@@ -1,9 +1,9 @@
 #lang racket
 
-;;; lab-rebuild/builtin/doc-job.rkt —— 异步查文档服务 + 查询组合子。
+;;; lab-re-rebuild/builtin/doc-job.rkt —— 异步查文档服务 + 查询组合子。
 ;;;
 ;;; 三层：
-;;;   1) 传输：submit + poll，结果交给内核闸门（e-deliver）。lab-rebuild 用 sync runner
+;;;   1) 传输：submit + poll，结果交给内核闸门（e-deliver）。lab-re-rebuild 用 sync runner
 ;;;      （后端每帧 before-render 轮询）。
 ;;;   2) 查询上下文（原子）：`view-modules` —— 由纯函数 lang/source 组出当前 view
 ;;;      的语言服务模块集（complete / docs 共用）。

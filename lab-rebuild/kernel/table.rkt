@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/table.rkt —— 键表（纯）。
+;;; lab-re-rebuild/kernel/table.rkt —— 键表（纯）。
 
 (require "binding.rkt")
 

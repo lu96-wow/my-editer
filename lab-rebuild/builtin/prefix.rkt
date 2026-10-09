@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/prefix.rkt —— 前缀键（layer 栈）。
+;;; lab-re-rebuild/builtin/prefix.rkt —— 前缀键（layer 栈）。
 ;;;
 ;;; 前缀 = 一个 layer：capture='all'（层表是唯一表）、pop='next'（按任意下一键退出）。
 ;;; 状态就是 label + 本层键表 + 字符表。键序列 = 嵌套 push（表里再给一个 prefix 命令）。

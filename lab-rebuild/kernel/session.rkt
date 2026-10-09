@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/session.rkt —— 会话状态（不可变值；editor 内部可变）。
+;;; lab-re-rebuild/kernel/session.rkt —— 会话状态（不可变值；editor 内部可变）。
 ;;;
 ;;; 两种焦点分离：
 ;;;   focus     输入焦点（谁的键表生效、字符往哪打）——可以是主区叶或 dock

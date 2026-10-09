@@ -14,20 +14,20 @@
 
 (check-equal? (document->string bd) "abc\ndef")
 ;; 属性轨惰性：未编辑文档的两条属性轨是 #f（整轨全默认），不分配任何属性格
-(check-false (document-highlight bd))
+(check-false (document-face bd))
 (check-false (document-readonly bd))
-(check-equal? (document-highlight-row bd 0) (vector #f #f #f))   ; 行视图自动补默认
+(check-equal? (document-face-row bd 0) (vector #f #f #f))   ; 行视图自动补默认
 ;; 文本编辑对“全默认”封闭：文本改了，属性轨仍是 #f
 (define bdt (document-edit-tracks bd (edit-insert-text 0 1 "X" 'left 'none)))
 (check-equal? (document->string bdt) "aXbc\ndef")
-(check-false (document-highlight bdt))
+(check-false (document-face bdt))
 (check-false (document-readonly bdt))
 (check-true (document-aligned? bdt))
 (check-true (document-aligned? bd))
 
 ;; 只改高亮
-(define bd1 (document-highlight-fill bd 0 0 0 3 'keyword))
-(check-equal? (track-ref (document-highlight bd1) 0) (vector 'keyword 'keyword 'keyword))
+(define bd1 (document-face-fill bd 0 0 0 3 'keyword))
+(check-equal? (track-ref (document-face bd1) 0) (vector 'keyword 'keyword 'keyword))
 (check-equal? (document->string bd1) "abc\ndef")            ; 文本不动
 (check-equal? (document-readonly-row bd1 0) (vector #f #f #f))
 (check-false (document-readonly bd1))                       ; 只读未被碰过 → 仍惰性
@@ -40,16 +40,16 @@
 (check-false (document-readonly-range? bd2 1 0 1 3))
 
 ;; 高亮读取（与只读成对）
-(check-equal? (document-highlight-at bd1 0 0) 'keyword)
-(check-false (document-highlight-at bd1 1 0))
-(check-false (document-highlight-at bd1 0 9))
-(check-true (document-highlight-range? bd1 0 0 0 3))
-(check-false (document-highlight-range? bd1 1 0 1 3))
+(check-equal? (document-face-at bd1 0 0) 'keyword)
+(check-false (document-face-at bd1 1 0))
+(check-false (document-face-at bd1 0 9))
+(check-true (document-face-range? bd1 0 0 0 3))
+(check-false (document-face-range? bd1 1 0 1 3))
 
 ;; 文本编辑：扇出到高亮 + 只读，且保持对齐
 (define bd3 (document-edit-tracks bd2 (edit-insert-text 0 1 "X" 'left 'none)))
 (check-equal? (document->string bd3) "aXbc\ndef")
-(check-equal? (track-ref (document-highlight bd3) 0) (vector 'keyword 'keyword 'keyword 'keyword))
+(check-equal? (track-ref (document-face bd3) 0) (vector 'keyword 'keyword 'keyword 'keyword))
 (check-equal? (track-ref (document-readonly bd3) 0) (vector #f #f #t #t))  ; 新格抄左邻 #f，原 #t 后移
 (check-true (document-aligned? bd3))
 
@@ -57,7 +57,7 @@
 (define bd4 (document-edit-tracks bd3 (edit-range 0 1 0 1 "P\nQ" 'none #f)))
 (check-equal? (document->string bd4) "aP\nQXbc\ndef")
 (check-true (document-aligned? bd4))
-(check-equal? (track-length (document-highlight bd4)) 3)
+(check-equal? (track-length (document-face bd4)) 3)
 (check-equal? (track-length (document-readonly bd4)) 3)
 
 ;; 只读跨行查询
@@ -110,10 +110,6 @@
 (check-true ok-noop)
 (check-false ch-noop)
 (check-eq? bd-noop bd)
-(define-values (bd-pnoop ch-pnoop ok-pnoop) (document-paste bd 0 0 (clipboard-of-text "")))
-(check-true ok-pnoop)
-(check-false ch-pnoop)
-(check-eq? bd-pnoop bd)
 
 ;; --- 取文本（按区间 / 按变更） ---
 (define bdr (document-open "abc\ndef\nghi"))
@@ -121,64 +117,54 @@
 (check-equal? (document-range-text bdr (range (point 0 1) (point 2 1))) "bc\ndef\ng")
 (check-equal? (document-range-text bdr (range (point 1 0) (point 1 0))) "")
 
-;; --- 复制 / 粘贴 ---
+;; --- 复制（纯文本）/ 粘贴（纯文本插入） ---
 (define cd0 (document-open "abc\ndef\nghi"))
-(define cd1 (document-highlight-fill cd0 0 1 0 3 'kw))
+(define cd1 (document-face-fill cd0 0 1 0 3 'kw))
 (define cd2 (document-readonly-fill cd1 1 0 1 2 #t))
 
-;; 复制 (0,1)..(0,3) = "bc"，带高亮
-(define cp (document-copy cd2 0 1 0 3))
-(check-equal? (clipboard-text cp) '("bc"))
-(check-equal? (clipboard-highlight cp) (list (vector 'kw 'kw)))
-(check-equal? (clipboard-readonly cp) (list (vector #f #f)))
+;; 复制就是取文本（属性不随剪贴板走）
+(check-equal? (document-copy cd2 0 1 0 3) "bc")
+(check-equal? (document-copy cd2 0 1 1 2) "bc\nde")
 
-;; 富粘贴到 (2,3)：高亮跟着来
-(define-values (cd3 ch3 ok3) (document-paste cd2 2 3 cp))
+;; 粘贴 = 纯文本插入；粘入不带属性，已有高亮随编辑搬运
+(define-values (cd3 ch3 ok3) (document-insert cd2 2 3 "bc"))
 (check-true ok3)
 (check-equal? (document->string cd3) "abc\ndef\nghibc")
-(check-equal? (track-ref (document-highlight cd3) 2) (vector #f #f #f 'kw 'kw))
+(check-equal? (track-ref (document-face cd3) 2) (vector #f #f #f #f #f))  ; 粘入无高亮
 (check-true (document-aligned? cd3))
 (check-equal? (change-post-range ch3) (range (point 2 3) (point 2 5)))
 (check-equal? (document-change-text cd3 ch3) "bc")
 
-;; 跨行复制：("bc" "de")，粘到 (0,0)
-(define cp2 (document-copy cd2 0 1 1 2))
-(check-equal? (clipboard-text cp2) '("bc" "de"))
-(check-equal? (document->string (let-values ([(bd _ch _ok) (document-paste cd2 0 0 cp2)]) bd))
+;; 跨行插入
+(check-equal? (document->string (let-values ([(bd _ch _ok) (document-insert cd2 0 0 "bc\nde")]) bd))
               "bc\ndeabc\ndef\nghi")
 
-;; 多行粘贴的 change：after 跨行，文本可取回
-(define-values (ml ch-ml ok-ml) (document-paste (document-open "abc") 0 1 (clipboard-of-text "XY\nZ")))
+;; 多行插入的 change：after 跨行，文本可取回
+(define-values (ml ch-ml ok-ml) (document-insert (document-open "abc") 0 1 "XY\nZ"))
 (check-true ok-ml)
 (check-equal? (document->string ml) "aXY\nZbc")
 (check-equal? (change-post-range ch-ml) (range (point 0 1) (point 1 1)))
 (check-equal? (document-change-text ml ch-ml) "XY\nZ")
 
-;; 纯文本剪贴板（外部来源）
-(define cpt (clipboard-of-text "XY\nZ"))
-(check-equal? (clipboard-text cpt) '("XY" "Z"))
-(check-equal? (clipboard-highlight cpt) (list (vector #f #f) (vector #f)))
-
-;; 惰性：纯文本粘到 #f 文档 → 属性轨保持 #f；富文本粘入才 materialize
+;; 惰性：纯文本插入 #f 文档 → 属性轨保持 #f
 (define lz (document-open "abc"))
-(define-values (lz1 _lz1ch _lz1ok) (document-paste lz 0 1 (clipboard-of-text "XY")))
+(define-values (lz1 _lz1ch _lz1ok) (document-insert lz 0 1 "XY"))
 (check-equal? (document->string lz1) "aXYbc")
-(check-false (document-highlight lz1))
+(check-false (document-face lz1))
 (check-false (document-readonly lz1))
 (check-true (document-aligned? lz1))
-(define-values (lz2 _lz2ch _lz2ok) (document-paste lz 0 1 cp))   ; cp 带高亮 + 只读
-(check-equal? (document->string lz2) "abcbc")
-(check-equal? (document-highlight-row lz2 0) (vector #f 'kw 'kw #f #f))
-(check-equal? (document-readonly-row lz2 0) (vector #f #f #f #f #f))
-(check-true (document-aligned? lz2))
 
-;; 守：粘到只读点被拒；程序版绕过
-(check-false (let-values ([(bd _ch ok) (document-paste cd2 1 0 cp)]) ok))
-(check-eq? (let-values ([(bd _ch ok) (document-paste cd2 1 0 cp)]) bd) cd2)
-(check-equal? (let-values ([(bd _ch ok) (document-paste-ignore-readonly cd2 1 0 cp)]) (document->string bd))
+;; 已有高亮时插入：高亮随编辑搬运
+(define hl0 (document-face-fill (document-open "abc") 0 1 0 3 'kw))   ; "bc" 高亮
+(define-values (hl1 _hl1ch _hl1ok) (document-insert hl0 0 0 "X"))     ; "Xabc"
+(check-equal? (document->string hl1) "Xabc")
+(check-equal? (document-face-row hl1 0) (vector #f #f 'kw 'kw))       ; 高亮右移一格
+(check-true (document-aligned? hl1))
+
+;; 守：插到只读点被拒；程序版绕过
+(check-false (let-values ([(bd _ch ok) (document-insert cd2 1 0 "bc")]) ok))
+(check-eq? (let-values ([(bd _ch ok) (document-insert cd2 1 0 "bc")]) bd) cd2)
+(check-equal? (let-values ([(bd _ch ok) (document-insert-ignore-readonly cd2 1 0 "bc")]) (document->string bd))
               "abc\nbcdef\nghi")
-
-;; 只取文本的复制
-(check-equal? (clipboard-text (document-copy-text cd2 0 1 1 2)) '("bc" "de"))
 
 (displayln "document.rkt: all tests passed")

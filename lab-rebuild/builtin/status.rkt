@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/status.rkt —— 状态栏（bottom dock）。
+;;; lab-re-rebuild/builtin/status.rkt —— 状态栏（bottom dock）。
 ;;;
 ;;; 「逻辑独立」：状态行文本怎么算全在本模块；kernel 只提供 dock 机制。
 ;;; 只经 document-api 读元数据（不 require document 实现）。
@@ -24,7 +24,7 @@
   (define ed (session-editor s))
   (define vid (session-edit-vid s))
   (cond
-    [(not vid) " lab-rebuild"]
+    [(not vid) " lab-re-rebuild"]
     [else
      (define did (editor-view-document-id ed vid))
      (define path (doc-path ctx did))

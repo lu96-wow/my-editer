@@ -21,9 +21,8 @@
 ;;; 关闭记步时（widget / 程序改写）：保留 past、清 future、把 current 的 merge-tag 封掉；
 ;;; undo/redo 是 no-op。
 ;;;
-;;; highlight / readonly 这类作者态不产生独立步，也不经过这里：属性存放在 document 的
-;;; box 里，就地修改。document 是 box 的持有者，同一 document 值的所有快照都看到新属性；
-;;; undo/redo 只还原文本文档值，不还原属性（见 editor/attributes.rkt）。
+;;; face / readonly 这类作者态不产生独立步，也不经过这里：undo/redo 只还原文本文档值，
+;;; 不还原属性（见 editor/attributes.rkt）。
 
 (provide
  ;; ---------- 类型 ----------

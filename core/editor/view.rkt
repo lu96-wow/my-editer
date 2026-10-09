@@ -5,7 +5,7 @@
          "../text/base/selection.rkt"
          "../view/base/viewport.rkt" "../text/rebase.rkt")
 
-;;; editor/view.rkt —— 视图维护 + 同文档视图传播（就地改 selections/viewport box）
+;;; editor/view.rkt —— 视图维护 + 同文档视图传播
 ;;;
 ;;;   view-ensure!          单视图：把主光标滚进视口
 ;;;   editor-views-rebase!  同文档其它视图：选区过本次变更描述（字面重基准）
@@ -13,7 +13,7 @@
 
 (provide view-ensure! editor-views-rebase! editor-views-clamp!)
 
-;; 让视口包含主光标（就地）。
+;; 让视口包含主光标。
 (define (view-ensure! doc v)
   (define p (selection-head (selections-primary (view-selections v))))
   (view-set-viewport! v (viewport-ensure (document-text doc) (view-viewport v) p)))

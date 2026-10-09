@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/lang/file-kind.rkt —— 文档类型判定（纯原子）。
+;;; lab-re-rebuild/builtin/lang/file-kind.rkt —— 文档类型判定（纯原子）。
 ;;;
 ;;; 「哪些文件算 Racket 源文件」的单一来源：缩进 / 补全 / 文档查询共用。
 ;;; 按扩展名判断。

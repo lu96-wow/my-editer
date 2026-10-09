@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/tree.rkt —— 文件树（left dock）。
+;;; lab-re-rebuild/builtin/tree.rkt —— 文件树（left dock）。
 ;;;
 ;;; 「逻辑独立」：目录模型（展开集）/ 列举 / 键位 / 新建 / 删除全在本模块；
 ;;; kernel 只提供 dock 机制。打开文件发 e-file-open（document.rkt）；输入发 e-prompt（effect 语言）。
@@ -82,7 +82,7 @@
                  (list (entry-line-text e 2) (entry-face e (open? (entry-path e))))))
   (define text (if (null? rows) "" (string-join (for/list ([r (in-list rows)]) (first r)) "\n")))
   (define doc (document-open text))
-  (document-highlight-fill-batch
+  (document-face-fill-batch
    doc (for/list ([r (in-list rows)] [i (in-naturals)])
          (list i 0 i (string-length (first r)) (second r))))
   (document-readonly-fill-batch

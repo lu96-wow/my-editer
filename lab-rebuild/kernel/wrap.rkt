@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/wrap.rkt —— 纯文本折行（浮窗 / 文档共用）。
+;;; lab-re-rebuild/kernel/wrap.rkt —— 纯文本折行（浮窗 / 文档共用）。
 
 (require racket/string)
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/runner.rkt —— 通用异步执行器（feature-free）。
+;;; lab-re-rebuild/kernel/runner.rkt —— 通用异步执行器（feature-free）。
 ;;;
 ;;; 只做「把请求丢到别处跑、按 id 取回」的传输：
 ;;;   sync-runner  ：handler 就地跑，结果入队

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/lang/source.rkt —— 从源码文本提取「需要哪些模块 / 定义了哪些名字」（纯）
+;;; lab-re-rebuild/lang/source.rkt —— 从源码文本提取「需要哪些模块 / 定义了哪些名字」（纯）
 ;;;
 ;;; 只做启发式扫描，不做展开：把语言（`#lang` 或顶层 `(module …)`）与顶层
 ;;; `(require …)` 的模块路径找出来，供补全（module->exports）与文档查询（xref

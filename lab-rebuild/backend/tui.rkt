@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/backend/tui.rkt —— racket-tui 后端（增量 patch + 软件光标）。
+;;; lab-re-rebuild/backend/tui.rkt —— racket-tui 后端（增量 patch + 软件光标）。
 ;;;
 ;;; ⚠ 不能整屏打印 screen->string：raw 模式下光标定位靠 piece 的 (row,col)，
 ;;;   而不是裸 \n；且硬件光标要隐藏、光标用反色格软件绘制（否则光标停在末行=状态栏）。

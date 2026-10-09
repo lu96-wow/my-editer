@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/prompt.rkt —— 输入行（bottom dock 'input）。
+;;; lab-re-rebuild/builtin/prompt.rkt —— 输入行（bottom dock 'input）。
 ;;;
 ;;; 独立 dock：label 作为只读前缀，用户输入在后；Enter 提交 / Escape 取消。
 ;;; 通过 **effect 'prompt** 暴露能力（kernel 留 tag，本模块注册 handler）；

@@ -26,7 +26,7 @@
               (list (cursor 0 1 #t)))
 
 ;; 属性编辑是**就地**改 box：用独立文档，避免影响上面复用的 bd
-(define bd-hl (document-highlight-fill (document-open "abc\ndef") 0 1 0 3 'kw))
+(define bd-hl (document-face-fill (document-open "abc\ndef") 0 1 0 3 'kw))
 (check-equal? (screen-row (render bd-hl vp) 0)
               (list (run 0 "a" #f) (run 1 "bc" 'kw)))
 
@@ -45,7 +45,7 @@
 ;; 宽字符
 (define bd2 (document-open "中abc"))
 (check-equal? (screen-row (render bd2 (viewport-open 10 1)) 0) (list (run 0 "中abc" #f)))
-(define bd3 (document-highlight-fill bd2 0 0 0 1 'w))
+(define bd3 (document-face-fill bd2 0 0 0 1 'w))
 (check-equal? (screen-row (render bd3 (viewport-open 10 1)) 0)
               (list (run 0 "中" 'w) (run 2 "abc" #f)))
 

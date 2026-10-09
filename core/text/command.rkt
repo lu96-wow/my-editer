@@ -72,7 +72,7 @@
     [else
      (define doc*
        (for/fold ([d doc]) ([sp (in-list (reverse (sort spans span-start<?)))])
-         (document-edit-tracks d (span->edit sp sticky default))))
+         (document-edit-tracks d (span->edit sp sticky default) (list (span->change sp)))))
      (define changes (filter (lambda (ch) (not (change-empty? ch))) (map span->change spans)))
      (define carets (for/list ([p (in-list sources)]) (caret (changes-map-point changes p))))
      (values doc*
@@ -93,44 +93,8 @@
 (define (command-delete doc ss) (command-run doc ss delete-info 'none #f #t))
 (define (command-delete-ignore-readonly doc ss) (command-run doc ss delete-info 'none #f #f))
 
-;;; ---------- 富粘贴：把 clipboard 的三轨片段在每个选区替换 ----------
-;;; 与 command-type 同构（多光标、成对守卫），但插入的是**属性也带上的** clipboard，
-;;; 所以改用 document-paste 逐选区施加（command-run 只能填单一 default）。
+;;; ---------- 粘贴：纯文本 ----------
+;;; 剪贴板只有文本；粘贴 = 用文本替换每个选区，与 command-type 同构（多光标、成对守卫）。
 
-(define (clipboard-info cp s)
-  (define-values (a b) (selection-range s))
-  (list (span a b (lines->string (clipboard-text cp))) b))
-
-;; 一个选区：删掉 [a,b) 再在 a 处插入 clipboard（非空选区 = 替换）。
-(define (paste-at d sp cp)
-  (define-values (d1 _ch1 _ok1) (document-delete-ignore-readonly
-                                 d
-                                 (point-line (span-start sp)) (point-column (span-start sp))
-                                 (point-line (span-end sp)) (point-column (span-end sp))))
-  (let-values ([(d2 _ch2 _ok2) (document-paste-ignore-readonly
-                                d1
-                                (point-line (span-start sp)) (point-column (span-start sp))
-                                cp)])
-    d2))
-
-(define (command-paste* doc ss cp guard?)
-  (define nss (selections-normalize ss))
-  (define infos (for/list ([s (in-list (selections-items nss))]) (clipboard-info cp s)))
-  (define spans (map car infos))
-  (define sources (map cadr infos))
-  (cond
-    [(and guard? (ormap (lambda (sp) (span-blocked? doc sp)) spans))
-     (values doc ss '() #f)]
-    [else
-     (define doc*
-       (for/fold ([d doc]) ([sp (in-list (reverse (sort spans span-start<?)))])
-         (paste-at d sp cp)))
-     (define changes (filter (lambda (ch) (not (change-empty? ch))) (map span->change spans)))
-     (define carets (for/list ([p (in-list sources)]) (caret (changes-map-point changes p))))
-     (values doc*
-             (selections-dedupe (selections carets (selections-primary-index nss)))
-             changes
-             #t)]))
-
-(define (command-paste doc ss cp) (command-paste* doc ss cp #t))
-(define (command-paste-ignore-readonly doc ss cp) (command-paste* doc ss cp #f))
+(define (command-paste doc ss text) (command-type doc ss text))
+(define (command-paste-ignore-readonly doc ss text) (command-type-ignore-readonly doc ss text))

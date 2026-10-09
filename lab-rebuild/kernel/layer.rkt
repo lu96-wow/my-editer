@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/layer.rkt —— 输入层栈（取代「单一键表」）。
+;;; lab-re-rebuild/kernel/layer.rkt —— 输入层栈（取代「单一键表」）。
 ;;;
 ;;; 模板/实例分离：layer-spec 注册一次（contrib kind 'layer-spec）；
 ;;; layer-inst 是会话里的一次弹出（带状态）。栈顶在前。

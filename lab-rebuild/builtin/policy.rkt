@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/policy.rkt —— 跨切面策略（功能包）。
+;;; lab-re-rebuild/builtin/policy.rkt —— 跨切面策略（功能包）。
 ;;;
 ;;;   undo-merge  : after 变换 —— 连续打字合并成一步撤销，遇空白断开
 ;;;   quit-confirm: before 门控 —— 有未保存文档时先询问（走 e-prompt）

@@ -62,22 +62,18 @@
 (check-equal? (document->string d7) "aXXXXXbcXXXXXdefgh")
 (check-equal? (selections-items s7) (list (caret (point 0 6)) (caret (point 0 13))))
 
-;; ---------- 富粘贴（多光标 + 属性一起走） ----------
-(define cp-src (document-highlight-fill (document-open "H\ni") 0 0 0 1 'kw))
-(define cp (document-copy cp-src 0 0 1 1))            ; "H\ni"，高亮 H
+;; ---------- 粘贴（纯文本、多光标） ----------
 (define pd (document-open "ab\ncd"))
 (define pss (carets (list (caret (point 0 1)) (caret (point 1 1)))))
-(define-values (pd1 ps1 psp1 pok1) (command-paste pd pss cp))
+(define-values (pd1 ps1 psp1 pok1) (command-paste pd pss "H\ni"))
 (check-true pok1)
 (check-equal? (document->string pd1) "aH\nib\ncH\nid")
-(check-equal? (track-ref (document-highlight pd1) 0) (vector #f 'kw))   ; 粘贴的 H 带高亮
-(check-equal? (track-ref (document-highlight pd1) 2) (vector #f 'kw))
 (check-equal? (selections-items ps1) (list (caret (point 1 1)) (caret (point 3 1))))
-;; 空剪贴板可粘：什么都不插
-(define-values (pd0 ps0 psp0 pok0) (command-paste pd pss (clipboard-of-text "")))
+;; 空文本可粘：什么都不插
+(define-values (pd0 ps0 psp0 pok0) (command-paste pd pss ""))
 (check-equal? (document->string pd0) "ab\ncd")
 ;; 守：其中一条落在只读格 → 整体拒绝
 (define pro (document-readonly-fill pd 0 1 0 2 #t))
-(check-false (let-values ([(d s sp ok) (command-paste pro pss cp)]) ok))
+(check-false (let-values ([(d s sp ok) (command-paste pro pss "H\ni")]) ok))
 
 (displayln "command.rkt: all tests passed")

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/effect.rkt —— 状态变换的描述（数据）。
+;;; lab-re-rebuild/kernel/effect.rkt —— 状态变换的描述（数据）。
 ;;;
 ;;; 命令只返回 (listof effect)，不直接改 session / editor；施加在 pipeline.apply-effect。
 ;;; 通用能力（prompt 询问 / 通知 / 装文档）在这里留 tag；特性注册 handler（contrib 'effect）。
@@ -27,7 +27,7 @@
          ;; 鼠标
          e-pointer e-scroll
          ;; 属性
-         e-attr-highlight!
+         e-attr-face!
          ;; 会话
          e-session-size e-quit
          ;; 异步
@@ -94,7 +94,7 @@
 (define (e-scroll vid delta)    (fx 'scroll vid delta))
 
 ;; 属性写回（高亮轨）：先清空、再分层合成 fills；O(1)，不进 history。
-(define (e-attr-highlight! did fills combine) (fx 'attr-highlight did fills combine))
+(define (e-attr-face! did fills combine) (fx 'attr-face did fills combine))
 
 ;; 会话
 (define (e-session-size w h) (fx 'session-size w h))

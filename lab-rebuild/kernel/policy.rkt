@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/policy.rkt —— 动作门控 / 效果变换（跨切面）。
+;;; lab-re-rebuild/kernel/policy.rkt —— 动作门控 / 效果变换（跨切面）。
 ;;;
 ;;; phase='before : decide Ctx Action -> 'pass | 'abort | (listof effect)
 ;;; phase='after  : decide Ctx Action (listof effect) -> (listof effect)

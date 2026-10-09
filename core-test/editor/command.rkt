@@ -96,11 +96,11 @@
 (define (editor-view-down ed vid [x #f]) (base:editor-view-down! ed vid x) ed)
 (define (editor-view-home ed vid [x #f]) (base:editor-view-home! ed vid x) ed)
 (define (editor-view-end ed vid [x #f]) (base:editor-view-end! ed vid x) ed)
-(define (editor-view-highlight ed vid face) (base:editor-view-highlight! ed vid face) ed)
-(define (editor-view-highlight-range ed vid r face) (base:editor-document-highlight-range! ed (base:editor-view-document-id ed vid) r face) ed)
-(define (editor-view-highlight-cell ed vid l c face) (base:editor-document-highlight-cell! ed (base:editor-view-document-id ed vid) l c face) ed)
-(define (editor-view-highlight-line ed vid l face) (base:editor-document-highlight-line! ed (base:editor-view-document-id ed vid) l face) ed)
-(define (editor-view-highlight-selections ed vid face) (base:editor-view-highlight-selections! ed vid face) ed)
+(define (editor-view-face ed vid face) (base:editor-view-face! ed vid face) ed)
+(define (editor-view-face-range ed vid r face) (base:editor-document-face-range! ed (base:editor-view-document-id ed vid) r face) ed)
+(define (editor-view-face-cell ed vid l c face) (base:editor-document-face-cell! ed (base:editor-view-document-id ed vid) l c face) ed)
+(define (editor-view-face-line ed vid l face) (base:editor-document-face-line! ed (base:editor-view-document-id ed vid) l face) ed)
+(define (editor-view-face-selections ed vid face) (base:editor-view-face-selections! ed vid face) ed)
 (define (editor-view-readonly ed vid f) (base:editor-view-readonly! ed vid f) ed)
 (define (editor-view-readonly-range ed vid r f) (base:editor-document-readonly-range! ed (base:editor-view-document-id ed vid) r f) ed)
 (define (editor-view-readonly-cell ed vid l c f) (base:editor-document-readonly-cell! ed (base:editor-view-document-id ed vid) l c f) ed)
@@ -162,8 +162,8 @@
 (define (editor-seal ed) (base:editor-view-seal! ed (focus-of ed)) ed)
 (define (editor-set-history-enabled ed flag) (base:editor-view-set-history-enabled! ed (focus-of ed) flag) ed)
 (define (editor-copy ed) (base:editor-view-copy! ed (focus-of ed)) ed)
-(define (editor-highlight ed face) (base:editor-view-highlight! ed (focus-of ed) face) ed)
-(define (editor-highlight-range ed r face) (base:editor-document-highlight-range! ed (base:editor-view-document-id ed (focus-of ed)) r face) ed)
+(define (editor-face ed face) (base:editor-view-face! ed (focus-of ed) face) ed)
+(define (editor-face-range ed r face) (base:editor-document-face-range! ed (base:editor-view-document-id ed (focus-of ed)) r face) ed)
 (define (editor-readonly ed flag) (base:editor-view-readonly! ed (focus-of ed) flag) ed)
 (define (editor-readonly-range ed r flag) (base:editor-document-readonly-range! ed (base:editor-view-document-id ed (focus-of ed)) r flag) ed)
 (define (editor-string ed) (editor-view-string ed (focus-of ed)))
@@ -179,7 +179,7 @@
 (define (editor-can-undo? ed) (editor-view-can-undo? ed (focus-of ed)))
 (define (editor-can-redo? ed) (editor-view-can-redo? ed (focus-of ed)))
 (define (editor-history-enabled? ed) (editor-view-history-enabled? ed (focus-of ed)))
-(define (editor-highlight-range? ed l0 c0 l1 c1) (editor-view-highlight-range? ed (focus-of ed) l0 c0 l1 c1))
+(define (editor-face-range? ed l0 c0 l1 c1) (editor-view-face-range? ed (focus-of ed) l0 c0 l1 c1))
 (define (editor-top-line ed) (editor-view-top-line ed (focus-of ed)))
 (define (editor-top-segment ed) (editor-view-top-segment ed (focus-of ed)))
 (define (editor-left-column ed) (editor-view-left-column ed (focus-of ed)))
@@ -273,12 +273,12 @@
 (check-equal? (map run-text (screen-row (editor-view-render e1 0) 0)) '("Xabc"))
 
 ;; ---------- 高亮 = 作者态：不记步，随文本快照回退 ----------
-(define (hl-row ed) (document-highlight-row (editor-focused-document ed) 0))
+(define (hl-row ed) (document-face-row (editor-focused-document ed) 0))
 
 (define ha0 (editor-open "abc" 40 10))
 (define ha1 (type-it (snap ha0) "X"))               ; "Xabc"（文本步，depth 1）
 (define ha2 (editor-left (snap ha1) #t))                  ; 扩选 'X'
-(define ha3 (editor-highlight (snap ha2) 'kw))            ; 高亮 'X'
+(define ha3 (editor-face (snap ha2) 'kw))            ; 高亮 'X'
 (check-equal? (depth ha3) 1)                       ; 高亮不记步
 (check-equal? (hl-row ha3) (vector 'kw #f #f #f))
 
@@ -311,14 +311,14 @@
 
 ;; ---------- 属性区间写（作者态；不记步；用 range） ----------
 (define rg0 (editor-open "abcd\nef" 40 10))
-(define rg1 (editor-highlight-range rg0 (range (point 0 1) (point 1 1)) 'kw))
+(define rg1 (editor-face-range rg0 (range (point 0 1) (point 1 1)) 'kw))
 (check-equal? (depth rg1) 0)                                ; 不记步
-(check-equal? (document-highlight-row (editor-focused-document rg1) 0) (vector #f 'kw 'kw 'kw))
-(check-equal? (document-highlight-row (editor-focused-document rg1) 1) (vector 'kw #f))
+(check-equal? (document-face-row (editor-focused-document rg1) 0) (vector #f 'kw 'kw 'kw))
+(check-equal? (document-face-row (editor-focused-document rg1) 1) (vector 'kw #f))
 ;; 乱序区间自动归一（range 内部 range-normalize）
-(define rg2 (editor-highlight-range rg0 (range (point 1 1) (point 0 1)) 'kw))
-(check-equal? (document-highlight-row (editor-focused-document rg2) 0)
-              (document-highlight-row (editor-focused-document rg1) 0))
+(define rg2 (editor-face-range rg0 (range (point 1 1) (point 0 1)) 'kw))
+(check-equal? (document-face-row (editor-focused-document rg2) 0)
+              (document-face-row (editor-focused-document rg1) 0))
 ;; 只读区间
 (define rr0 (editor-readonly-range rg0 (range (point 0 0) (point 0 2)) #t))
 (check-true (document-readonly-at? (editor-focused-document rr0) 0 0))
@@ -328,18 +328,18 @@
 ;; 选区糖 == 对同一区间直接写
 (define hs0 (editor-open "abcd" 40 10))
 (define hs1 (editor-right (editor-right hs0 #t) #t))        ; 扩选 "ab"
-(define hs2 (editor-highlight hs1 'x))
+(define hs2 (editor-face hs1 'x))
 (define ht0 (editor-open "abcd" 40 10))
-(define ht1 (editor-highlight-range ht0 (range (point 0 0) (point 0 2)) 'x))
-(check-equal? (document-highlight-row (editor-focused-document hs2) 0)
-              (document-highlight-row (editor-focused-document ht1) 0))
+(define ht1 (editor-face-range ht0 (range (point 0 0) (point 0 2)) 'x))
+(check-equal? (document-face-row (editor-focused-document hs2) 0)
+              (document-face-row (editor-focused-document ht1) 0))
 ;; 按 vid 写：只动该视图的文档，焦点文档不变
 (define rv0 (editor-open "abcd" 20 5 "a"))
 (define-values (rv1 rvd) (editor-add-document rv0 "wxyz" "b"))
 (define rv2 (editor-add-view rv1 rvd 20 5))
-(define rv3 (editor-view-highlight-range rv2 1 (range (point 0 0) (point 0 2)) 'v))
-(check-equal? (document-highlight-row (editor-focused-document rv3) 0) (vector #f #f #f #f))
-(check-equal? (document-highlight-row (editor-view-document rv3 1) 0) (vector 'v 'v #f #f))
+(define rv3 (editor-view-face-range rv2 1 (range (point 0 0) (point 0 2)) 'v))
+(check-equal? (document-face-row (editor-focused-document rv3) 0) (vector #f #f #f #f))
+(check-equal? (document-face-row (editor-view-document rv3 1) 0) (vector 'v 'v #f #f))
 
 ;; ---------- 多文档 + 按 vid 投影 + compose（布局由调用方给） ----------
 (define mw0 (editor-open "abc" 20 5 "a"))
@@ -380,7 +380,7 @@
 (define cb0 (editor-open "XY\nZ" 20 5))
 (define cb1 (editor-right (editor-right cb0 #t) #t))   ; 扩选 "XY"
 (define cb2 (editor-copy cb1))
-(check-equal? (clipboard-text (editor-clipboard cb2)) '("XY"))
+(check-equal? (editor-clipboard cb2) "XY")
 (check-equal? (doc-str cb2) "XY\nZ")                  ; copy 不改文档
 (check-equal? (depth cb2) 0)                            ; copy 不记步
 
@@ -441,7 +441,7 @@
               (selections-one (selection (point 0 0) (point 1 3))))
 (define cf2 (editor-cut cf1))
 (check-equal? (doc-str cf2) "")
-(check-equal? (clipboard-text (editor-clipboard cf2)) '("abc" "def"))
+(check-equal? (editor-clipboard cf2) "abc\ndef")
 (check-equal? (caret-position cf2) (point 0 0))
 ;; 空选区 cut = 不动
 (define cf3 (editor-open "abc" 20 5))
@@ -535,7 +535,7 @@
 ;; 高亮 = 作者态：不记步，也不打断打字连续性
 (define hb0 (editor-open "ab" 20 5))
 (define hb1 (type-it hb0 "x"))                      ; depth 1
-(define hb2 (editor-highlight hb1 'kw))                  ; 不记步
+(define hb2 (editor-face hb1 'kw))                  ; 不记步
 (check-equal? (depth hb2) 1)
 (check-equal? (depth (type-it hb2 "y")) 1)          ; 高亮不打断打字
 
@@ -627,14 +627,14 @@
 (check-equal? (doc-str (editor-view-insert (snap vc1) 1 "Z")) "Zabc\ndef")   ; 按 vid 插入
 (define vc2 (editor-view-select-all vc1 1))
 (define vc3 (editor-view-copy vc2 1))
-(check-equal? (clipboard-text (editor-clipboard vc3)) '("abc" "def"))
+(check-equal? (editor-clipboard vc3) "abc\ndef")
 (define vc4 (editor-view-select-all vc3 0))
 (check-equal? (doc-str (editor-view-paste vc4 0)) "abc\ndef")           ; 粘回 vid0 选区
 
 (define vh0 (editor-add-view (editor-open "abc" 20 5) 0 20 5))
 (define vh1 (editor-view-right (editor-set-focus vh0 0) 1 #t))             ; vid1 扩选 'a'
-(define vh2 (editor-view-highlight vh1 1 'kw))
-(check-equal? (track-ref (document-highlight (editor-focused-document vh2)) 0) (vector 'kw #f #f))
+(define vh2 (editor-view-face vh1 1 'kw))
+(check-equal? (track-ref (document-face (editor-focused-document vh2)) 0) (vector 'kw #f #f))
 (check-true (document-readonly-at? (editor-focused-document (editor-view-readonly vh1 1 #t)) 0 0))
 
 ;; 属性写不碰 history：undo/redo 只还原**文本步**的视图，属性视图不受影响。
@@ -642,18 +642,18 @@
 (define cv1 (editor-insert (editor-set-focus cv0 0) "X" 'typing))     ; vid0 caret (0,1)
 (define (vid-caret ed vid) (selection-head (selections-primary (view-selections (editor-view-ref ed vid)))))
 (define cv2 (editor-view-set-selections cv1 1 (selections-one (selection (point 0 1) (point 0 2)))))  ; vid1 选 'a'
-(define cv3 (editor-view-highlight cv2 1 'kw))                         ; 属性写，不记步、不改 current
+(define cv3 (editor-view-face cv2 1 'kw))                         ; 属性写，不记步、不改 current
 (check-equal? (vid-caret cv3 0) (point 0 1))
 (define cv5 (editor-redo (editor-undo cv3)))
 (check-equal? (vid-caret cv5 0) (point 0 1))                           ; 还原到文本步发起视图
 (check-equal? (vid-caret cv5 1) (point 0 2))                           ; 属性视图不受影响
-(check-equal? (track-ref (document-highlight (editor-focused-document cv5)) 0) (vector #f 'kw #f #f))
+(check-equal? (track-ref (document-face (editor-focused-document cv5)) 0) (vector #f 'kw #f #f))
 
 (define vx0 (editor-add-view (editor-open "abc" 20 5) 0 20 5))
 (define vx1 (editor-view-right (editor-set-focus vx0 0) 1 #t))
 (define vx2 (editor-view-cut vx1 1))
 (check-equal? (doc-str vx2) "bc")
-(check-equal? (clipboard-text (editor-clipboard vx2)) '("a"))
+(check-equal? (editor-clipboard vx2) "a")
 
 ;; ---------- 程序面装选区 / 装点自动夹进合法域（越界不崩）----------
 (define cl0 (editor-open "abc" 20 5))
@@ -816,11 +816,11 @@
 
 ;; ---------- 属性写口便利：cell / line / selections ----------
 (define cw0 (editor-open "abcd\nefgh" 20 5))
-(define cw1 (editor-view-highlight-cell cw0 0 0 1 'c))
-(check-equal? (editor-view-highlight-row cw1 0 0) (vector #f 'c #f #f))
-(define cw2 (editor-view-highlight-line cw1 0 1 'L))
-(check-equal? (editor-view-highlight-row cw2 0 1) (vector 'L 'L 'L 'L))
-(check-true (eq? (editor-view-highlight-cell cw0 0 0 9 'c) cw0))          ; cell 越界 no-op
+(define cw1 (editor-view-face-cell cw0 0 0 1 'c))
+(check-equal? (editor-view-face-row cw1 0 0) (vector #f 'c #f #f))
+(define cw2 (editor-view-face-line cw1 0 1 'L))
+(check-equal? (editor-view-face-row cw2 0 1) (vector 'L 'L 'L 'L))
+(check-true (eq? (editor-view-face-cell cw0 0 0 9 'c) cw0))          ; cell 越界 no-op
 (define cr0 (editor-open "abcd" 20 5))
 (check-true (editor-view-readonly-at? (editor-view-readonly-cell cr0 0 0 2 #t) 0 0 2))
 (check-equal? (editor-view-readonly-row (editor-view-readonly-line cr0 0 0 #t) 0 0) (vector #t #t #t #t))
@@ -829,9 +829,9 @@
 (define ms1 (editor-view-set-selections ms0 0
               (selections-of (list (selection (point 0 0) (point 0 3))
                                    (selection (point 1 0) (point 1 3))) 0)))
-(define ms2 (editor-view-highlight-selections ms1 0 'm))
-(check-equal? (editor-view-highlight-row ms2 0 0) (vector 'm 'm 'm #f #f #f #f))
-(check-equal? (editor-view-highlight-row ms2 0 1) (vector 'm 'm 'm #f #f #f #f))
+(define ms2 (editor-view-face-selections ms1 0 'm))
+(check-equal? (editor-view-face-row ms2 0 0) (vector 'm 'm 'm #f #f #f #f))
+(check-equal? (editor-view-face-row ms2 0 1) (vector 'm 'm 'm #f #f #f #f))
 (define ms3 (editor-view-readonly-selections ms1 0 #t))
 (check-equal? (editor-view-readonly-row ms3 0 0) (vector #t #t #t #f #f #f #f))
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/focus.rkt —— 焦点：唯一活动目标 + 历史。
+;;; lab-re-rebuild/kernel/focus.rkt —— 焦点：唯一活动目标 + 历史。
 ;;;
 ;;; 三根柱子之一「焦点管理」。语义分离（避免方向键 / 鼠标把历史越堆越深）：
 ;;;   focus-set      普通移动，不动历史

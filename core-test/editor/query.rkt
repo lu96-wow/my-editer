@@ -31,14 +31,14 @@
 (define (editor-depth ed) (editor-view-depth ed 0))
 (define (editor-history-enabled? ed) (editor-view-history-enabled? ed 0))
 (define (editor-set-history-enabled ed f) (editor-view-set-history-enabled! ed 0 f) ed)
-(define (editor-highlight-at ed l c) (editor-view-highlight-at ed 0 l c))
+(define (editor-face-at ed l c) (editor-view-face-at ed 0 l c))
 (define (editor-readonly-at? ed l c) (editor-view-readonly-at? ed 0 l c))
-(define (editor-highlight-row ed l) (editor-view-highlight-row ed 0 l))
+(define (editor-face-row ed l) (editor-view-face-row ed 0 l))
 (define (editor-readonly-row ed l) (editor-view-readonly-row ed 0 l))
-(define (editor-highlight-range? ed l0 c0 l1 c1) (editor-view-highlight-range? ed 0 l0 c0 l1 c1))
+(define (editor-face-range? ed l0 c0 l1 c1) (editor-view-face-range? ed 0 l0 c0 l1 c1))
 (define (editor-readonly-range? ed l0 c0 l1 c1) (editor-view-readonly-range? ed 0 l0 c0 l1 c1))
 (define (editor-editable? ed l0 c0 l1 c1) (editor-view-editable? ed 0 l0 c0 l1 c1))
-(define (editor-highlight-range ed r f) (editor-document-highlight-range! ed 0 r f) ed)
+(define (editor-face-range ed r f) (editor-document-face-range! ed 0 r f) ed)
 (define (editor-readonly-range ed r f) (editor-document-readonly-range! ed 0 r f) ed)
 (define (editor-insert ed text [tag #f]) (editor-view-insert! ed 0 text tag) ed)
 (define (editor-undo ed) (editor-view-undo! ed 0) ed)
@@ -114,17 +114,17 @@
 
 ;; 属性读口（高亮 / 只读；写口用步骤 4 的 -range）
 (define at0 (editor-open "abcd\nef" 20 5 "attr"))
-(define at1 (editor-highlight-range at0 (range (point 0 1) (point 1 1)) 'kw))
+(define at1 (editor-face-range at0 (range (point 0 1) (point 1 1)) 'kw))
 (define at2 (editor-readonly-range at1 (range (point 0 0) (point 0 2)) #t))
-(check-equal? (editor-highlight-at at2 0 0) #f)
-(check-equal? (editor-highlight-at at2 0 1) 'kw)
-(check-equal? (editor-highlight-at at2 1 0) 'kw)
-(check-equal? (editor-highlight-at at2 1 1) #f)
-(check-equal? (editor-view-highlight-at at2 0 0 1) 'kw)
-(check-equal? (editor-highlight-row at2 0) (vector #f 'kw 'kw 'kw))
-(check-equal? (editor-view-highlight-row at2 0 1) (vector 'kw #f))
-(check-true (editor-highlight-range? at2 0 1 0 2))
-(check-false (editor-highlight-range? at2 1 1 1 2))
+(check-equal? (editor-face-at at2 0 0) #f)
+(check-equal? (editor-face-at at2 0 1) 'kw)
+(check-equal? (editor-face-at at2 1 0) 'kw)
+(check-equal? (editor-face-at at2 1 1) #f)
+(check-equal? (editor-view-face-at at2 0 0 1) 'kw)
+(check-equal? (editor-face-row at2 0) (vector #f 'kw 'kw 'kw))
+(check-equal? (editor-view-face-row at2 0 1) (vector 'kw #f))
+(check-true (editor-face-range? at2 0 1 0 2))
+(check-false (editor-face-range? at2 1 1 1 2))
 (check-true (editor-readonly-at? at2 0 0))
 (check-false (editor-readonly-at? at2 0 2))
 (check-equal? (editor-readonly-row at2 0) (vector #t #t #f #f))
@@ -136,9 +136,9 @@
 (check-false (editor-editable? at2 0 0 0 0))
 (check-true (editor-editable? at2 0 4 0 4))
 ;; 无属性轨时读口给全默认
-(check-equal? (editor-highlight-at ed 0 0) #f)
+(check-equal? (editor-face-at ed 0 0) #f)
 (check-equal? (editor-readonly-row ed 0) (vector #f #f #f))
-(check-false (editor-highlight-range? ed 0 0 0 3))
+(check-false (editor-face-range? ed 0 0 0 3))
 
 ;; 历史
 (check-false (editor-can-undo? ed))
@@ -194,5 +194,25 @@
 (define vl (editor-view-visible-range vl-ed 0))
 (check-equal? (range-start vl) (point 0 3))
 (check-equal? (range-end vl) (point 1 10))
+
+;;; ---------- did / vid 读补齐：整轨、区间文本 ----------
+
+;; 区间文本
+(check-equal? (editor-document-range-text ed 0 (range (point 0 1) (point 1 1))) "bc\nd")
+(check-equal? (editor-view-range-text ed 0 (range (point 0 0) (point 0 2))) "ab")
+
+;; 整轨读：未设 → #f
+(check-false (editor-document-face ed 0))
+(check-false (editor-view-face ed 0))
+(check-false (editor-document-readonly ed 0))
+(check-false (editor-view-readonly ed 0))
+
+;; 写回后 did / vid 读到同一条轨
+(define rq1 (editor-face-range ed (range (point 0 0) (point 0 2)) 'kw))
+(check-equal? (editor-view-face-row rq1 0) (vector 'kw 'kw #f))
+(check-equal? (editor-document-face rq1 0) (editor-view-face rq1 0))
+(define rq2 (editor-readonly-range rq1 (range (point 1 0) (point 1 1)) #t))
+(check-equal? (editor-view-readonly-row rq2 1) (vector #t #f #f))
+(check-equal? (editor-document-readonly rq2 0) (editor-view-readonly rq2 0))
 
 (displayln "editor/query.rkt: all tests passed")

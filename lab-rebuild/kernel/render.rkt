@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/render.rkt —— 每帧：before-render 通知 → 工作区布局 → core 合成。
+;;; lab-re-rebuild/kernel/render.rkt —— 每帧：before-render 通知 → 工作区布局 → core 合成。
 
 (require "editor-api.rkt" "session.rkt" "runtime.rkt" "workspace.rkt" "overlay.rkt" "pipeline.rkt")
 

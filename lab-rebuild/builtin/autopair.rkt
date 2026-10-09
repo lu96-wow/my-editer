@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/autopair.rkt —— 自动配对（输入插件，走 before-insert）。
+;;; lab-re-rebuild/builtin/autopair.rkt —— 自动配对（输入插件，走 before-insert）。
 ;;;
 ;;; 输入开括号 ( [ { → 自动补闭括号、光标停中间；
 ;;; 输入闭括号且右边就是同一个 → 跳过（右移）。

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/docs.rkt —— 文档浮窗（layer + deco + 异步）。
+;;; lab-re-rebuild/builtin/docs.rkt —— 文档浮窗（layer + deco + 异步）。
 ;;;
 ;;; C-p d → 查光标处标识符的 bluebox 文档（组合 doc-job 的 `view-modules` / `doc-await`）：
 ;;;   · view-modules 给出候选模块（严格 = #lang + 顶层 require；无则 racket/base）

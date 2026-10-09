@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/binding.rkt —— 事件 → 绑定键（纯）。
+;;; lab-re-rebuild/kernel/binding.rkt —— 事件 → 绑定键（纯）。
 ;;;
 ;;; 输入是 racket-tui 的规范化事件；输出是键表用的匿名绑定键。
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/dock.rkt —— 停靠区（dock）机制：通用，不认识状态行 / 文件树。
+;;; lab-re-rebuild/kernel/dock.rkt —— 停靠区（dock）机制：通用，不认识状态行 / 文件树。
 ;;;
 ;;; dock-spec 是组装期的 contribution（kind='dock）；dock 是运行时实例。
 ;;; 逻辑（状态行文本 / 目录内容 / 键位）由各 builtin 自带，kernel 只提供机制。

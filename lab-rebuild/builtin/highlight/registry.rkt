@@ -6,7 +6,7 @@
          "syntax.rkt"
          "../../config/plugins.rkt")
 
-;;; lab-rebuild/plugin/attr/registry.rkt —— 内置属性插件**目录**（能力清单）
+;;; lab-re-rebuild/plugin/attr/registry.rkt —— 内置属性插件**目录**（能力清单）
 ;;;
 ;;; **列表顺序 = 应用 / 层叠顺序**：后面的插件后写，同名通道（前景 / 背景）覆盖前面的，
 ;;; 但不同通道同时保留（括号背景 + 语法前景共存）。

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/edit.rkt —— 基础编辑命令（功能包，只注册 command 贡献）。
+;;; lab-re-rebuild/builtin/edit.rkt —— 基础编辑命令（功能包，只注册 command 贡献）。
 ;;;
 ;;; 命令只返回 effect；真正改 editor 在 pipeline.apply-effect。
 

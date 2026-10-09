@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/builtin/document.rkt —— 文档/文件逻辑：打开、保存、脏标记。
+;;; lab-re-rebuild/builtin/document.rkt —— 文档/文件逻辑：打开、保存、脏标记。
 ;;;
 ;;; 文件 I/O 与路径登记在这里（不再在 kernel）。kernel 只提供 e-doc-add / e-doc-show
 ;;; 这类「装文档 / 显示文档」原语；本模块负责读盘、去重、登记路径、写盘。

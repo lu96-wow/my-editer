@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/workspace.rkt —— 工作区：主区(frame) + 停靠区(docks)。
+;;; lab-re-rebuild/kernel/workspace.rkt —— 工作区：主区(frame) + 停靠区(docks)。
 ;;;
 ;;; 布局纯派生：按 side 依次从可用区域取条带，剩余给主区。
 ;;; 焦点几何：主区叶 rect + dock rect 统一参与方向导航。

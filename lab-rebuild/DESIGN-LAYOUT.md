@@ -1,4 +1,4 @@
-# lab-rebuild 布局设计：主区 + 停靠区（dock）
+# lab-re-rebuild 布局设计：主区 + 停靠区（dock）
 
 > 目标：修两个问题——
 > 1. **编辑区焦点记忆**：不再「回退到第一个编辑叶」，而是记住上一次正在编辑的视图（连同光标）。
@@ -69,7 +69,7 @@ dock 贡献协议（组装期，和 command/hook 一样的 registry 贡献）：
 
 ## 4. 与旧 `lab` 的差异
 
-| 旧 lab | lab-rebuild |
+| 旧 lab | lab-re-rebuild |
 |---|---|
 | `session.status-vid / input-vid / sidebar? / panels / active-panel` | `session.workspace` + `session.edit-vid` |
 | `layout-info` 里硬编码「左栏 + 底栏 slot」 | 统一 `workspace-areas`：dock 条带 |

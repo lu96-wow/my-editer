@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/face.rkt —— 需要带参数的 face 值 + 前景/背景分层。
+;;; lab-re-rebuild/kernel/face.rkt —— 需要带参数的 face 值 + 前景/背景分层。
 ;;;
 ;;; core 的 face 是不透明值（core 不解释），由主题解释。普通 face 用 symbol；
 ;;; 需要参数（括号按深度、词按词）时用这里的结构体。

@@ -1,4 +1,4 @@
-# lab-rebuild 重构记录
+# lab-re-rebuild 重构记录
 
 > 目标：在固定的 `../core` 之上，用一个**通用组合子内核**重建编辑器，逐步对齐原 `lab` 的功能，
 > 同时把原 lab 里「内核 ↔ 特性」的坏耦合收干净。
@@ -136,7 +136,7 @@ wrap/anchor/overlay-panes、sync runner + 版本闸门。
 > `highlight/` 子包内部需的 core 行序列化（`string->lines` / `lines->string`）与 `editor-view-line-before`
 > 已由 **`kernel/editor-api.rkt`** 显式转出，保持「只有 editor-api 碰 core」的纪律。
 >
-> 差异：lab-rebuild 前端用 **sync runner**（无 place / background）；complete 的 C-n 键
+> 差异：lab-re-rebuild 前端用 **sync runner**（无 place / background）；complete 的 C-n 键
 > 放进 `config/keys.rkt`（无 'binding 贡献机制）；前缀单字符键用 `prefix.chars` 分派
 > （因为普通字符统一绑定到 `text-binding`）。
 

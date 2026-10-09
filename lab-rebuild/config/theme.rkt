@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/config/theme.rkt —— 主题（纯数据 + 组装）。
+;;; lab-re-rebuild/config/theme.rkt —— 主题（纯数据 + 组装）。
 ;;;
 ;;; 可定义颜色的槽位集中在这里：静态 face / 动态色板 kind / overlay。
 ;;; 后端每帧读 (current-theme) 把 face 翻成 ANSI。

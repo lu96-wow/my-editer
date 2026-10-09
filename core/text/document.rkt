@@ -1,54 +1,55 @@
 #lang racket
 
 (require "base/track.rkt" "base/line.rkt" "base/edit.rkt"
-         "base/point.rkt" "base/range.rkt" "base/change.rkt")
+         "base/point.rkt" "base/range.rkt" "base/change.rkt"
+         "slots.rkt")
 
-;;; document.rkt —— 文档 = 不可变文本 ⊕ 可变属性（高亮 / 只读）
+;;; document.rkt —— 文档 = 不可变文本 ⊕ 端口（face / readonly）⊕ 开放槽
 ;;;
-;;; 底层拆成三个结构体，把不可变 / 可变彻底分开：
+;;; 拆成三个结构体，把"不可变 / 固定端口 / 开放槽"彻底分开：
 ;;;
-;;;     (struct document-immutable (text))              ; 纯不可变：版本身份
-;;;     (struct document-mutable  (highlight readonly)) ; 外壳不可变，内容在 box 里
-;;;     (struct document (im mut))                      ; ★ document 本身不可变
+;;;     (struct document-immutable (text))                 ; 纯不可变：版本身份
+;;;     (struct document-mutable  (face readonly slots))   ; 外壳不可变，内容在 box / slots 里
+;;;     (struct document (im mut))                         ; ★ document 本身不可变
 ;;;
-;;; document 的值永不改变：写属性只动 document-mutable 里的 box。
-;;; 异步结果（LSP 高亮 / 诊断）写回 = 改句柄，O(1)，不经过 history。
+;;; 端口（port）：core 的固定契约。core 的固定行为依赖它们，语义固定、名字固定：
+;;;     face      每字符一个 face（#f = 无）      —— 渲染读
+;;;     readonly  每字符一个布尔（#t = 不可写）   —— 编辑守读
 ;;;
-;;; 两条属性轨语义不变：
-;;;     高亮 highlight   每字符一个 face（#f = 无）
-;;;     只读 readonly    每字符一个布尔（#t = 不可写）
-;;; 三条轨共享同一套行划分（行数一致、每行文本字符数 == 属性格数），document-aligned? 校验。
+;;; 槽（slot）：特性声明的 opaque 存储，收在 slots 结构体里（见 slots.rkt）。core 只管理
+;;; 生命周期 / fork，从不读槽内容。
 ;;;
-;;; **属性轨惰性**：#f = 整轨全默认，不分配属性格；
-;;; 文本编辑对全默认封闭（插/删默认格，结果仍全默认），只有属性编辑才 materialize。
+;;; document 的值永不改变。
 ;;;
-;;; 编辑语义：
-;;;     document-edit-tracks       文本编辑：fork 新的 immutable + mutable（属性随编辑搬运）
-;;;     document-edit-highlight    只改高亮：**就地**改 box，返回同一个 document
-;;;     document-edit-readonly     只改只读：**就地**改 box，返回同一个 document
+;;; 惰性：#f = 整轨全默认，不分配属性格；文本编辑对全默认封闭，只有属性编辑才 materialize。
+;;;
+;;; 编辑：
+;;;     document-edit-tracks    文本编辑（新 immutable + mutable）
+;;;     document-edit-face      改 face
+;;;     document-edit-readonly  改 readonly
+;;;     document-edit-slot      改某槽
 
 (provide
  ;; ---------- 类型 ----------
  (struct-out document-immutable)
  (struct-out document-mutable)
  (struct-out document)
- (struct-out clipboard)
 
  ;; ---------- 构造 ----------
  document-open
- clipboard-of-text
 
  ;; ---------- 读 / 校验 ----------
- document-text document-highlight document-readonly
+ document-text document-slots document-face document-readonly
  document->string document-range-text document-change-text
- document-highlight-at document-readonly-at?
- document-highlight-row document-readonly-row
- document-highlight-range? document-readonly-range? document-editable?
+ document-slot-ref document-face-at document-readonly-at?
+ document-face-row document-readonly-row
+ document-face-range? document-readonly-range? document-editable?
  document-aligned?
 
- ;; ---------- 属性原子（写回句柄） ----------
- document-highlight-atom document-readonly-atom
- document-set-highlight! document-set-readonly!
+ ;; ---------- 原子（写回句柄） ----------
+ document-slot-atom document-slot-set!
+ document-face-atom document-readonly-atom
+ document-set-face! document-set-readonly!
 
  ;; ---------- 写：文本轨（守只读 / -ignore-readonly） ----------
  document-edit-tracks
@@ -56,16 +57,18 @@
  document-delete document-delete-ignore-readonly
  document-replace document-replace-ignore-readonly
 
- ;; ---------- 写：属性轨 ----------
- document-edit-highlight document-edit-readonly
- document-highlight-fill document-readonly-fill
- document-highlight-fill-batch document-readonly-fill-batch
- document-highlight-fill-batch*
- document-highlight-fill-range-batch document-readonly-fill-range-batch
+ ;; ---------- 写：端口（固定轨 API） ----------
+ document-edit-face document-edit-readonly
+ document-face-fill document-readonly-fill
+ document-face-fill-batch document-readonly-fill-batch
+ document-face-fill-batch*
+ document-face-fill-range-batch document-readonly-fill-range-batch
 
- ;; ---------- 剪贴板 ----------
- document-copy document-copy-text
- document-paste document-paste-ignore-readonly)
+ ;; ---------- 写：槽（opaque 值 API） ----------
+ document-slot-set! document-edit-slot
+
+ ;; ---------- 复制（纯文本） ----------
+ document-copy)
 
 ;;; ---------- 数据 ----------
 
@@ -73,10 +76,11 @@
 (struct document-immutable (text) #:transparent)
 ;; text : track（行 = string）
 
-;; 可变部分：外壳不可变，可变性只在两个 box 里。
-(struct document-mutable (highlight readonly) #:transparent)
-;; highlight : box（行 = vector，格值 = face / #f；或 #f = 整轨全默认）
-;; readonly  : box（行 = vector，格值 = #t / #f；或 #f = 整轨全默认）
+;; 可变部分：外壳不可变，可变性只在 box / slots 里。
+(struct document-mutable (face readonly slots) #:transparent)
+;; face     : box（行 = vector，格值 = face / #f；或 #f = 整轨全默认）
+;; readonly : box（行 = vector，格值 = #t / #f；或 #f = 整轨全默认）
+;; slots    : slots 结构体（开放槽容器，见 slots.rkt）
 
 ;; document 本身不可变：只是不可变部分 + 可变部分的不可变对。
 (struct document (im mut) #:transparent)
@@ -84,27 +88,35 @@
 ;;; ---------- 读（读穿 box） ----------
 
 (define (document-text bd) (document-immutable-text (document-im bd)))
-(define (document-highlight bd) (unbox (document-mutable-highlight (document-mut bd))))
+(define (document-slots bd) (document-mutable-slots (document-mut bd)))
+(define (document-face bd) (unbox (document-mutable-face (document-mut bd))))
 (define (document-readonly bd) (unbox (document-mutable-readonly (document-mut bd))))
 
-;;; ---------- 属性原子：写回句柄 ----------
+;;; ---------- 端口原子：写回句柄 ----------
 
-(define (document-highlight-atom bd) (document-mutable-highlight (document-mut bd)))
+(define (document-face-atom bd) (document-mutable-face (document-mut bd)))
 (define (document-readonly-atom bd) (document-mutable-readonly (document-mut bd)))
 
-;; 就地写属性：O(1)，不换 document，不碰 history。返回同一个 document 便于串接。
-(define (document-set-highlight! bd v)
-  (set-box! (document-highlight-atom bd) v)
-  bd)
-(define (document-set-readonly! bd v)
-  (set-box! (document-readonly-atom bd) v)
-  bd)
+;; 写端口：O(1)，不换 document，不碰 history。返回同一个 document 便于串接。
+(define (document-set-face! bd v) (set-box! (document-face-atom bd) v) bd)
+(define (document-set-readonly! bd v) (set-box! (document-readonly-atom bd) v) bd)
+
+;;; ---------- 槽通用访问（按 index） ----------
+;; document 不认识槽名；命名访问器由 slot-dsl.rkt 的宏生成。
+
+(define (document-slot-ref bd sl) (slot-ref (document-slots bd) sl))
+(define (document-slot-atom bd sl) (slot-atom (document-slots bd) sl))
+(define (document-slot-set! bd sl v) (slot-set! (document-slots bd) sl v) bd)
+
+;; 读改写（纯值变换，不假设轨形）。
+(define (document-edit-slot bd sl f)
+  (document-slot-set! bd sl (f (document-slot-ref bd sl))))
 
 ;;; ---------- 构造 ----------
 
-(define (make-document text highlight readonly)
+(define (make-document* text face readonly slots)
   (document (document-immutable text)
-            (document-mutable (box highlight) (box readonly))))
+            (document-mutable face readonly slots)))
 
 ;; 与文本同形、值全为 default 的属性轨。
 (define (attr-track-for text default)
@@ -113,45 +125,66 @@
                  (track-max text)))
 
 (define (document-open s [chunk-lines default-chunk-lines])
-  (make-document (track-of-list (string->lines s) chunk-lines) #f #f))
+  (freeze-slots!)                                   ; 槽注册必须早于任何文档创建
+  (make-document* (track-of-list (string->lines s) chunk-lines)
+                  (box #f) (box #f) (make-slots)))
 
 (define (document->string bd) (lines->string (track->list (document-text bd))))
 
-;;; ---------- 文本编辑：fork 新的 immutable + mutable ----------
+;;; ---------- 文本编辑 ----------
 
 ;; 属性轨为 #f（全默认）时保持 #f —— 插/删的都是默认格，封闭。
 (define (edit-attr a ed) (and a (ed a)))
 
-;; 文本编辑：三条轨一起施同一个编辑，产物是**新的 document**（新 text + 新属性 box）。
-;; fork：旧版本的属性不被新版本共享。
-(define (document-edit-tracks bd ed)
-  (make-document (ed (document-text bd))
-                 (edit-attr (document-highlight bd) ed)
-                 (edit-attr (document-readonly bd) ed)))
+;; 文本编辑：端口按编辑搬运，槽走 fork 计划；产物是**新的 document**。
+(define (document-edit-tracks bd ed [changes '()])
+  (define old (document-text bd))
+  (define new (ed old))
+  (make-document* new
+                  (box (edit-attr (document-face bd) ed))
+                  (box (edit-attr (document-readonly bd) ed))
+                  (fork-slots (document-slots bd) (fork-ctx ed changes old new))))
 
-;;; ---------- 属性编辑：就地改 box ----------
+;;; ---------- 端口 ----------
+;; port-of : document -> box。首次编辑时按当前文本行长 materialize 出真轨。
 
-;; 只改高亮 / 只改只读；首次编辑时按当前文本行长 materialize 出真轨。
-;; **就地修改**：改 box，返回同一个 document。
-(define (document-edit-highlight bd ed)
-  (set-box! (document-highlight-atom bd)
-            (ed (or (document-highlight bd) (attr-track-for (document-text bd) #f))))
-  bd)
-(define (document-edit-readonly bd ed)
-  (set-box! (document-readonly-atom bd)
-            (ed (or (document-readonly bd) (attr-track-for (document-text bd) #f))))
+(define (port-edit bd port-of ed)
+  (set-box! (port-of bd)
+            (ed (or (unbox (port-of bd)) (attr-track-for (document-text bd) #f))))
   bd)
 
-;; 赋值糖：把 [l0,c0)..(l1,c1) 的高亮设为 face / 只读设为 flag。
-(define (document-highlight-fill bd l0 c0 l1 c1 face)
-  (document-edit-highlight bd (edit-fill l0 c0 l1 c1 face)))
-(define (document-readonly-fill bd l0 c0 l1 c1 flag)
-  (document-edit-readonly bd (edit-fill l0 c0 l1 c1 flag)))
+(define (port-fill bd port-of l0 c0 l1 c1 val)
+  (port-edit bd port-of (edit-fill l0 c0 l1 c1 val)))
 
-;;; ---------- 批量属性填充（一次 materialize、一次写 box） ----------
+(define (port-fill-batch bd port-of fills)
+  (if (null? fills) bd (port-edit bd port-of (fills->edit fills))))
+(define (port-fill-batch* bd port-of fills combine)
+  (if (null? fills) bd (port-edit bd port-of (fills->edit* fills combine))))
+(define (port-fill-range-batch bd port-of runs)
+  (port-fill-batch bd port-of (ranges->fills runs)))
+
+;;; ---------- 端口：命名包装 ----------
+
+(define (document-edit-face bd ed) (port-edit bd document-face-atom ed))
+(define (document-edit-readonly bd ed) (port-edit bd document-readonly-atom ed))
+
+(define (document-face-fill bd l0 c0 l1 c1 face) (port-fill bd document-face-atom l0 c0 l1 c1 face))
+(define (document-readonly-fill bd l0 c0 l1 c1 flag) (port-fill bd document-readonly-atom l0 c0 l1 c1 flag))
+
+(define (document-face-fill-batch bd fills) (port-fill-batch bd document-face-atom fills))
+(define (document-face-fill-batch* bd fills combine)
+  (port-fill-batch* bd document-face-atom fills combine))
+(define (document-readonly-fill-batch bd fills) (port-fill-batch bd document-readonly-atom fills))
+
+(define (document-face-fill-range-batch bd runs) (port-fill-range-batch bd document-face-atom runs))
+(define (document-readonly-fill-range-batch bd runs)
+  (port-fill-range-batch bd document-readonly-atom runs))
+
+;;; ---------- 槽：无轨假设（opaque 值） ----------
+;; 轨型槽的读 / 写由特性自己在值上做（用 base/edit 的 edit-* 变换），core 不提供。
+
+;;; ---------- 批量填充的底层（坐标版） ----------
 ;;
-;; 坐标版是底层实现；range 版先 range-normalize，再折成坐标走同一条路径。
-
 ;; fills : (listof (list l0 c0 l1 c1 val))。本层不规范化坐标。
 ;; 同一批里重叠处后者覆盖前者；空表 = 不改（返回同一个 document）。
 (define (fills->edit fills)
@@ -167,13 +200,6 @@
       (match-define (list l0 c0 l1 c1 v) f)
       ((edit-fill* l0 c0 l1 c1 v combine) t))))
 
-(define (document-highlight-fill-batch bd fills)
-  (if (null? fills) bd (document-edit-highlight bd (fills->edit fills))))
-(define (document-highlight-fill-batch* bd fills combine)
-  (if (null? fills) bd (document-edit-highlight bd (fills->edit* fills combine))))
-(define (document-readonly-fill-batch bd fills)
-  (if (null? fills) bd (document-edit-readonly bd (fills->edit fills))))
-
 ;; 批量（range 版）：runs : (listof (list range val))。range 先规范化，再折成坐标。
 (define (ranges->fills runs)
   (for/list ([run (in-list runs)])
@@ -183,31 +209,16 @@
           (point-line (range-end r*))   (point-column (range-end r*))
           v)))
 
-(define (document-highlight-fill-range-batch bd runs)
-  (document-highlight-fill-batch bd (ranges->fills runs)))
-(define (document-readonly-fill-range-batch bd runs)
-  (document-readonly-fill-batch bd (ranges->fills runs)))
+;;; ---------- 查询（端口） ----------
 
-;;; ---------- 属性查询（高亮 / 只读成对） ----------
-
-;; 高亮 / 只读格：整轨 #f（全默认）→ #f；否则取该格（越界 → #f）。
+;; 格：整轨 #f（全默认）→ #f；否则取该格（越界 → #f）。
 (define (document-attr-at t line col)
   (and t (let ([l (track-ref t line)]) (and (< col (line-length l)) (line-ref l col)))))
-
-(define (document-highlight-at bd line col)
-  (document-attr-at (document-highlight bd) line col))
-(define (document-readonly-at? bd line col)
-  (document-attr-at (document-readonly bd) line col))
 
 ;; 整行属性格（向量视图）：真轨取行；整轨 #f → 按文本行长造全默认向量。
 ;; 纯读、不改惰性；让"读整行"的调用方不必知道 #f。
 (define (document-attr-row a text-line line)
   (if a (track-ref a line) (make-vector (string-length text-line) #f)))
-
-(define (document-highlight-row bd line)
-  (document-attr-row (document-highlight bd) (track-ref (document-text bd) line) line))
-(define (document-readonly-row bd line)
-  (document-attr-row (document-readonly bd) (track-ref (document-text bd) line) line))
 
 ;; 区间 [l0,c0)..(l1,c1) 内是否有非默认的属性格。整轨 #f → 无。
 (define (document-attr-range? t l0 c0 l1 c1)
@@ -218,11 +229,17 @@
          (define b (if (= i l1) c1 (line-length l)))
          (for/or ([j (in-range a b)]) (and (line-ref l j) #t)))))
 
-(define (document-highlight-range? bd l0 c0 l1 c1)
-  (document-attr-range? (document-highlight bd) l0 c0 l1 c1))
-
+;; 端口
+(define (document-face-at bd line col) (document-attr-at (document-face bd) line col))
+(define (document-readonly-at? bd line col) (document-attr-at (document-readonly bd) line col))
+(define (document-face-row bd line)
+  (document-attr-row (document-face bd) (track-ref (document-text bd) line) line))
+(define (document-readonly-row bd line)
+  (document-attr-row (document-readonly bd) (track-ref (document-text bd) line) line))
+(define (document-face-range? bd l0 c0 l1 c1) (document-attr-range? (document-face bd) l0 c0 l1 c1))
 (define (document-readonly-range? bd l0 c0 l1 c1)
   (document-attr-range? (document-readonly bd) l0 c0 l1 c1))
+
 
 ;;; ---------- 用户编辑 / 程序编辑：成对（守 vs -ignore-readonly） ----------
 ;;; 都返回 (values document change ok?)。空编辑（change = #f 且 ok? = #t）不产生新 document。
@@ -243,8 +260,9 @@
     [(and (= l0 l1) (= c0 c1) (string=? text "")) (values bd #f #t)]   ; 空编辑 = 无变更
     [else
      (define sp (span (point l0 c0) (point l1 c1) text))
-     (values (document-edit-tracks bd (span->edit sp sticky default))
-             (span->change sp)
+     (define ch (span->change sp))
+     (values (document-edit-tracks bd (span->edit sp sticky default) (list ch))
+             ch
              #t)]))
 
 (define (document-replace bd l0 c0 l1 c1 text [sticky 'none] [default #f])
@@ -274,7 +292,7 @@
 (define (document-change-text bd ch)
   (document-range-text bd (change-after ch)))
 
-;;; ---------- 复制 / 粘贴（剪贴板） ----------
+;;; ---------- 区间取行 / 复制 ----------
 
 ;; 从一个文档区间 [l0,c0)..(l1,c1) 抽出某条轨的行片段。
 (define (range-lines t l0 c0 l1 c1)
@@ -285,77 +303,13 @@
                   (for/list ([i (in-range (add1 l0) l1)]) (row i))
                   (list (line-slice (row l1) 0 c1)))]))
 
-(struct clipboard (text highlight readonly) #:transparent)
-;; text / highlight / readonly : (listof 行片段)，三者同行划分
-
+;; 复制 = 取纯文本（属性不随剪贴板走；粘贴 = 普通文本插入，走 fork 计划）。
 (define (document-copy bd l0 c0 l1 c1)
-  (define text-lines (range-lines (document-text bd) l0 c0 l1 c1))
-  (clipboard text-lines
-             (attr-lines (document-highlight bd) text-lines l0 c0 l1 c1)
-             (attr-lines (document-readonly bd) text-lines l0 c0 l1 c1)))
-
-;; 属性行片段：真轨直接抽；整轨 #f → 按文本片段长度造全默认格。
-(define (attr-lines a text-lines l0 c0 l1 c1)
-  (if a
-      (range-lines a l0 c0 l1 c1)
-      (for/list ([tl (in-list text-lines)]) (make-vector (string-length tl) #f))))
-
-;; 只要文本的剪贴板（外部粘贴：高亮/只读全 default）。
-(define (document-copy-text bd l0 c0 l1 c1)
-  (clipboard-of-text (lines->string (range-lines (document-text bd) l0 c0 l1 c1))))
-
-(define (clipboard-of-text text [hl-default #f] [ro-default #f])
-  (define lines (string->lines text))
-  (clipboard lines
-             (for/list ([l lines]) (make-vector (string-length l) hl-default))
-             (for/list ([l lines]) (make-vector (string-length l) ro-default))))
-
-;; 把 clipboard 各轨的行片段拼到目标位置的某条轨上（按 payload 类型自动分派）。
-(define (splice-clipboard-lines t line col pieces)
-  (define l0 (track-ref t line))
-  (define head (line-slice l0 0 col))
-  (define tail (line-slice l0 col (line-length l0)))
-  (define k (length pieces))
-  (define new-lines
-    (cond
-      [(= k 1) (list (line-append (line-append head (car pieces)) tail))]
-      [else (append (list (line-append head (car pieces)))
-                    (drop-right (rest pieces) 1)
-                    (list (line-append (last pieces) tail)))]))
-  (track-splice t line (add1 line) new-lines))
-
-;; 粘贴是文本编辑：产出**新 document**（新 text + 新属性 box）。
-(define (document-paste* bd line col cp guard?)
-  (define text (lines->string (clipboard-text cp)))
-  (cond
-    [(and guard? (document-readonly-block? bd line col line col)) (values bd #f #f)]
-    [(string=? text "") (values bd #f #t)]                            ; 空剪贴板 = 无变更
-    [else
-     (values (make-document
-              (splice-clipboard-lines (document-text bd) line col (clipboard-text cp))
-              (paste-attr (document-highlight bd) (document-text bd) line col (clipboard-highlight cp))
-              (paste-attr (document-readonly bd) (document-text bd) line col (clipboard-readonly cp)))
-             (span->change (span (point line col) (point line col) text))
-             #t)]))
-
-;; 目标属性轨为 #f：剪贴板片段也全默认 → 保持 #f；否则 materialize 再拼。
-(define (pieces-default? pieces)
-  (for/and ([p (in-list pieces)])
-    (for/and ([v (in-vector p)]) (not v))))
-
-(define (paste-attr a text line col pieces)
-  (cond
-    [a (splice-clipboard-lines a line col pieces)]
-    [(pieces-default? pieces) #f]
-    [else (splice-clipboard-lines (attr-track-for text #f) line col pieces)]))
-
-(define (document-paste bd line col cp)
-  (document-paste* bd line col cp #t))
-(define (document-paste-ignore-readonly bd line col cp)
-  (document-paste* bd line col cp #f))
+  (document-range-text bd (range-of (point l0 c0) (point l1 c1))))
 
 ;;; ---------- 校验 ----------
 
+;; 只校验 core 端口（槽的轨形由特性自己负责）。
 (define (document-aligned? bd)
   (define rows (track->list (document-text bd)))
   (define (ok? t)
@@ -363,4 +317,4 @@
         (let ([arows (track->list t)])
           (and (= (length rows) (length arows))
                (for/and ([l rows] [a arows]) (= (string-length l) (line-length a)))))))
-  (and (ok? (document-highlight bd)) (ok? (document-readonly bd))))
+  (and (ok? (document-face bd)) (ok? (document-readonly bd))))

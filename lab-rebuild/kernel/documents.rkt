@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/kernel/documents.rkt —— 文档在主区的放置 / 显示（纯 workspace 操作）。
+;;; lab-re-rebuild/kernel/documents.rkt —— 文档在主区的放置 / 显示（纯 workspace 操作）。
 ;;;
 ;;; 只碰 editor + frame + session；不认识文件 / 路径 / 磁盘。
 ;;; 文件 I/O 由特性（builtin/document.rkt）负责。

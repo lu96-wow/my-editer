@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/smoke.rkt —— 无头冒烟：编辑 / 焦点 / 命令 / 主区+dock / 文件与输入。
+;;; lab-re-rebuild/smoke.rkt —— 无头冒烟：编辑 / 焦点 / 命令 / 主区+dock / 文件与输入。
 ;;; 注意：ctx 共享同一个可变 editor，必须用**返回的 ctx** 顺序往下走。
 
 (require rackunit
@@ -41,7 +41,7 @@
   (add-contrib c 'doc-scope 'complete (doc-scope (lambda (_p _g) #f))))
 
 ;; 临时根目录：sub/inner.txt + hello.txt
-(define root (make-temporary-file "lab-rebuild-~a" 'directory))
+(define root (make-temporary-file "lab-re-rebuild-~a" 'directory))
 (make-directory (build-path root "sub"))
 (call-with-output-file (build-path root "sub" "inner.txt") #:exists 'truncate (λ (o) (display "inner" o)))
 (call-with-output-file (build-path root "hello.txt") #:exists 'truncate (λ (o) (display "hi" o)))
@@ -405,11 +405,16 @@
 (define hl-fills (box #f))
 (define ctxHL1 (apply-effect (app-init root 60 14)
                              (e-file-open (build-path root "prog.rkt") 'replace #t)))
-(define ctxHL2 (add-contrib ctxHL1 'effect 'attr-highlight
+(define ctxHL2 (add-contrib ctxHL1 'effect 'attr-face
                             (lambda (c did fills combine) (set-box! hl-fills (list did fills)) c)))
 (void (app-render ctxHL2))
 (check-true (and (pair? (unbox hl-fills)) (pair? (cadr (unbox hl-fills))))
             "highlight：before-render 写回属性")
+;; 版本槽：编辑后 fork transform 推进 + before-render 仍写回
+(set-box! hl-fills #f)
+(void (app-render (type-all ctxHL2 "(")))
+(check-true (and (pair? (unbox hl-fills)) (pair? (cadr (unbox hl-fills))))
+            "highlight：编辑后版本槽推进并写回")
 
 ;; --- complete：自动弹出 + 接受 ---
 (define ctxC1 (type-all (app-init root 60 14) "def"))
@@ -447,4 +452,4 @@
 (check-equal? (length (tr-pairs (service-ref ctxT3 'translate))) 0 "M-t 关闭配对")
 
 (delete-directory/files root)
-(displayln "lab-rebuild smoke: all passed")
+(displayln "lab-re-rebuild smoke: all passed")

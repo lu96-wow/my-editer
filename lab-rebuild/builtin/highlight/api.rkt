@@ -1,6 +1,6 @@
 #lang racket
 
-;;; lab-rebuild/plugin/attr/api.rkt —— 插件协议
+;;; lab-re-rebuild/plugin/attr/api.rkt —— 插件协议
 ;;;
 ;;; 插件 = 「是否适用」谓词 + 一对纯函数，维护自己的增量状态：
 ;;;   applies? : path text            -> boolean                    该文档是否启用本插件
