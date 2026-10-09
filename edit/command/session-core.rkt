@@ -32,6 +32,7 @@
  session-open-document session-add-document session-add-view
  session-document-ids session-view-ids-of session-document-name
  session-view-did session-view-point session-view-point-line
+ session-view-point-column
  session-view-width session-view-height session-view-string
  session-view-id-list session-document-view-list
  ;; 文档级键表
@@ -131,6 +132,7 @@
 (define (session-view-did s vid) (editor-view-document-id (session-ed s) vid))
 (define (session-view-point s vid) (editor-view-point (session-ed s) vid))
 (define (session-view-point-line s vid) (editor-view-point-line (session-ed s) vid))
+(define (session-view-point-column s vid) (editor-view-point-column (session-ed s) vid))
 (define (session-view-width s vid) (editor-view-width (session-ed s) vid))
 (define (session-view-height s vid) (editor-view-height (session-ed s) vid))
 (define (session-view-string s vid) (editor-view-string (session-ed s) vid))
@@ -163,8 +165,10 @@
 
 ;;; ---------- 内核适配（唯一碰 core/editor 的地方） ----------
 
-(define (session-ed-close-view s vid) (editor-close-view (session-ed s) vid) s)
-(define (session-ed-close-document s did) (editor-close-document (session-ed s) did) s)
+(define (session-ed-close-view s vid)
+  (struct-copy session s [ed (editor-close-view (session-ed s) vid)]))
+(define (session-ed-close-document s did)
+  (struct-copy session s [ed (editor-close-document (session-ed s) did)]))
 
 (define (session-ed-assign! s vid doc)
   (editor-view-assign! (session-ed s) vid doc) s)

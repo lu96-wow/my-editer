@@ -24,6 +24,10 @@
 (define (spec->cmd spec ev)
   (cond [(prefix? spec) (cmd-prefix spec)]
         [(eq? spec text-spec) (cmd-insert (or (event-text ev) ""))]
+        [(eq? spec resize-spec) (cmd-resize (resize-event-cols ev) (resize-event-rows ev))]
+        [(eq? spec mouse-press-spec) (cmd-mouse-press (mouse-col ev) (mouse-row ev))]
+        [(eq? spec mouse-scroll-up-spec) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev) -1)]
+        [(eq? spec mouse-scroll-down-spec) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev) 1)]
         [(procedure? spec) (spec ev)]
         [else spec]))
 

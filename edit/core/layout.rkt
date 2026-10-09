@@ -6,6 +6,7 @@
 ;;;
 ;;;     (leaf vid)                      叶子：一个视图引用
 ;;;     (slot id)                       命名洞：运行时由 bindings 填成 node
+;;;     (blank)                         占位但不产视图（如空编辑器区）
 ;;;     (split axis parts)              分区   axis = 'lr | 'tb；parts = [(size . node)]
 ;;;     (stack nodes)                   叠放（浮层；z 顺序 = 列表顺序）
 ;;;     (at x y w h node)               浮层定位（相对父的偏移）
@@ -24,6 +25,8 @@
 
 (struct leaf  (vid) #:transparent)
 (struct slot  (id) #:transparent)
+;; 占位节点：参与尺寸分配（所以后面的固定尺寸部分仍贴在原位），但不产视图。
+(struct blank () #:transparent)
 (struct split (axis parts) #:transparent)
 (struct stack (nodes) #:transparent)
 (struct at    (x y w h node) #:transparent)
@@ -33,9 +36,9 @@
 
 (provide
  (struct-out leaf) (struct-out slot) (struct-out split)
- (struct-out stack) (struct-out at) (struct-out placed)
+ (struct-out stack) (struct-out at) (struct-out blank) (struct-out placed)
  layout-place layout-slots
- layout-contains? layout-find layout-fill layout-vids
+ layout-contains? layout-find layout-fill layout-vids layout-replace-first-blank
  layout-split layout-remove layout-replace layout-swap layout-resize)
 
 ;;; ---------- 查询 ----------
@@ -44,6 +47,7 @@
   (cond
     [(not node) '()]
     [(leaf? node) '()]
+    [(blank? node) '()]
     [(slot? node) (list (slot-id node))]
     [(stack? node) (append* (for/list ([c (in-list (stack-nodes node))]) (layout-slots c)))]
     [(at? node) (layout-slots (at-node node))]
@@ -54,6 +58,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) (eqv? vid (leaf-vid node))]
+    [(blank? node) #f]
     [(slot? node) #f]
     [(stack? node) (for/or ([c (in-list (stack-nodes node))]) (layout-contains? c vid))]
     [(at? node) (layout-contains? (at-node node) vid)]
@@ -64,6 +69,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) (and (eqv? vid (leaf-vid node)) node)]
+    [(blank? node) #f]
     [(slot? node) #f]
     [(stack? node) (for/or ([c (in-list (stack-nodes node))]) (layout-find c vid))]
     [(at? node) (layout-find (at-node node) vid)]
@@ -75,6 +81,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) node]
+    [(blank? node) node]
     [(slot? node) (define b (hash-ref bindings (slot-id node) #f))
                   (if b (layout-fill b bindings) node)]
     [(stack? node) (struct-copy stack node
@@ -90,6 +97,7 @@
   (cond
     [(not node) '()]
     [(leaf? node) (list (leaf-vid node))]
+    [(blank? node) '()]
     [(slot? node) '()]
     [(stack? node) (append* (for/list ([c (in-list (stack-nodes node))]) (layout-vids c)))]
     [(at? node) (layout-vids (at-node node))]
@@ -107,6 +115,7 @@
                       (list (placed (leaf-vid node)
                                     (area-x a) (area-y a) (area-w a) (area-h a)))
                       '())]
+    [(blank? node) '()]
     [(slot? node)
      (define b (hash-ref bindings (slot-id node) #f))
      (if b (place-node b bindings visible? a) '())]
@@ -137,6 +146,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) (visible? (leaf-vid node))]
+    [(blank? node) #t]
     [(slot? node) (define b (hash-ref bindings (slot-id node) #f))
                   (and b (node-visible? b bindings visible?))]
     [(stack? node) (for/or ([c (in-list (stack-nodes node))]) (node-visible? c bindings visible?))]
@@ -171,6 +181,7 @@
       [(leaf? n) (if (eqv? vid (leaf-vid n))
                      (split axis (list (cons size n) (cons 'flex (leaf new-vid))))
                      n)]
+      [(blank? n) n]
       [(slot? n) n]
       [(stack? n) (struct-copy stack n [nodes (for/list ([c (in-list (stack-nodes n))]) (go c))])]
       [(at? n) (struct-copy at n [node (go (at-node n))])]
@@ -184,6 +195,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) (and (not (eqv? vid (leaf-vid node))) node)]
+    [(blank? node) node]
     [(slot? node) node]
     [(at? node) (define c (layout-remove (at-node node) vid))
                 (and c (struct-copy at node [node c]))]
@@ -205,6 +217,7 @@
   (cond
     [(not node) #f]
     [(leaf? node) (if (eqv? vid (leaf-vid node)) new-node node)]
+    [(blank? node) node]
     [(slot? node) node]
     [(stack? node) (struct-copy stack node
                      [nodes (for/list ([c (in-list (stack-nodes node))]) (layout-replace c vid new-node))])]
@@ -222,6 +235,7 @@
       [(leaf? n) (cond [(eqv? v1 (leaf-vid n)) (leaf v2)]
                        [(eqv? v2 (leaf-vid n)) (leaf v1)]
                        [else n])]
+      [(blank? n) n]
       [(slot? n) n]
       [(stack? n) (struct-copy stack n [nodes (for/list ([c (in-list (stack-nodes n))]) (go c))])]
       [(at? n) (struct-copy at n [node (go (at-node n))])]
@@ -236,7 +250,7 @@
   (define (go n a)
     (cond
       [(not n) (values #f #f)]
-      [(or (leaf? n) (slot? n)) (values n #f)]
+      [(or (leaf? n) (slot? n) (blank? n)) (values n #f)]
       [(stack? n)
        (define-values (ns h)
          (for/fold ([ns '()] [h #f]) ([c (in-list (stack-nodes n))])
@@ -278,4 +292,32 @@
               [else (values (struct-copy split n [parts parts*]) #f)]))])]
       [else (values n #f)]))
   (define-values (n* _) (go node reg))
+  n*)
+
+;; 把第一个 blank 替换成 new-node（把视图放进空编辑器区）；没有 blank 则原样返回。
+(define (layout-replace-first-blank node new-node)
+  (define (go n)                       ; → (values n' done?)
+    (cond
+      [(not n) (values n #f)]
+      [(blank? n) (values new-node #t)]
+      [(leaf? n) (values n #f)]
+      [(slot? n) (values n #f)]
+      [(at? n) (define-values (c d) (go (at-node n)))
+               (values (if d (struct-copy at n [node c]) n) d)]
+      [(stack? n)
+       (define-values (ns d)
+         (for/fold ([ns '()] [d #f]) ([c (in-list (stack-nodes n))])
+           (cond [d (values (append ns (list c)) #t)]
+                 [else (define-values (c* d*) (go c))
+                       (values (append ns (list c*)) d*)])))
+       (values (if d (struct-copy stack n [nodes ns]) n) d)]
+      [(split? n)
+       (define-values (ps d)
+         (for/fold ([ps '()] [d #f]) ([p (in-list (split-parts n))])
+           (cond [d (values (append ps (list p)) #t)]
+                 [else (define-values (c* d*) (go (cdr p)))
+                       (values (append ps (list (cons (car p) c*))) d*)])))
+       (values (if d (struct-copy split n [parts ps]) n) d)]
+      [else (values n #f)]))
+  (define-values (n* _) (go node))
   n*)

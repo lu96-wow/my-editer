@@ -8,7 +8,7 @@
 ;;;
 ;;; 状态窗口自带键表（panel keys）优先于 document / global。
 
-(require tui "binding.rkt" "../core/keymap.rkt" "command.rkt"
+(require "key.rkt" "../core/keymap.rkt" "command.rkt"
          "tables.rkt")
 
 (provide base-keys global-keys
@@ -17,15 +17,15 @@
 (define global-keys
   (kbd
    (key 'q 'ctrl) (cmd-quit)
+   (key 'd 'ctrl) (cmd-close)
    (key 'b 'ctrl) (cmd-toggle 'side)
    (key 'l 'ctrl) (cmd-log-toggle)
    (key 'tab)     (cmd-panel-swap)
    ;; 文件命令（cmd-save / cmd-open-file）由 document 层自带 document-keys，assembly 合并
-   ;; resize 需要事件里的尺寸 → spec 用过程
-   resize-binding (lambda (ev) (cmd-resize (resize-event-cols ev) (resize-event-rows ev)))
-   ;; 鼠标：点击 = 聚焦 + 定位；滚轮 = 滚动光标所在视图
-   (mouse 'press 'left '())  (lambda (ev) (cmd-mouse-press (mouse-col ev) (mouse-row ev)))
-   (mouse 'scroll 'up '())   (lambda (ev) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev) -1))
-   (mouse 'scroll 'down '()) (lambda (ev) (cmd-mouse-scroll (mouse-col ev) (mouse-row ev)  1))))
+   ;; 事件取数据的 spec 标记（真正取数据在后端）；键表配置不 require tui
+   resize-binding resize-spec
+   (mouse 'press 'left '())  mouse-press-spec
+   (mouse 'scroll 'up '())   mouse-scroll-up-spec
+   (mouse 'scroll 'down '()) mouse-scroll-down-spec))
 
 (define base-keys (keymap-merge (list edit-keys global-keys)))

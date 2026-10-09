@@ -16,7 +16,7 @@
 (provide
  ;; 结构手术
  session-show-view session-split-view session-place-view
- session-close-view session-close-document
+ session-close-view session-close-document session-close-focused
  ;; 操作原语
  session-focus-move session-scroll session-toggle-slot
  session-resize session-quit session-nav session-resize-view
@@ -40,17 +40,39 @@
   (session-show-view s2 nvid))
 
 ;; 把已在 editor 里的视图 nvid 放到 vid 旁（分屏）；
-;; 没有基准视图（编辑器区为空）则填第一个未解析的 slot；layout 为空则作为根。
+;; 没有基准视图（编辑器区为空）则把第一个 blank 占位换成新视图；layout 为空则作为根。
 (define (session-place-view s vid axis nvid)
   (cond
     [(not (session-layout s)) (struct-copy session s [layout (leaf nvid)])]
     [(and vid (layout-contains? (session-layout s) vid))
      (struct-copy session s [layout (layout-split (session-layout s) vid axis nvid)])]
     [else
-     (define slots (layout-slots (session-layout s)))
-     (cond
-       [(pair? slots) (session-fill-slot s (first slots) (leaf nvid))]
-       [else s])]))
+     (struct-copy session s
+       [layout (layout-replace-first-blank (session-layout s) (leaf nvid))])]))
+
+;; 从 layout 移除若干编辑器视图；若移除后编辑器区就空了，保留一个 blank 占位
+;; （否则 split 会塌陷，底部区会占满整个编辑区）。
+(define (session-drop-editor-views s vids)
+  (define remain (for/list ([v (in-list (session-view-id-list s))]
+                            #:unless (or (memv v vids) (session-dock-vid? s v))) v))
+  (cond
+    [(null? vids) (session-layout s)]
+    [(pair? remain)
+     (for/fold ([l (session-layout s)]) ([v (in-list vids)]) (layout-remove l v))]
+    [else
+     (for/fold ([l (layout-replace (session-layout s) (first vids) (blank))])
+               ([v (in-list (rest vids))])
+       (layout-remove l v))]))
+
+;; 关视图后：若粘性 edit-vid 已不在，重置为第一个编辑器视图（或 #f）。
+(define (session-fix-edit-vid s)
+  (define ev (session-edit-vid s))
+  (cond
+    [(and ev (memv ev (session-view-id-list s)) (not (session-dock-vid? s ev))) s]
+    [else
+     (define rest (for/list ([v (in-list (session-view-id-list s))]
+                             #:unless (session-dock-vid? s v)) v))
+     (struct-copy session s [edit-vid (and (pair? rest) (first rest))])]))
 
 ;; 关一个编辑视图（状态窗口不受影响）。
 (define (session-close-view s vid)
@@ -64,11 +86,12 @@
        [else
         (define s0 (session-ed-close-view s vid))
         (define s* (struct-copy session s0
-                     [layout (layout-remove (session-layout s) vid)]
+                     [layout (session-drop-editor-views s (list vid))]
                      [presentations (hash-remove (session-presentations s) vid)]))
-        (if (eqv? vid (session-focus-vid s*))
-            (session-show-view s* (first remaining))
-            s*)])]))
+        (define s** (if (eqv? vid (session-focus-vid s*))
+                        (session-show-view s* (first remaining))
+                        s*))
+        (session-fix-edit-vid s**)])]))
 
 ;; 关一个文档（连带其所有视图）；不关状态窗口。同时清 doc-state（path + 脏）。
 (define (session-close-document s did)
@@ -76,19 +99,26 @@
   (cond
     [(for/or ([v (in-list vids)]) (session-dock-vid? s v)) s]
     [else
-     (define layout* (for/fold ([l (session-layout s)]) ([v (in-list vids)]) (layout-remove l v)))
      (define pres* (for/fold ([h (session-presentations s)]) ([v (in-list vids)]) (hash-remove h v)))
      (define s0 (session-ed-close-document s did))
      (define s* (session-clear-doc
-                 (struct-copy session s0 [layout layout*] [presentations pres*])
+                 (struct-copy session s0
+                   [layout (session-drop-editor-views s vids)]
+                   [presentations pres*])
                  did))
      (define fv (session-focus-vid s*))
-     (cond
-       [(and fv (memv fv vids))
-        (define rest (for/list ([v (in-list (session-view-id-list s*))]
-                                #:unless (session-dock-vid? s* v)) v))
-        (session-set-focus s* (focus-set (session-focus s*) (and (pair? rest) (first rest))))]
-       [else s*])]))
+     (define s** (cond
+                   [(and fv (memv fv vids))
+                    (define rest (for/list ([v (in-list (session-view-id-list s*))]
+                                            #:unless (session-dock-vid? s* v)) v))
+                    (session-set-focus s* (focus-set (session-focus s*) (and (pair? rest) (first rest))))]
+                   [else s*]))
+     (session-fix-edit-vid s**)]))
+
+;; 关闭焦点窗口（状态窗口是一类面板，不会关）。
+(define (session-close-focused s)
+  (define vid (session-focus-vid s))
+  (if vid (session-close-view s vid) s))
 
 ;;; ---------- 操作原语 ----------
 

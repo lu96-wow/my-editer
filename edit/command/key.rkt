@@ -12,7 +12,8 @@
 
 (provide mod-order normalize-mods char->key-symbol
          key mouse
-         text-binding paste-binding resize-binding text-spec)
+         text-binding paste-binding resize-binding text-spec
+         resize-spec mouse-press-spec mouse-scroll-up-spec mouse-scroll-down-spec)
 
 (define mod-order '(ctrl alt shift))
 
@@ -34,3 +35,10 @@
 ;; 文本通道的 spec：resolve 见到它就取事件里的文本 → (cmd-insert text)。
 ;; 这样键表配置不必 require tui（event-text）。
 (define text-spec 'text-spec)
+
+;; 需要从事件取数据的 spec（鼠标 / resize）。由后端 resolve 处理；
+;; 键表配置只写标记，不 require tui。
+(define resize-spec 'resize-spec)
+(define mouse-press-spec 'mouse-press-spec)
+(define mouse-scroll-up-spec 'mouse-scroll-up-spec)
+(define mouse-scroll-down-spec 'mouse-scroll-down-spec)

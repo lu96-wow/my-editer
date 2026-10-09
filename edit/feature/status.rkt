@@ -5,8 +5,7 @@
 ;;; 显示**活动编辑视图**（粘性 edit-vid）：文档名 + 行:列。只读。
 ;;; 每帧由 panel refresh 重生成（内容没变则跳过）。
 
-(require "api.rkt"
-         "../../core/text/base/point.rkt")
+(require "api.rkt")
 
 (provide status-install)
 
@@ -18,8 +17,9 @@
       [else
        (define did (session-view-did s vid))
        (define name (session-document-name s did))
-       (define p (session-view-point s vid))
-       (format " ~a   ~a:~a" name (add1 (point-line p)) (add1 (point-column p)))]))
+       (format " ~a   ~a:~a" name
+               (add1 (session-view-point-line s vid))
+               (add1 (session-view-point-column s vid)))]))
   (define pfx (session-prefix s))
   (string-append body (if pfx (format "  [~a]" (prefix-label pfx)) "")))
 

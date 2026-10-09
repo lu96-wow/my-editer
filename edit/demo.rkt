@@ -9,7 +9,7 @@
 
 (require "core/layout.rkt" "core/focus.rkt"
          "config/layout.rkt"
-         "command/session.rkt" "command/command.rkt" "command/keys.rkt" "command/binding.rkt"
+         "command/session.rkt" "command/keys.rkt"
          "document/document.rkt"
          "feature/status.rkt" "feature/buffers.rkt" "feature/tree.rkt" "feature/prompt.rkt"
          "feature/log.rkt")
@@ -29,11 +29,11 @@
   ;; tree / buffers 共用同一位置，默认显示 tree
   (define s9* (session-set-visible s9b buf #f))
 
-  ;; 内容（按 slot 名填进 config 的骨架）；editor 留空
+  ;; 内容（按 slot 名填进 config 的骨架）；editor 用 blank 占位（空但占空间）
   ;; 底部 status / input / log 同位置互斥，高度由 session-bottom-select 按 rows 适配
   (define side   (stack (list (leaf tree) (leaf buf))))
   (define bottom (stack (list (leaf status) (leaf input) (leaf log))))
-  (define bnd (hash 'side side 'bottom bottom))
+  (define bnd (hash 'side side 'editor (blank) 'bottom bottom))
 
   (define s10 (document-install (session-assemble s9* layout bnd) edit-keys))
   ;; 初始焦点：文件树（编辑器区为空，打开文件后再进）
