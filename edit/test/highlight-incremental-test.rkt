@@ -1,10 +1,10 @@
 #lang racket
 
-;;; edit/test/highlight-incremental-test.rkt —— 高亮插件增量契约（headless）
+;;; edit/test/highlight-incremental-test.rkt —— 高亮插件契约（headless）
 ;;;
 ;;;   raco test edit/test/highlight-incremental-test.rkt
 ;;;
-;;; 覆盖：change 只声明脏行 touched、只产出脏行 fills；词表状态跨次累积。
+;;; 覆盖：open/change 产出整篇 fills；词表状态跨次累积；活动词跳过。
 
 (require rackunit
          "../plugin/registry.rkt"
@@ -15,34 +15,25 @@
 (define syntax-change (doc-plugin-change syntax-plugin))
 (define word-change (doc-plugin-change word-plugin))
 
-;; 测试用最小 change-ctx（line-ref / line-count 这两插件用不到）。
-(define (cctx dirty active)
-  (change-ctx dirty '() active (lambda (_n) "") 0 "test.rkt"))
+(define (cctx lines active)
+  (change-ctx '() active (list->vector lines) "test.rkt"))
 
-;; syntax：touched = 脏行，且命中关键字 "let"
-(define-values (_st touched sf)
-  (syntax-change #f (cctx (list (cons 1 "let x 1")) #f)))
+;; syntax：整篇扫描命中 "let"
+(define-values (_st sf) (syntax-change #f (cctx (list "let x 1") #f)))
 (check-true (pair? sf))
-(check-equal? touched '(1))
-(check-true (for/and ([f (in-list sf)]) (= (car f) 1)))
 (check-equal? (palette-color-kind (list-ref (car sf) 4)) 'keyword)
 
-;; words：touched 限定 + 状态累积
-(define-values (st1 touched1 f1)
-  (word-change #f (cctx (list (cons 0 "alpha beta")) #f)))
-(check-equal? touched1 '(0))
-(check-true (for/and ([f (in-list f1)]) (= (car f) 0)))
+;; words：表累积（旧词沿用、新词补号）
+(define-values (st1 f1) (word-change #f (cctx (list "alpha beta") #f)))
+(check-true (pair? f1))
 (define alpha0 (hash-ref st1 "alpha"))
 
-(define-values (st2 touched2 f2)
-  (word-change st1 (cctx (list (cons 1 "gamma alpha")) #f)))
-(check-equal? touched2 '(1))
-(check-true (for/and ([f (in-list f2)]) (= (car f) 1)))      ; 只第 1 行
+(define-values (st2 f2) (word-change st1 (cctx (list "alpha beta" "gamma alpha") #f)))
+(check-true (pair? f2))
 (check-equal? (hash-ref st2 "alpha") alpha0)                  ; 旧词沿用同号
 (check-equal? (hash-ref st2 "gamma" #f) 2)                    ; 新词补号（= 旧表词数）
-(check-equal? (hash-ref st2 "beta") (hash-ref st1 "beta"))    ; 未动行仍在表里
+(check-equal? (hash-ref st2 "beta") (hash-ref st1 "beta"))    ; 未变词仍在表里
 
-;; 活动词跳过：脏行里活动词不上色
-(define-values (_st3 _touched3 f3)
-  (word-change st1 (cctx (list (cons 0 "alpha beta")) (list 0 0 5))))
-(check-true (for/and ([f (in-list f3)]) (not (= (cadr f) 0))))  ; 不像 alpha（起点 0）
+;; 活动词跳过：line 0 起点 0 的 "alpha" 不在 fills 里
+(define-values (_st3 f3) (word-change st1 (cctx (list "alpha beta") (list 0 0 5))))
+(check-true (for/and ([f (in-list f3)]) (not (and (= (car f) 0) (= (cadr f) 0)))))

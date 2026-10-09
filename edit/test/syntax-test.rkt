@@ -53,7 +53,7 @@
 (define s4 (session-insert s3 "lambda "))                 ; 光标在 0,0，插入
 (define s5 (session-prepare-render s4))
 (check-true (and (kw-layer (face-at s5 0 0)) #t))         ; 新文本 "lambda" 关键字层
-(check-equal? (palette-color-index (kw-layer (face-at s5 0 0))) 4) ; keyword-list 里 lambda 的序号
+(check-equal? (palette-color-index (kw-layer (face-at s5 0 0))) 3) ; 分组 binding 的色板序号
 
 ;; --- 非 Racket 文件不绑插件 ---
 (define p2 (make-temporary-file "hl-~a.txt"))

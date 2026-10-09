@@ -117,25 +117,24 @@
 
 ;;; ---------- 主循环 ----------
 
-(define (run-tui s0 #:theme [theme default-theme])
-  (parameterize ([current-theme theme])
-    (with-tui
-     (lambda ()
-       (define-values (rows cols) (get-window-size))
-       (define s (struct-copy session s0
-                              [width (or cols (session-width s0))]
-                              [height (or rows (session-height s0))]))
-       (set-box! prev #f)
-       (set-box! prev-size #f)
-       ;; 会话放盒里：异步唤醒时在事件循环线程里刷新一帧（read-event 继续等 tui 事件）。
-       (define sbox (box s))
-       (on-source async-wake (lambda (_) (set-box! sbox (draw! (unbox sbox)))))
-       (let loop ()
-         (define s1 (draw! (unbox sbox)))
-         (set-box! sbox s1)
-         (define ev (read-event))
-         (define s2 (unbox sbox))
-         (define c (resolve s2 ev))
-         (define s* (if c (step s2 c) s2))
-         (set-box! sbox s*)
-         (unless (session-quit? s*) (loop)))))))
+(define (run-tui s0)
+  (with-tui
+   (lambda ()
+     (define-values (rows cols) (get-window-size))
+     (define s (struct-copy session s0
+                            [width (or cols (session-width s0))]
+                            [height (or rows (session-height s0))]))
+     (set-box! prev #f)
+     (set-box! prev-size #f)
+     ;; 会话放盒里：异步唤醒时在事件循环线程里刷新一帧（read-event 继续等 tui 事件）。
+     (define sbox (box s))
+     (on-source async-wake (lambda (_) (set-box! sbox (draw! (unbox sbox)))))
+     (let loop ()
+       (define s1 (draw! (unbox sbox)))
+       (set-box! sbox s1)
+       (define ev (read-event))
+       (define s2 (unbox sbox))
+       (define c (resolve s2 ev))
+       (define s* (if c (step s2 c) s2))
+       (set-box! sbox s*)
+       (unless (session-quit? s*) (loop))))))

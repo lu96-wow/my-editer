@@ -6,24 +6,15 @@
 ;;;   · 首次见到某个词 → 取「下一个号」(= 表里已有词数)，插进表；
 ;;;   · 以后每次见到 → 用表里的号。
 ;;; 于是同词同色、不同词不同号；表只增不减，所以插新词也不会让后面的词变色。
-;;; open 整篇建表；change 只扫脏行、只给脏行的词补号（增量）。
-;;; 跳过正在输入的活动词（本次编辑处），免得边打边换色。
+;;; open / change 都整篇重扫，产出整篇 fills（对齐 lab）；活动词（本次编辑处）跳过。
 
-(require "../registry.rkt"
+(require racket/string
+         "../registry.rkt"
          "../../core/lex.rkt"
          "../../core/file-kind.rkt"
          "../../core/face.rkt")
 
 (provide word-plugin word-spec)
-
-;; dirty : (listof (cons line string)) → (listof token)，只含脏行。
-(define (dirty-tokens dirty)
-  (append*
-   (for/list ([p (in-list dirty)])
-     (define ln (car p))
-     (define line (cdr p))
-     (for/list ([m (in-list (line-tokens line))])
-       (list ln (car m) (cdr m) (substring line (car m) (cdr m)))))))
 
 ;; tokens 按出现顺序；skip = 活动词 (list line start end) | #f；map = 旧表。→ (values 新表 fills)
 (define (assign-fills tokens skip map)
@@ -47,10 +38,9 @@
   (assign-fills (scan-words text) #f (hash)))
 
 (define (word-change state cctx)
-  (define dirty (change-ctx-dirty cctx))
-  (define-values (st fills)
-    (assign-fills (dirty-tokens dirty) (change-ctx-active cctx) (or state (hash))))
-  (values st (map car dirty) fills))
+  (assign-fills (scan-words (string-join (vector->list (change-ctx-lines cctx)) "\n"))
+                (change-ctx-active cctx)
+                (or state (hash))))
 
 (define word-plugin
   (doc-plugin 'words racket-applies? word-open word-change))

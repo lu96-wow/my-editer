@@ -13,7 +13,7 @@
 ;;;   bracket-fills   朴素全量（参考 / 测试）
 ;;;   bracket-open    全量 → bstate
 ;;;   bracket-change  增量：找到被破坏的最浅深度 D，重建到栈重新对齐的行 E；
-;;;                   返回 (values bstate touched fills)，touched = [D,E) 行。
+;;;                   返回 (values bstate pairs)，pairs 是**整篇**（kept ++ 重建段）。
 
 (require racket/match
          racket/string
@@ -136,24 +136,18 @@
       (set! pairs (cons (list (car f) (cadr f) (caddr f) (cadddr f) (list-ref f 4)) pairs))))
   (values entries pairs stack))
 
-(define (all-line-numbers lines) (for/list ([i (in-range (vector-length lines))]) i))
-
 ;;; ================= 增量 =================
 
-;; → (values bstate touched pairs)。touched = 需要重画的行（[D,E) 或全行）。
+;; → (values bstate pairs)。行结构变化或多编辑 → 整篇重扫。
 (define (bracket-change st edits lines path)
   (define syntax? (racket-file? path))
   (define old-lines (bstate-lines st))
-  (define single? (= 1 (length edits)))
   (cond
-    [(not single?)
-     (define-values (st* pairs) (bracket-open* lines path))
-     (values st* (all-line-numbers lines) pairs)]
-    [(let ([e (car edits)])
-       (or (not (= (list-ref e 0) (list-ref e 2)))
-           (not (= (vector-length old-lines) (vector-length lines)))))
-     (define-values (st* pairs) (bracket-open* lines path))
-     (values st* (all-line-numbers lines) pairs)]
+    [(or (not (= 1 (length edits)))
+         (let ([e (car edits)])
+           (or (not (= (list-ref e 0) (list-ref e 2)))
+               (not (= (vector-length old-lines) (vector-length lines))))))
+     (bracket-open* lines path)]
     [else
      (match-define (list l0 c0 l1 c1) (car edits))
      (define old-entries (bstate-entries st))
@@ -180,9 +174,8 @@
                            (or (pos<? o D) (pos<=? (list E 0) o)
                                (for/or ([p (in-list open-set)]) (equal? p o)))))
          f))
-     (define pairs (append kept region-pairs))
-     (define touched (for/list ([l (in-range (car D) E)]) l))
-     (values (bstate lines new-entries pairs) touched pairs)]))
+     (values (bstate lines new-entries (append kept region-pairs))
+             (append kept region-pairs))]))
 
 ;; 从 D 所在行首起扫（#| / |# / #\x 可能跨过 D），直到栈完全等于旧入口栈。
 (define (find-end lines old-entries D l0 syntax?)

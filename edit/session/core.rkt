@@ -51,9 +51,9 @@
  ;; 文档槽（opaque 值，随版本 fork；插件状态等）
  define-document-slot session-doc-slot-ref session-doc-slot-set!
  ;; fork 上下文（插件增量状态用）
- fork-ctx-edits fork-ctx-lines fork-ctx-line fork-ctx-line-count session-document-line-count
+ fork-ctx-edits fork-ctx-lines
  ;; 写回原语（face；插件层用）
- session-doc-face-refill!
+ session-doc-face!
  ;; 按 vid 的区间替换（补全接受等）
  session-ed-replace!
  ;; 内核适配
@@ -190,30 +190,17 @@
     (list (point-line (range-start r)) (point-column (range-start r))
           (point-line (range-end r))   (point-column (range-end r)))))
 
-;; 给定行号取 (cons line string)，只回合法行（< 新文本行数）。
-(define (fork-ctx-lines ctx nums)
-  (define t (fork-ctx-new-text ctx))
-  (define n (track-length t))
-  (for/list ([l (in-list nums)] #:when (< l n))
-    (cons l (track-ref t l))))
-
-(define (fork-ctx-line-count ctx) (track-length (fork-ctx-new-text ctx)))
-
-;; 新文本第 n 行（越界 → ""）。
-(define (fork-ctx-line ctx n)
-  (define t (fork-ctx-new-text ctx))
-  (if (and (exact-nonnegative-integer? n) (< n (track-length t))) (track-ref t n) ""))
-
-(define (session-document-line-count s did)
-  (track-length (document-text (session-document-handle s did))))
+;; 新文本的全部行（vector）。
+(define (fork-ctx-lines ctx)
+  (list->vector (track->list (fork-ctx-new-text ctx))))
 
 ;;; ---------- 写回原语 ----------
 
-;; 只重画给定行：先把这些行 face 清空，再按 fills 逐格 face-compose。
-(define (session-doc-face-refill! s did lines fills)
-  (define ed (session-ed s))
-  (for ([l (in-list lines)]) (editor-document-face-line! ed did l #f))
-  (document-face-fill-batch* (session-document-handle s did) fills face-compose)
+;; 清空整条 face 轨道，再按 fills 逐格 face-compose（lab 式整篇写回）。
+(define (session-doc-face! s did fills)
+  (define doc (session-document-handle s did))
+  (document-set-face! doc #f)
+  (document-face-fill-batch* doc fills face-compose)
   s)
 
 ;; 把 vid 的 [l0 c0, l1 c1) 替换成 text（选区 + 插入）。
