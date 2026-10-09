@@ -102,17 +102,12 @@
       (values (session-log! s (format "new dir ~a: 已存在" p)) #f)]
      [else (fs-create-dir p) (values s p)])))
 
-;; 删除 path；连带关闭其下已打开的文档。→ session
+;; 删除 path（仅文件系统）；**不关任何 document** —— 打开中的缓冲区保留（路径也保留，
+;; 之后保存会重建文件）。关文档走关闭入口（脏则问）。→ session
 (define (session-delete-path s path)
   (with-handlers ([exn:fail? (lambda (e) (session-error! s "delete" path e))])
-   (define np (normalize path))
-   (define dids (for/list ([d (in-list (session-file-dids s))]
-                           #:when (let ([p (session-file-path s d)])
-                                    (and p (path-under? np p))))
-                  d))
-   (define s1 (for/fold ([s s]) ([d (in-list dids)]) (session-close-document s d)))
-   (fs-delete np)
-   s1))
+   (fs-delete (normalize path))
+   s))
 
 ;;; ---------- 退出确认（有未保存修改时逐个询问） ----------
 ;;; 交互用 prompt 回调链实现，不新增会话状态。
