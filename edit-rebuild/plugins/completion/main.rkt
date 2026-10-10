@@ -61,8 +61,10 @@
 ;; mods   : (listof module-path) | #f   候选所属模块（广播给订阅者；#f = 模块路径）
 
 ;; 补全上下文：决定池从哪来、缓存键是什么。
-(struct ctx (key locals words mods) #:transparent)
-;; key    : 'module | (list 'exports mods) | #f    #f = 只需文档词（同步，无需 worker）
+(struct ctx (key req locals words mods) #:transparent)
+;; key    : 'module | (list 'exports dir specs open-sig) | #f   缓存 / pending 键
+;;          #f = 只需文档词（同步，无需 worker）
+;; req    : worker 请求（与 key 的区别：带**完整**缓冲区文本而非摘要）| #f
 ;; locals : (listof symbol)   文件顶层定义名
 ;; words  : (listof string)   文件里出现过的词
 ;; mods   : (listof module-path) | #f   候选所属模块
@@ -116,14 +118,14 @@
 
 (define (make-ctx s svc vid text line col)
   (cond
-    [(require-context? text line col) (ctx 'module '() '() #f)]
-    [(lang-context? text line col) (ctx 'module '() '() #f)]   ; #lang <语言> 也是模块路径位置
+    [(require-context? text line col) (ctx 'module '(module-paths) '() '() '#f)]
+    [(lang-context? text line col) (ctx 'module '(module-paths) '() '() '#f)]   ; #lang 也是模块路径位置
     [else
      (define did (session-view-did s vid))
      (define path (and did (session-file-path s did)))
      (define words (word-index-words (word-index-for s svc did text)))
      ;; 模块集从文件自身取：#lang + 顶层 (require …)。补全按**原始 spec** 在 worker 里
-     ;; 算绑定名（only/prefix/rename/except 都对），所以 key 带 specs（不再是展开的模块路径）。
+     ;; 算绑定名（only/prefix/rename/except 都对）；open 的本地文件用**当前缓冲区文本**。
      (define e (parse-for svc did text path))
      (define specs (parse-entry-specs e))
      (define specs* (cond
@@ -135,11 +137,35 @@
         (define base-dir (or (and path (let-values ([(d _f _m) (split-path path)]) d))
                              (current-directory)))
         (define mods (let ([m (parse-entry-mods e)]) (if (pair? m) m '(racket/base))))
-        (ctx (list 'exports (path->string base-dir) specs*)
+        (define open-map (open-local-texts s specs* base-dir))
+        (define open-sig (for/list ([p (in-list open-map)]) (cons (car p) (text-digest (cdr p)))))
+        (define dir (path->string base-dir))
+        (ctx (list 'exports dir specs* open-sig)
+             (list 'exports dir specs* open-map)
              (parse-entry-locals e)
              words
              mods)]
-       [else (ctx #f '() words '())])]))
+       [else (ctx #f #f '() words '())])]))
+
+;; 打开的文档：绝对路径字符串 -> did。
+(define (open-doc-path->did s)
+  (for/hash ([did (in-list (session-document-ids s))]
+             #:when (session-file-path s did))
+    (values (path->string (path->complete-path (session-file-path s did))) did)))
+
+;; specs 引用的、且**已作为文档打开**的本地文件 → (list (绝对路径字符串 . 当前文本))。
+(define (open-local-texts s specs base-dir)
+  (define by-path (open-doc-path->did s))
+  (append*
+   (for/list ([spec (in-list specs)])
+     (for/list ([ps (in-list (spec-local-paths spec base-dir))]
+                #:when (hash-ref by-path ps #f))
+       (cons ps (session-document-string s (hash-ref by-path ps)))))))
+
+;; 缓存键里代表缓冲区版本的稳定摘要（djb2）。
+(define (text-digest str)
+  (for/fold ([h 5381]) ([c (in-string str)])
+    (bitwise-and (+ (* h 33) (char->integer c)) #xFFFFFFFF)))
 
 ;; 缓存命中（key #f 视为永远命中：只需本地词）。
 (define (ctx-cached? svc ctx)
@@ -166,8 +192,7 @@
         r)))
 
 ;; 请求键 → worker 请求。'module → (module-paths)；(exports . mods) → 自身。
-(define (ctx-request key)
-  (if (eq? key 'module) '(module-paths) key))
+(define (ctx-request ctx) (ctx-req ctx))
 
 ;;; ---------- 选中项事件（解耦：文档插件订阅） ----------
 
@@ -300,7 +325,7 @@
   (cond
     [(hash-ref (c-svc-pending svc) key #f) s]
     [else
-     (define id (runner-submit! (ensure-runner svc) (ctx-request key)))
+     (define id (runner-submit! (ensure-runner svc) (ctx-request ctx)))
      (hash-set! (c-svc-pending svc) key #t)
      (session-await
       s id key (lambda (_s _tok) #t)

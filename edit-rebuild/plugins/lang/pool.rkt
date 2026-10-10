@@ -11,12 +11,13 @@
 ;;; 一次补全会话只建一次池，之后只 filter-pool。
 
 (provide completion-pool filter-pool distinct-strings
-         module-exports document-words spec-names)
+         module-exports document-words spec-names spec-local-paths)
 
 (require racket/list
          racket/path
          racket/string
-         "../../core/face/lex.rkt")
+         "../../core/face/lex.rkt"
+         "source.rkt")
 
 ;;; ================= 缓存 =================
 
@@ -70,14 +71,18 @@
 ;;; 只得到 `first`，`(require "local.rkt")` 得到本地文件的导出。
 ;;; 对任意编辑中的文本是全函数：非法的 spec 一律 '()。
 
-(define (spec-names s base-dir)
+;; specs : 原始 require spec；open : hash 绝对路径字符串 -> 该文档**当前缓冲区文本** | #f。
+;; 打开的本地文件优先用缓冲区（可解析半成品），否则 module-exports 磁盘模块。
+(define (spec-names s base-dir [open #f])
   (with-handlers ([exn:fail? (lambda (_) '())])
     (cond
       [(symbol? s) (module-exports s)]
-      [(string? s) (if (zero? (string-length s))
-                       '()
-                       (let ([p (string->path s)])
-                         (module-exports (path->complete-path (if (absolute-path? p) p (build-path base-dir p))))))]
+      [(string? s)
+       (define p (local-module-path s base-dir))
+       (cond
+         [(not p) '()]
+         [(and open (hash-ref open (path->string p) #f)) => provides-of-forms]
+         [else (module-exports p)])]
       [(pair? s)
        (define h (and (symbol? (car s)) (car s)))
        (cond
@@ -85,26 +90,50 @@
           (map symbol->string (filter symbol? (cddr s)))]
          [(eq? h 'except-in)
           (remove* (map symbol->string (filter symbol? (cddr s)))
-                   (spec-names (cadr s) base-dir) string=?)]
+                   (spec-names (cadr s) base-dir open) string=?)]
          [(eq? h 'prefix-in)
           (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
-          (for/list ([n (in-list (spec-names (caddr s) base-dir))]) (string-append p n))]
+          (for/list ([n (in-list (spec-names (caddr s) base-dir open))]) (string-append p n))]
          [(eq? h 'rename-in)
-          (spec-renames (cadr s) (cddr s) "" base-dir)]
+          (spec-renames (cadr s) (cddr s) "" base-dir open)]
          [(eq? h 'prefix-rename-in)
           (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
-          (spec-renames (caddr s) (cdddr s) p base-dir)]
-         [(memq h '(for-syntax for-template for-label)) (spec-names (cadr s) base-dir)]
-         [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-names x base-dir)))]
-         [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-names x base-dir)))]
+          (spec-renames (caddr s) (cdddr s) p base-dir open)]
+         [(memq h '(for-syntax for-template for-label)) (spec-names (cadr s) base-dir open)]
+         [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-names x base-dir open)))]
+         [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-names x base-dir open)))]
          [(memq h '(lib planet)) (module-exports s)]
-         [(eq? h 'quote) (spec-names (cadr s) base-dir)]
+         [(eq? h 'quote) (spec-names (cadr s) base-dir open)]
          [else '()])]
       [else '()])))
 
+;; 字符串模块路径 → 绝对路径；空串 → #f。
+(define (local-module-path s base-dir)
+  (if (zero? (string-length s))
+      #f
+      (let ([p (string->path s)])
+        (path->complete-path (if (absolute-path? p) p (build-path base-dir p))))))
+
+;; spec 里引用的本地文件（字符串 spec，含包装内）→ (listof 绝对路径字符串)。
+(define (spec-local-paths s base-dir)
+  (cond
+    [(string? s) (define p (local-module-path s base-dir))
+                 (if p (list (path->string p)) '())]
+    [(pair? s)
+     (define h (and (symbol? (car s)) (car s)))
+     (cond
+       [(memq h '(only-in except-in rename-in)) (spec-local-paths (cadr s) base-dir)]
+       [(memq h '(prefix-in prefix-rename-in)) (spec-local-paths (caddr s) base-dir)]
+       [(memq h '(for-syntax for-template for-label)) (spec-local-paths (cadr s) base-dir)]
+       [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-local-paths x base-dir)))]
+       [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-local-paths x base-dir)))]
+       [(eq? h 'quote) (spec-local-paths (cadr s) base-dir)]
+       [else '()])]
+    [else '()]))
+
 ;; rename：显式 [old new] → new；其余导出名保留（加前缀 p）。
-(define (spec-renames mod-spec renames p base-dir)
-  (define base (spec-names mod-spec base-dir))
+(define (spec-renames mod-spec renames p base-dir open)
+  (define base (spec-names mod-spec base-dir open))
   (define rs (for/list ([r (in-list renames)]
                         #:when (and (pair? r) (>= (length r) 2)))
                (cons (car r) (cadr r))))

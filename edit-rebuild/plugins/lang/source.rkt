@@ -14,7 +14,7 @@
 
 (provide require-context? lang-context?
          module-context requires-context requires-of-forms require-specs-of-forms
-         definitions-of-forms)
+         definitions-of-forms provides-of-forms)
 
 (require racket/list racket/path racket/string)
 
@@ -224,6 +224,81 @@
 (define (definitions-of-forms forms)
   (distinct-symbols
    (append* (for/list ([f (in-list forms)]) (def-names f)))))
+
+;; 字符串去重（哈希 O(n)）。
+(define (distinct-strings ss)
+  (define seen (make-hash))
+  (reverse
+   (for/fold ([acc '()]) ([s (in-list ss)])
+     (cond [(hash-ref seen s #f) acc]
+           [else (hash-set! seen s #t) (cons s acc)]))))
+
+;;; ================= 导出名（启发式扫 (provide …)） =================
+;;;
+;;; 用于「require 的本地文件已作为文档打开」时：不加载磁盘模块（可能过期 / 不完整），
+;;; 而是扫**当前缓冲区文本**的 (provide …)。对半成品文本是全函数。
+
+;; struct 名 -> 字段名表（从 (struct name (f …)) / (define-struct name (f …)) 扫）。
+(define (struct-fields forms)
+  (define h (make-hash))
+  (for ([f (in-list forms)])
+    (when (and (pair? f) (memq (car f) '(struct struct* define-struct)))
+      (define t (and (pair? (cdr f)) (cadr f)))
+      (define fs (and (pair? (cddr f)) (cadr (cdr f))))
+      (when (and (symbol? t) (pair? fs))
+        (hash-set! h t (filter symbol? fs)))))
+  h)
+
+;; struct-out：结构名 + name? + name-field（字段已知时）。
+(define (struct-out-names t fields)
+  (define base (symbol->string t))
+  (append (list base (string-append base "?"))
+          (for/list ([f (in-list (hash-ref fields t '()))])
+            (string-append base "-" (symbol->string f)))))
+
+;; contract-out 里的一项 -> 绑定名。
+(define (contract-out-name x)
+  (cond [(and (pair? x) (symbol? (car x))) (list (symbol->string (car x)))]
+        [else '()]))
+
+(define (provide-names s defined fields)
+  (cond
+    [(symbol? s) (list (symbol->string s))]
+    [(pair? s)
+     (define h (and (symbol? (car s)) (car s)))
+     (case h
+       [(all-defined-out) (map symbol->string defined)]
+       [(all-from-out) '()]                    ; 外部模块的导出此处无法解析
+       [(rename-out)
+        (for/list ([r (in-list (cdr s))] #:when (and (pair? r) (>= (length r) 2)))
+          (symbol->string (cadr r)))]
+       [(struct-out)
+        (append* (for/list ([t (in-list (cdr s))] #:when (symbol? t))
+                   (struct-out-names t fields)))]
+       [(except-out)
+        (remove* (map symbol->string (filter symbol? (cddr s)))
+                 (provide-names (cadr s) defined fields) string=?)]
+       [(prefix-out)
+        (define p (symbol->string (cadr s)))
+        (for/list ([n (in-list (provide-names (caddr s) defined fields))]) (string-append p n))]
+       [(combine-out)
+        (append* (for/list ([x (in-list (cdr s))]) (provide-names x defined fields)))]
+       [(protect-out) (provide-names (cadr s) defined fields)]
+       [(for-syntax for-template for-label) (provide-names (cadr s) defined fields)]
+       [(contract-out) (append* (for/list ([x (in-list (cdr s))]) (contract-out-name x)))]
+       [else '()])]
+    [else '()]))
+
+;; 一个源码文本导出的名字。对任意编辑中的文本是全函数（读不下去就停在能读处）。
+(define (provides-of-forms text)
+  (define-values (_lang forms) (module-context text))
+  (define defined (definitions-of-forms forms))
+  (define fields (struct-fields forms))
+  (distinct-strings
+   (append* (for/list ([f (in-list forms)]
+                       #:when (and (pair? f) (eq? (car f) 'provide)))
+              (append* (for/list ([s (in-list (list-elems (cdr f)))])
+                         (provide-names s defined fields)))))))
 
 ;;; ================= require 补全的上下文判定 =================
 

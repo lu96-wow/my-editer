@@ -65,6 +65,20 @@
 (check-equal? (spec-names (path->string lp) dir) '("local-thing"))
 (delete-file lp)
 
+;;; ---------- provides-of-forms（打开的本地文件用缓冲区文本） ----------
+
+(check-equal?
+ (provides-of-forms
+  "#lang racket/base\n(provide foo (all-defined-out) (struct-out posn))\n(define foo 1)\n(define bar 2)\n(struct posn (x y))\n")
+ '("foo" "bar" "posn" "posn?" "posn-x" "posn-y"))
+
+;; spec-names 带 open：命中的本地文件改用缓冲区文本（不登磁盘）
+(define open (make-hash))
+(hash-set! open "/tmp/spec-lib.rkt" "#lang racket/base\n(provide live-name)\n(define live-name 1)\n")
+(check-equal? (spec-names "/tmp/spec-lib.rkt" (current-directory) open) '("live-name"))
+(check-equal? (spec-names '(prefix-in p: "/tmp/spec-lib.rkt") (current-directory) open)
+              '("p:live-name"))
+
 ;; filter-pool：前缀过滤、长度升序（同长字典序）、排除与前缀相同的项
 (check-equal? (filter-pool '("beta" "alpha" "alphabet") "alph")
               '("alpha" "alphabet"))

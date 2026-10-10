@@ -16,7 +16,9 @@
          "../../core/session/session.rkt"
          "../../core/session/adapter.rkt"
          "../../core/session/edit.rkt"
+         "../../core/session/focus.rkt"
          "../../core/session/render.rkt"
+         "../../core/focus.rkt"
          "../../core/path.rkt"
          "../catalog.rkt"
          "../ui/document.rkt")
@@ -69,3 +71,45 @@
 (check-not-false tdid)
 (check-not-false (regexp-match? #rx"first" (session-document-string t2 tdid)))
 (delete-file p2)
+
+;;; ---------- 3. require 的本地文件已打开：用**缓冲区**而不是磁盘 ----------
+
+(define dir (build-path (find-system-path 'temp-dir) (format "cmdir-~a" (random))))
+(make-directory dir)
+(define lib (build-path dir "lib.rkt"))
+(define main (build-path dir "main.rkt"))
+(display-to-file "#lang racket/base\n(provide disk-thing)\n(define disk-thing 1)\n" lib #:exists 'replace)
+(display-to-file "#lang racket/base\n(require \"lib.rkt\")\n\n" main #:exists 'replace)
+
+(define (vid-of s path)
+  (define did (session-file-did s path))
+  (and did (car (session-document-view-list s did))))
+(define (focus! s vid) (session-set-focus s (focus-set (session-focus s) vid)))
+
+(define w0 (render (session-open-file (app-session 80 24 #:plugins enabled-plugins) (normalize lib))))
+;; 改 lib 缓冲区（不存盘）：disk-thing -> buffer-thing
+(define lvid (vid-of w0 (normalize lib)))
+(define w1 (session-ed-replace! w0 lvid 0 0 3 0
+                                 "#lang racket/base\n(provide buffer-thing)\n(define buffer-thing 1)\n"))
+(define w2 (render (session-open-file w1 (normalize main))))
+(define mvid2 (vid-of w2 (normalize main)))
+(define w3 (session-insert (session-ed-set-point! (focus! w2 mvid2) mvid2 2 0) "bu"))
+(define w4 (wait-menu (render w3)))
+(define wdid (menu-did w4))
+(check-not-false wdid)
+(check-not-false (regexp-match? #rx"buffer-thing" (session-document-string w4 wdid)))
+(check-false (regexp-match? #rx"disk-thing" (session-document-string w4 wdid)))
+
+;; 再改 lib 缓冲区为 other-thing → 重扫后 main 能补出新名字
+(define lvid2 (vid-of w4 (normalize lib)))
+(define w5 (session-ed-replace! w4 lvid2 0 0 3 0
+                                 "#lang racket/base\n(provide other-thing)\n(define other-thing 1)\n"))
+(define w6 (session-insert (session-ed-set-point! (focus! w5 mvid2) mvid2 3 0) "ot"))
+(define w7 (wait-menu (render w6)))
+(define wdid2 (menu-did w7))
+(check-not-false wdid2)
+(check-not-false (regexp-match? #rx"other-thing" (session-document-string w7 wdid2)))
+
+(delete-file lib)
+(delete-file main)
+(delete-directory dir)
