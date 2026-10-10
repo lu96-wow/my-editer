@@ -29,7 +29,7 @@
 tools/                       ← Phase 1，唯一允许的依赖：racket 官方库
   span.rkt  pos.rkt  lexer.rkt  forest.rkt  expand.rkt  analyze.rkt  worker.rkt
 adapter/                     ← Phase 2，唯一允许 require session 的部分
-  service.rkt  semantic.rkt  (后来) hover.rkt  definition.rkt  diagnostic.rkt
+  pipeline.rkt  semantic.rkt  (后来) hover.rkt  definition.rkt  diagnostic.rkt
 ```
 
 - **tools 禁止** require `edit/session`、`core/editor`、`tui`、`plugin/registry`。
@@ -104,14 +104,14 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
 
 | 文件 | 职责 |
 |---|---|
-| `service.rkt` | `analysis-state` 文档槽 `(path version lex expand pending?)`；编辑 → 标脏 + debounce → 提交 job（同 did 顶掉旧的）；结果经 `session-await` 版本门控装槽；发 `after-analysis` hook |
+| `pipeline.rkt` | 流水线：**对每个 document 版本产一次** `analysis-result`，交给 `sink`；自己只记 `pending` / `emitted` handle，**不落 document 槽**。sink 决定值怎么用 |
 | `semantic.rkt` | `expand-result` 的 sem-tokens → 每行 face 向量（`track`），复用现有 face 层写回（脏行增量；叠在 syntax/words 之上） |
 | `hover.rkt` / `definition.rkt` / `diagnostic.rkt` | 后续：overlay 浮窗 / 跳转 / 波浪线 + 面板；用「等待在途分析」而不是轮询 |
 
 ### 与现有代码的接点（不新增抽象）
 
 - **异步/版本**：`edit/plugin/runner.rkt`（place）+ `edit/session/async.rkt`（`session-await`，token = document handle）。
-- **状态**：`define-document-slot`（`edit/session/core.rkt`）。
+- **状态**：流水线自己的会话服务 `pending`/`emitted`（**不用 document 槽**）。
 - **写回**：`session-doc-face-lines!` + 每行 face 向量（就是 `words`/`syntax` 用的那套）。
 - **触发**：`after-edit` / `after-nav` / `document-closed` hook。
 - **共享服务**：`session-service-ref/put`（放 workspace 跨文件索引）。
@@ -146,23 +146,21 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
   测：自带 fixture 上的 sem-tokens / definitions / uses / diagnostics；**只跑 fixture**。
 - **Step 5 — `analyze.rkt` + `worker.rkt`**
   测：`analyze` 端到端；经 place 往返（序列化正确）；超时/异常返回失败；同请求不串。
-- **Step 6（Phase 2）— `service.rkt`**
-  测：编辑 → 提交 → 版本闸门（过期结果丢弃）→ 装槽 → hook；document-closed 清理。
+- **Step 6（Phase 2）— `pipeline.rkt`**
+  测：每个 document 版本产一次值与 sink；同版本不重复；编辑产新版本；值不进槽。
 - **Step 7（Phase 2）— `semantic.rkt`**
   测：sem-tokens → 每行 face 层，与 syntax/words 叠加；脏行增量正确。
 - **Step 8+（Phase 3）— hover / definition / diagnostic / workspace 索引。**
 
 ---
 
-## 7. 与编辑器衔接的设计（Phase 2 先想清楚，避免返工）
+## 7. 与编辑器衔接的设计（Phase 2）
 
-- `analysis-state` 槽值 `(path version lex expand pending?)`，随 document 版本 fork。
-- 编辑：`after-edit` → 若与上次版本相差不大，先 `text-replaced/expand/contract` 平移旧区间（乐观），再 **debounce ~300ms** 提交 `analyze` job。
-- job：`(list 'analyze path text version)`；同 did 只保留最新（顶掉旧的，结果回来时比对 version / handle）。
-- 结果：`session-await` 版本门控 → 装槽 → `after-analysis` hook。
-- semantic：`semantic.rkt` 把 sem-tokens 变成 per-line face 层，交给现有写回原语；不必改 `session-doc-face-lines!`。
-- 等待式查询：hover / definition 若在途，用 `session-await` 注册回调，结果到了再渲染（不轮询）。
-- 跨文件：成功分析后产 `contribution`（path + defs/uses），存全局 index 服务；references/definition 先查本地再查全局。
+- **架构 = 流水线**：输入是 document 版本快照 `(path text handle)`，输出是 `analysis-result`；驱动是 `before-render` 钩子；产物经 `sink` 交给消费方（怎么用先忽略）。
+- 版本语义：提交记 `handle`；结果回来 `handle` 变了就丢；`emitted[did] = 最近交付 handle` → 同版本只产一次。
+- 不落 document 槽；流水线自己只存 `pending`/`emitted`（O(打开文档数)）。
+- 消费（后续）：`semantic.rkt` 把 sem-tokens 变成 per-line face 层；hover / definition 用同一个 sink + 等待式查询。
+- 跨文件：成功分析后产 `contribution`（path + defs/uses）交 sink，存全局 index；references/definition 先查本地再查全局。
 
 ---
 
@@ -183,6 +181,6 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
 - [x] Step 3 `forest.rkt`（`edit/test/analysis-forest-test.rkt`）
 - [x] Step 4 `expand.rkt`（`edit/test/analysis-expand-test.rkt`）
 - [x] Step 5 `analyze.rkt` + `worker.rkt`（`edit/test/analysis-worker-test.rkt`）
-- [ ] Step 6 `adapter/service.rkt`
-- [ ] Step 7 `adapter/semantic.rkt`
+- [x] Step 6 `adapter/pipeline.rkt`（流水线：每文档版本产一次值交 sink，不落槽；`edit/test/analysis-pipeline-test.rkt`）
+- [ ] Step 7 `adapter/semantic.rkt`（sem-tokens → face 层）
 - [ ] Step 8+ hover / definition / diagnostic / workspace 索引
