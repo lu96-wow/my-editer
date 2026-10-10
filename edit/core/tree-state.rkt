@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/core/tree-state.rkt —— 目录导航 + 查询状态机（纯）
+;;; edit-rebuild/core/tree-state.rkt —— 目录导航 + 查询状态机（纯）
 ;;;
 ;;; 树状态 = root + 展开集 + 目录快照缓存 + 查询状态。
 ;;; **纯**：不 require 任何 I/O；读目录由调用方注入

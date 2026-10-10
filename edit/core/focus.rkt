@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/core/focus.rkt —— 焦点（纯函数）
+;;; edit-rebuild/core/focus.rkt —— 焦点（纯函数）
 ;;;
 ;;; 焦点 = 唯一活动目标 + 历史。语义分离（避免方向键 / 鼠标把历史越堆越深）：
 ;;;     focus-set      普通移动，不动历史
@@ -10,7 +10,7 @@
 ;;; 焦点只存 target(vid) + stack，不含几何；方向移动的几何由调用方传
 ;;; 「已放置的 view 列表」（layout-place 的结果 placed），不落进 focus 值。
 
-(require "layout.rkt")
+(require "geometry/layout.rkt")
 
 (struct focus (target stack) #:transparent)
 ;; target : vid | #f

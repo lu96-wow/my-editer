@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/core/path.rkt —— 路径工具（纯）
+;;; edit-rebuild/core/path.rkt —— 路径工具（纯）
 ;;;
 ;;; 各处（file-map / tree-state / document / feature/tree）原本各带一份
 ;;; normalize；统一到这里。
