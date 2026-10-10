@@ -21,9 +21,14 @@
 (define s1 (session-open-file s (normalize p)))
 (define vid (session-edit-vid s1))
 
-;; 新行输入 "alph" → 自动弹菜单
+;; 新行输入 "alph" → 自动弹菜单（无 #lang → 基座导出走 worker，需轮询）
 (define s2 (session-ed-set-point! s1 vid 1 0))
-(define s3 (step s2 (cmd-insert "alph")))
+(define (pump-until-menu s n)
+  (cond
+    [(session-layer-active? s 'complete) s]
+    [(zero? n) s]
+    [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
+(define s3 (pump-until-menu (step s2 (cmd-insert "alph")) 500))
 (check-true (session-layer-active? s3 'complete))
 
 ;; 退格逐个删：还有前缀时菜单在；删空 → 关闭

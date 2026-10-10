@@ -149,14 +149,17 @@
 (define (session-view-point-line s vid) (editor-view-point-line (session-ed s) vid))
 (define (session-view-point-column s vid) (editor-view-point-column (session-ed s) vid))
 
-;; 某视图某点的**绝对屏幕坐标**（列, 行）；不在视口内→ (#f #f)。
+;; 某视图某点的**绝对屏幕坐标**（列, 行）。
+;; 视图已落位但点不在视口 → 回退到视图左上角（保证有合法锚点）；视图未落位 → (#f #f)。
 (define (session-view-point->screen s vid line col)
   (define pl (for/first ([p (in-list (session-views s))] #:when (eqv? vid (placed-vid p))) p))
   (cond
     [(not pl) (values #f #f)]
     [else
      (define-values (r c) (editor-view-point->screen-position (session-ed s) vid (point line col)))
-     (if r (values (+ (placed-x pl) c) (+ (placed-y pl) r)) (values #f #f))]))
+     (if r
+         (values (+ (placed-x pl) c) (+ (placed-y pl) r))
+         (values (placed-x pl) (placed-y pl)))]))
 
 ;; 某视图光标的绝对屏幕坐标（列, 行）。补全弹窗锚点用。
 (define (session-view-cursor-screen s vid)

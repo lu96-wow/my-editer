@@ -16,7 +16,7 @@
 
 (provide symbol-char? ident-start? ident-char?
          line-tokens scan-words word-token-at
-         line-at prefix-at)
+         line-at prefix-at identifier-at)
 
 (define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
 
@@ -71,3 +71,21 @@
     (let loop ([i c])
       (if (and (> i 0) (symbol-char? (string-ref s (sub1 i)))) (loop (sub1 i)) i)))
   (substring s start c))
+
+;; 光标处标识符（文档查询 / 悬停用）：光标在某字符上 → 连左右；紧跟词尾 → 只取左侧。
+(define (identifier-at text line col)
+  (define s (line-at text line))
+  (define n (string-length s))
+  (define c (max 0 (min col n)))
+  (define on-char? (and (< c n) (symbol-char? (string-ref s c))))
+  (define left-char? (and (> c 0) (symbol-char? (string-ref s (sub1 c)))))
+  (cond
+    [(or on-char? left-char?)
+     (define start
+       (let loop ([i (if on-char? c (sub1 c))])
+         (if (and (> i 0) (symbol-char? (string-ref s (sub1 i)))) (loop (sub1 i)) i)))
+     (define end
+       (let loop ([i c])
+         (if (and (< i n) (symbol-char? (string-ref s i))) (loop (add1 i)) i)))
+     (substring s start end)]
+    [else #f]))

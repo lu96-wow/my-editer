@@ -7,6 +7,7 @@
 ;;;   (exports . mods)    → 各模块导出名（去重，module->exports）
 ;;;
 ;;; 慢的部分（目录扫描 / module->exports）都在这里，主线程只做本地解析与过滤。
+;;; 文档查询是另一个 worker（doc-worker.rkt），补全不认识文档。
 
 (require racket/match
          "../runner.rkt"

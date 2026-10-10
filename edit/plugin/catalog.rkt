@@ -12,6 +12,7 @@
          "builtin/words.rkt"
          "builtin/syntax.rkt"
          "builtin/completion.rkt"
+         "builtin/docs.rkt"
          "../config/plugins.rkt")
 
 (provide plugin-catalog registry-ref plugins-by-names
@@ -21,7 +22,8 @@
   (list bracket-spec
         word-spec
         syntax-spec
-        completion-spec))
+        completion-spec
+        docs-spec))
 
 (define (registry-ref name)
   (for/first ([p (in-list plugin-catalog)] #:when (eq? name (plugin-spec-name p))) p))

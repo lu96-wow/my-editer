@@ -38,8 +38,9 @@
    ;; 历史
    (key 'z 'ctrl)   (cmd-undo)
    (key 'y 'ctrl)   (cmd-redo)
-   ;; 补全（M-/）
-   (key '/ 'alt)    (cmd-complete)))
+   ;; 补全（M-/） / 光标处文档（M-d）
+   (key '/ 'alt)    (cmd-complete)
+   (key 'd 'alt)    (cmd-docs-show)))
 
 ;;; ---------- 焦点前缀（C-p 后接方向） ----------
 

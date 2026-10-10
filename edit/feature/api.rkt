@@ -31,6 +31,8 @@
  ;; 会话构造 / 文档 / 视图
  session-add-document
  session-document-ids session-document-name
+ session-document-string session-document-handle session-document-track
+ session-view-id-list
  session-view-ids-of session-view-did
  session-view-point-line session-view-point-column session-view-string
  session-edit-vid session-focus-vid session-prefix
@@ -57,7 +59,7 @@
 
  ;; 键 / 命令消费 + 生命周期通知
  session-add-handler
- hook hook? hook-point hook-proc session-add-hook
+ hook hook? hook-point hook-proc session-add-hook session-run-hooks
  ;; 每-editor 命名状态（插件间共享 / 懒建服务）
  session-service-ref session-service-put
  ;; 异步结果阑门（runner 见 plugin/runner.rkt）

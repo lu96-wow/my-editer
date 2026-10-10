@@ -59,6 +59,11 @@
 (struct cmd-complete-move (dir) #:transparent)   ; dir = +1 / -1
 (struct cmd-complete-accept () #:transparent)
 (struct cmd-complete-cancel () #:transparent)
+(struct cmd-complete-switch () #:transparent)   ; Tab：补全 / 文档窗口切换
+(struct cmd-complete-scroll (delta) #:transparent) ; 文档窗滚动 delta 行
+
+;; 文档浮窗（实现见 plugin/builtin/docs.rkt）
+(struct cmd-docs-show () #:transparent)
 
 ;; 改焦点视图尺寸（axis : 'width | 'height）
 (struct cmd-resize-view (axis delta) #:transparent)
@@ -82,6 +87,8 @@
          (struct-out cmd-log-toggle)
          (struct-out cmd-complete) (struct-out cmd-complete-move)
          (struct-out cmd-complete-accept) (struct-out cmd-complete-cancel)
+         (struct-out cmd-complete-switch) (struct-out cmd-complete-scroll)
+         (struct-out cmd-docs-show)
          (struct-out cmd-resize-view)
          (struct-out cmd-prefix) (struct-out cmd-prefix-cancel)
          (struct-out cmd-mouse-press) (struct-out cmd-mouse-scroll)

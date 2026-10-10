@@ -22,13 +22,20 @@
 (define s1 (session-open-file s (normalize p)))
 (define vid (session-edit-vid s1))
 
+;; 池在 worker 里算：轮询 before-render 直到菜单打开
+(define (pump-until-menu s n)
+  (cond
+    [(session-layer-active? s 'complete) s]
+    [(zero? n) s]
+    [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
+
 ;; 在空行输入 "alph"，光标停在前缀后
 (define s2 (session-ed-set-point! s1 vid 1 0))
 (define s3 (step s2 (cmd-insert "alph")))
 (check-equal? (session-view-string s3 vid) "alpha alphabet\nalph")
 
-;; 打开补全菜单
-(define s4 (step s3 (cmd-complete)))
+;; 打开补全菜单（无 #lang → 基座 racket/base 导出由 worker 算，需轮询）
+(define s4 (pump-until-menu (step s3 (cmd-complete)) 500))
 (check-true (session-layer-active? s4 'complete))
 (check-true (pair? (session-overlays s4)))
 
@@ -38,8 +45,14 @@
 (check-pred cmd-complete-accept? (keymap-lookup lk (key 'enter)))
 (check-pred cmd-complete-cancel? (keymap-lookup lk (key 'escape)))
 
+;; 鼠标点击补全浮层：不应崩、不聚焦浮层（浮层不是编辑视图）
+(define-values (mc mr) (session-view-cursor-screen s4 vid))
+(check-equal? (session-view-at s4 mc (add1 mr)) (car (session-overlays s4)))   ; 确实点在浮层上
+(define s4m (step s4 (cmd-mouse-press mc (add1 mr))))
+(check-true (session-layer-active? s4m 'complete))
+
 ;; 打字 fallthrough：插入 + 刷新（前缀 "alpha" 本身也在候选里，长度最短排最前）
-(define s5 (step s4 (cmd-insert "a")))
+(define s5 (step s4m (cmd-insert "a")))
 (check-equal? (session-view-string s5 vid) "alpha alphabet\nalpha")
 
 ;; 接受：下移选 "alphabet"，把前缀替换掉
@@ -72,12 +85,6 @@
 (define g1 (session-open-file u3 (normalize p2)))
 (define gvid (session-edit-vid g1))
 (define g2 (session-ed-set-point! g1 gvid 3 4))
-;; 池在 worker 里算：轮询 before-render 直到菜单打开
-(define (pump-until-menu s n)
-  (cond
-    [(session-layer-active? s 'complete) s]
-    [(zero? n) s]
-    [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
 (define g3 (pump-until-menu (step g2 (cmd-complete)) 500))
 (check-true (session-layer-active? g3 'complete))
 ;; 候选里有正在输入的 "fir"（长度最短排最前）与 "first"；下移选 "first"

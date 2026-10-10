@@ -32,15 +32,26 @@
     [(not p) s]
     [else
      (define vid (placed-vid p))
-     (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
-     (define-values (line c)
-       (session-ed-screen->point s1 vid (- row (placed-y p)) (- col (placed-x p))))
-     (define s2 (if line (session-ed-set-point! s1 vid line c) s1))
-     ;; 光标定位也算导航：发 'after-nav（补全菜单据此关单）。
-     (session-run-hooks s2 'after-nav (list vid))]))
+     (cond
+       ;; 叠加浮层（补全菜单 / 文档窗）不是可聚焦编辑视图：点击不聚焦、不定位。
+       ;; （要选中候选需浮层自己处理鼠标；这里至少保证不把它当文档用。）
+       [(memv vid (session-overlays s)) s]
+       [else
+        (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
+        ;; 聚焦可能触发钩子把该视图关掉（如补全菜单）→ 已不在就别再用它的 vid。
+        (cond
+          [(not (memv vid (session-view-id-list s1))) s1]
+          [else
+           (define-values (line c)
+             (session-ed-screen->point s1 vid (- row (placed-y p)) (- col (placed-x p))))
+           (define s2 (if line (session-ed-set-point! s1 vid line c) s1))
+           ;; 光标定位也算导航：发 'after-nav（补全菜单据此关单）。
+           (session-run-hooks s2 'after-nav (list vid))])])]))
 
 (define (session-mouse-scroll s col row delta)
   (sync-layout! s)
   (define vid (session-view-at s col row))
-  (when vid (session-ed-scroll! s vid delta))
-  s)
+  (cond
+    [(not vid) s]
+    [(memv vid (session-overlays s)) s]     ; 浮层不响应滚轮
+    [else (session-ed-scroll! s vid delta) s]))

@@ -21,4 +21,6 @@
         'log          (style (rgb 240 130 130) #f '())                 ; 日志行
         'input        (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 输入行
         'complete     (style (rgb 200 200 200) #f '())              ; 补全候选
-        'complete-selected (style (rgb 20 20 20) (rgb 120 180 240) '())))   ; 补全选中
+        'complete-selected (style (rgb 20 20 20) (rgb 120 180 240) '())   ; 补全选中
+        'docs         (style (rgb 200 205 215) #f '())               ; 文档浮窗正文（活动）
+        'docs-dim     (style (rgb 120 125 135) #f '())))             ; 文档浮窗正文（非活动）
