@@ -26,16 +26,16 @@
 ## 1. 依赖边界（硬约束）
 
 ```
-tools/                       ← Phase 1，唯一允许的依赖：racket 官方库
+tools/                       ← 保留：独立库（唯一允许的依赖：racket 官方库 + plugin/runner）
   span.rkt  pos.rkt  lexer.rkt  forest.rkt  expand.rkt  analyze.rkt  worker.rkt
-adapter/                     ← Phase 2，唯一允许 require session 的部分
-  pipeline.rkt  semantic.rkt  (后来) hover.rkt  definition.rkt  diagnostic.rkt
 ```
+
+> 曾经有个 `adapter/`（会话接入流水线），因为对当前编辑器太重，**已删掉**。
+> 工具保持独立，不 require `edit/session` / `core/editor` / `tui` / `plugin/registry`。
 
 - **tools 禁止** require `edit/session`、`core/editor`、`tui`、`plugin/registry`。
   → 这样工具能：headless `raco test`、丢进 place worker、被复用。
-- **adapter** 是唯一把这些工具接进会话的地方。
-- 依赖方向单向：adapter → tools → `racket/*`。
+- 依赖方向单向：tools → `racket/*` / `plugin/runner`。
 
 ---
 
@@ -47,7 +47,7 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
   - 跨行 token（字符串 / 注释 / 多行字符串）用偏移天然能表达，不必先切行。
 - **行列换算独立成 `pos.rkt`**：由整篇文本建「行首偏移向量」，之后 O(log n) 查。
   行列用 0-based，与 `track` 的 `(line,col)` 对齐。
-- 编辑器接入时由 adapter 做 `offset ↔ (line,col)`；工具不 import `track`。
+- 若将来接入：由接入方做 `offset ↔ (line,col)`；工具不 import `track`。
 
 ---
 
@@ -100,13 +100,18 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
 | `analyze.rkt` | 工具门面：orchestrate lex/forest/expand | `(analyze-lex path text) → lex-result`、`(analyze-expand path text) → expand-result`、`(analyze path text version) → analysis-result` |
 | `worker.rkt` | place worker 入口；沙箱 + 限额；请求分派 | 用 `runner.job-worker-main` 包一个按 `(type . args)` 分派的 handler |
 
-### Phase 2 —— 编辑器接入（先设计，后实现）
+### Phase 2 —— 编辑器接入（**已放弃**）
 
-| 文件 | 职责 |
+分析器对当前编辑器太重：它是全量的，而本地增量插件已覆盖高频视觉/结构，两者互补但不必合并。
+曾经的 `pipeline.rkt`（会话接入流水线）已删除。若将来重做，只服务三个低频功能：
+
+| 目标 | 依赖 |
 |---|---|
-| `pipeline.rkt` | 流水线：**对每个 document 版本产一次** `analysis-result`，交给 `sink`；自己只记 `pending` / `emitted` handle，**不落 document 槽**。sink 决定值怎么用 |
-| `semantic.rkt` | `expand-result` 的 sem-tokens → 每行 face 向量（`track`），复用现有 face 层写回（脏行增量；叠在 syntax/words 之上） |
-| `hover.rkt` / `definition.rkt` / `diagnostic.rkt` | 后续：overlay 浮窗 / 跳转 / 波浪线 + 面板；用「等待在途分析」而不是轮询 |
+| 定位定义 | `definitions` + 本文件 uses；跨文件用 jump 的 target |
+| 结构体提示 | 展开后读 `struct` 字段列表 + 绑定图（RLS `struct-hint.rkt`） |
+| 类型 | 拦 Typed Racket 的 check-syntax 日志（RLS `typed-racket/service.rkt`） |
+
+接入方式应为**按需请求 + sink**，不要每版本主动产。
 
 ### 与现有代码的接点（不新增抽象）
 
@@ -146,21 +151,20 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
   测：自带 fixture 上的 sem-tokens / definitions / uses / diagnostics；**只跑 fixture**。
 - **Step 5 — `analyze.rkt` + `worker.rkt`**
   测：`analyze` 端到端；经 place 往返（序列化正确）；超时/异常返回失败；同请求不串。
-- **Step 6（Phase 2）— `pipeline.rkt`**
-  测：每个 document 版本产一次值与 sink；同版本不重复；编辑产新版本；值不进槽。
-- **Step 7（Phase 2）— `semantic.rkt`**
-  测：sem-tokens → 每行 face 层，与 syntax/words 叠加；脏行增量正确。
-- **Step 8+（Phase 3）— hover / definition / diagnostic / workspace 索引。**
+- **Step 6+ —— 编辑器接入）：已放弃**（太重，见 §7）。工具停在 Step 5。
 
 ---
 
-## 7. 与编辑器衔接的设计（Phase 2）
+## 7. 与编辑器衔接（**已决定不接入**）
 
-- **架构 = 流水线**：输入是 document 版本快照 `(path text handle)`，输出是 `analysis-result`；驱动是 `before-render` 钩子；产物经 `sink` 交给消费方（怎么用先忽略）。
-- 版本语义：提交记 `handle`；结果回来 `handle` 变了就丢；`emitted[did] = 最近交付 handle` → 同版本只产一次。
-- 不落 document 槽；流水线自己只存 `pending`/`emitted`（O(打开文档数)）。
-- 消费（后续）：`semantic.rkt` 把 sem-tokens 变成 per-line face 层；hover / definition 用同一个 sink + 等待式查询。
-- 跨文件：成功分析后产 `contribution`（path + defs/uses）交 sink，存全局 index；references/definition 先查本地再查全局。
+分析器的三类目标功能（定义 / struct 提示 / 类型）都需要宏展开，而展开是全量的、贵的。
+本地增量插件（括号/词/关键字）已经覆盖高频视觉与结构，两者互补：
+
+- **本地增量层**：每次编辑、O(脏行)、无代码执行。
+- **分析层**：需要展开、低频、按需/idle、worker、版本门控。
+
+结论：**分析器对当前编辑器太重，从编辑器里拆掉**（`adapter/` 已删），
+只把 `tools/` 作为独立库保留。将来若要接，做「按需请求 + sink」，不要每版本主动产。
 
 ---
 
@@ -181,6 +185,5 @@ adapter/                     ← Phase 2，唯一允许 require session 的部�
 - [x] Step 3 `forest.rkt`（`edit/test/analysis-forest-test.rkt`）
 - [x] Step 4 `expand.rkt`（`edit/test/analysis-expand-test.rkt`）
 - [x] Step 5 `analyze.rkt` + `worker.rkt`（`edit/test/analysis-worker-test.rkt`）
-- [x] Step 6 `adapter/pipeline.rkt`（流水线：每文档版本产一次值交 sink，不落槽；`edit/test/analysis-pipeline-test.rkt`）
-- [ ] Step 7 `adapter/semantic.rkt`（sem-tokens → face 层）
-- [ ] Step 8+ hover / definition / diagnostic / workspace 索引
+- [x] Step 6 ~~`adapter/pipeline.rkt`~~（**已拆掉**：分析器对当前编辑器太重，工具保留为独立库）
+- [ ] Step 7+（不在编辑器接入）：semantic / hover / definition / diagnostic / workspace 索引
