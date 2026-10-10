@@ -1,13 +1,10 @@
 #lang racket
 
-;;; edit-rebuild/plugins/config/words.rkt —— 词高亮配色策略（纯数据）
+;;; edit-rebuild/plugins/config/words.rkt —— 词高亮配置（纯数据）
 ;;;
-;;; sequential : 追加式词表（同词同色、相邻少撞色；有状态，随 document 版本 fork）
-;;; hash       : 按词名散列（无状态、跨文件 / 会话稳定；可能撞色）
-;;;
-;;; word-color-count 仅 hash 模式用（散列后取的桶数；主题再按色板长度取模）。
+;;; 词的色 = djb2(词名) 对 word-color-count 取模，再由主题色板取模。
+;;; word-color-count 越大越不容易撞色（色板上限仍以主题为准）。
 
-(provide word-coloring word-color-count)
+(provide word-color-count)
 
-(define word-coloring 'sequential)
 (define word-color-count 10)

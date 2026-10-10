@@ -10,7 +10,7 @@
 ;;;   changes->dirty-lines  一次编辑波及的行（新坐标）
 ;;;   contiguous-runs       排序去重的行号 → 连续区间（供 track-splice 用）
 ;;;   scan-track            整篇扫描成缓存 track
-;;;   refresh-layer         只重扫脏行，其余行结构共享
+;;;   refresh-layer         按 change 的行区间重扫脏行，其余行结构共享
 ;;;   face-runs             一行 face 向量 → 连续同 face 区间（供写回）
 ;;;
 ;;; core 边界只给中性结构（change / track）；「什么算一个词」仍留在 lex.rkt。
@@ -77,15 +77,41 @@
    (for/list ([line (in-list (track->list text))] [i (in-naturals)])
      (scan i line))))
 
-;; 只重扫脏行：把 [lo,hi) 的缓存行换成对新文本重扫的结果，其余行由 track 共享。
-(define (refresh-layer layer text dirty-lines scan)
-  (for/fold ([layer layer]) ([run (in-list (contiguous-runs dirty-lines))])
-    (define lo (car run))
-    (define hi (cdr run))
-    (track-splice layer lo hi
-                  (for/list ([line (in-list (track-slice text lo hi))]
-                             [i (in-naturals lo)])
-                    (scan i line)))))
+;; 只重扫脏行：把旧层中「编辑波及的结构区间」按 change 的 before→after 行区间替换成
+;; 对新文本重扫的结果，其余行由 track 结构共享。
+;;
+;; 关键：**层与文本共享行结构**。单行内编辑时旧/新行一一对应；跨行编辑（增删换行）
+;; 时旧层行数 ≠ 新文本行数，必须按 change 的行区间做结构替换（旧层 [before] ← 新文本 [after]），
+;; 否则层会比文本多 / 少行，写回时越界。
+;;
+;;   changes : (listof change)      本次编辑（before = 旧层坐标，after = 新文本坐标）
+;;   extra   : (listof line-index)  额外内容脏行（新坐标，如活动词所在行）
+(define (refresh-layer layer text changes extra scan)
+  (define n (track-length text))
+  ;; 每个 change → (list old-lo old-hi new-lo new-hi)，含端点（hi 开）。
+  (define spans
+    (sort
+     (for/list ([ch (in-list changes)])
+       (define b (change-before ch))
+       (define a (change-after ch))
+       (list (point-line (range-start b)) (add1 (point-line (range-end b)))
+             (point-line (range-start a)) (add1 (point-line (range-end a)))))
+     > #:key car))
+  ;; 结构替换从右到左：右侧替换不影响左侧的旧层行号。
+  (define layer*
+    (for/fold ([layer layer]) ([sp (in-list spans)])
+      (match-define (list olo ohi nlo nhi) sp)
+      (track-splice layer olo ohi
+                    (for/list ([line (in-list (track-slice text nlo nhi))]
+                               [i (in-naturals nlo)])
+                      (scan i line)))))
+  (define covered
+    (for*/list ([sp (in-list spans)] [i (in-range (third sp) (fourth sp))]) i))
+  (for/fold ([layer layer*]) ([ln (in-list (sort (remove-duplicates extra) <))])
+    (if (or (>= ln n) (memv ln covered))
+        layer
+        (track-splice layer ln (add1 ln)
+                      (list (scan ln (track-ref text ln)))))))
 
 ;;; ---------- 行 face 向量 → 区间 ----------
 

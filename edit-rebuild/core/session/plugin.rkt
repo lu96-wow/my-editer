@@ -4,27 +4,26 @@
 ;;;
 ;;; 绑定：打开文件时由规则层把「适用插件集」按 did 记进来（session.plugin-bindings）。
 ;;; 状态：每个 did 的插件 state + **层 track** 放进文档槽 plugin-state，随版本 fork：
-;;;   · 槽值 = (path plugins entries dirty active written?)；
+;;;   · 槽值 = (path plugins entries dirty written?)；
 ;;;     entries = hash 插件名 -> (cons state layer)；
 ;;;   · 首次（槽 #f）在渲染前 open 整篇；
-;;;   · 每次编辑 fork：给各插件 face-ctx，插件推进 state/层并回**脏行**；
+;;;   · 每次编辑 fork：给各插件 face-ctx（只含文本 / changes），插件推进 state/层并回**脏行**；
 ;;;   · 未渲染的多次编辑把脏行**求并**，写回一次做掉；
 ;;;   · undo 恢复旧 document 即得旧 state/层（槽随版本回收）。
 ;;; 写回：渲染前对「有插件、且本版本还没写回」的文档，只清脏行再按插件顺序叠加各层。
 ;;;   · 行未变则由 track 结构共享，写回只碰脏行（O(脏行)）。
+;;; **插件不认识光标**：光标移动不产生 change、不 fork 槽，因此不改任何 face。
 ;;; 槽注册（define-document-slot）必须早于任何 document 创建；本模块经 session.rkt
 ;;; 在装配前加载，满足该约束。
 
-(require (only-in "../../../core/text/base/change.rkt" change-post-range)
-         (only-in "../../../core/text/base/point.rkt" point-line point-column)
-         (only-in "../../../core/text/base/range.rkt" range-start range-end)
-         (only-in "../../../core/text/base/track.rkt" track-length track-ref)
-         "session.rkt"
+(require "session.rkt"
          "adapter.rkt"
          "../document/rules.rkt"
          "../extension/face-plugin.rkt"
-         "../face/lex.rkt"
-         "../face/line-scan.rkt")
+         "../face/line-scan.rkt"
+         (only-in "../../../core/text/slots.rkt"
+                  fork-ctx-changes fork-ctx-new-text fork-ctx-old-text)
+         (only-in "../../../core/text/slot-dsl.rkt" define-document-slot))
 
 (provide session-doc-plugins session-doc-bind-plugins
          session-doc-plugin-forget
@@ -55,32 +54,12 @@
 
 ;;; ---------- 状态槽 ----------
 
-(struct plugin-slot (path plugins entries dirty active written?) #:transparent)
+(struct plugin-slot (path plugins entries dirty written?) #:transparent)
 ;; path     : path
 ;; plugins  : (listof face-plugin)   适用集（首次建槽时定，版本间不变）
 ;; entries  : (hash 插件名 -> (cons state layer))
 ;; dirty    : dirty                 上次写回以来累积的脏行
-;; active   : (list line start end) | #f   上次活动词（供重扫）
-;; written? : boolean                 本版本 face 是否已写回
-
-;; 活动词（本次编辑插入点前一个字符所在的词）→ (list line start end) | #f。
-;; 领域逻辑（词法）留在插件侧；core 边界只给中性的 changes / 文本轨。
-(define (edits->active changes text)
-  (cond
-    [(not (= 1 (length changes))) #f]
-    [else
-     (define r (change-post-range (car changes)))
-     (define l1 (point-line (range-end r)))
-     (define c1 (point-column (range-end r)))
-     (define col (sub1 c1))
-     (cond
-       [(or (< col 0) (>= l1 (track-length text))) #f]
-       [else
-        (define line (track-ref text l1))
-        (cond
-          [(>= col (string-length line)) #f]
-          [else (define tok (word-token-at line col))
-                (and tok (list l1 (car tok) (cdr tok)))])])]))
+;; written? : boolean               本版本 face 是否已写回
 
 ;; 首次整篇 open：建 state / 层，脏行 = 全篇。
 (define (slot-open path plugins text)
@@ -88,22 +67,19 @@
     (for/hash ([p (in-list plugins)])
       (define-values (st ly) ((face-plugin-open p) text path))
       (values (face-plugin-name p) (cons st ly))))
-  (plugin-slot path plugins entries (dirty-all) #f #f))
+  (plugin-slot path plugins entries (dirty-all) #f))
 
-;; fork：给各插件 face-ctx，推进 state / 层并累积脏行；written? 置假。
+;; fork：文档编辑时由槽系统调用。给各插件 face-ctx，推进 state / 层、累积脏行；written? 置假。
 (define (plugin-slot-fork old ctx)
   (cond
     [(not old) #f]
     [else
      (define path (plugin-slot-path old))
      (define plugins (plugin-slot-plugins old))
-     (define old-text (fork-ctx-old-text ctx))
-     (define new-text (fork-ctx-new-text ctx))
      (define changes (fork-ctx-changes ctx))
-     (define active (edits->active changes new-text))
-     (define cctx (face-ctx old-text new-text changes
+     (define cctx (face-ctx (fork-ctx-old-text ctx) (fork-ctx-new-text ctx) changes
                            (dirty-lines (changes->dirty-lines changes))
-                           path active (plugin-slot-active old)))
+                           path))
      (define-values (entries new-dirty)
        (for/fold ([es (hash)] [d (dirty-lines '())]) ([p (in-list plugins)])
          (define name (face-plugin-name p))
@@ -112,7 +88,7 @@
          (values (hash-set es name (cons st ly)) (dirty-union d dl))))
      (plugin-slot path plugins entries
                   (dirty-union (plugin-slot-dirty old) new-dirty)
-                  active #f)]))
+                  #f)]))
 
 (define-document-slot plugin-state #:default #f #:fork (transform plugin-slot-fork))
 

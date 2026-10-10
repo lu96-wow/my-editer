@@ -31,7 +31,7 @@
       [else
        (define entries (bstate-entries st*))
        (define syntax? (racket-file? path))
-       (refresh-layer layer text (dirty-ls dirty)
+       (refresh-layer layer text (face-ctx-changes ctx) (dirty-ls dirty)
                       (lambda (ln line)
                         (define-values (vec _) (bracket-line line ln (vector-ref entries ln) syntax?))
                         vec))]))

@@ -12,10 +12,14 @@
 ;;;    \p{L}（[:alpha:] 也是 ASCII-only），中文等 CJK 会被漏掉。
 
 (require racket/string
-         "../../../core/text/base/line.rkt")
+         "../../../core/text/base/line.rkt"
+         "../../../core/text/base/track.rkt"
+         "../../../core/text/base/change.rkt"
+         "../../../core/text/base/point.rkt"
+         "../../../core/text/base/range.rkt")
 
 (provide symbol-char? ident-start? ident-char?
-         line-tokens scan-words word-token-at
+         line-tokens scan-words word-token-at edit-word
          line-at prefix-at identifier-at)
 
 (define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
@@ -51,6 +55,25 @@
   (for/first ([m (in-list (line-tokens line))]
               #:when (and (<= (car m) col) (< col (cdr m))))
     (list (car m) (cdr m))))
+
+;; 一次编辑「正在输入的词」= 插入点（after 区间末尾）前一个字符所在 token
+;; → (list line start end) | #f。**不依赖光标**：只读 change 与文本，
+;; 所以移动光标不改变它。多个 change / 删除边界 → #f。
+(define (edit-word changes text)
+  (cond
+    [(not (= 1 (length changes))) #f]
+    [else
+     (define r (change-post-range (car changes)))
+     (define line (point-line (range-end r)))
+     (define col (sub1 (point-column (range-end r))))
+     (cond
+       [(or (< col 0) (>= line (track-length text))) #f]
+       [else
+        (define ln (track-ref text line))
+        (cond
+          [(>= col (string-length ln)) #f]
+          [else (define tok (word-token-at ln col))
+                (and tok (list line (car tok) (cadr tok)))])])]))
 
 ;; 第 line 行字符串（不含换行；越界 = ""）。
 (define (line-at text line)

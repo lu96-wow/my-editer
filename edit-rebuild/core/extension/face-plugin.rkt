@@ -5,7 +5,7 @@
 ;;; face 插件 = 「是否适用」谓词 + 一对纯函数，维护自己的增量状态与**层**：
 ;;;   applies? : path text -> boolean
 ;;;   open     : text-track path -> (values state layer)
-;;;   change   : state layer face-ctx -> (values state layer (listof line-index))
+;;;   change   : state layer face-ctx -> (values state layer dirty)
 ;;;
 ;;; 层（layer）= 一条 track，行 payload = (vectorof face) | #f（#f = 该行无贡献）。
 ;;; **输出是层、增量按行**：change 只重扫脏行并返回脏行号；未变行由 track 结构共享。
@@ -17,11 +17,11 @@
 ;;; 主题逐分量合并，于是「括号背景」和「语法前景」共存。
 ;;;
 ;;; face-ctx 只给中性结构（track / change）；「什么算一个词」这类词法在 core/lex.rkt。
+;;; 插件**不看光标**：色只随文本变，光标移动不触发插件、也不改色。
 
 (require "../face/line-scan.rkt")
 
-(provide (struct-out face-plugin) (struct-out face-ctx)
-         plugins-for active-dirty)
+(provide (struct-out face-plugin) (struct-out face-ctx) plugins-for)
 
 (struct face-plugin
   (name applies? open change)
@@ -33,21 +33,12 @@
 ;; layer    : track，行 payload = (vectorof face) | #f
 
 ;; 增量编辑上下文（会话侧构造）。
-(struct face-ctx (old-text new-text changes dirty path active prev-active)
+(struct face-ctx (old-text new-text changes dirty path)
   #:transparent)
 ;; old-text/new-text : track                  编辑前 / 后文本轨（不必物化）
 ;; changes : (listof change)                  本次编辑（core，编辑前 / 后坐标）
 ;; dirty   : dirty                            changes 直接波及的整行（新坐标）
 ;; path    : path
-;; active  : (list line start end) | #f       当前活动词（正在输入处）
-;; prev-active : 同 active，上一次的          字面 / 关键字插件也要重扫它，避免旧词永不上色
-
-;; 活动词所在行并入基础脏行。
-(define (active-line a) (and a (car a)))
-(define (active-dirty ctx)
-  (dirty-union (face-ctx-dirty ctx)
-               (dirty-lines (filter values (list (active-line (face-ctx-prev-active ctx))
-                                                 (active-line (face-ctx-active ctx)))))))
 
 ;; 从启用目录里挑出适用于该文档的插件（保持目录顺序）。
 (define (plugins-for plugins path text)
