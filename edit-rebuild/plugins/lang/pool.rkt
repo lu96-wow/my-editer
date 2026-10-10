@@ -59,13 +59,16 @@
      (cadddr tok))))
 
 ;; 在已有池里按前缀过滤（按长度升序，短的在前；同长按字典序） + 截断。
-;; 保留与前缀完全相同的候选（如已输入完整的 define 仍在列表里）。
+;; **排除与正在输入的词完全相同的候选**（已输入完整的 define 不再列出来）。
 (define (shorter? a b)
   (or (< (string-length a) (string-length b))
       (and (= (string-length a) (string-length b)) (string<? a b))))
 
 (define (filter-pool pool prefix #:limit [limit 500])
   (define matches
-    (sort (for/list ([s (in-list pool)] #:when (string-prefix? s prefix)) s)
+    (sort (for/list ([s (in-list pool)]
+                     #:when (and (string-prefix? s prefix)
+                                 (not (string=? s prefix))))
+            s)
           shorter?))
   (if (> (length matches) limit) (take matches limit) matches))

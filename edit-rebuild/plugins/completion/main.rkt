@@ -198,15 +198,14 @@
   (define-values (x y w* h) (popup-rect r c w (+ rows 2) sw sh))
   (values start rows x y w* h))
 
-;; 菜单文档：候选行（选中高亮）。
-(define (menu-doc cands idx start rows)
+;; 菜单文档：候选行（选中高亮）。content-w = 窗口内容宽（外框宽 - 2 边框），
+;; 每行都铺满到它，否则最小宽度（menu-width 的 12）下蓝条会短一截。
+(define (menu-doc cands idx start rows content-w)
   (define shown (take (drop cands start) rows))
-  ;; 整行铺满（含尾部空白）→ 弹窗整体有淡灰底，不只剩文字处有色
-  (define w (+ 2 (for/fold ([mx 0]) ([c (in-list cands)]) (max mx (string-length c)))))
   (panel-doc
    (for/list ([c (in-list shown)] [i (in-naturals)])
      (define line (string-append " " c))
-     (list (string-append line (make-string (max 0 (- w (string-length line))) #\space))
+     (list (string-append line (make-string (max 0 (- content-w (string-length line))) #\space))
            (if (= (+ start i) idx) 'complete-selected 'complete)))))
 
 ;; 按当前菜单状态重装菜单文档。
@@ -216,8 +215,8 @@
   (cond
     [(not m) s]
     [else
-     (define-values (start rows _x _y _w _h) (menu-layout s m))
-     (session-ed-assign! s (menu-mvid m) (menu-doc (menu-cands m) (menu-idx m) start rows))]))
+     (define-values (start rows _x _y w _h) (menu-layout s m))
+     (session-ed-assign! s (menu-mvid m) (menu-doc (menu-cands m) (menu-idx m) start rows (- w 2)))]))
 
 ;; 每帧浮面落位：菜单开着、源视图还在、光标在视口内才显示。→ (list x y w h) | #f
 (define (menu-pos s)
@@ -246,7 +245,7 @@
      (define m0 (menu vid #f (session-view-did s vid) start cands 0 pool mods))
      (define-values (_start rows _x _y w h) (menu-layout s m0))
      (define-values (s1 _mdid mvid)
-       (session-add-document s (menu-doc cands 0 0 rows) w h #:name "*complete*"))
+       (session-add-document s (menu-doc cands 0 0 rows (- w 2)) w h #:name "*complete*"))
      (define m (struct-copy menu m0 [mvid mvid]))
      (set-box! (c-svc-menu svc) m)
      (set-box! (c-svc-active svc) 'complete)     ; 默认接键的是补全
