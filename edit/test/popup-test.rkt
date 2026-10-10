@@ -7,7 +7,7 @@
 ;;; 核心硬约束：弹窗矩形 [y, y+h) 与锚点行 r 不相交（不遮住正在输入的那行）。
 
 (require rackunit
-         "../core/popup.rkt")
+         "../geometry/popup.rkt")
 
 ;; 矩形完全不覆盖锚点行。
 (define (no-overlap? r y h)

@@ -15,6 +15,9 @@
          "../core/path.rkt"
          "../core/focus.rkt")
 
+;; 菜单是否打开：以「complete 面存在」判定（补全菜单现在是一个 float 面）。
+(define (menu-open? s) (and (session-surface-ref s 'complete) #t))
+
 (define p (make-temporary-file "cp-~a.rkt"))
 (display-to-file "alpha alphabet\n" p #:exists 'replace)
 
@@ -25,7 +28,7 @@
 ;; 池在 worker 里算：轮询 before-render 直到菜单打开
 (define (pump-until-menu s n)
   (cond
-    [(session-layer-active? s 'complete) s]
+    [(menu-open? s) s]
     [(zero? n) s]
     [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
 
@@ -36,11 +39,11 @@
 
 ;; 打开补全菜单（无 #lang → 基座 racket/base 导出由 worker 算，需轮询）
 (define s4 (pump-until-menu (step s3 (cmd-complete)) 500))
-(check-true (session-layer-active? s4 'complete))
+(check-true (menu-open? s4))
 (check-true (pair? (session-overlays s4)))
 
 ;; 输入层键表接管上下 / Enter / Esc（普通字符不在此，fallthrough 到文档键表）
-(define lk (for/first ([l (in-list (session-layers s4))]) (layer-keys l)))
+(define lk (surface-keys (session-surface-ref s4 'complete)))
 (check-pred cmd-complete-move? (keymap-lookup lk (key 'down)))
 (check-pred cmd-complete-accept? (keymap-lookup lk (key 'enter)))
 (check-pred cmd-complete-cancel? (keymap-lookup lk (key 'escape)))
@@ -49,7 +52,7 @@
 (define-values (mc mr) (session-view-cursor-screen s4 vid))
 (check-equal? (session-view-at s4 mc (add1 mr)) (car (session-overlays s4)))   ; 确实点在浮层上
 (define s4m (step s4 (cmd-mouse-press mc (add1 mr))))
-(check-true (session-layer-active? s4m 'complete))
+(check-true (menu-open? s4m))
 
 ;; 打字 fallthrough：插入 + 刷新（前缀 "alpha" 本身也在候选里，长度最短排最前）
 (define s5 (step s4m (cmd-insert "a")))
@@ -58,24 +61,24 @@
 ;; 接受：下移选 "alphabet"，把前缀替换掉
 (define s6 (step (step s5 (cmd-complete-move 1)) (cmd-complete-accept)))
 (check-equal? (session-view-string s6 vid) "alpha alphabet\nalphabet")
-(check-false (session-layer-active? s6 'complete))
+(check-false (menu-open? s6))
 (check-equal? (session-overlays s6) '())
 
 ;; 焦点移开 → focus-changed hook 取消菜单
 (define t1 (step (session-ed-set-point! s6 vid 1 0) (cmd-insert "al")))
 (define t2 (step t1 (cmd-complete)))
-(check-true (session-layer-active? t2 'complete))
+(check-true (menu-open? t2))
 (define t3 (session-set-focus t2 (focus-set (session-focus t2) (session-panel-vid t2 panel-tree))))
-(check-false (session-layer-active? t3 'complete))
+(check-false (menu-open? t3))
 (check-equal? (session-overlays t3) '())
 
 ;; 菜单所属文档关闭 → document-closed hook 取消菜单
 (define u0 (session-set-focus t3 (focus-set (session-focus t3) vid)))
 (define u1 (step (session-ed-set-point! u0 vid 1 0) (cmd-insert "al")))
 (define u2 (step u1 (cmd-complete)))
-(check-true (session-layer-active? u2 'complete))
+(check-true (menu-open? u2))
 (define u3 (session-close-document u2 (session-view-did u2 vid)))
-(check-false (session-layer-active? u3 'complete))
+(check-false (menu-open? u3))
 (check-equal? (session-overlays u3) '())
 
 ;; 语言补全：模块导出作为候选（#lang racket/base + (require racket/list)）
@@ -86,7 +89,7 @@
 (define gvid (session-edit-vid g1))
 (define g2 (session-ed-set-point! g1 gvid 3 4))
 (define g3 (pump-until-menu (step g2 (cmd-complete)) 500))
-(check-true (session-layer-active? g3 'complete))
+(check-true (menu-open? g3))
 ;; 候选里有正在输入的 "fir"（长度最短排最前）与 "first"；下移选 "first"
 (define g4 (step (step g3 (cmd-complete-move 1)) (cmd-complete-accept)))
 (check-equal? (session-view-string g4 gvid)
@@ -95,9 +98,9 @@
 ;; 光标导航（left/right 等）→ after-nav 关闭菜单（否则候选错位）
 (define h1 (session-ed-set-point! g4 gvid 3 5))
 (define h2 (step h1 (cmd-complete)))
-(check-true (session-layer-active? h2 'complete))
+(check-true (menu-open? h2))
 (define h3 (step h2 (cmd-nav 'left #f)))
-(check-false (session-layer-active? h3 'complete))
+(check-false (menu-open? h3))
 (check-equal? (session-overlays h3) '())
 (delete-file p2)
 

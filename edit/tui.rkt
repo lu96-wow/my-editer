@@ -11,6 +11,7 @@
          "command/command.rkt"
          "session.rkt"
          "command/binding.rkt"
+         "surface/context.rkt"
          "core/keymap.rkt"
          "theme/theme.rkt"
          "theme/style.rkt")
@@ -39,23 +40,10 @@
      (cond [spec (spec->cmd spec ev)]
            [else (cmd-prefix-cancel)])]
     [else
-     ;; 输入层优先（fallthrough）：层表命中就用，落空再走 panel / document / global。
-     (define layer-spec
-       (and b (for/or ([l (in-list (session-layers s))])
-                (keymap-lookup (layer-keys l) b))))
-     (cond
-       [layer-spec (spec->cmd layer-spec ev)]
-       [else
-        (define vid (session-focus-vid s))
-        (define did (session-focused-did s))
-        (define kms (append (filter values
-                                    (list (and vid (session-vid-keys s vid))
-                                          (and did (session-doc-keys s did))))
-                            (session-keys s)))
-        (and b
-             (for/or ([km (in-list kms)])
-               (define spec (keymap-lookup km b))
-               (and spec (spec->cmd spec ev))))])]))
+     ;; 输入上下文（模态层 → 焦点面 → 文档 → 全局）由 session/context.rkt 拼，
+     ;; 纯查表由 surface/context.rkt 做；后端只管把事件解成绑定键、把 spec 解成 cmd。
+     (define spec (context-lookup (session-context-keys s) b))
+     (and spec (spec->cmd spec ev))]))
 
 ;;; ---------- 输出：session -> pieces ----------
 

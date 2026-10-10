@@ -20,7 +20,8 @@
 (require "../core/layout.rkt"      ; layout-fill
          "../core/focus.rkt"       ; focus-target
          "../core/doc-state.rkt"
-         "../core/ids.rkt")        ; slot-editor
+         "../core/ids.rkt"          ; slot-editor
+         "../surface/surface.rkt")
 
 ;;; ---------- 值 ----------
 
@@ -42,15 +43,10 @@
 ;; name : symbol
 ;; proc : session -> (listof placed)
 
-;; 输入层：短暂接管输入的模态键表（补全菜单等）。栈顶在前；落空则回落到 base（fallthrough）。
-(struct layer (id keys) #:transparent)
-;; id   : symbol
-;; keys : keymap     该层生效的键表
-
 (struct session
-  (ed frame bindings editor layout presentations panels decos overlays
+  (ed frame bindings editor layout presentations panels decos overlays surfaces
    focus edit-vid width height quit? keys rules doc-keymaps handlers prompt prefix docs log
-   layers plugin-bindings services hooks awaiting)
+   plugin-bindings services hooks awaiting)
   #:transparent)
 ;; ed            : core editor（文档 / 视图真身仓）
 ;; frame         : 骨架（config 的 slot 树；#f = 未装配）
@@ -71,7 +67,6 @@
 ;; handlers      : (listof (session cmd -> (or/c session #f)))  命令处理链
 ;; prompt        : prompt | #f
 ;; prefix        : prefix | #f   活动前缀（多键序列）
-;; layers        : (listof layer)  活动输入层（栈顶在前；模态键表优先，落空回落 base）
 ;; docs          : doc-state     did <-> path + 保存句柄（脏标记）
 ;; log           : (listof string)   只读日志（错误等；底部 log 面板显示）
 ;; plugin-bindings : (hash did -> (listof face-plugin))      document 插件绑定（插件层）
@@ -80,12 +75,10 @@
 ;; awaiting        : (hash id -> (list token current? on-result))  异步结果闸门（见 async.rkt）
 
 (provide (struct-out session) (struct-out panel) (struct-out prompt) (struct-out deco)
-         (struct-out layer)
          session-new session-assemble session-set-frame
          session-visible? session-set-visible
          session-focus-vid session-set-prefix
          session-resize session-quit session-add-handler session-set-rules
-         session-layer-push session-layer-pop session-layer-active?
          ;; 每-editor 命名状态（插件间共享 / 懒建服务）
          session-service-ref session-service-put
          ;; 编辑区子树（结构手术用）
@@ -95,6 +88,9 @@
          ;; 叠加层（deco）/ 叠加 vid 登记
          session-decos session-deco-add session-deco-remove
          session-overlays session-overlay-add session-overlay-remove
+         ;; 面（surface）登记：浮动面 / dock 面的统一登记处
+         session-surfaces session-surface-add session-surface-remove session-surface-for-vid
+         session-surface-ref
          ;; doc-state 值本身（包装见 doc.rkt）
          session-docs)
 
@@ -102,10 +98,10 @@
 
 (define (session-new ed frame bindings focus width height [keys '()])
   (session-rebuild
-   (session ed frame bindings (blank) #f (hash) '() '() '()
+   (session ed frame bindings (blank) #f (hash) '() '() '() '()
             focus (focus-target focus) width height #f keys '() (hash) '() #f #f
             (doc-state-empty) '()
-            '() (hash) (hash) '() (hash))))
+            (hash) (hash) '() (hash))))
 
 ;; 重算派生 layout：把 panel 绑定与编辑区子树填进骨架的 slot。
 (define (session-rebuild s)
@@ -150,17 +146,6 @@
 (define (session-service-put s name v)
   (struct-copy session s [services (hash-set (session-services s) name v)]))
 
-;;; ---------- 输入层（模态键表，栈顶在前） ----------
-
-(define (session-layer-push s id keys)
-  (struct-copy session s [layers (cons (layer id keys) (session-layers s))]))
-(define (session-layer-pop s id)
-  (struct-copy session s
-    [layers (for/list ([l (in-list (session-layers s))]
-                       #:unless (eq? id (layer-id l))) l)]))
-(define (session-layer-active? s id)
-  (for/or ([l (in-list (session-layers s))]) (eq? id (layer-id l))))
-
 ;;; ---------- 状态窗口查询（纯） ----------
 
 (define (session-panel s vid)
@@ -169,10 +154,13 @@
   (for/first ([p (in-list (session-panels s))] #:when (eq? id (panel-id p))) (panel-vid p)))
 (define (session-vid-keys s vid)
   (define p (session-panel s vid))
-  (and p (panel-keys p)))
-;; dock = 面板或叠加层 vid：焦点落到它们时不改变粘性 edit-vid。
+  (or (and p (panel-keys p))
+      (let ([sf (session-surface-for-vid s vid)]) (and sf (surface-keys sf)))))
+;; dock = 面板 / 叠加层 / 面 vid：焦点落到它们时不改变粘性 edit-vid。
 (define (session-dock-vid? s vid)
-  (and vid (or (and (session-panel s vid) #t) (and (memv vid (session-overlays s)) #t))))
+  (and vid (or (and (session-panel s vid) #t)
+               (and (memv vid (session-overlays s)) #t)
+               (and (session-surface-for-vid s vid) #t))))
 (define (session-add-panel s p)
   (struct-copy session s [panels (append (session-panels s) (list p))]))
 
@@ -187,3 +175,16 @@
   (struct-copy session s [overlays (cons vid (session-overlays s))]))
 (define (session-overlay-remove s vid)
   (struct-copy session s [overlays (remove vid (session-overlays s))]))
+
+;;; ---------- 面（surface）登记（纯） ----------
+
+(define (session-surface-add s sf)
+  (struct-copy session s [surfaces (append (session-surfaces s) (list sf))]))
+(define (session-surface-remove s id)
+  (struct-copy session s
+    [surfaces (for/list ([sf (in-list (session-surfaces s))]
+                         #:unless (eq? id (surface-id sf))) sf)]))
+(define (session-surface-for-vid s vid)
+  (for/first ([sf (in-list (session-surfaces s))] #:when (eqv? vid (surface-vid sf))) sf))
+(define (session-surface-ref s id)
+  (for/first ([sf (in-list (session-surfaces s))] #:when (eq? id (surface-id sf))) sf))

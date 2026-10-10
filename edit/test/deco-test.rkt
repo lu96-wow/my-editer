@@ -10,7 +10,7 @@
 (require rackunit
          "../demo.rkt"
          "../session.rkt"
-         "../feature/api.rkt")
+         "../core/layout.rkt")   ; placed（底层机制，测试用）
 
 (define s (demo-session 80 24))
 (define-values (s1 did vid) (session-add-document s "pop\nup" 8 2 #:name "*pop*"))

@@ -10,7 +10,7 @@
 ;;;     · 自带 cmd-* + handler，挂到 handler 链（session-add-handler）
 ;;;     · handler 里对 session 的改动走这里白名单里的原语
 ;;;     · 需要别的功能时发命令，用 step 派发，而不是直接调操作函数
-;;;     · 需要叠加窗口（补全弹窗等）时用 deco（每帧产 placed）+ overlay 标记 vid
+;;;     · 需要浮窗（补全 / 文档）时用 surface（session-add-surface + float-surface）
 ;;;
 ;;; 例外：需要**文件资源**的特性（tree / buffers / document）额外 require
 ;;; document/document.rkt 与 document/fs.rkt。这是「特性组合资源能力」的有意依赖。
@@ -20,7 +20,8 @@
          "../command/key.rkt"
          "../core/keymap.rkt"
          "../core/ids.rkt"
-         "../core/layout.rkt")
+         "../core/layout.rkt"
+         "../surface/surface.rkt")
 
 (provide
  ;; 面板（状态窗口）构造与查询
@@ -42,14 +43,12 @@
  ;; 视图结构（显示 / 分屏 / 关闭）
  session-show-view session-split-view session-close-document
 
- ;; 叠加层（deco）：每帧产 placed；overlay 标记叠加 vid（dock / 不入缓冲区）
- deco deco-name deco-proc session-decos session-deco-add session-deco-remove
- session-overlays session-overlay-add session-overlay-remove
- placed placed? placed-vid placed-x placed-y placed-w placed-h placed-deep
+ ;; 叠加层查询（仅「哪些 vid 是叠加、不进缓冲区」）
  session-overlay-dids session-view-cursor-screen session-view-point->screen
 
- ;; 输入层（模态键表）
- layer layer-id layer-keys session-layer-push session-layer-pop session-layer-active?
+ ;; 面（surface）：统一的「可显示 / 可接键」抽象；dock 面 → panel，float 面 → 浮窗
+ (all-from-out "../surface/surface.rkt")
+ session-add-surface session-remove-surface
 
  ;; 内容写回 / 区间替换
  session-ed-assign! session-ed-replace!

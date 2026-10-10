@@ -27,7 +27,8 @@
          "../core/focus.rkt"
          "../core/keymap.rkt"
          "../core/face.rkt"
-         "../core/line-scan.rkt")
+         "../core/line-scan.rkt"
+         "../surface/surface.rkt")
 
 (provide
  session-blank
@@ -102,9 +103,21 @@
 (define (session-deco-placed s)
   (append* (for/list ([d (in-list (session-decos s))]) ((deco-proc d) s))))
 
-;; 所有已落位窗格：布局树 + 叠加层，按 deep 升序（大的在上）。
+;; 浮动面 → placed（每帧按 pos 产出；#f = 本帧不显示）。
+(define (session-surface-placed s)
+  (append*
+   (for/list ([sf (in-list (session-surfaces s))] #:when (surface-float? sf))
+     (define pl (surface-placement sf))
+     (define r ((float-pos pl) s))
+     (if r
+         (list (placed (surface-vid sf) (list-ref r 0) (list-ref r 1)
+                       (list-ref r 2) (list-ref r 3) (float-deep pl)))
+         '()))))
+
+;; 所有已落位窗格：布局树 + 叠加层 + 浮动面，按 deep 升序（大的在上）。
 (define (session-panes s)
-  (sort (append (session-views s) (session-deco-placed s)) < #:key placed-deep))
+  (sort (append (session-views s) (session-deco-placed s) (session-surface-placed s))
+        < #:key placed-deep))
 
 (define (session-focused-did s)
   (define vid (session-focus-vid s))

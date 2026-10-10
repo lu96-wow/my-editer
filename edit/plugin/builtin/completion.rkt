@@ -6,7 +6,7 @@
 ;;; 两窗通过一个**事件**解耦：本插件在选中项变化时广播 `complete-selection`，
 ;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪。
 ;;;
-;;; 菜单是**叠加层（deco）视图**（不抢焦点）；打开时压一个输入层（模态键表）：
+;;; 菜单是一个 **float 面（surface）**（不抢焦点）；打开时随面压一个输入层（模态键表）：
 ;;;   · 上下/Enter/Tab/Esc 由层接管；
 ;;;   · 普通字符层里没有 → fallthrough 到文档键表 → cmd-insert → 本 handler 接手：
 ;;;     先插入再按新前缀从**复用池**过滤。
@@ -28,7 +28,7 @@
          "../../feature/api.rkt"
          "../../core/lex.rkt"
          "../../core/file-kind.rkt"
-         "../../core/popup.rkt"
+         "../../geometry/popup.rkt"
          "../../lang/source.rkt"
          "../../lang/module-index.rkt"
          "../../lang/pool.rkt"
@@ -181,7 +181,7 @@
   (define base (+ 2 (for/fold ([mx 0]) ([x (in-list (menu-cands m))]) (max mx (string-length x)))))
   (min (max 10 (- (session-width s) 2)) (max 10 base)))
 
-;; 菜单完整布局：候选窗口 + 矩形（落位规则见 core/popup.rkt）。
+;; 菜单完整布局：候选窗口 + 矩形（落位规则见 geometry/popup.rkt）。
 ;; → (values start rows x y w h)
 (define (menu-layout s m)
   (define-values (col row) (session-view-cursor-screen s (menu-vid m)))
@@ -215,20 +215,20 @@
      (define-values (start rows _x _y _w _h) (menu-layout s m))
      (session-ed-assign! s (menu-mvid m) (menu-doc (menu-cands m) (menu-idx m) start rows))]))
 
-;; 每帧叠加层：菜单打开时把菜单视图摆在光标处。
-(define (menu-panes s)
+;; 每帧浮面落位：菜单开着、源视图还在、光标在视口内才显示。→ (list x y w h) | #f
+(define (menu-pos s)
   (define svc (completion-svc s))
   (define m (and svc (unbox (c-svc-menu svc))))
   (cond
-    [(not m) '()]
-    [(not (live-view? s (menu-vid m))) '()]          ; 源视图没了 → 不摆
+    [(not m) #f]
+    [(not (live-view? s (menu-vid m))) #f]          ; 源视图没了 → 不摆
     [else
      (define-values (col _row) (session-view-cursor-screen s (menu-vid m)))
      (cond
-       [(not col) '()]                               ; 光标不在视口 → 不摆
+       [(not col) #f]                               ; 光标不在视口 → 不摆
        [else
         (define-values (_start _rows x y w h) (menu-layout s m))
-        (list (placed (menu-mvid m) x y w h menu-deep))])]))
+        (and (positive? h) (list x y w h))])]))
 
 ;;; ---------- 打开 / 刷新 / 移动 / 接受 / 关闭 ----------
 
@@ -246,11 +246,12 @@
      (define m (struct-copy menu m0 [mvid mvid]))
      (set-box! (c-svc-menu svc) m)
      (set-box! (c-svc-active svc) 'complete)     ; 默认接键的是补全
-     ;; 登记叠加 vid（dock / 不入缓冲区）+ 叠加层（几何每帧算）
-     (define s2 (session-overlay-add s1 mvid))
-     (define s3 (session-deco-add s2 (deco 'complete menu-panes)))
-     (define s4 (session-layer-push s3 'complete complete-keys))
-     (publish-selection! (refresh-menu-doc! s4) m)]))
+     ;; 浮面：每帧按 menu-pos 落位 + overlay 标记（dock / 不入缓冲区）+ 压输入层（complete-keys）
+     (define s2 (session-add-surface s1
+                  (float-surface 'complete mvid #f
+                                 (float menu-pos menu-deep)
+                                 complete-keys #f #f #f)))
+     (publish-selection! (refresh-menu-doc! s2) m)]))
 
 ;; 补全只在「主区编辑视图」上启用（面板 / 叠加层 / 补全菜单自身不弹）。
 (define (completable? s vid)
@@ -349,8 +350,8 @@
      (set-box! (c-svc-menu svc) #f)
      (define mvid (menu-mvid m))
      (define did (session-view-did s mvid))
-     (define s1 (session-deco-remove (session-overlay-remove s mvid) 'complete))
-     (define s2 (session-close-document (session-layer-pop s1 'complete) did))
+     (define s1 (session-remove-surface s 'complete))
+     (define s2 (session-close-document s1 did))
      (set-box! (c-svc-active svc) 'complete)
      (publish-selection! s2 #f)]))
 

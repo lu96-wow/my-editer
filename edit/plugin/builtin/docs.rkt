@@ -6,7 +6,8 @@
 ;;;   · 订阅补全发布的 `complete-selection`（选中项变化 → 查它的文档）；
 ;;;   · 也可用命令 `cmd-docs-show`（M-d）对**光标处标识符**独立查询；
 ;;;   · 异步走 doc-job（自己的 place worker / 闸门），从不等补全 / 不阻塞；
-;;;   · 浮窗落位用 core/popup.rkt（避开补全菜单、不遮挡光标行）；
+;;;   · 浮窗是一个 **float 面（surface）**：由 session/surfaces.rkt 组合进会话，
+;;;     落位用 geometry/popup.rkt（避开补全菜单、不遮挡光标行）；
 ;;;   · 窗口高度有上界，内容超出就滚动（不必一次显示完）。
 ;;;
 ;;; 与补全的事件契约（两边都不 require 对方）：
@@ -23,7 +24,7 @@
          "../../feature/api.rkt"
          "../../core/lex.rkt"
          "../../core/file-kind.rkt"
-         "../../core/popup.rkt"
+         "../../geometry/popup.rkt"
          "../../lang/source.rkt"
          "../../lang/docs.rkt"
          "../../lang/wrap.rkt"
@@ -105,25 +106,18 @@
     [else
      (popup-rect r c w want-h sw sh)]))
 
-(define (doc-panes s)
-  (define svc (docs-svc s))
-  (define dw (and svc (unbox (d-svc-win svc))))
-  (cond
-    [(not dw) '()]
-    [(not (live-view? s (docwin-vid dw))) '()]        ; 源视图没了 → 不摆
-    [else
-     (define-values (col _row) (session-view-cursor-screen s (docwin-vid dw)))
-     (cond
-       [(not col) '()]                               ; 光标不在视口 → 不摆
-       [else
-        (define-values (x y w h) (doc-layout s dw))
-        (if (zero? h)
-            '()
-            (list (placed (docwin-mvid dw) x y w h doc-deep)))])]))
+;; 浮面落位：源视图还在、光标在视口内才显示。→ (list x y w h) | #f
+(define (doc-pos s dw)
+  (define vid (docwin-vid dw))
+  (and (live-view? s vid)
+       (let-values ([(col _row) (session-view-cursor-screen s vid)])
+         (and col
+              (let-values ([(x y w h) (doc-layout s dw)])
+                (and (positive? h) (list x y w h)))))))
 
 ;;; ---------- 开 / 关 ----------
 
-;; 移除文档窗（叠加 / deco / 状态；document 还在就关）。改 seq；广播 docs-state #f。
+;; 移除文档窗（面 / 状态；document 还在就关）。改 seq；广播 docs-state #f。
 (define (remove-doc-window! s)
   (define svc (docs-svc s))
   (define dw (and svc (unbox (d-svc-win svc))))
@@ -133,7 +127,7 @@
      (set-box! (d-svc-win svc) #f)
      (define mvid (docwin-mvid dw))
      (define ddid (docwin-ddid dw))
-     (define s1 (session-deco-remove (session-overlay-remove s mvid) 'docs))
+     (define s1 (session-remove-surface s 'docs))
      (define s2 (if (memv ddid (session-document-ids s1))
                     (session-close-document s1 ddid)
                     s1))
@@ -160,8 +154,12 @@
      (define-values (s1 ddid mvid)
        (session-add-document s0 (doc-doc (take all rows) (doc-face svc))
                              width (max 1 rows) #:name "*docs*"))
-     (set-box! (d-svc-win svc) (docwin vid mvid ddid text all 0))
-     (define s2 (session-deco-add (session-overlay-add s1 mvid) (deco 'docs doc-panes)))
+     (define dw (docwin vid mvid ddid text all 0))
+     (set-box! (d-svc-win svc) dw)
+     (define s2 (session-add-surface s1
+                  (float-surface 'docs mvid #f
+                                 (float (lambda (s) (doc-pos s dw)) doc-deep)
+                                 #f #f #f #f)))
      (session-run-hooks s2 'docs-state (list #t))]))
 
 ;; worker 结果 (name sig body) → 显示文本。

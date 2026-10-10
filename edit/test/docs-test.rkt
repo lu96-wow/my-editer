@@ -15,6 +15,9 @@
          "../feature/api.rkt"
          "../core/path.rkt")
 
+;; 菜单是否打开：以「complete 面存在」判定（补全菜单现在是一个 float 面）。
+(define (menu-open? s) (and (session-surface-ref s 'complete) #t))
+
 (define p (make-temporary-file "dt-~a.rkt"))
 (display-to-file "#lang racket/base\n(require racket/list)\n(first" p #:exists 'replace)
 
@@ -31,7 +34,7 @@
 
 ;; 独立触发（无补全菜单）
 (define s3 (step s2 (cmd-docs-show)))
-(check-false (session-layer-active? s3 'complete))       ; 补全菜单没开
+(check-false (menu-open? s3))       ; 补全菜单没开
 
 (define (overlay-strs s) (for/list ([v (in-list (session-overlays s))]) (session-view-string s v)))
 (define (doc-ready? s)

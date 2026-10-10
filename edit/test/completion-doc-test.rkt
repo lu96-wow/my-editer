@@ -15,6 +15,9 @@
          "../feature/api.rkt"
          "../core/path.rkt")
 
+;; 菜单是否打开：以「complete 面存在」判定（补全菜单现在是一个 float 面）。
+(define (menu-open? s) (and (session-surface-ref s 'complete) #t))
+
 (define p (make-temporary-file "cd-~a.rkt"))
 (display-to-file "#lang racket/base\n(require racket/list)\n(fir" p #:exists 'replace)
 
@@ -31,8 +34,8 @@
 
 ;; 等菜单打开（池由 place worker 算）
 (define s3 (pump-until (step s2 (cmd-complete))
-                       (lambda (s) (session-layer-active? s 'complete)) 600))
-(check-true (session-layer-active? s3 'complete))
+                       (lambda (s) (menu-open? s)) 600))
+(check-true (menu-open? s3))
 ;; 此时只有补全菜单一个浮窗
 (check-equal? (length (session-overlays s3)) 1)
 
@@ -68,11 +71,11 @@
 
 ;; Tab 回补全：接键窗口回到补全（再按上/下就变成移候选）
 (define s4d (step s4c (cmd-complete-switch)))
-(check-true (session-layer-active? s4d 'complete))
+(check-true (menu-open? s4d))
 
 ;; 接受候选 → 两个浮窗都关掉
 (define s5 (step s4d (cmd-complete-accept)))
-(check-false (session-layer-active? s5 'complete))
+(check-false (menu-open? s5))
 (check-equal? (session-overlays s5) '())
 
 (delete-file p)

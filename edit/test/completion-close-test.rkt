@@ -14,6 +14,9 @@
          "../feature/api.rkt"
          "../core/path.rkt")
 
+;; 菜单是否打开：以「complete 面存在」判定（补全菜单现在是一个 float 面）。
+(define (menu-open? s) (and (session-surface-ref s 'complete) #t))
+
 (define p (make-temporary-file "cc-~a.rkt"))
 (display-to-file "alpha alphabet\n" p #:exists 'replace)
 
@@ -25,19 +28,19 @@
 (define s2 (session-ed-set-point! s1 vid 1 0))
 (define (pump-until-menu s n)
   (cond
-    [(session-layer-active? s 'complete) s]
+    [(menu-open? s) s]
     [(zero? n) s]
     [else (sleep 0.01) (pump-until-menu (session-prepare-render s) (sub1 n))]))
 (define s3 (pump-until-menu (step s2 (cmd-insert "alph")) 500))
-(check-true (session-layer-active? s3 'complete))
+(check-true (menu-open? s3))
 
 ;; 退格逐个删：还有前缀时菜单在；删空 → 关闭
 (define s4 (step s3 (cmd-backspace)))
-(check-true (session-layer-active? s4 'complete))   ; "alp"
+(check-true (menu-open? s4))   ; "alp"
 (define s5 (step s4 (cmd-backspace)))                ; "al"
 (define s6 (step s5 (cmd-backspace)))                ; "a"
 (define s7 (step s6 (cmd-backspace)))                ; ""
-(check-false (session-layer-active? s7 'complete))
+(check-false (menu-open? s7))
 (check-equal? (session-overlays s7) '())
 
 (delete-file p)
