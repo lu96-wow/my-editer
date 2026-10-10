@@ -18,7 +18,7 @@
         'buf-untitled (style (rgb 170 170 170) #f '())                 ; buffers：无路径
         'buf-view     (style (rgb 140 160 190) #f '())                 ; buffers：视图行
         'buf-dirty    (style (rgb 230 160 90) #f '(bold))              ; buffers：脏文档
-        'log          (style (rgb 240 130 130) #f '())                 ; 日志行
+        'log          (style (rgb 235 188 110) #f '())               ; 日志行（琥珀，原红）
         'input        (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 输入行
         'complete     (style (rgb 205 205 215) (rgb 34 34 40) '())   ; 补全候选：暗灰底 + 浅字（只比黑略亮）
         'complete-selected (style (rgb 255 255 255) (rgb 70 110 190) '())   ; 补全选中：蓝底白字
