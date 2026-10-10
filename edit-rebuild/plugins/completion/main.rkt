@@ -50,7 +50,7 @@
 ;; active  : box 'complete | 'docs              当前接键的浮窗
 ;; docs-open? : box boolean                     文档窗是否开着（由 docs 插件广播）
 
-(struct menu (vid mvid did start cands idx pool mods) #:transparent)
+(struct menu (vid mvid did start cands idx pool mods specs base-dir) #:transparent)
 ;; vid    : 编辑器 view（发起补全者，接受时改它 / 取光标锚点）
 ;; mvid   : 菜单视图
 ;; did    : 发起时编辑器文档 id（关文档时以此取消菜单）
@@ -59,6 +59,8 @@
 ;; idx    : 选中下标
 ;; pool   : (listof string)  本次会话的完整候选池（复用）
 ;; mods   : (listof module-path) | #f   候选所属模块（广播给订阅者；#f = 模块路径）
+;; specs  : (listof spec) | #f   原始 require spec（据它反查候选的 (模块, 原名)）
+;; base-dir : path-string | #f  解析相对路径的目录
 
 ;; 补全上下文：决定池从哪来、缓存键是什么。
 (struct ctx (key req locals words mods) #:transparent)
@@ -171,6 +173,14 @@
 (define (ctx-cached? svc ctx)
   (or (not (ctx-key ctx)) (hash-has-key? (c-svc-cache svc) (ctx-key ctx))))
 
+;; 从 worker 请求里取回原始 spec / 目录（供候选名反查来源）。
+(define (ctx-specs ctx)
+  (define r (ctx-req ctx))
+  (and (pair? r) (eq? (car r) 'exports) (caddr r)))
+(define (ctx-base-dir ctx)
+  (define r (ctx-req ctx))
+  (and (pair? r) (eq? (car r) 'exports) (cadr r)))
+
 ;; 完整池 = 缓存基底 + 本地定义 + 文档词（key='module 时基底即全部）。
 (define (ctx-pool svc ctx)
   (cond
@@ -201,13 +211,15 @@
 (define (publish-selection! s m)
   (cond
     [(or (not m) (not (live-view? s (menu-vid m))))
-     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f))]
+     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f #f))]
     [else
+     (define name (list-ref (menu-cands m) (menu-idx m)))
+     ;; 候选名（可能被 prefix-in/rename-in 改过）→ (模块, 原名)，供文档插件按原名查
+     (define binding (and (menu-specs m) (menu-base-dir m)
+                          (spec-binding-of name (menu-specs m) (menu-base-dir m))))
      (define-values (_start _rows x y w h) (menu-layout s m))
      (session-run-hooks s 'complete-selection
-                        (list (menu-vid m)
-                              (list-ref (menu-cands m) (menu-idx m))
-                              (menu-mods m)
+                        (list (menu-vid m) name (menu-mods m) binding
                               (list x y w h)))]))
 
 ;;; ---------- 菜单内容 / 几何 ----------
@@ -270,14 +282,14 @@
 
 ;;; ---------- 打开 / 刷新 / 移动 / 接受 / 关闭 ----------
 
-(define (open-menu! s vid line col prefix pool mods)
+(define (open-menu! s vid line col prefix pool mods specs base-dir)
   (define cands (filter-pool pool prefix))
   (cond
     [(null? cands) s]
     [else
      (define svc (completion-svc s))
      (define start (cons line (- col (string-length prefix))))
-     (define m0 (menu vid #f (session-view-did s vid) start cands 0 pool mods))
+     (define m0 (menu vid #f (session-view-did s vid) start cands 0 pool mods specs base-dir))
      (define-values (_start rows _x _y w h) (menu-layout s m0))
      (define-values (s1 _mdid mvid)
        (session-add-document s (menu-doc cands 0 0 rows (- w 2)) w h #:name "*complete*"))
@@ -316,7 +328,9 @@
           [else
            (define ctx (make-ctx s svc vid text line col))
            (cond
-             [(ctx-cached? svc ctx) (open-menu! s vid line col prefix (ctx-pool svc ctx) (ctx-mods ctx))]
+             [(ctx-cached? svc ctx)
+              (open-menu! s vid line col prefix (ctx-pool svc ctx) (ctx-mods ctx)
+                          (ctx-specs ctx) (ctx-base-dir ctx))]
              [else (request-pool! s svc ctx)])])])]))
 
 ;; 提交请求 + 登记闸门；结果回来装池并重试开菜单。

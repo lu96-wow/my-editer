@@ -11,7 +11,7 @@
 ;;; 一次补全会话只建一次池，之后只 filter-pool。
 
 (provide completion-pool filter-pool distinct-strings
-         module-exports document-words spec-names spec-local-paths)
+         module-exports document-words spec-names spec-local-paths spec-binding-of)
 
 (require racket/list
          racket/path
@@ -142,6 +142,71 @@
           (for/list ([n (in-list (remove* (for/list ([r (in-list rs)]) (symbol->string (car r)))
                                           base string=?))])
             (string-append p n))))
+
+;;; ================= 候选名 → 来源（prefix-in / rename-in 反查） =================
+;;;
+;;; 与 spec-names 相反：给定一个**已改名**的候选，问它来自哪个模块的哪个原名。
+;;; 纯函数（不需要 module->exports），所以文档/hover 侧能在主线程直接跑。
+;;; 对应 racket-langserver 里由 check-syntax 展开给出的 (path, def-tag)，
+;;; 我们不做展开，就用 spec 结构反推。
+
+;; specs 里找 name 的来源 → (list leaf-module original-name) | #f。
+(define (spec-binding-of name specs base-dir)
+  (for/or ([s (in-list specs)]) (spec-binding-in name s base-dir)))
+
+(define (spec-binding-in name s base-dir)
+  (cond
+    [(symbol? s) (list s name)]
+    [(string? s) (define p (local-module-path s base-dir)) (and p (list p name))]
+    [(pair? s)
+     (define h (and (symbol? (car s)) (car s)))
+     (define (rec spec) (spec-binding-in name spec base-dir))
+     (define (ids from) (for/list ([x (in-list from)] #:when (symbol? x)) (symbol->string x)))
+     (cond
+       [(eq? h 'only-in)
+        (and (member name (ids (cddr s))) (list (leaf-module (cadr s) base-dir) name))]
+       [(eq? h 'except-in)
+        (and (not (member name (ids (cddr s)))) (rec (cadr s)))]
+       [(eq? h 'prefix-in)
+        (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
+        (and (string-prefix? name p)
+             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir)])
+               (and b (list (car b) (cadr b)))))]
+       [(eq? h 'rename-in)
+        (define r (for/first ([x (in-list (cddr s))]
+                              #:when (and (pair? x) (>= (length x) 2)
+                                          (eq? (cadr x) (string->symbol name))))
+                   x))
+        (cond [r (list (leaf-module (cadr s) base-dir) (symbol->string (car r)))]
+              [else (rec (cadr s))])]
+       [(eq? h 'prefix-rename-in)
+        (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
+        (and (string-prefix? name p)
+             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir)])
+               (and b (list (car b) (cadr b)))))]
+       [(memq h '(for-syntax for-template for-label)) (rec (cadr s))]
+       [(eq? h 'for-meta) (for/or ([x (in-list (cddr s))]) (spec-binding-in name x base-dir))]
+       [(eq? h 'combine-in) (for/or ([x (in-list (cdr s))]) (spec-binding-in name x base-dir))]
+       [(memq h '(lib planet)) (list s name)]
+       [(eq? h 'quote) (rec (cadr s))]
+       [else #f])]
+    [else #f]))
+
+;; spec 最内层模块路径（剥掉 only/except/prefix/rename/相位包装）。
+(define (leaf-module spec base-dir)
+  (cond
+    [(symbol? spec) spec]
+    [(string? spec) (or (local-module-path spec base-dir) spec)]
+    [(pair? spec)
+     (define h (and (symbol? (car spec)) (car spec)))
+     (cond
+       [(memq h '(only-in except-in rename-in)) (leaf-module (cadr spec) base-dir)]
+       [(memq h '(prefix-in prefix-rename-in)) (leaf-module (caddr spec) base-dir)]
+       [(memq h '(for-syntax for-template for-label)) (leaf-module (cadr spec) base-dir)]
+       [(eq? h 'for-meta) (and (pair? (cddr spec)) (leaf-module (cadr (cddr spec)) base-dir))]
+       [(eq? h 'quote) (leaf-module (cadr spec) base-dir)]
+       [else spec])]
+    [else spec]))
 
 ;; 在已有池里按前缀过滤（按长度升序，短的在前；同长按字典序） + 截断。
 ;; **排除与正在输入的词完全相同的候选**（已输入完整的 define 不再列出来）。

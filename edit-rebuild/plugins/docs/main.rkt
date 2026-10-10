@@ -11,7 +11,9 @@
 ;;;   · 窗口高度有上界，内容超出就滚动（不必一次显示完）。
 ;;;
 ;;; 与补全的事件契约（两边都不 require 对方）：
-;;;   complete-selection  args = (vid name mods menu-rect) | (vid #f #f #f)
+;;;   complete-selection  args = (vid name mods binding menu-rect) | (vid #f #f #f #f)
+;;;       binding = (list module original-name) | #f —— 候选名被 prefix-in/rename-in 改过时，
+;;;       按原名去模块里查（对应 racket-langserver 用 check-syntax 得到的 (path, def-tag)）。
 ;;;       doc 订阅：新选中 → 查文档；#f → 关窗
 ;;;   docs-state          args = (open?)        doc 广播：文档窗开关（补全据此决定 Tab 是否切换）
 ;;;   docs-scroll         args = (delta)       doc 订阅：竖直滚动 delta 行
@@ -28,6 +30,8 @@
          "../../core/geometry/popup.rkt"
          "../../core/geometry/layout.rkt"
          "../lang/source.rkt"
+         "../lang/pool.rkt"
+         "../lang/local-docs.rkt"
          "../lang/docs.rkt"
          "job.rkt")
 
@@ -35,13 +39,18 @@
 
 ;;; ---------- 状态 ----------
 
-(struct d-svc (win seq menu-rect last-key pending focus) #:transparent)
+(struct d-svc (win seq menu-rect last-key pending focus cur std-text phase local-cache)
+  #:transparent)
 ;; win       : box (docwin | #f)     文档浮窗
 ;; seq       : box integer           请求序号（判定迟到结果）
 ;; menu-rect : box ((list x y w h) | #f)  补全菜单矩形（避让用）
 ;; last-key  : box any/c             上次已查询的键（name+mods），避免重复请求
 ;; pending   : box ((list vid name mods) | #f)  待处理选中项（本帧内只记，不做事）
 ;; focus     : box boolean           是否接键（Tab 切过来时高亮）
+;; cur       : box ((list vid name) | #f)  当前查询（本地定义阶段用）
+;; std-text  : box (#f | string)     标准库正文（#f = worker 还没回来）
+;; phase     : box 'idle | 'wait-std | 'show-local
+;; local-cache : box (hash did -> (cons handle (hash name -> snippet)))  本地定义缓存（按文档版本）
 
 (struct docwin (vid mvid ddid text lines offset) #:transparent)
 ;; vid    : 源编辑器视图（锚点）
@@ -145,7 +154,12 @@
   (define svc (docs-svc s))
   (cond
     [(not svc) s]
-    [else (bump-seq! svc) (remove-doc-window! s)]))
+    [else
+     (bump-seq! svc)
+     (set-box! (d-svc-phase svc) 'idle)
+     (set-box! (d-svc-std-text svc) #f)
+     (set-box! (d-svc-cur svc) #f)
+     (remove-doc-window! s)]))
 
 ;; 打开 / 更新文档窗（保证单实例）。开窗后广播 docs-state #t。
 (define (open-window! s svc vid text)
@@ -168,7 +182,17 @@
                                  #:border 'window-border)))
      (session-run-hooks s2 'docs-state (list #t))]))
 
-;; worker 结果 (name sig body) → 显示文本。
+;; 把本地定义段放到窗口**顶部**（标准库在下、先开；本地后到就 prepend 到顶部，保证可见）。
+(define (prepend-doc-window! s extra)
+  (define svc (docs-svc s))
+  (define dw (and svc (unbox (d-svc-win svc))))
+  (cond
+    [(not dw) s]
+    [else
+     (define text (string-append extra
+                                 (if (string-suffix? extra "\n") "" "\n")
+                                 (docwin-text dw)))
+     (open-window! s svc (docwin-vid dw) text)]))
 (define (result->doc-text r)
   (and (list? r)
        (= 3 (length r))
@@ -177,20 +201,77 @@
                         (if body (string-append (if sig "\n\n" "") body) "")
                         "\n"))))
 
-;; 提交一次查询并登记闸门；迟到结果按 seq 丢弃。返回新 session（不等结果）。
-(define (request-docs! s svc vid name mods)
+;; 第一步：提交标准库查询（worker + 长命缓存），结果存 std-text，等 tick 开窗。
+;; name 已是**原名**（binding 非 #f 时）；binding 留给第二步查本地定义。
+(define (start-std! s svc vid name binding mods)
   (bump-seq! svc)
   (define seq (unbox (d-svc-seq svc)))
+  (set-box! (d-svc-cur svc) (list vid name binding))
+  (set-box! (d-svc-std-text svc) #f)
+  (set-box! (d-svc-phase svc) 'wait-std)
   (define s1 (remove-doc-window! s))
-  (define id (doc-request! s1 (if (string? name) name (format "~a" name)) mods))
-  (session-await s1 id seq
-    (lambda (_s tok) (= tok (unbox (d-svc-seq svc))))
-    (lambda (s result)
-      (define text (result->doc-text result))
-      (cond
-        [(and (= seq (unbox (d-svc-seq svc))) text (live-view? s vid))
-         (open-window! s svc vid text)]
-        [else s]))))
+  ;; 本地文件模块没有 scribble 文档：不启 worker（xref 首次加载很慢），直接空标准库进第二步。
+  (cond
+    [(and binding (let ([m (car binding)]) (or (path? m) (string? m))))
+     (set-box! (d-svc-std-text svc) "")
+     s1]
+    [else
+     (define id (doc-request! s1 (if (string? name) name (format "~a" name)) mods))
+     (session-await s1 id seq
+       (lambda (_s tok) (= tok (unbox (d-svc-seq svc))))
+       (lambda (s result)
+         (cond
+           [(= seq (unbox (d-svc-seq svc)))
+            (set-box! (d-svc-std-text svc) (or (result->doc-text result) ""))
+            s]
+           [else s])))]))
+
+;; 第二步：本地定义。主线程扫打开的 Racket 缓冲区；缓存按文档版本（handle）分开。
+(define (local-lookup s did sym)
+  (define svc (docs-svc s))
+  (define cache (unbox (d-svc-local-cache svc)))
+  (define handle (session-document-handle s did))
+  (define entry (hash-ref cache did #f))
+  (define tbl
+    (cond
+      [(and entry (eq? (car entry) handle)) (cdr entry)]
+      [else
+       (define t (local-defs (session-document-string s did)))
+       (hash-set! cache did (cons handle t))
+       t]))
+  (hash-ref tbl sym #f))
+
+;; 已打开的文档里找 name 定义 → 一段文本 | #f；binding 用来把 prefix-in/rename-in 后的
+;; 名字映射回原模块 + 原名（标准库模块不掺本地定义）。
+(define (local-text-for s name binding)
+  (define sym (string->symbol name))
+  (define (section did)
+    (define snippet (local-lookup s did sym))
+    (and snippet (string-append "── 本地定义 ──\n" snippet "\n")))
+  (cond
+    ;; 来源模块是已打开的本地文件：只查它（原名）
+    [(and binding (module-open-did s (car binding)))
+     => (lambda (bdid) (section bdid))]
+    ;; 否则（标准库模块 / 无来源 / 当前文件自己的定义）：查当前编辑文档，再退到其它打开的 Racket 文档
+    [else
+     (define evid (session-edit-vid s))
+     (define edid (and evid (session-view-did s evid)))
+     (or (and edid (section edid))
+         (for/or ([did (in-list (session-document-ids s))]
+                  #:when (and (not (eqv? did edid))
+                              (racket-file? (session-file-path s did))))
+           (section did)))]))
+
+;; module spec（symbol / 路径字符串 / 路径）→ 若是**已打开的文档**则给出 did。
+(define (module-open-did s mod)
+  (define by-path
+    (for/hash ([did (in-list (session-document-ids s))]
+               #:when (session-file-path s did))
+      (values (path->string (path->complete-path (session-file-path s did))) did)))
+  (cond
+    [(string? mod) (hash-ref by-path mod #f)]
+    [(path? mod) (hash-ref by-path (path->string mod) #f)]
+    [else #f]))
 
 ;;; ---------- 事件 / 命令 ----------
 
@@ -201,7 +282,7 @@
   (cond
     [(not svc) s]
     [else
-     (match-define (list vid name mods menu-rect) args)
+     (match-define (list vid name mods binding menu-rect) args)
      (cond
        [(or (not vid) (not name))
         (set-box! (d-svc-pending svc) #f)
@@ -209,10 +290,10 @@
         (close-docs s)]
        [else
         (set-box! (d-svc-menu-rect svc) menu-rect)
-        (set-box! (d-svc-pending svc) (list vid name mods))
+        (set-box! (d-svc-pending svc) (list vid name mods binding))
         s])]))
 
-;; before-render：处理本帧收到的选中项（提交查询 / 关窗），全部在本插件内完成。
+;; before-render：两步走 —— 先开标准库窗（快），下一拍再追加本地定义。
 (define (docs-tick-hook s _args)
   (define svc (docs-svc s))
   (cond
@@ -220,18 +301,50 @@
     [else
      (define p (unbox (d-svc-pending svc)))
      (cond
-       [(not p) s]
-       [else
+       ;; 新选中项：提交标准库查询（第一步），进入 wait-std
+       [p
         (set-box! (d-svc-pending svc) #f)
-        (match-define (list vid name mods) p)
+        (match-define (list vid name mods binding) p)
         (cond
           [(or (not vid) (not name) (not (pair? mods)))
            (set-box! (d-svc-last-key svc) #f)
+           (set-box! (d-svc-phase svc) 'idle)
            (close-docs s)]
           [(equal? (list name mods) (unbox (d-svc-last-key svc))) s]
           [else
            (set-box! (d-svc-last-key svc) (list name mods))
-           (request-docs! s svc vid name mods)])])]))
+           ;; 候选名 → (模块, 原名)：标准库与本地定义都查原名
+           (define qname (if binding (cadr binding) name))
+           (define qmods (if binding (list (car binding)) mods))
+           (start-std! s svc vid qname binding qmods)])]
+       [else
+        (case (unbox (d-svc-phase svc))
+          ;; 第一步：标准库回来 → 先只开标准库
+          [(wait-std)
+           (define t (unbox (d-svc-std-text svc)))
+           (cond
+             [(not t) s]
+             [else
+              (set-box! (d-svc-phase svc) 'show-local)
+              (define cur (unbox (d-svc-cur svc)))
+              (cond
+                [(and cur (positive? (string-length t)) (live-view? s (car cur)))
+                 (open-window! s svc (car cur) t)]
+                [else s])])]
+          ;; 第二步：本地定义 → 追加（标准库为空时直接用它开窗）
+          [(show-local)
+           (set-box! (d-svc-phase svc) 'idle)
+           (define cur (unbox (d-svc-cur svc)))
+           (cond
+             [(not cur) s]
+             [else
+              (define extra (local-text-for s (cadr cur) (caddr cur)))
+              (cond
+                [(not extra) s]
+                [(unbox (d-svc-win svc)) (prepend-doc-window! s extra)]
+                [(live-view? s (car cur)) (open-window! s svc (car cur) extra)]
+                [else s])])]
+          [else s])])]))
 
 ;; 横向滚动：delta > 0 向右看（移动视口 left-column）。
 (define (docs-hscroll-hook s args)
@@ -274,12 +387,22 @@
      (define text (session-view-string s vid))
      (define id (identifier-at text (session-view-point-line s vid) (session-view-point-column s vid)))
      (cond
-       [(not id) (set-box! (d-svc-pending svc) (list vid #f #f)) s]
+       [(not id) (set-box! (d-svc-pending svc) (list vid #f #f #f)) s]
        [else
         (set-box! (d-svc-menu-rect svc) #f)              ; 独立触发：不避让
         (set-box! (d-svc-last-key svc) #f)
-        (set-box! (d-svc-pending svc) (list vid id (cursor-mods s vid)))
+        (set-box! (d-svc-pending svc) (list vid id (cursor-mods s vid) (cursor-binding s vid id)))
         s])]))
+
+;; 光标处标识符的来源（prefix-in/rename-in 反查）→ (list module original) | #f。
+(define (cursor-binding s vid id)
+  (define did (session-view-did s vid))
+  (define path (session-file-path s did))
+  (define text (session-view-string s vid))
+  (define base-dir (or (and path (let-values ([(d _f _m) (split-path path)]) d))
+                       (current-directory)))
+  (define-values (lang forms) (requires-context text))
+  (spec-binding-of id (require-specs-of-forms lang forms) base-dir))
 
 ;; 光标处标识符所在文件的模块上下文（#lang + require；无则 racket/base）。
 (define (cursor-mods s vid)
@@ -301,6 +424,8 @@
 (define (docs-doc-closed-hook s args)
   (define svc (docs-svc s))
   (define did (car args))
+  ;; 源文档关了 → 清它的本地定义缓存
+  (when svc (hash-remove! (unbox (d-svc-local-cache svc)) did))
   (define dw (and svc (unbox (d-svc-win svc))))
   (if (and dw (eqv? did (docwin-ddid dw))) (remove-doc-window! s) s))
 
@@ -314,7 +439,8 @@
 
 (define (docs-install s)
   (let* ([s0 (install-doc-job! s)]
-         [svc (d-svc (box #f) (box 0) (box #f) (box #f) (box #f) (box #f))]
+         [svc (d-svc (box #f) (box 0) (box #f) (box #f) (box #f) (box #f)
+                     (box #f) (box #f) (box 'idle) (box (make-hash)))]
          [s1 (session-service-put s0 'docs svc)]
          [s2 (session-add-handler s1 (docs-handler))]
          [s3 (session-add-hook s2 (hook 'complete-selection docs-selection-hook))]

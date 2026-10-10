@@ -180,12 +180,13 @@
 ;; 顶层 (require …) 的**原始 spec**（保留 only-in / prefix-in / rename-in / … 结构）
 ;; + 语言 spec。补全用它在 worker 里按 spec 算出**真正的绑定名**（pool.rkt 的 spec-names）；
 ;; requires-of-forms 则把 spec 拆成模块路径（文档查询用）。
+;; 语言放**最后**：显式 require 应优先于语言导入（名字来源反查 spec-binding-of 取首个命中）。
 (define (require-specs-of-forms lang forms)
   (define reqs
     (append* (for/list ([f (in-list forms)]
                         #:when (and (pair? f) (eq? (car f) 'require)))
                (list-elems (cdr f)))))
-  (if lang (cons lang reqs) reqs))
+  (append reqs (if lang (list lang) '())))
 
 ;;; ================= 顶层定义名 =================
 

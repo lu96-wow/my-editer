@@ -79,6 +79,19 @@
 (check-equal? (spec-names '(prefix-in p: "/tmp/spec-lib.rkt") (current-directory) open)
               '("p:live-name"))
 
+;; spec-binding-of：候选名（prefix-in/rename-in 后）反查 (模块, 原名)
+(check-equal? (spec-binding-of "first" '((only-in racket/list first)) dir)
+              (list 'racket/list "first"))
+(check-equal? (spec-binding-of "l:first" '((prefix-in l: racket/list)) dir)
+              (list 'racket/list "first"))
+(check-equal? (spec-binding-of "head" '((rename-in racket/list (first head))) dir)
+              (list 'racket/list "first"))
+(check-false (spec-binding-of "first" '((except-in racket/list first)) dir))
+(check-equal? (spec-binding-of "other" '((except-in racket/list first)) dir)
+              (list 'racket/list "other"))
+(check-equal? (spec-binding-of "p:first" '((prefix-in p: (only-in racket/list first))) dir)
+              (list 'racket/list "first"))
+
 ;; filter-pool：前缀过滤、长度升序（同长字典序）、排除与前缀相同的项
 (check-equal? (filter-pool '("beta" "alpha" "alphabet") "alph")
               '("alpha" "alphabet"))
