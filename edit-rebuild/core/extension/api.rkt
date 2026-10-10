@@ -54,6 +54,7 @@
 
  ;; 内容写回 / 局部刷新
  panel-doc input-document session-ed-assign! session-ed-set-point! session-ed-replace!
+ session-ed-scroll! session-ed-hscroll!
  session-refresh session-prepare-render session-render
  session-log session-log-add
 

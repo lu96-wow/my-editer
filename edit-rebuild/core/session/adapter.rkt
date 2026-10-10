@@ -55,7 +55,7 @@
  ;; 内核适配
  session-ed-close-view session-ed-close-document
  session-ed-assign! session-ed-set-point! session-ed-screen->point
- session-ed-scroll! session-ed-nav!
+ session-ed-scroll! session-ed-hscroll! session-ed-nav!
  session-ed-select-all! session-ed-copy! session-ed-cut! session-ed-paste!
  session-ed-insert! session-ed-delete! session-ed-backspace!
  session-ed-undo! session-ed-redo!)
@@ -142,30 +142,75 @@
 (define (sync-layout! s)
   (editor-set-layout! (session-ed s) (session-rectangles s)))
 
-;;; ---------- 边框 ----------
+;;; ---------- 边框（按连接方向取交点字形） ----------
 
-;; 边框屏：外框矩形，只有周边有 run（内部空行会被内容盖住）。
-(define (border-screen w h face)
-  (define hz (max 0 (- w 2)))
+;; 方向集合规范序：d < l < r < u（按符号名排序）→ 字形。
+(define border-glyphs
+  (hash '(d r)       #\┌
+        '(d l)       #\┐
+        '(r u)       #\└
+        '(l u)       #\┘
+        '(l r)       #\─
+        '(d u)       #\│
+        '(d r u)     #\├
+        '(d l u)     #\┤
+        '(d l r)     #\┬
+        '(l r u)     #\┴
+        '(d l r u)   #\┼))
+
+(define (canon-dirs ds)
+  (sort (remove-duplicates (filter symbol? ds))
+        (lambda (a b) (string<? (symbol->string a) (symbol->string b)))))
+
+(define (conn->char conns cx cy)
+  (hash-ref border-glyphs (canon-dirs (hash-ref conns (cons cx cy) '())) #\space))
+
+(define (add-conn! h cx cy d)
+  (define k (cons cx cy))
+  (hash-set! h k (cons d (hash-ref h k '()))))
+
+;; 一个矩形四边加入连接方向（角上同时带横向与纵向）。
+(define (rect-add-conns! h x y w hh)
+  (define x2 (+ x w -1))
+  (define y2 (+ y hh -1))
+  (for ([c (in-range x (+ x w))])
+    (unless (= c x2) (add-conn! h c y 'r) (add-conn! h c y2 'r))
+    (unless (= c x)  (add-conn! h c y 'l) (add-conn! h c y2 'l)))
+  (add-conn! h x y 'd) (add-conn! h x y2 'u)     ; 角：上/下边在角处向下/上
+  (add-conn! h x2 y 'd) (add-conn! h x2 y2 'u)
+  (for ([r (in-range (add1 y) y2)])
+    (add-conn! h x r 'u) (add-conn! h x r 'd)
+    (add-conn! h x2 r 'u) (add-conn! h x2 r 'd)))
+
+;; 一个方框的边框屏（上/下边整行，中间行只左右两格）。
+(define (border-screen conns x y w hh face)
+  (define x2 (+ x w -1))
   (define rows
-    (cond
-      [(or (< w 2) (< h 2)) (make-vector (max 1 h) '())]
-      [else
-       (build-vector h
-         (lambda (r)
-           (cond
-             [(= r 0) (list (run 0 (string-append "┌" (make-string hz #\─) "┐") face))]
-             [(= r (sub1 h)) (list (run 0 (string-append "└" (make-string hz #\─) "┘") face))]
-             [else (list (run 0 "│" face) (run (sub1 w) "│" face))])))]))
-  (screen w h rows '() '()))
+    (build-vector hh
+      (lambda (rr)
+        (define gy (+ y rr))
+        (cond
+          [(or (= rr 0) (= rr (sub1 hh)))
+           (list (run 0 (list->string (for/list ([cc (in-range x (+ x w))])
+                                       (conn->char conns cc gy))) face))]
+          [else
+           (list (run 0 (string (conn->char conns x gy)) face)
+                 (run (sub1 w) (string (conn->char conns x2 gy)) face))]))))
+  (screen w hh rows '() '()))
 
-;; 有边框的窗格 → 一个边框 pane（deep 比内容低 1，内部被内容遮住）。
+;; 有边框的窗格 → 边框 pane（deep 比内容低 1）。多个边框共享边时，交点取 T 字形。
 (define (session-border-panes s)
-  (for/list ([p (in-list (session-panes s))]
-             #:when (surface-border-of s (placed-vid p)))
-    (pane 'window-border (placed-y p) (placed-x p)
-          (border-screen (placed-w p) (placed-h p) (surface-border-of s (placed-vid p)))
-          (sub1 (placed-deep p)))))
+  (define rects
+    (for/list ([p (in-list (session-panes s))]
+               #:when (surface-border-of s (placed-vid p)))
+      (list (placed-x p) (placed-y p) (placed-w p) (placed-h p)
+            (surface-border-of s (placed-vid p)) (placed-deep p))))
+  (define conns (make-hash))
+  (for ([r (in-list rects)])
+    (rect-add-conns! conns (first r) (second r) (third r) (fourth r)))
+  (for/list ([r (in-list rects)])
+    (match-define (list x y w hh face deep) r)
+    (pane 'window-border y x (border-screen conns x y w hh face) (sub1 deep))))
 
 ;;; ---------- 渲染 ----------
 
@@ -292,6 +337,10 @@
   (editor-view-screen-position->point (session-ed s) vid row col))
 
 (define (session-ed-scroll! s vid n) (editor-view-scroll! (session-ed s) vid n) s)
+(define (session-ed-hscroll! s vid delta)
+  (define cur (editor-view-left-column (session-ed s) vid))
+  (editor-view-set-left-column! (session-ed s) vid (max 0 (+ cur delta)))
+  s)
 (define (session-ed-nav! s vid dir extend?)
   (define ed (session-ed s))
   (case dir

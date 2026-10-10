@@ -14,7 +14,8 @@
 ;;;   complete-selection  args = (vid name mods menu-rect) | (vid #f #f #f)
 ;;;       doc 订阅：新选中 → 查文档；#f → 关窗
 ;;;   docs-state          args = (open?)        doc 广播：文档窗开关（补全据此决定 Tab 是否切换）
-;;;   docs-scroll         args = (delta)       doc 订阅：按 delta 行滚动
+;;;   docs-scroll         args = (delta)       doc 订阅：竖直滚动 delta 行
+;;;   docs-hscroll        args = (delta)       doc 订阅：水平滚动 delta 列
 ;;;   docs-focus          args = (active?)      doc 订阅：是否接键（决定正文亮/暗）
 
 (require racket/list
@@ -28,7 +29,6 @@
          "../../core/geometry/layout.rkt"
          "../lang/source.rkt"
          "../lang/docs.rkt"
-         "../lang/wrap.rkt"
          "job.rkt")
 
 (provide docs-install docs-spec)
@@ -150,7 +150,7 @@
 ;; 打开 / 更新文档窗（保证单实例）。开窗后广播 docs-state #t。
 (define (open-window! s svc vid text)
   (define width (doc-width s))
-  (define all (wrap-lines text (max 1 (- width 3))))     ; 内容宽 = 外宽 - 2 边框 - 1 前导空格
+  (define all (string-split text "\n"))   ; 不折行：bluebox 是对齐文本；超宽用 left/right 横向看
   (cond
     [(null? all) s]
     [else
@@ -233,7 +233,15 @@
            (set-box! (d-svc-last-key svc) (list name mods))
            (request-docs! s svc vid name mods)])])]))
 
-;; 滚动：delta > 0 向下看。
+;; 横向滚动：delta > 0 向右看（移动视口 left-column）。
+(define (docs-hscroll-hook s args)
+  (define svc (docs-svc s))
+  (define dw (and svc (unbox (d-svc-win svc))))
+  (cond
+    [(not dw) s]
+    [else (session-ed-hscroll! s (docwin-mvid dw) (car args))]))
+
+;; 纵向滚动：delta > 0 向下看。
 (define (docs-scroll-hook s args)
   (define svc (docs-svc s))
   (define dw (and svc (unbox (d-svc-win svc))))
@@ -311,7 +319,8 @@
          [s2 (session-add-handler s1 (docs-handler))]
          [s3 (session-add-hook s2 (hook 'complete-selection docs-selection-hook))]
          [s4 (session-add-hook s3 (hook 'docs-scroll docs-scroll-hook))]
-         [s5 (session-add-hook s4 (hook 'docs-focus docs-focus-hook))]
+         [s4b (session-add-hook s4 (hook 'docs-hscroll docs-hscroll-hook))]
+         [s5 (session-add-hook s4b (hook 'docs-focus docs-focus-hook))]
          [s6 (session-add-hook s5 (hook 'focus-changed docs-cancel-hook))]
          [s7 (session-add-hook s6 (hook 'after-nav docs-cancel-hook))]
          [s8 (session-add-hook s7 (hook 'document-closed docs-doc-closed-hook))])

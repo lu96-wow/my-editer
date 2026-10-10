@@ -365,7 +365,7 @@
 (define complete-keys
   (kbd (key 'down)   (cmd-complete-move 1)
        (key 'up)     (cmd-complete-move -1)
-       (key 'right)  (cmd-complete-scroll 5)     ; 文档窗向下看 5 行
+       (key 'right)  (cmd-complete-scroll 5)     ; 文档窗向右看 5 列
        (key 'left)   (cmd-complete-scroll -5)
        (key 'tab)    (cmd-complete-switch)       ; 补全 ↔ 文档
        (key 'enter)  (cmd-complete-accept)
@@ -392,7 +392,7 @@
            (session-run-hooks s 'docs-scroll (list (cmd-complete-move-dir cmd))))]
       ;; 左/右：不管谁接键都滚文档（便于边看文档边选）。
       [(and open? (cmd-complete-scroll? cmd))
-       (session-run-hooks s 'docs-scroll (list (cmd-complete-scroll-delta cmd)))]
+       (session-run-hooks s 'docs-hscroll (list (cmd-complete-scroll-delta cmd)))]
       [(and open? (cmd-complete-accept? cmd)) (do-accept s)]
       [(and open? (cmd-complete-cancel? cmd)) (close-menu s)]
       [else #f])))
