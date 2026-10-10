@@ -38,11 +38,16 @@
                                (cmd-prompt-open-on-submit cmd))])]
       [else #f])))
 
+;; 输入行关闭（提交 / 取消）→ 底部区换回状态栏。
+(define (prompt-closed-hook s _args)
+  (session-region-select s slot-bottom panel-status))
+
 (define (prompt-install s)
   (define-values (s1 _did vid)
     (session-add-document s "" (session-width s) 1 #:name "*input*"))
   (define sf (dock-surface panel-input vid #f input-keys slot-bottom 'height 1))
-  (session-add-handler (session-set-visible (session-add-surface s1 sf) vid #f)
-                       (prompt-handler)))
+  (define s2 (session-add-handler (session-set-visible (session-add-surface s1 sf) vid #f)
+                                  (prompt-handler)))
+  (session-add-hook s2 (hook 'prompt-closed prompt-closed-hook)))
 
 (define prompt-spec (plugin-spec 'prompt prompt-install '()))

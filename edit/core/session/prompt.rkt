@@ -11,6 +11,7 @@
 (require "session.rkt"
          "adapter.rkt"
          "focus.rkt"
+         "hook.rkt"
          "../focus.rkt")
 
 (provide (struct-out prompt)
@@ -27,10 +28,15 @@
   (define s3 (session-set-focus s2 (focus-push (session-focus s2) vid)))
   (session-set-prompt s3 (prompt vid label on-submit)))
 
+;; 关输入行（提交 / 取消共用）：恢复焦点，并发 'prompt-closed 通知
+;; （面板显示由插件恢复，内核不认识具体面板 id）。
 (define (session-prompt-close s)
   (cond
     [(not (session-prompt s)) s]
-    [else (session-set-prompt (session-set-focus s (focus-restore (session-focus s))) #f)]))
+    [else
+     (session-run-hooks
+      (session-set-prompt (session-set-focus s (focus-restore (session-focus s))) #f)
+      'prompt-closed '())]))
 
 ;; Enter：取 label 之后的文本 → 关输入行 → 回调。
 (define (session-prompt-submit s)

@@ -38,7 +38,9 @@
   (struct-copy docs-state d
     [plugin-bindings (hash-remove (docs-state-plugin-bindings d) did)]))
 
+;; 删该 did 的全部文档域状态（关文档时）：台账（path / 保存句柄）+ 键表 + 插件绑定。
 (define (docs-state-remove d did)
   (struct-copy docs-state d
+    [catalog (doc-state-remove (docs-state-catalog d) did)]
     [keymaps (hash-remove (docs-state-keymaps d) did)]
     [plugin-bindings (hash-remove (docs-state-plugin-bindings d) did)]))

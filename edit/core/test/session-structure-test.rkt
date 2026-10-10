@@ -37,3 +37,14 @@
 (define s5 (session-close-document s4 did))
 (check-equal? (session-document-ids s5) '())
 (check-equal? (session-view-id-list s5) '())
+
+;; 关文档要连台账一起清（did <-> path / 保存句柄），否则树会显示成“仍打开”
+;; 且重开时因命中过时 did 而卡住。
+(define-values (sA didA vidA) (session-add-document s "x" 40 10 #:name "*file*"))
+(define tmp (build-path (find-system-path 'temp-dir) "edit-structure-test.rkt"))
+(define sB (session-set-file sA didA tmp))
+(check-equal? (session-file-did sB tmp) didA)
+(define sC (session-close-document sB didA))
+(check-false (session-file-did sC tmp))
+(check-equal? (session-file-dids sC) '())
+(check-equal? (session-document-ids sC) '())

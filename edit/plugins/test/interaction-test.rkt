@@ -50,12 +50,25 @@
 (display-to-file "hi\n" p #:exists 'replace)
 (define s3 (dispatch s2 (input (key 'f 'ctrl) #f #f #f #f #f)))   ; cmd-open-file → 打开输入行
 (check-true (prompt? (session-prompt s3)))
+;; 输入行出现：底部区切到 input，状态行隐藏
+(check-true (session-visible? s3 (session-panel-vid s3 panel-input)))
+(check-false (session-visible? s3 (session-panel-vid s3 panel-status)))
 ;; 在输入行打路径并回车
 (define s4 (dispatch s3 (input text-binding (path->string p) #f #f #f #f)))
 (define s5 (dispatch s4 (input (key 'enter) #f #f #f #f #f)))
+;; 提交后：底部区换回状态行（input 隐藏）
+(check-false (prompt? (session-prompt s5)))
+(check-false (session-visible? s5 (session-panel-vid s5 panel-input)))
+(check-true (session-visible? s5 (session-panel-vid s5 panel-status)))
 (define did (session-file-did s5 (normalize p)))
 (check-not-false did)
 (check-equal? (session-view-string s5 (session-edit-vid s5)) "hi\n")
+
+;; 取消（Escape）同样换回状态行
+(define s5b (dispatch s5 (input (key 'f 'ctrl) #f #f #f #f #f)))
+(define s5c (dispatch s5b (input (key 'escape) #f #f #f #f #f)))
+(check-false (prompt? (session-prompt s5c)))
+(check-true (session-visible? s5c (session-panel-vid s5c panel-status)))
 
 ;; 鼠标点击树：聚焦并定位
 (define s6 (session-set-focus s5 (focus-set (session-focus s5) tvid)))

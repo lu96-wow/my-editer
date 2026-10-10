@@ -9,6 +9,7 @@
          "../../core/app/app.rkt"
          "../../core/session/session.rkt"
          "../../core/session/adapter.rkt"
+         "../../core/session/structure.rkt"
          "../../core/session/render.rkt"
          "../../core/session/panel.rkt"
          "../../core/path.rkt"
@@ -40,5 +41,13 @@
 
 (define-values (s3 frame2 rends2 sels2) (session-render s2 #f))
 (check-true (> (length rends2) 0))
+
+;; 关文档后台账清干净：文件树不再显示为打开，且能重新打开（不会命中过时 did）
+(define s4 (session-close-document s2 did))
+(check-false (session-file-did s4 (normalize p)))
+(define s5 (session-open-file s4 (normalize p)))
+(check-not-false (session-file-did s5 (normalize p)))
+(check-not-false (session-edit-vid s5))
+(check-equal? (session-view-string s5 (session-edit-vid s5)) "hello\n")
 
 (delete-file p)
