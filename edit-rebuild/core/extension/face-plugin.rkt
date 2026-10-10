@@ -16,8 +16,9 @@
 ;;; **应用顺序 = 目录顺序**：多层按顺序 face-compose 成 face-stack；
 ;;; 主题逐分量合并，于是「括号背景」和「语法前景」共存。
 ;;;
-;;; face-ctx 只给中性结构（track / change）；「什么算一个词」这类词法在 core/lex.rkt。
-;;; 插件**不看光标**：色只随文本变，光标移动不触发插件、也不改色。
+;;; face-ctx 只给中性结构（track / change / 光标点）；「什么算一个词」这类词法在 core/lex.rkt。
+;;; 插件可以看光标**判定「正在编辑的词」是否已编辑完**（光标离开＝编辑完），
+;;; 但**不得**把光标下的词当成「正在编辑」——那样光标移动就会改色。
 
 (require "../face/line-scan.rkt")
 
@@ -33,12 +34,15 @@
 ;; layer    : track，行 payload = (vectorof face) | #f
 
 ;; 增量编辑上下文（会话侧构造）。
-(struct face-ctx (old-text new-text changes dirty path)
+(struct face-ctx (old-text new-text changes dirty path cursor)
   #:transparent)
 ;; old-text/new-text : track                  编辑前 / 后文本轨（不必物化）
-;; changes : (listof change)                  本次编辑（core，编辑前 / 后坐标）
+;; changes : (listof change)                  本次编辑（core，编辑前 / 后坐标；空 = 纯光标移动）
 ;; dirty   : dirty                            changes 直接波及的整行（新坐标）
 ;; path    : path
+;; cursor  : (cons line col) | #f              编辑视图当前光标（不在本文档 → #f）
+;;         插件可据它判定「正在输入的词」是否已编辑完（光标离开）；
+;;         但插件不得据它把光标下的词当成「正在输入」——光标移动不该改色。
 
 ;; 从启用目录里挑出适用于该文档的插件（保持目录顺序）。
 (define (plugins-for plugins path text)

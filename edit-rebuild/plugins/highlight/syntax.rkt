@@ -43,10 +43,18 @@
 (define (syntax-open text _path)
   (values #f (scan-track text (lambda (ln line) (syntax-line #f ln line)))))
 
+;; 同 words.rkt：有编辑看编辑点，纯光标移动则判断是否「编辑完」。
+(define (next-pending pending ctx)
+  (define changes (face-ctx-changes ctx))
+  (cond
+    [(pair? changes) (edit-word changes (face-ctx-new-text ctx))]
+    [else (define cw (cursor-word (face-ctx-new-text ctx) (face-ctx-cursor ctx)))
+          (if (equal? pending cw) pending #f)]))
+
 (define (syntax-change pending layer ctx)
   (define new-text (face-ctx-new-text ctx))
   (define changes (face-ctx-changes ctx))
-  (define new-pending (edit-word changes new-text))
+  (define new-pending (next-pending pending ctx))
   (define old-line (and pending (car pending)))
   (define new-line (and new-pending (car new-pending)))
   (values new-pending

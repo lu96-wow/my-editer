@@ -5,10 +5,10 @@
 ;;; 色 = 词名的纯函数（djb2 散列 → 色板下标）：同词同色、跨文件 / 会话稳定。
 ;;;
 ;;; 唯一的状态是「正在输入的词」= 上次编辑插入点所在的 token：
-;;;   · change 时由 changes 算得（**只看编辑点，不看光标**）；
+;;;   · 有编辑：由 changes 算得（**只看编辑点，不看光标**）；
 ;;;   · 该词本次**不上色**，其余照常上色 → 输入过程中色不闪；
-;;;   · 下一次编辑（无论在哪）重扫它的行 → 它按完整词重新上色。
-;;; 光标移动不触发插件，所以「把光标移到词上」不会改色。
+;;;   · 光标离开该词（或下一次编辑）→ 重扫它的行，按完整词上色。
+;;; 光标**移入**别的词不会把它当成 pending，所以「移到词上」不改色。
 
 (require "../../core/extension/face-plugin.rkt"
          "../../core/extension/spec.rkt"
@@ -46,10 +46,20 @@
 (define (word-open text _path)
   (values #f (scan-track text (lambda (ln line) (word-line #f ln line)))))
 
+;; pending 规则：
+;;   有编辑        → 正在输入的词 = 编辑点所在 token；
+;;   纯光标移动    → 光标还在 pending 里就继续，否则算「编辑完」（不把光标下的词当 pending）。
+(define (next-pending pending ctx)
+  (define changes (face-ctx-changes ctx))
+  (cond
+    [(pair? changes) (edit-word changes (face-ctx-new-text ctx))]
+    [else (define cw (cursor-word (face-ctx-new-text ctx) (face-ctx-cursor ctx)))
+          (if (equal? pending cw) pending #f)]))
+
 (define (word-change pending layer ctx)
   (define new-text (face-ctx-new-text ctx))
   (define changes (face-ctx-changes ctx))
-  (define new-pending (edit-word changes new-text))
+  (define new-pending (next-pending pending ctx))
   (define old-line (and pending (car pending)))
   (define new-line (and new-pending (car new-pending)))
   (values new-pending

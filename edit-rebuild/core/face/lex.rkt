@@ -19,8 +19,8 @@
          "../../../core/text/base/range.rkt")
 
 (provide symbol-char? ident-start? ident-char?
-         line-tokens scan-words word-token-at edit-word
-         line-at prefix-at identifier-at)
+         line-tokens scan-words word-token-at word-token-at-cursor cursor-word
+         edit-word line-at prefix-at identifier-at)
 
 (define symbol-extra (string->list "!$%&*/:<=>?^_~#@+-.\\"))
 
@@ -55,6 +55,30 @@
   (for/first ([m (in-list (line-tokens line))]
               #:when (and (<= (car m) col) (< col (cdr m))))
     (list (car m) (cdr m))))
+
+;; 光标处 token：包含 col，或**恰在 col 结束**（光标紧跟词尾，如刚敲完）→ (list start end) / #f。
+(define (word-token-at-cursor line col)
+  (or (word-token-at line col)
+      (for/first ([m (in-list (line-tokens line))]
+                  #:when (= (cdr m) col))
+        (list (car m) (cdr m)))))
+
+;; 光标点 (cons line col) 处的词 → (list line start end) | #f。
+(define (cursor-word text cursor)
+  (cond
+    [(not cursor) #f]
+    [else
+     (define line (car cursor))
+     (define col (cdr cursor))
+     (cond
+       [(or (< line 0) (>= line (track-length text))) #f]
+       [else
+        (define ln (track-ref text line))
+        (cond
+          [(or (< col 0) (> col (string-length ln))) #f]
+          [else
+           (define tok (word-token-at-cursor ln col))
+           (and tok (list line (car tok) (cadr tok)))])])]))
 
 ;; 一次编辑「正在输入的词」= 插入点（after 区间末尾）前一个字符所在 token
 ;; → (list line start end) | #f。**不依赖光标**：只读 change 与文本，

@@ -20,22 +20,27 @@
   (bracket-open* text path))
 
 (define (br-change st layer ctx)
-  (define path (face-ctx-path ctx))
-  (define text (face-ctx-new-text ctx))
-  (define-values (st* dirty)
-    (bracket-change st (face-ctx-changes ctx) text path))
-  (define layer*
-    (cond
-      [(dirty-all? dirty)
-       (bracket-layer text (bstate-entries st*) path)]
-      [else
-       (define entries (bstate-entries st*))
-       (define syntax? (racket-file? path))
-       (refresh-layer layer text (face-ctx-changes ctx) (dirty-ls dirty)
-                      (lambda (ln line)
-                        (define-values (vec _) (bracket-line line ln (vector-ref entries ln) syntax?))
-                        vec))]))
-  (values st* layer* dirty))
+  (define changes (face-ctx-changes ctx))
+  (cond
+    ;; 纯光标移动（无文本变化）：层 / 状态 / 脏行均不变
+    [(null? changes) (values st layer (dirty-lines '()))]
+    [else
+     (define path (face-ctx-path ctx))
+     (define text (face-ctx-new-text ctx))
+     (define-values (st* dirty)
+       (bracket-change st changes text path))
+     (define layer*
+       (cond
+         [(dirty-all? dirty)
+          (bracket-layer text (bstate-entries st*) path)]
+         [else
+          (define entries (bstate-entries st*))
+          (define syntax? (racket-file? path))
+          (refresh-layer layer text changes (dirty-ls dirty)
+                         (lambda (ln line)
+                           (define-values (vec _) (bracket-line line ln (vector-ref entries ln) syntax?))
+                           vec))]))
+     (values st* layer* dirty)]))
 
 (define bracket-plugin
   (face-plugin 'brackets racket-applies? br-open br-change))

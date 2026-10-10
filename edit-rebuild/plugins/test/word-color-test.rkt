@@ -61,11 +61,15 @@
 (check-false (colored? s3 did 1))                       ; 输入中的词 → 无色
 (check-equal? (face-line s3 did 0) f0)                  ; 第 0 行未变
 
-;; 复现用户场景：上移到第 0 行再输入 → 之前输入完的 "xbeta" 上色；新词不上色。
-(define s4 (render (session-insert (session-nav s3 'up #f) "z")))     ; 第 0 行 "zalpha"
+;; 只移动光标离开：正在输入的 "xbeta" 算编辑完 → 立即上色。
+(define s3n (render (session-nav s3 'up #f)))
+(check-true (colored? s3n did 1))
+(define f1* (face-line s3n did 1))
+
+;; 复现用户场景：上移到第 0 行再输入 → 之前输入完的 "xbeta" 已上色；新词不上色。
+(define s4 (render (session-insert s3n "z")))          ; 第 0 行 "zalpha"
 (check-true (colored? s4 did 1))                        ; xbeta 已上色
 (check-false (colored? s4 did 0))                       ; zalpha 正在输入 → 无色
-(define f1* (face-line s4 did 1))
 
 ;; 光标移到第 1 行的词上：不改色（不会因为「移到词上」而变色）。
 (define s5 (render (session-nav s4 'down #f)))

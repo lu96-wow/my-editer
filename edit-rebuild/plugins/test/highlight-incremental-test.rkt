@@ -29,9 +29,9 @@
   (change (range-of (point line col) (point line col))
           (range-of (point line col) (point line (+ col len)))))
 
-(define (ctx old new changes)
+(define (ctx old new changes [cursor #f])
   (face-ctx old new changes (dirty-lines (changes->dirty-lines changes))
-            "../../edit-rebuild/test/test.rkt"))
+            "../../edit-rebuild/test/test.rkt" cursor))
 
 (define (line-face layer i) (track-ref layer i))
 
@@ -101,6 +101,20 @@
 (check-not-false (vector-ref (line-face wl1 0) 5))       ; beta 照常
 (check-equal? (line-face wl1 1) (line-face wl0 1))       ; 未变行结构共享
 (check-equal? (dirty-ls dirty-w) '(0))
+
+;; 纯光标移动：光标仍在 pending 词里 → 保持不上色
+(define-values (wt1a wl1a _d1a)
+  ((face-plugin-change word-plugin) wt1 wl1
+   (ctx new-w new-w '() (cons 0 2))))
+(check-equal? wt1a '(0 0 4))
+(check-false (vector-ref (line-face wl1a 0) 0))
+
+;; 纯光标移动：光标离开 pending 词 → 算「编辑完」，旧词上色
+(define-values (wt1b wl1b _d1b)
+  ((face-plugin-change word-plugin) wt1 wl1
+   (ctx new-w new-w '() (cons 1 0))))
+(check-false wt1b)                                       ; 结算
+(check-not-false (vector-ref (line-face wl1b 0) 0))      ; zzzz 上色
 
 ;; 下一次编辑（另一行）：旧的 "zzzz" 重扫→上色；新的正在输入的词不上色
 (define new-w2 (text-track "zzzz beta\ngamma x"))
