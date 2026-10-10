@@ -12,7 +12,7 @@
 ;;; 这种写法）。遇到读不了的（非 s-表达式语言 / 语法错误）就停在出错处，返回已有结果。
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
-(provide require-context?
+(provide require-context? lang-context?
          module-context requires-context requires-of-forms definitions-of-forms)
 
 (require racket/list racket/path racket/string)
@@ -261,6 +261,21 @@
 ;; require 的模块路径位置（直接子表单 / 包装器的模块参数）。
 (define module-heads '(require for-syntax for-template for-label for-meta combine-in))
 (define first-arg-heads '(only-in except-in rename-in prefix-in prefix-rename-in submod))
+
+;; 光标是否处于文件开头 `#lang ` 的模块名位置（用于补全语言名，同 require 的模块路径池）。
+(define (lang-context? text line col)
+  (define before (text-before text line col))
+  ;; 光标所在行从行首到光标的前缀
+  (define ln (let loop ([i (string-length before)])
+               (cond [(zero? i) before]
+                     [(char=? (string-ref before (sub1 i)) #\newline) (substring before i)]
+                     [else (loop (sub1 i))])))
+  (define n (string-length ln))
+  (and (>= n 6)
+       (string=? (substring ln 0 5) "#lang")
+       (let ([c (string-ref ln 5)]) (or (char=? c #\space) (char=? c #\tab)))
+       (for/and ([c (in-string ln 6)])
+         (not (or (char-whitespace? c) (char=? c #\() (char=? c #\)))))))
 
 ;; 光标是否处于 require 的模块路径位置。
 (define (require-context? text line col)

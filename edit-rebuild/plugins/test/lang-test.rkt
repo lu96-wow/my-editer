@@ -30,6 +30,12 @@
 (check-false (require-context? "(+ 1 2" 0 5))
 (check-false (require-context? "racket/list" 0 11))
 
+;; #lang 的语言名位置（同样补模块路径）
+(check-true (lang-context? "#lang rac" 0 8))
+(check-true (lang-context? "#lang " 0 6))
+(check-false (lang-context? "(require rac" 0 11))
+(check-false (lang-context? "abc" 0 3))
+
 ;;; ---------- 候选池 ----------
 
 (check-not-false (member "first" (module-exports 'racket/list)))

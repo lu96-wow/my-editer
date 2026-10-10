@@ -116,20 +116,23 @@
 (define (make-ctx s svc vid text line col)
   (cond
     [(require-context? text line col) (ctx 'module '() '() #f)]
+    [(lang-context? text line col) (ctx 'module '() '() #f)]   ; #lang <语言> 也是模块路径位置
     [else
      (define did (session-view-did s vid))
      (define path (and did (session-file-path s did)))
      (define words (word-index-words (word-index-for s svc did text)))
+     ;; 模块集**从文件自身取**：`#lang` 的语言 + 顶层 `(require …)`（parse-for 解析头部）。
+     ;; 两者都解析不到时，Racket 源文件（按扩展名）才以 racket/base 作基线；
+     ;; 其它文件只给文档词 —— 于是「带 #lang 的非 .rkt 文件」也能补全导出。
+     (define e (parse-for svc did text path))
+     (define parsed (parse-entry-mods e))
+     (define mods (cond
+                    [(pair? parsed) parsed]
+                    [(racket-file? path) '(racket/base)]
+                    [else #f]))
      (cond
-       [(not (racket-file? path)) (ctx #f '() words '())]
-       [else
-        (define e (parse-for svc did text path))
-        ;; 无 require / 无语言 → 以 racket/base 作基线（与 lab-rebuild 一致）
-        (define mods (let ([m (parse-entry-mods e)]) (if (null? m) '(racket/base) m)))
-        (ctx (list 'exports mods)
-             (parse-entry-locals e)
-             words
-             mods)])]))
+       [mods (ctx (list 'exports mods) (parse-entry-locals e) words mods)]
+       [else (ctx #f '() words '())])]))
 
 ;; 缓存命中（key #f 视为永远命中：只需本地词）。
 (define (ctx-cached? svc ctx)
