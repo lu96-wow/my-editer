@@ -16,6 +16,7 @@
          "ui/buffers.rkt"
          "ui/document.rkt"
          "ui/lifecycle.rkt"
+         "edit/auto-pair.rkt"
          "highlight/brackets.rkt"
          "highlight/words.rkt"
          "highlight/syntax.rkt"
@@ -33,6 +34,7 @@
         buffers-spec
         document-spec
         lifecycle-spec
+        auto-pair-spec
         bracket-spec
         word-spec
         syntax-spec

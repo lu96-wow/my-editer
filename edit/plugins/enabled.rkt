@@ -10,5 +10,5 @@
 (provide enabled-plugin-names)
 
 (define enabled-plugin-names
-  '(status prompt log tree buffers document lifecycle
+  '(status prompt log tree buffers document lifecycle auto-pair
     brackets words syntax completion docs))

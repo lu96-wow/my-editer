@@ -15,6 +15,7 @@
          "../session/adapter.rkt"
          "../session/panel.rkt"
          "../session/structure.rkt"
+         "../session/edit.rkt"
          "../session/focus.rkt"
          "../session/prompt.rkt"
          "../session/bottom.rkt"
@@ -47,6 +48,7 @@
  session-view-id-list session-view-ids-of session-view-did
  session-view-point-line session-view-point-column session-view-string
  session-view-width session-view-height session-view-line-numbers?
+ session-view-selection-empty?
  session-edit-vid session-focus session-focus-vid session-prefix session-width session-height
  session-visible? session-set-visible session-set-focus session-dock-vid?
  session-show-view session-split-view session-close-document
@@ -55,6 +57,7 @@
  ;; 内容写回 / 局部刷新
  panel-doc input-document session-ed-assign! session-ed-set-point! session-ed-replace!
  session-ed-scroll! session-ed-hscroll!
+ session-insert
  session-refresh session-prepare-render session-render
  session-log session-log-add
 

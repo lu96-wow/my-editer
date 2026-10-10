@@ -45,6 +45,7 @@
  session-view-did session-view-point session-view-point-line
  session-view-point-column session-view-point->screen session-view-cursor-screen
  session-view-width session-view-height session-view-line-numbers? session-view-string
+ session-view-selection-empty?
  session-view-id-list session-document-view-list
  session-document-handle session-document-track
  session-document-string session-mark-saved session-dirty?
@@ -266,6 +267,9 @@
 (define (session-view-height s vid) (editor-view-height (session-ed s) vid))
 (define (session-view-line-numbers? s vid) (editor-view-line-numbers? (session-ed s) vid))
 (define (session-view-string s vid) (editor-view-string (session-ed s) vid))
+;; 焦点视图的主选区是否为空（单光标无选区）。自动配对等需要包住选区时用。
+(define (session-view-selection-empty? s vid)
+  (selection-empty? (editor-view-primary (session-ed s) vid)))
 (define (session-view-id-list s) (editor-view-id-list (session-ed s)))
 (define (session-document-view-list s did) (editor-document-view-list (session-ed s) did))
 (define (session-document-string s did) (editor-document-string (session-ed s) did))
