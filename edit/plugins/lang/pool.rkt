@@ -209,7 +209,7 @@
     [else spec]))
 
 ;; 在已有池里按前缀过滤（按长度升序，短的在前；同长按字典序） + 截断。
-;; **排除与正在输入的词完全相同的候选**（已输入完整的 define 不再列出来）。
+;; **保留与正在输入的词完全相同的候选**（已输入完整的词也列出来，菜单不因此消失）。
 (define (shorter? a b)
   (or (< (string-length a) (string-length b))
       (and (= (string-length a) (string-length b)) (string<? a b))))
@@ -217,8 +217,7 @@
 (define (filter-pool pool prefix #:limit [limit 500])
   (define matches
     (sort (for/list ([s (in-list pool)]
-                     #:when (and (string-prefix? s prefix)
-                                 (not (string=? s prefix))))
+                     #:when (string-prefix? s prefix))
             s)
           shorter?))
   (if (> (length matches) limit) (take matches limit) matches))

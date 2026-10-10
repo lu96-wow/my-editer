@@ -92,12 +92,12 @@
 (check-equal? (spec-binding-of "p:first" '((prefix-in p: (only-in racket/list first))) dir)
               (list 'racket/list "first"))
 
-;; filter-pool：前缀过滤、长度升序（同长字典序）、排除与前缀相同的项
+;; filter-pool：前缀过滤、长度升序（同长字典序）、保留与前缀相同的项
 (check-equal? (filter-pool '("beta" "alpha" "alphabet") "alph")
               '("alpha" "alphabet"))
 (check-equal? (filter-pool '("alpha" "alphabet") "alpha")
-              '("alphabet"))                 ; 排除 "alpha" 自身
+              '("alpha" "alphabet"))        ; 保留 "alpha" 自身
 (check-equal? (filter-pool '("alpha") "alpha")
-              '())                           ; 只剩自身 → 空
+              '("alpha"))                    ; 只剩自身也保留
 (check-equal? (filter-pool '("bb" "a" "ccc" "ab" "aaa") "a")
-              '("ab" "aaa"))                ; 排除 "a" 自身
+              '("a" "ab" "aaa"))           ; 保留 "a" 自身
