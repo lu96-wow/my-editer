@@ -67,8 +67,8 @@
 ;; words  : (listof string)   文件里出现过的词
 ;; mods   : (listof module-path) | #f   候选所属模块
 
-;; 头部解析缓存项：签名 + 模块表 + 顶层定义名。
-(struct parse-entry (sig mods locals) #:transparent)
+;; 头部解析缓存项：签名 + require spec（原始形态）+ 模块路径（文档用）+ 顶层定义名。
+(struct parse-entry (sig specs mods locals) #:transparent)
 
 (define (completion-svc s) (session-service-ref s 'complete))
 (define max-rows 10)
@@ -96,6 +96,7 @@
                           (current-directory)))
      (define-values (lang forms) (requires-context text))
      (define e (parse-entry sig
+                            (require-specs-of-forms lang forms)
                             (requires-of-forms lang forms #:base-dir base-dir)
                             (definitions-of-forms forms)))
      (hash-set! (c-svc-parse svc) did e)
@@ -121,17 +122,23 @@
      (define did (session-view-did s vid))
      (define path (and did (session-file-path s did)))
      (define words (word-index-words (word-index-for s svc did text)))
-     ;; 模块集**从文件自身取**：`#lang` 的语言 + 顶层 `(require …)`（parse-for 解析头部）。
-     ;; 两者都解析不到时，Racket 源文件（按扩展名）才以 racket/base 作基线；
-     ;; 其它文件只给文档词 —— 于是「带 #lang 的非 .rkt 文件」也能补全导出。
+     ;; 模块集从文件自身取：#lang + 顶层 (require …)。补全按**原始 spec** 在 worker 里
+     ;; 算绑定名（only/prefix/rename/except 都对），所以 key 带 specs（不再是展开的模块路径）。
      (define e (parse-for svc did text path))
-     (define parsed (parse-entry-mods e))
-     (define mods (cond
-                    [(pair? parsed) parsed]
-                    [(racket-file? path) '(racket/base)]
-                    [else #f]))
+     (define specs (parse-entry-specs e))
+     (define specs* (cond
+                      [(pair? specs) specs]
+                      [(racket-file? path) '(racket/base)]   ; 半成品 Racket 文件兜底
+                      [else #f]))
      (cond
-       [mods (ctx (list 'exports mods) (parse-entry-locals e) words mods)]
+       [specs*
+        (define base-dir (or (and path (let-values ([(d _f _m) (split-path path)]) d))
+                             (current-directory)))
+        (define mods (let ([m (parse-entry-mods e)]) (if (pair? m) m '(racket/base))))
+        (ctx (list 'exports (path->string base-dir) specs*)
+             (parse-entry-locals e)
+             words
+             mods)]
        [else (ctx #f '() words '())])]))
 
 ;; 缓存命中（key #f 视为永远命中：只需本地词）。

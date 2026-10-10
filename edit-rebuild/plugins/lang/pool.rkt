@@ -11,9 +11,10 @@
 ;;; 一次补全会话只建一次池，之后只 filter-pool。
 
 (provide completion-pool filter-pool distinct-strings
-         module-exports document-words)
+         module-exports document-words spec-names)
 
 (require racket/list
+         racket/path
          racket/string
          "../../core/face/lex.rkt")
 
@@ -22,10 +23,13 @@
 (define exports-cache (make-hash))       ; module-path -> (listof string)
 
 ;; 一个模块的导出名（值 + 语法，所有 phase），字符串形式。
+;; 先 module-declared? 声明（路径形式的模块 / 未加载的需先声明，否则 module->exports 报
+;; "unknown module"）；失败一律当空。
 (define (module-exports m)
   (hash-ref! exports-cache m
-    (λ ()
-      (with-handlers ([exn:fail? (λ (_) '())])
+    (lambda ()
+      (with-handlers ([exn:fail? (lambda (_) '())])
+        (module-declared? m #t)
         (define-values (vars stx) (module->exports m))
         (for*/list ([p (in-list (append (or vars '()) (or stx '())))]
                     [id (in-list (map car (cdr p)))])
@@ -57,6 +61,58 @@
    (for/list ([tok (in-list (scan-words text))]
               #:when (>= (string-length (cadddr tok)) min-length))
      (cadddr tok))))
+
+;;; ================= require spec → 引入的绑定名 =================
+;;;
+;;; 与 racket-langserver(drcomplete) 的 required/walk 同构：不是把 spec 拆成模块路径，
+;;; 而是按 spec 结构算出**最终绑定名**（已套用 only/except/prefix/rename）。
+;;; 于是 `(prefix-in l: racket/list)` 得到 `l:first`，`(only-in racket/list first)`
+;;; 只得到 `first`，`(require "local.rkt")` 得到本地文件的导出。
+;;; 对任意编辑中的文本是全函数：非法的 spec 一律 '()。
+
+(define (spec-names s base-dir)
+  (with-handlers ([exn:fail? (lambda (_) '())])
+    (cond
+      [(symbol? s) (module-exports s)]
+      [(string? s) (if (zero? (string-length s))
+                       '()
+                       (let ([p (string->path s)])
+                         (module-exports (path->complete-path (if (absolute-path? p) p (build-path base-dir p))))))]
+      [(pair? s)
+       (define h (and (symbol? (car s)) (car s)))
+       (cond
+         [(eq? h 'only-in)
+          (map symbol->string (filter symbol? (cddr s)))]
+         [(eq? h 'except-in)
+          (remove* (map symbol->string (filter symbol? (cddr s)))
+                   (spec-names (cadr s) base-dir) string=?)]
+         [(eq? h 'prefix-in)
+          (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
+          (for/list ([n (in-list (spec-names (caddr s) base-dir))]) (string-append p n))]
+         [(eq? h 'rename-in)
+          (spec-renames (cadr s) (cddr s) "" base-dir)]
+         [(eq? h 'prefix-rename-in)
+          (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
+          (spec-renames (caddr s) (cdddr s) p base-dir)]
+         [(memq h '(for-syntax for-template for-label)) (spec-names (cadr s) base-dir)]
+         [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-names x base-dir)))]
+         [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-names x base-dir)))]
+         [(memq h '(lib planet)) (module-exports s)]
+         [(eq? h 'quote) (spec-names (cadr s) base-dir)]
+         [else '()])]
+      [else '()])))
+
+;; rename：显式 [old new] → new；其余导出名保留（加前缀 p）。
+(define (spec-renames mod-spec renames p base-dir)
+  (define base (spec-names mod-spec base-dir))
+  (define rs (for/list ([r (in-list renames)]
+                        #:when (and (pair? r) (>= (length r) 2)))
+               (cons (car r) (cadr r))))
+  (define renamed (for/list ([r (in-list rs)]) (string-append p (symbol->string (cdr r)))))
+  (append renamed
+          (for/list ([n (in-list (remove* (for/list ([r (in-list rs)]) (symbol->string (car r)))
+                                          base string=?))])
+            (string-append p n))))
 
 ;; 在已有池里按前缀过滤（按长度升序，短的在前；同长按字典序） + 截断。
 ;; **排除与正在输入的词完全相同的候选**（已输入完整的 define 不再列出来）。

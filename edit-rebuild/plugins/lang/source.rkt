@@ -13,7 +13,8 @@
 ;;; 目的不是 100% 正确，而是「大多数普通 Racket 文件够用」。
 
 (provide require-context? lang-context?
-         module-context requires-context requires-of-forms definitions-of-forms)
+         module-context requires-context requires-of-forms require-specs-of-forms
+         definitions-of-forms)
 
 (require racket/list racket/path racket/string)
 
@@ -151,7 +152,8 @@
       ;; 空串不是合法模块路径：build-path 会直接违约报错，先挡掉。
       [(string? s) (if (zero? (string-length s))
                        '()
-                       (list (list 'file (path->complete-path (build-path base-dir s)))))]
+                       (let ([p (string->path s)])
+                         (list (list 'file (path->complete-path (if (absolute-path? p) p (build-path base-dir p)))))))]
       [(pair? s)
        (define h (car s))
        (cond
@@ -174,6 +176,16 @@
                 #:when (and (pair? f) (eq? (car f) 'require)))
        (append* (for/list ([s (in-list (list-elems (cdr f)))]) (spec->paths s base-dir))))))
   (remove-duplicates (append (spec->paths lang base-dir) reqs) equal?))
+
+;; 顶层 (require …) 的**原始 spec**（保留 only-in / prefix-in / rename-in / … 结构）
+;; + 语言 spec。补全用它在 worker 里按 spec 算出**真正的绑定名**（pool.rkt 的 spec-names）；
+;; requires-of-forms 则把 spec 拆成模块路径（文档查询用）。
+(define (require-specs-of-forms lang forms)
+  (define reqs
+    (append* (for/list ([f (in-list forms)]
+                        #:when (and (pair? f) (eq? (car f) 'require)))
+               (list-elems (cdr f)))))
+  (if lang (cons lang reqs) reqs))
 
 ;;; ================= 顶层定义名 =================
 

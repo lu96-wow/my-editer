@@ -7,6 +7,7 @@
 ;;; 覆盖：#lang+require 解析、顶层定义名、require 上下文判定、模块导出与候选池过滤。
 
 (require rackunit
+         racket/file
          "../lang/source.rkt"
          "../lang/pool.rkt")
 
@@ -46,6 +47,23 @@
 
 ;; 绝对路径模块路径不会让 module-exports 崩（取不到就空）
 (check-equal? (module-exports '(file "../../../../../../../no/such/module.rkt")) '())
+
+;;; ---------- require spec → 绑定名（only / except / prefix / rename） ----------
+
+(define dir (current-directory))
+(check-not-false (member "first" (spec-names 'racket/list dir)))
+(check-equal? (spec-names '(only-in racket/list first) dir) '("first"))
+(check-equal? (spec-names '(prefix-in l: (only-in racket/list first second)) dir)
+              '("l:first" "l:second"))
+(check-false (member "first" (spec-names '(except-in racket/list first) dir)))
+(check-not-false (member "head" (spec-names '(rename-in racket/list (first head)) dir)))
+(check-false (member "first" (spec-names '(rename-in racket/list (first head)) dir)))
+
+;; 本地文件 require（path 形式：module-declared? 后才能取导出）
+(define lp (make-temporary-file "spec-~a.rkt"))
+(display-to-file "#lang racket/base\n(provide local-thing)\n(define local-thing 1)\n" lp #:exists 'replace)
+(check-equal? (spec-names (path->string lp) dir) '("local-thing"))
+(delete-file lp)
 
 ;; filter-pool：前缀过滤、长度升序（同长字典序）、排除与前缀相同的项
 (check-equal? (filter-pool '("beta" "alpha" "alphabet") "alph")

@@ -22,6 +22,8 @@
    (lambda (req)
      (match req
        ['(module-paths) (force module-paths)]
-       [(list 'exports mods)
-        (distinct-strings (append* (for/list ([m (in-list mods)]) (module-exports m))))]
+       ;; specs = 原始 require spec（含 #lang）+ 语言，逐个算出真正的绑定名
+       [(list 'exports base-dir specs)
+        (define dir (string->path base-dir))
+        (distinct-strings (append* (for/list ([s (in-list specs)]) (spec-names s dir))))]
        [_ '()]))))
