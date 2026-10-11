@@ -16,11 +16,16 @@
 
 (require racket/string
          "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "adapter.rkt" "layout.rkt"
-         "panels.rkt" "fs.rkt"
+         "border.rkt" "panels.rkt" "fs.rkt"
          (rename-in "../config/app.rkt"
                     [regions regions-spec]
                     [frame frame-spec]
-                    [enabled-panels panels-spec]))
+                    [enabled-panels panels-spec]
+                    [border-style border-face]
+                    [borders-on? borders-default?]))
+
+;; 默认边框 face（#f = 不加）。每个窗口可单独开关，见 border-toggle。
+(define default-border (and borders-default? border-face))
 
 ;; 配置数据 → region 结构（成员映射到文档名）。
 (define regions (map parse-region regions-spec))
@@ -87,9 +92,9 @@
     [(null? es)
      (define w (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (cond [(layout-has-empty? l) (layout-fill-empty l (pane w vid))]
-                                [(blank? l) (pane w vid)]
-                                [else (layout-add-side l (pane w vid) 'left 0)])]
+                  [layout (cond [(layout-has-empty? l) (layout-fill-empty l (pane w vid default-border))]
+                                [(blank? l) (pane w vid default-border)]
+                                [else (layout-add-side l (pane w vid default-border) 'left 0)])]
                   [focus w])]
     [(null? (cdr es))
      (define w (car es))
@@ -244,7 +249,7 @@
      (define l (state-layout st))
      (define nwid (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (layout-split-wid l w axis nwid #f)]
+                  [layout (layout-split-wid l w axis nwid #f default-border)]
                   [focus nwid])]))
 
 ;;; ---------- 区域代数（共用同一块面板的成员） ----------
@@ -295,7 +300,7 @@
     [(not cur)
      (define w (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (layout-add-main l (pane w want)
+                  [layout (layout-add-main l (pane w want default-border)
                                            (region-side r) (region-size r))])]
     [(eqv? want (layout-wid-vid l cur)) st]
     [else (struct-copy state st [layout (layout-set-pane-vid l cur want)])]))
@@ -635,6 +640,17 @@
     [else (define did (car r))
           (buffers-fold! st (not (hash-has-key? (feature-ref st 'buffers-fold (hash)) did)))]))
 
+;; 给焦点窗口开关边框（每个窗口独立）。
+(define (border-toggle st)
+  (define w (state-focus st))
+  (cond
+    [(not w) st]
+    [else
+     (define cur (layout-wid-border (state-layout st) w))
+     (struct-copy state st
+                  [layout (layout-set-pane-border (state-layout st) w
+                                                  (and (not cur) border-face))])]))
+
 ;; 资源面板是**唯一**能新建 view 的地方：给选中的 document 加一个未显示的 view。
 (define (new-view-for-focused st)
   (define r (focus-resource st))
@@ -688,7 +704,7 @@
   (define l (state-layout st))
   (define w (layout-fresh-wid l))
   (struct-copy state st
-               [layout (layout-add-float l (float w vid anchor want-w want-h))]
+               [layout (layout-add-float l (float w vid default-border anchor want-w want-h))]
                [stack (cons w (remove w (state-stack st)))]))
 
 (define (close-float st wid)
@@ -709,11 +725,14 @@
     [else
      (define w (placement-wid hit))
      (define vid (placement-vid hit))
-     (define-values (_ rx ry) (rect-local hit (cursor-event-x ev) (cursor-event-y ev)))
+     (define rc (placement-rect hit))
+     (define-values (bl bt _br _bb) (border-insets (state-layout st) (ctx-placements ctx) w))
      (define ed (state-ed st))
-     ;; 空窗口（vid = #f）：只聚焦；有 view 才定位到 doc 的屏幕位置。
+     ;; 空窗口（vid = #f）：只聚焦；有 view 才定位到内容区（边框内缩）。
      (when vid
-       (define p (screen->point ed vid (max 0 ry) (max 0 rx)))
+       (define px (- (cursor-event-x ev) (rect-x rc) bl))
+       (define py (- (cursor-event-y ev) (rect-y rc) bt))
+       (define p (screen->point ed vid (max 0 py) (max 0 px)))
        (when p (set-point! ed vid (car p) (cdr p))))
      (values (struct-copy state st [focus w]) '())]))
 
@@ -812,6 +831,7 @@
     [(buffers-toggle)    (values (buffers-toggle st) '())]
     [(buffers-expand)    (values (buffers-fold! st #f) '())]
     [(buffers-collapse)  (values (buffers-fold! st #t) '())]
+    [(border-toggle)     (values (border-toggle st) '())]
     [(new-view)          (values (new-view-for-focused st) '())]
     [else (values st '())]))
 
@@ -870,7 +890,7 @@
       (parse-layout frame-spec
                     (lambda (id)
                       (define v (if (eq? id 'editor) vid (hash-ref vids (panel-doc-name id))))
-                      (begin0 (cons n v) (set! n (add1 n)))))))
+                      (begin0 (list n v default-border) (set! n (add1 n)))))))
   (define editor-wid (layout-wid-of-vid base vid))
   (define st0 (make-state #:ed ed2 #:docs docs #:layout base #:focus editor-wid))
   (define st1 (feature-set st0 'tree (tree-init root)))

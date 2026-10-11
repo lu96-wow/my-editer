@@ -66,10 +66,19 @@
 (define (set-view-size! ed vid w h) (editor-view-set-size! ed vid w h))
 
 ;; → (values screen render-pieces selection-pieces)
-(define (render-layout ed placements active w h old)
+;; borders : (listof (list row col text face)) —— 边框行（原子组合后的装饰层）。
+(define (render-layout ed placements active w h old [borders '()])
   (define rs (layout->rectangles placements))
   (editor-set-layout! ed rs)
-  (editor-render-layout-patch ed old rs active w h))
+  (define decorations
+    (for/list ([b (in-list borders)])
+      (match-define (list row col text face) b)
+      (pane 'window-border row col
+            (screen (string-length text) 1
+                    (vector (list (run 0 text face)))
+                    '() '())
+            1000)))
+  (editor-render-layout-patch ed old rs active w h decorations))
 
 ;;; ---------- 编辑 ----------
 

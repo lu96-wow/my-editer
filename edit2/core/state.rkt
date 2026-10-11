@@ -46,10 +46,11 @@
 (struct main (tree) #:transparent)
 ;; pane / float：窗口有自己的身份 wid，并引用一个视图 vid。
 ;; 同一个 vid 可以出现在多个 wid（同 view 多位置）；焦点 / 浮窗栈 / 命中都用 wid。
-(struct pane (wid vid) #:transparent)
+;; border = #f（无边框）| 命名 face（如 'window-border）。
+(struct pane (wid vid border) #:transparent)
 ;; parts : (list (cons size Layout))，size = 整数格数 | 'flex
 (struct split (axis parts) #:transparent)
-(struct float (wid vid anchor want-w want-h) #:transparent)
+(struct float (wid vid border anchor want-w want-h) #:transparent)
 
 ;;; ---------- 唯一状态 ----------
 ;; focus : wid（窗口身份，不是 vid）；stack : (listof wid)

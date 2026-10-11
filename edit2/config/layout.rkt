@@ -10,7 +10,8 @@
 ;;; 面板 id（tree/buffers/status/log/help）由 core 的面板内容表决定；
 ;;; 这里只选「用哪些、放哪、多大」。加一个已支持的面板 = 改这里数据。
 
-(provide regions enabled-panels frame editor-split-axis help-text)
+(provide regions enabled-panels frame editor-split-axis help-text
+         border-style borders-on?)
 
 (define regions
   '((sidebar left   28 (tree buffers))
@@ -26,6 +27,10 @@
       (1    (pane status)))))
 
 (define editor-split-axis 'h)
+
+;; 边框：默认是否给新窗口加，以及用哪个命名 face（见 core/theme.rkt）。
+(define borders-on? #t)
+(define border-style 'window-border)
 
 (define help-text
   (string-append

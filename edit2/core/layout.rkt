@@ -17,9 +17,11 @@
  layout-hit rect-contains? rect-local
  ;; 查询
  layout-wids layout-vids layout-has-wid? layout-has? layout-wid-vid layout-wid-of-vid
+ layout-wid-border
  layout-fresh-wid
  ;; 布局树手术（纯）
  layout-remove-wid layout-remove-vid layout-replace-wid-node layout-set-pane-vid
+ layout-set-pane-border
  layout-split-wid
  layout-add-side layout-add-bottom layout-add-float layout-add-main
  layout-has-empty? layout-fill-empty
@@ -37,12 +39,12 @@
 ;;; 数据形态：
 ;;;   (pane id) (main node) (blank) (empty-area)
 ;;;   (split axis ((size node) ...))
-;;; resolve : id -> (cons wid vid)
+;;; resolve : id -> (list wid vid border)
 (define (parse-layout d resolve)
   (cond
     [(and (pair? d) (eq? (car d) 'pane))
      (define r (resolve (cadr d)))
-     (pane (car r) (cdr r))]
+     (pane (list-ref r 0) (list-ref r 1) (list-ref r 2))]
     [(and (pair? d) (eq? (car d) 'main)) (main (parse-layout (cadr d) resolve))]
     [(and (pair? d) (eq? (car d) 'blank)) (blank)]
     [(and (pair? d) (eq? (car d) 'empty-area)) (empty-area)]
@@ -103,6 +105,15 @@
   (for/first ([w (in-list (layout-wids tree))]
               #:when (eqv? vid (layout-wid-vid tree w)))
     w))
+
+;; 某 wid 显示的 vid 的边框 face（#f = 无）。
+(define (layout-wid-border tree wid)
+  (cond
+    [(pane? tree) (and (eqv? wid (pane-wid tree)) (pane-border tree))]
+    [(float? tree) (and (eqv? wid (float-wid tree)) (float-border tree))]
+    [(main? tree) (layout-wid-border (main-tree tree) wid)]
+    [(split? tree) (for/or ([p (in-list (split-parts tree))]) (layout-wid-border (cdr p) wid))]
+    [else #f]))
 
 ;; 分配一个新 wid：现有最大整 wid + 1（关闭后的 wid 可复用，引用已同步清理）。
 (define (layout-fresh-wid tree)
@@ -171,7 +182,9 @@
 ;; 改某 wid 显示的视图（不动树结构 / 位置）。
 (define (layout-set-pane-vid tree wid vid)
   (cond
-    [(pane? tree)  (if (eqv? wid (pane-wid tree)) (pane wid vid) tree)]
+    [(pane? tree)  (if (eqv? wid (pane-wid tree))
+                       (struct-copy pane tree [vid vid])
+                       tree)]
     [(float? tree) (if (eqv? wid (float-wid tree))
                        (struct-copy float tree [vid vid])
                        tree)]
@@ -181,19 +194,34 @@
                             (cons (car p) (layout-set-pane-vid (cdr p) wid vid))))]
     [else tree]))
 
-;; 把 wid 所在 pane 换成「原 pane : 新 pane（nwid 显示 nvid）」的 split。
-(define (layout-split-wid tree wid axis nwid nvid)
+;; 改某 wid 的边框（#f = 关，命名 face = 开）。
+(define (layout-set-pane-border tree wid border)
+  (cond
+    [(pane? tree)  (if (eqv? wid (pane-wid tree))
+                       (struct-copy pane tree [border border])
+                       tree)]
+    [(float? tree) (if (eqv? wid (float-wid tree))
+                       (struct-copy float tree [border border])
+                       tree)]
+    [(main? tree)  (main (layout-set-pane-border (main-tree tree) wid border))]
+    [(split? tree) (split (split-axis tree)
+                          (for/list ([p (in-list (split-parts tree))])
+                            (cons (car p) (layout-set-pane-border (cdr p) wid border))))]
+    [else tree]))
+
+;; 把 wid 所在 pane 换成「原 pane : 新 pane（nwid 显示 nvid、边框 nborder）」的 split。
+(define (layout-split-wid tree wid axis nwid nvid nborder)
   (cond
     [(pane? tree)
      (if (eqv? wid (pane-wid tree))
-         (split axis (list (cons 'flex (pane wid (pane-vid tree)))
-                           (cons 'flex (pane nwid nvid))))
+         (split axis (list (cons 'flex tree)
+                           (cons 'flex (pane nwid nvid nborder))))
          tree)]
-    [(main? tree) (main (layout-split-wid (main-tree tree) wid axis nwid nvid))]
+    [(main? tree) (main (layout-split-wid (main-tree tree) wid axis nwid nvid nborder))]
     [(split? tree)
      (split (split-axis tree)
             (for/list ([p (in-list (split-parts tree))])
-              (cons (car p) (layout-split-wid (cdr p) wid axis nwid nvid))))]
+              (cons (car p) (layout-split-wid (cdr p) wid axis nwid nvid nborder))))]
     [else tree]))
 
 (define (layout-add-side tree node side size)

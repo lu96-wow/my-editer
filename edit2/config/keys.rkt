@@ -31,6 +31,7 @@
     ((key s ctrl)  always (save))
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
+    ((key t ctrl)  always (border-toggle))       ; 焦点窗口开关边框
     ((key h ctrl)  always (float-open help))
     ((key e alt)   always (focus editor))
     ((key n alt)   always (focus (cycle 1)))
