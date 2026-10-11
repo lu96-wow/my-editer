@@ -17,12 +17,13 @@
          "../theme/theme.rkt"
          "../theme/style.rkt")
 
-(provide draw! run-tui)
+(provide draw! run-tui event->input)
 
 ;;; ---------- 输入：事件 → input ----------
 
-(define (event->input ev)
-  (input (event->binding ev)
+;; 前缀激活时把普通字符也解成命名键（否则 C-p d / C-s - 这类“字符键前缀”匹配不到）。
+(define (event->input ev [chars-as-keys? #f])
+  (input (event->binding ev chars-as-keys?)
          (event-text ev)
          (and (resize-event? ev) (resize-event-cols ev))
          (and (resize-event? ev) (resize-event-rows ev))
@@ -98,6 +99,6 @@
        (set-box! sbox s1)
        (define ev (read-event))
        (define s2 (unbox sbox))
-       (define s* (dispatch s2 (event->input ev)))
+       (define s* (dispatch s2 (event->input ev (and (session-prefix s2) #t))))
        (set-box! sbox s*)
        (unless (session-quit? s*) (loop))))))

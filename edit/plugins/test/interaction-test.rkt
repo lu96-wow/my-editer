@@ -20,6 +20,7 @@
          "../../core/focus.rkt"
          "../../core/command/dispatch.rkt"
          "../../core/command/key.rkt"
+         "../../core/command/command.rkt"
          "../../core/path.rkt"
          "../catalog.rkt"
          "../ui/ids.rkt")
@@ -30,6 +31,9 @@
 
 ;; 初始焦点在树
 (check-equal? (session-focus-vid s) tvid)
+
+;; Tab 不再换焦点（tree / global 都不绑 panel-swap）
+(check-false (resolve s (input (key 'tab) #f #f #f #f #f)))
 
 ;; 按键命中树的键表：down 移动树光标
 (define s1 (dispatch s (input (key 'down) #f #f #f #f #f)))
@@ -63,6 +67,12 @@
 (define did (session-file-did s5 (normalize p)))
 (check-not-false did)
 (check-equal? (session-view-string s5 (session-edit-vid s5)) "hi\n")
+
+;; C-p d：对光标处标识符开文档（前缀 C-p 后接 d）
+(define sp (dispatch s5 (input (key 'p 'ctrl) #f #f #f #f #f)))
+(check-not-false (session-prefix sp))
+(define cpd (resolve sp (input (key 'd) #f #f #f #f #f)))
+(check-true (and cpd (cmd-docs-show? cpd)))
 
 ;; 取消（Escape）同样换回状态行
 (define s5b (dispatch s5 (input (key 'f 'ctrl) #f #f #f #f #f)))

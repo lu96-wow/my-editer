@@ -42,7 +42,7 @@
    (key '/ 'alt)    (cmd-complete)
    (key 'd 'alt)    (cmd-docs-show)))
 
-;;; ---------- 焦点前缀（C-p 后接方向） ----------
+;;; ---------- 焦点前缀（C-p 后接方向 / d 查文档） ----------
 
 (define focus-prefix
   (kbd
@@ -50,6 +50,7 @@
    (key 'down)   (cmd-focus 'down)
    (key 'left)   (cmd-focus 'left)
    (key 'right)  (cmd-focus 'right)
+   (key 'd)      (cmd-docs-show)            ; C-p d：对光标处标识符查文档
    (key 'escape) (cmd-prefix-cancel)))
 
 ;;; ---------- 尺寸前缀（C-o 后接方向） ----------

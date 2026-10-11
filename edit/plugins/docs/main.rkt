@@ -249,15 +249,21 @@
         (set-box! (d-svc-pending svc) (list vid name mods binding))
         s])]))
 
-;; before-render：两步走 —— 先开标准库窗（快），下一拍再追加本地定义。
+;; before-render：把**能同步推进的步骤一次走完**（pending → 标准库 → 本地定义）。
+;; 只有真正等 worker（std-text = #f）才停下；否则每帧只走一步，会拖到下一次按键才刷新。
+;; 配合：before-render 里 doc-job 的 poll 必须先于本 tick（见 docs-install），
+;; 这样本帧到齐的 worker 结果当帧就能处理。
 (define (docs-tick-hook s _args)
   (define svc (docs-svc s))
+  (if svc (docs-step s svc 8) s))
+
+(define (docs-step s svc fuel)
   (cond
-    [(not svc) s]
+    [(zero? fuel) s]
     [else
      (define p (unbox (d-svc-pending svc)))
      (cond
-       ;; 新选中项：提交标准库查询（第一步），进入 wait-std
+       ;; 新选中项：提交标准库查询（第一步），进入 wait-std，继续往下推
        [p
         (set-box! (d-svc-pending svc) #f)
         (match-define (list vid name mods binding) p)
@@ -272,21 +278,22 @@
            ;; 候选名 → (模块, 原名)：标准库与本地定义都查原名
            (define qname (if binding (cadr binding) name))
            (define qmods (if binding (list (car binding)) mods))
-           (start-std! s svc vid qname binding qmods)])]
+           (docs-step (start-std! s svc vid qname binding qmods) svc (sub1 fuel))])]
        [else
         (case (unbox (d-svc-phase svc))
-          ;; 第一步：标准库回来 → 先只开标准库
+          ;; 第一步：标准库就绪（本地文件在 start-std! 里已是 ""）→ 开窗 / 继续第二步
           [(wait-std)
            (define t (unbox (d-svc-std-text svc)))
            (cond
-             [(not t) s]
+             [(not t) s]                    ; 等 worker；到齐由 async-wake 唤醒
              [else
               (set-box! (d-svc-phase svc) 'show-local)
               (define cur (unbox (d-svc-cur svc)))
-              (cond
-                [(and cur (positive? (string-length t)) (live-view? s (car cur)))
-                 (open-window! s svc (car cur) t)]
-                [else s])])]
+              (define s* (cond
+                           [(and cur (positive? (string-length t)) (live-view? s (car cur)))
+                            (open-window! s svc (car cur) t)]
+                           [else s]))
+              (docs-step s* svc (sub1 fuel))])]
           ;; 第二步：本地定义 → 追加（标准库为空时直接用它开窗）
           [(show-local)
            (set-box! (d-svc-phase svc) 'idle)
@@ -397,7 +404,10 @@
 ;;; ---------- 注册 ----------
 
 (define (docs-install s)
-  (define s0 (install-doc-job! s))
+  ;; ⚠ before-render 顺序：doc-job 的 poll 必须先于本 tick 跑（session-add-hook 是 cons，
+  ;; 后加的先跑）。所以先把 tick 挂上（较老 → 靠后），再 install-doc-job! 挂 poll（较新 → 靠前）。
+  (define sT (session-add-hook s (hook 'before-render docs-tick-hook)))
+  (define s0 (install-doc-job! sT))
   ;; 常驻文档区：安装时就建好 document / view 并登记 dock 面（默认隐藏）。
   (define-values (s1 ddid dvid)
     (session-add-document s0 "" (session-width s0) 1 #:name "*docs*"))
@@ -412,9 +422,8 @@
          [s7 (session-add-hook s6 (hook 'docs-hscroll docs-hscroll-hook))]
          [s8 (session-add-hook s7 (hook 'docs-focus docs-focus-hook))]
          [s9 (session-add-hook s8 (hook 'focus-changed docs-cancel-hook))]
-         [s10 (session-add-hook s9 (hook 'after-nav docs-cancel-hook))]
-         [s11 (session-add-hook s10 (hook 'document-closed docs-doc-closed-hook))])
-    (session-add-hook s11 (hook 'before-render docs-tick-hook))))
+         [s10 (session-add-hook s9 (hook 'after-nav docs-cancel-hook))])
+    (session-add-hook s10 (hook 'document-closed docs-doc-closed-hook))))
 
 (define docs-spec
   (plugin-spec 'docs docs-install '()))

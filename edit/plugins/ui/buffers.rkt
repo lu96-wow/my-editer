@@ -136,8 +136,7 @@
    (key 'k 'ctrl)   (cmd-buffers-open 'tb)
    (key 'backspace) (cmd-buffers-close)
    (key 'd 'ctrl)   (cmd-buffers-close)
-   (key 'escape)    (cmd-buffers-toggle)
-   (key 'tab)       (cmd-panel-swap)))
+   (key 'escape)    (cmd-buffers-toggle)))
 
 ;; 插件安装：建缓冲区面板
 (define (buffers-install s)

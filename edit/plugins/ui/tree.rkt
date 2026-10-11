@@ -195,8 +195,7 @@
    (key 'l 'ctrl)   (cmd-tree-new-dir)
    (key 'backspace) (cmd-tree-delete)
    (key 'd 'ctrl)   (cmd-tree-delete)
-   (key 'escape)    (cmd-tree-toggle)
-   (key 'tab)       (cmd-panel-swap)))
+   (key 'escape)    (cmd-tree-toggle)))
 
 ;; 插件安装：建文件树面板（根 = 当前目录）
 (define (tree-install s)

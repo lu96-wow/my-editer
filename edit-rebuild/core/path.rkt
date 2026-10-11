@@ -1,0 +1,29 @@
+#lang racket
+
+;;; edit-rebuild/core/path.rkt —— 路径工具（纯）
+;;;
+;;; 各处（file-map / tree-state / document / feature/tree）原本各带一份
+;;; normalize；统一到这里。
+
+(require racket/path)
+
+(provide normalize path-under? path=? basename join)
+
+;; 规范化：补成绝对路径 + 化简（去 . / .. / 尾斜杠）。
+(define (normalize p) (simplify-path (path->complete-path p)))
+
+;; 文件名（去目录部分）；无目录部分时取自身。
+(define (basename p)
+  (path->string (or (file-name-from-path (path->complete-path p)) p)))
+
+;; dir + name → 规范化路径（去 . / ..）。
+(define (join dir name) (simplify-path (build-path dir name)))
+
+;; p 是否在 root 之下（含相等）。
+(define (path-under? root p)
+  (define r (explode-path (normalize root)))
+  (define q (explode-path (normalize p)))
+  (and (>= (length q) (length r)) (equal? r (take q (length r)))))
+
+;; 两个路径规范化后是否相同。
+(define (path=? a b) (equal? (normalize a) (normalize b)))
