@@ -21,7 +21,7 @@ jobs   : State -> [Job]                                  ; 后台需求，纯
 
 ---
 
-## 2. State（7 字段，定下即稳定）
+## 2. State（6 字段，定下即稳定）
 
 ```racket
 ;; ---- 值 ----
@@ -42,9 +42,13 @@ Layout = (pane wid vid)
    layout  ; Layout            意图树；几何永不存
    focus   ; wid               窗口身份（不是 vid）
    stack   ; (listof wid)      浮窗 z 序 + 模态序（栈头接键）
-   input   ; #f | (prefix sym) | (prompt label text on-submit)
    jobs))  ; id -> (kind . key) 在途请求
 ```
+
+**输入行 / 前缀也不在 State**：提示词正文就是 `*input*` 文档（一切皆 document，
+用普通光标 / 插入 / 退格编辑）；标签 + 语义存在 `feature 'prompt`，多键前缀存在
+`feature 'prefix`。打开输入行 = 把状态栏 pane 的 vid 换成 `*input*` 并聚焦；提交/取消 = 换回。
+详见 4.11。
 
 **派生，永不存**：`Placement`、可见集合、脏标志、浮层栈头、face 层、菜单内容。
 面板（状态行 / 树 / 日志 / 补全 / 文档窗）都是「一个 vid 显示一个生成的 doc」；
@@ -248,6 +252,27 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
 
 ---
 
+## 4.11 输入行 = document（*input*）
+
+提示词不再是 State 字段 + 手写路由，而是一个普通文档，并且**就地占用状态栏 pane**：
+
+- **文档**：`*input*` 面板文档（vid 显示一个 doc），内容 = `label + 正文`。用普通光标
+  编辑——插入 / 退格 / Home/End / 水平滚动都是已有编辑原语，**不手写字符串**。
+- **位置**：打开时把**状态栏那个 pane 的 vid** 换成 `*input*`（`layout-set-pane-vid`），
+  所以输入行与状态栏**同位置、同几何**；窗窄时靠 view 的水平滚动看全文。关闭时换回 `*status*`。
+- **焦点**：输入文档持有焦点（`state-focus` = 那个 wid），所以光标可见、可移动、可滚动。
+- **语义**：`feature 'prompt` = `(prompt wid label kind data prev-focus)`；`label` 是文档
+  开头的只读前缀，提交时按它截掉；`kind` 决定提交行为（quit / close-doc / new-file /
+  new-dir / delete）。
+- **路由**：`prompt` 作用域内的绑定 = `(text) (insert-event-text)`、`(key backspace)`、
+  `(key left/right/home/end)`、`(key enter) (submit-prompt)`、`(key escape) (cancel-prompt)`。
+  提交时取 `*input*` 文档 label 之后的文本，驱动 `kind`；无效答复重开同一输入行。
+- **模态**：输入行激活时只有 `prompt` 作用域的绑定生效（`scope-of` 对其它 scope 加
+  「无 prompt」前提），所以点鼠标 / 切焦点都不会打断它。
+- **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`；状态栏（= `*status*`）显示提示。
+
+---
+
 ## 5. 输入：CPS 声明式路由
 
 路由表是**数据**（守卫 + 处理器）；处理器是 **CPS 函数**，第三个参数就是「下一个处理器」
@@ -393,7 +418,7 @@ handler : Ctx State Event Cont -> Reply        ; 指针处理器用 ctx 做命�
 ## 8. 模块清单
 
 ```
-state.rkt    State(7 字段) + doc-meta + Layout 树 + feature-ref/set
+state.rkt    State(6 字段) + doc-meta + Layout 树 + feature-ref/set
 adapter.rkt  core 边界：结构 / 编辑 / 布局 / 渲染 / face（唯一 require core/editor）
 event.rkt    Event ADT：(key …) (text …) (cursor …) (resize …) (job-done …) (tick)
 effect.rkt   Effect ADT（一次性 IO：open/save/quit/log）

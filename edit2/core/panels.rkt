@@ -42,7 +42,7 @@
 ;;; ---------- 面板清单（core 认识的 panel 名；config 选启用哪些） ----------
 
 (define panel-specs
-  '("*tree*" "*buffers*" "*status*" "*log*" "*help*"))
+  '("*tree*" "*buffers*" "*status*" "*input*" "*log*" "*help*"))
 
 (define (panel-name? name)
   (and (string? name) (and (member name panel-specs) #t)))
@@ -133,18 +133,16 @@
     [else (values #f '())]))
 
 (define (status-content st)
-  (define p (state-input st))
   (define w (state-focus st))
   (define v (and w (layout-wid-vid (state-layout st) w)))   ; focus 是 wid；取显示的 vid
+  (define prefix (feature-ref st 'prefix #f))
   (cond
     [(placing? (feature-ref st 'placing #f))
      (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target)
              (list (cons 0 'status-bar)))]
-    [(prompt? p) (values (string-append " " (prompt-label p) (prompt-text p))
-                         (list (cons 0 'input)))]
-    [(memq (state-input st) '(new new2))
-     (values (if (eq? (state-input st) 'new2)
+    [(memq prefix '(new new2))
+     (values (if (eq? prefix 'new2)
                  " C-n f = 新目录   Esc 取消"
                  " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
              (list (cons 0 'input)))]

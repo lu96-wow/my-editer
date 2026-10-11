@@ -19,7 +19,7 @@
     (log     bottom  6 (log))))
 
 (define enabled-panels
-  '(tree buffers status log help))
+  '(tree buffers status input log help))
 
 ;; 根骨架：主区（区域往这里贴）+ 状态栏（全宽贴底）
 ;; 状态栏给 2 行：它自身的边框顶边与主区的底边合并（只画一条线），

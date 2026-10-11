@@ -9,6 +9,7 @@
 ;;; 编辑原语落到 core（adapter）；step 自己只做「状态 + 效果」的纯协调。
 
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
+         open-prompt close-prompt prompt-of prefix-of input-name
          open-float close-float cycle-float
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
@@ -493,9 +494,9 @@
 (define (ask-quit st ds)
   (cond
     [(null? ds) (values st (list (quit-effect)))]
-    [else (values (struct-copy state st [input (prompt 'quit
-                                                       (format "save ~a? (y/n/all/nall) " (doc-display st (car ds)))
-                                                       "" ds)])
+    [else (values (open-prompt st
+                               (format "save ~a? (y/n/all/nall) " (doc-display st (car ds)))
+                               'quit ds)
                   '())]))
 
 (define (request-quit st) (ask-quit st (dirty-dids st)))
@@ -504,53 +505,103 @@
 (define (request-close-doc st did)
   (cond
     [(doc-dirty? st did)
-     (values (struct-copy state st [input (prompt 'close-doc
-                                                  (format "save ~a? (y/n) " (doc-display st did))
-                                                  "" (list did))])
-             '())]
+     (values (open-prompt st (format "save ~a? (y/n) " (doc-display st did)) 'close-doc (list did)) '())]
     [else (values (close-doc! st did) '())]))
 
-(define (set-prompt-text st t)
-  (struct-copy state st [input (struct-copy prompt (state-input st) [text t])]))
+;;; ---------- 输入行（*input* 文档）：打开 / 提交 / 取消 ----------
+;; 正文 + label 都在 *input* 文档（用普通光标编辑 / 水平滚动看全文）；
+;; 打开时把**状态栏那个 pane** 的 vid 换成 *input*，所以输入行就地占状态栏位置。
+(define input-name "*input*")
+
+(define (prompt-of st) (feature-ref st 'prompt #f))
+
+;; 打开输入行：状态栏 pane 的 vid → *input*，文档设为 label、光标放 label 之后，聚焦。
+(define (open-prompt st label kind data)
+  (define iv (panel-vid st input-name))
+  (define w (panel-wid st "*status*"))
+  (cond
+    [(or (not iv) (not w)) st]
+    [else
+     (assign! (state-ed st) iv label)
+     (set-point! (state-ed st) iv 0 (string-length label))
+     (face-line! (state-ed st) (view-did (state-ed st) iv) 0 'input)
+     (struct-copy state
+                  (feature-set st 'prompt (prompt w label kind data (state-focus st)))
+                  [layout (layout-set-pane-vid (state-layout st) w iv)]
+                  [focus w])]))
+
+;; 关闭输入行：状态栏 pane 的 vid 换回 *status*，恢复焦点。
+(define (close-prompt st)
+  (define p (prompt-of st))
+  (define st1 (feature-set st 'prompt #f))
+  (define w (and p (prompt-wid p)))
+  (define sv (panel-vid st1 "*status*"))
+  (define st2 (cond [(and w (layout-has-wid? (state-layout st1) w) sv)
+                     (struct-copy state st1 [layout (layout-set-pane-vid (state-layout st1) w sv)])]
+                    [else st1]))
+  (define prev (and p (prompt-prev-focus p)))
+  (define f (cond [(and prev (layout-has-wid? (state-layout st2) prev)) prev]
+                  [else (pick-focus st2 (state-layout st2))]))
+  (struct-copy state st2 [focus f]))
+
+;; 输入正文 = *input* 文档去掉 label 之后的部分。
+(define (prompt-answer st p)
+  (define iv (panel-vid st input-name))
+  (define full (if iv (view-string (state-ed st) iv) ""))
+  (define label (prompt-label p))
+  (if (>= (string-length full) (string-length label))
+      (substring full (string-length label) (string-length full))
+      ""))
 
 (define (submit-prompt st)
-  (define p (state-input st))
-  (define st0 (struct-copy state st [input #f]))
-  (define ans (string-downcase (string-trim (prompt-text p))))
-  (case (prompt-kind p)
+  (define p (prompt-of st))
+  (cond
+    [(not p) (values st '())]
+    [else
+     (define text (prompt-answer st p))
+     (submit-with (close-prompt st) p text)]))
+
+(define (cancel-prompt st)
+  (cond [(prompt-of st) (values (close-prompt st) '())]
+        [else (values st '())]))
+
+;; 按 kind 执行提交（text = 正文）。无效答复则重开同一输入行。
+(define (submit-with st p text)
+  (define kind (prompt-kind p))
+  (define ans (string-downcase (string-trim text)))
+  (define (reopen) (open-prompt st (prompt-label p) kind (prompt-data p)))
+  (case kind
     [(close-doc)
      (define did (car (prompt-data p)))
      (cond
        [(member ans '("y" "yes"))
-        (define-values (s effs ok?) (save-doc st0 did))
-        (if ok?
-            (values (close-doc! s did) effs)
-            (values (struct-copy state st0 [input (prompt 'close-doc (prompt-label p) "" (prompt-data p))]) '()))]
-       [(member ans '("n" "no")) (values (close-doc! st0 did) '())]
-       [else (values (struct-copy state st0 [input (prompt 'close-doc (prompt-label p) "" (prompt-data p))]) '())])]
-    [(quit) (handle-quit st0 ans (prompt-data p))]
+        (define-values (s effs ok?) (save-doc st did))
+        (if ok? (values (close-doc! s did) effs) (values (reopen) '()))]
+       [(member ans '("n" "no")) (values (close-doc! st did) '())]
+       [else (values (reopen) '())])]
+    [(quit) (handle-quit st ans (prompt-data p))]
     [(new-file)
      (define d (car (prompt-data p)))
-     (define name (string-trim (prompt-text p)))
+     (define name (string-trim text))
      (cond
-       [(string=? name "") (values st0 '())]
-       [else (fs-attempt st0 (lambda () (fs-make-file (build-path d name))))
-             (values (tree-after-fs! st0 d) '())])]
+       [(string=? name "") (values st '())]
+       [else (fs-attempt st (lambda () (fs-make-file (build-path d name))))
+             (values (tree-after-fs! st d) '())])]
     [(new-dir)
      (define d (car (prompt-data p)))
-     (define name (string-trim (prompt-text p)))
+     (define name (string-trim text))
      (cond
-       [(string=? name "") (values st0 '())]
-       [else (fs-attempt st0 (lambda () (fs-make-dir (build-path d name))))
-             (values (tree-after-fs! st0 d) '())])]
+       [(string=? name "") (values st '())]
+       [else (fs-attempt st (lambda () (fs-make-dir (build-path d name))))
+             (values (tree-after-fs! st d) '())])]
     [(delete)
      (define path (car (prompt-data p)))
      (cond
        [(member ans '("y" "yes"))
-        (fs-attempt st0 (lambda () (fs-delete path)))
-        (values (tree-after-fs! st0 #f) '())]
-       [else (values st0 '())])]
-    [else (values st0 '())]))
+        (fs-attempt st (lambda () (fs-delete path)))
+        (values (tree-after-fs! st #f) '())]
+       [else (values st '())])]
+    [else (values st '())]))
 
 ;; 跑一个 fs 动作；出错记到日志，不崩。
 (define (fs-attempt st thunk)
@@ -573,24 +624,6 @@
      (values s (append effs (list (quit-effect))))]
     [(member ans '("nall" "none" "!")) (values st (list (quit-effect)))]
     [else (ask-quit st ds)]))
-
-(define (prompt-routes)
-  (list
-   (route (lambda (st ev) (prompt? (state-input st)))
-          (handled
-           (lambda (st ev)
-             (define p (state-input st))
-             (cond
-               [(text-event? ev)
-                (values (set-prompt-text st (string-append (prompt-text p) (text-event-text ev))) '())]
-               [(key-is? ev 'backspace)
-                (define t (prompt-text p))
-                (values (set-prompt-text st (if (positive? (string-length t))
-                                                (substring t 0 (sub1 (string-length t)))
-                                                "")) '())]
-               [(key-is? ev 'enter) (submit-prompt st)]
-               [(key-is? ev 'escape) (values (struct-copy state st [input #f]) '())]
-               [else (values st '())]))))))
 
 ;;; ---------- 文件 / 缓冲区打开 ----------
 ;; 一个 document 可对应多个 view。打开已在资源里的文件不新建 document：
@@ -794,18 +827,18 @@
 (define (tree-new-file st)
   (define d (tree-target-dir st))
   (cond [(not d) (values st '())]
-        [else (values (struct-copy state st [input (prompt 'new-file (format "新文件 ~a : " d) "" (list d))]) '())]))
+        [else (values (open-prompt st (format "新文件 ~a : " d) 'new-file (list d)) '())]))
 
 (define (tree-new-dir st)
   (define d (tree-target-dir st))
   (cond [(not d) (values st '())]
-        [else (values (struct-copy state st [input (prompt 'new-dir (format "新目录 ~a : " d) "" (list d))]) '())]))
+        [else (values (open-prompt st (format "新目录 ~a : " d) 'new-dir (list d)) '())]))
 
 (define (tree-delete st)
   (define cur (tree-current st))
   (cond
     [(not cur) (values st '())]
-    [else (values (struct-copy state st [input (prompt 'delete (format "删除 ~a ? (y/n) " (car cur)) "" (list (car cur)))]) '())]))
+    [else (values (open-prompt st (format "删除 ~a ? (y/n) " (car cur)) 'delete (list (car cur))) '())]))
 
 ;; 写盘变动后：重读磁盘 + 展开目标目录（只影响树）。
 (define (tree-after-fs! st dir)
@@ -823,11 +856,13 @@
   (define ts0 (feature-ref st 'tree #f))
   (if ts0 (feature-set st 'tree (tree-toggle-hidden ts0)) st))
 
-;; C-n 前缀：一次 = 新文件，两次 = 新目录。
-(define (prefix-of st) (let ([i (state-input st)]) (and (memq i '(new new2 split)) i)))
+;; 前缀（多键序列，如 C-n / C-s）：纯值存在 feature 'prefix；不是文本输入。
+;; 一次 C-n = 新文件，两次 = 新目录；C-s = 分屏前缀。
+(define (prefix-of st) (feature-ref st 'prefix #f))
+(define (prefix-set st p) (feature-set st 'prefix p))
 (define (prefix-new st)
-  (struct-copy state st [input (if (eq? (state-input st) 'new) 'new2 'new)]))
-(define (prefix-cancel st) (struct-copy state st [input #f]))
+  (prefix-set st (if (eq? (prefix-of st) 'new) 'new2 'new)))
+(define (prefix-cancel st) (prefix-set st #f))
 
 ;; 打开浮窗 = 新建一个窗口 wid 显示 vid，并压栈。
 (define (open-float st vid anchor want-w want-h)
@@ -881,19 +916,24 @@
 (define (panel-name-of x) (if (symbol? x) (format "*~a*" x) x))
 
 (define (scope-of s)
+  (define base
+    (cond
+      [(eq? s 'always) always]
+      [(eq? s 'editor) editor-focus?]
+      [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
+      [(eq? s 'prompt) (lambda (st ev) (and (prompt-of st) #t))]
+      [(eq? s 'new)  (lambda (st ev) (eq? (prefix-of st) 'new))]
+      [(eq? s 'new2) (lambda (st ev) (eq? (prefix-of st) 'new2))]
+      [(eq? s 'split) (lambda (st ev) (eq? (prefix-of st) 'split))]
+      [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
+      [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
+      [(and (pair? s) (eq? (car s) 'region))
+       (lambda (st ev) (and (member (wid-panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
+      [else always]))
+  ;; 输入行是模态：激活时只有 prompt 作用域的绑定生效，其余一律不可用。
   (cond
-    [(eq? s 'always) always]
-    [(eq? s 'editor) editor-focus?]
-    [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
-    [(eq? s 'prompt) (lambda (st ev) (prompt? (state-input st)))]
-    [(eq? s 'new)  (lambda (st ev) (eq? (state-input st) 'new))]
-    [(eq? s 'new2) (lambda (st ev) (eq? (state-input st) 'new2))]
-    [(eq? s 'split) (lambda (st ev) (eq? (state-input st) 'split))]
-    [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
-    [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
-    [(and (pair? s) (eq? (car s) 'region))
-     (lambda (st ev) (and (member (wid-panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
-    [else always]))
+    [(eq? s 'prompt) base]
+    [else (lambda (st ev) (and (not (prompt-of st)) (base st ev)))]))
 
 ;;; ---------- op 解释器（原语） ----------
 
@@ -970,8 +1010,10 @@
     [(tree-reload)       (values (tree-reload st) '())]
     [(tree-toggle-hidden) (values (tree-hidden-toggle st) '())]
     [(prefix-new)        (values (prefix-new st) '())]
-    [(prefix-split)      (values (struct-copy state st [input 'split]) '())]
+    [(prefix-split)      (values (prefix-set st 'split) '())]
     [(prefix-cancel)     (values (prefix-cancel st) '())]
+    [(submit-prompt)     (submit-prompt st)]
+    [(cancel-prompt)     (cancel-prompt st)]
     [(buffers-toggle)    (values (buffers-toggle st) '())]
     [(buffers-expand)    (values (buffers-fold! st #f) '())]
     [(buffers-collapse)  (values (buffers-fold! st #t) '())]
@@ -1001,10 +1043,9 @@
     (values st* (append effs e*))))
 
 (define (app-routes)
-  (append (prompt-routes)
-          (compile-routes key-table scope-of
-                          (lambda (ops)
-                            (lambda (ctx st ev k) (run-ops ctx st ev ops))))))
+  (compile-routes key-table scope-of
+                  (lambda (ops)
+                    (lambda (ctx st ev k) (run-ops ctx st ev ops)))))
 
 ;;; ---------- 后台需求 ----------
 

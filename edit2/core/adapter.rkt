@@ -19,6 +19,7 @@
  view-id-list document-id-list document-view-list
  document-name document-string document-handle
  view-size
+ view-left-column
  ;; 分区尺寸
  set-view-size!
  ;; 属性写回
@@ -126,3 +127,4 @@
 (define (document-handle ed did) (editor-document-handle ed did))
 (define (view-size ed vid)
   (cons (editor-view-width ed vid) (editor-view-height ed vid)))
+(define (view-left-column ed vid) (editor-view-left-column ed vid))

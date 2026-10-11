@@ -36,6 +36,17 @@
     ((key right)   split  (split right))
     ((key escape)  split  (prefix-cancel))
 
+    ;; ---------- 输入行（*input* 文档）：普通光标编辑 + 回车提交 / Esc 取消 ----------
+    ((text)          prompt (insert-event-text))
+    ((key backspace) prompt (delete-back))
+    ((key delete)    prompt (delete))
+    ((key left)      prompt (move left))
+    ((key right)     prompt (move right))
+    ((key home)      prompt (move home))
+    ((key end)       prompt (move end))
+    ((key enter)     prompt (submit-prompt))
+    ((key escape)    prompt (cancel-prompt))
+
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))
     ((key s alt)   always (save))

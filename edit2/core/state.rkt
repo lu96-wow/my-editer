@@ -54,7 +54,8 @@
 
 ;;; ---------- 唯一状态 ----------
 ;; focus : wid（窗口身份，不是 vid）；stack : (listof wid)
-(struct state (ed docs views layout focus stack input jobs) #:transparent)
+;; 输入行 / 前缀不存在 State：提示词正文在 *input* 文档，元数据在 feature（见下）。
+(struct state (ed docs views layout focus stack jobs) #:transparent)
 
 (define (make-state #:ed [ed (make-blank-editor)]
                     #:docs [docs (hash)]
@@ -62,9 +63,8 @@
                     #:layout [layout (blank)]
                     #:focus [focus #f]
                     #:stack [stack '()]
-                    #:input [input #f]
                     #:jobs [jobs (hash)])
-  (state ed docs views layout focus stack input jobs))
+  (state ed docs views layout focus stack jobs))
 
 ;;; ---------- 特性局部状态（存在 views 里，不新增全局字段） ----------
 
@@ -76,13 +76,17 @@
 
 (struct job (id kind key input) #:transparent)
 
-;;; ---------- 输入行 / 询问（数据化：kind 决定提交时的行为） ----------
-
-(struct prompt (kind label text data) #:transparent)
-;; kind  : 'close-doc | 'quit
-;; label : 显示在前面的提示
-;; text  : 已输入的答复
-;; data  : kind 相关（close-doc: (list did)；quit: (listof did) 尚未问的）
+;;; ---------- 输入行（数据化：kind 决定提交时的行为） ----------
+;;
+;; 正文在 *input* 文档（一切皆 document）；打开时该文档**就地占用状态栏 pane**
+;; （把状态栏 pane 的 vid 换成 *input*），所以输入行与状态栏同一位置、同一几何。
+;; 存在 feature 'prompt；不新增 State 字段。
+(struct prompt (wid label kind data prev-focus) #:transparent)
+;; wid        : 被换 vid 的那个 pane（即状态栏 wid），关闭时恢复
+;; label      : 文档开头的只读前缀（提交时按它截掉）
+;; kind       : 'quit | 'close-doc | 'new-file | 'new-dir | 'delete …
+;; data       : kind 相关（close-doc: (list did)；quit: (listof did) 尚未问的）
+;; prev-focus : 打开前的焦点 wid（关闭时恢复）
 
 ;;; ---------- 放置选择（打开时多窗口 → 用户选目标窗格） ----------
 
