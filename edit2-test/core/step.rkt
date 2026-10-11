@@ -114,7 +114,7 @@
 (check-equal? (view-line (state-ed stt0) (panel-vid stt0 "*tree*")) 0)
 (define stt1 (run1 (run1 stt0 (key-event 't '(alt))) (key-event 'down '())))
 (check-equal? (view-line (state-ed stt1) (panel-vid stt1 "*tree*")) 1)
-(define stt2 (run1 (fresh) (cursor-event 'press 'left 2 2)))
+(define stt2 (run1 (fresh) (cursor-event 'press 'left 2 3)))   ; 屏幕行 3 = 内容行 2（上方 1 行边框）
 (check-equal? (view-line (state-ed stt2) (panel-vid stt2 "*tree*")) 2)
 ;; 指针：布局命中 → 定位光标（编辑器窗格从列 28 开始）
 (define st0 (fresh))

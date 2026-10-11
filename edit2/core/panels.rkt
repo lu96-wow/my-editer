@@ -203,9 +203,9 @@
       (string-append (make-string (* 2 depth) #\space) marker label)))
   (values (string-join lines "\n")
           (for/list ([r (in-list rows)] [i (in-naturals)])
-            (cons i (cond [(= i cursor) 'accent]
-                          [(eq? (list-ref r 4) 'doc) 'bold]
-                          [else 'dim])))))
+            (cons i (cond [(= i cursor) 'tree-cursor]
+                          [(eq? (list-ref r 4) 'doc) 'buffers-doc]
+                          [else 'buffers-view])))))
 
 (define (tree-content st v)
   (define ts (feature-ref st 'tree #f))
@@ -221,9 +221,9 @@
                         (list-ref r 1))))
      (values (string-join lines "\n")
              (for/list ([r (in-list rows)] [i (in-naturals)])
-               (cons i (cond [(= i cursor) 'accent]
-                             [(list-ref r 2) 'bold]
-                             [else 'dim]))))]))
+               (cons i (cond [(= i cursor) 'tree-cursor]
+                             [(list-ref r 2) 'tree-dir]
+                             [else 'tree-file]))))]))
 
 ;;; ---------- 刷新 ----------
 

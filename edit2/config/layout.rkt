@@ -37,7 +37,7 @@
    "edit2\n\n"
    " C-q 退出    C-s 保存    C-z/C-y 撤销/重做\n"
    " C-a/C-c/C-x/C-v  选区 / 剪贴板\n"
-   " C-w 分屏（留空窗口，再选/建视图填入）    C-d 关窗口    C-b 侧栏显隐  C-l 日志  C-h 帮助\n"
+   " C-w 分屏（留空窗口）    C-d 关窗口    C-t 边框开关    C-b 侧栏显隐  C-l 日志  C-h 帮助\n"
    " 资源面板（树状：document 根 / view 子）：↑↓ 选，←→/空格 折叠，Enter 打开，n 新建 view\n"
    "   C-d 关选中 view   Delete 关选中 document（连带其视图）\n"
    " 打开目标窗格：单窗直接替换；多窗进选择模式，鼠标/Tab/M-n 选，Enter 替换，Esc 取消\n"

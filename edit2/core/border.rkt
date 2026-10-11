@@ -23,12 +23,22 @@
 ;;; ---------- 字形：方向集 → 一个 Unicode 制表符 ----------
 
 (define glyph-table
-  (hash '()          #\space
-        '(l)         #\─ (r) #\─ '(l r) #\─
-        '(u)         #\│ (d) #\│ '(u d) #\│
-        '(d r)       #\┌ '(d l) #\┐ '(r u) #\└ '(l u) #\┘
-        '(d r u)     #\├ '(d l u) #\┤ '(d l r) #\┬ '(l r u) #\┴
-        '(d l r u)   #\┼))
+  (hash '()        #\space
+        '(l)       #\─
+        '(r)       #\─
+        '(l r)     #\─
+        '(u)       #\│
+        '(d)       #\│
+        '(d u)     #\│
+        '(d r)     #\┌
+        '(d l)     #\┐
+        '(r u)     #\└
+        '(l u)     #\┘
+        '(d r u)   #\├
+        '(d l u)   #\┤
+        '(d l r)   #\┬
+        '(l r u)   #\┴
+        '(d l r u) #\┼))
 
 (define (dir<? a b) (string<? (symbol->string a) (symbol->string b)))
 
@@ -53,21 +63,22 @@
     [(placement-float? p) (values 1 1 1 1)]      ; 浮窗不参与平铺共享，四边都画
     [else
      (define r (placement-rect p))
-     (define others (filter (lambda (x) (not (eqv? x p))) (tiled placements)))
-     ;; 正上方有边框窗 → 自己的上边被抑制（线归上方窗的底边）
-     (define above?
-       (for/or ([a (in-list others)]
-                #:when (wid-border tree (placement-wid a)))
-         (define ra (placement-rect a))
-         (and (= (+ (rect-y ra) (rect-h ra)) (rect-y r))
-              (overlap? (rect-x ra) (+ (rect-x ra) (rect-w ra)) (rect-x r) (+ (rect-x r) (rect-w r))))))
-     (define left?
-       (for/or ([a (in-list others)]
-                #:when (wid-border tree (placement-wid a)))
-         (define ra (placement-rect a))
-         (and (= (+ (rect-x ra) (rect-w ra)) (rect-x r))
-              (overlap? (rect-y ra) (+ (rect-y ra) (rect-h ra)) (rect-y r) (+ (rect-y r) (rect-h r))))))
-     (values (if left? 0 1) (if above? 0 1) 1 1)]))
+     (cond
+       [(or (< (rect-w r) 3) (< (rect-h r) 3)) (values 0 0 0 0)]   ; 太小放不下边框
+       [else
+        (define others (filter (lambda (x) (not (eqv? x p))) (tiled placements)))
+        ;; 正上方有边框窗 → 自己的上边被抑制（线归上方窗的底边）
+        (define above?
+          (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
+            (define ra (placement-rect a))
+            (and (= (+ (rect-y ra) (rect-h ra)) (rect-y r))
+                 (overlap? (rect-x ra) (+ (rect-x ra) (rect-w ra)) (rect-x r) (+ (rect-x r) (rect-w r))))))
+        (define left?
+          (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
+            (define ra (placement-rect a))
+            (and (= (+ (rect-x ra) (rect-w ra)) (rect-x r))
+                 (overlap? (rect-y ra) (+ (rect-y ra) (rect-h ra)) (rect-y r) (+ (rect-y r) (rect-h r))))))
+        (values (if left? 0 1) (if above? 0 1) 1 1)])]))
 
 ;;; ---------- 规划：内容 placements + 边框行 ----------
 

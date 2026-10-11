@@ -31,7 +31,7 @@
 
 ;; 同 view 多窗口、尺寸不同：view 尺寸以**焦点窗口**为准（core set-layout! 逐个写回）
 (define v0 (wid-vid st (state-focus st)))
-(define L2 (split 'h (list (cons 15 (pane 'wA v0)) (cons 'flex (pane 'wB v0)))))
+(define L2 (split 'h (list (cons 15 (pane 'wA v0 #f)) (cons 'flex (pane 'wB v0 #f)))))
 (define size (cons 60 5))
 (define stA (struct-copy state st [layout L2] [focus 'wA]))
 (define stB (struct-copy state st [layout L2] [focus 'wB]))
