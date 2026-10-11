@@ -29,7 +29,7 @@
     [(and (list? b) (eq? (car b) 'cursor) (= (length b) 2))
      (on-cursor (cadr b))]
     [(and (list? b) (eq? (car b) 'text))
-     on-text]
+     (apply on-text (cdr b))]   ; (text) | (text "f")
     [else (error 'parse-binding "坏 binding: ~a" b)]))
 
 ;;; ---------- op（原语） ----------

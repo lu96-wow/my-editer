@@ -32,7 +32,7 @@
 
 ;; 资源面板（唯一能新建 view 的地方）：焦点到侧栏缓冲区，建一个未显示 view。
 (define (to-buffers st) (region-focus! (region-activate! st 'sidebar "*buffers*") 'sidebar))
-(define (res-new-view st) (run1 (to-buffers st) (key-event 'n '())))
+(define (res-new-view st) (run1 (to-buffers st) (text-event "n")))
 ;; 分裂 = 新建窗口（新窗在该方向）：C-s 前缀 + 方向键。
 (define (split! st dir) (run1 (run1 st (key-event 's '(ctrl))) (key-event dir '())))
 (define (split-two st) (split! st 'right))
@@ -398,12 +398,12 @@
 (define tn4 (run1 tn3 (key-event 'left '())))
 (check-equal? (view-col (state-ed tn4) (panel-vid tn4 "*tree*")) 0)
 
-;; C-n f 新文件（目标 = 根目录行）
+;; C-n f 新文件（目标 = 根目录行）；可打印字符在终端里是 text-event（不是 key-event）
 (define dnew (make-tdir))
 (define tf1 (tree-focus (boot "" "x" 60 16 #:root dnew)))
 (define tf2 (run1 tf1 (key-event 'n '(ctrl))))
 (check-equal? (state-input tf2) 'new)
-(define tf3 (run1 tf2 (key-event 'f '())))
+(define tf3 (run1 tf2 (text-event "f")))
 (check-true (prompt? (state-input tf3)))
 (define tf4 (run1 (run1 tf3 (text-event "new.txt")) (key-event 'enter '())))
 (check-true (file-exists? (build-path dnew "new.txt")))
@@ -411,7 +411,7 @@
 ;; C-n C-n f 新目录
 (define tf5 (run1 (run1 tf1 (key-event 'n '(ctrl))) (key-event 'n '(ctrl))))
 (check-equal? (state-input tf5) 'new2)
-(define tf6 (run1 (run1 (run1 tf5 (key-event 'f '())) (text-event "sub2")) (key-event 'enter '())))
+(define tf6 (run1 (run1 (run1 tf5 (text-event "f")) (text-event "sub2")) (key-event 'enter '())))
 (check-true (directory-exists? (build-path dnew "sub2")))
 
 ;; C-u 重读磁盘（外部新建），已打开文档不受影响

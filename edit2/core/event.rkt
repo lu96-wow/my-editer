@@ -30,7 +30,10 @@
 (define ((on-key key [mods '()]) st ev)
   (key-is? ev key mods))
 
-(define (on-text st ev) (text-event? ev))
+;; (text) 任意文本； (text "f") 只匹配该串（普通可打印字符走 text-event，不走 key-event）
+(define ((on-text [str #f]) st ev)
+  (and (text-event? ev)
+       (or (not str) (equal? str (text-event-text ev)))))
 (define (on-resize st ev) (resize-event? ev))
 (define (on-job st ev) (job-event? ev))
 

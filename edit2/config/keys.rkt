@@ -3,7 +3,8 @@
 ;;; config/keys.rkt —— 命令表（**纯数据**，不 require 任何实现）
 ;;;
 ;;; entry = (binding scope op ...)
-;;;   binding : (key k mod ...) | (cursor kind button) | (text)
+;;;   binding : (key k mod ...) | (cursor kind button) | (text) | (text "x")
+;;;             （可打印字符在终端里是 text-event，用 (text "x") 而不是 (key x)）
 ;;;   scope   : always | editor | float | prompt | (panel name)
 ;;;   op      : core 原语（见 core/step.rkt run-ops）
 ;;;
@@ -74,16 +75,16 @@
     ;; 文件树：C-d 删除（需确认）；C-n f 新文件，C-n C-n f 新目录
     ((key d ctrl) (panel tree)   (tree-delete))
     ((key n ctrl) (panel tree)   (prefix-new))
-    ((key f)      new            (tree-new-file))
-    ((key f)      new2           (tree-new-dir))
+    ((text "f")   new            (tree-new-file))
+    ((text "f")   new2           (tree-new-dir))
     ((key escape) new            (prefix-cancel))
     ((key escape) new2           (prefix-cancel))
     ((key down)  (panel buffers) (move down))
     ((key up)    (panel buffers) (move up))
     ((key right) (panel buffers) (buffers-expand))
     ((key left)  (panel buffers) (buffers-collapse))
-    ((key space) (panel buffers) (buffers-toggle))
-    ((key n)     (panel buffers) (new-view))       ; 唯一新建 view 的入口
+    ((text " ")   (panel buffers) (buffers-toggle))
+    ((text "n")   (panel buffers) (new-view))       ; 唯一新建 view 的入口
     ((key enter) (panel buffers) (activate))
 
     ;; ---------- 编辑 ----------
