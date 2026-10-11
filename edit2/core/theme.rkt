@@ -24,27 +24,38 @@
 
 (define (rgb r g b) (list 'rgb r g b))
 
-;; 命名样式表：名字 → style。加一个样式 = 这里加一行。
+;; 命名样式表：名字 → style。加一个样式 = 这里加一行。配色沿用 edit 的 tree/state 方案。
 (define palette
   (hash
    'default        (style #f #f '())
-   'dim            (style (rgb 128 128 138) #f '())
+   'dim            (style (rgb 120 120 130) #f '())
    'bold           (style #f #f '(bold))
    'italic         (style #f #f '(italic))
    'underline      (style #f #f '(underline))
-   'accent         (style (rgb 122 180 255) #f '(bold))
-   ;; 窗口 / 面板
+   'accent         (style (rgb 120 180 240) #f '())
+   ;; 窗口 / 边框
    'window-border  (style (rgb 105 112 128) #f '())
-   'window-focus   (style (rgb 160 190 255) #f '())
-   'status         (style (rgb 210 214 224) (rgb 40 42 54) '())
-   'status-accent  (style (rgb 255 220 150) (rgb 40 42 54) '(bold))
-   ;; 资源面板
-   'tree-dir       (style (rgb 122 180 255) #f '(bold))
-   'tree-file      (style (rgb 190 190 200) #f '())
-   'tree-cursor    (style (rgb 255 220 150) #f '(bold))
-   'buffers-doc    (style (rgb 210 214 224) #f '(bold))
-   'buffers-view   (style (rgb 150 200 150) #f '())
-   'log            (style (rgb 180 180 180) #f '())))
+   ;; 状态行 / 消息 / 输入
+   'status-bar     (style (rgb 225 225 225) (rgb 40 44 52) '())   ; 状态行
+   'status-mode    (style (rgb 120 210 130) #f '(bold))           ; 模式 / 文档名
+   'status-dirty   (style (rgb 230 160 90) #f '(bold))            ; 未保存标记
+   'message        (style (rgb 230 160 90) #f '())                ; 提示 / 错误
+   'input          (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 输入行
+   'log            (style (rgb 235 188 110) #f '())               ; 日志行
+   ;; 文件树
+   'tree-dir       (style (rgb 120 180 240) #f '())               ; 目录：蓝
+   'tree-file      (style (rgb 200 200 200) #f '())               ; 文件：灰白
+   'tree-link      (style (rgb 120 200 200) #f '())               ; 符号链接：青
+   'tree-hidden    (style (rgb 120 120 130) #f '())               ; 隐藏项：暗
+   'tree-open      (style (rgb 120 210 130) #f '(bold))           ; 已打开：绿粗
+   'tree-match     (style (rgb 220 190 120) #f '())               ; 查询命中：黄
+   'tree-current   (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 当前命中：黄底
+   ;; 资源面板（buffers）
+   'buf-current    (style (rgb 120 210 130) #f '(bold))           ; 当前文档
+   'buf-file       (style (rgb 200 200 200) #f '())               ; 其它文档
+   'buf-untitled   (style (rgb 170 170 170) #f '())               ; 无路径
+   'buf-view       (style (rgb 140 160 190) #f '())               ; 视图行
+   'buf-dirty      (style (rgb 230 160 90) #f '(bold))))          ; 脏文档
 
 (define (theme-ref name) (hash-ref palette name #f))
 
@@ -83,4 +94,4 @@
     [(and (pair? attr) (eq? (car attr) 'cursor))    (bytes-append (face-bytes (cdr attr)) t:format-reverse)]
     [(and (pair? attr) (eq? (car attr) 'selection)) (bytes-append (face-bytes (cdr attr)) t:format-reverse)]
     [(and (pair? attr) (eq? (car attr) 'render))    (face-bytes (cadr attr))]
-    [else #""]))
+    [else (face-bytes attr)]))   ; 普通格：attr 就是 face（符号 | #f）

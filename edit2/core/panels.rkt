@@ -14,7 +14,7 @@
  panel-doc-name parse-region
  panel-specs panel-name? panel-vid panel-name
  refresh-panels! buffer-items buffer-rows tree-relative-path
- tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir
+ tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh
  panel-line panel-line-at)
 
 (require racket/path
@@ -72,6 +72,9 @@
 
 (define (tree-init root) (tree (simplify-path (path->complete-path root)) (hash) (hash)))
 
+;; 清空目录快照缓存 → 下次 tree-ensure 重读磁盘（只影响树，不动已打开文档）。
+(define (tree-refresh ts) (struct-copy tree ts [children (hash)]))
+
 (define (tree-ensure ts)
   (define dirs (cons (tree-root ts) (hash-keys (tree-expanded ts))))
   (define ch
@@ -116,8 +119,15 @@
   (cond
     [(placing? (feature-ref st 'placing #f))
      (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
-     (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target) '())]
-    [(prompt? p) (values (string-append " " (prompt-label p) (prompt-text p)) '())]
+     (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target)
+             (list (cons 0 'status-bar)))]
+    [(prompt? p) (values (string-append " " (prompt-label p) (prompt-text p))
+                         (list (cons 0 'input)))]
+    [(memq (state-input st) '(new new2))
+     (values (if (eq? (state-input st) 'new2)
+                 " C-n f = 新目录   Esc 取消"
+                 " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
+             (list (cons 0 'input)))]
     [else
      (define ed (state-ed st))
      (define txt
@@ -132,7 +142,7 @@
                              (not (eq? (doc-meta-saved m) (document-handle ed did)))))
           (format " ~a~a   ~a:~a" name (if dirty " *" "")
                   (add1 (view-line ed v)) (add1 (view-col ed v)))]))
-     (values txt '())]))
+     (values txt (list (cons 0 'status-bar)))]))
 
 ;; p 相对文件树根；不在根下（或未设根）则给完整路径。
 (define (tree-relative-path st p)
@@ -185,10 +195,22 @@
   (cond [(not p) (document-name (state-ed st) did)]
         [else (tree-relative-path st p)]))
 
+;; 焦点文档 did（用于 buffers 高亮当前文档）。
+(define (focused-did* st)
+  (define w (state-focus st))
+  (define v (and w (layout-wid-vid (state-layout st) w)))
+  (and v (view-did (state-ed st) v)))
+
+(define (doc-dirty*? st did)
+  (define m (hash-ref (state-docs st) did #f))
+  (and m (doc-meta-saved m)
+       (not (eq? (doc-meta-saved m) (document-handle (state-ed st) did)))))
+
 (define (buffers-content st v)
   (define rows (buffer-rows st))
   (define folded (feature-ref st 'buffers-fold (hash)))
   (define cursor (if v (view-line (state-ed st) v) 0))
+  (define fdid (focused-did* st))
   (define lines
     (for/list ([r (in-list rows)])
       (match-define (list did vid label depth kind) r)
@@ -203,9 +225,15 @@
       (string-append (make-string (* 2 depth) #\space) marker label)))
   (values (string-join lines "\n")
           (for/list ([r (in-list rows)] [i (in-naturals)])
-            (cons i (cond [(= i cursor) 'tree-cursor]
-                          [(eq? (list-ref r 4) 'doc) 'buffers-doc]
-                          [else 'buffers-view])))))
+            (define did (car r))
+            (define kind (list-ref r 4))
+            (cons i (cond [(= i cursor) 'tree-current]
+                          [(doc-dirty*? st did) 'buf-dirty]
+                          [(eq? kind 'doc)
+                           (cond [(eqv? did fdid) 'buf-current]
+                                 [(not (doc-meta-path (hash-ref (state-docs st) did #f))) 'buf-untitled]
+                                 [else 'buf-file])]
+                          [else 'buf-view])))))
 
 (define (tree-content st v)
   (define ts (feature-ref st 'tree #f))
@@ -221,8 +249,10 @@
                         (list-ref r 1))))
      (values (string-join lines "\n")
              (for/list ([r (in-list rows)] [i (in-naturals)])
-               (cons i (cond [(= i cursor) 'tree-cursor]
+               (define name (list-ref r 1))
+               (cons i (cond [(= i cursor) 'tree-current]
                              [(list-ref r 2) 'tree-dir]
+                             [(and (positive? (string-length name)) (char=? #\. (string-ref name 0))) 'tree-hidden]
                              [else 'tree-file]))))]))
 
 ;;; ---------- 刷新 ----------

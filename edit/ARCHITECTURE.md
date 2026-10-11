@@ -202,13 +202,35 @@ Layout = (pane wid vid)
 - 共享边自动取 T 字交点，而不是两个角叠在一起；
 - 相邻平铺窗口共享一条边：上/左窗画底/右边，下/右窗**抑制**其上/左边（内缩 0），
   两窗之间只有一条线（`border-insets`）；浮窗不参与抑制，四边都画；
+- 共享格的两窗边框样式不同是**不该发生**的情况，不特殊处理：后写覆盖（怎么画都行）；
 - 太小的窗口（<3×3，如 1 行状态栏）不放边框。
 
 边框行作为**装饰 pane**（`(pane 'window-border row col screen 1000)`）交给 core 合成（`decorations`）。
 
-**命名样式**（`core/theme.rkt`）：所有 face 都是命名符号（`'window-border`、`'status`、
-`'tree-dir` …），theme 把名字映射到真彩色 / 256 色 / 属性，再翻成 ANSI。加一个样式 =
-调色板加一行；换配色不改代码。
+**命名样式**（`core/theme.rkt`）：所有 face 都是命名符号（`'window-border`、`'status-bar`、
+`'tree-dir` …），theme 把名字映射到真彩色 / 256 色 / 属性，再翻成 ANSI。配色**沿用 edit 的
+tree / state 方案**（`tree-dir`/`tree-file`/`tree-hidden`/`tree-current`/`buf-current`/
+`buf-file`/`buf-view`/`buf-dirty`/`status-bar` …）。加一个样式 = 调色板加一行。
+
+注意 core 的 piece-attr：普通格 `attr = face`（符号 | #f），overlay 格 `attr = (cursor/selection . face)`，
+所以 `attr-bytes` 对裸 face 也要解析。
+
+---
+
+## 4.10 文件树行为（磁盘 ↔ 内存分开）
+
+文件树只读磁盘；已打开的 document 是**另一个世界**（core 内存里）。两者不联姻：
+
+- `Enter` 展开 / 折叠（文件则打开）；`←` → 父目录行；`→` → 展开目录的第一个子行。
+- `C-n f` 新建文件，`C-n C-n f` 新建目录（`C-n` 是前缀，`f` 确认；Esc 取消；
+  前缀是瞬时模式，按无关键自动退出）。目标目录 = 选中目录 / 选中文件的父目录 / 根。
+  输入名字后写盘。
+- `C-d` 删除选中文件 / 目录（递归），先 `(y/n)` 确认。
+- `C-u` 重读磁盘刷新文件树：只清树目录快照缓存（`tree-refresh`），**不影响已打开文档**。
+  若文件在磁盘上已没了/改了，内存里的 document 原样保留；最后是否落盘由用户决定
+  （关文档 / 退出时的保存提示兜底）。
+
+所有写盘动作（新建 / 删除）之后只做：写盘 → 清树缓存 → 展开目标目录。不碰 core。
 
 ---
 

@@ -54,6 +54,6 @@
 (check-true (regexp-match? #rx"38;2;105;112;128" (face-bytes 'window-border)))   ; 真彩色
 (check-true (regexp-match? #rx"38;5;196" (face-bytes (style 196 #f '()))))       ; 256 色
 (check-equal? (face-bytes 'no-such-face) #"")                                    ; 未命名 → 无样式
-(check-true (> (bytes-length (face-bytes 'status)) 0))
+(check-true (> (bytes-length (face-bytes 'status-bar)) 0))
 
 (displayln "edit2/border.rkt: all tests passed")

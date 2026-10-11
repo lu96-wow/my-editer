@@ -95,7 +95,7 @@
   ;; 原子边框格：坐标 → face。
   (define cells (make-hash))
   (define (add-cell r c face)
-    (unless (hash-has-key? cells (cons r c)) (hash-set! cells (cons r c) face)))
+    (hash-set! cells (cons r c) face))
   (for ([p (in-list placements)])
     (define face (wid-border tree (placement-wid p)))
     (when face

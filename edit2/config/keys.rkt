@@ -29,6 +29,7 @@
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))
     ((key s ctrl)  always (save))
+    ((key u ctrl)  always (tree-reload))          ; 重读磁盘刷新文件树（不动已打开文档）
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
     ((key t ctrl)  always (border-toggle))       ; 焦点窗口开关边框
@@ -54,11 +55,19 @@
     ((key tab)     (region sidebar) (region-cycle sidebar 1) (region-focus sidebar))
 
     ;; ---------- 面板选择 = 文档导航（一切皆 document） ----------
+    ;; 文件树：↑↓/←→ 移光标（← 父目录、→ 展开目录的第一个子项），Enter 展开/折叠（文件则打开）
     ((key down)  (panel tree)    (move down))
     ((key up)    (panel tree)    (move up))
-    ((key right) (panel tree)    (activate))
-    ((key left)  (panel tree)    (collapse))
+    ((key left)  (panel tree)    (tree-parent))
+    ((key right) (panel tree)    (tree-child))
     ((key enter) (panel tree)    (activate))
+    ;; 文件树：C-d 删除（需确认）；C-n f 新文件，C-n C-n f 新目录
+    ((key d ctrl) (panel tree)   (tree-delete))
+    ((key n ctrl) (panel tree)   (prefix-new))
+    ((key f)      new            (tree-new-file))
+    ((key f)      new2           (tree-new-dir))
+    ((key escape) new            (prefix-cancel))
+    ((key escape) new2           (prefix-cancel))
     ((key down)  (panel buffers) (move down))
     ((key up)    (panel buffers) (move up))
     ((key right) (panel buffers) (buffers-expand))

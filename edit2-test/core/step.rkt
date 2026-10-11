@@ -293,4 +293,58 @@
 (define spl8 (run1 spl7 (key-event 'b '(ctrl))))
 (check-false (placing? (feature-ref spl8 'placing #f)))
 
+;; ---- 文件树行为：Enter 展开/折叠，←→ 移光标，C-n 新建，C-d 删除，C-u 刷新 ----
+(define (make-tdir) (make-temporary-file "edit2tree~a" 'directory))
+(define (tree-focus st) (run1 st (key-event 't '(alt))))
+(define (tree-names st)
+  (define st* (refresh-panels! st))
+  (map (lambda (x) (list-ref x 1)) (tree-rows (tree-ensure (feature-ref st* 'tree #f)))))
+
+;; 导航：Enter 展开 sub，Right 到子，Left 回父
+(define dnav (make-tdir))
+(make-directory (build-path dnav "sub"))
+(call-with-output-file (build-path dnav "sub" "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
+(define tn1 (tree-focus (boot "" "x" 60 16 #:root dnav)))
+(check-equal? (tree-names tn1) '("sub"))
+(define tn2 (run1 tn1 (key-event 'enter '())))
+(check-equal? (tree-names tn2) '("sub" "a.txt"))
+(define tn3 (run1 tn2 (key-event 'right '())))
+(check-equal? (view-line (state-ed tn3) (panel-vid tn3 "*tree*")) 1)
+(define tn4 (run1 tn3 (key-event 'left '())))
+(check-equal? (view-line (state-ed tn4) (panel-vid tn4 "*tree*")) 0)
+
+;; C-n f 新文件
+(define dnew (make-tdir))
+(define tf1 (tree-focus (boot "" "x" 60 16 #:root dnew)))
+(define tf2 (run1 tf1 (key-event 'n '(ctrl))))
+(check-equal? (state-input tf2) 'new)
+(define tf3 (run1 tf2 (key-event 'f '())))
+(check-true (prompt? (state-input tf3)))
+(define tf4 (run1 (run1 tf3 (text-event "new.txt")) (key-event 'enter '())))
+(check-true (file-exists? (build-path dnew "new.txt")))
+(check-not-false (member "new.txt" (tree-names tf4)))
+;; C-n C-n f 新目录
+(define tf5 (run1 (run1 tf1 (key-event 'n '(ctrl))) (key-event 'n '(ctrl))))
+(check-equal? (state-input tf5) 'new2)
+(define tf6 (run1 (run1 (run1 tf5 (key-event 'f '())) (text-event "sub2")) (key-event 'enter '())))
+(check-true (directory-exists? (build-path dnew "sub2")))
+
+;; C-u 重读磁盘（外部新建），已打开文档不受影响
+(define dref (make-tdir))
+(define tu1 (refresh-panels! (boot "" "*scratch*" 60 16 #:root dref)))
+(check-equal? (tree-names tu1) '())
+(call-with-output-file (build-path dref "external.txt") #:exists 'truncate (lambda (o) (display "E" o)))
+(define tu2 (run1 tu1 (key-event 'u '(ctrl))))
+(check-not-false (member "external.txt" (tree-names tu2)))
+
+;; C-d 删除（需确认）
+(define ddel (make-tdir))
+(make-directory (build-path ddel "sub"))
+(call-with-output-file (build-path ddel "sub" "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
+(define td1 (run1 (run1 (tree-focus (boot "" "x" 60 16 #:root ddel)) (key-event 'enter '())) (key-event 'right '())))
+(define td2 (run1 td1 (key-event 'd '(ctrl))))
+(check-true (prompt? (state-input td2)))
+(define td3 (run1 (run1 td2 (text-event "y")) (key-event 'enter '())))
+(check-false (file-exists? (build-path ddel "sub" "a.txt")))
+
 (displayln "edit2/step.rkt: all tests passed")

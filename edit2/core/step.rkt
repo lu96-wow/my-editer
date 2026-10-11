@@ -513,7 +513,33 @@
        [(member ans '("n" "no")) (values (close-doc! st0 did) '())]
        [else (values (struct-copy state st0 [input (prompt 'close-doc (prompt-label p) "" (prompt-data p))]) '())])]
     [(quit) (handle-quit st0 ans (prompt-data p))]
+    [(new-file)
+     (define d (car (prompt-data p)))
+     (define name (string-trim (prompt-text p)))
+     (cond
+       [(string=? name "") (values st0 '())]
+       [else (fs-attempt st0 (lambda () (fs-make-file (build-path d name))))
+             (values (tree-after-fs! st0 d) '())])]
+    [(new-dir)
+     (define d (car (prompt-data p)))
+     (define name (string-trim (prompt-text p)))
+     (cond
+       [(string=? name "") (values st0 '())]
+       [else (fs-attempt st0 (lambda () (fs-make-dir (build-path d name))))
+             (values (tree-after-fs! st0 d) '())])]
+    [(delete)
+     (define path (car (prompt-data p)))
+     (cond
+       [(member ans '("y" "yes"))
+        (fs-attempt st0 (lambda () (fs-delete path)))
+        (values (tree-after-fs! st0 #f) '())]
+       [else (values st0 '())])]
     [else (values st0 '())]))
+
+;; 跑一个 fs 动作；出错记到日志，不崩。
+(define (fs-attempt st thunk)
+  (with-handlers ([exn:fail? (lambda (e) (log-msg st (exn-message e)))])
+    (thunk)))
 
 (define (handle-quit st ans ds)
   (define did (car ds))
@@ -699,6 +725,89 @@
      (values (feature-set st 'tree (tree-toggle-dir ts (car cur))) '())]
     [else (values st '())]))
 
+;; 把某面板的光标行设到 i（一切皆 document）。
+(define (set-panel-line! st name i)
+  (define v (panel-vid st name))
+  (when v (set-point! (state-ed st) v i 0))
+  st)
+
+;; 当前行在 rows 里的索引。
+(define (tree-current-index st ts cur)
+  (for/first ([r (in-list (tree-rows ts))] [i (in-naturals)] #:when (equal? (car cur) (car r))) i))
+
+;; Left：光标移到父目录行。
+(define (tree-move-parent st)
+  (define cur (tree-current st))
+  (define ts (tree-get st))
+  (cond
+    [(or (not cur) (not ts)) (values st '())]
+    [else
+     (define pp (tree-parent-dir (car cur)))
+     (cond
+       [(not pp) (values st '())]
+       [else
+        (define i (for/first ([r (in-list (tree-rows ts))] [i (in-naturals)]
+                              #:when (equal? (explode-path pp) (explode-path (car r)))) i))
+        (values (if i (set-panel-line! st "*tree*" i) st) '())])]))
+
+;; Right：光标移到展开目录的第一个子行。
+(define (tree-move-child st)
+  (define cur (tree-current st))
+  (define ts (tree-get st))
+  (cond
+    [(or (not cur) (not ts) (not (list-ref cur 2))) (values st '())]
+    [else
+     (define rows (tree-rows ts))
+     (define i0 (tree-current-index st ts cur))
+     (cond
+       [(and i0 (< (add1 i0) (length rows))
+             (= (list-ref (list-ref rows (add1 i0)) 3) (add1 (list-ref cur 3))))
+        (values (set-panel-line! st "*tree*" (add1 i0)) '())]
+       [else (values st '())])]))
+
+;; 新建目标目录：目录行 → 该目录；文件行 → 其父目录；无选择 → 根。
+(define (tree-target-dir st)
+  (define ts (tree-get st))
+  (define cur (tree-current st))
+  (cond
+    [(not ts) #f]
+    [(not cur) (tree-root ts)]
+    [(list-ref cur 2) (car cur)]
+    [else (or (tree-parent-dir (car cur)) (tree-root ts))]))
+
+(define (tree-new-file st)
+  (define d (tree-target-dir st))
+  (cond [(not d) (values st '())]
+        [else (values (struct-copy state st [input (prompt 'new-file (format "新文件 ~a : " d) "" (list d))]) '())]))
+
+(define (tree-new-dir st)
+  (define d (tree-target-dir st))
+  (cond [(not d) (values st '())]
+        [else (values (struct-copy state st [input (prompt 'new-dir (format "新目录 ~a : " d) "" (list d))]) '())]))
+
+(define (tree-delete st)
+  (define cur (tree-current st))
+  (cond
+    [(not cur) (values st '())]
+    [else (values (struct-copy state st [input (prompt 'delete (format "删除 ~a ? (y/n) " (car cur)) "" (list (car cur)))]) '())]))
+
+;; 写盘变动后：重读磁盘 + 展开目标目录（只影响树）。
+(define (tree-after-fs! st dir)
+  (define ts0 (feature-ref st 'tree #f))
+  (cond
+    [(not ts0) st]
+    [else (feature-set st 'tree
+                        (if dir (tree-expand-dir (tree-refresh ts0) dir) (tree-refresh ts0)))]))
+
+;; C-u：重读磁盘刷新文件树（已打开的文档不管）。
+(define (tree-reload st) (tree-after-fs! st #f))
+
+;; C-n 前缀：一次 = 新文件，两次 = 新目录。
+(define (prefix-of st) (let ([i (state-input st)]) (and (memq i '(new new2)) i)))
+(define (prefix-new st)
+  (struct-copy state st [input (if (eq? (state-input st) 'new) 'new2 'new)]))
+(define (prefix-cancel st) (struct-copy state st [input #f]))
+
 ;; 打开浮窗 = 新建一个窗口 wid 显示 vid，并压栈。
 (define (open-float st vid anchor want-w want-h)
   (define l (state-layout st))
@@ -756,6 +865,8 @@
     [(eq? s 'editor) editor-focus?]
     [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
     [(eq? s 'prompt) (lambda (st ev) (prompt? (state-input st)))]
+    [(eq? s 'new)  (lambda (st ev) (eq? (state-input st) 'new))]
+    [(eq? s 'new2) (lambda (st ev) (eq? (state-input st) 'new2))]
     [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
     [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
     [(and (pair? s) (eq? (car s) 'region))
@@ -828,6 +939,14 @@
     [(float-cycle)       (values (cycle-float st) '())]
     [(activate)          (activate-focused st)]
     [(collapse)          (tree-collapse st)]
+    [(tree-parent)       (tree-move-parent st)]
+    [(tree-child)        (tree-move-child st)]
+    [(tree-new-file)     (tree-new-file st)]
+    [(tree-new-dir)      (tree-new-dir st)]
+    [(tree-delete)       (tree-delete st)]
+    [(tree-reload)       (values (tree-reload st) '())]
+    [(prefix-new)        (values (prefix-new st) '())]
+    [(prefix-cancel)     (values (prefix-cancel st) '())]
     [(buffers-toggle)    (values (buffers-toggle st) '())]
     [(buffers-expand)    (values (buffers-fold! st #f) '())]
     [(buffers-collapse)  (values (buffers-fold! st #t) '())]
@@ -842,10 +961,16 @@
   (for/or ([o (in-list ops)])
     (memq (car o) '(place-confirm place-cancel place-cycle place-pick))))
 
+(define (prefix-op-seq? ops)
+  (for/or ([o (in-list ops)])
+    (memq (car o) '(prefix-new prefix-cancel tree-new-file tree-new-dir))))
+
 (define (run-ops ctx st ev ops)
-  (define st0 (if (and (placing-of st) (not (placing-op-seq? ops)))
-                  (cancel-placing st)
-                  st))
+  (define st0
+    (cond
+      [(and (placing-of st) (not (placing-op-seq? ops))) (cancel-placing st)]
+      [(and (prefix-of st) (not (prefix-op-seq? ops))) (prefix-cancel st)]
+      [else st]))
   (for/fold ([st st0] [effs '()]) ([o (in-list ops)])
     (define-values (st* e*) (run-op ctx st ev o))
     (values st* (append effs e*))))

@@ -2,7 +2,8 @@
 
 ;;; edit2/fs.rkt —— 文件系统 I/O 边界（只是原语，不含策略）
 
-(provide fs-read-dir fs-read-file fs-write-file fs-dir? fs-file? fs-exists?)
+(provide fs-read-dir fs-read-file fs-write-file fs-make-file fs-make-dir fs-delete
+         fs-dir? fs-file? fs-exists?)
 
 (require racket/file racket/path)
 
@@ -31,3 +32,20 @@
 (define (fs-write-file p text)
   (call-with-output-file p #:exists 'truncate/replace
     (lambda (out) (display text out))))
+
+;; 新建空文件 / 目录；已存在 → 抛错（由上层记日志）。
+(define (fs-make-file p)
+  (if (fs-exists? p)
+      (error 'fs-make-file "已存在: ~a" p)
+      (call-with-output-file p (lambda (out) (void)))))
+
+(define (fs-make-dir p)
+  (if (fs-exists? p)
+      (error 'fs-make-dir "已存在: ~a" p)
+      (make-directory p)))
+
+;; 删除文件 / 目录（目录递归）。
+(define (fs-delete p)
+  (cond [(directory-exists? p) (delete-directory/files p)]
+        [(file-exists? p) (delete-file p)]
+        [else (error 'fs-delete "不存在: ~a" p)]))
