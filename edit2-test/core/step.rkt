@@ -34,6 +34,11 @@
 (define (prompt-focused? st)
   (and (prompt-of st) (eqv? (state-focus st) (panel-wid st "*input*")) #t))
 
+;; 状态栏文本（先刷面板再读 *status* 文档）。
+(define (status-string st)
+  (define s (refresh-panels! st))
+  (view-string (state-ed s) (panel-vid s "*status*")))
+
 ;; 资源面板（唯一能新建 view 的地方）：焦点到侧栏缓冲区，建一个未显示 view。
 (define (to-buffers st) (region-focus! (region-activate! st 'sidebar "*buffers*") 'sidebar))
 (define (res-new-view st) (run1 (to-buffers st) (text-event "n")))
@@ -54,8 +59,7 @@
 (define snodoc (boot "" #f 60 16 #:root (current-directory)))
 (check-false (focused-did snodoc))
 (check-equal? (length (buffer-rows snodoc)) 0)
-(check-true (regexp-match? #rx"空窗口"
-                           (view-string (state-ed (refresh-panels! snodoc)) (panel-vid snodoc "*status*"))))
+(check-equal? (status-string snodoc) "")                 ; 空窗口不显示提示
 ;; 无文档时编辑为 no-op（不崩）
 (define snodoc2 (run1 snodoc (text-event "Z")))
 (check-false (focused-did snodoc2))
@@ -81,8 +85,7 @@
 (check-equal? (length (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3))) 1)       ; 1 个有 view
 (check-equal? (length (filter (lambda (w) (not (wid-vid st3 w))) (editor-wids st3))) 1) ; 1 个空
 (check-false (wid-vid st3 (state-focus st3)))                ; 焦点在空窗口
-(check-true (regexp-match? #rx"空窗口"
-                           (view-string (state-ed (refresh-panels! st3)) (panel-vid st3 "*status*"))))
+(check-equal? (status-string st3) "")                       ; 空窗口不显示提示
 ;; 关空窗口
 (define st3c (run1 st3 (key-event 'd '(ctrl))))
 (check-equal? (length (editor-wids st3c)) 1)
@@ -130,6 +133,15 @@
 (define sp5 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'b '(ctrl))))
 (check-false (prefix-of sp5))                                   ; 无关键退前缀
 (check-false (region-visible? sp5 'sidebar))                     ; 并执行该键
+
+;; ---- 前缀提示来自配置（prefix-hints），core 不再写死 ----
+(check-true (regexp-match? #rx"分屏" (status-string (run1 (fresh) (key-event 's '(ctrl))))))
+(check-true (regexp-match? #rx"新文件"
+                           (status-string (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl))))))
+(check-true (regexp-match? #rx"新目录"
+                           (status-string (run1 (run1 (run1 (fresh) (key-event 't '(alt)))
+                                                      (key-event 'n '(ctrl)))
+                                                (key-event 'n '(ctrl))))))
 
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))

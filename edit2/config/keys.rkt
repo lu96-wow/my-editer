@@ -10,7 +10,7 @@
 ;;;
 ;;; 加/改一条绑定 = 改这里一行数据；用已有原语组合出新行为，也能这样写。
 
-(provide key-table)
+(provide key-table prefix-hints)
 
 (define key-table
   '(
@@ -115,3 +115,12 @@
     ((key home)  editor (move home))
     ((key end)   editor (move end))
     ((text)      editor (insert-event-text))))
+
+;;; ---------- 多键前缀的提示（前缀符号 → 状态栏文本） ----------
+;;;
+;;; 前缀进入后（feature 'prefix），状态栏显示这里的提示。加一个前缀 = 加一行；
+;;; core 只查表，不在代码里写死提示。
+(define prefix-hints
+  '((new   . " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
+    (new2  . " C-n f = 新目录   Esc 取消")
+    (split . " C-s ↑/↓/←/→ 分屏（新窗在该方向）   Esc 取消")))

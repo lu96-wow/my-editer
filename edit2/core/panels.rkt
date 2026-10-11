@@ -20,7 +20,8 @@
  panel-line panel-line-at)
 
 (require racket/path
-         "state.rkt" "adapter.rkt" "fs.rkt" "layout.rkt")
+         "state.rkt" "adapter.rkt" "fs.rkt" "layout.rkt"
+         "../config/keys.rkt")   ; prefix-hints（前缀提示是配置数据）
 
 ;;; ---------- 区域（共享同一块面板的多个成员，互斥显示） ----------
 
@@ -135,22 +136,21 @@
 (define (status-content st)
   (define w (state-focus st))
   (define v (and w (layout-wid-vid (state-layout st) w)))   ; focus 是 wid；取显示的 vid
-  (define prefix (feature-ref st 'prefix #f))
   (cond
     [(placing? (feature-ref st 'placing #f))
      (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target)
              (list (cons 0 'status-bar)))]
-    [(memq prefix '(new new2))
-     (values (if (eq? prefix 'new2)
-                 " C-n f = 新目录   Esc 取消"
-                 " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
-             (list (cons 0 'input)))]
+    [(feature-ref st 'prefix #f)
+     => (lambda (p)
+          (values (cond [(assq p prefix-hints) => cdr]
+                        [else (format " ~a" p)])
+                  (list (cons 0 'input))))]
     [else
      (define ed (state-ed st))
      (define txt
        (cond
-         [(not v) " [空窗口]  C-s ↑↓←→ 分屏  C-q 退出"]
+         [(not v) ""]                     ; 焦点是空窗口 → 不显示提示
          [else
           (define did (view-did ed v))
           (define m (hash-ref (state-docs st) did #f))

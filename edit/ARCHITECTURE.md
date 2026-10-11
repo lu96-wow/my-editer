@@ -270,7 +270,9 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
   提交时取 `*input*` 文档 label 之后的文本，驱动 `kind`；无效答复重开同一输入行。
 - **模态**：输入行激活时只有 `prompt` 作用域的绑定生效（`scope-of` 对其它 scope 加
   「无 prompt」前提），所以点鼠标 / 切焦点都不会打断它。
-- **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`；状态栏（= `*status*`）显示提示。
+- **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`；状态栏（= `*status*`）
+  显示提示。提示文本是**配置数据**（`config/keys.rkt` 的 `prefix-hints`：前缀 → 字符串），
+  core 只查表渲染，不在代码里写死。加一个前缀 = 加一行数据。
 
 ---
 
