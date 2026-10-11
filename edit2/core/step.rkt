@@ -1130,8 +1130,6 @@
         (error 'boot "面板未注册: ~a" nm))
       (define-values (ed* _pdid vid*) (add-panel! ed "" w 1 nm))
       (values ed* (hash-set vids nm vid*))))
-  (define help-v (hash-ref vids "*help*"))
-  (assign! ed2 help-v help-text)
   (define docs
     (for/fold ([d (if did
                       (hash did (doc-meta #f (document-handle ed2 did)))

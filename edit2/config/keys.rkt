@@ -15,7 +15,7 @@
 ;;;
 ;;; 加/改一条绑定 = 改这里一行数据；加一张表 = 在这里加一个 define 并放进 key-tables。
 
-(provide key-tables prefix-hints doc-key-matchers
+(provide key-tables doc-key-matchers
          pointer-keys placing-keys split-keys prompt-keys global-keys
          resource-keys sidebar-keys tree-keys buffers-keys editor-keys
          rkt-keys)
@@ -68,7 +68,6 @@
     ((key l ctrl)  always (region-toggle log))
     ((key t ctrl)  always (border-toggle))       ; 焦点窗口开关边框
     ((key h ctrl)  always (tree-toggle-hidden))   ; 文件树：显/隐以 . 开头的条目
-    ((key h alt)   always (float-open help))
     ((key e alt)   always (focus editor))
     ((key n alt)   always (focus (cycle 1)))
     ((key p alt)   always (focus (cycle -1)))
@@ -137,15 +136,6 @@
 (define key-tables
   (list pointer-keys placing-keys split-keys prompt-keys global-keys
         resource-keys sidebar-keys tree-keys buffers-keys editor-keys))
-
-;;; ---------- 多键前缀的提示（前缀符号 → 状态栏文本） ----------
-;;;
-;;; 前缀进入后（feature 'prefix），状态栏显示这里的提示。加一个前缀 = 加一行；
-;;; core 只查表，不在代码里写死提示。
-(define prefix-hints
-  '((new   . " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
-    (new2  . " C-n f = 新目录   Esc 取消")
-    (split . " C-s ↑/↓/←/→ 分屏（新窗在该方向）   Esc 取消")))
 
 ;;; ---------- 文件 → document 键表的匹配层（插件层接入点） ----------
 ;;;

@@ -79,7 +79,7 @@
 
 ;; ---- 分裂：新增**空窗口**（wid），不在新窗口显示原 view ----
 (define st3 (split! (fresh) 'right))
-(check-equal? (length (view-id-list (state-ed st3))) 7)      ; 不新建 view
+(check-equal? (length (view-id-list (state-ed st3))) 6)      ; 不新建 view
 (check-equal? (length (layout-wids (state-layout st3))) 4)   ; tree + status + editor×2 窗口
 (check-equal? (length (editor-wids st3)) 2)
 (check-equal? (length (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3))) 1)       ; 1 个有 view
@@ -89,7 +89,7 @@
 ;; 关空窗口
 (define st3c (run1 st3 (key-event 'd '(ctrl))))
 (check-equal? (length (editor-wids st3c)) 1)
-(check-equal? (length (view-id-list (state-ed st3c))) 7)
+(check-equal? (length (view-id-list (state-ed st3c))) 6)
 
 ;; ---- 空窗口也能分屏；两种轴（↑/↓ 上下、←/→ 左右） ----
 (define st3e (split! st3 'right))          ; 在空窗口上再分（左右）
@@ -134,14 +134,9 @@
 (check-false (prefix-of sp5))                                   ; 无关键退前缀
 (check-false (region-visible? sp5 'sidebar))                     ; 并执行该键
 
-;; ---- 前缀提示来自配置（prefix-hints），core 不再写死 ----
-(check-true (regexp-match? #rx"分屏" (status-string (run1 (fresh) (key-event 's '(ctrl))))))
-(check-true (regexp-match? #rx"新文件"
-                           (status-string (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl))))))
-(check-true (regexp-match? #rx"新目录"
-                           (status-string (run1 (run1 (run1 (fresh) (key-event 't '(alt)))
-                                                      (key-event 'n '(ctrl)))
-                                                (key-event 'n '(ctrl))))))
+;; ---- 前缀仍生效（提示层已删，状态栏不再写提示） ----
+(check-equal? (prefix-of (run1 (fresh) (key-event 's '(ctrl)))) 'split)
+(check-equal? (prefix-of (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl)))) 'new)
 
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
@@ -152,10 +147,10 @@
 ;; 关一个窗口：另一个还在，view 不变
 (define st3v2 (run1 st3v (key-event 'd '(ctrl))))
 (check-equal? (length (editor-wids st3v2)) 1)
-(check-equal? (length (view-id-list (state-ed st3v2))) 7)
+(check-equal? (length (view-id-list (state-ed st3v2))) 6)
 ;; 关闭 view 资源：显示它的所有窗口一起消失，保留一个空窗口
 (define st3v3 (run1 (run1 (to-buffers st3v2) (key-event 'down '())) (key-event 'd '(ctrl))))
-(check-equal? (length (view-id-list (state-ed st3v3))) 6)
+(check-equal? (length (view-id-list (state-ed st3v3))) 5)
 (check-equal? (length (filter (lambda (w) (wid-vid st3v3 w)) (editor-wids st3v3))) 0)
 
 ;; 焦点切换
@@ -290,7 +285,7 @@
 (define (foo-content st v) (values "hello-panel" (list (cons 0 'tree-dir))))
 (define foo-reg (panel-register base-panel-registry (panel-spec "*foo*" #f foo-content)))
 (define sfoo (boot "" "x" 60 16 #:panels foo-reg
-                   #:enabled '(tree buffers status input log help foo)))
+                   #:enabled '(tree buffers status input log foo)))
 (check-not-false (panel-vid sfoo "*foo*"))          ; boot 用了扩展注册表建了文档
 (check-true (panel-name? sfoo "*foo*"))             ; 被认作面板
 (check-eq? (state-panels sfoo) foo-reg)               ; 注册表进了 State
@@ -322,7 +317,7 @@
 (define sc (split-two (fresh)))
 (check-equal? (length (editor-wids sc)) 2)
 (define sc2 (run1 sc (key-event 'd '(ctrl))))
-(check-equal? (length (view-id-list (state-ed sc2))) 7)   ; 视图资源不变
+(check-equal? (length (view-id-list (state-ed sc2))) 6)   ; 视图资源不变
 (check-equal? (length (editor-wids sc2)) 1)               ; 窗口少一个
 (check-false (prompt-of sc2))
 
@@ -344,19 +339,19 @@
 (define sb0 (run1 (fresh) (key-event 'b '(alt))))
 (check-equal? (focus-panel-name sb0) "*buffers*")
 (define sb1 (run1 (run1 sb0 (key-event 'down '())) (key-event 'd '(ctrl))))
-(check-equal? (length (view-id-list (state-ed sb1))) 6)
-(check-equal? (length (document-id-list (state-ed sb1))) 7)
+(check-equal? (length (view-id-list (state-ed sb1))) 5)
+(check-equal? (length (document-id-list (state-ed sb1))) 6)
 ;; 孤儿文档仍留在资源列表（一行，vid=#f），回车可重建视图
 (check-equal? (length (buffer-items sb1)) 1)
 (check-false (cadr (car (buffer-items sb1))))
 (define sb2 (run1 sb1 (key-event 'enter '())))
-(check-equal? (length (view-id-list (state-ed sb2))) 7)
+(check-equal? (length (view-id-list (state-ed sb2))) 6)
 (check-false (focus-panel-name sb2))
 
 ;; Delete 关选中文档资源：文档 -1，与其视图全部 -1（core 连带）
 (define sb3 (run1 (run1 (fresh) (key-event 'b '(alt))) (key-event 'delete '())))
-(check-equal? (length (document-id-list (state-ed sb3))) 6)
-(check-equal? (length (view-id-list (state-ed sb3))) 6)
+(check-equal? (length (document-id-list (state-ed sb3))) 5)
+(check-equal? (length (view-id-list (state-ed sb3))) 5)
 
 ;; 脏文档从缓冲区关闭 → 弹保存 prompt；答 n → 文档关掉
 (define sb4 (run1 (run1 (fresh) (text-event "Z")) (key-event 'b '(alt))))
@@ -365,15 +360,15 @@
 (check-true (prompt-focused? sb5))
 (define sb6 (run1 (run1 sb5 (text-event "n")) (key-event 'enter '())))
 (check-false (prompt-of sb6))
-(check-equal? (length (document-id-list (state-ed sb6))) 6)
+(check-equal? (length (document-id-list (state-ed sb6))) 5)
 
 ;; ---- 一个 document 对应多个 view（view 只在资源面板创建） ----
 (define sm0 (fresh))
 (define sm-did (focused-did sm0))
 (define sm1 (res-new-view sm0))                               ; 资源面板新建第二个 view
 (check-equal? (length (document-view-list (state-ed sm1) sm-did)) 2)
-(check-equal? (length (document-id-list (state-ed sm1))) 7)
-(check-equal? (length (view-id-list (state-ed sm1))) 8)
+(check-equal? (length (document-id-list (state-ed sm1))) 6)
+(check-equal? (length (view-id-list (state-ed sm1))) 7)
 ;; 资源面板是树：document 是根，view 是子
 (define sm-rows (buffer-rows (refresh-panels! sm1)))
 (check-equal? (length (filter (lambda (x) (eq? (list-ref x 4) 'doc)) sm-rows)) 1)
@@ -385,7 +380,7 @@
 ;; 从缓冲区关一个视图资源：文档保留，另一个视图还在
 (define sm3 (run1 (run1 (to-buffers sm1) (key-event 'down '())) (key-event 'd '(ctrl))))
 (check-equal? (length (document-view-list (state-ed sm3) sm-did)) 1)
-(check-equal? (length (document-id-list (state-ed sm3))) 7)
+(check-equal? (length (document-id-list (state-ed sm3))) 6)
 
 ;; 折叠式：Left 收起只剩 document 行；Right 展开回子行
 (define smb0 (run1 (to-buffers sm1) (key-event 'left '())))
@@ -395,7 +390,7 @@
 
 ;; 关文档：它名下所有 view 一起消失
 (define sm4 (run1 sm3 (key-event 'delete '())))
-(check-equal? (length (document-id-list (state-ed sm4))) 6)
+(check-equal? (length (document-id-list (state-ed sm4))) 5)
 
 ;; ---- 打开已打开的文件：按路径复用 document ----
 (define tdir (make-temporary-file "edit2test~a" 'directory))
@@ -403,11 +398,11 @@
 (call-with-output-file fpath #:exists 'truncate (lambda (o) (display "hi" o)))
 (define so0 (boot "" "*scratch*" 60 16 #:root tdir))
 (define so1 (run1 (run1 (run1 so0 (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
-(check-equal? (length (document-id-list (state-ed so1))) 8)
-(check-equal? (length (view-id-list (state-ed so1))) 8)
+(check-equal? (length (document-id-list (state-ed so1))) 7)
+(check-equal? (length (view-id-list (state-ed so1))) 7)
 (define so2 (run1 (run1 (run1 so1 (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
-(check-equal? (length (document-id-list (state-ed so2))) 8)
-(check-equal? (length (view-id-list (state-ed so2))) 8)
+(check-equal? (length (document-id-list (state-ed so2))) 7)
+(check-equal? (length (view-id-list (state-ed so2))) 7)
 
 ;; ---- 侧栏贴根占满左侧整高：状态栏在同一右侧区里全宽贴底 ----
 (define sfl (fresh))

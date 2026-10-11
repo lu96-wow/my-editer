@@ -134,7 +134,7 @@ Layout = (pane wid vid)
 ```racket
 (struct panel-spec (name prep render))   ; prep:(st->st)|#f   render:(st v->text+faces)|#f
 (panel-register reg spec)                ; 加/覆盖，返回新表
-base-panel-registry                      ; tree/buffers/status/input/log/help
+base-panel-registry                      ; tree/buffers/status/input/log
 ```
 
 - 「注册」（组合）、「启用哪些」（`config/layout.rkt` 的 `enabled-panels`）、
@@ -293,9 +293,8 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
   （丢弃未提交内容），再走退出；有脏文档会重新进保存询问。前缀 / 放置模式由 `run-ops`
   的瞬时模式逻辑自动取消后再执行 `(quit)`，所以三种未完成态（prompt / prefix / placing）
   都能被 `C-q` 干净地中断。
-- **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`；状态栏（= `*status*`）
-  显示提示。提示文本是**配置数据**（`config/keys.rkt` 的 `prefix-hints`：前缀 → 字符串），
-  core 只查表渲染，不在代码里写死。加一个前缀 = 加一行数据。
+- **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`。提示层已删：
+  前缀不再往状态栏写提示（config 作者自知其用途）。前缀机制本身仍在。
 
 ---
 

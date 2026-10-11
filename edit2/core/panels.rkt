@@ -23,8 +23,7 @@
  panel-line panel-line-at)
 
 (require racket/path
-         "state.rkt" "adapter.rkt" "fs.rkt" "layout.rkt"
-         "../config/keys.rkt")   ; prefix-hints（前缀提示是配置数据）
+         "state.rkt" "adapter.rkt" "fs.rkt" "layout.rkt")
 
 ;;; ---------- 区域（共享同一块面板的多个成员，互斥显示） ----------
 
@@ -156,11 +155,6 @@
      (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target)
              (list (cons 0 'status-bar)))]
-    [(feature-ref st 'prefix #f)
-     => (lambda (p)
-          (values (cond [(assq p prefix-hints) => cdr]
-                        [else (format " ~a" p)])
-                  (list (cons 0 'input))))]
     [else
      (define ed (state-ed st))
      (define txt
@@ -341,8 +335,7 @@
          (panel-spec "*buffers*" #f buffers-content)
          (panel-spec "*tree*"    refresh-tree-cache tree-content)
          (panel-spec "*input*"   #f #f)
-         (panel-spec "*log*"     #f #f)
-         (panel-spec "*help*"    #f #f))))
+         (panel-spec "*log*"     #f #f))))
 
 ;; 遍历注册表：先跑 prep（可更新 feature），再按 render 重建内容（#f = 不重建）。
 (define (refresh-panels! st)
