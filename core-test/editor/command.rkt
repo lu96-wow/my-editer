@@ -78,6 +78,7 @@
 (define (editor-view-goto ed vid p) (base:editor-view-goto! ed vid p) ed)
 (define (editor-view-set-selections ed vid s #:ensure? [e #t]) (base:editor-view-set-selections! ed vid s #:ensure? e) ed)
 (define (editor-view-scroll ed vid d) (base:editor-view-scroll! ed vid d) ed)
+(define (editor-view-ensure ed vid) (base:editor-view-ensure! ed vid) ed)
 (define (editor-view-set-top-line ed vid n) (base:editor-view-set-top-line! ed vid n) ed)
 (define (editor-view-set-left-column ed vid n) (base:editor-view-set-left-column! ed vid n) ed)
 (define (editor-view-set-mode ed vid m) (base:editor-view-set-mode! ed vid m) ed)
@@ -841,5 +842,15 @@
 (check-equal? (editor-view-top-line es1 0) 0)                            ; 不 ensure
 (define es2 (editor-view-set-selections es0 0 (selections-one (caret (point 5 0)))))
 (check-equal? (editor-view-top-line es2 0) 3)                            ; ensure 滚进可视区
+
+;; ---------- editor-view-ensure! ----------
+;; assign 默认不 ensure，光标可落到视口外；ensure! 把它拉回（不改选区）。
+(define en0 (editor-open "l0\nl1\nl2\nl3\nl4\nl5" 20 3))
+(editor-view-assign en0 0 "l0\nl1\nl2\nl3\nl4\nl5"
+                    #:selections (selections-one (caret (point 5 0))))
+(check-equal? (editor-view-top-line en0 0) 0)                            ; assign 不 ensure
+(editor-view-ensure en0 0)
+(check-equal? (editor-view-top-line en0 0) 3)                            ; ensure 滚进可视区
+(check-equal? (editor-view-point en0 0) (point 5 0))                     ; 光标不动
 
 (displayln "editor/command.rkt: all tests passed")

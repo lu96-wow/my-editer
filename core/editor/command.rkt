@@ -48,7 +48,7 @@
  editor-view-set-selections! editor-view-select-all! editor-view-set-point! editor-view-goto!
 
  ;; ---------- 滚动 / 视口 ----------
- editor-view-scroll! editor-view-set-top-line! editor-view-set-left-column!
+ editor-view-scroll! editor-view-ensure! editor-view-set-top-line! editor-view-set-left-column!
  editor-view-set-mode! editor-view-toggle-line-numbers! editor-view-set-size!
 
  ;; ---------- 视口锚点 ----------
@@ -279,6 +279,12 @@
   (define v (editor-view-handle ed vid))
   (define t (document-text (editor-view-document ed vid)))
   (view-set-viewport! v (viewport-scroll t (view-viewport v) delta))
+  (void))
+
+;; 把主光标滚进视口（不改选区 / 不记步）。
+(define (editor-view-ensure! ed vid)
+  (define v (editor-view-handle ed vid))
+  (view-ensure! (editor-view-document ed vid) v)
   (void))
 
 ;; 改视口字段的公共壳：按旧 mode 取锚点，改完落回同锚。

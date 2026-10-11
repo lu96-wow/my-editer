@@ -57,7 +57,7 @@
  ;; 内核适配
  session-ed-close-view session-ed-close-document
  session-ed-assign! session-ed-set-point! session-ed-screen->point
- session-ed-scroll! session-ed-hscroll! session-ed-nav!
+ session-ed-scroll! session-ed-ensure! session-ed-hscroll! session-ed-nav!
  session-ed-select-all! session-ed-copy! session-ed-cut! session-ed-paste!
  session-ed-insert! session-ed-delete! session-ed-backspace!
  session-ed-undo! session-ed-redo!)
@@ -357,6 +357,7 @@
   (editor-view-screen-position->point (session-ed s) vid row col))
 
 (define (session-ed-scroll! s vid n) (editor-view-scroll! (session-ed s) vid n) s)
+(define (session-ed-ensure! s vid) (editor-view-ensure! (session-ed s) vid) s)
 (define (session-ed-hscroll! s vid delta)
   (define cur (editor-view-left-column (session-ed s) vid))
   (editor-view-set-left-column! (session-ed s) vid (max 0 (+ cur delta)))
