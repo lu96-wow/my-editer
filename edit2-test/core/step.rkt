@@ -613,4 +613,54 @@
 (define md2 (run1 (run1 (tree-focus md1) (key-event 'down '())) (key-event 'enter '())))  ; n.txt
 (check-false (focused-keymap md2))             ; 不匹配 → 没挂表
 
+;; ---- 浮窗（窗口 wid）：打开即聚焦 + 压栈头；关闭后焦点回落；Esc/Tab 只在焦点是浮窗时生效 ----
+(define sfl0 (fresh))
+(define sfl1 (run1 sfl0 (key-event 'j '(alt))))          ; M-j → float-open log
+(check-equal? (length (state-stack sfl1)) 1)
+(define fwid (car (state-stack sfl1)))
+(check-true (layout-wid-float? (state-layout sfl1) fwid))
+(check-true (float-wid? sfl1 fwid))
+(check-equal? (state-focus sfl1) fwid)                    ; 打开即聚焦，且焦点在栈头
+(check-equal? (wid-vid sfl1 fwid) (panel-vid sfl1 "*log*"))
+;; 再次打开同一个面板 → 复用（不重复开），仍聚焦它
+(define sfl2 (run1 sfl1 (key-event 'j '(alt))))
+(check-equal? (length (state-stack sfl2)) 1)
+(check-equal? (state-focus sfl2) fwid)
+;; Esc（焦点是浮窗）→ 关掉它，焦点回编辑器
+(define sfl3 (run1 sfl2 (key-event 'escape '())))
+(check-equal? (state-stack sfl3) '())
+(check-false (layout-wid-float? (state-layout sfl3) (state-focus sfl3)))
+(check-true (layout-has-wid? (state-layout sfl3) (state-focus sfl3)))
+
+;; 两个浮窗：焦点总是在栈头；Tab 循环且栈头跟着焦点
+(define sfx1 (run1 (run1 (fresh) (key-event 'j '(alt))) (key-event 'k '(alt))))   ; log + tree
+(check-equal? (length (state-stack sfx1)) 2)
+(check-equal? (state-focus sfx1) (car (state-stack sfx1)))
+(define sfx2 (run1 sfx1 (key-event 'tab '())))
+(check-not-equal? (state-focus sfx2) (state-focus sfx1))
+(check-equal? (state-focus sfx2) (car (state-stack sfx2)))    ; 不变量：焦点浮窗 = 栈头
+;; Esc 关掉焦点浮窗 → 焦点落到剩下的那个浮窗
+(define sfx3 (run1 sfx2 (key-event 'escape '())))
+(check-equal? (length (state-stack sfx3)) 1)
+(check-equal? (state-focus sfx3) (car (state-stack sfx3)))
+
+;; scope float 基于 focus：焦点在编辑器时 Esc 不关浮窗
+(define sfy1 (run1 sfx1 (key-event 'e '(alt))))               ; M-e → focus editor
+(check-false (float-wid? sfy1 (state-focus sfy1)))
+(define sfy2 (run1 sfy1 (key-event 'escape '())))
+(check-equal? (length (state-stack sfy2)) 2)                  ; 浮窗还在
+
+;; float-toggle：开 / 关
+(define sft1 (run1 (fresh) (key-event 'g '(alt))))            ; M-g → float-toggle log
+(check-equal? (length (state-stack sft1)) 1)
+(define sft2 (run1 sft1 (key-event 'g '(alt))))
+(check-equal? (length (state-stack sft2)) 0)
+
+;; 浮窗在 layout 的 z 序随 stack 变（带 #:stack 验层级）
+(define (float-z st w)
+  (define ps (layout (state-layout st) (cons 60 16) #:stack (state-stack st)))
+  (placement-z (findf (lambda (p) (eqv? w (placement-wid p))) ps)))
+(check-true (> (float-z sfx1 (car (state-stack sfx1)))
+                (float-z sfx1 (cadr (state-stack sfx1)))))
+
 (displayln "edit2/step.rkt: all tests passed")

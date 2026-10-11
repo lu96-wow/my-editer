@@ -10,7 +10,8 @@
 
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-prompt close-prompt prompt-of prefix-of input-name
-         open-float close-float cycle-float bind-doc-keys doc-keys focused-keymap
+         open-float close-float cycle-float float-wid? raise-float float-open-named
+         bind-doc-keys doc-keys focused-keymap
          base-op-registry op-register base-prompt-kinds prompt-kind-register
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
@@ -27,6 +28,7 @@
                     [border-style border-face]
                     [borders-on? borders-default?]
                     [key-tables key-tables-spec]
+                    [float-specs float-specs-spec]
                     [doc-key-matchers doc-key-matchers-spec]))
 
 ;; 默认边框 face（#f = 不加）。每个窗口可单独开关，见 border-toggle。
@@ -380,7 +382,7 @@
 ;; 聚焦区域的 active 成员。
 (define (region-focus! st rid)
   (define w (region-visible-wid st rid))
-  (if w (struct-copy state st [focus w]) st))
+  (if w (focus-wid st w) st))
 
 ;; 焦点在可见窗口间循环。
 (define (focus-cycle st d)
@@ -393,11 +395,11 @@
        [else
         (define idx (or (for/first ([w (in-list ws)] [i (in-naturals)] #:when (eqv? w (state-focus st))) i) 0))
         (define n (modulo (+ idx d) (length ws)))
-        (struct-copy state st [focus (list-ref ws n)])])]))
+        (focus-wid st (list-ref ws n))])]))
 
 (define (focus-editor st)
   (define w (center-wid st))
-  (if w (struct-copy state st [focus w]) st))
+  (if w (focus-wid st w) st))
 
 ;; 聚焦某面板（可能属于某区域）：它所在区域一并显示并置 active。
 (define (focus-panel! st name)
@@ -703,7 +705,7 @@
 ;; 显示一个已存在的视图：已在某个窗口就聚焦该窗口，否则放上屏。
 (define (show-view! st vid)
   (define w (layout-wid-of-vid (state-layout st) vid))
-  (cond [w (struct-copy state st [focus w])]
+  (cond [w (focus-wid st w)]
         [else (place-view st vid)]))
 
 ;; 缓冲区面板回车：
@@ -914,24 +916,70 @@
 (define (key-seq-clear st) (feature-set st 'keys '()))
 (define (prefix-enter-op? o) (memq (car o) '(prefix-new prefix-split)))
 
-;; 打开浮窗 = 新建一个窗口 wid 显示 vid，并压栈。
+;;; ---------- 浮窗（窗口 = wid；stack = z 序，头在最上） ----------
+;;;
+;;; 不变量：焦点是浮窗 ⇒ 它在栈头（raise-on-focus）。于是「谁接键（focus）」与
+;;; 「谁在最上（stack 头）」永远一致，不需要第二套模态栈。
+
+(define (float-wid? st wid) (layout-wid-float? (state-layout st) wid))
+
+(define (raise-float st wid)
+  (struct-copy state st [stack (cons wid (remove wid (state-stack st)))]))
+
+;; 设焦点；若焦点性是浮窗则一并提到栈头（维护不变量）。
+(define (focus-wid st w)
+  (define st1 (struct-copy state st [focus w]))
+  (if (and w (float-wid? st1 w)) (raise-float st1 w) st1))
+
+;; anchor 里的 rel 用「角色」写，打开时解析成 wid（layout 只认 wid）。
+(define (resolve-anchor-rel st rel)
+  (cond
+    [(not rel) #f]
+    [(eq? rel 'screen) #f]
+    [(eq? rel 'focused) (state-focus st)]
+    [(memq rel '(editor main-editor)) (center-wid st)]
+    [(and (pair? rel) (eq? (car rel) 'panel)) (panel-wid st (panel-doc-name (cadr rel)))]
+    [else rel]))                          ; 显式 wid
+
+(define (float-spec name)
+  (for/first ([s (in-list float-specs-spec)] #:when (eq? name (car s))) (cdr s)))
+
+;; 显示某 vid 的浮窗 wid（没有 → #f）。
+(define (float-wid-showing st v)
+  (for/first ([w (in-list (layout-wids (state-layout st)))]
+              #:when (and (float-wid? st w)
+                          (eqv? v (layout-wid-vid (state-layout st) w))))
+    w))
+
+;; 打开浮窗：新建窗口，压栈头（最上），并聚焦。
 (define (open-float st vid anchor want-w want-h)
   (define l (state-layout st))
   (define w (layout-fresh-wid l))
-  (struct-copy state st
-               [layout (layout-add-float l (float w vid default-border anchor want-w want-h))]
-               [stack (cons w (remove w (state-stack st)))]))
+  (focus-wid
+   (struct-copy state st
+                [layout (layout-add-float l (float w vid default-border anchor want-w want-h))])
+   w))
 
+;; 关一个浮窗（wid）。关后焦点：还有浮窗 → 新栈头；否则回编辑器。
 (define (close-float st wid)
-  (struct-copy state st
-               [layout (layout-remove-wid (state-layout st) wid)]
-               [stack (remove wid (state-stack st))]))
+  (define st1 (struct-copy state st
+                           [layout (layout-remove-wid (state-layout st) wid)]
+                           [stack (remove wid (state-stack st))]))
+  (if (eqv? wid (state-focus st1))
+      (let ([live (filter (lambda (w) (float-wid? st1 w)) (state-stack st1))])
+        (if (pair? live)
+            (focus-wid st1 (car live))
+            (struct-copy state st1 [focus (focus-after st1 (state-layout st1))])))
+      st1))
 
+;; Tab：焦点浮窗移到栈尾、下一个成为栈头并聚焦（在活浮窗间循环）。
 (define (cycle-float st)
-  (match (state-stack st)
-    ['() st]
-    [(list _) st]
-    [(cons x rest) (struct-copy state st [stack (append rest (list x))])]))
+  (define ws (filter (lambda (w) (float-wid? st w)) (state-stack st)))
+  (cond
+    [(or (null? ws) (null? (cdr ws))) st]
+    [else
+     (define rotated (append (cdr ws) (list (car ws))))
+     (struct-copy state st [stack rotated] [focus (car rotated)])]))
 
 (define (cursor-press ctx st ev)
   (define hit (layout-hit (ctx-placements ctx) (cursor-event-x ev) (cursor-event-y ev)))
@@ -949,7 +997,7 @@
        (define py (- (cursor-event-y ev) (rect-y rc) bt))
        (define p (screen->point ed vid (max 0 py) (max 0 px)))
        (when p (set-point! ed vid (car p) (cdr p))))
-     (values (struct-copy state st [focus w]) '())]))
+     (values (focus-wid st w) '())]))
 
 (define (cursor-scroll ctx st ev dir)
   (define hit (layout-hit (ctx-placements ctx) (cursor-event-x ev) (cursor-event-y ev)))
@@ -970,7 +1018,7 @@
     (cond
       [(eq? s 'always) always]
       [(eq? s 'editor) editor-focus?]
-      [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
+      [(eq? s 'float)  (lambda (st ev) (and (float-wid? st (state-focus st)) #t))]
       [(eq? s 'prompt) (lambda (st ev) (and (prompt-of st) #t))]
       [(eq? s 'new)  (lambda (st ev) (eq? (prefix-of st) 'new))]
       [(eq? s 'new2) (lambda (st ev) (eq? (prefix-of st) 'new2))]
@@ -999,10 +1047,26 @@
     [(equal? name "*buffers*") (buffers-enter st)]
     [else (values st '())]))
 
+;; 按名字（面板 id）打开 / 复用浮窗。几何取 config/float-specs，缺省右下角。
 (define (float-open-named st name)
   (define hv (view-of-name st (format "*~a*" name)))
-  (cond [(not hv) st]
-        [else (open-float st hv (anchor #f 'right 'bottom 2 2) 46 10)]))
+  (cond
+    [(not hv) st]
+    [else
+     ;; 该视图已在浮窗里 → 提到最上并聚焦（不重复开）。
+     (define existing (float-wid-showing st hv))
+     (cond
+       [existing (focus-wid st existing)]
+       [else
+        (define spec (float-spec name))
+        (define a (if spec (car spec) '(anchor screen right bottom 2 2)))
+        (define size (if spec (cadr spec) '(46 10)))
+        (define-values (rel h v dx dy)
+          (match a
+            [(list 'anchor r hh vv ddx ddy)
+             (values (resolve-anchor-rel st r) hh vv ddx ddy)]
+            [_ (values #f 'right 'bottom 2 2)]))
+        (open-float st hv (anchor rel h v dx dy) (car size) (cadr size))])]))
 
 (define (run-focus-op st target)
   (cond
@@ -1049,8 +1113,21 @@
     (cons 'region-focus      (lambda (ctx st ev args) (values (region-focus! st (car args)) '())))
     (cons 'focus             (lambda (ctx st ev args) (run-focus-op st (car args))))
     (cons 'float-open        (lambda (ctx st ev args) (values (float-open-named st (car args)) '())))
-    (cons 'float-close       (lambda (ctx st ev args) (values (close-float st (car (state-stack st))) '())))
+    (cons 'float-close       (lambda (ctx st ev args)
+                               (define w (state-focus st))
+                               (values (if (and w (float-wid? st w)) (close-float st w) st) '())))
+    (cons 'float-toggle      (lambda (ctx st ev args)
+                               (define name (car args))
+                               (define v (view-of-name st (format "*~a*" name)))
+                               (cond
+                                 [(not v) (values st '())]
+                                 [else
+                                  (define fw (float-wid-showing st v))
+                                  (values (if fw (close-float st fw) (float-open-named st name)) '())])))
     (cons 'float-cycle       (lambda (ctx st ev args) (values (cycle-float st) '())))
+    (cons 'float-raise       (lambda (ctx st ev args)
+                               (define w (state-focus st))
+                               (values (if (and w (float-wid? st w)) (raise-float st w) st) '())))
     (cons 'activate          (lambda (ctx st ev args) (activate-focused st)))
     (cons 'collapse          (lambda (ctx st ev args) (tree-collapse st)))
     (cons 'tree-parent       (lambda (ctx st ev args) (tree-move-parent st)))

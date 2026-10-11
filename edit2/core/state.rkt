@@ -34,7 +34,7 @@
 ;;; ---------- 布局树：用户意图 ----------
 
 (struct anchor (rel h v dx dy) #:transparent)
-;; rel : vid | #f（屏幕）
+;; rel : wid | #f（屏幕）；打开时把配置里的「角色」解析成 wid 再存（layout 只认 wid）。
 ;; h   : 'left | 'right | 'center | 'stretch
 ;; v   : 'top  | 'bottom | 'center | 'stretch
 
@@ -47,6 +47,8 @@
 ;; pane / float：窗口有自己的身份 wid，并引用一个视图 vid。
 ;; 同一个 vid 可以出现在多个 wid（同 view 多位置）；焦点 / 浮窗栈 / 命中都用 wid。
 ;; border = #f（无边框）| 命名 face（如 'window-border）。
+;; float 另带 anchor（几何）与 want-w/h；其 z 序由 State 的 stack 决定（栈头在最上，
+;; 不变量：焦点是浮窗 ⇒ 它在栈头），layout 用 #:stack 读它。
 (struct pane (wid vid border) #:transparent)
 ;; parts : (list (cons size Layout))，size = 整数格数 | 'flex
 (struct split (axis parts) #:transparent)

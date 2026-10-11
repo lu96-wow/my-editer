@@ -75,4 +75,11 @@
 (check-true (> (bytes-length (face-bytes 'status-bar)) 0))
 (check-equal? (face-bytes 'input) #"")   ; 输入行提示不加颜色修饰
 
+;; ---- 浮窗边框分层：run 带窗口 z（平铺 0，浮窗 1…），供 adapter 按 2z+1 叠装饰 ----
+(define tfl (split 'h (list (cons 'flex (pane 'w1 'a 'window-border))
+                            (cons 0 (float 'wf 'f 'window-border (anchor #f 'left 'top 0 0) 6 4)))))
+(define-values (_cfl rfl) (border-plan tfl (layout tfl (cons 20 8))))
+(check-true (for/or ([b (in-list rfl)]) (= 0 (border-run-z b))))   ; 平铺边框 z=0
+(check-true (for/or ([b (in-list rfl)]) (= 1 (border-run-z b))))   ; 浮窗边框 z=1
+
 (displayln "edit2/border.rkt: all tests passed")

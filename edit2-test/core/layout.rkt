@@ -78,4 +78,29 @@
 (check-equal? (layout-wids ts) '(wa w2))
 (check-equal? (layout-vids ts) '(a a))
 
+;; ---- 浮窗 anchor：rel 是 wid；找不到回退整屏（不落到父 split 的 0 尺寸 part） ----
+(define tanch (split 'h (list (cons 10 (pane 'wa 'x #f))
+                              (cons 0 (float 'ff 'a #f (anchor 'wa 'left 'top 1 1) 5 3)))))
+(define pfa (for/first ([p (in-list (layout tanch (cons 40 10)))] #:when (eqv? 'ff (placement-wid p))) p))
+(check-equal? (placement-rect pfa) (rect 1 1 5 3))                 ; 相对 wa（wid）
+
+(define tmiss (split 'h (list (cons 'flex (pane 'w1 'x #f))
+                              (cons 0 (float 'ff 'a #f (anchor 'nope 'right 'bottom 0 0) 5 3)))))
+(define pfm (for/first ([p (in-list (layout tmiss (cons 40 10)))] #:when (eqv? 'ff (placement-wid p))) p))
+(check-equal? (placement-rect pfm) (rect 35 7 5 3))                 ; 失配 → 整屏右下，不是父 part
+
+;; ---- 浮窗 z 序：默认发现顺序；给了 #:stack 则 stack 头在最上 ----
+(define tstack (split 'h (list (cons 'flex (pane 'w1 'x #f))
+                               (cons 0 (float 'f1 'a #f (anchor #f 'left 'top 0 0) 5 3))
+                               (cons 0 (float 'f2 'b #f (anchor #f 'left 'top 10 0) 5 3)))))
+(define (z-of ps w) (placement-z (findf (lambda (p) (eqv? w (placement-wid p))) ps)))
+(check-true (< (z-of (layout tstack (cons 40 10)) 'f1)
+                (z-of (layout tstack (cons 40 10)) 'f2)))               ; 默认：后发现的在上
+(check-true (> (z-of (layout tstack (cons 40 10) #:stack '(f2 f1)) 'f2)
+                (z-of (layout tstack (cons 40 10) #:stack '(f2 f1)) 'f1)))  ; 栈头 f2 最上
+
+;; 浮窗身份：layout-wid-float? 只对 float 节点为真
+(check-true (layout-wid-float? tanch 'ff))
+(check-false (layout-wid-float? tanch 'wa))
+
 (displayln "edit2/layout.rkt: all tests passed")

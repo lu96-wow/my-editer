@@ -30,5 +30,6 @@
             (< (rank a) (rank b)))))
   (define brs
     (for/list ([b (in-list borders)])
-      (list (border-run-row b) (border-run-col b) (border-run-text b) (border-run-face b))))
+      (list (border-run-row b) (border-run-col b) (border-run-text b) (border-run-face b)
+            (border-run-z b))))
   (render-layout (state-ed st) ordered active w h old brs))

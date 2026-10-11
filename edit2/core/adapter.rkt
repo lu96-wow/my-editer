@@ -56,10 +56,12 @@
 ;;; ---------- 布局 / 渲染 ----------
 
 ;; placements → core rectangle。空窗口（vid = #f）不产出 rectangle（仍占位，可命中/聚焦）。
+;; deep 分层：内容 = 2z（平铺 0，浮窗 2,4,…），边框 = 2z+1（见 render-layout）。
 (define (layout->rectangles placements)
   (for/list ([p (in-list placements)] #:when (placement-vid p))
     (define r (placement-rect p))
-    (rectangle (placement-vid p) (rect-x r) (rect-y r) (rect-w r) (rect-h r) (placement-z p))))
+    (rectangle (placement-vid p) (rect-x r) (rect-y r) (rect-w r) (rect-h r)
+               (* 2 (placement-z p)))))
 
 (define (set-layout! ed placements)
   (editor-set-layout! ed (layout->rectangles placements)))
@@ -73,12 +75,14 @@
   (editor-set-layout! ed rs)
   (define decorations
     (for/list ([b (in-list borders)])
-      (match-define (list row col text face) b)
+      (match-define (list row col text face z) b)
+      ;; 边框随窗口 z 分层：内容 deep = 2z、边框 = 2z+1
+      ;; → 浮窗边框盖住下层，又被自身内容盖住。
       (pane 'window-border row col
             (screen (string-length text) 1
                     (vector (list (run 0 text face)))
                     '() '())
-            1000)))
+            (+ 1 (* 2 z)))))
   (editor-render-layout-patch ed old rs active w h decorations))
 
 ;;; ---------- 编辑 ----------

@@ -41,7 +41,7 @@ Layout = (pane wid vid)
    views   ; id -> view
    layout  ; Layout            意图树；几何永不存
    focus   ; wid               窗口身份（不是 vid）
-   stack   ; (listof wid)      浮窗 z 序 + 模态序（栈头接键）
+   stack   ; (listof wid)      浮窗 z 序（头在最上）；焦点浮窗必在栈头（raise-on-focus）
    jobs))  ; id -> (kind . key) 在途请求
 ```
 
@@ -73,15 +73,30 @@ Layout = (pane wid vid)
 
 浮动窗不需要独立引擎，只有两件事：
 
-1. `Layout` 里是 `(float vid anchor want-w want-h)` → `layout` 负责摆位；
-2. `stack` 里 → 栈头接键、画在最上。
+1. `Layout` 里是 `(float wid vid border anchor want-w want-h)` → `layout` 负责摆位
+   （`anchor.rel` 是 **wid**，不是 vid：同 vid 可多位置；找不到就回退整屏）；
+2. `stack` 是 **z 序**（头在最上）→ `layout #:stack` 据此给浮窗 z，`panes->composition` 的 deep 负责覆盖。
+
+**焦点 = 唯一“谁接键”**（edit2 其余部分都建在 focus 上），所以不再引入第二套模态栈。
+用一条**不变量**把 stack 和 focus 绑定：
+
+> **焦点是浮窗 ⇒ 它必在栈头（raise-on-focus）。**
 
 ```racket
-(define (top st) (car (state-stack st)))   ; 谁接键 = 栈头
-(define (open-float st vid) ...)           ; 压栈
-(define (cycle-float st) ...)              ; Tab：栈头移到栈尾
-(define (close-float st vid) ...)          ; 弹栈
+(define (float-wid? st wid) (layout-wid-float? (state-layout st) wid))
+(define (raise-float st wid) ...)          ; 提到栈头（最上）
+(define (focus-wid st w) ...)              ; 设焦点 + 若浮窗则 raise
+(define (open-float st vid anchor w h) ...); 新建窗口、压栈头、聚焦
+(define (close-float st wid) ...)          ; 关焦点浮窗：焦点落新栈头 / 编辑器
+(define (cycle-float st) ...)              ; Tab：焦点在活浮窗间循环（同时 raise）
 ```
+
+- 键作用域 `float` = **焦点 wid 是浮窗**（不是“存在浮窗”），所以 `Esc`/`Tab` 不会被浮窗抢走；
+  浮窗显示普通 doc 时 `editor` 作用域照常可编辑。
+- 浮窗是**窗口**（wid）：关闭只摘窗口，view / document 资源不动；C-d 与 Esc 等效。
+- 几何声明在 `config/floats.rkt`（`float-specs`：名字 → anchor/size，role 写 `screen` /
+  `focused` / `editor` / `(panel id)`，打开时解析成 wid）。
+- 边框随窗口 z 分层：内容 deep = `2z`、边框 = `2z+1` → 浮窗边框盖住下层，又被自身内容盖住。
 
 补全菜单、文档窗、对话框统一为同一个东西。
 

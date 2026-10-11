@@ -80,7 +80,7 @@
       (define running* (reconcile ch st running worker-of jobs-fn))
       (define size ((backend-size b)))
       (define st1 (refresh-panels! st))          ; 刷面板（树缓存/内容），拿回更新后的状态
-      (define placements (layout (state-layout st1) size))
+      (define placements (layout (state-layout st1) size #:stack (state-stack st1)))
       (define-values (screen rends sels)
         (render st1 placements size (and (equal? size old-size) old)))
       ((backend-draw! b) (append rends sels))

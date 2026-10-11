@@ -17,7 +17,7 @@
  layout-hit rect-contains? rect-local
  ;; 查询
  layout-wids layout-vids layout-has-wid? layout-has? layout-wid-vid layout-wid-of-vid
- layout-wid-border
+ layout-wid-border layout-wid-float?
  layout-fresh-wid
  ;; 布局树手术（纯）
  layout-remove-wid layout-remove-vid layout-replace-wid-node layout-set-pane-vid
@@ -113,6 +113,14 @@
     [(float? tree) (and (eqv? wid (float-wid tree)) (float-border tree))]
     [(main? tree) (layout-wid-border (main-tree tree) wid)]
     [(split? tree) (for/or ([p (in-list (split-parts tree))]) (layout-wid-border (cdr p) wid))]
+    [else #f]))
+
+;; 某 wid 是否是浮窗（float 节点）。
+(define (layout-wid-float? tree wid)
+  (cond
+    [(float? tree) (eqv? wid (float-wid tree))]
+    [(main? tree) (layout-wid-float? (main-tree tree) wid)]
+    [(split? tree) (for/or ([p (in-list (split-parts tree))]) (layout-wid-float? (cdr p) wid))]
     [else #f]))
 
 ;; 分配一个新 wid：现有最大整 wid + 1（关闭后的 wid 可复用，引用已同步清理）。
@@ -263,7 +271,7 @@
     [(split? tree) (split (split-axis tree) (append (split-parts tree) (list (cons 0 f))))]
     [else (split 'h (list (cons 'flex tree) (cons 0 f)))]))
 
-(define (layout tree size)
+(define (layout tree size #:stack [stack '()])
   (define sw (car size))
   (define sh (cdr size))
   (define tiled (make-hash))          ; wid -> rect（仅本函数内部，结果确定）
@@ -303,18 +311,19 @@
       [(empty-area? node) (void)]
       [(main? node) (walk (main-tree node) r)]
       [(pane? node) (hash-set! tiled (pane-wid node) r)]
-      [(float? node) (set! floats (cons (cons node r) floats))]
+      [(float? node) (set! floats (cons node floats))]
       [(split? node)
        (for ([p (in-list (split-rects r (split-axis node) (split-parts node)))])
          (walk (car p) (cdr p)))]
       [else (error 'layout "未知布局节点: ~a" node)]))
 
-  (define (place-float f parent)
+  (define (place-float f)
     (define a (float-anchor f))
+    ;; rel 是 **wid**（窗口身份，同 vid 多位置时 vid 不唯一）；
+    ;; 找不到（已不在布局）→ 回退整屏，不落到父 split 的 0 尺寸 part。
     (define rel
       (cond [(not (anchor-rel a)) (rect 0 0 sw sh)]
             [(hash-ref tiled (anchor-rel a) #f)]
-            [parent]
             [else (rect 0 0 sw sh)]))
     (define w (min (float-want-w f) sw))
     (define h (min (float-want-h f) sh))
@@ -338,11 +347,22 @@
 
   (walk tree (rect 0 0 sw sh))
 
-  (define ordered (reverse floats))
+  (define discovered (reverse floats))
+  ;; z 序：stack 头 = 最上。layout 里 z = 1+i（列表尾最高），所以把 stack 头排到最后；
+  ;; 不在 stack 里的浮窗排最底。stack 为空 → 退回发现顺序（与旧行为一致）。
+  (define ordered
+    (cond
+      [(null? stack) discovered]
+      [else
+       (define idx (for/hash ([w (in-list stack)] [i (in-naturals)]) (values w i)))
+       (define n (length stack))
+       (sort discovered
+             < #:key (lambda (f)
+                       (define w (float-wid f))
+                       (if (hash-has-key? idx w) (- n (hash-ref idx w)) 0)))]))
   (append
    (for/list ([(wid r) (in-hash tiled)])
      (define vid (layout-wid-vid tree wid))
      (placement wid vid r 0 #f))
-   (for/list ([fr (in-list ordered)] [i (in-naturals)])
-     (define f (car fr))
-     (placement (float-wid f) (float-vid f) (place-float f (cdr fr)) (+ 1 i) #t))))
+   (for/list ([f (in-list ordered)] [i (in-naturals)])
+     (placement (float-wid f) (float-vid f) (place-float f) (+ 1 i) #t))))

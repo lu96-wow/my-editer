@@ -16,7 +16,7 @@
 ;;; 加/改一条绑定 = 改这里一行数据；加一张表 = 在这里加一个 define 并放进 key-tables。
 
 (provide key-tables doc-key-matchers
-         pointer-keys placing-keys split-keys prompt-keys global-keys
+         pointer-keys placing-keys split-keys prompt-keys global-keys float-keys
          resource-keys sidebar-keys tree-keys buffers-keys editor-keys
          rkt-keys)
 
@@ -70,9 +70,18 @@
     ((key h ctrl)  always (tree-toggle-hidden))   ; 文件树：显/隐以 . 开头的条目
     ((key e alt)   always (focus editor))
     ((key n alt)   always (focus (cycle 1)))
-    ((key p alt)   always (focus (cycle -1)))
-    ((key escape)  float  (float-close))
-    ((key tab)     float  (float-cycle))))
+    ((key p alt)   always (focus (cycle -1)))))
+
+;;; ---------- 浮窗（窗口，不是面板）：打开 / 切换 / 提到最上 / 循环 / 关闭 ----------
+;;; 几何取 config/floats.rkt 的 float-specs（按名字）；Esc/Tab 只在**焦点是浮窗**时生效
+;;; （scope float = 焦点 wid 是浮窗），所以焦点在编辑器时 Esc/Tab 不会被浮窗抢走。
+(define float-keys
+  '(((key j alt)   always (float-open log))     ; 浮起日志（已在浮窗则提到最上）
+    ((key k alt)   always (float-open tree))    ; 浮起文件树（同 view 多位置）
+    ((key g alt)   always (float-toggle log))   ; 开 / 关日志浮窗
+    ((key j ctrl)  float  (float-raise))         ; 焦点浮窗提到最上
+    ((key tab)     float  (float-cycle))        ; 在浮窗间循环焦点
+    ((key escape)  float  (float-close))))      ; 关焦点浮窗（焦点落到下一个浮窗 / 编辑器）
 
 ;;; ---------- 关闭：窗口 ≠ 视图 ≠ 文档（资源各自独立） ----------
 (define resource-keys
@@ -134,7 +143,7 @@
 
 ;;; ---------- 有序组合（core 按顺序 compose，后者覆盖前者） ----------
 (define key-tables
-  (list pointer-keys placing-keys split-keys prompt-keys global-keys
+  (list pointer-keys placing-keys split-keys prompt-keys global-keys float-keys
         resource-keys sidebar-keys tree-keys buffers-keys editor-keys))
 
 ;;; ---------- 文件 → document 键表的匹配层（插件层接入点） ----------

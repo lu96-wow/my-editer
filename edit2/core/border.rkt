@@ -17,8 +17,8 @@
 
 (require "state.rkt" "layout.rkt")
 
-;; 一段同一行、同 face 的边框字符。
-(struct border-run (row col text face) #:transparent)
+;; 一段同一行、同 face 的边框字符 + 该 run 的窗口深度 z（用于分层，见 adapter）。
+(struct border-run (row col text face z) #:transparent)
 
 ;;; ---------- 字形：方向集 → 一个 Unicode 制表符 ----------
 
@@ -95,21 +95,26 @@
                    [rect (rect (+ (rect-x rc) l) (+ (rect-y rc) t)
                                (max 1 (- (rect-w rc) l r))
                                (max 1 (- (rect-h rc) t b)))])))
-  ;; 原子边框格：坐标 → face。
+  ;; 原子边框格：坐标 → (face . z)。重合只留一个（z 大者 / 后写者胜）。
   (define cells (make-hash))
-  (define (add-cell r c face)
-    (hash-set! cells (cons r c) face))
+  (define (add-cell r c face z)
+    (define k (cons r c))
+    (define old (hash-ref cells k #f))
+    (when (or (not old) (>= z (cdr old)))
+      (hash-set! cells k (cons face z))))
   (for ([p (in-list placements)])
-    (define face (wid-border tree (placement-wid p)))
+    (define wid (placement-wid p))
+    (define face (wid-border tree wid))
     (when face
+      (define z (placement-z p))
       (define rc (placement-rect p))
-      (define-values (l t r b) (border-insets tree placements (placement-wid p)))
+      (define-values (l t r b) (border-insets tree placements wid))
       (define x0 (rect-x rc)) (define y0 (rect-y rc))
       (define x1 (+ x0 (rect-w rc) -1)) (define y1 (+ y0 (rect-h rc) -1))
-      (when (= t 1) (for ([c (in-range x0 (add1 x1))]) (add-cell y0 c face)))
-      (when (= b 1) (for ([c (in-range x0 (add1 x1))]) (add-cell y1 c face)))
-      (when (= l 1) (for ([row (in-range y0 (add1 y1))]) (add-cell row x0 face)))
-      (when (= r 1) (for ([row (in-range y0 (add1 y1))]) (add-cell row x1 face)))))
+      (when (= t 1) (for ([c (in-range x0 (add1 x1))]) (add-cell y0 c face z)))
+      (when (= b 1) (for ([c (in-range x0 (add1 x1))]) (add-cell y1 c face z)))
+      (when (= l 1) (for ([row (in-range y0 (add1 y1))]) (add-cell row x0 face z)))
+      (when (= r 1) (for ([row (in-range y0 (add1 y1))]) (add-cell row x1 face z)))))
   ;; 边长连通 → 字形；按行、face 合并成连续 run。
   (define (cell? r c) (hash-has-key? cells (cons r c)))
   (define (glyph r c)
@@ -119,21 +124,25 @@
                           (and (cell? r (sub1 c)) 'l)
                           (and (cell? r (add1 c)) 'r)))))
   (define entries
-    (sort (for/list ([(k v) (in-hash cells)]) (list (car k) (cdr k) v))
+    (sort (for/list ([(k v) (in-hash cells)])
+            (list (car k) (cdr k) (car v) (cdr v)))
           (lambda (a b) (or (< (first a) (first b))
                             (and (= (first a) (first b)) (< (second a) (second b)))))))
+  ;; 按行 + face 合并；同 run 内 z 取最大（边框一并按最高层画）。
   (define runs
     (let loop ([es entries] [acc '()] [cur #f])
       (cond
         [(null? es) (reverse (if cur (cons cur acc) acc))]
         [else
-         (define r (first (car es))) (define c (second (car es))) (define f (third (car es)))
+         (define r (first (car es))) (define c (second (car es)))
+         (define f (third (car es))) (define z (fourth (car es)))
          (cond
            [(and cur (= r (border-run-row cur)) (equal? f (border-run-face cur))
                  (= c (+ (border-run-col cur) (string-length (border-run-text cur)))))
             (loop (cdr es) acc
                   (struct-copy border-run cur
-                               [text (string-append (border-run-text cur) (string (glyph r c)))]))]
+                               [text (string-append (border-run-text cur) (string (glyph r c)))]
+                               [z (max (border-run-z cur) z)]))]
            [else (loop (cdr es) (if cur (cons cur acc) acc)
-                       (border-run r c (string (glyph r c)) f))])])))
+                       (border-run r c (string (glyph r c)) f z))])])))
   (values content runs))
