@@ -131,7 +131,7 @@
 ;; 缓冲区面板 = 资源管理器。C-d 关选中视图资源：视图 -1，文档不变。
 (define sb0 (run1 (fresh) (key-event 'b '(alt))))          ; 侧栏切到缓冲区并聚焦
 (check-equal? (panel-name sb0 (state-focus sb0)) "*buffers*")
-(define sb1 (run1 sb0 (key-event 'd '(ctrl))))
+(define sb1 (run1 (run1 sb0 (key-event 'down '())) (key-event 'd '(ctrl))))  ; 下到 view 子行再关
 (check-equal? (length (view-id-list (state-ed sb1))) 5)    ; 6 → 5
 (check-equal? (length (document-id-list (state-ed sb1))) 6) ; 文档不变
 ;; 孤儿文档仍留在资源列表（一行，vid=#f），回车可重建视图
@@ -161,20 +161,31 @@
 (define sm1 (run1 sm0 (key-event 'w '(ctrl))))
 (check-equal? (length (document-view-list (state-ed sm1) sm-did)) 2)
 (check-equal? (length (document-id-list (state-ed sm1))) 6)
-;; 缓冲区面板逐视图列行，多视图标 [k/n]
-(check-true (regexp-match? #rx"\\[1/2\\]"
-                           (view-string (state-ed (refresh-panels! sm1))
-                                        (panel-vid sm1 "*buffers*"))))
+;; 资源面板是树：document 是根，view 是子（不再有 [k/n] 标注）。
+(define sm-rows (buffer-rows (refresh-panels! sm1)))
+(check-equal? (length (filter (lambda (r) (eq? (list-ref r 4) 'doc)) sm-rows)) 1)
+(check-equal? (length (filter (lambda (r) (eq? (list-ref r 4) 'view)) sm-rows)) 2)
+(check-false (regexp-match? #rx"\\[1/2\\]"
+                            (view-string (state-ed (refresh-panels! sm1))
+                                         (panel-vid sm1 "*buffers*"))))
 
 ;; 关窗口只摘 pane：同一 document 的两个 view 都保留。
 (define sm2 (run1 sm1 (key-event 'd '(ctrl))))
 (check-equal? (length (document-view-list (state-ed sm2) sm-did)) 2)
 (check-equal? (length (document-id-list (state-ed sm2))) 6)
 
-;; 从缓冲区关一个视图资源：文档保留，另一个视图还在。
-(define sm3 (run1 (run1 sm2 (key-event 'b '(alt))) (key-event 'd '(ctrl))))
+;; 从缓冲区关一个视图资源：先在树上下到 view 子行；文档保留，另一个视图还在。
+(define sm3 (run1 (run1 (run1 sm2 (key-event 'b '(alt))) (key-event 'down '()))
+                  (key-event 'd '(ctrl))))
 (check-equal? (length (document-view-list (state-ed sm3) sm-did)) 1)
 (check-equal? (length (document-id-list (state-ed sm3))) 6)
+
+;; 折叠式：Left 收起只剩 document 行；Right 展开回子行。
+(define smf (run1 (fresh) (key-event 'w '(ctrl))))
+(define smb0 (run1 (run1 smf (key-event 'b '(alt))) (key-event 'left '())))
+(check-equal? (length (buffer-rows smb0)) 1)              ; 只剩 document 根
+(define smb1 (run1 smb0 (key-event 'right '())))
+(check-equal? (length (buffer-rows smb1)) 3)              ; 1 doc + 2 view
 
 ;; 关文档：它名下所有 view 一起消失。
 (define sm4 (run1 sm3 (key-event 'delete '())))

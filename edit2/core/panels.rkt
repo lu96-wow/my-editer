@@ -13,7 +13,7 @@
  region-members region-side region-size
  panel-doc-name parse-region
  panel-specs panel-name? panel-vid panel-name
- refresh-panels! buffer-items tree-relative-path
+ refresh-panels! buffer-items buffer-rows tree-relative-path
  tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir
  panel-line panel-line-at)
 
@@ -149,10 +149,12 @@
          (format "~a" (find-relative-path r cp))
          (format "~a" p))]))
 
-;; 缓冲区：每个非面板文档一组；有视图就每个视图一行，没有视图（被单独关过）也留一行，
-;; 让孤儿文档仍可从这里重新建视图。行 = (did vid label)；vid = #f 表示无视图。
-(define (buffer-items st)
+;; 资源面板是树：document 是根，view 是子；多个 document 并列。
+;; row = (list did vid label depth kind)，kind = 'doc | 'view；doc 行 vid = #f。
+;; 折叠状态存 feature 'buffers-fold（hash did -> #t = 收起），默认展开。
+(define (buffer-rows st)
   (define ed (state-ed st))
+  (define folded (feature-ref st 'buffers-fold (hash)))
   (append*
    (for/list ([did (in-list (document-id-list ed))])
      (define name (document-name ed did))
@@ -161,14 +163,20 @@
        [else
         (define label (doc-label st did))
         (define vids (document-view-list ed did))
-        (define n (length vids))
+        (define doc-row (list did #f label 0 'doc))
         (cond
-          [(null? vids) (list (list did #f label))]
-          [else (for/list ([vid (in-list vids)] [i (in-naturals)])
-                  ;; 一个 document 多个 view 时标出第几个，避免同标签无法区分。
-                  (list did vid (if (> n 1)
-                                    (format "~a  [~a/~a]" label (add1 i) n)
-                                    label)))])]))))
+          [(hash-has-key? folded did) (list doc-row)]
+          [(null? vids) (list doc-row)]
+          [else (cons doc-row
+                      (for/list ([vid (in-list vids)])
+                        (list did vid (view-cursor-label st vid) 1 'view)))])]))))
+
+(define (buffer-items st) (buffer-rows st))
+
+;; 子行（视图）用光标 line:col 区分，不重复 document 名字。
+(define (view-cursor-label st vid)
+  (define ed (state-ed st))
+  (format "~a:~a" (add1 (view-line ed vid)) (add1 (view-col ed vid))))
 
 ;; 资源显示名：有文件路径就相对文件树根（工作路径），否则用文档名。
 (define (doc-label st did)
@@ -178,14 +186,26 @@
         [else (tree-relative-path st p)]))
 
 (define (buffers-content st v)
-  (define items (buffer-items st))
+  (define rows (buffer-rows st))
+  (define folded (feature-ref st 'buffers-fold (hash)))
   (define cursor (if v (view-line (state-ed st) v) 0))
   (define lines
-    (for/list ([it (in-list items)] [i (in-naturals)])
-      (format "~a ~a" (if (= i cursor) ">" " ") (caddr it))))
+    (for/list ([r (in-list rows)])
+      (match-define (list did vid label depth kind) r)
+      (define marker
+        (cond
+          [(eq? kind 'doc)
+           (cond [(null? (document-view-list (state-ed st) did)) "  "]
+                 [(hash-has-key? folded did) "▸ "]
+                 [else "▾ "])]
+          [(layout-has? (state-layout st) vid) "● "]   ; 已显示在窗格里
+          [else "· "]))
+      (string-append (make-string (* 2 depth) #\space) marker label)))
   (values (string-join lines "\n")
-          (for/list ([it (in-list items)] [i (in-naturals)] #:when (= i cursor))
-            (cons i 'accent))))
+          (for/list ([r (in-list rows)] [i (in-naturals)])
+            (cons i (cond [(= i cursor) 'accent]
+                          [(eq? (list-ref r 4) 'doc) 'bold]
+                          [else 'dim])))))
 
 (define (tree-content st v)
   (define ts (feature-ref st 'tree #f))

@@ -60,6 +60,9 @@
     ((key enter) (panel tree)    (activate))
     ((key down)  (panel buffers) (move down))
     ((key up)    (panel buffers) (move up))
+    ((key right) (panel buffers) (buffers-expand))
+    ((key left)  (panel buffers) (buffers-collapse))
+    ((key space) (panel buffers) (buffers-toggle))
     ((key enter) (panel buffers) (activate))
 
     ;; ---------- 编辑 ----------

@@ -33,9 +33,10 @@
    " C-q 退出    C-s 保存    C-z/C-y 撤销/重做\n"
    " C-a/C-c/C-x/C-v  选区 / 剪贴板\n"
    " C-w 分屏    C-d 关窗口（资源保留）  C-b 侧栏显隐  C-l 日志  C-h 帮助\n"
-   " 缓冲区面板：C-d 关视图资源   Delete 关文档资源（连带其视图）\n"
-   " 多窗口时打开文件：进入选择模式，Tab/M-n 切换目标，Enter 替换，Esc 取消\n"
+   " 资源面板（树状：document 根 / view 子）：↑↓ 选，←→/空格 折叠，Enter 打开\n"
+   "   C-d 关选中 view   Delete 关选中 document（连带其视图）\n"
+   " 打开目标窗格：单窗直接替换；多窗进选择模式，鼠标/Tab/M-n 选，Enter 替换，Esc 取消\n"
    " M-t 侧栏=文件树   M-b 侧栏切换成员   M-e 编辑器\n"
    " M-n / M-p   焦点在窗格间循环\n"
-   " 树/缓冲区里：↑↓ 移动，←→ 展开收起，Enter 打开\n"
+   " 文件树里：↑↓ 移动，←→ 展开收起，Enter 打开\n"
    " 方向键/Home/End 移动，Enter/Backspace 编辑"))

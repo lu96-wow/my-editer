@@ -538,22 +538,56 @@
     [(layout-has? (state-layout st) vid) (struct-copy state st [focus vid])]
     [else (place-view st vid)]))
 
-;; 缓冲区面板回车：资源列表里选中一条 → 显示 / 重建它的视图。
-;; 只有文档、没有视图（视图被单独关过）的孤儿文档：现建一个视图再显示。
+;; 缓冲区面板回车：
+;;   view 行 → 显示/替换那个视图（多窗口则进放置模式选目标）；
+;;   document 行 → 显示它第一个视图；没视图（孤儿文档）就现建一个。
 (define (buffers-enter st)
-  (define items (buffer-items st))
+  (define rows (buffer-rows st))
   (define i (or (panel-line st "*buffers*") 0))
   (cond
-    [(or (null? items) (>= i (length items))) (values st '())]
+    [(or (null? rows) (>= i (length rows))) (values st '())]
     [else
-     (define it (list-ref items i))
-     (define did (car it))
-     (define vid (cadr it))
+     (define r (list-ref rows i))
+     (define did (car r))
+     (define vid (cadr r))
      (cond
-       [vid (values (show-view! st vid) '())]
+       [(eq? (list-ref r 4) 'view) (values (show-view! st vid) '())]
        [else
-        (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
-        (values (show-view! (struct-copy state st [ed ed*]) nvid) '())])]))
+        (define vids (document-view-list (state-ed st) did))
+        (cond
+          [(pair? vids) (values (show-view! st (car vids)) '())]
+          [else
+           (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
+           (values (show-view! (struct-copy state st [ed ed*]) nvid) '())])])]))
+
+;;; ---------- 资源面板折叠（document 是根） ----------
+
+(define (buffers-current-row st)
+  (define rows (buffer-rows st))
+  (define i (or (panel-line st "*buffers*") 0))
+  (and (pair? rows) (< i (length rows)) (list-ref rows i)))
+
+;; v = #t 收起 / #f 展开；光标落到该 document 行。
+(define (buffers-fold! st v)
+  (define r (buffers-current-row st))
+  (cond
+    [(not r) st]
+    [else
+     (define did (car r))
+     (define h (feature-ref st 'buffers-fold (hash)))
+     (define st* (feature-set st 'buffers-fold (if v (hash-set h did #t) (hash-remove h did))))
+     (define idx (for/first ([x (in-list (buffer-rows st*))] [i (in-naturals)]
+                             #:when (eqv? did (car x))) i))
+     (define bv (panel-vid st* "*buffers*"))
+     (when bv (set-point! (state-ed st*) bv (or idx 0) 0))
+     st*]))
+
+(define (buffers-toggle st)
+  (define r (buffers-current-row st))
+  (cond
+    [(not r) st]
+    [else (define did (car r))
+          (buffers-fold! st (not (hash-has-key? (feature-ref st 'buffers-fold (hash)) did)))]))
 
 ;;; ---------- 树 ----------
 
@@ -715,6 +749,9 @@
     [(float-cycle)       (values (cycle-float st) '())]
     [(activate)          (activate-focused st)]
     [(collapse)          (tree-collapse st)]
+    [(buffers-toggle)    (values (buffers-toggle st) '())]
+    [(buffers-expand)    (values (buffers-fold! st #f) '())]
+    [(buffers-collapse)  (values (buffers-fold! st #t) '())]
     [else (values st '())]))
 
 ;; 一条命令 = 原语序列。
