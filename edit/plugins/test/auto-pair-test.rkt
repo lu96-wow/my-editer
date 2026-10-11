@@ -15,7 +15,8 @@
          "../../core/session/focus.rkt"
          "../../core/session/panel.rkt"
          "../../core/session/render.rkt"
-         "../../core/command/dispatch.rkt"
+         "../../core/command/input.rkt"
+         "../../core/command/engine.rkt"
          "../../core/command/key.rkt"
          "../../core/command/binding.rkt"
          "../../core/path.rkt"
@@ -27,7 +28,7 @@
   (call-with-values (lambda () (session-render s #f)) (lambda (s* . _) s*)))
 
 ;; 产生一个「文本插入」输入并派发。
-(define (type s text) (dispatch s (input text-binding text #f #f #f #f)))
+(define (type s text) (engine-dispatch s (input text-binding text #f #f #f #f)))
 
 (define (cursor s vid)
   (list (session-view-point-line s vid) (session-view-point-column s vid)))
@@ -69,16 +70,16 @@
 
 ;;; ---------- 5. 有选区时不配对：保持替换选区 ----------
 
-(define s6 (dispatch (dispatch s5 (input (key 'a 'ctrl) #f #f #f #f #f)) ; cmd-select-all
+(define s6 (engine-dispatch (engine-dispatch s5 (input (key 'a 'ctrl) #f #f #f #f #f)) ; cmd-select-all
                      (input text-binding "{" #f #f #f #f)))
 (check-equal? (session-view-string s6 evid) "{")   ; 选区被整体替换，而不是包一层 {…}
 
 ;;; ---------- 6. 输入行（dock 面）不配对 ----------
 
-(define s7 (dispatch s6 (input (key 'f 'ctrl) #f #f #f #f #f)))   ; cmd-open-file → 打开输入行
+(define s7 (engine-dispatch s6 (input (key 'f 'ctrl) #f #f #f #f #f)))   ; cmd-open-file → 打开输入行
 (define ivid (session-panel-vid s7 panel-input))
 (check-not-false ivid)
-(define s8 (dispatch s7 (input text-binding "{" #f #f #f #f)))
+(define s8 (engine-dispatch s7 (input text-binding "{" #f #f #f #f)))
 (check-equal? (session-view-string s8 ivid) "find file: {")      ; 只插入一个 {
 
 (delete-file p)

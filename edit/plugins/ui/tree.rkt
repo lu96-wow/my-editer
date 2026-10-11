@@ -167,22 +167,29 @@
              (tree-after-change (session-delete-path s p) st parent)
              s))))]))
 
-(define (tree-handler st vid)
-  (lambda (s cmd)
-    (cond
-      [(cmd-tree-activate? cmd) (do-activate s st vid)]
-      [(cmd-tree-new-file? cmd) (do-new-file s st vid)]
-      [(cmd-tree-new-dir? cmd)  (do-new-dir s st vid)]
-      [(cmd-tree-delete? cmd)   (do-delete s st vid)]
-      ;; 更新能力：外部（命令发起者）决定何时刷新。
-      [(cmd-tree-refresh? cmd)
-       (tree-read! s st (lambda () (tree-refresh (unbox st) fs-read-dir)))]
-      [(cmd-tree-toggle? cmd) (session-set-visible s vid (not (session-visible? s vid)))]
-      [(cmd-tree-search? cmd) (do-search s st vid (cmd-tree-search-text cmd))]
-      [(cmd-tree-search-next? cmd) (do-search-step s st vid 1)]
-      [(cmd-tree-search-prev? cmd) (do-search-step s st vid -1)]
-      [(cmd-tree-search-clear? cmd) (set-box! st (tree-search-clear (unbox st))) s]
-      [else #f])))
+;; 声明式命令路由（取代 tree-handler）。
+(define (tree-routes st vid)
+  (define (eff proc) (handler-effect (lambda (s cmd) (values (proc s cmd) 'handled))))
+  (list
+   (route* (command-pred cmd-tree-activate?) (eff (lambda (s _) (do-activate s st vid))) #:priority 10)
+   (route* (command-pred cmd-tree-new-file?) (eff (lambda (s _) (do-new-file s st vid))) #:priority 10)
+   (route* (command-pred cmd-tree-new-dir?)  (eff (lambda (s _) (do-new-dir s st vid))) #:priority 10)
+   (route* (command-pred cmd-tree-delete?)   (eff (lambda (s _) (do-delete s st vid))) #:priority 10)
+   ;; 更新能力：外部（命令发起者）决定何时刷新。
+   (route* (command-pred cmd-tree-refresh?)
+           (eff (lambda (s _) (tree-read! s st (lambda () (tree-refresh (unbox st) fs-read-dir)))))
+           #:priority 10)
+   (route* (command-pred cmd-tree-toggle?)
+           (eff (lambda (s _) (session-set-visible s vid (not (session-visible? s vid)))))
+           #:priority 10)
+   (route* (command-pred cmd-tree-search?)
+           (eff (lambda (s cmd) (do-search s st vid (cmd-tree-search-text cmd))))
+           #:priority 10)
+   (route* (command-pred cmd-tree-search-next?) (eff (lambda (s _) (do-search-step s st vid 1))) #:priority 10)
+   (route* (command-pred cmd-tree-search-prev?) (eff (lambda (s _) (do-search-step s st vid -1))) #:priority 10)
+   (route* (command-pred cmd-tree-search-clear?)
+           (handler-effect (lambda (s _) (set-box! st (tree-search-clear (unbox st))) (values s 'handled)))
+           #:priority 10)))
 
 ;;; ---------- 装配 ----------
 
@@ -207,6 +214,7 @@
                                          (box (tree-state (normalize root) (hash) (hash) #f))))])
       (values s1 (box (tree-state-open root fs-read-dir)))))
   (define sf (dock-surface panel-tree vid (make-refresh st) tree-keys slot-side 'height 'flex))
-  (session-add-handler (session-add-surface s2 sf) (tree-handler st vid)))
+  (for/fold ([s (session-add-surface s2 sf)]) ([r (in-list (tree-routes st vid))])
+    (session-add-route s r)))
 
 (define tree-spec (plugin-spec 'tree tree-install '()))

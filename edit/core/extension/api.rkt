@@ -6,12 +6,16 @@
 ;;; 会话全盘透出——内核适配（session-ed-*）、渲染（session-patch）、几何手术不进特性层。
 ;;;
 ;;; 特性被期望的运行方式：
-;;;   · 自带 cmd-* + handler，挂到 handler 链（session-add-handler）
+;;;   · 自带 cmd-* + command 路由（session-add-route）/ 事件 reaction（session-add-hook）
 ;;;   · 对会话的改动走这里白名单里的原语
 ;;;   · 需要别的功能时发命令（step 派发）
 ;;;   · 需要浮窗时造 surface，用 session-add-surface 注册
 
 (require "../session/session.rkt"
+         "../scope.rkt"
+         "../route.rkt"
+         "../effect.rkt"
+         "../dispatch.rkt"
          "../session/adapter.rkt"
          "../session/panel.rkt"
          "../session/structure.rkt"
@@ -33,7 +37,7 @@
 (provide
  ;; 面板 / 面构造 + 注册
  dock-surface float-surface surface? surface-dock? surface-float?
- surface-id surface-vid surface-content surface-placement surface-keys
+ surface-id surface-vid surface-content surface-placement surface-keys surface-depth-at
  dock dock-region dock-axis dock-size float float-pos float-deep
  session-add-surface session-remove-surface
  session-surfaces session-surface-ref session-surface-for-vid
@@ -50,9 +54,10 @@
  session-view-width session-view-height session-view-line-numbers?
  session-view-selection-empty?
  session-edit-vid session-focus session-focus-vid session-prefix session-width session-height
+ session-modes session-mode session-set-mode
  session-visible? session-set-visible session-set-focus session-dock-vid?
  session-show-view session-split-view session-close-document
- session-view-cursor-screen session-view-point->screen session-overlay-dids
+ session-view-cursor-screen session-view-point->screen session-view-region session-overlay-dids
 
  ;; 内容写回 / 局部刷新
  panel-doc input-document session-ed-assign! session-ed-set-point! session-ed-replace!
@@ -68,7 +73,18 @@
  session-add-key
 
  ;; 事件 / 服务 / 异步
- hook hook? hook-point hook-proc session-add-hook session-add-handler session-run-hooks
+ hook hook? hook-point hook-proc reaction session-add-hook session-run-hooks
+
+ ;; 作用域（事件 / 路由声明用）
+ scope? scope-always scope-focus scope-focus-id scope-focus-kind scope-visible
+ scope-mode= scope-prefix scope-and scope-or scope-not scope-satisfied?
+
+ ;; 路由 / 动作 / 效果（声明式输入）
+ route route* routes route-list-add route-list-merge resolve session-add-route
+ command-pred
+ addressed focus-to set-mode begin-prefix cancel-prefix forward broadcast
+ seq-effect session-effect handler-effect effect?
+ dispatch execute emit
  session-service-ref session-service-put
  session-await session-deliver session-awaiting? async-wake
 

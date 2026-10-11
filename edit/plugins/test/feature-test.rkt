@@ -12,7 +12,8 @@
          "../../core/session/bottom.rkt"
          "../../core/session/prompt.rkt"
          "../../core/extension/spec.rkt"
-         "../../core/command/dispatch.rkt"
+         "../../core/command/input.rkt"
+         "../../core/command/engine.rkt"
          "../../core/command/command.rkt"
          "../../core/command/key.rkt"
          "../ui/status.rkt"
@@ -44,8 +45,8 @@
 
 ;; 输入行：cmd-prompt-open → 打字 → Enter 提交 → 回调写日志
 (define s7 (step s6 (cmd-prompt-open "go: " (lambda (s text) (session-log! s text)))))
-(define s8 (dispatch s7 (input text-binding "hi" #f #f #f #f)))
+(define s8 (engine-dispatch s7 (input text-binding "hi" #f #f #f #f)))
 (check-equal? (session-view-string s8 ivid) "go: hi")
-(define s9 (dispatch s8 (input (key 'enter) #f #f #f #f #f)))
+(define s9 (engine-dispatch s8 (input (key 'enter) #f #f #f #f #f)))
 (check-false (session-prompt s9))
 (check-equal? (session-log s9) '("hello" "hi"))

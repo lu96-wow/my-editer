@@ -2,9 +2,11 @@
 
 ;;; edit-rebuild/plugins/completion/main.rkt —— 补全插件（模块路径 / 模块导出 / 本地定义 / 文档词）
 ;;;
-;;; 只做补全菜单（候选），不认识文档：文档浮窗是另一个插件（plugin/builtin/docs.rkt）。
+;;; 只做补全菜单（候选），不认识文档：文档窗是另一个插件（plugins/docs/main.rkt）。
 ;;; 两窗通过一个**事件**解耦：本插件在选中项变化时广播 `complete-selection`，
-;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪。
+;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪；菜单关闭后文档**不**自动收回。
+;;; 两窗允许重叠，谁接键谁在上（z 序由 interaction 模式决定，见 docs 的 #:deep）。
+;;; 菜单关闭后文档**不**自动收回；关闭时若文档还开着就把接键交给文档。
 ;;;
 ;;; 菜单是一个 **float 面（surface）**（不抢焦点）；打开时随面压一个输入层（模态键表）：
 ;;;   · 上下/Enter/Tab/Esc 由层接管；
@@ -39,7 +41,7 @@
 
 ;;; ---------- 服务状态 ----------
 
-(struct c-svc (menu runner cache pending parse words wdocs active docs-open?) #:transparent)
+(struct c-svc (menu runner cache pending parse words wdocs) #:transparent)
 ;; menu    : box (menu | #f)      补全菜单浮窗
 ;; runner  : box (runner | #f)    惰性创建（place 只能在 with-tui 之后建）
 ;; cache   : hash 上下文键 -> (listof string)   模块路径 / 导出名
@@ -47,8 +49,8 @@
 ;; parse   : hash did -> parse-entry            头部（#lang/require/定义）解析缓存
 ;; words   : hash did -> wi                    每文档增量词表
 ;; wdocs   : hash did -> handle                词表所反映的文档版本
-;; active  : box 'complete | 'docs              当前接键的浮窗
-;; docs-open? : box boolean                     文档窗是否开着（由 docs 插件广播）
+;; 当前“谁接键”用会话模式 interaction（'complete / 'docs），不再是这里的可变 box。
+;; 文档窗开没开直接查它的面（docs-open?），不维护镜像。
 
 (struct menu (vid mvid did start cands idx pool mods specs base-dir) #:transparent)
 ;; vid    : 编辑器 view（发起补全者，接受时改它 / 取光标锚点）
@@ -206,21 +208,19 @@
 
 ;;; ---------- 选中项事件（解耦：文档插件订阅） ----------
 
-;; 广播当前选中候选。菜单开 → (vid name mods menu-rect)；关 → (vid #f #f #f)。
+;; 广播当前选中候选。菜单开 → (vid name mods binding)；关 → (vid #f #f #f)。
 ;; 发完即返回，不等任何异步（补全与文档互不阻塞）。
 (define (publish-selection! s m)
   (cond
     [(or (not m) (not (live-view? s (menu-vid m))))
-     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f #f))]
+     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f))]
     [else
      (define name (list-ref (menu-cands m) (menu-idx m)))
      ;; 候选名（可能被 prefix-in/rename-in 改过）→ (模块, 原名)，供文档插件按原名查
      (define binding (and (menu-specs m) (menu-base-dir m)
                           (spec-binding-of name (menu-specs m) (menu-base-dir m))))
-     (define-values (_start _rows x y w h) (menu-layout s m))
      (session-run-hooks s 'complete-selection
-                        (list (menu-vid m) name (menu-mods m) binding
-                              (list x y w h)))]))
+                        (list (menu-vid m) name (menu-mods m) binding))]))
 
 ;;; ---------- 菜单内容 / 几何 ----------
 
@@ -295,9 +295,10 @@
        (session-add-document s (menu-doc cands 0 0 rows (- w 2)) w h #:name "*complete*"))
      (define m (struct-copy menu m0 [mvid mvid]))
      (set-box! (c-svc-menu svc) m)
-     (set-box! (c-svc-active svc) 'complete)     ; 默认接键的是补全
+     ;; 默认接键的是补全（会话模式，纯值）
+     (define s1* (session-set-mode s1 'interaction 'complete))
      ;; 浮面：每帧按 menu-pos 落位 + overlay 标记（dock / 不入缓冲区）+ 压输入层（complete-keys）
-     (define s2 (session-add-surface s1
+     (define s2 (session-add-surface s1*
                   (float-surface 'complete mvid #f
                                  (float menu-pos menu-deep)
                                  complete-keys #f #f #f
@@ -376,14 +377,18 @@
 (define (do-move s dir)
   (define svc (completion-svc s))
   (define m (unbox (c-svc-menu svc)))
-  (define n (length (menu-cands m)))
-  (define idx (modulo (+ (menu-idx m) dir) n))
-  (set-box! (c-svc-menu svc) (struct-copy menu m [idx idx]))
-  (publish-selection! (refresh-menu-doc! s) (unbox (c-svc-menu svc))))
+  (cond
+    [(not m) s]                       ; 无菜单（如只有文档窗）→ 不做事
+    [else
+     (define n (length (menu-cands m)))
+     (define idx (modulo (+ (menu-idx m) dir) n))
+     (set-box! (c-svc-menu svc) (struct-copy menu m [idx idx]))
+     (publish-selection! (refresh-menu-doc! s) (unbox (c-svc-menu svc)))]))
 
 (define (do-accept s)
   (define m (unbox (c-svc-menu (completion-svc s))))
   (cond
+    [(not m) s]                                          ; 无菜单 → 不做事
     [(not (live-view? s (menu-vid m))) (close-menu s)]   ; 源视图没了 → 关
     [else
      (define cand (list-ref (menu-cands m) (menu-idx m)))
@@ -392,6 +397,11 @@
      (define col (session-view-point-column s vid))
      (define start (menu-start m))
      (close-menu (session-ed-replace! s vid (car start) (cdr start) line col cand))]))
+
+;; 文档窗（另一个插件）现在开着吗？直接查它的面，不维护镜像。
+(define (docs-open? s)
+  (define sf (session-surface-ref s 'docs))
+  (and sf (session-visible? s (surface-vid sf))))
 
 ;; 关补全菜单，并广播「无选中」。
 (define (close-menu s)
@@ -405,56 +415,51 @@
      (define did (session-view-did s mvid))
      (define s1 (session-remove-surface s 'complete))
      (define s2 (session-close-document s1 did))
-     (set-box! (c-svc-active svc) 'complete)
-     (publish-selection! s2 #f)]))
+     ;; 菜单关闭：若文档仍开着则文档接键，否则清掉模式
+     (define s3 (session-set-mode s2 'interaction
+                                  (if (docs-open? s2) 'docs #f)))
+     (publish-selection! s3 #f)]))
 
 ;;; ---------- 命令 + 键 + handler ----------
 
+;; 只留“接受 / 取消”；上下左右 / Tab 由声明式路由处理（见 complete-interaction-routes）。
 (define complete-keys
-  (kbd (key 'down)   (cmd-complete-move 1)
-       (key 'up)     (cmd-complete-move -1)
-       (key 'right)  (cmd-complete-scroll 5)     ; 文档窗向右看 5 列
-       (key 'left)   (cmd-complete-scroll -5)
-       (key 'tab)    (cmd-complete-switch)       ; 补全 ↔ 文档
-       (key 'enter)  (cmd-complete-accept)
+  (kbd (key 'enter)  (cmd-complete-accept)
        (key 'escape) (cmd-complete-cancel)))
 
-(define (completion-handler)
-  (lambda (s cmd)
-    (define svc (completion-svc s))
-    (define open? (and svc (unbox (c-svc-menu svc)) #t))
-    (cond
-      [(and svc (cmd-complete? cmd)) (maybe-open s)]
-      ;; Tab：有文档窗时在补全 / 文档之间切换接键；没有则不动。
-      [(and open? (cmd-complete-switch? cmd))
-       (cond
-         [(not (unbox (c-svc-docs-open? svc))) s]
-         [else
-          (define active (if (eq? (unbox (c-svc-active svc)) 'complete) 'docs 'complete))
-          (set-box! (c-svc-active svc) active)
-          (session-run-hooks s 'docs-focus (list (eq? active 'docs)))])]
-      ;; 上/下：补全接键 → 移候选；文档接键 → 滚文档。
-      [(and open? (cmd-complete-move? cmd))
-       (if (eq? (unbox (c-svc-active svc)) 'complete)
-           (do-move s (cmd-complete-move-dir cmd))
-           (session-run-hooks s 'docs-scroll (list (cmd-complete-move-dir cmd))))]
-      ;; 左/右：不管谁接键都滚文档（便于边看文档边选）。
-      [(and open? (cmd-complete-scroll? cmd))
-       (session-run-hooks s 'docs-hscroll (list (cmd-complete-scroll-delta cmd)))]
-      [(and open? (cmd-complete-accept? cmd)) (do-accept s)]
-      [(and open? (cmd-complete-cancel? cmd)) (close-menu s)]
-      [else #f])))
+;; 声明式命令路由（取代 completion-handler）。
+;; 上下 / Enter / Esc 只在菜单接键（interaction='complete）时生效。
+(define (completion-routes)
+  (define sc (scope-mode= 'interaction 'complete))
+  (list
+   (route* (command-pred cmd-complete?)
+           (handler-effect (lambda (s _cmd) (values (maybe-open s) 'handled)))
+           #:priority 30)
+   (route* (command-pred cmd-complete-move?)
+           (handler-effect (lambda (s cmd) (values (do-move s (cmd-complete-move-dir cmd)) 'handled)))
+           #:when sc #:priority 20)
+   (route* (command-pred cmd-complete-accept?)
+           (handler-effect (lambda (s _cmd) (values (do-accept s) 'handled)))
+           #:when sc #:priority 20)
+   (route* (command-pred cmd-complete-cancel?)
+           (handler-effect (lambda (s _cmd) (values (close-menu s) 'handled)))
+           #:when sc #:priority 20)))
 
-;; docs 插件广播的开关状态（供 Tab 判断 / 关闭时复位）。
-(define (completion-docs-state-hook s args)
-  (define svc (completion-svc s))
-  (cond
-    [(not svc) s]
-    [else
-     (define open? (car args))
-     (set-box! (c-svc-docs-open? svc) open?)
-     (unless open? (set-box! (c-svc-active svc) 'complete))
-     s]))
+;;; ---------- 声明式交互路由 ----------
+;;;
+;;; 取代 handler 里 “if active then A else B” 的路由 + docs-* hook 转发：
+;;;   · 上下：interaction='complete 时移候选；
+;;;   · 左右：补全接键时“吞掉”（文档可见时由 docs 的 1100 优先路由处理）。
+(define (complete-interaction-routes)
+  (list
+   (route* (key 'up)   (cmd-complete-move -1)
+           #:when (scope-mode= 'interaction 'complete) #:priority 1200)
+   (route* (key 'down) (cmd-complete-move 1)
+           #:when (scope-mode= 'interaction 'complete) #:priority 1200)
+   (route* (key 'left)  (session-effect (lambda (s) (values s 'handled)))
+           #:when (scope-mode= 'interaction 'complete) #:priority 1050)
+   (route* (key 'right) (session-effect (lambda (s) (values s 'handled)))
+           #:when (scope-mode= 'interaction 'complete) #:priority 1050)))
 
 ;; 改文本后：菜单已开 → 复用池刷新；否则尝试开（自动弹）。
 ;; 只跟「直接编辑」（after-insert），程序写入不触发。
@@ -539,17 +544,18 @@
 
 (define (completion-install s)
   (let* ([svc (c-svc (box #f) (box #f) (make-hash) (make-hash) (make-hash)
-                     (make-hash) (make-hash) (box 'complete) (box #f))]
+                     (make-hash) (make-hash))]
          [s1 (session-service-put s 'complete svc)]
-         [s2 (session-add-handler s1 (completion-handler))]
-         [s3 (session-add-hook s2 (hook 'after-edit word-note-hook))]
-         [s4 (session-add-hook s3 (hook 'after-insert completion-refine-hook))]
-         [s5 (session-add-hook s4 (hook 'focus-changed completion-cancel-hook))]
-         [s6 (session-add-hook s5 (hook 'after-nav completion-cancel-hook))]
-         [s7 (session-add-hook s6 (hook 'document-closed completion-doc-closed-hook))]
-         [s8 (session-add-hook s7 (hook 'before-render completion-poll-hook))]
-         [s9 (session-add-hook s8 (hook 'before-render word-resync-hook))])
-    (session-add-hook s9 (hook 'docs-state completion-docs-state-hook))))
+         [s2 (for/fold ([s s1]) ([r (in-list (completion-routes))]) (session-add-route s r))]
+         [s2b (for/fold ([s s2]) ([r (in-list (complete-interaction-routes))])
+                (session-add-route s r))]
+         [s3 (session-add-hook s2b (reaction 'after-edit word-note-hook))]
+         [s4 (session-add-hook s3 (reaction 'after-insert completion-refine-hook))]
+         [s5 (session-add-hook s4 (reaction 'focus-changed completion-cancel-hook))]
+         [s6 (session-add-hook s5 (reaction 'after-nav completion-cancel-hook))]
+         [s7 (session-add-hook s6 (reaction 'document-closed completion-doc-closed-hook))]
+         [s8 (session-add-hook s7 (reaction 'before-render completion-poll-hook #:priority 10))])
+    (session-add-hook s8 (reaction 'before-render word-resync-hook #:priority 20))))
 
 (define completion-spec
   (plugin-spec 'completion completion-install '()))

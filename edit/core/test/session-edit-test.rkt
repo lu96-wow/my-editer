@@ -23,10 +23,10 @@
    (session-add-hook
     (session-add-hook
      (session-add-hook s1
-       (hook 'focus-changed (lambda (s a) (set-box! fc (car a)) s)))
-     (hook 'after-edit (lambda (s a) (set-box! ae a) s)))
-    (hook 'after-insert (lambda (s a) (set-box! ai a) s)))
-   (hook 'after-nav (lambda (s a) (set-box! an (car a)) s))))
+       (reaction 'focus-changed (lambda (s a) (set-box! fc (car a)) s)))
+     (reaction 'after-edit (lambda (s a) (set-box! ae a) s)))
+    (reaction 'after-insert (lambda (s a) (set-box! ai a) s)))
+   (reaction 'after-nav (lambda (s a) (set-box! an (car a)) s))))
 
 ;; 焦点设到编辑视图 → 更新 edit-vid + focus-changed
 (define s3 (session-set-focus s2 (focus-set (session-focus s2) vid)))

@@ -24,7 +24,7 @@
 (define base
   (session-add-hook
    (session-blank 80 24)
-   (hook 'before-render
+   (reaction 'before-render
          (lambda (s _args)
            (for/fold ([s s]) ([m (in-list (runner-poll! r))])
              (session-deliver s (car m) (cdr m)))))))

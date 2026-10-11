@@ -113,16 +113,16 @@
 (define (do-toggle s vid)
   (session-set-visible s vid (not (session-visible? s vid))))
 
-(define (buffers-handler model vid)
-  (lambda (s cmd)
-    (and (eqv? vid (session-focus-vid s))
-         (cond
-           [(cmd-buffers-activate? cmd)  (do-activate s model vid)]
-           [(cmd-buffers-new-view? cmd)  (do-new-view s model vid)]
-           [(cmd-buffers-open? cmd)      (do-open s model vid (cmd-buffers-open-dir cmd))]
-           [(cmd-buffers-close? cmd)     (do-close s model vid)]
-           [(cmd-buffers-toggle? cmd)    (session-set-visible s vid (not (session-visible? s vid)))]
-           [else #f]))))
+;; 声明式命令路由（取代 buffers-handler；焦点在 buffers 面板时生效）。
+(define (buffers-routes model vid)
+  (define sc (scope-focus vid))
+  (define (eff proc) (handler-effect (lambda (s cmd) (values (proc s cmd) 'handled))))
+  (list
+   (route* (command-pred cmd-buffers-activate?) (eff (lambda (s _) (do-activate s model vid))) #:when sc #:priority 10)
+   (route* (command-pred cmd-buffers-new-view?) (eff (lambda (s _) (do-new-view s model vid))) #:when sc #:priority 10)
+   (route* (command-pred cmd-buffers-open?) (eff (lambda (s cmd) (do-open s model vid (cmd-buffers-open-dir cmd)))) #:when sc #:priority 10)
+   (route* (command-pred cmd-buffers-close?) (eff (lambda (s _) (do-close s model vid))) #:when sc #:priority 10)
+   (route* (command-pred cmd-buffers-toggle?) (eff (lambda (s _) (do-toggle s vid))) #:when sc #:priority 10)))
 
 ;;; ---------- 装配 ----------
 
@@ -143,6 +143,7 @@
   (define-values (s1 _did vid) (session-add-document s "" (session-width s) 8 #:name "*buffers*"))
   (define model (make-hash))
   (define sf (dock-surface panel-buffers vid (make-refresh model (box #f)) buffers-keys slot-side 'height 'flex))
-  (session-add-handler (session-add-surface s1 sf) (buffers-handler model vid)))
+  (for/fold ([s (session-add-surface s1 sf)]) ([r (in-list (buffers-routes model vid))])
+    (session-add-route s r)))
 
 (define buffers-spec (plugin-spec 'buffers buffers-install '()))

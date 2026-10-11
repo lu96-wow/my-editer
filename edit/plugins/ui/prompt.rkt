@@ -24,19 +24,21 @@
    (key 'enter)     (cmd-prompt-submit)
    (key 'escape)    (cmd-prompt-cancel)))
 
-(define (prompt-handler)
-  (lambda (s cmd)
-    (cond
-      [(cmd-prompt-open? cmd)
-       (define vid (session-panel-vid s panel-input))
-       (cond
-         [(not vid) s]
-         [else
-          (session-prompt-open (session-region-select s slot-bottom panel-input)
-                               vid
-                               (cmd-prompt-open-label cmd)
-                               (cmd-prompt-open-on-submit cmd))])]
-      [else #f])))
+;; 声明式命令路由（取代 prompt-handler）。
+(define (prompt-routes)
+  (list
+   (route* (command-pred cmd-prompt-open?)
+           (handler-effect
+            (lambda (s cmd)
+              (define vid (session-panel-vid s panel-input))
+              (cond
+                [(not vid) (values s 'handled)]
+                [else (values (session-prompt-open (session-region-select s slot-bottom panel-input)
+                                                   vid
+                                                   (cmd-prompt-open-label cmd)
+                                                   (cmd-prompt-open-on-submit cmd))
+                              'handled)])))
+           #:priority 10)))
 
 ;; 输入行关闭（提交 / 取消）→ 底部区换回状态栏。
 (define (prompt-closed-hook s _args)
@@ -46,8 +48,9 @@
   (define-values (s1 _did vid)
     (session-add-document s "" (session-width s) 1 #:name "*input*"))
   (define sf (dock-surface panel-input vid #f input-keys slot-bottom 'height 1))
-  (define s2 (session-add-handler (session-set-visible (session-add-surface s1 sf) vid #f)
-                                  (prompt-handler)))
-  (session-add-hook s2 (hook 'prompt-closed prompt-closed-hook)))
+  (define s2 (for/fold ([s (session-set-visible (session-add-surface s1 sf) vid #f)])
+                       ([r (in-list (prompt-routes))])
+               (session-add-route s r)))
+  (session-add-hook s2 (reaction 'prompt-closed prompt-closed-hook)))
 
 (define prompt-spec (plugin-spec 'prompt prompt-install '()))

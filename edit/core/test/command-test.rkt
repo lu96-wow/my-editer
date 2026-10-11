@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-rebuild/core/test/command-test.rkt —— 命令 / 派发 / 上下文（headless）
+;;; edit-rebuild/core/test/command-test.rkt —— 命令 / 派发（headless，经新引擎）
 ;;;
 ;;;   raco test edit-rebuild/core/test/command-test.rkt
 ;;;
@@ -9,7 +9,8 @@
 
 (require rackunit
          "../command/command.rkt"
-         "../command/dispatch.rkt"
+         "../command/input.rkt"
+         "../command/engine.rkt"
          "../command/key.rkt"
          "../command/keys.rkt"
          "../keymap.rkt"
@@ -26,37 +27,37 @@
 
 ;; 文本通道 → cmd-insert
 (let-values ([(s did vid) (new-session)])
-  (define s1 (dispatch s (input text-binding "X" #f #f #f #f)))
+  (define s1 (engine-dispatch s (input text-binding "X" #f #f #f #f)))
   (check-equal? (session-view-string s1 vid) "Xabc"))
 
 ;; 导航：左移后再打字
 (let-values ([(s did vid) (new-session)])
-  (define s1 (dispatch s (input text-binding "X" #f #f #f #f)))
-  (define s2 (dispatch s1 (input (key 'left) #f #f #f #f #f)))
-  (define s3 (dispatch s2 (input text-binding "Y" #f #f #f #f)))
+  (define s1 (engine-dispatch s (input text-binding "X" #f #f #f #f)))
+  (define s2 (engine-dispatch s1 (input (key 'left) #f #f #f #f #f)))
+  (define s3 (engine-dispatch s2 (input text-binding "Y" #f #f #f #f)))
   (check-equal? (session-view-string s3 vid) "YXabc"))
 
-;; 前缀：C-p 进入前缀；方向命中前缀键表后清空
+;; 前缀：C-p 进入前缀；方向命中前缀后清空
 (let-values ([(s did vid) (new-session)])
-  (define s1 (dispatch s (input (key 'p 'ctrl) #f #f #f #f #f)))
+  (define s1 (engine-dispatch s (input (key 'p 'ctrl) #f #f #f #f #f)))
   (check-true (prefix? (session-prefix s1)))
-  (define s2 (dispatch s1 (input (key 'left) #f #f #f #f #f)))
+  (define s2 (engine-dispatch s1 (input (key 'left) #f #f #f #f #f)))
   (check-false (session-prefix s2)))
 
 ;; 前缀取消
 (let-values ([(s did vid) (new-session)])
-  (define s1 (dispatch s (input (key 'p 'ctrl) #f #f #f #f #f)))
-  (define s2 (dispatch s1 (input (key 'escape) #f #f #f #f #f)))
+  (define s1 (engine-dispatch s (input (key 'p 'ctrl) #f #f #f #f #f)))
+  (define s2 (engine-dispatch s1 (input (key 'escape) #f #f #f #f #f)))
   (check-false (session-prefix s2)))
 
-;; step 直接派发命令
+;; step 直接派发命令（晚绑定到引擎）
 (let-values ([(s did vid) (new-session)])
   (check-equal? (session-view-string (step s (cmd-insert "Z")) vid) "Zabc"))
 
 ;; Enter → cmd-insert "\n"
 (let-values ([(s did vid) (new-session)])
-  (check-equal? (session-view-string (dispatch s (input (key 'enter) #f #f #f #f #f)) vid) "\nabc"))
+  (check-equal? (session-view-string (engine-dispatch s (input (key 'enter) #f #f #f #f #f)) vid) "\nabc"))
 
 ;; 未知绑定 → 返回原会话
 (let-values ([(s did vid) (new-session)])
-  (check-eq? (dispatch s (input (key 'f9) #f #f #f #f #f)) s))
+  (check-eq? (engine-dispatch s (input (key 'f9) #f #f #f #f #f)) s))

@@ -9,7 +9,7 @@
 ;;;     step 先跑 handler 链，再落到基础命令。
 
 (require (only-in "../session/session.rkt"
-                  session-resize session-quit session-handlers session-set-prefix)
+                  session-resize session-quit session-set-prefix)
          (only-in "../session/edit.rkt"
                   session-focus-move session-scroll session-nav
                   session-insert session-delete session-backspace
@@ -81,9 +81,13 @@
  (struct-out cmd-resize-view)
  (struct-out cmd-prefix) (struct-out cmd-prefix-cancel)
  (struct-out cmd-mouse-press) (struct-out cmd-mouse-scroll)
- step)
+ step step-base command-runner)
 
 ;;; ---------- 派发 ----------
+
+;; 引擎入口的晚绑定：engine.rkt 加载时把它设为“命令路由 + 原语”的派发器。
+;; 这样旧 `step`（插件内部 / 测试都用）自动走新引擎，又避免模块循环依赖。
+(define command-runner (make-parameter #f))
 
 (define (step s cmd)
   (cond
@@ -91,8 +95,9 @@
     [(cmd-prefix-cancel? cmd) (session-set-prefix s #f)]
     [else
      (define s1 (session-set-prefix s #f))
-     (or (for/or ([h (in-list (session-handlers s1))]) (h s1 cmd))
-         (step-base s1 cmd))]))
+     (define run (command-runner))
+     (cond [run (run s1 cmd)]
+           [else (step-base s1 cmd)])]))
 
 (define (step-base s cmd)
   (cond

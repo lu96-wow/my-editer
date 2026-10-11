@@ -22,12 +22,10 @@
 ;;;   · 水平：左对齐锚点列，钳到屏内（右边缘不越界）。
 ;;;
 ;;; 于是「上方空间不足却把菜单顶到 0、盖住光标行」这类问题在几何层被排除。
-;;;
-;;; 两个浮窗（如补全菜单 + 文档窗）用 popup-rect 定主窗、popup-rect-avoiding 定次窗；
-;;; 两者互不重叠，且都不遮挡锚点行。
+;;; 两个窗要不要互相避让、谁在谁上面，不在这里管（那是窗自己的 z 序 / 焦点规则）。
 
 (provide popup-above popup-below popup-space popup-max-h
-         popup-window popup-rect popup-rect-avoiding)
+         popup-window popup-rect)
 
 ;;; ---------- 空间 ----------
 
@@ -68,46 +66,3 @@
                 (add1 anchor-row)              ; 下方：top = 锚点下一行
                 (- anchor-row h)))             ; 上方：bottom = 锚点行
   (values x y w h))
-
-;;; ---------- 次窗（避让主窗） ----------
-
-;; want-w × want-h 的次窗，摆在锚点旁，且**不与主窗矩形相交**、不遮挡锚点行。
-;; 主窗矩形 (ax ay aw ah)（由 popup-rect 得出，故也在锚点某一侧）。
-;;
-;; 策略：
-;;   1) 主窗在锚点下方 → 次窗优先放**锚点上方**；主窗在上方 → 次窗优先放**锚点下方**
-;;      （两窗分列光标两侧，都可见）；
-;;   2) 优先侧放不下整窗 → 看主窗**外侧**堆叠（主下→次更下 / 主上→次更上）；
-;;      **堆叠时与主窗对齐**：同 x、同宽（两窗共用那条边长度一致，看起来连成一体）；
-;;   3) 两侧都放不下整窗 → 取空间较大的一侧，高度钳到该侧可用行数（可为 0）。
-;; 水平规则同 popup-rect。返回实际 (values x y w h)。
-;; `#:share?`：堆叠时与主窗**重叠 1 行**——两窗的相邻边框合成一条（省 1 行、连体）。
-;; 只有相邻边两侧都有边框时才该开（否则会盖住内容）。
-(define (popup-rect-avoiding anchor-row anchor-col want-w want-h screen-w screen-h
-                             ax ay aw ah #:share? [share? #f])
-  (define w (max 1 (min (max 1 want-w) screen-w)))
-  (define x (max 0 (min anchor-col (max 0 (- screen-w w)))))
-  (define primary-below? (> ay anchor-row))
-  ;; opp = 锚点另一侧（与主窗相对）；stack = 主窗外侧
-  (define opp (if primary-below? (popup-above anchor-row) (popup-below anchor-row screen-h)))
-  (define stack (if primary-below?
-                    (max 0 (- screen-h (+ ay ah)))
-                    (max 0 ay)))
-  (define (place-opp h)
-    (if primary-below?
-        (values x (- anchor-row h) w h)          ; 锚点上方
-        (values x (add1 anchor-row) w h)))       ; 锚点下方
-  ;; 贴主窗堆叠：同主窗 x / 宽（连接边对齐）；宽钳到屏内后重算 x。
-  ;; share? → 向主窗重叠 1 行，两边框合成一条。
-  (define (place-stack h)
-    (define bw (max 1 (min aw (max 1 (- screen-w ax)))))
-    (define bx (max 0 (min ax (max 0 (- screen-w bw)))))
-    (define ov (if share? 1 0))
-    (if primary-below?
-        (values bx (+ ay ah (- ov)) bw h)        ; 主窗更下
-        (values bx (+ (- ay h) ov) bw h)))       ; 主窗更上
-  (cond
-    [(>= opp want-h) (place-opp want-h)]
-    [(>= stack want-h) (place-stack want-h)]
-    [(>= stack opp) (place-stack (min want-h stack))]
-    [else (place-opp (min want-h opp))]))

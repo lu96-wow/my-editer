@@ -72,14 +72,18 @@
      (session-ed-set-point! s vid line (add1 col))]
     [else #f]))
 
-(define (auto-pair-handler)
-  (lambda (s cmd)
-    (cond
-      [(cmd-insert? cmd) (handle-insert s (cmd-insert-text cmd))]
-      [else #f])))
+;; 声明式命令路由（取代 auto-pair-handler）：只拦 cmd-insert，非括号则 'pass 回落到原插入。
+(define (auto-pair-routes)
+  (list
+   (route* (command-pred cmd-insert?)
+           (handler-effect
+            (lambda (s cmd)
+              (define r (handle-insert s (cmd-insert-text cmd)))
+              (if r (values r 'handled) (values s 'pass))))
+           #:when (scope-focus-kind 'editor) #:priority 10)))
 
 (define (auto-pair-install s)
-  (session-add-handler s (auto-pair-handler)))
+  (for/fold ([s s]) ([r (in-list (auto-pair-routes))]) (session-add-route s r)))
 
 (define auto-pair-spec
   (plugin-spec 'auto-pair auto-pair-install '()))

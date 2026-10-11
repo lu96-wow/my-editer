@@ -16,6 +16,7 @@
 
 (provide (struct-out surface) (struct-out dock) (struct-out float)
          surface? surface-dock? surface-float?
+         surface-depth-at
          dock-surface float-surface)
 
 ;;; ---------- 落位 ----------
@@ -31,7 +32,7 @@
 
 ;;; ---------- 面 ----------
 
-(struct surface (id vid kind content placement keys mouse scroll on-close border)
+(struct surface (id vid kind content placement keys mouse scroll on-close border deep)
   #:transparent)
 ;; id        : symbol
 ;; vid       : vid
@@ -43,14 +44,26 @@
 ;; scroll    : (session vid delta -> session) | #f
 ;; on-close  : (session -> session) | #f
 ;; border    : face | #f                        边框 face（有则画边框、内容内缩 1）
+;; deep      : #f | integer | (session -> integer)   自定义 z 序（大 = 上）；
+;;             #f = 用 placement 默认（float 的 deep / dock 的 0）。函数形式让
+;;             「谁接键谁在上」这类规则可以随会话状态变（如 interaction 模式）。
 
 (define (surface-dock? s) (eq? 'dock (surface-kind s)))
 (define (surface-float? s) (eq? 'float (surface-kind s)))
 
+;; 本面的实际 z 序：自定义优先（函数形式拿 session 求值），否则用默认。
+(define (surface-depth-at sf s default)
+  (define d (surface-deep sf))
+  (cond [(not d) default]
+        [(procedure? d) (d s)]
+        [else d]))
+
 ;;; ---------- 构造 ----------
 
-(define (dock-surface id vid content keys region axis size #:border [border #f])
-  (surface id vid 'dock content (dock region axis size) keys #f #f #f border))
+(define (dock-surface id vid content keys region axis size
+                      #:border [border #f] #:deep [deep #f])
+  (surface id vid 'dock content (dock region axis size) keys #f #f #f border deep))
 
-(define (float-surface id vid content placement keys mouse scroll on-close #:border [border #f])
-  (surface id vid 'float content placement keys mouse scroll on-close border))
+(define (float-surface id vid content placement keys mouse scroll on-close
+                       #:border [border #f] #:deep [deep #f])
+  (surface id vid 'float content placement keys mouse scroll on-close border deep))

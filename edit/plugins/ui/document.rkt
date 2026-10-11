@@ -13,6 +13,8 @@
 (require racket/string
          "../../core/session/session.rkt"
          "../../core/session/adapter.rkt"
+         "../../core/route.rkt"
+         "../../core/effect.rkt"
          "../../core/session/structure.rkt"
          "../../core/session/prompt.rkt"
          "../../core/session/panel.rkt"
@@ -28,7 +30,7 @@
 
 (provide document-spec session-open-file session-save
          session-new-file session-new-dir session-delete-path
-         document-handler document-keys
+         document-routes document-keys
          (struct-out cmd-save) (struct-out cmd-open-file) (struct-out cmd-open-file-path))
 
 ;; 资源操作出错 → 记日志（prompt 进行中只追加不弹）。
@@ -105,21 +107,33 @@
   (kbd (key 's 'alt) (cmd-save)
        (key 'f 'ctrl) (cmd-open-file)))
 
-(define (document-handler default-keys)
-  (lambda (s cmd)
-    (cond
-      [(cmd-save? cmd) (session-save s)]
-      [(cmd-open-file-path? cmd)
-       (session-open-file s (cmd-open-file-path-path cmd) #:keys default-keys)]
-      [(cmd-open-file? cmd)
-       (step s (cmd-prompt-open "find file: "
-                   (lambda (s path)
-                     (if (string=? path "") s (session-open-file s path #:keys default-keys)))))]
-      [else #f])))
+;; 声明式命令路由（取代 document-handler）。
+(define (document-routes default-keys)
+  (list
+   (route* (command-pred cmd-save?)
+           (handler-effect (lambda (s _cmd) (values (session-save s) 'handled)))
+           #:priority 20)
+   (route* (command-pred cmd-open-file-path?)
+           (handler-effect
+            (lambda (s cmd)
+              (values (session-open-file s (cmd-open-file-path-path cmd) #:keys default-keys)
+                      'handled)))
+           #:priority 20)
+   (route* (command-pred cmd-open-file?)
+           (handler-effect
+            (lambda (s _cmd)
+              (values (step s (cmd-prompt-open "find file: "
+                                 (lambda (s path)
+                                   (if (string=? path "") s
+                                       (session-open-file s path #:keys default-keys)))))
+                      'handled)))
+           #:priority 20)))
 
 ;;; ---------- 插件装配 ----------
 
 (define (document-install s)
-  (session-add-key (session-add-handler s (document-handler edit-keys)) document-keys))
+  (define s1 (for/fold ([s s]) ([r (in-list (document-routes edit-keys))])
+               (session-add-route s r)))
+  (session-add-key s1 document-keys))
 
 (define document-spec (plugin-spec 'document document-install '()))

@@ -9,6 +9,7 @@
 ;;;   (app-session #:layout layout-top)
 
 (require "../geometry/layout.rkt"
+         "../command/engine.rkt"       ; 加载即把旧 step 接到新引擎（command-runner）
          "../focus.rkt"
          "../ids.rkt"
          "../config/layout.rkt"

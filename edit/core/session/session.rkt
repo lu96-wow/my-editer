@@ -41,6 +41,7 @@
  ;; input
  session-focus session-focus-vid session-edit-vid session-prefix session-prompt
  session-set-prefix session-set-prompt session-set-edit-vid
+ session-modes session-mode session-set-mode
  ;; 面判定（dock / 键表 / 浮动）
  session-dock-vid? session-vid-keys session-float-vid?
  ;; surfaces
@@ -55,10 +56,11 @@
  session-services session-awaiting session-service-ref session-service-put
  session-await-put session-await-ref session-await-remove
  ;; 配置注入
- session-add-handler session-set-rules session-add-key)
+ session-set-rules session-add-key
+ session-routes-extra session-add-route)
 
 (struct session (ed layout-state ui input surface-set docs-state runtime
-                  keys rules handlers hooks)
+                  keys routes rules hooks)
   #:transparent)
 ;; ed          : core editor
 ;; layout-state: layout-state
@@ -68,12 +70,12 @@
 ;; docs-state  : docs-state
 ;; runtime     : runtime
 ;; keys        : (listof keymap)
+;; routes      : (listof route)   插件声明的新式路由（键路由 / 命令路由 / 事件 reaction）
 ;; rules       : (listof rule)
-;; handlers    : (listof (session cmd -> (or/c session #f)))
 ;; hooks       : (listof hook)
 
-(define (session-new ed layout-state ui input surface-set docs-state runtime keys rules handlers hooks)
-  (session ed layout-state ui input surface-set docs-state runtime keys rules handlers hooks))
+(define (session-new ed layout-state ui input surface-set docs-state runtime keys routes rules hooks)
+  (session ed layout-state ui input surface-set docs-state runtime keys routes rules hooks))
 
 ;; 空会话（ed 由 adapter 传入：只有那里 require core/editor）。
 (define (session-new-blank ed width height [keys '()])
@@ -131,6 +133,12 @@
   (struct-copy session s [input (struct-copy input-state (session-input s) [prompt p])]))
 (define (session-set-edit-vid s vid)
   (struct-copy session s [input (input-state-set-edit-vid (session-input s) vid)]))
+
+;; 交互模式（纯值）：谁接键等状态声明在这里，而不是散落的可变 box。
+(define (session-modes s) (input-state-modes (session-input s)))
+(define (session-mode s name [default #f]) (hash-ref (session-modes s) name default))
+(define (session-set-mode s name val)
+  (struct-copy session s [input (input-state-set-mode (session-input s) name val)]))
 
 ;; dock = 面 vid：焦点落到它们时不改变粘性 edit-vid。
 (define (session-dock-vid? s vid)
@@ -195,8 +203,11 @@
 
 ;;; ---------- 配置注入 ----------
 
-(define (session-add-handler s h)
-  (struct-copy session s [handlers (cons h (session-handlers s))]))
 (define (session-set-rules s rules) (struct-copy session s [rules rules]))
 (define (session-add-key s km)
   (struct-copy session s [keys (append (session-keys s) (list km))]))
+
+;; 插件声明的新式路由（见 core/route.rkt）。
+(define (session-routes-extra s) (session-routes s))
+(define (session-add-route s r)
+  (struct-copy session s [routes (cons r (session-routes s))]))

@@ -33,6 +33,7 @@
   (runner-submit! (ensure-runner (doc-svc-of s)) (list 'doc name mods)))
 
 ;; before-render：轮询 worker，把到齐的结果交给闸门（session-deliver 会跑 on-result）。
+;; 优先级 40：必须早于 docs-tick-hook（30），本帧到齐的结果当帧就能处理。
 (define (doc-poll-hook s _args)
   (define svc (doc-svc-of s))
   (define r (and svc (unbox (doc-svc-runner svc))))
@@ -49,4 +50,4 @@
 (define (install-doc-job! s)
   (session-add-hook
    (session-service-put s 'doc-job (doc-svc (box #f)))
-   (hook 'before-render doc-poll-hook)))
+   (reaction 'before-render doc-poll-hook #:priority 40)))

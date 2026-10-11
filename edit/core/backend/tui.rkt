@@ -8,7 +8,8 @@
 ;;; 只有本模块碰终端 / FFI；session / layout / focus / command 保持纯。
 
 (require tui
-         "../command/dispatch.rkt"
+         "../command/input.rkt"
+         "../command/engine.rkt"
          "../command/binding.rkt"
          "../session/session.rkt"
          "../session/adapter.rkt"
@@ -99,6 +100,6 @@
        (set-box! sbox s1)
        (define ev (read-event))
        (define s2 (unbox sbox))
-       (define s* (dispatch s2 (event->input ev (and (session-prefix s2) #t))))
+       (define s* (engine-dispatch s2 (event->input ev (and (session-prefix s2) #t))))
        (set-box! sbox s*)
        (unless (session-quit? s*) (loop))))))

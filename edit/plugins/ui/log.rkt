@@ -53,12 +53,15 @@
   (define vid (session-panel-vid s panel-log))
   (if (and vid (session-visible? s vid)) (log-close s) (log-open s)))
 
-(define (log-handler vid)
-  (lambda (s cmd)
-    (cond
-      [(cmd-log-close? cmd) (and (eqv? vid (session-focus-vid s)) (log-close s))]
-      [(cmd-log-toggle? cmd) (log-toggle s)]
-      [else #f])))
+;; 声明式命令路由（取代原来的 log-handler）。
+(define (log-routes vid)
+  (list
+   (route* (cmd-log-close)
+           (session-effect (lambda (s) (values (log-close s) 'handled)))
+           #:when (scope-focus vid) #:priority 10)
+   (route* (cmd-log-toggle)
+           (session-effect (lambda (s) (values (log-toggle s) 'handled)))
+           #:priority 10)))
 
 ;; 内核追加日志 → 没在输入时弹日志窗。
 (define (log-appended-hook s _args)
@@ -70,8 +73,8 @@
     (session-add-document s "" (session-width s) 3 #:name "*log*"))
   (define sf (dock-surface panel-log vid (make-content) log-keys slot-bottom 'height 3))
   (define s2 (session-set-visible (session-add-surface s1 sf) vid #f))
-  (define s3 (session-add-handler s2 (log-handler vid)))
-  (define s4 (session-add-hook s3 (hook 'log-appended log-appended-hook)))
+  (define s3 (for/fold ([s s2]) ([r (in-list (log-routes vid))]) (session-add-route s r)))
+  (define s4 (session-add-hook s3 (reaction 'log-appended log-appended-hook)))
   (session-add-key s4 (kbd (key 'l 'ctrl) (cmd-log-toggle))))
 
 (define log-spec (plugin-spec 'log log-install '()))

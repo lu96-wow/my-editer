@@ -8,6 +8,8 @@
 (require racket/string
          "../../core/session/session.rkt"
          "../../core/session/adapter.rkt"
+         "../../core/route.rkt"
+         "../../core/effect.rkt"
          "../../core/session/structure.rkt"
          "../../core/session/prompt.rkt"
          "../../core/session/panel.rkt"
@@ -80,12 +82,13 @@
 
 ;;; ---------- handler + 装配 ----------
 
-(define (lifecycle-handler)
-  (lambda (s cmd)
-    (cond [(cmd-quit? cmd) (session-quit-confirm s)]
-          [else #f])))
+;; 声明式命令路由（取代 lifecycle-handler）：抢在 step-base 前处理 cmd-quit。
+(define (lifecycle-routes)
+  (list (route* (command-pred cmd-quit?)
+                (handler-effect (lambda (s _cmd) (values (session-quit-confirm s) 'handled)))
+                #:priority 100)))
 
 (define (lifecycle-install s)
-  (session-add-handler s (lifecycle-handler)))
+  (for/fold ([s s]) ([r (in-list (lifecycle-routes))]) (session-add-route s r)))
 
 (define lifecycle-spec (plugin-spec 'lifecycle lifecycle-install '()))
