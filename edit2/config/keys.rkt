@@ -31,9 +31,12 @@
     ((key escape)  float  (float-close))
     ((key tab)     float  (float-cycle))
 
-    ;; ---------- 侧栏成员（区域显示即聚焦） ----------
-    ((key t alt)   always (region-show sidebar tree))
-    ((key b alt)   always (region-show sidebar buffers))
+    ;; ---------- 侧栏成员（区域显示 + 聚焦） ----------
+    ((key t alt)   always (region-activate sidebar tree) (region-focus sidebar))
+    ;; 通用切换：循环侧栏成员（加成员不用加键）
+    ((key b alt)   always (region-cycle sidebar 1) (region-focus sidebar))
+    ;; 在侧栏里也能切换成员
+    ((key tab)     (region sidebar) (region-cycle sidebar 1) (region-focus sidebar))
 
     ;; ---------- 面板选择 = 文档导航（一切皆 document） ----------
     ((key down)  (panel tree)    (move down))

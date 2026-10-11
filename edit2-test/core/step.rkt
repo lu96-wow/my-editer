@@ -130,4 +130,19 @@
 (check-equal? (rect-y (placement-rect stp)) 15)
 (check-equal? (rect-w (placement-rect stp)) 60)
 
+;; 区域代数：成员循环 / 显隐 / 区域作用域（加成员不用加键）
+(define sr0 (fresh))
+(define sr1 (run1 sr0 (key-event 'b '(alt))))          ; cycle tree→buffers
+(check-equal? (region-active sr1 'sidebar) "*buffers*")
+(define sr2 (run1 sr1 (key-event 'b '(alt))))          ; cycle buffers→tree
+(check-equal? (region-active sr2 'sidebar) "*tree*")
+(define sr3 (run1 sr2 (key-event 'b '(ctrl))))         ; toggle 隐藏
+(check-false (region-visible? sr3 'sidebar))
+(check-equal? (region-active sr3 'sidebar) "*tree*")  ; 隐藏不改 active
+(define sr4 (run1 sr3 (key-event 'b '(ctrl))))         ; toggle 显示回来
+(check-true (region-visible? sr4 'sidebar))
+;; 区域作用域：焦点在侧栏内时 Tab 切换成员
+(define srt (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'tab '())))
+(check-equal? (region-active srt 'sidebar) "*buffers*")
+
 (displayln "edit2/step.rkt: all tests passed")

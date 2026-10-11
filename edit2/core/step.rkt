@@ -10,7 +10,8 @@
 
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-float close-float cycle-float
-         region-visible-vid region-visible? toggle-region! show-member!)
+         region-visible-vid region-visible? region-active
+         region-toggle! region-show! region-hide! region-activate! region-cycle! region-focus!)
 
 (require racket/string
          "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "adapter.rkt" "layout.rkt"
@@ -149,57 +150,82 @@
                              [else (layout-add-side l (pane vid) 'left 0)])]
                [focus vid]))
 
-;;; ---------- 区域（共享同一块面板的成员） ----------
+;;; ---------- 区域代数（共用同一块面板的成员） ----------
+;;;
+;;; 一个区域 = 若干成员 + 一个 active + 显/隐。状态只有两样：
+;;;   active : feature 'region-active（id -> 成员名）
+;;;   显隐   : layout 里有没有 active 成员的 pane（派生，不另存）
+;;;
+;;; 原语只做「最小动作」，不隐式动焦点（focus 是另一个原语）。组合它们 = 行为。
 
 (define (region-ref id)
   (for/first ([r (in-list regions)] #:when (eq? id (region-id r))) r))
 
-;; 同一区域同时只显示一个成员（active）；显隐 = layout 里有没有它的 pane。
-(define (region-active-name st rid)
-  (define r (region-ref rid))
+(define (region-members* rid) (region-members (region-ref rid)))
+
+;; active 成员名（缺省 = 第一个）。
+(define (region-active st rid)
+  (define ms (region-members* rid))
   (define m (hash-ref (feature-ref st 'region-active (hash)) rid #f))
-  (if (and m (member m (region-members r))) m (car (region-members r))))
+  (if (and m (member m ms)) m (car ms)))
+
+(define (region-set-active st rid m)
+  (feature-set st 'region-active
+               (hash-set (feature-ref st 'region-active (hash)) rid m)))
 
 ;; 区域当前显示的 vid（#f = 隐藏）
 (define (region-visible-vid st rid)
-  (define r (region-ref rid))
-  (for/first ([name (in-list (region-members r))]
-              #:when (layout-has? (state-layout st) (panel-vid st name)))
-    (panel-vid st name)))
+  (for/first ([m (in-list (region-members* rid))]
+              #:when (layout-has? (state-layout st) (panel-vid st m)))
+    (panel-vid st m)))
 
 (define (region-visible? st rid) (and (region-visible-vid st rid) #t))
 
-(define (set-active st rid name)
-  (feature-set st 'region-active
-               (hash-set (feature-ref st 'region-active (hash)) rid name)))
-
-;; 让区域的某成员显示（已显示别的成员就替换；隐藏就加回来）并设为 active。
-(define (show-member! st rid name)
+;; 把 pane 同步成 active 成员（不动焦点）。
+(define (region-sync-pane st rid)
   (define r (region-ref rid))
-  (define nvid (panel-vid st name))
-  (cond
-    [(not nvid) st]
-    [else
-     (define cur (region-visible-vid st rid))
-     (define focus? (eqv? (state-focus st) cur))
-     (define layout*
-       (cond
-         [(not cur) (layout-add-main (state-layout st) (pane nvid) (region-side r) (region-size r))]
-         [(eqv? cur nvid) (state-layout st)]
-         [else (layout-replace (state-layout st) cur nvid)]))
-     (struct-copy state (set-active (struct-copy state st [layout layout*]) rid name)
-                  [focus (if focus? nvid (state-focus st))])]))
-
-;; 切换整个区域的显隐（C-b 用）。
-(define (toggle-region! st rid)
+  (define want (panel-vid st (region-active st rid)))
   (define cur (region-visible-vid st rid))
   (cond
-    [cur
+    [(not want) st]
+    [(not cur) (struct-copy state st
+                            [layout (layout-add-main (state-layout st) (pane want)
+                                                     (region-side r) (region-size r))])]
+    [(eqv? cur want) st]
+    [else (struct-copy state st [layout (layout-replace (state-layout st) cur want)])]))
+
+;; 显 / 隐 / 切换（切换 = 显 ↔ 隐）
+(define (region-show! st rid) (region-sync-pane st rid))
+
+(define (region-hide! st rid)
+  (define cur (region-visible-vid st rid))
+  (cond
+    [(not cur) st]
+    [else
      (define st1 (struct-copy state st [layout (layout-remove (state-layout st) cur)]))
+     ;; 隐藏了正在聚焦的成员 → 焦点回编辑器
      (if (layout-has? (state-layout st1) (state-focus st1))
          st1
-         (let ([c (center-vid st1)]) (if c (struct-copy state st1 [focus c]) st1)))]
-    [else (show-member! st rid (region-active-name st rid))]))
+         (let ([c (center-vid st1)]) (if c (struct-copy state st1 [focus c]) st1)))]))
+
+(define (region-toggle! st rid)
+  (if (region-visible? st rid) (region-hide! st rid) (region-show! st rid)))
+
+;; 设为 active 并确保显示（不加焦点）。
+(define (region-activate! st rid m)
+  (region-sync-pane (region-set-active st rid m) rid))
+
+;; 循环切换成员（显示中则换，隐藏则显示）。这就是「共用区域的切换」。
+(define (region-cycle! st rid d)
+  (define ms (region-members* rid))
+  (define idx (or (for/first ([m (in-list ms)] [i (in-naturals)]
+                              #:when (equal? m (region-active st rid))) i) 0))
+  (region-activate! st rid (list-ref ms (modulo (+ idx d) (length ms)))))
+
+;; 聚焦区域的 active 成员。
+(define (region-focus! st rid)
+  (define v (panel-vid st (region-active st rid)))
+  (if v (struct-copy state st [focus v]) st))
 
 ;; 焦点在可见窗格间循环。
 (define (focus-cycle st d)
@@ -211,17 +237,16 @@
      (define n (modulo (+ idx d) (length vids)))
      (struct-copy state st [focus (list-ref vids n)])]))
 
-;; 聚焦某面板：它所在区域一并显示并设为 active。
-(define (focus-named st name)
-  (define rid (for/first ([r (in-list regions)] #:when (member name (region-members r))) (region-id r)))
-  (define st* (if rid (show-member! st rid name) st))
-  (define v (panel-vid st* name))
-  (if v (struct-copy state st* [focus v]) st*))
-
 (define (focus-editor st)
   (define v (center-vid st))
   (if v (struct-copy state st [focus v]) st))
 
+;; 聚焦某面板（可能属于某区域）：它所在区域一并显示并置 active。
+(define (focus-panel! st name)
+  (define rid (for/first ([r (in-list regions)] #:when (member name (region-members r))) (region-id r)))
+  (define st* (if rid (region-activate! st rid name) st))
+  (define v (panel-vid st* name))
+  (if v (struct-copy state st* [focus v]) st*))
 ;;; ---------- 关闭 / 退出（脏则数据化 prompt） ----------
 
 (define (pick-focus st layout)
@@ -462,6 +487,8 @@
     [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
     [(eq? s 'prompt) (lambda (st ev) (prompt? (state-input st)))]
     [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
+    [(and (pair? s) (eq? (car s) 'region))
+     (lambda (st ev) (and (member (panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
     [else always]))
 
 ;;; ---------- op 解释器（原语） ----------
@@ -486,7 +513,7 @@
 (define (run-focus-op st target)
   (cond
     [(eq? target 'editor) (values (focus-editor st) '())]
-    [(and (pair? target) (eq? (car target) 'panel)) (values (focus-named st (panel-name-of (cadr target))) '())]
+    [(and (pair? target) (eq? (car target) 'panel)) (values (focus-panel! st (panel-name-of (cadr target))) '())]
     [(and (pair? target) (eq? (car target) 'cycle)) (values (focus-cycle st (cadr target)) '())]
     [else (values st '())]))
 
@@ -512,8 +539,12 @@
     [(quit)              (request-quit st)]
     [(pointer)           (cursor-press ctx st ev)]
     [(scroll)            (cursor-scroll ctx st ev (car args))]
-    [(region-toggle)     (values (toggle-region! st (car args)) '())]
-    [(region-show)       (values (focus-named st (panel-name-of (cadr args))) '())]
+    [(region-toggle)     (values (region-toggle! st (car args)) '())]
+    [(region-show)       (values (region-show! st (car args)) '())]
+    [(region-hide)       (values (region-hide! st (car args)) '())]
+    [(region-activate)   (values (region-activate! st (car args) (panel-doc-name (cadr args))) '())]
+    [(region-cycle)      (values (region-cycle! st (car args) (cadr args)) '())]
+    [(region-focus)      (values (region-focus! st (car args)) '())]
     [(focus)             (run-focus-op st (car args))]
     [(float-open)        (values (float-open-named st (car args)) '())]
     [(float-close)       (values (close-float st (car (state-stack st))) '())]
@@ -566,7 +597,7 @@
   (define base (parse-layout frame-spec (lambda (id) (if (eq? id 'editor) vid (hash-ref vids (panel-doc-name id))))))
   (define st0 (make-state #:ed ed2 #:docs docs #:layout base #:focus vid))
   (define st1 (feature-set st0 'tree (tree-init root)))
-  (define st2 (set-active st1 'sidebar "*tree*"))
-  (define st3 (set-active st2 'log "*log*"))
-  (show-member! st3 'sidebar "*tree*"))
+  (define st2 (region-set-active st1 'sidebar "*tree*"))
+  (define st3 (region-set-active st2 'log "*log*"))
+  (region-activate! st3 'sidebar "*tree*"))
 

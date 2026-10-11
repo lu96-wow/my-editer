@@ -33,7 +33,7 @@
    " C-q 退出    C-s 保存    C-z/C-y 撤销/重做\n"
    " C-a/C-c/C-x/C-v  选区 / 剪贴板\n"
    " C-w 分屏    C-d 关闭    C-b 侧栏显隐  C-l 日志  C-h 帮助\n"
-   " M-t 侧栏=文件树   M-b 侧栏=缓冲区   M-e 编辑器\n"
+   " M-t 侧栏=文件树   M-b 侧栏切换成员   M-e 编辑器\n"
    " M-n / M-p   焦点在窗格间循环\n"
    " 树/缓冲区里：↑↓ 移动，←→ 展开收起，Enter 打开\n"
    " 方向键/Home/End 移动，Enter/Backspace 编辑"))
