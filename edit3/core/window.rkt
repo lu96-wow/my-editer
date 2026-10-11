@@ -8,7 +8,8 @@
 (provide wid-vid focused-vid
          wid-float? float-wid-of-vid
          all-wids wid-of-vid has-vid? has-wid?
-         set-wid-vid remove-wid*)
+         set-wid-vid remove-wid*
+         wid-border set-wid-border)
 
 (require "state.rkt" "layout.rkt" "resize.rkt" racket/list)
 
@@ -45,6 +46,32 @@
 ;; 某 wid 是否还在窗口集合里（平铺或浮窗）。
 (define (has-wid? st w)
   (and (memv w (all-wids st)) #t))
+
+;; 某 wid 的边框 face（平铺 tile 或浮窗；无 → #f）。
+(define (wid-border st w)
+  (cond
+    [(not w) #f]
+    [(float-by-id (state-floats st) w) => float-border]
+    [else (layout-tile-border (state-tiling st) w)]))
+
+;; 设某 wid 的边框（#f = 关；命名 face = 开）。
+(define (set-wid-border st w border)
+  (cond
+    [(float-by-id (state-floats st) w)
+     (struct-copy state st
+                  [floats (set-float (state-floats st) w
+                                     (struct-copy float (float-by-id (state-floats st) w)
+                                                  [border border]))])]
+    [else
+     (define (go node)
+       (cond
+         [(not node) node]
+         [(tile? node) (if (eqv? w (tile-wid node)) (struct-copy tile node [border border]) node)]
+         [(split? node) (split (split-axis node)
+                               (for/list ([it (in-list (split-items node))])
+                                 (struct-copy item it [child (go (item-child it))])))]
+         [else node]))
+     (struct-copy state st [tiling (tiling (go (tiling-root (state-tiling st))))])]))
 
 ;; 改某 wid 显示的 vid（平铺窗或浮窗，不动位置/尺寸）。
 (define (set-wid-vid st w vid)

@@ -266,7 +266,8 @@
             (cons i (cond [(doc-dirty*? st did) 'buf-dirty]
                           [(eq? kind 'doc)
                            (cond [(eqv? did fdid) 'buf-current]
-                                 [(not (doc-meta-path (hash-ref (state-docs st) did #f))) 'buf-untitled]
+                                 [(not (let ([m (hash-ref (state-docs st) did #f)])
+                                         (and m (doc-meta-path m)))) 'buf-untitled]
                                  [else 'buf-file])]
                           [else 'buf-view])))))
 

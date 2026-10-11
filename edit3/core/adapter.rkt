@@ -24,7 +24,7 @@
  ;; 分区尺寸
  set-view-size!
  ;; 属性写回
- face-line! readonly-range!
+ face-line! readonly-range! face-batch! face-range! document-face-at
  ;; 渲染 piece 词汇（core 重导）
  piece piece? piece-row piece-column piece-text piece-attr)
 
@@ -105,6 +105,11 @@
   (define-values (line column) (editor-view-screen-position->point ed vid row col))
   (and line (cons line column)))
 (define (face-line! ed did line face) (editor-document-face-line! ed did line face) (void))
+(define (face-batch! ed did fills) (editor-document-face-batch! ed did fills) (void))
+(define (face-range! ed did l0 c0 l1 c1 face)
+  (editor-document-face-range! ed did (range-of (point l0 c0) (point l1 c1)) face)
+  (void))
+(define (document-face-at ed did line col) (editor-document-face-at ed did line col))
 (define (readonly-range! ed did l0 c0 l1 c1 flag)
   (editor-document-readonly-range! ed did (range-of (point l0 c0) (point l1 c1)) flag))
 

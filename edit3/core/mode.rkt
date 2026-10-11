@@ -12,7 +12,7 @@
 ;;;   (any)               总是命中（兜底）
 ;;; matchers : (listof (cons matcher 键表))，顺序 = 优先级。
 
-(provide matcher-match? match-doc-keys)
+(provide matcher-match? matching-doc-tables match-doc-keys)
 
 (require racket/path
          racket/string)
@@ -35,7 +35,12 @@
     [(any)    #t]
     [else #f]))
 
-;; 第一个命中的 matcher 的表；无 → #f。
+;; 所有命中的表（顺序 = matchers 顺序；供组合）。
+(define (matching-doc-tables path matchers)
+  (for/list ([mp (in-list matchers)] #:when (matcher-match? (car mp) path))
+    (cdr mp)))
+
+;; 第一个命中的 matcher 的表；无 → #f（保留给只用单表的调用方）。
 (define (match-doc-keys path matchers)
   (for/first ([mp (in-list matchers)] #:when (matcher-match? (car mp) path))
     (cdr mp)))

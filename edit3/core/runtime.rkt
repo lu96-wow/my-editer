@@ -7,7 +7,7 @@
 
 (provide (struct-out backend) run default-perform!)
 
-(require "state.rkt" "event.rkt" "effect.rkt" "layout.rkt" "render.rkt" "step.rkt" "panels.rkt" "fs.rkt")
+(require "state.rkt" "event.rkt" "effect.rkt" "layout.rkt" "render.rkt" "step.rkt" "panels.rkt" "fs.rkt" "hook.rkt")
 
 (struct backend (size read-event draw! close) #:transparent)
 
@@ -18,7 +18,7 @@
 
 (define (run b initial #:perform [perform! default-perform!])
   (let loop ([st initial] [old #f] [old-size #f])
-    (define st1 (refresh-panels! st))            ; 面板内容 = State 的纯投影
+    (define st1 (emit (refresh-panels! st) 'before-render '()))   ; 面板内容 = State 的纯投影
     (define size ((backend-size b)))
     (define g (layout (state-tiling st1) (state-floats st1) size))
     (define-values (screen rends sels)

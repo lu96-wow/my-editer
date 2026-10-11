@@ -13,7 +13,7 @@
 
 (define (mk axis basis grow shrink child)
   (item basis grow shrink (axis-min child axis) child))
-(define (tile* wid) (tile wid 'v (cons 2 2)))
+(define (tile* wid) (tile wid 'v (cons 2 2) 'window-border))
 (define (g* tl [fs '()] [size (cons 80 10)]) (layout tl fs size))
 (define (rect-of g wid)
   (placement-rect (findf (lambda (p) (eqv? wid (placement-wid p))) (geometry-placements g))))
@@ -37,11 +37,11 @@
                list) '(5 5))
 
 ;; ---- 叶子最小尺寸是**每叶**属性：编辑窗 2×2、面板 1×1 ----
-(check-equal? (call-with-values (lambda () (min-size (editor-tile 'e 'ev))) list) '(2 2))
-(check-equal? (call-with-values (lambda () (min-size (panel-tile 'p 'pv))) list) '(1 1))
+(check-equal? (call-with-values (lambda () (min-size (editor-tile 'e 'ev 'window-border))) list) '(2 2))
+(check-equal? (call-with-values (lambda () (min-size (panel-tile 'p 'pv 'window-border))) list) '(1 1))
 ;; 竖直 [编辑(min2) | 面板(min1)]：面板可只占 1 行且贴底（最后一个 item 终点 = extent）
-(define tp (tiling (split 'v (list (mk 'v 1 1 2 (editor-tile 'a 'av))
-                                   (mk 'v 1 0 1 (panel-tile 's 'sv))))))
+(define tp (tiling (split 'v (list (mk 'v 1 1 2 (editor-tile 'a 'av 'window-border))
+                                   (mk 'v 1 0 1 (panel-tile 's 'sv 'window-border))))))
 (define gp (g* tp '() (cons 10 8)))
 (check-equal? (rect-of gp 'a) (rect 0 0 10 6))     ; content 7 = 6 + 缝 1 + 面板 1
 (check-equal? (rect-of gp 's) (rect 0 7 10 1))     ; 贴底：y+h = 8 = extent
@@ -102,8 +102,8 @@
 
 ;; ---- 浮窗：anchor 定位 + z（表头最上）+ move 手柄 ----
 (define tf (tiling (tile* 'a)))
-(define fs (list (float 'f1 'fv (anchor 'screen 'right 'bottom 2 2) (cons 20 6))
-                 (float 'f2 'fv2 (anchor 'screen 'left 'top 0 0) (cons 10 4))))
+(define fs (list (float 'f1 'fv (anchor 'screen 'right 'bottom 2 2) (cons 20 6) 'window-border)
+                 (float 'f2 'fv2 (anchor 'screen 'left 'top 0 0) (cons 10 4) 'window-border)))
 (define gf (g* tf fs (cons 60 16)))
 (check-equal? (rect-of gf 'f1) (rect 40 10 20 6))
 (check-equal? (rect-of gf 'f2) (rect 0 0 10 4))
@@ -113,14 +113,14 @@
 
 ;; ---- 浮窗手术：移动 / 缩放（对边不动、最小尺寸） ----
 (define scr (rect 0 0 100 20))
-(define ff0 (float 'f 'v (anchor 'screen 'left 'top 0 0) (cons 10 4)))
+(define ff0 (float 'f 'v (anchor 'screen 'left 'top 0 0) (cons 10 4) 'window-border))
 (check-equal? (float-anchor (move-float* ff0 3 2)) (anchor 'screen 'left 'top 3 2))
 (define ff1 (resize-float* ff0 'se 2 1 scr 100 20))
 (check-equal? (float-size ff1) (cons 12 5))
 (check-equal? (float-rect scr ff1 100 20) (rect 0 0 12 5))
 (define ff2 (resize-float* ff0 'nw 1 1 scr 100 20))
 (check-equal? (float-rect scr ff2 100 20) (rect 1 1 9 3))
-(define ff3 (float 'f 'v (anchor 'screen 'right 'bottom 0 0) (cons 20 6)))
+(define ff3 (float 'f 'v (anchor 'screen 'right 'bottom 0 0) (cons 20 6) 'window-border))
 (check-equal? (float-rect scr ff3 100 20) (rect 80 14 20 6))
 (define ff4 (resize-float* ff3 'nw 5 2 scr 100 20))
 (check-equal? (float-rect scr ff4 100 20) (rect 85 16 15 4))
@@ -143,7 +143,7 @@
 
 ;; ---- 交互状态机：浮窗移动 / 角缩放 / 点窗聚焦 ----
 (define tfl (tiling (tile* 'a)))
-(define ffl (list (float 'f 'fv (anchor 'screen 'left 'top 0 0) (cons 10 4))))
+(define ffl (list (float 'f 'fv (anchor 'screen 'left 'top 0 0) (cons 10 4) 'window-border)))
 (define sfl (make-state #:tiling tfl #:floats ffl))
 (define gfl (layout tfl ffl (cons 80 10)))
 (define sm1 (pointer-press gfl sfl (cursor-event 'press 'left 5 2)))

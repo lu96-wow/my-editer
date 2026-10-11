@@ -15,5 +15,5 @@
 
 (define (render st g old)
   (define placements (geometry-placements g))
-  (render-layout (state-ed st) placements (focus-vid st placements)
-                 (geometry-w g) (geometry-h g) old (border-runs g)))
+  (render-layout (state-ed st) (content-placements st placements) (focus-vid st placements)
+                 (geometry-w g) (geometry-h g) old (border-runs st g)))

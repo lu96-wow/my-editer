@@ -19,6 +19,7 @@ racket edit3/main.rkt [file]
 | `M-g` | 开 / 关日志浮窗 |
 | `M-b` | 侧栏区域循环成员：文件树 ↔ 缓冲区 |
 | `C-b` / `C-l` | 显示 / 隐藏侧栏 / 日志区域 |
+| `C-t` | 焦点窗口开关边框（每窗独立） |
 | `M-e` | 焦点回编辑器 |
 | `M-n` / `M-p` | 焦点在窗口间循环 |
 | 文件树上 ↑↓←→ / Enter | 选择、展开/收起、打开文件 |
@@ -59,17 +60,64 @@ core/
   keymap.rkt       键表组合
   command.rkt      binding/entry → route 编译
   mode.rkt         路径 → document 键表匹配
+  plugin.rkt       插件契约（贡献包）+ 装配器
+  extension.rkt    插件门面（白名单：插件只 require 这个）
+  hook.rkt         生命周期钩子（reaction + emit）
+  face.rkt         face 分层值（face-stack / face-compose）
+  face-plugin.rkt  face 插件协议 + 每文档刷新
+  lex.rkt kind.rkt 词法器 / 文档类型判定（插件共用）
   theme.rkt        face → ANSI
   backend/tui.rkt  racket-tui 后端
   event.rkt effect.rkt fs.rkt
 config/
-  theme.rkt keys.rkt layout.rkt floats.rkt app.rkt
-test/           （本目录无；测试在 ../edit3-test/core/）
+  theme.rkt keys.rkt layout.rkt floats.rkt syntax.rkt plugins.rkt app.rkt
+plugins/
+  catalog.rkt      插件目录（名字 → 实现）
+  demo.rkt         示例插件
+  syntax.rkt       语法高亮插件（face 插件协议）
+测试在 ../edit3-test/core/。
 ```
 
-## 还没做
+## 插件 / 扩展
 
-- 每窗口独立边框开关（edit2 的 `border-toggle`；edit3 的框是求解器产出的分隔线 + 浮窗框）。
-- 浮窗框会压掉浮窗内容外圈 1 格（未做 inset）。
-- jobs / 后台任务（`jobs` 恒为空）。
+一个 **plugin** 是纯数据包，向 edit3 的注册表贡献能力；`boot` 把贡献叠加到基础表上，
+编译好存进 State（`step` 从 State 读，不依赖具体插件）：
+
+```racket
+(make-plugin #:name 'demo
+             #:ops              (list (cons 'demo-bump handler))
+             #:prompt-kinds     (list (cons 'kind handler))
+             #:panels           (list (panel-spec "*demo*" #f render))
+             #:regions          (list (region 'demo 'right 24 '("*demo*") 'main))
+             #:key-tables       (list '(((key y alt) always (demo-bump))))
+             #:doc-key-matchers (list (cons '(ext "rkt") table))   ; 文档打开时匹配
+             #:faces            (list face-plugin)                   ; 高亮层（可多个叠加）
+             #:hooks            (list (reaction* 'after-edit proc))  ; 生命周期钩子
+             #:on-open          (lambda (st did path) st)
+             #:boot             (lambda (st) st))
+```
+
+- **文档键表可组合**：打开文件时，把所有 `doc-key-matchers` 里命中的表（多个插件可同时
+  命中）按顺序 `compose-keymaps` 成一张，绑到该 document；`focused-keymap` 返回它，
+  doc 路由在全局路由之前先试它。同槽 `(binding scope)` 后表覆盖前表。
+- **生命周期钩子**：`reaction = point + when(st) + priority + proc(st,args)`；事件点
+  `before-render / after-edit / after-insert / after-nav / focus-changed /
+  document-opened / document-closed / log-appended`。
+- **face 插件**：`face-plugin = name + applies?(path,text) + scan(path,text,cursor)`；
+  `scan` 返回每行一个 face 向量，多个插件按顺序叠层写成引擎 face。
+  示例 `plugins/syntax.rkt`（关键字/字符串/注释/数字）。
+- 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
+- 启用名单在 `config/plugins.rkt`（只给名字），`plugins/catalog.rkt` 解析成实现；
+  未知名字直接报错。默认启用 `'(syntax)`（.rkt/.rktl/.rktd/.scrbl 上色）。
+- 示例插件 `plugins/demo.rkt`（op + 面板 + 区域 + 键 + 文档匹配 + on-open + boot）。
+
+启动**不建 scratch 文档**：编辑区是空窗口，从文件树打开文件（或命令行带文件名）。
+
+## 还没做（对齐 edit/ 插件所需的内核能力）
+
+- **会话操作暴露给插件**：open/save/show/split/close/dirty → 抽到基础模块（`step` 与
+  `extension` 共用），让 document/lifecycle 能做成插件。
+- **异步 jobs**：`jobs : state -> [job]` + job/tick 事件 + worker runner + await/deliver/service。
+- **overlay / popup + modes + 自定义路由**：浮层焦点栈、popup 几何、`modes`、
+  插件直接贡献带 guard/priority 的路由（支撑补全菜单 / 文档弹窗）。
 - `*.rkt` 等模式键表（`config/keys.rkt` 的 `rkt-keys` 还是占位）。

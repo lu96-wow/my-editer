@@ -65,6 +65,7 @@
     ((key u ctrl)  always (tree-reload))          ; 重读磁盘刷新文件树（不动已打开文档）
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
+    ((key t ctrl)  always (border-toggle))        ; 焦点窗口开关边框
     ((key h ctrl)  always (tree-toggle-hidden))   ; 文件树：显/隐以 . 开头的条目
     ((key e alt)   always (focus editor))
     ((key n alt)   always (focus (cycle 1)))

@@ -32,15 +32,16 @@
 ;;         编辑窗用 (editor-tile …)（2×2），面板/单行条用 (panel-tile …)（1×1）。
 ;; item  = split 的一段：basis 基准格数，grow/shrink 分配权重（0 = 固定），min 沿轴硬下限
 ;; split = 行列容器；tiling = 根（root 可为 #f）
-(struct tile  (wid vid min) #:transparent)
-(define (editor-tile wid vid) (tile wid vid (cons 2 2)))
-(define (panel-tile wid vid)  (tile wid vid (cons 1 1)))
+(struct tile  (wid vid min border) #:transparent)
+;; border : 命名 face（如 'window-border）| #f（无边框）；每窗口独立
+(define (editor-tile wid vid border) (tile wid vid (cons 2 2) border))
+(define (panel-tile wid vid border)  (tile wid vid (cons 1 1) border))
 (struct item  (basis grow shrink min child) #:transparent)
 (struct split (axis items) #:transparent)            ; axis : 'h | 'v
 (struct tiling (root) #:transparent)
 
-;; ---- 浮窗：不在平铺树里；顺序 = z（表头最上）。size = (cons w h) ----
-(struct float (wid vid anchor size) #:transparent)
+;; ---- 浮窗：不在平铺树里；顺序 = z（表头最上）。size = (cons w h)；border 同上 ----
+(struct float (wid vid anchor size border) #:transparent)
 
 ;; ---- 求解结果：几何带来源 ----
 (struct placement (wid vid rect z) #:transparent)

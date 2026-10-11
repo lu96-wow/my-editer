@@ -14,7 +14,8 @@
          style style-fg style-bg style-attrs theme-ref)
 
 (require (prefix-in t: tui)
-         "../config/theme.rkt")
+         "../config/theme.rkt"
+         "face.rkt")
 
 ;;; ---------- 颜色 → ANSI ----------
 
@@ -39,12 +40,24 @@
 
 ;;; ---------- face → 字节 ----------
 
+(define (face->style f)
+  (cond [(not f) #f]
+        [(style? f) f]
+        [(symbol? f) (theme-ref f)]
+        [else #f]))
+
+;; 分层叠加：后层非 #f 的分量覆盖前层；attrs 累积。
+(define (style-merge base over)
+  (style (or (style-fg over) (style-fg base))
+         (or (style-bg over) (style-bg base))
+         (append (style-attrs base) (style-attrs over))))
+
 (define (face-bytes f)
   (cond
-    [(not f) #""]
-    [(style? f) (style-bytes f)]
-    [(symbol? f) (define st (theme-ref f)) (if st (style-bytes st) #"")]
-    [else #""]))
+    [(face-stack? f)
+     (define styles (filter values (for/list ([l (in-list (face-stack-layers f))]) (face->style l))))
+     (if (null? styles) #"" (style-bytes (foldl style-merge (car styles) (cdr styles))))]
+    [else (define st (face->style f)) (if st (style-bytes st) #"")]))
 
 (define (attr-bytes attr)
   (cond

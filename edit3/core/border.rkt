@@ -2,14 +2,15 @@
 
 ;;; edit3/border.rkt —— 纯装饰层：分隔线（含交点）+ 浮窗框
 ;;;
-;;; 平铺缝先收进一个“格集合”，每格看四邻是否也是分隔格 → 查字形表得到 ─│┌┐└┘├┤┬┴┼，
-;;; 再把同行连续的格并成 run。这样 C-s/C-v 分出来的线与已存在线的**交点**会正确取 ┬/┴/├/┤/┼。
-;;; 浮窗框是另一层（z = 浮窗 z），盖在平铺层之上。
+;;; 平铺缝：只有**相邻窗口里至少一个有边框**时，这 1 格缝才画线（每窗口可独立开关边框，
+;;; 见 config 的 borders-on? / border-style 与 C-t）。格集合再按四邻查字形表得到
+;;; ─│┌┐└┘├┤┬┴┼，相邻格并成 run。
+;;; 浮窗框是另一层（z = 浮窗 z），盖在平铺层之上；浮窗无边框则不画。
 ;;; 输出给 adapter.render-layout 的 border run：(row col text face z)。
 
-(provide border-runs)
+(provide border-runs content-placements)
 
-(require "state.rkt" racket/list)
+(require "state.rkt" "window.rkt" racket/list)
 
 (define face 'window-border)
 
@@ -57,7 +58,34 @@
 
 ;;; ---------- 分隔线 + 浮窗框 ----------
 
-(define (border-runs g)
+;; 某格四周紧邻的**平铺**窗口里，是否有带边框者。
+(define (adjacent-bordered? st tiled row col)
+  (for/or ([p (in-list tiled)])
+    (define r (placement-rect p))
+    (and (wid-border st (placement-wid p))
+         (or (and (= (+ (rect-x r) (rect-w r)) col)          ; 窗在左
+                  (<= (rect-y r) row) (< row (+ (rect-y r) (rect-h r))))
+             (and (= (rect-x r) (add1 col))                   ; 窗在右
+                  (<= (rect-y r) row) (< row (+ (rect-y r) (rect-h r))))
+             (and (= (+ (rect-y r) (rect-h r)) row)           ; 窗在上
+                  (<= (rect-x r) col) (< col (+ (rect-x r) (rect-w r))))
+             (and (= (rect-y r) (add1 row))                   ; 窗在下
+                  (<= (rect-x r) col) (< col (+ (rect-x r) (rect-w r))))))))
+
+;; 内容 placements：浮窗有框时四边内缩 1 格（框画在原矩形边上，不压内容）。
+;; geometry / 命中 / 拖拽仍用原矩形，只有渲染（view 尺寸）用内缩后的。
+(define (content-placements st placements)
+  (for/list ([p (in-list placements)])
+    (define r (placement-rect p))
+    (if (and (positive? (placement-z p)) (wid-border st (placement-wid p)))
+        (struct-copy placement p
+                     [rect (rect (add1 (rect-x r)) (add1 (rect-y r))
+                                 (max 1 (- (rect-w r) 2)) (max 1 (- (rect-h r) 2)))])
+        p)))
+
+(define (border-runs st g)
+  (define placements (geometry-placements g))
+  (define tiled (filter (lambda (p) (zero? (placement-z p))) placements))
   (define cells (make-hash))         ; (row . col) -> #t（平铺缝）
   (for ([h (in-list (geometry-handles g))] #:when (eq? 'boundary (handle-kind h)))
     (define axis (car (handle-data h)))
@@ -65,24 +93,27 @@
     (cond
       [(eq? axis 'h)
        (for ([row (in-range (rect-y r) (+ (rect-y r) (rect-h r)))])
-         (hash-set! cells (cons row (rect-x r)) #t))]
+         (when (adjacent-bordered? st tiled row (rect-x r))
+           (hash-set! cells (cons row (rect-x r)) #t)))]
       [else
        (for ([col (in-range (rect-x r) (+ (rect-x r) (rect-w r)))])
-         (hash-set! cells (cons (rect-y r) col) #t))]))
+         (when (adjacent-bordered? st tiled (rect-y r) col)
+           (hash-set! cells (cons (rect-y r) col) #t)))]))
 
   (append
    (cells->runs cells 0)
-   ;; 浮窗框：四角 + 边（各自成 run，z = 浮窗 z）
+   ;; 浮窗框：有边框才画；四角 + 边（各自成 run，z = 浮窗 z）
    (append*
-    (for/list ([p (in-list (geometry-placements g))]
-               #:when (positive? (placement-z p)))
+    (for/list ([p (in-list placements)]
+               #:when (and (positive? (placement-z p)) (wid-border st (placement-wid p))))
       (define r (placement-rect p))
       (define x (rect-x r)) (define y (rect-y r))
       (define w (rect-w r)) (define h (rect-h r))
       (define z (placement-z p))
+      (define f (wid-border st (placement-wid p)))
       (define inner (make-string (max 0 (- w 2)) #\─))
       (append
-       (list (list y x (string-append "┌" inner "┐") face z)
-             (list (+ y h -1) x (string-append "└" inner "┘") face z))
-       (for/list ([row (in-range (add1 y) (sub1 (+ y h)))]) (list row x "│" face z))
-       (for/list ([row (in-range (add1 y) (sub1 (+ y h)))]) (list row (+ x w -1) "│" face z)))))))
+       (list (list y x (string-append "┌" inner "┐") f z)
+             (list (+ y h -1) x (string-append "└" inner "┘") f z))
+       (for/list ([row (in-range (add1 y) (sub1 (+ y h)))]) (list row x "│" f z))
+       (for/list ([row (in-range (add1 y) (sub1 (+ y h)))]) (list row (+ x w -1) "│" f z)))))))

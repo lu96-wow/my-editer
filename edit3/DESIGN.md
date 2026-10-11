@@ -49,8 +49,8 @@ edit2 的布局树 `(split axis ((size node) ...))`，`size = 整数 | 'flex`。
 
 ```racket
 ;; ---- 窗口 ----
-(struct tile  (wid vid min) #:transparent)             ; 平铺叶子：窗口 + 自身最小尺寸
-(struct float (wid vid anchor size) #:transparent)     ; 浮窗：锚点 + 尺寸；z = 在表里的位置
+(struct tile  (wid vid min border) #:transparent)         ; 平铺叶子：窗口 + 最小尺寸 + 边框
+(struct float (wid vid anchor size border) #:transparent) ; 浮窗：锚点 + 尺寸 + 边框；z = 在表里的位置
 
 ;; ---- 平铺容器树：只有“结构 + 弹性意图”，几何永不存 ----
 ;; item 不是固定格数，而是求解器的输入：
@@ -269,11 +269,52 @@ edit3/
     keymap.rkt                键表组合（纯数据代数）
     command.rkt               binding/entry → route 编译
     mode.rkt                  路径 → document 键表的匹配层
+    plugin.rkt                插件契约 + 装配器（把贡献叠加到基础注册表）
+    extension.rkt             插件门面（白名单；插件只 require 这个，不碰 step）
     backend/tui.rkt           终端输入解码 / 字节输出
+  plugins/
+    catalog.rkt               插件目录（名字 → 实现）
+    demo.rkt                  示例插件
+  config/
+    plugins.rkt               本次启用哪些插件（只给名字）
   backends / test: edit3-test/core/*.rkt（纯函数 + 装配单测）
 ```
 
 复用：根目录 `core/`（文本引擎）原样。
+
+## 9.5 插件 / 扩展
+
+一个 **plugin** 是纯数据包，向 edit3 现有的注册表贡献能力；没有新机制，只是把
+「基础注册表 + 插件贡献」在 `boot` 时叠一次：
+
+```racket
+(struct plugin (name ops prompt-kinds panels regions
+                     key-tables doc-key-matchers faces hooks boot on-open) #:transparent)
+```
+
+- 贡献点对齐 edit2 的注册表：`op-register`（原语）、`prompt-kind-register`、
+  `panel-register`、区域、`keymap` 条目、`doc-key-matchers`（路径匹配）。
+- **文档打开时匹配 + 组合**：`open-file*` / `set-focused-path!` 时，把所有
+  `doc-key-matchers` 里命中的表（多插件可同时命中）按顺序 `compose-keymaps` 成一张，
+  绑到该 document（`bind-doc-keys`）；同名同 scope 的绑定后表覆盖前表。随后跑
+  各插件的 `on-open`（`(st did path) -> st`）。`focused-keymap` 返回这张组合表，
+  doc 路由在全局路由之前先试它。
+- **生命周期钩子（`hooks`）**：`reaction = point + when(st) + priority + proc(st,args)`；
+  事件点 `before-render / after-edit / after-insert / after-nav / focus-changed /
+  document-opened / document-closed / log-appended / tick`。`core/hook.rkt` 的 `emit`
+  按 priority 降序跑命中项；`step`/`runtime` 在各点 emit。
+- **face 插件（`faces`）**：`face-plugin = name + applies?(path,text) + scan(path,text,cursor)`；
+  `scan` 返回每行一个 face 向量。核心在多插件间按顺序 `face-compose` 叠层，写成引擎
+  face 区间（`core/face-plugin.rkt`，整篇重扫；edit/ 的按行增量缓存将来可换）。
+  刷新时机：打开文档 / 编辑后 / 移动光标后。示例：`plugins/syntax.rkt`。
+- 装配器 `install-plugin-*` / `collect-*` / `run-plugin-boots` / `run-plugin-open` 产出本次
+  运行的 op / prompt / panel / region / key-table / matcher / hooks / faces，编译成路由后
+  **存进 State 的 feature**（`'panels` `'regions` `'doc-key-matchers` `'routes` `'plugins`
+  `'hooks` `'faces`）。`step` 从 State 读，不依赖插件实现，所以插件可自由依赖
+  `core/extension.rkt` 而不循环。
+- `core/extension.rkt` 是**白名单门面**：插件只 require 它，拿到 State 词汇、注册表
+  构造、adapter 原语（含 face 写回）、窗口/布局查询、keymap/command/route、face/lex。
+- `config/plugins.rkt` 只给名字；`plugins/catalog.rkt` 解析成实现（未知名报错）。
 
 ## 10. 进度
 
@@ -289,5 +330,18 @@ edit3/
 - [x] **可交互文件树 + 缓冲区面板**：展开/收起、隐藏项、新建文件/目录、删除、重读；
       面板选择 = 文档光标。
 - [x] **输入行**：`*input*` 文档就地占状态栏 pane，label 只读，提交按 kind 注册表分派。
-- [ ] 每窗口独立边框开关（edit2 的 `border-toggle`）；浮窗框 inset（现在框会压掉浮窗内容外圈 1 格）。
-- [ ] jobs / 后台任务（现在恒为空）。
+- [x] **每窗口独立边框（edit2 的 `C-t` / `border-toggle`）**：`tile`/`float` 带 `border` 字段；
+      分隔线只在相邻窗里至少一个有边框时绘制（
+      全关则不画、不留字形）；浮窗无边框则不画框。
+- [x] **插件层**：`core/plugin.rkt` 契约 + 装配器；`core/extension.rkt` 白名单门面；
+      `config/plugins.rkt` + `plugins/catalog.rkt` + 示例 `plugins/demo.rkt`；`boot` 装配
+      并存入 State feature；`step` 从 State 读路由。
+- [x] **生命周期钩子**：`core/hook.rkt` 的 `reaction` + `emit`；事件点
+      `before-render / after-edit / after-insert / after-nav / focus-changed /
+      document-opened / document-closed / log-appended`；插件 `#:hooks` 贡献。
+- [x] **face 端口 + face 插件协议**：`face-batch!`/`face-range!`/`document-face-at`、
+      `core/face.rkt`（`face-stack`/`face-compose`）、`core/face-plugin.rkt`（多插件叠层，
+      打开/编辑/移动光标时刷新）、`core/lex.rkt`、`core/kind.rkt`；
+      验证插件 `plugins/syntax.rkt`（关键字/字符串/注释/数字）。
+- [ ] 会话操作暴露给插件（open/save/show/split/close/dirty → 基础模块）
+- [ ] 异步 jobs + overlay/popup + modes/自定义路由（支撑补全 / 文档弹窗）

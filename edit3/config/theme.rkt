@@ -46,6 +46,17 @@
    'buf-file       (style (rgb 200 200 200) #f '())               ; 其它文档
    'buf-untitled   (style (rgb 170 170 170) #f '())               ; 无路径
    'buf-view       (style (rgb 140 160 190) #f '())               ; 视图行
-   'buf-dirty      (style (rgb 230 160 90) #f '(bold))))          ; 脏文档
+   'buf-dirty      (style (rgb 230 160 90) #f '(bold))            ; 脏文档
+   ;; 语法高亮（插件用；见 plugins/syntax.rkt）
+   'syntax-def     (style (rgb 120 180 240) #f '())
+   'syntax-control (style (rgb 230 150 180) #f '())
+   'syntax-macro   (style (rgb 190 150 240) #f '())
+   'syntax-binding (style (rgb 235 190 110) #f '())
+   'syntax-module  (style (rgb 120 200 200) #f '())
+   'syntax-string  (style (rgb 190 220 140) #f '())
+   'syntax-comment (style (rgb 120 120 130) #f '(italic))
+   'syntax-number  (style (rgb 200 170 240) #f '())
+   'word-mark      (style #f (rgb 60 70 90) '())
+   'bracket-match  (style #f (rgb 70 90 70) '())))
 
 (define (theme-ref name) (hash-ref palette name #f))

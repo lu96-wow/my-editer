@@ -27,15 +27,21 @@
   (placement-rect (findf (lambda (p) (eqv? wid (placement-wid p))) (geometry-placements (geom st)))))
 (define (panel-vid-of st name) (panel-vid st name))
 
-;; boot：编辑区 + 状态栏 + 侧栏(树) = 3 个 tile，焦点在编辑区（wid 0）
+;; 给启动后的空窗口装一个缓冲区（boot 不再建 scratch 文档）。
+(define (with-buffer st text)
+  (define-values (ed _did vid) (add-document-view! (state-ed st) text 40 10 "*scratch*"))
+  (set-wid-vid (struct-copy state st [ed ed]) 0 vid))
+
+;; boot：编辑区 + 状态栏 + 侧栏(树) = 3 个 tile，焦点在编辑区（wid 0），空窗口
 (define st0 (boot 80 24))
 (check-equal? (length (tile-wids st0)) 3)
 (check-equal? (state-focus st0) 0)
 (check-true (focused-editor? st0))
 (check-equal? (all-wids st0) '(2 0 1))
+(check-false (focused-vid st0))                     ; 启动无文档
 
-;; 编辑：文本进焦点窗
-(define st1 (run1 st0 (text-event "abc")))
+;; 编辑：文本进焦点窗（先装缓冲区）
+(define st1 (run1 (with-buffer st0 "") (text-event "abc")))
 (check-equal? (view-string (state-ed st1) (focused-vid st1)) "abc")
 
 ;; 面板 = State 的纯投影：状态栏显示文档名 + 行列；树列目录
@@ -48,7 +54,7 @@
 (define-values (_s rends sels) (render st1p (geom st1p) #f))
 (define out (apply string-append (map piece-text (append rends sels))))
 (check-true (regexp-match? #rx"abc" out))
-(check-true (for/or ([r (in-list (border-runs (geom st1p)))]) (regexp-match? #rx"│" (list-ref r 2))))
+(check-true (for/or ([r (in-list (border-runs st1p (geom st1p)))]) (regexp-match? #rx"│" (list-ref r 2))))
 
 ;; 拖侧栏/编辑区边界（axis h，pos 28，树 wid = 2）：侧栏宽度变，编辑区吸收
 (define tw0 (rect-w (rect-of st1p 2)))
@@ -72,7 +78,7 @@
 (check-equal? (length (tile-wids st6)) 4)
 (check-not-equal? (state-focus st6) (state-focus st1p))
 ;; 交点：C-s 的竖线与编辑/状态栏横线相交 → ┴
-(check-true (for/or ([r (in-list (border-runs (geom st6)))]) (regexp-match? #rx"┴" (list-ref r 2))))
+(check-true (for/or ([r (in-list (border-runs st6 (geom st6)))]) (regexp-match? #rx"┴" (list-ref r 2))))
 
 ;; 浮窗：M-j 开日志浮窗（floats 1、焦点在它、z>0、有框）；Esc 关
 (define st7 (run1 st1p (key-event 'j '(alt))))
@@ -80,7 +86,16 @@
 (check-equal? (state-focus st7) (float-wid (car (state-floats st7))))
 (check-true (for/or ([p (in-list (geometry-placements (geom st7)))])
                    (and (eqv? (state-focus st7) (placement-wid p)) (positive? (placement-z p)))))
-(check-true (for/or ([r (in-list (border-runs (geom st7)))]) (regexp-match? #rx"┌" (list-ref r 2))))
+(check-true (for/or ([r (in-list (border-runs st7 (geom st7)))]) (regexp-match? #rx"┌" (list-ref r 2))))
+;; 浮窗内容 inset：内容矩形四边各缩 1（框画在原矩形边上，不压内容）；平铺窗不缩
+(define fpl (geometry-placements (geom st7)))
+(define fpr (placement-rect (findf (lambda (p) (eqv? (state-focus st7) (placement-wid p))) fpl)))
+(define fpc (placement-rect (findf (lambda (p) (eqv? (state-focus st7) (placement-wid p)))
+                                    (content-placements st7 fpl))))
+(check-equal? (rect-x fpc) (add1 (rect-x fpr)))
+(check-equal? (rect-y fpc) (add1 (rect-y fpr)))
+(check-equal? (rect-w fpc) (- (rect-w fpr) 2))
+(check-equal? (rect-h fpc) (- (rect-h fpr) 2))
 (define st8 (run1 st7 (key-event 'escape '())))
 (check-equal? (length (state-floats st8)) 0)
 
@@ -96,6 +111,18 @@
 ;; 侧栏成员互斥：M-b 切到 *buffers*，焦点在侧栏面板
 (define st12 (run1 st1p (key-event 'b '(alt))))
 (check-equal? (wid-panel-name st12 (state-focus st12)) "*buffers*")
+
+;; per-window 边框（edit2 的 C-t）：逐窗开关；全关后不再画分隔线
+(check-equal? (wid-border st1p 0) 'window-border)
+(define b1 (run1 st1p (key-event 't '(ctrl))))          ; 关编辑窗(0)
+(check-false (wid-border b1 0))
+(define b2 (run1 (run1 b1 (key-event 'n '(alt)))         ; 焦点 → 状态栏(1)
+                 (key-event 't '(ctrl))))
+(check-false (wid-border b2 1))
+(define b3 (run1 (run1 b2 (key-event 'n '(alt)))         ; 焦点 → 文件树(2)
+                 (key-event 't '(ctrl))))
+(check-false (wid-border b3 2))
+(check-equal? (border-runs b3 (geom b3)) '())            ; 三个平铺窗都无边 → 无分隔线
 
 ;; 关编辑窗：C-d（焦点是编辑区）——窗口保留为「空窗」（vid = #f），不让状态栏跳位
 (define st13 (run1 st1p (key-event 'd '(ctrl))))

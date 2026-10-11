@@ -16,7 +16,8 @@
   (define args (current-command-line-arguments))
   (define path (and (positive? (vector-length args)) (vector-ref args 0)))
   (define text (if (and path (file-exists? path)) (file->string path) ""))
-  (define st0 (boot 80 24 #:text text #:name (or path "*scratch*")))
+  ;; 无文件参数 → 不建初始文档：编辑区留空窗口，从文件树打开。
+  (define st0 (boot 80 24 #:text text #:name path))
   (define st (if path (set-focused-path! st0 path) st0))
   (run-tui st))
 

@@ -7,6 +7,7 @@
 (require "keys.rkt"
          "layout.rkt"
          "theme.rkt"
-         "floats.rkt")
+         "floats.rkt"
+         "plugins.rkt")
 
-(provide (all-from-out "keys.rkt" "layout.rkt" "theme.rkt" "floats.rkt"))
+(provide (all-from-out "keys.rkt" "layout.rkt" "theme.rkt" "floats.rkt" "plugins.rkt"))

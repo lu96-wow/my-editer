@@ -18,7 +18,7 @@
  ;; 手术
  layout-split-tile layout-remove-wid layout-remove-vid
  layout-resize-boundary layout-set-bases
- layout-fresh-wid layout-tile-vid layout-set-tile-vid
+ layout-fresh-wid layout-tile-vid layout-set-tile-vid layout-tile-border
  layout-find-path layout-add-side layout-add-adjacent
  ;; 查询
  node-wids layout-vids layout-has? layout-has-wid? layout-wid-of-vid)
@@ -225,6 +225,16 @@
     (cond
       [(not node) #f]
       [(tile? node) (and (eqv? wid (tile-wid node)) (tile-vid node))]
+      [(split? node) (for/or ([it (in-list (split-items node))]) (go (item-child it)))]
+      [else #f]))
+  (go (tiling-root tl)))
+
+;; 某 wid 的 tile 边框 face（没有 → #f）。
+(define (layout-tile-border tl wid)
+  (define (go node)
+    (cond
+      [(not node) #f]
+      [(tile? node) (and (eqv? wid (tile-wid node)) (tile-border node))]
       [(split? node) (for/or ([it (in-list (split-items node))]) (go (item-child it)))]
       [else #f]))
   (go (tiling-root tl)))

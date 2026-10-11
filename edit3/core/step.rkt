@@ -12,6 +12,7 @@
 (provide step boot jobs app-routes
          refresh-panels!
          input-name
+         doc-keys bind-doc-keys focused-keymap apply-doc-keys add-doc-keys
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
          focused-did set-focused-path!)
@@ -19,19 +20,28 @@
 (require racket/string
          "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt" "op.rkt" "prompt.rkt"
          "adapter.rkt" "layout.rkt" "resize.rkt" "window.rkt" "interaction.rkt"
-         "border.rkt" "panels.rkt" "fs.rkt" "mode.rkt"
+         "border.rkt" "panels.rkt" "fs.rkt" "mode.rkt" "plugin.rkt" "hook.rkt" "face-plugin.rkt"
+         "../plugins/catalog.rkt"
          (rename-in "../config/app.rkt"
                     [regions regions-spec]
                     [enabled-panels panels-spec]
                     [key-tables key-tables-spec]
                     [float-specs float-specs-spec]
-                    [doc-key-matchers doc-key-matchers-spec]))
+                    [doc-key-matchers doc-key-matchers-spec]
+                    [border-style border-style-spec]
+                    [borders-on? borders-default?])
+         (rename-in "../config/plugins.rkt"
+                    [enabled-plugins enabled-plugin-specs]))
 
-;; 配置数据 → region 结构（成员映射到文档名）。
-(define regions (map parse-region regions-spec))
+;; 新窗口默认边框（#f = 不加）；可用 C-t 逐个切换。
+(define default-border (and borders-default? border-style-spec))
 
-;; 键表：配置里是**有序**的多张表，core 按顺序组合（后者覆盖前者）。
-(define key-table (compose-keymaps key-tables-spec))
+;; 基础（未被插件叠加前）配置：区域 / 键表 / 文档匹配层。
+(define base-regions (map parse-region regions-spec))
+(define base-key-table (compose-keymaps key-tables-spec))
+(define (state-regions st) (feature-ref st 'regions base-regions))
+(define (state-doc-matchers st) (feature-ref st 'doc-key-matchers doc-key-matchers-spec))
+(define (state-routes st) (feature-ref st 'routes #f))
 
 ;;; ---------- 查询辅助 ----------
 
@@ -84,8 +94,15 @@
 (define (bind-doc-keys st did table)
   (feature-set st 'doc-keys (hash-set (doc-keys st) did table)))
 (define (apply-doc-keys st did path)
-  (define km (and path (match-doc-keys path doc-key-matchers-spec)))
-  (if km (bind-doc-keys st did km) st))
+  (define tables (and path (matching-doc-tables path (state-doc-matchers st))))
+  (cond
+    [(or (not tables) (null? tables)) st]
+    [else (bind-doc-keys st did (compose-keymaps tables))]))
+
+;; 往某 did 的键表上**再叠**一张（组合：后表覆盖前表的同槽绑定）。
+(define (add-doc-keys st did table)
+  (define cur (hash-ref (doc-keys st) did #f))
+  (bind-doc-keys st did (if cur (compose-keymaps (list cur table)) table)))
 (define (focused-keymap st)
   (define d (focused-did st))
   (and d (hash-ref (doc-keys st) d #f)))
@@ -99,7 +116,9 @@
     [(not did) st]
     [else
      (define m (or (hash-ref (state-docs st) did #f) (doc-meta #f #f)))
-     (apply-doc-keys (set-doc-meta st did (struct-copy doc-meta m [path path])) did path)]))
+     (define st* (apply-doc-keys (set-doc-meta st did (struct-copy doc-meta m [path path])) did path))
+     (define st** (run-plugin-open st* (feature-ref st* 'plugins '()) did path))
+     (refresh-faces-vid! st** (focused-vid st**))]))
 
 (define (editor-focus? st ev)
   (and (state-focus st)
@@ -124,7 +143,7 @@
     [(null? editors)
      (define w (fresh-wid st))
      (struct-copy state st
-                  [tiling (layout-add-side (state-tiling st) (editor-tile w vid) 'right 40)]
+                  [tiling (layout-add-side (state-tiling st) (editor-tile w vid default-border) 'right 40)]
                   [focus w])]
     [(null? (cdr editors))
      (define w (car editors))
@@ -191,7 +210,7 @@
      (define ed (state-ed st))
      (define cur (view-string ed lv))
      (assign! ed lv (string-append cur (if (string=? cur "") "" "\n") msg))
-     st]))
+     (emit st 'log-appended (list msg))]))
 
 ;;; ---------- 编辑命令 ----------
 
@@ -206,18 +225,20 @@
        [(select-all) (select-all! ed v)]
        [(copy) (copy! ed v)] [(cut) (cut! ed v)] [(paste) (paste! ed v)]
        [(backspace) (backspace! ed v)] [(delete) (delete! ed v)])
-     (values st '())]))
+     (values (emit (refresh-faces-vid! st v) 'after-edit (list v)) '())]))
 
 (define (insert-text st text)
   (define v (focused-vid st))
   (cond
     [(not v) (values st '())]
-    [else (insert! (state-ed st) v text) (values st '())]))
+    [else (insert! (state-ed st) v text)
+          (values (emit (refresh-faces-vid! st v) 'after-insert (list v text)) '())]))
 
 (define (nav-focused st dir extend)
   (define v (focused-vid st))
   (cond [(not v) (values st '())]
-        [else (nav! (state-ed st) v dir extend) (values st '())]))
+        [else (nav! (state-ed st) v dir extend)
+              (values (emit (refresh-faces-vid! st v) 'after-nav (list v)) '())]))
 
 (define (doc-display st did)
   (define m (hash-ref (state-docs st) did #f))
@@ -265,7 +286,7 @@
     [else
      (define nwid (fresh-wid st))
      (struct-copy state st
-                  [tiling (layout-split-tile (state-tiling st) w axis (editor-tile nwid #f) first?)]
+                  [tiling (layout-split-tile (state-tiling st) w axis (editor-tile nwid #f default-border) first?)]
                   [focus nwid])]))
 
 (define (split-spec d)
@@ -280,12 +301,12 @@
 
 ;;; ---------- 区域代数 ----------
 
-(define (region-ref id)
-  (for/first ([r (in-list regions)] #:when (eq? id (region-id r))) r))
-(define (region-members* rid) (region-members (region-ref rid)))
+(define (region-ref st id)
+  (for/first ([r (in-list (state-regions st))] #:when (eq? id (region-id r))) r))
+(define (region-members* st rid) (region-members (region-ref st rid)))
 
 (define (region-active st rid)
-  (define ms (region-members* rid))
+  (define ms (region-members* st rid))
   (define m (hash-ref (feature-ref st 'region-active (hash)) rid #f))
   (if (and m (member m ms)) m (car ms)))
 
@@ -295,7 +316,7 @@
 
 ;; 区域当前显示的窗口（wid）；#f = 隐藏。
 (define (region-visible-wid st rid)
-  (define member-vids (for/list ([m (in-list (region-members* rid))]) (panel-vid st m)))
+  (define member-vids (for/list ([m (in-list (region-members* st rid))]) (panel-vid st m)))
   (for/first ([w (in-list (all-wids st))]
               #:when (memv (wid-vid st w) member-vids))
     w))
@@ -307,14 +328,14 @@
 (define (region-visible? st rid) (and (region-visible-vid st rid) #t))
 
 (define (region-sync-pane st rid)
-  (define r (region-ref rid))
+  (define r (region-ref st rid))
   (define want (panel-vid st (region-active st rid)))
   (define cur (region-visible-wid st rid))
   (cond
     [(not want) st]
     [(not cur)
      (define w (fresh-wid st))
-     (define new (panel-tile w want))
+     (define new (panel-tile w want default-border))
      (define t*
        (cond
          [(eq? (region-anchor r) 'root)
@@ -347,7 +368,7 @@
   (region-sync-pane (region-set-active st rid m) rid))
 
 (define (region-cycle! st rid d)
-  (define ms (region-members* rid))
+  (define ms (region-members* st rid))
   (define idx (or (for/first ([m (in-list ms)] [i (in-naturals)]
                               #:when (equal? m (region-active st rid))) i) 0))
   (region-activate! st rid (list-ref ms (modulo (+ idx d) (length ms)))))
@@ -372,7 +393,7 @@
   (if w (focus-wid st w) st))
 
 (define (focus-panel! st name)
-  (define rid (for/first ([r (in-list regions)] #:when (member name (region-members r))) (region-id r)))
+  (define rid (for/first ([r (in-list (state-regions st))] #:when (member name (region-members r))) (region-id r)))
   (define st* (if rid (region-activate! st rid name) st))
   (define w (panel-wid st* name))
   (if w (struct-copy state st* [focus w]) st*))
@@ -409,10 +430,11 @@
   (define ed (state-ed st))
   (define wids (doc-wids st did))
   (define st* (remove-wids st wids))
-  (struct-copy state st*
-               [ed (close-document ed did)]
-               [docs (hash-remove (state-docs st*) did)]
-               [focus (focus-after st*)]))
+  (define st** (struct-copy state st*
+                            [ed (close-document ed did)]
+                            [docs (hash-remove (state-docs st*) did)]
+                            [focus (focus-after st*)]))
+  (emit st** 'document-closed (list did)))
 
 (define (close-window! st wid)
   (cond
@@ -609,12 +631,15 @@
     [(not (fs-file? path)) (values (log-msg st (format "打不开: ~a" path)) '())]
     [(doc-by-path st path)
      => (lambda (did)
-          (define vids (document-view-list (state-ed st) did))
+          (define st* (emit (run-plugin-open st (feature-ref st 'plugins '()) did path)
+                            'document-opened (list did path)))
+          (define vids (document-view-list (state-ed st*) did))
           (cond
-            [(pair? vids) (values (show-view! st (car vids)) '())]
+            [(pair? vids) (values (show-view! (refresh-faces-vid! st* (car vids)) (car vids)) '())]
             [else
-             (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
-             (values (show-view! (struct-copy state st [ed ed*]) nvid) '())]))]
+             (define-values (ed* nvid) (add-view! (state-ed st*) did 40 10))
+             (define st** (refresh-faces-vid! (struct-copy state st* [ed ed*]) nvid))
+             (values (show-view! st** nvid) '())]))]
     [else
      (define text (with-handlers ([exn:fail? (lambda (e) (format "读取失败: ~a" (exn-message e)))])
                     (fs-read-file path)))
@@ -623,7 +648,9 @@
      (define st1 (struct-copy state st [ed ed*]))
      (define st2 (set-doc-meta st1 did (doc-meta (path-key path) (document-handle ed* did))))
      (define st3 (apply-doc-keys st2 did path))
-     (values (place-view st3 vid) '())]))
+     (define st4 (run-plugin-open st3 (feature-ref st3 'plugins '()) did path))
+     (define st5 (refresh-faces-vid! st4 vid))
+     (values (place-view (emit st5 'document-opened (list did path)) vid) '())]))
 
 (define (show-view! st vid)
   (define w (wid-of-vid st vid))
@@ -789,6 +816,13 @@
   (define ts0 (feature-ref st 'tree #f))
   (if ts0 (feature-set st 'tree (tree-toggle-hidden ts0)) st))
 
+;; 焦点窗口开关边框（每个窗口独立，edit2 的 C-t 语义）。
+(define (border-toggle st)
+  (define w (state-focus st))
+  (cond
+    [(not w) st]
+    [else (set-wid-border st w (and (not (wid-border st w)) border-style-spec))]))
+
 ;;; ---------- 前缀 ----------
 
 (define (prefix-of st) (feature-ref st 'prefix #f))
@@ -833,7 +867,7 @@
 (define (open-float st vid anchor want-w want-h)
   (define w (fresh-wid st))
   (struct-copy state st
-               [floats (cons (float w vid anchor (cons want-w want-h)) (state-floats st))]
+               [floats (cons (float w vid anchor (cons want-w want-h) default-border) (state-floats st))]
                [focus w]))
 
 (define (close-float st wid)
@@ -898,7 +932,7 @@
       [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
       [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
       [(and (pair? s) (eq? (car s) 'region))
-       (lambda (st ev) (and (member (wid-panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
+       (lambda (st ev) (and (member (wid-panel-name st (state-focus st)) (region-members* st (cadr s))) #t))]
       [else always]))
   (cond
     [(eq? s 'prompt) base]
@@ -1008,7 +1042,8 @@
     (cons 'buffers-toggle    (lambda (ctx st ev args) (values (buffers-toggle st) '())))
     (cons 'buffers-expand    (lambda (ctx st ev args) (values (buffers-fold! st #f) '())))
     (cons 'buffers-collapse  (lambda (ctx st ev args) (values (buffers-fold! st #t) '())))
-    (cons 'new-view          (lambda (ctx st ev args) (values (new-view-for-focused st) '()))))))
+    (cons 'new-view          (lambda (ctx st ev args) (values (new-view-for-focused st) '())))
+    (cons 'border-toggle     (lambda (ctx st ev args) (values (border-toggle st) '()))))))
 
 (define (placing-op-seq? ops)
   (for/or ([o (in-list ops)]) (memq (car o) '(place-confirm place-cancel place-cycle place-pick))))
@@ -1039,18 +1074,16 @@
 
 ;;; ---------- 路由 ----------
 
-(define (app-routes [reg base-op-registry] [prompts base-prompt-kinds])
+(define (app-routes [reg base-op-registry] [prompts base-prompt-kinds] [kt base-key-table])
   (define reg* (op-register reg 'submit-prompt (lambda (ctx st ev args) (submit-prompt prompts st))))
   (define runner (lambda (binding ops) (op-runner reg* binding ops)))
-  (define global (compile-routes key-table scope-of runner))
+  (define global (compile-routes kt scope-of runner))
   (define doc-route
     (route (lambda (st ev) (and (focused-keymap st) #t))
            (lambda (ctx st ev k)
              (route-input/k (compile-routes (focused-keymap st) scope-of runner)
                             ctx st ev k))))
   (cons doc-route global))
-
-(define routes (app-routes))
 
 ;;; ---------- 后台需求 ----------
 
@@ -1064,23 +1097,37 @@
     [(job-event? ev) (values st '())]
     [else
      (define g (layout (state-tiling st) (state-floats st) size))
-     (route-input routes (ctx size g) st ev)]))
+     (define f0 (state-focus st))
+     (define-values (st* effs)
+       (route-input (or (state-routes st) (app-routes)) (ctx size g) st ev))
+     (if (eqv? f0 (state-focus st*))
+         (values st* effs)
+         (values (emit st* 'focus-changed (list (state-focus st*) f0)) effs))]))
 
 ;;; ---------- 装配 ----------
 
-(define (boot w h #:text [text ""] #:name [name "*scratch*"]
+;; 把插件贡献叠加到基础表上，得到本次运行的 op / prompt / panel / region / 键表 / 匹配层，
+;; 并编译路由存进 State（step 从 State 读，不依赖插件）。
+(define (boot w h #:text [text ""] #:name [name #f]
                    #:root [root (current-directory)]
-                   #:enabled [enabled panels-spec])
+                   #:plugins [plugins (plugins-by-names enabled-plugin-specs)])
+  (define reg (install-plugin-ops base-op-registry plugins))
+  (define prompts (install-plugin-prompts base-prompt-kinds plugins))
+  (define panel-reg (install-plugin-panels base-panel-registry plugins))
+  (define region-list (install-plugin-regions base-regions plugins))
+  (define kt (compose-keymaps (append key-tables-spec (collect-key-tables plugins))))
+  (define matchers (append doc-key-matchers-spec (collect-doc-key-matchers plugins)))
+  (define hooks (collect-hooks plugins))
+  (define faces (collect-faces plugins))
+  (define routes (app-routes reg prompts kt))
   (define ed0 (blank-editor))
   (define-values (ed1 did vid)
     (if name
         (add-document-view! ed0 text w (max 1 (- h 1)) name)
         (values ed0 #f #f)))
+  ;; 为**所有已注册面板**各建一个文档（含插件面板）。
   (define-values (ed2 vids)
-    (for/fold ([ed ed1] [vids (hash)]) ([pid (in-list enabled)])
-      (define nm (panel-doc-name pid))
-      (unless (panel-lookup base-panel-registry nm)
-        (error 'boot "面板未注册: ~a" nm))
+    (for/fold ([ed ed1] [vids (hash)]) ([nm (in-list (panel-names panel-reg))])
       (define-values (ed* _pdid vid*) (add-panel! ed "" w 1 nm))
       (values ed* (hash-set vids nm vid*))))
   (define docs
@@ -1092,12 +1139,19 @@
   ;; 底盘：侧栏（区域 sidebar，贴根）+ 主区（编辑器 / 状态栏）。
   (define tree-vid (hash-ref vids "*tree*"))
   (define status-vid (hash-ref vids "*status*"))
-  (define right (split 'v (list (item 1 1 1 2 (editor-tile 0 vid))          ; 编辑区 flex（min 2）
-                                (item 1 0 0 1 (panel-tile 1 status-vid)))))  ; 状态栏 1 行
-  (define base (split 'h (list (item 28 0 0 1 (panel-tile 2 tree-vid))        ; 侧栏固定 28 列
+  (define right (split 'v (list (item 1 1 1 2 (editor-tile 0 vid default-border))          ; 编辑区 flex（min 2）
+                                (item 1 0 0 1 (panel-tile 1 status-vid default-border)))))  ; 状态栏 1 行
+  (define base (split 'h (list (item 28 0 0 1 (panel-tile 2 tree-vid default-border))        ; 侧栏固定 28 列
                                (item 1 1 1 2 right))))
-  (define st0 (feature-set (make-state #:ed ed2 #:docs docs #:tiling (tiling base) #:focus 0)
-                           'panels base-panel-registry))
-  (define st1 (feature-set st0 'tree (tree-init root)))
-  (define st2 (region-set-active st1 'sidebar "*tree*"))
-  (region-set-active st2 'log "*log*"))
+  (define st0 (make-state #:ed ed2 #:docs docs #:tiling (tiling base) #:focus 0))
+  (define st1 (feature-set st0 'panels panel-reg))
+  (define st2 (feature-set st1 'regions region-list))
+  (define st3 (feature-set st2 'doc-key-matchers matchers))
+  (define st4 (feature-set st3 'routes routes))
+  (define st5 (feature-set st4 'plugins plugins))
+  (define st5b (feature-set st5 'hooks hooks))
+  (define st5c (feature-set st5b 'faces faces))
+  (define st6 (run-plugin-boots st5c plugins))
+  (define st7 (feature-set st6 'tree (tree-init root)))
+  (define st8 (region-set-active st7 'sidebar "*tree*"))
+  (region-set-active st8 'log "*log*"))
