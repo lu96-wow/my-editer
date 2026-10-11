@@ -151,6 +151,11 @@
   (define w (state-focus st))
   (define v (and w (layout-wid-vid (state-layout st) w)))   ; focus 是 wid；取显示的 vid
   (cond
+    ;; 正在输入多键命令：状态栏显示已按的键（如 "C-n C-n"），命令完成即清。
+    [(let ([ks (feature-ref st 'keys '())]) (and (pair? ks) ks))
+     => (lambda (ks)
+          (values (string-append " " (string-join ks " "))
+                  (list (cons 0 'status-bar))))]
     [(placing? (feature-ref st 'placing #f))
      (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target)

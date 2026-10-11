@@ -906,6 +906,14 @@
   (prefix-set st (if (eq? (prefix-of st) 'new) 'new2 'new)))
 (define (prefix-cancel st) (prefix-set st #f))
 
+;;; ---------- 正在输入的命令序列（状态栏回显） ----------
+;; feature 'keys = 本次命令已按下的键标签（字符串列表）。
+(define (key-seq st) (feature-ref st 'keys '()))
+(define (key-seq-push st label)
+  (if label (feature-set st 'keys (append (key-seq st) (list label))) st))
+(define (key-seq-clear st) (feature-set st 'keys '()))
+(define (prefix-enter-op? o) (memq (car o) '(prefix-new prefix-split)))
+
 ;; 打开浮窗 = 新建一个窗口 wid 显示 vid，并压栈。
 (define (open-float st vid anchor want-w want-h)
   (define l (state-layout st))
@@ -1080,17 +1088,26 @@
       [(and (placing-of st) (not (placing-op-seq? ops))) (cancel-placing st)]
       [(and (prefix-of st) (not (prefix-op-seq? ops))) (prefix-cancel st)]
       [else st]))
-  (for/fold ([st st0] [effs '()]) ([o (in-list ops)])
-    (define-values (st* e*) (op-run reg ctx st ev o))
-    (values st* (append effs e*))))
+  (define-values (st1 effs)
+    (for/fold ([st st0] [effs '()]) ([o (in-list ops)])
+      (define-values (st* e*) (op-run reg ctx st ev o))
+      (values st* (append effs e*))))
+  ;; 前缀被本次命令消费：除非这次又进了前缀，否则清掉（不然会残留）。
+  (values (if (and (prefix-of st1) (not (for/or ([o (in-list ops)]) (prefix-enter-op? o))))
+              (prefix-cancel st1)
+              st1)
+          effs))
 
-(define (op-runner reg ops)
-  (lambda (ctx st ev k) (run-ops reg ctx st ev ops)))
+;; 命令执行前先记下本次按键；命令结束（前缀不再活跃）则清空。
+(define (op-runner reg binding ops)
+  (lambda (ctx st ev k)
+    (define-values (st* effs) (run-ops reg ctx (key-seq-push st (binding-label binding)) ev ops))
+    (values (if (prefix-of st*) st* (key-seq-clear st*)) effs)))
 
 ;; routes 可按需传扩展过的原语表 / prompt kind 表（默认 = 基础表）。
 (define (app-routes [reg base-op-registry] [prompts base-prompt-kinds])
   (define reg* (op-register reg 'submit-prompt (lambda (ctx st ev args) (submit-prompt prompts st))))
-  (define runner (lambda (ops) (op-runner reg* ops)))
+  (define runner (lambda (binding ops) (op-runner reg* binding ops)))
   (define global (compile-routes key-table scope-of runner))
   ;; document 绑定的表优先：焦点文档有表就先试它，不命中再落到全局表。
   (define doc-route

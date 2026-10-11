@@ -23,7 +23,7 @@
 (define (scope-of s) always)
 (define routes
   (compile-routes table scope-of
-                  (lambda (ops) (handled (lambda (st ev) (values st (list (length ops))))))))
+                  (lambda (binding ops) (handled (lambda (st ev) (values st (list (length ops))))))))
 (define c (ctx (cons 10 10) '()))
 
 (check-equal? (call-with-values (lambda () (route-input routes c (make-state) (key-event 'a '()))) list)
@@ -34,7 +34,7 @@
 ;; 作用域不命中 → 不派发
 (define routes2
   (compile-routes '(((key a) editor (one))) (lambda (s) (lambda (st ev) #f))
-                  (lambda (ops) (handled (lambda (st ev) (values st (list (length ops))))))))
+                  (lambda (binding ops) (handled (lambda (st ev) (values st (list (length ops))))))))
 (check-equal? (call-with-values (lambda () (route-input routes2 c (make-state) (key-event 'a '()))) list)
               (list (make-state) '()))
 

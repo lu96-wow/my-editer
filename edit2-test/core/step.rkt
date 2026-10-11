@@ -138,6 +138,16 @@
 (check-equal? (prefix-of (run1 (fresh) (key-event 's '(ctrl)))) 'split)
 (check-equal? (prefix-of (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl)))) 'new)
 
+;; ---- 命令序列回显：按 C-n/C-s 时状态栏显示已按键，命令完成后清 ----
+(define sk1 (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl))))
+(check-true (regexp-match? #rx"C-n" (status-string sk1)))       ; 显示 "C-n"
+(define sk2 (run1 sk1 (key-event 'n '(ctrl))))
+(check-true (regexp-match? #rx"C-n C-n" (status-string sk2)))   ; 累加 "C-n C-n"
+(define sk3 (run1 sk2 (text-event "f")))                        ; 完成（进输入行）
+(check-false (regexp-match? #rx"C-n" (status-string sk3)))      ; 已清
+(define sk4 (run1 (fresh) (key-event 's '(ctrl))))
+(check-true (regexp-match? #rx"C-s" (status-string sk4)))
+
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
 (define st3v (struct-copy state st3
