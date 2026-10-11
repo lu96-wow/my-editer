@@ -14,7 +14,7 @@
  layout->rectangles set-layout! render-layout
  ;; 编辑原语
  insert! backspace! delete! nav! select-all! copy! cut! paste! undo! redo! set-point! assign!
- scroll! ensure! screen->point
+ scroll! ensure! screen->point point->screen
  ;; 读
  view-did view-document-name view-line view-col view-string view-selection-empty?
  view-id-list document-id-list document-view-list
@@ -104,6 +104,9 @@
 (define (screen->point ed vid row col)
   (define-values (line column) (editor-view-screen-position->point ed vid row col))
   (and line (cons line column)))
+(define (point->screen ed vid line col)
+  (define-values (row column) (editor-view-point->screen-position ed vid (point line col)))
+  (and row (cons row column)))
 (define (face-line! ed did line face) (editor-document-face-line! ed did line face) (void))
 (define (face-batch! ed did fills) (editor-document-face-batch! ed did fills) (void))
 (define (face-range! ed did l0 c0 l1 c1 face)

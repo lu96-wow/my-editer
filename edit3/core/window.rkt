@@ -9,7 +9,8 @@
          wid-float? float-wid-of-vid
          all-wids wid-of-vid has-vid? has-wid?
          set-wid-vid remove-wid*
-         wid-border set-wid-border)
+         wid-border set-wid-border
+         fresh-wid raise-float* focus-wid* open-float* open-float-overlay* close-float*)
 
 (require "state.rkt" "layout.rkt" "resize.rkt" racket/list)
 
@@ -91,3 +92,46 @@
      (struct-copy state st
                   [floats (filter (lambda (f) (not (eqv? w (float-wid f)))) (state-floats st))])]
     [else (struct-copy state st [tiling (layout-remove-wid (state-tiling st) w)])]))
+
+;;; ---------- 状态级浮窗原语（step 与插件共用，不依赖 step） ----------
+
+;; 分配一个新 wid：现有最大整 wid + 1。
+(define (fresh-wid st)
+  (add1 (for/fold ([m -1]) ([w (in-list (all-wids st))])
+          (if (number? w) (max m w) m))))
+
+;; 把浮窗提到表头（z 最上）；不是浮窗则原样。
+(define (raise-float* st w)
+  (define f (float-by-id (state-floats st) w))
+  (if f
+      (struct-copy state st
+                   [floats (cons f (filter (lambda (x) (not (eqv? w (float-wid x))))
+                                           (state-floats st)))])
+      st))
+
+;; 设焦点；焦点是浮窗则一并提到表头。
+(define (focus-wid* st w)
+  (define st1 (struct-copy state st [focus w]))
+  (if (and w (wid-float? st1 w)) (raise-float* st1 w) st1))
+
+;; 新建浮窗：压表头 + 聚焦。
+(define (open-float* st vid a size border)
+  (define w (fresh-wid st))
+  (struct-copy state st
+               [floats (cons (float w vid a size border) (state-floats st))]
+               [focus w]))
+
+;; 新建浮窗但**不抢焦点**（overlay：菜单/提示；焦点/cursor 留在原主视图）。
+(define (open-float-overlay* st vid a size border)
+  (define w (fresh-wid st))
+  (struct-copy state st [floats (cons (float w vid a size border) (state-floats st))]))
+
+;; 关一个浮窗；若关的是焦点，焦点落到下一个浮窗 / 第一个窗口。
+(define (close-float* st w)
+  (define st1 (remove-wid* st w))
+  (if (eqv? w (state-focus st1))
+      (let ([live (map float-wid (state-floats st1))])
+        (if (pair? live)
+            (struct-copy state st1 [focus (car live)])
+            (struct-copy state st1 [focus (let ([ws (all-wids st1)]) (and (pair? ws) (car ws)))])))
+      st1))

@@ -343,5 +343,14 @@ edit3/
       `core/face.rkt`（`face-stack`/`face-compose`）、`core/face-plugin.rkt`（多插件叠层，
       打开/编辑/移动光标时刷新）、`core/lex.rkt`、`core/kind.rkt`；
       验证插件 `plugins/syntax.rkt`（关键字/字符串/注释/数字）。
+- [x] **补全插件**：`plugins/completion.rkt`（**不抢焦点**的浮窗菜单：编辑器保持焦点
+      → 边打边筛；`before-render` 每帧随光标落位；`popup-window` 滚动窗口；
+      `complete`/`complete-selected` 颜色）。`window.rkt` 加 `open-float-overlay*` 等
+      状态级浮窗原语；插件键表排在基础键表之前。
+- [x] **高亮对齐 edit/**：`core/face.rkt` 加 `palette-color/palette-bg`，`config/theme.rkt`
+      加 `palettes`；`plugins/syntax.rkt` 用调色板；新增 `plugins/words.rkt`（当前词）、
+      `plugins/brackets.rkt`（匹配括号）+ `core/bracket.rkt`；face 刷新改由
+      `after-edit/insert/nav` 钩子驱动（插件接管的按键也能刷新）。
 - [ ] 会话操作暴露给插件（open/save/show/split/close/dirty → 基础模块）
-- [ ] 异步 jobs + overlay/popup + modes/自定义路由（支撑补全 / 文档弹窗）
+- [ ] 异步 jobs（worker + await/deliver/service）—— 让补全候选走语言 worker
+- [ ] overlay/popup + modes + 自定义路由（文档弹窗等）

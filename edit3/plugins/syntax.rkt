@@ -16,9 +16,13 @@
   (hash 'def 'syntax-def 'control 'syntax-control 'macro 'syntax-macro
         'binding 'syntax-binding 'module 'syntax-module))
 
+;; 关键字按分组取主题 'keyword 调色板（与 edit/ 一致）。
+(define category-index
+  (for/hash ([c (in-list keyword-category-order)] [i (in-naturals)]) (values c i)))
+
 (define (keyword-face w)
   (define cat (hash-ref keyword-categories w #f))
-  (and cat (hash-ref category->face cat)))
+  (and cat (palette-color 'keyword (hash-ref category-index cat))))
 
 ;; 跨行状态 = (block-depth . in-string?)
 (define (scan-line st line)

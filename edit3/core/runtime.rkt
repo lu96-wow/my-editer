@@ -18,8 +18,8 @@
 
 (define (run b initial #:perform [perform! default-perform!])
   (let loop ([st initial] [old #f] [old-size #f])
-    (define st1 (emit (refresh-panels! st) 'before-render '()))   ; 面板内容 = State 的纯投影
     (define size ((backend-size b)))
+    (define st1 (emit (refresh-panels! st) 'before-render (list size)))   ; 面板内容 = State 的纯投影
     (define g (layout (state-tiling st1) (state-floats st1) size))
     (define-values (screen rends sels)
       (render st1 g (and (equal? size old-size) old)))

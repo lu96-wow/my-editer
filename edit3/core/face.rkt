@@ -8,9 +8,14 @@
 ;;; 与 face；prefab 形状的 face 不会被误当 overlay。
 
 (provide (struct-out face-stack) face-compose face-layers
+         (struct-out palette-color) (struct-out palette-bg)
          face-runs)
 
 (struct face-stack (layers) #:prefab)   ; layers : (listof face)，先应用的在前
+
+;; 按主题调色板 + 位置取色（如关键字按序号取色）。
+(struct palette-color (kind index) #:prefab)
+(struct palette-bg (kind index) #:prefab)
 
 ;; 把新 face 叠到旧 face 上（旧 #f = 空 → 直接新 face，单层不 stack）。
 (define (face-compose old new)

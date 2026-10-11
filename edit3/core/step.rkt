@@ -67,11 +67,6 @@
   (define v (focused-vid st))
   (and v (view-did (state-ed st) v)))
 
-;; 分配一个新 wid：现有最大整 wid + 1。
-(define (fresh-wid st)
-  (add1 (for/fold ([m -1]) ([w (in-list (all-wids st))])
-          (if (number? w) (max m w) m))))
-
 ;; 焦点 / 空窗口判定。
 (define (pick-focus st)
   (define ws (all-wids st))
@@ -225,20 +220,20 @@
        [(select-all) (select-all! ed v)]
        [(copy) (copy! ed v)] [(cut) (cut! ed v)] [(paste) (paste! ed v)]
        [(backspace) (backspace! ed v)] [(delete) (delete! ed v)])
-     (values (emit (refresh-faces-vid! st v) 'after-edit (list v)) '())]))
+     (values (emit st 'after-edit (list v)) '())]))
 
 (define (insert-text st text)
   (define v (focused-vid st))
   (cond
     [(not v) (values st '())]
     [else (insert! (state-ed st) v text)
-          (values (emit (refresh-faces-vid! st v) 'after-insert (list v text)) '())]))
+          (values (emit st 'after-insert (list v text)) '())]))
 
 (define (nav-focused st dir extend)
   (define v (focused-vid st))
   (cond [(not v) (values st '())]
         [else (nav! (state-ed st) v dir extend)
-              (values (emit (refresh-faces-vid! st v) 'after-nav (list v)) '())]))
+              (values (emit st 'after-nav (list v)) '())]))
 
 (define (doc-display st did)
   (define m (hash-ref (state-docs st) did #f))
@@ -901,7 +896,8 @@
        (define p (screen->point (state-ed st*) vid
                                 (max 0 (- (cursor-event-y ev) (rect-y r)))
                                 (max 0 (- (cursor-event-x ev) (rect-x r)))))
-       (when p (set-point! (state-ed st*) vid (car p) (cdr p))))
+       (when p (set-point! (state-ed st*) vid (car p) (cdr p)))
+       (refresh-faces-vid! st* vid))
      st*]
     [else st*]))
 
@@ -1115,9 +1111,15 @@
   (define prompts (install-plugin-prompts base-prompt-kinds plugins))
   (define panel-reg (install-plugin-panels base-panel-registry plugins))
   (define region-list (install-plugin-regions base-regions plugins))
-  (define kt (compose-keymaps (append key-tables-spec (collect-key-tables plugins))))
+  (define kt (append (append* (collect-key-tables plugins))
+                     (compose-keymaps key-tables-spec)))
   (define matchers (append doc-key-matchers-spec (collect-doc-key-matchers plugins)))
-  (define hooks (collect-hooks plugins))
+  ;; 核心钩子：编辑 / 移动光标后刷新 face（这样插件接管的按键也能刷新）。
+  (define core-hooks
+    (list (reaction* 'after-edit   (lambda (s a) (refresh-faces-vid! s (and (pair? a) (car a)))))
+          (reaction* 'after-insert (lambda (s a) (refresh-faces-vid! s (and (pair? a) (car a)))))
+          (reaction* 'after-nav    (lambda (s a) (refresh-faces-vid! s (and (pair? a) (car a)))))))
+  (define hooks (append core-hooks (collect-hooks plugins)))
   (define faces (collect-faces plugins))
   (define routes (app-routes reg prompts kt))
   (define ed0 (blank-editor))

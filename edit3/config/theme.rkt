@@ -8,7 +8,7 @@
 ;;; 加 / 改一个样式 = 改这里的 palette 一行。配色沿用 edit 的 tree/state 方案。
 
 (provide (struct-out style)
-         rgb palette theme-ref)
+         rgb palette theme-ref palettes palette-ref)
 
 ;; style 值：fg / bg = #f（终端默认）| (rgb r g b) 真彩色 | 0..255 整数（256 色）；
 ;;           attrs = (listof 'bold | 'dim | 'italic | 'underline)。
@@ -57,6 +57,21 @@
    'syntax-comment (style (rgb 120 120 130) #f '(italic))
    'syntax-number  (style (rgb 200 170 240) #f '())
    'word-mark      (style #f (rgb 60 70 90) '())
-   'bracket-match  (style #f (rgb 70 90 70) '())))
+   'bracket-match  (style #f (rgb 70 90 70) '())
+   ;; 补全菜单
+   'complete          (style (rgb 220 220 220) (rgb 40 44 52) '())
+   'complete-selected (style (rgb 20 20 20) (rgb 120 180 240) '())))
 
 (define (theme-ref name) (hash-ref palette name #f))
+
+;; 调色板：按位置取色（palette-color / palette-bg 用）。
+(define palettes
+  (hash
+   'keyword (list (rgb 120 180 240)    ; def
+                  (rgb 230 150 180)    ; control
+                  (rgb 190 150 240)    ; macro
+                  (rgb 235 190 110)    ; binding
+                  (rgb 120 200 200))   ; module
+   'bracket-bg (list (rgb 70 90 70))))
+
+(define (palette-ref name) (hash-ref palettes name '()))

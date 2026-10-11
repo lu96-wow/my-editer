@@ -8,4 +8,4 @@
 (provide enabled-plugins)
 
 (define enabled-plugins
-  '(syntax))
+  '(syntax brackets words completion))

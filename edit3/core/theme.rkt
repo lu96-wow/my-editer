@@ -44,6 +44,12 @@
   (cond [(not f) #f]
         [(style? f) f]
         [(symbol? f) (theme-ref f)]
+        [(palette-color? f)
+         (define cs (palette-ref (palette-color-kind f)))
+         (and (pair? cs) (style (list-ref cs (modulo (palette-color-index f) (length cs))) #f '()))]
+        [(palette-bg? f)
+         (define cs (palette-ref (palette-bg-kind f)))
+         (and (pair? cs) (style #f (list-ref cs (modulo (palette-bg-index f) (length cs))) '()))]
         [else #f]))
 
 ;; 分层叠加：后层非 #f 的分量覆盖前层；attrs 累积。

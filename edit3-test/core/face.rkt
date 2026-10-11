@@ -7,7 +7,9 @@
          "../../edit3/core/step.rkt"
          "../../edit3/core/adapter.rkt"
          "../../edit3/core/face.rkt"
-         "../../edit3/plugins/syntax.rkt")
+         "../../edit3/plugins/syntax.rkt"
+         "../../edit3/plugins/words.rkt"
+         "../../edit3/plugins/brackets.rkt")
 
 (define (run1 st ev) (call-with-values (lambda () (step st (cons 80 24) ev)) (lambda (s e) s)))
 
@@ -33,10 +35,10 @@
 (define st2 (set-focused-path! st tmp))
 (define ed (state-ed st2))
 (define did (view-did ed (focused-vid st2)))
-(check-eq? (document-face-at ed did 0 1) 'syntax-def)      ; define
+(check-equal? (document-face-at ed did 0 1) (palette-color 'keyword 0))      ; define
 (check-eq? (document-face-at ed did 0 10) 'syntax-number)  ; 1
 (check-eq? (document-face-at ed did 0 8) #f)               ; x
-(check-eq? (document-face-at ed did 1 1) 'syntax-control)  ; if
+(check-equal? (document-face-at ed did 1 1) (palette-color 'keyword 1))      ; if
 (check-eq? (document-face-at ed did 2 0) 'syntax-comment)  ; 块注释
 (check-eq? (document-face-at ed did 3 0) 'syntax-comment)  ; 跨行块注释继续
 (check-eq? (document-face-at ed did 3 4) 'syntax-string)   ; "s"
@@ -50,6 +52,35 @@
 (define st5 (set-focused-path! st4 txt))
 (check-false (document-face-at (state-ed st5) (view-did (state-ed st5) (focused-vid st5)) 0 1))
 (delete-file tmp) (delete-file txt)
+
+;;; ---------- 词高亮（光标驱动） ----------
+
+(define wtmp (make-temporary-file "ed3word~a.rkt"))
+(display-to-file "foo bar foo\nbaz foo\n" wtmp #:exists 'truncate)
+(define ws (boot 80 24 #:text (file->string wtmp) #:name wtmp #:plugins (list words-spec)))
+(define ws2 (set-focused-path! ws wtmp))
+(define wed (state-ed ws2))
+(define wdid (view-did wed (focused-vid ws2)))
+(set-point! wed (focused-vid ws2) 0 1)                ; 光标在 foo 里
+(void (refresh-faces-vid! ws2 (focused-vid ws2)))
+(check-eq? (document-face-at wed wdid 0 1) 'word-mark)
+(check-eq? (document-face-at wed wdid 0 9) 'word-mark)   ; 第二个 foo
+(check-false (document-face-at wed wdid 0 5))            ; bar 不上色
+(delete-file wtmp)
+
+;;; ---------- 括号匹配（光标驱动） ----------
+
+(define btmp (make-temporary-file "ed3br~a.rkt"))
+(display-to-file "(foo (bar) baz)\n" btmp #:exists 'truncate)
+(define bs (boot 80 24 #:text (file->string btmp) #:name btmp #:plugins (list bracket-spec)))
+(define bs2 (set-focused-path! bs btmp))
+(define bed (state-ed bs2))
+(define bdid (view-did bed (focused-vid bs2)))
+(set-point! bed (focused-vid bs2) 0 0)                ; 光标在第一个 (
+(void (refresh-faces-vid! bs2 (focused-vid bs2)))
+(check-eq? (document-face-at bed bdid 0 0) 'bracket-match)
+(check-eq? (document-face-at bed bdid 0 14) 'bracket-match)
+(delete-file btmp)
 
 ;;; ---------- 生命周期钩子 ----------
 

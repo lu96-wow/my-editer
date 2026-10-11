@@ -20,6 +20,7 @@ racket edit3/main.rkt [file]
 | `M-b` | 侧栏区域循环成员：文件树 ↔ 缓冲区 |
 | `C-b` / `C-l` | 显示 / 隐藏侧栏 / 日志区域 |
 | `C-t` | 焦点窗口开关边框（每窗独立） |
+| `M-/` | 补全（浮窗菜单：↑↓/Tab 选，Enter 接受，Esc 取消） |
 | `M-e` | 焦点回编辑器 |
 | `M-n` / `M-p` | 焦点在窗口间循环 |
 | 文件树上 ↑↓←→ / Enter | 选择、展开/收起、打开文件 |
@@ -74,7 +75,10 @@ config/
 plugins/
   catalog.rkt      插件目录（名字 → 实现）
   demo.rkt         示例插件
-  syntax.rkt       语法高亮插件（face 插件协议）
+  syntax.rkt       语法高亮（face 插件；关键字用主题 'keyword 调色板）
+  words.rkt        当前词高亮（光标驱动）
+  brackets.rkt     匹配括号高亮（光标驱动）
+  completion.rkt   补全（不抢焦点的浮窗菜单）
 测试在 ../edit3-test/core/。
 ```
 
@@ -104,11 +108,19 @@ plugins/
   `before-render / after-edit / after-insert / after-nav / focus-changed /
   document-opened / document-closed / log-appended`。
 - **face 插件**：`face-plugin = name + applies?(path,text) + scan(path,text,cursor)`；
-  `scan` 返回每行一个 face 向量，多个插件按顺序叠层写成引擎 face。
-  示例 `plugins/syntax.rkt`（关键字/字符串/注释/数字）。
+  `scan` 返回每行一个 face 向量，多个插件按顺序叠层写成引擎 face。颜色可用命名 face，
+  也可用主题调色板 `palette-color`/`palette-bg`（如关键字按分组取色）。
+  核心在 `after-edit / after-insert / after-nav` 与鼠标点击后刷新；
+  示例 `plugins/syntax.rkt`（关键字/字符串/注释/数字）、`plugins/words.rkt`（当前词）、
+  `plugins/brackets.rkt`（匹配括号）。
+- **补全插件**用现成的**浮窗**做菜单（不引入新 overlay 机制），且**不抢焦点**：
+  编辑器保持焦点与光标 → 能**边打边筛**（after-insert/after-edit 重筛）；菜单随光标
+  落位（before-render 钩子每帧重算），候选窗口滚动（`popup-window`）；选中行铺满用
+  `complete-selected`、其余 `complete`。`M-/`（editor 作用域）打开；Up/Down/Tab/Enter/Esc
+  用「有菜单就操作菜单、否则回落原行为」的 op 接住。
 - 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
 - 启用名单在 `config/plugins.rkt`（只给名字），`plugins/catalog.rkt` 解析成实现；
-  未知名字直接报错。默认启用 `'(syntax)`（.rkt/.rktl/.rktd/.scrbl 上色）。
+  未知名字直接报错。默认启用 `'(syntax brackets words completion)`。
 - 示例插件 `plugins/demo.rkt`（op + 面板 + 区域 + 键 + 文档匹配 + on-open + boot）。
 
 启动**不建 scratch 文档**：编辑区是空窗口，从文件树打开文件（或命令行带文件名）。
