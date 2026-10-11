@@ -44,13 +44,15 @@
 ;; 主区：区域（sidebar/log…）往这里贴，而不是裹住整个根。
 ;; 于是状态栏可以是根的最外层底栏（全宽），侧栏只占它上方。
 (struct main (tree) #:transparent)
-(struct pane (vid) #:transparent)
+;; pane / float：窗口有自己的身份 wid，并引用一个视图 vid。
+;; 同一个 vid 可以出现在多个 wid（同 view 多位置）；焦点 / 浮窗栈 / 命中都用 wid。
+(struct pane (wid vid) #:transparent)
 ;; parts : (list (cons size Layout))，size = 整数格数 | 'flex
 (struct split (axis parts) #:transparent)
-(struct float (vid anchor want-w want-h) #:transparent)
+(struct float (wid vid anchor want-w want-h) #:transparent)
 
 ;;; ---------- 唯一状态 ----------
-
+;; focus : wid（窗口身份，不是 vid）；stack : (listof wid)
 (struct state (ed docs views layout focus stack input jobs) #:transparent)
 
 (define (make-state #:ed [ed (make-blank-editor)]

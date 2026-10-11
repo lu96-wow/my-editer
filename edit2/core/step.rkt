@@ -10,6 +10,7 @@
 
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-float close-float cycle-float
+         wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
          region-toggle! region-show! region-hide! region-activate! region-cycle! region-focus!)
 
@@ -32,8 +33,24 @@
               #:when (equal? name (view-document-name ed vid)))
     vid))
 
+;; 焦点 / 布局里的身份都是 wid；取窗口显示的 vid。
+(define (wid-vid st wid)
+  (and wid (layout-wid-vid (state-layout st) wid)))
+
+(define (wid-panel-name st wid)
+  (panel-name st (wid-vid st wid)))
+
+;; 编辑窗格 = 显示的不是面板文档的窗口。
+(define (editor-wids st)
+  (for/list ([w (in-list (layout-wids (state-layout st)))]
+             #:when (not (panel-name st (layout-wid-vid (state-layout st) w))))
+    w))
+
+(define (panel-wid st name)
+  (layout-wid-of-vid (state-layout st) (panel-vid st name)))
+
 (define (focused-did st)
-  (define v (state-focus st))
+  (define v (wid-vid st (state-focus st)))
   (and v (view-did (state-ed st) v)))
 
 (define (set-doc-meta st did m)
@@ -49,94 +66,92 @@
 
 (define (editor-focus? st ev)
   (and (state-focus st)
-       (not (panel-name st (state-focus st)))
+       (not (wid-panel-name st (state-focus st)))
        (not (placing-of st))))
 
 ;;; ---------- 放置选择模式（打开时多窗口 → 选目标窗格） ----------
 
 (define (placing-of st) (feature-ref st 'placing #f))
 
-(define (editor-vids st)
-  (for/list ([v (in-list (layout-vids (state-layout st)))]
-             #:when (not (panel-name st v)))
-    v))
-
-;; 把视图放上屏：0 个编辑窗格 → 填空位/新建；1 个 → 直接替换；
-;; 多个 → 进入选择模式，用户用鼠标/焦点选中目标窗格再回车替换。
+;; 把视图放上屏：0 个编辑窗 → 新建；1 个 → 直接替换；
+;; 多个 → 进选择模式，用户用鼠标/焦点选目标窗格再回车替换（焦点是 wid）。
 (define (place-view st vid)
-  (define es (editor-vids st))
+  (define es (editor-wids st))
   (define l (state-layout st))
   (cond
     [(null? es)
+     (define w (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (cond [(layout-has-empty? l) (layout-fill-empty l (pane vid))]
-                                [(blank? l) (pane vid)]
-                                [else (layout-add-side l (pane vid) 'left 0)])]
-                  [focus vid])]
+                  [layout (cond [(layout-has-empty? l) (layout-fill-empty l (pane w vid))]
+                                [(blank? l) (pane w vid)]
+                                [else (layout-add-side l (pane w vid) 'left 0)])]
+                  [focus w])]
     [(null? (cdr es))
-     (struct-copy state st [layout (layout-replace l (car es) vid)] [focus vid])]
+     (define w (car es))
+     (struct-copy state st [layout (layout-set-pane-vid l w vid)] [focus w])]
     [else
      (define target (if (memv (state-focus st) es) (state-focus st) (car es)))
      (feature-set (struct-copy state st [focus target])
                   'placing (placing vid (state-focus st)))]))
 
-;; 在当前候选窗格间循环（放置模式）。
+;; 在当前候选窗口间循环（放置模式）。
 (define (place-cycle st d)
-  (define cs (editor-vids st))
+  (define cs (editor-wids st))
   (cond
     [(null? cs) st]
     [else
-     (define i (or (for/first ([v (in-list cs)] [i (in-naturals)] #:when (eqv? v (state-focus st))) i) 0))
+     (define i (or (for/first ([w (in-list cs)] [i (in-naturals)] #:when (eqv? w (state-focus st))) i) 0))
      (struct-copy state st [focus (list-ref cs (modulo (+ i d) (length cs)))])]))
 
-;; 回车：把待放视图替换到当前候选窗格。
+;; 回车：把待放视图换到当前候选窗口（改窗口显示的 vid，不动 wid）。
 (define (place-confirm st)
   (define p (placing-of st))
-  (define es (editor-vids st))
+  (define es (editor-wids st))
   (define target (state-focus st))
   (cond
     [(not p) (values st '())]
     [(memv target es)
      (define st* (feature-set st 'placing #f))
      (values (struct-copy state st*
-                          [layout (layout-replace (state-layout st*) target (placing-vid p))]
-                          [focus (placing-vid p)])
+                          [layout (layout-set-pane-vid (state-layout st*) target (placing-vid p))]
+                          [focus target])
              '())]
     [(null? (cdr es))            ; 布局变了只剩一个：直接放它
      (define st* (feature-set st 'placing #f))
+     (define w (car es))
      (values (struct-copy state st*
-                          [layout (layout-replace (state-layout st*) (car es) (placing-vid p))]
-                          [focus (placing-vid p)])
+                          [layout (layout-set-pane-vid (state-layout st*) w (placing-vid p))]
+                          [focus w])
              '())]
     [else (values st '())]))     ; 目标失效且有多个：忽略，等用户重选
 
-;; Esc / 任何其它键：取消，恢复进入前的焦点（待放视图资源保留）。
+;; Esc / 任何其它键：取消，恢复进入前的焦点（wid）。
 (define (cancel-placing st)
   (define p (placing-of st))
   (cond
     [(not p) st]
     [else
      (define st* (feature-set st 'placing #f))
-     (define f (if (layout-has? (state-layout st*) (placing-prev-focus p))
+     (define f (if (layout-has-wid? (state-layout st*) (placing-prev-focus p))
                    (placing-prev-focus p)
                    (focus-after st* (state-layout st*))))
      (struct-copy state st* [focus f])]))
 
 (define (place-cancel st) (values (cancel-placing st) '()))
 
-;; 鼠标点候选窗格 = 选中目标。
+;; 鼠标点候选窗口 = 选中目标。
 (define (place-pick ctx st ev)
   (define p (placing-of st))
   (define hit (layout-hit (ctx-placements ctx) (cursor-event-x ev) (cursor-event-y ev)))
   (cond
     [(or (not p) (not hit)) (values st '())]
     [else
-     (define vid (placement-vid hit))
-     (cond [(memv vid (editor-vids st)) (values (struct-copy state st [focus vid]) '())]
+     (define w (placement-wid hit))
+     (cond [(memv w (editor-wids st)) (values (struct-copy state st [focus w]) '())]
            [else (values st '())])]))
 
 (define ((focus-panel? name) st ev)
-  (equal? name (panel-name st (state-focus st))))
+  (equal? name (wid-panel-name st (state-focus st))))
 
 (define (log-msg st msg)
   (define lv (view-of-name st "*log*"))
@@ -151,7 +166,7 @@
 ;;; ---------- 编辑命令 ----------
 
 (define (edit-focused st op)
-  (define v (state-focus st))
+  (define v (wid-vid st (state-focus st)))
   (cond
     [(not v) (values st '())]
     [else
@@ -164,13 +179,13 @@
      (values st '())]))
 
 (define (insert-text st text)
-  (define v (state-focus st))
+  (define v (wid-vid st (state-focus st)))
   (cond
     [(not v) (values st '())]
     [else (insert! (state-ed st) v text) (values st '())]))
 
 (define ((nav-handler dir shift?) st ev)
-  (define v (state-focus st))
+  (define v (wid-vid st (state-focus st)))
   (cond
     [(not v) (values st '())]
     [else (nav! (state-ed st) v dir shift?) (values st '())]))
@@ -208,22 +223,24 @@
 
 ;;; ---------- 布局手术 ----------
 
-(define (center-vid st)
-  (for/first ([vid (in-list (layout-vids (state-layout st)))]
-              #:when (not (panel-name st vid)))
-    vid))
+(define (center-wid st)
+  (for/first ([w (in-list (layout-wids (state-layout st)))]
+              #:when (not (panel-name st (layout-wid-vid (state-layout st) w))))
+    w))
 
+;; 分裂焦点窗口：新建一个 **wid**（窗口），显示同一个 vid——不产生新 view。
+;; core 支持同 view 多位置，所以两个窗格可以共享一个视图资源。
 (define (split-focused st axis)
-  (define v (state-focus st))
-  (define did (and v (view-did (state-ed st) v)))
+  (define w (state-focus st))
+  (define v (wid-vid st w))
   (cond
-    [(not did) st]
+    [(not v) st]
     [else
-     (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
+     (define l (state-layout st))
+     (define nwid (layout-fresh-wid l))
      (struct-copy state st
-                  [ed ed*]
-                  [layout (layout-split-pane (state-layout st) v axis nvid)]
-                  [focus nvid])]))
+                  [layout (layout-split-wid l w axis nwid v)]
+                  [focus nwid])]))
 
 ;;; ---------- 区域代数（共用同一块面板的成员） ----------
 ;;;
@@ -248,40 +265,49 @@
   (feature-set st 'region-active
                (hash-set (feature-ref st 'region-active (hash)) rid m)))
 
-;; 区域当前显示的 vid（#f = 隐藏）
+;; 区域当前显示的窗口（wid）；#f = 隐藏。
+(define (region-visible-wid st rid)
+  (define member-vids (for/list ([m (in-list (region-members* rid))]) (panel-vid st m)))
+  (for/first ([w (in-list (layout-wids (state-layout st)))]
+              #:when (memv (layout-wid-vid (state-layout st) w) member-vids))
+    w))
+
+;; 区域当前显示的 vid（#f = 隐藏）——对外 API。
 (define (region-visible-vid st rid)
-  (for/first ([m (in-list (region-members* rid))]
-              #:when (layout-has? (state-layout st) (panel-vid st m)))
-    (panel-vid st m)))
+  (define w (region-visible-wid st rid))
+  (and w (layout-wid-vid (state-layout st) w)))
 
 (define (region-visible? st rid) (and (region-visible-vid st rid) #t))
 
-;; 把 pane 同步成 active 成员（不动焦点）。
+;; 把该区域的窗口同步成 active 成员（不动焦点）。
 (define (region-sync-pane st rid)
   (define r (region-ref rid))
   (define want (panel-vid st (region-active st rid)))
-  (define cur (region-visible-vid st rid))
+  (define cur (region-visible-wid st rid))
+  (define l (state-layout st))
   (cond
     [(not want) st]
-    [(not cur) (struct-copy state st
-                            [layout (layout-add-main (state-layout st) (pane want)
-                                                     (region-side r) (region-size r))])]
-    [(eqv? cur want) st]
-    [else (struct-copy state st [layout (layout-replace (state-layout st) cur want)])]))
+    [(not cur)
+     (define w (layout-fresh-wid l))
+     (struct-copy state st
+                  [layout (layout-add-main l (pane w want)
+                                           (region-side r) (region-size r))])]
+    [(eqv? want (layout-wid-vid l cur)) st]
+    [else (struct-copy state st [layout (layout-set-pane-vid l cur want)])]))
 
 ;; 显 / 隐 / 切换（切换 = 显 ↔ 隐）
 (define (region-show! st rid) (region-sync-pane st rid))
 
 (define (region-hide! st rid)
-  (define cur (region-visible-vid st rid))
+  (define cur (region-visible-wid st rid))
   (cond
     [(not cur) st]
     [else
-     (define st1 (struct-copy state st [layout (layout-remove (state-layout st) cur)]))
+     (define st1 (struct-copy state st [layout (layout-remove-wid (state-layout st) cur)]))
      ;; 隐藏了正在聚焦的成员 → 焦点回编辑器
-     (if (layout-has? (state-layout st1) (state-focus st1))
+     (if (layout-has-wid? (state-layout st1) (state-focus st1))
          st1
-         (let ([c (center-vid st1)]) (if c (struct-copy state st1 [focus c]) st1)))]))
+         (let ([c (center-wid st1)]) (if c (struct-copy state st1 [focus c]) st1)))]))
 
 (define (region-toggle! st rid)
   (if (region-visible? st rid) (region-hide! st rid) (region-show! st rid)))
@@ -299,112 +325,126 @@
 
 ;; 聚焦区域的 active 成员。
 (define (region-focus! st rid)
-  (define v (panel-vid st (region-active st rid)))
-  (if v (struct-copy state st [focus v]) st))
+  (define w (region-visible-wid st rid))
+  (if w (struct-copy state st [focus w]) st))
 
-;; 焦点在可见窗格间循环。
+;; 焦点在可见窗口间循环。
 (define (focus-cycle st d)
   (cond
     [(placing-of st) (place-cycle st d)]
     [else
-     (define vids (layout-vids (state-layout st)))
+     (define ws (layout-wids (state-layout st)))
      (cond
-       [(null? vids) st]
+       [(null? ws) st]
        [else
-        (define idx (or (for/first ([v (in-list vids)] [i (in-naturals)] #:when (eqv? v (state-focus st))) i) 0))
-        (define n (modulo (+ idx d) (length vids)))
-        (struct-copy state st [focus (list-ref vids n)])])]))
+        (define idx (or (for/first ([w (in-list ws)] [i (in-naturals)] #:when (eqv? w (state-focus st))) i) 0))
+        (define n (modulo (+ idx d) (length ws)))
+        (struct-copy state st [focus (list-ref ws n)])])]))
 
 (define (focus-editor st)
-  (define v (center-vid st))
-  (if v (struct-copy state st [focus v]) st))
+  (define w (center-wid st))
+  (if w (struct-copy state st [focus w]) st))
 
 ;; 聚焦某面板（可能属于某区域）：它所在区域一并显示并置 active。
 (define (focus-panel! st name)
   (define rid (for/first ([r (in-list regions)] #:when (member name (region-members r))) (region-id r)))
   (define st* (if rid (region-activate! st rid name) st))
-  (define v (panel-vid st* name))
-  (if v (struct-copy state st* [focus v]) st*))
+  (define w (panel-wid st* name))
+  (if w (struct-copy state st* [focus w]) st*))
 ;;; ---------- 关闭 / 退出（脏则数据化 prompt） ----------
 
 (define (pick-focus st layout)
-  (define vids (layout-vids layout))
-  (cond [(null? vids) #f]
-        [(for/first ([v (in-list vids)] #:when (not (panel-name st v))) v)]
-        [else (car vids)]))
+  (define ws (layout-wids layout))
+  (cond [(null? ws) #f]
+        [(for/first ([w (in-list ws)] #:when (not (panel-name st (layout-wid-vid layout w)))) w)]
+        [else (car ws)]))
 
 (define (focus-after st layout)
-  (if (layout-has? layout (state-focus st)) (state-focus st) (pick-focus st layout)))
+  (if (layout-has-wid? layout (state-focus st)) (state-focus st) (pick-focus st layout)))
 
-;; 从 layout 移除一批 vid；若这批含**全部**编辑视图，则保留一个持久空位，
+;; 从 layout 移除一批**窗口 wid**；若这批含全部编辑窗口，则把一个换成持久空位，
 ;; 不让父 split 塌缩（否则状态栏会被顶到顶上）。
-(define (remove-vids st layout vids)
-  (define editors (filter (lambda (v) (not (panel-name st v))) vids))
+(define (remove-wids st layout wids)
+  (define editors (filter (lambda (w) (not (panel-name st (layout-wid-vid layout w)))) wids))
   (define remaining-editors
-    (for/list ([v (in-list (layout-vids layout))]
-               #:unless (or (memv v vids) (panel-name st v)))
-      v))
+    (for/list ([w (in-list (layout-wids layout))]
+               #:unless (or (memv w wids) (panel-name st (layout-wid-vid layout w))))
+      w))
   (cond
     [(and (pair? editors) (null? remaining-editors))
-     (define l1 (layout-replace-node layout (car editors) (empty-area)))
-     (for/fold ([l l1]) ([v (in-list vids)] #:unless (eqv? v (car editors)))
-       (layout-remove l v))]
-    [else (for/fold ([l layout]) ([v (in-list vids)]) (layout-remove l v))]))
+     (define l1 (layout-replace-wid-node layout (car editors) (empty-area)))
+     (for/fold ([l l1]) ([w (in-list wids)] #:unless (eqv? w (car editors)))
+       (layout-remove-wid l w))]
+    [else (for/fold ([l layout]) ([w (in-list wids)]) (layout-remove-wid l w))]))
+
+;; 显示某 did 的所有窗口 wid。
+(define (doc-wids st did)
+  (define vids (document-view-list (state-ed st) did))
+  (for/list ([w (in-list (layout-wids (state-layout st)))]
+             #:when (memv (layout-wid-vid (state-layout st) w) vids))
+    w))
+
+;; 显示某 vid 的所有窗口 wid（同 view 多位置）。
+(define (vid-wids st vid)
+  (for/list ([w (in-list (layout-wids (state-layout st)))]
+             #:when (eqv? vid (layout-wid-vid (state-layout st) w)))
+    w))
 
 (define (close-doc! st did)
   (define ed (state-ed st))
-  (define vids (document-view-list ed did))
-  (define layout* (remove-vids st (state-layout st) vids))
+  (define wids (doc-wids st did))
+  (define layout* (remove-wids st (state-layout st) wids))
   (struct-copy state st
                [ed (close-document ed did)]
                [docs (hash-remove (state-docs st) did)]
                [layout layout*]
-               [stack (for/fold ([s (state-stack st)]) ([v (in-list vids)]) (remove v s))]
+               [stack (for/fold ([s (state-stack st)]) ([w (in-list wids)]) (remove w s))]
                [focus (focus-after st layout*)]))
 
 ;;; 三级资源操作：窗口 ⊂ 视图 ⊂ 文档，互不混淆。
 ;;;
-;;;   窗口（pane）  只是 layout 里的一个展示位；摘掉它不动 core 里的资源。
-;;;   视图（view）  core 资源；关掉它不碰它的文档（哪怕这是最后一个视图）。
-;;;   文档（doc）   core 资源；关掉它由 core 连带关掉它全部视图。
+;;;   窗口（wid）  只是 layout 里的一个展示位；摘掉它不动 core 里的资源。
+;;;   视图（vid）  core 资源；关掉它不碰它的文档（哪怕这是最后一个视图）。
+;;;   文档（did）  core 资源；关掉它由 core 连带关掉它全部视图。
 ;;;
 ;;; 关文档才会丢文本 → 只有关文档 / 退出需要问保存；关窗口、关视图不丢。
 
-;; 关窗口：从 layout（和浮窗栈）摘掉 pane，view / document 资源原样保留。
-(define (close-window! st vid)
+;; 关窗口（wid）：摘掉这个展示位，view / document 资源原样保留。
+(define (close-window! st wid)
   (cond
-    [(not vid) st]
+    [(not wid) st]
     [else
-     (define layout* (remove-vids st (state-layout st) (list vid)))
+     (define layout* (remove-wids st (state-layout st) (list wid)))
      (struct-copy state st
                   [layout layout*]
-                  [stack (remove vid (state-stack st))]
+                  [stack (remove wid (state-stack st))]
                   [focus (focus-after st layout*)])]))
 
-;; 关视图资源：销毁 core 的 view；document 保留（资源各自独立）。
+;; 关视图资源（vid）：销毁 core 的 view，并摘掉**所有**显示它的窗口；document 保留。
 (define (close-view-resource! st vid)
   (cond
     [(not vid) st]
     [else
-     (define layout* (remove-vids st (state-layout st) (list vid)))
+     (define wids (vid-wids st vid))
+     (define layout* (remove-wids st (state-layout st) wids))
      (struct-copy state st
                   [ed (close-view (state-ed st) vid)]
                   [layout layout*]
-                  [stack (remove vid (state-stack st))]
+                  [stack (for/fold ([s (state-stack st)]) ([w (in-list wids)]) (remove w s))]
                   [focus (focus-after st layout*)])]))
 
 ;; 焦点 / 选中行指向的资源。→ (list did vid name) | #f
 ;;   缓冲区面板：用面板 doc 的光标行（一切皆 document）选中的那一条资源；
-;;   编辑器窗格：就是焦点视图；面板自身不当作可关资源。
+;;   编辑器窗口：就是焦点窗口显示的视图；面板自身不当作可关资源。
 (define (focus-resource st)
-  (define name (panel-name st (state-focus st)))
+  (define name (wid-panel-name st (state-focus st)))
   (cond
     [(equal? name "*buffers*")
      (define items (buffer-items st))
      (define i (or (panel-line st "*buffers*") 0))
      (and (pair? items) (< i (length items)) (list-ref items i))]
     [else
-     (define v (state-focus st))
+     (define v (wid-vid st (state-focus st)))
      (and v (not (panel-name st v))
           (list (view-did (state-ed st) v) v (view-document-name (state-ed st) v)))]))
 
@@ -532,11 +572,11 @@
      (define st2 (set-doc-meta st1 did (doc-meta (path-key path) (document-handle ed* did))))
      (values (place-view st2 vid) '())]))
 
-;; 显示一个已存在的视图：已展示则只聚焦，否则放进中心窗格（原窗格资源保留）。
+;; 显示一个已存在的视图：已在某个窗口就聚焦该窗口，否则放上屏。
 (define (show-view! st vid)
-  (cond
-    [(layout-has? (state-layout st) vid) (struct-copy state st [focus vid])]
-    [else (place-view st vid)]))
+  (define w (layout-wid-of-vid (state-layout st) vid))
+  (cond [w (struct-copy state st [focus w])]
+        [else (place-view st vid)]))
 
 ;; 缓冲区面板回车：
 ;;   view 行 → 显示/替换那个视图（多窗口则进放置模式选目标）；
@@ -589,6 +629,15 @@
     [else (define did (car r))
           (buffers-fold! st (not (hash-has-key? (feature-ref st 'buffers-fold (hash)) did)))]))
 
+;; 资源面板是**唯一**能新建 view 的地方：给选中的 document 加一个未显示的 view。
+(define (new-view-for-focused st)
+  (define r (focus-resource st))
+  (cond
+    [(not (and r (car r))) st]
+    [else
+     (define-values (ed* _nvid) (add-view! (state-ed st) (car r) 40 10))
+     (struct-copy state st [ed ed*])]))
+
 ;;; ---------- 树 ----------
 
 (define (tree-get st)
@@ -628,17 +677,18 @@
      (values (feature-set st 'tree (tree-toggle-dir ts (car cur))) '())]
     [else (values st '())]))
 
-;;; ---------- 浮窗 ----------
-
+;; 打开浮窗 = 新建一个窗口 wid 显示 vid，并压栈。
 (define (open-float st vid anchor want-w want-h)
+  (define l (state-layout st))
+  (define w (layout-fresh-wid l))
   (struct-copy state st
-               [layout (layout-add-float (state-layout st) (float vid anchor want-w want-h))]
-               [stack (cons vid (remove vid (state-stack st)))]))
+               [layout (layout-add-float l (float w vid anchor want-w want-h))]
+               [stack (cons w (remove w (state-stack st)))]))
 
-(define (close-float st vid)
+(define (close-float st wid)
   (struct-copy state st
-               [layout (layout-remove (state-layout st) vid)]
-               [stack (remove vid (state-stack st))]))
+               [layout (layout-remove-wid (state-layout st) wid)]
+               [stack (remove wid (state-stack st))]))
 
 (define (cycle-float st)
   (match (state-stack st)
@@ -651,12 +701,14 @@
   (cond
     [(not hit) (values st '())]
     [else
-     (define-values (vid rx ry) (rect-local hit (cursor-event-x ev) (cursor-event-y ev)))
+     (define w (placement-wid hit))
+     (define vid (placement-vid hit))
+     (define-values (_ rx ry) (rect-local hit (cursor-event-x ev) (cursor-event-y ev)))
      (define ed (state-ed st))
-     ;; 一切皆 document：面板也一样，点击 = 聚焦 + 定位到该 doc 的位置。
+     ;; 一切皆 document：面板也一样，点击 = 聚焦窗口 + 定位到该 doc 的位置。
      (define p (screen->point ed vid (max 0 ry) (max 0 rx)))
      (when p (set-point! ed vid (car p) (cdr p)))
-     (values (struct-copy state st [focus vid]) '())]))
+     (values (struct-copy state st [focus w]) '())]))
 
 (define (cursor-scroll ctx st ev dir)
   (define hit (layout-hit (ctx-placements ctx) (cursor-event-x ev) (cursor-event-y ev)))
@@ -680,18 +732,18 @@
     [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
     [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
     [(and (pair? s) (eq? (car s) 'region))
-     (lambda (st ev) (and (member (panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
+     (lambda (st ev) (and (member (wid-panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
     [else always]))
 
 ;;; ---------- op 解释器（原语） ----------
 
 (define (nav-focused st dir extend)
-  (define v (state-focus st))
+  (define v (wid-vid st (state-focus st)))
   (cond [(not v) (values st '())]
         [else (nav! (state-ed st) v dir extend) (values st '())]))
 
 (define (activate-focused st)
-  (define name (panel-name st (state-focus st)))
+  (define name (wid-panel-name st (state-focus st)))
   (cond
     [(equal? name "*tree*")    (tree-enter st)]
     [(equal? name "*buffers*") (buffers-enter st)]
@@ -752,6 +804,7 @@
     [(buffers-toggle)    (values (buffers-toggle st) '())]
     [(buffers-expand)    (values (buffers-fold! st #f) '())]
     [(buffers-collapse)  (values (buffers-fold! st #t) '())]
+    [(new-view)          (values (new-view-for-focused st) '())]
     [else (values st '())]))
 
 ;; 一条命令 = 原语序列。
@@ -803,9 +856,15 @@
     (for/fold ([d (hash did (doc-meta #f (document-handle ed2 did)))]) ([(nm v) (in-hash vids)]
                                                                             #:unless (eq? nm 'editor))
       (hash-set d (view-did ed2 v) (doc-meta #f #f))))
-  ;; 底盘：config 的 frame 数据 → Layout（主区 + 状态栏）；区域由 region-active + show/toggle 决定。
-  (define base (parse-layout frame-spec (lambda (id) (if (eq? id 'editor) vid (hash-ref vids (panel-doc-name id))))))
-  (define st0 (make-state #:ed ed2 #:docs docs #:layout base #:focus vid))
+  ;; 底盘：config 的 frame 数据 → Layout（主区 + 状态栏）；每个 pane 分配一个 wid。
+  (define base
+    (let ([n 0])
+      (parse-layout frame-spec
+                    (lambda (id)
+                      (define v (if (eq? id 'editor) vid (hash-ref vids (panel-doc-name id))))
+                      (begin0 (cons n v) (set! n (add1 n)))))))
+  (define editor-wid (layout-wid-of-vid base vid))
+  (define st0 (make-state #:ed ed2 #:docs docs #:layout base #:focus editor-wid))
   (define st1 (feature-set st0 'tree (tree-init root)))
   (define st2 (region-set-active st1 'sidebar "*tree*"))
   (define st3 (region-set-active st2 'log "*log*"))

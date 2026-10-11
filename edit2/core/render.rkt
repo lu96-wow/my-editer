@@ -14,5 +14,7 @@
 (define (render st placements size old)
   (define w (car size))
   (define h (cdr size))
-  (render-layout (state-ed st) placements (state-focus st) w h old))
+  ;; focus 是 wid；core 的 active 要 vid（同 view 多位置时两个窗格都会透出光标）。
+  (define active (layout-wid-vid (state-layout st) (state-focus st)))
+  (render-layout (state-ed st) placements active w h old))
 

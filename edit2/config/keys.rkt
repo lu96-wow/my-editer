@@ -63,6 +63,7 @@
     ((key right) (panel buffers) (buffers-expand))
     ((key left)  (panel buffers) (buffers-collapse))
     ((key space) (panel buffers) (buffers-toggle))
+    ((key n)     (panel buffers) (new-view))       ; 唯一新建 view 的入口
     ((key enter) (panel buffers) (activate))
 
     ;; ---------- 编辑 ----------

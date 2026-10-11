@@ -29,9 +29,10 @@ jobs   : State -> [Job]                                  ; 后台需求，纯
 (struct view (doc cursor scroll extra)) ; cursor = selection/range；scroll = 视口
 
 ;; ---- 布局树：用户意图，不是几何 ----
-Layout = (pane vid)
+;; pane / float 有自己的身份 wid（窗口），并引用一个 vid（视图）。
+Layout = (pane wid vid)
        | (split 'h|'v (list (weight . Layout)))
-       | (float vid anchor want-w want-h)      ; 浮动窗 = 这里的一种
+       | (float wid vid anchor want-w want-h)   ; 浮动窗 = 这里的一种
        | (empty)
 
 ;; ---- 唯一状态 ----
@@ -39,8 +40,8 @@ Layout = (pane vid)
   (docs    ; id -> doc
    views   ; id -> view
    layout  ; Layout            意图树；几何永不存
-   focus   ; vid
-   stack   ; (listof vid)      浮窗 z 序 + 模态序（栈头接键）
+   focus   ; wid               窗口身份（不是 vid）
+   stack   ; (listof wid)      浮窗 z 序 + 模态序（栈头接键）
    input   ; #f | (prefix sym) | (prompt label text on-submit)
    jobs))  ; id -> (kind . key) 在途请求
 ```
@@ -144,6 +145,12 @@ Layout = (pane vid)
   关其中一个视图资源不影响文档和其余视图。
 - **按路径复用文档**：打开已在资源里的文件不新建 document：复用它的视图（已显示就聚焦，
   否则显示）；没有视图的孤儿文档现建一个视图。资源身份 = 规范化路径（`simplify-path`）。
+- **wid / vid 分离**：窗口（pane / float）有自己的身份 **wid**，并引用一个视图 **vid**。
+  焦点、浮窗栈、命中定位都用 wid。同一个 vid 可以出现在多个 wid → **同 view 多位置**。
+- **分裂（`C-w`）只新建窗口 wid**，显示同一个 vid——不产生新 view；关一个窗口其他窗口不受影响，
+  关 view 资源（vid）则显示它的所有窗口一起消失。
+- **视图只在资源面板创建**：`n` 给选中的 document 新建一个 view。树打开：有 view 就复用，
+  只有新文档 / 孤儿文档才建第一个 view。
 - core 提供全部结构原语：`editor-close-view`、`editor-close-document`（后者自动连带视图）；
   `edit2` 只负责把「窗口 / 视图 / 文档」这三个动作接到 layout 与焦点上。
 - **资源显示路径**：`doc-meta.path` 有值时，状态栏与缓冲区面板都显示相对文件树根
