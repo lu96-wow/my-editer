@@ -51,8 +51,10 @@ core/
   border.rkt       纯装饰（分隔线 + 浮窗框）
   render.rkt       geometry → core rectangle → piece
   window.rkt       wid ↔ vid（平铺/浮窗统一）
-  runtime.rkt      backend 协议 + 事件循环
-  step.rkt         转移 + op 注册表 + 路由
+  job.rkt          异步工作（job / service / jobs 账本）
+  runtime.rkt      backend 协议 + 事件循环 + 输入/worker 线程
+  session.rkt      会话操作（纯）：open/save/show/split/close/dirty/区域/输入行/树/浮窗/指针
+  step.rkt         路由 + op 解释器 + 装配（领域原语调 session）
   panels.rkt       面板 = 文档（状态栏 / 文件树 / 缓冲区 / 输入行 / 日志）
   adapter.rkt      core/editor 边界（唯一 require core/editor）
   route.rkt        CPS 声明式路由
@@ -66,6 +68,8 @@ core/
   hook.rkt         生命周期钩子（reaction + emit）
   face.rkt         face 分层值（face-stack / face-compose）
   face-plugin.rkt  face 插件协议 + 每文档刷新
+  bracket.rkt      括号配对（光标处括号与其配对位置）
+  bracket-depth.rkt 括号嵌套深度背景（整篇，词法跳过字符串/注释/字符字面量）
   lex.rkt kind.rkt 词法器 / 文档类型判定（插件共用）
   theme.rkt        face → ANSI
   backend/tui.rkt  racket-tui 后端
@@ -76,9 +80,12 @@ plugins/
   catalog.rkt      插件目录（名字 → 实现）
   demo.rkt         示例插件
   syntax.rkt       语法高亮（face 插件；关键字用主题 'keyword 调色板）
+  brackets.rkt     括号高亮（嵌套深度背景 + 光标配对；'bracket / 'bracket-match）
   words.rkt        当前词高亮（光标驱动）
-  brackets.rkt     匹配括号高亮（光标驱动）
-  completion.rkt   补全（不抢焦点的浮窗菜单）
+  completion.rkt   补全（不抢焦点的浮窗菜单；候选含 require 绑定名）
+  async-demo.rkt   异步 jobs 示例（M-o 发 worker，'job 钩子接结果）
+  lang/source.rkt  #lang / require / 定义 / provide 的启发式扫描（纯）
+  lang/pool.rkt    require spec → 最终绑定名（only-in/prefix-in/rename-in…）+ 模块导出
 测试在 ../edit3-test/core/。
 ```
 
@@ -97,6 +104,7 @@ plugins/
              #:doc-key-matchers (list (cons '(ext "rkt") table))   ; 文档打开时匹配
              #:faces            (list face-plugin)                   ; 高亮层（可多个叠加）
              #:hooks            (list (reaction* 'after-edit proc))  ; 生命周期钩子
+             #:services         (list (service 'words words-handler)) ; worker（payload -> result，纯）
              #:on-open          (lambda (st did path) st)
              #:boot             (lambda (st) st))
 ```
@@ -119,6 +127,9 @@ plugins/
   `complete-selected`、其余 `complete`。`M-/`（editor 作用域）打开；Up/Down/Tab/Enter/Esc
   用「有菜单就操作菜单、否则回落原行为」的 op 接住。
 - 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
+- **异步 jobs**：插件用 `job-submit` 登记工作（纯），`jobs` 从 State 取待办；runtime 的
+  worker 线程池按 `#:services` 的 `kind` 跑纯 handler，结果以 `job-event` 回注事件流；
+  `step` 完成后 `emit 'job`，插件在 `'job` 钩子里按 `tag` 消费。示例 `plugins/async-demo.rkt`。
 - 启用名单在 `config/plugins.rkt`（只给名字），`plugins/catalog.rkt` 解析成实现；
   未知名字直接报错。默认启用 `'(syntax brackets words completion)`。
 - 示例插件 `plugins/demo.rkt`（op + 面板 + 区域 + 键 + 文档匹配 + on-open + boot）。
@@ -127,9 +138,7 @@ plugins/
 
 ## 还没做（对齐 edit/ 插件所需的内核能力）
 
-- **会话操作暴露给插件**：open/save/show/split/close/dirty → 抽到基础模块（`step` 与
-  `extension` 共用），让 document/lifecycle 能做成插件。
-- **异步 jobs**：`jobs : state -> [job]` + job/tick 事件 + worker runner + await/deliver/service。
 - **overlay / popup + modes + 自定义路由**：浮层焦点栈、popup 几何、`modes`、
   插件直接贡献带 guard/priority 的路由（支撑补全菜单 / 文档弹窗）。
+- 把补全候选接到**语言 worker**（现在 `completion.rkt` 仍是本地同步词表；异步机制已就绪）。
 - `*.rkt` 等模式键表（`config/keys.rkt` 的 `rkt-keys` 还是占位）。

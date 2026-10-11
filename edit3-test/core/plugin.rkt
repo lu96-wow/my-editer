@@ -29,6 +29,10 @@
 (define st1p (refresh-panels! st1))
 (check-true (regexp-match? #rx"count: 1" (view-string (state-ed st1p) (panel-vid st1p "*demo*"))))
 
+;; 插件直接调 session 会话操作（M-i → split-focused），不依赖 step
+(define st1b (run1 st1 (key-event 'i '(alt))))
+(check-equal? (tile-count st1b) (add1 (tile-count st1)))
+
 ;; 插件贡献的区域可由插件键显隐（M-u → region-toggle demo）
 (define n0 (tile-count st0))
 (define st2 (run1 st0 (key-event 'u '(alt))))

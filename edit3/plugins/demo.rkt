@@ -6,7 +6,7 @@
 ;;;   · 贡献一个原语 demo-bump（把 feature 'demo-count 加一）；
 ;;;   · 贡献一个面板 *demo*，内容读 feature 'demo-count；
 ;;;   · 贡献一个区域 demo（贴主区右侧，成员 *demo*）；
-;;;   · 贡献两个键：M-y 递增、M-u 显隐区域；boot 初始化计数。
+;;;   · 贡献两个键：M-y 递增、M-u 显隐区域、M-i 分裂（直接调 session 会话操作）；boot 初始化计数。
 ;;; 默认不启用（config/plugins.rkt）；测试或用户显式启用。
 
 (require "../core/extension.rkt")
@@ -22,14 +22,20 @@
 (define (demo-bump _ctx st _ev _args)
   (values (feature-set st 'demo-count (add1 (feature-ref st 'demo-count 0))) '()))
 
+;; 直接调用 session 会话操作（split-focused）——证明插件不必依赖 step 也能操作窗口。
+(define (demo-split _ctx st _ev _args)
+  (values (split-focused st 'h #f) '()))
+
 (define demo-plugin
   (make-plugin
    #:name 'demo
-   #:ops (list (cons 'demo-bump demo-bump))
+   #:ops (list (cons 'demo-bump demo-bump)
+               (cons 'demo-split demo-split))
    #:panels (list (panel-spec "*demo*" #f demo-content))
    #:regions (list (region 'demo 'right 24 (list "*demo*") 'main))
    #:key-tables (list '(((key y alt) always (demo-bump))
-                        ((key u alt) always (region-toggle demo))))
+                        ((key u alt) always (region-toggle demo))
+                        ((key i alt) always (demo-split))))
    ;; 文档打开时匹配 .demo 文件：给该 document 挂一张键表（M-g 递增），并跑 on-open。
    #:doc-key-matchers (list (cons '(ext "demo")
                                   '(((key g alt) always (demo-bump)))))

@@ -10,7 +10,10 @@
 ;;;
 ;;; 事件点：
 ;;;   before-render / after-edit / after-insert / after-nav /
-;;;   focus-changed / document-opened / document-closed / log-appended / tick
+;;;   focus-changed / document-opened / document-closed / log-appended /
+;;;   job / tick
+;;;
+;;; 'job 的 args = (list id kind result tag)：后台 job 完成后 step 在 job-finish 后 emit。
 ;;;
 ;;; 插件通过 plugin 的 #:hooks 贡献；boot 把它们存进 feature 'hooks，emit 从 State 读。
 

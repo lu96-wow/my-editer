@@ -11,9 +11,11 @@
 ;;;     打字走基础 insert，after-insert/after-edit 钩子重筛。
 ;;; 目前同步候选（本地词表 + Racket 关键字）；换异步 worker 只需替换 all-words。
 
-(require racket/string racket/list
+(require racket/string racket/list racket/path
          "../core/extension.rkt"
-         "../config/syntax.rkt")
+         "../config/syntax.rkt"
+         "lang/source.rkt"
+         "lang/pool.rkt")
 
 (provide completion-spec)
 
@@ -46,7 +48,42 @@
                 [line (in-list (string-split (document-string ed did) "\n"))]
                 [m (in-list (line-tokens line))])
       (substring line (car m) (cdr m))))
-  (sort (remove-duplicates (append from-docs (hash-keys keyword-categories))) string<?))
+  (define from-imports (with-handlers ([exn:fail? (lambda (_) '())]) (import-pool st)))
+  (sort (remove-duplicates (append from-imports from-docs (hash-keys keyword-categories))) string<?))
+
+;; 打开的文档：绝对路径字符串 -> 该文档**当前缓冲区文本**（供 require 本地文件用）。
+(define (open-local-texts st)
+  (define ed (state-ed st))
+  (for/hash ([did (in-list (document-id-list ed))]
+             #:when (let ([m (hash-ref (state-docs st) did #f)])
+                      (and m (doc-meta-path m))))
+    (define m (hash-ref (state-docs st) did))
+    (values (path->string (path->complete-path (doc-meta-path m)))
+            (document-string ed did))))
+
+;; 焦点 Racket 文档的候选来源：require 引入的**最终绑定名**（only-in / except-in /
+;; prefix-in / rename-in / prefix-rename-in 都按 spec 结构算）+ 顶层定义名。
+;; 本地文件若已作为文档打开，用其当前缓冲区文本扫 (provide …)。
+(define (import-pool st)
+  (define ed (state-ed st))
+  (define vid (focused-vid st))
+  (define did (and vid (view-did ed vid)))
+  (define m (and did (hash-ref (state-docs st) did #f)))
+  (define path (and m (doc-meta-path m)))
+  (cond
+    [(not (racket-file? path)) '()]
+    [else
+     (define text (view-string ed vid))
+     (define-values (lang forms) (requires-context text))
+     (define specs (require-specs-of-forms lang forms))
+     ;; 半成品 Racket 文件（还没写 #lang / require）兜底给 racket/base。
+     (define specs* (if (pair? specs) specs (list 'racket/base)))
+     (define base-dir (let-values ([(d _f _n) (split-path path)])
+                        (if (path? d) d (current-directory))))
+     (define open (open-local-texts st))
+     (define imported (append* (for/list ([s (in-list specs*)]) (spec-names s base-dir open))))
+     (define locals (map symbol->string (definitions-of-forms forms)))
+     (append imported locals)]))
 
 (define (filter-pool pool prefix)
   (define plen (string-length prefix))

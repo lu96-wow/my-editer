@@ -15,7 +15,7 @@
 ;; 指针：屏幕 0-based 列/行；kind 'press|'release|'move|'scroll
 (struct cursor-event (kind button x y) #:transparent)
 (struct resize-event (w h) #:transparent)
-(struct job-event (id key result) #:transparent)
+(struct job-event (id kind result tag) #:transparent)   ; 后台结果回注（tag 原样带回）
 (struct tick-event (dt) #:transparent)
 
 ;;; ---------- 守卫构造子 ----------

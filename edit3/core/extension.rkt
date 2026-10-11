@@ -15,7 +15,8 @@
 (require "state.rkt" "event.rkt" "effect.rkt" "op.rkt" "prompt.rkt"
          "panels.rkt" "keymap.rkt" "command.rkt" "route.rkt" "hook.rkt"
          "window.rkt" "layout.rkt" "resize.rkt" "adapter.rkt" "plugin.rkt" "fs.rkt"
-         "face.rkt" "face-plugin.rkt" "lex.rkt" "kind.rkt" "bracket.rkt")
+         "face.rkt" "face-plugin.rkt" "lex.rkt" "kind.rkt" "bracket.rkt"
+         "session.rkt" "job.rkt")
 
 (provide
  ;; ---------- 插件契约 ----------
@@ -75,6 +76,43 @@
  (struct-out route) (struct-out ctx) ctx-placements
  route-input route-input/k guard-and guard-or guard-not always handled pass
  key-is? on-key on-text on-cursor on-resize on-job
+
+ ;; ---------- 会话操作（step 与插件共用） ----------
+ default-border base-regions state-regions state-doc-matchers
+ view-of-name wid-panel-name editor-wids panel-wid focused-did
+ pick-focus focus-after main-wid editor-focus? focus-panel?
+ doc-keys bind-doc-keys apply-doc-keys add-doc-keys focused-keymap
+ set-doc-meta set-focused-path!
+ placing-of place-view place-cycle place-confirm cancel-placing place-cancel place-pick
+ log-msg
+ edit-focused insert-text nav-focused
+ doc-display doc-dirty? save-doc save-focused save-docs
+ center-wid split-focused split-spec
+ region-ref region-members* region-active region-set-active
+ region-visible-wid region-visible-vid region-visible?
+ region-sync-pane region-show! region-hide! region-toggle!
+ region-activate! region-cycle! region-focus!
+ focus-cycle focus-editor focus-panel!
+ remove-wids doc-wids vid-wids close-doc! close-window! close-view-resource!
+ focus-resource close-view-at-focus! request-close-doc-at-focus
+ dirty-dids ask-quit request-quit request-close-doc
+ input-name prompt-of open-prompt close-prompt prompt-answer
+ submit-prompt cancel-prompt submit-with base-prompt-kinds fs-attempt handle-quit
+ path-key doc-by-path open-file* show-view!
+ buffers-enter buffers-current-row buffers-fold! buffers-toggle new-view-for-focused
+ tree-get tree-current tree-enter tree-collapse set-panel-line! tree-current-index
+ tree-move-parent tree-move-child tree-target-dir tree-new-file tree-new-dir tree-delete
+ tree-after-fs! tree-reload tree-hidden-toggle border-toggle
+ prefix-of prefix-set prefix-new prefix-cancel
+ raise-float focus-wid resolve-anchor-rel float-spec
+ open-float close-float cycle-float float-open-named
+ run-focus-op activate-focused
+ cursor-press cursor-scroll
+
+ ;; ---------- 异步工作（jobs / services） ----------
+ (struct-out job) (struct-out service) (struct-out service-registry)
+ make-service-registry service-register service-lookup service-names
+ job-submit job-find job-finish job-done job-forget job-pending jobs run-service
 
  ;; ---------- 文件系统原语 ----------
  fs-read-dir fs-read-file fs-write-file fs-make-file fs-make-dir fs-delete

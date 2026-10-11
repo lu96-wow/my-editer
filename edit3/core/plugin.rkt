@@ -20,13 +20,13 @@
 (provide (struct-out plugin) make-plugin
          install-plugin-ops install-plugin-prompts install-plugin-panels
          install-plugin-regions collect-key-tables collect-doc-key-matchers
-         collect-hooks collect-faces run-plugin-boots run-plugin-open)
+         collect-hooks collect-faces collect-services run-plugin-boots run-plugin-open)
 
 (require racket/list
-         "state.rkt" "op.rkt" "prompt.rkt" "panels.rkt" "hook.rkt")
+         "state.rkt" "op.rkt" "prompt.rkt" "panels.rkt" "hook.rkt" "job.rkt")
 
 (struct plugin (name ops prompt-kinds panels regions key-tables doc-key-matchers
-                faces hooks boot on-open)
+                faces hooks services boot on-open)
   #:transparent)
 
 (define (make-plugin #:name name
@@ -38,9 +38,10 @@
                      #:doc-key-matchers [doc-key-matchers '()]
                      #:faces [faces '()]
                      #:hooks [hooks '()]
+                     #:services [services '()]
                      #:boot [boot #f]
                      #:on-open [on-open #f])
-  (plugin name ops prompt-kinds panels regions key-tables doc-key-matchers faces hooks boot on-open))
+  (plugin name ops prompt-kinds panels regions key-tables doc-key-matchers faces hooks services boot on-open))
 
 ;;; ---------- 装配 ----------
 
@@ -74,6 +75,9 @@
 
 (define (collect-faces specs)
   (append* (for/list ([p (in-list specs)]) (plugin-faces p))))
+
+(define (collect-services specs)
+  (append* (for/list ([p (in-list specs)]) (plugin-services p))))
 
 ;; 依次跑每个插件的 boot（#f 跳过）。
 (define (run-plugin-boots st specs)

@@ -257,7 +257,9 @@ edit3/
     border.rkt                纯装饰（分隔线含交点 + 浮窗框）
     render.rkt                geometry -> core rectangle/piece
     window.rkt                wid ↔ vid（平铺/浮窗统一）：查询 / 改 vid / 摘窗口
-    runtime.rkt               backend 协议 + 事件循环（每帧先 refresh-panels!）
+    session.rkt               会话操作（纯）：打开/保存/显示/分裂/关闭/脏判定/区域/输入行/树/浮窗/指针
+    job.rkt                   异步工作账本（job / service / jobs / job-finish）
+    runtime.rkt               backend 协议 + 事件循环 + 输入/worker 线程（每帧先 refresh-panels!）
     step.rkt                  转移（编辑 / 分裂 / 关窗 / 浮窗 / 面板 / 区域 / 文件 /
                               输入行 / 指针 / 退出）+ op 注册表 + 路由
     panels.rkt                面板 = 文档（状态栏 / 文件树 / 缓冲区 / 输入行 / 日志）
@@ -275,6 +277,8 @@ edit3/
   plugins/
     catalog.rkt               插件目录（名字 → 实现）
     demo.rkt                  示例插件
+    lang/source.rkt           #lang / require / 定义 / provide 启发式扫描（纯）
+    lang/pool.rkt             require spec → 最终绑定名 + 模块导出（纯）
   config/
     plugins.rkt               本次启用哪些插件（只给名字）
   backends / test: edit3-test/core/*.rkt（纯函数 + 装配单测）
@@ -289,11 +293,11 @@ edit3/
 
 ```racket
 (struct plugin (name ops prompt-kinds panels regions
-                     key-tables doc-key-matchers faces hooks boot on-open) #:transparent)
+                     key-tables doc-key-matchers faces hooks services boot on-open) #:transparent)
 ```
 
 - 贡献点对齐 edit2 的注册表：`op-register`（原语）、`prompt-kind-register`、
-  `panel-register`、区域、`keymap` 条目、`doc-key-matchers`（路径匹配）。
+  `panel-register`、区域、`keymap` 条目、`doc-key-matchers`（路径匹配）、`services`（worker）。
 - **文档打开时匹配 + 组合**：`open-file*` / `set-focused-path!` 时，把所有
   `doc-key-matchers` 里命中的表（多插件可同时命中）按顺序 `compose-keymaps` 成一张，
   绑到该 document（`bind-doc-keys`）；同名同 scope 的绑定后表覆盖前表。随后跑
@@ -307,6 +311,12 @@ edit3/
   `scan` 返回每行一个 face 向量。核心在多插件间按顺序 `face-compose` 叠层，写成引擎
   face 区间（`core/face-plugin.rkt`，整篇重扫；edit/ 的按行增量缓存将来可换）。
   刷新时机：打开文档 / 编辑后 / 移动光标后。示例：`plugins/syntax.rkt`。
+- **异步 jobs**：`job = id + kind + payload + tag`。插件用 `job-submit` 把「想发的工作」
+  登记进 State（纯）；`jobs : state -> [job]` 从 State 取待办（id 升序）。runtime 持有
+  唯一可变状态：输入线程 + worker 线程池（`thread` + channel）；worker 按 `kind` 找
+  `service`（`#:services` 贡献，handler 是**纯函数**，不碰 State）并跑，结果以
+  `job-event` 回注同一条事件流；`step` 收到后 `job-finish` 把 open→done 并 `emit 'job`，
+  插件在 `'job` 钩子里按 `tag` 消费。键盘 / 鼠标 / 并发结果走同一条流。
 - 装配器 `install-plugin-*` / `collect-*` / `run-plugin-boots` / `run-plugin-open` 产出本次
   运行的 op / prompt / panel / region / key-table / matcher / hooks / faces，编译成路由后
   **存进 State 的 feature**（`'panels` `'regions` `'doc-key-matchers` `'routes` `'plugins`
@@ -351,6 +361,17 @@ edit3/
       加 `palettes`；`plugins/syntax.rkt` 用调色板；新增 `plugins/words.rkt`（当前词）、
       `plugins/brackets.rkt`（匹配括号）+ `core/bracket.rkt`；face 刷新改由
       `after-edit/insert/nav` 钩子驱动（插件接管的按键也能刷新）。
-- [ ] 会话操作暴露给插件（open/save/show/split/close/dirty → 基础模块）
-- [ ] 异步 jobs（worker + await/deliver/service）—— 让补全候选走语言 worker
+- [x] **括号深度背景**：`core/bracket-depth.rkt`（移植 edit/highlight/bracket-pair 的全量部分，
+      词法跳过字符串 / 注释 / 字符字面量）+ `plugins/brackets.rkt` 叠 `palette-bg 'bracket level`；
+      光标配对叠在其上（`'bracket-match` 覆盖深度色）。
+- [x] **require 词表**：`plugins/lang/source.rkt`（#lang/require/定义/provide 扫描）+
+      `plugins/lang/pool.rkt`（`spec-names` 按 spec 结构算 only-in/except-in/prefix-in/
+      rename-in/prefix-rename-in 后的**最终绑定名**，打开的本地文件用当前缓冲区文本）；
+      `plugins/completion.rkt` 的候选池加入导入名 + 顶层定义名。
+- [x] **会话操作暴露给插件**：纯领域原语抽到 `core/session.rkt`（open/save/show/split/close/dirty/
+      区域/输入行/树/浮窗/指针）；`step` 只留「键表 + op 解释器 + 路由 + 装配」，从 session 调用；
+      `core/extension.rkt` 再导出 session，插件可直接调这些原语（不依赖 step）。
+- [x] **异步 jobs**：`core/job.rkt`（`job` / `service` / 账本 / `jobs`）+ runtime 输入线程与
+      worker 池（`thread` + channel，结果以 `job-event` 回注）；插件 `#:services` 贡献 worker，
+      `'job` 钩子消费结果；示例 `plugins/async-demo.rkt`；语言 worker 待接。
 - [ ] overlay/popup + modes + 自定义路由（文档弹窗等）

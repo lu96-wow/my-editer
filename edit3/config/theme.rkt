@@ -72,6 +72,14 @@
                   (rgb 190 150 240)    ; macro
                   (rgb 235 190 110)    ; binding
                   (rgb 120 200 200))   ; module
-   'bracket-bg (list (rgb 70 90 70))))
+   ;; 括号深度背景：8 层，同明度、仅色相微差，深色不抢字（取自 edit/ 的 tokyo-night）。
+   'bracket (list (rgb 36 40 58)       ; 0 靛蓝
+                  (rgb 28 47 49)       ; 1 青灰
+                  (rgb 48 46 30)       ; 2 橄榄
+                  (rgb 30 49 40)       ; 3 松绿
+                  (rgb 42 34 58)       ; 4 紫罗兰
+                  (rgb 34 44 58)       ; 5 石板
+                  (rgb 38 48 34)       ; 6 苔绿
+                  (rgb 44 38 54))))    ; 7 藕紫
 
 (define (palette-ref name) (hash-ref palettes name '()))

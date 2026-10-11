@@ -9,6 +9,7 @@
 
 (require "../core/extension.rkt"
          "demo.rkt"
+         "async-demo.rkt"
          "syntax.rkt"
          "words.rkt"
          "brackets.rkt"
@@ -16,6 +17,7 @@
 
 (define plugin-catalog
   (list demo-plugin
+        async-spec
         syntax-spec
         words-spec
         bracket-spec
