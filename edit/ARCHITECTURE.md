@@ -86,14 +86,17 @@ Layout = (pane wid vid)
 多个面板可以**共用同一块面板**（互斥显示），由一个显式的 `region` 描述：
 
 ```racket
-(struct region (id side size members))   ; 配置，装配时固定
+(struct region (id side size members anchor))   ; 配置，装配时固定
 (define regions
-  (list (region 'sidebar 'left   28 (list "*tree*" "*buffers*"))
-        (region 'log     'bottom  6 (list "*log*"))))
+  '((sidebar left   28 (tree buffers) root)     ; 贴根 → 占满左侧整高
+    (log     bottom  6 (log))))                 ; 缺省 anchor = main → 让开底部状态栏
 ```
 
 - **成员**：同区面板互斥，同时只显示一个（active）。
 - **显隐**：`layout` 里有没有该区当前成员的 `pane`（不另存布尔）。
+- **锚点 `anchor`**：`'root` = 贴整棵布局的根（成为根 split 的兄弟 → 跨满整屏）；
+  `'main` = 贴主区（`layout-add-main`，状态栏在它外面）。`frame` 里的 `main` 是区域默认的
+  贴附点，于是状态栏能当整屏底栏；侧栏改贴根后即可占满左侧整高。
 - **状态**：每区 active 成员名存 `feature-ref st 'region-active`；不新增 State 字段。
 
 命令语义（显式、无歧义）：
@@ -203,7 +206,8 @@ Layout = (pane wid vid)
 - 相邻平铺窗口共享一条边：上/左窗画底/右边，下/右窗**抑制**其上/左边（内缩 0），
   两窗之间只有一条线（`border-insets`）；浮窗不参与抑制，四边都画；
 - 共享格的两窗边框样式不同是**不该发生**的情况，不特殊处理：后写覆盖（怎么画都行）；
-- 太小的窗口（<3×3，如 1 行状态栏）不放边框。
+- 内缩后放不下内容（<1 格）的窗口不放边框；但**顶边被合并掉的矮面板**（如紧贴主区下方的
+  状态栏：2 行 = 1 行内容 + 1 行底边，顶边与主区底边合并）仍能画出来，从而被包在边框内。
 
 边框行作为**装饰 pane**（`(pane 'window-border row col screen 1000)`）交给 core 合成（`decorations`）。
 

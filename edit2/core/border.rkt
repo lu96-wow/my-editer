@@ -63,22 +63,25 @@
     [(placement-float? p) (values 1 1 1 1)]      ; 浮窗不参与平铺共享，四边都画
     [else
      (define r (placement-rect p))
-     (cond
-       [(or (< (rect-w r) 3) (< (rect-h r) 3)) (values 0 0 0 0)]   ; 太小放不下边框
-       [else
-        (define others (filter (lambda (x) (not (eqv? x p))) (tiled placements)))
-        ;; 正上方有边框窗 → 自己的上边被抑制（线归上方窗的底边）
-        (define above?
-          (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
-            (define ra (placement-rect a))
-            (and (= (+ (rect-y ra) (rect-h ra)) (rect-y r))
-                 (overlap? (rect-x ra) (+ (rect-x ra) (rect-w ra)) (rect-x r) (+ (rect-x r) (rect-w r))))))
-        (define left?
-          (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
-            (define ra (placement-rect a))
-            (and (= (+ (rect-x ra) (rect-w ra)) (rect-x r))
-                 (overlap? (rect-y ra) (+ (rect-y ra) (rect-h ra)) (rect-y r) (+ (rect-y r) (rect-h r))))))
-        (values (if left? 0 1) (if above? 0 1) 1 1)])]))
+     (define others (filter (lambda (x) (not (eqv? x p))) (tiled placements)))
+     ;; 正上方有边框窗 → 自己的上边被抑制（线归上方窗的底边）
+     (define above?
+       (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
+         (define ra (placement-rect a))
+         (and (= (+ (rect-y ra) (rect-h ra)) (rect-y r))
+              (overlap? (rect-x ra) (+ (rect-x ra) (rect-w ra)) (rect-x r) (+ (rect-x r) (rect-w r))))))
+     (define left?
+       (for/or ([a (in-list others)] #:when (wid-border tree (placement-wid a)))
+         (define ra (placement-rect a))
+         (and (= (+ (rect-x ra) (rect-w ra)) (rect-x r))
+              (overlap? (rect-y ra) (+ (rect-y ra) (rect-h ra)) (rect-y r) (+ (rect-y r) (rect-h r))))))
+     (define l (if left? 0 1))
+     (define t (if above? 0 1))
+     ;; 内缩后要剩得下内容（≥1 格），否则整个窗口不放边框。
+     ;; 关键：贴着有边框窗口下方的 1 行面板，其顶边被合并掉（t=0），只剩底边 → 仍放得下。
+     (if (or (< (- (rect-w r) l 1) 1) (< (- (rect-h r) t 1) 1))
+         (values 0 0 0 0)
+         (values l t 1 1))]))
 
 ;;; ---------- 规划：内容 placements + 边框行 ----------
 

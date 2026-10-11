@@ -45,6 +45,16 @@
 (check-false (focus-panel-name ssc))
 (check-equal? (document-string (state-ed (run1 ssc (text-event "Z"))) (focused-did ssc)) "Zabc")
 
+;; 启动不带文件（name = #f）→ 不建初始文档：空窗口，缓冲区无用户文档
+(define snodoc (boot "" #f 60 16 #:root (current-directory)))
+(check-false (focused-did snodoc))
+(check-equal? (length (buffer-rows snodoc)) 0)
+(check-true (regexp-match? #rx"空窗口"
+                           (view-string (state-ed (refresh-panels! snodoc)) (panel-vid snodoc "*status*"))))
+;; 无文档时编辑为 no-op（不崩）
+(define snodoc2 (run1 snodoc (text-event "Z")))
+(check-false (focused-did snodoc2))
+
 ;; 状态栏 / 资源面板显示相对文件树根的路径
 (define rt (current-directory))
 (define ssp (set-focused-path! (boot "abc" "t" 60 16 #:root rt)
@@ -157,7 +167,7 @@
 (define sv (panel-vid se "*status*"))
 (define pse (layout (state-layout se) (cons 60 16)))
 (define sp (for/first ([p (in-list pse)] #:when (eqv? (placement-vid p) sv)) p))
-(check-equal? (rect-y (placement-rect sp)) 15)
+(check-equal? (rect-y (placement-rect sp)) 14)
 
 ;; 缓冲区面板 = 资源管理器。C-d 关选中视图资源：视图 -1，文档不变
 (define sb0 (run1 (fresh) (key-event 'b '(alt))))
@@ -227,15 +237,17 @@
 (check-equal? (length (document-id-list (state-ed so2))) 7)
 (check-equal? (length (view-id-list (state-ed so2))) 7)
 
-;; ---- 文件树贴顶：状态栏全宽贴底 ----
+;; ---- 侧栏贴根占满左侧整高：状态栏在同一右侧区里全宽贴底 ----
 (define sfl (fresh))
 (define psfl (layout (state-layout sfl) (cons 60 16)))
 (define tp (for/first ([p (in-list psfl)] #:when (eqv? (placement-vid p) (panel-vid sfl "*tree*"))) p))
 (define stp (for/first ([p (in-list psfl)] #:when (eqv? (placement-vid p) (panel-vid sfl "*status*"))) p))
 (check-equal? (rect-y (placement-rect tp)) 0)
-(check-equal? (rect-h (placement-rect tp)) 15)
-(check-equal? (rect-y (placement-rect stp)) 15)
-(check-equal? (rect-w (placement-rect stp)) 60)
+(check-equal? (rect-h (placement-rect tp)) 16)     ; 占满左侧整高
+(check-equal? (rect-x (placement-rect stp)) 28)    ; 状态栏在侧栏右侧
+(check-equal? (rect-y (placement-rect stp)) 14)
+(check-equal? (rect-h (placement-rect stp)) 2)
+(check-equal? (rect-w (placement-rect stp)) 32)    ; 60 - 28
 
 ;; ---- 区域代数 ----
 (define sr0 (fresh))
@@ -250,6 +262,20 @@
 (check-true (region-visible? sr4 'sidebar))
 (define srt (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'tab '())))
 (check-equal? (region-active srt 'sidebar) "*buffers*")
+
+;; ---- 区域锚点：侧栏贴根占满左高；日志贴主区让开底部状态栏 ----
+(define (placement-of st name)
+  (define ps (layout (state-layout st) (cons 60 16)))
+  (for/first ([p (in-list ps)] #:when (eqv? (placement-vid p) (panel-vid st name))) p))
+(check-equal? (rect-h (placement-rect (placement-of (fresh) "*tree*"))) 16)   ; 占满左侧整高
+(check-false (placement-of sr3 "*tree*"))                                     ; 隐藏 → 没有
+(check-equal? (rect-h (placement-rect (placement-of sr4 "*tree*"))) 16)       ; 再显示仍占满
+(define slog (run1 (fresh) (key-event 'l '(ctrl))))
+(define plog (placement-of slog "*log*"))
+(define pstat (placement-of slog "*status*"))
+(check-equal? (rect-x (placement-rect plog)) 28)                               ; 在侧栏右侧主区里
+(check-equal? (+ (rect-y (placement-rect plog)) (rect-h (placement-rect plog)))
+              (rect-y (placement-rect pstat)))                                 ; 贴住状态栏上方
 
 ;; ---- 打开时多窗口 → 选择目标窗口（放置模式） ----
 (define (open-hello st) (run1 (run1 (run1 st (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
@@ -375,5 +401,14 @@
 (define-values (_tto tfaces) (tree-content (refresh-panels! to3) (panel-vid to3 "*tree*")))
 (check-not-false (member 'tree-open (map cdr tfaces)))
 (check-not-false (member 'tree-file (map cdr tfaces)))
+
+;; 无初始文档启动 → 从文件树打开文件：就地填空窗口显示
+(define dnd (make-tdir))
+(call-with-output-file (build-path dnd "n.txt") #:exists 'truncate (lambda (o) (display "N" o)))
+(define tnd0 (boot "" #f 60 16 #:root dnd))
+(check-false (focused-did tnd0))
+(define tnd1 (run1 (run1 (tree-focus tnd0) (key-event 'down '())) (key-event 'enter '())))
+(check-equal? (document-string (state-ed tnd1) (focused-did tnd1)) "N")
+(check-equal? (length (buffer-rows tnd1)) 2)   ; 1 document + 1 view（资源树两行）
 
 (displayln "edit2/step.rkt: all tests passed")

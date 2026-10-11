@@ -50,6 +50,24 @@
 (check-equal? runs3 '())
 (check-equal? (c-rect content3 'w1) (rect 0 0 10 5))
 
+;; ---- 矮面板贴着有边框的窗口下方：顶边合并，底边画出来（面板被包进边框） ----
+;; 2 行：1 行内容 + 1 行底边；状态栏就是这种情况。
+(define tv (split 'v (list (cons 'flex (pane 'w1 'a 'window-border))
+                           (cons 2    (pane 'w2 'b 'window-border)))))
+(define pv (layout tv (cons 20 6)))
+(define-values (cv rv) (border-plan tv pv))
+(check-equal? (c-rect cv 'w2) (rect 1 4 18 1))                 ; 只有 1 行内容，顶边被上方窗合并
+(check-equal? (map border-run-col (runs-at rv 5)) '(0))        ; 底边一整行
+(check-equal? (string-length (border-run-text (car (runs-at rv 5)))) 20)
+(check-equal? (map border-run-col (runs-at rv 4)) '(0 19))     ; 两侧竖线，无顶边
+
+;; 孤立矮窗（上下都放不下边框）→ 整个窗口不放边框，内容不内缩
+(define tv2 (pane 'w1 'a 'window-border))
+(define pv2 (layout tv2 (cons 20 2)))
+(define-values (cv2 rv2) (border-plan tv2 pv2))
+(check-equal? rv2 '())
+(check-equal? (c-rect cv2 'w1) (rect 0 0 20 2))
+
 ;; ---- 主题：命名 face → 真彩色 / 256 色 ----
 (check-true (regexp-match? #rx"38;2;105;112;128" (face-bytes 'window-border)))   ; 真彩色
 (check-true (regexp-match? #rx"38;5;196" (face-bytes (style 196 #f '()))))       ; 256 色

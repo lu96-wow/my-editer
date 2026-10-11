@@ -300,8 +300,13 @@
     [(not cur)
      (define w (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (layout-add-main l (pane w want default-border)
-                                           (region-side r) (region-size r))])]
+                  [layout (if (eq? (region-anchor r) 'root)
+                              ;; 贴根：区域成为整棵布局的兄弟 → 跨满整屏（如左侧栏占满左高）
+                              (layout-add-side l (pane w want default-border)
+                                               (region-side r) (region-size r))
+                              ;; 贴主区：在外层状态栏内侧（默认）
+                              (layout-add-main l (pane w want default-border)
+                                               (region-side r) (region-size r)))])]
     [(eqv? want (layout-wid-vid l cur)) st]
     [else (struct-copy state st [layout (layout-set-pane-vid l cur want)])]))
 
@@ -1002,8 +1007,12 @@
 ;;; ---------- 装配 ----------
 
 (define (boot text name w h #:root [root (current-directory)])
+  ;; name = #f → 不建初始文档：编辑区留一个空窗口，文件从文件树打开。
   (define ed0 (blank-editor))
-  (define-values (ed1 did vid) (add-document-view! ed0 text w (max 1 (- h 1)) name))
+  (define-values (ed1 did vid)
+    (if name
+        (add-document-view! ed0 text w (max 1 (- h 1)) name)
+        (values ed0 #f #f)))
   (define-values (ed2 vids)
     (for/fold ([ed ed1] [vids (hash 'editor vid)]) ([pid (in-list panels-spec)])
       (define nm (panel-doc-name pid))
@@ -1012,8 +1021,10 @@
   (define help-v (hash-ref vids "*help*"))
   (assign! ed2 help-v help-text)
   (define docs
-    (for/fold ([d (hash did (doc-meta #f (document-handle ed2 did)))]) ([(nm v) (in-hash vids)]
-                                                                            #:unless (eq? nm 'editor))
+    (for/fold ([d (if did
+                      (hash did (doc-meta #f (document-handle ed2 did)))
+                      (hash))])
+              ([(nm v) (in-hash vids)] #:unless (eq? nm 'editor))
       (hash-set d (view-did ed2 v) (doc-meta #f #f))))
   ;; 底盘：config 的 frame 数据 → Layout（主区 + 状态栏）；每个 pane 分配一个 wid。
   (define base

@@ -2,7 +2,8 @@
 
 ;;; config/layout.rkt —— 布局配置（**纯数据**，不 require 实现）
 ;;;
-;;;   regions        (id side size (member ...))   区域；member 是面板 id
+;;;   regions        (id side size (member ...) [anchor])   区域；member 是面板 id
+;;                  anchor = root（贴根，跨满整屏）| main（贴主区，让开状态栏，默认）
 ;;;   enabled-panels (panel-id ...)                装配时创建哪些面板
 ;;;   frame          骨架数据（编辑区 + 状态栏），由 core 解析成 Layout
 ;;;   editor-split-axis  编辑器拆分方向
@@ -13,18 +14,21 @@
 (provide regions enabled-panels frame editor-split-axis help-text
          border-style borders-on?)
 
+;; 侧栏贴根 → 占满左侧整高；日志贴主区 → 让开底部状态栏。
 (define regions
-  '((sidebar left   28 (tree buffers))
+  '((sidebar left   28 (tree buffers) root)
     (log     bottom  6 (log))))
 
 (define enabled-panels
   '(tree buffers status log help))
 
 ;; 根骨架：主区（区域往这里贴）+ 状态栏（全宽贴底）
+;; 状态栏给 2 行：它自身的边框顶边与主区的底边合并（只画一条线），
+;; 剩下 1 行内容 + 1 行底边；于是状态栏被包在边框内，而不是悬在边框外。
 (define frame
   '(split v
      ((flex (main (pane editor)))
-      (1    (pane status)))))
+      (2    (pane status)))))
 
 (define editor-split-axis 'h)
 

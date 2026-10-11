@@ -10,7 +10,7 @@
 (provide
  (struct-out tree)
  (struct-out region)
- region-members region-side region-size
+ region-members region-side region-size region-anchor
  panel-doc-name parse-region
  panel-specs panel-name? panel-vid panel-name
  refresh-panels! buffer-items buffer-rows tree-relative-path
@@ -24,15 +24,20 @@
 
 ;;; ---------- 区域（共享同一块面板的多个成员，互斥显示） ----------
 
-(struct region (id side size members) #:transparent)
+;; anchor = 'root（贴在整棵布局的根上，跨满整屏）| 'main（贴在主区里，让开外层状态栏）
+(struct region (id side size members anchor) #:transparent)
 
 ;; 面板 id（symbol）↔ 文档名（string）。
 (define (panel-doc-name id) (if (symbol? id) (format "*~a*" id) id))
 
-;; 配置数据 (id side size (member ...)) → region 结构；成员映射到文档名。
+;; 配置数据 (id side size (member ...) [anchor]) → region 结构；anchor 缺省 'main。
 (define (parse-region d)
-  (match-define (list id side size members) d)
-  (region id side size (map panel-doc-name members)))
+  (define id (first d))
+  (define side (second d))
+  (define size (third d))
+  (define members (list-ref d 3))
+  (define anchor (if (>= (length d) 5) (list-ref d 4) 'main))
+  (region id side size (map panel-doc-name members) anchor))
 
 ;;; ---------- 面板清单（core 认识的 panel 名；config 选启用哪些） ----------
 
