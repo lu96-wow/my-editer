@@ -7,14 +7,14 @@
 ;;;   · 高度随内容（外框 = 正文行 + 2 边框），有上界（min(18, 半屏)），超出就滚动；
 ;;;   · 正文按来源拼两段：本地定义（主线程同步扫打开的缓冲区）+ 标准库
 ;;;     （自己的 place worker）。任一段到了就**原地更新**窗口，不 hide / 不 reopen。
-;;;   · 谁接键 / 谁在上层由会话模式 interaction（'complete / 'docs）统一决定：
-;;;     'docs 时文档抬到补全之上；Tab 在两者间切。点文档窗也会切到 'docs。
+;;;   · 谁接键 / 谁在上层由会话的**浮层焦点栈**（core/session/overlay.rkt）统一决定：
+;;;     栈头接键、抬到最上；Tab 在打开的浮层间轮换，Esc 关文档。
 ;;;
 ;;; 与补全只用一个事件解耦（两边不 require 对方）：
 ;;;   complete-selection  args = (vid name mods binding) | (vid #f #f #f)
 ;;;       binding = (list module original-name) | #f
 ;;;       候选名被 prefix-in / rename-in 改过时，按 (模块, 原名) 去查；
-;;;       name = #f（菜单关闭）不关窗 —— 补全完后文档留在原地，Esc / 导航再关。
+;;;       name = #f（菜单关闭）→ **补全结束，文档一并关**。
 
 (require racket/list
          racket/match
@@ -56,7 +56,6 @@
 (define (docs-svc s) (session-service-ref s 'docs))
 (define doc-max-rows 18)             ; 外框高度上界（实际取 min(此, 半屏)）
 (define docs-base-deep 100)          ; 未接键：盖过编辑区（0），但低于补全（2000）
-(define docs-top-deep 3000)          ; 接键：盖过补全
 
 ;; 视图还活着吗（关视图 / 换 buffer 后失效）。
 (define (live-view? s vid) (and vid (memv vid (session-view-id-list s)) #t))
@@ -82,12 +81,9 @@
 (define (doc-doc lines face)
   (panel-doc (for/list ([l (in-list lines)]) (list (string-append " " l) face))))
 
-;; 正文 face：文档是否“接键”由会话模式决定（interaction = 'docs）。
-(define (doc-face s) (if (eq? (session-mode s 'interaction) 'docs) 'docs 'docs-dim))
-
-;; z 序：谁接键谁在上。
-(define (docs-deep s)
-  (if (eq? (session-mode s 'interaction) 'docs) docs-top-deep docs-base-deep))
+;; 正文 face / z 序：谁在浮层栈头（接键）谁亮、谁在上。
+(define (doc-face s) (if (eq? (session-overlay-focus s) 'docs) 'docs 'docs-dim))
+(define (docs-deep s) (overlay-deep s 'docs docs-base-deep))
 
 ;; 浮窗矩形：贴源编辑窗格底部、宽度取窗格宽。→ area | #f
 (define (docs-pos s)
@@ -146,10 +142,10 @@
                            0))
            (set-box! (d-svc-win svc) (docwin vid lines off (query-seq q)))
            (define s1 (session-set-visible s (d-svc-dvid svc) #t))
-           ;; 开窗：没有交互模式（M-d 直开）就默认文档接键；补全开着则保持。
-           (if (session-mode s1 'interaction) s1 (session-set-mode s1 'interaction 'docs))])])]))
+           ;; 开窗：文档进浮层栈（栈空则自动接键；补全已接键则不抢）
+           (session-overlay-open s1 'docs)])])]))
 
-;; 关窗：清查询 / 显示，隐藏；interaction = 'docs 时清掉。
+;; 关窗：清查询 / 显示，隐藏；并从浮层栈移除（焦点自然回落）。
 (define (close-docs s)
   (define svc (docs-svc s))
   (cond
@@ -158,10 +154,7 @@
      (set-box! (d-svc-q svc) #f)
      (set-box! (d-svc-win svc) #f)
      (set-box! (d-svc-rendered svc) #f)
-     (define s1 (session-set-visible s (d-svc-dvid svc) #f))
-     (if (eq? (session-mode s1 'interaction) 'docs)
-         (session-set-mode s1 'interaction #f)
-         s1)]))
+     (session-overlay-close (session-set-visible s (d-svc-dvid svc) #f) 'docs)]))
 
 ;; 本地文件模块：没有 scribble 文档，不启 worker。
 (define (local-binding? binding)
@@ -268,7 +261,7 @@
 
 ;;; ---------- 事件 / 命令 ----------
 
-;; 补全广播的选中项；菜单关闭（name=#f）不关窗。
+;; 补全广播的选中项。菜单关闭（name=#f）→ 补全结束，文档一并关。
 (define (docs-selection-hook s args)
   (define svc (docs-svc s))
   (cond
@@ -276,7 +269,7 @@
     [else
      (match-define (list vid name mods binding) args)
      (cond
-       [(or (not vid) (not name) (not (pair? mods))) s]
+       [(or (not vid) (not name) (not (pair? mods))) (close-docs s)]
        [else (docs-show! s vid name mods binding)])]))
 
 ;; M-d：对光标处标识符独立查询（不依赖补全）。
@@ -314,11 +307,11 @@
   (define mods (requires-of-forms lang forms #:base-dir base-dir))
   (if (null? mods) '(racket/base) mods))
 
-;; 鼠标点中文档窗 → 切到 'docs（抬起 + 接键）。
+;; 鼠标点中文档窗 → 文档进栈头（抬起 + 接键）。
 (define (docs-mouse s _vid _col _row)
   (define svc (docs-svc s))
   (cond
-    [(and svc (unbox (d-svc-win svc))) (session-set-mode s 'interaction 'docs)]
+    [(and svc (unbox (d-svc-win svc))) (session-overlay-focus! s 'docs)]
     [else s]))
 
 ;; 焦点移开 / 光标导航（在编辑器里）→ 关窗。
@@ -364,26 +357,22 @@
      (set-box! (d-svc-win svc) (struct-copy docwin dw [offset off]))
      s]))
 
-;; Tab：切换“谁接键”。
-(define (docs-toggle-interaction! s)
-  (session-set-mode s 'interaction
-                    (if (eq? (session-mode s 'interaction) 'docs) 'complete 'docs)))
-
+;; Tab：在打开着的浮层间轮换接键（补全 ↔ 文档）。
 (define (docs-interaction-routes)
   (list
    ;; Esc：文档接键时关窗（补全菜单已在自己的路由里处理 Esc）
    (route* (key 'escape)
            (session-effect (lambda (s) (values (close-docs s) 'handled)))
-           #:when (scope-mode= 'interaction 'docs) #:priority 1400)
+           #:when (scope-mode= 'overlay 'docs) #:priority 1400)
    ;; Tab：文档可见时切换接键态
    (route* (key 'tab)
-           (session-effect (lambda (s) (values (docs-toggle-interaction! s) 'handled)))
+           (session-effect (lambda (s) (values (session-overlay-cycle s) 'handled)))
            #:when (scope-visible 'docs) #:priority 1300)
    ;; 上下：文档接键时滚文档
    (route* (key 'up)   (session-effect (lambda (s) (values (docs-scroll! s -1) 'handled)))
-           #:when (scope-mode= 'interaction 'docs) #:priority 1200)
+           #:when (scope-mode= 'overlay 'docs) #:priority 1200)
    (route* (key 'down) (session-effect (lambda (s) (values (docs-scroll! s 1) 'handled)))
-           #:when (scope-mode= 'interaction 'docs) #:priority 1200)
+           #:when (scope-mode= 'overlay 'docs) #:priority 1200)
    ;; 左右：文档可见就一直滚文档（高优先于补全的“吞掉”）
    (route* (key 'left)  (session-effect (lambda (s) (values (docs-hscroll! s -5) 'handled)))
            #:when (scope-visible 'docs) #:priority 1100)

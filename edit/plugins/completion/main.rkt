@@ -5,7 +5,7 @@
 ;;; 只做补全菜单（候选），不认识文档：文档窗是另一个插件（plugins/docs/main.rkt）。
 ;;; 两窗通过一个**事件**解耦：本插件在选中项变化时广播 `complete-selection`，
 ;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪；菜单关闭后文档**不**自动收回。
-;;; 两窗允许重叠，谁接键谁在上（z 序由 interaction 模式决定，见 docs 的 #:deep）。
+;;; 两窗允许重叠，谁接键谁在上（浮层焦点栈，见 core/session/overlay.rkt）。
 ;;; 菜单关闭后文档**不**自动收回；关闭时若文档还开着就把接键交给文档。
 ;;;
 ;;; 菜单是一个 **float 面（surface）**（不抢焦点）；打开时随面压一个输入层（模态键表）：
@@ -41,7 +41,7 @@
 
 ;;; ---------- 服务状态 ----------
 
-(struct c-svc (menu runner cache pending parse words wdocs) #:transparent)
+(struct c-svc (menu runner cache pending parse words wdocs rendered) #:transparent)
 ;; menu    : box (menu | #f)      补全菜单浮窗
 ;; runner  : box (runner | #f)    惰性创建（place 只能在 with-tui 之后建）
 ;; cache   : hash 上下文键 -> (listof string)   模块路径 / 导出名
@@ -49,8 +49,8 @@
 ;; parse   : hash did -> parse-entry            头部（#lang/require/定义）解析缓存
 ;; words   : hash did -> wi                    每文档增量词表
 ;; wdocs   : hash did -> handle                词表所反映的文档版本
-;; 当前“谁接键”用会话模式 interaction（'complete / 'docs），不再是这里的可变 box。
-;; 文档窗开没开直接查它的面（docs-open?），不维护镜像。
+;; rendered: box (#f | sig)                    上次装进菜单 view 的内容签名
+;; 谁接键 / 谁在上由会话的**浮层焦点栈**统一决定（core/session/overlay.rkt），这里不存。
 
 (struct menu (vid mvid did start cands idx pool mods specs base-dir) #:transparent)
 ;; vid    : 编辑器 view（发起补全者，接受时改它 / 取光标锚点）
@@ -255,15 +255,24 @@
      (list (string-append line (make-string (max 0 (- content-w (string-length line))) #\space))
            (if (= (+ start i) idx) 'complete-selected 'complete)))))
 
-;; 按当前菜单状态重装菜单文档。
-(define (refresh-menu-doc! s)
+;; 菜单当前应显示的内容 + 签名（候选 / 选中 / 窗口起止 / 宽度任一变化才需重装）。
+;; → (values sig doc w h)
+(define (menu-view s m)
+  (define-values (start rows _x _y w h) (menu-layout s m))
+  (define sig (list (menu-cands m) (menu-idx m) start rows w))
+  (values sig (menu-doc (menu-cands m) (menu-idx m) start rows (- w 2)) w h))
+
+;; 面的 content：内容变了才返回新文档（否则 #f），交给 session-refresh 重装。
+(define (menu-content s)
   (define svc (completion-svc s))
-  (define m (unbox (c-svc-menu svc)))
+  (define m (and svc (unbox (c-svc-menu svc))))
   (cond
-    [(not m) s]
+    [(not m) #f]
     [else
-     (define-values (start rows _x _y w _h) (menu-layout s m))
-     (session-ed-assign! s (menu-mvid m) (menu-doc (menu-cands m) (menu-idx m) start rows (- w 2)))]))
+     (define-values (sig doc _w _h) (menu-view s m))
+     (cond
+       [(equal? sig (unbox (c-svc-rendered svc))) #f]
+       [else (set-box! (c-svc-rendered svc) sig) doc])]))
 
 ;; 每帧浮面落位：菜单开着、源视图还在、光标在视口内才显示。→ (list x y w h) | #f
 (define (menu-pos s)
@@ -290,20 +299,21 @@
      (define svc (completion-svc s))
      (define start (cons line (- col (string-length prefix))))
      (define m0 (menu vid #f (session-view-did s vid) start cands 0 pool mods specs base-dir))
-     (define-values (_start rows _x _y w h) (menu-layout s m0))
+     (define-values (sig0 doc0 w0 h0) (menu-view s m0))
      (define-values (s1 _mdid mvid)
-       (session-add-document s (menu-doc cands 0 0 rows (- w 2)) w h #:name "*complete*"))
+       (session-add-document s doc0 w0 h0 #:name "*complete*"))
      (define m (struct-copy menu m0 [mvid mvid]))
      (set-box! (c-svc-menu svc) m)
-     ;; 默认接键的是补全（会话模式，纯值）
-     (define s1* (session-set-mode s1 'interaction 'complete))
-     ;; 浮面：每帧按 menu-pos 落位 + overlay 标记（dock / 不入缓冲区）+ 压输入层（complete-keys）
+     (set-box! (c-svc-rendered svc) sig0)          ; 初始内容已装入
+     ;; 补全接管接键（浮层焦点栈头），并抬到最上
+     (define s1* (session-overlay-focus! s1 'complete))
+     ;; 浮面：每帧按 menu-pos 落位 + 内容由 menu-content 重算（content 回调）
      (define s2 (session-add-surface s1*
-                  (float-surface 'complete mvid #f
+                  (float-surface 'complete mvid menu-content
                                  (float menu-pos menu-deep)
                                  complete-keys #f #f #f
                                  #:border 'window-border)))
-     (publish-selection! (refresh-menu-doc! s2) m)]))
+     (publish-selection! s2 m)]))
 
 ;; 补全只在「主区编辑视图」上启用（面板 / 叠加层 / 补全菜单自身不弹）。
 (define (completable? s vid)
@@ -372,7 +382,7 @@
            (define start (cons line (- col (string-length prefix))))
            (set-box! (c-svc-menu svc)
                      (struct-copy menu m [start start] [cands cands] [idx idx]))
-           (publish-selection! (refresh-menu-doc! s) (unbox (c-svc-menu svc)))])])]))
+           (publish-selection! s (unbox (c-svc-menu svc)))])])]))
 
 (define (do-move s dir)
   (define svc (completion-svc s))
@@ -383,7 +393,7 @@
      (define n (length (menu-cands m)))
      (define idx (modulo (+ (menu-idx m) dir) n))
      (set-box! (c-svc-menu svc) (struct-copy menu m [idx idx]))
-     (publish-selection! (refresh-menu-doc! s) (unbox (c-svc-menu svc)))]))
+     (publish-selection! s (unbox (c-svc-menu svc)))]))
 
 (define (do-accept s)
   (define m (unbox (c-svc-menu (completion-svc s))))
@@ -398,11 +408,6 @@
      (define start (menu-start m))
      (close-menu (session-ed-replace! s vid (car start) (cdr start) line col cand))]))
 
-;; 文档窗（另一个插件）现在开着吗？直接查它的面，不维护镜像。
-(define (docs-open? s)
-  (define sf (session-surface-ref s 'docs))
-  (and sf (session-visible? s (surface-vid sf))))
-
 ;; 关补全菜单，并广播「无选中」。
 (define (close-menu s)
   (define svc (completion-svc s))
@@ -411,13 +416,13 @@
     [(not m) s]
     [else
      (set-box! (c-svc-menu svc) #f)
+     (set-box! (c-svc-rendered svc) #f)
      (define mvid (menu-mvid m))
      (define did (session-view-did s mvid))
      (define s1 (session-remove-surface s 'complete))
      (define s2 (session-close-document s1 did))
-     ;; 菜单关闭：若文档仍开着则文档接键，否则清掉模式
-     (define s3 (session-set-mode s2 'interaction
-                                  (if (docs-open? s2) 'docs #f)))
+     ;; 出栈：焦点自然落到下一个浮层（文档还开着就轮到它）
+     (define s3 (session-overlay-close s2 'complete))
      (publish-selection! s3 #f)]))
 
 ;;; ---------- 命令 + 键 + handler ----------
@@ -428,9 +433,9 @@
        (key 'escape) (cmd-complete-cancel)))
 
 ;; 声明式命令路由（取代 completion-handler）。
-;; 上下 / Enter / Esc 只在菜单接键（interaction='complete）时生效。
+;; 上下 / Enter / Esc 只在菜单接键（浮层栈头='complete）时生效。
 (define (completion-routes)
-  (define sc (scope-mode= 'interaction 'complete))
+  (define sc (scope-mode= 'overlay 'complete))
   (list
    (route* (command-pred cmd-complete?)
            (handler-effect (lambda (s _cmd) (values (maybe-open s) 'handled)))
@@ -448,18 +453,18 @@
 ;;; ---------- 声明式交互路由 ----------
 ;;;
 ;;; 取代 handler 里 “if active then A else B” 的路由 + docs-* hook 转发：
-;;;   · 上下：interaction='complete 时移候选；
+;;;   · 上下：浮层栈头='complete 时移候选；
 ;;;   · 左右：补全接键时“吞掉”（文档可见时由 docs 的 1100 优先路由处理）。
 (define (complete-interaction-routes)
   (list
    (route* (key 'up)   (cmd-complete-move -1)
-           #:when (scope-mode= 'interaction 'complete) #:priority 1200)
+           #:when (scope-mode= 'overlay 'complete) #:priority 1200)
    (route* (key 'down) (cmd-complete-move 1)
-           #:when (scope-mode= 'interaction 'complete) #:priority 1200)
+           #:when (scope-mode= 'overlay 'complete) #:priority 1200)
    (route* (key 'left)  (session-effect (lambda (s) (values s 'handled)))
-           #:when (scope-mode= 'interaction 'complete) #:priority 1050)
+           #:when (scope-mode= 'overlay 'complete) #:priority 1050)
    (route* (key 'right) (session-effect (lambda (s) (values s 'handled)))
-           #:when (scope-mode= 'interaction 'complete) #:priority 1050)))
+           #:when (scope-mode= 'overlay 'complete) #:priority 1050)))
 
 ;; 改文本后：菜单已开 → 复用池刷新；否则尝试开（自动弹）。
 ;; 只跟「直接编辑」（after-insert），程序写入不触发。
@@ -544,7 +549,7 @@
 
 (define (completion-install s)
   (let* ([svc (c-svc (box #f) (box #f) (make-hash) (make-hash) (make-hash)
-                     (make-hash) (make-hash))]
+                     (make-hash) (make-hash) (box #f))]
          [s1 (session-service-put s 'complete svc)]
          [s2 (for/fold ([s s1]) ([r (in-list (completion-routes))]) (session-add-route s r))]
          [s2b (for/fold ([s s2]) ([r (in-list (complete-interaction-routes))])

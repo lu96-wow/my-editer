@@ -24,6 +24,7 @@
          "../session/prompt.rkt"
          "../session/bottom.rkt"
          "../session/hook.rkt"
+         "../session/overlay.rkt"
          "../session/refresh.rkt"
          "../session/render.rkt"
          "../session/async.rkt"
@@ -74,6 +75,10 @@
 
  ;; 事件 / 服务 / 异步
  hook hook? hook-point hook-proc reaction session-add-hook session-run-hooks
+
+ ;; 浮层焦点栈（谁接键 / 谁在上）
+ session-overlay-focus session-overlay-open session-overlay-focus!
+ session-overlay-close session-overlay-cycle overlay-top-deep overlay-deep
 
  ;; 作用域（事件 / 路由声明用）
  scope? scope-always scope-focus scope-focus-id scope-focus-kind scope-visible
