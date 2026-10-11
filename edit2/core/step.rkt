@@ -812,7 +812,7 @@
   (if ts0 (feature-set st 'tree (tree-toggle-hidden ts0)) st))
 
 ;; C-n 前缀：一次 = 新文件，两次 = 新目录。
-(define (prefix-of st) (let ([i (state-input st)]) (and (memq i '(new new2)) i)))
+(define (prefix-of st) (let ([i (state-input st)]) (and (memq i '(new new2 split)) i)))
 (define (prefix-new st)
   (struct-copy state st [input (if (eq? (state-input st) 'new) 'new2 'new)]))
 (define (prefix-cancel st) (struct-copy state st [input #f]))
@@ -876,6 +876,7 @@
     [(eq? s 'prompt) (lambda (st ev) (prompt? (state-input st)))]
     [(eq? s 'new)  (lambda (st ev) (eq? (state-input st) 'new))]
     [(eq? s 'new2) (lambda (st ev) (eq? (state-input st) 'new2))]
+    [(eq? s 'split) (lambda (st ev) (eq? (state-input st) 'split))]
     [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
     [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
     [(and (pair? s) (eq? (car s) 'region))
@@ -956,6 +957,7 @@
     [(tree-reload)       (values (tree-reload st) '())]
     [(tree-toggle-hidden) (values (tree-hidden-toggle st) '())]
     [(prefix-new)        (values (prefix-new st) '())]
+    [(prefix-split)      (values (struct-copy state st [input 'split]) '())]
     [(prefix-cancel)     (values (prefix-cancel st) '())]
     [(buffers-toggle)    (values (buffers-toggle st) '())]
     [(buffers-expand)    (values (buffers-fold! st #f) '())]
@@ -973,7 +975,7 @@
 
 (define (prefix-op-seq? ops)
   (for/or ([o (in-list ops)])
-    (memq (car o) '(prefix-new prefix-cancel tree-new-file tree-new-dir))))
+    (memq (car o) '(prefix-new prefix-split prefix-cancel tree-new-file tree-new-dir))))
 
 (define (run-ops ctx st ev ops)
   (define st0

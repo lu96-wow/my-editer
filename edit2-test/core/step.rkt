@@ -101,6 +101,23 @@
 (check-equal? (length (remove-duplicates (map rect-x (editor-rects sh2)))) 1)
 (check-equal? (length (remove-duplicates (map rect-y (editor-rects sh2)))) 2)
 
+;; C-s 前缀分屏：↑/↓ 上下堆叠，←/→ 左右并排；Esc 取消；无关键先退前缀
+(define sp1 (run1 (fresh) (key-event 's '(ctrl))))
+(check-equal? (state-input sp1) 'split)
+(define sp2 (run1 sp1 (key-event 'up '())))
+(check-false (state-input sp2))
+(check-equal? (length (editor-wids sp2)) 2)
+(check-equal? (length (remove-duplicates (map rect-y (editor-rects sp2)))) 2)   ; 上下
+(define sp3 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'right '())))
+(check-false (state-input sp3))
+(check-equal? (length (remove-duplicates (map rect-x (editor-rects sp3)))) 2)   ; 左右
+(define sp4 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'escape '())))
+(check-false (state-input sp4))
+(check-equal? (length (editor-wids sp4)) 1)                                     ; Esc 不分
+(define sp5 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'b '(ctrl))))
+(check-false (state-input sp5))                                                 ; 无关键退前缀
+(check-false (region-visible? sp5 'sidebar))                                   ; 并执行该键
+
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
 (define st3v (struct-copy state st3

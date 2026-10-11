@@ -36,9 +36,9 @@
 (define help-text
   (string-append
    "edit2\n\n"
-   " C-q 退出    C-s 保存    C-z/C-y 撤销/重做\n"
+   " C-q 退出    M-s 保存    C-z/C-y 撤销/重做\n"
    " C-a/C-c/C-x/C-v  选区 / 剪贴板\n"
-   " C-w 左右分屏  M-w 上下分屏（新窗留空）    C-d 关窗口    C-t 边框开关    C-b 侧栏显隐  C-l 日志  M-h 帮助\n"
+   " C-s ↑/↓ 上/下堆叠  C-s ←/→ 左右并排（新窗留空）    C-d 关窗口    C-t 边框开关    C-b 侧栏显隐  C-l 日志  M-h 帮助\n"
    " 资源面板（树状：document 根 / view 子）：↑↓ 选，←→/空格 折叠，Enter 打开，n 新建 view\n"
    "   C-d 关选中 view   Delete 关选中 document（连带其视图）\n"
    " 打开目标窗格：单窗直接替换；多窗进选择模式，鼠标/Tab/M-n 选，Enter 替换，Esc 取消\n"

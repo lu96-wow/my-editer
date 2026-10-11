@@ -26,9 +26,18 @@
     ((key n alt)   placing (place-cycle 1))
     ((key p alt)   placing (place-cycle -1))
 
+    ;; ---------- 分屏前缀（C-s 后接方向）：方向沿哪条轴，就沿那条轴分 ----------
+    ;;   ↑/↓ 上/下堆叠（横分割线）    ←/→ 左右并排（竖分割线）
+    ((key s ctrl)  always (prefix-split))
+    ((key up)      split  (split v))
+    ((key down)    split  (split v))
+    ((key left)    split  (split h))
+    ((key right)   split  (split h))
+    ((key escape)  split  (prefix-cancel))
+
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))
-    ((key s ctrl)  always (save))
+    ((key s alt)   always (save))
     ((key u ctrl)  always (tree-reload))          ; 重读磁盘刷新文件树（不动已打开文档）
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
