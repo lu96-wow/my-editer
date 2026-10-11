@@ -273,6 +273,32 @@
 (check-not-false (focused-keymap sdk1))
 (check-false (focused-keymap sdk))                                                ; 没绑就没有
 
+;; ---- 原语注册表：插件可覆盖 / 新增原语，默认 routes 不受影响 ----
+(define sop-routes
+  (app-routes (op-register base-op-registry 'insert-event-text
+                           (lambda (ctx st ev args)
+                             (insert! (state-ed st) (wid-vid st (state-focus st)) "OVR")
+                             (values st '())))))
+(define sop0 (fresh))
+(define sop1 (call-with-values (lambda () (step sop-routes (ctx-of sop0) sop0 (text-event "Z")))
+                               (lambda (s e) s)))
+(check-equal? (document-string (state-ed sop1) (focused-did sop1)) "OVRabc")     ; 自定义原语生效
+(define sop2 (run1 (fresh) (text-event "Z")))
+(check-equal? (document-string (state-ed sop2) (focused-did sop2)) "Zabc")       ; 默认仍是原行为
+
+;; ---- 面板注册表：注册一个新面板（组合），boot 用扩展注册表 + 启用 - -
+(define (foo-content st v) (values "hello-panel" (list (cons 0 'tree-dir))))
+(define foo-reg (panel-register base-panel-registry (panel-spec "*foo*" #f foo-content)))
+(define sfoo (boot "" "x" 60 16 #:panels foo-reg
+                   #:enabled '(tree buffers status input log help foo)))
+(check-not-false (panel-vid sfoo "*foo*"))          ; boot 用了扩展注册表建了文档
+(check-true (panel-name? sfoo "*foo*"))             ; 被认作面板
+(check-eq? (state-panels sfoo) foo-reg)               ; 注册表进了 State
+(define sfoo2 (refresh-panels! sfoo))
+(check-equal? (view-string (state-ed sfoo2) (panel-vid sfoo2 "*foo*")) "hello-panel")  ; 投影写回
+;; 未注册同一注册表时，默认表不认识它
+(check-false (panel-name? (boot "" "x" 60 16) "*foo*"))
+
 ;; ---- 三级资源：窗口 ⊂ 视图 ⊂ 文档 ----
 ;; C-d 只摘窗口：view / document 资源都保留
 (define sc (split-two (fresh)))

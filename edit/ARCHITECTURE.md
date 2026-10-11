@@ -129,6 +129,21 @@ Layout = (pane wid vid)
 于是 edit2 里只保留真正不是文档的东西：树的 root/展开集/目录缓存（`feature 'tree`）。
 曾经的 `feature 'buffers`（独立游标）和 `tree.cursor` 已删除。
 
+**面板注册表**（`core/panels.rkt`）：面板实现是**可注册的纯值**，不是写死的名单：
+
+```racket
+(struct panel-spec (name prep render))   ; prep:(st->st)|#f   render:(st v->text+faces)|#f
+(panel-register reg spec)                ; 加/覆盖，返回新表
+base-panel-registry                      ; tree/buffers/status/input/log/help
+```
+
+- 「注册」（组合）、「启用哪些」（`config/layout.rkt` 的 `enabled-panels`）、
+  「放哪」（`frame` / `regions`）是**三件独立**的事。
+- `boot` 收注册表；注册表存进 `feature 'panels`，`refresh-panels!` 遍历它：
+  先 `prep`（可更新 feature，如树缓存），再按 `render` 重建内容（`render = #f` 则跳过）。
+- 插件加面板 = `(panel-register base-panel-registry (panel-spec "*foo*" prep render))`，
+  再把 `foo` 加进启用 / 布局数据 → **不碰 core**。
+
 ---
 
 ## 4.7 资源生命周期：窗口 ⊂ 视图 ⊂ 文档
@@ -362,6 +377,9 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
   （matcher = `(ext "rkt")` / `(name "Makefile")` / `(regexp …)` / `(any)`，后接键表）
   找第一个命中的表，用 `bind-doc-keys` 挂到该 document 上。这是**插件层的接入点**：
   插件只需往匹配表加一条 `(matcher . 表)`，core 只做匹配、不认识具体模式。
+- **原语注册表**（`core/op.rkt`）：op = `(tag arg …)`；`run-ops` 从 `base-op-registry`
+  查表执行（未知 tag 原样返回）。插件用 `op-register` 加 / 覆盖原语，`app-routes` 接受一张
+  扩展过的表 → **能加新行为**，而不只是排列既有原语。注册表是纯值，可组合、可测。
 
 `route-input/k routes ctx st ev k` 就是「所有守卫都不命中时把控制交给 `k`」的版本；
 `route-input` = `route-input/k` + 兜底返回。
@@ -452,6 +470,7 @@ event.rkt    Event ADT：(key …) (text …) (cursor …) (resize …) (job-don
 effect.rkt   Effect ADT（一次性 IO：open/save/quit/log）
 route.rkt    guard/handler 类型 + route-input / route-input/k（CPS 链）
 keymap.rkt   键表（纯）：compose-keymaps（后盖前）+ keymap-add
+op.rkt       原语注册表（纯）：make-op-registry / op-register / op-run
 mode.rkt     路径 → 键表的匹配层（纯）：matcher-match? / match-doc-keys
 layout.rkt   layout（纯）+ 布局树手术（remove/replace/split/add-side/float）
 render.rkt   placements → core rectangle → patch（返回 piece）

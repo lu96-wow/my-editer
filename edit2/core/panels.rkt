@@ -10,9 +10,12 @@
 (provide
  (struct-out tree)
  (struct-out region)
+ (struct-out panel-spec)
+ (struct-out panel-registry)
  region-members region-side region-size region-anchor
  panel-doc-name parse-region
- panel-specs panel-name? panel-vid panel-name
+ panel-register panel-lookup panel-names base-panel-registry state-panels
+ panel-name? panel-vid panel-name
  refresh-panels! buffer-items buffer-rows tree-relative-path
  tree-content
  tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh
@@ -40,13 +43,32 @@
   (define anchor (if (>= (length d) 5) (list-ref d 4) 'main))
   (region id side size (map panel-doc-name members) anchor))
 
-;;; ---------- 面板清单（core 认识的 panel 名；config 选启用哪些） ----------
+;;; ---------- 面板注册表（可注册、可组合） ----------
+;;;
+;;; 一个面板 = (panel-spec name prep render)：
+;;;   prep   : (st -> st) | #f                         每帧刷新前跑（可更新 feature，如树缓存）
+;;;   render : (st v -> (values text faces)) | #f      内容投影；#f = 不重建（用户文本/静态）
+;;; 注册表是**纯值**：panel-register 返回新表；插件用它加自己的面板。
+;;; 「注册」（本模块）与「启用哪些」（config/enabled-panels）是分开的两件事。
+(struct panel-spec (name prep render) #:transparent)
+(struct panel-registry (specs) #:transparent)
 
-(define panel-specs
-  '("*tree*" "*buffers*" "*status*" "*input*" "*log*" "*help*"))
+(define (panel-register reg spec)
+  (panel-registry
+   (cons spec (filter (lambda (s) (not (equal? (panel-spec-name s) (panel-spec-name spec))))
+                      (panel-registry-specs reg)))))
 
-(define (panel-name? name)
-  (and (string? name) (and (member name panel-specs) #t)))
+(define (panel-lookup reg name)
+  (for/first ([s (in-list (panel-registry-specs reg))] #:when (equal? name (panel-spec-name s))) s))
+
+(define (panel-names reg) (map panel-spec-name (panel-registry-specs reg)))
+
+;; 面板名集合存在 State feature 'panels（boot 时写入注册表）。
+(define (state-panels st) (feature-ref st 'panels base-panel-registry))
+(define (state-panel-names st) (panel-names (state-panels st)))
+
+(define (panel-name? st name)
+  (and (string? name) (and (member name (state-panel-names st)) #t)))
 
 (define (panel-vid st name)
   (define ed (state-ed st))
@@ -57,7 +79,7 @@
 (define (panel-name st vid)
   (define ed (state-ed st))
   (define n (and vid (view-document-name ed vid)))
-  (and (panel-name? n) n))
+  (and (panel-name? st n) n))
 
 ;; 面板文档视图的光标行 = 该面板的「选择行」（一切皆 document）。
 (define (panel-line st name)
@@ -126,14 +148,7 @@
 
 ;;; ---------- 内容（text + face） ----------
 
-(define (panel-text+faces st name v)
-  (case (string->symbol name)
-    [(*status*)  (status-content st)]
-    [(*buffers*) (buffers-content st v)]
-    [(*tree*)    (tree-content st v)]
-    [else (values #f '())]))
-
-(define (status-content st)
+(define (status-content st v)
   (define w (state-focus st))
   (define v (and w (layout-wid-vid (state-layout st) w)))   ; focus 是 wid；取显示的 vid
   (cond
@@ -187,7 +202,7 @@
    (for/list ([did (in-list (document-id-list ed))])
      (define name (document-name ed did))
      (cond
-       [(panel-name? name) '()]
+       [(panel-name? st name) '()]
        [else
         (define label (doc-label st did))
         (define vids (document-view-list ed did))
@@ -290,13 +305,14 @@
 ;;; ---------- 刷新 ----------
 
 ;; 写回面板 doc：文本变了才 assign（保持光标行）；face 每帧重应用（光标移动也要变色）。
-(define (refresh-panel! st name)
+;; render : (st v -> (values text faces))，由注册表提供。
+(define (refresh-panel! st name render)
   (define v (panel-vid st name))
   (cond
     [(not v) st]
     [else
      (define ed (state-ed st))
-     (define-values (text faces) (panel-text+faces st name v))
+     (define-values (text faces) (render st v))
      (cond
        [(not text) st]
        [else
@@ -318,7 +334,20 @@
     [(not ts0) st]
     [else (feature-set st 'tree (tree-ensure ts0))]))
 
+;; 基础面板注册表：prep/render 都在上面定义好后才能构造，所以放这里。
+(define base-panel-registry
+  (panel-registry
+   (list (panel-spec "*status*"  #f status-content)
+         (panel-spec "*buffers*" #f buffers-content)
+         (panel-spec "*tree*"    refresh-tree-cache tree-content)
+         (panel-spec "*input*"   #f #f)
+         (panel-spec "*log*"     #f #f)
+         (panel-spec "*help*"    #f #f))))
+
+;; 遍历注册表：先跑 prep（可更新 feature），再按 render 重建内容（#f = 不重建）。
 (define (refresh-panels! st)
-  (define st1 (refresh-tree-cache st))
-  (for/fold ([s st1]) ([name (in-list '("*status*" "*buffers*" "*tree*"))])
-    (refresh-panel! s name)))
+  (for/fold ([s st]) ([spec (in-list (panel-registry-specs (state-panels st)))])
+    (define s1 (if (panel-spec-prep spec) ((panel-spec-prep spec) s) s))
+    (if (panel-spec-render spec)
+        (refresh-panel! s1 (panel-spec-name spec) (panel-spec-render spec))
+        s1)))

@@ -11,12 +11,13 @@
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-prompt close-prompt prompt-of prefix-of input-name
          open-float close-float cycle-float bind-doc-keys doc-keys focused-keymap
+         base-op-registry op-register
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
          region-toggle! region-show! region-hide! region-activate! region-cycle! region-focus!)
 
 (require racket/string
-         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt"
+         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt" "op.rkt"
          "adapter.rkt" "layout.rkt"
          "border.rkt" "panels.rkt" "fs.rkt" "mode.rkt"
          (rename-in "../config/app.rkt"
@@ -993,64 +994,64 @@
     [else (values st '())]))
 
 ;; 一条原语：ctx st event op -> (values state (listof effect))
-(define (run-op ctx st ev o)
-  (define tag (car o))
-  (define args (cdr o))
-  (case tag
-    [(insert)            (insert-text st (car args))]
-    [(insert-event-text) (insert-text st (text-event-text ev))]
-    [(delete-back)       (edit-focused st 'backspace)]
-    [(delete)            (edit-focused st 'delete)]
-    [(move)              (nav-focused st (car args) (and (pair? (cdr args)) (cadr args)))]
-    [(undo)              (edit-focused st 'undo)]
-    [(redo)              (edit-focused st 'redo)]
-    [(select-all)        (edit-focused st 'select-all)]
-    [(copy)              (edit-focused st 'copy)]
-    [(cut)               (edit-focused st 'cut)]
-    [(paste)             (edit-focused st 'paste)]
-    [(split)             (let-values ([(ax first?) (split-spec (if (pair? args) (car args) 'h))])
-                           (values (split-focused st ax first?) '()))]
-    [(place-confirm)     (place-confirm st)]
-    [(place-cancel)      (place-cancel st)]
-    [(place-cycle)       (values (place-cycle st (car args)) '())]
-    [(place-pick)        (place-pick ctx st ev)]
-    [(close-window)      (values (close-window! st (state-focus st)) '())]
-    [(close-view)        (values (close-view-at-focus! st) '())]
-    [(close-doc)         (request-close-doc-at-focus st)]
-    [(save)              (save-focused st)]
-    [(quit)              (request-quit st)]
-    [(pointer)           (cursor-press ctx st ev)]
-    [(scroll)            (cursor-scroll ctx st ev (car args))]
-    [(region-toggle)     (values (region-toggle! st (car args)) '())]
-    [(region-show)       (values (region-show! st (car args)) '())]
-    [(region-hide)       (values (region-hide! st (car args)) '())]
-    [(region-activate)   (values (region-activate! st (car args) (panel-doc-name (cadr args))) '())]
-    [(region-cycle)      (values (region-cycle! st (car args) (cadr args)) '())]
-    [(region-focus)      (values (region-focus! st (car args)) '())]
-    [(focus)             (run-focus-op st (car args))]
-    [(float-open)        (values (float-open-named st (car args)) '())]
-    [(float-close)       (values (close-float st (car (state-stack st))) '())]
-    [(float-cycle)       (values (cycle-float st) '())]
-    [(activate)          (activate-focused st)]
-    [(collapse)          (tree-collapse st)]
-    [(tree-parent)       (tree-move-parent st)]
-    [(tree-child)        (tree-move-child st)]
-    [(tree-new-file)     (tree-new-file st)]
-    [(tree-new-dir)      (tree-new-dir st)]
-    [(tree-delete)       (tree-delete st)]
-    [(tree-reload)       (values (tree-reload st) '())]
-    [(tree-toggle-hidden) (values (tree-hidden-toggle st) '())]
-    [(prefix-new)        (values (prefix-new st) '())]
-    [(prefix-split)      (values (prefix-set st 'split) '())]
-    [(prefix-cancel)     (values (prefix-cancel st) '())]
-    [(submit-prompt)     (submit-prompt st)]
-    [(cancel-prompt)     (cancel-prompt st)]
-    [(buffers-toggle)    (values (buffers-toggle st) '())]
-    [(buffers-expand)    (values (buffers-fold! st #f) '())]
-    [(buffers-collapse)  (values (buffers-fold! st #t) '())]
-    [(border-toggle)     (values (border-toggle st) '())]
-    [(new-view)          (values (new-view-for-focused st) '())]
-    [else (values st '())]))
+;;; ---------- 基础原语（注册表；插件的接入点见 core/op.rkt） ----------
+(define base-op-registry
+  (make-op-registry
+   (list
+    (cons 'insert            (lambda (ctx st ev args) (insert-text st (car args))))
+    (cons 'insert-event-text (lambda (ctx st ev args) (insert-text st (text-event-text ev))))
+    (cons 'delete-back       (lambda (ctx st ev args) (edit-focused st 'backspace)))
+    (cons 'delete            (lambda (ctx st ev args) (edit-focused st 'delete)))
+    (cons 'move              (lambda (ctx st ev args) (nav-focused st (car args) (and (pair? (cdr args)) (cadr args)))))
+    (cons 'undo              (lambda (ctx st ev args) (edit-focused st 'undo)))
+    (cons 'redo              (lambda (ctx st ev args) (edit-focused st 'redo)))
+    (cons 'select-all        (lambda (ctx st ev args) (edit-focused st 'select-all)))
+    (cons 'copy              (lambda (ctx st ev args) (edit-focused st 'copy)))
+    (cons 'cut               (lambda (ctx st ev args) (edit-focused st 'cut)))
+    (cons 'paste             (lambda (ctx st ev args) (edit-focused st 'paste)))
+    (cons 'split             (lambda (ctx st ev args)
+                               (let-values ([(ax first?) (split-spec (if (pair? args) (car args) 'h))])
+                                 (values (split-focused st ax first?) '()))))
+    (cons 'place-confirm     (lambda (ctx st ev args) (place-confirm st)))
+    (cons 'place-cancel      (lambda (ctx st ev args) (place-cancel st)))
+    (cons 'place-cycle       (lambda (ctx st ev args) (values (place-cycle st (car args)) '())))
+    (cons 'place-pick        (lambda (ctx st ev args) (place-pick ctx st ev)))
+    (cons 'close-window      (lambda (ctx st ev args) (values (close-window! st (state-focus st)) '())))
+    (cons 'close-view        (lambda (ctx st ev args) (values (close-view-at-focus! st) '())))
+    (cons 'close-doc         (lambda (ctx st ev args) (request-close-doc-at-focus st)))
+    (cons 'save              (lambda (ctx st ev args) (save-focused st)))
+    (cons 'quit              (lambda (ctx st ev args) (request-quit st)))
+    (cons 'pointer           (lambda (ctx st ev args) (cursor-press ctx st ev)))
+    (cons 'scroll            (lambda (ctx st ev args) (cursor-scroll ctx st ev (car args))))
+    (cons 'region-toggle     (lambda (ctx st ev args) (values (region-toggle! st (car args)) '())))
+    (cons 'region-show       (lambda (ctx st ev args) (values (region-show! st (car args)) '())))
+    (cons 'region-hide       (lambda (ctx st ev args) (values (region-hide! st (car args)) '())))
+    (cons 'region-activate   (lambda (ctx st ev args) (values (region-activate! st (car args) (panel-doc-name (cadr args))) '())))
+    (cons 'region-cycle      (lambda (ctx st ev args) (values (region-cycle! st (car args) (cadr args)) '())))
+    (cons 'region-focus      (lambda (ctx st ev args) (values (region-focus! st (car args)) '())))
+    (cons 'focus             (lambda (ctx st ev args) (run-focus-op st (car args))))
+    (cons 'float-open        (lambda (ctx st ev args) (values (float-open-named st (car args)) '())))
+    (cons 'float-close       (lambda (ctx st ev args) (values (close-float st (car (state-stack st))) '())))
+    (cons 'float-cycle       (lambda (ctx st ev args) (values (cycle-float st) '())))
+    (cons 'activate          (lambda (ctx st ev args) (activate-focused st)))
+    (cons 'collapse          (lambda (ctx st ev args) (tree-collapse st)))
+    (cons 'tree-parent       (lambda (ctx st ev args) (tree-move-parent st)))
+    (cons 'tree-child        (lambda (ctx st ev args) (tree-move-child st)))
+    (cons 'tree-new-file     (lambda (ctx st ev args) (tree-new-file st)))
+    (cons 'tree-new-dir      (lambda (ctx st ev args) (tree-new-dir st)))
+    (cons 'tree-delete       (lambda (ctx st ev args) (tree-delete st)))
+    (cons 'tree-reload       (lambda (ctx st ev args) (values (tree-reload st) '())))
+    (cons 'tree-toggle-hidden (lambda (ctx st ev args) (values (tree-hidden-toggle st) '())))
+    (cons 'prefix-new        (lambda (ctx st ev args) (values (prefix-new st) '())))
+    (cons 'prefix-split      (lambda (ctx st ev args) (values (prefix-set st 'split) '())))
+    (cons 'prefix-cancel     (lambda (ctx st ev args) (values (prefix-cancel st) '())))
+    (cons 'submit-prompt     (lambda (ctx st ev args) (submit-prompt st)))
+    (cons 'cancel-prompt     (lambda (ctx st ev args) (cancel-prompt st)))
+    (cons 'buffers-toggle    (lambda (ctx st ev args) (values (buffers-toggle st) '())))
+    (cons 'buffers-expand    (lambda (ctx st ev args) (values (buffers-fold! st #f) '())))
+    (cons 'buffers-collapse  (lambda (ctx st ev args) (values (buffers-fold! st #t) '())))
+    (cons 'border-toggle     (lambda (ctx st ev args) (values (border-toggle st) '())))
+    (cons 'new-view          (lambda (ctx st ev args) (values (new-view-for-focused st) '()))))))
 
 ;; 一条命令 = 原语序列。
 ;; 放置模式下跑无关命令 → 先退出放置模式（瞬时模式语义）：
@@ -1063,26 +1064,28 @@
   (for/or ([o (in-list ops)])
     (memq (car o) '(prefix-new prefix-split prefix-cancel tree-new-file tree-new-dir))))
 
-(define (run-ops ctx st ev ops)
+(define (run-ops reg ctx st ev ops)
   (define st0
     (cond
       [(and (placing-of st) (not (placing-op-seq? ops))) (cancel-placing st)]
       [(and (prefix-of st) (not (prefix-op-seq? ops))) (prefix-cancel st)]
       [else st]))
   (for/fold ([st st0] [effs '()]) ([o (in-list ops)])
-    (define-values (st* e*) (run-op ctx st ev o))
+    (define-values (st* e*) (op-run reg ctx st ev o))
     (values st* (append effs e*))))
 
-(define (op-runner ops)
-  (lambda (ctx st ev k) (run-ops ctx st ev ops)))
+(define (op-runner reg ops)
+  (lambda (ctx st ev k) (run-ops reg ctx st ev ops)))
 
-(define (app-routes)
-  (define global (compile-routes key-table scope-of op-runner))
+;; routes 可按需传一张扩展过的原语表（默认 = 基础表）。
+(define (app-routes [reg base-op-registry])
+  (define runner (lambda (ops) (op-runner reg ops)))
+  (define global (compile-routes key-table scope-of runner))
   ;; document 绑定的表优先：焦点文档有表就先试它，不命中再落到全局表。
   (define doc-route
     (route (lambda (st ev) (and (focused-keymap st) #t))
            (lambda (ctx st ev k)
-             (route-input/k (compile-routes (focused-keymap st) scope-of op-runner)
+             (route-input/k (compile-routes (focused-keymap st) scope-of runner)
                             ctx st ev k))))
   (cons doc-route global))
 
@@ -1100,16 +1103,20 @@
 
 ;;; ---------- 装配 ----------
 
-(define (boot text name w h #:root [root (current-directory)])
+(define (boot text name w h #:root [root (current-directory)] #:panels [panels base-panel-registry]
+                                 #:enabled [enabled panels-spec])
   ;; name = #f → 不建初始文档：编辑区留一个空窗口，文件从文件树打开。
+  ;; panels = 面板注册表（可组合）；enabled = 本次启用哪些（默认 config）。
   (define ed0 (blank-editor))
   (define-values (ed1 did vid)
     (if name
         (add-document-view! ed0 text w (max 1 (- h 1)) name)
         (values ed0 #f #f)))
   (define-values (ed2 vids)
-    (for/fold ([ed ed1] [vids (hash 'editor vid)]) ([pid (in-list panels-spec)])
+    (for/fold ([ed ed1] [vids (hash 'editor vid)]) ([pid (in-list enabled)])
       (define nm (panel-doc-name pid))
+      (unless (panel-lookup panels nm)
+        (error 'boot "面板未注册: ~a" nm))
       (define-values (ed* _pdid vid*) (add-panel! ed "" w 1 nm))
       (values ed* (hash-set vids nm vid*))))
   (define help-v (hash-ref vids "*help*"))
@@ -1128,7 +1135,7 @@
                       (define v (if (eq? id 'editor) vid (hash-ref vids (panel-doc-name id))))
                       (begin0 (list n v default-border) (set! n (add1 n)))))))
   (define editor-wid (layout-wid-of-vid base vid))
-  (define st0 (make-state #:ed ed2 #:docs docs #:layout base #:focus editor-wid))
+  (define st0 (feature-set (make-state #:ed ed2 #:docs docs #:layout base #:focus editor-wid) 'panels panels))
   (define st1 (feature-set st0 'tree (tree-init root)))
   (define st2 (region-set-active st1 'sidebar "*tree*"))
   (define st3 (region-set-active st2 'log "*log*"))
