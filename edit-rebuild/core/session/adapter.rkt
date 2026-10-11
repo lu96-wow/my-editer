@@ -44,6 +44,7 @@
  session-overlay-dids
  session-view-did session-view-point session-view-point-line
  session-view-point-column session-view-point->screen session-view-cursor-screen
+ session-view-region
  session-view-width session-view-height session-view-line-numbers? session-view-string
  session-view-selection-empty?
  session-view-id-list session-document-view-list
@@ -92,9 +93,14 @@
 ;;; ---------- 几何 ----------
 
 (define (session-views s)
-  (layout-place (session-layout s) (session-bindings s)
-                (lambda (vid) (session-visible? s vid))
-                (area 0 0 (session-width s) (session-height s))))
+  (for/list ([p (in-list (layout-place (session-layout s) (session-bindings s)
+                                      (lambda (vid) (session-visible? s vid))
+                                      (area 0 0 (session-width s) (session-height s))))])
+    ;; dock 面可用 #:deep 覆盖布局给的 z 序（如“谁接键谁在上”）。
+    (define sf (session-surface-for-vid s (placed-vid p)))
+    (if sf
+        (struct-copy placed p [deep (surface-depth-at sf s (placed-deep p))])
+        p)))
 
 ;; 面的边框 face（#f = 无边框）。
 (define (surface-border-of s vid)
@@ -104,6 +110,16 @@
 ;; 内容内缩量：有边框的面内容四周各让 1 格。
 (define (session-pane-inset s vid)
   (if (surface-border-of s vid) 1 0))
+
+;; vid 所在窗格的**内容矩形**（有边框则内缩 1）；不在布局里 → #f。
+;; 浮窗（如文档窗）用它当“贴哪个编辑窗格”的锚。
+(define (session-view-region s vid)
+  (define pl (for/first ([p (in-list (session-views s))] #:when (eqv? vid (placed-vid p))) p))
+  (and pl
+       (let ([ins (session-pane-inset s vid)])
+         (area (+ (placed-x pl) ins) (+ (placed-y pl) ins)
+               (max 1 (- (placed-w pl) (* 2 ins)))
+               (max 1 (- (placed-h pl) (* 2 ins)))))))
 
 ;; 内容矩形（有边框则内缩 1）；渲染 / 设尺寸都用它。
 (define (session-content-panes s)
@@ -129,7 +145,7 @@
      (define r ((float-pos pl) s))
      (if r
          (list (placed (surface-vid sf) (area-x r) (area-y r)
-                       (area-w r) (area-h r) (float-deep pl)))
+                       (area-w r) (area-h r) (surface-depth-at sf s (float-deep pl))))
          '()))))
 
 ;; 所有已落位窗格：布局树 + 浮动面，按 deep 升序（大的在上）。

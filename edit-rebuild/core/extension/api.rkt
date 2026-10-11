@@ -37,7 +37,7 @@
 (provide
  ;; 面板 / 面构造 + 注册
  dock-surface float-surface surface? surface-dock? surface-float?
- surface-id surface-vid surface-content surface-placement surface-keys
+ surface-id surface-vid surface-content surface-placement surface-keys surface-depth-at
  dock dock-region dock-axis dock-size float float-pos float-deep
  session-add-surface session-remove-surface
  session-surfaces session-surface-ref session-surface-for-vid
@@ -57,7 +57,7 @@
  session-modes session-mode session-set-mode
  session-visible? session-set-visible session-set-focus session-dock-vid?
  session-show-view session-split-view session-close-document
- session-view-cursor-screen session-view-point->screen session-overlay-dids
+ session-view-cursor-screen session-view-point->screen session-view-region session-overlay-dids
 
  ;; 内容写回 / 局部刷新
  panel-doc input-document session-ed-assign! session-ed-set-point! session-ed-replace!

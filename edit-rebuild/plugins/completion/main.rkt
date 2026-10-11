@@ -2,9 +2,11 @@
 
 ;;; edit-rebuild/plugins/completion/main.rkt —— 补全插件（模块路径 / 模块导出 / 本地定义 / 文档词）
 ;;;
-;;; 只做补全菜单（候选），不认识文档：文档浮窗是另一个插件（plugin/builtin/docs.rkt）。
+;;; 只做补全菜单（候选），不认识文档：文档窗是另一个插件（plugins/docs/main.rkt）。
 ;;; 两窗通过一个**事件**解耦：本插件在选中项变化时广播 `complete-selection`，
-;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪。
+;;; 文档插件订阅后自己去异步查文档。补全不等文档就绪；菜单关闭后文档**不**自动收回。
+;;; 两窗允许重叠，谁接键谁在上（z 序由 interaction 模式决定，见 docs 的 #:deep）。
+;;; 菜单关闭后文档**不**自动收回；关闭时若文档还开着就把接键交给文档。
 ;;;
 ;;; 菜单是一个 **float 面（surface）**（不抢焦点）；打开时随面压一个输入层（模态键表）：
 ;;;   · 上下/Enter/Tab/Esc 由层接管；
@@ -39,7 +41,7 @@
 
 ;;; ---------- 服务状态 ----------
 
-(struct c-svc (menu runner cache pending parse words wdocs docs-open?) #:transparent)
+(struct c-svc (menu runner cache pending parse words wdocs) #:transparent)
 ;; menu    : box (menu | #f)      补全菜单浮窗
 ;; runner  : box (runner | #f)    惰性创建（place 只能在 with-tui 之后建）
 ;; cache   : hash 上下文键 -> (listof string)   模块路径 / 导出名
@@ -47,8 +49,8 @@
 ;; parse   : hash did -> parse-entry            头部（#lang/require/定义）解析缓存
 ;; words   : hash did -> wi                    每文档增量词表
 ;; wdocs   : hash did -> handle                词表所反映的文档版本
-;; docs-open? : box boolean                     文档窗是否开着（由 docs 插件广播）
 ;; 当前“谁接键”用会话模式 interaction（'complete / 'docs），不再是这里的可变 box。
+;; 文档窗开没开直接查它的面（docs-open?），不维护镜像。
 
 (struct menu (vid mvid did start cands idx pool mods specs base-dir) #:transparent)
 ;; vid    : 编辑器 view（发起补全者，接受时改它 / 取光标锚点）
@@ -206,21 +208,19 @@
 
 ;;; ---------- 选中项事件（解耦：文档插件订阅） ----------
 
-;; 广播当前选中候选。菜单开 → (vid name mods menu-rect)；关 → (vid #f #f #f)。
+;; 广播当前选中候选。菜单开 → (vid name mods binding)；关 → (vid #f #f #f)。
 ;; 发完即返回，不等任何异步（补全与文档互不阻塞）。
 (define (publish-selection! s m)
   (cond
     [(or (not m) (not (live-view? s (menu-vid m))))
-     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f #f))]
+     (session-run-hooks s 'complete-selection (list (session-focus-vid s) #f #f #f))]
     [else
      (define name (list-ref (menu-cands m) (menu-idx m)))
      ;; 候选名（可能被 prefix-in/rename-in 改过）→ (模块, 原名)，供文档插件按原名查
      (define binding (and (menu-specs m) (menu-base-dir m)
                           (spec-binding-of name (menu-specs m) (menu-base-dir m))))
-     (define-values (_start _rows x y w h) (menu-layout s m))
      (session-run-hooks s 'complete-selection
-                        (list (menu-vid m) name (menu-mods m) binding
-                              (list x y w h)))]))
+                        (list (menu-vid m) name (menu-mods m) binding))]))
 
 ;;; ---------- 菜单内容 / 几何 ----------
 
@@ -398,6 +398,11 @@
      (define start (menu-start m))
      (close-menu (session-ed-replace! s vid (car start) (cdr start) line col cand))]))
 
+;; 文档窗（另一个插件）现在开着吗？直接查它的面，不维护镜像。
+(define (docs-open? s)
+  (define sf (session-surface-ref s 'docs))
+  (and sf (session-visible? s (surface-vid sf))))
+
 ;; 关补全菜单，并广播「无选中」。
 (define (close-menu s)
   (define svc (completion-svc s))
@@ -412,7 +417,7 @@
      (define s2 (session-close-document s1 did))
      ;; 菜单关闭：若文档仍开着则文档接键，否则清掉模式
      (define s3 (session-set-mode s2 'interaction
-                                  (if (unbox (c-svc-docs-open? svc)) 'docs #f)))
+                                  (if (docs-open? s2) 'docs #f)))
      (publish-selection! s3 #f)]))
 
 ;;; ---------- 命令 + 键 + handler ----------
@@ -455,15 +460,6 @@
            #:when (scope-mode= 'interaction 'complete) #:priority 1050)
    (route* (key 'right) (session-effect (lambda (s) (values s 'handled)))
            #:when (scope-mode= 'interaction 'complete) #:priority 1050)))
-
-;; docs 插件广播的开关状态（供 Tab 判断 / 关闭时复位）。
-;; docs 插件广播的开关状态：只记录“文档窗是否开着”（供 close-menu 判断）。
-;; 交互模式 interaction 由 open-menu! / close-menu / Tab / open-window! 管理，这里不碰。
-(define (completion-docs-state-hook s args)
-  (define svc (completion-svc s))
-  (cond
-    [(not svc) s]
-    [else (set-box! (c-svc-docs-open? svc) (car args)) s]))
 
 ;; 改文本后：菜单已开 → 复用池刷新；否则尝试开（自动弹）。
 ;; 只跟「直接编辑」（after-insert），程序写入不触发。
@@ -548,7 +544,7 @@
 
 (define (completion-install s)
   (let* ([svc (c-svc (box #f) (box #f) (make-hash) (make-hash) (make-hash)
-                     (make-hash) (make-hash) (box #f))]
+                     (make-hash) (make-hash))]
          [s1 (session-service-put s 'complete svc)]
          [s2 (for/fold ([s s1]) ([r (in-list (completion-routes))]) (session-add-route s r))]
          [s2b (for/fold ([s s2]) ([r (in-list (complete-interaction-routes))])
@@ -558,9 +554,8 @@
          [s5 (session-add-hook s4 (reaction 'focus-changed completion-cancel-hook))]
          [s6 (session-add-hook s5 (reaction 'after-nav completion-cancel-hook))]
          [s7 (session-add-hook s6 (reaction 'document-closed completion-doc-closed-hook))]
-         [s8 (session-add-hook s7 (reaction 'before-render completion-poll-hook #:priority 10))]
-         [s9 (session-add-hook s8 (reaction 'before-render word-resync-hook #:priority 20))])
-    (session-add-hook s9 (reaction 'docs-state completion-docs-state-hook))))
+         [s8 (session-add-hook s7 (reaction 'before-render completion-poll-hook #:priority 10))])
+    (session-add-hook s8 (reaction 'before-render word-resync-hook #:priority 20))))
 
 (define completion-spec
   (plugin-spec 'completion completion-install '()))

@@ -9,6 +9,7 @@
          "adapter.rkt"
          "focus.rkt"
          "hook.rkt"
+         "../surface/surface.rkt"
          "../geometry/layout.rkt"
          "../focus.rkt")
 
@@ -33,8 +34,12 @@
     [else
      (define vid (placed-vid p))
      (cond
-       ;; 浮动面（补全 / 文档窗）不是可聚焦编辑视图：点击不聚焦、不定位。
-       [(session-float-vid? s vid) s]
+       ;; 浮动面（补全 / 文档窗）默认不是可聚焦编辑视图；
+       ;; 但声明了 mouse 处理的浮面（如文档窗）可以响应点击。
+       [(session-float-vid? s vid)
+        (define sf (session-surface-for-vid s vid))
+        (define handler (and sf (surface-mouse sf)))
+        (if handler (or (handler s vid col row) s) s)]
        [else
         (define s1 (session-set-focus s (focus-set (session-focus s) vid)))
         ;; 聚焦可能触发钩子把该视图关掉（如补全菜单）→ 已不在就别再用它的 vid。
