@@ -13,7 +13,7 @@
  region-members region-side region-size
  panel-doc-name parse-region
  panel-specs panel-name? panel-vid panel-name
- refresh-panels! buffer-items
+ refresh-panels! buffer-items tree-relative-path
  tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir
  panel-line panel-line-at)
 
@@ -145,16 +145,33 @@
          (format "~a" (find-relative-path r cp))
          (format "~a" p))]))
 
-;; 缓冲区：每个非面板文档一行，展开它的每个视图。
+;; 缓冲区：每个非面板文档一组；有视图就每个视图一行，没有视图（被单独关过）也留一行，
+;; 让孤儿文档仍可从这里重新建视图。行 = (did vid label)；vid = #f 表示无视图。
 (define (buffer-items st)
   (define ed (state-ed st))
   (append*
    (for/list ([did (in-list (document-id-list ed))])
      (define name (document-name ed did))
-     (if (panel-name? name)
-         '()
-         (for/list ([vid (in-list (document-view-list ed did))])
-           (list did vid name))))))
+     (cond
+       [(panel-name? name) '()]
+       [else
+        (define label (doc-label st did))
+        (define vids (document-view-list ed did))
+        (define n (length vids))
+        (cond
+          [(null? vids) (list (list did #f label))]
+          [else (for/list ([vid (in-list vids)] [i (in-naturals)])
+                  ;; 一个 document 多个 view 时标出第几个，避免同标签无法区分。
+                  (list did vid (if (> n 1)
+                                    (format "~a  [~a/~a]" label (add1 i) n)
+                                    label)))])]))))
+
+;; 资源显示名：有文件路径就相对文件树根（工作路径），否则用文档名。
+(define (doc-label st did)
+  (define m (hash-ref (state-docs st) did #f))
+  (define p (and m (doc-meta-path m)))
+  (cond [(not p) (document-name (state-ed st) did)]
+        [else (tree-relative-path st p)]))
 
 (define (buffers-content st v)
   (define items (buffer-items st))

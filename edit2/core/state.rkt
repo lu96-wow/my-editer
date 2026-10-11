@@ -75,8 +75,8 @@
 ;;; ---------- 输入行 / 询问（数据化：kind 决定提交时的行为） ----------
 
 (struct prompt (kind label text data) #:transparent)
-;; kind  : 'close-view | 'quit
+;; kind  : 'close-doc | 'quit
 ;; label : 显示在前面的提示
 ;; text  : 已输入的答复
-;; data  : kind 相关（close-view: (list vid)；quit: (listof did) 尚未问的）
+;; data  : kind 相关（close-doc: (list did)；quit: (listof did) 尚未问的）
 

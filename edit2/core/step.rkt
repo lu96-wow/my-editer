@@ -92,7 +92,7 @@
 
 (define (doc-display st did)
   (define m (hash-ref (state-docs st) did #f))
-  (cond [(and m (doc-meta-path m)) (format "~a" (doc-meta-path m))]
+  (cond [(and m (doc-meta-path m)) (tree-relative-path st (doc-meta-path m))]
         [else (document-name (state-ed st) did)]))
 
 (define (doc-dirty? st did)
@@ -284,19 +284,63 @@
                [stack (for/fold ([s (state-stack st)]) ([v (in-list vids)]) (remove v s))]
                [focus (focus-after st layout*)]))
 
-;; 关一个视图；若它是该文档最后一个视图，则关整个文档。
-(define (close-view! st vid)
-  (define ed (state-ed st))
-  (define did (view-did ed vid))
+;;; 三级资源操作：窗口 ⊂ 视图 ⊂ 文档，互不混淆。
+;;;
+;;;   窗口（pane）  只是 layout 里的一个展示位；摘掉它不动 core 里的资源。
+;;;   视图（view）  core 资源；关掉它不碰它的文档（哪怕这是最后一个视图）。
+;;;   文档（doc）   core 资源；关掉它由 core 连带关掉它全部视图。
+;;;
+;;; 关文档才会丢文本 → 只有关文档 / 退出需要问保存；关窗口、关视图不丢。
+
+;; 关窗口：从 layout（和浮窗栈）摘掉 pane，view / document 资源原样保留。
+(define (close-window! st vid)
   (cond
-    [(null? (remove vid (document-view-list ed did))) (close-doc! st did)]
+    [(not vid) st]
     [else
      (define layout* (remove-vids st (state-layout st) (list vid)))
      (struct-copy state st
-                  [ed (close-view ed vid)]
                   [layout layout*]
                   [stack (remove vid (state-stack st))]
                   [focus (focus-after st layout*)])]))
+
+;; 关视图资源：销毁 core 的 view；document 保留（资源各自独立）。
+(define (close-view-resource! st vid)
+  (cond
+    [(not vid) st]
+    [else
+     (define layout* (remove-vids st (state-layout st) (list vid)))
+     (struct-copy state st
+                  [ed (close-view (state-ed st) vid)]
+                  [layout layout*]
+                  [stack (remove vid (state-stack st))]
+                  [focus (focus-after st layout*)])]))
+
+;; 焦点 / 选中行指向的资源。→ (list did vid name) | #f
+;;   缓冲区面板：用面板 doc 的光标行（一切皆 document）选中的那一条资源；
+;;   编辑器窗格：就是焦点视图；面板自身不当作可关资源。
+(define (focus-resource st)
+  (define name (panel-name st (state-focus st)))
+  (cond
+    [(equal? name "*buffers*")
+     (define items (buffer-items st))
+     (define i (or (panel-line st "*buffers*") 0))
+     (and (pair? items) (< i (length items)) (list-ref items i))]
+    [else
+     (define v (state-focus st))
+     (and v (not (panel-name st v))
+          (list (view-did (state-ed st) v) v (view-document-name (state-ed st) v)))]))
+
+;; 关焦点 / 选中行的视图资源（文档保留）。
+(define (close-view-at-focus! st)
+  (define r (focus-resource st))
+  (cond [(and r (cadr r)) (close-view-resource! st (cadr r))]
+        [else st]))
+
+;; 请关焦点 / 选中行的文档资源（连带其视图；脏则先问保存）。
+(define (request-close-doc-at-focus st)
+  (define r (focus-resource st))
+  (cond [(and r (car r)) (request-close-doc st (car r))]
+        [else (values st '())]))
 
 (define (dirty-dids st)
   (for/list ([did (in-list (document-id-list (state-ed st)))] #:when (doc-dirty? st did)) did))
@@ -311,15 +355,15 @@
 
 (define (request-quit st) (ask-quit st (dirty-dids st)))
 
-(define (request-close-view st vid)
-  (define did (view-did (state-ed st) vid))
+;; 请关一个文档资源：脏则数据化 prompt，否则直接关（core 连带其视图）。
+(define (request-close-doc st did)
   (cond
     [(doc-dirty? st did)
-     (values (struct-copy state st [input (prompt 'close-view
+     (values (struct-copy state st [input (prompt 'close-doc
                                                   (format "save ~a? (y/n) " (doc-display st did))
-                                                  "" (list vid))])
+                                                  "" (list did))])
              '())]
-    [else (values (close-view! st vid) '())]))
+    [else (values (close-doc! st did) '())]))
 
 (define (set-prompt-text st t)
   (struct-copy state st [input (struct-copy prompt (state-input st) [text t])]))
@@ -329,16 +373,16 @@
   (define st0 (struct-copy state st [input #f]))
   (define ans (string-downcase (string-trim (prompt-text p))))
   (case (prompt-kind p)
-    [(close-view)
-     (define vid (car (prompt-data p)))
+    [(close-doc)
+     (define did (car (prompt-data p)))
      (cond
        [(member ans '("y" "yes"))
-        (define-values (s effs ok?) (save-doc st0 (view-did (state-ed st0) vid)))
+        (define-values (s effs ok?) (save-doc st0 did))
         (if ok?
-            (values (close-view! s vid) effs)
-            (values (struct-copy state st0 [input (prompt 'close-view (prompt-label p) "" (prompt-data p))]) '()))]
-       [(member ans '("n" "no")) (values (close-view! st0 vid) '())]
-       [else (values (struct-copy state st0 [input (prompt 'close-view (prompt-label p) "" (prompt-data p))]) '())])]
+            (values (close-doc! s did) effs)
+            (values (struct-copy state st0 [input (prompt 'close-doc (prompt-label p) "" (prompt-data p))]) '()))]
+       [(member ans '("n" "no")) (values (close-doc! st0 did) '())]
+       [else (values (struct-copy state st0 [input (prompt 'close-doc (prompt-label p) "" (prompt-data p))]) '())])]
     [(quit) (handle-quit st0 ans (prompt-data p))]
     [else (values st0 '())]))
 
@@ -378,25 +422,60 @@
                [else (values st '())]))))))
 
 ;;; ---------- 文件 / 缓冲区打开 ----------
+;; 一个 document 可对应多个 view。打开已在资源里的文件不新建 document：
+;; 复用它的视图（已在布局里就聚焦，否则显示）；没有视图的孤儿文档现建一个。
+
+(define (path-key p) (simplify-path (path->complete-path p)))
+
+(define (doc-by-path st p)
+  (define k (path-key p))
+  (for/first ([did (in-list (document-id-list (state-ed st)))]
+              #:when (let ([m (hash-ref (state-docs st) did #f)])
+                       (and m (doc-meta-path m) (equal? k (path-key (doc-meta-path m))))))
+    did))
 
 (define (open-file* st path)
   (cond
     [(not (fs-file? path)) (values (log-msg st (format "打不开: ~a" path)) '())]
+    [(doc-by-path st path)
+     => (lambda (did)
+          (define vids (document-view-list (state-ed st) did))
+          (cond
+            [(pair? vids) (values (show-view! st (car vids)) '())]
+            [else
+             (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
+             (values (show-view! (struct-copy state st [ed ed*]) nvid) '())]))]
     [else
      (define text (with-handlers ([exn:fail? (lambda (e) (format "读取失败: ~a" (exn-message e)))])
                     (fs-read-file path)))
      (define-values (ed* did vid)
        (add-document-view! (state-ed st) text 40 10 (format "~a" path)))
      (define st1 (struct-copy state st [ed ed*]))
-     (define st2 (set-doc-meta st1 did (doc-meta path (document-handle ed* did))))
+     (define st2 (set-doc-meta st1 did (doc-meta (path-key path) (document-handle ed* did))))
      (values (place-view st2 vid) '())]))
 
+;; 显示一个已存在的视图：已展示则只聚焦，否则放进中心窗格（原窗格资源保留）。
+(define (show-view! st vid)
+  (cond
+    [(layout-has? (state-layout st) vid) (struct-copy state st [focus vid])]
+    [else (place-view st vid)]))
+
+;; 缓冲区面板回车：资源列表里选中一条 → 显示 / 重建它的视图。
+;; 只有文档、没有视图（视图被单独关过）的孤儿文档：现建一个视图再显示。
 (define (buffers-enter st)
   (define items (buffer-items st))
   (define i (or (panel-line st "*buffers*") 0))
   (cond
     [(or (null? items) (>= i (length items))) (values st '())]
-    [else (values (place-view st (cadr (list-ref items i))) '())]))
+    [else
+     (define it (list-ref items i))
+     (define did (car it))
+     (define vid (cadr it))
+     (cond
+       [vid (values (show-view! st vid) '())]
+       [else
+        (define-values (ed* nvid) (add-view! (state-ed st) did 40 10))
+        (values (show-view! (struct-copy state st [ed ed*]) nvid) '())])]))
 
 ;;; ---------- 树 ----------
 
@@ -534,7 +613,9 @@
     [(cut)               (edit-focused st 'cut)]
     [(paste)             (edit-focused st 'paste)]
     [(split)             (values (split-focused st editor-split-axis) '())]
-    [(close-view)        (request-close-view st (state-focus st))]
+    [(close-window)      (values (close-window! st (state-focus st)) '())]
+    [(close-view)        (values (close-view-at-focus! st) '())]
+    [(close-doc)         (request-close-doc-at-focus st)]
     [(save)              (save-focused st)]
     [(quit)              (request-quit st)]
     [(pointer)           (cursor-press ctx st ev)]

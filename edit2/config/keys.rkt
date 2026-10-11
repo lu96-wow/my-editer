@@ -20,7 +20,6 @@
 
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))
-    ((key d ctrl)  editor (close-view))
     ((key s ctrl)  always (save))
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
@@ -30,6 +29,13 @@
     ((key p alt)   always (focus (cycle -1)))
     ((key escape)  float  (float-close))
     ((key tab)     float  (float-cycle))
+
+    ;; ---------- 关闭：窗口 ≠ 视图 ≠ 文档（资源各自独立） ----------
+    ;; C-d 只摘窗口（pane），view / document 资源保留，可从缓冲区面板再显示。
+    ((key d ctrl)  editor (close-window))
+    ;; 缓冲区面板 = 资源管理器：C-d 关选中视图资源（文档保留），Delete 关选中文档资源（连带视图）。
+    ((key d ctrl)  (panel buffers) (close-view))
+    ((key delete)  (panel buffers) (close-doc))
 
     ;; ---------- 侧栏成员（区域显示 + 聚焦） ----------
     ((key t alt)   always (region-activate sidebar tree) (region-focus sidebar))
