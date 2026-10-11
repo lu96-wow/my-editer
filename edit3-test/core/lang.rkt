@@ -68,7 +68,7 @@
                  f2 #:exists 'truncate)
 
 (define b0 (boot 80 24 #:plugins (list completion-spec)))
-(define-values (b1 _) (open-file* b0 f2))
+(define-values (b1 ign-b1) (open-file* b0 f2))
 (set-point! (state-ed b1) (focused-vid b1) 1 1)   ; 光标在第 1 行 "z" 之后
 (define b2 (run1 b1 (key-event '/ '(alt))))
 ;; 异步：先登记 job，菜单尚未开
@@ -94,6 +94,27 @@
 (define b5 (run1 b4 (key-event '/ '(alt))))
 (check-true (and (feature-ref b5 'completion #f) #t))
 (check-equal? (jobs b5) '())
+
+;;; ---------- 模块路径补全（require / #lang 的路径位置） ----------
+
+(define f3 (build-path tmp "b.rkt"))
+(display-to-file "(require racket/l\n" f3 #:exists 'truncate)
+(define m0 (boot 80 24 #:plugins (list completion-spec)))
+(define-values (m1 ign-m1) (open-file* m0 f3))
+(set-point! (state-ed m1) (focused-vid m1) 0 (string-length "(require racket/l"))
+(define m2 (run1 m1 (key-event '/ '(alt))))
+(check-false (feature-ref m2 'completion #f))       ; 异步：先进 worker
+(define mjob (car (jobs m2)))
+(check-equal? (job-payload mjob) '(module-paths))
+(check-equal? (job-kind mjob) 'completion-exports)
+
+(define mp (run-service (feature-ref m2 'services (make-service-registry)) mjob))
+(check-true (and (member "racket/list" mp) #t))     ; 已安装模块路径索引
+(define-values (m3 ign-m3) (step (refresh-panels! m2) SZ
+                            (job-event (job-id mjob) (job-kind mjob) mp (job-tag mjob))))
+(check-true (and (feature-ref m3 'completion #f) #t))
+(define mcands (hash-ref (feature-ref m3 'completion #f) 'candidates))
+(check-true (and (member "racket/list" mcands) #t))
 
 (delete-directory/files d)
 (delete-directory/files tmp)

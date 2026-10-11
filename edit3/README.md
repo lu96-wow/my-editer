@@ -11,7 +11,7 @@ racket edit3/main.rkt [file]
 
 | 输入 | 作用 |
 |---|---|
-| 可打印字符 / Enter / BS / Del | 编辑焦点窗 |
+| 可打印字符 / Enter / BS / Del | 编辑焦点窗（`(` `{` `[` 自动配成对；再输 `)` `}` `]` 跳过已存在的） |
 | ↑↓←→ / Home / End | 移动光标 |
 | `C-s` 后接方向 | 分屏前缀：↑新窗在上 / ↓在下 / ←在左 / →在右 |
 | `C-d` | 关焦点窗（浮窗则关浮窗；编辑器只摘窗口，不丢缓冲） |
@@ -20,7 +20,7 @@ racket edit3/main.rkt [file]
 | `M-b` | 侧栏区域循环成员：文件树 ↔ 缓冲区 |
 | `C-b` / `C-l` | 显示 / 隐藏侧栏 / 日志区域 |
 | `C-t` | 焦点窗口开关边框（每窗独立） |
-| `M-/` | 补全（浮窗菜单：↑↓/Tab 选，Enter 接受，Esc 取消） |
+| `M-/` | 补全（浮窗菜单：↑↓/Tab 选，Enter 接受，Esc 取消；候选含 require 绑定名；require/`#lang` 位置补模块路径） |
 | `M-e` | 焦点回编辑器 |
 | `M-n` / `M-p` | 焦点在窗口间循环 |
 | 文件树上 ↑↓←→ / Enter | 选择、展开/收起、打开文件 |
@@ -81,11 +81,13 @@ plugins/
   demo.rkt         示例插件
   syntax.rkt       语法高亮（face 插件；关键字用主题 'keyword 调色板）
   brackets.rkt     括号高亮（嵌套深度背景 + 光标配对；'bracket / 'bracket-match）
+  auto-pair.rkt    括号自动配对（成对插入 / 跳过右括号）
   words.rkt        当前词高亮（光标驱动）
-  completion.rkt   补全（不抢焦点的浮窗菜单；候选含 require 绑定名）
+  completion.rkt   补全（不抢焦点的浮窗菜单；候选含 require 绑定名 / 模块路径）
   async-demo.rkt   异步 jobs 示例（M-o 发 worker，'job 钩子接结果）
   lang/source.rkt  #lang / require / 定义 / provide 的启发式扫描（纯）
   lang/pool.rkt    require spec → 最终绑定名（only-in/prefix-in/rename-in…）+ 模块导出
+  lang/module-index.rkt  已安装模块路径索引（require / #lang 补全用）
 测试在 ../edit3-test/core/。
 ```
 
@@ -133,7 +135,7 @@ plugins/
   worker 线程池按 `#:services` 的 `kind` 跑纯 handler，结果以 `job-event` 回注事件流；
   `step` 完成后 `emit 'job`，插件在 `'job` 钩子里按 `tag` 消费。示例 `plugins/async-demo.rkt`。
 - 启用名单在 `config/plugins.rkt`（只给名字），`plugins/catalog.rkt` 解析成实现；
-  未知名字直接报错。默认启用 `'(syntax brackets words completion)`。
+  未知名字直接报错。默认启用 `'(syntax brackets words auto-pair completion)`。
 - 示例插件 `plugins/demo.rkt`（op + 面板 + 区域 + 键 + 文档匹配 + on-open + boot）。
 
 启动**不建 scratch 文档**：编辑区是空窗口，从文件树打开文件（或命令行带文件名）。
@@ -142,5 +144,6 @@ plugins/
 
 - **overlay / popup + modes + 自定义路由**：浮层焦点栈、popup 几何、`modes`、
   插件直接贡献带 guard/priority 的路由（支撑补全菜单 / 文档弹窗）。
-- **docs 文档弹窗**（`edit/plugins/docs`）与**模块路径补全**（`edit/lang/module-index`）。
+- **docs 文档弹窗**（`edit/plugins/docs`）。
+- 补全候选接到异步 worker 已完成（模块导出 / 模块路径）；本地文档词仍是同步整篇扫。
 - `*.rkt` 等模式键表（`config/keys.rkt` 的 `rkt-keys` 还是占位）。

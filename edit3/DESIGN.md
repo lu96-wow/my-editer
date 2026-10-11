@@ -277,8 +277,10 @@ edit3/
   plugins/
     catalog.rkt               插件目录（名字 → 实现）
     demo.rkt                  示例插件
+    auto-pair.rkt             括号自动配对（编辑行为插件）
     lang/source.rkt           #lang / require / 定义 / provide 启发式扫描（纯）
     lang/pool.rkt             require spec → 最终绑定名 + 模块导出（纯）
+    lang/module-index.rkt     已安装模块路径索引（require / #lang 补全用）
   config/
     plugins.rkt               本次启用哪些插件（只给名字）
   backends / test: edit3-test/core/*.rkt（纯函数 + 装配单测）
@@ -368,6 +370,11 @@ edit3/
       `plugins/lang/pool.rkt`（`spec-names` 按 spec 结构算 only-in/except-in/prefix-in/
       rename-in/prefix-rename-in 后的**最终绑定名**，打开的本地文件用当前缓冲区文本）；
       `plugins/completion.rkt` 的候选池加入导入名 + 顶层定义名。
+- [x] **auto-pair**：`plugins/auto-pair.rkt`——接管 editor 作用域的 `(text)`，`(`/`{`/`[` 成对插入
+      （有选区不配对）、`)`/`}`/`]` 右边已是它则跳过、其它文本原样插入。
+- [x] **模块路径补全**：`plugins/lang/module-index.rkt`（collects + 包目录扫描，惰性）+
+      `completion.rkt` 的 `module-path-context`（`require`/`#lang` 路径位置）→ 走同一个
+      `'completion-exports` worker（payload `(module-paths)`）补已安装模块名。
 - [x] **会话操作暴露给插件**：纯领域原语抽到 `core/session.rkt`（open/save/show/split/close/dirty/
       区域/输入行/树/浮窗/指针）；`step` 只留「键表 + op 解释器 + 路由 + 装配」，从 session 调用；
       `core/extension.rkt` 再导出 session，插件可直接调这些原语（不依赖 step）。

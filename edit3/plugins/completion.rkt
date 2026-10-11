@@ -18,7 +18,8 @@
          "../core/extension.rkt"
          "../config/syntax.rkt"
          "lang/source.rkt"
-         "lang/pool.rkt")
+         "lang/pool.rkt"
+         "lang/module-index.rkt")
 
 (provide completion-spec)
 
@@ -107,12 +108,28 @@
   (list specs (path->string base-dir)
         (sort (for/list ([(p t) (in-hash open)]) (cons p (digest t))) string<? #:key car)))
 
-;; worker：spec-names 的慢部分（module->exports / 本地文件解析）放 worker 线程。
+;; worker：spec-names 的慢部分（module->exports / 本地文件解析）与已安装模块路径索引。
 (define (exports-service payload)
   (match payload
+    ['(module-paths) (force module-paths)]
     [(list 'exports base-dir specs open)
      (append* (for/list ([s (in-list specs)]) (spec-names s base-dir open)))]
     [_ '()]))
+
+;; 光标是否在 #lang / require 的模块路径位置（补已安装模块名）。
+(define (module-path-context st)
+  (define ed (state-ed st))
+  (define vid (focused-vid st))
+  (define did (and vid (view-did ed vid)))
+  (define m (and did (hash-ref (state-docs st) did #f)))
+  (define path (and m (doc-meta-path m)))
+  (cond
+    [(not (racket-file? path)) #f]
+    [else
+     (define text (view-string ed vid))
+     (and (or (require-context? text (view-line ed vid) (view-col ed vid))
+              (lang-context? text (view-line ed vid) (view-col ed vid)))
+          #t)]))
 
 (define (filter-pool pool prefix)
   (define plen (string-length prefix))
@@ -239,6 +256,16 @@
      (define prefix (prefix-at ed vid))
      (cond
        [(zero? (string-length prefix)) (values st '())]
+       ;; #lang / require 的模块路径位置 → 补已安装模块名（worker 算，缓存）。
+       [(module-path-context st)
+        (define exp (cache-get st 'module-paths))
+        (cond
+          [(list? exp) (values (open-menu st vid prefix exp) '())]
+          [(pending? st 'module-paths) (values st '())]
+          [else
+           (pending-put! st 'module-paths)
+           (define-values (st* _j) (job-submit st 'completion-exports '(module-paths) 'module-paths))
+           (values st* '())])]
        [else
         (define ctx* (imports-context st))
         (cond
@@ -278,6 +305,9 @@
      (define prefix (prefix-at ed vid))
      (cond
        [(zero? (string-length prefix)) st]
+       [(module-path-context st)
+        (define exp (cache-get st 'module-paths))
+        (if (list? exp) (open-menu st vid prefix exp) st)]
        [else
         (define ctx* (imports-context st))
         (cond
