@@ -299,6 +299,24 @@
 ;; 未注册同一注册表时，默认表不认识它
 (check-false (panel-name? (boot "" "x" 60 16) "*foo*"))
 
+;; ---- prompt kind 注册表：插件可加新 kind，提交时走自己的处理 - -
+(define spk-routes
+  (app-routes base-op-registry
+              (prompt-kind-register base-prompt-kinds 'echo
+                                    (lambda (st p text)
+                                      (insert! (state-ed st) (wid-vid st (state-focus st)) text)
+                                      (values st '())))))
+(define (spk-step st ev) (call-with-values (lambda () (step spk-routes (ctx-of st) st ev)) (lambda (s e) s)))
+(define spk0 (fresh))
+(define spk1 (open-prompt spk0 "Echo: " 'echo '()))
+(define spk2 (spk-step spk1 (text-event "hi")))
+(define spk3 (spk-step spk2 (key-event 'enter '())))
+(check-false (prompt-of spk3))
+(check-equal? (document-string (state-ed spk3) (focused-did spk3)) "hiabc")   ; 自定义 kind 生效
+;; 默认表里没有 'echo：提交时不做事（用默认 routes）
+(define spk4 (run1 (open-prompt (fresh) "? " 'echo '()) (key-event 'enter '())))
+(check-equal? (document-string (state-ed spk4) (focused-did spk4)) "abc")
+
 ;; ---- 三级资源：窗口 ⊂ 视图 ⊂ 文档 ----
 ;; C-d 只摘窗口：view / document 资源都保留
 (define sc (split-two (fresh)))

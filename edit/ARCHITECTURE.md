@@ -279,7 +279,11 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
 - **语义**：`feature 'prompt` = `(prompt wid label kind data prev-focus)`；`label` 是文档
   开头的**只读前缀**——用 core 的 readonly 轨钉住（`readonly-range!` 把 `[0, label 长)` 置
   只读），插入 / 退格 / 删除 / paste 到 label 都被 core 拒掉；光标仍可移进去看。提交时按它截掉。
-  `kind` 决定提交行为（quit / close-doc / new-file / new-dir / delete）。
+  `kind` 决定提交行为。
+- **kind 注册表**（`core/prompt.rkt`）：`kind -> handler`、handler = `(st prompt text -> values st effects)`。
+  core 注册基础 kind（`base-prompt-kinds`：quit / close-doc / new-file / new-dir / delete）；
+  插件用 `prompt-kind-register` 加新 kind，`app-routes` 接受一张扩展表 → 输入行能做新事，
+  不碰 core。和 op / panel 注册表同构（纯值、可组合、可测）。
 - **路由**：`prompt` 作用域内的绑定 = `(text) (insert-event-text)`、`(key backspace)`、
   `(key left/right/home/end)`、`(key enter) (submit-prompt)`、`(key escape) (cancel-prompt)`。
   提交时取 `*input*` 文档 label 之后的文本，驱动 `kind`；无效答复重开同一输入行。
@@ -471,6 +475,7 @@ effect.rkt   Effect ADT（一次性 IO：open/save/quit/log）
 route.rkt    guard/handler 类型 + route-input / route-input/k（CPS 链）
 keymap.rkt   键表（纯）：compose-keymaps（后盖前）+ keymap-add
 op.rkt       原语注册表（纯）：make-op-registry / op-register / op-run
+prompt.rkt   输入行语义注册表（纯）：make-prompt-kind-registry / prompt-kind-register
 mode.rkt     路径 → 键表的匹配层（纯）：matcher-match? / match-doc-keys
 layout.rkt   layout（纯）+ 布局树手术（remove/replace/split/add-side/float）
 render.rkt   placements → core rectangle → patch（返回 piece）

@@ -11,13 +11,13 @@
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-prompt close-prompt prompt-of prefix-of input-name
          open-float close-float cycle-float bind-doc-keys doc-keys focused-keymap
-         base-op-registry op-register
+         base-op-registry op-register base-prompt-kinds prompt-kind-register
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
          region-toggle! region-show! region-hide! region-activate! region-cycle! region-focus!)
 
 (require racket/string
-         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt" "op.rkt"
+         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt" "op.rkt" "prompt.rkt"
          "adapter.rkt" "layout.rkt"
          "border.rkt" "panels.rkt" "fs.rkt" "mode.rkt"
          (rename-in "../config/app.rkt"
@@ -584,55 +584,65 @@
       (substring full (string-length label) (string-length full))
       ""))
 
-(define (submit-prompt st)
+(define (submit-prompt kinds st)
   (define p (prompt-of st))
   (cond
     [(not p) (values st '())]
     [else
      (define text (prompt-answer st p))
-     (submit-with (close-prompt st) p text)]))
+     (submit-with kinds (close-prompt st) p text)]))
 
 (define (cancel-prompt st)
   (cond [(prompt-of st) (values (close-prompt st) '())]
         [else (values st '())]))
 
-;; 按 kind 执行提交（text = 正文）。无效答复则重开同一输入行。
-(define (submit-with st p text)
-  (define kind (prompt-kind p))
-  (define ans (string-downcase (string-trim text)))
-  (define (reopen) (open-prompt st (prompt-label p) kind (prompt-data p)))
-  (case kind
-    [(close-doc)
-     (define did (car (prompt-data p)))
-     (cond
-       [(member ans '("y" "yes"))
-        (define-values (s effs ok?) (save-doc st did))
-        (if ok? (values (close-doc! s did) effs) (values (reopen) '()))]
-       [(member ans '("n" "no")) (values (close-doc! st did) '())]
-       [else (values (reopen) '())])]
-    [(quit) (handle-quit st ans (prompt-data p))]
-    [(new-file)
-     (define d (car (prompt-data p)))
-     (define name (string-trim text))
-     (cond
-       [(string=? name "") (values st '())]
-       [else (fs-attempt st (lambda () (fs-make-file (build-path d name))))
-             (values (tree-after-fs! st d) '())])]
-    [(new-dir)
-     (define d (car (prompt-data p)))
-     (define name (string-trim text))
-     (cond
-       [(string=? name "") (values st '())]
-       [else (fs-attempt st (lambda () (fs-make-dir (build-path d name))))
-             (values (tree-after-fs! st d) '())])]
-    [(delete)
-     (define path (car (prompt-data p)))
-     (cond
-       [(member ans '("y" "yes"))
-        (fs-attempt st (lambda () (fs-delete path)))
-        (values (tree-after-fs! st #f) '())]
-       [else (values st '())])]
-    [else (values st '())]))
+;; 按 kind 执行提交（text = 正文）。查 prompt-kind 注册表；未知 kind 原样返回。
+(define (submit-with kinds st p text)
+  (define h (prompt-kind-lookup kinds (prompt-kind p)))
+  (if h (h st p text) (values st '())))
+
+;;; ---------- 基础 prompt kind（注册表；插件接入点见 core/prompt.rkt） ----------
+(define base-prompt-kinds
+  (make-prompt-kind-registry
+   (list
+    (cons 'close-doc
+          (lambda (st p text)
+            (define ans (string-downcase (string-trim text)))
+            (define (reopen) (open-prompt st (prompt-label p) 'close-doc (prompt-data p)))
+            (define did (car (prompt-data p)))
+            (cond
+              [(member ans '("y" "yes"))
+               (define-values (s effs ok?) (save-doc st did))
+               (if ok? (values (close-doc! s did) effs) (values (reopen) '()))]
+              [(member ans '("n" "no")) (values (close-doc! st did) '())]
+              [else (values (reopen) '())])))
+    (cons 'quit
+          (lambda (st p text)
+            (handle-quit st (string-downcase (string-trim text)) (prompt-data p))))
+    (cons 'new-file
+          (lambda (st p text)
+            (define d (car (prompt-data p)))
+            (define name (string-trim text))
+            (cond
+              [(string=? name "") (values st '())]
+              [else (fs-attempt st (lambda () (fs-make-file (build-path d name))))
+                    (values (tree-after-fs! st d) '())])))
+    (cons 'new-dir
+          (lambda (st p text)
+            (define d (car (prompt-data p)))
+            (define name (string-trim text))
+            (cond
+              [(string=? name "") (values st '())]
+              [else (fs-attempt st (lambda () (fs-make-dir (build-path d name))))
+                    (values (tree-after-fs! st d) '())])))
+    (cons 'delete
+          (lambda (st p text)
+            (define ans (string-downcase (string-trim text)))
+            (cond
+              [(member ans '("y" "yes"))
+               (fs-attempt st (lambda () (fs-delete (car (prompt-data p)))))
+               (values (tree-after-fs! st #f) '())]
+              [else (values st '())]))))))
 
 ;; 跑一个 fs 动作；出错记到日志，不崩。
 (define (fs-attempt st thunk)
@@ -1045,7 +1055,7 @@
     (cons 'prefix-new        (lambda (ctx st ev args) (values (prefix-new st) '())))
     (cons 'prefix-split      (lambda (ctx st ev args) (values (prefix-set st 'split) '())))
     (cons 'prefix-cancel     (lambda (ctx st ev args) (values (prefix-cancel st) '())))
-    (cons 'submit-prompt     (lambda (ctx st ev args) (submit-prompt st)))
+    (cons 'submit-prompt     (lambda (ctx st ev args) (submit-prompt base-prompt-kinds st)))
     (cons 'cancel-prompt     (lambda (ctx st ev args) (cancel-prompt st)))
     (cons 'buffers-toggle    (lambda (ctx st ev args) (values (buffers-toggle st) '())))
     (cons 'buffers-expand    (lambda (ctx st ev args) (values (buffers-fold! st #f) '())))
@@ -1077,9 +1087,10 @@
 (define (op-runner reg ops)
   (lambda (ctx st ev k) (run-ops reg ctx st ev ops)))
 
-;; routes 可按需传一张扩展过的原语表（默认 = 基础表）。
-(define (app-routes [reg base-op-registry])
-  (define runner (lambda (ops) (op-runner reg ops)))
+;; routes 可按需传扩展过的原语表 / prompt kind 表（默认 = 基础表）。
+(define (app-routes [reg base-op-registry] [prompts base-prompt-kinds])
+  (define reg* (op-register reg 'submit-prompt (lambda (ctx st ev args) (submit-prompt prompts st))))
+  (define runner (lambda (ops) (op-runner reg* ops)))
   (define global (compile-routes key-table scope-of runner))
   ;; document 绑定的表优先：焦点文档有表就先试它，不命中再落到全局表。
   (define doc-route
