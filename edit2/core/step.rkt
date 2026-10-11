@@ -18,14 +18,15 @@
 (require racket/string
          "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt"
          "adapter.rkt" "layout.rkt"
-         "border.rkt" "panels.rkt" "fs.rkt"
+         "border.rkt" "panels.rkt" "fs.rkt" "mode.rkt"
          (rename-in "../config/app.rkt"
                     [regions regions-spec]
                     [frame frame-spec]
                     [enabled-panels panels-spec]
                     [border-style border-face]
                     [borders-on? borders-default?]
-                    [key-tables key-tables-spec]))
+                    [key-tables key-tables-spec]
+                    [doc-key-matchers doc-key-matchers-spec]))
 
 ;; 默认边框 face（#f = 不加）。每个窗口可单独开关，见 border-toggle。
 (define default-border (and borders-default? border-face))
@@ -74,6 +75,11 @@
 (define (bind-doc-keys st did table)
   (feature-set st 'doc-keys (hash-set (doc-keys st) did table)))
 
+;; 打开 / 定位到某个路径时，按匹配层给这个 document 挂表（插件层预留的接入点）。
+(define (apply-doc-keys st did path)
+  (define km (and path (match-doc-keys path doc-key-matchers-spec)))
+  (if km (bind-doc-keys st did km) st))
+
 ;; 焦点文档的键表（没有 → #f）。
 (define (focused-keymap st)
   (define d (focused-did st))
@@ -88,7 +94,7 @@
     [(not did) st]
     [else
      (define m (or (hash-ref (state-docs st) did #f) (doc-meta #f #f)))
-     (set-doc-meta st did (struct-copy doc-meta m [path path]))]))
+     (apply-doc-keys (set-doc-meta st did (struct-copy doc-meta m [path path])) did path)]))
 
 (define (editor-focus? st ev)
   (and (state-focus st)
@@ -680,7 +686,8 @@
        (add-document-view! (state-ed st) text 40 10 (format "~a" path)))
      (define st1 (struct-copy state st [ed ed*]))
      (define st2 (set-doc-meta st1 did (doc-meta (path-key path) (document-handle ed* did))))
-     (values (place-view st2 vid) '())]))
+     (define st3 (apply-doc-keys st2 did path))   ; 匹配层：给新 document 挂上模式表
+     (values (place-view st3 vid) '())]))
 
 ;; 显示一个已存在的视图：已在某个窗口就聚焦该窗口，否则放上屏。
 (define (show-view! st vid)

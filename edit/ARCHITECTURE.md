@@ -358,6 +358,10 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
 - **绑定 document**（`bind-doc-keys`，与组合无关）：`feature 'doc-keys` = `did -> 键表`。
   `app-routes` 在最前面放一条分派路由：焦点文档有表就先试它（`route-input/k`），
   不命中再落到全局表。于是 document 局部键**优先**、且能自然穿透到全局。
+- **匹配层**（`core/mode.rkt`，纯）：打开 / 定位一个文件时，按配置 `doc-key-matchers`
+  （matcher = `(ext "rkt")` / `(name "Makefile")` / `(regexp …)` / `(any)`，后接键表）
+  找第一个命中的表，用 `bind-doc-keys` 挂到该 document 上。这是**插件层的接入点**：
+  插件只需往匹配表加一条 `(matcher . 表)`，core 只做匹配、不认识具体模式。
 
 `route-input/k routes ctx st ev k` 就是「所有守卫都不命中时把控制交给 `k`」的版本；
 `route-input` = `route-input/k` + 兜底返回。
@@ -446,7 +450,9 @@ state.rkt    State(6 字段) + doc-meta + Layout 树 + feature-ref/set
 adapter.rkt  core 边界：结构 / 编辑 / 布局 / 渲染 / face（唯一 require core/editor）
 event.rkt    Event ADT：(key …) (text …) (cursor …) (resize …) (job-done …) (tick)
 effect.rkt   Effect ADT（一次性 IO：open/save/quit/log）
-route.rkt    guard/handler 类型 + route-input（CPS 链）
+route.rkt    guard/handler 类型 + route-input / route-input/k（CPS 链）
+keymap.rkt   键表（纯）：compose-keymaps（后盖前）+ keymap-add
+mode.rkt     路径 → 键表的匹配层（纯）：matcher-match? / match-doc-keys
 layout.rkt   layout（纯）+ 布局树手术（remove/replace/split/add-side/float）
 render.rkt   placements → core rectangle → patch（返回 piece）
 fs.rkt       文件系统原语（read-dir/read-file/write-file）

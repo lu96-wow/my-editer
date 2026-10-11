@@ -554,4 +554,14 @@
 (check-equal? (document-string (state-ed tnd1) (focused-did tnd1)) "N")
 (check-equal? (length (buffer-rows tnd1)) 2)   ; 1 document + 1 view（资源树两行）
 
+;; ---- 匹配层：打开文件时按路径给 document 挂模式表（插件层接入点） ----
+(define dmd (make-tdir))
+(call-with-output-file (build-path dmd "m.rkt") #:exists 'truncate (lambda (o) (display "#lang racket" o)))
+(call-with-output-file (build-path dmd "n.txt") #:exists 'truncate (lambda (o) (display "hi" o)))
+(define md0 (boot "" "x" 60 16 #:root dmd))
+(define md1 (run1 (run1 (tree-focus md0) (key-event 'down '())) (key-event 'enter '())))   ; m.rkt
+(check-equal? (focused-keymap md1) '())        ; 命中 (ext "rkt") → 挂上 rkt-keys（空占位）
+(define md2 (run1 (run1 (tree-focus md1) (key-event 'down '())) (key-event 'enter '())))  ; n.txt
+(check-false (focused-keymap md2))             ; 不匹配 → 没挂表
+
 (displayln "edit2/step.rkt: all tests passed")

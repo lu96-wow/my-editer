@@ -15,9 +15,10 @@
 ;;;
 ;;; 加/改一条绑定 = 改这里一行数据；加一张表 = 在这里加一个 define 并放进 key-tables。
 
-(provide key-tables prefix-hints
+(provide key-tables prefix-hints doc-key-matchers
          pointer-keys placing-keys split-keys prompt-keys global-keys
-         resource-keys sidebar-keys tree-keys buffers-keys editor-keys)
+         resource-keys sidebar-keys tree-keys buffers-keys editor-keys
+         rkt-keys)
 
 ;;; ---------- 指针 / 光标 ----------
 (define pointer-keys
@@ -145,3 +146,12 @@
   '((new   . " C-n f = 新文件（再 C-n 转新目录）   Esc 取消")
     (new2  . " C-n f = 新目录   Esc 取消")
     (split . " C-s ↑/↓/←/→ 分屏（新窗在该方向）   Esc 取消")))
+
+;;; ---------- 文件 → document 键表的匹配层（插件层接入点） ----------
+;;;
+;;; matcher = (ext "rkt") | (name "Makefile") | (regexp "…") | (any)；
+;;; 打开 / 定位文件时，按顺序取第一个命中的表挂到该 document 上（core/mode.rkt 只做匹配）。
+;;; 插件只要往这里加 (matcher . 表) 就行。
+(define rkt-keys '())   ; 占位：将来 *.rkt 的模式命令表
+(define doc-key-matchers
+  (list (cons '(ext "rkt") rkt-keys)))
