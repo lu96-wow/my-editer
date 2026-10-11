@@ -347,4 +347,15 @@
 (define td3 (run1 (run1 td2 (text-event "y")) (key-event 'enter '())))
 (check-false (file-exists? (build-path ddel "sub" "a.txt")))
 
+;; 已打开的文件染 tree-open；文件夹始终 tree-dir（不看「打开」）
+(define dto (make-tdir))
+(call-with-output-file (build-path dto "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
+(call-with-output-file (build-path dto "b.txt") #:exists 'truncate (lambda (o) (display "B" o)))
+(define to1 (tree-focus (boot "" "x" 60 16 #:root dto)))
+(define to2 (run1 to1 (key-event 'enter '())))                     ; 打开 a.txt
+(define to3 (run1 (run1 to2 (key-event 't '(alt))) (key-event 'down '())))  ; 光标移到 b.txt
+(define-values (_tto tfaces) (tree-content (refresh-panels! to3) (panel-vid to3 "*tree*")))
+(check-not-false (member 'tree-open (map cdr tfaces)))
+(check-not-false (member 'tree-current (map cdr tfaces)))
+
 (displayln "edit2/step.rkt: all tests passed")

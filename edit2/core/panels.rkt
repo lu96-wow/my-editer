@@ -14,6 +14,7 @@
  panel-doc-name parse-region
  panel-specs panel-name? panel-vid panel-name
  refresh-panels! buffer-items buffer-rows tree-relative-path
+ tree-content
  tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh
  panel-line panel-line-at)
 
@@ -235,6 +236,12 @@
                                  [else 'buf-file])]
                           [else 'buf-view])))))
 
+;; 已打开文档的路径（文件树用它把「已打开」染成 tree-open）。
+(define (open-paths st)
+  (for/list ([did (in-list (document-id-list (state-ed st)))]
+             #:when (let ([m (hash-ref (state-docs st) did #f)]) (and m (doc-meta-path m))))
+    (doc-meta-path (hash-ref (state-docs st) did))))
+
 (define (tree-content st v)
   (define ts (feature-ref st 'tree #f))
   (cond
@@ -242,18 +249,24 @@
     [else
      (define rows (tree-rows ts))
      (define cursor (if v (view-line (state-ed st) v) 0))
+     (define opens (open-paths st))
      (define lines
        (for/list ([r (in-list rows)])
+         (define name (list-ref r 1))
+         (define dir? (list-ref r 2))
          (string-append (make-string (* 2 (list-ref r 3)) #\space)
-                        (if (list-ref r 2) "▸ " "  ")
-                        (list-ref r 1))))
+                        name (if dir? "/" ""))))
      (values (string-join lines "\n")
              (for/list ([r (in-list rows)] [i (in-naturals)])
+               (define p (car r))
                (define name (list-ref r 1))
-               (cons i (cond [(= i cursor) 'tree-current]
-                             [(list-ref r 2) 'tree-dir]
-                             [(and (positive? (string-length name)) (char=? #\. (string-ref name 0))) 'tree-hidden]
-                             [else 'tree-file]))))]))
+               (define dir? (list-ref r 2))
+               (cons i (cond
+                         [(= i cursor) 'tree-current]
+                         [(and (positive? (string-length name)) (char=? #\. (string-ref name 0))) 'tree-hidden]
+                         [(and (not dir?) (for/or ([o (in-list opens)]) (equal? (explode-path o) (explode-path p)))) 'tree-open]
+                         [dir? 'tree-dir]
+                         [else 'tree-file]))))]))
 
 ;;; ---------- 刷新 ----------
 

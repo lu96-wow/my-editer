@@ -232,6 +232,10 @@ tree / state 方案**（`tree-dir`/`tree-file`/`tree-hidden`/`tree-current`/`buf
 
 所有写盘动作（新建 / 删除）之后只做：写盘 → 清树缓存 → 展开目标目录。不碰 core。
 
+**渲染沿用 edit**（`plugins/ui/tree.rkt`）：行 = 缩进 + 名字 +（目录加 `/`，不加展开标记）；
+face 优先级 current → hidden → **open（仅文件，路径已在 core 打开）** → dir → file。
+所以「是否打开」用颜色（`tree-open` 绿粗）区分，**目录永远是 `tree-dir`**，不参与打开态。
+
 ---
 
 ## 5. 输入：CPS 声明式路由
