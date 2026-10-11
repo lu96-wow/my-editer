@@ -518,13 +518,17 @@
 ;; 打开输入行：状态栏 pane 的 vid → *input*，文档设为 label、光标放 label 之后，聚焦。
 (define (open-prompt st label kind data)
   (define iv (panel-vid st input-name))
-  (define w (panel-wid st "*status*"))
+  ;; 状态栏 pane 的 wid（若已换成输入，则取输入 wid）——确保总能找到那个 pane。
+  (define w (or (panel-wid st "*status*") (panel-wid st input-name)))
   (cond
     [(or (not iv) (not w)) st]
     [else
+     (define did (view-did (state-ed st) iv))
      (assign! (state-ed st) iv label)
      (set-point! (state-ed st) iv 0 (string-length label))
-     (face-line! (state-ed st) (view-did (state-ed st) iv) 0 'input)
+     (face-line! (state-ed st) did 0 'input)
+     ;; label 用 readonly 钉住：光标能看能移，但插入 / 退格 / 删除 / paste 被 core 拒掉。
+     (readonly-range! (state-ed st) did 0 0 0 (string-length label) #t)
      (struct-copy state
                   (feature-set st 'prompt (prompt w label kind data (state-focus st)))
                   [layout (layout-set-pane-vid (state-layout st) w iv)]

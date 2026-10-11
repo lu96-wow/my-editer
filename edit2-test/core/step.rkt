@@ -30,6 +30,10 @@
 (define (focus-panel-name st) (wid-panel-name st (state-focus st)))
 (define (editor-wid-vids st) (for/list ([w (in-list (editor-wids st))]) (wid-vid st w)))
 
+;; 任何打开输入行的操作都必须把焦点落到 *input* 视图上。
+(define (prompt-focused? st)
+  (and (prompt-of st) (eqv? (state-focus st) (panel-wid st "*input*")) #t))
+
 ;; 资源面板（唯一能新建 view 的地方）：焦点到侧栏缓冲区，建一个未显示 view。
 (define (to-buffers st) (region-focus! (region-activate! st 'sidebar "*buffers*") 'sidebar))
 (define (res-new-view st) (run1 (to-buffers st) (text-event "n")))
@@ -187,6 +191,7 @@
 (check-true (quit-effect? (car (cadr r))))
 (define sq (run1 (run1 (fresh) (text-event "Z")) (key-event 'q '(ctrl))))
 (check-not-false (prompt-of sq))
+(check-true (prompt-focused? sq))
 (define sq2 (run-ev (run1 sq (text-event "n")) (key-event 'enter '())))
 (check-true (quit-effect? (car (cadr sq2))))
 
@@ -205,6 +210,13 @@
 ;; 窗窄时随光标水平滚动，能看全文
 (define sqin-l (run1 sqin (text-event (make-string 80 #\a))))
 (check-true (> (view-left-column (state-ed sqin-l) ivin) 0))
+;; label 用 readonly 钉住：空正文退格删不掉（光标移进 label 也删不掉）
+;; （core 原地 mutate，State 要线性用：每个分支从 boot 重建）
+(define (prompt-st) (run1 (run1 (fresh) (text-event "Z")) (key-event 'q '(ctrl))))
+(define sqr (run1 (prompt-st) (key-event 'backspace '())))
+(check-equal? (view-string (state-ed sqr) (panel-vid sqr "*input*")) "save t? (y/n/all/nall) ")
+(define sqr2 (run1 (run1 (prompt-st) (key-event 'left '())) (key-event 'backspace '())))
+(check-equal? (view-string (state-ed sqr2) (panel-vid sqr2 "*input*")) "save t? (y/n/all/nall) ")
 ;; 输入行是模态：无关键（M-n 切焦点）不生效
 (define sqin-x (run1 sqin (key-event 'n '(alt))))
 (check-equal? (state-focus sqin-x) (state-focus sqin))
@@ -259,6 +271,7 @@
 (define sb4 (run1 (run1 (fresh) (text-event "Z")) (key-event 'b '(alt))))
 (define sb5 (run1 sb4 (key-event 'delete '())))
 (check-not-false (prompt-of sb5))
+(check-true (prompt-focused? sb5))
 (define sb6 (run1 (run1 sb5 (text-event "n")) (key-event 'enter '())))
 (check-false (prompt-of sb6))
 (check-equal? (length (document-id-list (state-ed sb6))) 6)
@@ -429,13 +442,16 @@
 (check-equal? (prefix-of tf2) 'new)
 (define tf3 (run1 tf2 (text-event "f")))
 (check-not-false (prompt-of tf3))
+(check-true (prompt-focused? tf3))
 (define tf4 (run1 (run1 tf3 (text-event "new.txt")) (key-event 'enter '())))
 (check-true (file-exists? (build-path dnew "new.txt")))
 (check-not-false (member "new.txt" (tree-names tf4)))
 ;; C-n C-n f 新目录
 (define tf5 (run1 (run1 tf1 (key-event 'n '(ctrl))) (key-event 'n '(ctrl))))
 (check-equal? (prefix-of tf5) 'new2)
-(define tf6 (run1 (run1 (run1 tf5 (text-event "f")) (text-event "sub2")) (key-event 'enter '())))
+(define tf5p (run1 tf5 (text-event "f")))
+(check-true (prompt-focused? tf5p))                 ; 新目录也把焦点移到输入 view
+(define tf6 (run1 (run1 tf5p (text-event "sub2")) (key-event 'enter '())))
 (check-true (directory-exists? (build-path dnew "sub2")))
 
 ;; C-u 重读磁盘（外部新建），已打开文档不受影响
@@ -455,6 +471,7 @@
                   (key-event 'down '())))
 (define td2 (run1 td1 (key-event 'd '(ctrl))))
 (check-not-false (prompt-of td2))
+(check-true (prompt-focused? td2))
 (define td3 (run1 (run1 td2 (text-event "y")) (key-event 'enter '())))
 (check-false (file-exists? (build-path ddel "sub" "a.txt")))
 
