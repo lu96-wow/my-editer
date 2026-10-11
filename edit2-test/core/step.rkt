@@ -262,6 +262,17 @@
 (check-false (prompt-of (car sqclean-r)))
 (check-true (quit-effect? (car (cadr sqclean-r))))
 
+;; ---- 绑定到 document 的键表（与「组合」独立）：优先命中，不命中再落到全局 ----
+(define sdk (fresh))
+(define sdk-did (focused-did sdk))
+(define sdk1 (bind-doc-keys sdk sdk-did '(((key z ctrl) always (insert "Z")))))   ; 覆盖全局 undo
+(define sdk2 (run1 sdk1 (key-event 'z '(ctrl))))
+(check-equal? (document-string (state-ed sdk2) sdk-did) "Zabc")                  ; 文档表生效
+(define sdk3 (run1 sdk2 (text-event "Q")))                                        ; 表里没 text → 落到全局编辑
+(check-equal? (document-string (state-ed sdk3) sdk-did) "ZQabc")
+(check-not-false (focused-keymap sdk1))
+(check-false (focused-keymap sdk))                                                ; 没绑就没有
+
 ;; ---- 三级资源：窗口 ⊂ 视图 ⊂ 文档 ----
 ;; C-d 只摘窗口：view / document 资源都保留
 (define sc (split-two (fresh)))
@@ -456,6 +467,9 @@
 (check-not-false (member ".git" (tree-names th2)))                             ; C-h 显示
 (define th3 (run1 th2 (key-event 'h '(ctrl))))
 (check-equal? (tree-names th3) '("normal.txt"))                                ; C-h 再隐藏
+;; 终端把 C-h 发成 0x08，tui 归类为 'backspace：文件树里 backspace 同样切换隐藏项
+(define th1bs (run1 th1 (key-event 'backspace '())))
+(check-not-false (member ".git" (tree-names th1bs)))
 
 ;; 回归：根路径自带末尾分隔符（如 current-directory）时不再多补一个 → 不出现 "//"
 (define tslash (boot "" "x" 60 16 #:root (current-directory)))

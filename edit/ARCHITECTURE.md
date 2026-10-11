@@ -347,7 +347,24 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
 
 ---
 
-### 5.1 指针 / 光标事件 + 定位
+### 5.1 键表：拆分 / 组合 / 绑定 document
+
+按键表不再是一张全局大表，而是**多张按功能拆开的表**（`config/keys.rkt`）；
+`core/keymap.rkt` 只做纯代数。两件**独立**的功能：
+
+- **组合**（`compose-keymaps`）：把有序的表并起来，后表在 `(binding scope)` 相同时覆盖前表。
+  配置给 `key-tables`（有序 list），core 侧 `(compose-keymaps key-tables)` 得到默认全局表。
+  加一张表 = 加一个 `define` 并放进 `key-tables`。
+- **绑定 document**（`bind-doc-keys`，与组合无关）：`feature 'doc-keys` = `did -> 键表`。
+  `app-routes` 在最前面放一条分派路由：焦点文档有表就先试它（`route-input/k`），
+  不命中再落到全局表。于是 document 局部键**优先**、且能自然穿透到全局。
+
+`route-input/k routes ctx st ev k` 就是「所有守卫都不命中时把控制交给 `k`」的版本；
+`route-input` = `route-input/k` + 兜底返回。
+
+---
+
+### 5.2 指针 / 光标事件 + 定位
 
 指针事件是**一等数据**，与布局一起完成「屏幕坐标 → 窗格 → 缓冲坐标」的定位，
 再交给命令绑定：

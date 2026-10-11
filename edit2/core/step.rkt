@@ -10,26 +10,31 @@
 
 (provide step jobs app-routes boot refresh-panels! focused-did set-focused-path!
          open-prompt close-prompt prompt-of prefix-of input-name
-         open-float close-float cycle-float
+         open-float close-float cycle-float bind-doc-keys doc-keys focused-keymap
          wid-vid wid-panel-name editor-wids panel-wid
          region-visible-vid region-visible? region-active
          region-toggle! region-show! region-hide! region-activate! region-cycle! region-focus!)
 
 (require racket/string
-         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "adapter.rkt" "layout.rkt"
+         "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt"
+         "adapter.rkt" "layout.rkt"
          "border.rkt" "panels.rkt" "fs.rkt"
          (rename-in "../config/app.rkt"
                     [regions regions-spec]
                     [frame frame-spec]
                     [enabled-panels panels-spec]
                     [border-style border-face]
-                    [borders-on? borders-default?]))
+                    [borders-on? borders-default?]
+                    [key-tables key-tables-spec]))
 
 ;; 默认边框 face（#f = 不加）。每个窗口可单独开关，见 border-toggle。
 (define default-border (and borders-default? border-face))
 
 ;; 配置数据 → region 结构（成员映射到文档名）。
 (define regions (map parse-region regions-spec))
+
+;; 键表：配置里是**有序**的多张表，core 按顺序组合（后者覆盖前者）。
+(define key-table (compose-keymaps key-tables-spec))
 
 ;;; ---------- 查询辅助 ----------
 
@@ -58,6 +63,21 @@
 (define (focused-did st)
   (define v (wid-vid st (state-focus st)))
   (and v (view-did (state-ed st) v)))
+
+;;; ---------- 绑定到 document 的键表（与「组合」独立） ----------
+;;
+;; feature 'doc-keys : did -> 键表。焦点在某 did 的视图时，先试该 did 的表，
+;; 不命中再落到全局组合表。把表挂到 did = bind-doc-keys（组合是另一回事）。
+(define (doc-keys st)
+  (feature-ref st 'doc-keys (hash)))
+
+(define (bind-doc-keys st did table)
+  (feature-set st 'doc-keys (hash-set (doc-keys st) did table)))
+
+;; 焦点文档的键表（没有 → #f）。
+(define (focused-keymap st)
+  (define d (focused-did st))
+  (and d (hash-ref (doc-keys st) d #f)))
 
 (define (set-doc-meta st did m)
   (struct-copy state st [docs (hash-set (state-docs st) did m)]))
@@ -1046,10 +1066,18 @@
     (define-values (st* e*) (run-op ctx st ev o))
     (values st* (append effs e*))))
 
+(define (op-runner ops)
+  (lambda (ctx st ev k) (run-ops ctx st ev ops)))
+
 (define (app-routes)
-  (compile-routes key-table scope-of
-                  (lambda (ops)
-                    (lambda (ctx st ev k) (run-ops ctx st ev ops)))))
+  (define global (compile-routes key-table scope-of op-runner))
+  ;; document 绑定的表优先：焦点文档有表就先试它，不命中再落到全局表。
+  (define doc-route
+    (route (lambda (st ev) (and (focused-keymap st) #t))
+           (lambda (ctx st ev k)
+             (route-input/k (compile-routes (focused-keymap st) scope-of op-runner)
+                            ctx st ev k))))
+  (cons doc-route global))
 
 ;;; ---------- 后台需求 ----------
 

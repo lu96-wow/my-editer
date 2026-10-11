@@ -15,7 +15,7 @@
  (struct-out route)
  (struct-out ctx)
  ctx-placements ctx-size
- route-input
+ route-input route-input/k
  guard-and guard-or guard-not always
  handled pass)
 
@@ -27,18 +27,22 @@
 
 ;;; ---------- 运行 ----------
 
-(define (route-input routes ctx st ev)
+;; 带「落空续延」的输入：所有 route 的守卫都不命中时，把控制交给 k。
+(define (route-input/k routes ctx st ev k)
   (define (chain rs)
     (cond
-      [(null? rs) (lambda (ctx st ev) (values st '()))]
+      [(null? rs) k]
       [else
        (define r (car rs))
        (define g (route-guard r))
        (define h (route-handler r))
-       (define k (chain (cdr rs)))
+       (define k2 (chain (cdr rs)))
        (lambda (ctx st ev)
-         (if (g st ev) (h ctx st ev k) (k ctx st ev)))]))
+         (if (g st ev) (h ctx st ev k2) (k2 ctx st ev)))]))
   ((chain routes) ctx st ev))
+
+(define (route-input routes ctx st ev)
+  (route-input/k routes ctx st ev (lambda (ctx st ev) (values st '()))))
 
 ;;; ---------- 守卫组合子 ----------
 
