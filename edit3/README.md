@@ -120,12 +120,14 @@ plugins/
   也可用主题调色板 `palette-color`/`palette-bg`（如关键字按分组取色）。
   核心在 `after-edit / after-insert / after-nav` 与鼠标点击后刷新；
   示例 `plugins/syntax.rkt`（关键字/字符串/注释/数字）、`plugins/words.rkt`（当前词）、
-  `plugins/brackets.rkt`（匹配括号）。
+  `plugins/brackets.rkt`（嵌套深度背景 + 匹配括号）。
 - **补全插件**用现成的**浮窗**做菜单（不引入新 overlay 机制），且**不抢焦点**：
   编辑器保持焦点与光标 → 能**边打边筛**（after-insert/after-edit 重筛）；菜单随光标
   落位（before-render 钩子每帧重算），候选窗口滚动（`popup-window`）；选中行铺满用
   `complete-selected`、其余 `complete`。`M-/`（editor 作用域）打开；Up/Down/Tab/Enter/Esc
-  用「有菜单就操作菜单、否则回落原行为」的 op 接住。
+  用「有菜单就操作菜单、否则回落原行为」的 op 接住。候选 = 本地文档词 + 关键字 +
+  require 绑定名（`rename-in`/`prefix-in`…，见 `plugins/lang/`）；模块导出走
+  `#:services 'completion-exports` 的**异步 worker**，`'job` 钩子写缓存后再开菜单。
 - 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
 - **异步 jobs**：插件用 `job-submit` 登记工作（纯），`jobs` 从 State 取待办；runtime 的
   worker 线程池按 `#:services` 的 `kind` 跑纯 handler，结果以 `job-event` 回注事件流；
@@ -140,5 +142,5 @@ plugins/
 
 - **overlay / popup + modes + 自定义路由**：浮层焦点栈、popup 几何、`modes`、
   插件直接贡献带 guard/priority 的路由（支撑补全菜单 / 文档弹窗）。
-- 把补全候选接到**语言 worker**（现在 `completion.rkt` 仍是本地同步词表；异步机制已就绪）。
+- **docs 文档弹窗**（`edit/plugins/docs`）与**模块路径补全**（`edit/lang/module-index`）。
 - `*.rkt` 等模式键表（`config/keys.rkt` 的 `rkt-keys` 还是占位）。

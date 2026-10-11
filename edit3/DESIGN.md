@@ -373,5 +373,5 @@ edit3/
       `core/extension.rkt` 再导出 session，插件可直接调这些原语（不依赖 step）。
 - [x] **异步 jobs**：`core/job.rkt`（`job` / `service` / 账本 / `jobs`）+ runtime 输入线程与
       worker 池（`thread` + channel，结果以 `job-event` 回注）；插件 `#:services` 贡献 worker，
-      `'job` 钩子消费结果；示例 `plugins/async-demo.rkt`；语言 worker 待接。
+      `'job` 钩子消费结果；示例 `plugins/async-demo.rkt`；补全的模块导出已接 worker。
 - [ ] overlay/popup + modes + 自定义路由（文档弹窗等）

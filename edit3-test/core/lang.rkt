@@ -71,9 +71,29 @@
 (define-values (b1 _) (open-file* b0 f2))
 (set-point! (state-ed b1) (focused-vid b1) 1 1)   ; 光标在第 1 行 "z" 之后
 (define b2 (run1 b1 (key-event '/ '(alt))))
-(check-true (and (feature-ref b2 'completion #f) #t))
-(define cands (hash-ref (feature-ref b2 'completion #f) 'candidates))
+;; 异步：先登记 job，菜单尚未开
+(check-false (feature-ref b2 'completion #f))
+(define pending (jobs b2))
+(check-equal? (length pending) 1)
+(define j (car pending))
+(check-equal? (job-kind j) 'completion-exports)
+
+;; 模拟 worker：跑 service，回注 job-event → 'job 钩子写缓存并开菜单
+(define svc (feature-ref b2 'services (make-service-registry)))
+(define res (run-service svc j))
+(check-true (and (member "zfirst" res) #t))
+(define-values (b3 _e) (step (refresh-panels! b2) SZ
+                             (job-event (job-id j) (job-kind j) res (job-tag j))))
+(check-true (and (feature-ref b3 'completion #f) #t))
+(define cands (hash-ref (feature-ref b3 'completion #f) 'candidates))
 (check-true (and (member "zfirst" cands) #t))     ; 只可能来自 rename-in
+
+;; 缓存命中：关菜单再 M-/ → 不再发 job，直接开
+(define b4 (run1 b3 (key-event 'escape '())))
+(check-false (feature-ref b4 'completion #f))
+(define b5 (run1 b4 (key-event '/ '(alt))))
+(check-true (and (feature-ref b5 'completion #f) #t))
+(check-equal? (jobs b5) '())
 
 (delete-directory/files d)
 (delete-directory/files tmp)

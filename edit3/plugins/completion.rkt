@@ -9,7 +9,10 @@
 ;;;     'complete-selected、其余用 'complete（颜色）。
 ;;;   · Up/Down/Tab/Enter/Esc 用「有菜单就操作菜单、否则回落原行为」的 op 接住；
 ;;;     打字走基础 insert，after-insert/after-edit 钩子重筛。
-;;; 目前同步候选（本地词表 + Racket 关键字）；换异步 worker 只需替换 all-words。
+;;;   · require 的模块导出（module->exports）是慢部分，丢给 core/job.rkt 的 worker：
+;;;     M-/ 时若没缓存就登记一个 'completion-exports job 并返回；结果由 'job 钩子
+;;;     写回缓存，再按当前光标上下文开菜单（无弹窗阻塞）。
+;;;     本地信息（文档词 / 顶层定义 / only-in 等）仍同步算。
 
 (require racket/string racket/list racket/path
          "../core/extension.rkt"
@@ -40,7 +43,10 @@
                   (if (and (> i 0) (symbol-char? (string-ref s (sub1 i)))) (loop (sub1 i)) i)))
   (substring s start c))
 
-(define (all-words st)
+;;; ---------- 候选来源 ----------
+
+;; 本地（快）：所有打开的文档里出现过的词 + Racket 关键字。
+(define (local-pool st)
   (define ed (state-ed st))
   (define from-docs
     (for*/list ([did (in-list (document-id-list ed))]
@@ -48,8 +54,7 @@
                 [line (in-list (string-split (document-string ed did) "\n"))]
                 [m (in-list (line-tokens line))])
       (substring line (car m) (cdr m))))
-  (define from-imports (with-handlers ([exn:fail? (lambda (_) '())]) (import-pool st)))
-  (sort (remove-duplicates (append from-imports from-docs (hash-keys keyword-categories))) string<?))
+  (sort (remove-duplicates (append from-docs (hash-keys keyword-categories))) string<?))
 
 ;; 打开的文档：绝对路径字符串 -> 该文档**当前缓冲区文本**（供 require 本地文件用）。
 (define (open-local-texts st)
@@ -61,17 +66,17 @@
     (values (path->string (path->complete-path (doc-meta-path m)))
             (document-string ed did))))
 
-;; 焦点 Racket 文档的候选来源：require 引入的**最终绑定名**（only-in / except-in /
-;; prefix-in / rename-in / prefix-rename-in 都按 spec 结构算）+ 顶层定义名。
-;; 本地文件若已作为文档打开，用其当前缓冲区文本扫 (provide …)。
-(define (import-pool st)
+;; 焦点 Racket 文档的 require 上下文：
+;;   (list specs base-dir open-map locals) | #f
+;; specs = 原始 require spec（含 #lang）；locals = 顶层定义名。
+(define (imports-context st)
   (define ed (state-ed st))
   (define vid (focused-vid st))
   (define did (and vid (view-did ed vid)))
   (define m (and did (hash-ref (state-docs st) did #f)))
   (define path (and m (doc-meta-path m)))
   (cond
-    [(not (racket-file? path)) '()]
+    [(not (racket-file? path)) #f]
     [else
      (define text (view-string ed vid))
      (define-values (lang forms) (requires-context text))
@@ -81,9 +86,33 @@
      (define base-dir (let-values ([(d _f _n) (split-path path)])
                         (if (path? d) d (current-directory))))
      (define open (open-local-texts st))
-     (define imported (append* (for/list ([s (in-list specs*)]) (spec-names s base-dir open))))
      (define locals (map symbol->string (definitions-of-forms forms)))
-     (append imported locals)]))
+     (list specs* base-dir open locals)]))
+
+;;; ---------- 模块导出缓存 + 异步 job ----------
+
+(define (completion-cache st)
+  (feature-ref st 'completion-cache (hash 'exports (hash) 'pending (hash))))
+(define (cache-get st key) (hash-ref (hash-ref (completion-cache st) 'exports) key #f))
+(define (cache-put! st key names) (hash-set! (hash-ref (completion-cache st) 'exports) key names))
+(define (pending? st key) (hash-ref (hash-ref (completion-cache st) 'pending) key #f))
+(define (pending-put! st key) (hash-set! (hash-ref (completion-cache st) 'pending) key #t))
+(define (pending-del! st key) (hash-remove! (hash-ref (completion-cache st) 'pending) key))
+
+;; 稳定缓存键：specs + 目录 + 打开文件的内容摘要（缓冲区变了要重算）。
+(define (digest str)
+  (for/fold ([h 5381]) ([c (in-string str)])
+    (bitwise-and (+ (* h 33) (char->integer c)) #xFFFFFFFF)))
+(define (import-key specs base-dir open)
+  (list specs (path->string base-dir)
+        (sort (for/list ([(p t) (in-hash open)]) (cons p (digest t))) string<? #:key car)))
+
+;; worker：spec-names 的慢部分（module->exports / 本地文件解析）放 worker 线程。
+(define (exports-service payload)
+  (match payload
+    [(list 'exports base-dir specs open)
+     (append* (for/list ([s (in-list specs)]) (spec-names s base-dir open)))]
+    [_ '()]))
 
 (define (filter-pool pool prefix)
   (define plen (string-length prefix))
@@ -189,7 +218,19 @@
 
 ;;; ---------- op ----------
 
-(define (completion-start ctx st _ev _args)
+(define (open-menu st vid prefix pool)
+  (define cands (filter-pool pool prefix))
+  (cond
+    [(null? cands) st]
+    [else
+     (define c0 (hash 'candidates cands 'index 0 'prefix prefix 'pool pool
+                      'target-vid vid 'target-w (state-focus st)))
+     (define st1 (feature-set st 'completion c0))
+     (open-float-overlay* st1 (completion-vid st1)
+                          (anchor (state-focus st1) 'left 'top 0 1)
+                          (cons 12 3) 'window-border)]))
+
+(define (completion-start _ctx st _ev _args)
   (define vid (focused-vid st))
   (cond
     [(or (not vid) (panel-name-of-vid st vid) (menu-open? st)) (values st '())]
@@ -199,18 +240,55 @@
      (cond
        [(zero? (string-length prefix)) (values st '())]
        [else
-        (define pool (all-words st))
-        (define cands (filter-pool pool prefix))
+        (define ctx* (imports-context st))
         (cond
-          [(null? cands) (values st '())]
+          [(not ctx*) (values (open-menu st vid prefix (local-pool st)) '())]
           [else
-           (define c0 (hash 'candidates cands 'index 0 'prefix prefix 'pool pool
-                            'target-vid vid 'target-w (state-focus st)))
-           (define st1 (feature-set st 'completion c0))
-           (define st2 (open-float-overlay* st1 (completion-vid st1)
-                                            (anchor (state-focus st1) 'left 'top 0 1)
-                                            (cons 12 3) 'window-border))
-           (values (reposition st2 (ctx-size ctx)) '())])])]))
+           (define specs (car ctx*)) (define base-dir (cadr ctx*))
+           (define open (caddr ctx*)) (define locals (cadddr ctx*))
+           (define key (import-key specs base-dir open))
+           (define exp (cache-get st key))
+           (cond
+             [(list? exp) (values (open-menu st vid prefix (append exp locals (local-pool st))) '())]
+             [(pending? st key) (values st '())]
+             [else
+              (pending-put! st key)
+              (define-values (st* _j) (job-submit st 'completion-exports
+                                                  (list 'exports base-dir specs open) key))
+              (values st* '())])])])]))
+
+;; 'job 钩子：worker 结果回来 → 写缓存 → 若光标上下文仍合适就开菜单。
+(define (completion-on-job st args)
+  (match args
+    [(list _id kind result tag)
+     (cond
+       [(not (eq? kind 'completion-exports)) st]
+       [else
+        (pending-del! st tag)
+        (when (and (list? result) (andmap string? result)) (cache-put! st tag result))
+        (maybe-open-cached st)])]
+    [_ st]))
+
+(define (maybe-open-cached st)
+  (define vid (focused-vid st))
+  (cond
+    [(or (not vid) (panel-name-of-vid st vid) (menu-open? st)) st]
+    [else
+     (define ed (state-ed st))
+     (define prefix (prefix-at ed vid))
+     (cond
+       [(zero? (string-length prefix)) st]
+       [else
+        (define ctx* (imports-context st))
+        (cond
+          [(not ctx*) st]
+          [else
+           (define specs (car ctx*)) (define base-dir (cadr ctx*))
+           (define open (caddr ctx*)) (define locals (cadddr ctx*))
+           (define exp (cache-get st (import-key specs base-dir open)))
+           (cond
+             [(list? exp) (open-menu st vid prefix (append exp locals (local-pool st)))]
+             [else st])])])]))
 
 (define (complete-next _ctx st _ev _args) (values (if (menu-open? st) (complete-move st 1) st) '()))
 (define (complete-prev _ctx st _ev _args) (values (if (menu-open? st) (complete-move st -1) st) '()))
@@ -265,6 +343,8 @@
                (cons 'complete-or-enter complete-or-enter)
                (cons 'complete-or-cancel complete-or-cancel))
    #:panels (list (panel-spec "*completion*" #f completion-content))
+   #:services (list (service 'completion-exports exports-service))
+   #:boot (lambda (st) (feature-set st 'completion-cache (hash 'exports (make-hash) 'pending (make-hash))))
    #:key-tables (list '(((key / alt) editor (complete-start))
                         ((key down) editor (complete-or-move down))
                         ((key up)   editor (complete-or-move up))
@@ -273,6 +353,7 @@
                         ((key escape) editor (complete-or-cancel))))
    #:hooks (list (reaction* 'after-insert (lambda (s _args) (refine s)))
                  (reaction* 'after-edit   (lambda (s _args) (refine s)))
+                 (reaction* 'job          completion-on-job)
                  (reaction* 'before-render
                             (lambda (s args)
                               (if (and (pair? args) (car args)) (reposition s (car args)) s))))))
