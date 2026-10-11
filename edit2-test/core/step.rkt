@@ -220,10 +220,10 @@
 (define fpath (build-path tdir "hello.txt"))
 (call-with-output-file fpath #:exists 'truncate (lambda (o) (display "hi" o)))
 (define so0 (boot "" "*scratch*" 60 16 #:root tdir))
-(define so1 (run1 (run1 so0 (key-event 't '(alt))) (key-event 'enter '())))
+(define so1 (run1 (run1 (run1 so0 (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
 (check-equal? (length (document-id-list (state-ed so1))) 7)
 (check-equal? (length (view-id-list (state-ed so1))) 7)
-(define so2 (run1 (run1 so1 (key-event 't '(alt))) (key-event 'enter '())))
+(define so2 (run1 (run1 (run1 so1 (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
 (check-equal? (length (document-id-list (state-ed so2))) 7)
 (check-equal? (length (view-id-list (state-ed so2))) 7)
 
@@ -252,7 +252,7 @@
 (check-equal? (region-active srt 'sidebar) "*buffers*")
 
 ;; ---- 打开时多窗口 → 选择目标窗口（放置模式） ----
-(define (open-hello st) (run1 (run1 st (key-event 't '(alt))) (key-event 'enter '())))
+(define (open-hello st) (run1 (run1 (run1 st (key-event 't '(alt))) (key-event 'down '())) (key-event 'enter '())))
 
 ;; 造两个**非空**编辑窗口：分裂出空窗口，再把它填成同一个 vid（同 view 多位置）。
 (define (boot-tdir) (boot "base" "*scratch*" 60 16 #:root tdir))
@@ -293,27 +293,42 @@
 (define spl8 (run1 spl7 (key-event 'b '(ctrl))))
 (check-false (placing? (feature-ref spl8 'placing #f)))
 
-;; ---- 文件树行为：Enter 展开/折叠，←→ 移光标，C-n 新建，C-d 删除，C-u 刷新 ----
+;; ---- 文件树行为：顶部根目录、隐藏项、Enter/光标、C-n 新建、C-d 删除、C-u 刷新 ----
 (define (make-tdir) (make-temporary-file "edit2tree~a" 'directory))
 (define (tree-focus st) (run1 st (key-event 't '(alt))))
-(define (tree-names st)
+(define (tree-names st)   ; 丢掉顶部根目录行
   (define st* (refresh-panels! st))
-  (map (lambda (x) (list-ref x 1)) (tree-rows (tree-ensure (feature-ref st* 'tree #f)))))
+  (define rows (tree-rows (tree-ensure (feature-ref st* 'tree #f))))
+  (map (lambda (x) (list-ref x 1)) (cdr rows)))
 
-;; 导航：Enter 展开 sub，Right 到子，Left 回父
+;; 顶部第一行是工作区根目录；默认隐藏 . 开头的条目，C-h 切换
+(define dhid (make-tdir))
+(make-directory (build-path dhid ".git"))
+(call-with-output-file (build-path dhid "normal.txt") #:exists 'truncate (lambda (o) (display "N" o)))
+(define th1 (tree-focus (boot "" "x" 60 16 #:root dhid)))
+(define th1-rows (tree-rows (tree-ensure (feature-ref (refresh-panels! th1) 'tree #f))))
+(check-equal? (car (car th1-rows)) (simplify-path (path->complete-path dhid)))   ; 顶部 = 根
+(check-equal? (tree-names th1) '("normal.txt"))                                ; .git 隐藏
+(define th2 (run1 th1 (key-event 'h '(ctrl))))
+(check-not-false (member ".git" (tree-names th2)))                             ; C-h 显示
+(define th3 (run1 th2 (key-event 'h '(ctrl))))
+(check-equal? (tree-names th3) '("normal.txt"))                                ; C-h 再隐藏
+
+;; 导航：Enter 展开 sub，←→ 光标横移
 (define dnav (make-tdir))
 (make-directory (build-path dnav "sub"))
 (call-with-output-file (build-path dnav "sub" "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
 (define tn1 (tree-focus (boot "" "x" 60 16 #:root dnav)))
 (check-equal? (tree-names tn1) '("sub"))
-(define tn2 (run1 tn1 (key-event 'enter '())))
+(define tn1b (run1 tn1 (key-event 'down '())))          ; 光标到 sub
+(define tn2 (run1 tn1b (key-event 'enter '())))         ; 展开
 (check-equal? (tree-names tn2) '("sub" "a.txt"))
 (define tn3 (run1 tn2 (key-event 'right '())))
-(check-equal? (view-line (state-ed tn3) (panel-vid tn3 "*tree*")) 1)
+(check-equal? (view-col (state-ed tn3) (panel-vid tn3 "*tree*")) 1)
 (define tn4 (run1 tn3 (key-event 'left '())))
-(check-equal? (view-line (state-ed tn4) (panel-vid tn4 "*tree*")) 0)
+(check-equal? (view-col (state-ed tn4) (panel-vid tn4 "*tree*")) 0)
 
-;; C-n f 新文件
+;; C-n f 新文件（目标 = 根目录行）
 (define dnew (make-tdir))
 (define tf1 (tree-focus (boot "" "x" 60 16 #:root dnew)))
 (define tf2 (run1 tf1 (key-event 'n '(ctrl))))
@@ -337,11 +352,13 @@
 (define tu2 (run1 tu1 (key-event 'u '(ctrl))))
 (check-not-false (member "external.txt" (tree-names tu2)))
 
-;; C-d 删除（需确认）
+;; C-d 删除（需确认）：光标走到 sub/a.txt
 (define ddel (make-tdir))
 (make-directory (build-path ddel "sub"))
 (call-with-output-file (build-path ddel "sub" "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
-(define td1 (run1 (run1 (tree-focus (boot "" "x" 60 16 #:root ddel)) (key-event 'enter '())) (key-event 'right '())))
+(define td1 (run1 (run1 (run1 (tree-focus (boot "" "x" 60 16 #:root ddel))
+                             (key-event 'down '())) (key-event 'enter '()))
+                  (key-event 'down '())))
 (define td2 (run1 td1 (key-event 'd '(ctrl))))
 (check-true (prompt? (state-input td2)))
 (define td3 (run1 (run1 td2 (text-event "y")) (key-event 'enter '())))
@@ -352,10 +369,11 @@
 (call-with-output-file (build-path dto "a.txt") #:exists 'truncate (lambda (o) (display "A" o)))
 (call-with-output-file (build-path dto "b.txt") #:exists 'truncate (lambda (o) (display "B" o)))
 (define to1 (tree-focus (boot "" "x" 60 16 #:root dto)))
-(define to2 (run1 to1 (key-event 'enter '())))                     ; 打开 a.txt
-(define to3 (run1 (run1 to2 (key-event 't '(alt))) (key-event 'down '())))  ; 光标移到 b.txt
+(define to1b (run1 to1 (key-event 'down '())))                    ; 光标到 a.txt
+(define to2 (run1 to1b (key-event 'enter '())))                   ; 打开 a.txt
+(define to3 (run1 (run1 to2 (key-event 't '(alt))) (key-event 'down '())))  ; 光标到 b.txt
 (define-values (_tto tfaces) (tree-content (refresh-panels! to3) (panel-vid to3 "*tree*")))
 (check-not-false (member 'tree-open (map cdr tfaces)))
-(check-not-false (member 'tree-current (map cdr tfaces)))
+(check-not-false (member 'tree-file (map cdr tfaces)))
 
 (displayln "edit2/step.rkt: all tests passed")

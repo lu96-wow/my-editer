@@ -33,7 +33,8 @@
     ((key b ctrl)  always (region-toggle sidebar))
     ((key l ctrl)  always (region-toggle log))
     ((key t ctrl)  always (border-toggle))       ; 焦点窗口开关边框
-    ((key h ctrl)  always (float-open help))
+    ((key h ctrl)  always (tree-toggle-hidden))   ; 文件树：显/隐以 . 开头的条目
+    ((key h alt)   always (float-open help))
     ((key e alt)   always (focus editor))
     ((key n alt)   always (focus (cycle 1)))
     ((key p alt)   always (focus (cycle -1)))
@@ -55,11 +56,11 @@
     ((key tab)     (region sidebar) (region-cycle sidebar 1) (region-focus sidebar))
 
     ;; ---------- 面板选择 = 文档导航（一切皆 document） ----------
-    ;; 文件树：↑↓/←→ 移光标（← 父目录、→ 展开目录的第一个子项），Enter 展开/折叠（文件则打开）
+    ;; 文件树：↑↓←→ 都是光标移动（一行一个条目）；Enter 展开/折叠（文件则打开）
     ((key down)  (panel tree)    (move down))
     ((key up)    (panel tree)    (move up))
-    ((key left)  (panel tree)    (tree-parent))
-    ((key right) (panel tree)    (tree-child))
+    ((key left)  (panel tree)    (move left))
+    ((key right) (panel tree)    (move right))
     ((key enter) (panel tree)    (activate))
     ;; 文件树：C-d 删除（需确认）；C-n f 新文件，C-n C-n f 新目录
     ((key d ctrl) (panel tree)   (tree-delete))

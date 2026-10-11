@@ -802,6 +802,11 @@
 ;; C-u：重读磁盘刷新文件树（已打开的文档不管）。
 (define (tree-reload st) (tree-after-fs! st #f))
 
+;; C-h：显示 / 隐藏以 . 开头的条目。
+(define (tree-hidden-toggle st)
+  (define ts0 (feature-ref st 'tree #f))
+  (if ts0 (feature-set st 'tree (tree-toggle-hidden ts0)) st))
+
 ;; C-n 前缀：一次 = 新文件，两次 = 新目录。
 (define (prefix-of st) (let ([i (state-input st)]) (and (memq i '(new new2)) i)))
 (define (prefix-new st)
@@ -945,6 +950,7 @@
     [(tree-new-dir)      (tree-new-dir st)]
     [(tree-delete)       (tree-delete st)]
     [(tree-reload)       (values (tree-reload st) '())]
+    [(tree-toggle-hidden) (values (tree-hidden-toggle st) '())]
     [(prefix-new)        (values (prefix-new st) '())]
     [(prefix-cancel)     (values (prefix-cancel st) '())]
     [(buffers-toggle)    (values (buffers-toggle st) '())]

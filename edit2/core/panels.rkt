@@ -16,6 +16,7 @@
  refresh-panels! buffer-items buffer-rows tree-relative-path
  tree-content
  tree-init tree-ensure tree-rows tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh
+ tree-toggle-hidden
  panel-line panel-line-at)
 
 (require racket/path
@@ -68,13 +69,17 @@
 
 ;;; ---------- 树状态（纯）：只放真正不是文档的东西 ----------
 
-;; root / 展开集 / 目录快照缓存。**没有游标**——选择就是面板文档的光标。
-(struct tree (root expanded children) #:transparent)
+;; root / 展开集 / 目录快照缓存 / 是否显示隐藏项。**没有游标**——选择就是面板文档的光标。
+(struct tree (root expanded children show-hidden?) #:transparent)
 
-(define (tree-init root) (tree (simplify-path (path->complete-path root)) (hash) (hash)))
+(define (tree-init root) (tree (simplify-path (path->complete-path root)) (hash) (hash) #f))
 
 ;; 清空目录快照缓存 → 下次 tree-ensure 重读磁盘（只影响树，不动已打开文档）。
 (define (tree-refresh ts) (struct-copy tree ts [children (hash)]))
+
+;; C-h：显示 / 隐藏以 . 开头的条目。
+(define (tree-toggle-hidden ts)
+  (struct-copy tree ts [show-hidden? (not (tree-show-hidden? ts))]))
 
 (define (tree-ensure ts)
   (define dirs (cons (tree-root ts) (hash-keys (tree-expanded ts))))
@@ -83,15 +88,24 @@
       (hash-set ch d (with-handlers ([exn:fail? (lambda (_) '())]) (fs-read-dir d)))))
   (struct-copy tree ts [children ch]))
 
-;; 可见行：(path name dir? depth)
+;; 以 . 开头的条目（隐藏路径）。
+(define (tree-hidden-path? p)
+  (define n (path->string (file-name-from-path p)))
+  (and (positive? (string-length n)) (char=? #\. (string-ref n 0))))
+
+;; 可见行：(path name dir? depth)。顶部第一行是工作区根目录。
 (define (tree-rows ts)
+  (define show? (tree-show-hidden? ts))
   (define (walk dir depth)
     (append*
-     (for/list ([e (in-list (hash-ref (tree-children ts) dir '()))])
+     (for/list ([e (in-list (hash-ref (tree-children ts) dir '()))]
+                #:unless (and (not show?) (tree-hidden-path? (car e))))
        (define p (car e)) (define d? (cdr e))
        (cons (list p (path->string (file-name-from-path p)) d? depth)
              (if (and d? (hash-has-key? (tree-expanded ts) p)) (walk p (add1 depth)) '())))))
-  (walk (tree-root ts) 0))
+  (define root (tree-root ts))
+  (cons (list root (path->string root) #t 0)
+        (walk root 1)))
 
 (define (tree-toggle-dir ts dir)
   (struct-copy tree ts
@@ -210,7 +224,6 @@
 (define (buffers-content st v)
   (define rows (buffer-rows st))
   (define folded (feature-ref st 'buffers-fold (hash)))
-  (define cursor (if v (view-line (state-ed st) v) 0))
   (define fdid (focused-did* st))
   (define lines
     (for/list ([r (in-list rows)])
@@ -228,8 +241,7 @@
           (for/list ([r (in-list rows)] [i (in-naturals)])
             (define did (car r))
             (define kind (list-ref r 4))
-            (cons i (cond [(= i cursor) 'tree-current]
-                          [(doc-dirty*? st did) 'buf-dirty]
+            (cons i (cond [(doc-dirty*? st did) 'buf-dirty]
                           [(eq? kind 'doc)
                            (cond [(eqv? did fdid) 'buf-current]
                                  [(not (doc-meta-path (hash-ref (state-docs st) did #f))) 'buf-untitled]
@@ -248,7 +260,6 @@
     [(not ts) (values "" '())]
     [else
      (define rows (tree-rows ts))
-     (define cursor (if v (view-line (state-ed st) v) 0))
      (define opens (open-paths st))
      (define lines
        (for/list ([r (in-list rows)])
@@ -261,8 +272,8 @@
                (define p (car r))
                (define name (list-ref r 1))
                (define dir? (list-ref r 2))
+               ;; 光标是普通光标（core 的 cursor 格），不把整行染成选区。
                (cons i (cond
-                         [(= i cursor) 'tree-current]
                          [(and (positive? (string-length name)) (char=? #\. (string-ref name 0))) 'tree-hidden]
                          [(and (not dir?) (for/or ([o (in-list opens)]) (equal? (explode-path o) (explode-path p)))) 'tree-open]
                          [dir? 'tree-dir]
@@ -282,10 +293,14 @@
        [(not text) st]
        [else
         (define old-line (view-line ed v))
+        (define old-col (view-col ed v))
         (unless (equal? text (view-string ed v))
           (assign! ed v text)
-          (define n (max 0 (sub1 (length (string-split text "\n")))))
-          (set-point! ed v (min old-line n) 0))
+          ;; 保留光标行列（行夹到有效范围，列夹到该行长度）——面板也是普通文档光标。
+          (define ls (string-split text "\n"))
+          (define ln (min old-line (max 0 (sub1 (length ls)))))
+          (define lc (min old-col (string-length (list-ref ls ln))))
+          (set-point! ed v ln lc))
         (for ([f (in-list faces)]) (face-line! ed (view-did ed v) (car f) (cdr f)))
         st])]))
 
