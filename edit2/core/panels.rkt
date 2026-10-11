@@ -112,6 +112,10 @@
 (define (status-content st)
   (define p (state-input st))
   (cond
+    [(placing? (feature-ref st 'placing #f))
+     (define fv (state-focus st))
+     (define target (if fv (doc-label st (view-did (state-ed st) fv)) "?"))
+     (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target) '())]
     [(prompt? p) (values (string-append " " (prompt-label p) (prompt-text p)) '())]
     [else
      (define ed (state-ed st))

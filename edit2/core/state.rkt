@@ -21,6 +21,7 @@
  (struct-out state)
  (struct-out job)
  (struct-out prompt)
+ (struct-out placing)
  make-state feature-ref feature-set)
 
 (require "../../core/editor.rkt")
@@ -79,4 +80,13 @@
 ;; label : 显示在前面的提示
 ;; text  : 已输入的答复
 ;; data  : kind 相关（close-doc: (list did)；quit: (listof did) 尚未问的）
+
+;;; ---------- 放置选择（打开时多窗口 → 用户选目标窗格） ----------
+
+(struct placing (vid prev-focus) #:transparent)
+;; vid        : 待放入的视图资源
+;; prev-focus : 进入前的焦点（取消时恢复）
+;; 候选编辑窗格不存：每次从 layout 现算，布局变了也不会拿到失效 vid。
+
+;; 存在 feature 'placing；不新增 State 字段。
 

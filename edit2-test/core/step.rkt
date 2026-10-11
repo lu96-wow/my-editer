@@ -163,7 +163,8 @@
 (check-equal? (length (document-id-list (state-ed sm1))) 6)
 ;; 缓冲区面板逐视图列行，多视图标 [k/n]
 (check-true (regexp-match? #rx"\\[1/2\\]"
-                           (view-string (state-ed sm1) (panel-vid sm1 "*buffers*"))))
+                           (view-string (state-ed (refresh-panels! sm1))
+                                        (panel-vid sm1 "*buffers*"))))
 
 ;; 关窗口只摘 pane：同一 document 的两个 view 都保留。
 (define sm2 (run1 sm1 (key-event 'd '(ctrl))))
@@ -215,5 +216,44 @@
 ;; 区域作用域：焦点在侧栏内时 Tab 切换成员
 (define srt (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'tab '())))
 (check-equal? (region-active srt 'sidebar) "*buffers*")
+
+;; ---- 打开时多窗口 → 选择目标窗格（放置模式） ----
+(define (ed-vids st)
+  (for/list ([v (in-list (layout-vids (state-layout st)))]
+             #:when (not (panel-name st v)))
+    v))
+(define (open-hello st) (run1 (run1 st (key-event 't '(alt))) (key-event 'enter '())))
+
+;; 2 个编辑窗格时打开文件：不直接替换，而是进入放置模式等用户选。
+(define spl1 (run1 (boot "base" "*scratch*" 60 16 #:root tdir) (key-event 'w '(ctrl))))
+(check-equal? (length (ed-vids spl1)) 2)
+(define spl2 (open-hello spl1))
+(check-true (placing? (feature-ref spl2 'placing #f)))
+(check-equal? (length (ed-vids spl2)) 2)               ; 布局未动
+(check-true (regexp-match? #rx"选择目标"
+                           (view-string (state-ed (refresh-panels! spl2))
+                                        (panel-vid spl2 "*status*"))))
+;; Tab 切换目标窗格 → Enter 替换
+(define spl3 (run1 spl2 (key-event 'tab '())))
+(define spl4 (run1 spl3 (key-event 'enter '())))
+(check-false (placing? (feature-ref spl4 'placing #f)))
+(check-equal? (length (ed-vids spl4)) 2)
+(check-equal? (length (filter (lambda (v) (memv v (ed-vids spl4))) (ed-vids spl1))) 1)  ; 只替了 1 个
+(check-equal? (document-string (state-ed spl4) (view-did (state-ed spl4) (state-focus spl4))) "hi")
+
+;; Esc 取消：布局与焦点恢复，待放视图资源保留（可在缓冲区再显示）
+(define splc (run1 (boot "base" "*scratch*" 60 16 #:root tdir) (key-event 'w '(ctrl))))
+(define spl5 (open-hello splc))
+(define spl6 (run1 spl5 (key-event 'escape '())))
+(check-false (placing? (feature-ref spl6 'placing #f)))
+(check-equal? (ed-vids spl6) (ed-vids splc))           ; 布局不变
+(check-equal? (state-focus spl6) (panel-vid spl6 "*tree*"))  ; 焦点回进入前
+(check-true (> (length (document-id-list (state-ed spl6))) 6))  ; 新文档还在
+
+;; 放置模式下按无关键 → 退出放置（瞬时模式语义）
+(define spl7 (open-hello (run1 (boot "base" "*scratch*" 60 16 #:root tdir) (key-event 'w '(ctrl)))))
+(check-true (placing? (feature-ref spl7 'placing #f)))
+(define spl8 (run1 spl7 (key-event 'b '(ctrl))))        ; C-b 切侧栏（无关命令）
+(check-false (placing? (feature-ref spl8 'placing #f)))
 
 (displayln "edit2/step.rkt: all tests passed")

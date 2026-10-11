@@ -14,9 +14,17 @@
 (define key-table
   '(
     ;; ---------- 指针 / 光标 ----------
+    ((cursor press left)   placing (place-pick))
     ((cursor press left)   always (pointer))
     ((cursor scroll up)    always (scroll -1))
     ((cursor scroll down)  always (scroll 1))
+
+    ;; ---------- 放置选择（打开时多窗口：选目标窗格替换） ----------
+    ((key enter)   placing (place-confirm))
+    ((key escape)  placing (place-cancel))
+    ((key tab)     placing (place-cycle 1))
+    ((key n alt)   placing (place-cycle 1))
+    ((key p alt)   placing (place-cycle -1))
 
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))

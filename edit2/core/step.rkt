@@ -48,7 +48,92 @@
      (set-doc-meta st did (struct-copy doc-meta m [path path]))]))
 
 (define (editor-focus? st ev)
-  (and (state-focus st) (not (panel-name st (state-focus st)))))
+  (and (state-focus st)
+       (not (panel-name st (state-focus st)))
+       (not (placing-of st))))
+
+;;; ---------- 放置选择模式（打开时多窗口 → 选目标窗格） ----------
+
+(define (placing-of st) (feature-ref st 'placing #f))
+
+(define (editor-vids st)
+  (for/list ([v (in-list (layout-vids (state-layout st)))]
+             #:when (not (panel-name st v)))
+    v))
+
+;; 把视图放上屏：0 个编辑窗格 → 填空位/新建；1 个 → 直接替换；
+;; 多个 → 进入选择模式，用户用鼠标/焦点选中目标窗格再回车替换。
+(define (place-view st vid)
+  (define es (editor-vids st))
+  (define l (state-layout st))
+  (cond
+    [(null? es)
+     (struct-copy state st
+                  [layout (cond [(layout-has-empty? l) (layout-fill-empty l (pane vid))]
+                                [(blank? l) (pane vid)]
+                                [else (layout-add-side l (pane vid) 'left 0)])]
+                  [focus vid])]
+    [(null? (cdr es))
+     (struct-copy state st [layout (layout-replace l (car es) vid)] [focus vid])]
+    [else
+     (define target (if (memv (state-focus st) es) (state-focus st) (car es)))
+     (feature-set (struct-copy state st [focus target])
+                  'placing (placing vid (state-focus st)))]))
+
+;; 在当前候选窗格间循环（放置模式）。
+(define (place-cycle st d)
+  (define cs (editor-vids st))
+  (cond
+    [(null? cs) st]
+    [else
+     (define i (or (for/first ([v (in-list cs)] [i (in-naturals)] #:when (eqv? v (state-focus st))) i) 0))
+     (struct-copy state st [focus (list-ref cs (modulo (+ i d) (length cs)))])]))
+
+;; 回车：把待放视图替换到当前候选窗格。
+(define (place-confirm st)
+  (define p (placing-of st))
+  (define es (editor-vids st))
+  (define target (state-focus st))
+  (cond
+    [(not p) (values st '())]
+    [(memv target es)
+     (define st* (feature-set st 'placing #f))
+     (values (struct-copy state st*
+                          [layout (layout-replace (state-layout st*) target (placing-vid p))]
+                          [focus (placing-vid p)])
+             '())]
+    [(null? (cdr es))            ; 布局变了只剩一个：直接放它
+     (define st* (feature-set st 'placing #f))
+     (values (struct-copy state st*
+                          [layout (layout-replace (state-layout st*) (car es) (placing-vid p))]
+                          [focus (placing-vid p)])
+             '())]
+    [else (values st '())]))     ; 目标失效且有多个：忽略，等用户重选
+
+;; Esc / 任何其它键：取消，恢复进入前的焦点（待放视图资源保留）。
+(define (cancel-placing st)
+  (define p (placing-of st))
+  (cond
+    [(not p) st]
+    [else
+     (define st* (feature-set st 'placing #f))
+     (define f (if (layout-has? (state-layout st*) (placing-prev-focus p))
+                   (placing-prev-focus p)
+                   (focus-after st* (state-layout st*))))
+     (struct-copy state st* [focus f])]))
+
+(define (place-cancel st) (values (cancel-placing st) '()))
+
+;; 鼠标点候选窗格 = 选中目标。
+(define (place-pick ctx st ev)
+  (define p (placing-of st))
+  (define hit (layout-hit (ctx-placements ctx) (cursor-event-x ev) (cursor-event-y ev)))
+  (cond
+    [(or (not p) (not hit)) (values st '())]
+    [else
+     (define vid (placement-vid hit))
+     (cond [(memv vid (editor-vids st)) (values (struct-copy state st [focus vid]) '())]
+           [else (values st '())])]))
 
 (define ((focus-panel? name) st ev)
   (equal? name (panel-name st (state-focus st))))
@@ -140,16 +225,6 @@
                   [layout (layout-split-pane (state-layout st) v axis nvid)]
                   [focus nvid])]))
 
-(define (place-view st vid)
-  (define center (center-vid st))
-  (define l (state-layout st))
-  (struct-copy state st
-               [layout (cond [center (layout-replace l center vid)]
-                             [(layout-has-empty? l) (layout-fill-empty l (pane vid))]
-                             [(blank? l) (pane vid)]
-                             [else (layout-add-side l (pane vid) 'left 0)])]
-               [focus vid]))
-
 ;;; ---------- 区域代数（共用同一块面板的成员） ----------
 ;;;
 ;;; 一个区域 = 若干成员 + 一个 active + 显/隐。状态只有两样：
@@ -229,13 +304,16 @@
 
 ;; 焦点在可见窗格间循环。
 (define (focus-cycle st d)
-  (define vids (layout-vids (state-layout st)))
   (cond
-    [(null? vids) st]
+    [(placing-of st) (place-cycle st d)]
     [else
-     (define idx (or (for/first ([v (in-list vids)] [i (in-naturals)] #:when (eqv? v (state-focus st))) i) 0))
-     (define n (modulo (+ idx d) (length vids)))
-     (struct-copy state st [focus (list-ref vids n)])]))
+     (define vids (layout-vids (state-layout st)))
+     (cond
+       [(null? vids) st]
+       [else
+        (define idx (or (for/first ([v (in-list vids)] [i (in-naturals)] #:when (eqv? v (state-focus st))) i) 0))
+        (define n (modulo (+ idx d) (length vids)))
+        (struct-copy state st [focus (list-ref vids n)])])]))
 
 (define (focus-editor st)
   (define v (center-vid st))
@@ -565,6 +643,7 @@
     [(eq? s 'editor) editor-focus?]
     [(eq? s 'float)  (lambda (st ev) (pair? (state-stack st)))]
     [(eq? s 'prompt) (lambda (st ev) (prompt? (state-input st)))]
+    [(eq? s 'placing) (lambda (st ev) (and (placing-of st) #t))]
     [(and (pair? s) (eq? (car s) 'panel)) (focus-panel? (panel-name-of (cadr s)))]
     [(and (pair? s) (eq? (car s) 'region))
      (lambda (st ev) (and (member (panel-name st (state-focus st)) (region-members* (cadr s))) #t))]
@@ -613,6 +692,10 @@
     [(cut)               (edit-focused st 'cut)]
     [(paste)             (edit-focused st 'paste)]
     [(split)             (values (split-focused st editor-split-axis) '())]
+    [(place-confirm)     (place-confirm st)]
+    [(place-cancel)      (place-cancel st)]
+    [(place-cycle)       (values (place-cycle st (car args)) '())]
+    [(place-pick)        (place-pick ctx st ev)]
     [(close-window)      (values (close-window! st (state-focus st)) '())]
     [(close-view)        (values (close-view-at-focus! st) '())]
     [(close-doc)         (request-close-doc-at-focus st)]
@@ -634,9 +717,18 @@
     [(collapse)          (tree-collapse st)]
     [else (values st '())]))
 
-;; 一条命令 = 原语序列
+;; 一条命令 = 原语序列。
+;; 放置模式下跑无关命令 → 先退出放置模式（瞬时模式语义）：
+;; 只有自己调用 place-* 的命令不会触发退出。
+(define (placing-op-seq? ops)
+  (for/or ([o (in-list ops)])
+    (memq (car o) '(place-confirm place-cancel place-cycle place-pick))))
+
 (define (run-ops ctx st ev ops)
-  (for/fold ([st st] [effs '()]) ([o (in-list ops)])
+  (define st0 (if (and (placing-of st) (not (placing-op-seq? ops)))
+                  (cancel-placing st)
+                  st))
+  (for/fold ([st st0] [effs '()]) ([o (in-list ops)])
     (define-values (st* e*) (run-op ctx st ev o))
     (values st* (append effs e*))))
 
