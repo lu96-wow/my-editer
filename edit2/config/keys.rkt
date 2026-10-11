@@ -26,13 +26,13 @@
     ((key n alt)   placing (place-cycle 1))
     ((key p alt)   placing (place-cycle -1))
 
-    ;; ---------- 分屏前缀（C-s 后接方向）：方向沿哪条轴，就沿那条轴分 ----------
-    ;;   ↑/↓ 上/下堆叠（横分割线）    ←/→ 左右并排（竖分割线）
+    ;; ---------- 分屏前缀（C-s 后接方向）：新窗口放在该方向 ----------
+    ;;   ↑ 新窗在上   ↓ 新窗在下   ← 新窗在左   → 新窗在右（新窗留空）
     ((key s ctrl)  always (prefix-split))
-    ((key up)      split  (split v))
-    ((key down)    split  (split v))
-    ((key left)    split  (split h))
-    ((key right)   split  (split h))
+    ((key up)      split  (split up))
+    ((key down)    split  (split down))
+    ((key left)    split  (split left))
+    ((key right)   split  (split right))
     ((key escape)  split  (prefix-cancel))
 
     ;; ---------- 全局 ----------
@@ -93,8 +93,6 @@
     ((key c ctrl) editor (copy))
     ((key x ctrl) editor (cut))
     ((key v ctrl) editor (paste))
-    ((key w ctrl) editor (split h))    ; 分屏：左右（垂直分割线）
-    ((key w alt)  editor (split v))    ; 分屏：上下（水平分割线）
     ((key enter)     editor (insert "\n"))
     ((key backspace) editor (delete-back))
     ((key delete)    editor (delete))

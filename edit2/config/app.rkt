@@ -5,6 +5,7 @@
 ;;; core 只 require 本模块取配置值；改配置改这里与 keys.rkt / layout.rkt。
 
 (require "keys.rkt"
-         "layout.rkt")
+         "layout.rkt"
+         "theme.rkt")
 
-(provide (all-from-out "keys.rkt" "layout.rkt"))
+(provide (all-from-out "keys.rkt" "layout.rkt" "theme.rkt"))

@@ -33,8 +33,9 @@
 ;; 资源面板（唯一能新建 view 的地方）：焦点到侧栏缓冲区，建一个未显示 view。
 (define (to-buffers st) (region-focus! (region-activate! st 'sidebar "*buffers*") 'sidebar))
 (define (res-new-view st) (run1 (to-buffers st) (key-event 'n '())))
-;; 分裂 = 新建窗口（同一个 view 可出现在多个窗口），用 C-w 即可。
-(define (split-two st) (run1 st (key-event 'w '(ctrl))))
+;; 分裂 = 新建窗口（新窗在该方向）：C-s 前缀 + 方向键。
+(define (split! st dir) (run1 (run1 st (key-event 's '(ctrl))) (key-event dir '())))
+(define (split-two st) (split! st 'right))
 
 ;; ---- 基本编辑 ----
 (define st1 (run1 (fresh) (text-event "XY")))
@@ -69,7 +70,7 @@
 (check-equal? (document-string (state-ed st2) (focused-did st2)) "Xabc")
 
 ;; ---- 分裂：新增**空窗口**（wid），不在新窗口显示原 view ----
-(define st3 (run1 (fresh) (key-event 'w '(ctrl))))
+(define st3 (split! (fresh) 'right))
 (check-equal? (length (view-id-list (state-ed st3))) 6)      ; 不新建 view
 (check-equal? (length (layout-wids (state-layout st3))) 4)   ; tree + status + editor×2 窗口
 (check-equal? (length (editor-wids st3)) 2)
@@ -83,8 +84,8 @@
 (check-equal? (length (editor-wids st3c)) 1)
 (check-equal? (length (view-id-list (state-ed st3c))) 6)
 
-;; ---- 空窗口也能分屏；两种方向（C-w 左右 / M-w 上下） ----
-(define st3e (run1 st3 (key-event 'w '(ctrl))))          ; 在空窗口上再分（左右）
+;; ---- 空窗口也能分屏；两种轴（↑/↓ 上下、←/→ 左右） ----
+(define st3e (split! st3 'right))          ; 在空窗口上再分（左右）
 (check-equal? (length (editor-wids st3e)) 3)
 (check-equal? (length (filter (lambda (w) (not (wid-vid st3e w))) (editor-wids st3e))) 2)
 (define (editor-rects st)
@@ -92,31 +93,39 @@
   (for/list ([p (in-list (layout (state-layout st) (cons 60 16)))]
              #:when (memv (placement-wid p) ews))
     (placement-rect p)))
-;; C-w = 左右：编辑器窗口 x 不同、y 相同
-(define sh1 (run1 (fresh) (key-event 'w '(ctrl))))
+;; C-s →（右）：新窗在右，编辑器窗口 x 不同、y 相同
+(define sh1 (split! (fresh) 'right))
 (check-equal? (length (remove-duplicates (map rect-x (editor-rects sh1)))) 2)
 (check-equal? (length (remove-duplicates (map rect-y (editor-rects sh1)))) 1)
-;; M-w = 上下：x 相同、y 不同
-(define sh2 (run1 (fresh) (key-event 'w '(alt))))
+;; C-s ↓（下）：新窗在下，x 相同、y 不同
+(define sh2 (split! (fresh) 'down))
 (check-equal? (length (remove-duplicates (map rect-x (editor-rects sh2)))) 1)
 (check-equal? (length (remove-duplicates (map rect-y (editor-rects sh2)))) 2)
 
-;; C-s 前缀分屏：↑/↓ 上下堆叠，←/→ 左右并排；Esc 取消；无关键先退前缀
+;; C-s 前缀分屏：方向 = 新窗放哪（焦点在新窗）；Esc 取消；无关键先退前缀
 (define sp1 (run1 (fresh) (key-event 's '(ctrl))))
 (check-equal? (state-input sp1) 'split)
-(define sp2 (run1 sp1 (key-event 'up '())))
-(check-false (state-input sp2))
-(check-equal? (length (editor-wids sp2)) 2)
-(check-equal? (length (remove-duplicates (map rect-y (editor-rects sp2)))) 2)   ; 上下
-(define sp3 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'right '())))
-(check-false (state-input sp3))
-(check-equal? (length (remove-duplicates (map rect-x (editor-rects sp3)))) 2)   ; 左右
+(define (editor-placement st pred)
+  (for/first ([p (in-list (layout (state-layout st) (cons 60 16)))]
+              #:when (and (memv (placement-wid p) (editor-wids st)) (pred p)))
+    (placement-rect p)))
+(define (focus-rect st) (editor-placement st (lambda (p) (eqv? (state-focus st) (placement-wid p)))))
+(define (other-rect st) (editor-placement st (lambda (p) (not (eqv? (state-focus st) (placement-wid p))))))
+(define spu (run1 sp1 (key-event 'up '())))                       ; 新窗在上
+(check-false (state-input spu))
+(check-true (< (rect-y (focus-rect spu)) (rect-y (other-rect spu))))
+(define spd (split! (fresh) 'down))                               ; 新窗在下
+(check-true (> (rect-y (focus-rect spd)) (rect-y (other-rect spd))))
+(define spl (split! (fresh) 'left))                               ; 新窗在左
+(check-true (< (rect-x (focus-rect spl)) (rect-x (other-rect spl))))
+(define spr (split! (fresh) 'right))                              ; 新窗在右
+(check-true (> (rect-x (focus-rect spr)) (rect-x (other-rect spr))))
 (define sp4 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'escape '())))
 (check-false (state-input sp4))
-(check-equal? (length (editor-wids sp4)) 1)                                     ; Esc 不分
+(check-equal? (length (editor-wids sp4)) 1)                       ; Esc 不分
 (define sp5 (run1 (run1 (fresh) (key-event 's '(ctrl))) (key-event 'b '(ctrl))))
-(check-false (state-input sp5))                                                 ; 无关键退前缀
-(check-false (region-visible? sp5 'sidebar))                                   ; 并执行该键
+(check-false (state-input sp5))                                   ; 无关键退前缀
+(check-false (region-visible? sp5 'sidebar))                     ; 并执行该键
 
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
@@ -318,7 +327,7 @@
 ;; 造两个**非空**编辑窗口：分裂出空窗口，再把它填成同一个 vid（同 view 多位置）。
 (define (boot-tdir) (boot "base" "*scratch*" 60 16 #:root tdir))
 (define (two-nonempty st)
-  (define s (run1 st (key-event 'w '(ctrl))))
+  (define s (split! st 'right))
   (define v (wid-vid s (car (filter (lambda (w) (wid-vid s w)) (editor-wids s)))))
   (struct-copy state s [layout (layout-set-pane-vid (state-layout s) (state-focus s) v)]))
 

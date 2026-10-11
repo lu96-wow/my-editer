@@ -149,8 +149,9 @@ Layout = (pane wid vid)
   否则显示）；没有视图的孤儿文档现建一个视图。资源身份 = 规范化路径（`simplify-path`）。
 - **wid / vid 分离**：窗口（pane / float）有自己的身份 **wid**，并引用一个视图 **vid**。
   焦点、浮窗栈、命中定位都用 wid。同一个 vid 可以出现在多个 wid → **同 view 多位置**。
-- **分裂（`C-s` 前缀：`↑/↓` 上/下堆叠、`←/→` 左右并排）新增一个空窗口**（wid，vid = #f）：
-  不在新窗口显示原 view，焦点移到空窗口。轴由命令数据给（`(split h)` / `(split v)`），空窗口也能继续分。
+- **分裂（`C-s` 前缀：`↑/↓/←/→` 新窗放在该方向）新增一个空窗口**（wid，vid = #f）：
+  不在新窗口显示原 view，焦点移到空窗口。方向编码为 `(split up|down|left|right)`，
+  空窗口也能继续分。
   开文件 / 显示视图时优先填空窗口；关一个窗口其他窗口不受影响；关 view 资源（vid）则
   显示它的所有窗口一起消失（若空了则保留一个空窗口）。
 - **光标只显示焦点那个 view**：core 的 `active` 可以是 vid 列表，但渲染只传焦点的
@@ -211,10 +212,11 @@ Layout = (pane wid vid)
 
 边框行作为**装饰 pane**（`(pane 'window-border row col screen 1000)`）交给 core 合成（`decorations`）。
 
-**命名样式**（`core/theme.rkt`）：所有 face 都是命名符号（`'window-border`、`'status-bar`、
-`'tree-dir` …），theme 把名字映射到真彩色 / 256 色 / 属性，再翻成 ANSI。配色**沿用 edit 的
-tree / state 方案**（`tree-dir`/`tree-file`/`tree-hidden`/`tree-current`/`buf-current`/
-`buf-file`/`buf-view`/`buf-dirty`/`status-bar` …）。加一个样式 = 调色板加一行。
+**命名样式**（调色板 `config/theme.rkt` 纯数据，编码 `core/theme.rkt`）：所有 face 都是命名符号
+（`'window-border`、`'status-bar`、`'tree-dir` …），config 里只有「名字 → style 值」的映射，
+core 把 style 翻成真彩色 / 256 色 / 属性再变 ANSI。配色**沿用 edit 的 tree / state 方案**
+（`tree-dir`/`tree-file`/`tree-hidden`/`tree-current`/`buf-current`/`buf-file`/`buf-view`/
+`buf-dirty`/`status-bar` …）。加 / 改一个样式 = `config/theme.rkt` 调色板加一行。
 
 注意 core 的 piece-attr：普通格 `attr = face`（符号 | #f），overlay 格 `attr = (cursor/selection . face)`，
 所以 `attr-bytes` 对裸 face 也要解析。
@@ -400,7 +402,7 @@ layout.rkt   layout（纯）+ 布局树手术（remove/replace/split/add-side/fl
 render.rkt   placements → core rectangle → patch（返回 piece）
 fs.rkt       文件系统原语（read-dir/read-file/write-file）
 panels.rkt   面板内容（树/缓冲区/状态）+ 面板契约/焦点/树状态机
-theme.rkt    face / overlay → ANSI 属性
+theme.rkt    face / overlay → ANSI 属性（命名调色板在 config/theme.rkt）
 step.rkt     路由（全局/面板/编辑三层）+ 命令 + 布局手术 + 装配
 runtime.rkt  run + worker 池 + 后端协议（唯一可变）
 backend/tui.rkt  racket-tui 输入解码 / 字节输出

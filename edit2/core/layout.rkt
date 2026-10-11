@@ -209,19 +209,23 @@
                             (cons (car p) (layout-set-pane-border (cdr p) wid border))))]
     [else tree]))
 
-;; 把 wid 所在 pane 换成「原 pane : 新 pane（nwid 显示 nvid、边框 nborder）」的 split。
-(define (layout-split-wid tree wid axis nwid nvid nborder)
+;; 把 wid 所在 pane 换成「原 pane 与 新 pane（nwid 显示 nvid、边框 nborder）」的 split。
+;; first? = 新 pane 放前面（上 / 左），否则放后面（下 / 右）。
+(define (layout-split-wid tree wid axis nwid nvid nborder [first? #f])
   (cond
     [(pane? tree)
      (if (eqv? wid (pane-wid tree))
-         (split axis (list (cons 'flex tree)
-                           (cons 'flex (pane nwid nvid nborder))))
+         (split axis (if first?
+                         (list (cons 'flex (pane nwid nvid nborder))
+                               (cons 'flex tree))
+                         (list (cons 'flex tree)
+                               (cons 'flex (pane nwid nvid nborder)))))
          tree)]
-    [(main? tree) (main (layout-split-wid (main-tree tree) wid axis nwid nvid nborder))]
+    [(main? tree) (main (layout-split-wid (main-tree tree) wid axis nwid nvid nborder first?))]
     [(split? tree)
      (split (split-axis tree)
             (for/list ([p (in-list (split-parts tree))])
-              (cons (car p) (layout-split-wid (cdr p) wid axis nwid nvid nborder))))]
+              (cons (car p) (layout-split-wid (cdr p) wid axis nwid nvid nborder first?))))]
     [else tree]))
 
 (define (layout-add-side tree node side size)

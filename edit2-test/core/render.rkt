@@ -23,9 +23,10 @@
 (check-true (regexp-match? #rx"abc" text))
 
 ;; 分屏后两个编辑窗格 + 树 + 状态行都渲染
-(define st2 (call-with-values (lambda () (step (app-routes) (ctx (cons 60 5) '())
-                                                        st (key-event 'w '(ctrl))))
-                              (lambda (s e) s)))
+(define (step1 st ev)
+  (call-with-values (lambda () (step (app-routes) (ctx (cons 60 5) '()) st ev))
+                    (lambda (s e) s)))
+(define st2 (step1 (step1 st (key-event 's '(ctrl))) (key-event 'down '())))
 (define ps2 (layout (state-layout st2) (cons 60 5)))
 (check-equal? (length (filter (lambda (p) (not (placement-float? p))) ps2)) 4)
 

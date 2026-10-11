@@ -238,9 +238,10 @@
               #:when (not (panel-name st (layout-wid-vid (state-layout st) w))))
     w))
 
-;; 分裂焦点窗口：新增一个**空窗口**（wid，无 vid），焦点移过去。
-;; 空窗口也能分（分出来还是空窗口）；轴 'h（左右）/ 'v（上下）由命令给，缺省用配置。
-(define (split-focused st axis)
+;; 分裂焦点窗口：新增一个**空窗口**（wid，无 vid）。方向 = 新窗口相对原窗口放哪：
+;; 'up（上）/'left（左）→ 放前面，'down（下）/'right（右）→ 放后面。
+;; 空窗口也能分（分出来还是空窗口）。
+(define (split-focused st axis [first? #f])
   (define w (state-focus st))
   (cond
     [(not w) st]
@@ -248,8 +249,19 @@
      (define l (state-layout st))
      (define nwid (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (layout-split-wid l w axis nwid #f default-border)]
+                  [layout (layout-split-wid l w axis nwid #f default-border first?)]
                   [focus nwid])]))
+
+;; 分裂方向 → (轴 . 新窗口在前?)；兼容只给轴 'h / 'v 的旧写法（放后面）。
+(define (split-spec d)
+  (case d
+    [(up)    (values 'v #t)]
+    [(down)  (values 'v #f)]
+    [(left)  (values 'h #t)]
+    [(right) (values 'h #f)]
+    [(v)     (values 'v #f)]
+    [(h)     (values 'h #f)]
+    [else    (values 'h #f)]))
 
 ;;; ---------- 区域代数（共用同一块面板的成员） ----------
 ;;;
@@ -925,7 +937,8 @@
     [(copy)              (edit-focused st 'copy)]
     [(cut)               (edit-focused st 'cut)]
     [(paste)             (edit-focused st 'paste)]
-    [(split)             (values (split-focused st (if (pair? args) (car args) 'h)) '())]
+    [(split)             (let-values ([(ax first?) (split-spec (if (pair? args) (car args) 'h))])
+                           (values (split-focused st ax first?) '()))]
     [(place-confirm)     (place-confirm st)]
     [(place-cancel)      (place-cancel st)]
     [(place-cycle)       (values (place-cycle st (car args)) '())]

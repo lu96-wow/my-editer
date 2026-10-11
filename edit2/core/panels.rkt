@@ -152,7 +152,7 @@
      (define ed (state-ed st))
      (define txt
        (cond
-         [(not v) " [空窗口]  C-w 分屏  C-q 退出"]
+         [(not v) " [空窗口]  C-s ↑↓←→ 分屏  C-q 退出"]
          [else
           (define did (view-did ed v))
           (define m (hash-ref (state-docs st) did #f))
