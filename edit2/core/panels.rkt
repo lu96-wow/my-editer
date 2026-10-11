@@ -301,8 +301,8 @@
           (assign! ed v text)
           ;; 保留光标行列（行夹到有效范围，列夹到该行长度）——面板也是普通文档光标。
           (define ls (string-split text "\n"))
-          (define ln (min old-line (max 0 (sub1 (length ls)))))
-          (define lc (min old-col (string-length (list-ref ls ln))))
+          (define ln (if (null? ls) 0 (min old-line (max 0 (sub1 (length ls))))))
+          (define lc (if (null? ls) 0 (min old-col (string-length (list-ref ls ln)))))
           (set-point! ed v ln lc))
         (for ([f (in-list faces)]) (face-line! ed (view-did ed v) (car f) (cdr f)))
         st])]))
