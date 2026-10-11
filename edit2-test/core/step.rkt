@@ -457,6 +457,14 @@
 (define th3 (run1 th2 (key-event 'h '(ctrl))))
 (check-equal? (tree-names th3) '("normal.txt"))                                ; C-h 再隐藏
 
+;; 回归：根路径自带末尾分隔符（如 current-directory）时不再多补一个 → 不出现 "//"
+(define tslash (boot "" "x" 60 16 #:root (current-directory)))
+(define-values (tslash-txt _tslash-faces)
+  (tree-content (refresh-panels! tslash) (panel-vid tslash "*tree*")))
+(define tslash-root (car (string-split tslash-txt "\n")))
+(check-false (regexp-match? #rx"//" tslash-root))
+(check-true (regexp-match? #rx"/$" tslash-root))
+
 ;; 导航：Enter 展开 sub，←→ 光标横移
 (define dnav (make-tdir))
 (make-directory (build-path dnav "sub"))

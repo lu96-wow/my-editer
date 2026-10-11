@@ -258,6 +258,11 @@
     (doc-meta-path (hash-ref (state-docs st) did))))
 
 (define (tree-content st v)
+  ;; 目录行末尾加一个 "/"；已经带分隔符（如根路径）就不再加，避免 "//"。
+  (define (dir-label s)
+    (if (or (zero? (string-length s)) (char=? #\/ (string-ref s (sub1 (string-length s)))))
+        s
+        (string-append s "/")))
   (define ts (feature-ref st 'tree #f))
   (cond
     [(not ts) (values "" '())]
@@ -269,7 +274,7 @@
          (define name (list-ref r 1))
          (define dir? (list-ref r 2))
          (string-append (make-string (* 2 (list-ref r 3)) #\space)
-                        name (if dir? "/" ""))))
+                        (if dir? (dir-label name) name))))
      (values (string-join lines "\n")
              (for/list ([r (in-list rows)] [i (in-naturals)])
                (define p (car r))
