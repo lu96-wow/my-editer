@@ -80,8 +80,8 @@
 
 (define (layout-vids tree)
   (cond
-    [(pane? tree) (list (pane-vid tree))]
-    [(float? tree) (list (float-vid tree))]
+    [(pane? tree) (if (pane-vid tree) (list (pane-vid tree)) '())]
+    [(float? tree) (if (float-vid tree) (list (float-vid tree)) '())]
     [(main? tree) (layout-vids (main-tree tree))]
     [(split? tree) (append* (for/list ([p (in-list (split-parts tree))]) (layout-vids (cdr p))))]
     [else '()]))

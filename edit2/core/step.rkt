@@ -73,12 +73,17 @@
 
 (define (placing-of st) (feature-ref st 'placing #f))
 
-;; 把视图放上屏：0 个编辑窗 → 新建；1 个 → 直接替换；
-;; 多个 → 进选择模式，用户用鼠标/焦点选目标窗格再回车替换（焦点是 wid）。
+;; 把视图放上屏：先填空窗口；没有空窗口时 0 个编辑窗→新建、1 个→直接替换、
+;; 多个→进选择模式，用户用鼠标/焦点选目标窗口再回车替换（焦点是 wid）。
 (define (place-view st vid)
-  (define es (editor-wids st))
   (define l (state-layout st))
+  (define es (editor-wids st))
+  (define empties (filter (lambda (w) (not (layout-wid-vid l w))) es))
+  (define fw (state-focus st))
   (cond
+    [(pair? empties)
+     (define w (if (and fw (memv fw empties)) fw (car empties)))
+     (struct-copy state st [layout (layout-set-pane-vid l w vid)] [focus w])]
     [(null? es)
      (define w (layout-fresh-wid l))
      (struct-copy state st
@@ -90,7 +95,7 @@
      (define w (car es))
      (struct-copy state st [layout (layout-set-pane-vid l w vid)] [focus w])]
     [else
-     (define target (if (memv (state-focus st) es) (state-focus st) (car es)))
+     (define target (if (memv fw es) fw (car es)))
      (feature-set (struct-copy state st [focus target])
                   'placing (placing vid (state-focus st)))]))
 
@@ -228,8 +233,8 @@
               #:when (not (panel-name st (layout-wid-vid (state-layout st) w))))
     w))
 
-;; 分裂焦点窗口：新建一个 **wid**（窗口），显示同一个 vid——不产生新 view。
-;; core 支持同 view 多位置，所以两个窗格可以共享一个视图资源。
+;; 分裂焦点窗口：新增一个**空窗口**（wid，无 vid），焦点移过去。
+;; 不在新窗口显示原来的 view——留空位，然后由用户选/建视图填进去。
 (define (split-focused st axis)
   (define w (state-focus st))
   (define v (wid-vid st w))
@@ -239,7 +244,7 @@
      (define l (state-layout st))
      (define nwid (layout-fresh-wid l))
      (struct-copy state st
-                  [layout (layout-split-wid l w axis nwid v)]
+                  [layout (layout-split-wid l w axis nwid #f)]
                   [focus nwid])]))
 
 ;;; ---------- 区域代数（共用同一块面板的成员） ----------
@@ -372,7 +377,8 @@
       w))
   (cond
     [(and (pair? editors) (null? remaining-editors))
-     (define l1 (layout-replace-wid-node layout (car editors) (empty-area)))
+     ;; 保留一个空窗口（wid 不变、vid = #f），不让父 split 塌缩
+     (define l1 (layout-set-pane-vid layout (car editors) #f))
      (for/fold ([l l1]) ([w (in-list wids)] #:unless (eqv? w (car editors)))
        (layout-remove-wid l w))]
     [else (for/fold ([l layout]) ([w (in-list wids)]) (layout-remove-wid l w))]))
@@ -705,9 +711,10 @@
      (define vid (placement-vid hit))
      (define-values (_ rx ry) (rect-local hit (cursor-event-x ev) (cursor-event-y ev)))
      (define ed (state-ed st))
-     ;; 一切皆 document：面板也一样，点击 = 聚焦窗口 + 定位到该 doc 的位置。
-     (define p (screen->point ed vid (max 0 ry) (max 0 rx)))
-     (when p (set-point! ed vid (car p) (cdr p)))
+     ;; 空窗口（vid = #f）：只聚焦；有 view 才定位到 doc 的屏幕位置。
+     (when vid
+       (define p (screen->point ed vid (max 0 ry) (max 0 rx)))
+       (when p (set-point! ed vid (car p) (cdr p))))
      (values (struct-copy state st [focus w]) '())]))
 
 (define (cursor-scroll ctx st ev dir)
@@ -716,7 +723,8 @@
     [(not hit) (values st '())]
     [else
      (define vid (placement-vid hit))
-     (unless (panel-name st vid) (scroll! (state-ed st) vid (* dir 3)))
+     (when (and vid (not (panel-name st vid)))
+       (scroll! (state-ed st) vid (* dir 3)))
      (values st '())]))
 
 ;;; ---------- 作用域（scope 数据 → 守卫） ----------

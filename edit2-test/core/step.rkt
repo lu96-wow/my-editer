@@ -58,25 +58,35 @@
 (define st2 (run1 (run1 (fresh) (text-event "XY")) (key-event 'backspace '())))
 (check-equal? (document-string (state-ed st2) (focused-did st2)) "Xabc")
 
-;; ---- wid / vid 分离：分裂建窗口，不建 view ----
+;; ---- 分裂：新增**空窗口**（wid），不在新窗口显示原 view ----
 (define st3 (run1 (fresh) (key-event 'w '(ctrl))))
-(check-equal? (length (view-id-list (state-ed st3))) 6)      ; 视图数不变
+(check-equal? (length (view-id-list (state-ed st3))) 6)      ; 不新建 view
 (check-equal? (length (layout-wids (state-layout st3))) 4)   ; tree + status + editor×2 窗口
 (check-equal? (length (editor-wids st3)) 2)
-(check-equal? (length (remove-duplicates (editor-wid-vids st3))) 1)  ; 两窗口同一 vid
+(check-equal? (length (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3))) 1)       ; 1 个有 view
+(check-equal? (length (filter (lambda (w) (not (wid-vid st3 w))) (editor-wids st3))) 1) ; 1 个空
+(check-false (wid-vid st3 (state-focus st3)))                ; 焦点在空窗口
+(check-true (regexp-match? #rx"空窗口"
+                           (view-string (state-ed (refresh-panels! st3)) (panel-vid st3 "*status*"))))
+;; 关空窗口
+(define st3c (run1 st3 (key-event 'd '(ctrl))))
+(check-equal? (length (editor-wids st3c)) 1)
+(check-equal? (length (view-id-list (state-ed st3c))) 6)
 
-;; 同 view 多位置：连开三个窗口仍是一个 view；关窗口不关 view
-(define sv1 (run1 st3 (key-event 'w '(ctrl))))                ; 第三个编辑窗口
-(check-equal? (length (editor-wids sv1)) 3)
-(check-equal? (length (view-id-list (state-ed sv1))) 6)
-(define sv2 (run1 sv1 (key-event 'd '(ctrl))))                ; 关一个窗口
-(check-equal? (length (editor-wids sv2)) 2)
-(check-equal? (length (view-id-list (state-ed sv2))) 6)
-
-;; 关闭 view 资源：显示它的**所有**窗口一起消失
-(define sv3 (run1 (run1 (to-buffers sv2) (key-event 'down '())) (key-event 'd '(ctrl))))
-(check-equal? (length (editor-wids sv3)) 0)
-(check-equal? (length (view-id-list (state-ed sv3))) 5)
+;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
+(define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
+(define st3v (struct-copy state st3
+                          [layout (layout-set-pane-vid (state-layout st3) (state-focus st3) st3-vid)]))
+(check-equal? (length (editor-wids st3v)) 2)
+(check-equal? (length (remove-duplicates (editor-wid-vids st3v))) 1)   ; 两窗口同一 vid
+;; 关一个窗口：另一个还在，view 不变
+(define st3v2 (run1 st3v (key-event 'd '(ctrl))))
+(check-equal? (length (editor-wids st3v2)) 1)
+(check-equal? (length (view-id-list (state-ed st3v2))) 6)
+;; 关闭 view 资源：显示它的所有窗口一起消失，保留一个空窗口
+(define st3v3 (run1 (run1 (to-buffers st3v2) (key-event 'down '())) (key-event 'd '(ctrl))))
+(check-equal? (length (view-id-list (state-ed st3v3))) 5)
+(check-equal? (length (filter (lambda (w) (wid-vid st3v3 w)) (editor-wids st3v3))) 0)
 
 ;; 焦点切换
 (define st4 (run1 (fresh) (key-event 't '(alt))))
@@ -244,8 +254,16 @@
 ;; ---- 打开时多窗口 → 选择目标窗口（放置模式） ----
 (define (open-hello st) (run1 (run1 st (key-event 't '(alt))) (key-event 'enter '())))
 
-(define spl1 (split-two (boot "base" "*scratch*" 60 16 #:root tdir)))
+;; 造两个**非空**编辑窗口：分裂出空窗口，再把它填成同一个 vid（同 view 多位置）。
+(define (boot-tdir) (boot "base" "*scratch*" 60 16 #:root tdir))
+(define (two-nonempty st)
+  (define s (run1 st (key-event 'w '(ctrl))))
+  (define v (wid-vid s (car (filter (lambda (w) (wid-vid s w)) (editor-wids s)))))
+  (struct-copy state s [layout (layout-set-pane-vid (state-layout s) (state-focus s) v)]))
+
+(define spl1 (two-nonempty (boot-tdir)))
 (check-equal? (length (editor-wids spl1)) 2)
+(check-equal? (length (filter (lambda (w) (wid-vid spl1 w)) (editor-wids spl1))) 2)   ; 无空窗口
 (define spl2 (open-hello spl1))
 (check-true (placing? (feature-ref spl2 'placing #f)))
 (check-equal? (length (editor-wids spl2)) 2)               ; 布局未动
@@ -261,7 +279,7 @@
 (check-equal? (document-string (state-ed spl4) (view-did (state-ed spl4) (focus-vid spl4))) "hi")
 
 ;; Esc 取消：布局与焦点恢复，待放视图资源保留
-(define splc (split-two (boot "base" "*scratch*" 60 16 #:root tdir)))
+(define splc (two-nonempty (boot-tdir)))
 (define spl5 (open-hello splc))
 (define spl6 (run1 spl5 (key-event 'escape '())))
 (check-false (placing? (feature-ref spl6 'placing #f)))
@@ -270,7 +288,7 @@
 (check-true (> (length (document-id-list (state-ed spl6))) 6))
 
 ;; 放置模式下按无关键 → 退出放置（瞬时模式语义）
-(define spl7 (open-hello (split-two (boot "base" "*scratch*" 60 16 #:root tdir))))
+(define spl7 (open-hello (two-nonempty (boot-tdir))))
 (check-true (placing? (feature-ref spl7 'placing #f)))
 (define spl8 (run1 spl7 (key-event 'b '(ctrl))))
 (check-false (placing? (feature-ref spl8 'placing #f)))

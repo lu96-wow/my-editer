@@ -18,6 +18,7 @@
  view-did view-document-name view-line view-col view-string view-selection-empty?
  view-id-list document-id-list document-view-list
  document-name document-string document-handle
+ view-size
  ;; 分区尺寸
  set-view-size!
  ;; 属性写回
@@ -53,8 +54,9 @@
 
 ;;; ---------- 布局 / 渲染 ----------
 
+;; placements → core rectangle。空窗口（vid = #f）不产出 rectangle（仍占位，可命中/聚焦）。
 (define (layout->rectangles placements)
-  (for/list ([p (in-list placements)])
+  (for/list ([p (in-list placements)] #:when (placement-vid p))
     (define r (placement-rect p))
     (rectangle (placement-vid p) (rect-x r) (rect-y r) (rect-w r) (rect-h r) (placement-z p))))
 
@@ -113,3 +115,5 @@
 (define (document-name ed did) (editor-document-name ed did))
 (define (document-string ed did) (editor-document-string ed did))
 (define (document-handle ed did) (editor-document-handle ed did))
+(define (view-size ed vid)
+  (cons (editor-view-width ed vid) (editor-view-height ed vid)))

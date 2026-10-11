@@ -111,27 +111,27 @@
 
 (define (status-content st)
   (define p (state-input st))
+  (define w (state-focus st))
+  (define v (and w (layout-wid-vid (state-layout st) w)))   ; focus 是 wid；取显示的 vid
   (cond
     [(placing? (feature-ref st 'placing #f))
-     (define fv (state-focus st))
-     (define target (if fv (doc-label st (view-did (state-ed st) fv)) "?"))
+     (define target (if v (doc-label st (view-did (state-ed st) v)) "(空窗口)"))
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消" target) '())]
     [(prompt? p) (values (string-append " " (prompt-label p) (prompt-text p)) '())]
     [else
      (define ed (state-ed st))
-     (define fv (state-focus st))
      (define txt
        (cond
-         [(not fv) " edit2"]
+         [(not v) " [空窗口]  C-w 分屏  C-q 退出"]
          [else
-          (define did (view-did ed fv))
+          (define did (view-did ed v))
           (define m (hash-ref (state-docs st) did #f))
           (define pth (and m (doc-meta-path m)))
-          (define name (if pth (tree-relative-path st pth) (view-document-name ed fv)))
+          (define name (if pth (tree-relative-path st pth) (view-document-name ed v)))
           (define dirty (and m (doc-meta-saved m)
                              (not (eq? (doc-meta-saved m) (document-handle ed did)))))
           (format " ~a~a   ~a:~a" name (if dirty " *" "")
-                  (add1 (view-line ed fv)) (add1 (view-col ed fv)))]))
+                  (add1 (view-line ed v)) (add1 (view-col ed v)))]))
      (values txt '())]))
 
 ;; p 相对文件树根；不在根下（或未设根）则给完整路径。

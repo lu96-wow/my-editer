@@ -147,8 +147,14 @@ Layout = (pane wid vid)
   否则显示）；没有视图的孤儿文档现建一个视图。资源身份 = 规范化路径（`simplify-path`）。
 - **wid / vid 分离**：窗口（pane / float）有自己的身份 **wid**，并引用一个视图 **vid**。
   焦点、浮窗栈、命中定位都用 wid。同一个 vid 可以出现在多个 wid → **同 view 多位置**。
-- **分裂（`C-w`）只新建窗口 wid**，显示同一个 vid——不产生新 view；关一个窗口其他窗口不受影响，
-  关 view 资源（vid）则显示它的所有窗口一起消失。
+- **分裂（`C-w`）新增一个空窗口**（wid，vid = #f）：不在新窗口显示原 view，焦点移到空窗口。
+  开文件 / 显示视图时优先填空窗口；关一个窗口其他窗口不受影响；关 view 资源（vid）则
+  显示它的所有窗口一起消失（若空了则保留一个空窗口）。
+- **光标只显示焦点那个 view**：core 的 `active` 可以是 vid 列表，但渲染只传焦点的
+  `(wid → vid)`（空窗口传 #f），否则多个光标会很乱。
+- **尺寸以焦点窗口为准**：viewport 是 view 的状态，core 的 `editor-set-layout!` 逐个 rectangle
+  把 w/h 写回 view（同 view 多窗口时最后写入的为准，锚点保持）。渲染前把**焦点窗口排到最后**，
+  view 尺寸即取当前（正在编辑的）窗口。
 - **视图只在资源面板创建**：`n` 给选中的 document 新建一个 view。树打开：有 view 就复用，
   只有新文档 / 孤儿文档才建第一个 view。
 - core 提供全部结构原语：`editor-close-view`、`editor-close-document`（后者自动连带视图）；
