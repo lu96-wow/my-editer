@@ -31,7 +31,7 @@
    'status-mode    (style (rgb 120 210 130) #f '(bold))           ; 模式 / 文档名
    'status-dirty   (style (rgb 230 160 90) #f '(bold))            ; 未保存标记
    'message        (style (rgb 230 160 90) #f '())                ; 提示 / 错误
-   'input          (style (rgb 20 20 20) (rgb 230 200 90) '())    ; 输入行
+   'input          (style #f #f '())                              ; 输入行：不加颜色修饰
    'log            (style (rgb 235 188 110) #f '())               ; 日志行
    ;; 文件树
    'tree-dir       (style (rgb 120 180 240) #f '())               ; 目录：蓝

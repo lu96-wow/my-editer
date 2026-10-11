@@ -46,6 +46,8 @@
     ((key end)       prompt (move end))
     ((key enter)     prompt (submit-prompt))
     ((key escape)    prompt (cancel-prompt))
+    ;; C-q 在输入行里也生效：先中断这次输入，再走退出（有脏文档会重新问保存）。
+    ((key q ctrl)    prompt (cancel-prompt) (quit))
 
     ;; ---------- 全局 ----------
     ((key q ctrl)  always (quit))

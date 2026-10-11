@@ -238,6 +238,30 @@
 (check-not-false (panel-wid sqin3 "*status*"))
 (check-not-false (focused-did sqin3))
 
+;; ---- C-q 在输入状态下也生效：先中断未完成的输入，再走退出 ----
+(define (dirty-tree) (run1 (run1 (fresh) (text-event "Z")) (key-event 't '(alt))))
+;; (a) 脏文档 + 新建文件输入行里按 C-q：中断 new-file，改问退出保存
+(define sqnew (run1 (run1 (dirty-tree) (key-event 'n '(ctrl))) (text-event "f")))
+(check-equal? (prompt-kind (prompt-of sqnew)) 'new-file)
+(define sqnew-q (run1 sqnew (key-event 'q '(ctrl))))
+(check-equal? (prompt-kind (prompt-of sqnew-q)) 'quit)
+(check-true (prompt-focused? sqnew-q))
+;; 退出 prompt 里再按 C-q：同样是中断 + 再问，仍在输入视图
+(define sqquit-q (run1 sqnew-q (key-event 'q '(ctrl))))
+(check-equal? (prompt-kind (prompt-of sqquit-q)) 'quit)
+(check-true (prompt-focused? sqquit-q))
+;; (b) 前缀里按 C-q：取消前缀并退出
+(define spfx (run1 (run1 (dirty-tree) (key-event 's '(ctrl))) (key-event 'q '(ctrl))))
+(check-false (prefix-of spfx))
+(check-equal? (prompt-kind (prompt-of spfx)) 'quit)
+(check-true (prompt-focused? spfx))
+;; (c) 无脏文档时在输入行里 C-q：中断后直接退出（无 prompt，产生 quit effect）
+(define sqclean (run1 (run1 (run1 (fresh) (key-event 't '(alt))) (key-event 'n '(ctrl))) (text-event "f")))
+(check-equal? (prompt-kind (prompt-of sqclean)) 'new-file)
+(define sqclean-r (run-ev sqclean (key-event 'q '(ctrl))))
+(check-false (prompt-of (car sqclean-r)))
+(check-true (quit-effect? (car (cadr sqclean-r))))
+
 ;; ---- 三级资源：窗口 ⊂ 视图 ⊂ 文档 ----
 ;; C-d 只摘窗口：view / document 资源都保留
 (define sc (split-two (fresh)))

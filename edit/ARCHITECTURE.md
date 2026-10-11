@@ -270,6 +270,10 @@ face 优先级 current → hidden → **open（仅文件，路径已在 core 打
   提交时取 `*input*` 文档 label 之后的文本，驱动 `kind`；无效答复重开同一输入行。
 - **模态**：输入行激活时只有 `prompt` 作用域的绑定生效（`scope-of` 对其它 scope 加
   「无 prompt」前提），所以点鼠标 / 切焦点都不会打断它。
+- **中途退出**：`C-q` 在输入行里也生效——绑定为 `(cancel-prompt) (quit)`：先中断这次输入
+  （丢弃未提交内容），再走退出；有脏文档会重新进保存询问。前缀 / 放置模式由 `run-ops`
+  的瞬时模式逻辑自动取消后再执行 `(quit)`，所以三种未完成态（prompt / prefix / placing）
+  都能被 `C-q` 干净地中断。
 - **多键前缀**（`C-n` / `C-s`）不是文本输入，存 `feature 'prefix`；状态栏（= `*status*`）
   显示提示。提示文本是**配置数据**（`config/keys.rkt` 的 `prefix-hints`：前缀 → 字符串），
   core 只查表渲染，不在代码里写死。加一个前缀 = 加一行数据。

@@ -73,5 +73,6 @@
 (check-true (regexp-match? #rx"38;5;196" (face-bytes (style 196 #f '()))))       ; 256 色
 (check-equal? (face-bytes 'no-such-face) #"")                                    ; 未命名 → 无样式
 (check-true (> (bytes-length (face-bytes 'status-bar)) 0))
+(check-equal? (face-bytes 'input) #"")   ; 输入行提示不加颜色修饰
 
 (displayln "edit2/border.rkt: all tests passed")
