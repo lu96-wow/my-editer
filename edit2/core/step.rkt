@@ -239,12 +239,11 @@
     w))
 
 ;; 分裂焦点窗口：新增一个**空窗口**（wid，无 vid），焦点移过去。
-;; 不在新窗口显示原来的 view——留空位，然后由用户选/建视图填进去。
+;; 空窗口也能分（分出来还是空窗口）；轴 'h（左右）/ 'v（上下）由命令给，缺省用配置。
 (define (split-focused st axis)
   (define w (state-focus st))
-  (define v (wid-vid st w))
   (cond
-    [(not v) st]
+    [(not w) st]
     [else
      (define l (state-layout st))
      (define nwid (layout-fresh-wid l))
@@ -925,7 +924,7 @@
     [(copy)              (edit-focused st 'copy)]
     [(cut)               (edit-focused st 'cut)]
     [(paste)             (edit-focused st 'paste)]
-    [(split)             (values (split-focused st editor-split-axis) '())]
+    [(split)             (values (split-focused st (if (pair? args) (car args) 'h)) '())]
     [(place-confirm)     (place-confirm st)]
     [(place-cancel)      (place-cancel st)]
     [(place-cycle)       (values (place-cycle st (car args)) '())]

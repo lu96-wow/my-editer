@@ -83,6 +83,24 @@
 (check-equal? (length (editor-wids st3c)) 1)
 (check-equal? (length (view-id-list (state-ed st3c))) 6)
 
+;; ---- 空窗口也能分屏；两种方向（C-w 左右 / M-w 上下） ----
+(define st3e (run1 st3 (key-event 'w '(ctrl))))          ; 在空窗口上再分（左右）
+(check-equal? (length (editor-wids st3e)) 3)
+(check-equal? (length (filter (lambda (w) (not (wid-vid st3e w))) (editor-wids st3e))) 2)
+(define (editor-rects st)
+  (define ews (editor-wids st))
+  (for/list ([p (in-list (layout (state-layout st) (cons 60 16)))]
+             #:when (memv (placement-wid p) ews))
+    (placement-rect p)))
+;; C-w = 左右：编辑器窗口 x 不同、y 相同
+(define sh1 (run1 (fresh) (key-event 'w '(ctrl))))
+(check-equal? (length (remove-duplicates (map rect-x (editor-rects sh1)))) 2)
+(check-equal? (length (remove-duplicates (map rect-y (editor-rects sh1)))) 1)
+;; M-w = 上下：x 相同、y 不同
+(define sh2 (run1 (fresh) (key-event 'w '(alt))))
+(check-equal? (length (remove-duplicates (map rect-x (editor-rects sh2)))) 1)
+(check-equal? (length (remove-duplicates (map rect-y (editor-rects sh2)))) 2)
+
 ;; ---- 同 view 多位置（core 支持）：手工把空窗口填成同一个 vid ----
 (define st3-vid (wid-vid st3 (car (filter (lambda (w) (wid-vid st3 w)) (editor-wids st3)))))
 (define st3v (struct-copy state st3

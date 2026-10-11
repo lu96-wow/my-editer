@@ -84,7 +84,8 @@
     ((key c ctrl) editor (copy))
     ((key x ctrl) editor (cut))
     ((key v ctrl) editor (paste))
-    ((key w ctrl) editor (split))
+    ((key w ctrl) editor (split h))    ; 分屏：左右（垂直分割线）
+    ((key w alt)  editor (split v))    ; 分屏：上下（水平分割线）
     ((key enter)     editor (insert "\n"))
     ((key backspace) editor (delete-back))
     ((key delete)    editor (delete))
