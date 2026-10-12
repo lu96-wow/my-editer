@@ -38,7 +38,7 @@
 (define-values (b1 drawn1)
   (scripted-backend (list (text-event "hi")
                           (key-event 'q '(ctrl)) (text-event "n") (key-event 'enter '()))))
-(define wend (run b1 (app-environment) (boot)))
+(define wend (run b1 (app-environment) (boot #:name "*scratch*")))
 (define cend (world-content wend))
 (check-equal? (view-string (content-ed cend) (content-vid-of cend 0)) "hi")
 (check-true (for/or ([p (in-list (unbox drawn1))]) (regexp-match? #rx"h" (piece-text p))))
@@ -48,7 +48,7 @@
 (define-values (b2 _drawn2)
   (scripted-backend (list (key-event 's '(ctrl)) (key-event 'right '())
                           (key-event 'd '(ctrl)) (key-event 'q '(ctrl)))))
-(define w2 (run b2 (app-environment) (boot)))
+(define w2 (run b2 (app-environment) (boot #:name "*scratch*")))
 (check-equal? (length (ids (world-layout w2))) 3)   ; 分裂后关闭，回到三窗底盘
 
 ;;; ---------- open-file effect → 新文档绑定到焦点窗 ----------
@@ -65,7 +65,7 @@
                                               (list (list '(key o ctrl) 'always (cmd 'open-test)))))]))
 (define-values (b3 _drawn3)
   (scripted-backend (list (key-event 'o '(ctrl)) (key-event 'o '(ctrl)) (key-event 'q '(ctrl)))))
-(define w3 (run b3 env* (boot)))
+(define w3 (run b3 env* (boot #:name "*scratch*")))
 (check-equal? (view-string (content-ed (world-content w3)) (content-vid-of (world-content w3) 0))
               "FILE-CONTENT")
 ;; 第二次 open 同一路径 → 复用，不重复建文档
@@ -81,7 +81,7 @@
                [keymap (compose-keymaps (list (environment-keymap env0)
                                               (list (list '(key g ctrl) 'always (cmd 'log-test)))))]))
 (define-values (b4 _d4) (scripted-backend (list (key-event 'g '(ctrl)) (key-event 'q '(ctrl)))))
-(define w4 (run b4 env-log (boot)))
+(define w4 (run b4 env-log (boot #:name "*scratch*")))
 (check-true (member "hello-log" (content-log (world-content w4))))
 
 (displayln "edit4/runtime.rkt: all tests passed")

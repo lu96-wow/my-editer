@@ -42,7 +42,7 @@
 
 ;;; ---------- 准备：编辑器文档 + 第二个文档 ----------
 
-(define w0 (boot #:root dir))
+(define w0 (boot #:root dir #:name "*scratch*"))
 (define c0 (world-content w0))
 (define-values (c1 did2 vid2) (content-add-doc! c0 "second" 40 10 "second" #f))
 (define w1 (world-set-content w0 c1))

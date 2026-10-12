@@ -41,7 +41,7 @@
 ;;; ---------- 世界：树面板已写回，可定位光标 ----------
 
 (define (tree-world)
-  (define w (boot #:root dir))
+  (define w (boot #:root dir #:name "*scratch*"))
   (define c (world-content w))
   (define ed (content-ed c))
   (commit-panels! ed (project-panels base-panels w))

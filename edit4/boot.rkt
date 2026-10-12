@@ -13,11 +13,16 @@
 
 ;; boot：侧栏(树 / 文档管理 互斥) | 主区(编辑器 / 状态栏)。
 ;;   id 2 = 侧栏槽（固定 28），id 0 = 编辑器（弹性），id 1 = 状态栏（固定 1 行）。
-;;   面板文档：*tree* / *buffers* / *input* / *status*。
-(define (boot #:text [text ""] #:name [name "*scratch*"] #:path [path #f]
+;;   面板文档：*tree* / *buffers* / *input* / *status* / *log*。
+;;   无 #:name → 不建初始文档（编辑器窗留空，从文件树打开）。
+(define (boot #:text [text ""] #:name [name #f] #:path [path #f]
               #:root [root (current-directory)])
   (define c0 (content-blank))
-  (define-values (c1 _did-ed vid-ed) (content-add-doc! c0 text 60 22 name path))
+  (define-values (c1 vid-ed)
+    (if name
+        (let-values ([(c _did vid) (content-add-doc! c0 text 60 22 name path)])
+          (values c vid))
+        (values c0 #f)))
   (define-values (c2 _did-tr vid-tr) (content-add-panel! c1 "*tree*" 28 24))
   (define-values (c2b _did-bu _vid-bu) (content-add-panel! c2 "*buffers*" 28 24))
   (define-values (c2c _did-in _vid-in) (content-add-panel! c2b "*input*" 60 1))
@@ -32,5 +37,5 @@
     (hash 'sidebar (region 'left 28 (list "*tree*" "*buffers*") "*tree*" 'root 2)
           'log     (region 'bottom 6 (list "*log*") "*log*" 'main #f)))
   (define c (content-set-regions c3 regions))
-  (define c* (content-bind (content-bind (content-bind c 0 vid-ed) 1 vid-st) 2 vid-tr))
+  (define c* (content-bind (content-bind (if vid-ed (content-bind c 0 vid-ed) c) 1 vid-st) 2 vid-tr))
   (refresh-tree! (make-world #:layout chassis #:focus 0 #:content c*) #:root root))

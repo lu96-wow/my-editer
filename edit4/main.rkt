@@ -17,8 +17,8 @@
   (define args (current-command-line-arguments))
   (define path (and (positive? (vector-length args)) (vector-ref args 0)))
   (define text (if (and path (file-exists? path)) (file->string path) ""))
-  (define name (if path path "*scratch*"))
-  (define w (boot #:text text #:name name #:path (and path (path->complete-path path))))
+  ;; 无文件参数 → 不建初始文档（从文件树打开）。
+  (define w (boot #:text text #:name path #:path (and path (path->complete-path path))))
   (run-tui (app-environment) w))
 
 (module+ main (main))
