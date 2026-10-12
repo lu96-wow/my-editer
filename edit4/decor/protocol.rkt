@@ -43,7 +43,10 @@
      (define changes (face-ctx-changes ctx))
      (define cursor (face-ctx-cursor ctx))
      (cond
-       ;; 无编辑且光标未动 → 不重扫（帧间空转）
+       ;; fork 期（无光标）：只标脏，不重扫；render 期（有光标）再从新文本整篇重建。
+       ;; 多次编辑都在 render 前发生也安全：本分支不读旧层结构。
+       [(not cursor) (values state layer (dirty-all))]
+       ;; render 期：无编辑且光标未动 → 不重扫（帧间空转）
        [(and (null? changes) (equal? state cursor)) (values state layer (dirty-lines '()))]
        [else (values cursor
                      (scan->layer scan (face-ctx-path ctx) (face-ctx-new-text ctx) cursor)
