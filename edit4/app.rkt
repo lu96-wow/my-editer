@@ -11,7 +11,7 @@
 (require "env.rkt" "plugin.rkt"
          "core/base.rkt" "core/command.rkt"
          "content/commands.rkt" "content/scopes.rkt" "content/prompt.rkt"
-         "view/panel.rkt"
+         "view/panel.rkt" "view/decor.rkt"
          "plugins/catalog.rkt" "config/plugins.rkt")
 
 (define (app-environment)

@@ -111,7 +111,6 @@
 
 (define (run b env world)
   (define cache (box empty-layout-cache))
-  (define fcache (box (hash)))
   (define ev-ch (make-channel))
   (define req-ch (make-channel))
   (define services (environment-services env))
@@ -127,11 +126,8 @@
     (define ed (and c (content-ed c)))
     ;; 面板：纯投影 → 集中写回
     (when ed (commit-panels! ed (project-panels (environment-panels env) w0)))
-    ;; face：纯投影（按 handle+cursor 缓存）→ 集中写回
-    (when ed
-      (define-values (fc fprojs) (ensure-faces (unbox fcache) (environment-decor env) w0))
-      (set-box! fcache fc)
-      (commit-faces! ed fprojs))
+    ;; face：槽驱动增量（编辑时引擎 fork 推进，这里推进光标 + 写回脏行）
+    (when ed (apply-faces! ed (environment-decor env) w0))
     (define-values (cache* fr) (ensure-layout (unbox cache) (world-layout w0) (world-floats w0) size))
     (set-box! cache cache*)
     (define id->vid (and c (lambda (id) (content-vid-of c id))))

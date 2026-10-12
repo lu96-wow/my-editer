@@ -123,7 +123,7 @@ edit4/
   core/    event effect drag world command keymap scope dispatch window pointer base
   content/ fs adapter model tree edit files commands
   view/    render border panel status tree face decor theme
-  decor/   lex kind syntax words word-color
+  decor/   lex kind dirty protocol syntax words word-color
   config/  palette syntax
   backend/ tui
 edit4-test/  layout command content render runtime panels faces edit3-parity

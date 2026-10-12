@@ -17,7 +17,7 @@
  ;; 读
  view-did view-document-name view-line view-col view-string view-selection-empty?
  view-id-list document-id-list document-view-list
- document-name document-string document-handle
+ document-name document-string document-handle document-track
  view-size view-left-column
  ;; 属性写回
  face-line! face-range! face-batch! document-face-at readonly-range!
@@ -120,6 +120,7 @@
 (define (view-selection-empty? ed vid) (selection-empty? (editor-view-primary ed vid)))
 (define (document-name ed did) (editor-document-name ed did))
 (define (document-string ed did) (editor-document-string ed did))
+(define (document-track ed did) (document-text (editor-document-handle ed did)))
 (define (document-handle ed did) (editor-document-handle ed did))
 (define (view-size ed vid) (cons (editor-view-width ed vid) (editor-view-height ed vid)))
 (define (view-left-column ed vid) (editor-view-left-column ed vid))

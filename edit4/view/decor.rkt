@@ -1,43 +1,70 @@
 #lang racket
 
-;;; edit4/view/decor.rkt —— 装饰：纯函数流水线（lambda + map/fold）
+;;; edit4/view/decor.rkt —— 装饰：引擎 document 槽 + 增量写回
 ;;;
-;;; 一个装饰就是一个**函数**：
-;;;     decor : path text cursor -> (listof (vectorof face))   ; 每行一个向量
-;;; 能否应用由函数自己决定（不适用 → 返回 '()）；没有 name / applies? 标签。
+;;; 装饰的增量状态（每个 decor 的 state + 层 track + 脏行）挂在**引擎 document 槽**
+;;; `decor-state` 上：文本编辑时由引擎 `fork-slots` 自动推进（拿到 changes），undo 回放旧
+;;; document 即得旧层；渲染前再推进一次（空 changes + 当前光标）处理光标移动 / 收尾。
 ;;;
-;;; 组合 = 对一组装饰 map 求值，再逐格 fold face-compose：
-;;;     (map (lambda (d) (d path text cursor)) decors)
-;;; 于是「加一种高亮」= 往列表里加一个 lambda，而不是注册一条带标签的记录。
+;;;   decor-slot : path + decors + entries(与 decors 平行的 (state . layer)) + dirty
+;;;   写回       : 只重写脏行：先清该行旧 face，再按 decor 顺序逐格 face-compose。
 ;;;
-;;; ensure-faces 是纯投影（按 handle+cursor 缓存）；commit-faces! 才写引擎。
-;;; 具体装饰（syntax/words/…）在 decor/ 下，本模块只管组合与写回。
+;;; 具体装饰（syntax/word-color/…）在 decor/ 下；本模块只管槽 / 驱动 / 组合 / 写回。
 
-(provide ensure-faces commit-faces!)
+(provide apply-faces!)
 
-(require racket/list
+(require (except-in racket/list range)
          "face.rkt"
          "../core/world.rkt"
+         "../../core/editor.rkt"
          "../content/adapter.rkt"
-         "../content/model.rkt")
+         (only-in "../content/model.rkt"
+                  content-ed content-bindings content-panel? content-doc-meta doc-path)
+         "../decor/protocol.rkt"
+         "../decor/dirty.rkt"
+         (only-in "../../core/text/base/track.rkt" track-length track-ref))
 
-;;; ---------- 组合子（纯） ----------
+;;; ---------- 槽 ----------
 
-;; 一个格子的最终 face：把各层在同一位置的 face 逐个 compose。
-;; foldl 的回调是 (proc elem acc)；face-compose 的形参是 (old new)（new 叠在 old 上），
-;; 所以必须写 (face-compose acc elem)：累加值当底、当前层当顶。
-;; 否则累加出的 face-stack 会被当成一层嵌套进去，face->style 不认嵌套 → 整段高亮掉色。
-(define (cell-face layers ln i)
-  (foldl (lambda (elem acc) (face-compose acc elem)) #f
-         (for/list ([layer (in-list layers)] #:when (< ln (length layer)))
-           (define lv (list-ref layer ln))
-           (and (< i (vector-length lv)) (vector-ref lv i)))))
+(struct decor-slot (path decors entries dirty) #:transparent)
+;; path    : path | #f
+;; decors  : (listof decor)                该文档适用的装饰（含装配期烘焙的 #:applies?）
+;; entries : (listof (cons state layer))   与 decors 平行
+;; dirty   : dirty                         上次写回以来累积的脏行
 
-;; 一行向量 → 填充段
-(define (vec->fills ln vec)
-  (for/list ([r (in-list (face-runs vec))]) (list ln (car r) ln (cadr r) (caddr r))))
+;; 幕次推进：给各 decor 一个 face-ctx，累积 state / 层 / 脏行。
+(define (slot-advance sl old-text new-text changes cursor)
+  (define ctx (face-ctx old-text new-text changes
+                        (dirty-lines (changes->dirty-lines changes))
+                        (decor-slot-path sl) cursor))
+  (define-values (rev-entries dirty)
+    (for/fold ([es '()] [d (dirty-lines '())])
+              ([dec (in-list (decor-slot-decors sl))]
+               [e (in-list (decor-slot-entries sl))])
+      (define-values (st ly dl) ((decor-change dec) (car e) (cdr e) ctx))
+      (values (cons (cons st ly) es) (dirty-union d dl))))
+  (struct-copy decor-slot sl
+               [entries (reverse rev-entries)]
+               [dirty (dirty-union (decor-slot-dirty sl) dirty)]))
 
-;;; ---------- 投影 ----------
+;; 首次：整篇 open，脏 = 全篇。
+(define (slot-open path decors text)
+  (define entries
+    (for/list ([dec (in-list decors)])
+      (define-values (st ly) ((decor-open dec) path text))
+      (cons st ly)))
+  (decor-slot path decors entries (dirty-all)))
+
+;; 引擎 fork：文本编辑时由 document-edit-tracks 调用（带 changes）。
+(define (decor-slot-fork old ctx)
+  (cond
+    [(not old) #f]                                    ; 尚未 open：编辑期不推进
+    [else (slot-advance old (fork-ctx-old-text ctx) (fork-ctx-new-text ctx)
+                        (fork-ctx-changes ctx) #f)]))
+
+(define-document-slot decor-state #:default #f #:fork (transform decor-slot-fork))
+
+;;; ---------- 组合 / 写回 ----------
 
 ;; 可见的非面板文档视图（did 去重，取第一个）：(listof (list did vid))
 (define (visible-doc-views w)
@@ -53,43 +80,46 @@
          [(or (not did) (content-panel? c vid) (hash-has-key? seen did)) acc]
          [else (hash-set! seen did #t) (cons (list did vid) acc)]))]))
 
-;; 一个文档的 face 填充：(listof (list line start line end face))
-(define (doc-fills decors w did vid)
-  (define c (world-content w))
-  (define ed (content-ed c))
-  (define text (document-string ed did))
-  (define path (doc-path (content-doc-meta c did)))
-  (define cursor (cons (view-line ed vid) (view-col ed vid)))
-  (define lines (string-split text "\n"))
-  (define layers (map (lambda (d) (d path text cursor)) decors))
-  (append*
-   (for/list ([ln (in-range (length lines))])
-     (define len (string-length (list-ref lines ln)))
-     (vec->fills ln (for/vector ([i (in-range len)]) (cell-face layers ln i))))))
+;; 一个格子的最终 face：把各层在同一位置的 face 逐个 compose（后层覆盖前层）。
+(define (cell-face layers ln i)
+  (foldl (lambda (elem acc) (face-compose acc elem)) #f
+         (for/list ([ly (in-list layers)]
+                    #:when (and ly (< ln (track-length ly))))
+           (define vec (track-ref ly ln))
+           (and vec (< i (vector-length vec)) (vector-ref vec i)))))
 
-;; ensure-faces : cache decors world -> (values cache (listof (list did fills)))
-(define (ensure-faces cache decors w)
-  (define c (world-content w))
-  (define ed (and c (content-ed c)))
-  (cond
-    [(not c) (values cache '())]
-    [else
-     (for/fold ([cache cache] [projs '()]) ([dv (in-list (visible-doc-views w))])
-       (define did (car dv)) (define vid (cadr dv))
-       (define cursor (cons (view-line ed vid) (view-col ed vid)))
-       (define k (list (document-handle ed did) (car cursor) (cdr cursor)))
-       (cond
-         [(equal? (hash-ref cache did #f) k) (values cache projs)]
-         [else (values (hash-set cache did k) (cons (list did (doc-fills decors w did vid)) projs))]))]))
-
-;; commit-faces! : ed (listof (list did fills)) -> void
-(define (commit-faces! ed projections)
-  (for ([pr (in-list projections)])
-    (define did (car pr))
-    (define fills (cadr pr))
-    (define text (document-string ed did))
-    (define lines (string-split text "\n"))
-    (face-batch! ed did
-                 (for/list ([ln (in-range (length lines))])
-                   (list ln 0 ln (string-length (list-ref lines ln)) #f)))
+;; 只写脏行：先清该行旧 face，再按组合结果写 fills。
+(define (write-dirty! ed did text sl)
+  (define lines (track->lines text))
+  (define n (length lines))
+  (define dls (dirty->lines (decor-slot-dirty sl) n))
+  (when (pair? dls)
+    (define layers (map cdr (decor-slot-entries sl)))
+    (face-batch! ed did (for/list ([ln (in-list dls)])
+                          (list ln 0 ln (string-length (list-ref lines ln)) #f)))
+    (define fills
+      (append*
+       (for/list ([ln (in-list dls)])
+         (define len (string-length (list-ref lines ln)))
+         (define vec (for/vector ([i (in-range len)]) (cell-face layers ln i)))
+         (for/list ([r (in-list (face-runs vec))]) (list ln (car r) ln (cadr r) (caddr r))))))
     (when (pair? fills) (face-batch! ed did fills))))
+
+;;; ---------- 对外 ----------
+
+;; apply-faces! : engine decors World -> void
+;; 每帧：逐可见文档推进槽（空 changes + 光标）→ 写回脏行 → 清脏。
+(define (apply-faces! ed decors w)
+  (define c (world-content w))
+  (for ([dv (in-list (visible-doc-views w))])
+    (define did (car dv))
+    (define vid (cadr dv))
+    (define text (document-track ed did))
+    (define path (doc-path (content-doc-meta c did)))
+    (define cursor (cons (view-line ed vid) (view-col ed vid)))
+    (define sl0 (editor-document-slot-ref ed did decor-state))
+    (define sl (if sl0 sl0 (slot-open path decors text)))
+    (define sl* (slot-advance sl text text '() cursor))
+    (write-dirty! ed did text sl*)
+    (editor-document-slot-set! ed did decor-state
+                               (struct-copy decor-slot sl* [dirty (dirty-lines '())]))))

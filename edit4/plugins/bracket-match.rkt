@@ -6,8 +6,8 @@
 
 (provide bracket-match-plugin)
 
-(require "../plugin.rkt" "../decor/bracket-match.rkt")
+(require "../plugin.rkt" "../decor/bracket-match.rkt" "../decor/protocol.rkt")
 
 (define bracket-match-plugin
   (make-plugin #:name 'bracket-match
-               #:decor (list bracket-match-decor)))
+               #:decor (list (pure-decor bracket-match-decor))))

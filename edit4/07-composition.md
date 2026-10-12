@@ -43,6 +43,12 @@
 
 结果：删掉 1 个 struct + 1 个 `name` 字段 + `applies?` 协议，只留函数。层次变少。
 
+> **修正（change / 增量）**：裸 `scan` 无法增量——`syntax` 有跨行块注释/字符串状态、
+> `brackets` 有跨行括号栈，必须能“带着状态从脏行接着扫”。所以现在每个 decor 是
+> `decor/protocol.rkt` 的 `(decor open change)`（见 `10-plugins.md`），状态/层挂在引擎
+> document 槽上。**`name` 仍然没有被读**：entries 与 decor 列表**位置平行**，不做查表；
+> `applies?` 仍在插件级烘焙。也就是只加回了「有状态」这一項，不是加回标签层。
+
 ### 2.2 面板 —— 去掉 `panel-spec` + 注册表
 
 面板就是 `World -> 投影` 的函数，名字被闭包捕获。

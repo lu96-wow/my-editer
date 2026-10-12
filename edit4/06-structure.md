@@ -112,10 +112,12 @@ edit4/
     buffers.rkt            文档管理面板
     log.rkt                日志面板
     face.rkt               face 值 + 分层
-    decor.rkt              装饰插件协议 + 投影/写回 + 缓存
+    decor.rkt              装饰：引擎 document 槽 + 增量写回 + 组合
     theme.rkt              face → ANSI 字节（编码器）
 
   decor/                   L4（高亮算法）
+    dirty.rkt              脏行 / 层 track 增量工具（纯）
+    protocol.rkt           decor 协议：open / change / face-ctx / pure-decor
     lex.rkt  words.rkt  word-color.rkt  syntax.rkt  bracket-depth.rkt  bracket-match.rkt  kind.rkt
 
   config/                  纯数据

@@ -6,7 +6,7 @@
 
 (provide words-plugin)
 
-(require "../plugin.rkt" "../decor/words.rkt")
+(require "../plugin.rkt" "../decor/words.rkt" "../decor/protocol.rkt")
 
 (define words-plugin
-  (make-plugin #:name 'words #:decor (list words-decor)))
+  (make-plugin #:name 'words #:decor (list (pure-decor words-decor))))

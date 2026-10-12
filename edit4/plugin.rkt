@@ -18,7 +18,8 @@
 (require racket/list
          "env.rkt"
          "core/command.rkt" "core/scope.rkt" "core/keymap.rkt" "core/job.rkt"
-         "content/prompt.rkt")
+         "content/prompt.rkt"
+         "decor/protocol.rkt" "decor/dirty.rkt")
 
 (struct plugin
   (name applies? commands scopes keymap panels regions decor prompt-kinds hooks services
@@ -31,7 +32,7 @@
 ;; keymap           : (listof entry)
 ;; panels           : (listof (World -> projection))
 ;; regions          : (listof region-spec)
-;; decor            : (listof (path text cursor -> (listof (vectorof face))))
+;; decor            : (listof decor)（见 decor/protocol.rkt：open / change）
 ;; prompt-kinds     : prompt-kind-registry
 ;; hooks            : (listof reaction)
 ;; services         : (listof service)
@@ -61,9 +62,17 @@
 ;; install : Environment (listof plugin) -> Environment
 ;;
 ;; applies? 在装配期“烘焙”进文档级贡献：
-;;   · decor：包一层，path 不匹配就返回 '()；
+;;   · decor：包一层，path 不匹配就返回空 state/layer（不跑算法）；
 ;;   · on-open：包一层，path 不匹配就不动 World。
 ;; 这样“插件只对某类文件生效”是声明式数据，不在算法里。
+(define (gate-decor d app?)
+  (decor (lambda (path text)
+           (if (app? path) ((decor-open d) path text) (values #f #f)))
+         (lambda (state layer ctx)
+           (if (app? (face-ctx-path ctx))
+               ((decor-change d) state layer ctx)
+               (values #f #f (dirty-lines '()))))))
+
 (define (install env plugins)
   (for/fold ([e env]) ([p (in-list plugins)])
     (define app? (plugin-applies? p))
@@ -75,9 +84,7 @@
      (append (environment-panels e) (plugin-panels p))
      (append (environment-regions e) (plugin-regions p))
      (append (environment-decor e)
-             (for/list ([d (in-list (plugin-decor p))])
-               (lambda (path text cursor)
-                 (if (app? path) (d path text cursor) '()))))
+             (for/list ([d (in-list (plugin-decor p))]) (gate-decor d app?)))
      (prompt-kind-merge (environment-prompt-kinds e) (plugin-prompt-kinds p))
      (append (environment-hooks e) (plugin-hooks p))
      (service-registry-merge (environment-services e)

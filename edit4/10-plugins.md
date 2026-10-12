@@ -50,7 +50,7 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 | `keymap` | `(listof entry)`，后装覆盖同 slot | `dispatch` |
 | `panels` | `(listof (panel name render))` | `boot` 建文档；`runtime` project/commit |
 | `regions` | `(listof region)` | `content/region` |
-| `decor` | `(listof (path text cursor -> faces))` | `view/decor` |
+| `decor` | `(listof decor)`（`open` / `change`，见 `decor/protocol.rkt`） | `view/decor` |
 | `prompt-kinds` | `prompt-kind-registry` | `make-prompt-submit` |
 | `hooks` | `(listof reaction)` | `runtime` run-hooks |
 | `services` | `service-registry` | runtime worker 池 |
@@ -58,19 +58,21 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 | `boot` | `(World -> World)` | 装配末尾各跑一次 |
 | `on-open` | `(World did path -> World)` | 打开文档时 |
 
-`decor` 保持 edit4 的**裸函数**（07：不加 name/applies? 层）；`brackets/word-color/syntax/words/bracket-match`
-只是 decor 算法，由插件包声明。
+`decor` 是 `decor/protocol.rkt` 的 `(decor open change)`：`open : path track -> (values state layer)`，
+`change : state layer face-ctx -> (values state layer dirty)`。状态/层是增量缓存，挂在**引擎
+document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。`syntax/brackets/words/bracket-match`
+暂用 `pure-decor`（整篇重扫兜底），`word-color` 已迁到真增量。
 
 ### 按文件类型生效：`#:applies?`
 
 插件用 `#:applies?`（`path -> boolean`）声明“我只对哪类文件生效”；`install` 在装配期
 把它**烘焙**进文档级贡献，而不是写在算法里：
 
-- 每个 `decor` 包一层：path 不匹配 → 返回 `'()`；
+- 每个 `decor` 包一层：path 不匹配 → 返回空 state/layer（不跑算法），`change` 也不推进；
 - `on-open` 包一层：path 不匹配 → 不动 World。
 
 ```racket
-(make-plugin #:name 'brackets #:applies? racket-file? #:decor (list bracket-decor))
+(make-plugin #:name 'brackets #:applies? racket-file? #:decor (list (pure-decor bracket-depth-decor)))
 ```
 
 于是 `decor/bracket-depth.rkt` / `decor/word-color.rkt` / `decor/words.rkt` / `decor/bracket-match.rkt` 不再自己判类型。
