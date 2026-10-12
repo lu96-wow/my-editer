@@ -54,7 +54,7 @@
        [else
         (define nid (neighbor (frame-tiled fr) cur target))
         (if nid (cons (world-set-focus world nid) '()) #f)])]
-    [else (cons (world-set-focus world target) '())]))
+    [else (if (memv target all) (cons (world-set-focus world target) '()) #f)]))
 
 (define (h-prefix ctx world args) (cons (world-set-prefix world (car args)) '()))
 (define (h-cancel ctx world args) (cons (world-set-prefix world #f) '()))

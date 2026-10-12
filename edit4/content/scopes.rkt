@@ -29,4 +29,5 @@
   (make-scope-registry
    (list (cons 'editor editor-scope)
          (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
+         (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))
          (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))))

@@ -71,4 +71,17 @@
 ;; 第二次 open 同一路径 → 复用，不重复建文档
 (check-equal? (length (content-doc-paths (world-content w3))) 1)
 
+;;; ---------- log-effect → 写进日志面板缓冲 ----------
+
+(require "../edit4/core/effect.rkt")
+(define (h-log-test ctx w args) (cons w (list (log-effect "hello-log"))))
+(define env-log
+  (struct-copy environment env0
+               [commands (command-register (environment-commands env0) 'log-test h-log-test)]
+               [keymap (compose-keymaps (list (environment-keymap env0)
+                                              (list (list '(key g ctrl) 'always (cmd 'log-test)))))]))
+(define-values (b4 _d4) (scripted-backend (list (key-event 'g '(ctrl)) (key-event 'q '(ctrl)))))
+(define w4 (run b4 env-log (boot)))
+(check-true (member "hello-log" (content-log (world-content w4))))
+
 (displayln "edit4/runtime.rkt: all tests passed")

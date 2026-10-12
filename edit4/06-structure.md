@@ -86,6 +86,10 @@ edit4/
     model.rkt              文档 / 视图 / 面板 / 文件树 + 路径复用与显示
     tree.rkt               文件树模型 + 纯操作 + IO
     tree-cmds.rkt          文件树交互命令（enter/parent/child/new/delete/reload/hidden）
+    buffers.rkt            文档管理面板行模型（buffer-rows）
+    buffers-cmds.rkt       文档管理面板命令（enter/fold/new-view/close-view/close-doc）
+    region.rkt             面板槽（一个窗口显示多个面板之一）
+    focus.rkt              聚焦主编辑器窗（具名导航走 region / show-doc!）
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
     prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
@@ -98,8 +102,10 @@ edit4/
     render.rkt             frame → core rectangle
     border.rkt             缝 / 浮窗框字形
     panel.rkt              面板：World -> 投影 的纯函数 + project/commit
-    status.rkt             状态栏面板
+    status.rkt             状态栏面板（含命令序列）
     tree.rkt               文件树面板
+    buffers.rkt            文档管理面板
+    log.rkt                日志面板
     face.rkt               face 值 + 分层
     decor.rkt              装饰插件协议 + 投影/写回 + 缓存
     theme.rkt              face → ANSI 字节（编码器）

@@ -9,7 +9,7 @@
 ;;; 这里同时放需要 prompt 的资源流程：退出（有脏文档先问）、关文档（脏先问）。
 
 (provide prompt-open prompt-close prompt-submit prompt-cancel
-         request-quit request-close-doc
+         request-quit request-close-doc request-close-doc*
          prompt-commands)
 
 (require racket/list racket/string racket/path
@@ -22,13 +22,6 @@
 (define (panel-vid-of w name)
   (define c (world-content w))
   (and c (content-panel-vid c name)))
-
-(define (window-of-vid w vid)
-  (define c (world-content w))
-  (and c vid
-       (for/first ([id (in-list (ids (world-layout w)))]
-                   #:when (eqv? (content-vid-of c id) vid))
-         id)))
 
 (define (prompt-of w)
   (define c (world-content w))
@@ -167,14 +160,11 @@
     [(not c) (values w (list (quit-effect)))]
     [else (ask-quit w (dirty-dids c))]))
 
-(define (focused-did w)
-  (define c (world-content w))
-  (define v (and c (content-vid-of c (world-focus w))))
-  (and v (content-did-of c v)))
-
 (define (request-close-doc w)
+  (request-close-doc* w (focused-did w)))
+
+(define (request-close-doc* w did)
   (define c (world-content w))
-  (define did (focused-did w))
   (cond
     [(not did) (values w '())]
     [(doc-dirty? c did)

@@ -10,7 +10,7 @@
 
 (provide (struct-out tree) tree-init tree-ensure refresh-tree!
          tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh tree-toggle-hidden
-         tree-rows)
+         tree-rows tree-relative-path)
 
 (require racket/list racket/path
          "../core/world.rkt"
@@ -83,3 +83,21 @@
              (if (and d? (hash-has-key? (tree-expanded ts) p)) (walk p (add1 depth)) '())))))
   (define root (tree-root ts))
   (cons (list root (path->string root) #t 0) (walk root 1)))
+
+;;; ---------- 显示 ----------
+
+;; 相对于工作区根的路径；不在根下（或未设根）则给完整路径。
+(define (tree-relative-path w p)
+  (define c (world-content w))
+  (define ts (and c (content-tree c)))
+  (define root (and ts (tree-root ts)))
+  (define cp (simplify-path (path->complete-path p)))
+  (cond
+    [(not root) (path->string p)]
+    [else
+     (define r (simplify-path (path->complete-path root)))
+     (define rp (explode-path r))
+     (define qp (explode-path cp))
+     (if (and (>= (length qp) (length rp)) (equal? rp (take qp (length rp))))
+         (path->string (find-relative-path r cp))
+         (path->string p))]))

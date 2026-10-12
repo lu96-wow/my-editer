@@ -12,7 +12,7 @@
 (provide (struct-out leaf) (struct-out split) (struct-out child)
          node-min axis-min
          ids path-of node-at modify-path node-edit
-         split-leaf remove-leaf insert-side
+         split-leaf remove-leaf insert-side insert-adjacent
          set-sizes fresh-id)
 
 (require "size.rkt" racket/list)
@@ -138,6 +138,44 @@
   (define a (child (size (axis-min n axis) #t) n))     ; 原树可伸缩
   (define b (child new-size new-node))
   (split axis 1 (if first? (list b a) (list a b))))
+
+;; 贴到某个窗格旁（区域用，anchor 'main）：同轴则插到父 split，异轴则包住 target。
+(define (insert-adjacent n target side new-size new-node)
+  (define axis (if (memq side '(left right)) 'h 'v))
+  (define first? (memq side '(left top)))
+  (define (wrap node)
+    (define a (child (size (axis-min node axis) #t) node))
+    (define b (child new-size new-node))
+    (split axis 1 (if first? (list b a) (list a b))))
+  (define (go node)
+    (cond
+      [(not node) node]
+      [(leaf? node) (if (eqv? target (leaf-id node)) (wrap node) node)]
+      [else
+       (define kids (split-kids node))
+       (define g (split-gutter node))
+       (define idx (for/first ([c (in-list kids)] [i (in-naturals)]
+                               #:when (and (leaf? (child-node c))
+                                           (eqv? target (leaf-id (child-node c)))))
+                    i))
+       (cond
+         [idx
+          (define before (take kids idx))
+          (define mid (list-ref kids idx))
+          (define after (drop kids (add1 idx)))
+          (define new-c (child new-size new-node))
+          (if (eq? (split-axis node) axis)
+              (split axis g (if first? (append before (list new-c mid) after)
+                                  (append before (list mid new-c) after)))
+              (split (split-axis node) g
+                     (append before (list (child (child-size mid) (wrap (child-node mid)))) after)))]
+         [else
+          (split (split-axis node) g
+                 (for/list ([c (in-list kids)])
+                   (if (memv target (ids (child-node c)))
+                       (child (child-size c) (go (child-node c)))
+                       c)))])]))
+  (go n))
 
 ;;; ---------- 改尺寸（拖拽用） ----------
 

@@ -8,27 +8,37 @@
 ;;;   bindings : 窗口 id -> 它显示的 vid
 ;;;   panels   : 面板名 -> vid（面板是文档，不可编辑）
 ;;;   tree     : 文件树状态（#f = 未初始化）——从 edit3 的 features hash 收编而来
+;;;   prompt   : 输入行状态 | #f
+;;;   regions  : 面板槽（窗口显示多个面板之一，互斥）：rid -> region
+;;;   fold     : 文档管理面板的折叠集：did -> #t
+;;;   log      : 日志行（append-only）：(listof string)
 ;;;
 ;;; 「脏」= 存档 handle ≠ 当前 handle（身份比较）。
 
-(provide (struct-out content) (struct-out doc-meta) (struct-out prompt)
+(provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out region)
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-remove-vid
          content-vid-of content-did-of focused-vid-of
          content-doc-meta doc-path doc-dirty? doc-save-mark!
-         content-panel-vid content-panel?
+         content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
          content-prompt content-set-prompt
          content-tree content-set-tree
+         content-regions content-set-regions
+         content-fold content-set-fold
+         content-log content-log-append
          path-key content-doc-by-path content-doc-paths content-show content-editor-window)
 
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
 (struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f（面板恒为 #f）
 (struct prompt (wid label kind data prev-focus) #:transparent)  ; 输入行状态
-(struct content (ed docs bindings panels tree prompt) #:transparent)
+;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
+;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定。
+(struct region (side size members active anchor wid) #:transparent)
+(struct content (ed docs bindings panels tree prompt regions fold log) #:transparent)
 
-(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f))
+(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f (hash) (hash) '()))
 
 (define (content-ed* c ed) (struct-copy content c [ed ed]))
 (define (content-docs* c docs) (struct-copy content c [docs docs]))
@@ -36,6 +46,9 @@
 (define (content-panels* c p) (struct-copy content c [panels p]))
 (define (content-set-tree c t) (struct-copy content c [tree t]))
 (define (content-set-prompt c p) (struct-copy content c [prompt p]))
+(define (content-set-regions c r) (struct-copy content c [regions r]))
+(define (content-set-fold c f) (struct-copy content c [fold f]))
+(define (content-log-append c msg) (struct-copy content c [log (append (content-log c) (list msg))]))
 
 ;;; ---------- 增 ----------
 
@@ -83,6 +96,9 @@
 (define (content-panel-vid c name) (hash-ref (content-panels c) name #f))
 (define (content-panel? c vid)
   (and vid (for/or ([(nm v) (in-hash (content-panels c))]) (eqv? v vid)) #t))
+(define (panel-doc-name? c name) (and name (hash-has-key? (content-panels c) name) #t))
+(define (panel-name-of-vid c vid)
+  (and vid (for/first ([(nm v) (in-hash (content-panels c))] #:when (eqv? v vid)) nm)))
 
 ;;; ---------- 元数据 / 脏 ----------
 

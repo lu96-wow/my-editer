@@ -17,7 +17,7 @@
          "../core/world.rkt"
          "../content/adapter.rkt"
          "../content/model.rkt"
-         "status.rkt" "tree.rkt")
+         "status.rkt" "tree.rkt" "buffers.rkt" "log.rkt")
 
 (define (panel-vid w name)
   (define c (world-content w))
@@ -57,4 +57,6 @@
 
 (define base-panels
   (list (named-panel "*status*" status-content)
-        (named-panel "*tree*" tree-content)))
+        (named-panel "*tree*" tree-content)
+        (named-panel "*buffers*" buffers-content)
+        (named-panel "*log*" log-content)))
