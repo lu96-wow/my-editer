@@ -112,6 +112,9 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 - 声明（`config/floats.rkt`）：`(name (rel h v dx dy) (w h))`；
 - 键：`M-j` 开日志、`M-k` 开树、`M-g` 开关日志；float 作用域 `C-j` 提升 / `Tab` 切换 / `Esc`·`C-d` 关闭；
 - 同一 vid 可多位置显示（侧栏的树 + 浮起来的树）；点击浮窗正文也置光标。
+- **浮窗有框**：view 内容矩形四边**内缩 1 格**（`view/render.rkt` 的 `frame->rectangles`），
+  框画在外圈、不压内容；`before-render` 的落位/尺寸按**外框**算，点击→光标按**内缩后**算
+  （`content/pointer.rkt`）。completion/docs 菜单以此为基准。
 
 ### 焦点：导航跟着资源走（不做「focus 具名」）
 

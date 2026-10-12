@@ -7,8 +7,8 @@
          "../edit4/core/world.rkt" "../edit4/core/event.rkt"
          "../edit4/core/command.rkt" "../edit4/core/dispatch.rkt" "../edit4/core/keymap.rkt"
          "../edit4/core/hook.rkt" "../edit4/core/job.rkt"
-         "../edit4/content/model.rkt" "../edit4/content/adapter.rkt"
-         "../edit4/view/panel.rkt" "../edit4/layout.rkt")
+         "../edit4/content/model.rkt" "../edit4/content/adapter.rkt" "../edit4/content/float.rkt"
+         "../edit4/view/panel.rkt" "../edit4/view/render.rkt" "../edit4/layout.rkt")
 
 (define env (app-environment))
 
@@ -56,11 +56,31 @@
 (define a1b (hooks (emit! a1 'before-render (list (cons 60 10)))))
 (check-not-false (float-of-panel a1b "*completion*"))
 
+;; 渲染：浮窗内容四边内缩 1 格（框不压内容）→ 第一项（选中）在框内第一行
+(define ac (world-content a1b))
+(define aed (content-ed ac))
+(commit-panels! aed (project-panels (environment-panels env) a1b))
+(define afr (world-frame a1b (cons 60 10)))
+(define av2 (content-panel-vid ac "*completion*"))
+(define arect (for/first ([p (in-list (frame-float-rects afr))]
+                          #:when (eqv? av2 (content-vid-of ac (car p))))
+               (cdr p)))
+(define-values (_asc arends asels)
+  (render-frame aed afr (lambda (id) (content-vid-of ac id)) (content-vid-of ac 0) 60 10 #f))
+(check-true (for/or ([p (in-list (append arends asels))]
+                      #:when (eq? 'complete-selected (piece-attr p)))
+              (and (= (piece-row p) (add1 (rect-y arect)))
+                   (= (piece-column p) (add1 (rect-x arect))))))
+
 ;; 打字 → after-insert 钩子重筛
 (define a2 (send a1 (text-event "l")))
 (define a3 (hooks a2))
 (check-equal? (line a3 av 1) "hell")
 (check-true (regexp-match? #rx"hello" (panel-text a3 "*completion*")))
+
+;; 不过滤完全匹配的串：菜单里 "hel" 也在（不排除）
+(check-true (for/or ([l (in-list (string-split (panel-text a1 "*completion*") "\n"))])
+              (string=? (string-trim l) "hel")))
 
 ;; Enter 接受候选（补全余下 "o"）
 (define a4 (send a3 (key-event 'enter '())))

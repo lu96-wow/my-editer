@@ -139,8 +139,7 @@
   (define plen (string-length prefix))
   (for/list ([x (in-list pool)]
              #:when (and (>= (string-length x) plen)
-                         (string=? prefix (substring x 0 plen))
-                         (not (string=? x prefix))))
+                         (string=? prefix (substring x 0 plen))))
     x))
 
 ;;; ---------- 菜单浮窗 ----------

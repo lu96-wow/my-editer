@@ -50,7 +50,7 @@
 (define tvid (panel-vid (W s1) "*tree*"))
 (define-values (_c3 fr3) (ensure-layout empty-layout-cache (world-layout (W s1)) (world-floats (W s1)) SZ))
 (define fr3* (frame-float-rect fr3 fid))
-(define c1 (run (W s1) (cursor-event 'press 'left (+ (rect-x fr3*) 2) (+ (rect-y fr3*) 1))))
+(define c1 (run (W s1) (cursor-event 'press 'left (+ (rect-x fr3*) 2) (+ (rect-y fr3*) 2))))
 (check-equal? (view-line (content-ed (world-content (W c1))) tvid) 1)
 
 ;;; ---------- 再开同一个 → 提到最上，不重复 ----------

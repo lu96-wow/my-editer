@@ -25,6 +25,11 @@
                               (max 0 (- x (rect-x r)))))
      (when p (set-point! (content-ed c) vid (car p) (cdr p)))]))
 
+;; 浮窗有框：内容四边内缩 1 格（同 view/render）。
+(define (inset-rect r)
+  (rect (add1 (rect-x r)) (add1 (rect-y r))
+        (max 1 (- (rect-w r) 2)) (max 1 (- (rect-h r) 2))))
+
 (define (h-pointer-press ctx w args)
   (define r (pointer-press ctx w args))
   (cond
@@ -44,7 +49,8 @@
                          (hash-ref (geometry-rects (frame-tiled fr)) (pane-target-id t) #f) x y)]
           ;; 浮窗正文（非角）→ 也放光标；角落留给缩放拖拽。
           [(and (float-target? t) (eq? 'move (float-target-action t)))
-           (place-cursor (car r) (float-target-id t) (frame-float-rect fr (float-target-id t)) x y)])
+           (define rr (frame-float-rect fr (float-target-id t)))
+           (place-cursor (car r) (float-target-id t) (and rr (inset-rect rr)) x y)])
         r])]))
 
 (define content-pointer-commands
