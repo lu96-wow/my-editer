@@ -27,6 +27,7 @@
          content-regions content-set-regions
          content-fold content-set-fold
          content-log content-log-append
+         content-doc-key content-set-doc-key
          path-key content-doc-by-path content-doc-paths content-show content-editor-window)
 
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
@@ -36,9 +37,9 @@
 ;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
 ;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定。
 (struct region (side size members active anchor wid) #:transparent)
-(struct content (ed docs bindings panels tree prompt regions fold log) #:transparent)
+(struct content (ed docs bindings panels tree prompt regions fold log doc-keys) #:transparent)
 
-(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f (hash) (hash) '()))
+(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f (hash) (hash) '() (hash)))
 
 (define (content-ed* c ed) (struct-copy content c [ed ed]))
 (define (content-docs* c docs) (struct-copy content c [docs docs]))
@@ -49,6 +50,12 @@
 (define (content-set-regions c r) (struct-copy content c [regions r]))
 (define (content-set-fold c f) (struct-copy content c [fold f]))
 (define (content-log-append c msg) (struct-copy content c [log (append (content-log c) (list msg))]))
+
+;; 文档键表：打开文档时按 matcher 挂到 did（mode 层产出）。
+;; content-doc-keys 是 struct 自动访问器（did -> 键表 的 hash）。
+(define (content-doc-key c did) (hash-ref (content-doc-keys c) did #f))
+(define (content-set-doc-key c did table)
+  (struct-copy content c [doc-keys (hash-set (content-doc-keys c) did table)]))
 
 ;;; ---------- 增 ----------
 

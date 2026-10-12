@@ -68,22 +68,29 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 |---|---|---|
 | **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
 | **边框开关** `C-t border-toggle` | 每窗口 border | `content` 每窗 border 标注 + `view/border` 读取 |
-| **异步插件**（completion/docs） | plugins + job/hook | 需先补 `core/hook.rkt` + `core/job.rkt`（L6 边界） |
+| **异步插件内容**（completion/docs） | plugins | 基础设施已就位（见下），只差把两个插件搬过来 |
 
-**优先级建议**：边框开关 `C-t` → placing → 异步边界（hooks/jobs）→ completion/docs。
+**优先级建议**：边框开关 `C-t` → placing → completion / docs。
 
-### 插件（L5 已落地，无状态部分）
+### 插件（L5 + 边界已落地）
 
-`plugin.rkt` 契约（`commands / scopes / keymap / panels / decor`）+ `install` fold 已能承载
-**无状态插件**，无需再抽层：
+`plugin.rkt` 契约已补齐到 edit3 的能力槽：
+`name / commands / scopes / keymap / panels / regions / decor / prompt-kinds / hooks / services /
+ doc-key-matchers / boot / on-open`；`install` fold 进 Environment。详见 `10-plugins.md`。
 
-- `syntax` / `words` / **`brackets`** 是普通 decor 函数（`decor/*.rkt`），`app.rkt` 列表里加一项；
-- **`auto-pair`** 是命令 + 键表覆盖（`content/auto-pair.rkt`），后装覆盖 `(text) editor` 同 slot；
-- 键表「后装覆盖同 slot」由 `compose-keymaps` 保证，命令「后装按名覆盖」由 `command-registry-merge` 保证。
+- **高亮**（`syntax` / `words` / `brackets`）是普通 decor 函数（`decor/*.rkt`），由插件包声明；
+- **`auto-pair`** 是命令 + 键表覆盖（`plugins/auto-pair.rkt`），后装覆盖 `(text) editor` 同 slot；
+- **hooks**：`World.signals` + `core/hook.rkt` 的 `reaction`/`run-hooks`；命令用 `emit!` 发点
+  （`after-edit`/`after-insert`/`after-nav`/`focus-changed`/`before-render`/`document-opened`/`job`…）；
+- **jobs/services**：`World.jobs` 账本 + `core/job.rkt`；runtime 每帧派发到 worker 池，结果以
+  `job-event` 回注，`emit 'job` 给插件；
+- **mode**：`core/mode.rkt` matcher → 打开文档时挂 `content.doc-keys`；`dispatch` 先试文档表；
+- **插件状态**：`World.store`（`core/store.rkt`，命名空间隔离）；**boot / on-open** 装配末尾 / 开文档时跑。
 
-还差的是**有状态 / 异步**插件（completion / docs）：它们要在 `after-insert` / `after-nav` /
-`before-render` 重筛、经 worker 跑 `#:services`、结果由 `job` 钩子回注。到那时再补 hook/job，
-现在不预先引入。
+内置插件在 `plugins/`，`config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
+`demo`（契约演示）与 `async-demo`（service + job 钩子）证明所有槽可用。
+
+还差的是把 **completion / docs** 搬过来（它们要用上面全部基础设施）。
 
 已对齐 edit3 的键：`(region id)` 作用域（`Tab` 循环侧栏）、新建 `C-n f` / `C-n C-n f`（`prefix-new` 切换）、
 去掉多出的 `C-w`（关文档只走 buffers `Del`）。

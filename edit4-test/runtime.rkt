@@ -82,6 +82,6 @@
                                               (list (list '(key g ctrl) 'always (cmd 'log-test)))))]))
 (define-values (b4 _d4) (scripted-backend (list (key-event 'g '(ctrl)) (key-event 'q '(ctrl)))))
 (define w4 (run b4 env-log (boot #:name "*scratch*")))
-(check-true (member "hello-log" (content-log (world-content w4))))
+(check-not-false (member "hello-log" (content-log (world-content w4))))
 
 (displayln "edit4/runtime.rkt: all tests passed")

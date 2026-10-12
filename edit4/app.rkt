@@ -2,31 +2,32 @@
 
 ;;; edit4/app.rkt —— 内置插件装配（→ Environment）
 ;;;
-;;; 这里是「组装根」：把内置插件 fold 成一次运行的 Environment。
-;;; 一个 plugin 一行，读起来就是这份配置清单。core 不 require 插件。
-;;; 初始 World 的构造在 boot.rkt。
+;;; 组装根：基础命令/内容/面板 + catalog 里启用的插件，fold 成一次运行的 Environment。
+;;; 最后把合并后的 prompt-kinds 重注册进 prompt-submit（闭包捕获注册表）。
+;;; core 不 require 插件；插件实现只 require 契约（extension 白名单在 plugin.rkt）。
 
 (provide app-environment)
 
 (require "env.rkt" "plugin.rkt"
-         "core/base.rkt"
-         "content/commands.rkt" "content/scopes.rkt" "content/auto-pair.rkt"
+         "core/base.rkt" "core/command.rkt"
+         "content/commands.rkt" "content/scopes.rkt" "content/prompt.rkt"
          "view/panel.rkt"
-         "decor/syntax.rkt" "decor/words.rkt" "decor/bracket.rkt")
+         "plugins/catalog.rkt" "config/plugins.rkt")
 
 (define (app-environment)
-  (install (base-environment)
-           (list
-            ;; 基础命令 / 作用域：先注册（插件可按名覆盖同一条）
-            (make-plugin #:commands base-commands #:scopes base-scopes)
-            ;; 内容：编辑 / 文件 / 文件树 / 输入行 + 内容键表与作用域
-            (make-plugin #:commands content-commands #:scopes content-scopes #:keymap content-keymap)
-            ;; 插件：自动配对（后装，覆盖内容键表的 `(text) editor` 同 slot）
-            (make-plugin #:commands auto-pair-commands #:keymap auto-pair-keymap)
-            ;; 面板：状态栏 + 文件树
-            (make-plugin #:panels base-panels)
-            ;; 装饰：语法 / 当前词 / 括号（普通 lambda，列表里一放即可）
-            (make-plugin #:decor (list syntax-decor words-decor bracket-decor))
-            ;; 基础键表：最后注册 = 优先级最低（fallback）
-            ;; 这样插件的**作用域绑定**不会被 base 的 always 绑定遮蔽。
-            (make-plugin #:keymap base-keymap))))
+  (define base-env
+    (install (base-environment)
+             (list
+              ;; 基础命令 / 作用域：先注册（插件可按名覆盖同一条）
+              (make-plugin #:name 'base #:commands base-commands #:scopes base-scopes)
+              ;; 内容：编辑 / 文件 / 文件树 / 输入行 + 内容键表与作用域
+              (make-plugin #:name 'content #:commands content-commands #:scopes content-scopes #:keymap content-keymap)
+              ;; 面板：状态栏 + 文件树 + 文档管理 + 日志
+              (make-plugin #:name 'panels #:panels base-panels)
+              ;; 基础键表（plugins 之后装 → 插件键表覆盖同 slot）
+              (make-plugin #:name 'base-keys #:keymap base-keymap))))
+  (define env (install base-env (plugins-by-names enabled-plugins)))
+  ;; prompt kind 注册表在插件装配后才齐：重注册 prompt-submit 命令闭包捕获它。
+  (struct-copy environment env
+               [commands (command-register (environment-commands env) 'prompt-submit
+                                           (make-prompt-submit (environment-prompt-kinds env)))]))

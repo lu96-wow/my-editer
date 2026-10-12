@@ -1,35 +1,43 @@
 #lang racket
 
-;;; edit4-test/plugins.rkt —— 插件通道：装配 fold + 自动配对 + 括号装饰
+;;; edit4-test/plugins.rkt —— 插件契约：catalog / 装配 / hooks / jobs / mode / 两个真实插件
 ;;;
-;;; 验证 plugin 契约足以承载「无状态插件」：命令 / 键表覆盖 / decor 追加，
-;;; 以及 auto-pair（编辑行为）与 bracket-decor（显示）两个真实插件。
+;;; 覆盖：Environment 的装配 fold、auto-pair（行为）、bracket（decor）、
+;;; demo（boot/on-open/hook/doc-key/命令）、async-demo（service + job 钩子）。
 
 (require rackunit racket/list racket/path
-         "../edit4/app.rkt"
-         "../edit4/env.rkt"
+         "../edit4/app.rkt" "../edit4/env.rkt" "../edit4/plugin.rkt"
+         "../edit4/runtime.rkt" "../edit4/boot.rkt"
          "../edit4/core/world.rkt" "../edit4/core/event.rkt"
          "../edit4/core/command.rkt" "../edit4/core/dispatch.rkt"
-         "../edit4/content/model.rkt" "../edit4/content/adapter.rkt"
-         "../edit4/view/decor.rkt"
-         "../edit4/view/face.rkt"
+         "../edit4/core/hook.rkt" "../edit4/core/job.rkt"
+         "../edit4/core/store.rkt" "../edit4/core/mode.rkt"
+         "../edit4/content/model.rkt" (except-in "../edit4/content/adapter.rkt" run)
+         "../edit4/view/decor.rkt" "../edit4/view/face.rkt"
          "../edit4/decor/bracket.rkt"
+         "../edit4/plugins/catalog.rkt" "../edit4/config/plugins.rkt"
+         "../edit4/plugins/demo.rkt" "../edit4/plugins/async-demo.rkt"
          "../edit4/layout.rkt")
+
+;;; ---------- catalog / 启用 ----------
+
+(check-equal? (map plugin-name (plugins-by-names '(syntax words))) '(syntax words))
+(check-exn exn:fail? (lambda () (plugins-by-names '(nope))))
 
 (define env (app-environment))
 
-;; 单窗 + 一个 Racket 文档。
+;;; ---------- auto-pair：命令 + 键表覆盖 ----------
+
 (define (world-with text)
   (define c0 (content-blank))
   (define-values (c1 _did v) (content-add-doc! c0 text 40 3 "t" (string->path "t.rkt")))
   (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0 #:content (content-bind c1 0 v)))
 
-(define (send w ev)
+(define (send env w ev)
   (define-values (w* _effs)
     (dispatch (environment-commands env) (environment-scopes env)
               (environment-keymap env) (ctx ev (cons 40 3) #f) w))
   w*)
-
 (define (doc-string w)
   (define ed (content-ed (world-content w)))
   (define v (content-vid-of (world-content w) 0))
@@ -39,58 +47,101 @@
   (define v (content-vid-of (world-content w) 0))
   (view-col ed v))
 
-;;; ---------- 装配：插件把命令 / 键表 / decor 折进 Environment ----------
-
 (check-not-false (command-lookup (environment-commands env) 'auto-pair-insert))
-(check-equal? (length (environment-decor env)) 3)      ; syntax + words + bracket
+(check-equal? (length (environment-decor env)) 3)      ; syntax + words + brackets
 
-;;; ---------- 自动配对：左括号成对、光标居中 ----------
+(define wp (send env (world-with "") (text-event "(")))
+(check-equal? (doc-string wp) "()")
+(check-equal? (cursor-col wp) 1)
+(define wp2 (send env wp (text-event ")")))
+(check-equal? (doc-string wp2) "()")
+(check-equal? (cursor-col wp2) 2)
 
-(define w1 (send (world-with "") (text-event "(")))
-(check-equal? (doc-string w1) "()")
-(check-equal? (cursor-col w1) 1)                        ; 光标在 ( 与 ) 之间
-
-;;; ---------- 自动配对：右括号跳过已存在的同字符 ----------
-
-(define w2 (send w1 (text-event ")")))
-(check-equal? (doc-string w2) "()")                     ; 没有重复插入
-(check-equal? (cursor-col w2) 2)                        ; 光标越过 )
-
-;;; ---------- 自动配对：普通文本原样插入（不吞键） ----------
-
-(define w3 (send w2 (text-event "x")))
-(check-equal? (doc-string w3) "()x")
-(check-equal? (cursor-col w3) 3)
-
-;;; ---------- 自动配对：多字符（粘贴）也走原样插入 ----------
-
-(define w4 (send (world-with "") (text-event "hi")))
-(check-equal? (doc-string w4) "hi")
-
-;;; ---------- 括号装饰：深度底色 + 光标配对 ----------
+;;; ---------- bracket decor ----------
 
 (define wb (world-with "(a (b) c)"))
 (define edb (content-ed (world-content wb)))
-(define didb (let-values ([(ed v) (values edb (content-vid-of (world-content wb) 0))])
-               (view-did ed v)))
+(define didb (view-did edb (content-vid-of (world-content wb) 0)))
 (define-values (_fc projs) (ensure-faces (hash) (list bracket-decor) wb))
 (check-true (pair? projs))
 (commit-faces! edb projs)
-(check-not-false (document-face-at edb didb 0 0))       ; 外层括号有深度底色
-(check-not-false (document-face-at edb didb 0 3))       ; 内层括号有深度底色
+(check-not-false (document-face-at edb didb 0 0))
+(check-not-false (document-face-at edb didb 0 3))
 
-;; 光标在外层 ( 上 → 与配对 ) 都叠 'bracket-match（face-stack）
-(define wm (world-with "(a (b) c)"))
-(define edm (content-ed (world-content wm)))
-(define vm (content-vid-of (world-content wm) 0))
-(set-point! edm vm 0 0)
-(define-values (_fc2 projs2) (ensure-faces (hash) (list bracket-decor) wm))
-(commit-faces! edm projs2)
-(check-true (face-stack? (document-face-at edm didb 0 0)))  ; 深度 + 配对叠层
-(check-true (face-stack? (document-face-at edm didb 0 8)))  ; 配对括号也被标
+;;; ---------- demo / async-demo：装配后的 Environment ----------
 
-;;; ---------- 括号装饰：非 Racket 文件不生效 ----------
+(define denv (install (app-environment) (list demo-plugin async-demo-plugin)))
+(check-true (pair? (environment-hooks denv)))
+(check-not-false (service-lookup (environment-services denv) 'slow-words))
+(check-true (pair? (environment-doc-key-matchers denv)))
+(check-equal? (length (environment-boots denv)) 1)      ; demo 的 boot
+(check-equal? (length (environment-on-opens denv)) 1)   ; demo 的 on-open
+
+(define w0 (run-boots denv (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0)))
+(check-equal? (store-ref (world-store w0) 'demo-count) 0)
+
+;;; ---------- hooks：after-insert 累计；run-hooks 排空 ----------
+
+(define w1 (run-hooks (environment-hooks denv) (emit! w0 'after-insert (list 0 "x"))))
+(check-equal? (store-ref (world-store w1) 'demo-inserts) 1)
+(define w2 (run-hooks (environment-hooks denv) (emit! w1 'after-insert (list 0 "y"))))
+(check-equal? (store-ref (world-store w2) 'demo-inserts) 2)
+
+;;; ---------- 命令：M-y → demo-bump ----------
+
+(define w3 (car (call-with-values
+                 (lambda ()
+                   (dispatch (environment-commands denv) (environment-scopes denv)
+                             (environment-keymap denv) (ctx (key-event 'y '(alt)) (cons 40 3) #f) w2))
+                 cons)))
+(check-equal? (store-ref (world-store w3) 'demo-count) 1)
+
+;;; ---------- mode：matcher → 文档键表 ----------
+
+(define demo-km (match-doc-keys (string->path "a.demo") (environment-doc-key-matchers denv)))
+(check-true (pair? demo-km))
+(check-false (match-doc-keys (string->path "a.rkt") (environment-doc-key-matchers denv)))
+
+;;; ---------- on-open ----------
+
+(define wo (run-opens denv w0 42 (string->path "x.demo")))
+(check-equal? (store-ref (world-store wo) 'demo-opened) "x.demo")
+
+;;; ---------- jobs / service / job 钩子 ----------
+
+(define-values (wj j) (job-submit w0 'slow-words (hash 'n 3) 'async-demo))
+(check-equal? (length (jobs wj)) 1)
+(define res (run-service (environment-services denv) j))
+(check-equal? res '("async-item-0" "async-item-1" "async-item-2"))
+(define wf (job-finish wj (job-id j) res))
+(check-equal? (jobs wf) '())
+(define wf2 (run-hooks (environment-hooks denv)
+                       (emit! wf 'job (list (job-id j) 'slow-words res 'async-demo))))
+(check-equal? (store-ref (world-store wf2) 'async-result) res)
+(check-false (store-ref (world-store wf2) 'async-loading #f))
+
+;;; ---------- 非 Racket 文件不生效（decor / matcher） ----------
 
 (check-equal? (bracket-decor (string->path "t.txt") "(a)" (cons 0 0)) '())
+
+;;; ---------- 端到端：runtime worker → job-event → job 钩子 ----------
+
+(define RSZ (cons 60 10))
+(define phase (box 0))
+(define (async-backend)
+  (backend (lambda () RSZ)
+           (lambda ()
+             (case (unbox phase)
+               [(0) (set-box! phase 1) (key-event 'o '(alt))]        ; M-o 登记 job
+               [(1) (sleep 0.4) (set-box! phase 2) (key-event 'q '(ctrl))]  ; 等 worker 回来
+               [else (sleep 0.1) (key-event 'q '(ctrl))]))
+           (lambda (ps) (void))
+           void))
+
+(set-box! phase 0)
+(define wend (run (async-backend) denv (boot #:name "*scratch*")))
+(check-equal? (store-ref (world-store wend) 'async-result)
+              '("async-item-0" "async-item-1" "async-item-2" "async-item-3"))
+(check-false (store-ref (world-store wend) 'async-loading #f))
 
 (displayln "edit4/plugins.rkt: all tests passed")

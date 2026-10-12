@@ -67,14 +67,18 @@ edit4/
   layout.rkt               布局层入口（再导出）
 
   core/                    L0 值 + L2 命令
-    event.rkt              输入事件
+    event.rkt              输入事件（含 job-event）
     effect.rkt             一次性 IO（数据）
     drag.rkt               手势状态
-    world.rkt              World（无 features hash）
+    world.rkt              World（布局/内容/信号队列/job 账本/插件 store）
+    store.rkt              插件局部状态（命名空间隔离）
+    hook.rkt               生命周期钩子 reaction / run-hooks
+    job.rkt                异步工作 job / service / 账本
+    mode.rkt               路径 → 文档键表的匹配层
     command.rkt            命令数据 + 注册表 + run
     keymap.rkt             绑定 / 键表
     scope.rkt              作用域注册表
-    dispatch.rkt           输入求值
+    dispatch.rkt           输入求值（先试文档键表再落全局）
     window.rkt             窗口 / 焦点 / 前缀 / 退出命令
     pointer.rkt            指针 / 拖拽命令
     base.rkt               基础命令集装配 + 基础键表 / 作用域
@@ -94,7 +98,6 @@ edit4/
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
     prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
-    auto-pair.rkt          括号自动配对插件（命令 + 键表覆盖）
     scopes.rkt             editor / (panel NAME) 作用域
     edit.rkt               编辑 / 导航命令
     files.rkt              文件命令（open/save/reload，走 effect）
@@ -119,6 +122,14 @@ edit4/
     palette.rkt            命名 face + 调色板
     syntax.rkt             关键字分组
     floats.rkt             浮窗声明（anchor + 尺寸）
+    plugins.rkt            本次启用哪些插件（只给名字）
+
+  plugins/                 L5（插件包：数据）
+    catalog.rkt            名字 → 实现 + 列表顺序 = 层叠顺序
+    syntax.rkt words.rkt brackets.rkt     高亮（decor）
+    auto-pair.rkt          括号自动配对（命令 + 键表）
+    demo.rkt               契约演示（op/键表/hook/匹配层/boot/on-open）
+    async-demo.rkt         异步演示（service + job 钩子）
 
 edit4-test/  layout command content render runtime panels faces plugins edit3-parity
 ```

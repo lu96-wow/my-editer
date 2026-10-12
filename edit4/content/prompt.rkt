@@ -10,6 +10,9 @@
 
 (provide prompt-open prompt-close prompt-submit prompt-cancel
          request-quit request-close-doc request-close-doc*
+         (struct-out prompt-kind-registry)
+         make-prompt-kind-registry prompt-kind-register prompt-kind-lookup prompt-kind-merge
+         base-prompt-kinds make-prompt-submit
          prompt-commands)
 
 (require racket/list racket/string racket/path
@@ -129,22 +132,38 @@
          (values w (list (delete-path (car (prompt-data p))) (reload-tree)))]
         [else (values w '())]))
 
-(define prompt-kinds
-  (hash 'close-doc kind-close-doc
-        'quit kind-quit
-        'new-file kind-new-file
-        'new-dir kind-new-dir
-        'delete kind-delete))
+;;; ---------- kind → handler（注册表；插件可加） ----------
+
+(struct prompt-kind-registry (table) #:transparent)
+
+(define (make-prompt-kind-registry [entries '()])
+  (prompt-kind-registry (for/hash ([e (in-list entries)]) (values (car e) (cdr e)))))
+(define (prompt-kind-register reg kind handler)
+  (prompt-kind-registry (hash-set (prompt-kind-registry-table reg) kind handler)))
+(define (prompt-kind-lookup reg kind)
+  (hash-ref (prompt-kind-registry-table reg) kind #f))
+(define (prompt-kind-merge a b)
+  (make-prompt-kind-registry
+   (append (for/list ([(k v) (in-hash (prompt-kind-registry-table a))]) (cons k v))
+           (for/list ([(k v) (in-hash (prompt-kind-registry-table b))]) (cons k v)))))
+
+(define base-prompt-kinds
+  (make-prompt-kind-registry
+   (list (cons 'close-doc kind-close-doc)
+         (cons 'quit kind-quit)
+         (cons 'new-file kind-new-file)
+         (cons 'new-dir kind-new-dir)
+         (cons 'delete kind-delete))))
 
 ;;; ---------- 提交流程 ----------
 
-(define (prompt-submit w)
+(define (prompt-submit kinds w)
   (define p (prompt-of w))
   (cond
     [(not p) (values w '())]
     [else
      (define text (prompt-answer w p))
-     (define h (hash-ref prompt-kinds (prompt-kind p) #f))
+     (define h (prompt-kind-lookup kinds (prompt-kind p)))
      (define w1 (prompt-close w))
      (if h (h w1 p text) (values w1 '()))]))
 
@@ -175,14 +194,16 @@
 
 (define (as-result thunk) (call-with-values thunk cons))
 
-(define (h-prompt-submit ctx w args) (as-result (lambda () (prompt-submit w))))
+(define (make-prompt-submit kinds)
+  (lambda (ctx w args) (as-result (lambda () (prompt-submit kinds w)))))
+
 (define (h-prompt-cancel ctx w args) (as-result (lambda () (prompt-cancel w))))
 (define (h-quit ctx w args) (as-result (lambda () (request-quit w))))
 (define (h-close-doc ctx w args) (as-result (lambda () (request-close-doc w))))
 
 (define prompt-commands
   (make-command-registry
-   (list (cons 'prompt-submit h-prompt-submit)
+   (list (cons 'prompt-submit (make-prompt-submit base-prompt-kinds))
          (cons 'prompt-cancel h-prompt-cancel)
          (cons 'quit h-quit)
          (cons 'close-doc h-close-doc))))
