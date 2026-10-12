@@ -2,17 +2,19 @@
 
 ;;; edit4/app.rkt —— 装配（基础 + 内容命令/键表/作用域/面板）+ boot 底盘
 
-(provide app-commands app-keymap app-scopes app-panels boot)
+(provide app-commands app-keymap app-scopes app-panels app-faces boot)
 
 (require "core/world.rkt" "core/command.rkt" "core/keymap.rkt" "core/dispatch.rkt" "core/commands.rkt"
          "content/content.rkt" "content/commands.rkt"
          "view/panels.rkt"
+         "face/syntax.rkt" "face/words.rkt"
          "layout.rkt")
 
 (define (app-commands) (command-registry-merge base-commands content-commands))
 (define (app-keymap) (compose-keymaps (list base-keymap content-keymap)))
 (define (app-scopes) base-scopes)
 (define (app-panels) base-panels)
+(define (app-faces) (list syntax-plugin words-plugin))
 
 ;; boot：侧栏(树) | 主区(编辑器 / 状态栏)。
 ;;   id 2 = 树（固定 28），id 0 = 编辑器（弹性），id 1 = 状态栏（固定 1 行）。

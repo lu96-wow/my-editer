@@ -56,7 +56,7 @@
 
 ;;; ---------- 入口 ----------
 
-(define (run-tui reg scopes km panels world)
+(define (run-tui reg scopes km panels faces world)
   (t:with-tui
    (lambda ()
      (define-values (rows cols) (t:get-window-size))
@@ -74,4 +74,4 @@
             [else (translate ev)]))
         (lambda (pieces) (draw! pieces prev-size (unbox size-box)))
         void))
-     (run b reg scopes km panels world))))
+     (run b reg scopes km panels faces world))))

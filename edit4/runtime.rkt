@@ -12,7 +12,7 @@
          "core/world.rkt" "core/event.rkt" "core/effect.rkt"
          "core/command.rkt" "core/dispatch.rkt"
          "content/content.rkt" "content/engine.rkt" "content/fs.rkt"
-         "view/render.rkt" "view/panels.rkt"
+         "view/render.rkt" "view/panels.rkt" "view/face-plugin.rkt"
          "layout.rkt")
 
 (struct backend (size read-event draw! close) #:transparent)
@@ -36,14 +36,20 @@
         (world-set-content w (content-bind c* id vid))])]
     [else w]))
 
-(define (run b reg scopes km panels world)
+(define (run b reg scopes km panels faces world)
   (define cache (box empty-layout-cache))
+  (define fcache (box (hash)))
   (let loop ([w world] [old #f] [old-size #f])
     (define size ((backend-size b)))
     (define c (world-content w))
     (define ed (and c (content-ed c)))
     ;; 面板：纯投影 → 集中写回
     (when ed (commit-panels! ed (project-panels panels w)))
+    ;; face：纯投影（按 handle+cursor 缓存）→ 集中写回
+    (when ed
+      (define-values (fc fprojs) (ensure-faces (unbox fcache) faces w))
+      (set-box! fcache fc)
+      (commit-faces! ed fprojs))
     (define-values (cache* fr) (ensure-layout (unbox cache) (world-layout w) (world-floats w) size))
     (set-box! cache cache*)
     (define id->vid (and c (lambda (id) (content-vid-of c id))))

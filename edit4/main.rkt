@@ -18,6 +18,6 @@
   (define text (if (and path (file-exists? path)) (file->string path) ""))
   (define name (if path path "*scratch*"))
   (define w (boot #:text text #:name name #:path (and path (path->complete-path path))))
-  (run-tui (app-commands) (app-scopes) (app-keymap) (app-panels) w))
+  (run-tui (app-commands) (app-scopes) (app-keymap) (app-panels) (app-faces) w))
 
 (module+ main (main))

@@ -34,7 +34,7 @@
 ;;; ---------- 打字 → 渲染 → 退出 ----------
 
 (define-values (b1 drawn1) (scripted-backend (list (text-event "hi") (key-event 'q '(ctrl)))))
-(define wend (run b1 (app-commands) (app-scopes) (app-keymap) (app-panels) (boot)))
+(define wend (run b1 (app-commands) (app-scopes) (app-keymap) (app-panels) (app-faces) (boot)))
 (define cend (world-content wend))
 (check-equal? (view-string (content-ed cend) (content-vid-of cend 0)) "hi")
 (check-true (for/or ([p (in-list (unbox drawn1))]) (regexp-match? #rx"h" (piece-text p))))
@@ -44,7 +44,7 @@
 (define-values (b2 _drawn2)
   (scripted-backend (list (key-event 's '(ctrl)) (key-event 'right '())
                           (key-event 'd '(ctrl)) (key-event 'q '(ctrl)))))
-(define w2 (run b2 (app-commands) (app-scopes) (app-keymap) (app-panels) (boot)))
+(define w2 (run b2 (app-commands) (app-scopes) (app-keymap) (app-panels) (app-faces) (boot)))
 (check-equal? (length (ids (world-layout w2))) 3)   ; 分裂后关闭，回到三窗底盘
 
 ;;; ---------- open-file effect → 新文档绑定到焦点窗 ----------
@@ -57,7 +57,7 @@
 (define km* (compose-keymaps (list (app-keymap)
                                    (list (list '(key o ctrl) 'always (cmd 'open-test))))))
 (define-values (b3 _drawn3) (scripted-backend (list (key-event 'o '(ctrl)) (key-event 'q '(ctrl)))))
-(define w3 (run b3 reg* (app-scopes) km* (app-panels) (boot)))
+(define w3 (run b3 reg* (app-scopes) km* (app-panels) (app-faces) (boot)))
 (check-equal? (view-string (content-ed (world-content w3)) (content-vid-of (world-content w3) 0))
               "FILE-CONTENT")
 
