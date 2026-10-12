@@ -54,7 +54,7 @@
   (view-col ed v))
 
 (check-not-false (command-lookup (environment-commands env) 'auto-pair-insert))
-(check-equal? (length (environment-decor env)) 5)      ; brackets + word-color + syntax + words + bracket-match
+(check-equal? (length (environment-decor env)) 4)      ; brackets + word-color + syntax + bracket-match
 
 (define wp (send env (world-with "") (text-event "(")))
 (check-equal? (doc-string wp) "()")
