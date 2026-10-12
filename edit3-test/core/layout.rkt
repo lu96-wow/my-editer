@@ -211,10 +211,23 @@
 (check-equal? (map (lambda (w) (rect-of g3b w)) '(b0 b1 b2))
               (list (rect 0 7 7 4) (rect 8 7 7 4) (rect 16 7 7 4)))
 
-;; T 字路口只有两段缝 → 不生成 junction（仍按普通缝拖）
+;; T 字路口（三窗）：有竖臂 + 横臂 → 也生成 junction，可同时拖横、竖线
 (define tT (tiling (split 'v (list (mk 'v 5 1 1 (split 'h (list (mk 'h 5 1 1 (tile* 'a))
                                                                (mk 'h 5 1 1 (tile* 'b)))))
                                 (mk 'v 5 1 1 (tile* 'c))))))
-(check-equal? (handle-kind (hit (layout tT '() (cons 21 11)) 10 5)) 'boundary)
+(check-equal? (handle-kind (hit (layout tT '() (cons 21 11)) 10 5)) 'junction)
+(define sT (pointer-move (layout tT '() (cons 21 11))
+                         (pointer-press (layout tT '() (cons 21 11)) (make-state #:tiling tT)
+                                        (cursor-event 'press 'left 10 5))
+                         (cursor-event 'move 'left 12 6)))
+(define gT (layout (state-tiling sT) '() (cons 21 11)))
+(check-equal? (rect-of gT 'a) (rect 0 0 12 6))    ; 竖线 +2、横线 +1 同拖
+(check-equal? (rect-of gT 'b) (rect 13 0 8 6))
+(check-equal? (rect-of gT 'c) (rect 0 7 21 4))
+
+;; 纯缝（非路口）仍是 boundary：两列之间的竖缝，无横臂
+(define tPlain (tiling (split 'h (list (mk 'h 10 1 1 (tile* 'a))
+                                      (mk 'h 10 1 1 (tile* 'b))))))
+(check-equal? (handle-kind (hit (layout tPlain '() (cons 21 11)) 10 5)) 'boundary)
 
 (displayln "edit3/layout.rkt: all tests passed")

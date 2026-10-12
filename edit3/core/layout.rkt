@@ -132,8 +132,8 @@
         (clamp (+ base-y (anchor-dy a)) 0 (max 0 (- H h)))
         w h))
 
-;; 四窗相交的十字路口：
-;;   · 判定：某缝格的上下左右四臂都是缝格（T 字路口只有三臂）；
+;; 十字路口 / T 字路口：
+;;   · 判定：某缝格的**竖臂与横臂同时存在**（纯缝只沿一个轴，排除；端点处垂直方向没有窗口，也排除）；
 ;;   · 聚合：穿过该格的**整条**竖缝线 + 整条横缝线（同列 / 同行的所有 boundary 段），
 ;;     这样鼠标在路口能同时拖动横、竖两条线，且多列布局下整条线保持笔直。
 (define (junction-handles bhs)
@@ -148,8 +148,8 @@
     (for/list ([h (in-list bhs)] #:when (pred (handle-rect h))) (handle-data h)))
   (for/list ([(k _) (in-hash cells)])
     (define row (car k)) (define col (cdr k))
-    (and (cell? (sub1 row) col) (cell? (add1 row) col)      ; 上、下臂都是缝
-         (cell? row (sub1 col)) (cell? row (add1 col))      ; 左、右臂都是缝
+    (and (or (cell? (sub1 row) col) (cell? (add1 row) col))    ; 有竖臂
+         (or (cell? row (sub1 col)) (cell? row (add1 col)))    ; 有横臂
          (handle 'junction (rect col row 1 1) 0
                  (remove-duplicates
                   (append (line-of (lambda (r) (= col (rect-x r))))    ; 整条竖线
