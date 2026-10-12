@@ -47,7 +47,7 @@ edit4/
   main.rkt                 入口（CLI）
   runtime.rkt              事件循环（唯一可变处）
   env.rkt                  Environment：装配期只读注册表集合
-  plugin.rkt               装配子：插件 = environment -> environment 的 lambda
+  plugin.rkt               插件契约（数据包）+ install fold
   app.rkt                  内置插件 fold → Environment
   boot.rkt                 初始 World（底盘）
 
@@ -125,9 +125,9 @@ edit4-test/  layout command content render runtime panels faces edit3-parity
 | `face/` 与 `view/face*.rkt` 撞名 | `decor/` + `view/face.rkt` + `view/decor.rkt` | 同一概念跨目录撞名 |
 | `config/theme.rkt` 与 `view/theme.rkt` 撞名 | `config/palette.rkt` + `view/theme.rkt` | 数据 vs 编码器 |
 | 注册表作为多个参数传进 runtime | `Environment` 一个值 | 装配期只读的东西有归属 |
-| `app.rkt` 硬编码 `merge` | 插件是 `env -> env` 的 lambda，`install` = fold | 加功能 = 加一个 lambda |
+| `app.rkt` 硬编码 `merge` | `plugin` 数据包 + `install` fold | 加功能 = 加一个 plugin 值 |
 
-> 组合原则（功能是 lambda，用 map/fold 组合，不贴标签查表）见 `07-composition.md`。
+> 组合原则（功能是 lambda，用 map/fold 组合，但**不得增加层次**）见 `07-composition.md`。
 
 ---
 

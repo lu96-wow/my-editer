@@ -13,7 +13,7 @@
 ;;; ensure-faces 是纯投影（按 handle+cursor 缓存）；commit-faces! 才写引擎。
 ;;; 具体装饰（syntax/words/…）在 decor/ 下，本模块只管组合与写回。
 
-(provide ensure-faces commit-faces! decor-layers)
+(provide ensure-faces commit-faces!)
 
 (require racket/list
          "face.rkt"
@@ -22,10 +22,6 @@
          "../content/model.rkt")
 
 ;;; ---------- 组合子（纯） ----------
-
-;; 求值一组装饰 → (listof (listof (vectorof face)))
-(define (decor-layers decors path text cursor)
-  (map (lambda (d) (d path text cursor)) decors))
 
 ;; 一个格子的最终 face：把各层在同一位置的 face 逐个 compose。
 (define (cell-face layers ln i)
@@ -62,7 +58,7 @@
   (define path (doc-path (content-doc-meta c did)))
   (define cursor (cons (view-line ed vid) (view-col ed vid)))
   (define lines (string-split text "\n"))
-  (define layers (decor-layers decors path text cursor))
+  (define layers (map (lambda (d) (d path text cursor)) decors))
   (append*
    (for/list ([ln (in-range (length lines))])
      (define len (string-length (list-ref lines ln)))

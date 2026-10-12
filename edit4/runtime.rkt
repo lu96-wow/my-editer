@@ -7,7 +7,7 @@
 ;;; 只有本模块持有可变状态：几何缓存、上一帧屏幕、后端资源。
 ;;;
 ;;; 输入只有两个：Environment（装配期只读）与 World（可变值）。
-;;; 命令 / 作用域 / 键表 / 面板 / face 插件都从 Environment 取，不进 World。
+;;; 命令 / 作用域 / 键表 / 面板 / 装饰都从 Environment 取，不进 World。
 
 (provide (struct-out backend) run)
 
@@ -43,9 +43,6 @@
 (define (run b env world)
   (define cache (box empty-layout-cache))
   (define fcache (box (hash)))
-  ;; 装配期一次：把键表里的命令名解析成函数；运行时流水线里不再查注册表。
-  (define scopes (environment-scopes env))
-  (define keymap (resolve-keymap (environment-commands env) (environment-keymap env)))
   (let loop ([w world] [old #f] [old-size #f])
     (define size ((backend-size b)))
     (define c (world-content w))
@@ -74,7 +71,8 @@
        (loop (world-set-layout w (settle (world-layout w) area)) screen old-size)]
       [else
        (define-values (w* effs)
-         (dispatch scopes keymap (ctx ev size fr) w))
+         (dispatch (environment-commands env) (environment-scopes env)
+                   (environment-keymap env) (ctx ev size fr) w))
        (define w** (for/fold ([ww w*]) ([e (in-list effs)]) (perform-effect! b ww e)))
        (if (for/or ([e (in-list effs)]) (quit-effect? e))
            w**

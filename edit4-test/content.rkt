@@ -14,9 +14,8 @@
 (define reg (command-registry-merge base-commands content-commands))
 (define km (compose-keymaps (list base-keymap content-keymap)))
 (define (mk-ctx w ev) (ctx ev SZ #f))
-(define km* (resolve-keymap reg km))
 (define (run w ev)
-  (car (call-with-values (lambda () (dispatch base-scopes km* (mk-ctx w ev) w)) list)))
+  (car (call-with-values (lambda () (dispatch reg base-scopes km (mk-ctx w ev) w)) list)))
 
 ;;; ---------- 一个窗口 + 一个绑定文档 ----------
 

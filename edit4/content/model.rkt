@@ -27,11 +27,11 @@
 
 (define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f))
 
-(define (content-ed* c ed) (content ed (content-docs c) (content-bindings c) (content-panels c) (content-tree c)))
-(define (content-docs* c docs) (content (content-ed c) docs (content-bindings c) (content-panels c) (content-tree c)))
-(define (content-bindings* c b) (content (content-ed c) (content-docs c) b (content-panels c) (content-tree c)))
-(define (content-panels* c p) (content (content-ed c) (content-docs c) (content-bindings c) p (content-tree c)))
-(define (content-set-tree c t) (content (content-ed c) (content-docs c) (content-bindings c) (content-panels c) t))
+(define (content-ed* c ed) (struct-copy content c [ed ed]))
+(define (content-docs* c docs) (struct-copy content c [docs docs]))
+(define (content-bindings* c b) (struct-copy content c [bindings b]))
+(define (content-panels* c p) (struct-copy content c [panels p]))
+(define (content-set-tree c t) (struct-copy content c [tree t]))
 
 ;;; ---------- 增 ----------
 

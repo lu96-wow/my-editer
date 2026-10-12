@@ -2,8 +2,8 @@
 
 ;;; edit4/app.rkt —— 内置插件装配（→ Environment）
 ;;;
-;;; 这里是「组装根」：把内置插件（都是 environment -> environment 的 lambda）fold 成
-;;; 一次运行的 Environment。加功能 = 往列表里加一个 lambda；core 不 require 插件。
+;;; 这里是「组装根」：把内置插件 fold 成一次运行的 Environment。
+;;; 一个 plugin 一行，读起来就是这份配置清单。core 不 require 插件。
 ;;; 初始 World 的构造在 boot.rkt。
 
 (provide app-environment)
@@ -18,10 +18,10 @@
   (install (base-environment)
            (list
             ;; 基础：窗口 / 焦点 / 指针 + 默认键表
-            (add-commands base-commands) (add-scopes base-scopes) (add-keymap base-keymap)
+            (make-plugin #:commands base-commands #:scopes base-scopes #:keymap base-keymap)
             ;; 内容：编辑 / 文件 + 内容键表
-            (add-commands content-commands) (add-keymap content-keymap)
+            (make-plugin #:commands content-commands #:keymap content-keymap)
             ;; 面板：状态栏 + 文件树
-            (add-panels base-panels)
+            (make-plugin #:panels base-panels)
             ;; 装饰：语法 / 当前词（普通 lambda，列表里一放即可）
-            (add-decor (list syntax-decor words-decor)))))
+            (make-plugin #:decor (list syntax-decor words-decor)))))
