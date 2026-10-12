@@ -8,7 +8,7 @@
 (provide base-commands base-keymap base-scopes)
 
 (require racket/match
-         "event.rkt" "world.rkt" "command.rkt" "keymap.rkt" "dispatch.rkt" "drag.rkt"
+         "event.rkt" "world.rkt" "command.rkt" "keymap.rkt" "dispatch.rkt" "drag.rkt" "effect.rkt"
          "../layout.rkt")
 
 ;;; ---------- 窗口 / 焦点 ----------
@@ -128,6 +128,8 @@
 
 (define (h-pointer-scroll ctx world args) #f)      ; 先靠边：让位
 
+(define (h-quit ctx world args) (cons world (list (quit-effect))))
+
 ;;; ---------- 注册表 ----------
 
 (define base-commands
@@ -140,7 +142,8 @@
          (cons 'pointer-press h-pointer-press)
          (cons 'pointer-move h-pointer-move)
          (cons 'pointer-release h-pointer-release)
-         (cons 'pointer-scroll h-pointer-scroll))))
+         (cons 'pointer-scroll h-pointer-scroll)
+         (cons 'quit h-quit))))
 
 ;;; ---------- 基础键表 ----------
 
@@ -158,6 +161,7 @@
         (list '(key right alt) 'always (cmd 'focus 'right))
         (list '(key up alt)    'always (cmd 'focus 'up))
         (list '(key down alt)  'always (cmd 'focus 'down))
+        (list '(key q ctrl) 'always (cmd 'quit))
         (list '(cursor press)   'always (cmd 'pointer-press))
         (list '(cursor move)    'always (cmd 'pointer-move))
         (list '(cursor release) 'always (cmd 'pointer-release))

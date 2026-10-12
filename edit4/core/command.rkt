@@ -9,6 +9,7 @@
 (provide (struct-out ctx) (struct-out command) cmd
          (struct-out command-registry)
          make-command-registry command-register command-lookup command-names
+         command-registry-merge
          run-command run-commands)
 
 (struct ctx (event size frame) #:transparent)
@@ -33,6 +34,12 @@
   (hash-ref (command-registry-table reg) name #f))
 
 (define (command-names reg) (hash-keys (command-registry-table reg)))
+
+;; 叠加：b 覆盖 a 的同名命令。
+(define (command-registry-merge a b)
+  (command-registry
+   (for/fold ([t (command-registry-table a)]) ([(k v) (in-hash (command-registry-table b))])
+     (hash-set t k v))))
 
 ;; run-command : registry ctx world command -> (values world effects) | #f
 ;;   未知命令或命令让位 → #f。

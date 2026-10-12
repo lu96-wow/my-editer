@@ -11,6 +11,7 @@
 ;;;   commands 基础命令 / 键表 / 作用域
 
 (provide (all-from-out "core/event.rkt"
+                       "core/effect.rkt"
                        "core/world.rkt"
                        "core/drag.rkt"
                        "core/command.rkt"
@@ -19,6 +20,7 @@
                        "core/commands.rkt"))
 
 (require "core/event.rkt"
+         "core/effect.rkt"
          "core/world.rkt"
          "core/drag.rkt"
          "core/command.rkt"
