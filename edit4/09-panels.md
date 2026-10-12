@@ -66,13 +66,24 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 
 | 缺口 | edit3 落点 | edit4 应落在 |
 |---|---|---|
-| **浮窗** M-j/M-k/M-g（log/tree/buffers） | floats + `float-open` | `layout/float.rkt` 已有；需 `content` 锚定 + 键表 + 状态栏 |
 | **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
 | **边框开关** `C-t border-toggle` | 每窗口 border | `content` 每窗 border 标注 + `view/border` 读取 |
-| **`(region id)` 作用域** | Tab 循环成员 | `content/scopes.rkt` 增一个 scope |
 | **插件面板**（completion/docs/brackets/auto-pair） | plugins | `plugin` 数据包（L5）——插件机制尚未落地 |
 
-**优先级建议**：浮窗 → `(region id)` 作用域 → placing / 边框 / 插件面板。
+**优先级建议**：边框开关 `C-t` → placing → 插件装配（L5，解锁 completion/docs/brackets/auto-pair）。
+
+已对齐 edit3 的键：`(region id)` 作用域（`Tab` 循环侧栏）、新建 `C-n f` / `C-n C-n f`（`prefix-new` 切换）、
+去掉多出的 `C-w`（关文档只走 buffers `Del`）。
+
+### 浮窗（已同步）
+
+浮窗是第三种显示位置（不进平铺树，几何由 anchor 决定，画在最上）：
+`World.floats` 是 `(listof float)`，顺序 = z；浮窗 id 用**负数**分配，与平铺 id（非负）隔离。
+
+- 命令（`content/float.rkt`）：`float-open` / `float-toggle` / `float-close` / `float-raise` / `float-cycle`；
+- 声明（`config/floats.rkt`）：`(name (rel h v dx dy) (w h))`；
+- 键：`M-j` 开日志、`M-k` 开树、`M-g` 开关日志；float 作用域 `C-j` 提升 / `Tab` 切换 / `Esc`·`C-d` 关闭；
+- 同一 vid 可多位置显示（侧栏的树 + 浮起来的树）；点击浮窗正文也置光标。
 
 ### 焦点：导航跟着资源走（不做「focus 具名」）
 
@@ -85,7 +96,8 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 
 理由：中心化的 `focus <name>` 会与 region / show-doc! 重复「可见性」逻辑；按 vid 查窗口
 还是多义的（同一 vid 可在多窗口/浮窗）。core 的 `focus` 现在只接受 `next/prev`、方向、
-**合法 id**；其它目标直接让位（不再把焦点设成垃圾值）。
+**合法 id**；其它目标直接让位（不再把焦点设成垃圾值）。浮窗的 reveal = `float-open`（已在则提到最上）。
+（方向焦点仍是 `focus` 的能力，但按 edit3 不再绑 `M-方向`。）
 
 ---
 

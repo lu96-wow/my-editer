@@ -90,9 +90,15 @@
 (check-equal? (content-vid-of (world-content (W e1)) ewid) vid2)
 
 ;;; ---------- M-e：聚焦编辑器 ----------
-
 (define me (run (W s1) (key-event 'e '(alt))))
 (check-equal? (world-focus (W me)) ewid)
+
+;;; ---------- Tab（region 作用域）：切换侧栏成员 ----------
+
+(define tab1 (run (world-set-focus w1 swid) (key-event 'tab '())))
+(check-equal? (sidebar-active (W tab1)) "*buffers*")
+(define tab2 (run (W tab1) (key-event 'tab '())))
+(check-equal? (sidebar-active (W tab2)) "*tree*")
 
 ;;; ---------- 命令序列显示：切回 tree，C-n ----------
 

@@ -43,17 +43,18 @@
 (check-equal? (hash-ref (geometry-rects g2) 0) (rect 0 0 40 24))
 (check-equal? (hash-ref (geometry-rects g2) 1) (rect 41 0 39 24))
 
-;;; ---------- 方向焦点（走 ctx.geometry + neighbor） ----------
-
-(define f-left (run w2 (key-event 'left '(alt))))
-(check-equal? (world-focus (w1 f-left)) 0)
-(define f-right (run (w1 f-left) (key-event 'right '(alt))))
-(check-equal? (world-focus (w1 f-right)) 1)
-
-;;; ---------- next / prev 环绕 ----------
+;;; ---------- next / prev 环绕（edit3：M-n / M-p；方向焦点在 edit3 里没有绑定） ----------
 
 (check-equal? (world-focus (w1 (run w2 (key-event 'n '(alt))))) 0)
 (check-equal? (world-focus (w1 (run w2 (key-event 'p '(alt))))) 0)
+
+;; 方向焦点仍是 focus 命令的能力，只是没有 M- 绑定（用自定义键表验证）。
+(define km-left (list (list '(key f5) 'always (cmd 'focus 'left))))
+(check-equal? (world-focus (w1 (call-with-values
+                                (lambda () (dispatch base-commands base-scopes km-left
+                                                     (mk-ctx w2 (key-event 'f5 '())) w2))
+                                list)))
+              0)
 
 ;;; ---------- 关闭：焦点回退，树收拢 ----------
 

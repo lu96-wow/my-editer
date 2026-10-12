@@ -88,7 +88,8 @@ edit4/
     tree-cmds.rkt          文件树交互命令（enter/parent/child/new/delete/reload/hidden）
     buffers.rkt            文档管理面板行模型（buffer-rows）
     buffers-cmds.rkt       文档管理面板命令（enter/fold/new-view/close-view/close-doc）
-    region.rkt             面板槽（一个窗口显示多个面板之一）
+    region.rkt             面板槽（显隐 / 切换 / 聚焦）
+    float.rkt              浮窗（开/关/切/提，窗口 + 视图，anchor 几何）
     focus.rkt              聚焦主编辑器窗（具名导航走 region / show-doc!）
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
@@ -116,6 +117,7 @@ edit4/
   config/                  纯数据
     palette.rkt            命名 face + 调色板
     syntax.rkt             关键字分组
+    floats.rkt             浮窗声明（anchor + 尺寸）
 
 edit4-test/  layout command content render runtime panels faces edit3-parity
 ```

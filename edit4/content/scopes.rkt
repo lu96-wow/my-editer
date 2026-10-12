@@ -9,7 +9,7 @@
 
 (provide content-scopes)
 
-(require "../core/world.rkt" "../core/scope.rkt" "model.rkt")
+(require "../core/world.rkt" "../core/scope.rkt" "../layout.rkt" "model.rkt")
 
 (define (focused-vid w)
   (define c (world-content w))
@@ -25,9 +25,21 @@
   (define v (focused-vid w))
   (and v (eqv? v (content-panel-vid c name))))
 
+;; 焦点是一个浮窗。
+(define (float-scope w)
+  (and (float-by-id (world-floats w) (world-focus w)) #t))
+
+;; 焦点是该区域的窗口（且区域可见）。
+(define (region-scope rid w)
+  (define c (world-content w))
+  (define r (and c (hash-ref (content-regions c) rid #f)))
+  (and r (region-wid r) (eqv? (world-focus w) (region-wid r))))
+
 (define content-scopes
   (make-scope-registry
    (list (cons 'editor editor-scope)
+         (cons 'float float-scope)
+         (cons (list 'region 'sidebar) (lambda (w) (region-scope 'sidebar w)))
          (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
          (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))
          (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))))

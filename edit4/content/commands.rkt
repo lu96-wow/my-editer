@@ -10,14 +10,15 @@
 
 (require "../core/command.rkt" "../core/keymap.rkt"
          "edit.rkt" "files.rkt" "tree-cmds.rkt" "buffers-cmds.rkt"
-         "prompt.rkt" "pointer.rkt" "region.rkt" "focus.rkt")
+         "prompt.rkt" "pointer.rkt" "region.rkt" "focus.rkt" "float.rkt")
 
 (define (merge-all regs)
   (for/fold ([r (make-command-registry)]) ([x (in-list regs)]) (command-registry-merge r x)))
 
 (define content-commands
   (merge-all (list edit-commands file-commands tree-commands buffers-commands
-                   prompt-commands region-commands focus-commands content-pointer-commands)))
+                   prompt-commands region-commands focus-commands float-commands
+                   content-pointer-commands)))
 
 (define content-keymap
   (list
@@ -48,7 +49,6 @@
    (list '(key v ctrl) 'editor (cmd 'paste))
    (list '(key z ctrl) 'editor (cmd 'undo))
    (list '(key y ctrl) 'editor (cmd 'redo))
-   (list '(key w ctrl) 'editor (cmd 'close-doc))
    ;; ---- 文件树（焦点是 *tree* 面板） ----
    (list '(key up) '(panel "*tree*") (cmd 'nav 'up))
    (list '(key down) '(panel "*tree*") (cmd 'nav 'down))
@@ -57,7 +57,7 @@
    (list '(key enter) '(panel "*tree*") (cmd 'tree-enter))
    (list '(key backspace) '(panel "*tree*") (cmd 'tree-toggle-hidden))
    (list '(key d ctrl) '(panel "*tree*") (cmd 'tree-delete))
-   (list '(key n ctrl) '(panel "*tree*") (cmd 'prefix 'new))
+   (list '(key n ctrl) '(panel "*tree*") (cmd 'prefix-new))
    ;; ---- 文档管理（焦点是 *buffers* 面板） ----
    (list '(key up) '(panel "*buffers*") (cmd 'nav 'up))
    (list '(key down) '(panel "*buffers*") (cmd 'nav 'down))
@@ -68,10 +68,16 @@
    (list '(key enter) '(panel "*buffers*") (cmd 'buffers-enter))
    (list '(key d ctrl) '(panel "*buffers*") (cmd 'buffers-close-view))
    (list '(key delete) '(panel "*buffers*") (cmd 'buffers-close-doc))
-   ;; ---- 前缀 new：f 新文件 / d 新目录 ----
+   ;; ---- 浮窗（焦点是浮窗） ----
+   (list '(key j ctrl) 'float (cmd 'float-raise))
+   (list '(key tab) 'float (cmd 'float-cycle))
+   (list '(key escape) 'float (cmd 'float-close))
+   (list '(key d ctrl) 'float (cmd 'float-close))
+   ;; ---- 前缀 new（C-n）→ f 新文件；再按 C-n 到 new2 → f 新目录 ----
    (list '(text "f") '(prefix new) (cmd 'tree-new-file))
-   (list '(text "d") '(prefix new) (cmd 'tree-new-dir))
+   (list '(text "f") '(prefix new2) (cmd 'tree-new-dir))
    (list '(key escape) '(prefix new) (cmd 'cancel))
+   (list '(key escape) '(prefix new2) (cmd 'cancel))
    ;; ---- 全局 ----
    (list '(key q ctrl) 'always (cmd 'quit))
    (list '(key s alt) 'always (cmd 'save))
@@ -80,5 +86,9 @@
    (list '(key b ctrl) 'always (cmd 'region-toggle 'sidebar))
    (list '(key l ctrl) 'always (cmd 'region-toggle 'log))
    (list '(key b alt) 'always (cmd 'region-cycle 'sidebar 1) (cmd 'region-focus 'sidebar))
+   (list '(key tab) '(region sidebar) (cmd 'region-cycle 'sidebar 1) (cmd 'region-focus 'sidebar))
    (list '(key t alt) 'always (cmd 'region-activate 'sidebar "*tree*") (cmd 'region-focus 'sidebar))
-   (list '(key e alt) 'always (cmd 'focus-editor))))
+   (list '(key e alt) 'always (cmd 'focus-editor))
+   (list '(key j alt) 'always (cmd 'float-open 'log))
+   (list '(key k alt) 'always (cmd 'float-open 'tree))
+   (list '(key g alt) 'always (cmd 'float-toggle 'log))))

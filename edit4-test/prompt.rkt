@@ -10,6 +10,7 @@
          "../edit4/content/adapter.rkt"
          "../edit4/content/tree.rkt"
          "../edit4/content/commands.rkt"
+         "../edit4/content/prompt.rkt"
          "../edit4/content/scopes.rkt"
          "../edit4/view/panel.rkt"
          "../edit4/boot.rkt")
@@ -66,12 +67,13 @@
               (path= (make-file-path e) (build-path dir "new.txt"))))
 (check-true (for/or ([e (in-list (EFF s4))]) (reload-tree? e)))
 
-;;; ---------- 新建目录：C-n 前缀 → d → 输入名 → Enter ----------
+;;; ---------- 新建目录：C-n C-n（new2）→ f → 输入名 → Enter ----------
 
 (define-values (w1 c1 ed1 tvid1 tw1 _a) (tree-world))
 (set-point! ed1 tvid1 0 0)
-(define n1 (run (world-set-focus w1 tw1) (key-event 'n '(ctrl))))
-(define n2 (run (W n1) (text-event "d")))                      ; 触发 tree-new-dir
+(define n1 (run (world-set-focus w1 tw1) (key-event 'n '(ctrl))))   ; prefix new
+(define n1b (run (W n1) (key-event 'n '(ctrl))))                     ; → prefix new2
+(define n2 (run (W n1b) (text-event "f")))                          ; tree-new-dir
 (check-equal? (prompt-kind (P (W n2))) 'new-dir)
 (define n3 (run (W n2) (text-event "sub2")))
 (define n4 (run (W n3) (key-event 'enter '())))
@@ -96,7 +98,7 @@
 (define cd3 (world-content (W dirty1)))
 (check-true (doc-dirty? cd3 (content-did-of cd3 (content-vid-of cd3 ewid3))))
 (define ndocs (length (document-id-list (content-ed cd3))))
-(define cl1 (run (W dirty1) (key-event 'w '(ctrl))))
+(define cl1 (call-with-values (lambda () (request-close-doc (W dirty1))) list))
 (check-equal? (prompt-kind (P (W cl1))) 'close-doc)
 (define cl2 (run (W cl1) (text-event "n")))
 (define cl3 (run (W cl2) (key-event 'enter '())))

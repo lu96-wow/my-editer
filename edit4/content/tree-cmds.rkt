@@ -85,6 +85,10 @@
 
 (define (h-tree-reload ctx w args) (cons w (list (reload-tree))))
 
+;; edit3 的 prefix-new：在 new / new2 之间切换（C-n 再按一次 = 新目录）。
+(define (h-prefix-new ctx w args)
+  (cons (world-set-prefix w (if (eq? (world-prefix w) 'new) 'new2 'new)) '()))
+
 ;; 新建 / 删除的目标目录：当前行是目录则用它；是文件则用其父目录。
 (define (tree-target-dir w)
   (define c (world-content w))
@@ -126,6 +130,7 @@
          (cons 'tree-parent h-tree-parent)
          (cons 'tree-child h-tree-child)
          (cons 'tree-reload h-tree-reload)
+         (cons 'prefix-new h-prefix-new)
          (cons 'tree-new-file h-tree-new-file)
          (cons 'tree-new-dir h-tree-new-dir)
          (cons 'tree-delete h-tree-delete)
