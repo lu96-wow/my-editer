@@ -15,7 +15,7 @@
 ;;;
 ;;; 「脏」= 存档 handle ≠ 当前 handle（身份比较）。
 
-(provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out region)
+(provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out placing) (struct-out region)
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-remove-vid
@@ -23,23 +23,27 @@
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
          content-prompt content-set-prompt
+         content-placing content-set-placing
          content-tree content-set-tree
          content-regions content-set-regions
          content-fold content-set-fold
          content-log content-log-append
          content-doc-key content-set-doc-key
-         path-key content-doc-by-path content-doc-paths content-show content-editor-window)
+         path-key content-doc-by-path content-doc-paths content-show content-editor-window
+         content-editor-windows content-empty-windows)
 
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
 (struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f（面板恒为 #f）
 (struct prompt (wid label kind data prev-focus) #:transparent)  ; 输入行状态
+;; 放置选择（打开时多窗口 → 用户选目标窗）；vid = 待放置视图，prev-focus = 进入前焦点。
+(struct placing (vid prev-focus) #:transparent)
 ;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
 ;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定。
 (struct region (side size members active anchor wid) #:transparent)
-(struct content (ed docs bindings panels tree prompt regions fold log doc-keys) #:transparent)
+(struct content (ed docs bindings panels tree prompt placing regions fold log doc-keys) #:transparent)
 
-(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f (hash) (hash) '() (hash)))
+(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f #f (hash) (hash) '() (hash)))
 
 (define (content-ed* c ed) (struct-copy content c [ed ed]))
 (define (content-docs* c docs) (struct-copy content c [docs docs]))
@@ -47,6 +51,7 @@
 (define (content-panels* c p) (struct-copy content c [panels p]))
 (define (content-set-tree c t) (struct-copy content c [tree t]))
 (define (content-set-prompt c p) (struct-copy content c [prompt p]))
+(define (content-set-placing c p) (struct-copy content c [placing p]))
 (define (content-set-regions c r) (struct-copy content c [regions r]))
 (define (content-set-fold c f) (struct-copy content c [fold f]))
 (define (content-log-append c msg) (struct-copy content c [log (append (content-log c) (list msg))]))
@@ -154,8 +159,18 @@
           (content-bind c* id vid)]))
 
 ;; 选一个「编辑器窗口」（vid 非面板或空）来显示文档；没有 → #f。
+(define (content-editor-windows c layout)
+  (for/list ([id (in-list (ids layout))]
+             #:when (let ([v (content-vid-of c id)])
+                      (or (not v) (not (content-panel? c v)))))
+    id))
+
 (define (content-editor-window c layout)
   (for/first ([id (in-list (ids layout))]
               #:when (let ([v (content-vid-of c id)])
                        (or (not v) (not (content-panel? c v)))))
     id))
+
+;; 空窗口 = 未绑定任何 vid 的窗口。
+(define (content-empty-windows c layout)
+  (for/list ([id (in-list (ids layout))] #:when (not (content-vid-of c id))) id))

@@ -13,6 +13,17 @@
          "../content/adapter.rkt"
          "../content/tree.rkt")
 
+(define (window-label c w id)
+  (define fv (and id (content-vid-of c id)))
+  (cond
+    [(not fv) "(空窗口)"]
+    [else
+     (define ed (content-ed c))
+     (define did (view-did ed fv))
+     (define m (content-doc-meta c did))
+     (define path (doc-path m))
+     (if path (tree-relative-path w path) (view-document-name ed fv))]))
+
 (define (status-line c w)
   (define fv (and (world-focus w) (content-vid-of c (world-focus w))))
   (cond
@@ -20,11 +31,9 @@
     [else
      (define ed (content-ed c))
      (define did (view-did ed fv))
-     (define m (content-doc-meta c did))
-     (define path (doc-path m))
-     (define name (if path (tree-relative-path w path) (view-document-name ed fv)))
      (define dirty (if (doc-dirty? c did) " *" ""))
-     (values (format " ~a~a   ~a:~a" name dirty (add1 (view-line ed fv)) (add1 (view-col ed fv)))
+     (values (format " ~a~a   ~a:~a" (window-label c w (world-focus w)) dirty
+                     (add1 (view-line ed fv)) (add1 (view-col ed fv)))
              (list (cons 0 'status-bar)))]))
 
 (define (status-content w v)
@@ -32,4 +41,8 @@
   (define ks (world-keys w))
   (cond
     [(pair? ks) (values (string-append " " (string-join ks " ")) (list (cons 0 'status-bar)))]
+    [(content-placing c)
+     (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消"
+                     (window-label c w (world-focus w)))
+             (list (cons 0 'status-bar)))]
     [else (status-line c w)]))

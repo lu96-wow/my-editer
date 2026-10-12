@@ -71,6 +71,20 @@
 ;; 第二次 open 同一路径 → 复用，不重复建文档
 (check-equal? (length (content-doc-paths (world-content w3))) 1)
 
+;;; ---------- 多窗口 open → placing：Enter 放目标窗 ----------
+
+;; 分裂成两窗（C-s →），open → 进 placing，Enter 确认放到焦点窗。
+(define-values (b5 _drawn5)
+  (scripted-backend (list (key-event 's '(ctrl)) (key-event 'right '())
+                          (key-event 'o '(ctrl))
+                          (key-event 'enter '())
+                          (key-event 'q '(ctrl)))))
+(define w5 (run b5 env* (boot)))
+(check-equal? (view-string (content-ed (world-content w5))
+                           (content-vid-of (world-content w5) (world-focus w5)))
+              "FILE-CONTENT")
+(check-true (not (content-placing (world-content w5))))   ; 确认后退出 placing
+
 ;;; ---------- log-effect → 写进日志面板缓冲 ----------
 
 (require "../edit4/core/effect.rkt")

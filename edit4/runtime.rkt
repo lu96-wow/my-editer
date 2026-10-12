@@ -18,6 +18,7 @@
          "core/command.rkt" "core/dispatch.rkt"
          "core/hook.rkt" "core/job.rkt" "core/mode.rkt"
          "content/model.rkt" "content/adapter.rkt" "content/fs.rkt" "content/tree.rkt"
+         "content/placing.rkt"
          "view/render.rkt" "view/panel.rkt" "view/decor.rkt"
          "layout.rkt")
 
@@ -44,28 +45,25 @@
     [(not c) w]
     [(not (fs-file? path)) (log-into w (format "打不开: ~a" path))]
     [else
-     (define id (or (content-editor-window c (world-layout w)) (world-focus w)))
+     (define path* (path->complete-path path))
+     (define did (content-doc-by-path c path*))
      (cond
-       [(not id) w]
+       [did
+        ;; 已打开：跑 on-open / document-opened，已显示则聚焦，否则放置。
+        (define w1 (run-opens env w did path*))
+        (define w2 (emit env w1 'document-opened (list did path*)))
+        (reveal-or-place-doc! w2 did)]
        [else
-        (define path* (path->complete-path path))
-        (define did (content-doc-by-path c path*))
-        (cond
-          [did
-           ;; 复用：显示到编辑器窗。
-           (define w1 (world-set-content w (content-show c id did)))
-           (define w2 (run-opens env w1 did path*))
-           (emit env w2 'document-opened (list did path*))]
-          [else
-           (define text (fs-read-file path*))
-           (define-values (c* did* vid)
-             (content-add-doc! c text 60 22 path (path->complete-path path*)))
-           (define w1 (world-set-content w (content-bind c* id vid)))
-           ;; mode：按 matcher 给该文档挂键表。
-           (define km (match-doc-keys path* (environment-doc-key-matchers env)))
-           (define w2 (if km (world-set-content w1 (content-set-doc-key (world-content w1) did* km)) w1))
-           (define w3 (run-opens env w2 did* path*))
-           (emit env w3 'document-opened (list did* path*))])])]))
+        (define text (fs-read-file path*))
+        (define-values (c* did* _vid)
+          (content-add-doc! c text 60 22 path (path->complete-path path*)))
+        (define w1 (world-set-content w c*))
+        ;; mode：按 matcher 给该文档挂键表。
+        (define km (match-doc-keys path* (environment-doc-key-matchers env)))
+        (define w2 (if km (world-set-content w1 (content-set-doc-key (world-content w1) did* km)) w1))
+        (define w3 (run-opens env w2 did* path*))
+        (define w4 (emit env w3 'document-opened (list did* path*)))
+        (reveal-or-place-doc! w4 did*)])]))
 
 ;; 解释 effect：可能产生新 World（open/reload 要读文件/目录）。
 (define (perform-effect! b env w e)

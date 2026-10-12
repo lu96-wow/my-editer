@@ -10,7 +10,7 @@
 
 (require "../core/command.rkt" "../core/keymap.rkt"
          "edit.rkt" "files.rkt" "tree-cmds.rkt" "buffers-cmds.rkt"
-         "prompt.rkt" "pointer.rkt" "region.rkt" "focus.rkt" "float.rkt")
+         "prompt.rkt" "pointer.rkt" "region.rkt" "focus.rkt" "float.rkt" "placing.rkt")
 
 (define (merge-all regs)
   (for/fold ([r (make-command-registry)]) ([x (in-list regs)]) (command-registry-merge r x)))
@@ -18,6 +18,7 @@
 (define content-commands
   (merge-all (list edit-commands file-commands tree-commands buffers-commands
                    prompt-commands region-commands focus-commands float-commands
+                   placing-commands
                    content-pointer-commands)))
 
 (define content-keymap
@@ -73,6 +74,13 @@
    (list '(key tab) 'float (cmd 'float-cycle))
    (list '(key escape) 'float (cmd 'float-close))
    (list '(key d ctrl) 'float (cmd 'float-close))
+   ;; ---- 放置选择（打开时多窗口：选目标窗） ----
+   (list '(key tab) 'placing (cmd 'place-cycle 1))
+   (list '(key n alt) 'placing (cmd 'place-cycle 1))
+   (list '(key p alt) 'placing (cmd 'place-cycle -1))
+   (list '(key enter) 'placing (cmd 'place-confirm))
+   (list '(key escape) 'placing (cmd 'place-cancel))
+   (list '(cursor press left) 'placing (cmd 'place-pick))
    ;; ---- 前缀 new（C-n）→ f 新文件；再按 C-n 到 new2 → f 新目录 ----
    (list '(text "f") '(prefix new) (cmd 'tree-new-file))
    (list '(text "f") '(prefix new2) (cmd 'tree-new-dir))

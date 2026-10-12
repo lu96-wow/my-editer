@@ -62,13 +62,17 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 
 ---
 
-## 4. 还缺什么（按骨架落点）
+## 4. 放置选择（placing）—— 已落
 
-| 缺口 | edit3 落点 | edit4 应落在 |
-|---|---|---|
-| **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
+打开文件时的目标窗选择：`content/placing.rkt`。
 
-**优先级建议**：placing。
+- 规则：**0 个编辑器窗 → 新开；恰好 1 个 → 直放；≥2 个 → 进 placing 让用户选**；
+- 状态放 `content.placing`（与 `prompt` 同构）：`vid` 待放置、`prev-focus` 进入前焦点；
+- 键（`placing` 作用域）：`Tab` / `M-n` / `M-p` 循环焦点，`Enter` 确认，`Esc` 取消（只清 placing + 回焦）；
+  鼠标点编辑器窗 = 切换目标焦点（再 `Enter` 确认）；点面板 / 浮窗则只消费、**不改任何面板状态**；
+- `editor` 作用域在 placing 时让位（编辑键不误触）；状态栏显示“选择目标窗口 …”。
+- 打开流程（`runtime.rkt` 的 `open-path`）先建/取 doc+view，再 `reveal-or-place-doc!`：
+  已显示的文档→聚焦那个窗；否则 `place-vid!`。
 
 > `C-t` 边框开关**不做**：edit4 浮窗固定 1 格框，没有每窗边框开关的需求（边框字形在 `view/border.rkt`，几何内缩在 `layout/float.rkt`）。
 

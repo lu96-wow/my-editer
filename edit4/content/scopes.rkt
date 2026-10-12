@@ -18,7 +18,7 @@
 (define (editor-scope w)
   (define c (world-content w))
   (define v (focused-vid w))
-  (and v (not (content-panel? c v))))
+  (and v (not (content-panel? c v)) (not (content-placing c))))
 
 (define (panel-scope name w)
   (define c (world-content w))
@@ -28,6 +28,11 @@
 ;; 焦点是一个浮窗。
 (define (float-scope w)
   (and (float-by-id (world-floats w) (world-focus w)) #t))
+
+;; 正在选放置目标窗。
+(define (placing-scope w)
+  (define c (world-content w))
+  (and c (content-placing c) #t))
 
 ;; 焦点是该区域的窗口（且区域可见）。
 (define (region-scope rid w)
@@ -39,6 +44,7 @@
   (make-scope-registry
    (list (cons 'editor editor-scope)
          (cons 'float float-scope)
+         (cons 'placing placing-scope)
          (cons (list 'region 'sidebar) (lambda (w) (region-scope 'sidebar w)))
          (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
          (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))

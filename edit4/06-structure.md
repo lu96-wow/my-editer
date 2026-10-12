@@ -97,8 +97,9 @@ edit4/
     focus.rkt              聚焦主编辑器窗（具名导航走 region / show-doc!）
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
+    placing.rkt            打开时放置选择（单窗直放 / 多窗让选）
     prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
-    scopes.rkt             editor / (panel NAME) 作用域
+    scopes.rkt             editor / (panel NAME) / placing / float 作用域
     edit.rkt               编辑 / 导航命令
     files.rkt              文件命令（open/save/reload，走 effect）
     commands.rkt           内容插件的数据装配（命令 + 键表）
