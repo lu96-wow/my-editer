@@ -68,9 +68,22 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 |---|---|---|
 | **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
 | **边框开关** `C-t border-toggle` | 每窗口 border | `content` 每窗 border 标注 + `view/border` 读取 |
-| **插件面板**（completion/docs/brackets/auto-pair） | plugins | `plugin` 数据包（L5）——插件机制尚未落地 |
+| **异步插件**（completion/docs） | plugins + job/hook | 需先补 `core/hook.rkt` + `core/job.rkt`（L6 边界） |
 
-**优先级建议**：边框开关 `C-t` → placing → 插件装配（L5，解锁 completion/docs/brackets/auto-pair）。
+**优先级建议**：边框开关 `C-t` → placing → 异步边界（hooks/jobs）→ completion/docs。
+
+### 插件（L5 已落地，无状态部分）
+
+`plugin.rkt` 契约（`commands / scopes / keymap / panels / decor`）+ `install` fold 已能承载
+**无状态插件**，无需再抽层：
+
+- `syntax` / `words` / **`brackets`** 是普通 decor 函数（`decor/*.rkt`），`app.rkt` 列表里加一项；
+- **`auto-pair`** 是命令 + 键表覆盖（`content/auto-pair.rkt`），后装覆盖 `(text) editor` 同 slot；
+- 键表「后装覆盖同 slot」由 `compose-keymaps` 保证，命令「后装按名覆盖」由 `command-registry-merge` 保证。
+
+还差的是**有状态 / 异步**插件（completion / docs）：它们要在 `after-insert` / `after-nav` /
+`before-render` 重筛、经 worker 跑 `#:services`、结果由 `job` 钩子回注。到那时再补 hook/job，
+现在不预先引入。
 
 已对齐 edit3 的键：`(region id)` 作用域（`Tab` 循环侧栏）、新建 `C-n f` / `C-n C-n f`（`prefix-new` 切换）、
 去掉多出的 `C-w`（关文档只走 buffers `Del`）。

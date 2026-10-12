@@ -94,6 +94,7 @@ edit4/
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
     prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
+    auto-pair.rkt          括号自动配对插件（命令 + 键表覆盖）
     scopes.rkt             editor / (panel NAME) 作用域
     edit.rkt               编辑 / 导航命令
     files.rkt              文件命令（open/save/reload，走 effect）
@@ -112,14 +113,14 @@ edit4/
     theme.rkt              face → ANSI 字节（编码器）
 
   decor/                   L4（高亮算法）
-    lex.rkt  words.rkt  syntax.rkt  kind.rkt
+    lex.rkt  words.rkt  syntax.rkt  bracket.rkt  kind.rkt
 
   config/                  纯数据
     palette.rkt            命名 face + 调色板
     syntax.rkt             关键字分组
     floats.rkt             浮窗声明（anchor + 尺寸）
 
-edit4-test/  layout command content render runtime panels faces edit3-parity
+edit4-test/  layout command content render runtime panels faces plugins edit3-parity
 ```
 
 ---
