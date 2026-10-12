@@ -336,8 +336,12 @@ edit3/
   `'hooks` `'faces`）。`step` 从 State 读，不依赖插件实现，所以插件可自由依赖
   `core/extension.rkt` 而不循环。
 - `core/extension.rkt` 是**白名单门面**：插件只 require 它，拿到 State 词汇、注册表
-  构造、adapter 原语（含 face 写回）、窗口/布局查询、keymap/command/route、face/lex。
+  构造、adapter 原语（含 face 写回）、窗口/布局查询、keymap/command/route、face/lex、
+  括号深度扫描（`bracket-depth-lines`）。
 - `config/plugins.rkt` 只给名字；`plugins/catalog.rkt` 解析成实现（未知名报错）。
+- **依赖方向**：`plugins/*` → `core/extension.rkt`（单向，插件不碰 core 内部、不碰 step）。
+  `core/` 不反向依赖 `plugins/`：`boot` 的 `#:plugins` 默认 `'()`，由**组装根**
+  `main.rkt` 用 `(plugins-by-names enabled-plugins)` 解析后传入。于是 core 可脱离 plugins 单测。
 
 ## 10. 进度
 

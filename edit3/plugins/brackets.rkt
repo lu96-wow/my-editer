@@ -10,8 +10,7 @@
 ;;; 一个插件、一个通道：深度先铺，配对后叠（后层覆盖前层）。
 
 (require racket/string
-         "../core/extension.rkt"
-         "../core/bracket-depth.rkt")
+         "../core/extension.rkt")
 
 (provide bracket-spec)
 

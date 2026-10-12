@@ -15,7 +15,7 @@
 (require "state.rkt" "event.rkt" "effect.rkt" "op.rkt" "prompt.rkt"
          "panels.rkt" "keymap.rkt" "command.rkt" "route.rkt" "hook.rkt"
          "window.rkt" "layout.rkt" "resize.rkt" "adapter.rkt" "plugin.rkt" "fs.rkt"
-         "face.rkt" "face-plugin.rkt" "lex.rkt" "kind.rkt" "bracket.rkt"
+         "face.rkt" "face-plugin.rkt" "lex.rkt" "kind.rkt" "bracket.rkt" "bracket-depth.rkt"
          "session.rkt" "job.rkt")
 
 (provide
@@ -121,6 +121,6 @@
  ;; ---------- 高亮（face 插件） ----------
  (struct-out face-plugin) (struct-out face-stack) face-compose face-layers face-runs
  (struct-out palette-color) (struct-out palette-bg)
- refresh-faces-vid! match-brackets
+ refresh-faces-vid! match-brackets bracket-depth-lines
  symbol-char? ident-start? ident-char? line-tokens
  racket-file? racket-applies?)

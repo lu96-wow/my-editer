@@ -14,7 +14,6 @@
 
 (require racket/list racket/string racket/path
          "../core/extension.rkt"
-         "../core/lex.rkt"
          "lang/source.rkt"
          "lang/pool.rkt"
          "lang/local-docs.rkt"

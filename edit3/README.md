@@ -148,7 +148,9 @@ plugins/
   **位置**：贴**整个编辑区**（所有平铺编辑器窗的包围盒，`rect-bounds`）的上/下边、宽度取编辑区宽；
   当输入行靠近底边时自动**翻到顶边**，始终避开正在输入的行；移开光标 / 菜单关 / 切换文件则关。
   两边不 require 对方，只靠事件解耦。
-- 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
+- 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 core 内部、不碰 step。
+  **依赖单向**：`core/` 不反向依赖 `plugins/`——`boot` 的 `#:plugins` 默认 `'()`，由组装根
+  `main.rkt` 解析启用名单后传入，所以 core 可脱离 plugins 单独使用 / 单测。
 - **异步 jobs**：插件用 `job-submit` 登记工作（纯），`jobs` 从 State 取待办；runtime 的
   worker 线程池按 `#:services` 的 `kind` 跑纯 handler，结果以 `job-event` 回注事件流；
   `step` 完成后 `emit 'job`，插件在 `'job` 钩子里按 `tag` 消费。示例 `plugins/async-demo.rkt`。

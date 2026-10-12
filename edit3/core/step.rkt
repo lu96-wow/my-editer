@@ -20,12 +20,9 @@
 (require "state.rkt" "event.rkt" "effect.rkt" "route.rkt" "command.rkt" "keymap.rkt" "op.rkt"
          "adapter.rkt" "window.rkt" "layout.rkt" "panels.rkt" "interaction.rkt"
          "session.rkt" "job.rkt" "plugin.rkt" "hook.rkt" "face-plugin.rkt"
-         "../plugins/catalog.rkt"
          (rename-in "../config/app.rkt"
                     [key-tables key-tables-spec]
-                    [doc-key-matchers doc-key-matchers-spec])
-         (rename-in "../config/plugins.rkt"
-                    [enabled-plugins enabled-plugin-specs]))
+                    [doc-key-matchers doc-key-matchers-spec]))
 
 ;; 基础键表（未叠加插件前）。
 (define base-key-table (compose-keymaps key-tables-spec))
@@ -201,11 +198,12 @@
 
 ;;; ---------- 装配 ----------
 
-;; 把插件贡献叠加到基础表上，得到本次运行的 op / prompt / panel / region / 键表 / 匹配层，
-;; 并编译路由存进 State（step 从 State 读，不依赖插件）。
+;; 装配：把插件贡献叠加到基础表上，得到本次运行的 op / prompt / panel / region / 键表 /
+;; 匹配层，编译路由存进 State（step 从 State 读）。插件列表由**组装根**（main / 测试）
+;; 解析后传入，step 本身不认识 plugins/，core 不反向依赖插件。
 (define (boot w h #:text [text ""] #:name [name #f]
                    #:root [root (current-directory)]
-                   #:plugins [plugins (plugins-by-names enabled-plugin-specs)])
+                   #:plugins [plugins '()])
   (define reg (install-plugin-ops base-op-registry plugins))
   (define prompts (install-plugin-prompts base-prompt-kinds plugins))
   (define panel-reg (install-plugin-panels base-panel-registry plugins))
