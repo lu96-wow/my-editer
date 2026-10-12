@@ -61,9 +61,12 @@
                [commands (command-register (environment-commands env0) 'open-test h-open-test)]
                [keymap (compose-keymaps (list (environment-keymap env0)
                                               (list (list '(key o ctrl) 'always (cmd 'open-test)))))]))
-(define-values (b3 _drawn3) (scripted-backend (list (key-event 'o '(ctrl)) (key-event 'q '(ctrl)))))
+(define-values (b3 _drawn3)
+  (scripted-backend (list (key-event 'o '(ctrl)) (key-event 'o '(ctrl)) (key-event 'q '(ctrl)))))
 (define w3 (run b3 env* (boot)))
 (check-equal? (view-string (content-ed (world-content w3)) (content-vid-of (world-content w3) 0))
               "FILE-CONTENT")
+;; 第二次 open 同一路径 → 复用，不重复建文档
+(check-equal? (length (content-doc-paths (world-content w3))) 1)
 
 (displayln "edit4/runtime.rkt: all tests passed")

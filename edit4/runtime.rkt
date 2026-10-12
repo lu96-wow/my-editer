@@ -31,13 +31,23 @@
     [(open-file? e)
      (define path (open-file-path e))
      (define c (world-content w))
-     (define id (world-focus w))
      (cond
-       [(not (and c id)) w]
+       [(not c) w]
+       [(not (fs-file? path)) (eprintf "打不开: ~a\n" path) w]
        [else
-        (define text (fs-read-file path))
-        (define-values (c* _did vid) (content-add-doc! c text 60 22 path (path->complete-path path)))
-        (world-set-content w (content-bind c* id vid))])]
+        ;; 在编辑器窗口显示（不是面板窗）；同路径已打开则复用。
+        (define id (or (content-editor-window c (world-layout w)) (world-focus w)))
+        (cond
+          [(not id) w]
+          [else
+           (define did (content-doc-by-path c path))
+           (cond
+             [did (world-set-content w (content-show c id did))]
+             [else
+              (define text (fs-read-file path))
+              (define-values (c* _did vid)
+                (content-add-doc! c text 60 22 path (path->complete-path path)))
+              (world-set-content w (content-bind c* id vid))])])])]
     [else w]))
 
 (define (run b env world)

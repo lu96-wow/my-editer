@@ -81,10 +81,12 @@ edit4/
   core.rkt                 命令层入口（再导出）
 
   content/                 L3
-    fs.rkt                 文件系统原语（纯 IO）
+    fs.rkt                 文件系统原语（+ make-file / make-dir / delete）
     adapter.rkt            文本引擎边界（唯一 require core/editor 的模块）
-    model.rkt              文档 / 视图 / 面板 / 文件树（content 值）
-    tree.rkt               文件树模型 + IO
+    model.rkt              文档 / 视图 / 面板 / 文件树 + 路径复用与显示
+    tree.rkt               文件树模型 + 纯操作 + IO
+    tree-cmds.rkt          文件树交互命令（enter/parent/child/reload/hidden）
+    scopes.rkt             editor / (panel NAME) 作用域
     edit.rkt               编辑 / 导航命令
     files.rkt              文件命令（open/save/reload，走 effect）
     commands.rkt           内容插件的数据装配（命令 + 键表）

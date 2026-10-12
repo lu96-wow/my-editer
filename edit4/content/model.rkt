@@ -18,9 +18,10 @@
          content-vid-of content-did-of focused-vid-of
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel?
-         content-tree content-set-tree)
+         content-tree content-set-tree
+         path-key content-doc-by-path content-doc-paths content-show content-editor-window)
 
-(require racket/list "adapter.rkt")
+(require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
 (struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f
 (struct content (ed docs bindings panels tree) #:transparent)
@@ -95,3 +96,37 @@
                      (hash-set (content-docs c) did
                                (struct-copy doc-meta m [saved (document-handle (content-ed c) did)])))
       c))
+
+;;; ---------- 资源：路径 → 文档 / 显示 ----------
+
+;; 路径规范化（比较用）：绝对 + 简化 + explode（消除结尾分隔符差异）。
+(define (path-key p) (explode-path (simplify-path (path->complete-path p))))
+
+;; 已打开且路径为 p 的文档；没有 → #f。
+(define (content-doc-by-path c p)
+  (define k (path-key p))
+  (for/first ([did (in-list (document-id-list (content-ed c)))]
+              #:when (let ([m (hash-ref (content-docs c) did #f)])
+                       (and m (doc-path m) (equal? k (path-key (doc-path m))))))
+    did))
+
+;; 所有已打开文档的路径（文件树着色用）。
+(define (content-doc-paths c)
+  (for/list ([did (in-list (document-id-list (content-ed c)))]
+             #:when (let ([m (hash-ref (content-docs c) did #f)]) (and m (doc-path m))))
+    (doc-path (hash-ref (content-docs c) did))))
+
+;; 在窗口 id 显示文档 did：复用其已有视图，否则新建一个视图。
+(define (content-show c id did)
+  (define vids (document-view-list (content-ed c) did))
+  (cond
+    [(pair? vids) (content-bind c id (car vids))]
+    [else (define-values (c* vid) (content-add-view! c did 60 22))
+          (content-bind c* id vid)]))
+
+;; 选一个「编辑器窗口」（vid 非面板或空）来显示文档；没有 → #f。
+(define (content-editor-window c layout)
+  (for/first ([id (in-list (ids layout))]
+              #:when (let ([v (content-vid-of c id)])
+                       (or (not v) (not (content-panel? c v)))))
+    id))
