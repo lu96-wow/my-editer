@@ -8,15 +8,16 @@
 (provide plugin-catalog plugins-by-names)
 
 (require "../plugin.rkt"
-         "syntax.rkt" "brackets.rkt" "words.rkt" "bracket-match.rkt"
+         "syntax.rkt" "brackets.rkt" "words.rkt" "word-color.rkt" "bracket-match.rkt"
          "auto-pair.rkt" "completion.rkt" "docs.rkt"
          "demo.rkt" "async-demo.rkt")
 
 (define plugin-catalog
-  (list syntax-plugin           ; 语法（关键字/字符串/注释/数字）前景
-        bracket-depth-plugin    ; 嵌套深度底色（先铺）
-        words-plugin            ; 当前词
-        bracket-match-plugin    ; 光标配对（后叠，覆盖在前两层之上）
+  (list bracket-depth-plugin    ; 嵌套深度底色（先铺）
+        word-color-plugin       ; 同词着色（参考 edit1）
+        syntax-plugin           ; 语法（关键字/字符串/注释/数字）前景（覆盖词色）
+        words-plugin            ; 当前词底色
+        bracket-match-plugin    ; 光标配对（后叠，覆盖在前几层之上）
         auto-pair-plugin
         completion-plugin
         docs-plugin

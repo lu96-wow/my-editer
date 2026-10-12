@@ -85,6 +85,18 @@
 (check-true (regexp-match? #rx"38;2;120;180;240" b7))     ; 关键字前景仍在
 (check-true (regexp-match? #rx"48;2;60;70;90" b7))        ; word-mark 背景盖在括号深度色上
 
+;;; ---------- 同词着色（参考 edit1）：同词同色、异词异色、非词不着色 ----------
+
+(require "../edit4/decor/word-color.rkt")
+
+(define wc (word-color-decor #f "alpha beta alpha" #f))
+(define (wc-at line col) (vector-ref (list-ref wc line) col))
+(check-equal? (wc-at 0 0) (wc-at 0 11))                   ; 两处 alpha 同色
+(check-equal? (wc-at 0 0) (word-face "alpha"))
+(check-not-equal? (wc-at 0 0) (wc-at 0 6))                ; alpha vs beta 不同色
+(check-false (wc-at 0 5))                                 ; 空格不着色
+(check-false (vector-ref (list-ref (word-color-decor #f "(alpha)" #f) 0) 0))  ; 括号不着色
+
 ;;; ---------- 缓存：handle+cursor 不变 → 跳过 ----------
 
 (define-values (fc5 projs5) (ensure-faces (hash) (list bracket-depth-decor) w1))
