@@ -26,7 +26,6 @@
         (list '(key right alt) 'always (cmd 'focus 'right))
         (list '(key up alt)    'always (cmd 'focus 'up))
         (list '(key down alt)  'always (cmd 'focus 'down))
-        (list '(key q ctrl) 'always (cmd 'quit))
         (list '(cursor press)   'always (cmd 'pointer-press))
         (list '(cursor move)    'always (cmd 'pointer-move))
         (list '(cursor release) 'always (cmd 'pointer-release))

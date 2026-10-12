@@ -22,11 +22,17 @@
 (struct backend (size read-event draw! close) #:transparent)
 
 ;; 解释 effect：可能产生新 World（open/reload 要读文件/目录）。
+(define (io-try thunk)
+  (with-handlers ([exn:fail? (lambda (ex) (eprintf "~a\n" (exn-message ex)))]) (thunk)))
+
 (define (perform-effect! b w e)
   (cond
     [(quit-effect? e) ((backend-close b)) w]
     [(log-effect? e) (eprintf "~a\n" (log-effect-msg e)) w]
-    [(save-file? e) (fs-write-file (save-file-path e) (save-file-text e)) w]
+    [(save-file? e) (io-try (lambda () (fs-write-file (save-file-path e) (save-file-text e)))) w]
+    [(make-file? e) (io-try (lambda () (fs-make-file (make-file-path e)))) w]
+    [(make-dir? e) (io-try (lambda () (fs-make-dir (make-dir-path e)))) w]
+    [(delete-path? e) (io-try (lambda () (fs-delete (delete-path-path e)))) w]
     [(reload-tree? e) (refresh-tree! w)]
     [(open-file? e)
      (define path (open-file-path e))

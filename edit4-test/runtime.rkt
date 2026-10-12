@@ -33,9 +33,11 @@
     void)
    drawn))
 
-;;; ---------- 打字 → 渲染 → 退出 ----------
+;;; ---------- 打字 → 退出（脏文档 → 先问保存） ----------
 
-(define-values (b1 drawn1) (scripted-backend (list (text-event "hi") (key-event 'q '(ctrl)))))
+(define-values (b1 drawn1)
+  (scripted-backend (list (text-event "hi")
+                          (key-event 'q '(ctrl)) (text-event "n") (key-event 'enter '()))))
 (define wend (run b1 (app-environment) (boot)))
 (define cend (world-content wend))
 (check-equal? (view-string (content-ed cend) (content-vid-of cend 0)) "hi")

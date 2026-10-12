@@ -12,7 +12,7 @@
 
 (define SZ (cons 80 24))
 (define reg (command-registry-merge base-commands content-commands))
-(define km (compose-keymaps (list base-keymap content-keymap)))
+(define km (compose-keymaps (list content-keymap base-keymap)))  ; 与 app 一致
 (define (mk-ctx w ev) (ctx ev SZ #f))
 (define (run w ev)
   (car (call-with-values (lambda () (dispatch reg base-scopes km (mk-ctx w ev) w)) list)))

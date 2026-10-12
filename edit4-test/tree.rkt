@@ -61,7 +61,7 @@
 ;;; ---------- 交互命令（经 dispatch；作用域走 content-scopes） ----------
 
 (define reg (command-registry-merge base-commands content-commands))
-(define km (compose-keymaps (list base-keymap content-keymap)))
+(define km (compose-keymaps (list content-keymap base-keymap)))  ; 与 app 一致
 (define SZ (cons 80 24))
 (define (mk-ctx w ev)
   (define area (rect 0 0 (car SZ) (cdr SZ)))

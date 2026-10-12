@@ -9,7 +9,7 @@
 
 (require racket/list racket/path
          "../core/world.rkt" "../core/command.rkt" "../core/effect.rkt"
-         "model.rkt" "adapter.rkt" "tree.rkt")
+         "model.rkt" "adapter.rkt" "tree.rkt" "prompt.rkt")
 
 (define (tree-vid w)
   (define c (world-content w))
@@ -85,6 +85,34 @@
 
 (define (h-tree-reload ctx w args) (cons w (list (reload-tree))))
 
+;; 新建 / 删除的目标目录：当前行是目录则用它；是文件则用其父目录。
+(define (tree-target-dir w)
+  (define c (world-content w))
+  (define ts (and c (content-tree c)))
+  (define cur (tree-current w))
+  (cond
+    [(not ts) #f]
+    [(not cur) (tree-root ts)]
+    [(list-ref cur 2) (car cur)]
+    [else (or (tree-parent-dir (car cur)) (tree-root ts))]))
+
+(define (h-tree-new-file ctx w args)
+  (define d (tree-target-dir w))
+  (cond [(not d) #f]
+        [else (cons (prompt-open w (format "新文件 ~a : " (path->string d)) 'new-file (list d)) '())]))
+
+(define (h-tree-new-dir ctx w args)
+  (define d (tree-target-dir w))
+  (cond [(not d) #f]
+        [else (cons (prompt-open w (format "新目录 ~a : " (path->string d)) 'new-dir (list d)) '())]))
+
+(define (h-tree-delete ctx w args)
+  (define cur (tree-current w))
+  (cond [(not cur) #f]
+        [else (cons (prompt-open w (format "删除 ~a ? (y/n) " (path->string (car cur)))
+                                 'delete (list (car cur)))
+                    '())]))
+
 (define (h-tree-toggle-hidden ctx w args)
   (define c (world-content w))
   (define ts (and c (content-tree c)))
@@ -98,4 +126,7 @@
          (cons 'tree-parent h-tree-parent)
          (cons 'tree-child h-tree-child)
          (cons 'tree-reload h-tree-reload)
+         (cons 'tree-new-file h-tree-new-file)
+         (cons 'tree-new-dir h-tree-new-dir)
+         (cons 'tree-delete h-tree-delete)
          (cons 'tree-toggle-hidden h-tree-toggle-hidden))))

@@ -57,7 +57,7 @@ press 时用 `Ctx.geometry` 做命中，按 z 从高到低：
 
 1. **浮窗**（表头最上）：角 → `(float id 'resize角 float0 rel0)`；框内 → `(float id 'move float0 rel0)`。
 2. **平铺缝/交点**：`hit` 返回的 cut 列表 → 按轴拆成 `xsegs / ysegs` → `(cut xsegs ysegs)`。
-3. **pane 内容**：设焦点（将来还要放光标 / 点击动作）。
+3. **pane 内容**：设焦点 + **放置光标**（屏幕坐标 → 文档点，见 `content/pointer.rkt`）。
 4. 都没命中 → `#f`（让位）。
 
 ### move → 应用
@@ -125,7 +125,9 @@ move **不需要**当前 geometry（全用快照）→ 拖拽期间不会因为�
 
 1. **World 是否收编 floats**？（命中/拖拽/渲染都要它；建议收编）
 2. **几何是否统一包含浮窗**（`hit` 一次定序）？还是分开？
-3. **press 落在 pane 内容**：现在只设焦点；「点击不放光标」这个已知限制**要不要现在解决**？
-   （需要 surfaces，可能超出「命令+布局」核心，建议先只设焦点）
+3. **press 落在 pane 内容**：✅ 已解决——core 的 `pointer-press` 只设焦点；
+   `content/pointer.rkt` **覆盖同名命令**：先调 base 的 `pointer-press`，命中窗格时再把
+   `(x,y) - rect` 交给引擎 `screen->point` 换算出文档点并置光标。
+   （覆盖而非新增键：命令注册表是 base 在前、插件在后 → 插件同名覆盖。）
 4. **scroll** 现在就让位，还是先给个空实现？
 5. **拖动阈值**：是否需要「移动超过 1 格才算拖拽」（用于 click vs drag 区分）？

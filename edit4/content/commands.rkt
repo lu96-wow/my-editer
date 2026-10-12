@@ -2,24 +2,36 @@
 
 ;;; edit4/content/commands.rkt —— 内容插件的数据装配（命令 + 键表）
 ;;;
-;;; 编辑命令在 edit.rkt，文件命令在 files.rkt，文件树命令在 tree-cmds.rkt；
-;;; 这里只合成「内容插件」的命令集与默认键表。真正的装配在 app.rkt。
-;;;
-;;; 键表按作用域分：编辑器按键 scope = editor；文件树按键 scope = (panel "*tree*")；
-;;; 保存 / 刷新树等全局键 scope = always。作用域实现见 content/scopes.rkt。
+;;; 编辑 / 文件 / 文件树 / 输入行命令分别在各模块；这里合成命令集与默认键表。
+;;; 键表按作用域分：editor、文件树 (panel "*tree*")、输入行 (panel "*input*")、
+;;; 前缀 (prefix new)；保存 / 刷新树 / 退出等 scope = always。作用域见 content/scopes.rkt。
 
 (provide content-commands content-keymap)
 
 (require "../core/command.rkt" "../core/keymap.rkt"
-         "edit.rkt" "files.rkt" "tree-cmds.rkt")
+         "edit.rkt" "files.rkt" "tree-cmds.rkt" "prompt.rkt" "pointer.rkt")
 
 (define content-commands
   (command-registry-merge
    edit-commands
-   (command-registry-merge file-commands tree-commands)))
+   (command-registry-merge
+    file-commands
+    (command-registry-merge
+     tree-commands
+     (command-registry-merge prompt-commands content-pointer-commands)))))
 
 (define content-keymap
   (list
+   ;; ---- 输入行（焦点是 *input* 面板） ----
+   (list '(text) '(panel "*input*") (cmd 'insert-event-text))
+   (list '(key backspace) '(panel "*input*") (cmd 'delete-back))
+   (list '(key delete) '(panel "*input*") (cmd 'delete))
+   (list '(key left) '(panel "*input*") (cmd 'nav 'left))
+   (list '(key right) '(panel "*input*") (cmd 'nav 'right))
+   (list '(key home) '(panel "*input*") (cmd 'nav 'home))
+   (list '(key end) '(panel "*input*") (cmd 'nav 'end))
+   (list '(key enter) '(panel "*input*") (cmd 'prompt-submit))
+   (list '(key escape) '(panel "*input*") (cmd 'prompt-cancel))
    ;; ---- 编辑（焦点是可编辑文档） ----
    (list '(text) 'editor (cmd 'insert-event-text))
    (list '(key enter) 'editor (cmd 'insert-text "\n"))
@@ -37,6 +49,7 @@
    (list '(key v ctrl) 'editor (cmd 'paste))
    (list '(key z ctrl) 'editor (cmd 'undo))
    (list '(key y ctrl) 'editor (cmd 'redo))
+   (list '(key w ctrl) 'editor (cmd 'close-doc))
    ;; ---- 文件树（焦点是 *tree* 面板） ----
    (list '(key up) '(panel "*tree*") (cmd 'nav 'up))
    (list '(key down) '(panel "*tree*") (cmd 'nav 'down))
@@ -44,7 +57,14 @@
    (list '(key right) '(panel "*tree*") (cmd 'tree-child))
    (list '(key enter) '(panel "*tree*") (cmd 'tree-enter))
    (list '(key backspace) '(panel "*tree*") (cmd 'tree-toggle-hidden))
+   (list '(key d ctrl) '(panel "*tree*") (cmd 'tree-delete))
+   (list '(key n ctrl) '(panel "*tree*") (cmd 'prefix 'new))
+   ;; ---- 前缀 new：f 新文件 / d 新目录 ----
+   (list '(text "f") '(prefix new) (cmd 'tree-new-file))
+   (list '(text "d") '(prefix new) (cmd 'tree-new-dir))
+   (list '(key escape) '(prefix new) (cmd 'cancel))
    ;; ---- 全局 ----
+   (list '(key q ctrl) 'always (cmd 'quit))
    (list '(key s alt) 'always (cmd 'save))
    (list '(key u ctrl) 'always (cmd 'tree-reload))
    (list '(key h ctrl) 'always (cmd 'tree-toggle-hidden))))

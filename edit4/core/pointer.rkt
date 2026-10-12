@@ -8,13 +8,13 @@
 ;;;
 ;;; 命中统一走 layout/frame.rkt 的 hit-frame（浮窗 z 优先，再平铺的缝 / 内容）。
 
-(provide pointer-commands)
+(provide pointer-commands pointer-press)
 
 (require racket/match
          "event.rkt" "world.rkt" "command.rkt" "drag.rkt"
          "../layout.rkt")
 
-(define (h-pointer-press ctx world args)
+(define (pointer-press ctx world args)
   (define fr (ctx-frame ctx))
   (cond
     [(not fr) #f]
@@ -78,7 +78,7 @@
 
 (define pointer-commands
   (make-command-registry
-   (list (cons 'pointer-press h-pointer-press)
+   (list (cons 'pointer-press pointer-press)
          (cons 'pointer-move h-pointer-move)
          (cons 'pointer-release h-pointer-release)
          (cons 'pointer-scroll h-pointer-scroll))))

@@ -85,7 +85,10 @@ edit4/
     adapter.rkt            文本引擎边界（唯一 require core/editor 的模块）
     model.rkt              文档 / 视图 / 面板 / 文件树 + 路径复用与显示
     tree.rkt               文件树模型 + 纯操作 + IO
-    tree-cmds.rkt          文件树交互命令（enter/parent/child/reload/hidden）
+    tree-cmds.rkt          文件树交互命令（enter/parent/child/new/delete/reload/hidden）
+    pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
+    lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
+    prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
     scopes.rkt             editor / (panel NAME) 作用域
     edit.rkt               编辑 / 导航命令
     files.rkt              文件命令（open/save/reload，走 effect）

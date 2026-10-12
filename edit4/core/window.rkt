@@ -8,7 +8,7 @@
 (provide window-commands)
 
 (require racket/match
-         "world.rkt" "command.rkt" "effect.rkt"
+         "world.rkt" "command.rkt"
          "../layout.rkt")
 
 (define (h-split ctx world args)
@@ -58,7 +58,6 @@
 
 (define (h-prefix ctx world args) (cons (world-set-prefix world (car args)) '()))
 (define (h-cancel ctx world args) (cons (world-set-prefix world #f) '()))
-(define (h-quit ctx world args) (cons world (list (quit-effect))))
 
 (define window-commands
   (make-command-registry
@@ -66,5 +65,4 @@
          (cons 'close h-close)
          (cons 'focus h-focus)
          (cons 'prefix h-prefix)
-         (cons 'cancel h-cancel)
-         (cons 'quit h-quit))))
+         (cons 'cancel h-cancel))))

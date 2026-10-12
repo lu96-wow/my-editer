@@ -17,11 +17,14 @@
 (define (app-environment)
   (install (base-environment)
            (list
-            ;; 基础：窗口 / 焦点 / 指针 + 默认键表
-            (make-plugin #:commands base-commands #:scopes base-scopes #:keymap base-keymap)
-            ;; 内容：编辑 / 文件 / 文件树 + 内容键表与作用域
+            ;; 基础命令 / 作用域：先注册（插件可按名覆盖同一条）
+            (make-plugin #:commands base-commands #:scopes base-scopes)
+            ;; 内容：编辑 / 文件 / 文件树 / 输入行 + 内容键表与作用域
             (make-plugin #:commands content-commands #:scopes content-scopes #:keymap content-keymap)
             ;; 面板：状态栏 + 文件树
             (make-plugin #:panels base-panels)
             ;; 装饰：语法 / 当前词（普通 lambda，列表里一放即可）
-            (make-plugin #:decor (list syntax-decor words-decor)))))
+            (make-plugin #:decor (list syntax-decor words-decor))
+            ;; 基础键表：最后注册 = 优先级最低（fallback）
+            ;; 这样插件的**作用域绑定**不会被 base 的 always 绑定遮蔽。
+            (make-plugin #:keymap base-keymap))))

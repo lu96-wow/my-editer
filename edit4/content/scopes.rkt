@@ -28,4 +28,5 @@
 (define content-scopes
   (make-scope-registry
    (list (cons 'editor editor-scope)
-         (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w))))))
+         (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
+         (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))))

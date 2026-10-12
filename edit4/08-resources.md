@@ -195,7 +195,16 @@ runtime.rkt       解释 effect；刷 tree；（P3）合流 job
   6. `scopes.rkt`：`editor` / `(panel "*tree*")` 作用域；键表按作用域拆分。
   → 结果：文件树可展开/导航/开文件/刷新；同路径文件只开一个 doc。
   （`fs` 的 make/delete 已就位，命令与 effect 留到 P2 配 prompt。）
-- **P2（prompt）**：输入行 + `new-file/new-dir/delete/close-doc/quit`。
+- **P2（prompt）** ✅ 已落地
+  1. 输入行：`*input*` 面板 + `prompt{rwid,label,kind,data,prev-focus}`（`content` 切片）；
+     打开 = 状态栏窗的 vid 换成 `*input*`，关闭 = 换回并回焦。
+  2. `content/prompt.rkt`：kind → handler 小注册表（close-doc/quit/new-file/new-dir/delete），
+     handler : `World prompt text -> (values World effects)`，只产 effect。
+  3. `content/lifecycle.rkt`：`dirty-dids`/`save-doc`/`save-docs`/`close-doc!`/`ensure-focus`。
+  4. 新 effect：`make-file`/`make-dir`/`delete-path`（runtime 解释，错误 → log）。
+  5. 命令/键表：`quit`（脏先问）、`close-doc`（C-w）、`prompt-submit`/`prompt-cancel`；
+     树 `C-n f` 新文件 / `C-n d` 新目录 / `C-d` 删除；`prompt` 作用域 `(panel "*input*")`。
+  6. 修复面板脏标记：面板 `saved = #f`（永不算脏），否则退出会误问保存面板。
 - **P3（异步）**：job/service + 事件合流；重 IO 上移到 worker。
 
 ---
@@ -207,6 +216,17 @@ runtime.rkt       解释 effect；刷 tree；（P3）合流 job
 - **不让命令做 IO**（命令只产出 effect，IO 在 runtime）。
 - **不把缓存/脏做成标签**：handle 就是版本号，直接比较（`saved-handle`、`tree-children` 缓存键）。
 - **不为一次性动作加抽象层**：够用就停（见 07）。
+
+### 作用域优先级（两种代数要分开）
+
+键表是**优先级列表**（`dispatch` 取第一个命中），而命令/作用域注册表是**覆盖映射**
+（同名后者胜）。两者需要相反的装配顺序：
+
+- 命令 / 作用域：`base` 先、插件后 → 插件可按名覆盖 base（如重定义 `quit`）。
+- 键表：`base` **最后** → base 的 `always` 绑定是 fallback，不会遮蔽插件的**作用域绑定**
+  （例：树面板的 `C-d tree-delete` 优先于 base 的 `C-d close`）。
+
+`app.rkt` 因此把基础命令/作用域与基础键表**拆成两次注册**：命令/作用域在前，键表在最后。
 
 ---
 

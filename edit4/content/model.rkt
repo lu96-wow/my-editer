@@ -11,28 +11,31 @@
 ;;;
 ;;; 「脏」= 存档 handle ≠ 当前 handle（身份比较）。
 
-(provide (struct-out content) (struct-out doc-meta)
+(provide (struct-out content) (struct-out doc-meta) (struct-out prompt)
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-remove-vid
          content-vid-of content-did-of focused-vid-of
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel?
+         content-prompt content-set-prompt
          content-tree content-set-tree
          path-key content-doc-by-path content-doc-paths content-show content-editor-window)
 
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
-(struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f
-(struct content (ed docs bindings panels tree) #:transparent)
+(struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f（面板恒为 #f）
+(struct prompt (wid label kind data prev-focus) #:transparent)  ; 输入行状态
+(struct content (ed docs bindings panels tree prompt) #:transparent)
 
-(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f))
+(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f))
 
 (define (content-ed* c ed) (struct-copy content c [ed ed]))
 (define (content-docs* c docs) (struct-copy content c [docs docs]))
 (define (content-bindings* c b) (struct-copy content c [bindings b]))
 (define (content-panels* c p) (struct-copy content c [panels p]))
 (define (content-set-tree c t) (struct-copy content c [tree t]))
+(define (content-set-prompt c p) (struct-copy content c [prompt p]))
 
 ;;; ---------- 增 ----------
 
@@ -47,7 +50,8 @@
 
 (define (content-add-panel! c name w h)
   (define-values (ed did vid) (add-panel! (content-ed c) "" w h name))
-  (define docs (hash-set (content-docs c) did (doc-meta #f (document-handle ed did))))
+  ;; 面板不可保存：saved = #f → 永远不脏。
+  (define docs (hash-set (content-docs c) did (doc-meta #f #f)))
   (define panels (hash-set (content-panels c) name vid))
   (values (content-panels* (content-docs* (content-ed* c ed) docs) panels) did vid))
 
