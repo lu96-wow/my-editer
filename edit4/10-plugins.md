@@ -60,8 +60,9 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 
 `decor` 是 `decor/protocol.rkt` 的 `(decor open change)`：`open : path track -> (values state layer)`，
 `change : state layer face-ctx -> (values state layer dirty)`。状态/层是增量缓存，挂在**引擎
-document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。`syntax/brackets/words/bracket-match`
-暂用 `pure-decor`（整篇重扫兜底），`word-color` 已迁到真增量。
+document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。5 个内置装饰都已真增量：
+`syntax` / `brackets` 走 `stateful-advance`（从首个脏行带跨行状态重扫到收敛）；
+`word-color` 走 `refresh-layer` 只重扫改动行；`words` / `bracket-match` 只重拼旧/新光标行。
 
 ### 按文件类型生效：`#:applies?`
 

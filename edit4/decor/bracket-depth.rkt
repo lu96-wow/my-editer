@@ -1,12 +1,12 @@
 #lang racket
 
-;;; edit4/decor/bracket-depth.rkt —— 括号**嵌套深度**背景（纯，整篇）
+;;; edit4/decor/bracket-depth.rkt —— 括号**嵌套深度**背景（增量）
 ;;;
-;;; 装饰就是函数：path text cursor -> (listof (vectorof face))。
 ;;; 每行行首维护一个「括号栈」；每格背景 = 最内层包围它的括号对的 level（最外层 = 0），
 ;;; 不在任何对里 = #f。Racket 文件按词法跳过字符串 "…"、行注释 ;…、块注释 #| … |#
 ;;; （可嵌套）、字符字面量 #\x 里的括号；跨行字符串 / 注释用哨兵压栈保留。
 ;;;
+;;; decor：open 整篇扫；change 从首个脏行带栈状态重扫到收敛（dirty.rkt 的 stateful-advance）。
 ;;; 只算深度；「光标在括号上时高亮配对括号」在 decor/bracket-match.rkt。
 ;;; 是否适用（Racket 源文件）由插件包的 #:applies? 声明。
 
@@ -14,7 +14,10 @@
 
 (require racket/string
          "kind.rkt"
-         "../view/face.rkt")
+         "protocol.rkt"
+         "dirty.rkt"
+         "../view/face.rkt"
+         (only-in "../../core/text/base/track.rkt" track-of-list))
 
 ;;; ---------- 记号 ----------
 
@@ -98,5 +101,31 @@
 
 ;;; ---------- 装饰 ----------
 
-(define (bracket-depth-decor path text _cursor)
-  (bracket-depth-lines path text))
+;; 一行：返回 (values 行尾栈 face 向量)。
+(define (bracket-scan syntax? stack ln line)
+  (define-values (vec st*) (bracket-line line ln stack syntax?))
+  (values st* (or vec (make-vector (string-length line) #f))))
+
+(define bracket-depth-decor
+  (decor
+   (lambda (path text)
+     (define syntax? (racket-file? path))
+     (define-values (states layer _st)
+       (for/fold ([ss '()] [ls '()] [st '()])
+                 ([line (in-list (track->lines text))] [ln (in-naturals)])
+         (define-values (st2 vec) (bracket-scan syntax? st ln line))
+         (values (cons st2 ss) (cons vec ls) st2)))
+     ;; state = (cons syntax? 出栈 track)；layer = 背景向量 track
+     (values (cons syntax? (track-of-list (reverse states)))
+             (track-of-list (reverse layer))))
+   (lambda (state layer ctx)
+     (define changes (face-ctx-changes ctx))
+     (cond
+       [(null? changes) (values state layer (dirty-lines '()))]
+       [else
+        (define syntax? (car state))
+        (define-values (st ly dirty)
+          (stateful-advance (cdr state) layer (face-ctx-new-text ctx) changes
+                            (lambda (stack ln line) (bracket-scan syntax? stack ln line))
+                            '()))
+        (values (cons syntax? st) ly dirty)]))))

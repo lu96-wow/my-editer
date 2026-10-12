@@ -1,18 +1,19 @@
 #lang racket
 
-;;; edit4/decor/bracket-match.rkt —— 光标在括号上时高亮**配对**括号（纯，光标驱动）
+;;; edit4/decor/bracket-match.rkt —— 光标在括号上时高亮**配对**括号（增量，光标驱动）
 ;;;
-;;; 装饰就是函数：path text cursor -> (listof (vectorof face))。
-;;; 光标落在括号上、或紧跟在括号后，都算「在括号处」；同类型括号按深度配对，
-;;; 配对的两个括号上都叠 'bracket-match（叠在深度色之上，见 view/decor 的 face-compose）。
-;;; 光标不在括号处 → 全 #f。
+;;; 只有两个格：光标处（或紧邻）的括号、它的配对括号。状态 = (光标 . 上次配对位置)；
+;;; change 只重拼「旧配对行 ∪ 新配对行」，配对搜索本身仍是全篇一次（与旧实现同阶）。
 ;;;
 ;;; 与 decor/bracket-depth.rkt 分开：一个管「深度底色」，一个管「配对高亮」。
 
 (provide bracket-match-decor match-brackets bracket-at)
 
-(require racket/string
-         "../view/face.rkt")
+(require racket/string racket/list
+         "../view/face.rkt"
+         "protocol.rkt"
+         "dirty.rkt"
+         (only-in "../../core/text/base/track.rkt" track-length track-ref track-splice))
 
 (define opens '(#\( #\[ #\{))
 (define closes '(#\) #\] #\}))
@@ -78,11 +79,37 @@
 
 ;;; ---------- 装饰 ----------
 
-(define (bracket-match-decor _path text cursor)
-  (define pairs (if cursor (match-brackets text (car cursor) (cdr cursor)) '()))
-  (for/list ([line (in-list (string-split text "\n"))] [ln (in-naturals)])
-    (define vec (make-vector (string-length line) #f))
-    (for ([p (in-list pairs)] #:when (= ln (car p)))
-      (define c (cdr p))
-      (when (< c (vector-length vec)) (vector-set! vec c 'bracket-match)))
-    vec))
+;; 一行的配对括号标记。
+(define (line-marks pos ln line)
+  (define vec (make-vector (string-length line) #f))
+  (for ([p (in-list pos)] #:when (= ln (car p)))
+    (define c (cdr p))
+    (when (< c (vector-length vec)) (vector-set! vec c 'bracket-match)))
+  vec)
+
+(define bracket-match-decor
+  (decor
+   (lambda (_path text)
+     (values (cons #f '())
+             (scan-track text (lambda (ln line) (line-marks '() ln line)))))
+   (lambda (state layer ctx)
+     (define changes (face-ctx-changes ctx))
+     (define cursor (face-ctx-cursor ctx))
+     (define last-cursor (car state))
+     (define old-pos (cdr state))
+     (cond
+       ;; 无编辑且光标未动 → 不重扫（帧间空转）
+       [(and (null? changes) (equal? last-cursor cursor)) (values state layer (dirty-lines '()))]
+       [else
+        (define text (face-ctx-new-text ctx))
+        (define new-pos (if cursor
+                            (match-brackets (track->string text) (car cursor) (cdr cursor))
+                            '()))
+        (define lines (sort (remove-duplicates
+                             (append (map car old-pos) (map car new-pos))) <))
+        (define layer*
+          (for/fold ([ly layer]) ([ln (in-list lines)])
+            (if (< ln (track-length text))
+                (track-splice ly ln (add1 ln) (list (line-marks new-pos ln (track-ref text ln))))
+                ly)))
+        (values (cons cursor new-pos) layer* (dirty-lines lines))]))))

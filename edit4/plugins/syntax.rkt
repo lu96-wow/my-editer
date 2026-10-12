@@ -6,9 +6,9 @@
 
 (provide syntax-plugin)
 
-(require "../plugin.rkt" "../decor/syntax.rkt" "../decor/kind.rkt" "../decor/protocol.rkt")
+(require "../plugin.rkt" "../decor/syntax.rkt" "../decor/kind.rkt")
 
 (define syntax-plugin
   (make-plugin #:name 'syntax
                #:applies? racket-file?
-               #:decor (list (pure-decor syntax-decor))))
+               #:decor (list syntax-decor)))

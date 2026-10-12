@@ -11,7 +11,7 @@
 ;;; ctx 只给中性结构（文本轨 / changes / 光标点）；「什么算一个词」这类词法在 lex.rkt。
 ;;; open / change 都是纯函数，不碰引擎；状态与层的写回由 view/decor 的槽驱动负责。
 ;;;
-;;; pure-decor：把旧的「整篇纯扫描」函数包成 open/change（整篇重扫，迁移期兜底）。
+;;; pure-decor：整篇纯扫描装饰的便捷构造（无状态 / 不值得写增量时用）；扫描结果按行切片。
 
 (provide (struct-out face-ctx) (struct-out decor) pure-decor)
 
@@ -32,9 +32,9 @@
 
 (struct decor (open change) #:transparent)
 
-;; 把「整篇纯扫描」的旧式装饰包成 open/change。
+;; 把「整篇纯扫描」函数包成 open/change。
 ;;   scan : path string cursor -> (listof (vectorof face))   不适用 → '()
-;; open / change 都整篇重扫（dirty-all）；仅用于尚未迁移到增量的装饰。
+;; fork 期（无光标）只标脏不扫；render 期整篇重建。
 (define (pure-decor scan)
   (decor
    (lambda (path text)

@@ -15,7 +15,7 @@
 
 (provide (struct-out dirty) dirty-all dirty-lines dirty-union dirty-all? dirty-ls dirty->lines
          changes->dirty-lines
-         scan-track refresh-layer
+         scan-track refresh-layer stateful-advance
          track->lines track->string)
 
 (require (except-in racket/list range)
@@ -95,6 +95,49 @@
         layer
         (track-splice layer ln (add1 ln)
                       (list (scan ln (track-ref text ln)))))))
+
+;;; ---------- 有状态行扫描的增量推进 ----------
+
+;; 一次编辑的行区间 (old-lo old-hi new-lo new-hi)，hi 开；从右到左处理。
+(define (change-spans changes)
+  (sort
+   (for/list ([ch (in-list changes)])
+     (define b (change-before ch)) (define a (change-after ch))
+     (list (point-line (range-start b)) (add1 (point-line (range-end b)))
+           (point-line (range-start a)) (add1 (point-line (range-end a)))))
+   > #:key car))
+
+;; 有状态行扫描的增量推进：states / layer 与文本**逐行对齐**。
+;;   states[i] = 第 i 行的**出状态**；incoming(0) = init-state，incoming(i) = states[i-1]。
+;;   scan : state line-no line -> (values state' payload)
+;; 步骤：① 按 changes 把 states/layer 结构 splice 对齐（新行填 #f）；
+;;       ② 从首个脏行起带状态重扫，直到出状态与旧值收敛（相同就可停）。
+;; 返回 (values states' layer' dirty)。
+(define (stateful-advance states layer text changes scan init-state)
+  (define n (track-length text))
+  (define-values (states0 layer0)
+    (for/fold ([st states] [ly layer]) ([sp (in-list (change-spans changes))])
+      (match-define (list olo ohi nlo nhi) sp)
+      (define k (max 0 (- nhi nlo)))
+      (values (track-splice st olo ohi (make-list k #f))
+              (track-splice ly olo ohi (make-list k #f)))))
+  (define seed (changes->dirty-lines changes))
+  (cond
+    [(null? seed) (values states0 layer0 (dirty-lines '()))]
+    [else
+     (define lo (car seed))
+     (let loop ([ln lo] [st states0] [ly layer0] [acc '()]
+                [incoming (if (= lo 0) init-state (track-ref states0 (sub1 lo)))])
+       (cond
+         [(>= ln n) (values st ly (dirty-lines (reverse acc)))]
+         [else
+          (define line (track-ref text ln))
+          (define-values (out payload) (scan incoming ln line))
+          (define st* (track-splice st ln (add1 ln) (list out)))
+          (define ly* (track-splice ly ln (add1 ln) (list payload)))
+          (cond
+            [(equal? out (track-ref states0 ln)) (values st* ly* (dirty-lines (reverse (cons ln acc))))]
+            [else (loop (add1 ln) st* ly* (cons ln acc) out)])]))]))
 
 ;;; ---------- 文本 track 便捷读 ----------
 

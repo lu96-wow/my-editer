@@ -68,7 +68,7 @@
 (define wb (world-with "(a (b) c)"))
 (define edb (content-ed (world-content wb)))
 (define didb (view-did edb (content-vid-of (world-content wb) 0)))
-(apply-faces! edb (list (pure-decor bracket-depth-decor)) wb)
+(apply-faces! edb (list bracket-depth-decor) wb)
 (check-not-false (document-face-at edb didb 0 0))
 (check-not-false (document-face-at edb didb 0 3))
 

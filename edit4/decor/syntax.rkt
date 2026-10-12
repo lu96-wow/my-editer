@@ -1,17 +1,20 @@
 #lang racket
 
-;;; edit4/decor/syntax.rkt —— 语法（关键字/字符串/注释/数字）高亮装饰
+;;; edit4/decor/syntax.rkt —— 语法（关键字/字符串/注释/数字）高亮装饰（增量）
 ;;;
-;;; 一个装饰就是一个函数：path text cursor -> (listof (vectorof face))。
-;;; 只对 Racket 源文件生效（不适用 → 返回 '()）。跨行块注释 / 字符串用行间状态。
-;;; 关键字按分组取主题 'keyword 调色板。
+;;; decor：open 整篇扫；change 从首个脏行带**跨行状态**（块注释深度 / 是否在字符串里）
+;;; 重扫到状态收敛（见 dirty.rkt 的 stateful-advance）。
+;;; 只对 Racket 源文件生效由插件包 #:applies? 声明。
 
-(provide syntax-decor)
+(provide syntax-decor syntax-line)
 
 (require racket/string
          "lex.rkt"
+         "protocol.rkt"
+         "dirty.rkt"
          "../view/face.rkt"
-         "../config/syntax.rkt")
+         "../config/syntax.rkt"
+         (only-in "../../core/text/base/track.rkt" track-of-list))
 
 (define category-index
   (for/hash ([c (in-list keyword-category-order)] [i (in-naturals)]) (values c i)))
@@ -53,19 +56,31 @@
        (paint! i end 'syntax-number) (loop end block #f)]
       [else (loop (add1 i) block #f)])))
 
-(define (scan-lines text)
-  (define lines (string-split text "\n"))
-  (define-values (_st rev)
-    (for/fold ([st (cons 0 #f)] [acc '()]) ([line (in-list lines)])
-      (define-values (st2 vec) (scan-line st line))
-      (for ([m (in-list (line-tokens line))])
-        (define w (substring line (car m) (cdr m)))
-        (define f (keyword-face w))
-        (when f (for ([i (in-range (car m) (cdr m))])
-                  (unless (vector-ref vec i) (vector-set! vec i f)))))
-      (values st2 (cons vec acc))))
-  (reverse rev))
+;; 一行：先按词法状态涂字符串/注释/数字，再给词法未被占用的 token 叠关键字色。
+(define (syntax-line st line)
+  (define-values (st2 vec) (scan-line st line))
+  (for ([m (in-list (line-tokens line))])
+    (define f (keyword-face (substring line (car m) (cdr m))))
+    (when f
+      (for ([i (in-range (car m) (cdr m))])
+        (unless (vector-ref vec i) (vector-set! vec i f)))))
+  (values st2 vec))
 
-;; 装饰：按行扫描；“只对哪些文件生效”由插件包的 #:applies? 声明（不再写在算法里）。
-(define (syntax-decor _path text _cursor)
-  (scan-lines text))
+(define syntax-decor
+  (decor
+   (lambda (_path text)
+     (define-values (states layer _st)
+       (for/fold ([ss '()] [ls '()] [st (cons 0 #f)])
+                 ([line (in-list (track->lines text))])
+         (define-values (st2 vec) (syntax-line st line))
+         (values (cons st2 ss) (cons vec ls) st2)))
+     (values (track-of-list (reverse states))
+             (track-of-list (reverse layer))))
+   (lambda (state layer ctx)
+     (define changes (face-ctx-changes ctx))
+     (cond
+       [(null? changes) (values state layer (dirty-lines '()))]
+       [else
+        (stateful-advance state layer (face-ctx-new-text ctx) changes
+                          (lambda (st _ln line) (syntax-line st line))
+                          (cons 0 #f))]))))

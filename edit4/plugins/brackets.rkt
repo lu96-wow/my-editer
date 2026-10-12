@@ -7,9 +7,9 @@
 
 (provide bracket-depth-plugin)
 
-(require "../plugin.rkt" "../decor/bracket-depth.rkt" "../decor/kind.rkt" "../decor/protocol.rkt")
+(require "../plugin.rkt" "../decor/bracket-depth.rkt" "../decor/kind.rkt")
 
 (define bracket-depth-plugin
   (make-plugin #:name 'brackets
                #:applies? racket-file?
-               #:decor (list (pure-decor bracket-depth-decor))))
+               #:decor (list bracket-depth-decor)))

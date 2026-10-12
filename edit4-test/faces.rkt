@@ -32,7 +32,7 @@
 
 (define-values (ws dids vs) (make-doc "(define x 1) ; hi\n\"str\"" (string->path "t.rkt")))
 (define eds (content-ed (world-content ws)))
-(paint! ws (list (pure-decor syntax-decor)))
+(paint! ws (list syntax-decor))
 (check-not-false (document-face-at eds dids 0 1))          ; define 关键字
 (check-not-false (document-face-at eds dids 0 13))         ; hi 注释
 (check-not-false (document-face-at eds dids 1 0))          ; "str" 字符串
@@ -41,7 +41,7 @@
 
 (define-values (w1 did1 v1) (make-doc "(a (b) c)" (string->path "t.rkt")))
 (define ed1 (content-ed (world-content w1)))
-(paint! w1 (list (pure-decor bracket-depth-decor)))
+(paint! w1 (list bracket-depth-decor))
 (check-not-false (document-face-at ed1 did1 0 0))          ; 外层括号有深度底色
 (check-not-false (document-face-at ed1 did1 0 3))          ; 内层括号有深度底色
 
@@ -50,7 +50,7 @@
 (define-values (w2 did2 v2) (make-doc "(a (b) c)" (string->path "t.rkt")))
 (define ed2 (content-ed (world-content w2)))
 (set-point! ed2 v2 0 0)                                     ; 光标在外层 (
-(paint! w2 (list (pure-decor bracket-match-decor)))
+(paint! w2 (list bracket-match-decor))
 (check-not-false (document-face-at ed2 did2 0 0))          ; 光标处括号
 (check-not-false (document-face-at ed2 did2 0 8))          ; 配对括号
 (check-false (document-face-at ed2 did2 0 1))              ; 非括号
@@ -59,7 +59,7 @@
 (define-values (w3 did3 v3) (make-doc "(a (b) c)" (string->path "t.rkt")))
 (define ed3 (content-ed (world-content w3)))
 (set-point! ed3 v3 0 0)
-(paint! w3 (list (pure-decor bracket-depth-decor) (pure-decor bracket-match-decor)))
+(paint! w3 (list bracket-depth-decor bracket-match-decor))
 (check-true (face-stack? (document-face-at ed3 did3 0 0)))
 
 ;;; ---------- 当前词 ----------
@@ -67,7 +67,7 @@
 (define-values (w4 did4 v4) (make-doc "hello world" #f))
 (define ed4 (content-ed (world-content w4)))
 (set-point! ed4 v4 0 2)                                     ; 光标在 hello 内
-(paint! w4 (list (pure-decor words-decor)))
+(paint! w4 (list words-decor))
 (check-not-false (document-face-at ed4 did4 0 1))          ; hello 被 word-mark
 (check-false (document-face-at ed4 did4 0 7))              ; world 不涂
 
@@ -76,9 +76,9 @@
 (define-values (w7 did7 v7) (make-doc "(define hello 1)" (string->path "t.rkt")))
 (define ed7 (content-ed (world-content w7)))
 (set-point! ed7 v7 0 2)                                    ; 光标在 define 内
-(paint! w7 (list (pure-decor syntax-decor)
-                 (pure-decor bracket-depth-decor)
-                 (pure-decor words-decor)))
+(paint! w7 (list syntax-decor
+                 bracket-depth-decor
+                 words-decor))
 (define f7 (document-face-at ed7 did7 0 2))
 (check-true (face-stack? f7))
 (check-equal? (map (lambda (l) (and (symbol? l) l)) (face-layers f7))
@@ -114,6 +114,28 @@
 (define ctx-nav (face-ctx t3 t3 '() (dirty-lines '()) #f (cons 0 0)))
 (define-values (_st5 _ly5 dl5) ((decor-change wc) st3 ly3 ctx-nav))
 (check-equal? (dirty-ls dl5) '())
+
+;;; ---------- 增量：跨行装饰的状态收敛 / 传播 ----------
+
+;; syntax：改动不改变词法状态 → 只重扫该行
+(define t4 (track-of-list (list "aaa" "bbb" "ccc")))
+(define-values (sst sly) ((decor-open syntax-decor) #f t4))
+(define ch4 (change (range (point 0 0) (point 0 0)) (range (point 0 1) (point 0 1))))
+(define ctx4 (face-ctx t4 t4 (list ch4)
+                       (dirty-lines (changes->dirty-lines (list ch4))) #f #f))
+(define-values (_ss4 _sl4 sdl4) ((decor-change syntax-decor) sst sly ctx4))
+;; 状态不传播：重扫改动行后再验证一行就收敛（不是全篇）
+(check-equal? (dirty-ls sdl4) '(0 1))
+
+;; bracket：在行首插入 #| 打开块注释 → 状态传播到后续所有行
+(define old-text (track-of-list (list "aaa" "bbb" "ccc")))
+(define new-text (track-of-list (list "#|aa" "bbb" "ccc")))
+(define-values (bst bly) ((decor-open bracket-depth-decor) (string->path "t.rkt") old-text))
+(define chb (change (range (point 0 0) (point 0 0)) (range (point 0 0) (point 0 2))))
+(define ctxb (face-ctx old-text new-text (list chb)
+                       (dirty-lines (changes->dirty-lines (list chb))) (string->path "t.rkt") #f))
+(define-values (_bs2 _bl2 bdl) ((decor-change bracket-depth-decor) bst bly ctxb))
+(check-equal? (dirty-ls bdl) '(0 1 2))                    ; 块注释状态一路传播
 
 ;;; ---------- theme 编码不炸 ----------
 
