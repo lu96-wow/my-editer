@@ -14,7 +14,8 @@
          "syntax.rkt"
          "words.rkt"
          "brackets.rkt"
-         "completion.rkt")
+         "completion.rkt"
+         "docs.rkt")
 
 (define plugin-catalog
   (list demo-plugin
@@ -23,7 +24,8 @@
         syntax-spec
         words-spec
         bracket-spec
-        completion-spec))
+        completion-spec
+        docs-spec))
 
 ;; 名字 → 实现；未知名字直接报错（配置拼错不静默）。
 (define (plugins-by-names names)

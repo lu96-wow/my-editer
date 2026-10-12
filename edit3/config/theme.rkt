@@ -33,6 +33,9 @@
    'message        (style (rgb 230 160 90) #f '())                ; 提示 / 错误
    'input          (style #f #f '())                              ; 输入行：不加颜色修饰
    'log            (style (rgb 235 188 110) #f '())               ; 日志行
+   ;; 补全详情弹窗
+   'docs           (style (rgb 200 212 235) (rgb 30 34 44) '())
+   'docs-dim       (style (rgb 145 155 180) (rgb 30 34 44) '())
    ;; 文件树
    'tree-dir       (style (rgb 120 180 240) #f '())               ; 目录：蓝
    'tree-file      (style (rgb 200 200 200) #f '())               ; 文件：灰白

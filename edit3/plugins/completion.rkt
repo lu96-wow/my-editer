@@ -151,7 +151,8 @@
 
 (define (completion-close st)
   (define w (completion-float st))
-  (feature-set (if w (remove-wid* st w) st) 'completion #f))
+  (define st1 (feature-set (if w (remove-wid* st w) st) 'completion #f))
+  (emit st1 'complete-selection (list (focused-vid st1) #f #f)))
 
 ;; 菜单每帧落位 + 尺寸：随光标（below/above），窗口滚动。
 (define (reposition st size)
@@ -166,16 +167,27 @@
      (define cap (min 8 (length cands)))
      (define-values (_start rows) (popup-window (length cands) idx cap))
      (define W (car size)) (define H (cdr size))
-     (define width (min (max 12 (+ maxlen 3)) (max 3 (- W 2))))
-     (define height (+ rows 2))
+     (define tw (hash-ref c 'target-w))
+     ;; 目标编辑窗格矩形（菜单只在它内部摆）
+     (define g (layout (state-tiling st) (state-floats st) size))
+     (define pl (for/first ([p (in-list (geometry-placements g))]
+                            #:when (eqv? tw (placement-wid p))) p))
+     (define r (and pl (placement-rect pl)))
+     (define rw (if r (rect-w r) W))
+     (define rh (if r (rect-h r) H))
+     (define width (max 3 (min (max 12 (+ maxlen 3)) (max 3 (- rw 2)))))
+     (define height (min (+ rows 2) rh))
      (define tv (hash-ref c 'target-vid))
      (define ed (state-ed st))
      (define pos (and (memv tv (view-id-list ed))
                       (point->screen ed tv (view-line ed tv) (view-col ed tv))))
-     (define col (if pos (cdr pos) 0))
-     (define row (if pos (car pos) 0))
-     (define dy (if (<= (+ row 1 height) H) (add1 row) (max 0 (- row height))))
-     (define a (anchor (hash-ref c 'target-w) 'left 'top col dy))
+     (define vcol (if pos (cdr pos) 0))
+     (define vrow (if pos (car pos) 0))
+     (define dx (max 0 (min vcol (max 0 (- rw width)))))
+     ;; 输入行下方放得下就放下方，否则放上方（都不盖住输入行）
+     (define below? (<= (+ vrow 1 height) rh))
+     (define dy (if below? (add1 vrow) (max 0 (- vrow height))))
+     (define a (anchor tw 'left 'top dx dy))
      (define f (float w (completion-vid st) a (cons width height) 'window-border))
      (struct-copy state st [floats (set-float (state-floats st) w f)])]))
 
@@ -208,7 +220,8 @@
     [(not c) st]
     [else
      (define n (length (hash-ref c 'candidates)))
-     (feature-set st 'completion (hash-set c 'index (modulo (+ (hash-ref c 'index) d) n)))]))
+     (publish-selection
+      (feature-set st 'completion (hash-set c 'index (modulo (+ (hash-ref c 'index) d) n))))]))
 
 ;; 打字 / 删除后按新前缀重筛；前缀空或无候选则关。
 (define (refine st)
@@ -230,22 +243,39 @@
              [(null? cands) (completion-close st)]
              [else
               (define idx (min (hash-ref c 'index) (sub1 (length cands))))
-              (feature-set st 'completion
-                           (hash-set (hash-set (hash-set c 'candidates cands) 'index idx) 'prefix prefix))])])])]))
+              (publish-selection
+               (feature-set st 'completion
+                            (hash-set (hash-set (hash-set c 'candidates cands) 'index idx) 'prefix prefix)))])])])]))
 
 ;;; ---------- op ----------
 
-(define (open-menu st vid prefix pool)
-  (define cands (filter-pool pool prefix))
+(define (open-menu st vid prefix pool [specs #f] [base-dir #f])
+  (define cands (filter-pool (distinct-strings pool) prefix))
   (cond
     [(null? cands) st]
     [else
      (define c0 (hash 'candidates cands 'index 0 'prefix prefix 'pool pool
+                      'specs specs 'base-dir base-dir
                       'target-vid vid 'target-w (state-focus st)))
      (define st1 (feature-set st 'completion c0))
-     (open-float-overlay* st1 (completion-vid st1)
-                          (anchor (state-focus st1) 'left 'top 0 1)
-                          (cons 12 3) 'window-border)]))
+     (define st2 (open-float-overlay* st1 (completion-vid st1)
+                                     (anchor (state-focus st1) 'left 'top 0 1)
+                                     (cons 12 3) 'window-border))
+     (publish-selection st2)]))
+
+;; 广播当前选中候选（补全详情弹窗等订阅；菜单关时 name=#f）。
+(define (publish-selection st)
+  (define c (feature-ref st 'completion #f))
+  (cond
+    [(not c) (emit st 'complete-selection (list (focused-vid st) #f #f))]
+    [else
+     (define name (list-ref (hash-ref c 'candidates) (hash-ref c 'index)))
+     (define specs (hash-ref c 'specs #f))
+     (define base-dir (hash-ref c 'base-dir #f))
+     (define binding (and specs base-dir
+                          (with-handlers ([exn:fail? (lambda (_) #f)])
+                            (spec-binding-of name specs base-dir))))
+     (emit st 'complete-selection (list (hash-ref c 'target-vid) name binding))]))
 
 (define (completion-start _ctx st _ev _args)
   (define vid (focused-vid st))
@@ -276,7 +306,7 @@
            (define key (import-key specs base-dir open))
            (define exp (cache-get st key))
            (cond
-             [(list? exp) (values (open-menu st vid prefix (append exp locals (local-pool st))) '())]
+             [(list? exp) (values (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir) '())]
              [(pending? st key) (values st '())]
              [else
               (pending-put! st key)
@@ -317,7 +347,7 @@
            (define open (caddr ctx*)) (define locals (cadddr ctx*))
            (define exp (cache-get st (import-key specs base-dir open)))
            (cond
-             [(list? exp) (open-menu st vid prefix (append exp locals (local-pool st)))]
+             [(list? exp) (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir)]
              [else st])])])]))
 
 (define (complete-next _ctx st _ev _args) (values (if (menu-open? st) (complete-move st 1) st) '()))
@@ -384,6 +414,13 @@
    #:hooks (list (reaction* 'after-insert (lambda (s _args) (refine s)))
                  (reaction* 'after-edit   (lambda (s _args) (refine s)))
                  (reaction* 'job          completion-on-job)
+                 ;; 焦点离开发起补全的视图（如切到另一个文件）→ 关菜单，避免陈旧菜单/文档
+                 (reaction* 'focus-changed
+                            (lambda (s _args)
+                              (define c (feature-ref s 'completion #f))
+                              (if (and c (not (eqv? (focused-vid s) (hash-ref c 'target-vid))))
+                                  (completion-close s)
+                                  s)))
                  (reaction* 'before-render
                             (lambda (s args)
                               (if (and (pair? args) (car args)) (reposition s (car args)) s))))))

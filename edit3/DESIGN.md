@@ -278,9 +278,14 @@ edit3/
     catalog.rkt               插件目录（名字 → 实现）
     demo.rkt                  示例插件
     auto-pair.rkt             括号自动配对（编辑行为插件）
+    completion.rkt            补全菜单
+    docs.rkt                  标识符文档弹窗（本地定义 + 标准库 xref/bluebox/HTML）
     lang/source.rkt           #lang / require / 定义 / provide 启发式扫描（纯）
     lang/pool.rkt             require spec → 最终绑定名 + 模块导出（纯）
     lang/module-index.rkt     已安装模块路径索引（require / #lang 补全用）
+    lang/local-docs.rkt       缓冲区顶层定义 → 一行摘要（纯）
+    lang/docs.rkt             标识符 → 文档（xref / bluebox / HTML）
+    lang/doc-html.rkt         HTML 文档页 → markdown
   config/
     plugins.rkt               本次启用哪些插件（只给名字）
   backends / test: edit3-test/core/*.rkt（纯函数 + 装配单测）
@@ -375,6 +380,16 @@ edit3/
 - [x] **模块路径补全**：`plugins/lang/module-index.rkt`（collects + 包目录扫描，惰性）+
       `completion.rkt` 的 `module-path-context`（`require`/`#lang` 路径位置）→ 走同一个
       `'completion-exports` worker（payload `(module-paths)`）补已安装模块名。
+- [x] **文档弹窗**：`plugins/docs.rkt` 在补全选中项变化时（`emit 'complete-selection`）或 `M-d` 时，
+      算「来源模块 + 原名」（`spec-binding-of`）+ 本地定义（`lang/local-docs`）；标准库/已安装包
+      走 `#:services 'doc` 异步 worker：`lang/docs.rkt`（`setup/xref` 找定义 tag → `scribble/blueboxes`
+      取签名 → 兜底抽 HTML 正文 `lang/doc-html.rkt`）。**同一时刻只允许一个 doc 在途 + 结果缓存**，
+      快速切换不堆积；`lang/docs` 内部信号量串行化。有本地/来源就立即弹；**位置**贴源窗格底、
+      输入行靠下时翻到顶（不盖住输入行）。
+- [x] **浮窗摆位**：补全菜单 / 文档弹窗都只在目标编辑窗格内摆，且在输入行的上/下侧（不盖住
+      输入行）；焦点离开目标视图自动关（防切文件后的陈旧菜单/文档）。
+- [x] **前缀作用域修正**：`editor` 作用域在前缀（`C-s` / `C-n`）激活时让位，修好 `C-s ↑/↓`
+      被补全 `(key up/down) editor` 挡住的问题。
 - [x] **会话操作暴露给插件**：纯领域原语抽到 `core/session.rkt`（open/save/show/split/close/dirty/
       区域/输入行/树/浮窗/指针）；`step` 只留「键表 + op 解释器 + 路由 + 装配」，从 session 调用；
       `core/extension.rkt` 再导出 session，插件可直接调这些原语（不依赖 step）。

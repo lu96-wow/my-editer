@@ -168,7 +168,8 @@
 (define (editor-focus? st ev)
   (and (state-focus st)
        (not (wid-panel-name st (state-focus st)))
-       (not (placing-of st))))
+       (not (placing-of st))
+       (not (prefix-of st))))          ; 前缀激活时让位给 split / new 作用域
 
 ;;; ---------- 放置选择模式 ----------
 

@@ -34,6 +34,23 @@
 (check-true (regexp-match? #rx"something" (view-string ed1 cv1)))
 (check-eq? (document-face-at ed1 did1 0 3) 'complete-selected)
 
+;; 位置：菜单在输入行的上方或下方（不盖住），且不超出编辑窗格
+(define st1f (emit (refresh-panels! st1) 'before-render (list SZ)))
+(define c-float (for/first ([fl (in-list (state-floats st1f))]
+                            #:when (eqv? (panel-vid st1f "*completion*") (float-vid fl))) fl))
+(define cgeo (layout (state-tiling st1f) (state-floats st1f) SZ))
+(define c-tw (hash-ref (feature-ref st1f 'completion #f) 'target-w))
+(define c-tv (hash-ref (feature-ref st1f 'completion #f) 'target-vid))
+(define c-trect (placement-rect (for/first ([p (in-list (geometry-placements cgeo))]
+                                             #:when (eqv? c-tw (placement-wid p))) p)))
+(define c-mrect (placement-rect (for/first ([p (in-list (geometry-placements cgeo))]
+                                             #:when (eqv? (float-wid c-float) (placement-wid p))) p)))
+(define cpos (point->screen (state-ed st1f) c-tv (view-line (state-ed st1f) c-tv) (view-col (state-ed st1f) c-tv)))
+(define c-row (+ (rect-y c-trect) (car cpos)))
+(check-true (or (> (rect-y c-mrect) c-row)
+                (<= (+ (rect-y c-mrect) (rect-h c-mrect)) c-row)))
+(check-true (<= (+ (rect-x c-mrect) (rect-w c-mrect)) 80))
+
 ;; 边打边筛：菜单开着时打字进编辑器并重筛
 (define st2 (run1 st1 (text-event "z")))                  ; 前缀 "soz" -> 无候选 -> 关
 (check-false (feature-ref st2 'completion #f))

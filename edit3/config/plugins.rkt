@@ -8,4 +8,4 @@
 (provide enabled-plugins)
 
 (define enabled-plugins
-  '(syntax brackets words auto-pair completion))
+  '(syntax brackets words auto-pair completion docs))

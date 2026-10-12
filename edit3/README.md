@@ -20,7 +20,8 @@ racket edit3/main.rkt [file]
 | `M-b` | 侧栏区域循环成员：文件树 ↔ 缓冲区 |
 | `C-b` / `C-l` | 显示 / 隐藏侧栏 / 日志区域 |
 | `C-t` | 焦点窗口开关边框（每窗独立） |
-| `M-/` | 补全（浮窗菜单：↑↓/Tab 选，Enter 接受，Esc 取消；候选含 require 绑定名；require/`#lang` 位置补模块路径） |
+| `M-/` | 补全（浮窗菜单：↑↓/Tab 选，Enter 接受，Esc 取消；候选含 require 绑定名；require/`#lang` 位置补模块路径；选中项另开**文档弹窗**） |
+| `M-d` | 查光标处标识符的文档（本地定义 + 标准库 bluebox/HTML） |
 | `M-e` | 焦点回编辑器 |
 | `M-n` / `M-p` | 焦点在窗口间循环 |
 | 文件树上 ↑↓←→ / Enter | 选择、展开/收起、打开文件 |
@@ -84,10 +85,14 @@ plugins/
   auto-pair.rkt    括号自动配对（成对插入 / 跳过右括号）
   words.rkt        当前词高亮（光标驱动）
   completion.rkt   补全（不抢焦点的浮窗菜单；候选含 require 绑定名 / 模块路径）
+  docs.rkt         标识符文档弹窗（本地定义 + 标准库 xref/bluebox/HTML；M-d / 订阅 complete-selection）
   async-demo.rkt   异步 jobs 示例（M-o 发 worker，'job 钩子接结果）
   lang/source.rkt  #lang / require / 定义 / provide 的启发式扫描（纯）
   lang/pool.rkt    require spec → 最终绑定名（only-in/prefix-in/rename-in…）+ 模块导出
   lang/module-index.rkt  已安装模块路径索引（require / #lang 补全用）
+  lang/local-docs.rkt    打开缓冲区里的顶层定义 → 一行摘要（纯）
+  lang/docs.rkt          标识符 → 文档（setup/xref 找 tag；bluebox 签名；HTML 兜底）
+  lang/doc-html.rkt      HTML 文档页 → markdown（bluebox 缺失时用）
 测试在 ../edit3-test/core/。
 ```
 
@@ -127,15 +132,26 @@ plugins/
   编辑器保持焦点与光标 → 能**边打边筛**（after-insert/after-edit 重筛）；菜单随光标
   落位（before-render 钩子每帧重算），候选窗口滚动（`popup-window`）；选中行铺满用
   `complete-selected`、其余 `complete`。`M-/`（editor 作用域）打开；Up/Down/Tab/Enter/Esc
-  用「有菜单就操作菜单、否则回落原行为」的 op 接住。候选 = 本地文档词 + 关键字 +
+  用「有菜单就操作菜单、否则回落原行为」的 op 接住。菜单**只在目标编辑窗格内**摆位：
+  输入行下方放得下就放下方，否则放上方（都不盖住输入行）。焦点离开目标视图（如切文件）自动关。
+  候选 = 本地文档词 + 关键字 +
   require 绑定名（`rename-in`/`prefix-in`…，见 `plugins/lang/`）；模块导出走
   `#:services 'completion-exports` 的**异步 worker**，`'job` 钩子写缓存后再开菜单。
+- **文档弹窗**：`plugins/docs.rkt` 在补全选中项变化时（`emit 'complete-selection`）或在 `M-d`
+  时，算「来源模块 + 原名」（`spec-binding-of`）+ 当前缓冲区的**本地定义**（`lang/local-docs`）；
+  标准库/已安装包走 `#:services 'doc` 的**异步 worker**（`lang/docs`：`setup/xref` 找定义 tag →
+  `scribble/blueboxes` 取签名 → 兜底抽 HTML 正文 `lang/doc-html`）。**同一时刻只允许一个 doc
+  查询在途**（结果按 key 缓存），上下快速切换不重复发请求、也不会卡死；`lang/docs` 内部还用
+  信号量串行化（xref/bluebox 缓存非线程安全）。有本地定义 / 来源就**立即弹**（标准库段异步补）。
+  **位置**：贴源编辑窗格底部（宽度取窗格宽，高度随内容），当输入行靠近底部时自动**翻到顶部**，
+  始终避开正在输入的行；移开光标 / 菜单关 / 切换文件则关。
+  两边不 require 对方，只靠事件解耦。
 - 插件只 `(require "core/extension.rkt")`（白名单门面），不碰 step，不会循环依赖。
 - **异步 jobs**：插件用 `job-submit` 登记工作（纯），`jobs` 从 State 取待办；runtime 的
   worker 线程池按 `#:services` 的 `kind` 跑纯 handler，结果以 `job-event` 回注事件流；
   `step` 完成后 `emit 'job`，插件在 `'job` 钩子里按 `tag` 消费。示例 `plugins/async-demo.rkt`。
 - 启用名单在 `config/plugins.rkt`（只给名字），`plugins/catalog.rkt` 解析成实现；
-  未知名字直接报错。默认启用 `'(syntax brackets words auto-pair completion)`。
+  未知名字直接报错。默认启用 `'(syntax brackets words auto-pair completion docs)`。
 - 示例插件 `plugins/demo.rkt`（op + 面板 + 区域 + 键 + 文档匹配 + on-open + boot）。
 
 启动**不建 scratch 文档**：编辑区是空窗口，从文件树打开文件（或命令行带文件名）。
@@ -143,7 +159,6 @@ plugins/
 ## 还没做（对齐 edit/ 插件所需的内核能力）
 
 - **overlay / popup + modes + 自定义路由**：浮层焦点栈、popup 几何、`modes`、
-  插件直接贡献带 guard/priority 的路由（支撑补全菜单 / 文档弹窗）。
-- **docs 文档弹窗**（`edit/plugins/docs`）。
-- 补全候选接到异步 worker 已完成（模块导出 / 模块路径）；本地文档词仍是同步整篇扫。
+  插件直接贡献带 guard/priority 的路由。
+- 文档弹窗目前不滚动（内容超出 `max-rows` 截断）；edit/ 有滚动与浮层接键栈。
 - `*.rkt` 等模式键表（`config/keys.rkt` 的 `rkt-keys` 还是占位）。
