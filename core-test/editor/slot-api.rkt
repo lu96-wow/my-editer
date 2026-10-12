@@ -7,6 +7,7 @@
          "../../core/editor.rkt"
          "../../core/editor/attributes.rkt"
          "../../core/editor/query.rkt"
+         "../../core/editor/version.rkt"        ; editor-view-*-atom（句柄式原子）
          "../../core/text/slot-dsl.rkt"
          "../../core/text/slots.rkt"
          "../../core/text/document.rkt")

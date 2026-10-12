@@ -15,6 +15,7 @@
 ;;;   attributes did 版写回：端口（face / readonly）+ 开放槽（editor/attributes.rkt）
 ;;;   version 版本层：按 document 句柄写回（异步写回）（editor/version.rkt）
 ;;;   change  读：编辑命令返回的 change（editor/change.rkt）
+;;;   槽声明  开放槽：define-document-slot + fork-ctx（text/slot-dsl、text/slots）再导出
 ;;;   render  单视图渲染 + 增量投影（editor/render.rkt）
 ;;;   layout  rectangle 布局：尺寸落到 view、位置用于贴屏（editor/layout.rkt）
 ;;;
@@ -29,6 +30,9 @@
          "text/base/range.rkt"
          "text/base/change.rkt"
          "text/document.rkt"
+         ;; ---------- 开放槽：声明宏 + fork 上下文 ----------
+         "text/slot-dsl.rkt"
+         "text/slots.rkt"
          "view/base/screen.rkt"
          "view/patch.rkt"
          "view/compose.rkt")
@@ -61,6 +65,11 @@
              editor-view-install! editor-document-history-record!)
  ;; ---------- 读 ----------
  (all-from-out "editor/query.rkt")
+ ;; ---------- 开放槽：声明宏 + fork 上下文 ----------
+ ;; 槽读写（editor-document-slot-ref / -set! / -atom）在 query / attributes；
+ ;; 这里只把「声明槽 + 读 fork-ctx」提到公共面，上层不必再挖 text/ 内部模块。
+ (all-from-out "text/slot-dsl.rkt")     ; define-document-slot
+ (struct-out fork-ctx)
  ;; ---------- 端口 / 槽写回（did 版） ----------
  (all-from-out "editor/attributes.rkt")
  ;; ---------- 版本层：句柄式写回（原子句柄不属公共面） ----------

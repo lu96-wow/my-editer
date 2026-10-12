@@ -5,6 +5,7 @@
          "../../core/editor.rkt"
          "../../core/editor/state.rkt"        ; editor-view-document（内部件）
          "../../core/editor/attributes.rkt"   ; 裸原子 / 视图句柄（内部件）
+         "../../core/editor/version.rkt"      ; editor-view-*-atom（句柄式原子）
          "../../core/editor/history.rkt"
          "../../core/text/document.rkt"
          "../../core/text/base/track.rkt"
