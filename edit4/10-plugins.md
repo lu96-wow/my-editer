@@ -44,6 +44,7 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 
 | plugin 槽 | edit4 落点 | 消费方 |
 |---|---|---|
+| `applies?` | `(path -> boolean)` | `install` 在装配时烘焙进 `decor` / `on-open` |
 | `commands` | `command-registry` | `run-commands` |
 | `scopes` | `scope-registry` | `dispatch` |
 | `keymap` | `(listof entry)`，后装覆盖同 slot | `dispatch` |
@@ -59,6 +60,21 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 
 `decor` 保持 edit4 的**裸函数**（07：不加 name/applies? 层）；`syntax/words/brackets`
 只是 decor 算法，由插件包声明。
+
+### 按文件类型生效：`#:applies?`
+
+插件用 `#:applies?`（`path -> boolean`）声明“我只对哪类文件生效”；`install` 在装配期
+把它**烘焙**进文档级贡献，而不是写在算法里：
+
+- 每个 `decor` 包一层：path 不匹配 → 返回 `'()`；
+- `on-open` 包一层：path 不匹配 → 不动 World。
+
+```racket
+(make-plugin #:name 'brackets #:applies? racket-file? #:decor (list bracket-decor))
+```
+
+于是 `decor/syntax.rkt` / `decor/bracket.rkt` 不再自己判 `racket-file?`。
+注意：**键表**的按类型挂载仍走 `doc-key-matchers`；**命令 / 钩子 / 服务**是全局的，无法按文件类型门控。
 
 ---
 
@@ -134,6 +150,7 @@ boot：World 造好后跑各插件 boot
 
 ## 8. 与 edit3 的差异（有意为之）
 
-1. `faces` → `decor`：edit4 每帧按 `handle+cursor` 重算，去掉 name/applies?/增量协议（07 的决定）。
+1. `faces` → `decor`：edit4 每帧按 `handle+cursor` 重算，去掉 name/增量协议；
+   按类型生效上移到插件包级 `#:applies?`（不再是 `face-plugin applies?` 协议）。
 2. hooks 的触发在 **edit4 的命令层**（`content/edit.rkt` 等 `emit!`），不在 runtime 猜。
 3. 前端不透明类型（regions/decor/panels）不做注册表，直接列表 append。

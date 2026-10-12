@@ -163,17 +163,15 @@
 
 ;;; ---------- 装饰（组合） ----------
 
-;; 只对 Racket 源文件返回层，否则空。
+;; 按行扫描；是否适用（Racket 源文件）由插件包的 #:applies? 声明。
+;; bracket-depth-lines 内部仍按 path 决定是否跳过字符串 / 注释里的括号（词法行为）。
 (define (bracket-decor path text cursor)
-  (cond
-    [(not (racket-file? path)) '()]
-    [else
-     (define depth (bracket-depth-lines path text))
-     (define pairs (if cursor (match-brackets text (car cursor) (cdr cursor)) '()))
-     (for/list ([line (in-list (string-split text "\n"))] [ln (in-naturals)])
-       (define vec (vector-copy (list-ref depth ln)))
-       (for ([p (in-list pairs)] #:when (= ln (car p)))
-         (define c (cdr p))
-         (when (< c (vector-length vec))
-           (vector-set! vec c (face-compose (vector-ref vec c) 'bracket-match))))
-       vec)]))
+  (define depth (bracket-depth-lines path text))
+  (define pairs (if cursor (match-brackets text (car cursor) (cdr cursor)) '()))
+  (for/list ([line (in-list (string-split text "\n"))] [ln (in-naturals)])
+    (define vec (vector-copy (list-ref depth ln)))
+    (for ([p (in-list pairs)] #:when (= ln (car p)))
+      (define c (cdr p))
+      (when (< c (vector-length vec))
+        (vector-set! vec c (face-compose (vector-ref vec c) 'bracket-match))))
+    vec))

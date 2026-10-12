@@ -9,7 +9,7 @@
 (provide syntax-decor)
 
 (require racket/string
-         "lex.rkt" "kind.rkt"
+         "lex.rkt"
          "../view/face.rkt"
          "../config/syntax.rkt")
 
@@ -66,6 +66,6 @@
       (values st2 (cons vec acc))))
   (reverse rev))
 
-;; 装饰：只对 Racket 源文件返回层，否则空。
-(define (syntax-decor path text _cursor)
-  (if (racket-file? path) (scan-lines text) '()))
+;; 装饰：按行扫描；“只对哪些文件生效”由插件包的 #:applies? 声明（不再写在算法里）。
+(define (syntax-decor _path text _cursor)
+  (scan-lines text))

@@ -13,7 +13,8 @@
 
 (require "../plugin.rkt"
          "../core/world.rkt" "../core/store.rkt"
-         "../core/command.rkt" "../core/hook.rkt")
+         "../core/command.rkt" "../core/hook.rkt"
+         racket/path)
 
 (define (count w) (store-ref (world-store w) 'demo-count 0))
 
@@ -30,9 +31,13 @@
 (define demo-commands
   (make-command-registry (list (cons 'demo-bump h-demo-bump))))
 
+(define (demo-applies? path)
+  (equal? (path-get-extension path) #".demo"))
+
 (define demo-plugin
   (make-plugin
    #:name 'demo
+   #:applies? demo-applies?                    ; on-open / decor 只对 *.demo 生效
    #:commands demo-commands
    #:keymap (list (list '(key y alt) 'always (cmd 'demo-bump)))
    #:hooks (list (reaction* 'after-insert demo-on-insert))

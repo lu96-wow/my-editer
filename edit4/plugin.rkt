@@ -21,10 +21,11 @@
          "content/prompt.rkt")
 
 (struct plugin
-  (name commands scopes keymap panels regions decor prompt-kinds hooks services
+  (name applies? commands scopes keymap panels regions decor prompt-kinds hooks services
         doc-key-matchers boot on-open)
   #:transparent)
 ;; name             : symbol | #f
+;; applies?         : (path -> boolean)   本插件只对哪些文件生效（文档级贡献的门控）
 ;; commands         : command-registry
 ;; scopes           : scope-registry
 ;; keymap           : (listof entry)
@@ -39,6 +40,7 @@
 ;; on-open          : (World did path -> World) | #f
 
 (define (make-plugin #:name [name #f]
+                     #:applies? [applies? (lambda (_path) #t)]
                      #:commands [commands (make-command-registry)]
                      #:scopes [scopes (make-scope-registry)]
                      #:keymap [keymap '()]
@@ -51,28 +53,41 @@
                      #:doc-key-matchers [doc-key-matchers '()]
                      #:boot [boot #f]
                      #:on-open [on-open #f])
-  (plugin name commands scopes keymap panels regions decor prompt-kinds hooks services
+  (plugin name applies? commands scopes keymap panels regions decor prompt-kinds hooks services
           doc-key-matchers boot on-open))
 
 (define empty-plugin (make-plugin))
 
 ;; install : Environment (listof plugin) -> Environment
+;;
+;; applies? 在装配期“烘焙”进文档级贡献：
+;;   · decor：包一层，path 不匹配就返回 '()；
+;;   · on-open：包一层，path 不匹配就不动 World。
+;; 这样“插件只对某类文件生效”是声明式数据，不在算法里。
 (define (install env plugins)
   (for/fold ([e env]) ([p (in-list plugins)])
+    (define app? (plugin-applies? p))
+    (define on-open* (plugin-on-open p))
     (environment
      (command-registry-merge (environment-commands e) (plugin-commands p))
      (scope-registry-merge   (environment-scopes e)   (plugin-scopes p))
      (compose-keymaps (list (environment-keymap e) (plugin-keymap p)))
      (append (environment-panels e) (plugin-panels p))
      (append (environment-regions e) (plugin-regions p))
-     (append (environment-decor e)  (plugin-decor p))
+     (append (environment-decor e)
+             (for/list ([d (in-list (plugin-decor p))])
+               (lambda (path text cursor)
+                 (if (app? path) (d path text cursor) '()))))
      (prompt-kind-merge (environment-prompt-kinds e) (plugin-prompt-kinds p))
      (append (environment-hooks e) (plugin-hooks p))
      (service-registry-merge (environment-services e)
                              (make-service-registry (plugin-services p)))
      (append (environment-doc-key-matchers e) (plugin-doc-key-matchers p))
      (append (environment-boots e) (if (plugin-boot p) (list (plugin-boot p)) '()))
-     (append (environment-on-opens e) (if (plugin-on-open p) (list (plugin-on-open p)) '())))))
+     (append (environment-on-opens e)
+             (if on-open*
+                 (list (lambda (w did path) (if (app? path) (on-open* w did path) w)))
+                 '())))))
 
 ;; 装配末尾各跑一次插件的 boot。
 (define (run-boots env w)

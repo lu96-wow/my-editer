@@ -32,6 +32,10 @@
   (define c0 (content-blank))
   (define-values (c1 _did v) (content-add-doc! c0 text 40 3 "t" (string->path "t.rkt")))
   (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0 #:content (content-bind c1 0 v)))
+(define (world-with-path text path)
+  (define c0 (content-blank))
+  (define-values (c1 _did v) (content-add-doc! c0 text 40 3 "t" path))
+  (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0 #:content (content-bind c1 0 v)))
 
 (define (send env w ev)
   (define-values (w* _effs)
@@ -102,10 +106,11 @@
 (check-true (pair? demo-km))
 (check-false (match-doc-keys (string->path "a.rkt") (environment-doc-key-matchers denv)))
 
-;;; ---------- on-open ----------
+;;; ---------- on-open（applies? 门控：只对 *.demo） ----------
 
 (define wo (run-opens denv w0 42 (string->path "x.demo")))
 (check-equal? (store-ref (world-store wo) 'demo-opened) "x.demo")
+(check-false (store-ref (world-store (run-opens denv w0 42 (string->path "x.rkt"))) 'demo-opened #f))
 
 ;;; ---------- jobs / service / job 钩子 ----------
 
@@ -120,9 +125,23 @@
 (check-equal? (store-ref (world-store wf2) 'async-result) res)
 (check-false (store-ref (world-store wf2) 'async-loading #f))
 
-;;; ---------- 非 Racket 文件不生效（decor / matcher） ----------
+;;; ---------- 插件 #:applies?：读只对某类文件生效 ----------
 
-(check-equal? (bracket-decor (string->path "t.txt") "(a)" (cons 0 0)) '())
+;; .rkt：syntax + brackets 生效（“define”着色）
+(define wrkt (world-with-path "(define x 1)" (string->path "t.rkt")))
+(define edr (content-ed (world-content wrkt)))
+(define didr (view-did edr (content-vid-of (world-content wrkt) 0)))
+(define-values (_fr pr) (ensure-faces (hash) (environment-decor env) wrkt))
+(commit-faces! edr pr)
+(check-not-false (document-face-at edr didr 0 1))
+
+;; .txt：syntax / brackets 被 #:applies? 挡住（不着色；words 仍生效但光标不在词上）
+(define wtxt (world-with-path "(define x 1)" (string->path "t.txt")))
+(define edt (content-ed (world-content wtxt)))
+(define didt (view-did edt (content-vid-of (world-content wtxt) 0)))
+(define-values (_ft pt) (ensure-faces (hash) (environment-decor env) wtxt))
+(commit-faces! edt pt)
+(check-false (document-face-at edt didt 0 1))
 
 ;;; ---------- 端到端：runtime worker → job-event → job 钩子 ----------
 
