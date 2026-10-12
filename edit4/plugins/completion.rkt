@@ -204,7 +204,8 @@
      (define dy (if below? (add1 vrow) (max 0 (- vrow height))))
      (define a (anchor tw 'left 'top dx dy))
      (define f (float fw a (cons width height)))
-     (set-float-on-world w f)]))
+     ;; 记住外框宽度：菜单面板按「内容宽 = width-2」补齐，选中行底色才能盖满浮窗。
+     (set-float-on-world (sset w 'completion (hash-set c 'width width)) f)]))
 
 ;;; ---------- 菜单面板 ----------
 
@@ -218,11 +219,14 @@
      (define cap (min 8 (length cands)))
      (define-values (start rows) (popup-window (length cands) idx cap))
      (define shown (take (drop cands start) rows))
-     (define content-w (for/fold ([m 1]) ([x (in-list cands)]) (max m (+ 1 (string-length x)))))
+     ;; 行宽 = 浮窗内容宽（外框内缩 1）：选中行 face 是整行底色，必须铺满浮窗。
+     (define inner-w
+       (or (and (hash-ref c 'width #f) (max 1 (- (hash-ref c 'width) 2)))
+           (for/fold ([m 1]) ([x (in-list cands)]) (max m (+ 1 (string-length x))))))
      (values
       (string-join (for/list ([x (in-list shown)])
                      (define base (string-append " " x))
-                     (string-append base (make-string (max 0 (- content-w (string-length base))) #\space)))
+                     (string-append base (make-string (max 0 (- inner-w (string-length base))) #\space)))
                    "\n")
       (for/list ([i (in-range rows)])
         (cons i (if (= (+ start i) idx) 'complete-selected 'complete))))]))

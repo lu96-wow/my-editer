@@ -61,14 +61,15 @@
 (define aed (content-ed ac))
 (commit-panels! aed (project-panels (environment-panels env) a1b))
 (define afr (world-frame a1b (cons 60 10)))
-(define av2 (content-panel-vid ac "*completion*"))
-(define arect (frame-float-content-rect afr av2))
+(define afid (float-of-panel a1b "*completion*"))
+(define arect (frame-float-content-rect afr afid))
 (define-values (_asc arends asels)
   (render-frame aed afr (lambda (id) (content-vid-of ac id)) (content-vid-of ac 0) 60 10 #f))
-(check-true (for/or ([p (in-list (append arends asels))]
-                      #:when (eq? 'complete-selected (piece-attr p)))
-              (and (= (piece-row p) (rect-y arect))
-                   (= (piece-column p) (rect-x arect)))))
+(define asel (for/first ([p (in-list (append arends asels))]
+                         #:when (eq? 'complete-selected (piece-attr p))) p))
+(check-true (and asel (= (piece-row asel) (rect-y arect))
+                 (= (piece-column asel) (rect-x arect))))
+(check-true (= (string-length (piece-text asel)) (rect-w arect)))   ; 选中行底色铺满浮窗内容宽
 
 ;; 打字 → after-insert 钩子重筛
 (define a2 (send a1 (text-event "l")))

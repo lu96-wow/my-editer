@@ -209,10 +209,10 @@
 
 ;; 写回后 did / vid 读到同一条轨
 (define rq1 (editor-face-range ed (range (point 0 0) (point 0 2)) 'kw))
-(check-equal? (editor-view-face-row rq1 0) (vector 'kw 'kw #f))
+(check-equal? (editor-view-face-row rq1 0 0) (vector 'kw 'kw #f))
 (check-equal? (editor-document-face rq1 0) (editor-view-face rq1 0))
 (define rq2 (editor-readonly-range rq1 (range (point 1 0) (point 1 1)) #t))
-(check-equal? (editor-view-readonly-row rq2 1) (vector #t #f #f))
+(check-equal? (editor-view-readonly-row rq2 0 1) (vector #t #f #f))
 (check-equal? (editor-document-readonly rq2 0) (editor-view-readonly rq2 0))
 
 (displayln "editor/query.rkt: all tests passed")
