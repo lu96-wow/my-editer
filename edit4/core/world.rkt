@@ -1,0 +1,27 @@
+#lang racket
+
+;;; edit4/core/world.rkt —— 命令层作用的唯一状态
+;;;
+;;; World 是值：布局树 + 浮窗表 + 焦点 + prefix（模式）+ drag（手势）。
+;;; 「id ↔ 窗口/视图/文档」的绑定不在这里；命令层只操作不透明 id。
+
+(provide (struct-out world) make-world
+         world-set-layout world-set-floats world-set-focus world-set-prefix world-set-drag
+         focused? has-id?)
+
+(require "../layout.rkt" "drag.rkt")
+
+(struct world (layout floats focus prefix drag) #:transparent)
+
+(define (make-world #:layout [layout #f] #:floats [floats '()]
+                    #:focus [focus #f] #:prefix [prefix #f] #:drag [drag (idle)])
+  (world layout floats focus prefix drag))
+
+(define (world-set-layout w l) (struct-copy world w [layout l]))
+(define (world-set-floats w f) (struct-copy world w [floats f]))
+(define (world-set-focus w f) (struct-copy world w [focus f]))
+(define (world-set-prefix w p) (struct-copy world w [prefix p]))
+(define (world-set-drag w d) (struct-copy world w [drag d]))
+
+(define (focused? w) (and (world-focus w) #t))
+(define (has-id? w id) (and (memv id (ids (world-layout w))) #t))
