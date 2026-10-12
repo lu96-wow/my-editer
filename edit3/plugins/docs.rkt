@@ -92,7 +92,10 @@
    (list (format "~a" name))
    (if (origin-text name binding) (list (origin-text name binding)) '())
    (if local (list "── 本地定义 ──" local) '())
-   (if std (cons (if local "── 文档 ──" "") (string-split (string-trim std) "\n")) '())))
+   (cond
+     [std (cons (if local "── 文档 ──" "") (string-split (string-trim std) "\n"))]
+     [(and (not local) (not binding)) (list "(无文档)")]
+     [else '()])))
 
 (define (docs-content st _v)
   (define d (feature-ref st 'docs #f))
@@ -119,9 +122,6 @@
   (cond
     [(not d) st]
     [(docs-float st) st]
-    ;; 有本地定义 / 来源 / 文档任一时就弹（不干等异步）
-    [(not (or (hash-ref d 'local #f) (hash-ref d 'std #f)
-              (hash-ref d 'binding #f))) st]
     [else
      (define dv (docs-vid st))
      (if dv
@@ -169,13 +169,10 @@
                   'local local 'std #f 'key key 'mods mods 'local-binding? lb?
                   'target-w tw 'target-vid vid))
   (define st1 (feature-set st 'docs d))
+  ;; 立即弹（有缓存就直接显示，否则先显示名字/来源，标准库段异步补）
   (cond
-    [lb? (if local (open-docs st1) (docs-close st1))]
-    [(cached? st1 key) (docs-set-std st1 (cached st1 key))]
-    [else
-     ;; 有本地定义 / 来源就立即弹（标准库段到了再补）；否则等 worker 回来再弹
-     (define st2 (docs-kick st1))
-     (if (or local (hash-ref d 'binding #f)) (open-docs st2) st2)]))
+    [(and (not lb?) (cached? st1 key)) (open-docs (docs-set-std st1 (cached st1 key)))]
+    [else (open-docs (docs-kick st1))]))
 
 (define (on-selection st args)
   (match args
@@ -197,35 +194,47 @@
         (docs-kick st)])]
     [_ st]))
 
-;; 每帧：贴源窗格，避开正在输入的行（光标在下半 / 底部放不下 → 贴顶；否则贴底）。
+;; 每帧：贴在**整个编辑区**（所有平铺编辑器窗的包围盒）的上/下边，避开正在输入的行。
+;; 目标在浮窗里则退化为该浮窗矩形。
 (define (reposition st size)
   (define d (feature-ref st 'docs #f))
   (define w (docs-float st))
   (cond
     [(or (not d) (not w) (not size)) st]
     [else
-     (define tw (hash-ref d 'target-w #f))
+     (define ed (state-ed st))
+     (define tv (hash-ref d 'target-vid #f))
+     (define pos (and tv (memv tv (view-id-list ed))
+                      (point->screen ed tv (view-line ed tv) (view-col ed tv))))
      (define g (layout (state-tiling st) (state-floats st) size))
-     (define p (and tw (for/first ([pl (in-list (geometry-placements g))]
-                                   #:when (eqv? tw (placement-wid pl))) pl)))
+     (define tw (hash-ref d 'target-w #f))
+     (define tpl (and tw (for/first ([p (in-list (geometry-placements g))]
+                                     #:when (eqv? tw (placement-wid p))) p)))
+     ;; 编辑区 = 所有平铺的编辑器窗（非面板）的包围盒；目标在浮窗则用它自己
+     (define area
+       (cond
+         [(and tw (wid-float? st tw) tpl) (placement-rect tpl)]
+         [else
+          (define rs (for/list ([p (in-list (geometry-placements g))]
+                                #:when (and (zero? (placement-z p))
+                                            (let ([v (placement-vid p)])
+                                              (or (not v) (not (panel-name-of-vid st v))))))
+                       (placement-rect p)))
+          (or (rect-bounds rs) (and tpl (placement-rect tpl)))]))
      (cond
-       [(not p) st]
+       [(not area) st]
        [else
-        (define r (placement-rect p))
         (define lines (docs-lines st d))
         (define rows (min (length lines) max-rows))
         (define W (car size)) (define H (cdr size))
-        (define width (max 3 (min (rect-w r) (- W (rect-x r)))))
-        (define height (max 3 (min (+ rows 2) (rect-h r) H)))
-        (define tv (hash-ref d 'target-vid #f))
-        (define ed (state-ed st))
-        (define pos (and tv (memv tv (view-id-list ed))
-                         (point->screen ed tv (view-line ed tv) (view-col ed tv))))
-        (define crow (+ (rect-y r) (if pos (car pos) 0)))
-        (define pane-bottom (+ (rect-y r) (rect-h r)))
-        ;; 底部放不下（会盖住光标行）→ 贴顶，否则贴底
-        (define place-top? (>= (+ crow height 1) pane-bottom))
-        (define a (anchor tw 'left (if place-top? 'top 'bottom) 0 0))
+        (define width (max 3 (min (rect-w area) (- W (rect-x area)))))
+        (define height (max 3 (min (+ rows 2) (rect-h area) H)))
+        (define target-rect (and tpl (placement-rect tpl)))
+        (define crow (+ (rect-y (or target-rect area)) (if pos (car pos) 0)))
+        (define area-bottom (+ (rect-y area) (rect-h area)))
+        (define place-top? (>= (+ crow height 1) area-bottom))
+        (define ay (if place-top? (rect-y area) (- area-bottom height)))
+        (define a (anchor 'screen 'left 'top (rect-x area) ay))
         (define f (float w (docs-vid st) a (cons width height) 'window-border))
         (struct-copy state st [floats (set-float (state-floats st) w f)])])]))
 

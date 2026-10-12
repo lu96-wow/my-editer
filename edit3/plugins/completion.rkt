@@ -249,13 +249,13 @@
 
 ;;; ---------- op ----------
 
-(define (open-menu st vid prefix pool [specs #f] [base-dir #f])
+(define (open-menu st vid prefix pool [specs #f] [base-dir #f] [docs? #f])
   (define cands (filter-pool (distinct-strings pool) prefix))
   (cond
     [(null? cands) st]
     [else
      (define c0 (hash 'candidates cands 'index 0 'prefix prefix 'pool pool
-                      'specs specs 'base-dir base-dir
+                      'specs specs 'base-dir base-dir 'docs? docs?
                       'target-vid vid 'target-w (state-focus st)))
      (define st1 (feature-set st 'completion c0))
      (define st2 (open-float-overlay* st1 (completion-vid st1)
@@ -269,10 +269,11 @@
   (cond
     [(not c) (emit st 'complete-selection (list (focused-vid st) #f #f))]
     [else
-     (define name (list-ref (hash-ref c 'candidates) (hash-ref c 'index)))
+     (define docs? (hash-ref c 'docs? #f))
+     (define name (and docs? (list-ref (hash-ref c 'candidates) (hash-ref c 'index))))
      (define specs (hash-ref c 'specs #f))
      (define base-dir (hash-ref c 'base-dir #f))
-     (define binding (and specs base-dir
+     (define binding (and docs? specs base-dir
                           (with-handlers ([exn:fail? (lambda (_) #f)])
                             (spec-binding-of name specs base-dir))))
      (emit st 'complete-selection (list (hash-ref c 'target-vid) name binding))]))
@@ -306,7 +307,7 @@
            (define key (import-key specs base-dir open))
            (define exp (cache-get st key))
            (cond
-             [(list? exp) (values (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir) '())]
+          [(list? exp) (values (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir #t) '())]
              [(pending? st key) (values st '())]
              [else
               (pending-put! st key)
@@ -347,7 +348,7 @@
            (define open (caddr ctx*)) (define locals (cadddr ctx*))
            (define exp (cache-get st (import-key specs base-dir open)))
            (cond
-             [(list? exp) (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir)]
+             [(list? exp) (open-menu st vid prefix (append exp locals (local-pool st)) specs base-dir #t)]
              [else st])])])]))
 
 (define (complete-next _ctx st _ev _args) (values (if (menu-open? st) (complete-move st 1) st) '()))

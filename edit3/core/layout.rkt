@@ -13,7 +13,7 @@
 (provide
  ;; 求解
  solve-axis min-size axis-min
- layout hit rect-contains?
+ layout hit rect-contains? rect-bounds
  float-rect
  ;; 手术
  layout-split-tile layout-remove-wid layout-remove-vid
@@ -98,6 +98,18 @@
 (define (rect-contains? r x y)
   (and (<= (rect-x r) x) (< x (+ (rect-x r) (rect-w r)))
        (<= (rect-y r) y) (< y (+ (rect-y r) (rect-h r)))))
+
+;; 一组矩形的包围盒（空 → #f）。用 apply min/max 保持精确数（不能用 ±inf.0 种子，
+;; 否则结果会变 flonum）。
+(define (rect-bounds rs)
+  (cond
+    [(null? rs) #f]
+    [else
+     (define x0 (apply min (map rect-x rs)))
+     (define y0 (apply min (map rect-y rs)))
+     (define x1 (apply max (map (lambda (r) (+ (rect-x r) (rect-w r))) rs)))
+     (define y1 (apply max (map (lambda (r) (+ (rect-y r) (rect-h r))) rs)))
+     (rect x0 y0 (- x1 x0) (- y1 y0))]))
 
 (define (float-rect rel f W H)
   (define a (float-anchor f))

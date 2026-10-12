@@ -9,6 +9,7 @@
          "../../edit3/core/step.rkt"
          "../../edit3/core/panels.rkt"
          "../../edit3/core/session.rkt"
+         "../../edit3/core/border.rkt"
          "../../edit3/plugins/completion.rkt"
          "../../edit3/plugins/docs.rkt")
 
@@ -104,8 +105,50 @@
 (check-true (and drect #t))
 (check-true (<= (rect-x drect) (rect-x trect)))                       ; 在源窗格内
 (check-true (<= (+ (rect-x drect) (rect-w drect)) 80))
+;; 尺寸必须是精确整数（曾因 rect-bounds 的 ±inf.0 种子变 flonum 而崩在 make-string）
+(check-true (exact? (rect-w drect)))
+(check-true (exact? (rect-h drect)))
+(check-true (list? (border-runs mdf geo)))            ; 不抛 make-string 错
 (check-true (or (> (rect-y drect) crows)                              ; 贴在光标下方
                 (<= (+ (rect-y drect) (rect-h drect)) crows)))        ; 或上方（不盖住）
+
+;; 无 binding / 无本地定义的候选（如关键词）也要弹文档窗（显示 名字 + (无文档)）
+(define f3 (build-path tmp "c.rkt"))
+(display-to-file "(require (only-in racket/string string-split))\nan\n" f3 #:exists 'truncate)
+(define e0 (boot 80 24 #:plugins (list completion-spec docs-spec)))
+(define-values (e1 ign-e1) (open-file* e0 f3))
+(set-point! (state-ed e1) (focused-vid e1) 1 2)         ; 前缀 "an"
+(define e2 (run1 e1 (key-event '/ '(alt))))
+(define e3 (deliver e2 (car (jobs e2))))
+(check-true (and (docs-float-wid e3) #t))               ; 弹窗在
+(check-equal? (hash-ref (feature-ref e3 'docs #f) 'name) "and")
+(check-false (hash-ref (feature-ref e3 'docs #f) 'binding #f))
+
+;; 分屏：文档弹窗贴**整个编辑区**（两编辑器窗的包围盒），而不是单个窗格
+(define f2 (build-path tmp "b.rkt"))
+(display-to-file "#lang racket\n(define (bfn x) x)\nb\n" f2 #:exists 'truncate)
+(define g0 (boot 80 24 #:plugins (list completion-spec docs-spec)))
+(define-values (g1 ign-g1) (open-file* g0 f))
+(define g2 (run1 (run1 g1 (key-event 's '(ctrl))) (key-event 'right '())))
+(define-values (g3 ign-g3) (open-file* g2 f2))
+(set-point! (state-ed g3) (focused-vid g3) 1 12)        ; bfn
+(define g4 (run1 g3 (key-event 'd '(alt))))
+(define g5 (emit (refresh-panels! g4) 'before-render (list SZ)))
+(define gg (layout (state-tiling g5) (state-floats g5) SZ))
+(define editor-rs
+  (for/list ([p (in-list (geometry-placements gg))]
+             #:when (and (zero? (placement-z p))
+                         (let ([v (placement-vid p)]) (or (not v) (not (panel-name-of-vid g5 v))))))
+    (placement-rect p)))
+(define area (rect-bounds editor-rs))
+(define dgw (docs-float-wid g5))
+(define dgr (for/first ([p (in-list (geometry-placements gg))] #:when (eqv? dgw (placement-wid p)))
+               (placement-rect p)))
+(check-true (and dgr #t))
+(check-equal? (rect-x dgr) (rect-x area))               ; 贴整个编辑区左边
+(check-equal? (rect-w dgr) (rect-w area))               ; 宽度 = 整个编辑区
+(check-true (or (= (rect-y dgr) (rect-y area))          ; 顶边
+                (= (+ (rect-y dgr) (rect-h dgr)) (+ (rect-y area) (rect-h area)))))  ; 或底边
 
 (delete-directory/files tmp)
 (displayln "edit3/docs.rkt: all tests passed")

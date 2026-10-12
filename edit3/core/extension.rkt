@@ -54,7 +54,7 @@
  wid-vid focused-vid all-wids wid-of-vid has-vid? has-wid? wid-float?
  wid-border set-wid-vid remove-wid*
  fresh-wid raise-float* focus-wid* open-float* open-float-overlay* close-float*
- layout hit solve-axis min-size float-rect
+ layout hit solve-axis min-size float-rect rect-bounds
  layout-split-tile layout-remove-wid layout-remove-vid
  layout-resize-boundary layout-set-bases
  layout-fresh-wid layout-tile-vid layout-set-tile-vid layout-tile-border
