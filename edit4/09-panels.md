@@ -67,9 +67,10 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 | 缺口 | edit3 落点 | edit4 应落在 |
 |---|---|---|
 | **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
-| **边框开关** `C-t border-toggle` | 每窗口 border | `content` 每窗 border 标注 + `view/border` 读取 |
 
-**优先级建议**：边框开关 `C-t` → placing。
+**优先级建议**：placing。
+
+> `C-t` 边框开关**不做**：edit4 浮窗固定 1 格框，没有每窗边框开关的需求（边框字形在 `view/border.rkt`，几何内缩在 `layout/float.rkt`）。
 
 ### 插件（L5 + 边界已全部落地，含 completion / docs）
 
@@ -112,9 +113,10 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 - 声明（`config/floats.rkt`）：`(name (rel h v dx dy) (w h))`；
 - 键：`M-j` 开日志、`M-k` 开树、`M-g` 开关日志；float 作用域 `C-j` 提升 / `Tab` 切换 / `Esc`·`C-d` 关闭；
 - 同一 vid 可多位置显示（侧栏的树 + 浮起来的树）；点击浮窗正文也置光标。
-- **浮窗有框**：view 内容矩形四边**内缩 1 格**（`view/render.rkt` 的 `frame->rectangles`），
-  框画在外圈、不压内容；`before-render` 的落位/尺寸按**外框**算，点击→光标按**内缩后**算
-  （`content/pointer.rkt`）。completion/docs 菜单以此为基准。
+- **浮窗有框**：几何归 layout —— `layout/float.rkt` 的 `float-content-rect`（外框四边内缩 1）
+  与 `layout/frame.rkt` 的 `frame-float-content-rect`；`view/render.rkt`、`content/pointer.rkt`
+  都用**内容矩形**，而 `hit`/移动/拖拽/画框用**外框**。边框字形仍由 `view/border.rkt` 画
+  （view 只做 frame→字形，与平铺缝同）。completion/docs 菜单以此为基准。
 
 ### 焦点：导航跟着资源走（不做「focus 具名」）
 

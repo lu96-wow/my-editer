@@ -2,7 +2,8 @@
 
 ;;; edit4/layout/rect.rkt —— 矩形（布局层唯一的几何值）
 ;;;
-;;; 布局层只认矩形与不透明 id；不认识 vid / document / border / face / plugin。
+;;; 布局层只认矩形与不透明 id；不认识 vid / document / face / plugin。
+;;; （浮窗那 1 格“框”只是一圈内容内缩的几何约定，见 float.rkt；字形/face 在 view。）
 
 (provide (struct-out rect) rect-right rect-bottom rect-contains? rect-bounds)
 

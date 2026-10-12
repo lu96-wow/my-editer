@@ -47,8 +47,7 @@
           (layout-cache-frame cache1))
      (values cache1 (layout-cache-frame cache1))]
     [else
-     (define frects (place-floats (geometry-rects tiled) floats (area-of size)))
-     (define fr (frame tiled frects (car size) (cdr size)))
+     (define fr (frame-with-tiled tiled floats size))
      (values (struct-copy layout-cache cache1
                           [floats floats] [f-tiled tiled] [f-size size] [frame fr])
              fr)]))

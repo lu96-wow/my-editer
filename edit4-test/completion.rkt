@@ -62,15 +62,13 @@
 (commit-panels! aed (project-panels (environment-panels env) a1b))
 (define afr (world-frame a1b (cons 60 10)))
 (define av2 (content-panel-vid ac "*completion*"))
-(define arect (for/first ([p (in-list (frame-float-rects afr))]
-                          #:when (eqv? av2 (content-vid-of ac (car p))))
-               (cdr p)))
+(define arect (frame-float-content-rect afr av2))
 (define-values (_asc arends asels)
   (render-frame aed afr (lambda (id) (content-vid-of ac id)) (content-vid-of ac 0) 60 10 #f))
 (check-true (for/or ([p (in-list (append arends asels))]
                       #:when (eq? 'complete-selected (piece-attr p)))
-              (and (= (piece-row p) (add1 (rect-y arect)))
-                   (= (piece-column p) (add1 (rect-x arect))))))
+              (and (= (piece-row p) (rect-y arect))
+                   (= (piece-column p) (rect-x arect)))))
 
 ;; 打字 → after-insert 钩子重筛
 (define a2 (send a1 (text-event "l")))

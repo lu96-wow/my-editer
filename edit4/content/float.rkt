@@ -80,8 +80,7 @@
 ;; World + size -> frame（平铺几何 + 浮窗矩形）。
 (define (world-frame w size)
   (define area (rect 0 0 (car size) (cdr size)))
-  (define tiled (layout (world-layout w) area))
-  (frame tiled (place-floats (geometry-rects tiled) (world-floats w) area) (car size) (cdr size)))
+  (frame-with-tiled (layout (world-layout w) area) (world-floats w) size))
 
 ;;; ---------- 命令 ----------
 

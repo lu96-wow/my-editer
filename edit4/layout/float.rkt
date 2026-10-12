@@ -3,10 +3,11 @@
 ;;; edit4/layout/float.rkt —— 浮窗（正交覆盖层，不参与切分）
 ;;;
 ;;; 浮窗不进布局树：先解树，再用树的结果解浮窗。几何只由 anchor + size 决定。
-;;; 这里只做「锚点解析 / 浮窗 → 矩形 / 移动 / 缩放 / 命中」的纯计算。
+;;; 这里只做「锚点解析 / 浮窗 → 外框矩形 / 内容矩形 / 移动 / 缩放 / 命中」的纯计算。
+;;; 外框用于命中 / 移动 / 拖拽 / 画框；内容矩形（内缩 1）用于渲染 / 点击→文档点。
 
 (provide (struct-out anchor) (struct-out float)
-         float-rect resolve-anchor-rel place-floats
+         float-rect float-content-rect resolve-anchor-rel place-floats
          float-by-id set-float move-float* resize-float* float-hit)
 
 (require "rect.rkt" racket/list)
@@ -46,6 +47,12 @@
   (rect (clamp (+ bx (anchor-dx a)) 0 (max 0 (- W w)))
         (clamp (+ by (anchor-dy a)) 0 (max 0 (- H h)))
         w h))
+
+;; 浮窗有框：**内容矩形** = 外框四边内缩 1 格（框画在外圈，不压内容）。
+;; 这是几何事实，归 layout；view 只负责把外框画成字形，命中/移动用外框。
+(define (float-content-rect r)
+  (rect (add1 (rect-x r)) (add1 (rect-y r))
+        (max 1 (- (rect-w r) 2)) (max 1 (- (rect-h r) 2))))
 
 ;; place-floats : tiled-rects floats area -> (listof (cons float-id rect))
 ;;   顺序与 floats 相同（表头在前 = 最上）；z 由位置决定。

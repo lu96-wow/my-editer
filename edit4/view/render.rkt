@@ -14,11 +14,7 @@
          "border.rkt")
 
 ;; frame -> (listof rectangle)；deep 分层：平铺 0，浮窗 2·z（表头最上）。
-;; 浮窗有框：内容矩形四边内缩 1 格（框画在外圈，不压内容，见 border.rkt）。
-(define (inset-rect r)
-  (rect (add1 (rect-x r)) (add1 (rect-y r))
-        (max 1 (- (rect-w r) 2)) (max 1 (- (rect-h r) 2))))
-
+;; 浮窗用 layout 给的**内容矩形**（已按边框内缩，见 layout/float.rkt）。
 (define (frame->rectangles fr id->vid)
   (define tiled
     (for/list ([(id r) (in-hash (geometry-rects (frame-tiled fr)))] #:when (id->vid id))
@@ -27,7 +23,7 @@
   (define n (length fs))
   (define floats
     (for/list ([p (in-list fs)] [i (in-naturals)] #:when (id->vid (car p)))
-      (define r (inset-rect (cdr p)))
+      (define r (frame-float-content-rect fr (car p)))
       (rectangle (id->vid (car p)) (rect-x r) (rect-y r) (rect-w r) (rect-h r) (* 2 (- n i)))))
   (append tiled floats))
 
