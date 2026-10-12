@@ -58,7 +58,7 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 | `boot` | `(World -> World)` | 装配末尾各跑一次 |
 | `on-open` | `(World did path -> World)` | 打开文档时 |
 
-`decor` 保持 edit4 的**裸函数**（07：不加 name/applies? 层）；`syntax/words/brackets`
+`decor` 保持 edit4 的**裸函数**（07：不加 name/applies? 层）；`brackets/words/bracket-match`
 只是 decor 算法，由插件包声明。
 
 ### 按文件类型生效：`#:applies?`
@@ -73,7 +73,7 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 (make-plugin #:name 'brackets #:applies? racket-file? #:decor (list bracket-decor))
 ```
 
-于是 `decor/syntax.rkt` / `decor/bracket.rkt` 不再自己判 `racket-file?`。
+于是 `decor/bracket-depth.rkt` / `decor/words.rkt` / `decor/bracket-match.rkt` 不再自己判类型。
 注意：**键表**的按类型挂载仍走 `doc-key-matchers`；**命令 / 钩子 / 服务**是全局的，无法按文件类型门控。
 
 ---
@@ -143,7 +143,7 @@ boot：World 造好后跑各插件 boot
 打开文档：run-on-opens + 按 matcher 挂 doc-key + emit document-opened
 ```
 
-内置插件（`plugins/`）：`syntax words brackets auto-pair demo async-demo`。
+内置插件（`plugins/`）：`brackets words bracket-match auto-pair demo async-demo`。
 `config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
 
 ---

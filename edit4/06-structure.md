@@ -34,7 +34,7 @@ L0 值       layout/{rect,size} · core/{event,effect,drag}
   - `content/tree.rkt`（树模型 + IO） vs `view/tree.rkt`（树面板投影）
   - `config/palette.rkt`（调色板数据） vs `view/theme.rkt`（face→ANSI 编码器）
   - `view/face.rkt`（face 值） vs `view/decor.rkt`（装饰插件协议 + 投影）
-  - `decor/`（高亮算法：lex/words/syntax/kind）
+  - `decor/`（高亮算法：lex/words/bracket-depth/bracket-match/kind）
 - 「命令/键表/作用域」是三种数据，各自成文件；装配文件只 fold，不写实现。
 - 单数 `command.rkt` = 命令的数据与注册表；复数不再是「实现 + 键表 + 作用域」的杂物袋。
 
@@ -116,17 +116,18 @@ edit4/
     theme.rkt              face → ANSI 字节（编码器）
 
   decor/                   L4（高亮算法）
-    lex.rkt  words.rkt  syntax.rkt  bracket.rkt  kind.rkt
+    lex.rkt  words.rkt  bracket-depth.rkt  bracket-match.rkt  kind.rkt
 
   config/                  纯数据
     palette.rkt            命名 face + 调色板
-    syntax.rkt             关键字分组
     floats.rkt             浮窗声明（anchor + 尺寸）
     plugins.rkt            本次启用哪些插件（只给名字）
 
   plugins/                 L5（插件包：数据）
     catalog.rkt            名字 → 实现 + 列表顺序 = 层叠顺序
-    syntax.rkt words.rkt brackets.rkt     高亮（decor）
+    brackets.rkt           括号嵌套深度底色（decor）
+    words.rkt              当前词高亮（decor）
+    bracket-match.rkt      光标配对括号高亮（decor）
     auto-pair.rkt          括号自动配对（命令 + 键表）
     demo.rkt               契约演示（op/键表/hook/匹配层/boot/on-open）
     async-demo.rkt         异步演示（service + job 钩子）

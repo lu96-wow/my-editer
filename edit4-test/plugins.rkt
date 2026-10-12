@@ -14,14 +14,15 @@
          "../edit4/core/store.rkt" "../edit4/core/mode.rkt"
          "../edit4/content/model.rkt" (except-in "../edit4/content/adapter.rkt" run)
          "../edit4/view/decor.rkt" "../edit4/view/face.rkt"
-         "../edit4/decor/bracket.rkt"
+         "../edit4/decor/bracket-depth.rkt" "../edit4/decor/bracket-match.rkt"
          "../edit4/plugins/catalog.rkt" "../edit4/config/plugins.rkt"
          "../edit4/plugins/demo.rkt" "../edit4/plugins/async-demo.rkt"
          "../edit4/layout.rkt")
 
 ;;; ---------- catalog / 启用 ----------
 
-(check-equal? (map plugin-name (plugins-by-names '(syntax words))) '(syntax words))
+(check-equal? (map plugin-name (plugins-by-names '(brackets words bracket-match)))
+              '(brackets words bracket-match))
 (check-exn exn:fail? (lambda () (plugins-by-names '(nope))))
 
 (define env (app-environment))
@@ -52,7 +53,7 @@
   (view-col ed v))
 
 (check-not-false (command-lookup (environment-commands env) 'auto-pair-insert))
-(check-equal? (length (environment-decor env)) 3)      ; syntax + words + brackets
+(check-equal? (length (environment-decor env)) 3)      ; brackets + words + bracket-match
 
 (define wp (send env (world-with "") (text-event "(")))
 (check-equal? (doc-string wp) "()")
@@ -61,12 +62,12 @@
 (check-equal? (doc-string wp2) "()")
 (check-equal? (cursor-col wp2) 2)
 
-;;; ---------- bracket decor ----------
+;;; ---------- 括号深度 decor ----------
 
 (define wb (world-with "(a (b) c)"))
 (define edb (content-ed (world-content wb)))
 (define didb (view-did edb (content-vid-of (world-content wb) 0)))
-(define-values (_fc projs) (ensure-faces (hash) (list bracket-decor) wb))
+(define-values (_fc projs) (ensure-faces (hash) (list bracket-depth-decor) wb))
 (check-true (pair? projs))
 (commit-faces! edb projs)
 (check-not-false (document-face-at edb didb 0 0))
@@ -125,23 +126,23 @@
 (check-equal? (store-ref (world-store wf2) 'async-result) res)
 (check-false (store-ref (world-store wf2) 'async-loading #f))
 
-;;; ---------- 插件 #:applies?：读只对某类文件生效 ----------
+;;; ---------- 插件 #:applies?：只对某类文件生效 ----------
 
-;; .rkt：syntax + brackets 生效（“define”着色）
-(define wrkt (world-with-path "(define x 1)" (string->path "t.rkt")))
+;; .rkt：brackets（深度）生效（“a (b)” 的 ( 有深度底色）
+(define wrkt (world-with-path "a (b)" (string->path "t.rkt")))
 (define edr (content-ed (world-content wrkt)))
 (define didr (view-did edr (content-vid-of (world-content wrkt) 0)))
 (define-values (_fr pr) (ensure-faces (hash) (environment-decor env) wrkt))
 (commit-faces! edr pr)
-(check-not-false (document-face-at edr didr 0 1))
+(check-not-false (document-face-at edr didr 0 2))
 
-;; .txt：syntax / brackets 被 #:applies? 挡住（不着色；words 仍生效但光标不在词上）
-(define wtxt (world-with-path "(define x 1)" (string->path "t.txt")))
+;; .txt：brackets 被 #:applies? 挡住（位置 2 的 ( 无深度底色；光标在 a 上也不触发配对）
+(define wtxt (world-with-path "a (b)" (string->path "t.txt")))
 (define edt (content-ed (world-content wtxt)))
 (define didt (view-did edt (content-vid-of (world-content wtxt) 0)))
 (define-values (_ft pt) (ensure-faces (hash) (environment-decor env) wtxt))
 (commit-faces! edt pt)
-(check-false (document-face-at edt didt 0 1))
+(check-false (document-face-at edt didt 0 2))
 
 ;;; ---------- 端到端：runtime worker → job-event → job 钩子 ----------
 
