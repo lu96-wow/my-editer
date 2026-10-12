@@ -72,6 +72,36 @@
              (and (= (rect-y r) (add1 row))                   ; 窗在下
                   (<= (rect-x r) col) (< col (+ (rect-x r) (rect-w r))))))))
 
+;; 某格四邻（正交）是否是平铺窗口内容（不论边框）。
+(define (in-rect? r x y)
+  (and (<= (rect-x r) x) (< x (+ (rect-x r) (rect-w r)))
+       (<= (rect-y r) y) (< y (+ (rect-y r) (rect-h r)))))
+
+(define (adjacent-tile? tiled row col)
+  (for/or ([p (in-list tiled)])
+    (define r (placement-rect p))
+    (or (in-rect? r col (sub1 row))
+        (in-rect? r col (add1 row))
+        (in-rect? r (sub1 col) row)
+        (in-rect? r (add1 col) row))))
+
+;; 某格四角（对角）紧邻的平铺窗口里是否有带边框者。
+;; 只在四窗相交的十字路口用得上：路口格的四个正交邻居都是缝格、没有窗口，
+;; 四窗恰好在对角；此时对角任一窗口有边框，这个路口就该连上。
+(define (diagonal-bordered? st tiled row col)
+  (for/or ([p (in-list tiled)] #:when (wid-border st (placement-wid p)))
+    (define r (placement-rect p))
+    (or (in-rect? r (sub1 col) (sub1 row))
+        (in-rect? r (add1 col) (sub1 row))
+        (in-rect? r (sub1 col) (add1 row))
+        (in-rect? r (add1 col) (add1 row)))))
+
+;; 一格缝是否该画：通常看正交邻居窗口；四窗相交的路口没有正交窗口，改看对角窗口。
+(define (seam-cell? st tiled row col)
+  (or (adjacent-bordered? st tiled row col)
+      (and (not (adjacent-tile? tiled row col))
+           (diagonal-bordered? st tiled row col))))
+
 ;; 内容 placements：浮窗有框时四边内缩 1 格（框画在原矩形边上，不压内容）。
 ;; geometry / 命中 / 拖拽仍用原矩形，只有渲染（view 尺寸）用内缩后的。
 (define (content-placements st placements)
@@ -93,11 +123,11 @@
     (cond
       [(eq? axis 'h)
        (for ([row (in-range (rect-y r) (+ (rect-y r) (rect-h r)))])
-         (when (adjacent-bordered? st tiled row (rect-x r))
+         (when (seam-cell? st tiled row (rect-x r))
            (hash-set! cells (cons row (rect-x r)) #t)))]
       [else
        (for ([col (in-range (rect-x r) (+ (rect-x r) (rect-w r)))])
-         (when (adjacent-bordered? st tiled (rect-y r) col)
+         (when (seam-cell? st tiled (rect-y r) col)
            (hash-set! cells (cons (rect-y r) col) #t)))]))
 
   (append
