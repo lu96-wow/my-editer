@@ -6,16 +6,17 @@
          racket/list
          "../edit4/layout.rkt"
          "../edit4/core.rkt"
-         "../edit4/content/engine.rkt"
-         "../edit4/content/content.rkt"
+         "../edit4/content/adapter.rkt"
+         "../edit4/content/model.rkt"
          "../edit4/content/commands.rkt")
 
 (define SZ (cons 80 24))
 (define reg (command-registry-merge base-commands content-commands))
 (define km (compose-keymaps (list base-keymap content-keymap)))
 (define (mk-ctx w ev) (ctx ev SZ #f))
+(define km* (resolve-keymap reg km))
 (define (run w ev)
-  (car (call-with-values (lambda () (dispatch reg base-scopes km (mk-ctx w ev) w)) list)))
+  (car (call-with-values (lambda () (dispatch base-scopes km* (mk-ctx w ev) w)) list)))
 
 ;;; ---------- 一个窗口 + 一个绑定文档 ----------
 

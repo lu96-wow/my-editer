@@ -1,32 +1,27 @@
 #lang racket
 
-;;; edit4/app.rkt —— 装配（基础 + 内容命令/键表/作用域/面板）+ boot 底盘
+;;; edit4/app.rkt —— 内置插件装配（→ Environment）
+;;;
+;;; 这里是「组装根」：把内置插件（都是 environment -> environment 的 lambda）fold 成
+;;; 一次运行的 Environment。加功能 = 往列表里加一个 lambda；core 不 require 插件。
+;;; 初始 World 的构造在 boot.rkt。
 
-(provide app-commands app-keymap app-scopes app-panels app-faces boot)
+(provide app-environment)
 
-(require "core/world.rkt" "core/command.rkt" "core/keymap.rkt" "core/dispatch.rkt" "core/commands.rkt"
-         "content/content.rkt" "content/commands.rkt"
-         "view/panels.rkt"
-         "face/syntax.rkt" "face/words.rkt"
-         "layout.rkt")
+(require "env.rkt" "plugin.rkt"
+         "core/base.rkt"
+         "content/commands.rkt"
+         "view/panel.rkt"
+         "decor/syntax.rkt" "decor/words.rkt")
 
-(define (app-commands) (command-registry-merge base-commands content-commands))
-(define (app-keymap) (compose-keymaps (list base-keymap content-keymap)))
-(define (app-scopes) base-scopes)
-(define (app-panels) base-panels)
-(define (app-faces) (list syntax-plugin words-plugin))
-
-;; boot：侧栏(树) | 主区(编辑器 / 状态栏)。
-;;   id 2 = 树（固定 28），id 0 = 编辑器（弹性），id 1 = 状态栏（固定 1 行）。
-(define (boot #:text [text ""] #:name [name "*scratch*"] #:path [path #f]
-              #:root [root (current-directory)])
-  (define c0 (content-blank))
-  (define-values (c1 _did-ed vid-ed) (content-add-doc! c0 text 60 22 name path))
-  (define-values (c2 _did-tr vid-tr) (content-add-panel! c1 "*tree*" 28 24))
-  (define-values (c3 _did-st vid-st) (content-add-panel! c2 "*status*" 60 1))
-  (define right (split 'v 1 (list (child (size 1 #t) (leaf 0 (cons 2 2)))
-                                  (child (size 1 #f) (leaf 1 (cons 1 1))))))
-  (define chassis (split 'h 1 (list (child (size 28 #f) (leaf 2 (cons 1 1)))
-                                    (child (size 1 #t) right))))
-  (define c (content-bind (content-bind (content-bind c3 0 vid-ed) 1 vid-st) 2 vid-tr))
-  (refresh-tree! (make-world #:layout chassis #:focus 0 #:content c) #:root root))
+(define (app-environment)
+  (install (base-environment)
+           (list
+            ;; 基础：窗口 / 焦点 / 指针 + 默认键表
+            (add-commands base-commands) (add-scopes base-scopes) (add-keymap base-keymap)
+            ;; 内容：编辑 / 文件 + 内容键表
+            (add-commands content-commands) (add-keymap content-keymap)
+            ;; 面板：状态栏 + 文件树
+            (add-panels base-panels)
+            ;; 装饰：语法 / 当前词（普通 lambda，列表里一放即可）
+            (add-decor (list syntax-decor words-decor)))))

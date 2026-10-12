@@ -15,8 +15,9 @@
   (define frects (place-floats (geometry-rects tiled) (world-floats w) area))
   (ctx ev SZ (frame tiled frects (car SZ) (cdr SZ))))
 
+(define km0 (resolve-keymap base-commands base-keymap))
 (define (run w ev)
-  (call-with-values (lambda () (dispatch base-commands base-scopes base-keymap (mk-ctx w ev) w)) list))
+  (call-with-values (lambda () (dispatch base-scopes km0 (mk-ctx w ev) w)) list))
 
 (define (w1 st) (car st))
 
@@ -69,7 +70,7 @@
 (define km2 (list (list '(key z ctrl) 'always (cmd 'maybe))
                   (list '(key z ctrl) 'always (cmd 'mark))))
 (define m1 (call-with-values
-            (lambda () (dispatch reg2 base-scopes km2 (mk-ctx w0 (key-event 'z '(ctrl))) w0)) list))
+            (lambda () (dispatch base-scopes (resolve-keymap reg2 km2) (mk-ctx w0 (key-event 'z '(ctrl))) w0)) list))
 (check-equal? (world-focus (w1 m1)) 'MARK)         ; 第一条让位，第二条生效
 
 ;;; ---------- 自定义 scope ----------
@@ -79,12 +80,12 @@
 (define km3 (list (list '(key y ctrl) 'focused? (cmd 'mark))))
 ;; 有焦点 → 生效
 (define y1 (call-with-values
-            (lambda () (dispatch reg2 sc km3 (mk-ctx w0 (key-event 'y '(ctrl))) w0)) list))
+            (lambda () (dispatch sc (resolve-keymap reg2 km3) (mk-ctx w0 (key-event 'y '(ctrl))) w0)) list))
 (check-equal? (world-focus (w1 y1)) 'MARK)
 ;; 无焦点 → scope 不成立，未命中
 (define w0n (make-world #:layout (world-layout w0)))
 (define y2 (call-with-values
-            (lambda () (dispatch reg2 sc km3 (mk-ctx w0n (key-event 'y '(ctrl))) w0n)) list))
+            (lambda () (dispatch sc (resolve-keymap reg2 km3) (mk-ctx w0n (key-event 'y '(ctrl))) w0n)) list))
 (check-equal? (world-focus (w1 y2)) #f)
 
 ;;; ---------- keymap 组合：后者覆盖同 slot ----------

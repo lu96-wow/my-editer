@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit4/face/lex.rkt —— 行内标识符扫描（纯）
+;;; edit4/decor/lex.rkt —— 行内标识符扫描（纯）
 ;;;
 ;;; 「什么算一个词」的单一来源。用 char-alphabetic?/char-numeric?（Racket regexp 不支持 \p{L}）。
 

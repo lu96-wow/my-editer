@@ -1,25 +1,44 @@
 #lang racket
 
-;;; edit4/view/face-plugin.rkt —— face 插件协议 + 投影/写回 + 缓存
+;;; edit4/view/decor.rkt —— 装饰：纯函数流水线（lambda + map/fold）
 ;;;
-;;;   face-plugin : name + applies? + scan
-;;;     applies? : path text -> boolean
-;;;     scan     : path text cursor -> (listof (vectorof face))   每行一个向量
+;;; 一个装饰就是一个**函数**：
+;;;     decor : path text cursor -> (listof (vectorof face))   ; 每行一个向量
+;;; 能否应用由函数自己决定（不适用 → 返回 '()）；没有 name / applies? 标签。
 ;;;
-;;; 一个文档可挂多个插件：每行按插件顺序 face-compose 成最终 face。
-;;; ensure-faces 是**纯**投影（读 World，不写引擎），按 (handle, cursor) 缓存跳过；
-;;; commit-faces! 才写引擎。
+;;; 组合 = 对一组装饰 map 求值，再逐格 fold face-compose：
+;;;     (map (lambda (d) (d path text cursor)) decors)
+;;; 于是「加一种高亮」= 往列表里加一个 lambda，而不是注册一条带标签的记录。
+;;;
+;;; ensure-faces 是纯投影（按 handle+cursor 缓存）；commit-faces! 才写引擎。
+;;; 具体装饰（syntax/words/…）在 decor/ 下，本模块只管组合与写回。
 
-(provide (struct-out face-plugin)
-         ensure-faces commit-faces!)
+(provide ensure-faces commit-faces! decor-layers)
 
 (require racket/list
+         "face.rkt"
          "../core/world.rkt"
-         "../content/engine.rkt"
-         "../content/content.rkt"
-         "face.rkt")
+         "../content/adapter.rkt"
+         "../content/model.rkt")
 
-(struct face-plugin (name applies? scan) #:transparent)
+;;; ---------- 组合子（纯） ----------
+
+;; 求值一组装饰 → (listof (listof (vectorof face)))
+(define (decor-layers decors path text cursor)
+  (map (lambda (d) (d path text cursor)) decors))
+
+;; 一个格子的最终 face：把各层在同一位置的 face 逐个 compose。
+(define (cell-face layers ln i)
+  (foldl face-compose #f
+         (for/list ([layer (in-list layers)] #:when (< ln (length layer)))
+           (define lv (list-ref layer ln))
+           (and (< i (vector-length lv)) (vector-ref lv i)))))
+
+;; 一行向量 → 填充段
+(define (vec->fills ln vec)
+  (for/list ([r (in-list (face-runs vec))]) (list ln (car r) ln (cadr r) (caddr r))))
+
+;;; ---------- 投影 ----------
 
 ;; 可见的非面板文档视图（did 去重，取第一个）：(listof (list did vid))
 (define (visible-doc-views w)
@@ -36,30 +55,21 @@
          [else (hash-set! seen did #t) (cons (list did vid) acc)]))]))
 
 ;; 一个文档的 face 填充：(listof (list line start line end face))
-(define (doc-fills plugins w did vid)
+(define (doc-fills decors w did vid)
   (define c (world-content w))
   (define ed (content-ed c))
   (define text (document-string ed did))
   (define path (doc-path (content-doc-meta c did)))
   (define cursor (cons (view-line ed vid) (view-col ed vid)))
-  (define active (for/list ([p (in-list plugins)] #:when ((face-plugin-applies? p) path text)) p))
-  (define layers (for/list ([p (in-list active)]) ((face-plugin-scan p) path text cursor)))
   (define lines (string-split text "\n"))
+  (define layers (decor-layers decors path text cursor))
   (append*
    (for/list ([ln (in-range (length lines))])
      (define len (string-length (list-ref lines ln)))
-     (define vec (make-vector len #f))
-     (for ([layer (in-list layers)])
-       (when (< ln (length layer))
-         (define lv (list-ref layer ln))
-         (define mlen (min len (vector-length lv)))
-         (for ([i (in-range mlen)])
-           (define f (vector-ref lv i))
-           (when f (vector-set! vec i (face-compose (vector-ref vec i) f))))))
-     (for/list ([r (in-list (face-runs vec))]) (list ln (car r) ln (cadr r) (caddr r))))))
+     (vec->fills ln (for/vector ([i (in-range len)]) (cell-face layers ln i))))))
 
-;; ensure-faces : cache plugins world -> (values cache (listof (list did fills)))
-(define (ensure-faces cache plugins w)
+;; ensure-faces : cache decors world -> (values cache (listof (list did fills)))
+(define (ensure-faces cache decors w)
   (define c (world-content w))
   (define ed (and c (content-ed c)))
   (cond
@@ -71,7 +81,7 @@
        (define k (list (document-handle ed did) (car cursor) (cdr cursor)))
        (cond
          [(equal? (hash-ref cache did #f) k) (values cache projs)]
-         [else (values (hash-set cache did k) (cons (list did (doc-fills plugins w did vid)) projs))]))]))
+         [else (values (hash-set cache did k) (cons (list did (doc-fills decors w did vid)) projs))]))]))
 
 ;; commit-faces! : ed (listof (list did fills)) -> void
 (define (commit-faces! ed projections)

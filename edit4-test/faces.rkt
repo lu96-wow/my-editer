@@ -4,11 +4,11 @@
 
 (require rackunit racket/list racket/path
          "../edit4/core/world.rkt"
-         "../edit4/content/content.rkt"
-         "../edit4/content/engine.rkt"
-         "../edit4/view/face-plugin.rkt"
-         "../edit4/face/syntax.rkt"
-         "../edit4/face/words.rkt"
+         "../edit4/content/model.rkt"
+         "../edit4/content/adapter.rkt"
+         "../edit4/view/decor.rkt"
+         "../edit4/decor/syntax.rkt"
+         "../edit4/decor/words.rkt"
          "../edit4/layout.rkt")
 
 (define (make-doc text path)
@@ -21,7 +21,7 @@
 (define-values (w1 did1 v1)
   (make-doc "(define x 1) ; hi\n\"str\"" (string->path "t.rkt")))
 (define ed1 (content-ed (world-content w1)))
-(define-values (_fc1 projs1) (ensure-faces (hash) (list syntax-plugin) w1))
+(define-values (_fc1 projs1) (ensure-faces (hash) (list syntax-decor) w1))
 (check-true (pair? projs1))
 (commit-faces! ed1 projs1)
 (check-not-false (document-face-at ed1 did1 0 1))          ; "define" 涂了色
@@ -33,16 +33,16 @@
 (define-values (w2 did2 v2) (make-doc "hello world" #f))
 (define ed2 (content-ed (world-content w2)))
 (set-point! ed2 v2 0 2)                                 ; 光标在 hello 内
-(define-values (_fc2 projs2) (ensure-faces (hash) (list words-plugin) w2))
+(define-values (_fc2 projs2) (ensure-faces (hash) (list words-decor) w2))
 (commit-faces! ed2 projs2)
 (check-not-false (document-face-at ed2 did2 0 1))           ; hello 被 word-mark
 (check-false (document-face-at ed2 did2 0 7))          ; world 不涂
 
 ;;; ---------- 缓存：handle+cursor 不变 → 跳过 ----------
 
-(define-values (fc3 projs3) (ensure-faces (hash) (list syntax-plugin) w1))
+(define-values (fc3 projs3) (ensure-faces (hash) (list syntax-decor) w1))
 (check-true (pair? projs3))
-(define-values (fc4 projs4) (ensure-faces fc3 (list syntax-plugin) w1))
+(define-values (fc4 projs4) (ensure-faces fc3 (list syntax-decor) w1))
 (check-equal? projs4 '())                               ; 命中缓存，不重算
 
 ;;; ---------- theme 编码不炸 ----------

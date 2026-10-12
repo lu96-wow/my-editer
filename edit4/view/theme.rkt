@@ -2,14 +2,14 @@
 
 ;;; edit4/view/theme.rkt —— 主题编码：face → ANSI 字节
 ;;;
-;;; 调色板在 config/theme.rkt（数据）；这里把 style → 真彩/256/属性，后端只调 attr-bytes。
+;;; 调色板在 config/palette.rkt（数据）；这里把 style → 真彩/256/属性，后端只调 attr-bytes。
 ;;; piece-attr 形态：(render face) | (cursor . face) | (selection . face) | 普通 face。
 
 (provide face-bytes attr-bytes
          style style-fg style-bg style-attrs theme-ref)
 
 (require (prefix-in t: tui)
-         "../config/theme.rkt"
+         "../config/palette.rkt"
          "face.rkt")
 
 (define (color-bytes fg? c)

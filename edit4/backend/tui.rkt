@@ -8,7 +8,7 @@
 
 (require (prefix-in t: tui)
          "../core/event.rkt" "../runtime.rkt" "../view/theme.rkt"
-         (only-in "../content/engine.rkt" piece-row piece-column piece-text piece-attr))
+         (only-in "../content/adapter.rkt" piece-row piece-column piece-text piece-attr))
 
 ;;; ---------- 事件翻译 ----------
 
@@ -56,7 +56,7 @@
 
 ;;; ---------- 入口 ----------
 
-(define (run-tui reg scopes km panels faces world)
+(define (run-tui env world)
   (t:with-tui
    (lambda ()
      (define-values (rows cols) (t:get-window-size))
@@ -74,4 +74,4 @@
             [else (translate ev)]))
         (lambda (pieces) (draw! pieces prev-size (unbox size-box)))
         void))
-     (run b reg scopes km panels faces world))))
+     (run b env world))))

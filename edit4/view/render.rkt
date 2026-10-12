@@ -10,7 +10,7 @@
 
 (require racket/list
          "../layout.rkt"
-         "../content/engine.rkt"
+         "../content/adapter.rkt"
          "border.rkt")
 
 ;; frame -> (listof rectangle)；deep 分层：平铺 0，浮窗 2·z（表头最上）。

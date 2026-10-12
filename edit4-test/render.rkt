@@ -6,8 +6,8 @@
          racket/list
          "../edit4/layout.rkt"
          "../edit4/core.rkt"
-         "../edit4/content/engine.rkt"
-         "../edit4/content/content.rkt"
+         "../edit4/content/adapter.rkt"
+         "../edit4/content/model.rkt"
          "../edit4/view/render.rkt")
 
 (define (pieces->screen ps w h)

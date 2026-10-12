@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit4/face/kind.rkt —— 文档类型判定（纯）
+;;; edit4/decor/kind.rkt —— 文档类型判定（纯）
 
 (provide racket-exts racket-file? racket-applies?)
 

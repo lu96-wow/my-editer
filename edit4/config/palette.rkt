@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit4/config/theme.rkt —— 主题调色板（纯数据，不 require 实现）
+;;; edit4/config/palette.rkt —— 主题调色板（纯数据，不 require 实现）
 ;;;
 ;;; 命名 face（符号）→ style；调色板（按位置取色）给 palette-color / palette-bg。
 ;;; 把 style 翻成 ANSI 字节在 view/theme.rkt。

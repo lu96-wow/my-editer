@@ -1,15 +1,16 @@
 #lang racket
 
-;;; edit4/face/syntax.rkt —— 语法（关键字/字符串/注释/数字）高亮 face 插件
+;;; edit4/decor/syntax.rkt —— 语法（关键字/字符串/注释/数字）高亮装饰
 ;;;
-;;; scan : path text cursor -> (listof (vectorof face))。只对 Racket 源文件生效。
-;;; 跨行块注释 / 字符串用行间状态。关键字按分组取主题 'keyword 调色板。
+;;; 一个装饰就是一个函数：path text cursor -> (listof (vectorof face))。
+;;; 只对 Racket 源文件生效（不适用 → 返回 '()）。跨行块注释 / 字符串用行间状态。
+;;; 关键字按分组取主题 'keyword 调色板。
 
-(provide syntax-plugin)
+(provide syntax-decor)
 
 (require racket/string
          "lex.rkt" "kind.rkt"
-         "../view/face.rkt" "../view/face-plugin.rkt"
+         "../view/face.rkt"
          "../config/syntax.rkt")
 
 (define category-index
@@ -52,7 +53,7 @@
        (paint! i end 'syntax-number) (loop end block #f)]
       [else (loop (add1 i) block #f)])))
 
-(define (syntax-scan _path text _cursor)
+(define (scan-lines text)
   (define lines (string-split text "\n"))
   (define-values (_st rev)
     (for/fold ([st (cons 0 #f)] [acc '()]) ([line (in-list lines)])
@@ -65,5 +66,6 @@
       (values st2 (cons vec acc))))
   (reverse rev))
 
-(define syntax-plugin
-  (face-plugin 'syntax racket-applies? syntax-scan))
+;; 装饰：只对 Racket 源文件返回层，否则空。
+(define (syntax-decor path text _cursor)
+  (if (racket-file? path) (scan-lines text) '()))

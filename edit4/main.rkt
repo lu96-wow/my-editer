@@ -4,12 +4,13 @@
 ;;;
 ;;;   racket edit4/main.rkt [file]
 ;;;
-;;; boot 出一个初始 World，交给 tui 后端运行。
+;;; 装配出 Environment，boot 出初始 World，交给 tui 后端运行。
 
 (provide main)
 
 (require racket/file
          "app.rkt"
+         "boot.rkt"
          "backend/tui.rkt")
 
 (define (main)
@@ -18,6 +19,6 @@
   (define text (if (and path (file-exists? path)) (file->string path) ""))
   (define name (if path path "*scratch*"))
   (define w (boot #:text text #:name name #:path (and path (path->complete-path path))))
-  (run-tui (app-commands) (app-scopes) (app-keymap) (app-panels) (app-faces) w))
+  (run-tui (app-environment) w))
 
 (module+ main (main))

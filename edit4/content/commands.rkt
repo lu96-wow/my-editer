@@ -1,89 +1,16 @@
 #lang racket
 
-;;; edit4/content/commands.rkt —— 内容（编辑 / 导航）命令 + 键表
+;;; edit4/content/commands.rkt —— 内容插件的数据装配（命令 + 键表）
 ;;;
-;;; 命令只调 content/engine 的原语，作用于「焦点窗口显示的 vid」。
-;;; 编辑是引擎的原地写；World 值不变（脏由 handle 身份推出）。
+;;; 编辑命令在 edit.rkt，文件命令在 files.rkt；这里只合并成「内容插件」贡献的命令集，
+;;; 并给出默认键表。真正的装配（base + 内容 + 装饰 → Environment）在 app.rkt。
 
 (provide content-commands content-keymap)
 
-(require racket/match
-         "../core/event.rkt" "../core/world.rkt" "../core/command.rkt" "../core/keymap.rkt"
-         "../core/effect.rkt"
-         "content.rkt" "engine.rkt")
+(require "../core/command.rkt"
+         "edit.rkt" "files.rkt")
 
-(define (focused-vid world)
-  (define c (world-content world))
-  (and c (content-vid-of c (world-focus world))))
-
-(define (edit-via world f)
-  (define v (focused-vid world))
-  (cond
-    [(not v) #f]
-    [else (f (content-ed (world-content world)) v) (cons world '())]))
-
-;;; ---------- 编辑 ----------
-
-(define (h-insert-text ctx world args)
-  (edit-via world (lambda (ed v) (insert! ed v (car args)))))
-
-(define (h-insert-event ctx world args)
-  (edit-via world (lambda (ed v) (insert! ed v (text-event-text (ctx-event ctx))))))
-
-(define (h-delete-back ctx world args) (edit-via world (lambda (ed v) (backspace! ed v))))
-(define (h-delete ctx world args) (edit-via world (lambda (ed v) (delete! ed v))))
-(define (h-select-all ctx world args) (edit-via world (lambda (ed v) (select-all! ed v))))
-(define (h-copy ctx world args) (edit-via world (lambda (ed v) (copy! ed v))))
-(define (h-cut ctx world args) (edit-via world (lambda (ed v) (cut! ed v))))
-(define (h-paste ctx world args) (edit-via world (lambda (ed v) (paste! ed v))))
-(define (h-undo ctx world args) (edit-via world (lambda (ed v) (undo! ed v))))
-(define (h-redo ctx world args) (edit-via world (lambda (ed v) (redo! ed v))))
-
-(define (h-nav ctx world args)
-  (define dir (car args))
-  (define extend? (and (pair? (cdr args)) (cadr args)))
-  (edit-via world (lambda (ed v) (nav! ed v dir extend?))))
-
-;;; ---------- 文件（IO 走 effect） ----------
-
-(define (h-open ctx world args)
-  (cons world (list (open-file (car args)))))
-
-(define (h-save ctx world args)
-  (define c (world-content world))
-  (define id (world-focus world))
-  (define v (and c (content-vid-of c id)))
-  (define did (and v (content-did-of c v)))
-  (define m (and did (content-doc-meta c did)))
-  (define path (and m (doc-path m)))
-  (cond
-    [(not path) #f]
-    [else (cons (world-set-content world (doc-save-mark! c did))
-                (list (save-file path (document-string (content-ed c) did))))]))
-
-(define (h-reload-tree ctx world args)
-  (cons world (list (reload-tree))))
-
-;;; ---------- 注册表 ----------
-
-(define content-commands
-  (make-command-registry
-   (list (cons 'insert-text h-insert-text)
-         (cons 'insert-event-text h-insert-event)
-         (cons 'delete-back h-delete-back)
-         (cons 'delete h-delete)
-         (cons 'select-all h-select-all)
-         (cons 'copy h-copy)
-         (cons 'cut h-cut)
-         (cons 'paste h-paste)
-         (cons 'undo h-undo)
-         (cons 'redo h-redo)
-         (cons 'nav h-nav)
-         (cons 'open h-open)
-         (cons 'save h-save)
-         (cons 'reload-tree h-reload-tree))))
-
-;;; ---------- 键表（编辑作用域；先用 always，'editor scope 后补） ----------
+(define content-commands (command-registry-merge edit-commands file-commands))
 
 (define content-keymap
   (list (list '(text) 'always (cmd 'insert-event-text))

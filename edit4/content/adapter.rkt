@@ -1,9 +1,10 @@
 #lang racket
 
-;;; edit4/content/engine.rkt —— core 文本引擎边界（唯一 require core/editor 的模块）
+;;; edit4/content/adapter.rkt —— 文本引擎适配层（唯一 require core/editor 的模块）
 ;;;
 ;;; 引擎是命令式的（有 id、有 box）：结构操作返回新 editor，命令式操作原地改 box，
 ;;; 渲染把 rectangle 交给引擎做增量 patch。其余模块只走本模块，不直接碰 core。
+;;; 命名 adapter 是强调它是「内容层与底层引擎的边界」。
 
 (provide
  blank-editor

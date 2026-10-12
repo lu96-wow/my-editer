@@ -138,7 +138,7 @@
 
 (define (run1 w ev)
   (car (call-with-values
-        (lambda () (dispatch base-commands base-scopes base-keymap (ev->ctx w ev) w))
+        (lambda () (dispatch base-scopes (resolve-keymap base-commands base-keymap) (ev->ctx w ev) w))
         list)))
 (define w0 (make-world #:layout (conv-tl e3-boot) #:focus 0))
 (define w1 (run1 w0 (cursor-event 'press 'left 28 5)))

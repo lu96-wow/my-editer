@@ -1,14 +1,15 @@
 #lang racket
 
-;;; edit4/face/words.rkt —— 光标所在词高亮 face 插件
+;;; edit4/decor/words.rkt —— 光标所在词高亮装饰
+;;;
+;;; 装饰就是函数：path text cursor -> (listof (vectorof face))。
 
-(provide words-plugin)
+(provide words-decor)
 
 (require racket/string
-         "lex.rkt"
-         "../view/face-plugin.rkt")
+         "lex.rkt")
 
-(define (words-scan _path text cursor)
+(define (words-decor _path text cursor)
   (define lines (string-split text "\n"))
   (define cl (car cursor))
   (define cc (cdr cursor))
@@ -20,6 +21,3 @@
         (when (and (<= (car m) cc) (<= cc (cdr m)))
           (for ([j (in-range (car m) (cdr m))]) (vector-set! vec j 'word-mark)))))
     vec))
-
-(define words-plugin
-  (face-plugin 'words (lambda (_path _text) #t) words-scan))

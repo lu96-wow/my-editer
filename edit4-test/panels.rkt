@@ -5,13 +5,14 @@
 (require rackunit
          racket/list racket/file racket/path
          "../edit4/core/world.rkt"
-         "../edit4/content/content.rkt"
-         (only-in "../edit4/content/engine.rkt" view-string insert!)
-         "../edit4/view/panels.rkt"
-         "../edit4/app.rkt")
+         "../edit4/content/model.rkt"
+         (only-in "../edit4/content/adapter.rkt" view-string insert!)
+         "../edit4/view/panel.rkt"
+         "../edit4/boot.rkt")
 
 (define (panel-proj w name)
-  (for/first ([x (in-list (project-panels base-panels w))] #:when (equal? name (car x))) x))
+  (define v (content-panel-vid (world-content w) name))
+  (for/first ([x (in-list (project-panels base-panels w))] #:when (eqv? v (car x))) (cadr x)))
 
 ;;; ---------- 临时目录里放一个文件 ----------
 
@@ -21,11 +22,9 @@
 (define w0 (boot #:text "" #:name "*scratch*" #:root dir))
 
 ;; status 面板包含文档名
-(define st (panel-proj w0 "*status*"))
-(check-true (and st (regexp-match? #rx"scratch" (caddr st))))
+(check-true (regexp-match? #rx"scratch" (panel-proj w0 "*status*")))
 ;; tree 面板包含目录里的文件
-(define tr (panel-proj w0 "*tree*"))
-(check-true (and tr (regexp-match? #rx"a\\.txt" (caddr tr))))
+(check-true (regexp-match? #rx"a\\.txt" (panel-proj w0 "*tree*")))
 
 ;; 写回后，面板文档真的能看到内容
 (define ed (content-ed (world-content w0)))
@@ -37,8 +36,7 @@
 
 (define evid (content-vid-of (world-content w0) 0))
 (insert! ed evid "hello")
-(define st2 (panel-proj w0 "*status*"))
 ;; 注意：w0 的 content 是同一个引擎盒，insert! 已改变文本，故 status 投影应带 *
-(check-true (and st2 (regexp-match? #rx"\\*" (caddr st2))))
+(check-true (regexp-match? #rx"\\*" (panel-proj w0 "*status*")))
 
 (displayln "edit4/panels.rkt: all tests passed")
