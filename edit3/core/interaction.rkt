@@ -31,19 +31,36 @@
   (define mb (list-ref mins (add1 index)))
   (max (- ma a) (min (- b mb) delta)))
 
+;; 多条同轴缝的公共可移动区间（下限取最大、上限取最小）。单条时就是 clamp-delta。
+(define (clamp-many seams delta)
+  (cond
+    [(null? seams) delta]
+    [else
+     (define lo
+       (apply max (for/list ([s (in-list seams)])
+                    (match-define (list _axis _path index lens mins _bases) s)
+                    (- (list-ref mins index) (list-ref lens index)))))
+     (define hi
+       (apply min (for/list ([s (in-list seams)])
+                    (match-define (list _axis _path index lens mins _bases) s)
+                    (- (list-ref lens (add1 index)) (list-ref mins (add1 index))))))
+     (max lo (min hi delta))]))
+
 (define (pointer-press g st ev)
   (define x (cursor-event-x ev))
   (define y (cursor-event-y ev))
   (define h (hit g x y))
   (cond
     [(handle? h)
+     (define kind (handle-kind h))
      (define snap
-       (case (handle-kind h)
+       (case kind
          [(boundary) (match-define (list _axis _path _index lens mins bases) (handle-data h))
                      (list 'boundary lens mins bases)]
+         [(junction) (list 'junction (handle-data h))]
          [else (match-define (list wid edge) (handle-data h))
                (list 'float (float-by-id (state-floats st) wid) edge)]))
-     (define fo (if (eq? (handle-kind h) 'boundary)
+     (define fo (if (memq kind '(boundary junction))
                     (state-focus st)
                     (car (handle-data h))))
      (struct-copy state st [focus fo] [drag (dragging h x y snap)])]
@@ -70,6 +87,21 @@
                               (state-tiling st) path index
                               (+ (list-ref bases index) d*)
                               (- (list-ref bases (add1 index)) d*))])]
+       ;; 十字路口：同时拖横、竖两条缝。按轴分组，各自取多段的**可移动区间交集**，
+       ;; 保证不会有一段被 min 卡住而其它段跑出去（否则线会折成台阶）。
+       [(list 'junction datas)
+        (define vs (filter (lambda (s) (eq? 'h (car s))) datas))
+        (define hz (filter (lambda (s) (eq? 'v (car s))) datas))
+        (define dx* (clamp-many vs dx))
+        (define dy* (clamp-many hz dy))
+        (define tl
+          (for/fold ([tl (state-tiling st)]) ([s (in-list datas)])
+            (match-define (list axis path index _lens _mins bases) s)
+            (define delta (if (eq? axis 'h) dx* dy*))
+            (layout-set-bases tl path index
+                              (+ (list-ref bases index) delta)
+                              (- (list-ref bases (add1 index)) delta))))
+        (struct-copy state st [tiling tl])]
        [(list 'float f0 edge)
         (define floats*
           (if (eq? edge 'move)

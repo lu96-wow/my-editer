@@ -132,6 +132,29 @@
         (clamp (+ base-y (anchor-dy a)) 0 (max 0 (- H h)))
         w h))
 
+;; 四窗相交的十字路口：
+;;   · 判定：某缝格的上下左右四臂都是缝格（T 字路口只有三臂）；
+;;   · 聚合：穿过该格的**整条**竖缝线 + 整条横缝线（同列 / 同行的所有 boundary 段），
+;;     这样鼠标在路口能同时拖动横、竖两条线，且多列布局下整条线保持笔直。
+(define (junction-handles bhs)
+  (define cells (make-hash))          ; (row . col) -> #t
+  (for ([h (in-list bhs)])
+    (define r (handle-rect h))
+    (for ([row (in-range (rect-y r) (+ (rect-y r) (rect-h r)))])
+      (for ([col (in-range (rect-x r) (+ (rect-x r) (rect-w r)))])
+        (hash-set! cells (cons row col) #t))))
+  (define (cell? row col) (hash-has-key? cells (cons row col)))
+  (define (line-of pred)
+    (for/list ([h (in-list bhs)] #:when (pred (handle-rect h))) (handle-data h)))
+  (for/list ([(k _) (in-hash cells)])
+    (define row (car k)) (define col (cdr k))
+    (and (cell? (sub1 row) col) (cell? (add1 row) col)      ; 上、下臂都是缝
+         (cell? row (sub1 col)) (cell? row (add1 col))      ; 左、右臂都是缝
+         (handle 'junction (rect col row 1 1) 0
+                 (remove-duplicates
+                  (append (line-of (lambda (r) (= col (rect-x r))))    ; 整条竖线
+                          (line-of (lambda (r) (= row (rect-y r)))))))))) ; 整条横线
+
 ;; layout : tiling floats size -> geometry
 (define (layout tl floats size)
   (define W (car size))
@@ -176,6 +199,10 @@
 
   (walk (tiling-root tl) (rect 0 0 W H) '())
 
+  ;; 十字路口：从全部边界缝推出 junction handle（仅命中用，渲染仍只认 'boundary）。
+  (define bhs (filter (lambda (h) (eq? 'boundary (handle-kind h))) hs))
+  (set! hs (append (filter values (junction-handles bhs)) hs))
+
   ;; 浮窗：表头 = 最上（z 最大）；rel 解析用已布好的 tiled。
   (define (rel-rect a)
     (cond [(eq? (anchor-rel a) 'screen) (rect 0 0 W H)]
@@ -200,7 +227,10 @@
 
 ;;; ---------- 命中 ----------
 
-;; 最上层先：handle 与 placement 比 z，同 z 时手柄优先（缝可拖）。
+;; 最上层先：handle 与 placement 比 z，同 z 时手柄优先（缝可拖）；
+;; 同为平铺缝时 junction（十字路口）优先于 boundary，否则路口永远只剩一条缝可拖。
+(define (handle-rank h) (if (eq? 'junction (handle-kind h)) 1 0))
+
 (define (hit g x y)
   (define best-p
     (for/fold ([best #f]) ([p (in-list (geometry-placements g))])
@@ -210,7 +240,10 @@
   (define best-h
     (for/fold ([best #f]) ([h (in-list (geometry-handles g))])
       (if (and (rect-contains? (handle-rect h) x y)
-               (or (not best) (> (handle-z h) (handle-z best))))
+               (or (not best)
+                   (> (handle-z h) (handle-z best))
+                   (and (= (handle-z h) (handle-z best))
+                        (> (handle-rank h) (handle-rank best)))))
           h best)))
   (cond
     [(and best-h (or (not best-p) (>= (handle-z best-h) (placement-z best-p)))) best-h]

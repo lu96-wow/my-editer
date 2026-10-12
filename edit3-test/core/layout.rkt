@@ -156,4 +156,65 @@
 (check-equal? (float-size (car (state-floats sm4))) (cons 12 6))
 (check-equal? (state-focus (pointer-press gfl sfl (cursor-event 'press 'left 60 5))) 'a)
 
+;; ---- 十字路口 junction：一次拖拽同时改横、竖两条缝 ----
+;; 2×2：root h-split，两列为 v-split；交点格 (row 5, col 10)
+(define (grid-h)
+  (tiling (split 'h (list (mk 'h 8 1 1 (split 'v (list (mk 'v 5 1 1 (tile* 'tl))
+                                                        (mk 'v 5 1 1 (tile* 'bl)))))
+                       (mk 'h 8 1 1 (split 'v (list (mk 'v 5 1 1 (tile* 'tr))
+                                                        (mk 'v 5 1 1 (tile* 'br)))))))))
+(define g2x2 (g* (grid-h) '() (cons 21 11)))
+(define hj (hit g2x2 10 5))
+(check-true (handle? hj))
+(check-equal? (handle-kind hj) 'junction)
+
+(define sj0 (make-state #:tiling (grid-h)))
+(define sj1 (pointer-move g2x2 (pointer-press g2x2 sj0 (cursor-event 'press 'left 10 5))
+                          (cursor-event 'move 'left 12 6)))
+(define gj1 (layout (state-tiling sj1) '() (cons 21 11)))
+(check-equal? (rect-of gj1 'tl) (rect 0 0 12 6))     ; 竖缝 +2、横缝 +1 同步
+(check-equal? (rect-of gj1 'tr) (rect 13 0 8 6))
+(check-equal? (rect-of gj1 'bl) (rect 0 7 12 4))
+(check-equal? (rect-of gj1 'br) (rect 13 7 8 4))
+;; 拖过头：两方向各自被 min 夹住（不会有一段越过 min）
+(define sj2 (pointer-move g2x2 (pointer-press g2x2 sj0 (cursor-event 'press 'left 10 5))
+                          (cursor-event 'move 'left -100 -100)))
+(check-equal? (rect-of (layout (state-tiling sj2) '() (cons 21 11)) 'tl) (rect 0 0 2 2))
+
+;; 反向嵌套（root v-split，两条竖缝各自成段）也能生成 junction 并一起移动
+(define (grid-v)
+  (tiling (split 'v (list (mk 'v 5 1 1 (split 'h (list (mk 'h 8 1 1 (tile* 'tl))
+                                                        (mk 'h 8 1 1 (tile* 'tr)))))
+                       (mk 'v 5 1 1 (split 'h (list (mk 'h 8 1 1 (tile* 'bl))
+                                                        (mk 'h 8 1 1 (tile* 'br)))))))))
+(define g2v (g* (grid-v) '() (cons 21 11)))
+(check-equal? (handle-kind (hit g2v 10 5)) 'junction)
+(define sv (pointer-move g2v (pointer-press g2v (make-state #:tiling (grid-v))
+                                            (cursor-event 'press 'left 10 5))
+                         (cursor-event 'move 'left 8 5)))
+(check-equal? (rect-of (layout (state-tiling sv) '() (cons 21 11)) 'tl) (rect 0 0 8 5))
+(check-equal? (rect-of (layout (state-tiling sv) '() (cons 21 11)) 'tr) (rect 9 0 12 5))
+
+;; 多列：拖交点的纵向位移让**整条**横线一起动（不留台阶）
+(define (grid3)
+  (tiling (split 'h (list (mk 'h 6 1 1 (split 'v (list (mk 'v 5 1 1 (tile* 'a0)) (mk 'v 5 1 1 (tile* 'b0)))))
+                       (mk 'h 6 1 1 (split 'v (list (mk 'v 5 1 1 (tile* 'a1)) (mk 'v 5 1 1 (tile* 'b1)))))
+                       (mk 'h 6 1 1 (split 'v (list (mk 'v 5 1 1 (tile* 'a2)) (mk 'v 5 1 1 (tile* 'b2)))))))))
+(define g3 (g* (grid3) '() (cons 23 11)))
+(check-equal? (handle-kind (hit g3 7 5)) 'junction)
+(define s3 (pointer-move g3 (pointer-press g3 (make-state #:tiling (grid3))
+                                            (cursor-event 'press 'left 7 5))
+                         (cursor-event 'move 'left 7 6)))
+(define g3b (layout (state-tiling s3) '() (cons 23 11)))
+(check-equal? (map (lambda (w) (rect-of g3b w)) '(a0 a1 a2))
+              (list (rect 0 0 7 6) (rect 8 0 7 6) (rect 16 0 7 6)))
+(check-equal? (map (lambda (w) (rect-of g3b w)) '(b0 b1 b2))
+              (list (rect 0 7 7 4) (rect 8 7 7 4) (rect 16 7 7 4)))
+
+;; T 字路口只有两段缝 → 不生成 junction（仍按普通缝拖）
+(define tT (tiling (split 'v (list (mk 'v 5 1 1 (split 'h (list (mk 'h 5 1 1 (tile* 'a))
+                                                               (mk 'h 5 1 1 (tile* 'b)))))
+                                (mk 'v 5 1 1 (tile* 'c))))))
+(check-equal? (handle-kind (hit (layout tT '() (cons 21 11)) 10 5)) 'boundary)
+
 (displayln "edit3/layout.rkt: all tests passed")

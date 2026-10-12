@@ -168,14 +168,19 @@ split 有 `n` 个子项 → **预留 `n-1` 格**：内容空间 `= extent - (n-1
 (struct rect      (x y w h) #:transparent)
 (struct placement (wid vid rect z) #:transparent)      ; 窗口
 (struct handle    (kind rect z data) #:transparent)      ; 可拖手柄（z 用于命中优先级）
-;; kind = 'boundary | 'float-move | 'float-resize-{nw,ne,sw,se}
-;; data = 缝：(axis path index lens mins bases)  | 浮窗：(wid edge)
+;; kind = 'boundary | 'junction | 'float-move | 'float-resize-{nw,ne,sw,se}
+;; data = 缝：(axis path index lens mins bases)  |  十字路口：(listof 缝 data)
+;;        | 浮窗：(wid edge)
 (struct geometry  (placements handles w h) #:transparent)
 ```
 
 - `layout : tiling floats size -> geometry`（纯）。
 - `hit : geometry x y -> (or/c handle placement #f)`（纯，最上层优先）。
 - 鼠标 press 直接拿 handle，**不需要再遍历树**。渲染和命中共用同一个 geometry，天然一致。
+- **十字路口**（四窗相交）额外生成一个 `'junction` handle（1 格，`hit` 里优先于
+  `'boundary`）：它聚合穿过该点的**整条竖缝线 + 整条横缝线**（同列 / 同行的所有缝段）。
+  拖动时按轴分组，各自取多段的可移动区间交集，一条 move 同时改两条线 → 四窗一起缩放。
+  T 字路口只有三臂，不生成（仍按普通缝拖）。渲染只认 `'boundary`，junction 纯用于命中。
 
 ## 6. 指针 / 交互状态机
 
