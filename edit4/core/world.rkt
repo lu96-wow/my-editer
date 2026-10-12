@@ -7,17 +7,19 @@
 
 (provide (struct-out world) make-world
          world-set-layout world-set-floats world-set-focus world-set-prefix world-set-drag world-set-content
+         feature-ref feature-set
          focused? has-id?)
 
 (require "../layout.rkt" "drag.rkt")
 
 ;; content 是不透明字段（内容层自己解释），core 不依赖内容层。
-(struct world (layout floats focus prefix drag content) #:transparent)
+;; features 是命名空间化的局部状态（面板/插件用），键约定 (namespace . key)。
+(struct world (layout floats focus prefix drag content features) #:transparent)
 
 (define (make-world #:layout [layout #f] #:floats [floats '()]
                     #:focus [focus #f] #:prefix [prefix #f] #:drag [drag (idle)]
-                    #:content [content #f])
-  (world layout floats focus prefix drag content))
+                    #:content [content #f] #:features [features (hash)])
+  (world layout floats focus prefix drag content features))
 
 (define (world-set-layout w l) (struct-copy world w [layout l]))
 (define (world-set-floats w f) (struct-copy world w [floats f]))
@@ -25,6 +27,9 @@
 (define (world-set-prefix w p) (struct-copy world w [prefix p]))
 (define (world-set-drag w d) (struct-copy world w [drag d]))
 (define (world-set-content w c) (struct-copy world w [content c]))
+
+(define (feature-ref w k d) (hash-ref (world-features w) k d))
+(define (feature-set w k v) (struct-copy world w [features (hash-set (world-features w) k v)]))
 
 (define (focused? w) (and (world-focus w) #t))
 (define (has-id? w id) (and (memv id (ids (world-layout w))) #t))

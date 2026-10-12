@@ -9,6 +9,7 @@
 
 (require racket/match
          "../core/event.rkt" "../core/world.rkt" "../core/command.rkt" "../core/keymap.rkt"
+         "../core/effect.rkt"
          "content.rkt" "engine.rkt")
 
 (define (focused-vid world)
@@ -43,6 +44,26 @@
   (define extend? (and (pair? (cdr args)) (cadr args)))
   (edit-via world (lambda (ed v) (nav! ed v dir extend?))))
 
+;;; ---------- 文件（IO 走 effect） ----------
+
+(define (h-open ctx world args)
+  (cons world (list (open-file (car args)))))
+
+(define (h-save ctx world args)
+  (define c (world-content world))
+  (define id (world-focus world))
+  (define v (and c (content-vid-of c id)))
+  (define did (and v (content-did-of c v)))
+  (define m (and did (content-doc-meta c did)))
+  (define path (and m (doc-path m)))
+  (cond
+    [(not path) #f]
+    [else (cons (world-set-content world (doc-save-mark! c did))
+                (list (save-file path (document-string (content-ed c) did))))]))
+
+(define (h-reload-tree ctx world args)
+  (cons world (list (reload-tree))))
+
 ;;; ---------- 注册表 ----------
 
 (define content-commands
@@ -57,7 +78,10 @@
          (cons 'paste h-paste)
          (cons 'undo h-undo)
          (cons 'redo h-redo)
-         (cons 'nav h-nav))))
+         (cons 'nav h-nav)
+         (cons 'open h-open)
+         (cons 'save h-save)
+         (cons 'reload-tree h-reload-tree))))
 
 ;;; ---------- 键表（编辑作用域；先用 always，'editor scope 后补） ----------
 
@@ -73,4 +97,6 @@
         (list '(key end) 'always (cmd 'nav 'end))
         (list '(key a ctrl) 'always (cmd 'select-all))
         (list '(key z ctrl) 'always (cmd 'undo))
-        (list '(key y ctrl) 'always (cmd 'redo))))
+        (list '(key y ctrl) 'always (cmd 'redo))
+        (list '(key s alt) 'always (cmd 'save))
+        (list '(key u ctrl) 'always (cmd 'reload-tree))))
