@@ -68,18 +68,17 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 |---|---|---|
 | **placing**（多窗打开时选目标） | placing 状态机 | `World` 一个模式字段 + prompt 类似流程（工程量大） |
 | **边框开关** `C-t border-toggle` | 每窗口 border | `content` 每窗 border 标注 + `view/border` 读取 |
-| **异步插件内容**（completion/docs） | plugins | 基础设施已就位（见下），只差把两个插件搬过来 |
 
-**优先级建议**：边框开关 `C-t` → placing → completion / docs。
+**优先级建议**：边框开关 `C-t` → placing。
 
-### 插件（L5 + 边界已落地）
+### 插件（L5 + 边界已全部落地，含 completion / docs）
 
 `plugin.rkt` 契约已补齐到 edit3 的能力槽：
 `name / commands / scopes / keymap / panels / regions / decor / prompt-kinds / hooks / services /
  doc-key-matchers / boot / on-open`；`install` fold 进 Environment。详见 `10-plugins.md`。
 
-- **高亮**（`brackets` 深度底色 / `words` 当前词 / `bracket-match` 光标配对）是普通 decor 函数
-  （`decor/*.rkt`），由插件包声明；
+- **高亮**（`syntax` 关键字/字符串/注释/数字 / `brackets` 深度底色 / `words` 当前词 /
+  `bracket-match` 光标配对）是普通 decor 函数（`decor/*.rkt`），由插件包声明；
 - **`auto-pair`** 是命令 + 键表覆盖（`plugins/auto-pair.rkt`），后装覆盖 `(text) editor` 同 slot；
 - **hooks**：`World.signals` + `core/hook.rkt` 的 `reaction`/`run-hooks`；命令用 `emit!` 发点
   （`after-edit`/`after-insert`/`after-nav`/`focus-changed`/`before-render`/`document-opened`/`job`…）；
@@ -91,7 +90,15 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 内置插件在 `plugins/`，`config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
 `demo`（契约演示）与 `async-demo`（service + job 钩子）证明所有槽可用。
 
-还差的是把 **completion / docs** 搬过来（它们要用上面全部基础设施）。
+- **`completion`**（`plugins/completion.rkt`）：不抢焦点的浮窗菜单；M-/ 开；Up/Down/Tab/Enter/Esc
+  用“有菜单则操作菜单、否则回落原行为”的命令接住；打字经 after-insert/after-edit 重筛；
+  require 导出用异步 `completion-exports` job，结果由 `job` 钩子回写缓存再开菜单；
+  发 `complete-selection` 供 docs 订阅。
+- **`docs`**（`plugins/docs.rkt`）：订阅 `complete-selection`（与补全互不 require）；本地定义同步
+  显示，标准库/包走异步 `doc` job（`setup/xref` + blueboxes）；M-d 查光标处标识符。
+- 纯语言服务在 `plugins/lang/`（source/pool/module-index/local-docs/doc-html/docs，从 edit3 平移）。
+- 插件面板需要文档：`view/panel.rkt` 现在是 `(panel name render)`，`boot` 按 Environment 里的
+  面板名建文档；浮窗菜单用 `content/float.rkt` 的 `open-overlay`（不抢焦点）。
 
 已对齐 edit3 的键：`(region id)` 作用域（`Tab` 循环侧栏）、新建 `C-n f` / `C-n C-n f`（`prefix-new` 切换）、
 去掉多出的 `C-w`（关文档只走 buffers `Del`）。

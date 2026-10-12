@@ -10,6 +10,7 @@
          "../edit4/view/face.rkt"
          "../edit4/decor/bracket-depth.rkt"
          "../edit4/decor/bracket-match.rkt"
+         "../edit4/decor/syntax.rkt"
          "../edit4/decor/words.rkt"
          "../edit4/layout.rkt")
 
@@ -17,6 +18,16 @@
   (define c0 (content-blank))
   (define-values (c1 did v) (content-add-doc! c0 text 40 3 "t" path))
   (values (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0 #:content (content-bind c1 0 v)) did v))
+
+;;; ---------- 语法：关键字 / 字符串 / 注释 / 数字 ----------
+
+(define-values (ws dids vs) (make-doc "(define x 1) ; hi\n\"str\"" (string->path "t.rkt")))
+(define eds (content-ed (world-content ws)))
+(define-values (_fcs projs-s) (ensure-faces (hash) (list syntax-decor) ws))
+(commit-faces! eds projs-s)
+(check-not-false (document-face-at eds dids 0 1))          ; define 关键字
+(check-not-false (document-face-at eds dids 0 13))         ; hi 注释
+(check-not-false (document-face-at eds dids 1 0))          ; "str" 字符串
 
 ;;; ---------- 括号深度：嵌套底色 ----------
 

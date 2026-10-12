@@ -37,7 +37,7 @@
 
 (define (insert-text world v text)
   (insert! (content-ed (world-content world)) v text)
-  (cons world '()))
+  (cons (emit! world 'after-insert (list v text)) '()))
 
 (define (h-auto-pair-insert ctx world _args)
   (define v (focused-vid world))
@@ -52,13 +52,14 @@
         (define ed (content-ed (world-content world)))
         (cond
           [(and (hash-has-key? open->close ch) (view-selection-empty? ed v))
-           (insert! ed v (string ch (hash-ref open->close ch)))
+           (define both (string ch (hash-ref open->close ch)))
+           (insert! ed v both)
            (set-point! ed v (view-line ed v) (max 0 (sub1 (view-col ed v))))
-           (cons world '())]
+           (cons (emit! world 'after-insert (list v both)) '())]
           [(and (hash-has-key? close->open ch) (view-selection-empty? ed v)
                 (eqv? (char-after-cursor ed v) ch))
            (nav! ed v 'right #f)
-           (cons world '())]
+           (cons (emit! world 'after-nav (list v)) '())]
           [else (insert-text world v text)])])]))
 
 (define auto-pair-commands

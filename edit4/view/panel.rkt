@@ -1,17 +1,13 @@
 #lang racket
 
-;;; edit4/view/panel.rkt —— 面板：World -> 投影 的纯函数
+;;; edit4/view/panel.rkt —— 面板：带名字的 World -> 投影 函数
 ;;;
-;;; 一个面板就是一个函数：
-;;;     panel : World -> (or (list vid text faces) #f)   ; 投影
-;;; 面板的「名字」由闭包捕获（用来找到自己的面板文档），
-;;; 不再有 panel-spec / panel-registry 的「贴标签 + 查表」。
-;;;
-;;; 组合 = map 一组面板函数；写引擎集中在 commit-panels!。
-;;; 「一组面板」就是 (listof panel)，加面板 = 往列表里加一个闭包。
-;;; 文件树的模型/IO 在 content/tree.rkt，具体面板在 view/{status,tree}.rkt。
+;;; 面板 = (panel name render)：名字让 boot 能为它建文档（插件面板也要）。
+;;;   render : World × vid -> (values text faces)
+;;; 组合 = map 一组面板；写引擎集中在 commit-panels!。
+;;; 具体面板在 view/{status,tree,buffers,log}.rkt。
 
-(provide named-panel project-panels commit-panels! base-panels)
+(provide (struct-out panel) named-panel project-panels commit-panels! base-panels)
 
 (require racket/list racket/match
          "../core/world.rkt"
@@ -23,17 +19,20 @@
   (define c (world-content w))
   (and c (content-panel-vid c name)))
 
-;; named-panel : name render -> (World -> projection | #f)
+(struct panel (name render) #:transparent)
+;; name   : string（面板文档名，如 "*status*"）
 ;; render : World × vid -> (values text faces)
-(define (named-panel name render)
-  (lambda (w)
-    (define v (panel-vid w name))
-    (and v (let-values ([(text faces) (render w v)]) (list v text faces)))))
+
+(define (named-panel name render) (panel name render))
 
 ;;; ---------- 投影（纯） ----------
 
 (define (project-panels panels w)
-  (filter values (map (lambda (p) (p w)) panels)))
+  (filter values
+          (for/list ([p (in-list panels)])
+            (define v (panel-vid w (panel-name p)))
+            (and v (let-values ([(text faces) ((panel-render p) w v)])
+                     (list v text faces))))))
 
 ;;; ---------- 写回（集中） ----------
 
@@ -54,6 +53,7 @@
        (for ([f (in-list faces)]) (face-line! ed (view-did ed v) (car f) (cdr f)))])))
 
 ;;; ---------- 内置面板 ----------
+;; *input* 不是投影面板（内容由 prompt.rkt 直接管理），由 boot 单独建文档。
 
 (define base-panels
   (list (named-panel "*status*" status-content)

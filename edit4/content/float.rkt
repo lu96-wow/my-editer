@@ -8,7 +8,8 @@
 ;;; 命令：float-open（已显示则提到最上）/ float-toggle / float-close / float-cycle / float-raise。
 ;;; 浮窗也是显示位置：floated 的面板/文档就是同一个 vid 多位置（复用 content.bindings）。
 
-(provide float-commands)
+(provide float-commands float-for-vid open-overlay close-float-by-id
+         set-float-on-world world-frame)
 
 (require racket/list
          "../core/world.rkt" "../core/command.rkt"
@@ -57,6 +58,30 @@
   (define c (world-content w))
   (define w1 (world-set-floats w (filter (lambda (f) (not (eqv? id (float-id f)))) (world-floats w))))
   (ensure-focus (world-set-content w1 (content-unbind c id))))
+
+;;; ---------- 覆盖型浮窗（不抢焦点；完成菜单 / 文档弹窗用） ----------
+
+;; 新建一个覆盖浮窗，绑定 vid，**不改焦点**。
+(define (open-overlay w vid a size)
+  (define c (world-content w))
+  (define id (fresh-float-id w))
+  (define f (float id a size))
+  (world-set-content (world-set-floats w (cons f (world-floats w))) (content-bind c id vid)))
+
+;; 关掉一个浮窗（若它不是焦点，焦点不动）。
+(define (close-float-by-id w id) (close-float w id))
+
+;; 替换 World.floats 里的某个浮窗（按 id）。
+(define (set-float-on-world w f)
+  (world-set-floats w (set-float (world-floats w) (float-id f) f)))
+
+;;; ---------- 几何（钩子里算浮窗落位） ----------
+
+;; World + size -> frame（平铺几何 + 浮窗矩形）。
+(define (world-frame w size)
+  (define area (rect 0 0 (car size) (cdr size)))
+  (define tiled (layout (world-layout w) area))
+  (frame tiled (place-floats (geometry-rects tiled) (world-floats w) area) (car size) (cdr size)))
 
 ;;; ---------- 命令 ----------
 

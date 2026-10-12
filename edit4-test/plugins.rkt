@@ -53,7 +53,7 @@
   (view-col ed v))
 
 (check-not-false (command-lookup (environment-commands env) 'auto-pair-insert))
-(check-equal? (length (environment-decor env)) 3)      ; brackets + words + bracket-match
+(check-equal? (length (environment-decor env)) 4)      ; syntax + brackets + words + bracket-match
 
 (define wp (send env (world-with "") (text-event "(")))
 (check-equal? (doc-string wp) "()")
@@ -79,7 +79,7 @@
 (check-true (pair? (environment-hooks denv)))
 (check-not-false (service-lookup (environment-services denv) 'slow-words))
 (check-true (pair? (environment-doc-key-matchers denv)))
-(check-equal? (length (environment-boots denv)) 1)      ; demo 的 boot
+(check-equal? (length (environment-boots denv)) 3)      ; completion + docs + demo
 (check-equal? (length (environment-on-opens denv)) 1)   ; demo 的 on-open
 
 (define w0 (run-boots denv (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0)))

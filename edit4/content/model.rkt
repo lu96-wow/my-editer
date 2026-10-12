@@ -19,7 +19,7 @@
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-remove-vid
-         content-vid-of content-did-of focused-vid-of
+         content-vid-of content-did-of focused-vid-of content-wid-of-vid
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
          content-prompt content-set-prompt
@@ -88,6 +88,8 @@
 (define (content-bind c id vid) (content-bindings* c (hash-set (content-bindings c) id vid)))
 (define (content-unbind c id) (content-bindings* c (hash-remove (content-bindings c) id)))
 (define (content-vid-of c id) (hash-ref (content-bindings c) id #f))
+(define (content-wid-of-vid c vid)
+  (and vid (for/first ([(id v) (in-hash (content-bindings c))] #:when (eqv? v vid)) id)))
 (define (content-did-of c vid) (and vid (view-did (content-ed c) vid)))
 (define (focused-vid-of c id) (content-vid-of c id))
 

@@ -48,7 +48,7 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 | `commands` | `command-registry` | `run-commands` |
 | `scopes` | `scope-registry` | `dispatch` |
 | `keymap` | `(listof entry)`，后装覆盖同 slot | `dispatch` |
-| `panels` | `(listof (World -> projection))` | `runtime` project/commit |
+| `panels` | `(listof (panel name render))` | `boot` 建文档；`runtime` project/commit |
 | `regions` | `(listof region)` | `content/region` |
 | `decor` | `(listof (path text cursor -> faces))` | `view/decor` |
 | `prompt-kinds` | `prompt-kind-registry` | `make-prompt-submit` |
@@ -143,7 +143,8 @@ boot：World 造好后跑各插件 boot
 打开文档：run-on-opens + 按 matcher 挂 doc-key + emit document-opened
 ```
 
-内置插件（`plugins/`）：`brackets words bracket-match auto-pair demo async-demo`。
+内置插件（`plugins/`）：`syntax brackets words bracket-match auto-pair completion docs demo async-demo`。
+纯语言服务在 `plugins/lang/`（source/pool/module-index/local-docs/doc-html/docs）。
 `config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
 
 ---

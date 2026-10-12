@@ -116,23 +116,29 @@ edit4/
     theme.rkt              face → ANSI 字节（编码器）
 
   decor/                   L4（高亮算法）
-    lex.rkt  words.rkt  bracket-depth.rkt  bracket-match.rkt  kind.rkt
+    lex.rkt  words.rkt  syntax.rkt  bracket-depth.rkt  bracket-match.rkt  kind.rkt
 
   config/                  纯数据
     palette.rkt            命名 face + 调色板
+    syntax.rkt             关键字分组（高亮 / 补全共用）
     floats.rkt             浮窗声明（anchor + 尺寸）
     plugins.rkt            本次启用哪些插件（只给名字）
 
   plugins/                 L5（插件包：数据）
     catalog.rkt            名字 → 实现 + 列表顺序 = 层叠顺序
+    syntax.rkt             语法（关键字/字符串/注释/数字）高亮（decor）
     brackets.rkt           括号嵌套深度底色（decor）
     words.rkt              当前词高亮（decor）
     bracket-match.rkt      光标配对括号高亮（decor）
     auto-pair.rkt          括号自动配对（命令 + 键表）
+    completion.rkt         补全（不抢焦点浮窗菜单 + 异步 exports job）
+    docs.rkt               标识符文档弹窗（订阅 complete-selection + 异步 doc job）
+    lang/                  纯语言服务（source/pool/module-index/local-docs/doc-html/docs）
     demo.rkt               契约演示（op/键表/hook/匹配层/boot/on-open）
     async-demo.rkt         异步演示（service + job 钩子）
 
-edit4-test/  layout command content render runtime panels faces plugins edit3-parity
+edit4-test/  layout command content render runtime panels faces plugins
+             completion edit3-parity
 ```
 
 ---
