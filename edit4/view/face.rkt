@@ -13,13 +13,14 @@
 (struct palette-color (kind index) #:prefab)
 (struct palette-bg (kind index) #:prefab)
 
-;; 把新 face 叠到旧 face 上（旧 #f = 空）。
+;; 把新 face 叠到旧 face 上（旧 #f = 空）。两边都先摊平成层，避免嵌套 face-stack。
 (define (face-compose old new)
   (cond
     [(not old) new]
     [(not new) old]
-    [(face-stack? old) (face-stack (append (face-stack-layers old) (list new)))]
-    [else (face-stack (list old new))]))
+    [else
+     (define ls (append (face-layers old) (face-layers new)))
+     (if (= 1 (length ls)) (car ls) (face-stack ls))]))
 
 (define (face-layers f)
   (cond

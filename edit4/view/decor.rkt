@@ -24,8 +24,11 @@
 ;;; ---------- 组合子（纯） ----------
 
 ;; 一个格子的最终 face：把各层在同一位置的 face 逐个 compose。
+;; foldl 的回调是 (proc elem acc)；face-compose 的形参是 (old new)（new 叠在 old 上），
+;; 所以必须写 (face-compose acc elem)：累加值当底、当前层当顶。
+;; 否则累加出的 face-stack 会被当成一层嵌套进去，face->style 不认嵌套 → 整段高亮掉色。
 (define (cell-face layers ln i)
-  (foldl face-compose #f
+  (foldl (lambda (elem acc) (face-compose acc elem)) #f
          (for/list ([layer (in-list layers)] #:when (< ln (length layer)))
            (define lv (list-ref layer ln))
            (and (< i (vector-length lv)) (vector-ref lv i)))))

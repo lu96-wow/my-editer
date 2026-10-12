@@ -52,7 +52,10 @@
   (cond
     [(face-stack? f)
      (define styles (filter values (for/list ([l (in-list (face-stack-layers f))]) (face->style l))))
-     (if (null? styles) #"" (style-bytes (foldl style-merge (car styles) (cdr styles))))]
+     ;; 层顺序 = 应用顺序（先应用的在前）；style-merge 的 over 后层覆盖前层。
+     ;; foldl 回调是 (proc elem acc)，所以写成 (style-merge acc elem)，否则前层反而盖住后层。
+     (if (null? styles) #"" (style-bytes (foldl (lambda (elem acc) (style-merge acc elem))
+                                                  (car styles) (cdr styles))))]
     [else (define st (face->style f)) (if st (style-bytes st) #"")]))
 
 (define (attr-bytes attr)

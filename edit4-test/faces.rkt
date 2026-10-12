@@ -69,6 +69,22 @@
 (check-not-false (document-face-at ed4 did4 0 1))          ; hello 被 word-mark
 (check-false (document-face-at ed4 did4 0 7))              ; world 不涂
 
+;;; ---------- 多层叠加：后层不吞掉前层（回归：≥3 层时嵌套 face-stack → 掉色）----------
+
+(define-values (w7 did7 v7) (make-doc "(define hello 1)" (string->path "t.rkt")))
+(define ed7 (content-ed (world-content w7)))
+(set-point! ed7 v7 0 2)                                    ; 光标在 define 内
+(define-values (_fc7 projs7)
+  (ensure-faces (hash) (list syntax-decor bracket-depth-decor words-decor) w7))
+(commit-faces! ed7 projs7)
+(define f7 (document-face-at ed7 did7 0 2))
+(check-true (face-stack? f7))
+(check-equal? (map (lambda (l) (and (symbol? l) l)) (face-layers f7))
+              '(#f #f word-mark))                          ; 层是平的，没有嵌套 face-stack
+(define b7 (bytes->string/latin-1 (face-bytes f7)))
+(check-true (regexp-match? #rx"38;2;120;180;240" b7))     ; 关键字前景仍在
+(check-true (regexp-match? #rx"48;2;60;70;90" b7))        ; word-mark 背景盖在括号深度色上
+
 ;;; ---------- 缓存：handle+cursor 不变 → 跳过 ----------
 
 (define-values (fc5 projs5) (ensure-faces (hash) (list bracket-depth-decor) w1))
