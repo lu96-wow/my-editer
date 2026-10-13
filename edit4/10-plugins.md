@@ -60,9 +60,9 @@ edit4 保留同样的**能力槽**，逐项换成 edit4 的落点（见 §3）�
 
 `decor` 是 `decor/protocol.rkt` 的 `(decor open change)`：`open : path track -> (values state layer)`，
 `change : state layer face-ctx -> (values state layer dirty)`。状态/层是增量缓存，挂在**引擎
-document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。5 个内置装饰都已真增量：
+document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。4 个内置装饰都已真增量：
 `syntax` / `brackets` 走 `stateful-advance`（从首个脏行带跨行状态重扫到收敛）；
-`word-color` 走 `refresh-layer` 只重扫改动行；`words` / `bracket-match` 只重拼旧/新光标行。
+`word-color` 走 `refresh-layer` 只重扫改动行；`words` 只重拼旧/新光标行。
 
 ### 按文件类型生效：`#:applies?`
 
@@ -76,7 +76,7 @@ document 槽**上（`view/decor.rkt`），编辑时由 `fork-slots` 推进。5 �
 (make-plugin #:name 'brackets #:applies? racket-file? #:decor (list (pure-decor bracket-depth-decor)))
 ```
 
-于是 `decor/bracket-depth.rkt` / `decor/word-color.rkt` / `decor/words.rkt` / `decor/bracket-match.rkt` 不再自己判类型。
+于是 `decor/bracket-depth.rkt` / `decor/word-color.rkt` / `decor/words.rkt` 不再自己判类型。
 注意：**键表**的按类型挂载仍走 `doc-key-matchers`；**命令 / 钩子 / 服务**是全局的，无法按文件类型门控。
 
 ---
@@ -146,7 +146,7 @@ boot：World 造好后跑各插件 boot
 打开文档：run-on-opens + 按 matcher 挂 doc-key + emit document-opened
 ```
 
-内置插件（`plugins/`）：`brackets word-color syntax words bracket-match auto-pair completion docs demo async-demo`。
+内置插件（`plugins/`）：`brackets word-color syntax words auto-pair completion docs demo async-demo`。
 纯语言服务在 `plugins/lang/`（source/pool/module-index/local-docs/doc-html/docs）。
 `config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
 

@@ -14,7 +14,7 @@
          "../edit4/core/store.rkt" "../edit4/core/mode.rkt"
          "../edit4/content/model.rkt" (except-in "../edit4/content/adapter.rkt" run)
          "../edit4/view/decor.rkt" "../edit4/view/face.rkt"
-         "../edit4/decor/bracket-depth.rkt" "../edit4/decor/bracket-match.rkt"
+         "../edit4/decor/bracket-depth.rkt"
          "../edit4/decor/protocol.rkt"
          "../edit4/plugins/catalog.rkt" "../edit4/config/plugins.rkt"
          "../edit4/plugins/demo.rkt" "../edit4/plugins/async-demo.rkt"
@@ -22,8 +22,8 @@
 
 ;;; ---------- catalog / 启用 ----------
 
-(check-equal? (map plugin-name (plugins-by-names '(brackets words bracket-match)))
-              '(brackets words bracket-match))
+(check-equal? (map plugin-name (plugins-by-names '(brackets words)))
+              '(brackets words))
 (check-exn exn:fail? (lambda () (plugins-by-names '(nope))))
 
 (define env (app-environment))
@@ -54,7 +54,7 @@
   (view-col ed v))
 
 (check-not-false (command-lookup (environment-commands env) 'auto-pair-insert))
-(check-equal? (length (environment-decor env)) 4)      ; brackets + word-color + syntax + bracket-match
+(check-equal? (length (environment-decor env)) 3)      ; brackets + word-color + syntax
 
 (define wp (send env (world-with "") (text-event "(")))
 (check-equal? (doc-string wp) "()")
@@ -134,7 +134,7 @@
 (apply-faces! edr (environment-decor env) wrkt)
 (check-not-false (document-face-at edr didr 0 2))
 
-;; .txt：brackets 被 #:applies? 挡住（位置 2 的 ( 无深度底色；光标在 a 上也不触发配对）
+;; .txt：brackets 被 #:applies? 挡住（位置 2 的 ( 无深度底色）
 (define wtxt (world-with-path "a (b)" (string->path "t.txt")))
 (define edt (content-ed (world-content wtxt)))
 (define didt (view-did edt (content-vid-of (world-content wtxt) 0)))

@@ -47,7 +47,6 @@
    'syntax-comment (style (rgb 120 120 130) #f '(italic))
    'syntax-number  (style (rgb 200 170 240) #f '())
    'word-mark      (style #f (rgb 60 70 90) '())
-   'bracket-match  (style #f (rgb 70 90 70) '())
    'complete          (style (rgb 220 220 220) (rgb 40 44 52) '())
    'complete-selected (style (rgb 20 20 20) (rgb 120 180 240) '())))
 

@@ -7,7 +7,7 @@
 ;;; （可嵌套）、字符字面量 #\x 里的括号；跨行字符串 / 注释用哨兵压栈保留。
 ;;;
 ;;; decor：open 整篇扫；change 从首个脏行带栈状态重扫到收敛（dirty.rkt 的 stateful-advance）。
-;;; 只算深度；「光标在括号上时高亮配对括号」在 decor/bracket-match.rkt。
+;;; 只算深度。
 ;;; 是否适用（Racket 源文件）由插件包的 #:applies? 声明。
 
 (provide bracket-depth-decor bracket-depth-lines)

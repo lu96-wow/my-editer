@@ -12,7 +12,6 @@
          "../edit4/decor/protocol.rkt"
          "../edit4/decor/dirty.rkt"
          "../edit4/decor/bracket-depth.rkt"
-         "../edit4/decor/bracket-match.rkt"
          "../edit4/decor/syntax.rkt"
          "../edit4/decor/words.rkt"
          "../edit4/decor/word-color.rkt"
@@ -44,23 +43,6 @@
 (paint! w1 (list bracket-depth-decor))
 (check-not-false (document-face-at ed1 did1 0 0))          ; 外层括号有深度底色
 (check-not-false (document-face-at ed1 did1 0 3))          ; 内层括号有深度底色
-
-;;; ---------- 括号配对：光标在括号上时标配对 ----------
-
-(define-values (w2 did2 v2) (make-doc "(a (b) c)" (string->path "t.rkt")))
-(define ed2 (content-ed (world-content w2)))
-(set-point! ed2 v2 0 0)                                     ; 光标在外层 (
-(paint! w2 (list bracket-match-decor))
-(check-not-false (document-face-at ed2 did2 0 0))          ; 光标处括号
-(check-not-false (document-face-at ed2 did2 0 8))          ; 配对括号
-(check-false (document-face-at ed2 did2 0 1))              ; 非括号
-
-;; 深度 + 配对叠加 → face-stack
-(define-values (w3 did3 v3) (make-doc "(a (b) c)" (string->path "t.rkt")))
-(define ed3 (content-ed (world-content w3)))
-(set-point! ed3 v3 0 0)
-(paint! w3 (list bracket-depth-decor bracket-match-decor))
-(check-true (face-stack? (document-face-at ed3 did3 0 0)))
 
 ;;; ---------- 当前词 ----------
 
@@ -140,6 +122,6 @@
 ;;; ---------- theme 编码不炸 ----------
 
 (require "../edit4/view/theme.rkt")
-(check-true (bytes? (attr-bytes 'bracket-match)))
+(check-true (bytes? (attr-bytes 'word-mark)))
 
 (displayln "edit4/faces.rkt: all tests passed")

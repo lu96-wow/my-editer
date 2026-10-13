@@ -100,7 +100,7 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
  doc-key-matchers / boot / on-open`；`install` fold 进 Environment。详见 `10-plugins.md`。
 
 - **高亮**（`syntax` 关键字/字符串/注释/数字 / `brackets` 深度底色 / `word-color` 同词着色 /
-  `words` 当前词 / `bracket-match` 光标配对）是普通 decor 函数（`decor/*.rkt`），由插件包声明；
+  `words` 当前词）是普通 decor 函数（`decor/*.rkt`），由插件包声明；
 - **`auto-pair`** 是命令 + 键表覆盖（`plugins/auto-pair.rkt`），后装覆盖 `(text) editor` 同 slot；
 - **hooks**：`World.signals` + `core/hook.rkt` 的 `reaction`/`run-hooks`；命令用 `emit!` 发点
   （`after-edit`/`after-insert`/`after-nav`/`focus-changed`/`before-render`/`document-opened`/`job`…）；
