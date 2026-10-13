@@ -9,7 +9,7 @@
 ;;; 浮窗也是显示位置：floated 的面板/文档就是同一个 vid 多位置（复用 content.bindings）。
 
 (provide float-commands open-overlay close-float-by-id set-float-on-world world-frame
-         raise-float focused-cursor-screen frame-cursor-screen)
+         raise-float focused-cursor-screen frame-cursor-screen frame-editing-area)
 
 (require racket/list
          "../core/world.rkt" "../core/command.rkt"
@@ -102,6 +102,15 @@
 
 (define (focused-cursor-screen w size)
   (and size (frame-cursor-screen (world-frame w size) w)))
+
+;; 编辑区：所有可见「非面板」平铺窗的包围盒（不含状态 / 输入行等 dock）→ rect | #f。
+(define (frame-editing-area fr w)
+  (define c (world-content w))
+  (define rs (for/list ([(id r) (in-hash (geometry-rects (frame-tiled fr)))]
+                        #:when (let ([v (content-vid-of c id)])
+                                 (or (not v) (not (content-panel? c v)))))
+               r))
+  (and (pair? rs) (rect-bounds rs)))
 
 ;;; ---------- 命令 ----------
 

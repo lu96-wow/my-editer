@@ -127,6 +127,15 @@
 (define zorder (map float-id (world-floats r4)))
 (check-true (< (index-of zorder cfl) (index-of zorder dfl)))
 
+;; 补全/文档都不遮输入行（状态 dock）：两个浮窗都落在编辑区内
+(define fr4 (world-frame r4 (cons 60 10)))
+(define area4 (frame-editing-area fr4 r4))
+(check-not-false area4)
+(for ([fid (in-list (list cfl dfl))])
+  (define mr (frame-float-rect fr4 fid))
+  (check-true (and (>= (rect-y mr) (rect-y area4))
+                   (<= (rect-bottom mr) (rect-bottom area4)))))
+
 ;;; ---------- 文档：M-d 打开本地定义 ----------
 
 (define d0 (scratch "(define foo 1)" "/tmp/ed4-docs.rkt"))

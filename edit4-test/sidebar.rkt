@@ -10,6 +10,7 @@
          "../edit4/content/model.rkt"
          "../edit4/content/commands.rkt"
          "../edit4/content/region.rkt"
+         "../edit4/content/placing.rkt"
          "../edit4/content/scopes.rkt"
          "../edit4/config/sidebar.rkt"
          "../edit4/boot.rkt")
@@ -122,5 +123,21 @@
 (define (toggle w rid) (car (run-commands region-commands #f w (list (cmd 'region-toggle rid)))))
 (check-equal? (geom-order (toggle (toggle wt2 'tree) 'tree)) before)       ; 隐→显 tree
 (check-equal? (geom-order (toggle (toggle wt2 'buffers) 'buffers)) before) ; 隐→显 buffers
+
+;;; ---------- 关掉最后一个编辑器窗后再打开文件：新窗回主区（main dock 反侧），
+;;; 不被嵌进顶部 dock 所在的横带里（回归：C-d 后打开文件跑到树右侧）。
+
+(define wclose (boot #:root dir #:screen-width 160 #:screen-height 40 #:regions (list (top-spec))))
+(define lay0 (remove-leaf (world-layout wclose) 0))          ; 关掉主区编辑器
+(define wclosed (world-set-layout wclose lay0))
+(define-values (ccl _cd cv) (content-add-doc! (world-content wclosed) "hi" 40 10 "a.rkt" #f))
+(define wnew (place-vid! (world-set-content wclosed ccl) cv))
+(define root (world-layout wnew))
+(check-true (split? root))
+(check-equal? (split-axis root) 'v)                          ; 根仍是纵向：树在上、主区在下
+(define path-new (path-of root (world-focus wnew)))
+(check-equal? (length path-new) 1)                           ; 新窗是根的直接孩子
+(check-equal? (leaf-id (node-at root (list 0)))
+              (region-leaf (region-of wclosed 'sidebar)))    ; 顶部第一格仍是树
 
 (displayln "edit4/sidebar.rkt: all tests passed")

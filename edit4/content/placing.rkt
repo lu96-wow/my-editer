@@ -26,16 +26,44 @@
 
 ;;; ---------- 放置 ----------
 
-;; 新开一个编辑器窗贴到 anchor 右边（anchor = 当前焦点 / 第一个窗）。
+;; 主区锚点：树里第一个 dock 叶子；优先 anchor 'main 的（它们当初就贴着编辑器）。
+;; main 没有独立节点，主区由这些 dock 隐含；没有 main dock 时退到 root dock，
+;; 主区就在它的反侧。id -> region 的对应一次性建表。
+(define (dock-anchor-leaf c lay)
+  (define by-leaf
+    (for/hash ([r (in-hash-values (content-regions c))] #:when (region-leaf r))
+      (values (region-leaf r) r)))
+  (define-values (main dock)
+    (for/fold ([main #f] [dock #f]) ([id (in-list (ids lay))])
+      (define r (hash-ref by-leaf id #f))
+      (cond
+        [(not r) (values main dock)]
+        [(eq? (region-anchor r) 'main) (values (or main id) (or dock id))]
+        [else (values main (or dock id))])))
+  (or main dock))
+
+(define (dock-side c id)
+  (for/first ([r (in-hash-values (content-regions c))]
+              #:when (eqv? (region-leaf r) id))
+    (region-side r)))
+
+;; dock 在底 → 编辑器插其上；在顶 → 插其下；左右同理。
+(define (opposite side)
+  (case side [(top) 'bottom] [(bottom) 'top] [(left) 'right] [(right) 'left] [else 'right]))
+
+;; 新开一个编辑器窗：放进「主区」——贴到 dock 的反侧。
+;; 只认 dock 的位置，不认当前焦点（焦点可能是侧栏/状态栏等面板，
+;; 贴上去会把编辑器嵌进 dock 所在的横/纵带里，见 11-docks.md 的锚点语义）。
 (define (new-editor-window w vid)
   (define c (world-content w))
   (define lay (world-layout w))
   (define nid (fresh-id lay))
-  (define anchor (or (world-focus w) (for/first ([id (in-list (visible-ids lay))]) id)))
   (define nleaf (leaf nid (cons 2 2)))
-  (define nlay (if anchor
-                   (insert-adjacent lay anchor 'right (size 40 #f) nleaf)
-                   (insert-side lay 'right (size 40 #f) nleaf)))
+  (define anchor (dock-anchor-leaf c lay))
+  (define nlay
+    (cond
+      [anchor (insert-adjacent lay anchor (opposite (dock-side c anchor)) (size 40 #f) nleaf)]
+      [else (insert-side lay 'right (size 40 #f) nleaf)]))
   (world-set-focus (world-set-content (world-set-layout w nlay) (content-bind c nid vid)) nid))
 
 (define (place-vid! w vid)

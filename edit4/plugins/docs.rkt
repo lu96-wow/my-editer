@@ -228,19 +228,13 @@
     [else
      (define c (c-of w))
      (define fr (world-frame w size))
-     (define tiled (frame-tiled fr))
-     (define rects (geometry-rects tiled))
+     (define rects (geometry-rects (frame-tiled fr)))
      (define tw (hash-ref d 'target-w #f))
      (define tpl-rect (and tw (hash-ref rects tw #f)))
      (define area
        (cond
          [(and tw (wid-float? w tw) (frame-float-rect fr tw)) (frame-float-rect fr tw)]
-         [else
-          (define rs (for/list ([(id r) (in-hash rects)]
-                                #:when (let ([v (content-vid-of c id)])
-                                         (or (not v) (not (panel-name-of-vid c v)))))
-                       r))
-          (or (rect-bounds rs) tpl-rect)]))
+         [else (or (frame-editing-area fr w) tpl-rect)]))
      (cond
        [(not area) w]
        [else
