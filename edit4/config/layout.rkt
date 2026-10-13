@@ -41,7 +41,7 @@
 ;; (id side size min anchor shown?)
 ;;   size/min 可为 auto：按 side 取横向（宽）或纵向（高）策略（boot 解析）。
 (define docks
-  (list (list 'sidebar 'top    'auto 'auto 'root 'shown)   ; 文件树在顶部（横向 dock）
+  (list (list 'sidebar 'left    'auto 'auto 'root 'shown)   ; 文件树在顶部（横向 dock）
         (list 'status  'bottom 1     1     'main 'shown)   ; 常显；prompt 时切到 *input*
         (list 'log     'bottom 6     2     'main 'hidden)))
 
