@@ -11,7 +11,8 @@
 
 (provide
  ;; overlay 通道：selections × vrows → cursors / regions
- overlay-cursors overlay-regions)
+ overlay-cursors                  ; t vp vrows sels → (listof cursor)
+ overlay-regions)                 ; t vp vrows sels gutter → (listof region)
 
 ;; 每个光标点（selection head）→ screen cursor；不可见的不画。
 (define (overlay-cursors t vp vrows sels)

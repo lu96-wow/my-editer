@@ -31,44 +31,64 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out document-immutable)
- (struct-out document-mutable)
- (struct-out document)
+ (struct-out document-immutable)  ; text（版本身份）
+ (struct-out document-mutable)    ; face / readonly / slots（盒）
+ (struct-out document)            ; im ⊕ mut
 
  ;; ---------- 构造 ----------
- document-open
+ document-open                    ; string [chunk-lines] → document
 
  ;; ---------- 读 / 校验 ----------
- document-text document-slots document-face document-readonly
- document->string document-range-text document-change-text
- document-slot-ref document-face-at document-readonly-at?
- document-face-row document-readonly-row
- document-face-range? document-readonly-range? document-editable?
- document-aligned?
+ document-text                    ; document → text 轨
+ document-slots                   ; document → slots
+ document-face                    ; document → face 轨
+ document-readonly                ; document → readonly 轨
+ document->string                 ; document → 全文
+ document-range-text              ; document range → 区间文本
+ document-change-text             ; document change → 变更插入文本
+ document-slot-ref                ; document slot → 值
+ document-face-at                 ; document line col → face | #f
+ document-readonly-at?            ; document line col → bool
+ document-face-row                ; document line → face 行
+ document-readonly-row            ; document line → readonly 行
+ document-face-range?             ; document l0 c0 l1 c1 → bool
+ document-readonly-range?         ; document l0 c0 l1 c1 → bool
+ document-editable?               ; document l0 c0 l1 c1 → bool
+ document-aligned?                ; document → bool
 
  ;; ---------- 原子（写回句柄） ----------
- document-slot-atom document-slot-set!
- document-face-atom document-readonly-atom
- document-set-face! document-set-readonly!
+ document-slot-atom               ; document slot → box
+ document-slot-set!               ; document slot v → document
+ document-face-atom               ; document → box
+ document-readonly-atom           ; document → box
+ document-set-face!               ; document v → document
+ document-set-readonly!           ; document v → document
 
  ;; ---------- 写：文本轨（守只读 / -ignore-readonly） ----------
- document-edit-tracks
- document-insert document-insert-ignore-readonly
- document-delete document-delete-ignore-readonly
- document-replace document-replace-ignore-readonly
+ document-edit-tracks             ; document edit [changes] → document
+ document-insert                  ; document line col text [sticky] [default] → (values doc change ok?)
+ document-insert-ignore-readonly
+ document-delete
+ document-delete-ignore-readonly
+ document-replace
+ document-replace-ignore-readonly
 
  ;; ---------- 写：端口（固定轨 API） ----------
- document-edit-face document-edit-readonly
- document-face-fill document-readonly-fill
- document-face-fill-batch document-readonly-fill-batch
- document-face-fill-batch*
- document-face-fill-range-batch document-readonly-fill-range-batch
+ document-edit-face               ; document edit → document
+ document-edit-readonly           ; document edit → document
+ document-face-fill               ; document l0 c0 l1 c1 face → document
+ document-readonly-fill           ; document l0 c0 l1 c1 flag → document
+ document-face-fill-batch         ; document fills → document
+ document-readonly-fill-batch     ; document fills → document
+ document-face-fill-batch*        ; document fills combine → document
+ document-face-fill-range-batch   ; document runs → document
+ document-readonly-fill-range-batch ; document runs → document
 
  ;; ---------- 写：槽（opaque 值 API） ----------
- document-slot-set! document-edit-slot
+ document-edit-slot               ; document slot f → document
 
  ;; ---------- 复制（纯文本） ----------
- document-copy)
+ document-copy)                   ; document l0 c0 l1 c1 → string
 
 ;;; ---------- 数据 ----------
 

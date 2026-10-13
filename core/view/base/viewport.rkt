@@ -18,31 +18,41 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out viewport)
+ (struct-out viewport)            ; top-line / top-segment / left-column / width / height / mode / line-numbers?
 
  ;; ---------- 构造 ----------
- viewport-open
+ viewport-open                    ; width height [mode] [line-numbers?] → viewport
 
  ;; ---------- 设字段 ----------
- viewport-set-mode viewport-set-top-segment
- viewport-set-size viewport-set-top-line viewport-set-left-column viewport-set-line-numbers
+ viewport-set-mode                ; viewport mode → viewport
+ viewport-set-top-segment         ; viewport n → viewport
+ viewport-set-size                ; viewport w h → viewport
+ viewport-set-top-line            ; viewport n → viewport
+ viewport-set-left-column         ; t viewport n → viewport
+ viewport-set-line-numbers        ; viewport on? → viewport
 
  ;; ---------- 滚动 / ensure ----------
- viewport-scroll viewport-ensure
+ viewport-scroll                  ; t viewport delta → viewport
+ viewport-ensure                  ; t viewport point → viewport
 
  ;; ---------- 派生 ----------
- viewport-vrows
- viewport-gutter-width viewport-content-width
+ viewport-vrows                   ; t viewport → (vectorof vrow)
+ viewport-gutter-width            ; t viewport → nat
+ viewport-content-width           ; t viewport → nat
 
  ;; ---------- 坐标换算 ----------
- viewport-point->screen-position viewport-point->screen-position/vrows
- viewport-screen-position->point viewport-screen-position->point/vrows
+ viewport-point->screen-position          ; t vp point → (values row col)
+ viewport-point->screen-position/vrows    ; 同上（用已算好的 vrows）
+ viewport-screen-position->point          ; t vp row col → (values line col)
+ viewport-screen-position->point/vrows    ; 同上（用已算好的 vrows）
 
  ;; ---------- 锚点 ----------
- viewport-anchor viewport-set-anchor
+ viewport-anchor                  ; t viewport → (values line display-col)
+ viewport-set-anchor              ; t viewport line dc → viewport
 
  ;; ---------- 视觉行上下 ----------
- point-up point-down)
+ point-up                         ; t viewport point → point
+ point-down)                      ; t viewport point → point
 
 (struct viewport (top-line top-segment left-column width height mode line-numbers?) #:transparent)
 

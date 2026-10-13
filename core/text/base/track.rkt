@@ -21,36 +21,36 @@
 
 (provide
  ;; ---------- 类型 / 参数 ----------
- (struct-out track)
- default-chunk-lines
+ (struct-out track)               ; 分块持久化行序列
+ default-chunk-lines              ; 每块行数默认值（512）
 
  ;; ---------- 构造 ----------
- track-empty
- track-of-list
+ track-empty                      ; [chunk-lines] → track
+ track-of-list                    ; lines [chunk-lines] → track
 
  ;; ---------- 读 ----------
- track->list
- track-ref
+ track->list                      ; track → list
+ track-ref                        ; track i → 行
 
  ;; ---------- 写（区间） ----------
- track-slice
- track-splice
- track-insert
- track-delete
- track-append
+ track-slice                      ; track s e → track
+ track-splice                     ; track s e lines → track
+ track-insert                     ; track i lines → track
+ track-delete                     ; track s e → track
+ track-append                     ; track track → track
 
  ;; ---------- 映射 ----------
- track-map
- track-map-range
- track-rewrite
+ track-map                        ; track f → track
+ track-map-range                  ; track s e f → track
+ track-rewrite                    ; track i f → track
 
  ;; ---------- 切割 ----------
- track-split
- track-take
- track-drop
+ track-split                      ; track k → (values left right)
+ track-take                       ; track k → track
+ track-drop                       ; track k → track
 
  ;; ---------- 校验 ----------
- track-check)
+ track-check)                     ; track → bool
 ;; 注：track-length / track-max / track-chunks / track-starts 由 struct-out 透出。
 
 ;;; ---------- 数据 ----------

@@ -17,13 +17,14 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out run)
- (struct-out cursor)
- (struct-out region)
- (struct-out screen)
+ (struct-out run)                 ; column / text / face
+ (struct-out cursor)              ; row / column / primary?
+ (struct-out region)              ; row / start-column / end-column / primary?
+ (struct-out screen)              ; width / height / rows / cursors / regions
 
  ;; ---------- 读 ----------
- screen-row screen->string)
+ screen-row                       ; screen row → runs
+ screen->string)                  ; screen → 纯文本
 
 (struct run (column text face) #:transparent)
 ;; col : 显示列（0-based，行内）；text : 不含换行；face : any/c（#f = 无）

@@ -12,17 +12,24 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out point)
+ (struct-out point)               ; (line, column) 坐标
 
  ;; ---------- 比较 ----------
- point<? point=? point<=?
- position<? position=? position<=?
+ point<?                          ; point point → bool
+ point=?                          ; point point → bool
+ point<=?                         ; point point → bool
+ position<?                       ; line col line col → bool
+ position=?                       ; line col line col → bool
+ position<=?                      ; line col line col → bool
 
  ;; ---------- 夹紧 ----------
- point-clamp
+ point-clamp                      ; point line-count line-length → point
 
  ;; ---------- 字符级导航 ----------
- point-left point-right point-home point-end)
+ point-left                       ; track point → point（左一字符）
+ point-right                      ; track point → point（右一字符）
+ point-home                       ; track point → point（行首）
+ point-end)                       ; track point → point（行尾）
 
 (struct point (line column) #:transparent)
 ;; line / col : nat（0-based）

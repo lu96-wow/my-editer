@@ -12,32 +12,52 @@
 
 (provide
  ;; ---------- 单选区：类型 / 构造 ----------
- (struct-out selection)
- caret caret? selection-point
+ (struct-out selection)           ; anchor / head
+ caret                            ; point → selection（空选区 / 光标）
+ caret?                           ; selection → bool
+ selection-point                  ; selection → point（head）
 
  ;; ---------- 单选区：读 ----------
- selection-range selection-empty? selection<?
+ selection-range                  ; selection → (values start end)
+ selection-empty?                 ; selection → bool
+ selection<?                      ; selection selection → bool
 
  ;; ---------- 单选区：空间变换（point -> point） ----------
- selection-with-head selection-with-anchor
- selection-map-head selection-map-anchor selection-map-both
- selection-go selection-extend selection-normalize
+ selection-with-head              ; selection point → selection
+ selection-with-anchor            ; selection point → selection
+ selection-map-head               ; f selection → selection
+ selection-map-anchor             ; f selection → selection
+ selection-map-both               ; f selection → selection
+ selection-go                     ; selection f → selection（坦缩到 head）
+ selection-extend                 ; selection f → selection（只动 head）
+ selection-normalize              ; selection → selection（正向）
 
  ;; ---------- 选区集（多光标）：类型 / 构造 ----------
- (struct-out selections)
- selections-one selections-of
+ (struct-out selections)          ; items / primary-index
+ selections-one                   ; selection → selections
+ selections-of                    ; items [primary-index] → selections
 
  ;; ---------- 选区集：读 ----------
- selections-count selections-primary selections-items
+ selections-count                 ; selections → nat
+ selections-primary               ; selections → selection
+ selections-items                 ; selections → (listof selection)
 
  ;; ---------- 选区集：变换 ----------
- selections-add selections-remove
- selections-set-primary selections-set-primary-value
- selections-map selections-map-primary
- selections-go selections-extend selections-go-primary selections-extend-primary
+ selections-add                   ; selections items → selections
+ selections-remove                ; selections drops → selections
+ selections-set-primary           ; selections i → selections
+ selections-set-primary-value     ; selections selection → selections
+ selections-map                   ; selections f → selections
+ selections-map-primary           ; selections f → selections
+ selections-go                    ; selections f → selections
+ selections-extend                ; selections f → selections
+ selections-go-primary            ; selections f → selections
+ selections-extend-primary        ; selections f → selections
 
  ;; ---------- 选区集：归一 ----------
- selections-dedupe selections-normalize selections-clamp)
+ selections-dedupe                ; selections → selections
+ selections-normalize             ; selections → selections（排序合并）
+ selections-clamp)                ; selections line-count line-length → selections
 
 (struct selection (anchor head) #:transparent)
 ;; anchor / head : point

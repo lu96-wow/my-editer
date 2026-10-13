@@ -1,235 +1,100 @@
 #lang racket
 
-(require "../text/document.rkt" "history.rkt" "../text/base/track.rkt"
-         "../view/base/viewport.rkt" "../text/base/selection.rkt" "../text/base/point.rkt")
+;;; editor/state.rkt —— buffer / view 对象 + 结构手术
+;;;
+;;;   buffer = 一份内容 + 历史 + 共享它的所有 view      （身份 = 对象本身）
+;;;   view   = 一块显示状态（viewport + selections），指回它的 buffer（身份 = 对象本身）
+;;;
+;;; 宿主持有这些对象；core 不集中管理多个文档，也没有 id。
+;;; 对象可以不纯：字段用 #:mutable（结构手术 / 编辑就地写）。
 
-;;; editor/state.rkt —— editor 数据 + 结构操作 + 查找
-;;;
-;;;   editor         = 不可变骨架(documents, views, next-*, clipboard box)
-;;;   document-entry = entry-immutable(id)      ⊕ entry-mutable(name box, history box)
-;;;   view           = view-immutable(id, did)   ⊕ view-mutable(viewport box,
-;;;                                                            selections box)
-;;;
-;;; 只有增/删文档、增/删视图产新 editor。
-;;;
-;;; document-entry 的当前文档就是 history 的 current 快照。
+(require "history.rkt"
+         "../text/document.rkt"
+         "../text/base/track.rkt"
+         "../text/base/point.rkt"
+         "../text/base/selection.rkt"
+         "../view/base/viewport.rkt")
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out entry-immutable)
- (struct-out entry-mutable)
- (struct-out document-entry)
- (struct-out view-immutable)
- (struct-out view-mutable)
- (struct-out view)
- (struct-out editor)
- editor-clipboard
-
- ;; ---------- 绑定访问 ----------
- document-entry-id document-entry-name document-entry-history
- view-id view-did view-viewport view-selections
+ (struct-out buffer)               ; name / history / views / merge
+ (struct-out view)                 ; buffer / viewport / selections
 
  ;; ---------- 构造 ----------
- make-document-entry make-view
+ make-buffer                       ; text [name] → buffer
+ buffer-add-view!                  ; buffer w h → view（登记进 buffer.views）
+ buffer-close-view!                ; buffer view → 摘掉该 view
+ buffer-close!                     ; buffer → 解除与所有 view 的关联
+
+ ;; ---------- buffer 读 / 写 ----------
+ buffer-document                   ; buffer → 当前 document
+ buffer-set-name!                  ; buffer name → void
+
+ ;; ---------- view 读 / 写 ----------
+ view-document                     ; view → 当前 document（buffer→history→current）
 
  ;; ---------- 多态入口：string | document → document ----------
- ->document
+ ->document)                       ; x chunk-lines → document
 
- ;; ---------- 裸 box setter ----------
- document-entry-set-name! document-entry-set-history!
- view-set-viewport! view-set-selections!
- editor-set-clipboard!
+;;; ---------- 对象 ----------
 
- ;; ---------- 字段元数据写口 ----------
- editor-document-set-name!
- editor-document-set-history-enabled!
+;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身。
+(struct buffer (name history views merge) #:mutable)
+;; name    : string
+;; history : history        （current 就是当前 document 真身）
+;; views   : (listof view)  共享这份内容的视图
+;; merge   : #f | (list tag view selections)  会话层「并步记忆」（见 ops.rkt）
 
- ;; ---------- 结构操作（返回新 editor） ----------
- editor-open
- make-blank-editor
- editor-add-document
- editor-add-view
- editor-add-document-view
- editor-close-view
- editor-close-document
+;; 视图：显示状态，指回 buffer。身份 = 对象本身。
+(struct view (buffer viewport selections) #:mutable)
 
- ;; ---------- 查找 / 读 ----------
- document-entry-document
- editor-document-entry
- editor-view-handle
- editor-view-document
- editor-document-handle
- editor-document-history
- first-view-of-document)
+;;; ---------- 多态入口 ----------
 
-;;; ---------- 数据 ----------
-
-;; 身份（不可变）
-(struct entry-immutable (id) #:transparent)
-(struct view-immutable (id did) #:transparent)
-
-;; 可变部分
-(struct entry-mutable (name history) #:transparent)                    ; 两个 box
-(struct view-mutable (viewport selections) #:transparent)               ; 两个 box
-
-(struct document-entry (im mut) #:transparent)
-(struct view (im mut) #:transparent)
-
-(struct editor (documents views next-document next-view clipboard-box) #:transparent)
-;; documents / views : 不可变列表（顺序稳定）；next-* : 分配器
-;; clipboard-box : box（string = 剪贴板文本；#f = 空）
-
-;;; ---------- 绑定访问（读 box 内容） ----------
-
-(define (document-entry-id e) (entry-immutable-id (document-entry-im e)))
-(define (document-entry-name e) (unbox (entry-mutable-name (document-entry-mut e))))
-(define (document-entry-history e) (unbox (entry-mutable-history (document-entry-mut e))))
-
-(define (view-id v) (view-immutable-id (view-im v)))
-(define (view-did v) (view-immutable-did (view-im v)))
-(define (view-viewport v) (unbox (view-mutable-viewport (view-mut v))))
-(define (view-selections v) (unbox (view-mutable-selections (view-mut v))))
-
-(define (editor-clipboard ed) (unbox (editor-clipboard-box ed)))
-
-;;; ---------- 裸 box setter ----------
-
-(define (document-entry-set-name! e n)
-  (set-box! (entry-mutable-name (document-entry-mut e)) n))
-(define (document-entry-set-history! e h)
-  (set-box! (entry-mutable-history (document-entry-mut e)) h))
-
-(define (view-set-viewport! v vp) (set-box! (view-mutable-viewport (view-mut v)) vp))
-(define (view-set-selections! v s) (set-box! (view-mutable-selections (view-mut v)) s))
-
-(define (editor-set-clipboard! ed c) (set-box! (editor-clipboard-box ed) c))
-
-;;; ---------- 字段元数据写口 ----------
-
-(define (editor-document-set-name! ed did name)
-  (document-entry-set-name! (editor-document-entry ed did) name))
-
-;; history 是文档级属性，开关按 did。
-(define (editor-document-set-history-enabled! ed did flag)
-  (document-entry-set-history! (editor-document-entry ed did)
-                               (history-set-enabled (editor-document-history ed did) flag)))
-
-;;; ---------- 构造（单条 entry / view，建 box） ----------
-
-(define (make-document-entry id name history)
-  (document-entry (entry-immutable id) (entry-mutable (box name) (box history))))
-(define (make-view id did viewport selections)
-  (view (view-immutable id did)
-        (view-mutable (box viewport) (box selections))))
-
-;;; ---------- 构造（editor） ----------
-
-(define default-name "*scratch*")
-
-;; 新视图 / 新文档的初始选区：文首光标。
-(define (initial-selections) (selections-one (caret (point 0 0))))
-
-;; 入口多态：string → 现开纯文本文档；document → 原样使用（带属性）。
 (define (->document x chunk-lines)
   (if (document? x) x (document-open x chunk-lines)))
 
-;; 空 editor：无文档、无视图。
-(define (make-blank-editor)
-  (editor '() '() 0 0 (box #f)))
+;;; ---------- 构造 ----------
 
-(define (editor-open text width height [name default-name]
-                     #:mode [mode 'clip]
-                     #:line-numbers? [line-numbers? #f]
+(define default-name "*scratch*")
+
+;; 文首光标。
+(define (initial-selections) (selections-one (caret (point 0 0))))
+
+(define (make-buffer text [name default-name]
                      #:chunk-lines [chunk-lines default-chunk-lines]
                      #:history-limit [history-limit default-history-limit]
                      #:history? [history? #t])
-  (define doc (->document text chunk-lines))
-  (define sels (initial-selections))
-  (editor (list (make-document-entry 0 name (history-open doc sels history-limit history?)))
-          (list (make-view 0 0 (viewport-open width height mode line-numbers?) sels))
-          1 1 (box #f)))
+  (buffer name
+          (history-open (->document text chunk-lines) history-limit history?)
+          '()
+          #f))
 
-;; 给已有文档加一个视图。→ (values editor vid)
-(define (editor-add-view ed did width height
-                         #:mode [mode 'clip]
-                         #:line-numbers? [line-numbers? #f])
-  (editor-document-entry ed did)                    ; 校验 did
-  (define vid (editor-next-view ed))
-  (values
-   (struct-copy editor ed
-     [views (append (editor-views ed)
-                    (list (make-view vid did (viewport-open width height mode line-numbers?)
-                                     (initial-selections))))]
-     [next-view (add1 vid)])
-   vid))
+;; 建一个视图挂到 buffer 上；返回新 view。
+(define (buffer-add-view! b width height
+                          #:mode [mode 'clip]
+                          #:line-numbers? [line-numbers? #f]
+                          #:selections [sels (initial-selections)])
+  (define v (view b (viewport-open width height mode line-numbers?) sels))
+  (set-buffer-views! b (append (buffer-views b) (list v)))
+  v)
 
-;; 一步建"文档 + 视图"。→ (values editor did vid)
-(define (editor-add-document-view ed text width height [name default-name]
-                                  #:mode [mode 'clip]
-                                  #:line-numbers? [line-numbers? #f]
-                                  #:chunk-lines [chunk-lines default-chunk-lines]
-                                  #:history-limit [history-limit default-history-limit]
-                                  #:history? [history? #t])
-  (define-values (ed* did)
-    (editor-add-document ed text name
-                         #:chunk-lines chunk-lines #:history-limit history-limit #:history? history?))
-  (define-values (ed** vid)
-    (editor-add-view ed* did width height #:mode mode #:line-numbers? line-numbers?))
-  (values ed** did vid))
+;; 摘掉一个视图（不删 buffer）。
+(define (buffer-close-view! b v)
+  (set-buffer-views! b
+    (for/list ([x (in-list (buffer-views b))] #:unless (eq? x v)) x))
+  (when (and (buffer-merge b) (eq? v (cadr (buffer-merge b))))
+    (set-buffer-merge! b #f)))
 
-;; 新增一个文档（不建视图）。→ (values editor did)
-(define (editor-add-document ed text [name default-name]
-                             #:chunk-lines [chunk-lines default-chunk-lines]
-                             #:history-limit [history-limit default-history-limit]
-                             #:history? [history? #t])
-  (define doc (->document text chunk-lines))
-  (define sels (initial-selections))
-  (define did (editor-next-document ed))
-  (values (struct-copy editor ed
-            [documents (append (editor-documents ed)
-                               (list (make-document-entry did name
-                                                          (history-open doc sels history-limit history?))))]
-            [next-document (add1 did)])
-          did))
+;; 关掉一个 buffer：解除与所有 view 的关联（对象本身由宿主丢引用后回收）。
+(define (buffer-close! b)
+  (set-buffer-views! b '())
+  (set-buffer-merge! b #f))
 
-;;; ---------- 查找 ----------
+;;; ---------- buffer 读 / 写 ----------
 
-(define (document-entry-document e)
-  (history-document (document-entry-history e)))
+(define (buffer-document b) (history-document (buffer-history b)))
+(define (buffer-set-name! b n) (set-buffer-name! b n))
 
-(define (editor-document-entry ed did)
-  (or (for/first ([e (in-list (editor-documents ed))] #:when (= did (document-entry-id e))) e)
-      (error 'editor "没有这个 document id: ~a" did)))
+;;; ---------- view 读 / 写 ----------
 
-;; 低层句柄口（公开）：按 vid 取 view 句柄。
-(define (editor-view-handle ed vid)
-  (or (for/first ([v (in-list (editor-views ed))] #:when (= vid (view-id v))) v)
-      (error 'editor "没有这个 view id: ~a" vid)))
-
-(define (editor-view-document ed vid)
-  (document-entry-document (editor-document-entry ed (view-did (editor-view-handle ed vid)))))
-
-;; 低层句柄口（公开）：按 did 取当前 document 句柄。
-(define (editor-document-handle ed did)
-  (document-entry-document (editor-document-entry ed did)))
-
-(define (editor-document-history ed did)
-  (document-entry-history (editor-document-entry ed did)))
-
-(define (first-view-of-document ed did)
-  (for/first ([v (in-list (editor-views ed))] #:when (= did (view-did v))) v))
-
-;;; ---------- 生命周期（删） ----------
-
-;; 关一个视图。
-(define (editor-close-view ed vid)
-  (editor-view-handle ed vid)                          ; 校验 vid
-  (struct-copy editor ed
-    [views (for/list ([v (in-list (editor-views ed))] #:unless (= vid (view-id v))) v)]))
-
-;; 关一个文档：连带它的视图一起去掉。
-(define (editor-close-document ed did)
-  (editor-document-entry ed did)                    ; 校验 did
-  (struct-copy editor ed
-    [documents (for/list ([e (in-list (editor-documents ed))] #:unless (= did (document-entry-id e))) e)]
-    [views (for/list ([v (in-list (editor-views ed))] #:unless (= did (view-did v))) v)]))
+(define (view-document v) (buffer-document (view-buffer v)))

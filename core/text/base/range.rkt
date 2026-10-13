@@ -12,11 +12,13 @@
 
 (provide
  ;; ---------- 类型 / 构造 ----------
- (struct-out range)
- range-of range-empty? range-normalize
+ (struct-out range)               ; 半开区间 start / end
+ range-of                         ; point point → range（自动归一）
+ range-empty?                     ; range → bool
+ range-normalize                  ; range → range（保证 start ≤ end）
 
  ;; ---------- 比较 ----------
- range=?)
+ range=?)                         ; range range → bool
 
 (struct range (start end) #:transparent)
 

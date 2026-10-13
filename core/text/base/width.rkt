@@ -12,13 +12,13 @@
 
 (provide
  ;; ---------- 显示宽 ----------
- char-display-width
- string-display-width
+ char-display-width               ; char → nat（0 / 1 / 2）
+ string-display-width             ; string → nat
 
  ;; ---------- 索引 ↔ 显示列 ----------
- index->display-column
- display-column->index
- snap-display-column-forward)
+ index->display-column            ; string index → display col
+ display-column->index            ; string display col → index
+ snap-display-column-forward)     ; string display col → 吸附到字符起点
 
 ;;; ---------- 宽字符区间（East Asian Wide/Fullwidth），升序二分 ----------
 (define wide-ranges

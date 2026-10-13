@@ -17,13 +17,18 @@
 ;;;   · 注册必须早于任何 document 创建（首个 document-open 时冻结）。
 
 (provide
- register-slot! slot-count
- slots-frozen? freeze-slots!
- (struct-out slots)
- (struct-out slot)
- make-slots
- slot-ref slot-set! slot-atom
- fork-slots (struct-out fork-ctx))
+ register-slot!                   ; name default policy [transform] → slot
+ slot-count                       ; → nat
+ slots-frozen?                    ; → bool
+ freeze-slots!                    ; → void
+ (struct-out slots)               ; 槽容器（box 向量）
+ (struct-out slot)                ; 槽句柄：name + index
+ make-slots                       ; → slots（按注册表建默认）
+ slot-ref                         ; slots slot → 值
+ slot-set!                        ; slots slot v → void
+ slot-atom                        ; slots slot → box
+ fork-slots                       ; slots fork-ctx → slots
+ (struct-out fork-ctx))           ; edit / changes / old-text / new-text
 
 (struct slot-spec (name default policy transform) #:transparent)
 ;; name      : symbol

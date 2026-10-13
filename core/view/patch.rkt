@@ -15,10 +15,10 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out piece)
+ (struct-out piece)               ; row / column / text / attr
 
  ;; ---------- 差量 ----------
- screen-patch)
+ screen-patch)                    ; old new → (values render selection)
 
 (struct piece (row column text attr) #:transparent)
 

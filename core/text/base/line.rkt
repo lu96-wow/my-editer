@@ -18,19 +18,30 @@
 
 (provide
  ;; ---------- 判定 / 度量 ----------
- line? line-length track-line-length
+ line?                            ; any → bool（string 或 vector）
+ line-length                      ; line → 格数
+ track-line-length                ; track i → 格数
 
  ;; ---------- 读 ----------
- line-ref line->list
+ line-ref                         ; line i → 格
+ line->list                       ; line → list
 
  ;; ---------- 构造 ----------
- line-of-like line-empty-like
+ line-of-like                     ; like list → 同类行
+ line-empty-like                  ; like → 同类空行
 
  ;; ---------- 写（格级） ----------
- line-slice line-append line-splice line-insert line-delete line-insert-sticky
+ line-slice                       ; line s e → 子段
+ line-append                      ; line line → 拼接
+ line-splice                      ; line s e items → 区间替换
+ line-insert                      ; line i items → 插入
+ line-delete                      ; line s e → 删除区间
+ line-insert-sticky               ; line i n dir [default] → 粘性插入
 
  ;; ---------- 字符串 ↔ 行 ----------
- string-normalize-newlines string->lines lines->string)
+ string-normalize-newlines        ; string → 统一 \n
+ string->lines                    ; string → (listof string)
+ lines->string)                   ; (listof string) → string
 
 ;;; ---------- 字符串 ↔ 行序列（换行归一为 \n） ----------
 

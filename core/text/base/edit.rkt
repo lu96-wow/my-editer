@@ -17,16 +17,28 @@
 
 (provide
  ;; ---------- 多轨 ----------
- map-edits
+ map-edits                        ; edits tracks → tracks
 
  ;; ---------- 行级编辑 ----------
- edit-lines edit-insert-lines edit-delete-lines edit-rewrite-line
+ edit-lines                       ; s e lines → (track → track)
+ edit-insert-lines                ; s lines → (track → track)
+ edit-delete-lines                ; s e → (track → track)
+ edit-rewrite-line                ; i f → (track → track)
 
  ;; ---------- 格级编辑（跨行） ----------
- edit-range edit-cells edit-insert-text edit-delete-range edit-delete-cells edit-fill edit-fill*
+ edit-range                       ; l0 c0 l1 c1 text [sticky] [default] → edit
+ edit-cells                       ; i c0 c1 text [sticky] [default] → edit
+ edit-insert-text                 ; i c text [sticky] [default] → edit
+ edit-delete-range                ; l0 c0 l1 c1 → edit
+ edit-delete-cells                ; i c0 c1 → edit
+ edit-fill                        ; l0 c0 l1 c1 val → edit
+ edit-fill*                       ; l0 c0 l1 c1 val combine → edit
 
  ;; ---------- span / 位置代数 ----------
- (struct-out span) span->edit span-after-position span->change)
+ (struct-out span)                ; start / end / text
+ span->edit                       ; span [sticky] [default] → edit
+ span-after-position              ; span → 编辑后位置
+ span->change)                    ; span → change
 
 ;;; ---------- 多轨 ----------
 

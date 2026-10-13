@@ -12,8 +12,9 @@
 
 (provide
  ;; 文本通道：vrow → runs（含行号栏）
- project-row project
- gutter-text)
+ project-row                      ; document vrow → (listof run)
+ project                          ; document vp vrows → (values rows gutter)
+ gutter-text)                     ; line gutter-width → 行号文本
 
 ;;; ---------- 一个 vrow → runs（正文坐标，不含行号栏） ----------
 

@@ -19,7 +19,8 @@
 
 (provide
  ;; 字面重基准 / 前进重基准
- selections-rebase selections-advance)
+ selections-rebase                ; changes selections → selections（字面）
+ selections-advance)              ; changes selections → selections（前进）
 
 ;; 字面重基准：anchor / head 各自过编辑。
 (define (selections-rebase changes ss)

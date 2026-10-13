@@ -21,14 +21,17 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out change)
+ (struct-out change)              ; 变更：before 区间 + after 区间
 
  ;; ---------- 读 ----------
- change-empty? change-kind change-post-range
+ change-empty?                    ; change → bool（before/after 都空）
+ change-kind                      ; change → 'none|'insert|'delete|'replace
+ change-post-range                ; change → after 区间（当前坐标脏区）
 
  ;; ---------- 映射（重基准） ----------
- change-map-point
- changes-map-point changes-map-point-literal)
+ change-map-point                 ; change point → point | #f
+ changes-map-point                ; changes point → point（前进语义）
+ changes-map-point-literal)       ; changes point → point（字面语义）
 
 (struct change (before after) #:transparent)
 ;; before / after : range

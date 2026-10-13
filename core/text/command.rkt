@@ -18,10 +18,14 @@
 ;;; 重基准（见 editor）。change 只存结构、不存文本（要文本用 document-change-text）。
 
 (provide
- command-type command-type-ignore-readonly
- command-backspace command-backspace-ignore-readonly
- command-delete command-delete-ignore-readonly
- command-paste command-paste-ignore-readonly)
+ command-type                    ; doc sels text [sticky] [default] → (values doc sels changes ok?)
+ command-type-ignore-readonly    ; 同上（不守只读）
+ command-backspace               ; doc sels → (values doc sels changes ok?)
+ command-backspace-ignore-readonly
+ command-delete
+ command-delete-ignore-readonly
+ command-paste
+ command-paste-ignore-readonly)
 
 ;;; ---------- 每个选区 → (span 或 #f) + 光标落点 ----------
 

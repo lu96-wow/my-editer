@@ -16,7 +16,7 @@
 
 (provide
  ;; project ⊕ overlay → screen
- render)
+ render)                          ; document viewport [selections] → screen
 
 (define (render bd vp [sels #f])
   (define t (document-text bd))

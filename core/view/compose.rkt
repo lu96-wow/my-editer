@@ -4,40 +4,37 @@
 
 ;;; compose.rkt —— 多窗格合成（把若干子屏贴成一张大屏）
 ;;;
-;;;   pane        贴在合成屏上的一块子屏（id 供 active 匹配；row/col 可负，超出按合成宽度裁掉）
-;;;   composition 合成后的屏幕 + 参与合成的 pane + active（单个 id 或 id 列表）
+;;; pane        贴在合成屏上的一块子屏（row/col 可负，超出按合成宽度裁掉）
+;;; composition 合成后的屏幕 + 参与合成的 pane
 ;;;
 ;;; **不透明 + 显式深度**：每个 pane 有 deep（大 = 在上）。合成按 deep 决定每一格归谁 ——
-;;; 上层 pane 的**整块矩形**（含空白格）遮住下层；同 deep 时列表靠后者在上。
-;;; active（单个 id / id 列表 / #f）命中的 pane 的光标 / 选区才透出，且同样被上层遮挡。
-;;; 不在任何 pane 矩形内的格透明（露出背景）。panes 允许重叠。
+;;; 上层 pane 的整块矩形（含空白格）遮住下层；同 deep 时列表靠后者在上。
+;;;
+;;; overlay（光标 / 选区）：pane 自带的 overlay 全部参与合成，
+;;; 「谁该画 overlay」由上游在渲染每块 pane 时就决定好了（传 selections 或 #f）。
+;;; 于是 compose 只按矩形与深度合成，不依赖任何标签。
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out pane)
- (struct-out composition)
+ (struct-out pane)                ; row / column / screen / deep
+ (struct-out composition)         ; width / height / panes / screen
 
  ;; ---------- 合成 ----------
- panes->screen panes->composition)
+ panes->screen                    ; width height panes → screen
+ panes->composition)              ; width height panes → composition
 
-(struct pane (id row column screen deep) #:transparent)
-;; id : any/c（vid 等）；row/col : 屏幕坐标（可负）；deep : 深度（大 = 上）
-(struct composition (width height panes active screen) #:transparent)
+(struct pane (row column screen deep) #:transparent)
+;; row/col : 屏幕坐标（可负）；deep : 深度（大 = 上）
+(struct composition (width height panes screen) #:transparent)
 
 ;;; ---------- 全量合成 ----------
 
-;; active：单个 id / id 列表 / #f（无）。归一为 list，匹配用 equal?。
-(define (active->list active)
-  (cond [(not active) '()]
-        [(list? active) active]
-        [else (list active)]))
-
-(define (panes->screen width height panes active)
+(define (panes->screen width height panes)
   ;; 单 pane：无遮挡，直接走 run 路径（省掉 cell 往返）。
   ;; 多 pane：建 owner 网格，按格遮挡。
   (define single? (and (pair? panes) (null? (cdr panes))))
   (define owner (if single? #f (and (pair? panes) (build-owner width height panes))))
-  (define-values (cursors regions) (compose-overlay width height panes owner active))
+  (define-values (cursors regions) (compose-overlay width height panes owner))
   (screen width height
           (for/vector ([r (in-range height)])
             (cond
@@ -140,12 +137,11 @@
 
 ;;; ---------- overlay ----------
 
-;; overlay：active 命中的 pane 的光标 / 选区；再按 owner 遮掉被上层覆盖的格（owner=#f 时无遮挡）。
-(define (compose-overlay width height panes owner active)
-  (define acts (active->list active))
+;; 所有 pane 自带的 overlay 全部参与合成；再按 owner 遮掉被上层覆盖的格（owner=#f 时无遮挡）。
+(define (compose-overlay width height panes owner)
   (values
    (append*
-    (for/list ([p (in-list panes)] #:when (member (pane-id p) acts))
+    (for/list ([p (in-list panes)])
       (filter values
               (for/list ([c (in-list (screen-cursors (pane-screen p)))])
                 (define r (+ (pane-row p) (cursor-row c)))
@@ -154,7 +150,7 @@
                      (or (not owner) (eq? (vector-ref (vector-ref owner r) col) p))
                      (cursor r col (cursor-primary? c)))))))
    (append*
-    (for/list ([p (in-list panes)] #:when (member (pane-id p) acts))
+    (for/list ([p (in-list panes)])
       (append*
        (for/list ([g (in-list (screen-regions (pane-screen p)))])
          (define r (+ (pane-row p) (region-row g)))
@@ -188,6 +184,6 @@
       [else (loop (add1 c))]))
   out)
 
-;; 全量合成 → composition（含屏幕）（首帧 / 布局变时用）。
-(define (panes->composition width height panes active)
-  (composition width height panes active (panes->screen width height panes active)))
+;; 全量合成 → composition（含屏幕）。
+(define (panes->composition width height panes)
+  (composition width height panes (panes->screen width height panes)))

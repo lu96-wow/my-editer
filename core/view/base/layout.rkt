@@ -13,13 +13,17 @@
 
 (provide
  ;; ---------- 类型 ----------
- (struct-out vrow)
+ (struct-out vrow)                ; line / start-column / end-column
 
  ;; ---------- 折行 / 段 ----------
- wrap-segments segments-of-line segment-index-of
+ wrap-segments                    ; text width → (listof (cons start end))
+ segments-of-line                 ; text width mode → (listof span)
+ segment-index-of                 ; text width mode dc → nat
 
  ;; ---------- 视觉行 ----------
- vrows vrow-distance vrow-move)
+ vrows                            ; t top-line top-seg left-col width height mode → (vectorof vrow)
+ vrow-distance                    ; t width mode from-line from-seg to-line to-seg → nat
+ vrow-move)                       ; t width mode point delta → point
 
 ;; 一条视觉行的来源：(buffer 行, 显示列范围 [start-column,end-column))。
 (struct vrow (line start-column end-column) #:transparent)
