@@ -146,7 +146,7 @@ boot：World 造好后跑各插件 boot
 打开文档：run-on-opens + 按 matcher 挂 doc-key + emit document-opened
 ```
 
-内置插件（`plugins/`）：`brackets word-color syntax words auto-pair completion docs demo async-demo`。
+内置插件（`plugins/`）：`brackets word-color syntax sync words auto-pair completion docs demo async-demo`。
 纯语言服务在 `plugins/lang/`（source/pool/module-index/local-docs/doc-html/docs）。
 `config/plugins.rkt` 只给名字，`plugins/catalog.rkt` 解析成实现。
 

@@ -9,4 +9,4 @@
 (provide enabled-plugins)
 
 (define enabled-plugins
-  '(brackets word-color syntax auto-pair completion docs))
+  '(brackets word-color syntax sync auto-pair completion docs))

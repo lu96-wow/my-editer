@@ -136,6 +136,7 @@ edit4/
     brackets.rkt           括号嵌套深度底色（decor）
     word-color.rkt         同词着色（参考 edit1）（decor）
     words.rkt              当前词高亮（decor）
+    sync/                  双文档映射同步（mapping/transform/session/mark/sync/plugin）
     auto-pair.rkt          括号自动配对（命令 + 键表）
     completion.rkt         补全（不抢焦点浮窗菜单 + 异步 exports job）
     docs.rkt               标识符文档弹窗（订阅 complete-selection + 异步 doc job）

@@ -9,6 +9,7 @@
 
 (require "../plugin.rkt"
          "syntax.rkt" "brackets.rkt" "words.rkt" "word-color.rkt"
+         "sync/plugin.rkt"
          "auto-pair.rkt" "completion.rkt" "docs.rkt"
          "demo.rkt" "async-demo.rkt")
 
@@ -17,6 +18,7 @@
         word-color-plugin       ; 同词着色（参考 edit1）
         syntax-plugin           ; 语法（关键字/字符串/注释/数字）前景（覆盖词色）
         words-plugin            ; 当前词底色
+        sync-plugin             ; 双文档映射同步（中英 Racket 镜像）
         auto-pair-plugin
         completion-plugin
         docs-plugin
