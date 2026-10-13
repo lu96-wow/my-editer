@@ -18,8 +18,9 @@
   (define path (and (positive? (vector-length args)) (vector-ref args 0)))
   (define text (if (and path (file-exists? path)) (file->string path) ""))
   ;; 无文件参数 → 不建初始文档（从文件树打开）。
-  ;; 侧栏宽度在启动时按终端宽度算一次（拿不到就退回 80）。
+  ;; 侧栏尺寸在启动时按终端宽/高各算一次（拿不到就退回 80×24）。
   (define w (boot #:screen-width (or (tui-screen-width) 80)
+                  #:screen-height (or (tui-screen-height) 24)
                   #:text text #:name path #:path (and path (path->complete-path path))))
   (run-tui (app-environment) w))
 

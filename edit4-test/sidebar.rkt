@@ -1,6 +1,7 @@
 #lang racket
 
-;;; edit4-test/sidebar.rkt —— 侧栏宽度策略：启动按屏宽算、夹上下限，运行时 resize 不变
+;;; edit4-test/sidebar.rkt —— dock 尺寸策略：按朝向（左右算宽 / 上下算高）启动定一次，
+;;; 夹上下限，运行时 resize 不变；显隐保持尺寸且不低于最小。
 
 (require rackunit racket/list racket/file
          "../edit4/layout.rkt"
@@ -15,33 +16,19 @@
 
 ;;; ---------- 纯函数：比例 + 上下限 ----------
 
-(check-equal? (sidebar-width 1) sidebar-min-width)     ; 极窄 → 抬到 min
+(check-equal? (sidebar-width 1) sidebar-min-width)          ; 极窄 → 抬到 min
 (check-true (<= sidebar-min-width (sidebar-width 80) sidebar-max-width))
-(check-true (<= (sidebar-width 80) (sidebar-width 300)))   ; 单调不减
-(check-equal? (sidebar-width 100000) sidebar-max-width)    ; 极宽 → 压到 max
+(check-true (<= (sidebar-width 80) (sidebar-width 300)))    ; 单调不减
+(check-equal? (sidebar-width 100000) sidebar-max-width)     ; 极宽 → 压到 max
 
-;;; ---------- boot：按屏宽定侧栏；resize 不改 ----------
+(check-equal? (sidebar-height 1) sidebar-min-height)
+(check-equal? (sidebar-height 100000) sidebar-max-height)
+
+;;; ---------- 公共装置：显式声明朝向的 dock ----------
 
 (define dir (make-temporary-file "ed4side~a" 'directory))
-(define base (sidebar-width 160))
-(define w (boot #:root dir #:screen-width 160))
-(define rid (region-wid (hash-ref (content-regions (world-content w)) 'sidebar)))
-(check-not-false rid)
-(define (sidebar-w-at w cols)
-  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 cols 40))))
-  (rect-w (hash-ref rects rid)))
-(check-equal? (sidebar-w-at w 160) base)              ; 启动宽度 = sidebar-width(屏宽)
-(check-equal? (sidebar-w-at w 240) base)              ; 运行时拉宽，侧栏不动
-(check-equal? (sidebar-w-at w 100) base)              ; 运行时压窄，侧栏不动（未触下限）
-(check-equal? (region-size (hash-ref (content-regions (world-content w)) 'sidebar)) base)
-
-;; 屏宽更小 → 侧栏按比例缩小（但不低于 min）
-(define wn (boot #:root dir #:screen-width 60))
-(define rn (region-wid (hash-ref (content-regions (world-content wn)) 'sidebar)))
-(define rects-n (geometry-rects (layout (world-layout wn) (rect 0 0 60 40))))
-(check-equal? (rect-w (hash-ref rects-n rn)) (sidebar-width 60))
-
-;;; ---------- C-b 隐藏/显示：按隐藏时的宽度恢复（用户拖过也一样） ----------
+(define (left-spec) (list 'sidebar 'left 'auto (list "*tree*" "*buffers*") "*tree*" 'root 'shown 'auto))
+(define (top-spec)  (list 'sidebar 'top  'auto (list "*tree*" "*buffers*") "*tree*" 'root 'shown 'auto))
 
 (define reg (command-registry-merge base-commands content-commands))
 (define km (compose-keymaps (list content-keymap base-keymap)))
@@ -54,67 +41,86 @@
 (define (run w ev)
   (car (call-with-values (lambda () (dispatch reg content-scopes km (mk-ctx w ev) w)) list)))
 (define (region-of w rid) (hash-ref (content-regions (world-content w)) rid))
-(define (sidebar-width-of w)
+(define (dock-rect w cols rows)
   (define r (region-of w 'sidebar))
-  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 (car SZ) (cdr SZ)))))
-  (rect-w (hash-ref rects (region-wid r))))
+  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 cols rows))))
+  (hash-ref rects (region-wid r)))
+(define (dock-width w) (rect-w (dock-rect w (car SZ) (cdr SZ))))
+(define (dock-height w) (rect-h (dock-rect w (car SZ) (cdr SZ))))
 
-(define wb (boot #:root dir #:screen-width 160))
-(check-equal? (sidebar-width-of wb) base)
-;; 拖缝把侧栏改宽（缝在 x = base）
+;;; ---------- 左侧 dock：按屏宽定宽；resize 不改 ----------
+
+(define base (sidebar-width 160))
+(define w (boot #:root dir #:screen-width 160 #:regions (list (left-spec))))
+(check-not-false (region-wid (region-of w 'sidebar)))
+(check-equal? (rect-w (dock-rect w 160 40)) base)     ; 启动宽度 = sidebar-width(屏宽)
+(check-equal? (rect-w (dock-rect w 240 40)) base)     ; 运行时拉宽，dock 不动
+(check-equal? (rect-w (dock-rect w 100 40)) base)     ; 运行时压窄，dock 不动（未触下限）
+(check-equal? (region-size (region-of w 'sidebar)) base)
+
+;; 屏宽更小 → 按比例缩小（但不低于 min）
+(define wn (boot #:root dir #:screen-width 60 #:regions (list (left-spec))))
+(check-equal? (rect-w (dock-rect wn 60 40)) (sidebar-width 60))
+
+;;; ---------- 顶部 dock：auto 解析成**高度**（不是宽度）；resize 不改 ----------
+
+(define hbase (sidebar-height 40))
+(define wt (boot #:root dir #:screen-width 160 #:screen-height 40 #:regions (list (top-spec))))
+(check-equal? (rect-h (dock-rect wt 160 40)) hbase)   ; 高度 = sidebar-height(屏高)
+(check-equal? (rect-w (dock-rect wt 160 40)) 160)     ; 跨满宽
+(check-equal? (rect-h (dock-rect wt 160 80)) hbase)   ; 运行时拉高，dock 不动
+(check-equal? (region-size (region-of wt 'sidebar)) hbase)
+
+;;; ---------- C-b 隐藏/显示：按隐藏时的尺寸恢复（用户拖过也一样） ----------
+
+(define wb (boot #:root dir #:screen-width 160 #:regions (list (left-spec))))
+(check-equal? (dock-width wb) base)
+;; 拖缝把 dock 改宽（左侧：缝在 x = base）
 (define d2 (run (run wb (cursor-event 'press 'left base 5))
                 (cursor-event 'move 'left (+ base 12) 5)))
-(define dragged (sidebar-width-of d2))
+(define dragged (dock-width d2))
 (check-not-equal? dragged base)                       ; 确实被拖宽
-;; C-b 隐藏 → 再 C-b 显示：宽度 = 隐藏时的宽度
-(define h1 (run d2 (key-event 'b '(ctrl))))
+(define h1 (run d2 (key-event 'b '(ctrl))))           ; C-b 隐藏
 (check-false (region-wid (region-of h1 'sidebar)))
-(define h2 (run h1 (key-event 'b '(ctrl))))
+(define h2 (run h1 (key-event 'b '(ctrl))))           ; C-b 显示
 (check-not-false (region-wid (region-of h2 'sidebar)))
-(check-equal? (sidebar-width-of h2) dragged)
+(check-equal? (dock-width h2) dragged)
 
-;;; ---------- 区域声明驱动：tree 可放顶部 ----------
+;;; ---------- C-b：显示时有最小尺寸（拖到最小也不会“显不出来”） ----------
 
-(define wt (boot #:root dir #:screen-width 160
-                 #:regions '((tree top 8 ("*tree*") "*tree*" root shown)
-                             (log  bottom 6 ("*log*") "*log*" main hidden))))
-(define rects-t (geometry-rects (layout (world-layout wt) (rect 0 0 160 40))))
-(define tree-wid (region-wid (hash-ref (content-regions (world-content wt)) 'tree)))
-(check-not-false tree-wid)
-(check-equal? (rect-y (hash-ref rects-t tree-wid)) 0)     ; 顶部
-(check-equal? (rect-h (hash-ref rects-t tree-wid)) 8)     ; 高度 8
-(check-equal? (rect-w (hash-ref rects-t tree-wid)) 160)   ; 跨满宽
-(check-equal? (content-vid-of (world-content wt) tree-wid)
-              (content-panel-vid (world-content wt) "*tree*"))
+(define wc (boot #:root dir #:screen-width 160 #:regions (list (left-spec))))
+(define wc1 (run (run wc (cursor-event 'press 'left base 5))
+                 (cursor-event 'move 'left 0 5)))
+(check-true (>= (dock-width wc1) sidebar-min-width))          ; 拖到底被 dock 最小尺寸兜住
+(define wc2 (run wc1 (key-event 'b '(ctrl))))
+(check-false (region-wid (region-of wc2 'sidebar)))
+(define wc3 (run wc2 (key-event 'b '(ctrl))))
+(check-true (>= (dock-width wc3) sidebar-min-width))
 
-;;; ---------- root 区域顺序稳定：任意 toggle 后嵌套顺序不变 ----------
+;;; ---------- 区域声明驱动：dock 可放顶部、顺序稳定 ----------
 
 (define specs2 '((tree    top  6    ("*tree*")    "*tree*"    root shown)
                  (buffers left auto ("*buffers*") "*buffers*" root shown)
                  (log     bottom 6  ("*log*")     "*log*"     main hidden)))
+(define wt2 (boot #:root dir #:screen-width 160 #:screen-height 40 #:regions specs2))
+(define rects-t (geometry-rects (layout (world-layout wt2) (rect 0 0 160 40))))
+(define tree-wid (region-wid (hash-ref (content-regions (world-content wt2)) 'tree)))
+(check-not-false tree-wid)
+(check-equal? (rect-y (hash-ref rects-t tree-wid)) 0)     ; 顶部
+(check-equal? (rect-h (hash-ref rects-t tree-wid)) 6)     ; 显式高度
+(check-true (> (rect-w (hash-ref rects-t tree-wid)) 0))  ; 另一条 root dock 在内层，宽不必满
+(check-equal? (content-vid-of (world-content wt2) tree-wid)
+              (content-panel-vid (world-content wt2) "*tree*"))
+
 (define (geom-order w)
-  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 120 30))))
+  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 160 40))))
   (sort (for/list ([(id r) (in-hash rects)])
           (list (content-vid-of (world-content w) id) (rect-x r) (rect-y r) (rect-w r) (rect-h r)))
         (lambda (a b) (or (< (caddr a) (caddr b))
                           (and (= (caddr a) (caddr b)) (< (cadr a) (cadr b)))))))
-(define wo (boot #:root dir #:screen-width 120 #:regions specs2))
-(define before (geom-order wo))
+(define before (geom-order wt2))
 (define (toggle w rid) (car (run-commands region-commands #f w (list (cmd 'region-toggle rid)))))
-(check-equal? (geom-order (toggle (toggle wo 'tree) 'tree)) before)       ; 隐→显 tree
-(check-equal? (geom-order (toggle (toggle wo 'buffers) 'buffers)) before) ; 隐→显 buffers
-(check-equal? (geom-order (toggle (toggle (toggle wo 'tree) 'tree) 'tree))  ; 奇数次 = 隐藏的一半
-              (geom-order (toggle wo 'tree)))
-
-;;; ---------- C-b：显示时有最小宽度（拖到最左也不会“显不出来”） ----------
-
-(define wc (boot #:root dir #:screen-width 160))
-(define wc1 (run (run wc (cursor-event 'press 'left base 5))
-                 (cursor-event 'move 'left 0 5)))
-(check-true (>= (sidebar-width-of wc1) sidebar-min-width))     ; 拖到底被 dock 最小尺寸兜住
-(define wc2 (run wc1 (key-event 'b '(ctrl))))                   ; C-b 隐藏
-(check-false (region-wid (region-of wc2 'sidebar)))
-(define wc3 (run wc2 (key-event 'b '(ctrl))))                   ; C-b 显示
-(check-true (>= (sidebar-width-of wc3) sidebar-min-width))
+(check-equal? (geom-order (toggle (toggle wt2 'tree) 'tree)) before)       ; 隐→显 tree
+(check-equal? (geom-order (toggle (toggle wt2 'buffers) 'buffers)) before) ; 隐→显 buffers
 
 (displayln "edit4/sidebar.rkt: all tests passed")

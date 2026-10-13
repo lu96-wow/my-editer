@@ -13,8 +13,8 @@
 ;;; docks，每条： (dock-id side size min anchor shown?)
 ;;;   dock-id 引用一个 panel-group，并决定它放哪、多大、启动是否显示。
 ;;;   side   : left | right | top | bottom
-;;;   size   : auto（按屏宽算的侧栏宽度）| 整数（left/right 宽度，top/bottom 高度）
-;;;   min    : 最小尺寸（展开时的下限；拖到更小/隐藏后再显示不会被夹成 0 而看不见）
+;;;   size   : auto（按 side 取横向宽度 / 纵向高度）| 整数（left/right 宽度，top/bottom 高度）
+;;;   min    : auto（同 size 的轴向最小）| 整数（展开下限；拖到更小/隐藏后再显示不会夹成 0）
 ;;;   anchor : root（贴根，跨整屏）| main（贴主区，让开状态栏）
 ;;;   shown? : shown | hidden
 ;;;
@@ -39,10 +39,11 @@
     (log     ("*log*")              "*log*")))
 
 ;; (id side size min anchor shown?)
+;;   size/min 可为 auto：按 side 取横向（宽）或纵向（高）策略（boot 解析）。
 (define docks
-  (list (list 'sidebar 'left   'auto sidebar-min-width 'root 'shown)
-        (list 'status  'bottom 1    1                 'main 'shown)   ; 常显；prompt 时切到 *input*
-        (list 'log     'bottom 6    2                 'main 'hidden)))
+  (list (list 'sidebar 'top    'auto 'auto 'root 'shown)   ; 文件树在顶部（横向 dock）
+        (list 'status  'bottom 1     1     'main 'shown)   ; 常显；prompt 时切到 *input*
+        (list 'log     'bottom 6     2     'main 'hidden)))
 
 (define region-keys
   '(((key b ctrl) always          (region-toggle sidebar))

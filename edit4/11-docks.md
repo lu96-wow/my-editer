@@ -60,11 +60,11 @@ panel-group（组合，内容）      dock（槽位，布局）                 
     (status  ("*status*" "*input*") "*status*")
     (log     ("*log*")            "*log*")))
 
-;; (id side size min anchor shown?)
+;; (id side size min anchor shown?)  size/min = auto 时按 side 取横向(宽)/纵向(高)策略
 (define docks
-  (list (list 'sidebar 'left   'auto sidebar-min-width 'root 'shown)
-        (list 'status  'bottom 1    1                 'main 'shown)
-        (list 'log     'bottom 6    2                 'main 'hidden)))
+  (list (list 'sidebar 'top    'auto 'auto 'root 'shown)   ; 文件树在顶部
+        (list 'status  'bottom 1     1    'main 'shown)
+        (list 'log     'bottom 6     2    'main 'hidden)))
 ```
 于是 `C-b` 切的是「sidebar 这个组合整体」，`M-b` 是组内 tree↔buffers 循环，`M-t` 切到组内 tree——
 **组合整体操作，与键表一致**；想真正拆成两个面板，必须显式建两个 group + 两个 dock，不再是顺手写单成员 region。

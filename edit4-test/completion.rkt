@@ -33,9 +33,10 @@
   (list-ref (string-split (view-string (content-ed (world-content w)) vid) "\n") i))
 
 ;; 注意：boot 不跑插件 boot（runtime 才跑）；测试里显式 run-boots 初始化插件缓存。
+;; 用 #:regions '() 只用编辑器（不受默认 dock 布局/尺寸影响）。
 (define (scratch text path)
   (run-boots env (boot #:env env #:name (or path "*scratch*")
-                       #:path (and path (string->path path)) #:text text)))
+                       #:path (and path (string->path path)) #:text text #:regions '())))
 (define (focus-first! w)
   (define v (content-vid-of (world-content w) 0))
   v)
