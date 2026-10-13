@@ -89,6 +89,17 @@
 (define e1 (run (W s1) (key-event 'enter '())))
 (check-equal? (content-vid-of (world-content (W e1)) ewid) vid2)
 
+;;; ---------- buffers-enter 多编辑器窗 → 与文件树同一规则：进 placing ----------
+
+(define lay2 (world-layout (W s1)))
+(define e2w (world-set-layout (W s1)
+                              (insert-adjacent lay2 ewid 'right (size 40 #f)
+                                               (leaf (fresh-id lay2) (cons 2 2)))))
+(set-point! (content-ed (world-content e2w)) bvid i2 0)
+(define p1 (run e2w (key-event 'enter '())))
+(check-not-false (content-placing (world-content (W p1))))
+(check-true (scope-ok? content-scopes (W p1) 'placing))
+
 ;;; ---------- M-e：聚焦编辑器 ----------
 (define me (run (W s1) (key-event 'e '(alt))))
 (check-equal? (world-focus (W me)) ewid)

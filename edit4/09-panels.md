@@ -73,6 +73,9 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 - `editor` 作用域在 placing 时让位（编辑键不误触）；状态栏显示“选择目标窗口 …”。
 - 打开流程（`runtime.rkt` 的 `open-path`）先建/取 doc+view，再 `reveal-or-place-doc!`：
   已显示的文档→聚焦那个窗；否则 `place-vid!`。
+- **消费方统一**：文件树 `tree-enter` 与文档管理面板 `buffers-enter` 都经
+  `reveal-or-place-doc!` / `reveal-or-place!` 打开（同一条“0 新开 / 1 直放 / ≥2 进 placing”规则），
+  不再有面板专用的直放路径。
 
 > `C-t` 边框开关**不做**：edit4 浮窗固定 1 格框，没有每窗边框开关的需求（边框字形在 `view/border.rkt`，几何内缩在 `layout/float.rkt`）。
 
@@ -128,10 +131,10 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
 由资源的子系统拥有，而不是给 focus 加一层名字：
 
 - 面板（region 成员）→ `region-activate` + `region-focus`；
-- 文档 → `lifecycle` 的 `show-doc!` / `show-view!`；
+- 文档 → `placing` 的 `reveal-or-place!` / `reveal-or-place-doc!`（多窗时进 placing）；
 - 编辑器 → `content/focus.rkt` 的 `focus-editor`（M-e）。
 
-理由：中心化的 `focus <name>` 会与 region / show-doc! 重复「可见性」逻辑；按 vid 查窗口
+理由：中心化的 `focus <name>` 会与 region / reveal 重复「可见性」逻辑；按 vid 查窗口
 还是多义的（同一 vid 可在多窗口/浮窗）。core 的 `focus` 现在只接受 `next/prev`、方向、
 **合法 id**；其它目标直接让位（不再把焦点设成垃圾值）。浮窗的 reveal = `float-open`（已在则提到最上）。
 （方向焦点仍是 `focus` 的能力，但按 edit3 不再绑 `M-方向`。）

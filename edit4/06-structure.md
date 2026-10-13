@@ -94,10 +94,10 @@ edit4/
     buffers-cmds.rkt       文档管理面板命令（enter/fold/new-view/close-view/close-doc）
     region.rkt             面板槽（显隐 / 切换 / 聚焦）
     float.rkt              浮窗（开/关/切/提，窗口 + 视图，anchor 几何）
-    focus.rkt              聚焦主编辑器窗（具名导航走 region / show-doc!）
+    focus.rkt              聚焦主编辑器窗（具名导航走 region / placing 的 reveal）
     pointer.rkt            指针命令的内容扩展（点击 → 文档光标）
     lifecycle.rkt          文档资源生命周期动词（dirty/save/close/focus）
-    placing.rkt            打开时放置选择（单窗直放 / 多窗让选）
+    placing.rkt            打开时放置选择（0 新开 / 1 直放 / ≥2 让选；树 + buffers 共用）
     prompt.rkt             输入行（*input*）+ kind 注册表 + quit/close-doc 流程
     scopes.rkt             editor / (panel NAME) / placing / float 作用域
     edit.rkt               编辑 / 导航命令

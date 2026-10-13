@@ -9,7 +9,8 @@
 
 (require racket/list
          "../core/world.rkt" "../core/command.rkt"
-         "model.rkt" "adapter.rkt" "buffers.rkt" "lifecycle.rkt" "prompt.rkt")
+         "model.rkt" "adapter.rkt" "buffers.rkt" "lifecycle.rkt" "prompt.rkt"
+         "placing.rkt")
 
 (define (buffers-vid w)
   (define c (world-content w))
@@ -34,8 +35,8 @@
   (define cur (buffers-current w))
   (cond
     [(not cur) #f]
-    [(eq? (list-ref cur 4) 'view) (cons (show-view! w (cadr cur)) '())]
-    [else (cons (show-doc! w (car cur)) '())]))
+    [(eq? (list-ref cur 4) 'view) (cons (reveal-or-place! w (cadr cur)) '())]
+    [else (cons (reveal-or-place-doc! w (car cur)) '())]))
 
 (define (h-buffers-expand ctx w args)
   (define cur (buffers-current w))

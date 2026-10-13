@@ -12,7 +12,7 @@
 ;;; 这里只有动词（被命令 / prompt kind 复用），不含提示与键表。
 
 (provide dirty-dids save-doc save-docs close-doc! ensure-focus doc-display
-         window-of-vid show-view! show-doc! focused-did)
+         window-of-vid focused-did)
 
 (require racket/list racket/path
          "../core/world.rkt" "../core/effect.rkt"
@@ -80,27 +80,5 @@
   (define v (and c (content-vid-of c (world-focus w))))
   (and v (content-did-of c v)))
 
-;; 显示一个视图：已显示的窗口→聚焦；否则放进一个编辑器窗。
-(define (show-view! w vid)
-  (define c (world-content w))
-  (define id (window-of-vid w vid))
-  (cond
-    [id (world-set-focus w id)]
-    [else
-     (define t (or (content-editor-window c (world-layout w)) (world-focus w)))
-     (if t
-         (world-set-content (world-set-focus w t) (content-bind (world-content w) t vid))
-         w)]))
-
-;; 显示一个文档：复用其首个视图，否则新建一个视图再显示。
-(define (show-doc! w did)
-  (define c (world-content w))
-  (define vids (document-view-list (content-ed c) did))
-  (cond
-    [(pair? vids) (show-view! w (car vids))]
-    [else
-     (define t (or (content-editor-window c (world-layout w)) (world-focus w)))
-     (cond
-       [(not t) w]
-       [else (define-values (c* vid) (content-add-view! c did 60 22))
-             (world-set-content (world-set-focus w t) (content-bind c* t vid))])]))
+;; 显示的「放窗」策略（0 个编辑器窗新开 / 1 个直放 / ≥2 个进 placing）在
+;; content/placing.rkt 的 reveal-or-place! / reveal-or-place-doc!；面板与文件树共用同一入口。
