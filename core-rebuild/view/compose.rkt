@@ -12,7 +12,7 @@
 ;;;
 ;;; overlay（光标 / 选区）：pane 自带的 overlay 全部参与合成，
 ;;; 「谁该画 overlay」由上游在渲染每块 pane 时就决定好了（传 selections 或 #f）。
-;;; 于是 compose 不认识任何 id，也没有 active 匹配。
+;;; 于是 compose 只按矩形与深度合成，不依赖任何标签。
 
 (provide
  ;; ---------- 类型 ----------

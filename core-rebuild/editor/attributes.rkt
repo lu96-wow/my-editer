@@ -7,7 +7,7 @@
 (require "state.rkt"
          "../text/document.rkt"
          "../text/base/range.rkt" "../text/base/point.rkt"
-         "../text/base/line.rkt" "../text/base/track.rkt")
+         "../text/base/line.rkt")
 
 (provide
  ;; ---------- 端口 ----------

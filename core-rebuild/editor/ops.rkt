@@ -11,7 +11,7 @@
 
 (require "state.rkt" "history.rkt"
          "../text/document.rkt" "../text/command.rkt" "../text/rebase.rkt"
-         "../text/base/point.rkt" "../text/base/selection.rkt" "../text/base/range.rkt"
+         "../text/base/point.rkt" "../text/base/selection.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
          "../view/base/viewport.rkt")
 

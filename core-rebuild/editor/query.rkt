@@ -4,7 +4,7 @@
 ;;;
 ;;; 宿主持有 buffer / view 对象，读操作直接在对象上取。
 
-(require "state.rkt" "history.rkt" "ops.rkt"
+(require "state.rkt" "history.rkt"
          "../text/document.rkt"
          "../text/base/point.rkt" "../text/base/range.rkt"
          "../text/base/selection.rkt" "../text/base/track.rkt"

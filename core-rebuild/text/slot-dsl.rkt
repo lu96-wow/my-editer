@@ -14,7 +14,7 @@
 ;;;     (define-document-slot meta-a #:default #f #:fork reset)
 ;;;     (define-document-slot tlen   #:default 0  #:fork (transform my-fn))
 ;;;
-;;; 名字即句柄：可传给 editor-document-slot-* / editor-document-slot-ref 等通用 API。
+;;; 名字即句柄：可传给 buffer-slot-ref / buffer-slot-set! 等通用 API。
 ;;; 注册必须早于任何 document 创建（见 slots.rkt 的冻结）。
 
 (require "document.rkt" "slots.rkt"

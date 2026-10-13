@@ -38,14 +38,14 @@
 
 ;;; ---------- 对象 ----------
 
-;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身（替代 did）。
+;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身。
 (struct buffer (name history views merge) #:mutable)
 ;; name    : string
 ;; history : history        （current 就是当前 document 真身）
 ;; views   : (listof view)  共享这份内容的视图
 ;; merge   : #f | (list tag view selections)  会话层「并步记忆」（见 ops.rkt）
 
-;; 视图：显示状态，指回 buffer。身份 = 对象本身（替代 vid）。
+;; 视图：显示状态，指回 buffer。身份 = 对象本身。
 (struct view (buffer viewport selections) #:mutable)
 
 ;;; ---------- 多态入口 ----------
@@ -81,7 +81,9 @@
 ;; 摘掉一个视图（不删 buffer）。
 (define (buffer-close-view! b v)
   (set-buffer-views! b
-    (for/list ([x (in-list (buffer-views b))] #:unless (eq? x v)) x)))
+    (for/list ([x (in-list (buffer-views b))] #:unless (eq? x v)) x))
+  (when (and (buffer-merge b) (eq? v (cadr (buffer-merge b))))
+    (set-buffer-merge! b #f)))
 
 ;; 关掉一个 buffer：解除与所有 view 的关联（对象本身由宿主丢引用后回收）。
 (define (buffer-close! b)

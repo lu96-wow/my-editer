@@ -9,7 +9,7 @@
    - 宿主直接持有对象；core 不再集中管理多个文档。
 2. **操作 = 纯函数 + `compose`/`map`**；状态对象（buffer/view/document/history）**可以不纯**（functional core / imperative shell）。
 3. **保留多 view 共享一份 document+history**：`buffer` 持 `history`（含当前 document）与 `views`；`view` 指回 `buffer`。
-4. **focus 在宿主**：core 不存 focus；宿主传「目标 view」与「active pane id」。
+4. **focus 在宿主**：core 不存 focus；宿主自己决定焦点 view，渲染时作为 focus 传进去。
 5. **history 去掉 who/selections**：撤销不再「回到发起视图」。history 退化成**纯文档版本栈**。
    - 并步（merge）决策移到会话层（commit 壳），由「来源切换时 seal」控制。
 
@@ -28,7 +28,7 @@
 | 入口 | `editor.rkt` | 再导出 |
 
 不变（复制自旧 core）：`text/**`、`view/{project,overlay,render,patch}.rkt`、`view/base/*`。
-已改：`view/compose.rkt` —— 去掉 `active`/`pane-id`，overlay 随 pane 自带的 screen 一起合成（谁画由宿主渲染时决定）。
+已改：`view/compose.rkt` —— overlay 随 pane 自带的 screen 一起合成，不依赖 active/id（谁画由宿主渲染时决定）。
 
 ## 存在集 vs 可见集（分工）
 
