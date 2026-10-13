@@ -15,7 +15,7 @@
 ;;;
 ;;; 「脏」= 存档 handle ≠ 当前 handle（身份比较）。
 
-(provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out placing) (struct-out region)
+(provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out placing) (struct-out swap) (struct-out region)
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-set-vid content-swap-vids content-remove-vid
@@ -24,6 +24,7 @@
          content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
          content-prompt content-set-prompt
          content-placing content-set-placing
+         content-swap content-set-swap
          content-tree content-set-tree
          content-regions content-set-regions
          content-fold content-set-fold
@@ -38,13 +39,15 @@
 (struct prompt (label kind data prev-focus) #:transparent)  ; 输入行状态
 ;; 放置选择（打开时多窗口 → 用户选目标窗）；vid = 待放置视图，prev-focus = 进入前焦点。
 (struct placing (vid prev-focus) #:transparent)
+;; 互换选择（C-t 两步选取）；src = 源窗 id，prev-focus = 进入前焦点（取消时回退）。
+(struct swap (src prev-focus) #:transparent)
 ;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
 ;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定；
 ;; leaf = 常驻布局叶子 id（隐藏时仍在树里，只是折叠）；min-size = 展开时的尺寸下限。
 (struct region (side size members active anchor wid leaf min-size) #:transparent)
-(struct content (ed docs bindings panels tree prompt placing regions fold log doc-keys) #:transparent)
+(struct content (ed docs bindings panels tree prompt placing swap regions fold log doc-keys) #:transparent)
 
-(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f #f (hash) (hash) '() (hash)))
+(define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f #f #f (hash) (hash) '() (hash)))
 
 (define (content-ed* c ed) (struct-copy content c [ed ed]))
 (define (content-docs* c docs) (struct-copy content c [docs docs]))
@@ -53,6 +56,7 @@
 (define (content-set-tree c t) (struct-copy content c [tree t]))
 (define (content-set-prompt c p) (struct-copy content c [prompt p]))
 (define (content-set-placing c p) (struct-copy content c [placing p]))
+(define (content-set-swap c s) (struct-copy content c [swap s]))
 (define (content-set-regions c r) (struct-copy content c [regions r]))
 (define (content-set-fold c f) (struct-copy content c [fold f]))
 (define (content-log-append c msg) (struct-copy content c [log (append (content-log c) (list msg))]))

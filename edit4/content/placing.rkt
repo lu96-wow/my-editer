@@ -10,8 +10,10 @@
 ;;; placing 状态存在 content 里（与 prompt 同构）：vid = 待放置视图，prev-focus = 进入前焦点。
 ;;; 视图在确认前不入任何窗口绑定；取消只清 placing + 回焦（文档保持已打开、未显示）。
 ;;;
-;;; 也管「关编辑器窗」（C-d）：最后一个编辑器窗是**常驻的空占位**，只解绑不删叶子，
-;;; 主区弹性仍在，dock（树 / 状态栏）尺寸不漂。
+;;; 也管
+;;;  · 「关编辑器窗」（C-d）：最后一个编辑器窗是**常驻的空占位**，只解绑不删叶子，
+;;;    主区弹性仍在，dock（树 / 状态栏）尺寸不漂；
+;;;  · 「互换视图」（C-t 两步选取）：只换两个编辑器窗的 vid 绑定，几何/尺寸不动。
 
 (provide placing-commands place-vid! reveal-or-place! reveal-or-place-doc!)
 
@@ -103,20 +105,21 @@
 
 ;;; ---------- 命令 ----------
 
+;; 编辑器窗序列里相对 cur 走 d 步（d = +1/-1）。
+(define (editor-step wins cur d)
+  (cond
+    [(null? wins) #f]
+    [else
+     (define i (or (for/first ([id (in-list wins)] [k (in-naturals)] #:when (eqv? id cur)) k) 0))
+     (list-ref wins (modulo (+ i d) (length wins)))]))
+
 ;; 两个编辑器窗互换视图：几何/尺寸/焦点都不动，只换 vid 绑定。
 ;; 参数 (swap-view A B)：A/B = 窗口 id、'focus、或 'next / 'prev
 ;; （相对焦点在编辑器窗序列里的下一个/上一个；焦点不在编辑器窗时取第一个/最后一个）。
 (define (swap-target wins focus x)
   (cond
     [(eq? x 'focus) focus]
-    [(memq x '(next prev))
-     (cond
-       [(null? wins) #f]
-       [else
-        (define m (for/first ([id (in-list wins)] [k (in-naturals)] #:when (eqv? id focus)) k))
-        (define i (or m (if (eq? x 'next) -1 0)))
-        (define d (if (eq? x 'next) 1 -1))
-        (list-ref wins (modulo (+ i d) (length wins)))])]
+    [(memq x '(next prev)) (editor-step wins focus (if (eq? x 'next) 1 -1))]
     [else x]))
 
 (define (h-swap-view ctx w args)
@@ -128,6 +131,76 @@
   (cond
     [(not (and c a b (memv a wins) (memv b wins) (not (eqv? a b)))) #f]
     [else (cons (world-set-content w (content-swap-vids c a b)) '())]))
+
+;;; ---------- 互换选取（C-t 两步：C-t 标记源并跳到下一个作默认目标；c 确认） ----------
+
+;; C-t：进入互换选取。源 = 焦点编辑器窗；目标默认 = 下一个编辑器窗（≥2 才进）。
+(define (h-swap-start ctx w args)
+  (define c (world-content w))
+  (define id (world-focus w))
+  (define wins (editor-windows w))
+  (cond
+    [(not (and c id (memv id wins))) #f]
+    [(content-swap c) (cons w '())]                 ; 已在选取：消费
+    [(null? (cdr wins)) #f]                          ; 只有一个编辑器窗，无处可换
+    [else
+     (define target (editor-step wins id 1))
+     (cons (world-set-focus (world-set-content w (content-set-swap c (swap id id))) target) '())]))
+
+;; Tab / M-n / M-p：在编辑器窗间循环目标（改焦点即预览）。
+(define (h-swap-cycle ctx w args)
+  (define c (world-content w))
+  (cond
+    [(not (and c (content-swap c))) #f]
+    [else
+     (define wins (editor-windows w))
+     (cond
+       [(null? wins) #f]
+       [else (cons (world-set-focus w (editor-step wins (world-focus w) (car args))) '())])]))
+
+;; c / Enter：确认，把源窗与当前焦点窗的视图互换。
+(define (h-swap-confirm ctx w args)
+  (define c (world-content w))
+  (define s (and c (content-swap c)))
+  (cond
+    [(not s) #f]
+    [else
+     (define wins (editor-windows w))
+     (define t (world-focus w))
+     (cond
+       [(not (and t (memv t wins))) #f]
+       [else
+        (define c1 (content-set-swap (content-swap-vids c (swap-src s) t) #f))
+        (cons (world-set-content w c1) '())])]))
+
+;; Esc：取消，焦点回源窗。
+(define (h-swap-cancel ctx w args)
+  (define c (world-content w))
+  (define s (and c (content-swap c)))
+  (cond
+    [(not s) #f]
+    [else
+     (define w1 (world-set-content w (content-set-swap c #f)))
+     (define prev (swap-prev-focus s))
+     (cons (world-set-focus w1 (if (and prev (has-id? w1 prev)) prev (world-focus w1))) '())]))
+
+;; 鼠标点编辑器窗 = 切目标；点其它（面板/浮窗/缝）= 消费但不改。
+(define (h-swap-pick ctx w args)
+  (define c (world-content w))
+  (cond
+    [(not (and c (content-swap c))) #f]
+    [else
+     (define fr (ctx-frame ctx))
+     (cond
+       [(not fr) (cons w '())]
+       [else
+        (define ev (ctx-event ctx))
+        (define t (hit-frame fr (cursor-event-x ev) (cursor-event-y ev)))
+        (define wid (and (pane-target? t) (pane-target-id t)))
+        (define wins (editor-windows w))
+        (cond
+          [(and wid (memv wid wins)) (cons (world-set-focus w wid) '())]
+          [else (cons w '())])])]))
 
 ;; C-d：关闭焦点编辑器窗（**只对编辑器窗生效**，面板/浮窗一律不动）。
 ;;   · 只剩一个编辑器窗 → **保留叶子、只解绑** → 空编辑器占位（主区弹性不消失，
@@ -220,6 +293,11 @@
   (make-command-registry
    (list (cons 'close-window h-close-window)
          (cons 'swap-view h-swap-view)
+         (cons 'swap-start h-swap-start)
+         (cons 'swap-cycle h-swap-cycle)
+         (cons 'swap-confirm h-swap-confirm)
+         (cons 'swap-cancel h-swap-cancel)
+         (cons 'swap-pick h-swap-pick)
          (cons 'place-cycle h-place-cycle)
          (cons 'place-confirm h-place-confirm)
          (cons 'place-cancel h-place-cancel)

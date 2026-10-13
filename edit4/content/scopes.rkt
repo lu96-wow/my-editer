@@ -19,7 +19,7 @@
 (define (editor-scope w)
   (define c (world-content w))
   (define v (focused-vid w))
-  (and v (not (content-panel? c v)) (not (content-placing c))))
+  (and v (not (content-panel? c v)) (not (content-placing c)) (not (content-swap c))))
 
 (define (panel-scope name w)
   (define c (world-content w))
@@ -35,6 +35,11 @@
   (define c (world-content w))
   (and c (content-placing c) #t))
 
+;; 正在选互换目标窗（C-t 两步选取）。
+(define (swap-scope w)
+  (define c (world-content w))
+  (and c (content-swap c) #t))
+
 ;; 焦点是该区域的窗口（且区域可见）。
 (define (region-scope rid w)
   (define c (world-content w))
@@ -47,6 +52,7 @@
     (list (cons 'editor editor-scope)
           (cons 'float float-scope)
           (cons 'placing placing-scope)
+          (cons 'swap swap-scope)
           (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
           (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))
           (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))

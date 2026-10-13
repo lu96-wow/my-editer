@@ -146,4 +146,44 @@
 (check-eqv? (content-vid-of (world-content sw-w3) 0) sw-vb)
 (check-eqv? (content-vid-of (world-content sw-w3) 1) sw-va)
 
+;;; ---------- C-t 两步选取互换：start → cycle → confirm / cancel ----------
+
+(define sd0 (content-blank))
+(define-values (sd1 _sdda sva) (content-add-doc! sd0 "A" 20 4 "A" #f))
+(define-values (sd2 _sddb svb) (content-add-doc! sd1 "B" 20 4 "B" #f))
+(define-values (sd3 _sddc svc) (content-add-doc! sd2 "C" 20 4 "C" #f))
+(define sbase (content-bind (content-bind (content-bind sd3 0 sva) 1 svb) 2 svc))
+(define s3-lay (split 'h 1 (list (child (size 1 #t) (leaf 0 (cons 2 2)))
+                                 (child (size 1 #t) (leaf 1 (cons 2 2)))
+                                 (child (size 1 #t) (leaf 2 (cons 2 2))))))
+(define sw3 (make-world #:layout s3-lay #:focus 0 #:content sbase))
+
+;; C-t：进入选取，源=0，焦点默认跳到下一个（1）
+(define sw3a (run sw3 (list (cmd 'swap-start))))
+(check-not-false (content-swap (world-content sw3a)))
+(check-eqv? (world-focus sw3a) 1)
+;; Tab / M-n：循环目标
+(define sw3b (run sw3a (list (cmd 'swap-cycle 1))))
+(check-eqv? (world-focus sw3b) 2)
+;; c / Enter：确认，0 ↔ 2 互换，几何不动、selection 清掉
+(define sw3c (run sw3b (list (cmd 'swap-confirm))))
+(check-false (content-swap (world-content sw3c)))
+(check-eqv? (content-vid-of (world-content sw3c) 0) svc)
+(check-eqv? (content-vid-of (world-content sw3c) 2) sva)
+(check-eqv? (content-vid-of (world-content sw3c) 1) svb)
+(check-equal? (world-layout sw3c) s3-lay)
+
+;; Esc：取消，焦点回源窗，不换
+(define sw3d (run (run sw3 (list (cmd 'swap-start))) (list (cmd 'swap-cycle 1))))
+(define sw3e (run sw3d (list (cmd 'swap-cancel))))
+(check-false (content-swap (world-content sw3e)))
+(check-eqv? (world-focus sw3e) 0)
+(check-eqv? (content-vid-of (world-content sw3e) 0) sva)
+(check-equal? (world-layout sw3e) s3-lay)
+
+;; 只有一个编辑器窗：无处可换，不进选取
+(define sw1 (make-world #:layout (leaf 0 (cons 2 2)) #:focus 0
+                        #:content (content-bind sw-c2 0 sw-va)))
+(check-false (run-commands placing-commands ctx0 sw1 (list (cmd 'swap-start))))
+
 (displayln "edit4/placing.rkt: all tests passed")

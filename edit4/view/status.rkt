@@ -45,4 +45,9 @@
      (values (format " 选择目标窗口: ~a   Tab / M-n 切换   Enter 替换   Esc 取消"
                      (window-label c w (world-focus w)))
              (list (cons 0 'status-bar)))]
+    [(content-swap c)
+     (values (format " 互换视图: ~a → ~a   Tab / M-n 切换   c / Enter 确认   Esc 取消"
+                     (window-label c w (swap-src (content-swap c)))
+                     (window-label c w (world-focus w)))
+             (list (cons 0 'status-bar)))]
     [else (status-line c w)]))

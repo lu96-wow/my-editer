@@ -89,6 +89,15 @@
    (list '(key enter) 'placing (cmd 'place-confirm))
    (list '(key escape) 'placing (cmd 'place-cancel))
    (list '(cursor press left) 'placing (cmd 'place-pick))
+   ;; ---- 互换视图（C-t 两步选取：C-t 标记源并跳到下一个；Tab/M-n/M-p 选目标；c 确认） ----
+   (list '(key t ctrl) 'always (cmd 'swap-start))
+   (list '(key tab) 'swap (cmd 'swap-cycle 1))
+   (list '(key n alt) 'swap (cmd 'swap-cycle 1))
+   (list '(key p alt) 'swap (cmd 'swap-cycle -1))
+   (list '(text "c") 'swap (cmd 'swap-confirm))
+   (list '(key enter) 'swap (cmd 'swap-confirm))
+   (list '(key escape) 'swap (cmd 'swap-cancel))
+   (list '(cursor press left) 'swap (cmd 'swap-pick))
    ;; ---- 前缀 new（C-n）→ f 新文件；再按 C-n 到 new2 → f 新目录 ----
    (list '(text "f") '(prefix new) (cmd 'tree-new-file))
    (list '(text "f") '(prefix new2) (cmd 'tree-new-dir))
