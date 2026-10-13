@@ -35,6 +35,7 @@
    'buf-file       (style (rgb 200 200 200) #f '())
    'buf-untitled   (style (rgb 170 170 170) #f '())
    'buf-view       (style (rgb 140 160 190) #f '())
+   'buf-view-idle  (style (rgb 120 120 130) #f '())
    'buf-dirty      (style (rgb 230 160 90) #f '(bold))
    ;; 语法高亮
    'syntax-def     (style (rgb 120 180 240) #f '())

@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `*status*` 状态栏 | 命令序列 / name+脏+行列 | 命令序列 / name(相对路径)+脏+行列 | ✅ 已同步 |
 | `*tree*` 文件树 | enter/导航/新建/删除/hidden/reload/着色 | enter/parent/child/new/delete/reload/hidden/着色 | ✅ 已同步 |
-| `*buffers*` 文档管理 | 行模型/fold/enter/new-view/close-view/close-doc/着色 | 同左 | ✅ 已同步 |
+| `*buffers*` 文档管理 | 行模型/fold/enter/new-view/close-view/close-doc/着色 | 行模型/fold/enter/`C-n` 新视图/`C-d` 关视图或关文档/缩进+着色 | ✅ 已同步 |
 | `*input*` 输入行 | prompt kind | prompt kind（P2） | ✅ 已同步 |
 | `*log*` 日志 | log 面板 + region | log 面板 + region | ✅ 已同步 |
 
@@ -23,11 +23,11 @@
 ```
 content/
   buffers.rkt        行模型（buffer-rows）
-  buffers-cmds.rkt   enter/fold/new-view/close-view/close-doc
+  buffers-cmds.rkt   enter/fold/new-view/buffers-close（C-d 视图/文档二选一）
   region.rkt         面板槽：显隐 / 切换 / 聚焦
                    （日志行存在 content.log，无单独模型模块）
 view/
-  buffers.rkt        文档管理投影（▾/▸/●/· + 着色）
+  buffers.rkt        文档管理投影（缩进 + 着色，不加符号）
   status.rkt         状态栏（含命令序列）
   tree.rkt           文件树投影
   log.rkt            日志投影
@@ -109,7 +109,7 @@ edit4：`World.keys`（`listof string`）+ `core/dispatch.rkt` 维护；`view/st
   面板名建文档；浮窗菜单用 `content/float.rkt` 的 `open-overlay`（不抢焦点）。
 
 已对齐 edit3 的键：`(region id)` 作用域（`Tab` 循环侧栏）、新建 `C-n f` / `C-n C-n f`（`prefix-new` 切换）、
-去掉多出的 `C-w`（关文档只走 buffers `Del`）。
+去掉多出的 `C-w`（关文档走 buffers `C-d`，脏则询问）。
 
 ### 浮窗（已同步）
 

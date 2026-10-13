@@ -65,10 +65,9 @@
    (list '(key left) '(panel "*buffers*") (cmd 'buffers-collapse))
    (list '(key right) '(panel "*buffers*") (cmd 'buffers-expand))
    (list '(text " ") '(panel "*buffers*") (cmd 'buffers-toggle))
-   (list '(text "n") '(panel "*buffers*") (cmd 'new-view))
+   (list '(key n ctrl) '(panel "*buffers*") (cmd 'new-view))
    (list '(key enter) '(panel "*buffers*") (cmd 'buffers-enter))
-   (list '(key d ctrl) '(panel "*buffers*") (cmd 'buffers-close-view))
-   (list '(key delete) '(panel "*buffers*") (cmd 'buffers-close-doc))
+   (list '(key d ctrl) '(panel "*buffers*") (cmd 'buffers-close))
    ;; ---- 浮窗（焦点是浮窗） ----
    (list '(key j ctrl) 'float (cmd 'float-raise))
    (list '(key tab) 'float (cmd 'float-cycle))

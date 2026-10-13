@@ -2,7 +2,7 @@
 
 ;;; edit4/content/buffers.rkt —— 文档管理面板的行模型（纯）
 ;;;
-;;; 每个「非面板」文档一行（▾/▸/空 标记由投影决定），其视图作为子行。
+;;; 每个「非面板」文档一行，其视图作为子行（缩进 + 颜色由投影决定）。
 ;;; 行结构 row = (list did vid label depth kind)，kind = 'doc | 'view。
 ;;; 选择行不另设游标：面板就是 document，view-line 即当前行。
 

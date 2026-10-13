@@ -66,6 +66,14 @@
                #t))
 (check-true (regexp-match? #rx"second" (car (call-with-values (lambda () (buffers-content w1 bvid)) list))))
 
+;; 投影：不用圆点 / 折角符号；视图行只靠缩进（depth 1）与颜色区分
+(define btxt (car (call-with-values (lambda () (buffers-content w1 bvid)) list)))
+(check-false (regexp-match? #rx"[●·▸▾]" btxt))
+(check-true (for/or ([r (in-list (buffer-rows w1))]
+                     #:when (and (eq? (list-ref r 4) 'view) (eqv? (car r) did2)
+                                 (= (list-ref r 3) 1)))
+              #t))
+
 ;;; ---------- 面板槽：M-b 让侧栏显示 buffers 并聚焦 ----------
 
 (define s1 (run w1 (key-event 'b '(alt))))
@@ -123,20 +131,46 @@
 (define g3 (run (W g2) (text-event "f")))            ; 完成 → 清空
 (check-equal? (world-keys (W g3)) '())
 
-;;; ---------- new-view / 关视图（buffers 面板） ----------
+;;; ---------- new-view（C-n）/ 关视图 / 关文档（C-d） ----------
 
 (define u0 (run w1 (key-event 'b '(alt))))
 (commit-panels! (content-ed (world-content (W u0))) (project-panels base-panels (W u0)))
 (set-point! (content-ed (world-content (W u0))) bvid i2 0)
-(define n1 (run (W u0) (text-event "n")))            ; new-view on did2
+(define n1 (run (W u0) (key-event 'n '(ctrl))))      ; C-n → 给 did2 新建视图
 (check-equal? (length (document-view-list (content-ed (world-content (W n1))) did2)) 2)
-;; 关掉 did2 的一个视图
+
+;; 视图行 C-d → 关掉该视图（文档保留）
 (commit-panels! (content-ed (world-content (W n1))) (project-panels base-panels (W n1)))
 (define vi (row-index (buffer-rows (W n1))
                       (lambda (r) (and (eq? (list-ref r 4) 'view) (eqv? (car r) did2)))))
 (check-not-false vi)
 (set-point! (content-ed (world-content (W n1))) bvid vi 0)
-(define n2 (run (W n1) (key-event 'd '(ctrl))))      ; buffers-close-view
+(define n2 (run (W n1) (key-event 'd '(ctrl))))      ; buffers-close → 关视图
 (check-equal? (length (document-view-list (content-ed (world-content (W n2))) did2)) 1)
+(check-true (for/or ([d (in-list (document-id-list (content-ed (world-content (W n2)))))]
+                     #:when (eqv? d did2)) #t))
+
+;; 干净文档行 C-d → 直接关（不询问）
+(commit-panels! (content-ed (world-content (W n2))) (project-panels base-panels (W n2)))
+(define di (row-index (buffer-rows (W n2))
+                      (lambda (r) (and (eq? (list-ref r 4) 'doc) (eqv? (car r) did2)))))
+(check-not-false di)
+(set-point! (content-ed (world-content (W n2))) bvid di 0)
+(define n3 (run (W n2) (key-event 'd '(ctrl))))
+(check-false (content-prompt (world-content (W n3))))          ; 未触发询问
+(check-false (for/or ([d (in-list (document-id-list (content-ed (world-content (W n3)))))]
+                      #:when (eqv? d did2)) #t))               ; 文档已关
+
+;; 脏文档行 C-d → 统一走关闭询问（与退出 / close-doc 同一流程）
+(define dirty (run w1 (text-event "x")))                      ; 焦点在编辑器，*scratch* 变脏
+(define dw (run (W dirty) (key-event 'b '(alt))))
+(commit-panels! (content-ed (world-content (W dw))) (project-panels base-panels (W dw)))
+(define si (row-index (buffer-rows (W dw))
+                      (lambda (r) (and (eq? (list-ref r 4) 'doc) (equal? (caddr r) "*scratch*")))))
+(check-not-false si)
+(set-point! (content-ed (world-content (W dw))) bvid si 0)
+(define dc (run (W dw) (key-event 'd '(ctrl))))
+(check-not-false (content-prompt (world-content (W dc))))
+(check-equal? (prompt-kind (content-prompt (world-content (W dc)))) 'close-doc)
 
 (displayln "edit4/buffers.rkt: all tests passed")

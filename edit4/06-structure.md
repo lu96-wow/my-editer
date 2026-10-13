@@ -91,7 +91,7 @@ edit4/
     tree.rkt               文件树模型 + 纯操作 + IO
     tree-cmds.rkt          文件树交互命令（enter/parent/child/new/delete/reload/hidden）
     buffers.rkt            文档管理面板行模型（buffer-rows）
-    buffers-cmds.rkt       文档管理面板命令（enter/fold/new-view/close-view/close-doc）
+    buffers-cmds.rkt       文档管理面板命令（enter/fold/new-view/buffers-close）
     region.rkt             面板槽（显隐 / 切换 / 聚焦）
     float.rkt              浮窗（开/关/切/提，窗口 + 视图，anchor 几何）
     focus.rkt              聚焦主编辑器窗（具名导航走 region / placing 的 reveal）

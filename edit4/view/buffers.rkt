@@ -2,7 +2,8 @@
 
 ;;; edit4/view/buffers.rkt —— 文档管理面板（buffers）：纯投影
 ;;;
-;;; 文档行：▾ 展开 / ▸ 折叠 / 空（无视图）；视图行：● 已显示 / · 未显示。
+;;; 文档行在左；其视图作为子行缩进两格，靠缩进 + 颜色区分（与文件树一致，不加符号）。
+;;; 文档行颜色看状态（dirty / 当前 / 未命名 / 有路径）；视图行看是否已绑到窗口。
 
 (provide buffers-content)
 
@@ -17,34 +18,24 @@
 
 (define (buffers-content w v)
   (define c (world-content w))
-  (define ed (content-ed c))
   (define rows (buffer-rows w))
-  (define folded (content-fold c))
   (define focus-did
     (let ([fv (and (world-focus w) (content-vid-of c (world-focus w)))])
       (and fv (content-did-of c fv))))
   (define lines
     (for/list ([r (in-list rows)])
-      (define did (car r))
-      (define vid (cadr r))
       (define label (caddr r))
       (define depth (list-ref r 3))
-      (define kind (list-ref r 4))
-      (define marker
-        (cond
-          [(eq? kind 'view) (if (bound-vid? c vid) "● " "· ")]
-          [(null? (document-view-list ed did)) "  "]
-          [(hash-has-key? folded did) "▸ "]
-          [else "▾ "]))
-      (string-append (make-string (* 2 depth) #\space) marker label)))
+      (string-append (make-string (* 2 depth) #\space) label)))
   (values (string-join lines "\n")
           (for/list ([r (in-list rows)] [i (in-naturals)])
             (define did (car r))
+            (define vid (cadr r))
             (define kind (list-ref r 4))
             (define m (content-doc-meta c did))
             (cons i (cond
+                      [(eq? kind 'view) (if (bound-vid? c vid) 'buf-view 'buf-view-idle)]
                       [(doc-dirty? c did) 'buf-dirty]
                       [(eqv? did focus-did) 'buf-current]
                       [(not (and m (doc-path m))) 'buf-untitled]
-                      [(eq? kind 'doc) 'buf-file]
-                      [else 'buf-view])))))
+                      [else 'buf-file])))))
