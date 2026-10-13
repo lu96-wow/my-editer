@@ -9,7 +9,8 @@
 
 (provide content-scopes)
 
-(require "../core/world.rkt" "../core/scope.rkt" "../layout.rkt" "model.rkt")
+(require "../core/world.rkt" "../core/scope.rkt" "../layout.rkt" "model.rkt"
+         "../config/layout.rkt")
 
 (define (focused-vid w)
   (define c (world-content w))
@@ -42,10 +43,14 @@
 
 (define content-scopes
   (make-scope-registry
-   (list (cons 'editor editor-scope)
-         (cons 'float float-scope)
-         (cons 'placing placing-scope)
-         (cons (list 'region 'sidebar) (lambda (w) (region-scope 'sidebar w)))
-         (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
-         (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))
-         (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))))
+   (append
+    (list (cons 'editor editor-scope)
+          (cons 'float float-scope)
+          (cons 'placing placing-scope)
+          (cons (list 'panel "*tree*") (lambda (w) (panel-scope "*tree*" w)))
+          (cons (list 'panel "*buffers*") (lambda (w) (panel-scope "*buffers*" w)))
+          (cons (list 'panel "*input*") (lambda (w) (panel-scope "*input*" w))))
+    ;; 每个声明区域一个 (region ID) 作用域（键表可用它限定焦点）。
+    (for/list ([s (in-list region-specs)])
+      (define rid (car s))
+      (cons (list 'region rid) (lambda (w) (region-scope rid w)))))))

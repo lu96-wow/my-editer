@@ -12,8 +12,8 @@
 (provide sidebar-ratio sidebar-min-width sidebar-max-width sidebar-width)
 
 (define sidebar-ratio 1/4)      ; 屏宽的 1/4
-(define sidebar-min-width 5)   ; 至少 20 列
-(define sidebar-max-width 30)   ; 最多 44 列
+(define sidebar-min-width 5)    ; 至少 5 列
+(define sidebar-max-width 30)   ; 最多 30 列
 
 ;; 屏幕宽度 -> 侧栏宽度：按比例取最近整数，夹在 [min, max]。
 (define (sidebar-width screen-width)

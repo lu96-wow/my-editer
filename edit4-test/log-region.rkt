@@ -56,6 +56,12 @@
 (check-equal? (content-vid-of (world-content (W b2)) (region-wid (region-of (W b2) 'sidebar)))
               (content-panel-vid (world-content (W b2)) "*tree*"))
 
+;;; ---------- (region ID) 作用域：按声明自动生成 ----------
+
+(define rsw (region-wid (region-of w0 'sidebar)))
+(check-true (scope-ok? content-scopes (world-set-focus w0 rsw) '(region sidebar)))
+(check-false (scope-ok? content-scopes w0 '(region sidebar)))   ; 焦点在编辑器
+
 ;;; ---------- 日志投影 ----------
 
 (define c1 (content-log-append (content-log-append (world-content w0) "hello") "world"))

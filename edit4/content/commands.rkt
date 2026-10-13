@@ -9,6 +9,7 @@
 (provide content-commands content-keymap)
 
 (require "../core/command.rkt" "../core/keymap.rkt"
+         "../config/layout.rkt"
          "edit.rkt" "files.rkt" "tree-cmds.rkt" "buffers-cmds.rkt"
          "prompt.rkt" "pointer.rkt" "region.rkt" "focus.rkt" "float.rkt" "placing.rkt")
 
@@ -21,8 +22,16 @@
                    placing-commands
                    content-pointer-commands)))
 
+;; 区域快捷键：从 config/layout.rkt 的 region-keys 数据生成 keymap 条目。
+(define (region-key-entries)
+  (for/list ([e (in-list region-keys)])
+    (cons (car e)
+          (cons (cadr e)
+                (for/list ([c (in-list (cddr e))]) (apply cmd c))))))
+
 (define content-keymap
-  (list
+  (append
+   (list
    ;; ---- 输入行（焦点是 *input* 面板） ----
    (list '(text) '(panel "*input*") (cmd 'insert-event-text))
    (list '(key backspace) '(panel "*input*") (cmd 'delete-back))
@@ -90,12 +99,8 @@
    (list '(key s alt) 'always (cmd 'save))
    (list '(key u ctrl) 'always (cmd 'tree-reload))
    (list '(key h ctrl) 'always (cmd 'tree-toggle-hidden))
-   (list '(key b ctrl) 'always (cmd 'region-toggle 'sidebar))
-   (list '(key l ctrl) 'always (cmd 'region-toggle 'log))
-   (list '(key b alt) 'always (cmd 'region-cycle 'sidebar 1) (cmd 'region-focus 'sidebar))
-   (list '(key tab) '(region sidebar) (cmd 'region-cycle 'sidebar 1) (cmd 'region-focus 'sidebar))
-   (list '(key t alt) 'always (cmd 'region-activate 'sidebar "*tree*") (cmd 'region-focus 'sidebar))
    (list '(key e alt) 'always (cmd 'focus-editor))
    (list '(key j alt) 'always (cmd 'float-open 'log))
    (list '(key k alt) 'always (cmd 'float-open 'tree))
-   (list '(key g alt) 'always (cmd 'float-toggle 'log))))
+   (list '(key g alt) 'always (cmd 'float-toggle 'log)))
+   (region-key-entries)))
