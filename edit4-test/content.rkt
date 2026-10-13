@@ -26,7 +26,7 @@
 (define (ed-of w) (content-ed (world-content w)))
 (check-equal? (view-string (ed-of w0) vid) "")
 (check-equal? (content-did-of (world-content w0) vid) did)
-(check-equal? (focused-vid-of (world-content w0) 0) vid)
+(check-equal? (content-vid-of (world-content w0) 0) vid)
 
 ;;; ---------- 打字 ----------
 

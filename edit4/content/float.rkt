@@ -8,8 +8,7 @@
 ;;; 命令：float-open（已显示则提到最上）/ float-toggle / float-close / float-cycle / float-raise。
 ;;; 浮窗也是显示位置：floated 的面板/文档就是同一个 vid 多位置（复用 content.bindings）。
 
-(provide float-commands float-for-vid open-overlay close-float-by-id
-         set-float-on-world world-frame)
+(provide float-commands open-overlay close-float-by-id set-float-on-world world-frame)
 
 (require racket/list
          "../core/world.rkt" "../core/command.rkt"

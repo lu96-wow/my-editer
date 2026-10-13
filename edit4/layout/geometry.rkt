@@ -4,7 +4,8 @@
 ;;;
 ;;;   placement : id -> rect
 ;;;   cut       = (axis offset segs)   axis = 'x（竖线，常数 x）| 'y（横线，常数 y）
-;;;   seg       = 同一条线上的一段缝：带拖拽所需的快照（该 split 的 lens/mins + 段序号）
+;;;   seg       = (path i j lens mins span-lo span-hi)
+;;;               i/j = 缝两侧相邻的**可见**子节点下标（中间可能隔着折叠子节点）
 ;;;
 ;;; 关键：**按坐标把缝段聚成一条 cut**。同一 x 的所有竖缝 = 一条线；同一 y 的横缝 = 一条线。
 ;;; 于是普通缝 / 十字 / T 字 / 整条线在命中与拖拽里是同一种东西。

@@ -2,7 +2,7 @@
 
 ;;; edit4/content/region.rkt —— 面板槽（dock / region）：一个窗口显示多个面板之一
 ;;;
-;;; region = 边/尺寸/组合/当前成员/锚点/窗口/次序/常驻叶子；成员互斥显示。
+;;; region = 边/尺寸/组合/当前成员/锚点/窗口/常驻叶子/最小尺寸；成员互斥显示。
 ;;;   mount  ：在布局里插入一个常驻叶子（min (0 . 0)），shown? 决定初始 size；
 ;;;   show   ：展开常驻叶子（size 改回记住的值）——不改结构，顺序/id 稳定；
 ;;;   hide   ：折叠常驻叶子（size 0，记住当前尺寸）——同样不改结构；
@@ -61,8 +61,8 @@
      (define r* (struct-copy region r [leaf nid] [wid (and shown? nid)]))
      (region-sync (region-set (world-set-layout w nlay) rid r*) rid)]))
 
-;; 某个窗口在布局里的当前尺寸意图（basis）——拖拽会更新它；找不到 → #f。
-(define (window-basis-width lay id)
+;; 常驻叶子在布局里的当前尺寸意图（basis，沿其 dock 轴：宽或高）；找不到 → #f。
+(define (window-basis lay id)
   (define p (path-of lay id))
   (and p (pair? p)
        (let ([parent (node-at lay (drop-right p 1))])
@@ -108,13 +108,13 @@
     [(not (and c r (region-wid r))) w]
     [else
      (define L (region-leaf r))
-     (define cur (window-basis-width (world-layout w) L))
+     (define cur (window-basis (world-layout w) L))
      (define lay (set-leaf-size (world-layout w) L 0))
      (define r* (struct-copy region r [wid #f]
                                        [size (max (region-min-size r) (or cur (region-size r)))]))
      (ensure-focus (region-set (world-set-layout w lay) rid r*))]))
 
-;; 切换某 dock 的 active 成员（不改结构）；供 prompt（status↔input）等复用。
+;; 切换某 dock 的 active 成员（不改结构）；命令与 prompt（status↔input）共用。
 (define (region-activate! w rid name)
   (region-show (region-set-active w rid name) rid))
 
@@ -129,14 +129,12 @@
      (define ms (region-members r))
      (define cur (region-active r))
      (define i (or (for/first ([m (in-list ms)] [i (in-naturals)] #:when (equal? m cur)) i) 0))
-     (define next (list-ref ms (modulo (add1 i) (length ms))))
-     (cons (region-show (region-set-active w rid next) rid) '())]))
+     (cons (region-activate! w rid (list-ref ms (modulo (add1 i) (length ms)))) '())]))
 
 (define (h-region-activate ctx w args)
   (define rid (car args))
-  (define name (cadr args))
   (cond [(not (region-ref w rid)) #f]
-        [else (cons (region-show (region-set-active w rid name) rid) '())]))
+        [else (cons (region-activate! w rid (cadr args)) '())]))
 
 (define (h-region-toggle ctx w args)
   (define rid (car args))

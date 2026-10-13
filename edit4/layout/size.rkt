@@ -8,10 +8,11 @@
 ;;;     basis    : 当前的期望格数（一般 = 上次解出的长度，恒 >= min）
 ;;;     elastic? : #t = 弹性（容器 resize 时按当前尺寸等比缩放）；#f = 固定
 ;;;
-;;;   solve-axis : extent gutter sizes mins -> (listof 长度)
+;;;   solve-axis : extent gutter sizes mins [actives] -> (listof 长度)
+;;;     actives 缺省全 #t；#f 的项是折叠 dock：长度恒 0、不占缝、不参与增/减（返回等长）。
 ;;;
 ;;; 规则（DESIGN）：
-;;;   1. content = max 0 (extent - (k-1)*gutter)
+;;;   1. content = max 0 (extent - (k-1)*gutter)    （k = 活动项数）
 ;;;   2. content <= Σmin         → 返回 min（硬下限；溢出也不压塌）
 ;;;   3. content == Σbasis       → 直接返回 basis（**精确快路径**：其它项完全不动）
 ;;;   4. 否则把差额**按当前尺寸等比分配/收回**（固定项不参与）→ **比例永不漂**

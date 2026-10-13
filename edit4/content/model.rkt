@@ -19,7 +19,7 @@
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
          content-bind content-unbind content-remove-vid
-         content-vid-of content-did-of focused-vid-of content-wid-of-vid
+         content-vid-of content-did-of content-wid-of-vid
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
          content-prompt content-set-prompt
@@ -29,8 +29,8 @@
          content-fold content-set-fold
          content-log content-log-append
          content-doc-key content-set-doc-key
-         path-key content-doc-by-path content-doc-paths content-show content-editor-window
-         content-editor-windows content-empty-windows)
+         path-key content-doc-by-path content-doc-paths
+         content-editor-window content-editor-windows)
 
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
@@ -97,7 +97,6 @@
 (define (content-wid-of-vid c vid)
   (and vid (for/first ([(id v) (in-hash (content-bindings c))] #:when (eqv? v vid)) id)))
 (define (content-did-of c vid) (and vid (view-did (content-ed c) vid)))
-(define (focused-vid-of c id) (content-vid-of c id))
 
 (define (content-remove-vid c vid)
   (content-panels*
@@ -151,14 +150,6 @@
              #:when (let ([m (hash-ref (content-docs c) did #f)]) (and m (doc-path m))))
     (doc-path (hash-ref (content-docs c) did))))
 
-;; 在窗口 id 显示文档 did：复用其已有视图，否则新建一个视图。
-(define (content-show c id did)
-  (define vids (document-view-list (content-ed c) did))
-  (cond
-    [(pair? vids) (content-bind c id (car vids))]
-    [else (define-values (c* vid) (content-add-view! c did 60 22))
-          (content-bind c* id vid)]))
-
 ;; 选一个「编辑器窗口」（vid 非面板或空）来显示文档；没有 → #f。（只看可见窗）
 (define (content-editor-windows c layout)
   (for/list ([id (in-list (visible-ids layout))]
@@ -167,11 +158,4 @@
     id))
 
 (define (content-editor-window c layout)
-  (for/first ([id (in-list (visible-ids layout))]
-              #:when (let ([v (content-vid-of c id)])
-                       (or (not v) (not (content-panel? c v)))))
-    id))
-
-;; 空窗口 = 未绑定任何 vid 的可见窗口。
-(define (content-empty-windows c layout)
-  (for/list ([id (in-list (visible-ids layout))] #:when (not (content-vid-of c id))) id))
+  (for/first ([id (in-list (content-editor-windows c layout))]) id))

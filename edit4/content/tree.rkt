@@ -9,7 +9,7 @@
 ;;; 这里只产出结构化的「行」；渲染成文本是 view/tree.rkt 的事。
 
 (provide (struct-out tree) tree-init tree-ensure refresh-tree!
-         tree-toggle-dir tree-expand-dir tree-parent-dir tree-refresh tree-toggle-hidden
+         tree-toggle-dir tree-parent-dir tree-refresh tree-toggle-hidden
          tree-rows tree-relative-path)
 
 (require racket/list racket/path
@@ -37,9 +37,6 @@
                [expanded (if (hash-has-key? (tree-expanded ts) dir)
                              (hash-remove (tree-expanded ts) dir)
                              (hash-set (tree-expanded ts) dir #t))]))
-
-(define (tree-expand-dir ts dir)
-  (struct-copy tree ts [expanded (hash-set (tree-expanded ts) dir #t)]))
 
 (define (tree-parent-dir p)
   (define d (path-only p))

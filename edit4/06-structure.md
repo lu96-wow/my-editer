@@ -167,6 +167,7 @@ edit4-test/  layout command content render runtime panels faces plugins
 | `app.rkt` 硬编码 `merge` | `plugin` 数据包 + `install` fold | 加功能 = 加一个 plugin 值 |
 
 > 组合原则（功能是 lambda，用 map/fold 组合，但**不得增加层次**）见 `07-composition.md`。
+> 主要逻辑与设计约束速查见 `12-constraints.md`（改代码前对一遍）。
 
 ---
 
