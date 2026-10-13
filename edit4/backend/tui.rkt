@@ -4,7 +4,7 @@
 ;;;
 ;;; 输入：tui 事件 → edit4 Event；输出：piece → ANSI 字节。只有本模块碰终端。
 
-(provide run-tui)
+(provide run-tui tui-screen-width)
 
 (require (prefix-in t: tui)
          "../core/event.rkt" "../runtime.rkt" "../view/theme.rkt"
@@ -55,6 +55,11 @@
   (t:flush!))
 
 ;;; ---------- 入口 ----------
+
+;; 启动时（进 with-tui 前）问一次终端宽度，用来算侧栏宽度；非 tty / ioctl 失败 → #f。
+(define (tui-screen-width)
+  (define-values (_rows cols) (t:get-window-size))
+  (and (exact-positive-integer? cols) cols))
 
 (define (run-tui env world)
   (t:with-tui

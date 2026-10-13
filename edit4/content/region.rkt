@@ -4,7 +4,7 @@
 ;;;
 ;;; region = 边/尺寸/成员/当前成员/锚点/窗口；成员互斥显示。
 ;;;   show   ：隐藏则新建窗格插入（anchor root 包整树；main 贴主编辑器窗），再绑定成员 vid；
-;;;   hide   ：摘掉窗格；
+;;;   hide   ：摘掉窗格（记住当前宽度，show 时按它恢复）；
 ;;;   cycle/activate/focus：换成员 / 聚焦（隐藏则先显示）。
 ;;;
 ;;; 布局手术用 layout 的 insert-side / insert-adjacent / remove-leaf。
@@ -56,6 +56,15 @@
      (define r* (struct-copy region r [wid nid]))
      (region-sync (region-set (world-set-layout w nlay) rid r*) rid)]))
 
+;; 某个窗口在布局里的当前宽度意图（basis）——拖拽会更新它；找不到 → #f。
+(define (window-basis-width lay id)
+  (define p (path-of lay id))
+  (and p (pair? p)
+       (let ([parent (node-at lay (drop-right p 1))])
+         (and (split? parent)
+              (let ([c (list-ref (split-kids parent) (last p))])
+                (size-basis (child-size c)))))))
+
 ;; 隐藏（摘掉窗格）。
 (define (region-hide w rid)
   (define c (world-content w))
@@ -63,8 +72,11 @@
   (cond
     [(not (and c r (region-wid r))) w]
     [else
-     (define lay (remove-leaf (world-layout w) (region-wid r)))
-     (define r* (struct-copy region r [wid #f]))
+     (define wid (region-wid r))
+     ;; 隐藏时记住当前的（可能被拖过的）宽度，显示回来照旧。
+     (define cur (window-basis-width (world-layout w) wid))
+     (define lay (remove-leaf (world-layout w) wid))
+     (define r* (struct-copy region r [wid #f] [size (or cur (region-size r))]))
      (ensure-focus (region-set (world-set-layout w lay) rid r*))]))
 
 ;;; ---------- 命令 ----------

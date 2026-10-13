@@ -13,14 +13,16 @@
          "content/model.rkt" "content/tree.rkt"
          "view/panel.rkt"
          "app.rkt"
+         "config/sidebar.rkt"
          "layout.rkt")
 
 ;; boot：侧栏(树 / 文档管理 互斥) | 主区(编辑器 / 状态栏)。
-;;   id 2 = 侧栏槽（固定 28），id 0 = 编辑器（弹性），id 1 = 状态栏（固定 1 行）。
+;;   id 2 = 侧栏槽（宽度按 #:screen-width 算），id 0 = 编辑器（弹性），id 1 = 状态栏（固定 1 行）。
 ;;   无 #:name → 不建初始文档（编辑器窗留空，从文件树打开）。
 (define (boot #:env [env (app-environment)]
               #:text [text ""] #:name [name #f] #:path [path #f]
-              #:root [root (current-directory)])
+              #:root [root (current-directory)]
+              #:screen-width [screen-width 80])
   (define c0 (content-blank))
   (define-values (c1 vid-ed)
     (if name
@@ -40,13 +42,14 @@
          (values c* (hash-set vids nm vid))])))
   (define vid-tr (hash-ref panel-vids "*tree*"))
   (define vid-st (hash-ref panel-vids "*status*"))
+  (define sw (sidebar-width screen-width))
   (define right (split 'v 1 (list (child (size 1 #t) (leaf 0 (cons 2 2)))
                                   (child (size 1 #f) (leaf 1 (cons 1 1))))))
-  (define chassis (split 'h 1 (list (child (size 28 #f) (leaf 2 (cons 1 1)))
+  (define chassis (split 'h 1 (list (child (size sw #f) (leaf 2 (cons 1 1)))
                                     (child (size 1 #t) right))))
   ;; 侧栏槽（窗口 2 显示 *tree* / *buffers*）；日志槽默认隐藏（C-l 显示，贴主区底部）。
   (define regions
-    (hash 'sidebar (region 'left 28 (list "*tree*" "*buffers*") "*tree*" 'root 2)
+    (hash 'sidebar (region 'left sw (list "*tree*" "*buffers*") "*tree*" 'root 2)
           'log     (region 'bottom 6 (list "*log*") "*log*" 'main #f)))
   (define c (content-set-regions c2 regions))
   (define c* (content-bind (content-bind (if vid-ed (content-bind c 0 vid-ed) c) 1 vid-st) 2 vid-tr))

@@ -19,6 +19,7 @@
 
 (define SZ (cons 60 10))
 
+;; 累积所有帧的 piece（渲染是增量的，只看最后一帧的 diff 会漏内容）。
 (define (scripted-backend evs)
   (define q (box evs))
   (define drawn (box '()))
@@ -29,7 +30,7 @@
       (define l (unbox q))
       (cond [(null? l) (key-event 'q '(ctrl))]
             [else (set-box! q (cdr l)) (car l)]))
-    (lambda (ps) (set-box! drawn ps))
+    (lambda (ps) (set-box! drawn (append ps (unbox drawn))))
     void)
    drawn))
 

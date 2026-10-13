@@ -43,7 +43,7 @@ show/hide（布局手术）、activate/cycle（换成员）、focus。
 edit4：`region(side size members active anchor wid)`——支持
 show/hide（布局手术：`insert-side` / `insert-adjacent` / `remove-leaf`）、activate/cycle、focus。
 
-- 侧栏 `sidebar`：`left 28 (*tree* *buffers*)` anchor `root`，默认显示；C-b 显/隐，M-b 循环，M-t 回 tree。
+- 侧栏 `sidebar`：`left <按屏宽算> (*tree* *buffers*)` anchor `root`，默认显示；宽度启动时由 `config/sidebar.rkt` 按屏宽算一次（比例 + 上下限）；隐藏时记住当前（拖过的）宽度，显示回来照旧；C-b 显/隐，M-b 循环，M-t 回 tree。
 - 日志区 `log`：`bottom 6 (*log*)` anchor `main`，**默认隐藏**；C-l 显/隐。
 - 命令：`region-toggle` / `region-cycle` / `region-activate` / `region-focus`（`content/region.rkt`）。
 

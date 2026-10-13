@@ -126,6 +126,7 @@ edit4/
     syntax.rkt             关键字分组（高亮 / 补全共用）
     words.rkt              同词着色配置（色板长度）
     floats.rkt             浮窗声明（anchor + 尺寸）
+    sidebar.rkt            文件树（侧栏）宽度策略（比例 + 上下限）
     plugins.rkt            本次启用哪些插件（只给名字）
 
   plugins/                 L5（插件包：数据）
@@ -143,7 +144,7 @@ edit4/
     async-demo.rkt         异步演示（service + job 钩子）
 
 edit4-test/  layout command content render runtime panels faces plugins
-             completion edit3-parity
+             completion edit3-parity sidebar
 ```
 
 ---
