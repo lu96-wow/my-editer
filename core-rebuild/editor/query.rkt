@@ -40,6 +40,7 @@
  view-selection-count             ; view → 选区数
 
  ;; ---------- 坐标换算 ----------
+ view-cursor-screen-position      ; view → 主光标屏幕位置（view 内坐标）(values row col) | (values #f #f)
  view-point->screen-position      ; view point → (values row col) | (values #f #f)
  view-screen-position->point      ; view row col → (values line col) | (values #f #f)
 
@@ -102,6 +103,11 @@
 
 (define (view-point->screen-position v p)
   (viewport-point->screen-position (document-text (view-document v)) (view-viewport v) p))
+
+;; 主光标在**当前 view 内**的屏幕位置 (row, col)；不可见 → (values #f #f)。
+;; 终端绝对位置 = (row + 该 view 的窗格行偏移, col + 列偏移)，偏移由宿主布局提供。
+(define (view-cursor-screen-position v)
+  (view-point->screen-position v (view-point v)))
 (define (view-screen-position->point v row col)
   (viewport-screen-position->point (document-text (view-document v)) (view-viewport v) row col))
 

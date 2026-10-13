@@ -9,7 +9,7 @@
 ;;;
 ;;; 操作是函数，组合用 compose，集合用 map；没有命令名注册表。
 
-(require "state.rkt" "history.rkt"
+(require "state.rkt" "history.rkt" "query.rkt"
          "../text/document.rkt" "../text/command.rkt" "../text/rebase.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
@@ -51,6 +51,7 @@
 
  ;; ---------- 提交：视口 ----------
  view-ensure!                     ; view → 滚到能看见主光标
+ view-ensure-cursor-position!     ; view → 滚到主光标并返回其屏幕位置 (values row col)
  view-scroll!                     ; view delta → void
  view-set-mode!                   ; view mode → void
  view-toggle-line-numbers!        ; view → void
@@ -96,6 +97,11 @@
 (define (view-ensure! v)
   (define p (selection-head (selections-primary (view-selections v))))
   (set-view-viewport! v (viewport-ensure (document-text (view-document v)) (view-viewport v) p)))
+
+;; 夹到主光标，并返回夹好后它的屏幕位置（view 内坐标）。→ (values row col)
+(define (view-ensure-cursor-position! v)
+  (view-ensure! v)
+  (view-cursor-screen-position v))
 
 ;; 把所有 view 的选区夹回合法域。
 (define (buffer-clamp-views! b)

@@ -10,11 +10,12 @@
 ;;; 尺寸属于 view：布局变化由宿主 view-resize!（见 ops.rkt）落进 viewport；
 ;;; 渲染保持纯，不写回任何状态。
 
-(require "state.rkt"
+(require "state.rkt" "query.rkt"
          "../view/render.rkt" "../view/patch.rkt" "../view/compose.rkt")
 
 (provide
  (struct-out display-entry)       ; view + x/y/deep
+ display-entry-cursor-position    ; display-entry → 主光标绝对屏幕位置 (values row col) | (values #f #f)
  render-display                   ; entries focus w h [decorations] → screen
  render-display-patch)            ; entries focus w h old [decorations] → (values screen render selection)
 
@@ -22,6 +23,15 @@
 ;; 尺寸不在这里——它属于 view 自己（view ≡ 显示槽，至多属于一个窗口），
 ;; 宿主在布局变化时用 view-resize! 落进 viewport，渲染直接读。
 (struct display-entry (view x y deep) #:transparent)
+
+;; 该 entry 的 view 的主光标在合成屏上的**绝对位置**（= view 内坐标 + entry 原点）。
+;; 弹窗定位用：宿主拿焦点窗的 display-entry 即可算光标在终端上的位置；
+;; 光标不在可见区（坐标 #f）→ 返回 (values #f #f)。
+(define (display-entry-cursor-position e)
+  (define v (display-entry-view e))
+  (define-values (r c) (view-cursor-screen-position v))
+  (if r (values (+ (display-entry-y e) r) (+ (display-entry-x e) c))
+        (values #f #f)))
 
 ;; focus：#f | view | (listof view)。命中的 view 才画 overlay（光标/选区）。
 (define (focus-views focus)
