@@ -118,6 +118,15 @@
                 (string-trim l))
               '("al" "alpha" "allocation"))
 
+;; 补全菜单在最上：文档弹窗后开也不能盖住它（跑一帧 before-render，补全重新提到表头）
+(define r4 (hooks (emit! r3 'before-render (list (cons 60 10)))))
+(define cfl (float-of-panel r4 "*completion*"))
+(define dfl (float-of-panel r4 "*docs*"))
+(check-not-false cfl)
+(check-not-false dfl)
+(define zorder (map float-id (world-floats r4)))
+(check-true (< (index-of zorder cfl) (index-of zorder dfl)))
+
 ;;; ---------- 文档：M-d 打开本地定义 ----------
 
 (define d0 (scratch "(define foo 1)" "/tmp/ed4-docs.rkt"))

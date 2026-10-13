@@ -213,7 +213,9 @@
      (define a (anchor tw 'left 'top dx dy))
      (define f (float fw a (cons width height)))
      ;; 记住外框宽度：菜单面板按「内容宽 = width-2」补齐，选中行底色才能盖满浮窗。
-     (set-float-on-world (sset w 'completion (hash-set c 'width width)) f)]))
+     (define w1 (set-float-on-world (sset w 'completion (hash-set c 'width width)) f))
+     ;; 补全菜单永远在最上：文档弹窗等 overlay 后开不能盖住它。
+     (raise-float w1 fw)]))
 
 ;;; ---------- 菜单面板 ----------
 
