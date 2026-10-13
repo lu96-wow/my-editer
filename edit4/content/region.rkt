@@ -2,8 +2,9 @@
 
 ;;; edit4/content/region.rkt —— 面板槽（region）：一个窗口显示多个面板之一
 ;;;
-;;; region = 边/尺寸/成员/当前成员/锚点/窗口；成员互斥显示。
+;;; region = 边/尺寸/组合/当前成员/锚点/窗口/次序；成员互斥显示。
 ;;;   show   ：隐藏则新建窗格插入（anchor root 包整树；main 贴主编辑器窗），再绑定成员 vid；
+;;;              root 区域插入后按 order 重建 root 链，保证嵌套顺序与声明一致（toggle 不漂）；
 ;;;   hide   ：摘掉窗格（记住当前宽度，show 时按它恢复）；
 ;;;   cycle/activate/focus：换成员 / 聚焦（隐藏则先显示）。
 ;;;
@@ -54,7 +55,9 @@
                      (insert-side lay (region-side r) sz nleaf))]
          [else (insert-side lay (region-side r) sz nleaf)]))
      (define r* (struct-copy region r [wid nid]))
-     (region-sync (region-set (world-set-layout w nlay) rid r*) rid)]))
+     (define w1 (region-sync (region-set (world-set-layout w nlay) rid r*) rid))
+     ;; root 区域：按声明次序重建整条 root 链，避免「后 show 的变最外层」造成顺序漂移。
+     (ensure-focus (if (eq? (region-anchor r) 'root) (rebuild-root-docks w1) w1))]))
 
 ;; 某个窗口在布局里的当前宽度意图（basis）——拖拽会更新它；找不到 → #f。
 (define (window-basis-width lay id)
@@ -64,6 +67,37 @@
          (and (split? parent)
               (let ([c (list-ref (split-kids parent) (last p))])
                 (size-basis (child-size c)))))))
+
+;; 重建 root 区域链：所有 anchor=root 且已显示的区域，按 order 从内到外重新嵌套。
+;; 保证任意 toggle 序列后嵌套顺序 = 声明顺序（初始尺寸/树内其它比例保持不变）。
+(define (rebuild-root-docks w)
+  (define regs (content-regions (world-content w)))
+  (define roots
+    (sort (for/list ([(id r) (in-hash regs)]
+                     #:when (and (eq? (region-anchor r) 'root) (region-wid r)))
+            (cons id r))
+          < #:key (lambda (p) (region-order (cdr p)))))
+  (cond
+    [(null? roots) w]
+    [else
+     ;; 记下每个 root 区域当前的（可能被拖过的）尺寸
+     (define sized
+       (for/list ([p (in-list roots)])
+         (define r (cdr p))
+         (define cur (window-basis-width (world-layout w) (region-wid r)))
+         (cons (car p) (struct-copy region r [size (or cur (region-size r))]))))
+     ;; 全部摘掉（保留主区/树内其它结构不动）
+     (define lay0
+       (for/fold ([lay (world-layout w)]) ([p (in-list roots)])
+         (remove-leaf lay (region-wid (cdr p)))))
+     ;; 按 order 重新插入（先插的在最内层，与 boot 一致）
+     (for/fold ([ww (world-set-layout w lay0)]) ([p (in-list sized)])
+       (define id (car p))
+       (define r (cdr p))
+       (define lay (world-layout ww))
+       (define nid (fresh-id lay))
+       (define nlay (insert-side lay (region-side r) (size (region-size r) #f) (leaf nid (cons 1 1))))
+       (region-sync (region-set (world-set-layout ww nlay) id (struct-copy region r [wid nid])) id))]))
 
 ;; 隐藏（摘掉窗格）。
 (define (region-hide w rid)

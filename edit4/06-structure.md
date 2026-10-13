@@ -126,7 +126,7 @@ edit4/
     syntax.rkt             关键字分组（高亮 / 补全共用）
     words.rkt              同词着色配置（色板长度）
     floats.rkt             浮窗声明（anchor + 尺寸）
-    layout.rkt             区域声明 + 区域快捷键（位置/尺寸/成员/锚点/初始显隐 + 区域键表）
+    layout.rkt             面板组合 panel-groups + 槽位 docks + 区域键表 region-keys
     sidebar.rkt            文件树（侧栏）宽度策略（比例 + 上下限）
     plugins.rkt            本次启用哪些插件（只给名字）
 

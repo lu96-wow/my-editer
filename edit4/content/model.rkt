@@ -39,8 +39,9 @@
 ;; 放置选择（打开时多窗口 → 用户选目标窗）；vid = 待放置视图，prev-focus = 进入前焦点。
 (struct placing (vid prev-focus) #:transparent)
 ;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
-;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定。
-(struct region (side size members active anchor wid) #:transparent)
+;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定；
+;; order = 在 docks 声明里的次序（root 区域据此稳定嵌套，见 content/region.rkt）。
+(struct region (side size members active anchor wid order) #:transparent)
 (struct content (ed docs bindings panels tree prompt placing regions fold log doc-keys) #:transparent)
 
 (define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f #f (hash) (hash) '() (hash)))

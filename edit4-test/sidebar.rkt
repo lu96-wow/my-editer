@@ -8,6 +8,7 @@
          "../edit4/core/world.rkt"
          "../edit4/content/model.rkt"
          "../edit4/content/commands.rkt"
+         "../edit4/content/region.rkt"
          "../edit4/content/scopes.rkt"
          "../edit4/config/sidebar.rkt"
          "../edit4/boot.rkt")
@@ -85,5 +86,24 @@
 (check-equal? (rect-w (hash-ref rects-t tree-wid)) 160)   ; 跨满宽
 (check-equal? (content-vid-of (world-content wt) tree-wid)
               (content-panel-vid (world-content wt) "*tree*"))
+
+;;; ---------- root 区域顺序稳定：任意 toggle 后嵌套顺序不变 ----------
+
+(define specs2 '((tree    top  6    ("*tree*")    "*tree*"    root shown)
+                 (buffers left auto ("*buffers*") "*buffers*" root shown)
+                 (log     bottom 6  ("*log*")     "*log*"     main hidden)))
+(define (geom-order w)
+  (define rects (geometry-rects (layout (world-layout w) (rect 0 0 120 30))))
+  (sort (for/list ([(id r) (in-hash rects)])
+          (list (content-vid-of (world-content w) id) (rect-x r) (rect-y r) (rect-w r) (rect-h r)))
+        (lambda (a b) (or (< (caddr a) (caddr b))
+                          (and (= (caddr a) (caddr b)) (< (cadr a) (cadr b)))))))
+(define wo (boot #:root dir #:screen-width 120 #:regions specs2))
+(define before (geom-order wo))
+(define (toggle w rid) (car (run-commands region-commands #f w (list (cmd 'region-toggle rid)))))
+(check-equal? (geom-order (toggle (toggle wo 'tree) 'tree)) before)       ; 隐→显 tree
+(check-equal? (geom-order (toggle (toggle wo 'buffers) 'buffers)) before) ; 隐→显 buffers
+(check-equal? (geom-order (toggle (toggle (toggle wo 'tree) 'tree) 'tree))  ; 奇数次 = 隐藏的一半
+              (geom-order (toggle wo 'tree)))
 
 (displayln "edit4/sidebar.rkt: all tests passed")

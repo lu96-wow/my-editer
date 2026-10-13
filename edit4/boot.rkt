@@ -49,9 +49,9 @@
   (define c-main (content-bind (if vid-ed (content-bind c2 0 vid-ed) c2) 1 vid-st))
   ;; 区域声明 → region 值（size = auto 用按屏宽算的侧栏宽度）。
   (define regs
-    (for/hash ([s (in-list specs)])
+    (for/hash ([s (in-list specs)] [i (in-naturals)])
       (define sz (if (eq? (caddr s) 'auto) sw (caddr s)))
-      (values (car s) (region (cadr s) sz (cadddr s) (list-ref s 4) (list-ref s 5) #f))))
+      (values (car s) (region (cadr s) sz (cadddr s) (list-ref s 4) (list-ref s 5) #f i))))
   (define w0 (make-world #:layout main #:focus 0
                          #:content (content-set-regions c-main regs)))
   ;; 启动即显示的区域：用与运行时相同的插入逻辑（insert-side / insert-adjacent）。

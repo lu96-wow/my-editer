@@ -43,19 +43,22 @@ show/hide（布局手术）、activate/cycle（换成员）、focus。
 edit4：`region(side size members active anchor wid)`——支持
 show/hide（布局手术：`insert-side` / `insert-adjacent` / `remove-leaf`）、activate/cycle、focus。
 
-区域**由 `config/layout.rkt` 声明**（纯数据：`(id side size (member ...) active anchor shown?)`），
-`boot` 按声明生成底盘（显隐都走 `region-show`，与运行时同一套手术）。改布局 = 改数据：
-想 `tree` 到顶部，把 `sidebar` 的 `side` 改 `top`、`size` 改为高度（tree+buffers 一起上顶部）；
-只把 tree 单独放顶部，则拆成 `tree` / `buffers` 两条区域。
+区域**由 `config/layout.rkt` 声明**，且拆成三轴（详见 `11-docks.md`）：
+- `panel-groups`：组合（哪些面板互斥共一槽）`(id (member ...) active)`；
+- `docks`：位置/显隐 `(dock-id side size anchor shown?)`，引用一个 group；
+- `region-keys`：键表，只引用 dock id。
 
-区域相关键（C-b / C-l / M-b / M-t / Tab）也在 `config/layout.rkt` 的 `region-keys` 里（纯数据：
-`(key-pattern scope command-data ...)`，scope 可用 `(region ID)`），**不用改 `content/` 的代码**；
-`(region ID)` 作用域由 `content/scopes.rkt` 按区域声明自动生成。所以拆/改名区域时，
-只改 `region-specs` + `region-keys` 两处即可。
+`boot` 把两者合成 `region` 并生成底盘。于是 tree+buffers 是**一个组合整体**：C-b 切它、
+M-b 组内 tree↔buffers 循环、M-t 回 tree，与键表一致。整体上顶部只需改 `docks`：`(sidebar top 8 root shown)`。
+要真正拆成两个独立面板，得显式建两个 group + 两个 dock（键表随之指新 dock-id）——
+不再因为写个单成员 region 就意外拆散键表假设。`(region DOCK-ID)` 作用域由 `content/scopes.rkt` 自动生成。
 
 - 侧栏 `sidebar`：`left <按屏宽算> (*tree* *buffers*)` anchor `root`，默认显示；宽度启动时由 `config/sidebar.rkt` 按屏宽算一次（比例 + 上下限）；隐藏时记住当前（拖过的）宽度，显示回来照旧；C-b 显/隐，M-b 循环，M-t 回 tree。
 - 日志区 `log`：`bottom 6 (*log*)` anchor `main`，**默认隐藏**；C-l 显/隐。
 - 命令：`region-toggle` / `region-cycle` / `region-activate` / `region-focus`（`content/region.rkt`）。
+
+> root 区域的显隐已按 `order` 重建，嵌套顺序与 `docks` 声明一致（toggle 不漂，见 `11-docks.md` 4.1）；
+> 「可折叠 dock」（尺寸手术、窗口 id 跨显隐稳定）见 4.2。
 
 缺：完整 `(region id)` 作用域（现由区域声明自动生成；编辑区 Tab 循环未加）。
 
