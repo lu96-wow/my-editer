@@ -142,6 +142,14 @@
                          (string=? prefix (substring x 0 plen))))
     x))
 
+;; 候选排序：短的在前（同长按字典序）——让短/常用名先出现。
+(define (rank-candidates cands)
+  (sort cands
+        (lambda (a b)
+          (cond [(< (string-length a) (string-length b)) #t]
+                [(> (string-length a) (string-length b)) #f]
+                [else (string<? a b)]))))
+
 ;;; ---------- 菜单浮窗 ----------
 
 (define (completion-vid w) (panel-vid w "*completion*"))
@@ -169,7 +177,7 @@
      (define base-dir (hash-ref c 'base-dir #f))
      (define binding (and docs? specs base-dir
                           (with-handlers ([exn:fail? (lambda (_) #f)])
-                            (spec-binding-of name specs base-dir))))
+                            (spec-binding-of name specs base-dir (hash-ref c 'open #f)))))
      (emit! w 'complete-selection (list (hash-ref c 'target-vid) name binding))]))
 
 ;; 菜单每帧落位 + 尺寸。
@@ -257,7 +265,7 @@
         (cond
           [(zero? (string-length prefix)) (completion-close w)]
           [else
-           (define cands (filter-pool (hash-ref c 'pool) prefix))
+           (define cands (rank-candidates (filter-pool (hash-ref c 'pool) prefix)))
            (cond
              [(null? cands) (completion-close w)]
              [else
@@ -268,13 +276,13 @@
 
 ;;; ---------- 命令 ----------
 
-(define (open-menu w vid prefix pool [specs #f] [base-dir #f] [docs? #f])
-  (define cands (filter-pool (distinct-strings pool) prefix))
+(define (open-menu w vid prefix pool [specs #f] [base-dir #f] [docs? #f] [open #f])
+  (define cands (rank-candidates (filter-pool (distinct-strings pool) prefix)))
   (cond
     [(null? cands) w]
     [else
      (define c0 (hash 'candidates cands 'index 0 'prefix prefix 'pool pool
-                      'specs specs 'base-dir base-dir 'docs? docs?
+                      'specs specs 'base-dir base-dir 'docs? docs? 'open open
                       'target-vid vid 'target-w (world-focus w)))
      (define w1 (sset w 'completion c0))
      (define w2 (open-overlay w1 (completion-vid w1)
@@ -309,7 +317,7 @@
            (define key (import-key specs base-dir open))
            (define exp (cache-get w key))
            (cond
-             [(list? exp) (cons (open-menu w vid prefix (append exp locals (local-pool w)) specs base-dir #t) '())]
+             [(list? exp) (cons (open-menu w vid prefix (append exp locals (local-pool w)) specs base-dir #t open) '())]
              [(pending? w key) (cons w '())]
              [else
               (pending-put! w key)
@@ -350,7 +358,7 @@
            (define open (caddr ctx*)) (define locals (cadddr ctx*))
            (define exp (cache-get w (import-key specs base-dir open)))
            (cond
-             [(list? exp) (open-menu w vid prefix (append exp locals (local-pool w)) specs base-dir #t)]
+             [(list? exp) (open-menu w vid prefix (append exp locals (local-pool w)) specs base-dir #t open)]
              [else w])])])]))
 
 (define (complete-next _ctx w _args) (cons (if (menu-open? w) (complete-move w 1) w) '()))

@@ -33,4 +33,13 @@
 (check-equal? (spec-binding-of "y" '((rename-in racket/base [x y]) racket) base) (list 'racket/base "x"))
 (check-equal? (spec-binding-of "l:map" '((prefix-in l: racket) racket/base) base) (list 'racket "map"))
 
+;;; ---------- 已打开本地文件的 require：用缓冲区 provides 反查（本地/库区分） ----------
+
+(define local-text "#lang racket\n(provide foo bar)\n(define foo 1)\n(define bar 2)\n")
+(define local-path (path->complete-path (build-path base "sub" "x.rkt")))
+(define open (hash (path->string local-path) local-text))
+(check-equal? (spec-binding-of "foo" '("sub/x.rkt" racket/base) base open)
+              (list local-path "foo"))
+(check-false (spec-binding-of "baz" '("sub/x.rkt" racket/base) base open))  ; 未 provide
+
 (displayln "edit4/lang.rkt: all tests passed")

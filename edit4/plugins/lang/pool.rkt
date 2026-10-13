@@ -124,23 +124,20 @@
 ;;; ================= 候选名 → 来源（prefix-in / rename-in 反查） =================
 
 ;; specs 里找 name 的来源 → (list leaf-module original-name) | #f。
-(define (spec-binding-of name specs base-dir)
-  (for/or ([s (in-list specs)]) (spec-binding-in name s base-dir)))
+;; open : hash 绝对路径字符串 -> 已打开文档的当前缓冲区文本（同 spec-names，解本地文件用）。
+(define (spec-binding-of name specs base-dir [open #f])
+  (for/or ([s (in-list specs)]) (spec-binding-in name s base-dir open)))
 
-;; 已加载/已声明的模块里是否导出 name（不触发加载；缓存命中后很便宜）。
-(define (known-export? m name)
-  (and (module-declared? m #f)
-       (member name (module-exports m))
-       #t))
-
-(define (spec-binding-in name s base-dir)
+(define (spec-binding-in name s base-dir [open #f])
   (cond
-    [(symbol? s) (and (known-export? s name) (list s name))]
+    ;; 库：确实是该模块的导出才认领（不无条件挂到第一个 require）。
+    [(symbol? s) (and (member name (spec-names s base-dir open)) (list s name))]
+    ;; 本地文件：打开的用缓冲区 provides，否则磁盘模块（同正向 spec-names）。
     [(string? s) (define p (local-module-path s base-dir))
-                 (and p (known-export? p name) (list p name))]
+                 (and p (member name (spec-names s base-dir open)) (list p name))]
     [(pair? s)
      (define h (and (symbol? (car s)) (car s)))
-     (define (rec spec) (spec-binding-in name spec base-dir))
+     (define (rec spec) (spec-binding-in name spec base-dir open))
      (define (ids from) (for/list ([x (in-list from)] #:when (symbol? x)) (symbol->string x)))
      (cond
        [(eq? h 'only-in)
@@ -150,7 +147,7 @@
        [(eq? h 'prefix-in)
         (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
         (and (string-prefix? name p)
-             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir)])
+             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir open)])
                (and b (list (car b) (cadr b)))))]
        [(eq? h 'rename-in)
         (define r (for/first ([x (in-list (cddr s))]
@@ -162,12 +159,12 @@
        [(eq? h 'prefix-rename-in)
         (define p (if (symbol? (cadr s)) (symbol->string (cadr s)) ""))
         (and (string-prefix? name p)
-             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir)])
+             (let ([b (spec-binding-in (substring name (string-length p)) (caddr s) base-dir open)])
                (and b (list (car b) (cadr b)))))]
        [(memq h '(for-syntax for-template for-label)) (rec (cadr s))]
-       [(eq? h 'for-meta) (for/or ([x (in-list (cddr s))]) (spec-binding-in name x base-dir))]
-       [(eq? h 'combine-in) (for/or ([x (in-list (cdr s))]) (spec-binding-in name x base-dir))]
-       [(memq h '(lib planet)) (list s name)]
+       [(eq? h 'for-meta) (for/or ([x (in-list (cddr s))]) (spec-binding-in name x base-dir open))]
+       [(eq? h 'combine-in) (for/or ([x (in-list (cdr s))]) (spec-binding-in name x base-dir open))]
+       [(memq h '(lib planet)) (and (member name (spec-names s base-dir open)) (list s name))]
        [(eq? h 'quote) (rec (cadr s))]
        [else #f])]
     [else #f]))

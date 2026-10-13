@@ -34,6 +34,14 @@
 (define (wid-of-vid w vid) (content-wid-of-vid (c-of w) vid))
 (define (wid-float? w id) (and (float-by-id (world-floats w) id) #t))
 
+;; 打开的文档：绝对路径字符串 -> 当前缓冲区文本（供本地 require 反查用）。
+(define (open-local-texts w)
+  (define ed (ed-of w))
+  (for/hash ([did (in-list (document-id-list ed))]
+             #:when (let ([m (doc-meta w did)]) (and m (doc-path m))))
+    (values (path->string (path->complete-path (doc-path (doc-meta w did))))
+            (document-string ed did))))
+
 (define max-rows 16)
 
 (define (docs-vid w) (panel-vid w "*docs*"))
@@ -289,7 +297,7 @@
            (define base-dir (let-values ([(d _f _n) (split-path path)]) (if (path? d) d (current-directory))))
            (define-values (lang forms) (requires-context text))
            (define binding (with-handlers ([exn:fail? (lambda (_) #f)])
-                             (spec-binding-of id (require-specs-of-forms lang forms) base-dir)))
+                             (spec-binding-of id (require-specs-of-forms lang forms) base-dir (open-local-texts w))))
            (cons (docs-show w vid id binding) '())])])]))
 
 ;;; ---------- 插件 ----------

@@ -113,6 +113,10 @@
 (define r3 (hooks (emit! r2 'job (list (job-id j) 'completion-exports res (job-tag j)))))
 (check-not-false (float-of-panel r3 "*completion*"))
 (check-true (regexp-match? #rx"alpha" (panel-text r3 "*completion*")))
+;; 候选按长度排序：短在前（文件里的 “al” < alpha < allocation）
+(check-equal? (for/list ([l (in-list (string-split (panel-text r3 "*completion*") "\n"))])
+                (string-trim l))
+              '("al" "alpha" "allocation"))
 
 ;;; ---------- 文档：M-d 打开本地定义 ----------
 
