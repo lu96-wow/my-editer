@@ -12,6 +12,7 @@
 (provide docs-plugin)
 
 (require racket/list racket/string racket/path racket/match
+         net/uri-codec
          "../plugin.rkt"
          "../core/world.rkt" "../core/store.rkt" "../core/command.rkt" "../core/hook.rkt"
          "../core/job.rkt" "../core/keymap.rkt"
@@ -70,19 +71,23 @@
                            "\n")))]
     [_ #f]))
 
+;; 候选模块：解析源码得到「语言 + requires」，把 binding 指出的模块排最前。
+;; 不只给 binding 的模块——启发式反查（spec-binding-of）对裸模块路径可能误挂到第一个
+;; require；全量候选让 docs-for 逐个试，才不会查错模块而报「无文档」。
 (define (doc-mods w vid binding)
+  (define ed (ed-of w))
+  (define did (and vid (view-did ed vid)))
+  (define text (if did (document-string ed did) ""))
+  (define path (and did (doc-path (doc-meta w did))))
+  (define base-dir (or (and path (let-values ([(d _f _n) (split-path path)]) (and (path? d) d)))
+                       (current-directory)))
+  (define-values (lang forms) (requires-context text))
+  (define parsed (requires-of-forms lang forms #:base-dir base-dir))
+  (define mods (if (null? parsed) '(racket/base) parsed))
   (cond
-    [binding (list (car binding))]
-    [else
-     (define ed (ed-of w))
-     (define did (and vid (view-did ed vid)))
-     (define text (if did (document-string ed did) ""))
-     (define path (and did (doc-path (doc-meta w did))))
-     (define base-dir (or (and path (let-values ([(d _f _n) (split-path path)]) (and (path? d) d)))
-                          (current-directory)))
-     (define-values (lang forms) (requires-context text))
-     (define mods (requires-of-forms lang forms #:base-dir base-dir))
-     (if (null? mods) '(racket/base) mods)]))
+    [(not binding) mods]
+    [else (define bm (car binding))
+          (cons bm (remove bm mods))]))
 
 ;;; ---------- 正文 ----------
 
@@ -93,6 +98,11 @@
                (if (equal? (format "~a" (cadr binding)) (format "~a" name))
                    ""
                    (format "  (原 ~a)" (cadr binding))))))
+
+;; 无本地文档时的在线兑底：docs.racket-lang.org 搜索页。
+(define (docs-online-search name)
+  (format "https://docs.racket-lang.org/search/index.html?q=~a"
+          (uri-encode (format "~a" name))))
 
 (define (docs-lines w d)
   (define name (hash-ref d 'name))
@@ -105,7 +115,8 @@
    (if local (list "── 本地定义 ──" local) '())
    (cond
      [std (cons (if local "── 文档 ──" "") (string-split (string-trim std) "\n"))]
-     [(and (not local) (not binding)) (list "(无文档)")]
+     [(not local) (list "(无本地文档)"
+                        (format "在线: ~a" (docs-online-search name)))]
      [else '()])))
 
 (define (docs-content w _v)

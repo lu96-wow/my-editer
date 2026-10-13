@@ -127,10 +127,17 @@
 (define (spec-binding-of name specs base-dir)
   (for/or ([s (in-list specs)]) (spec-binding-in name s base-dir)))
 
+;; 已加载/已声明的模块里是否导出 name（不触发加载；缓存命中后很便宜）。
+(define (known-export? m name)
+  (and (module-declared? m #f)
+       (member name (module-exports m))
+       #t))
+
 (define (spec-binding-in name s base-dir)
   (cond
-    [(symbol? s) (list s name)]
-    [(string? s) (define p (local-module-path s base-dir)) (and p (list p name))]
+    [(symbol? s) (and (known-export? s name) (list s name))]
+    [(string? s) (define p (local-module-path s base-dir))
+                 (and p (known-export? p name) (list p name))]
     [(pair? s)
      (define h (and (symbol? (car s)) (car s)))
      (define (rec spec) (spec-binding-in name spec base-dir))
