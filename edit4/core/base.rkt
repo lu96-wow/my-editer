@@ -19,7 +19,6 @@
         (list '(key left)  '(prefix split) (cmd 'split 'h 'before))
         (list '(key down)  '(prefix split) (cmd 'split 'v 'after))
         (list '(key up)    '(prefix split) (cmd 'split 'v 'before))
-        (list '(key d ctrl) 'always (cmd 'close))
         (list '(key n alt)  'always (cmd 'focus 'next))
         (list '(key p alt)  'always (cmd 'focus 'prev))
         (list '(cursor press)   'always (cmd 'pointer-press))

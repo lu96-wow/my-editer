@@ -95,6 +95,7 @@
    (list '(key escape) '(prefix new) (cmd 'cancel))
    (list '(key escape) '(prefix new2) (cmd 'cancel))
    ;; ---- 全局 ----
+   (list '(key d ctrl) 'always (cmd 'close-window))   ; 关编辑器窗（空占位保留、不动面板）
    (list '(key q ctrl) 'always (cmd 'quit))
    (list '(key s alt) 'always (cmd 'save))
    (list '(key u ctrl) 'always (cmd 'tree-reload))

@@ -140,4 +140,30 @@
 (check-equal? (leaf-id (node-at root (list 0)))
               (region-leaf (region-of wclosed 'sidebar)))    ; 顶部第一格仍是树
 
+;;; ---------- C-d 关掉最后一个编辑器窗：空占位保留，dock / 主区尺寸不漂 ----------
+
+(define wsd (boot #:root dir #:screen-width 160 #:screen-height 40))
+(define rsb (region-of wsd 'sidebar))
+(define rst (region-of wsd 'status))
+(define eds (content-editor-window (world-content wsd) (world-layout wsd)))
+(define (h-of-leaf w id)
+  (rect-h (hash-ref (geometry-rects (layout (world-layout w) (rect 0 0 160 40))) id)))
+(check-not-false eds)
+(define sb-h0 (h-of-leaf wsd (region-leaf rsb)))
+(define st-h0 (h-of-leaf wsd (region-leaf rst)))
+(define ed-h0 (h-of-leaf wsd eds))
+
+(define wsd* (run wsd (key-event 'd '(ctrl))))               ; C-d 关最后一个编辑器
+(check-true (has-id? wsd* eds))                              ; 叶子仍在（空占位）
+(check-false (content-vid-of (world-content wsd*) eds))      ; 但已无视图
+(check-equal? (h-of-leaf wsd* (region-leaf rsb)) sb-h0)      ; 树尺寸不变
+(check-equal? (h-of-leaf wsd* (region-leaf rst)) st-h0)      ; 状态栏尺寸不变
+(check-equal? (h-of-leaf wsd* eds) ed-h0)                    ; 主区尺寸不变
+
+;; 再打开文件 → 直接用这个空占位（单窗直放），继续不漂
+(define-values (cws _dws cvs) (content-add-doc! (world-content wsd*) "hi" 40 10 "x.rkt" #f))
+(define wsd2 (place-vid! (world-set-content wsd* cws) cvs))
+(check-eqv? (world-focus wsd2) eds)
+(check-equal? (h-of-leaf wsd2 (region-leaf rsb)) sb-h0)
+
 (displayln "edit4/sidebar.rkt: all tests passed")

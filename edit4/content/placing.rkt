@@ -9,6 +9,9 @@
 ;;;
 ;;; placing 状态存在 content 里（与 prompt 同构）：vid = 待放置视图，prev-focus = 进入前焦点。
 ;;; 视图在确认前不入任何窗口绑定；取消只清 placing + 回焦（文档保持已打开、未显示）。
+;;;
+;;; 也管「关编辑器窗」（C-d）：最后一个编辑器窗是**常驻的空占位**，只解绑不删叶子，
+;;; 主区弹性仍在，dock（树 / 状态栏）尺寸不漂。
 
 (provide placing-commands place-vid! reveal-or-place! reveal-or-place-doc!)
 
@@ -100,6 +103,34 @@
 
 ;;; ---------- 命令 ----------
 
+;; C-d：关闭焦点编辑器窗（**只对编辑器窗生效**，面板/浮窗一律不动）。
+;;   · 只剩一个编辑器窗 → **保留叶子、只解绑** → 空编辑器占位（主区弹性不消失，
+;;     树/状态栏尺寸不变；新开文件会直接放回这一格）；
+;;   · 多个 → 删叶子 + 解绑，焦点回退到另一个编辑器窗。
+;; 与 buffers 关视图（content-remove-vid 后叶子留空）同构。
+;; 绑在 always 上（而非 editor scope）：空编辑器窗 vid = #f，editor scope 不成立，
+;; 但空占位同样不该被删。
+(define (h-close-window ctx w args)
+  (define c (world-content w))
+  (define id (world-focus w))
+  (define lay (world-layout w))
+  (cond
+    [(not (and c id)) (cons w '())]
+    [(content-placing c) (cons w '())]              ; 正在选放置目标：不关
+    [else
+     (define wins (editor-windows w))
+     (cond
+       [(not (memv id wins)) (cons w '())]          ; 面板 / 未知窗：消费但不改
+       [(null? (cdr wins))                          ; 最后一个编辑器窗 → 空占位
+        (cons (world-set-content w (content-unbind c id)) '())]
+       [else
+        (define nl (remove-leaf lay id))
+        (define w1 (world-set-layout w nl))
+        (define w2 (world-set-content w1 (content-unbind (world-content w1) id)))
+        (define target (or (content-editor-window (world-content w2) nl)
+                           (for/first ([x (in-list (ids nl))]) x)))
+        (cons (world-set-focus w2 target) '())])]))
+
 (define (h-place-cycle ctx w args)
   (define d (car args))
   (cond
@@ -161,7 +192,8 @@
 
 (define placing-commands
   (make-command-registry
-   (list (cons 'place-cycle h-place-cycle)
+   (list (cons 'close-window h-close-window)
+         (cons 'place-cycle h-place-cycle)
          (cons 'place-confirm h-place-confirm)
          (cons 'place-cancel h-place-cancel)
          (cons 'place-pick h-place-pick))))

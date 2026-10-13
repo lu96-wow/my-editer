@@ -98,7 +98,7 @@ dispatch(world):
 | 命令 | 参数 | 作用 |
 |---|---|---|
 | `split` | axis side | 分裂焦点窗，新窗聚焦 |
-| `close` | — | 关焦点窗，焦点回退到第一个 id |
+| `close` | — | 底层布局 op：摘掉焦点叶子（不再默认绑键，见 `close-window`） |
 | `focus` | dir / next / prev / id | 焦点导航（dir 用几何 `neighbor`） |
 | `prefix` | name | 进入前缀模式 |
 | `cancel` | — | 清 prefix |
@@ -107,7 +107,7 @@ dispatch(world):
 ```
 C-s        → (prefix split)
 (prefix split) → ←/→/↑/↓ = split
-C-d        → close
+C-d        → (close-window)   ; content 层：关编辑器窗（最后一个只解绑=空占位；不动面板）
 M-n/M-p    → focus next/prev
 M-←/→/↑/↓  → focus dir
 ```
