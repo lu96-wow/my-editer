@@ -226,11 +226,7 @@
   (cond
     [(or (not d) (not fw) (not size)) w]
     [else
-     (define ed (ed-of w))
      (define c (c-of w))
-     (define tv (hash-ref d 'target-vid #f))
-     (define pos (and tv (memv tv (view-id-list ed))
-                      (point->screen ed tv (view-line ed tv) (view-col ed tv))))
      (define fr (world-frame w size))
      (define tiled (frame-tiled fr))
      (define rects (geometry-rects tiled))
@@ -254,7 +250,8 @@
         (define width (max 3 (min (rect-w area) (- W (rect-x area)))))
         (define height (max 3 (min (+ rows 2) (rect-h area) H)))
         (define target-rect tpl-rect)
-        (define crow (+ (rect-y (or target-rect area)) (if pos (car pos) 0)))
+        (define cur (frame-cursor-screen fr w))
+        (define crow (if cur (car cur) (rect-y (or target-rect area))))
         (define area-bottom (+ (rect-y area) (rect-h area)))
         (define place-top? (>= (+ crow height 1) area-bottom))
         (define ay (if place-top? (rect-y area) (- area-bottom height)))
