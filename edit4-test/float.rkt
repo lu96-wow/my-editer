@@ -8,6 +8,7 @@
          "../edit4/core.rkt"
          "../edit4/content/model.rkt"
          "../edit4/content/adapter.rkt"
+         "../edit4/content/float.rkt"
          "../edit4/content/commands.rkt"
          "../edit4/content/scopes.rkt"
          "../edit4/view/panel.rkt"
@@ -28,6 +29,17 @@
 
 (define w0 (boot #:root (current-directory)))
 
+;;; ---------- focused-cursor-screen：焦点窗主选区光标的屏幕绝对位置 ----------
+
+;; 平铺窗（编辑器）：窗口原点 + view-local 光标
+(define wdoc (boot #:root (current-directory) #:name "*scratch*"))
+(define cur-ed (focused-cursor-screen wdoc SZ))
+(check-not-false cur-ed)
+(define ewin (world-focus wdoc))
+(define erect (hash-ref (geometry-rects (frame-tiled (world-frame wdoc SZ))) ewin))
+(check-equal? (car cur-ed) (rect-y erect))          ; 首行
+(check-equal? (cdr cur-ed) (rect-x erect))          ; 首列（无行号栏）
+
 ;;; ---------- M-k：浮起文件树 ----------
 
 (define s1 (run w0 (key-event 'k '(alt))))
@@ -37,6 +49,13 @@
 (check-equal? (world-focus (W s1)) fid)                 ; 打开即聚焦
 (check-equal? (length (visible-ids (world-layout (W s1)))) 3)   ; 平铺窗不变（折叠 dock 不算）
 (check-true (scope-ok? content-scopes (W s1) 'float))
+
+;; 浮窗光标：用内容矩形（内缩边框）
+(define cur-fl (focused-cursor-screen (W s1) SZ))
+(check-not-false cur-fl)
+(define flc (frame-float-content-rect (world-frame (W s1) SZ) fid))
+(check-true (and (>= (car cur-fl) (rect-y flc)) (< (car cur-fl) (rect-bottom flc))))
+(check-true (and (>= (cdr cur-fl) (rect-x flc)) (< (cdr cur-fl) (rect-right flc))))
 
 ;; 几何：frame 里有该浮窗矩形；命中它返回 float-target
 (define-values (_c fr) (ensure-layout empty-layout-cache (world-layout (W s1)) (world-floats (W s1)) SZ))

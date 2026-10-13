@@ -9,12 +9,12 @@
 ;;; 浮窗也是显示位置：floated 的面板/文档就是同一个 vid 多位置（复用 content.bindings）。
 
 (provide float-commands open-overlay close-float-by-id set-float-on-world world-frame
-         raise-float)
+         raise-float focused-cursor-screen)
 
 (require racket/list
          "../core/world.rkt" "../core/command.rkt"
          "../layout.rkt"
-         "model.rkt" "lifecycle.rkt"
+         "model.rkt" "adapter.rkt" "lifecycle.rkt"
          "../config/floats.rkt")
 
 (define (panel-vid-of w name)
@@ -81,6 +81,24 @@
 (define (world-frame w size)
   (define area (rect 0 0 (car size) (cdr size)))
   (frame-with-tiled (layout (world-layout w) area) (world-floats w) size))
+
+;; 焦点窗「主选区光标」（primary selection 的 head）在屏幕上的绝对位置 → (cons row col) | #f。
+;; 平铺窗用 pane 矩形；浮窗用内容矩形（四边内缩边框）。光标不可见（滚出 / 空窗）→ #f。
+(define (focused-cursor-screen w size)
+  (define c (world-content w))
+  (define ed (and c (content-ed c)))
+  (define wid (world-focus w))
+  (define vid (and c wid (content-vid-of c wid)))
+  (define pos (and ed vid (memv vid (view-id-list ed))
+                   (point->screen ed vid (view-line ed vid) (view-col ed vid))))
+  (cond
+    [(or (not pos) (not wid) (not size)) #f]
+    [else
+     (define fr (world-frame w size))
+     (define r (if (float-by-id (world-floats w) wid)
+                   (frame-float-content-rect fr wid)
+                   (hash-ref (geometry-rects (frame-tiled fr)) wid #f)))
+     (and r (cons (+ (rect-y r) (car pos)) (+ (rect-x r) (cdr pos))))]))
 
 ;;; ---------- 命令 ----------
 
