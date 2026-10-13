@@ -18,7 +18,7 @@
 (provide (struct-out content) (struct-out doc-meta) (struct-out prompt) (struct-out placing) (struct-out region)
          content-blank
          content-add-doc! content-add-view! content-add-panel! content-close-doc!
-         content-bind content-unbind content-remove-vid
+         content-bind content-unbind content-set-vid content-swap-vids content-remove-vid
          content-vid-of content-did-of content-wid-of-vid
          content-doc-meta doc-path doc-dirty? doc-save-mark!
          content-panel-vid content-panel? panel-doc-name? panel-name-of-vid
@@ -93,6 +93,14 @@
 
 (define (content-bind c id vid) (content-bindings* c (hash-set (content-bindings c) id vid)))
 (define (content-unbind c id) (content-bindings* c (hash-remove (content-bindings c) id)))
+;; 设置/清除一个窗口的 vid（vid #f = 空窗占位）。
+(define (content-set-vid c id vid)
+  (if vid (content-bind c id vid) (content-unbind c id)))
+;; 交换两个窗口显示的 vid：窗口 id / 几何 / 尺寸都不动，只把视图换位。
+(define (content-swap-vids c id-a id-b)
+  (define va (content-vid-of c id-a))
+  (define vb (content-vid-of c id-b))
+  (content-set-vid (content-set-vid c id-a vb) id-b va))
 (define (content-vid-of c id) (hash-ref (content-bindings c) id #f))
 (define (content-wid-of-vid c vid)
   (and vid (for/first ([(id v) (in-hash (content-bindings c))] #:when (eqv? v vid)) id)))

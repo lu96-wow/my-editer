@@ -103,6 +103,32 @@
 
 ;;; ---------- 命令 ----------
 
+;; 两个编辑器窗互换视图：几何/尺寸/焦点都不动，只换 vid 绑定。
+;; 参数 (swap-view A B)：A/B = 窗口 id、'focus、或 'next / 'prev
+;; （相对焦点在编辑器窗序列里的下一个/上一个；焦点不在编辑器窗时取第一个/最后一个）。
+(define (swap-target wins focus x)
+  (cond
+    [(eq? x 'focus) focus]
+    [(memq x '(next prev))
+     (cond
+       [(null? wins) #f]
+       [else
+        (define m (for/first ([id (in-list wins)] [k (in-naturals)] #:when (eqv? id focus)) k))
+        (define i (or m (if (eq? x 'next) -1 0)))
+        (define d (if (eq? x 'next) 1 -1))
+        (list-ref wins (modulo (+ i d) (length wins)))])]
+    [else x]))
+
+(define (h-swap-view ctx w args)
+  (define c (world-content w))
+  (define wins (editor-windows w))
+  (define focus (world-focus w))
+  (define a (swap-target wins focus (car args)))
+  (define b (swap-target wins focus (cadr args)))
+  (cond
+    [(not (and c a b (memv a wins) (memv b wins) (not (eqv? a b)))) #f]
+    [else (cons (world-set-content w (content-swap-vids c a b)) '())]))
+
 ;; C-d：关闭焦点编辑器窗（**只对编辑器窗生效**，面板/浮窗一律不动）。
 ;;   · 只剩一个编辑器窗 → **保留叶子、只解绑** → 空编辑器占位（主区弹性不消失，
 ;;     树/状态栏尺寸不变；新开文件会直接放回这一格）；
@@ -193,6 +219,7 @@
 (define placing-commands
   (make-command-registry
    (list (cons 'close-window h-close-window)
+         (cons 'swap-view h-swap-view)
          (cons 'place-cycle h-place-cycle)
          (cons 'place-confirm h-place-confirm)
          (cons 'place-cancel h-place-cancel)

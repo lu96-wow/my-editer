@@ -118,4 +118,32 @@
 (check-true (> (length (ids (world-layout wp*))) 1))          ; 多了个窗
 (check-eqv? (content-vid-of (world-content wp*) (world-focus wp*)) nd)
 
+;;; ---------- 两个编辑器窗互换视图：只换 vid 绑定，几何不变 ----------
+
+(define sw-doc0 (content-blank))
+(define-values (sw-c1 _sw-da sw-va) (content-add-doc! sw-doc0 "A" 20 4 "A" #f))
+(define-values (sw-c2 _sw-db sw-vb) (content-add-doc! sw-c1 "B" 20 4 "B" #f))
+(define sw-lay (split 'h 1 (list (child (size 1 #t) (leaf 0 (cons 2 2)))
+                                 (child (size 1 #t) (leaf 1 (cons 2 2))))))
+(define sw-w (make-world #:layout sw-lay #:focus 0
+                         #:content (content-bind (content-bind sw-c2 0 sw-va) 1 sw-vb)))
+(check-eqv? (content-vid-of (world-content sw-w) 0) sw-va)
+(check-eqv? (content-vid-of (world-content sw-w) 1) sw-vb)
+(define sw-w* (run sw-w (list (cmd 'swap-view 0 1))))
+(check-eqv? (content-vid-of (world-content sw-w*) 0) sw-vb)   ; 视图换位
+(check-eqv? (content-vid-of (world-content sw-w*) 1) sw-va)
+(check-equal? (world-layout sw-w*) sw-lay)                    ; 几何/尺寸不动
+(check-eqv? (world-focus sw-w*) 0)                            ; 焦点不动
+
+;; 空占位也能换（doc → 空格）
+(define sw-w2 (make-world #:layout sw-lay #:focus 0 #:content (content-bind sw-c2 0 sw-va)))
+(define sw-w2* (run sw-w2 (list (cmd 'swap-view 0 1))))
+(check-eqv? (content-vid-of (world-content sw-w2*) 0) #f)
+(check-eqv? (content-vid-of (world-content sw-w2*) 1) sw-va)
+
+;; 'focus / 'next 选择
+(define sw-w3 (run (world-set-focus sw-w 0) (list (cmd 'swap-view 'focus 'next))))
+(check-eqv? (content-vid-of (world-content sw-w3) 0) sw-vb)
+(check-eqv? (content-vid-of (world-content sw-w3) 1) sw-va)
+
 (displayln "edit4/placing.rkt: all tests passed")
