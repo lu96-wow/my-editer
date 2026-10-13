@@ -35,8 +35,10 @@
       [(not n) (void)]
       [(leaf? n)
        (define m (leaf-min n))
-       (when (or (< (car m) 1) (< (cdr m) 1))
-         (err "leaf ~a: min ~a < (1 . 1)" (leaf-id n) m))]
+       ;; dock 叶子 = min (0 . 0)（可折叠）；其余叶子 min ≥ (1 . 1)。
+       (when (and (not (equal? m (cons 0 0)))
+                  (or (< (car m) 1) (< (cdr m) 1)))
+         (err "leaf ~a: min ~a 既不是 (0 . 0) 也不是 ≥ (1 . 1)" (leaf-id n) m))]
       [else
        (define kids (split-kids n))
        (when (< (length kids) 2)

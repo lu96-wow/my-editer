@@ -53,12 +53,13 @@ M-b 组内 tree↔buffers 循环、M-t 回 tree，与键表一致。整体上顶
 要真正拆成两个独立面板，得显式建两个 group + 两个 dock（键表随之指新 dock-id）——
 不再因为写个单成员 region 就意外拆散键表假设。`(region DOCK-ID)` 作用域由 `content/scopes.rkt` 自动生成。
 
-- 侧栏 `sidebar`：`left <按屏宽算> (*tree* *buffers*)` anchor `root`，默认显示；宽度启动时由 `config/sidebar.rkt` 按屏宽算一次（比例 + 上下限）；隐藏时记住当前（拖过的）宽度，显示回来照旧；C-b 显/隐，M-b 循环，M-t 回 tree。
-- 日志区 `log`：`bottom 6 (*log*)` anchor `main`，**默认隐藏**；C-l 显/隐。
+- 侧栏 `sidebar`：`left <按屏宽算> (*tree* *buffers*)` anchor `root`，默认显示；宽度启动时由 `config/sidebar.rkt` 按屏宽算一次（比例 + 上下限）；每个 dock 有最小尺寸 `min`，拖拽/缩屏挤不到 0，隐藏时也把尺寸夹到 min 再记住，C-b 显示回来一定看得见；C-b 显/隐，M-b 循环，M-t 回 tree。
+- 状态栏 `status`：`bottom 1 (*status* *input*)` anchor `main`，常显；prompt 打开时 `region-activate` 切到 `*input*`，关闭切回（不再自己换窗口 vid）。
+- 日志区 `log`：`bottom 6 (*log*)` anchor `main`，**默认隐藏**；C-l 显/隐（mount 顺序在 status 之后 → 插在编辑器与状态栏之间）。
 - 命令：`region-toggle` / `region-cycle` / `region-activate` / `region-focus`（`content/region.rkt`）。
 
-> root 区域的显隐已按 `order` 重建，嵌套顺序与 `docks` 声明一致（toggle 不漂，见 `11-docks.md` 4.1）；
-> 「可折叠 dock」（尺寸手术、窗口 id 跨显隐稳定）见 4.2。
+> 显隐是**尺寸手术**：dock 叶子常驻，隐藏 = 折叠（size 0），所以 toggle 幂等、
+> 嵌套顺序恒 = 声明顺序、叶子/窗口 id 跨显隐稳定（见 `11-docks.md` 第 4 节）。
 
 缺：完整 `(region id)` 作用域（现由区域声明自动生成；编辑区 Tab 循环未加）。
 

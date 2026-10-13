@@ -64,12 +64,13 @@
 ;;; ---------- 拖拽 ----------
 
 ;; 段允许的 delta 区间（不含端点越界）：[-(len_i-min_i), +(len_j-min_j)]
+;;   i / j = 缝两侧的可见子节点下标（中间可能隔着折叠子节点）。
 (define (seg-lo s)
   (define i (seg-index s))
   (- (list-ref (seg-mins s) i) (list-ref (seg-lens s) i)))
 (define (seg-hi s)
-  (define i (seg-index s))
-  (- (list-ref (seg-lens s) (add1 i)) (list-ref (seg-mins s) (add1 i))))
+  (define j (seg-index2 s))
+  (- (list-ref (seg-lens s) j) (list-ref (seg-mins s) j)))
 
 ;; 取某轴的 cut 的全部缝段（一次拖拽可能同时动两条线）。
 (define (segs-of-axis hits axis)
@@ -88,8 +89,9 @@
      (define d (max lo (min hi delta)))
      (for/list ([s (in-list segs)])
        (define i (seg-index s))
-       (define sizes (for/list ([l (in-list (seg-lens s))] [j (in-naturals)])
-                       (cond [(= j i) (+ l d)]
-                             [(= j (add1 i)) (- l d)]
+       (define j (seg-index2 s))
+       (define sizes (for/list ([l (in-list (seg-lens s))] [k (in-naturals)])
+                       (cond [(= k i) (+ l d)]
+                             [(= k j) (- l d)]
                              [else l])))
        (list (seg-path s) sizes))]))

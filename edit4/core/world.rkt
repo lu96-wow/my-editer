@@ -50,4 +50,4 @@
 (define (emit! w point args) (world-set-signals w (append (world-signals w) (list (cons point args)))))
 
 (define (focused? w) (and (world-focus w) #t))
-(define (has-id? w id) (and (memv id (ids (world-layout w))) #t))
+(define (has-id? w id) (and (memv id (visible-ids (world-layout w))) #t))

@@ -72,7 +72,23 @@
 
 ;;; ---------- 求解 ----------
 
-(define (solve-axis extent gutter sizes mins)
+;; solve-axis : extent gutter sizes mins [actives] -> (listof 长度)
+;;   actives 缺省全 #t；#f 的项视为折叠：长度恒 0，不占缝、不参与增/减。
+;;   返回与 sizes 等长（折叠位置为 0），保持 idx 对齐。
+(define (solve-axis extent gutter sizes mins [actives #f])
+  (define act (or actives (make-list (length sizes) #t)))
+  (define idxs (for/list ([a (in-list act)] [i (in-naturals)] #:when a) i))
+  (cond
+    [(null? idxs) (make-list (length sizes) 0)]
+    [else
+     (define as (map (lambda (i) (list-ref sizes i)) idxs))
+     (define am (map (lambda (i) (list-ref mins i)) idxs))
+     (define lens (solve-active extent gutter as am))
+     (define out (make-vector (length sizes) 0))
+     (for ([i (in-list idxs)] [l (in-list lens)]) (vector-set! out i l))
+     (vector->list out)]))
+
+(define (solve-active extent gutter sizes mins)
   (define k (length sizes))
   (cond
     [(zero? k) '()]

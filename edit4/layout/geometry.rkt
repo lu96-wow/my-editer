@@ -14,7 +14,8 @@
 
 (require "rect.rkt" "size.rkt" "tree.rkt" racket/list)
 
-(struct seg (path index lens mins span-lo span-hi) #:transparent)
+(struct seg (path index index2 lens mins span-lo span-hi) #:transparent)
+;; index/index2 = 缝两侧相邻的**可见**子节点的下标（可能不相邻，中间隔着折叠子节点）。
 (struct cut (axis offset segs) #:transparent)
 (struct geometry (rects cuts w h) #:transparent)   ; rects : hash id -> rect
 
@@ -35,25 +36,31 @@
        (define axis (split-axis n))
        (define gut (split-gutter n))
        (define kids (split-kids n))
-       (define k (length kids))
        (define sizes (map child-size kids))
        (define mins (map (lambda (c) (axis-min (child-node c) axis)) kids))
+       (define act (map (lambda (c) (not (collapsed-child? c))) kids))
        (define extent (if (eq? axis 'h) (rect-w r) (rect-h r)))
-       (define lens (solve-axis extent gut sizes mins))
+       (define lens (solve-axis extent gut sizes mins act))
        (define x0 (rect-x r))
        (define y0 (rect-y r))
        (define off 0)
-       (for ([c (in-list kids)] [len (in-list lens)] [i (in-naturals)])
+       ;; 只摆可见子节点，缝只出现在相邻可见子节点之间；折叠的 len=0、不摆、不占缝。
+       (define vis (for/list ([c (in-list kids)] [len (in-list lens)] [i (in-naturals)]
+                              #:when (list-ref act i))
+                     (list c len i)))
+       (for ([x (in-list vis)] [vi (in-naturals)])
+         (define c (car x)) (define len (cadr x)) (define i (caddr x))
          (define cr (if (eq? axis 'h)
                         (rect (+ x0 off) y0 len (rect-h r))
                         (rect x0 (+ y0 off) (rect-w r) len)))
          (walk (child-node c) cr (append path (list i)))
          (set! off (+ off len))
-         (when (< i (sub1 k))
+         (when (< vi (sub1 (length vis)))
+           (define j (caddr (list-ref vis (add1 vi))))
            (define pos (+ (if (eq? axis 'h) x0 y0) off))
            (define span-lo (if (eq? axis 'h) y0 x0))
            (define span-hi (+ span-lo (if (eq? axis 'h) (rect-h r) (rect-w r))))
-           (add-seg (split-cut-axis axis) pos (seg path i lens mins span-lo span-hi))
+           (add-seg (split-cut-axis axis) pos (seg path i j lens mins span-lo span-hi))
            (set! off (+ off gut))))]))
 
   (walk node area '())

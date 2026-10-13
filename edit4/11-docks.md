@@ -45,88 +45,83 @@ struct region (side size members active anchor wid)
 ## 3. 设计：三轴分离
 
 ```
-panel-group（组合，内容）      dock（槽位，布局）              bindings（World）
-  (id members active)    →     (id group side size anchor)  →  wid → vid
+panel-group（组合，内容）      dock（槽位，布局）                    bindings（World）
+  (id members active)    →     (id group side size min anchor)  →  wid → vid
 ```
 
 - **`panel-group`**：只描述「哪些面板互斥共用一槽、默认显示谁」。纯内容，不碰几何。
-- **`dock`**：引用一个 group，决定 `side / size / anchor / 初始显隐`。布局概念。
+- **`dock`**：引用一个 group，决定 `side / size / min / anchor / 初始显隐`。布局概念。
 - **键表**：只引用 `dock-id`（`region-keys`）。组内怎么组合由 group 决定，键表不管。
 
 已在 `config/layout.rkt` 落地（两表 + 合成）：
 ```racket
 (define panel-groups
   '((sidebar ("*tree*" "*buffers*") "*tree*")   ; tree+buffers 是一个组合
-    (log     ("*log*")              "*log*")))
+    (status  ("*status*" "*input*") "*status*")
+    (log     ("*log*")            "*log*")))
 
+;; (id side size min anchor shown?)
 (define docks
-  '((sidebar left   auto root shown)
-    (log     bottom 6    main hidden)))
+  (list (list 'sidebar 'left   'auto sidebar-min-width 'root 'shown)
+        (list 'status  'bottom 1    1                 'main 'shown)
+        (list 'log     'bottom 6    2                 'main 'hidden)))
 ```
 于是 `C-b` 切的是「sidebar 这个组合整体」，`M-b` 是组内 tree↔buffers 循环，`M-t` 切到组内 tree——
 **组合整体操作，与键表一致**；想真正拆成两个面板，必须显式建两个 group + 两个 dock，不再是顺手写单成员 region。
 
-### 顺带统一那四条路径
-理想终局（分步做）：
-- *status* 也变成一个 dock（bottom / size 1 / group `(status)`），不再在 boot 里直接绑窗口；
-- *input* 就是 status 组合里的一个成员，`prompt-open` 用 `region-activate` 切换 active，而不是自己换 vid；
-- 浮窗保留（它本来就是「另一处显示同一 vid」），但复用同一套 `content-bind`。
+### 四条路径已收敛（已落）
+- *status* 是一个 dock（bottom / size 1 / group `(status input)`）——boot 不再直接绑窗口；
+- *input* 是 status 组合里的一个成员，`prompt-open` 用 `region-activate!` 切 active，
+  `prompt-close` 切回 `*status*`（不再自己换窗口 vid）；
+- 浮窗保留（它本来就是「另一处显示同一 vid」）。
 
-这样「放一个 panel」只有一条路径：**选一个 dock，切到某个成员**。
+现在「放一个 panel」只有一条路径：**选一个 dock，切到某个成员**（浮窗除外）。
+状态栏在 mount 顺序上排在 log 之前，所以 log 显示时插在编辑器与状态栏之间，状态栏始终在最底。
 
-## 4. root 区域顺序稳定（已落）→ 可折叠 dock（进阶）
+## 4. 可折叠 dock（已落）
 
-### 4.1 已落：root 链按 order 重建
+**显隐 = 尺寸手术，不是布局手术。** boot 时把**所有** dock 的叶子都挂进树（隐藏的 size 0），
+之后 show/hide 只改 `child-size`，永不插入/删除：
 
-给 `region` 加了 `order`（在 `docks` 里的声明次序）。`region-show` 对 `anchor=root` 的区域，
-插入后调 `rebuild-root-docks`：把所有已显示的 root 区域按 `order` 从内到外重新嵌套
-（先摘掉、再按序 `insert-side`，尺寸取当前 basis / 记住的 size）。于是：
-
-- **任意 toggle 序列后，root 区域嵌套顺序 = `docks` 声明顺序**（toggle 幂等）；
-- 树内其它结构（编辑器比例、main 区域）不动（只重包 root 链）；
-- `edit4-test/sidebar.rkt` 已写了顺序稳定的回归。
-
-局限：重建时 root 窗口会重新分配 id（≥ 2 个 root 区域时），想 id 也跨显隐稳定就上 4.2。
-
-### 4.2 进阶：可折叠 dock（尺寸手术，id 也稳定）
-
-现在显隐是**布局手术**（`insert-side` / `remove-leaf`），4.1 把顺序钉死了但还是会换 id。
-要连 id 都稳定，改成 **尺寸手术**：dock 的叶子一直在树里，隐藏 = 把它的 `child-size` 设成 `(size 0 #f)`。
-
-需要 layout 支持「折叠子节点」：
-
-- **约定**：`(size 0 #f)`（basis 0、固定）且叶子 min `(0 . 0)` 的子节点 = 折叠，不占位置、不占缝。
-- **`layout/size.rkt`**：`solve-axis` 前先把 kids 过滤成「活动」子集（去掉折叠），对活动子集算
-  gutter 与分配，折叠的分配 0。或给 solve-axis 加一个 `active?` 参数。
-- **`layout/tree.rkt`**：
-  - `leaf` 允许 `min = (0 . 0)`（dock 叶子用）；
-  - `node-min` / `axis-min` 忽略折叠子节点；
-  - `ids` 仍包含折叠叶（id 不复用），另给 `visible-ids`（`has-id?` / 焦点 / `content-editor-windows` 用）。
-- **`layout/geometry.rkt`**：`walk` 跳过折叠子节点 → 不产生 rect、不产生 seg（缝自然消失）。
-- **`layout/hit.rkt` / 拖拽**：折叠节点没有 rect/seg，自动不可命中，无需改动。
-
-`region-hide` / `region-show` 就退化成：
 ```racket
-hide: 把 wid 的 child-size 设 0，记住原尺寸；焦点若在此窗则回退。
-show: 把 child-size 设回记住的尺寸；不插入、不删除 → 顺序永远不变。
+mount : 插入常驻叶子（min (0 . 0)）；shown? 决定初始 size
+hide  : 叶子 child-size 设 0（记住当前尺寸）—— 折叠
+show  : 叶子 child-size 设回记住的尺寸 ── 展开
 ```
-收益：
-- **toggle 幂等**、root 区域顺序稳定（不再依赖声明顺序 / 是否 toggle 过）；
-- dock 的窗口 id 跨显隐保持（focus 记忆、`has-id?` 更稳）；
-- 少了 `insert-side` / `insert-adjacent` / `remove-leaf` 三套手术在显隐路径上的使用（保留给
-  「新增/删除 dock」这种真正的结构变更）。
+
+layout 层的「折叠子节点」支持（已落）：
+
+- **约定**：`(size 0 #f)`（固定、basis 0）的子节点 = 折叠；dock 叶子 min `(0 . 0)`。
+- **`layout/size.rkt`**：`solve-axis` 带 `actives` 参数；折叠项长度 0、不占缝、不参与增/减，
+  返回与 kids 等长（下标对齐）。
+- **`layout/tree.rkt`**：`node-min` 忽略折叠子节点；新增 `collapsed-child?` / `visible-ids`
+  （`ids` 仍含折叠叶 → id 不复用；焦点/命中/导航用 `visible-ids`）。
+- **`layout/geometry.rkt`**：`walk` 只摆可见子节点；缝只出现在相邻可见子节点之间，
+  `seg` 记两侧可见下标 `index/index2`（中间可能隔着折叠子节点）。
+- **`layout/settle.rkt`** / **`hit.rkt`**：同样按 actives 走；折叠项无 rect/seg → 自动不可命中。
+- **`layout/validate.rkt`**：叶子 min 允许 `(0 . 0)`（dock）或 ≥ `(1 . 1)`（普通）。
+
+于是：
+
+- **toggle 幂等**，root 顺序恒 = 挂载（声明）顺序 —— 不需要 `order` 字段 / 重建；
+- **dock 的叶子 id 与窗口 id 跨显隐稳定**（`region.leaf` 常驻，`wid` 隐藏时 #f）；
+- **最小尺寸**：`docks` 每项带 `min`，mount 时把 dock 叶子的 `min` 设成它 → 拖拽 / 缩屏
+  都挤不到 0（折叠靠 basis 0 判定，与叶子 min 无关，所以不影响折叠）；展开时再
+  `max(min, 记住的 size)` 兜一层，隐藏时保存的尺寸也向下夹到 min。
+- 显隐路径不再用 `insert-side` / `remove-leaf`（保留给真正的新增/删除 dock）。
 
 > 组合与布局正交：组合（group）根本不需要 layout 知道；layout 只需把「一个槽的一个叶子」
-> 稳定地显示/折叠。这也是为什么「更好的 layout 设计」能让组合更简单——它把位置/显隐
+> 稳定地展开/折叠。这也是为什么「更好的 layout 设计」能让组合更简单——它把位置/显隐
 > 从组合里彻底摘掉。
 
 ## 5. 迁移步骤（低风险 → 高收益）
 
 1. ✅ **config 两表**（group / dock，已落）：组合成为一等概念，键表只认 dock id。
-2. ✅ **root 区域顺序稳定**（第 4.1 节，已落）：root 链按 `order` 重建，toggle 不漂。
-3. **status / input 收敛为一个 dock**：去掉 boot 的直接绑定与 prompt 的换 vid，改走 dock。
-4. **可折叠 dock**（第 4.2 节）：改 size / tree / geometry 三处，`region-show/hide` 退化为改尺寸，id 跨显隐稳定。
-5. 若还想支持「同一 group 放多处」（如侧栏 + 浮窗）：dock 之间共享 group，bindings 允许多绑。
+2. ✅ **可折叠 dock**（第 4 节，已落）：mount-all + 尺寸手术；显隐不改结构，
+   root 顺序恒等于挂载顺序，叶子/窗口 id 跨显隐稳定。
+3. ✅ **status / input 收敛为一个 dock**（已落）：去掉 boot 直接绑窗与 prompt 换 vid，
+   改走 `region-activate!`；四条显示路径归一（浮窗除外）。
+4. 若还想支持「同一 group 放多处」（如侧栏 + 浮窗）：dock 之间共享 group，bindings 允许多绑。
 
 ## 6. 不变量（建议写进测试）
 

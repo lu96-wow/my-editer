@@ -106,4 +106,15 @@
 (check-equal? (geom-order (toggle (toggle (toggle wo 'tree) 'tree) 'tree))  ; 奇数次 = 隐藏的一半
               (geom-order (toggle wo 'tree)))
 
+;;; ---------- C-b：显示时有最小宽度（拖到最左也不会“显不出来”） ----------
+
+(define wc (boot #:root dir #:screen-width 160))
+(define wc1 (run (run wc (cursor-event 'press 'left base 5))
+                 (cursor-event 'move 'left 0 5)))
+(check-true (>= (sidebar-width-of wc1) sidebar-min-width))     ; 拖到底被 dock 最小尺寸兜住
+(define wc2 (run wc1 (key-event 'b '(ctrl))))                   ; C-b 隐藏
+(check-false (region-wid (region-of wc2 'sidebar)))
+(define wc3 (run wc2 (key-event 'b '(ctrl))))                   ; C-b 显示
+(check-true (>= (sidebar-width-of wc3) sidebar-min-width))
+
 (displayln "edit4/sidebar.rkt: all tests passed")

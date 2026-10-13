@@ -35,7 +35,7 @@
 (define fid (float-id (car (world-floats (W s1)))))
 (check-equal? (content-vid-of (world-content (W s1)) fid) (panel-vid w0 "*tree*"))
 (check-equal? (world-focus (W s1)) fid)                 ; 打开即聚焦
-(check-equal? (length (ids (world-layout (W s1)))) 3)   ; 平铺窗不变
+(check-equal? (length (visible-ids (world-layout (W s1)))) 3)   ; 平铺窗不变（折叠 dock 不算）
 (check-true (scope-ok? content-scopes (W s1) 'float))
 
 ;; 几何：frame 里有该浮窗矩形；命中它返回 float-target

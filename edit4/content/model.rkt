@@ -35,13 +35,13 @@
 (require racket/list racket/path "../layout/tree.rkt" "adapter.rkt")
 
 (struct doc-meta (path saved) #:transparent)   ; saved = 存档时 handle | #f（面板恒为 #f）
-(struct prompt (wid label kind data prev-focus) #:transparent)  ; 输入行状态
+(struct prompt (label kind data prev-focus) #:transparent)  ; 输入行状态
 ;; 放置选择（打开时多窗口 → 用户选目标窗）；vid = 待放置视图，prev-focus = 进入前焦点。
 (struct placing (vid prev-focus) #:transparent)
 ;; 面板槽：一个窗口显示 members 之一（面板文档名），active = 当前成员；
 ;; wid = 当前显示的窗口 id | #f（隐藏）；anchor = 'root | 'main；size 固定；
-;; order = 在 docks 声明里的次序（root 区域据此稳定嵌套，见 content/region.rkt）。
-(struct region (side size members active anchor wid order) #:transparent)
+;; leaf = 常驻布局叶子 id（隐藏时仍在树里，只是折叠）；min-size = 展开时的尺寸下限。
+(struct region (side size members active anchor wid leaf min-size) #:transparent)
 (struct content (ed docs bindings panels tree prompt placing regions fold log doc-keys) #:transparent)
 
 (define (content-blank) (content (blank-editor) (hash) (hash) (hash) #f #f #f (hash) (hash) '() (hash)))
@@ -159,19 +159,19 @@
     [else (define-values (c* vid) (content-add-view! c did 60 22))
           (content-bind c* id vid)]))
 
-;; 选一个「编辑器窗口」（vid 非面板或空）来显示文档；没有 → #f。
+;; 选一个「编辑器窗口」（vid 非面板或空）来显示文档；没有 → #f。（只看可见窗）
 (define (content-editor-windows c layout)
-  (for/list ([id (in-list (ids layout))]
+  (for/list ([id (in-list (visible-ids layout))]
              #:when (let ([v (content-vid-of c id)])
                       (or (not v) (not (content-panel? c v)))))
     id))
 
 (define (content-editor-window c layout)
-  (for/first ([id (in-list (ids layout))]
+  (for/first ([id (in-list (visible-ids layout))]
               #:when (let ([v (content-vid-of c id)])
                        (or (not v) (not (content-panel? c v)))))
     id))
 
-;; 空窗口 = 未绑定任何 vid 的窗口。
+;; 空窗口 = 未绑定任何 vid 的可见窗口。
 (define (content-empty-windows c layout)
-  (for/list ([id (in-list (ids layout))] #:when (not (content-vid-of c id))) id))
+  (for/list ([id (in-list (visible-ids layout))] #:when (not (content-vid-of c id))) id))

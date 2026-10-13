@@ -59,7 +59,9 @@
 (define s2 (run (W s1) (text-event "f")))       ; 触发 tree-new-file → 打开输入行
 (check-not-false (P (W s2)))
 (check-equal? (prompt-kind (P (W s2))) 'new-file)
-(check-equal? (world-focus (W s2)) (prompt-wid (P (W s2))))   ; 焦点在输入行
+(check-equal? (world-focus (W s2))
+              (region-wid (hash-ref (content-regions (world-content (W s2))) 'status)))  ; 焦点在输入行
+(check-equal? (region-active (hash-ref (content-regions (world-content (W s2))) 'status)) "*input*")
 (define s3 (run (W s2) (text-event "new.txt")))
 (define s4 (run (W s3) (key-event 'enter '())))
 (check-false (P (W s4)))                        ; 提交后输入行关闭

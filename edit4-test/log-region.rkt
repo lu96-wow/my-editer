@@ -30,31 +30,41 @@
 ;;; ---------- 默认：侧栏显示，日志隐藏 ----------
 
 (define w0 (boot #:root dir))
-(check-equal? (length (ids (world-layout w0))) 3)
+(check-equal? (length (ids (world-layout w0))) 4)           ; 2 主区 + sidebar + log（叶子都常驻）
+(check-equal? (length (visible-ids (world-layout w0))) 3)   ; log 折叠 → 不可见
 (check-false (region-wid (region-of w0 'log)))
 (check-not-false (region-wid (region-of w0 'sidebar)))
 
-;;; ---------- C-l 显示 / 隐藏日志 ----------
+;;; ---------- C-l 显示 / 隐藏日志（结构不变，仅展开/折叠） ----------
 
 (define l1 (run w0 (key-event 'l '(ctrl))))
 (check-not-false (region-wid (region-of (W l1) 'log)))
-(check-equal? (length (ids (world-layout (W l1)))) 4)
+(check-equal? (length (ids (world-layout (W l1)))) 4)           ; 叶子常驻
+(check-equal? (length (visible-ids (world-layout (W l1)))) 4)   ; log 展开 → 可见
 (define lgw (region-wid (region-of (W l1) 'log)))
 (check-equal? (content-vid-of (world-content (W l1)) lgw)
               (content-panel-vid (world-content (W l1)) "*log*"))
 (define l2 (run (W l1) (key-event 'l '(ctrl))))
 (check-false (region-wid (region-of (W l2) 'log)))
-(check-equal? (length (ids (world-layout (W l2)))) 3)
+(check-equal? (length (ids (world-layout (W l2)))) 4)
+(check-equal? (length (visible-ids (world-layout (W l2)))) 3)
 
 ;;; ---------- C-b 隐藏 / 显示侧栏 ----------
 
 (define b1 (run w0 (key-event 'b '(ctrl))))
 (check-false (region-wid (region-of (W b1) 'sidebar)))
-(check-equal? (length (ids (world-layout (W b1)))) 2)
+(check-equal? (length (ids (world-layout (W b1)))) 4)           ; 叶子仍在，只是折叠
+(check-equal? (length (visible-ids (world-layout (W b1)))) 2)   ; 只剩编辑器 + 状态栏
 (define b2 (run (W b1) (key-event 'b '(ctrl))))
 (check-not-false (region-wid (region-of (W b2) 'sidebar)))
 (check-equal? (content-vid-of (world-content (W b2)) (region-wid (region-of (W b2) 'sidebar)))
               (content-panel-vid (world-content (W b2)) "*tree*"))
+
+;; 可折叠 dock：叶子常驻，隐藏只改 size；叶子 id / 窗口 id 跨显隐稳定
+(define sleaf (region-leaf (region-of w0 'sidebar)))
+(define swid0 (region-wid (region-of w0 'sidebar)))
+(check-equal? (region-leaf (region-of (W b1) 'sidebar)) sleaf)   ; 隐藏后叶子 id 不变
+(check-equal? (region-wid (region-of (W b2) 'sidebar)) swid0)    ; 再显示还是同一个窗 id
 
 ;;; ---------- (region ID) 作用域：按声明自动生成 ----------
 

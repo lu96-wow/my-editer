@@ -3,14 +3,17 @@
 ;;; edit4/layout/tree.rkt —— 布局树（结构 + min + 手术）
 ;;;
 ;;;   leaf  = (id min)                  id 不透明；min = (cons min-w min-h) >= (1 . 1)
+;;;                                      （dock 叶子例外：min (0 . 0)，可折叠）
 ;;;   split = (axis gutter kids)        axis = 'h（左右并排）| 'v（上下堆叠）
 ;;;   child = (size node)               size = 边的尺寸意图（basis/elastic?）
+;;;
+;;; 折叠子节点：固定且 basis 0（dock 隐藏）= 不占位置、不占缝（collapsed-child?）。
 ;;;
 ;;; min 只存叶子；split 的 min 是**导出**的（node-min）。
 ;;; 本模块不认识矩形/几何/命中，只做纯树变换。
 
 (provide (struct-out leaf) (struct-out split) (struct-out child)
-         node-min axis-min
+         node-min axis-min collapsed-child? visible-ids
          ids path-of node-at modify-path node-edit
          split-leaf remove-leaf insert-side insert-adjacent
          set-sizes fresh-id)
@@ -23,21 +26,30 @@
 
 ;;; ---------- min ----------
 
-;; node-min : node -> (cons w h)
+;; 折叠子节点：固定尺寸且 basis 0（dock 隐藏时）。不占位置、不占缝。
+(define (collapsed-child? c)
+  (and (not (size-elastic? (child-size c)))
+       (zero? (size-basis (child-size c)))))
+
+;; node-min : node -> (cons w h)（忽略折叠子节点）
 (define (node-min n)
   (cond
     [(not n) (cons 0 0)]
     [(leaf? n) (leaf-min n)]
     [else
      (define g (split-gutter n))
-     (define ms (map (lambda (c) (node-min (child-node c))) (split-kids n)))
-     (define sep (* (max 0 (sub1 (length ms))) g))
-     (case (split-axis n)
-       [(h) (cons (+ (for/sum ([m (in-list ms)]) (car m)) sep)
-                  (apply max (map cdr ms)))]
-       [(v) (cons (apply max (map car ms))
-                  (+ (for/sum ([m (in-list ms)]) (cdr m)) sep))]
-       [else (error 'node-min "坏 axis: ~a" (split-axis n))])]))
+     (define vis (filter-not collapsed-child? (split-kids n)))
+     (cond
+       [(null? vis) (cons 0 0)]
+       [else
+        (define ms (map (lambda (c) (node-min (child-node c))) vis))
+        (define sep (* (sub1 (length ms)) g))
+        (case (split-axis n)
+          [(h) (cons (+ (for/sum ([m (in-list ms)]) (car m)) sep)
+                     (apply max (map cdr ms)))]
+          [(v) (cons (apply max (map car ms))
+                     (+ (for/sum ([m (in-list ms)]) (cdr m)) sep))]
+          [else (error 'node-min "坏 axis: ~a" (split-axis n))])])]))
 
 (define (axis-min n axis)
   (define m (node-min n))
@@ -50,6 +62,15 @@
     [(not n) '()]
     [(leaf? n) (list (leaf-id n))]
     [else (append* (for/list ([c (in-list (split-kids n))]) (ids (child-node c))))]))
+
+;; 可见叶子 id（跳过折叠子节点的整棵子树）—— 焦点/命中/导航只看这些。
+(define (visible-ids n)
+  (cond
+    [(not n) '()]
+    [(leaf? n) (list (leaf-id n))]
+    [else (append* (for/list ([c (in-list (split-kids n))]
+                              #:unless (collapsed-child? c))
+                     (visible-ids (child-node c))))]))
 
 ;; 分配新 id：现有整数 id 的最大值 +1。
 (define (fresh-id n)

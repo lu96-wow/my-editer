@@ -31,7 +31,7 @@
   (define c (world-content w))
   (define lay (world-layout w))
   (define nid (fresh-id lay))
-  (define anchor (or (world-focus w) (for/first ([id (in-list (ids lay))]) id)))
+  (define anchor (or (world-focus w) (for/first ([id (in-list (visible-ids lay))]) id)))
   (define nleaf (leaf nid (cons 2 2)))
   (define nlay (if anchor
                    (insert-adjacent lay anchor 'right (size 40 #f) nleaf)

@@ -57,7 +57,7 @@
     [(and f (has-id? w f) (content-vid-of c f)) w]
     [else
      (define target (or (content-editor-window c (world-layout w))
-                        (for/first ([id (in-list (ids (world-layout w)))]) id)))
+                        (for/first ([id (in-list (visible-ids (world-layout w)))]) id)))
      (world-set-focus w target)]))
 
 (define (close-doc! w did)
@@ -71,7 +71,7 @@
 (define (window-of-vid w vid)
   (define c (world-content w))
   (and c vid
-       (for/first ([id (in-list (ids (world-layout w)))]
+       (for/first ([id (in-list (visible-ids (world-layout w)))]
                    #:when (eqv? (content-vid-of c id) vid))
          id)))
 

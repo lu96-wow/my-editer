@@ -3,7 +3,7 @@
 ;;; edit4/content/prompt.rkt —— 输入行（*input* 面板）+ kind → handler
 ;;;
 ;;; 输入行就是 *input* 面板文档：答案 = 该视图文本去掉 label 前缀。
-;;; 打开 = 把状态栏窗口的 vid 临时换成 *input* 并聚焦；提交 / 取消 = 换回并回焦。
+;;; 打开 = status dock（组合 (status input)）切到 *input* 成员并聚焦；关闭 = 切回 *status*。
 ;;; kind → handler 是内容域的小注册表；handler : World prompt text -> (values World effects)。
 ;;;
 ;;; 这里同时放需要 prompt 的资源流程：退出（有脏文档先问）、关文档（脏先问）。
@@ -18,7 +18,7 @@
 (require racket/list racket/string racket/path
          "../core/world.rkt" "../core/command.rkt" "../core/effect.rkt"
          "../layout/tree.rkt"
-         "model.rkt" "adapter.rkt" "lifecycle.rkt")
+         "model.rkt" "adapter.rkt" "lifecycle.rkt" "region.rkt")
 
 (define input-name "*input*")
 
@@ -32,11 +32,12 @@
 
 ;;; ---------- 打开 / 关闭 ----------
 
+;; 打开 = 把 status dock 切到 *input* 成员并聚焦（不再自己换窗口 vid）。
 (define (prompt-open w label kind data)
   (define c (world-content w))
   (define iv (panel-vid-of w input-name))
-  (define sv (panel-vid-of w "*status*"))
-  (define sw (window-of-vid w sv))
+  (define sr (and c (region-ref w 'status)))
+  (define sw (and sr (region-wid sr)))
   (cond
     [(or (not c) (not iv) (not sw)) w]
     [else
@@ -46,9 +47,10 @@
      (define did (view-did ed iv))
      (face-line! ed did 0 'input)
      (readonly-range! ed did 0 0 0 (string-length label) #t)
-     (define w1 (world-set-content w (content-set-prompt c (prompt sw label kind data (world-focus w)))))
-     (define w2 (world-set-focus w1 sw))
-     (world-set-content w2 (content-bind (world-content w2) sw iv))]))
+     (define w1 (region-activate! w 'status input-name))
+     (define w2 (world-set-content w1 (content-set-prompt (world-content w1)
+                                                          (prompt label kind data (world-focus w)))))
+     (world-set-focus w2 sw)]))
 
 (define (prompt-close w)
   (define c (world-content w))
@@ -56,12 +58,9 @@
   (cond
     [(not (and c p)) w]
     [else
-     (define sw (prompt-wid p))
-     (define sv (panel-vid-of w "*status*"))
+     ;; 关闭 = 清 prompt + status dock 切回 *status*。
      (define w1 (world-set-content w (content-set-prompt c #f)))
-     (define w2 (if (and sw sv)
-                    (world-set-content w1 (content-bind (world-content w1) sw sv))
-                    w1))
+     (define w2 (region-activate! w1 'status "*status*"))
      (define prev (prompt-prev-focus p))
      (world-set-focus w2 (if (and prev (has-id? w2 prev)) prev (world-focus w2)))]))
 

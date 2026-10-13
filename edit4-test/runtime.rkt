@@ -50,7 +50,7 @@
   (scripted-backend (list (key-event 's '(ctrl)) (key-event 'right '())
                           (key-event 'd '(ctrl)) (key-event 'q '(ctrl)))))
 (define w2 (run b2 (app-environment) (boot #:name "*scratch*")))
-(check-equal? (length (ids (world-layout w2))) 3)   ; 分裂后关闭，回到三窗底盘
+(check-equal? (length (visible-ids (world-layout w2))) 3)   ; 分裂后关闭，回到三窗底盘（折叠 dock 不算）
 
 ;;; ---------- open-file effect → 新文档绑定到焦点窗 ----------
 
