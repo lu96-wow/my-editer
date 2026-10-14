@@ -6,7 +6,7 @@
 ;;;
 ;;;   一次「连续编辑」= 一个事务（一个 undo 步）。
 ;;;   · session-edit!   编辑：无开步则开，续步；
-;;;   · session-*!      导航 / 选区 / undo-redo：**先收步再执行**（镜像 API，不会忘）；
+;;;   · session-*!      导航 / 选区 / 程序写 / undo-redo：**先收步再执行**（镜像 API，不会忘）；
 ;;;   · session-break!  手动收步（失焦 / 超时）。
 ;;;
 ;;; 于是宿主不必自己记「当前步是否开着」——只要编辑走 session-edit!、
@@ -32,7 +32,14 @@
 
  ;; ---------- 选区 / 定位镜像（先收步） ----------
  session-set-selections! session-set-point! session-select-all!
- session-add-selection! session-remove-selection!)
+ session-add-selection! session-remove-selection!
+
+ ;; ---------- 程序写镜像（先收步 → 独立成步） ----------
+ session-replace!                 ; session value [#:ensure? #:changes]
+ session-replace-range!           ; session range text [#:ensure?]
+ session-set-line!                ; session line text
+ session-set-char!                ; session line col char
+ session-commit-if-unchanged!)    ; session base-doc new-doc → applied?
 
 (struct edit-session (buffer open?) #:mutable)
 
@@ -93,6 +100,30 @@
 (define (session-remove-selection! s v sel #:ensure? [ensure? #t])
   (session-break! s)
   (view-remove-selection! v sel #:ensure? ensure?))
+
+;;; ---------- 程序写镜像（先收步 → 独立成步） ----------
+;;; 程序写默认独立成一个 undo 步，不并进当前打字步。
+;;; 若想让它并入当前步，直接用裸 buffer-* 版本（不 break）。
+
+(define (session-replace! s value #:ensure? [ensure? #f] #:changes [changes #f])
+  (session-break! s)
+  (buffer-replace! (edit-session-buffer s) value #:ensure? ensure? #:changes changes))
+
+(define (session-replace-range! s r text #:ensure? [ensure? #f])
+  (session-break! s)
+  (buffer-replace-range! (edit-session-buffer s) r text #:ensure? ensure?))
+
+(define (session-set-line! s line text)
+  (session-break! s)
+  (buffer-set-line! (edit-session-buffer s) line text))
+
+(define (session-set-char! s line col ch)
+  (session-break! s)
+  (buffer-set-char! (edit-session-buffer s) line col ch))
+
+(define (session-commit-if-unchanged! s base-doc new-doc)
+  (session-break! s)
+  (buffer-apply-if-version! (edit-session-buffer s) base-doc new-doc))
 
 ;;; ---------- 历史 ----------
 

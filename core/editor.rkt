@@ -108,6 +108,8 @@
  session-left! session-right! session-up! session-down! session-home! session-end!
  session-set-selections! session-set-point! session-select-all!
  session-add-selection! session-remove-selection!
+ session-replace! session-replace-range! session-set-line! session-set-char!
+ session-commit-if-unchanged!
 
  ;; ==================== 值词汇：点 / 区间 / 选区 / 变更 ====================
  point point? point-line point-column

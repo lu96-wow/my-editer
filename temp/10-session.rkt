@@ -59,3 +59,14 @@
 (session-break! s3)                       ; 例如：失焦
 (void (session-edit! s3 v3 (op-type "2")))
 (printf "doc=~s depth=~a（break 后 = 两步）\n" (buffer-string b3) (buffer-depth b3))
+
+(title "程序写镜像：默认独立成步")
+(define bp (make-buffer "abc\ndef"))
+(define vp (buffer-add-view! bp 40 10))
+(define sp (make-edit-session bp))
+(view-set-point! vp (point 1 3))
+(void (session-edit! sp vp (op-type "!")))   ; 打字
+(void (session-set-line! sp 0 "ZZZ"))            ; 镜像程序写：先收步再写
+(printf "doc=~s depth=~a（打字一步 + 程序写一步）\n" (buffer-string bp) (buffer-depth bp))
+(void (buffer-undo! bp))
+(printf "undo 一次 -> ~s（只撤程序写）\n" (buffer-string bp))

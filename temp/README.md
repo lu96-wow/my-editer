@@ -64,6 +64,8 @@ racket temp/02-selection.rkt
 - 选区：`view-add-selection!` / `view-remove-selection!` / `view-selection-text`
 - **显式事务**：`buffer-with-undo-step` / `buffer-begin-undo-step!` / `buffer-end-undo-step!`
 - **会话**：`make-edit-session` / `session-edit!` / `session-*!` / `session-break!`
+  其中程序写镜像 `session-replace!` / `session-replace-range!` / `session-set-line!` /
+  `session-set-char!` / `session-commit-if-unchanged!` **默认独立成步**（先收步再写）。
 
 ## 合并模型：完全显式（无 tag）
 
