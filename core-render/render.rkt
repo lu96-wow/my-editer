@@ -13,14 +13,12 @@
 ;;; patch.rkt 的 overlay 编码 `(overlay . face)` 在这里解开：先底层 face，再叠 overlay 名。
 
 (require "backend.rkt" "face.rkt"
-         "../core/view/base/screen.rkt"
-         "../core/view/patch.rkt")
+         "../core/editor.rkt")
 
 (provide
  ;; 基础片段
  render-piece                    ; piece -> 片段（定位 + 样式 + 文本 + 复位）
  render-pieces                   ; (listof piece) -> 片段
- render-screen                   ; screen -> 片段（清屏 + 全量）
  render-clear                    ; -> 片段
  ;; 工具
  emit!                           ; 片段 -> void（薄壳，外部也可直接 put-bytes）
@@ -62,12 +60,7 @@
 (define (style-fragment name)
   (and name (style->bytes name)))
 
-;;; ---------- 全量 ----------
-
-(define (render-screen s)
-  ;; 用一个从空开始的 patch 展平所有非空格的格；前面清屏。
-  (define-values (rends sels) (screen-patch #f s))
-  (fragment format-screen-clear (render-pieces (append rends sels))))
+;;; ---------- 清屏 ----------
 
 (define (render-clear) (fragment format-screen-clear))
 

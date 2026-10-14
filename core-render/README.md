@@ -83,7 +83,6 @@ overlay 用**语义角色**当风格名（core `patch.rkt` 产出），三种默
 ```racket
 render-piece      : piece          -> 片段   ; 定位 + 样式 + 文本 + 复位
 render-pieces     : (listof piece) -> 片段
-render-screen     : screen         -> 片段   ; 清屏 + 全量
 render-clear      :                -> 片段
 emit!             : 片段           -> void
 face-fragment     : #f|symbol|face -> 片段
@@ -115,8 +114,8 @@ overlay 角色由 core `patch.rkt` 产出（语义，不含颜色）：
 - 是否 `put-bytes`（`emit!` 只是个薄壳）。
 
 所以后端**不持有上一帧、不自己 diff、不自己 flush**。
-增量由 core 的 `render-display-patch` 给 `piece`，外部把 `render` + `selection` 两个列表
-交给 `render-pieces` 即可。
+所有绘制数据都经 core 的 `render-display-patch` 来（全量就 `old = #f`），
+它给的 `render` + `selection` 两个列表交给 `render-pieces` 即可——backend 不碰 `screen`。
 
 ## 4. 文件
 
@@ -151,9 +150,9 @@ core-render/
  (λ ()
    ;; 只用软件光标：藏物理光标一次
    (cursor-hide)                                    ; 藏物理光标（tui 直接函数）
-   ;; 首帧
+   ;; 首帧（old = #f）：先清屏，再把 patch 的片拼上
    (define-values (new r s) (render-display-patch entries v 80 24 #f))
-   (put-bytes (render-pieces (append r s)))   ; 主/副光标已在 s 里
+   (put-bytes (fragment (render-clear) (render-pieces (append r s))))
    ;; 之后外部按需增量：render-display-patch entries v w h new …
    ))
 ```
@@ -162,7 +161,7 @@ core-render/
 
 跑通（`racket demo.rkt`，真终端出彩色帧，按任意键退出）：
 
-- core buffer/view → `render-display` → `render-screen` → `put-bytes`；
+- core buffer/view → `render-display-patch` → `render-pieces` → `put-bytes`；
 - face 三分量 → `\e[38;2;…m` / `\e[48;2;…m` / `\e[1m`；
 - 三种 overlay 色：主光标 `\e[7m`、副光标 `\e[4m`、选区 `\e[48;2;60;70;90m`。
 - 沙箱无 TTY 时把 `backend.rkt` 改成 `(require tui/char)`，用 `char-frame` 看纯文本帧。
@@ -208,7 +207,6 @@ face 值 = `#f | symbol | face`（`#f` 默认；`symbol` 是 core 裸符号如 `
 |---|---|---|
 | `render-piece` | `piece -> 片段` | 一格：move + face(含 overlay) + text + reset |
 | `render-pieces` | `(listof piece) -> 片段` | 拼多个 piece |
-| `render-screen` | `screen -> 片段` | 清屏 + 全量展平 |
 | `render-clear` | `-> 片段` | 清屏 |
 | `face-fragment` | `#f\|symbol\|face -> 片段` | 单独把 face 转片段 |
 | `emit!` | `片段 -> void` | `put-bytes` 薄壳 |

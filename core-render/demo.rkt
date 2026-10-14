@@ -50,9 +50,12 @@
 
 ;;; ---------- 画一帧（只用软件光标） ----------
 
+;;; ---------- 画一帧（只用软件光标） ----------
+
 (define (draw!)
-  (screen-clear)                      ; 清屏 + 光标归位
-  (put-bytes (render-screen (render-display entries v 48 5))))
+  ;; 全量：old 传 #f，patch 会把整屏非空格都给你；前面清屏。
+  (define-values (new rends sels) (render-display-patch entries v 48 5 #f))
+  (put-bytes (fragment (render-clear) (render-pieces (append rends sels)))))
 
 (with-tui
  (λ ()
