@@ -7,9 +7,9 @@
 | 目录 | 职责 | 依赖 |
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
-| `edit/layout/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
-| `edit/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列；定义 face 值 | core、layout、tui |
-| `edit/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
+| `edit-tui/layout/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
+| `edit-tui/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列；定义 face 值 | core、layout、tui |
+| `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
 
 ```
 core 渲染值 (piece) ─┐
@@ -38,7 +38,7 @@ layout 边框 (panel) ─┘         ▲
 | `panel-at` `panel-find` | 命中（deep 最大）/ 按 id 找 |
 | `panels->entries` | 面板 + `id→view` → `display-entry`（用内容区定位） |
 
-**边框怎么画不在 layout** —— 在 `edit/core-render/border.rkt`。
+**边框怎么画不在 layout** —— 在 `edit-tui/core-render/border.rkt`。
 
 ## core-render —— 统一渲染后端
 
@@ -63,23 +63,29 @@ layout 边框 (panel) ─┘         ▲
 ;; attrs : (listof 'bold 'dim 'italic 'underline 'blink 'reverse)
 ```
 
+主题**数据拆两份**（后面还能再拆）：
+
+| 文件 | 内容 |
+|---|---|
+| `theme/core.rkt` | `core-theme`：渲染核心（正文 / 语法 / 属性 / 光标 / 选区） |
+| `theme/frame.rkt` | `frame-theme`：框架（窗口 / 聚焦 / 浮窗边框） |
+| `theme/theme.rkt` | 机制：`rgb` / `style` / `define-theme!` |
+| `theme/main.rkt` | 入口：**require 即安装**（顶层 `define-theme!`） |
+
 ```racket
-(define-theme! (list (list 'window-border (style (rgb 90 96 110) #f '())) …))
-(install-default-theme!)         ; 内置：core face + 边框 face
+(require "edit-tui/theme/main.rkt")   ; 不用再手动 install
 ```
 
-安装时转成 racket-tui 的样式表（`style-define!`）；渲染层用 `style->bytes` 取。**一个主题管所有 face**：语法 / 光标 / 选区 / 窗口边框 / 浮窗边框。换色只改 `edit/theme/theme.rkt`。
+`define-theme!` 把 style 转成 racket-tui 样式表（`style-define!`），渲染层用 `style->bytes` 取。覆盖某项：require 之后再 `(define-theme! …)` 同名覆盖。
 
 ## 宿主用法
 
 ```racket
 (require tui
-         "edit/layout/main.rkt"
-         "edit/core-render/main.rkt"
-         "edit/theme/theme.rkt"
+         "edit-tui/layout/main.rkt"
+         "edit-tui/core-render/main.rkt"
+         "edit-tui/theme/main.rkt"      ; require 即安装主题
          "core/editor.rkt")
-
-(install-default-theme!)
 (define panels (list (make-panel 'editor (rect 0 0 60 16) '())
                      (make-panel 'popup  (rect 14 4 32 8) borders-all
                                  #:deep 10 #:face 'float-border)))
@@ -97,11 +103,11 @@ layout 边框 (panel) ─┘         ▲
 
 ## 示例
 
-- `edit/layout/demo.rkt` `edit/layout/demo-float.rkt` —— 纯文本画面板 / 浮窗框。
-- `edit/core-render/demo.rkt` —— 真终端带颜色。
+- `edit-tui/layout/demo.rkt` `edit-tui/layout/demo-float.rkt` —— 纯文本画面板 / 浮窗框。
+- `edit-tui/core-render/demo.rkt` —— 真终端带颜色。
 
 ## 约定
 
 - 后端只吃 `piece`（core 渲染值）和 `panel`（布局）；`screen` 是 core 内部 / 宿主的事。
-- 颜色一律在 `edit/theme/`；布局只会带 face 符号，不认识颜色。
+- 颜色一律在 `edit-tui/theme/`；布局只会带 face 符号，不认识颜色。
 - 浮窗 = `deep` 更高的 panel；浮窗之间用互不相同的 deep。
