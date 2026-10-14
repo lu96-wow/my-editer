@@ -28,7 +28,7 @@
  op-paste-ignore-readonly         ; text [tag] → edit-op
 
  ;; ---------- 提交：编辑 ----------
- buffer-edit!                     ; buffer view op [#:ensure?] → ok?
+ buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
  buffer-replace!                  ; buffer value [#:ensure? #:changes #:chunk-lines] → void
  buffer-apply-if-version!         ; buffer base-doc new-doc → applied?（CAS）
  buffer-seal!                     ; buffer → 切断后续并步
@@ -110,7 +110,12 @@
   (for ([v (in-list (buffer-views b))])
     (set-view-selections! v (selections-clamp (view-selections v) n (curry track-line-length t)))))
 
-;; 对一个 view 应用编辑算子；文档算一次，再 map 到所有 view。→ ok?
+;; 对一个 view 应用编辑算子；文档算一次，再 map 到所有 view。
+;; 返回本次变更描述：
+;;   #f          只读挡，未提交
+;;   '()         提交成功但无变更
+;;   (list change) 提交成功，含本次所有变更
+;; 真值 = 已提交（含无变更），#f = 拒绝。
 (define (buffer-edit! b v op #:ensure? [ensure? #t])
   (define h (buffer-history b))
   (define doc (history-document h))
@@ -118,7 +123,7 @@
   (define-values (doc* sels* changes ok?) ((edit-op-run op) doc pre-sels))
   (cond
     [(not ok?) #f]                                  ; 只读挡
-    [(null? changes) #t]                            ; 无变更
+    [(null? changes) '()]                           ; 无变更
     [else
      (define tag (edit-op-tag op))
      (define m (buffer-merge b))
@@ -130,7 +135,7 @@
      (for ([x (in-list (buffer-views b))] #:unless (eq? x v))   ; 兄弟视图：rebase
        (set-view-selections! x (selections-rebase changes (view-selections x))))
      (when ensure? (view-ensure! v))
-     #t]))
+     changes]))
 
 ;; 程序替换当前文档：不记步、封口、所有视图重定位。value = string | document。
 (define (buffer-replace! b value

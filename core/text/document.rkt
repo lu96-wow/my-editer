@@ -67,11 +67,11 @@
  ;; ---------- 写：文本轨（守只读 / -ignore-readonly） ----------
  document-edit-tracks             ; document edit [changes] → document
  document-insert                  ; document line col text [sticky] [default] → (values doc change ok?)
- document-insert-ignore-readonly
- document-delete
- document-delete-ignore-readonly
- document-replace
- document-replace-ignore-readonly
+ document-insert-ignore-readonly  ; 同上（不守只读）
+ document-delete                  ; document l0 c0 l1 c1 → (values doc change ok?)
+ document-delete-ignore-readonly  ; 同上（不守只读）
+ document-replace                 ; document l0 c0 l1 c1 text [sticky] [default] → (values doc change ok?)
+ document-replace-ignore-readonly ; 同上（不守只读）
 
  ;; ---------- 写：端口（固定轨 API） ----------
  document-edit-face               ; document edit → document

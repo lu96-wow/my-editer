@@ -21,11 +21,11 @@
  command-type                    ; doc sels text [sticky] [default] → (values doc sels changes ok?)
  command-type-ignore-readonly    ; 同上（不守只读）
  command-backspace               ; doc sels → (values doc sels changes ok?)
- command-backspace-ignore-readonly
- command-delete
- command-delete-ignore-readonly
- command-paste
- command-paste-ignore-readonly)
+ command-backspace-ignore-readonly ; 同上（不守只读）
+ command-delete                   ; doc sels → (values doc sels changes ok?)
+ command-delete-ignore-readonly   ; 同上（不守只读）
+ command-paste                    ; doc sels text → (values doc sels changes ok?)
+ command-paste-ignore-readonly)   ; 同上（不守只读）
 
 ;;; ---------- 每个选区 → (span 或 #f) + 光标落点 ----------
 

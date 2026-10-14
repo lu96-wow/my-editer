@@ -20,17 +20,28 @@
          "view/base/screen.rkt" "view/patch.rkt" "view/compose.rkt")
 
 (provide
- (all-from-out "editor/state.rkt")
- (all-from-out "editor/ops.rkt")
- (all-from-out "editor/query.rkt")
- (all-from-out "editor/attributes.rkt")
- (all-from-out "editor/render.rkt")
- (all-from-out "editor/history.rkt")
- (all-from-out "text/document.rkt")
- (all-from-out "text/base/point.rkt")
- (all-from-out "text/base/selection.rkt")
- (all-from-out "text/base/range.rkt")
- (all-from-out "text/base/change.rkt")
- (all-from-out "view/base/screen.rkt")
- (all-from-out "view/patch.rkt")
- (all-from-out "view/compose.rkt"))
+ ;; 对象：buffer / view 的持有、构造与结构手术
+ (all-from-out "editor/state.rkt")      ; buffer / view 对象 + 结构手术
+ ;; 算子：编辑算子 + 提交壳（编辑 / 导航 / 视口 / undo-redo）
+ (all-from-out "editor/ops.rkt")        ; 纯编辑算子 + 提交壳
+ ;; 读：文本 / 名称、端口 / 槽、点 / 选区、坐标换算、视口状态、历史
+ (all-from-out "editor/query.rkt")      ; 按对象读
+ ;; 写回：face / readonly / 槽（按 buffer）
+ (all-from-out "editor/attributes.rkt") ; 端口 / 槽写回
+ ;; 渲染：display list → screen（含增量 patch）
+ (all-from-out "editor/render.rkt")     ; display list → screen
+ ;; 历史：纯文档版本栈
+ (all-from-out "editor/history.rkt")    ; 纯文档版本栈
+ ;; 值词汇表：文档
+ (all-from-out "text/document.rkt")     ; document：文本 + 端口 / 槽
+ ;; 值词汇表：点 / 选区 / 区间 / 变更
+ (all-from-out "text/base/point.rkt")   ; point（line, column）
+ (all-from-out "text/base/selection.rkt") ; selection / selections
+ (all-from-out "text/base/range.rkt")   ; range 半开区间
+ (all-from-out "text/base/change.rkt")  ; change 变更描述
+ ;; 值词汇表：屏幕 / 差量 / 图层合成
+ (all-from-out "view/base/screen.rkt")  ; screen / run / cursor / region
+ (all-from-out "view/patch.rkt")        ; piece + 屏幕差量
+ (all-from-out "view/compose.rkt")      ; pane / composition 图层合成
+ ;; 说明：以上均为再导出，各名字的具体用途见对应模块 provide。
+ )
