@@ -7,12 +7,12 @@
 ;;;   · 布局的边框（panel）→ border.rkt
 ;;; 两者都只产出数据 / 序列，不自己输出；颜色统一由 theme 解析。
 ;;;
-;;; face 值（渲染层词汇）在 face.rkt。
+;;; face 值（生产者/消费者共用）在 base/face.rkt。
 
-(provide (all-from-out "face.rkt"
+(provide (all-from-out "../base/face.rkt"
                        "render.rkt"
                        "border.rkt"))
 
-(require "face.rkt"
+(require "../base/face.rkt"
          "render.rkt"
          "border.rkt")

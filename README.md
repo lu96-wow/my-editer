@@ -7,8 +7,9 @@
 | 目录 | 职责 | 依赖 |
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
+| `edit-tui/base/` | **face 值定义**（`(face fg bg attrs)` + 读写）—— 生产者 / 消费者共用的基础词汇 | 无 |
 | `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
-| `edit-tui/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列；定义 face 值 | core、layout、tui |
+| `edit-tui/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列 | core、base、layout-base、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
 
 ```
@@ -46,9 +47,10 @@ layout 边框 (panel) ─┘         ▲
 
 | 模块 | API | 作用 |
 |---|---|---|
-| `face.rkt` | `face` `face?` `face-fg/-bg/-attrs` `face-empty` `face-set-*` `face-add-attr` `face-remove-attr` | core 的 face 值（fg bg attrs，分量是符号） |
 | `render.rkt` | `render-piece` `render-pieces` `render-clear` `face-fragment` | core `piece` → tui 序列 |
 | `border.rkt` | `panels->border-runs` `panels->decorations` | 布局 `panel` 边框 → run / 装饰 `pane` |
+
+face 值本身在 `edit-tui/base/face.rkt`（见上表）。
 
 - `piece.attr` = `face` 或 `(overlay . face)`（overlay ∈ `cursor` / `cursor-secondary` / `selection`）。
 - 边框：每块框**自己画自己的**（只用 `─ │ ┌ ┐ └ ┘`，无跨框 T/十字）；同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。
@@ -100,11 +102,6 @@ layout 边框 (panel) ─┘         ▲
    ;; 之后增量：old = new
    ))
 ```
-
-## 示例
-
-- `edit-tui/layout-base/demo.rkt` `edit-tui/layout-base/demo-float.rkt` —— 纯文本画面板 / 浮窗框。
-- `edit-tui/core-render/demo.rkt` —— 真终端带颜色。
 
 ## 约定
 

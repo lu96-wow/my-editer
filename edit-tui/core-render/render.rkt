@@ -12,7 +12,7 @@
 ;;; face 的解释在这里：fg/bg/attrs 都是 tui 风格名，用 style->bytes 取转义序列。
 ;;; patch.rkt 的 overlay 编码 `(overlay . role)` 在这里解开：先底层 face，再叠角色名。
 
-(require tui "face.rkt"
+(require tui "../base/face.rkt"
          "../../core/editor.rkt")
 
 (provide

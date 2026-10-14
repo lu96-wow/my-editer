@@ -2,7 +2,7 @@
 
 ;;; edit-tui/theme/theme.rkt —— 主题机制（字段与渲染层 face 一致）
 ;;;
-;;; 一个 style 就是 fg / bg / attrs（和 core-render/face.rkt 的 face 同字段）：
+;;; 一个 style 就是 fg / bg / attrs（和 base/face.rkt 的 face 同字段）：
 ;;;   fg / bg : #f | (rgb r g b) | 0..255
 ;;;   attrs   : (listof (or 'bold 'dim 'italic 'underline 'blink 'reverse))
 ;;;
