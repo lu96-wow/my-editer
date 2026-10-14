@@ -11,6 +11,12 @@
 ;;;
 ;;; 于是宿主 require 本模块即可，不必知道内部表示。
 ;;; 需要扩展机制（自定义 edit-op、槽、track 读写）时，直接 require 对应实现模块。
+;;;
+;;; 返回约定：
+;;;   文本提交       #f | (listof change)    #f = 拒绝；'() = 无变更
+;;;   版本 CAS       applied?
+;;;   撤销 / 重做    ok?
+;;;   历史开关/事务  void（buffer-with-undo-step 返回 thunk 值）
 
 (require "editor/state.rkt"
          "editor/ops.rkt"
@@ -46,8 +52,8 @@
  op-delete op-delete-ignore-readonly
  op-paste op-paste-ignore-readonly
  buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
- buffer-replace!                  ; buffer value [#:ensure? #:changes] → void
  buffer-replace-range!            ; buffer range text [#:ensure?] → #f | (listof change)
+ buffer-set-document!             ; buffer value [#:ensure? #:changes] → (listof change)
  buffer-set-line!                 ; buffer line text → #f | (listof change)
  buffer-set-char!                 ; buffer line col char → #f | (listof change)
  (rename-out [buffer-apply-if-version! buffer-commit-if-unchanged!])  ; → applied?
@@ -108,7 +114,7 @@
  session-left! session-right! session-up! session-down! session-home! session-end!
  session-set-selections! session-set-point! session-select-all!
  session-add-selection! session-remove-selection!
- session-replace! session-replace-range! session-set-line! session-set-char!
+ session-set-document! session-replace-range! session-set-line! session-set-char!
  session-commit-if-unchanged!
  session-reset-history! session-set-history-enabled!
  session-close-view! session-close!

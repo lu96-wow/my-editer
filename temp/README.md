@@ -54,20 +54,18 @@ racket temp/02-selection.rkt
 | `view-set-anchor-point!` | `view-scroll-to-point!` |
 | `buffer-apply-if-version!` | `buffer-commit-if-unchanged!` |
 
-> 编辑已**无 tag / 无隐式合并**，所以不再有 `buffer-seal!` / `buffer-break-merge!`。
+使用层的操作（除改名外）：
 
-使用层另新增一组操作（非改名）：
-
-- 文本 cell/row：`buffer-set-char!` / `buffer-set-line!` / `buffer-replace-range!` / `buffer-line` / `view-line`
+- 文本 cell/row：`buffer-set-char!` / `buffer-set-line!` / `buffer-replace-range!` / `buffer-set-document!` / `buffer-line` / `view-line`
 - 属性：`buffer-face-all!` / `buffer-readonly-all!` / `buffer-face-row` / `buffer-readonly-row` / `buffer-face-any?` / `buffer-readonly-any?` / `buffer-editable?`
 - 历史：`buffer-undo-target` / `buffer-redo-target` / `buffer-history-limit`
 - 选区：`view-add-selection!` / `view-remove-selection!` / `view-selection-text`
 - **显式事务**：`buffer-with-undo-step` / `buffer-begin-undo-step!` / `buffer-end-undo-step!`
 - **会话**：`make-edit-session` / `session-edit!` / `session-*!` / `session-break!`
-  其中程序写镜像 `session-replace!` / `session-replace-range!` / `session-set-line!` /
+  其中程序写镜像 `session-set-document!` / `session-replace-range!` / `session-set-line!` /
   `session-set-char!` / `session-commit-if-unchanged!` **默认独立成步**（先收步再写）。
 
-## 合并模型：完全显式（无 tag）
+## 合并模型：完全显式
 
 编辑本身**不含合并策略**：`buffer-edit!` 每次调用 = 一个新撤销步。要合成一步：
 
@@ -83,7 +81,7 @@ racket temp/02-selection.rkt
 - 裸构造/字段：`buffer`、`view`、`buffer-history`、`view-viewport`
 - 文档值：`buffer-document`、`view-document`、`->document`、`document-*`
 - 整轨/句柄：`buffer-face`、`buffer-readonly`、`buffer-set-face!`、`buffer-set-readonly!`、
-  `buffer-face-row`、`buffer-readonly-row`、`buffer-slot-ref`、`buffer-slot-set!`
+  `buffer-slot-ref`、`buffer-slot-set!`
 - 视口内部量：`view-anchor`、`view-top-line`、`view-left-column`、`view-set-anchor!`
 - 机制：`edit-op`、`view-char-nav!`、`view-visual-nav!`、`history-*`
 
@@ -98,29 +96,27 @@ racket temp/02-selection.rkt
 
 ## 提交的返回值约定
 
-编辑类提交函数用一个值编码三态，真值 = 已提交，`#f` = 拒绝：
-
-| 返回 | 含义 |
-|---|---|
-| `#f` | 被只读守卫拒绝，未提交 |
-| `'()` | 提交成功但无变更 |
-| `(list change)` | 提交成功，含本次变更描述 |
+| 家族 | 返回 | 函数 |
+|---|---|---|
+| 文本提交 | `#f \| (listof change)`：`#f`=拒绝、`'()`=无变更 | `buffer-edit!` / `buffer-replace-range!` / `buffer-set-line!` / `buffer-set-char!` / `buffer-set-document!` |
+| 版本 CAS | `applied?` | `buffer-commit-if-unchanged!` |
+| 撤销 / 重做 | `ok?` | `buffer-undo!` / `buffer-redo!` |
+| 历史开关 / 事务 | `void` | `buffer-clear-history!` / `buffer-reset-history!` / `buffer-set-history-enabled!` / `buffer-begin-undo-step!` / `buffer-end-undo-step!` |
+| 事务块 | thunk 的返回值 | `buffer-with-undo-step` |
 
 例：`(buffer-edit! b v op)`。需要布尔时用 `(and ret #t)`。
-`buffer-replace!` 返回 `void`（可用 `#:changes` 传入变更描述）；
-`buffer-commit-if-unchanged!` 返回 `applied?`。
 
 ## 唯一写入口
 
 `buffer` / `view` 的裸 setter（`set-view-selections!`、`set-view-viewport!`、`set-buffer-*!`）
-**已从公共 API 移除**（定义在内部的 `editor/state-data.rkt`，`state.rkt` 用 `except-out` 裁掉）。
+**不在公共 API**（定义在内部的 `editor/state-data.rkt`，`state.rkt` 用 `except-out` 裁掉）。
 改状态一律走提交壳：
 
 | 想改 | 用 |
 |---|---|
 | view 选区 | `view-set-selections!` / `view-set-point!` / `view-select-all!` / 导航算子 |
 | view 视口 | `view-scroll!` / `view-scroll-to-line!` / `view-scroll-to-point!` / `view-set-mode!` / `view-resize!` … |
-| buffer 文档 | `buffer-edit!` / `buffer-replace!` / `buffer-commit-if-unchanged!` |
+| buffer 文档 | `buffer-edit!` / `buffer-set-document!` / `buffer-commit-if-unchanged!` |
 | buffer 历史 | `buffer-undo!` / `buffer-redo!` / `buffer-clear-history!` … |
 
 ## 两个容易踩的点

@@ -35,7 +35,7 @@
  session-add-selection! session-remove-selection!
 
  ;; ---------- 程序写镜像（先收步 → 独立成步） ----------
- session-replace!                 ; session value [#:ensure? #:changes]
+ session-set-document!            ; session value [#:ensure? #:changes] → (listof change)
  session-replace-range!           ; session range text [#:ensure?]
  session-set-line!                ; session line text
  session-set-char!                ; session line col char
@@ -111,9 +111,9 @@
 ;;; 程序写默认独立成一个 undo 步，不并进当前打字步。
 ;;; 若想让它并入当前步，直接用裸 buffer-* 版本（不 break）。
 
-(define (session-replace! s value #:ensure? [ensure? #f] #:changes [changes #f])
+(define (session-set-document! s value #:ensure? [ensure? #f] #:changes [changes #f])
   (session-break! s)
-  (buffer-replace! (edit-session-buffer s) value #:ensure? ensure? #:changes changes))
+  (buffer-set-document! (edit-session-buffer s) value #:ensure? ensure? #:changes changes))
 
 (define (session-replace-range! s r text #:ensure? [ensure? #f])
   (session-break! s)

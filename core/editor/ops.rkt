@@ -30,7 +30,7 @@
 
  ;; ---------- 提交：编辑 ----------
  buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
- buffer-replace!                  ; buffer value [#:ensure? #:changes #:chunk-lines] → void
+ buffer-set-document!             ; buffer value [#:ensure? #:changes] → (listof change)
  buffer-replace-range!            ; buffer range text [#:ensure?] → #f | (listof change)
  buffer-set-line!                 ; buffer line text → #f | (listof change)
  buffer-set-char!                 ; buffer line col char/text → #f | (listof change)
@@ -39,7 +39,7 @@
  ;; ---------- 提交：undo 事务（显式合并） ----------
  buffer-begin-undo-step!          ; buffer → void（开始事务）
  buffer-end-undo-step!            ; buffer → void（结束事务，合成一步）
- buffer-with-undo-step            ; buffer thunk → void（事务块）
+ buffer-with-undo-step            ; buffer thunk → thunk 的返回值（事务块）
 
  ;; ---------- 提交：导航 ----------
  view-nav!                        ; view f [extend?] [#:ensure?] → void
@@ -84,7 +84,7 @@
 
 ;;; ================= undo 事务（显式合并） =================
 ;;;
-;;; 合并完全显式：编辑本身不含任何并步策略（无 tag、无启发式）。
+;;; 合并完全显式：编辑本身不含任何并步策略（无启发式）。
 ;;; 事务内：**第一次提交就 record**（立刻成为一个可见的撤销步），之后 merge 进它。
 ;;; 于是事务一旦有变更就已落栈，不会因忘记收步而丢失；无变更则不会留下空步。
 ;;; 嵌套：begin/end 按 depth 计数，最外层 end 才清事务。
@@ -186,15 +186,24 @@
      (when ensure? (view-ensure! v))
      changes]))
 
-;; 程序替换当前文档：不记步（在事务内则作为该步）、所有视图重定位。value = string | document。
-(define (buffer-replace! b value
-                         #:ensure? [ensure? #f]
-                         #:changes [changes #f]
-                         #:chunk-lines [chunk-lines default-chunk-lines])
+;; 整篇设置当前文档：不记步（在事务内则作为该步）、所有视图重定位。
+;; value = string | document。返回整篇替换的变更描述（'() = 无变更）。
+(define (doc-whole-range bd)
+  (define t (document-text bd))
+  (define n (track-length t))
+  (if (zero? n)
+      (range-of (point 0 0) (point 0 0))
+      (let ([last (sub1 n)])
+        (range-of (point 0 0) (point last (track-line-length t last))))))
+
+(define (buffer-set-document! b value
+                              #:ensure? [ensure? #f]
+                              #:changes [changes #f]
+                              #:chunk-lines [chunk-lines default-chunk-lines])
   (define doc* (->document value chunk-lines))
   (define old (buffer-document b))
   (cond
-    [(eq? doc* old) (void)]
+    [(eq? doc* old) '()]
     [else
      (if (in-undo-scope? b)
          (scope-commit! b doc*)                        ; 事务内：算进当前步
@@ -204,10 +213,10 @@
            (set-view-selections! v (selections-rebase changes (view-selections v)))
            (when ensure? (view-ensure! v)))
          (buffer-clamp-views! b))
-     (void)]))
+     (list (change (doc-whole-range old) (doc-whole-range doc*))) ]))
 
-;; 程序区间替换：记一步、封口、所有视图按 changes 字面重定位。→ #f | (listof change)
-;; 不守只读（程序级，与 buffer-replace! 一致）。
+;; 程序区间替换：记一步、所有视图按 changes 字面重定位。→ #f | (listof change)
+;; 不守只读（程序级，与 buffer-set-document! 一致）。
 (define (buffer-replace-range! b r text #:ensure? [ensure? #f])
   (define r* (range-normalize r))
   (define doc (buffer-document b))

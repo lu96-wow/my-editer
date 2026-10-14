@@ -3,7 +3,7 @@
 ;;;
 ;;; 运行：racket temp/10-session.rkt
 ;;;
-;;; core 里合并完全显式（无 tag、无启发式）：
+;;; core 里合并完全显式（无启发式）：
 ;;;   · buffer-edit! 每次 = 一步；
 ;;;   · buffer-with-undo-step 把一组合成一步（程序用）。
 ;;; session 把「连续打字合成一步、移动光标收步」包好给交互宿主：
