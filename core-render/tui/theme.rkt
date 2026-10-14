@@ -64,6 +64,11 @@
    (list 'underline attr-underline)
    (list 'blink     attr-blink)
 
+   ;; 边框（layout 的 panel face；改这里就改边框颜色）
+   (list 'window-border (color-rgb-fg 90 96 110))          ; 普通窗框
+   (list 'focused-border (color-rgb-fg 120 180 240))        ; 聚焦窗框
+   (list 'float-border  (color-rgb-fg 190 150 240))         ; 浮窗框
+
    ;; overlay（patch.rkt 里的语义角色：'cursor / 'cursor-secondary / 'selection）
    (list 'cursor           attr-reverse)                    ; 主光标：反显块
    (list 'cursor-secondary attr-underline)                  ; 副光标：下划线（可改反显 / 底色）
