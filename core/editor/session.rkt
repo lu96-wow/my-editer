@@ -27,7 +27,7 @@
  session-clear-history!           ; session → void
 
  ;; ---------- 导航镜像（先收步） ----------
- session-nav! session-char-nav! session-visual-nav!
+ session-nav!
  session-left! session-right! session-up! session-down! session-home! session-end!
 
  ;; ---------- 选区 / 定位镜像（先收步） ----------

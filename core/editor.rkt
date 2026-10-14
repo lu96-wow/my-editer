@@ -104,7 +104,7 @@
  (struct-out edit-session) make-edit-session
  session-edit! session-break!
  session-undo! session-redo! session-clear-history!
- session-nav! session-char-nav! session-visual-nav!
+ session-nav!
  session-left! session-right! session-up! session-down! session-home! session-end!
  session-set-selections! session-set-point! session-select-all!
  session-add-selection! session-remove-selection!
