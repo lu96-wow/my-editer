@@ -186,7 +186,7 @@
      (when ensure? (view-ensure! v))
      changes]))
 
-;; 程序替换当前文档：不记步、封口、所有视图重定位。value = string | document。
+;; 程序替换当前文档：不记步（在事务内则作为该步）、所有视图重定位。value = string | document。
 (define (buffer-replace! b value
                          #:ensure? [ensure? #f]
                          #:changes [changes #f]
@@ -196,7 +196,9 @@
   (cond
     [(eq? doc* old) (void)]
     [else
-     (set-buffer-history! b (history-set-current (buffer-history b) doc*))
+     (if (in-undo-scope? b)
+         (scope-commit! b doc*)                        ; 事务内：算进当前步
+         (set-buffer-history! b (history-set-current (buffer-history b) doc*)))
      (if (and changes (pair? changes))
          (for ([v (in-list (buffer-views b))])
            (set-view-selections! v (selections-rebase changes (view-selections v)))

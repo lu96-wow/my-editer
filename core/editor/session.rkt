@@ -12,7 +12,7 @@
 ;;; 于是宿主不必自己记「当前步是否开着」——只要编辑走 session-edit!、
 ;;; 打断动作走 session-*!，合并边界就自动正确。
 
-(require "state.rkt" "ops.rkt")
+(require "ops.rkt")
 
 (provide
  (struct-out edit-session)        ; buffer / open?

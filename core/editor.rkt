@@ -2,7 +2,8 @@
 
 ;;; editor.rkt —— 对外使用层（buffer / view 操作）
 ;;;
-;;; 实现层在 editor/{state,ops,query,attributes,render}.rkt，保持原样。
+;;; 实现层在 editor/{state,ops,query,attributes,render,history}.rkt，保持原样；
+;;; 会话层 editor/session.rkt 在其上提供显式合并的交互封装（本模块一并再导出）。
 ;;; 本模块只做两件事：
 ;;;   1. 用 rename-out 把「实现名」暴露成「意图名」（如 view-set-top-line! → view-scroll-to-line!）；
 ;;;   2. 只再导出 buffer/view 的操作与必要值词汇，隐藏内部构造
