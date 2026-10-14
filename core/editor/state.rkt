@@ -21,8 +21,8 @@
 
 (provide
  ;; ---------- 类型（访问器 / 谓词 / 构造器；不含 setter） ----------
- (except-out (struct-out buffer)  ; name / history / views / merge
-             set-buffer-name! set-buffer-history! set-buffer-views! set-buffer-merge!)
+ (except-out (struct-out buffer)  ; name / history / views
+             set-buffer-name! set-buffer-history! set-buffer-views!)
  (except-out (struct-out view)    ; buffer / viewport / selections
              set-view-buffer! set-view-viewport! set-view-selections!)
 
@@ -60,8 +60,7 @@
                      #:history? [history? #t])
   (buffer name
           (history-open (->document text chunk-lines) history-limit history?)
-          '()
-          #f))
+          '()))
 
 ;; 建一个视图挂到 buffer 上；返回新 view。
 (define (buffer-add-view! b width height
@@ -75,14 +74,11 @@
 ;; 摘掉一个视图（不删 buffer）。
 (define (buffer-close-view! b v)
   (set-buffer-views! b
-    (for/list ([x (in-list (buffer-views b))] #:unless (eq? x v)) x))
-  (when (and (buffer-merge b) (eq? v (cadr (buffer-merge b))))
-    (set-buffer-merge! b #f)))
+    (for/list ([x (in-list (buffer-views b))] #:unless (eq? x v)) x)))
 
 ;; 关掉一个 buffer：解除与所有 view 的关联（对象本身由宿主丢引用后回收）。
 (define (buffer-close! b)
-  (set-buffer-views! b '())
-  (set-buffer-merge! b #f))
+  (set-buffer-views! b '()))
 
 ;;; ---------- buffer 读 / 写 ----------
 

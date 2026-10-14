@@ -16,6 +16,7 @@
          "editor/query.rkt"
          "editor/attributes.rkt"
          "editor/render.rkt"
+         "editor/session.rkt"
          ;; 值词汇表（宿主构造 point / range / selection / 读 screen 用）
          "text/base/point.rkt"
          "text/base/selection.rkt"
@@ -49,7 +50,7 @@
  buffer-set-line!                 ; buffer line text → #f | (listof change)
  buffer-set-char!                 ; buffer line col char → #f | (listof change)
  (rename-out [buffer-apply-if-version! buffer-commit-if-unchanged!])  ; → applied?
- (rename-out [buffer-seal!             buffer-end-undo-step!])        ; 切断并步
+ buffer-begin-undo-step! buffer-end-undo-step! buffer-with-undo-step  ; 显式合并（事务）
 
  ;; ==================== 光标 / 选区 ====================
  view-nav!                        ; view f [extend?] [#:ensure?]
@@ -97,6 +98,15 @@
  (struct-out display-entry)
  display-entry-cursor-position
  render-display render-display-patch
+
+ ;; ==================== 会话（显式合并的交互封装） ====================
+ (struct-out edit-session) make-edit-session
+ session-edit! session-break!
+ session-undo! session-redo! session-clear-history!
+ session-nav! session-char-nav! session-visual-nav!
+ session-left! session-right! session-up! session-down! session-home! session-end!
+ session-set-selections! session-set-point! session-select-all!
+ session-add-selection! session-remove-selection!
 
  ;; ==================== 值词汇：点 / 区间 / 选区 / 变更 ====================
  point point? point-line point-column

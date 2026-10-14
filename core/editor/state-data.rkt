@@ -15,11 +15,10 @@
          (struct-out view))
 
 ;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身。
-(struct buffer (name history views merge) #:mutable)
+(struct buffer (name history views) #:mutable)
 ;; name    : string
 ;; history : history        （current 就是当前 document 真身）
 ;; views   : (listof view)  共享这份内容的视图
-;; merge   : #f | (list tag view selections)  会话层「并步记忆」（见 ops.rkt）
 
 ;; 视图：显示状态，指回 buffer。身份 = 对象本身。
 (struct view (buffer viewport selections) #:mutable)

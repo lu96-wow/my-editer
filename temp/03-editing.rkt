@@ -1,9 +1,10 @@
 #lang racket
-;;; 03 —— 编辑：纯算子 + 提交 + 多光标 + 只读守卫 + 并步
+;;; 03 —— 编辑：纯算子 + 提交 + 多光标 + 只读守卫
 ;;;
 ;;; 运行：racket temp/03-editing.rkt
 ;;;
 ;;; 模式：操作 = 纯函数（edit-op），提交 = buffer-edit!（写回 + 记 history + rebase 兄弟）。
+;;; 合并完全显式：buffer-edit! 每次调用 = 一个新撤销步；要合并用事务（见 05 / 10）。
 ;;; 只读守卫：编辑前检查区间，命中只读格 → 整体拒绝，返回 #f。
 ;;;
 ;;; 注意：只读/face 的写回用 *-line! / *-range! / *-cell!（会按需建轨）。
@@ -17,12 +18,11 @@
 
 (define (title s) (printf "\n==== ~a ====\n" s))
 
-(title "打字：连续输入默认并成一步（tag 'typing）")
+(title "每次 buffer-edit! = 一个撤销步（无隐式合并）")
 (view-set-point! v (point 0 5))          ; 行尾
 (void (buffer-edit! b v (op-type "!")))
 (void (buffer-edit! b v (op-type "?")))
-(printf "内容: ~s\n" (buffer-string b))
-(printf "undo 步数: ~a（两次打字并成一步）\n" (buffer-depth b))
+(printf "内容: ~s  undo 步数: ~a（两下 = 两步）\n" (buffer-string b) (buffer-depth b))
 
 (title "粘贴 / 退格 / 前向删除")
 (view-set-point! v (point 1 0))
@@ -32,9 +32,15 @@
 (void (buffer-edit! b v (op-delete)))
 (printf "退格+删除后: ~s\n" (buffer-string b))
 
-(title "换 tag 就不并步")
-(void (buffer-edit! b v (op-type "A" 'other)))
-(printf "内容: ~s  undo 步数: ~a\n" (buffer-string b) (buffer-depth b))
+(title "要合并：用一个事务把多次提交合成一步")
+(define b6 (make-buffer "abc"))
+(define v6 (buffer-add-view! b6 40 10))
+(void (buffer-with-undo-step b6
+  (lambda ()
+    (buffer-edit! b6 v6 (op-type "1"))
+    (buffer-edit! b6 v6 (op-type "2"))
+    (buffer-edit! b6 v6 (op-type "3")))))
+(printf "内容: ~s  undo 步数: ~a（三次提交 = 一步）\n" (buffer-string b6) (buffer-depth b6))
 
 (title "只读守卫：命中只读 → 整体拒绝（返回 #f）")
 (buffer-readonly-line! b 0 #t)           ; 第 0 行整行只读
@@ -44,10 +50,10 @@
 (printf "只读行普通编辑   ret = ~a（#f = 拒绝）\n"
         (buffer-edit! b v (op-type "x")))
 (printf "只读行 ignore 编辑 changes = ~a 个\n"
-        (length (buffer-edit! b v (op-type-ignore-readonly "x" 'other))))
+        (length (buffer-edit! b v (op-type-ignore-readonly "x"))))
 (view-set-point! v (point 1 0))
 (printf "可写行编辑       changes = ~a 个\n"
-        (length (buffer-edit! b v (op-type "y" 'other))))
+        (length (buffer-edit! b v (op-type "y"))))
 (printf "内容: ~s\n" (buffer-string b))
 
 (title "拿 changes：buffer-edit! 返回本次变更描述")

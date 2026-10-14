@@ -49,10 +49,10 @@
 | `state/buffer`（ctr） | 裸构造器，应用 `make-buffer` |
 | `state/view`（ctr） | 裸构造器，应用 `buffer-add-view!` |
 | `state/buffer-history` | 直接吐 `history` 值（内部版本栈） |
-| `state/buffer-merge` | 会话层并步记忆，纯内部 |
+| `state/buffer-merge` | （已删除：隐式合并移除） |
 | `state/view-viewport` | 直接吐 `viewport` 结构 |
 | `state/->document` | 类型强制转换 |
-| `ops/edit-op` + `-?`/`-run`/`-tag` | 扩展机制；`run`/`tag` 是内部字段 |
+| `ops/edit-op` + `-?`/`-run` | 扩展机制；`run` 是内部字段（tag 已删） |
 | `ops/buffer-apply-if-version!` | 名字是机制（CAS + version） |
 | `ops/view-char-nav!` | 按 `which` 分派的机制外壳，功能名已有 `view-left!` 等 |
 | `ops/view-visual-nav!` | 同上（`up?`） |
@@ -78,7 +78,7 @@
 |---|---|---|
 | `state/buffer-document` | 读当前文档 | 返回 `document` 值 |
 | `state/view-document` | 读当前文档 | 返回 `document` 值 |
-| `ops/buffer-seal!` | 「切断并步」 | 名字是会话隐喻，语义不清 |
+| `ops/buffer-seal!` | （已删除：无隐式合并可切） |
 | `query/view-anchor-point` | 读锚点位置 | 语义依赖 viewport 锚实现 |
 
 ## N 非对象（主语不是 buffer/view）
@@ -119,8 +119,8 @@
 | `buffer-slot-ref` / `buffer-slot-set!` | 移到「特性/槽」模块 | 移出 editor |
 | `view-char-nav!` / `view-visual-nav!` | （无，用 `view-left!` 等） | 隐藏 |
 | `buffer-apply-if-version!` | `buffer-commit-if-unchanged!` | 可选改名 |
-| `buffer-seal!` | `buffer-end-undo-step!` | 可选改名 |
-| `buffer-merge` | —— | 隐藏 |
+| `buffer-seal!` | （已删除） |
+| `buffer-merge` | —— | （已删除） |
 | `buffer-history` | —— | 隐藏（留 `buffer-can-undo?` 等） |
 | `->document` | —— | 内部化 |
 | `history.rkt` 全部 | —— | 不再从 `editor.rkt` 再导出 |

@@ -18,15 +18,15 @@
 
 (provide
  ;; ---------- 纯：编辑算子 ----------
- (struct-out edit-op)             ; run + 并步标签 tag
- op-type                          ; text [tag] → edit-op
- op-type-ignore-readonly          ; text [tag] → edit-op（不守只读）
- op-backspace                     ; [tag] → edit-op
- op-backspace-ignore-readonly     ; [tag] → edit-op
- op-delete                        ; [tag] → edit-op
- op-delete-ignore-readonly        ; [tag] → edit-op
- op-paste                         ; text [tag] → edit-op
- op-paste-ignore-readonly         ; text [tag] → edit-op
+ (struct-out edit-op)             ; 纯函数 run
+ op-type                          ; text → edit-op
+ op-type-ignore-readonly          ; text → edit-op（不守只读）
+ op-backspace                     ; → edit-op
+ op-backspace-ignore-readonly     ; → edit-op
+ op-delete                        ; → edit-op
+ op-delete-ignore-readonly        ; → edit-op
+ op-paste                         ; text → edit-op
+ op-paste-ignore-readonly         ; text → edit-op
 
  ;; ---------- 提交：编辑 ----------
  buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
@@ -35,7 +35,11 @@
  buffer-set-line!                 ; buffer line text → #f | (listof change)
  buffer-set-char!                 ; buffer line col char/text → #f | (listof change)
  buffer-apply-if-version!         ; buffer base-doc new-doc → applied?（CAS）
- buffer-seal!                     ; buffer → 切断后续并步
+
+ ;; ---------- 提交：undo 事务（显式合并） ----------
+ buffer-begin-undo-step!          ; buffer → void（开始事务）
+ buffer-end-undo-step!            ; buffer → void（结束事务，合成一步）
+ buffer-with-undo-step            ; buffer thunk → void（事务块）
 
  ;; ---------- 提交：导航 ----------
  view-nav!                        ; view f [extend?] [#:ensure?] → void
@@ -78,25 +82,66 @@
  buffer-reset-history!            ; buffer [enabled?] → void
  buffer-set-history-enabled!)     ; buffer flag → void
 
+;;; ================= undo 事务（显式合并） =================
+;;;
+;;; 合并完全显式：编辑本身不含任何并步策略（无 tag、无启发式）。
+;;; 事务内：**第一次提交就 record**（立刻成为一个可见的撤销步），之后 merge 进它。
+;;; 于是事务一旦有变更就已落栈，不会因忘记收步而丢失；无变更则不会留下空步。
+;;; 嵌套：begin/end 按 depth 计数，最外层 end 才清事务。
+
+(struct undo-scope (buffer pre depth created?) #:mutable)
+
+(define current-undo-scopes (make-parameter '()))   ; (listof undo-scope)
+
+(define (find-undo-scope b)
+  (for/first ([s (in-list (current-undo-scopes))] #:when (eq? (undo-scope-buffer s) b)) s))
+(define (in-undo-scope? b) (and (find-undo-scope b) #t))
+
+(define (buffer-begin-undo-step! b)
+  (define s (find-undo-scope b))
+  (if s
+      (set-undo-scope-depth! s (add1 (undo-scope-depth s)))
+      (current-undo-scopes (cons (undo-scope b (buffer-document b) 1 #f)
+                                 (current-undo-scopes)))))
+
+;; 事务内的一次提交：首次 record，之后 merge（都只产生/延长一个步）。
+(define (scope-commit! b doc*)
+  (define s (find-undo-scope b))
+  (cond
+    [(undo-scope-created? s)
+     (set-buffer-history! b (history-merge (buffer-history b) doc*))]
+    [else
+     (set-undo-scope-created?! s #t)
+     (set-buffer-history! b (history-record (buffer-history b) (undo-scope-pre s) doc*))]))
+
+(define (buffer-end-undo-step! b)
+  (define s (find-undo-scope b))
+  (when s
+    (if (> (undo-scope-depth s) 1)
+        (set-undo-scope-depth! s (sub1 (undo-scope-depth s)))
+        (current-undo-scopes (remq s (current-undo-scopes))))))
+
+(define (buffer-with-undo-step b thunk)
+  (buffer-begin-undo-step! b)
+  (dynamic-wind void thunk (lambda () (buffer-end-undo-step! b))))
+
 ;;; ================= 纯：编辑算子 =================
 
-(struct edit-op (run tag) #:transparent)
+(struct edit-op (run) #:transparent)
 ;; run : document × selections → (values document selections changes ok?)
-;; tag : any/c  并步标签（'typing 等）；#f = 不并步
 
-(define (op-type text [tag 'typing])
-  (edit-op (lambda (d s) (command-type d s text)) tag))
-(define (op-type-ignore-readonly text [tag 'typing])
-  (edit-op (lambda (d s) (command-type-ignore-readonly d s text)) tag))
+(define (op-type text) (edit-op (lambda (d s) (command-type d s text))))
+(define (op-type-ignore-readonly text)
+  (edit-op (lambda (d s) (command-type-ignore-readonly d s text))))
 
-(define (op-backspace [tag 'typing]) (edit-op command-backspace tag))
-(define (op-backspace-ignore-readonly [tag 'typing]) (edit-op command-backspace-ignore-readonly tag))
-(define (op-delete [tag 'typing]) (edit-op command-delete tag))
-(define (op-delete-ignore-readonly [tag 'typing]) (edit-op command-delete-ignore-readonly tag))
+(define (op-backspace) (edit-op command-backspace))
+(define (op-backspace-ignore-readonly) (edit-op command-backspace-ignore-readonly))
+(define (op-delete) (edit-op command-delete))
+(define (op-delete-ignore-readonly) (edit-op command-delete-ignore-readonly))
 
-(define (op-paste text [tag 'typing]) (edit-op (lambda (d s) (command-paste d s text)) tag))
-(define (op-paste-ignore-readonly text [tag 'typing])
-  (edit-op (lambda (d s) (command-paste-ignore-readonly d s text)) tag))
+(define (op-paste text) (edit-op (lambda (d s) (command-paste d s text))))
+(define (op-paste-ignore-readonly text)
+  (edit-op (lambda (d s) (command-paste-ignore-readonly d s text))))
 
 ;;; ================= 提交：编辑 =================
 
@@ -132,13 +177,10 @@
     [(not ok?) #f]                                  ; 只读挡
     [(null? changes) '()]                           ; 无变更
     [else
-     (define tag (edit-op-tag op))
-     (define m (buffer-merge b))
-     (define merge? (and tag m (equal? tag (car m)) (eq? v (cadr m))
-                         (equal? pre-sels (caddr m))))
-     (set-buffer-history! b (if merge? (history-merge h doc*) (history-record h doc doc*)))
-     (set-buffer-merge! b (if tag (list tag v sels*) #f))
-     (set-view-selections! v sels*)                 ; 发起视图：前进
+     (if (in-undo-scope? b)
+         (scope-commit! b doc*)                            ; 事务内：首次 record，之后 merge
+         (set-buffer-history! b (history-record h doc doc*)))
+     (set-view-selections! v sels*)                ; 发起视图：前进
      (for ([x (in-list (buffer-views b))] #:unless (eq? x v))   ; 兄弟视图：rebase
        (set-view-selections! x (selections-rebase changes (view-selections x))))
      (when ensure? (view-ensure! v))
@@ -155,7 +197,6 @@
     [(eq? doc* old) (void)]
     [else
      (set-buffer-history! b (history-set-current (buffer-history b) doc*))
-     (set-buffer-merge! b #f)
      (if (and changes (pair? changes))
          (for ([v (in-list (buffer-views b))])
            (set-view-selections! v (selections-rebase changes (view-selections v)))
@@ -177,8 +218,9 @@
     [(not ok?) #f]
     [(or (not ch) (change-empty? ch)) '()]
     [else
-     (set-buffer-history! b (history-record (buffer-history b) doc doc*))
-     (set-buffer-merge! b #f)
+     (if (in-undo-scope? b)
+         (scope-commit! b doc*)
+         (set-buffer-history! b (history-record (buffer-history b) doc doc*)))
      (for ([v (in-list (buffer-views b))])
        (set-view-selections! v (selections-rebase (list ch) (view-selections v)))
        (when ensure? (view-ensure! v)))
@@ -205,13 +247,11 @@
   (cond
     [(not (eq? (buffer-document b) base-doc)) #f]
     [else
-     (set-buffer-history! b (history-record (buffer-history b) base-doc new-doc))
-     (set-buffer-merge! b #f)
+     (if (in-undo-scope? b)
+         (scope-commit! b new-doc)
+         (set-buffer-history! b (history-record (buffer-history b) base-doc new-doc)))
      (buffer-clamp-views! b)
      #t]))
-
-;; 封口：切断后续并步。
-(define (buffer-seal! b) (set-buffer-merge! b #f))
 
 ;;; ================= 提交：导航 =================
 
@@ -312,18 +352,16 @@
 (define (buffer-undo! b)
   (define-values (h* ok?) (history-undo (buffer-history b)))
   (cond [(not ok?) #f]
-        [else (set-buffer-history! b h*) (buffer-seal! b) (buffer-clamp-views! b) #t]))
+        [else (set-buffer-history! b h*) (buffer-clamp-views! b) #t]))
 
 (define (buffer-redo! b)
   (define-values (h* ok?) (history-redo (buffer-history b)))
   (cond [(not ok?) #f]
-        [else (set-buffer-history! b h*) (buffer-seal! b) (buffer-clamp-views! b) #t]))
+        [else (set-buffer-history! b h*) (buffer-clamp-views! b) #t]))
 
 (define (buffer-clear-history! b)
-  (set-buffer-history! b (history-clear (buffer-history b)))
-  (buffer-seal! b))
+  (set-buffer-history! b (history-clear (buffer-history b))))
 (define (buffer-reset-history! b [enabled? #f])
-  (set-buffer-history! b (history-set-enabled (history-clear (buffer-history b)) enabled?))
-  (buffer-seal! b))
+  (set-buffer-history! b (history-set-enabled (history-clear (buffer-history b)) enabled?)))
 (define (buffer-set-history-enabled! b flag)
   (set-buffer-history! b (history-set-enabled (buffer-history b) flag)))

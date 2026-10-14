@@ -59,7 +59,8 @@
 | 开关 | ✅ `buffer-history-enabled?` | ✅ `buffer-set-history-enabled!` |
 | 当前文档 | `history-document`（= `buffer-document`） | `history-set-current` |
 | 记步 | ❌ 不能预览 past / future 内容 | `history-record`（仅经 edit 路径）、`buffer-edit!`、`buffer-commit-if-unchanged!` |
-| 并步 | ❌ | `history-merge`（仅经 edit 路径）、`buffer-end-undo-step!` |
+| 显式合并（事务） | — | ✅ `buffer-with-undo-step` / `buffer-begin-undo-step!` / `buffer-end-undo-step!` |
+| 交互合并（会话） | — | ✅ `make-edit-session` / `session-edit!` / `session-*!` / `session-break!` |
 | 撤销 / 重做 | — | ✅ `buffer-undo!` / `buffer-redo!` |
 | 清空 | — | ✅ `buffer-clear-history!` / `buffer-reset-history!` |
 
@@ -89,7 +90,7 @@
 |---|---|---|
 | 文本 | ✅ `buffer-line` / `view-line` | ✅ `buffer-set-char!` / `buffer-set-line!` / `buffer-replace-range!` |
 | 属性 | ✅ `buffer-face-row` / `buffer-readonly-row` / `buffer-face-any?` / `buffer-readonly-any?` / `buffer-editable?` | ✅ `buffer-face-all!` / `buffer-readonly-all!`（整篇设；默认值回惰性） |
-| 历史 | ✅ `buffer-undo-target` / `buffer-redo-target` / `buffer-history-limit` | buffer 层录步/并步（record/merge 仍在 edit 路径内） |
+| 历史 | ✅ `buffer-undo-target` / `buffer-redo-target` / `buffer-history-limit` | ✅ 显式合并（事务 / 会话；无隐式 tag） |
 | 选区 | ✅ `view-selection-text` | ✅ `view-add-selection!` / `view-remove-selection!` |
 
 ## 已补齐的 API（复用已有实现）
@@ -110,4 +111,4 @@
 | `buffer-face-all!` / `buffer-readonly-all!` | 属性 whole·写 | 默认值 → 惰性 #f（O(1)）；否则全文 range fill |
 
 余下可选（未做）：
-- buffer 层显式 `record` / `merge`（现隐藏在 `buffer-edit!` / `buffer-commit-if-unchanged!` / `buffer-end-undo-step!` 里；待讨论）。
+- buffer 层显式 `record` / `merge`：已实现为**事务 + 会话**；**隐式标签合并已删除**（编辑无 tag、无启发式）。
