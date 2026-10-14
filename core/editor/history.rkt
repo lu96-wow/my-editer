@@ -27,6 +27,8 @@
  history-can-undo?                 ; history → bool
  history-can-redo?                 ; history → bool
  history-depth                     ; history → past 步数
+ history-undo-target               ; history → 即将恢复的 document | #f（past 头）
+ history-redo-target               ; history → 可重做的 document | #f（future 头）
 
  ;; ---------- 写原语（哑栈，不做判断） ----------
  history-record                    ; pre-doc post-doc → 新起一步（清 redo）
@@ -60,6 +62,12 @@
 (define (history-can-undo? h) (and (history-enabled? h) (pair? (history-past h))))
 (define (history-can-redo? h) (and (history-enabled? h) (pair? (history-future h))))
 (define (history-depth h) (length (history-past h)))
+
+;; 预览：撤销 / 重做将要恢复的文档（无 → #f）。只读，不推进栈。
+(define (history-undo-target h)
+  (and (history-enabled? h) (pair? (history-past h)) (car (history-past h))))
+(define (history-redo-target h)
+  (and (history-enabled? h) (pair? (history-future h)) (car (history-future h))))
 
 (define (trim-past past limit)
   (if (> (length past) limit) (take past limit) past))

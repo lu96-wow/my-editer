@@ -7,7 +7,7 @@
 (require "state.rkt"
          "../text/document.rkt"
          "../text/base/range.rkt" "../text/base/point.rkt"
-         "../text/base/line.rkt")
+         "../text/base/track.rkt" "../text/base/line.rkt")
 
 (provide
  ;; ---------- 端口 ----------
@@ -15,6 +15,8 @@
  buffer-set-readonly!             ; buffer flag → void（整轨设）
  buffer-face-range!               ; buffer range face → void
  buffer-readonly-range!           ; buffer range flag → void
+ buffer-face-all!                 ; buffer face → void（整篇设；face=#f → 回惰性全默认）
+ buffer-readonly-all!             ; buffer flag → void（整篇设；flag=#f → 回惰性全默认）
  buffer-face-cell!                ; buffer line col face → void
  buffer-readonly-cell!            ; buffer line col flag → void
  buffer-face-line!                ; buffer line face → void
@@ -60,6 +62,25 @@
 
 (define (buffer-face-range! b r face) (doc-range! b document-face-fill r face))
 (define (buffer-readonly-range! b r flag) (doc-range! b document-readonly-fill r flag))
+
+;; 整篇设同一属性值。值为默认（face #f / readonly #f）时直接写回惰性 #f：
+;; O(1)、释放整条属性轨；否则物化整轨填同一值。
+(define (whole-range b)
+  (define t (document-text (doc b)))
+  (define n (track-length t))
+  (if (zero? n)
+      (range-of (point 0 0) (point 0 0))
+      (let ([last (sub1 n)])
+        (range-of (point 0 0) (point last (track-line-length t last))))))
+
+(define (buffer-face-all! b face)
+  (if face
+      (buffer-face-range! b (whole-range b) face)
+      (buffer-set-face! b #f)))
+(define (buffer-readonly-all! b flag)
+  (if flag
+      (buffer-readonly-range! b (whole-range b) #t)
+      (buffer-set-readonly! b #f)))
 (define (buffer-face-cell! b line col face) (doc-cell! b document-face-fill line col face))
 (define (buffer-readonly-cell! b line col flag) (doc-cell! b document-readonly-fill line col flag))
 (define (buffer-face-line! b line face) (doc-line! b document-face-fill line face))

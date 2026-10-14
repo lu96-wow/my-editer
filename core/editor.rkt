@@ -45,6 +45,9 @@
  op-paste op-paste-ignore-readonly
  buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
  buffer-replace!                  ; buffer value [#:ensure? #:changes] → void
+ buffer-replace-range!            ; buffer range text [#:ensure?] → #f | (listof change)
+ buffer-set-line!                 ; buffer line text → #f | (listof change)
+ buffer-set-char!                 ; buffer line col char → #f | (listof change)
  (rename-out [buffer-apply-if-version! buffer-commit-if-unchanged!])  ; → applied?
  (rename-out [buffer-seal!             buffer-end-undo-step!])        ; 切断并步
 
@@ -52,7 +55,8 @@
  view-nav!                        ; view f [extend?] [#:ensure?]
  view-left! view-right! view-up! view-down! view-home! view-end!
  view-set-selections! view-set-point! view-select-all!
- view-copy-text
+ view-add-selection! view-remove-selection!
+ view-copy-text view-selection-text
 
  ;; ==================== 视口（意图名） ====================
  (rename-out [view-set-top-line!     view-scroll-to-line!])     ; view line → void
@@ -63,6 +67,7 @@
 
  ;; ==================== 属性 ====================
  buffer-face-range! buffer-readonly-range!
+ buffer-face-all! buffer-readonly-all!
  buffer-face-cell! buffer-readonly-cell!
  buffer-face-line! buffer-readonly-line!
  buffer-face-batch! buffer-readonly-batch!
@@ -72,12 +77,16 @@
  buffer-undo! buffer-redo! buffer-clear-history! buffer-reset-history!
  buffer-set-history-enabled!
  buffer-can-undo? buffer-can-redo? buffer-depth buffer-history-enabled?
+ buffer-history-limit buffer-undo-target buffer-redo-target
 
  ;; ==================== 查询 ====================
  buffer-string view-string
  buffer-range-text view-range-text
  buffer-char-at view-char-at
+ buffer-line view-line
  buffer-face-at buffer-readonly-at? view-face-at view-readonly-at?
+ buffer-face-row buffer-readonly-row
+ buffer-face-any? buffer-readonly-any? buffer-editable?
  view-point view-point-line view-point-column
  view-primary view-primary-range view-selection-count
  view-cursor-screen-position view-point->screen-position view-screen-position->point

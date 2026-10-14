@@ -12,6 +12,7 @@
 (require "state.rkt" "state-data.rkt" "history.rkt" "query.rkt"
          "../text/document.rkt" "../text/command.rkt" "../text/rebase.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt"
+         "../text/base/range.rkt" "../text/base/change.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
          "../view/base/viewport.rkt")
 
@@ -30,6 +31,9 @@
  ;; ---------- 提交：编辑 ----------
  buffer-edit!                     ; buffer view op [#:ensure?] → #f | (listof change)
  buffer-replace!                  ; buffer value [#:ensure? #:changes #:chunk-lines] → void
+ buffer-replace-range!            ; buffer range text [#:ensure?] → #f | (listof change)
+ buffer-set-line!                 ; buffer line text → #f | (listof change)
+ buffer-set-char!                 ; buffer line col char/text → #f | (listof change)
  buffer-apply-if-version!         ; buffer base-doc new-doc → applied?（CAS）
  buffer-seal!                     ; buffer → 切断后续并步
 
@@ -48,6 +52,8 @@
  view-set-selections!             ; view sels [#:ensure?] → void
  view-set-point!                  ; view point → void
  view-select-all!                 ; view → void
+ view-add-selection!              ; view selection [#:ensure?] → void
+ view-remove-selection!           ; view selection [#:ensure?] → void
 
  ;; ---------- 提交：视口 ----------
  view-ensure!                     ; view → 滚到能看见主光标
@@ -63,6 +69,7 @@
 
  ;; ---------- 读：复制 ----------
  view-copy-text                   ; view → 主选区文本
+ view-selection-text              ; view selection → 该选区文本
 
  ;; ---------- 提交：历史 ----------
  buffer-undo!                     ; buffer → ok?
@@ -156,6 +163,43 @@
          (buffer-clamp-views! b))
      (void)]))
 
+;; 程序区间替换：记一步、封口、所有视图按 changes 字面重定位。→ #f | (listof change)
+;; 不守只读（程序级，与 buffer-replace! 一致）。
+(define (buffer-replace-range! b r text #:ensure? [ensure? #f])
+  (define r* (range-normalize r))
+  (define doc (buffer-document b))
+  (define-values (doc* ch ok?)
+    (document-replace-ignore-readonly doc
+      (point-line (range-start r*)) (point-column (range-start r*))
+      (point-line (range-end r*))   (point-column (range-end r*))
+      text))
+  (cond
+    [(not ok?) #f]
+    [(or (not ch) (change-empty? ch)) '()]
+    [else
+     (set-buffer-history! b (history-record (buffer-history b) doc doc*))
+     (set-buffer-merge! b #f)
+     (for ([v (in-list (buffer-views b))])
+       (set-view-selections! v (selections-rebase (list ch) (view-selections v)))
+       (when ensure? (view-ensure! v)))
+     (list ch)]))
+
+;; 整行替换 / 单格替换（buffer-replace-range! 的糖）。行/列越界 → #f。
+(define (buffer-set-line! b line text)
+  (define t (document-text (buffer-document b)))
+  (and (exact-nonnegative-integer? line) (< line (track-length t))
+       (buffer-replace-range! b
+         (range-of (point line 0) (point line (track-line-length t line)))
+         text)))
+
+(define (buffer-set-char! b line col ch)
+  (define t (document-text (buffer-document b)))
+  (and (exact-nonnegative-integer? line) (< line (track-length t))
+       (exact-nonnegative-integer? col) (< col (track-line-length t line))
+       (buffer-replace-range! b
+         (range-of (point line col) (point line (add1 col)))
+         (if (char? ch) (string ch) ch))))
+
 ;; 异步文本写（CAS）：base-doc 未变才装，记一步。→ applied?
 (define (buffer-apply-if-version! b base-doc new-doc)
   (cond
@@ -212,6 +256,12 @@
   (view-set-selections! v
     (selections-one (selection (point 0 0) (point last (track-line-length t last))))))
 
+;; 多光标增 / 删一个选区（read-modify-write，内部 clamp）。
+(define (view-add-selection! v s #:ensure? [ensure? #t])
+  (view-set-selections! v (selections-add (view-selections v) (list s)) #:ensure? ensure?))
+(define (view-remove-selection! v s #:ensure? [ensure? #t])
+  (view-set-selections! v (selections-remove (view-selections v) (list s)) #:ensure? ensure?))
+
 ;;; ================= 提交：视口 =================
 
 (define (view-scroll! v delta)
@@ -248,6 +298,12 @@
 (define (view-copy-text v)
   (define doc (view-document v))
   (define s (selections-primary (view-selections v)))
+  (define-values (a b) (selection-range s))
+  (document-copy doc (point-line a) (point-column a) (point-line b) (point-column b)))
+
+;; 指定选区的文本。
+(define (view-selection-text v s)
+  (define doc (view-document v))
   (define-values (a b) (selection-range s))
   (document-copy doc (point-line a) (point-column a) (point-line b) (point-column b)))
 

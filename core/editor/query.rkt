@@ -19,6 +19,8 @@
  view-range-text                  ; view range → 区间文本
  buffer-char-at                   ; buffer line col → char | #f
  view-char-at                     ; view line col → char | #f
+ buffer-line                      ; buffer line → string | #f（整行）
+ view-line                        ; view line → string | #f（整行）
 
  ;; ---------- 端口 / 槽（读） ----------
  buffer-face                      ; buffer → face 轨
@@ -30,6 +32,9 @@
  buffer-slot-ref                  ; buffer slot → 值
  view-face-at                     ; view line col → face | #f
  view-readonly-at?                ; view line col → bool
+ buffer-face-any?                 ; buffer l0 c0 l1 c1 → bool（区间内是否有非默认 face）
+ buffer-readonly-any?             ; buffer l0 c0 l1 c1 → bool（区间内是否有只读格）
+ buffer-editable?                 ; buffer l0 c0 l1 c1 → bool
 
  ;; ---------- 点 / 选区 ----------
  view-point                       ; view → 主光标 point
@@ -59,7 +64,10 @@
  buffer-can-undo?                 ; buffer → bool
  buffer-can-redo?                 ; buffer → bool
  buffer-depth                     ; buffer → 可撤销步数
- buffer-history-enabled?)         ; buffer → bool
+ buffer-history-enabled?          ; buffer → bool
+ buffer-undo-target               ; buffer → 撤销目标文本 string | #f
+ buffer-redo-target               ; buffer → 重做目标文本 string | #f
+ buffer-history-limit)            ; buffer → past 上限 nat
 
 ;;; ---------- 文本 / 名称 ----------
 
@@ -76,6 +84,13 @@
          (and (exact-nonnegative-integer? col) (< col (line-length l)) (line-ref l col)))))
 (define (view-char-at v line col) (buffer-char-at (view-buffer v) line col))
 
+;; 整行文本；行号越界 → #f。
+(define (buffer-line b line)
+  (define t (document-text (buffer-document b)))
+  (and (exact-nonnegative-integer? line) (< line (track-length t))
+       (track-ref t line)))
+(define (view-line v line) (buffer-line (view-buffer v) line))
+
 ;;; ---------- 端口 / 槽（读） ----------
 
 (define (buffer-face b) (document-face (buffer-document b)))
@@ -87,6 +102,13 @@
 (define (buffer-slot-ref b sl) (document-slot-ref (buffer-document b) sl))
 (define (view-face-at v line col) (buffer-face-at (view-buffer v) line col))
 (define (view-readonly-at? v line col) (buffer-readonly-at? (view-buffer v) line col))
+;; 区间内是否有非默认 face / 只读格 / 可编辑。
+(define (buffer-face-any? b l0 c0 l1 c1)
+  (document-face-range? (buffer-document b) l0 c0 l1 c1))
+(define (buffer-readonly-any? b l0 c0 l1 c1)
+  (document-readonly-range? (buffer-document b) l0 c0 l1 c1))
+(define (buffer-editable? b l0 c0 l1 c1)
+  (document-editable? (buffer-document b) l0 c0 l1 c1))
 
 ;;; ---------- 点 / 选区 ----------
 
@@ -149,3 +171,11 @@
 (define (buffer-can-redo? b) (history-can-redo? (buffer-history b)))
 (define (buffer-depth b) (history-depth (buffer-history b)))
 (define (buffer-history-enabled? b) (history-enabled? (buffer-history b)))
+(define (buffer-history-limit b) (history-limit (buffer-history b)))
+;; 撤销 / 重做目标的**文本预览**（不推进栈）；无 → #f。
+(define (buffer-undo-target b)
+  (define d (history-undo-target (buffer-history b)))
+  (and d (document->string d)))
+(define (buffer-redo-target b)
+  (define d (history-redo-target (buffer-history b)))
+  (and d (document->string d)))
