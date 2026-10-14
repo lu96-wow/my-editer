@@ -9,7 +9,7 @@
 ;;;
 ;;; 操作是函数，组合用 compose，集合用 map；没有命令名注册表。
 
-(require "state.rkt" "history.rkt" "query.rkt"
+(require "state.rkt" "state-data.rkt" "history.rkt" "query.rkt"
          "../text/document.rkt" "../text/command.rkt" "../text/rebase.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"

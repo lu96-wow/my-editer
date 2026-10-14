@@ -32,7 +32,7 @@
 
 ;; 编辑后增量
 (displayln "======== 第二帧（增量） ========")
-(set-view-selections! doc-v (selections-one (caret (point 1 0))))
+(view-set-selections! doc-v (selections-one (caret (point 1 0))))
 (void (buffer-edit! doc-b doc-v (op-type ">> ")))
 (define-values (frame2 rends sels)
   (render-display-patch (entries) doc-v 80 10 frame))

@@ -49,6 +49,21 @@ racket temp/02-selection.rkt
 例：`(buffer-edit! b v op)`。需要布尔时用 `(and ret #t)`。
 `buffer-replace!` 返回 `void`（可用 `#:changes` 传入变更描述）；`buffer-apply-if-version!` 返回 `applied?`。
 
+## 唯一写入口
+
+`buffer` / `view` 的裸 setter（`set-view-selections!`、`set-view-viewport!`、`set-buffer-*!`）
+**已从公共 API 移除**（定义在内部的 `editor/state-data.rkt`，`state.rkt` 用 `except-out` 裁掉）。
+改状态一律走提交壳，例：
+
+| 想改 | 用 |
+|---|---|
+| view 选区 | `view-set-selections!` / `view-set-point!` / `view-select-all!` / 导航算子 |
+| view 视口 | `view-scroll!` / `view-set-mode!` / `view-set-top-line!` / `view-resize!` … |
+| buffer 文档 | `buffer-edit!` / `buffer-replace!` / `buffer-apply-if-version!` |
+| buffer 历史 | `buffer-undo!` / `buffer-redo!` / `buffer-clear-history!` … |
+
+这样就不会把 `view-set-selections!`（提交，会 clamp）和 `set-view-selections!`（裸写，不 clamp）搞混了。
+
 ## 两个容易踩的点
 
 1. **槽必须在任何 document 创建之前声明**（`document-open` 时会 `freeze-slots!`）。

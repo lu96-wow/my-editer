@@ -7,8 +7,12 @@
 ;;;
 ;;; 宿主持有这些对象；core 不集中管理多个文档，也没有 id。
 ;;; 对象可以不纯：字段用 #:mutable（结构手术 / 编辑就地写）。
+;;;
+;;; 可变数据结构定义在 state-data.rkt（core 内部）；这里对外**只导出访问器**，
+;;; 用 except-out 裁掉裸 setter，写回 buffer/view 只能走 ops.rkt 的提交壳。
 
-(require "history.rkt"
+(require "state-data.rkt"
+         "history.rkt"
          "../text/document.rkt"
          "../text/base/track.rkt"
          "../text/base/point.rkt"
@@ -16,9 +20,11 @@
          "../view/base/viewport.rkt")
 
 (provide
- ;; ---------- 类型 ----------
- (struct-out buffer)               ; name / history / views / merge
- (struct-out view)                 ; buffer / viewport / selections
+ ;; ---------- 类型（访问器 / 谓词 / 构造器；不含 setter） ----------
+ (except-out (struct-out buffer)  ; name / history / views / merge
+             set-buffer-name! set-buffer-history! set-buffer-views! set-buffer-merge!)
+ (except-out (struct-out view)    ; buffer / viewport / selections
+             set-view-buffer! set-view-viewport! set-view-selections!)
 
  ;; ---------- 构造 ----------
  make-buffer                       ; text [name] → buffer
@@ -35,18 +41,6 @@
 
  ;; ---------- 多态入口：string | document → document ----------
  ->document)                       ; x chunk-lines → document
-
-;;; ---------- 对象 ----------
-
-;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身。
-(struct buffer (name history views merge) #:mutable)
-;; name    : string
-;; history : history        （current 就是当前 document 真身）
-;; views   : (listof view)  共享这份内容的视图
-;; merge   : #f | (list tag view selections)  会话层「并步记忆」（见 ops.rkt）
-
-;; 视图：显示状态，指回 buffer。身份 = 对象本身。
-(struct view (buffer viewport selections) #:mutable)
 
 ;;; ---------- 多态入口 ----------
 
