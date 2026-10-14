@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/layout/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face
+;;; edit-tui/layout-base/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face
 ;;;
 ;;; 布局就是一堆面板，不必布满屏幕。id 不透明（宿主自己映射到 view 等）。
 ;;; 边框是**每边可选**的：靠屏幕边缘的那条可以不画（如左侧文件树只画右边）。

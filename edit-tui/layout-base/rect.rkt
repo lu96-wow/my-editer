@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/layout/rect.rkt —— 矩形 + 算术（布局唯一几何值）
+;;; edit-tui/layout-base/rect.rkt —— 矩形 + 算术（布局唯一几何值）
 
 (provide (struct-out rect)
          rect-right rect-bottom

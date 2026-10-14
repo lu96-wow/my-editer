@@ -12,7 +12,7 @@
 ;;; 遮挡由 core 的合成按 deep 决定：边框作为 decoration 进同一张 screen，
 ;;; screen-patch 逐格 diff，框移动 / 消失的旧格自动清掉（增量 + 清旧位置由 core 负责）。
 
-(require "../layout/rect.rkt" "../layout/panel.rkt"
+(require "../layout-base/rect.rkt" "../layout-base/panel.rkt"
          "../../core/editor.rkt")
 
 (provide panels->border-runs      ; (listof panel) -> (listof (row col text face deep))

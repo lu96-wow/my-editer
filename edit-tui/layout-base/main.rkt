@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit/layout/main.rkt —— 布局层入口（只做再导出）
+;;; edit-tui/layout-base/main.rkt —— 布局层入口（只做再导出）
 ;;;
 ;;; 布局 = 一堆面板（panel）：外框矩形 + 四条边可选边框 + 深度 + 边框 face。
 ;;; 不必布满屏幕。纯几何 + 定位：

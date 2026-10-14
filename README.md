@@ -7,7 +7,7 @@
 | 目录 | 职责 | 依赖 |
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
-| `edit-tui/layout/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
+| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
 | `edit-tui/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列；定义 face 值 | core、layout、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
 
@@ -82,7 +82,7 @@ layout 边框 (panel) ─┘         ▲
 
 ```racket
 (require tui
-         "edit-tui/layout/main.rkt"
+         "edit-tui/layout-base/main.rkt"
          "edit-tui/core-render/main.rkt"
          "edit-tui/theme/main.rkt"      ; require 即安装主题
          "core/editor.rkt")
@@ -103,7 +103,7 @@ layout 边框 (panel) ─┘         ▲
 
 ## 示例
 
-- `edit-tui/layout/demo.rkt` `edit-tui/layout/demo-float.rkt` —— 纯文本画面板 / 浮窗框。
+- `edit-tui/layout-base/demo.rkt` `edit-tui/layout-base/demo-float.rkt` —— 纯文本画面板 / 浮窗框。
 - `edit-tui/core-render/demo.rkt` —— 真终端带颜色。
 
 ## 约定
