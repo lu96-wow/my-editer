@@ -1,13 +1,14 @@
 #lang racket
 
-;;; core-render/demo.rkt —— 真终端（tui）跑通 core -> 片段 -> put-bytes
+;;; core-render/demo.rkt —— 真终端（tui）跑通 core -> 序列 -> put-bytes
 ;;;
 ;;; 运行：racket demo.rkt
 ;;; 会画一帧带颜色的画面，按任意键退出。
 ;;;
-;;; 后端在 backend.rkt：当前 (require tui) 真终端；改 tui/char 即字符图。
+;;; 输出（put-bytes / with-tui / 光标）由 demo 自己用 tui 处理；
+;;; render.rkt 只负责把 core 的 piece 画成序列。换 tui/char 即字符图。
 
-(require "backend.rkt" "theme.rkt" "face.rkt" "render.rkt"
+(require tui "theme.rkt" "face.rkt" "render.rkt"
          "../core/editor.rkt")
 
 (install-default-theme!)
@@ -50,12 +51,10 @@
 
 ;;; ---------- 画一帧（只用软件光标） ----------
 
-;;; ---------- 画一帧（只用软件光标） ----------
-
 (define (draw!)
   ;; 全量：old 传 #f，patch 会把整屏非空格都给你；前面清屏。
   (define-values (new rends sels) (render-display-patch entries v 48 5 #f))
-  (put-bytes (fragment (render-clear) (render-pieces (append rends sels)))))
+  (put-bytes (bytes-append (render-clear) (render-pieces (append rends sels)))))
 
 (with-tui
  (λ ()

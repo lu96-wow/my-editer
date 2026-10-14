@@ -14,7 +14,7 @@
 ;;;   attrs   = '(bold)          -> (style-define! 'bold          attr-bold)
 ;;; 渲染端只管 (style->bytes 名字) 拼接，不关心它是前景还是背景。
 
-(require "backend.rkt")
+(require tui)
 
 (provide define-styles! install-default-theme! default-styles)
 

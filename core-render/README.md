@@ -52,7 +52,7 @@ core（产生渲染数据）                      core-render（画）
 不实现自己的 theme / style。`theme` 就是一批 `style-define!`：
 
 ```racket
-(require "backend.rkt")           ; 拿到 tui 的 style-define! / color-rgb-fg / attr-bold …
+(require tui)                    ; style-define! / color-rgb-fg / attr-bold … 都来自 tui
 
 (define (define-styles! entries)  ; entries : (listof (list name spec ...))
   (for-each (λ (e) (apply style-define! e)) entries))
@@ -83,9 +83,8 @@ overlay 用**语义角色**当风格名（core `patch.rkt` 产出），三种默
 ```racket
 render-piece      : piece          -> 片段   ; 定位 + 样式 + 文本 + 复位
 render-pieces     : (listof piece) -> 片段
-render-clear      :                -> 片段
-emit!             : 片段           -> void
-face-fragment     : #f|symbol|face -> 片段
+render-clear      :                -> 序列
+face-fragment     : #f|symbol|face -> 序列
 ```
 
 一个 piece 的片段 = `move + fg + bg + attrs + text + reset`。
@@ -111,7 +110,7 @@ overlay 角色由 core `patch.rkt` 产出（语义，不含颜色）：
 
 - 何时渲染（首帧 / 增量 / 重绘）；
 - 怎么组合（`render-piece` 的片段可 append，多来源 / 多帧由外部拼）；
-- 是否 `put-bytes`（`emit!` 只是个薄壳）。
+- 是否 `put-bytes`（本模块不输出）。
 
 所以后端**不持有上一帧、不自己 diff、不自己 flush**。
 所有绘制数据都经 core 的 `render-display-patch` 来（全量就 `old = #f`），
@@ -121,23 +120,20 @@ overlay 角色由 core `patch.rkt` 产出（语义，不含颜色）：
 
 ```
 core-render/
-  backend.rkt   —— 后端原语入口（唯一分叉点）：
-                   (require tui)       真终端（默认）
-                   (require tui/char)  字符图（无 TTY，可测）
-                   提供 fragment（片段拼接，滤 #f）
-  face.rkt      —— face 结构 + 读写操作（纯）
-  theme.rkt     —— define-styles! / install-default-theme!（复用 tui 表）
-  render.rkt    —— piece / screen -> 片段（纯）
-  demo.rkt      —— 真终端画一帧（带颜色 / 选区），按任意键退出
+  face.rkt      —— face 结构 + 读写操作（纯，无 tui）
+  theme.rkt     —— define-styles! / install-default-theme!（require tui，复用其表）
+  render.rkt    —— piece -> tui 序列（require tui，纯函数，不输出）
+  demo.rkt      —— 宿主示例：真终端画一帧，输出/光标由 demo 自己用 tui 处理
 ```
 
-`backend.rkt` 里 `tui/char` ↔ `tui` 一行切换：`format-*` / `style->bytes` /
-`style-define!` / `put-bytes` 两边同名同签名，片段类型随之变（op / bytes）。
+没有 backend 汇总模块：**输出（`put-bytes` / `with-tui` / 光标）由宿主直接用 `tui`**；
+render/theme 各自 `(require tui)`。换 `tui/char` 就把这两处的 require 改掉（字符图，可无 TTY 测）。
 
 ## 5. 草图
 
 ```racket
-(require "core-render/backend.rkt" "core-render/theme.rkt" "core-render/render.rkt"
+(require tui                              ; 输出 / 生命周期 / 输入
+         "core-render/theme.rkt" "core-render/render.rkt"
          "core/editor.rkt")
 
 (install-default-theme!)
@@ -152,7 +148,7 @@ core-render/
    (cursor-hide)                                    ; 藏物理光标（tui 直接函数）
    ;; 首帧（old = #f）：先清屏，再把 patch 的片拼上
    (define-values (new r s) (render-display-patch entries v 80 24 #f))
-   (put-bytes (fragment (render-clear) (render-pieces (append r s))))
+   (put-bytes (bytes-append (render-clear) (render-pieces (append r s))))
    ;; 之后外部按需增量：render-display-patch entries v w h new …
    ))
 ```
@@ -164,7 +160,7 @@ core-render/
 - core buffer/view → `render-display-patch` → `render-pieces` → `put-bytes`；
 - face 三分量 → `\e[38;2;…m` / `\e[48;2;…m` / `\e[1m`；
 - 三种 overlay 色：主光标 `\e[7m`、副光标 `\e[4m`、选区 `\e[48;2;60;70;90m`。
-- 沙箱无 TTY 时把 `backend.rkt` 改成 `(require tui/char)`，用 `char-frame` 看纯文本帧。
+- 沙箱无 TTY 时把 `theme.rkt` / `render.rkt` 的 `(require tui)` 改成 `tui/char`，用 `char-frame` 看纯文本帧。
 
 待定：
 
@@ -201,19 +197,16 @@ face 值 = `#f | symbol | face`（`#f` 默认；`symbol` 是 core 裸符号如 `
 | `install-default-theme!` | `-> void` | 装内置配色 |
 | `default-styles` | 值 | 内置配色数据 |
 
-### `render.rkt` —— 渲染数据 -> 片段（纯）
+### `render.rkt` —— 渲染数据 -> tui 序列（纯）
 
 | API | 签名 | 功能 |
 |---|---|---|
 | `render-piece` | `piece -> 片段` | 一格：move + face(含 overlay) + text + reset |
 | `render-pieces` | `(listof piece) -> 片段` | 拼多个 piece |
-| `render-clear` | `-> 片段` | 清屏 |
-| `face-fragment` | `#f\|symbol\|face -> 片段` | 单独把 face 转片段 |
-| `emit!` | `片段 -> void` | `put-bytes` 薄壳 |
+| `render-clear` | `-> 序列` | 清屏 |
+| `face-fragment` | `#f\|symbol\|face -> 序列` | 单独把 face 转序列 |
 
-### `backend.rkt` —— 后端入口
+### 输出 / 生命周期：直接用 `tui`
 
-| API | 功能 |
-|---|---|
-| `(all-from-out tui)` | 真终端 tui 全部 API（`with-tui` / `put-bytes` / `read-event` / `format-*` / `style-*` / `color-*` / `attr-*` …） |
-| `fragment` | `(any … -> 片段)`：拼片段、滤 `#f`；换 char 后端即 `ops-append` |
+后端不封装输出：宿主要 `with-tui` / `put-bytes` / `cursor-hide` / `read-event` … 直接 `(require tui)`。
+组合 core 序列和其它序列（如边框）用 `bytes-append`（char 后端下 `tui/char` 会把 `bytes-append` 换成 `ops-append`）。
