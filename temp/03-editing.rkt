@@ -4,11 +4,11 @@
 ;;; 运行：racket temp/03-editing.rkt
 ;;;
 ;;; 模式：操作 = 纯函数（edit-op），提交 = buffer-edit!（写回 + 记 history + rebase 兄弟）。
-;;; 只读守卫：编辑前检查区间，命中只读格 → 整体拒绝，返回 ok? = #f。
+;;; 只读守卫：编辑前检查区间，命中只读格 → 整体拒绝，返回 #f。
 ;;;
 ;;; 注意：只读/face 的写回用 *-line! / *-range! / *-cell!（会按需建轨）。
-;;;       buffer-set-readonly! / buffer-set-face! 是「整条轨替换」，参数是一条 track，
-;;;       不是布尔/单个 face —— 日常不要用。
+;;;       「整条轨替换」（吃 track 的 buffer-set-readonly!/buffer-set-face!）和
+;;;       edit-op 都是内部机制，使用层（editor.rkt）不导出。
 
 (require "../core/editor.rkt")
 
@@ -60,7 +60,7 @@
   (printf "  kind=~a before=~a after=~a 插入文本=~s\n"
           (change-kind ch)
           (change-before ch) (change-after ch)
-          (document-change-text (buffer-document b4) ch)))
+          (buffer-range-text b4 (change-after ch))))
 
 ;; 无变更 → '()（真值，但空表）
 (define b5 (make-buffer "abc"))

@@ -5,7 +5,7 @@
 ;;;
 ;;; history = 纯文档版本栈（past / current / future）。没有 who/selections。
 ;;; 并步（merge）由提交层决定：同一 tag、同一 view、选区未变 → 折叠进当前步。
-;;; buffer-seal! 切断后续并步（下一个编辑新起一步）。
+;;; buffer-end-undo-step!（原实现名 buffer-seal!）切断后续并步（下一个编辑新起一步）。
 
 (require "../core/editor.rkt")
 
@@ -21,7 +21,7 @@
 (printf "内容: ~s  undo 步数: ~a\n" (buffer-string b) (buffer-depth b))
 
 (title "seal 切断并步")
-(buffer-seal! b)
+(buffer-end-undo-step! b)
 (view-set-point! v (point 1 3))
 (void (buffer-edit! b v (op-type ".")))
 (printf "内容: ~s  undo 步数: ~a\n" (buffer-string b) (buffer-depth b))

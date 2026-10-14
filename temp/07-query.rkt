@@ -41,10 +41,8 @@
 (printf "屏幕 -> point: line=~a col=~a\n" l c)
 
 (title "视口状态")
-(printf "mode=~a line-numbers?=~a size=~ax~a top-line=~a left-column=~a\n"
-        (view-mode v) (view-line-numbers? v)
-        (view-width v) (view-height v) (view-top-line v) (view-left-column v))
-(printf "anchor(line dc)=~a\n" (call-with-values (lambda () (view-anchor v)) list))
+(printf "mode=~a line-numbers?=~a size=~ax~a\n"
+        (view-mode v) (view-line-numbers? v) (view-width v) (view-height v))
 (printf "anchor-point=~a\n" (view-anchor-point v))
 (printf "visible-range=~a\n" (view-visible-range v))
 

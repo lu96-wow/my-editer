@@ -9,9 +9,14 @@
 ;;; 槽（slot）：特性声明的 opaque 存储，core 不懂语义，只做生命周期 / fork。
 ;;;
 ;;; 槽注册必须早于任何 document 创建（document-open 会 freeze-slots!）。
+;;; 槽 API 属于「特性」体系，不在 buffer/view 使用层，故直接 require 实现模块。
 
 (require "../core/editor.rkt"
-         "../core/text/slot-dsl.rkt")
+         "../core/text/slot-dsl.rkt"
+         (only-in "../core/editor/attributes.rkt" buffer-slot-set!)
+         (only-in "../core/editor/query.rkt" buffer-slot-ref)
+         (only-in "../core/editor/state.rkt" buffer-document)
+         (only-in "../core/text/document.rkt" document-editable?))
 
 ;; 槽声明（必须在 make-buffer 之前）
 (define-document-slot revision #:default 0 #:fork reset)

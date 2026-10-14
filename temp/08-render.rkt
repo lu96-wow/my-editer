@@ -10,7 +10,8 @@
 
 (require "../core/editor.rkt"
          "../core/view/render.rkt"          ; render
-         "../core/view/base/viewport.rkt")  ; viewport-open
+         "../core/view/base/viewport.rkt"   ; viewport-open
+         (only-in "../core/editor/state.rkt" buffer-document))  ; 高级：decorations 需要 document
 
 (define tree-b (make-buffer "src/\n  main.rkt\n  util.rkt\nREADME.md" "*tree*"))
 (define tree-v (buffer-add-view! tree-b 24 10))

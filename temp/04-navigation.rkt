@@ -40,21 +40,21 @@
 (printf "跳到 (7,2): ~a\n" (view-point v))
 
 (title "ensure：让光标滚进可见区")
-(view-set-top-line! v 0)
+(view-scroll-to-line! v 0)
 (view-set-point! v (point 15 0))         ; 默认 ensure? #t，会自动滚动
-(printf "top-line: ~a（光标 15 已可见）\n" (view-top-line v))
+(printf "首可见行: ~a（光标 15 已可见）\n"
+        (point-line (range-start (view-visible-range v))))
 
 (title "视口查询")
 (printf "mode=~a size=~ax~a\n" (view-mode v) (view-width v) (view-height v))
-(printf "top-line=~a left-column=~a\n" (view-top-line v) (view-left-column v))
 (printf "visible-range: ~a\n" (view-visible-range v))
-(printf "anchor(line dc): ~a\n" (call-with-values (lambda () (view-anchor v)) list))
+(printf "锚点(左上角点): ~a\n" (view-anchor-point v))
 
 (title "滚动")
 (view-scroll! v 3)
-(printf "scroll 3  后 top-line: ~a\n" (view-top-line v))
+(printf "scroll 3  后首可见行: ~a\n" (point-line (range-start (view-visible-range v))))
 (view-scroll! v -1)
-(printf "scroll -1 后 top-line: ~a\n" (view-top-line v))
+(printf "scroll -1 后首可见行: ~a\n" (point-line (range-start (view-visible-range v))))
 
 (title "wrap 模式：长行折成多个视觉行")
 (view-set-mode! v 'wrap)

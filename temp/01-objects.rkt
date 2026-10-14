@@ -31,7 +31,6 @@
 
 (title "一份 document + 一份 history，被两个 view 共享")
 (printf "v1/v2 指向同一 buffer? ~a\n" (eq? (view-buffer v1) (view-buffer v2)))
-(printf "v1/v2 document 同一对象? ~a\n" (eq? (view-document v1) (view-document v2)))
 (printf "编辑 v1，v2 也会看到：\n")
 (view-set-point! v1 (point 0 5))
 (void (buffer-edit! b v1 (op-type "!")))
