@@ -6,8 +6,9 @@
 ;;; 底层一块编辑器（无边框，铺满），上面叠一只浮窗（全框，deep 高）。
 ;;; 浮窗就是 deep 高的 panel：内容盖住底下的内容，边框独立成框。
 
-(require "../layout.rkt"
-         "../core/editor.rkt")
+(require "main.rkt"                    ; 布局：rect / panel
+         "../core-render/border.rkt"   ; 边框渲染：panels -> pane
+         "../../core/editor.rkt")
 
 (define W 60) (define H 16)
 

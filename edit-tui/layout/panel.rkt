@@ -11,7 +11,7 @@
 ;;; 具体颜色由后端主题决定 —— 布局不认识颜色。
 
 (require "rect.rkt"
-         "../core/editor.rkt")
+         "../../core/editor.rkt")
 
 (provide (struct-out panel)
          make-panel

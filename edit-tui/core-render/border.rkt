@@ -1,19 +1,19 @@
 #lang racket
 
-;;; edit/layout/border.rkt —— 面板边框 → 装饰 pane
+;;; edit/core-render/border.rkt —— 布局边框 → 装饰 pane（渲染后端的一部分）
 ;;;
 ;;; 每块面板**自己画自己的框**：只用直线 ─ │ 和角 ┌ ┐ └ ┘。
 ;;; 不做跨框邻接判定、不出 T/十字 —— 邻接就是两块框挨着，各画各的。
 ;;; 同一格被多块框覆盖时，**deep 高的盖住低的**（边覆盖）。
 ;;;
-;;; 每块框的 face 由 panel 带（符号标签），输出 run 里带上 → 之后由后端主题解析成颜色。
-;;; 布局不认识颜色：换主题只改 core-render 主题，布局一行不动。
+;;; 每块框的 face 由 panel 带（符号标签），输出 run 里带上 → 由 theme 解析成颜色。
+;;; 这里是“画”：字形 + face + 深度都在这；layout 只给几何（panel）。
 ;;;
 ;;; 遮挡由 core 的合成按 deep 决定：边框作为 decoration 进同一张 screen，
 ;;; screen-patch 逐格 diff，框移动 / 消失的旧格自动清掉（增量 + 清旧位置由 core 负责）。
 
-(require "rect.rkt" "panel.rkt"
-         "../core/editor.rkt")
+(require "../layout/rect.rkt" "../layout/panel.rkt"
+         "../../core/editor.rkt")
 
 (provide panels->border-runs      ; (listof panel) -> (listof (row col text face deep))
          panels->decorations)     ; (listof panel) -> (listof pane)

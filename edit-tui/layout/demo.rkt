@@ -6,8 +6,9 @@
 ;;; 画三个面板：左边文件树（只画右边框）、两个编辑器（只画右边框），
 ;;; 打印整帧纯文本，确认内容落在内容区、边框落在框线上。
 
-(require "../layout.rkt"
-         "../core/editor.rkt")
+(require "main.rkt"                    ; 布局：rect / panel
+         "../core-render/border.rkt"   ; 边框渲染：panels -> pane
+         "../../core/editor.rkt")
 
 (define W 40) (define H 12)
 
