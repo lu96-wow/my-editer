@@ -12,6 +12,12 @@
 ;;; 否则「高亮 + 选中」这类格会丢 face。piece 自足：后端不需要回头查 screen。
 ;;; piece = (row col text attr)；row/col 是屏幕坐标（行 / 显示列），attr 不透明。
 ;;; 坐标是 row/col（先行再列）。
+;;;
+;;; overlay 是**语义角色**，不含颜色（颜色由后端决定）：
+;;;     'cursor            主光标
+;;;     'cursor-secondary  非主光标（多光标）
+;;;     'selection         选区（主 / 副同色）
+;;; 角色来自 cursor / region 结构上的 primary?。
 
 (provide
  ;; ---------- 类型 ----------
@@ -36,7 +42,8 @@
   (values (append* rends) (append* sels)))
 
 ;;; ---------- 一格的状态 ----------
-;;; #f = 空白；'tail = 宽字符的右半格；(list char face overlay)，overlay ∈ {#f, 'selection, 'cursor}
+;;; #f = 空白；'tail = 宽字符的右半格；
+;;; (list char face overlay)，overlay ∈ {#f, 'selection, 'cursor, 'cursor-secondary}
 ;;; 空白格的“新内容”用 (list #\space #f #f) 表示，于是它自然成为 render 里的空格段。
 
 (define (row-cells s r)
@@ -55,7 +62,8 @@
       (set-overlay! cells c 'selection)))
   (for ([cu (in-list (screen-cursors s))] #:when (= (cursor-row cu) r))
     (when (and (>= (cursor-column cu) 0) (< (cursor-column cu) w))
-      (set-overlay! cells (cursor-column cu) 'cursor)))
+      (set-overlay! cells (cursor-column cu)
+                    (if (cursor-primary? cu) 'cursor 'cursor-secondary))))
   cells)
 
 (define (set-overlay! cells c ov)
@@ -95,8 +103,8 @@
           ;; overlay 格：key 带上 face → attr = (overlay . face)，外观完整。
           (define ch (if (pair? n) (car n) #\space))
           (define k (cond [(not (pair? n)) (list 'render #f)]
-                          [(eq? (caddr n) 'selection) (cons 'selection (cadr n))]
-                          [(eq? (caddr n) 'cursor) (cons 'cursor (cadr n))]
+                          [(memq (caddr n) '(selection cursor cursor-secondary))
+                           (cons (caddr n) (cadr n))]
                           [else (list 'render (cadr n))]))
           (define cw (char-display-width ch))
           (cond
