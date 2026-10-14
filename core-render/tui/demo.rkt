@@ -9,7 +9,7 @@
 ;;; render.rkt 只负责把 core 的 piece 画成序列。换 tui/char 即字符图。
 
 (require tui "theme.rkt" "face.rkt" "render.rkt"
-         "../core/editor.rkt")
+         "../../core/editor.rkt")
 
 (install-default-theme!)
 

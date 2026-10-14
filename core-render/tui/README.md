@@ -119,7 +119,7 @@ overlay 角色由 core `patch.rkt` 产出（语义，不含颜色）：
 ## 4. 文件
 
 ```
-core-render/
+core-render/tui/
   face.rkt      —— face 结构 + 读写操作（纯，无 tui）
   theme.rkt     —— define-styles! / install-default-theme!（require tui，复用其表）
   render.rkt    —— piece -> tui 序列（require tui，纯函数，不输出）
@@ -133,7 +133,7 @@ render/theme 各自 `(require tui)`。换 `tui/char` 就把这两处的 require 
 
 ```racket
 (require tui                              ; 输出 / 生命周期 / 输入
-         "core-render/theme.rkt" "core-render/render.rkt"
+         "core-render/tui/theme.rkt" "core-render/tui/render.rkt"
          "core/editor.rkt")
 
 (install-default-theme!)

@@ -13,7 +13,7 @@
 ;;; patch.rkt 的 overlay 编码 `(overlay . role)` 在这里解开：先底层 face，再叠角色名。
 
 (require tui "face.rkt"
-         "../core/editor.rkt")
+         "../../core/editor.rkt")
 
 (provide
  render-piece                    ; piece -> tui 序列
