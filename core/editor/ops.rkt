@@ -79,7 +79,7 @@
  buffer-undo!                     ; buffer → ok?
  buffer-redo!                     ; buffer → ok?
  buffer-clear-history!            ; buffer → void
- buffer-reset-history!            ; buffer [enabled?] → void
+ buffer-reset-history!            ; buffer [enabled? #t] → void（清历史；默认保持记步）
  buffer-set-history-enabled!)     ; buffer flag → void
 
 ;;; ================= undo 事务（显式合并） =================
@@ -363,7 +363,7 @@
 
 (define (buffer-clear-history! b)
   (set-buffer-history! b (history-clear (buffer-history b))))
-(define (buffer-reset-history! b [enabled? #f])
+(define (buffer-reset-history! b [enabled? #t])
   (set-buffer-history! b (history-set-enabled (history-clear (buffer-history b)) enabled?)))
 (define (buffer-set-history-enabled! b flag)
   (set-buffer-history! b (history-set-enabled (buffer-history b) flag)))

@@ -12,7 +12,7 @@
 ;;; 于是宿主不必自己记「当前步是否开着」——只要编辑走 session-edit!、
 ;;; 打断动作走 session-*!，合并边界就自动正确。
 
-(require "ops.rkt")
+(require "state.rkt" "ops.rkt")
 
 (provide
  (struct-out edit-session)        ; buffer / open?
@@ -39,7 +39,13 @@
  session-replace-range!           ; session range text [#:ensure?]
  session-set-line!                ; session line text
  session-set-char!                ; session line col char
- session-commit-if-unchanged!)    ; session base-doc new-doc → applied?
+ session-commit-if-unchanged!     ; session base-doc new-doc → applied?
+
+ ;; ---------- 历史 / 生命周期镜像（先收步） ----------
+ session-reset-history!           ; session [enabled? #t] → void
+ session-set-history-enabled!     ; session flag → void
+ session-close-view!              ; session view → void
+ session-close!)                  ; session → void
 
 (struct edit-session (buffer open?) #:mutable)
 
@@ -124,6 +130,24 @@
 (define (session-commit-if-unchanged! s base-doc new-doc)
   (session-break! s)
   (buffer-apply-if-version! (edit-session-buffer s) base-doc new-doc))
+
+;;; ---------- 历史 / 生命周期镜像（先收步） ----------
+
+(define (session-reset-history! s [enabled? #t])
+  (session-break! s)
+  (buffer-reset-history! (edit-session-buffer s) enabled?))
+
+(define (session-set-history-enabled! s flag)
+  (session-break! s)
+  (buffer-set-history-enabled! (edit-session-buffer s) flag))
+
+(define (session-close-view! s v)
+  (session-break! s)
+  (buffer-close-view! (edit-session-buffer s) v))
+
+(define (session-close! s)
+  (session-break! s)
+  (buffer-close! (edit-session-buffer s)))
 
 ;;; ---------- 历史 ----------
 
