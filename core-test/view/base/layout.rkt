@@ -42,4 +42,11 @@
 (define tc2 (track-of-list (list "abcdef" "ab")))
 (check-equal? (vrow-move tc2 10 'clip (point 0 5) +1) (point 1 2))
 
+;; 段定位 / 段距
+(check-equal? (segment-index-of "aaaa中中中" 5 'wrap 0) 0)
+(check-equal? (segment-index-of "aaaa中中中" 5 'wrap 6) 1)
+(check-equal? (segment-index-of "abc" 10 'clip 2) 0)
+(check-equal? (vrow-distance tw 4 'wrap 0 0 1 0) 2)     ; 2 段 + 行 1 首段
+(check-equal? (vrow-distance tw 4 'wrap 1 0 0 0) -2)
+
 (displayln "layout.rkt: all tests passed")

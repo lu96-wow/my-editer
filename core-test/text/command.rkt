@@ -76,4 +76,23 @@
 (define pro (document-readonly-fill pd 0 1 0 2 #t))
 (check-false (let-values ([(d s sp ok) (command-paste pro pss "H\ni")]) ok))
 
+;; ---------- 边界：文首退格 / 文末删除 = 无操作（ok? 仍 #t，changes 空） ----------
+(check-equal? (let-values ([(d s ch ok) (command-backspace (document-open "abc")
+                                                           (carets (list (caret (point 0 0)))))])
+                (list (document->string d) ch ok))
+              (list "abc" '() #t))
+(check-equal? (let-values ([(d s ch ok) (command-delete (document-open "abc")
+                                                        (carets (list (caret (point 0 3)))))])
+                (list (document->string d) ch ok))
+              (list "abc" '() #t))
+
+;; ---------- 重叠选区先归一：同点两光标只插一次 ----------
+(check-equal? (document->string
+               (let-values ([(d s ch ok)
+                             (command-type (document-open "abc")
+                                           (carets (list (caret (point 0 1)) (caret (point 0 1))))
+                                           "X")])
+                 d))
+              "aXbc")
+
 (displayln "command.rkt: all tests passed")

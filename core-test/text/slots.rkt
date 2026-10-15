@@ -57,6 +57,10 @@
 (check-equal? (document-slot-nchanges d2) 2)
 (check-equal? (document-slot-tlen d2) 5)
 
+;;; ---------- 注册表：数量 / 保留名 ----------
+(check-equal? (slot-count) 3)
+(check-exn exn? (lambda () (register-slot! 'ref #f 'reset)))   ; 与核心访问器撞名
+
 ;;; ---------- 冻结：注册晚于文档创建应报错 ----------
 
 (check-exn exn? (lambda () (register-slot! 'late #f 'reset)))

@@ -11,6 +11,7 @@
 
 ;; ---------- range：构造归一 / 判空 ----------
 (check-true (range=? (range-of (p 1 2) (p 0 0)) (r (p 0 0) (p 1 2))))
+(check-equal? (range-normalize (range (p 2 1) (p 0 0))) (r (p 0 0) (p 2 1)))
 (check-true (range-empty? (r (p 0 0) (p 0 0))))
 (check-false (range-empty? (r (p 0 0) (p 0 1))))
 

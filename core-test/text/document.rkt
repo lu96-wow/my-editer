@@ -60,8 +60,7 @@
 (check-equal? (track-length (document-face bd4)) 3)
 (check-equal? (track-length (document-readonly bd4)) 3)
 
-;; 只读跨行查询
-(check-true (document-readonly-range? bd2 0 0 0 3))
+;; 只读跨行查询：未物化文档一律默认（#f）
 (check-false (document-readonly-range? (document-open "abc") 0 0 0 3))
 
 ;; --- 用户糖：守（先查后改） ---

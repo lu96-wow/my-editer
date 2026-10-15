@@ -41,6 +41,15 @@
 
 ;; 属性赋值（不改行结构）
 (check-equal? (track-ref ((edit-fill 0 0 0 3 'ro) attr) 0) (vector 'ro 'ro 'ro))
+;; edit-fill*：每格与旧格 combine（而非直接覆盖）
+(check-equal? (track-ref ((edit-fill* 1 0 1 2 'X (λ (old new) (if (eq? old 'bold) new old))) attr) 1)
+              (vector 'X 'X 'none))
+
+;; 多轨一次性施加（edits / tracks 数量必须一致）
+(check-equal? (tlist (car (map-edits (list (edit-insert-text 0 1 "X")) (list text))))
+              '("aXbc" "def" "ghi"))
+(check-exn exn:fail?
+           (λ () (map-edits (list (edit-insert-text 0 1 "X")) (list text attr))))
 
 ;; 行级
 (check-equal? (tlist ((edit-insert-lines 1 '("NEW")) text)) '("abc" "NEW" "def" "ghi"))
