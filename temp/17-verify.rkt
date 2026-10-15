@@ -125,6 +125,6 @@
          [else (loop)])))))
 
 (module+ main
-  (if (pair? (current-command-line-arguments))
+  (if (positive? (vector-length (current-command-line-arguments)))
       (run-tui!)
       (run-verify!)))

@@ -20,11 +20,14 @@ racket temp/02-selection.rkt
 | `05-history.rkt` | undo / redo / 记步 / 显式事务 | 使用层 |
 | `06-attributes.rkt` | face / readonly / 开放槽 的读写 | 使用层 + 实现层（槽） |
 | `07-query.rkt` | 文本、点、选区、坐标换算、视口状态查询 | 使用层 |
-| `08-render.rkt` | display list → screen（全量 + 增量 + 装饰） | 使用层 + 实现层（decorations） |
 | `09-multiview.rkt` | 一份文档多视图，编辑时兄弟视图重基准 | 使用层 + `text/rebase.rkt` |
 | `10-session.rkt` | 编辑会话：连续编辑合并、打断收步 | 会话层 `editor/session.rkt` |
-| `11-panes.rkt` | 用 panel + pane 拼一帧（无 tty，`screen->string`） | `layout-base` + `core-render` |
-| `12-panes-tui.rkt` | 真终端交互：panel 拼屏，按任意键退出 | `tui` + `layout-base` + `core-render` + `theme` |
+| `13-panel-core.rkt` | panel 进 core：rect 驱动 view 尺寸 + 内置边框 + 一次 diff | 使用层 |
+| `14-perf.rkt` | 400×120 增量渲染性能基准 | `render-display-patch` |
+| `15-hotspots.rkt` | 渲染热点拆分（compose / patch / project） | 实现层 `view/compose` `view/patch` |
+| `16-dirty-fuzz.rkt` | 脏区增量渲染随机 fuzz：增量屏 == 全量屏 | `render-display-patch` |
+| `17-verify.rkt` | 布局 + 增量渲染验证；真终端交互 | `panels-sync!` |
+| `18-command.rkt` | 命令层：键序列表 + 组合 + racket-tui 输入 | `edit-tui/command` |
 
 ## 分层速查
 
