@@ -8,15 +8,17 @@
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
 | `edit-tui/base/` | **face 值定义**（`(face fg bg attrs)` + 读写）—— 生产者 / 消费者共用的基础词汇 | 无 |
-| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 + **边框字形** | core（`display-entry` / `pane`） |
+| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 + 边框字形 + **边框序列化** | core（`display-entry` / `pane`）、tui |
 | `edit-tui/core-render/` | 渲染后端：把 core 渲染值（`piece`）画成 tui 序列 | core、base、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
 
 ```
-view  ─▶ display-entry ─┐
-                        ├─▶ core 合成 panes->screen ─▶ screen ─▶ screen-patch ─▶ piece ─▶ core-render ─▶ tui 序列 ─▶ put-bytes
-panel ─▶ border ─▶ pane ┘                                                                    ▲
-                                                                       theme：face 符号 → 颜色
+core   view ─▶ display-entry ─┐
+                              ├─▶ core 合成 panes->screen ─▶ screen ─▶ screen-patch ─▶ piece ─▶ core-render ─▶ tui 序列 ─┐
+layout panel ─▶ border ─▶ pane ┘                                                                                        ├─▶ put-bytes
+       panel ─▶ render ───────────────────────────────────────────────────────▶ tui 序列 ─────────────────────────────┘
+                                                                 ▲
+                                                    theme：face 符号 → 颜色
 ```
 
 ## layout —— 面板 + 定位（纯几何）
@@ -25,7 +27,8 @@ panel ─▶ border ─▶ pane ┘                                             
 
 ```racket
 (struct rect  (x y w h))
-(struct panel (id rect borders deep face))
+(struct panel (owner rect borders deep face))
+;; owner   : 不透明引用（宿主用它映射到 view）
 ;; borders : (listof 'up 'down 'left 'right)   四条边各自可选（靠屏幕边的不画）
 ;; deep    : 越大越在上；浮窗 / 弹窗 = deep 高的 panel
 ;; face    : 边框 face 符号（颜色在 theme）
@@ -36,12 +39,21 @@ panel ─▶ border ─▶ pane ┘                                             
 | `rect` `rect-right` `rect-bottom` `rect-inset` `rect-inset-sides` `rect-split` `rect-contains?` | 矩形算术（`rect-split` 拆左右 / 上下） |
 | `make-panel` | 构造面板（`#:deep` `#:face`） |
 | **`panel-content`** | **内部区域**：外框按「存在的边」各内缩 1 |
-| `panel-at` `panel-find` | 命中（deep 最大）/ 按 id 找 |
-| `panels->entries` | 面板 + `id→view` → `display-entry`（用内容区定位） |
+| `panel-at` | 命中：包含点且 deep 最大的面板 |
+| `panels->entries` | 面板 + `owner→view` → `display-entry`（用内容区定位） |
+| **`panels->border-runs`** | 面板 → 边框 run `(row col text face deep)`（跨 panel 收边 + 同向延续取字形） |
+| **`panels->decorations`** | 面板 → 边框 `pane`（交给 core 合成） |
+| **`render-panels`** | 面板 → tui 序列（边框，可直接 `put-bytes`） |
+| `render-border-runs` `render-border-run` | 边框 run → tui 序列 |
 | **`panels->border-runs`** | 面板 → 边框 run `(row col text face deep)`（跨 panel 收边 + 同向延续取字形） |
 | **`panels->decorations`** | 面板 → 边框 `pane`（交给 core 合成） |
 
-边框的画（字形 / run / pane）在 `border.rkt`，与 panel 同层；它只产出 `pane`，不进 core-render。
+边框分两步，`border.rkt` 和 `render.rkt` 分工：
+
+- `border.rkt`：算几何 / 字形 → `pane`（交给 core 合成，可跟内容按 deep 分层遮挡）；
+- `render.rkt`：把 `border-run` 直接序列化成 tui 字节（`render-panels` / `render-border-runs`），border-only 直接输出。
+
+两边都不进 core-render。
 
 - 边框规则：**跨 panel 收集边**——所有 panel 的边框格进同一张集合，每格记「属于水平边还是垂直边」；字形由**同向延续**出的臂决定（水平看左右、垂直看上下）。于是共线相接 / 垂直相交处收成 T / 十字（`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`），而**平行相邻的边不连**（两条并排竖线各自是 `│`，不会合成 `├ ┤`）。同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。
 
@@ -52,6 +64,8 @@ panel ─▶ border ─▶ pane ┘                                             
 | 模块 | API | 作用 |
 |---|---|---|
 | `render.rkt` | `render-piece` `render-pieces` `render-clear` `face-fragment` | core `piece` → tui 序列 |
+
+对称地，布局这半的序列化在 `layout-base/render.rkt`（`render-panels` / `render-border-runs`）。
 
 face 值本身在 `edit-tui/base/face.rkt`（见上表）。
 
