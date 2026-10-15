@@ -26,7 +26,7 @@
 | 提交 | `editor/ops.rkt` | 纯算子构造 + 提交壳 + 显式事务（undo-scope） |
 | 读 | `editor/query.rkt` | 按对象读 |
 | 写回 | `editor/attributes.rkt` | 端口 / 槽写回（就地改盒，不进 history） |
-| 面板 | `view/panel.rkt` | `panel` 值 + `panel-content` + `panel-at`（命中，纯） |
+| 面板 | `view/panel.rkt` | `panel` 值 + `panel-content` + `panel-at`（命中）+ 屏幕↔内容坐标（都纯） |
 | 边框 | `view/border.rkt` | panel 边 → run（owner-first + 同向延续，固定 Unicode 框线） |
 | 布局骨架 | `view/layout.rkt` | panels → placements + border-runs（纯；注意与 `view/base/layout.rkt` 的文本折行无关） |
 | 渲染 | `view/compose.rkt` `view/patch.rkt` `editor/render.rkt` | pane 合成 → screen → 增量 piece；含分层缓存 / 脏区 |
@@ -57,6 +57,7 @@
 | 改边框 / 深度 / face | 造新 panel |
 | 分屏 / 切分 / 拖分隔条 | **在 core 外**：算 rect → 产出 `(listof panel)`（core 只吃结果） |
 | 命中（鼠标/拖拽） | `(panel-at panels row col)` → panel \| #f（和渲染同一份 panels、同一套 deep 规则） |
+| 屏坐标 → 文档 point（鼠标） | `(panel-screen-position->point panel row col)`；反向 `(panel-point->screen-position panel pt)`（editor 层，要解包 panel.view） |
 | 身份 / 增删去重 | **在 core 外**：panel 是值，宿主持有 id ↔ panel 映射 |
 
 ## 存在集 vs 可见集（分工）
@@ -86,6 +87,7 @@ screen-patch(old, new) → piece（render / selection）
   - 分层：布局层（panels 不变就复用）、内容层（`(document-revision, viewport)` 命中就复用）、合成屏
   - 脏区：只重合成「文本变化行」+ 只 patch 变化行；整帧无变化直接空差量
 - 定位（单焦点）：`panel-cursor-position`（几何）/ `panel-cursor-position/visible`（几何 ∩ 已画光标）/ `screen-primary-cursor`
+- 坐标：`panel-screen->content` / `panel-content->screen`（纯几何，`view/panel.rkt`）；`panel-screen-position->point` / `panel-point->screen-position`（要解包 view，`editor/query.rkt`）
 
 ## 合并与写入口
 
