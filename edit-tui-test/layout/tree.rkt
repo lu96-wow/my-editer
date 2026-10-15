@@ -37,6 +37,10 @@
 (define t6 (tree-move t3 'tree 'editor 'tb #:side 'after))
 (check-equal? (ids t6) '(editor tree console status))
 
+;; 移动：目标不存在 / 目标是自己 → 原样返回，不丢节点
+(check-equal? (ids (tree-move t3 'tree 'nope 'lr)) (ids t3))
+(check-equal? (ids (tree-move t3 'tree 'tree 'lr)) (ids t3))
+
 ;; 显隐：隐藏保留 size，恢复回来
 (define t7 (tree-hide t2 'tree))
 (check-false (tree-visible? t7 'tree))
@@ -48,9 +52,16 @@
 (check-equal? (leaf-view (tree-find (tree-set-content t2 'tree 'v) 'tree)) 'v)
 (check-equal? (leaf-weight (tree-find (tree-set-weight t2 'tree 9) 'tree)) 9)
 
-;; 拖缝：按路径改两个相邻孩子的 size
+;; 拖缝：按路径改两个相邻可见孩子的 size
 (define t8 (tree-resize-at t2 '() 0 5 7))
 (check-equal? (leaf-size (tree-find t8 'tree)) 5)
 (check-equal? (leaf-size (tree-find t8 'editor)) 7)
+;; 中间夹隐藏孩子时，伙伴取下一个**可见**孩子（不是 index+1）
+(define t2h (tree-hide t2 'editor))
+(check-equal? (map leaf-id (tree-visible-leaves t2h)) '(tree status))
+(define t9 (tree-resize-at t2h '() 0 5 7))
+(check-equal? (leaf-size (tree-find t9 'tree)) 5)
+(check-equal? (leaf-size (tree-find t9 'status)) 7)      ; 跳到 status
+(check-equal? (leaf-size (tree-find t9 'editor)) 1)      ; 隐藏的没被动
 
 (displayln "edit-tui/layout/tree.rkt: ok")

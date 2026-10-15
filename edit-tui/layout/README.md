@@ -21,9 +21,12 @@ node = leaf | split
       weight  边框 face 权重（→ core panel 的 weight，焦点框抬边框用）
       size    沿父轴的**权重**
       visible? 显隐
-  (split axis children size visible?)
+  (split axis children size)
       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
       children n 叉
+
+显隐只挂在**叶子**上（可隐藏的只有 panel）；split 是纯分组，一个分组只有在
+至少有一个可见叶子时才占空间（叶子全隐藏 → 整组不占额度）。
 ```
 
 **尺寸是权重**：同层按 `size` 比例分配沿轴额度（窗口 resize 自动按比例）。
@@ -73,8 +76,9 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 
 - `axis 'lr` → 竖缝（`offset` 是列）；`'tb` → 横缝（`offset` 是行）；
 - `span-lo/hi`：缝的范围；
-- `path` + `index`：缝所属 split 的「孩子下标路径」和左/上孩子下标 →
+- `path` + `index`：缝所属 split 的「孩子下标路径」和左/上**可见**孩子下标 →
   `(tree-resize-at tree path index s1 s2)` 改这两个孩子的 `size`，嵌套也准；
+  右侧/下方伙伴是 `index` 之后第一个**可见**孩子（中间夹隐藏孩子也准）；
 - `before`/`after`：缝两侧当前格数（拖拽按格数改 size）。
 
 命中：`cut-at`（第一条）/ `cuts-at`（全部，交点 = 竖缝 + 横缝 → 角拖）。

@@ -56,5 +56,5 @@
     [(split-spec? s)
      (split (split-spec-axis s)
             (map spec->tree (split-spec-children s))
-            (split-spec-size s) #t)]
+            (split-spec-size s))]
     [else (error 'spec->tree "不是 pane / lay：~a" s)]))

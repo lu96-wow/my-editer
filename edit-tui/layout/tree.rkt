@@ -11,9 +11,11 @@
 ;;;       weight  边框 face 权重（core panel 的 weight）
 ;;;       size    沿父轴的**权重**（>0）
 ;;;       visible? 显隐
-;;;   (split axis children size visible?)
+;;;   (split axis children size)
 ;;;       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
 ;;;       children (listof node)  —— n 叉
+;;;
+;;; 显隐只在**叶子**上；split 是纯分组，只在至少有一个可见叶子时才占空间。
 ;;;
 ;;; 尺寸是**权重**：同层内按 size 比例分配沿轴额度（窗口 resize 自动按比例）。
 ;;; 隐藏的从分配里跳过，但 size 保留 → 再显示按原比例回来。
@@ -22,7 +24,7 @@
 ;;; 「树 → (listof panel)」在 solve.rkt。
 
 (provide (struct-out leaf) (struct-out split)
-         node? node-size node-visible? node-with-size node-with-visible
+         node? node-size node-visible? node-with-size
          make-leaf empty-tree
          tree-find tree-leaves tree-visible-leaves tree-contains?
          tree-set-content tree-set-size tree-set-weight tree-set-borders tree-set-face
@@ -37,16 +39,18 @@
 (define (borders-default) borders-all)
 
 (struct leaf (id view borders face weight size visible?) #:transparent)
-(struct split (axis children size visible?) #:transparent)
+(struct split (axis children size) #:transparent)
 
 (define (node? x) (or (leaf? x) (split? x)))
 (define (node-size n) (if (leaf? n) (leaf-size n) (split-size n)))
-(define (node-visible? n) (if (leaf? n) (leaf-visible? n) (split-visible? n)))
+;; 可见性只在叶子上；分组节点“可见” = 至少有一个可见叶子（全隐藏的分组不占空间）。
+(define (node-visible? n)
+  (cond [(leaf? n) (leaf-visible? n)]
+        [else (for/or ([c (in-list (split-children n))]) (node-visible? c))]))
 (define (node-with-size n s) (if (leaf? n) (struct-copy leaf n [size s]) (struct-copy split n [size s])))
-(define (node-with-visible n v) (if (leaf? n) (struct-copy leaf n [visible? v]) (struct-copy split n [visible? v])))
 
 ;; 空布局（没有叶子）。
-(define (empty-tree) (split 'lr '() 1 #t))
+(define (empty-tree) (split 'lr '() 1))
 
 (define (make-leaf id view #:borders [borders (borders-default)] #:face [face 'window-border]
                    #:weight [weight 0] #:size [size 1] #:visible? [visible? #t])
@@ -66,11 +70,10 @@
   (cond [(leaf? t) (list t)]
         [else (append* (for/list ([c (in-list (split-children t))]) (tree-leaves c)))]))
 
-;; 可见叶（整棵隐藏子树都跳过）。
+;; 可见叶（隐藏叶跳过）。
 (define (tree-visible-leaves t)
   (cond [(leaf? t) (if (leaf-visible? t) (list t) '())]
-        [(split-visible? t) (append* (for/list ([c (in-list (split-children t))]) (tree-visible-leaves c)))]
-        [else '()]))
+        [else (append* (for/list ([c (in-list (split-children t))]) (tree-visible-leaves c)))]))
 
 (define (tree-visible? t id)
   (define l (tree-find t id))
@@ -102,7 +105,7 @@
            (let ([base (node-with-size n 1)]
                  [ins  (node-with-size node 1)])
              (split axis (if (eq? side 'after) (list base ins) (list ins base))
-                    (leaf-size n) (leaf-visible? n)))
+                    (leaf-size n)))
            n)]
       [else
        (if (and (eq? axis (split-axis n))
@@ -146,21 +149,38 @@
   t*)
 
 (define (tree-move t id target axis #:side [side 'after])
-  (define-values (t* moved) (tree-detach t id))
-  (if moved (tree-insert t* target axis moved #:side side) t))
+  (cond
+    ;; id / target 不在树里 → 原样（不动数据）
+    [(or (not (tree-contains? t id)) (not (tree-contains? t target))) t]
+    [else
+     (define-values (t* moved) (tree-detach t id))
+     ;; target 在被摘走的子树里（含 id = target）→ 放弃，保持原树
+     (if (and moved (tree-contains? t* target))
+         (tree-insert t* target axis moved #:side side)
+         t)]))
 
-;;; ---------- 拖缝：按路径改两个相邻孩子的 size ----------
+;;; ---------- 拖缝：按路径改两个相邻可见孩子的 size ----------
 
-;; path = 从根到 split 的孩子下标表；i = 缝在 children 里的左/上孩子下标。
+;; 从 i 之后找第一个可见孩子（隐藏孩子不占额度，跳过）。
+(define (next-visible-index cs i)
+  (for/first ([j (in-range (add1 i) (length cs))]
+              #:when (node-visible? (list-ref cs j)))
+    j))
+
+;; path = 从根到 split 的孩子下标表；i = 缝左 / 上方的**可见**孩子（原始下标）。
+;; 右 / 下方伙伴是 i 之后第一个**可见**孩子 —— 中间夹了隐藏孩子时，index+1 未必是它。
 (define (tree-resize-at t path i s-i s-i+1)
   (define (go n path)
     (define cs (split-children n))
     (cond
       [(null? path)
-       (struct-copy split n
-                    [children (list-set (list-set cs i (node-with-size (list-ref cs i) s-i))
-                                        (add1 i) (node-with-size (list-ref cs (add1 i)) s-i+1))])]
+       (define j (next-visible-index cs i))
+       (if j
+           (struct-copy split n
+                        [children (list-set (list-set cs i (node-with-size (list-ref cs i) s-i))
+                                            j (node-with-size (list-ref cs j) s-i+1))])
+           n)]
       [else
-       (define j (car path))
-       (struct-copy split n [children (list-set cs j (go (list-ref cs j) (cdr path)))])]))
+       (define k (car path))
+       (struct-copy split n [children (list-set cs k (go (list-ref cs k) (cdr path)))])]))
   (go t path))

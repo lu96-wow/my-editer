@@ -14,8 +14,8 @@
                (split 'tb
                       (list (make-leaf 'editor #f #:size 3)                    ; 主区：全边
                             (make-leaf 'status #f #:size 1 #:borders '(up)))   ; 底部 dock：上缝
-                      1 #t))
-         1 #t))
+                      1))
+         1))
 (define area (rect 0 0 100 40))
 
 (define ps (tree->panels tr area))
@@ -54,6 +54,26 @@
 (check-equal? (length pl2) 2)
 (check-equal? (let ([r (cadr (assoc 'editor pl2))]) (list (rect-x r) (rect-w r))) '(0 100))
 (check-equal? (let ([r (cadr (assoc 'status pl2))]) (list (rect-x r) (rect-w r))) '(0 100))
+
+;; 隐藏中间孩子：缝只连可见邻块；拖缝改的是可见邻块（不是被隐藏那个）
+(define flat (split 'lr (list (make-leaf 'a #f #:size 1)
+                             (make-leaf 'b #f #:size 1)
+                             (make-leaf 'c #f #:size 1))
+                   1))
+(define flat-h (tree-hide flat 'b))
+(define csh (tree->cuts flat-h area))
+(check-equal? (length csh) 1)
+(define c0 (car csh))
+(check-equal? (cut-index c0) 0)
+(define flat-r (tree-resize-at flat-h (cut-path c0) (cut-index c0) 5 7))
+(check-equal? (map leaf-size (tree-leaves flat-r)) '(5 1 7))
+
+;; 整棵子树隐藏 → 不占空间（不产生空档）；只剩一个可见孩子
+(define tr2 (tree-hide (tree-hide tr 'editor) 'status))
+(define pl4 (tree->placements tr2 area))
+(check-equal? (length pl4) 1)
+(check-equal? (let ([r (cadr (car pl4))]) (list (rect-x r) (rect-w r))) '(0 100))
+(check-equal? (tree->cuts tr2 area) '())
 
 ;; 极端：窗口很窄也不负数
 (define pl3 (tree->placements tr (rect 0 0 1 1)))
