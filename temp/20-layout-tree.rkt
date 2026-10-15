@@ -10,7 +10,7 @@
 ;;; 生产者只产出 core 的 (listof panel)；渲染还是 render-display。
 
 (require "../core/editor.rkt"
-         "../layout/main.rkt")
+         "../edit-tui/layout/main.rkt")
 
 (define W 60)
 (define H 16)

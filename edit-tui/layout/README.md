@@ -1,4 +1,4 @@
-# edit/layout —— 布局树（core 之上，宿主之下）
+# edit-tui/layout —— 布局树（core 之上，宿主之下）
 
 core 只吃 `(listof panel)`；本层负责**产出**它：把布局树解成带绝对 rect 的面板。
 不 require tui，可单测。
@@ -65,6 +65,20 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 > 可用 `tree-resize-at` 拖缝（cuts 里带 `path` + `index`）；重叠不影响命中/导航
 > （`panel-neighbor` 把“相接 / 重叠 1 格”当作邻接）。
 
+### cut（拖拽缝用）
+
+```racket
+(struct cut (axis offset span-lo span-hi path index before after))
+```
+
+- `axis 'lr` → 竖缝（`offset` 是列）；`'tb` → 横缝（`offset` 是行）；
+- `span-lo/hi`：缝的范围；
+- `path` + `index`：缝所属 split 的「孩子下标路径」和左/上孩子下标 →
+  `(tree-resize-at tree path index s1 s2)` 改这两个孩子的 `size`，嵌套也准；
+- `before`/`after`：缝两侧当前格数（拖拽按格数改 size）。
+
+命中：`cut-at`（第一条）/ `cuts-at`（全部，交点 = 竖缝 + 横缝 → 角拖）。
+
 ## 声明式（`spec.rkt`）
 
 启动时用一小段数据描述布局；`#:dock` 自动推边框：
@@ -88,19 +102,8 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 
 `#:borders` 可显式覆盖。**运行期不再动结构 / 边框，只 `tree-show` / `tree-hide`。**
 
-### cut（拖拽缝用）
-
-```racket
-(struct cut (axis offset span-lo span-hi path index))
-```
-
-- `axis 'lr` → 竖缝（`offset` 是列）；`'tb` → 横缝（`offset` 是行）；
-- `span-lo/hi`：缝的范围；
-- `path` + `index`：缝所属 split 的「孩子下标路径」和左/上孩子下标 →
-  `(tree-resize-at tree path index s1 s2)` 改这两个孩子的 `size`，嵌套也准。
-
 ## 和 core 的边界
 
 - 本层：树 → 绝对 rect 的 `panel`；
-- core：命中 / 六向 / 边框 / weight / 渲染；
-- 宿主：持有树、buffer / view、focus，把两边接起来。
+- core：命中 / 六向 / 边框合并 / weight / 渲染；
+- 宿主：持有树、buffer / view、focus，把两边接起来（见 `temp/20-layout-tree.rkt`、`temp/21-interactive-layout.rkt`）。

@@ -29,8 +29,8 @@ racket temp/02-selection.rkt
 | `17-verify.rkt` | 布局 + 增量渲染验证；真终端交互 | `panels-sync!` |
 | `18-command.rkt` | 命令层：键序列表 + 组合 + racket-tui 输入 | `edit-tui/command` |
 | `19-bench-neighbor.rkt` | panel 方向导航 / 深度前后 的开销（每次按键一次的 O(N) 查询） | `view/panel.rkt` |
-| `20-layout-tree.rkt` | 布局树：tree → panels → screen（显隐 / 移动 / cuts） | `edit/layout` |
-| `21-interactive-layout.rkt` | 交互：命令层 C-b 开关面板 + 鼠标拖接缝（with-tui） | `edit/layout` + `edit-tui/command` |
+| `20-layout-tree.rkt` | 布局树：tree → panels → screen（显隐 / 移动 / cuts） | `edit-tui/layout` |
+| `21-interactive-layout.rkt` | 交互（with-tui）：点击落光标 / 拖选 / 拖接缝 / 角拖 / 滚轮 / C-b 开关面板 | `edit-tui/layout` + `edit-tui/command` + core |
 
 ## 分层速查
 

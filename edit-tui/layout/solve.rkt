@@ -6,8 +6,10 @@
 ;;;   tree->placements : tree area → (listof (list id rect))
 ;;;   tree->cuts       : tree area → (listof cut)          缝（拖拽用）
 ;;;
-;;; 同层按 size 权重比例分额度；隐藏跳过（size 保留）。边框不在生产者里决定：
-;;; 用 leaf 自己的 borders（默认全边）。窗口 resize 时按权重自动重分。
+;;; 同层按 size 权重比例分额度；隐藏跳过（size 保留）。相邻面板**边界重叠**：
+;;; 相邻兄弟共享 1 格接缝（总格数 = ext + (n-1)），两侧各画自己的边 →
+;;; 重叠在同一格，由 core border-owner（deep/weight/列表序）选一个 face = 一条线。
+;;; 屏幕边（outer）的框由 leaf 自己声明的 borders 决定去不去。
 ;;;
 ;;; area 是外层 rect（屏幕坐标，x=列 y=行）。
 
@@ -16,8 +18,8 @@
          tree->panels tree->placements tree->cuts)
 
 (require "tree.rkt"
-         "../core/view/panel.rkt"
-         "../core/view/base/rect.rkt")
+         "../../core/view/panel.rkt"
+         "../../core/view/base/rect.rkt")
 
 (struct cut (axis offset span-lo span-hi path index before after) #:transparent)
 ;; axis      'lr（竖缝，offset = 列）| 'tb（横缝，offset = 行）
@@ -33,11 +35,9 @@
                (<= (cut-span-lo c) row) (< row (cut-span-hi c)))]
     [(tb) (and (= row (cut-offset c))
                (<= (cut-span-lo c) col) (< col (cut-span-hi c)))]))
-
-;; 该点命中的**所有**缝（交点 = 竖缝 + 横缝 → 角拖）。
+;; 该点命中的所有缝（交点 = 竖缝 + 横缝 → 角拖）。
 (define (cuts-at cuts row col)
   (for/list ([c (in-list cuts)] #:when (cut-match? c row col)) c))
-
 ;; 第一条（命中优先级由 cuts 顺序决定）。
 (define (cut-at cuts row col)
   (for/or ([c (in-list cuts)] #:when (cut-match? c row col)) c))
@@ -65,10 +65,10 @@
 ;;; ---------- 遍历 ----------
 
 ;; 相邻面板**边界重叠**：相邻兄弟共享 1 格接缝（总格数 = ext + (n-1)）。
-;; 接缝两侧都画自己的边 → 重叠在同一格，由 border-owner（deep/weight/列表序）选一个 face
-;; = 一条线。屏幕边（outer）的框由 dock 决定去不去。
+;; 接缝两侧都画自己的边 → 重叠在同一格，由 border-owner 选一个 face = 一条线。
+;; 屏幕边（outer）的框由 dock 决定去不去。
 ;;
-;; outer 边集随 rect 下推：非最后孩子把「右(lr)/下(tb)」变成内部，非第一把「左(lr)/上(tb)」变内部。
+;; outer 边集随 rect 下推：非最后孩子把「右(lr)/下(tb)」变内部，非第一把「左(lr)/上(tb)」变内部。
 ;; 叶子有效边框 = 内部边 ∪ (外部边 ∩ 它声明的 borders)。
 (define (solve tree area)
   (define placements '())
@@ -151,8 +151,7 @@
   (check-equal? (rect-y (rect-of 'status)) (sub1 (rect-bottom (rect-of 'editor))))
   (check-equal? (rect-x (rect-of 'status)) (rect-x (rect-of 'editor)))
 
-  ;; 有效边框 = 内部边 ∪ (外部边 ∩ 声明)：
-  ;;   tree 内缝右；editor 全（内缝左/下 + 外缝上/右）；status 上/左（上缝 + 左接缝）
+  ;; 有效边框 = 内部边 ∪ (外部边 ∩ 声明)
   (check-equal? (panel-borders (panel-of 'tree)) '(right))
   (check-equal? (panel-borders (panel-of 'editor)) '(up down left right))
   (check-equal? (panel-borders (panel-of 'status)) '(up left))

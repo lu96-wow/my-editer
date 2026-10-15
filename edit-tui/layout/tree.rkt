@@ -32,7 +32,7 @@
          tree-resize-at)
 
 (require racket/list
-         "../core/view/panel.rkt")          ; borders-all
+         "../../core/view/panel.rkt")          ; borders-all
 
 (define (borders-default) borders-all)
 
@@ -186,7 +186,7 @@
   (define t3 (tree-split t2 'editor 'tb 'console #:side 'after))
   (check-equal? (ids t3) '(tree editor console status))
 
-  ;; 关闭：删叶子 + 单孩子 split 塔缩
+  ;; 关闭：删叶子 + 单孩子 split 塌缩
   (define t4 (tree-close t3 'editor))
   (check-equal? (ids t4) '(tree console status))
 
@@ -196,7 +196,7 @@
   (check-true (leaf? removed))
   (check-eq? (leaf-id removed) 'status)
 
-  ;; 移动：tree 拂到 editor 旁边（tb 同轴插入）
+  ;; 移动：tree 挪到 editor 旁边（tb 同轴插入）
   (define t6 (tree-move t3 'tree 'editor 'tb #:side 'after))
   (check-equal? (ids t6) '(editor tree console status))
 
