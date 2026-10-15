@@ -110,6 +110,7 @@
  ;; 面板
  (struct-out panel)
  make-panel borders-all borders-none panel-content
+ panel-at                         ; 命中：覆盖 (row,col) 且 deep 最大的 panel（同渲染的 panels）
  buffer-add-panel!
  panel-sync! panels-sync!
  ;; 定位（单焦点模型）

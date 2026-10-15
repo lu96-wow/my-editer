@@ -38,12 +38,7 @@
 
 ;;; ---------- owner ----------
 
-; 覆盖 (r,c)（r=行, c=列）的 panel：deep 最大，同 deep 列表靠后者胜；都没有 → #f。
-(define (owner-at panels r c)
-  (for/fold ([best #f]) ([p (in-list panels)])
-    (if (and (rect-contains? (panel-rect p) c r)      ; rect-contains? 收 (x=列, y=行)
-             (or (not best) (>= (panel-deep p) (panel-deep best))))
-        p best)))
+;; 命中规则见 panel.rkt 的 panel-at（deep 大者胜、同 deep 后者胜）。
 
 ;;; ---------- 可见边格 ----------
 
@@ -63,16 +58,16 @@
     (define b (panel-borders p))
     (when (and (> w 0) (> h 0))
       (when (memq 'up b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (owner-at panels y c) p))
+        (for ([c (in-range x (+ x w))] #:when (eq? (panel-at panels y c) p))
           (add! p (cons y c) #t #f)))
       (when (memq 'down b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (owner-at panels (sub1 (+ y h)) c) p))
+        (for ([c (in-range x (+ x w))] #:when (eq? (panel-at panels (sub1 (+ y h)) c) p))
           (add! p (cons (sub1 (+ y h)) c) #t #f)))
       (when (memq 'left b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (owner-at panels rr x) p))
+        (for ([rr (in-range y (+ y h))] #:when (eq? (panel-at panels rr x) p))
           (add! p (cons rr x) #f #t)))
       (when (memq 'right b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (owner-at panels rr (sub1 (+ x w))) p))
+        (for ([rr (in-range y (+ y h))] #:when (eq? (panel-at panels rr (sub1 (+ x w))) p))
           (add! p (cons rr (sub1 (+ x w))) #f #t)))))
   ;; 字形：同向延续出的臂
   (define (at r c) (hash-ref info (cons r c) #f))

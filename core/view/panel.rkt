@@ -20,7 +20,8 @@
 (provide (struct-out panel)
          make-panel
          borders-all borders-none
-         panel-content)
+         panel-content
+         panel-at)
 
 (struct panel (view rect borders deep face) #:transparent)
 
@@ -39,3 +40,41 @@
                     (if (memq 'right b) 1 0)
                     (if (memq 'down b)  1 0)
                     (if (memq 'left b)  1 0)))
+
+;;; ---------- 命中 ----------
+
+;; 覆盖屏幕格 (row, col) 的 panel：deep 最大者胜；同 deep 列表靠后者胜；都无 → #f。
+;; 与边框遮挡同一套规则（见 border.rkt）：渲染吃的 panels，就是这里查的 panels。
+;; rect 是 (x=列, y=行)；这里按屏幕坐标收参，方便鼠标直接换算（x→col, y→row）。
+(define (panel-at panels row col)
+  (for/fold ([best #f]) ([p (in-list panels)])
+    (if (and (rect-contains? (panel-rect p) col row)
+             (or (not best) (>= (panel-deep p) (panel-deep best))))
+        p
+        best)))
+
+(module+ test
+  (require rackunit)
+  (define (mk owner x y w h #:deep [d 0]) (make-panel owner (rect x y w h) borders-all #:deep d))
+  (define lo (mk 'lo 0 0 10 10))
+  (define hi (mk 'hi 2 2 4 4 #:deep 5))
+  (define ps (list lo hi))
+
+  ;; 命中 / 落空
+  (check-eq? (panel-at ps 0 0) lo)
+  (check-eq? (panel-at ps 3 3) hi)          ; 高 deep 浮窗盖住
+  (check-eq? (panel-at ps 9 9) lo)
+  (check-false (panel-at ps 10 0))          ; 右边界开
+  (check-false (panel-at ps 0 10))
+
+  ;; 同 deep：列表靠后者胜
+  (define a (mk 'a 0 0 5 5))
+  (define b (mk 'b 0 0 5 5))
+  (check-eq? (panel-at (list a b) 1 1) b)
+  (check-eq? (panel-at (list b a) 1 1) a)
+
+  ;; 零尺寸 / 空表
+  (check-false (panel-at (list (make-panel 'z (rect 0 0 0 0) borders-none)) 0 0))
+  (check-false (panel-at '() 0 0))
+
+  (displayln "panel.rkt: ok"))
