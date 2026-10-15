@@ -26,7 +26,7 @@
 | 提交 | `editor/ops.rkt` | 纯算子构造 + 提交壳 + 显式事务（undo-scope） |
 | 读 | `editor/query.rkt` | 按对象读 |
 | 写回 | `editor/attributes.rkt` | 端口 / 槽写回（就地改盒，不进 history） |
-| 面板 | `view/panel.rkt` | `panel` 值 + `panel-content` + `panel-at`（命中）+ `panel-move`（六向：4 同层 + 2 跨层）+ 屏幕↔内容坐标（都纯） |
+| 面板 | `view/panel.rkt` | `panel` 值 + `panel-content` + `panel-at`/`panel-at-all`（命中/命中栈）+ `panel-move`（六向：4 同层 + 2 跨层）+ 屏幕↔内容坐标（都纯） |
 | 边框 | `view/border.rkt` | panel 边 → run（owner-first + 同向延续，固定 Unicode 框线） |
 | 布局骨架 | `view/layout.rkt` | panels → placements + border-runs（纯；注意与 `view/base/layout.rkt` 的文本折行无关） |
 | 渲染 | `view/compose.rkt` `view/patch.rkt` `editor/render.rkt` | pane 合成 → screen → 增量 piece；含分层缓存 / 脏区 |
@@ -56,7 +56,7 @@
 | 换 view | 造新 panel（新 view），调 `panels-sync!` |
 | 改边框 / 深度 / face | 造新 panel |
 | 分屏 / 切分 / 拖分隔条 | **在 core 外**：算 rect → 产出 `(listof panel)`（core 只吃结果） |
-| 命中（鼠标/拖拽） | `(panel-at panels row col)` → panel \| #f（和渲染同一份 panels、同一套 deep 规则） |
+| 命中（鼠标/拖拽） | `(panel-at panels row col)` → 最上 panel \| #f；栈用 `(panel-at-all panels row col)` → 上→下全部（首个 = `panel-at`） |
 | 方向导航（焦点） | `(panel-move panels from dir)`，`dir ∈ left/right/up/down`（同层平铺，`panel-neighbor`）+ `front/back`（跨层前后，`panel-depth-neighbor`）→ panel \| #f |
 | 屏坐标 → 文档 point（鼠标） | `(panel-screen-position->point panel row col)`；反向 `(panel-point->screen-position panel pt)`（editor 层，要解包 panel.view） |
 | 身份 / 增删去重 | **在 core 外**：panel 是值，宿主持有 id ↔ panel 映射 |

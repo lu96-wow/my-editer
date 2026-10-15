@@ -22,6 +22,7 @@
          borders-all borders-none
          panel-content
          panel-at
+         panel-at-all
          panel-move
          panel-neighbor
          panel-depth-neighbor
@@ -57,6 +58,20 @@
              (or (not best) (>= (panel-deep p) (panel-deep best))))
         p
         best)))
+
+;; 覆盖屏幕格 (row, col) 的**所有** panel，按从上到下排序（deep 降；同 deep 列表靠后在前）。
+;; 无 → '()。首个元素 = panel-at 的结果（同一套规则）。
+(define (panel-at-all panels row col)
+  (define hits
+    (for/list ([p (in-list panels)] [i (in-naturals)]
+               #:when (rect-contains? (panel-rect p) col row))
+      (cons i p)))
+  (map cdr
+       (sort hits (λ (a b)
+                    (define pa (cdr a)) (define pb (cdr b))
+                    (cond [(> (panel-deep pa) (panel-deep pb)) #t]
+                          [(< (panel-deep pa) (panel-deep pb)) #f]
+                          [else (> (car a) (car b))])))))
 
 ;;; ---------- 坐标（纯几何）----------
 ;;
@@ -208,6 +223,14 @@
   ;; 零尺寸 / 空表
   (check-false (panel-at (list (make-panel 'z (rect 0 0 0 0) borders-none)) 0 0))
   (check-false (panel-at '() 0 0))
+
+  ;; panel-at-all：覆盖点的所有 panel，上→下
+  (check-equal? (panel-at-all ps 3 3) (list hi lo))       ; deep 5 在 deep 0 上
+  (check-equal? (panel-at-all ps 0 0) (list lo))
+  (check-equal? (panel-at-all ps 100 100) '())
+  (check-equal? (car (panel-at-all ps 3 3)) (panel-at ps 3 3))   ; 首个 = panel-at
+  ;; 同 deep：列表靠后者在前
+  (check-equal? (panel-at-all (list a b) 1 1) (list b a))
 
   ;; 坐标平移：内容原点 = 外框 + 有边框的边各 1
   (define pc (make-panel 'v (rect 5 2 10 4) borders-all))
