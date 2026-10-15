@@ -1,8 +1,8 @@
 #lang racket
 
-;;; command/keymap.rkt —— 键表（纯）：键序列 → 过程
+;;; command/keymap.rkt —— 键表（纯）：token 序列 → 过程
 ;;;
-;;; 键表是一棵 trie：
+;;; token 是不透明、equal? 可比的值（键令牌、鼠标令牌…）。表是一棵 trie：
 ;;;     叶子   过程     命中即执行
 ;;;     子树   keymap   前缀，继续读键
 ;;;
@@ -11,12 +11,12 @@
 ;;;   · 一个键下两边都是子树 → 递归合并（各自不冲突的续键都保留）；
 ;;;   · 一边叶子一边子树 → 后面的整体替换前面的（前缀也是「同键」）。
 ;;;
-;;; 构造 DSL `keys`：每条绑定写成一对方括号，最后一格是过程，前面是要按的键。
+;;; 构造 DSL `keys`：每条绑定写成一对方括号，最后一格是过程，前面是要按的 token。
 ;;;
 ;;;     (keys [(key 'left)                 (λ () …)]
-;;;           [(key 'p 'ctrl) (key 'x)     (λ () …)])
+;;;           [(mouse 'press 'left)        (λ () …)])
 ;;;
-;;; 宿主读到一个事件后调 `keymap-step` 推进；`empty-keymap` 是空表。
+;;; 宿主读到事件后调 `keymap-step` 推进；`empty-keymap` 是空表。
 
 (provide (struct-out keymap)
          empty-keymap
@@ -24,17 +24,17 @@
          keymap-merge
          keys)
 
-(require "key.rkt")
+;; token 由调用方给：键用 (key …)，鼠标用 (mouse …)。表本身不关心 token 类型。
 
 (struct keymap (bindings) #:transparent)
-;; bindings : (hash/c key? (or/c keymap? procedure?))
+;; bindings : (hash/c any/c (or/c keymap? procedure?))   ; 键 = 任意 equal? 可比 token
 
 (define empty-keymap (keymap (hash)))
 
 ;; 插入一条 seq → proc。路径上的旧叶子 / 旧子树按「后插覆盖」处理。
 (define (keymap-set km seq proc)
-  (unless (and (pair? seq) (andmap key? seq))
-    (error 'keymap-set "键序列要是非空 key 列表，得到 ~a" seq))
+  (unless (pair? seq)
+    (error 'keymap-set "序列要是非空 token 列表，得到 ~a" seq))
   (unless (procedure? proc)
     (error 'keymap-set "叶子要是一个过程，得到 ~a" proc))
   (define (go h seq)
@@ -87,7 +87,7 @@
     (keymap-set km (car b) (cadr b))))
 
 (module+ test
-  (require rackunit)
+  (require rackunit "key.rkt")
 
   (define base
     (keys [(key 'left)                       (λ () 'left)]

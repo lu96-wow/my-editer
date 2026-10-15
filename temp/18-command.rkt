@@ -76,11 +76,12 @@
 
 ;;; ════════════════════════ 事件处理 ════════════════════════
 
-;; 喂一个事件：键表命中 → 执行；未命中且是可打印字符 → 文本通道。
-;; 返回 key-reader-feed! 的状态（headless 检查用）。
+;; 喂一个事件：命令层只返回 proc，这里执行；未命中且是可打印字符 → 文本通道。
+;; 返回状态（headless 检查用）。
 (define (handle-event! ev)
-  (define r (key-reader-feed! reader ev))
-  (case r
+  (define-values (status proc) (key-reader-feed! reader ev))
+  (case status
+    [(command) (proc)]
     [(unbound)
      (define k (and (key-event? ev) (key-event-key ev)))
      (define m (and (key-event? ev) (key-event-mods ev)))
@@ -88,7 +89,7 @@
             (insert! (string k))]
            [else (note! (format "unbound: ~a" (if (key-event? ev) (key-event-key ev) ev)))])]
     [else (void)])
-  r)
+  status)
 
 (define (press! k #:ctrl [c #f] #:alt [a #f])
   (handle-event! (key-event k (mods c a #f))))

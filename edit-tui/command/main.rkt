@@ -7,9 +7,11 @@
 ;;; require 本模块即得到全部能力。
 
 (require "key.rkt"
+         "mouse.rkt"
          "keymap.rkt"
          "tui.rkt")
 
 (provide (all-from-out "key.rkt"
+                       "mouse.rkt"
                        "keymap.rkt"
                        "tui.rkt"))
