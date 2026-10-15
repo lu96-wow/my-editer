@@ -21,7 +21,9 @@
          make-panel
          borders-all borders-none
          panel-content
-         panel-at)
+         panel-at
+         panel-screen->content
+         panel-content->screen)
 
 (struct panel (view rect borders deep face) #:transparent)
 
@@ -53,6 +55,21 @@
         p
         best)))
 
+;;; ---------- 坐标（纯几何）----------
+;;
+;; 屏幕坐标 ↔ 面板内容内坐标。视图尺寸就是内容区尺寸（panels-sync! 保证），
+;; 所以“内容内坐标”就是 view 内屏幕坐标 —— 鼠标 / 光标定位靠这两个纯平移。
+
+;; 屏幕格 (row, col) → 内容内 (row, col)。
+(define (panel-screen->content p row col)
+  (define c (panel-content p))
+  (values (- row (rect-y c)) (- col (rect-x c))))
+
+;; 内容内 (row, col) → 屏幕格 (row, col)（上式的逆）。
+(define (panel-content->screen p row col)
+  (define c (panel-content p))
+  (values (+ row (rect-y c)) (+ col (rect-x c))))
+
 (module+ test
   (require rackunit)
   (define (mk owner x y w h #:deep [d 0]) (make-panel owner (rect x y w h) borders-all #:deep d))
@@ -76,5 +93,16 @@
   ;; 零尺寸 / 空表
   (check-false (panel-at (list (make-panel 'z (rect 0 0 0 0) borders-none)) 0 0))
   (check-false (panel-at '() 0 0))
+
+  ;; 坐标平移：内容原点 = 外框 + 有边框的边各 1
+  (define pc (make-panel 'v (rect 5 2 10 4) borders-all))
+  (check-equal? (call-with-values (λ () (panel-screen->content pc 3 6)) list) '(0 0))
+  (check-equal? (call-with-values (λ () (panel-content->screen pc 0 0)) list) '(3 6))
+  ;; 往返
+  (check-equal? (call-with-values (λ () (panel-content->screen pc 2 4)) list) '(5 10))
+  (check-equal? (call-with-values (λ () (panel-screen->content pc 5 10)) list) '(2 4))
+  ;; 无边框：内容原点 = 外框原点
+  (define pn (make-panel 'v (rect 5 2 10 4) borders-none))
+  (check-equal? (call-with-values (λ () (panel-screen->content pn 2 5)) list) '(0 0))
 
   (displayln "panel.rkt: ok"))

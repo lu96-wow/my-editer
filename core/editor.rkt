@@ -111,10 +111,12 @@
  (struct-out panel)
  make-panel borders-all borders-none panel-content
  panel-at                         ; 命中：覆盖 (row,col) 且 deep 最大的 panel（同渲染的 panels）
+ panel-screen->content panel-content->screen  ; 屏幕 ↔ 内容内坐标（纯几何）
  buffer-add-panel!
  panel-sync! panels-sync!
  ;; 定位（单焦点模型）
  panel-cursor-position panel-cursor-position/visible screen-primary-cursor
+ panel-screen-position->point panel-point->screen-position  ; panel ↔ 文档坐标（editor 层）
  ;; 渲染
  render-display render-display-patch
  render-cache-screen

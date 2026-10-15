@@ -9,7 +9,8 @@
          "../text/base/point.rkt" "../text/base/range.rkt"
          "../text/base/selection.rkt" "../text/base/track.rkt"
          "../text/base/line.rkt" "../text/base/width.rkt"
-         "../view/base/viewport.rkt" "../view/base/layout.rkt")
+         "../view/base/viewport.rkt" "../view/base/layout.rkt"
+         "../view/panel.rkt")
 
 (provide
  ;; ---------- 文本 / 名称 ----------
@@ -48,6 +49,8 @@
  view-cursor-screen-position      ; view → 主光标屏幕位置（view 内坐标）(values row col) | (values #f #f)
  view-point->screen-position      ; view point → (values row col) | (values #f #f)
  view-screen-position->point      ; view row col → (values line col) | (values #f #f)
+ panel-screen-position->point     ; panel + 屏幕 (row,col) → (values line col) | (values #f #f)
+ panel-point->screen-position     ; panel + point → 绝对屏幕 (row,col) | (values #f #f)
 
  ;; ---------- 视口状态 ----------
  view-mode                        ; view → 'clip | 'wrap
@@ -133,6 +136,21 @@
 (define (view-screen-position->point v row col)
   (viewport-screen-position->point (document-text (view-document v)) (view-viewport v) row col))
 
+;;; ---------- panel 定位（panel + 视图坐标）----------
+;;
+;; panel 是显示值；把它带到“文档坐标”要解包 panel.view 的 viewport/document，
+;; 所以这一对在 editor 层；纯几何平移（屏幕 ↔ 内容内）在 view/panel.rkt。
+
+;; panel 上的屏幕格 (row, col) → 文档 (values line col)；内容外 / 不可见 → (values #f #f)。
+(define (panel-screen-position->point p row col)
+  (define-values (r c) (panel-screen->content p row col))
+  (view-screen-position->point (panel-view p) r c))
+
+;; 文档点 → panel 上的绝对屏幕位置（几何，不看遮挡 / 越界）；不可见 → (values #f #f)。
+(define (panel-point->screen-position p pt)
+  (define-values (r c) (view-point->screen-position (panel-view p) pt))
+  (if r (panel-content->screen p r c) (values #f #f)))
+
 ;;; ---------- 视口状态 ----------
 
 (define (view-mode v) (viewport-mode (view-viewport v)))
@@ -179,3 +197,20 @@
 (define (buffer-redo-target b)
   (define d (history-redo-target (buffer-history b)))
   (and d (document->string d)))
+
+(module+ test
+  (require rackunit "../view/base/rect.rkt")
+  (define b (make-buffer "hello\nworld\n"))
+  (define v (buffer-add-view! b 18 4 #:line-numbers? #f))   ; 内容 18×4
+  (define p (make-panel v (rect 5 2 20 6) borders-all))     ; 内容原点 = (6,3)
+
+  ;; panel 屏坐标 ↔ 文档点 ↔ panel 屏坐标
+  (check-equal? (call-with-values (λ () (panel-screen-position->point p 3 6)) list) '(0 0))
+  (check-equal? (call-with-values (λ () (panel-screen-position->point p 3 8)) list) '(0 2))
+  (check-equal? (call-with-values (λ () (panel-point->screen-position p (point 0 0))) list) '(3 6))
+  (check-equal? (call-with-values (λ () (panel-point->screen-position p (point 1 3))) list) '(4 9))
+  ;; 内容外 / 越界 → (values #f #f)
+  (check-equal? (call-with-values (λ () (panel-screen-position->point p 100 100)) list) '(#f #f))
+  (check-equal? (call-with-values (λ () (panel-screen-position->point p 0 0)) list) '(#f #f))
+
+  (displayln "query.rkt: ok"))
