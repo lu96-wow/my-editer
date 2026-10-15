@@ -108,6 +108,7 @@
  (struct-out rect)
  (struct-out panel)
  make-panel borders-all borders-none panel-content
+ buffer-add-panel!
  panel-sync! panels-sync!
  panel-cursor-position
  render-display render-display-patch

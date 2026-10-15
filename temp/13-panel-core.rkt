@@ -15,21 +15,21 @@
 (define doc-b  (make-buffer "(define (f x)\n  (+ x 1))\n\n(f 41)\n" "main.rkt"))
 (define pop-b  (make-buffer "popup\non top\n(deep 10)\n" "*popup*"))
 
-;; 初始尺寸随便给，panels-sync! 会按 panel.rect 落进去
-(define tree-v (buffer-add-view! tree-b 1 1 #:line-numbers? #t))
-(define doc-v  (buffer-add-view! doc-b  1 1 #:line-numbers? #t))
-(define pop-v  (buffer-add-view! pop-b  1 1))
+;;; ---------- 布局：一步 buffer → panel（含 view，自动 sync）----------
 
-;;; ---------- 布局：panels（rect 含边框）----------
-
-(define tree-p (make-panel tree-v (rect 0 0 20 12) '(up down left right)))
-(define doc-p  (make-panel doc-v  (rect 20 0 52 12) '(up down right)))
-(define pop-p  (make-panel pop-v  (rect 30 2 22 6)  borders-all
-                           #:deep 10 #:face 'float-border))
+(define tree-p (buffer-add-panel! tree-b (rect 0 0 20 12) '(up down left right)
+                                  #:line-numbers? #t))
+(define doc-p  (buffer-add-panel! doc-b  (rect 20 0 52 12) '(up down right)
+                                  #:line-numbers? #t))
+(define pop-p  (buffer-add-panel! pop-b  (rect 30 2 22 6)  borders-all
+                                  #:deep 10 #:face 'float-border))
 
 (define panels (list tree-p doc-p pop-p))
+(define tree-v (panel-view tree-p))
+(define doc-v  (panel-view doc-p))
+(define pop-v  (panel-view pop-p))
 
-;; ★ 显式同步：panel.rect 是尺寸真相；view viewport 由它派生
+;; buffer-add-panel! 已经 sync 过；这里只是展示再 sync 一次是幂等的
 (panels-sync! panels)
 (printf "sync 后 view 尺寸：tree=~ax~a doc=~ax~a pop=~ax~a\n\n"
         (view-width tree-v) (view-height tree-v)
@@ -66,7 +66,7 @@
 ;;; ---------- 换 view（view 可替换）----------
 
 (define doc2-b (make-buffer "second buffer\nsame slot\n" "other.rkt"))
-(define doc2-v (buffer-add-view! doc2-b 1 1 #:line-numbers? #t))
+(define doc2-v (buffer-add-view! doc2-b #:line-numbers? #t))
 (define doc-p2 (make-panel doc2-v (rect 20 0 52 12) '(up down right)))
 (define panels3 (list tree-p doc-p2 pop-p2))
 (panels-sync! panels3)                     ; 新 view 落到内容尺寸

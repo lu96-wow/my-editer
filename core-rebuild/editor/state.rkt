@@ -28,7 +28,7 @@
 
  ;; ---------- 构造 ----------
  make-buffer                       ; text [name] → buffer
- buffer-add-view!                  ; buffer w h → view（登记进 buffer.views）
+ buffer-add-view!                  ; buffer [w h] → view（登记进 buffer.views；尺寸可选，panel 才是真相）
  buffer-close-view!                ; buffer view → 摘掉该 view
  buffer-close!                     ; buffer → 解除与所有 view 的关联
 
@@ -63,7 +63,8 @@
           '()))
 
 ;; 建一个视图挂到 buffer 上；返回新 view。
-(define (buffer-add-view! b width height
+;; 尺寸是可选的：panel 才是尺寸真相（panel.rect → panels-sync!），这里只是初始占位。
+(define (buffer-add-view! b [width 1] [height 1]
                           #:mode [mode 'clip]
                           #:line-numbers? [line-numbers? #f]
                           #:selections [sels (initial-selections)])
