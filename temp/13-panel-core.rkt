@@ -1,0 +1,81 @@
+#lang racket
+;;; 13 —— core-rebuild：panel 进 core（rect 驱动 view + 内置边框 + 一次 diff）
+;;;
+;;; 运行：racket temp/13-panel-core.rkt
+;;;
+;;; 对照旧的「两半」：这里只有一个 display list（panels），一次合成、一次 diff。
+;;;   panel = (view rect borders deep face)；panels-sync! 把 panel.content 尺寸落进 view
+;;;   render-display / render-display-patch 形状不变，只是 entries → panels，边框内置
+
+(require "../core-rebuild/editor.rkt")
+
+;;; ---------- 内容 ----------
+
+(define tree-b (make-buffer "src/\n  main.rkt\n  util.rkt\n  panel.rkt\nREADME.md" "*tree*"))
+(define doc-b  (make-buffer "(define (f x)\n  (+ x 1))\n\n(f 41)\n" "main.rkt"))
+(define pop-b  (make-buffer "popup\non top\n(deep 10)\n" "*popup*"))
+
+;; 初始尺寸随便给，panels-sync! 会按 panel.rect 落进去
+(define tree-v (buffer-add-view! tree-b 1 1 #:line-numbers? #t))
+(define doc-v  (buffer-add-view! doc-b  1 1 #:line-numbers? #t))
+(define pop-v  (buffer-add-view! pop-b  1 1))
+
+;;; ---------- 布局：panels（rect 含边框）----------
+
+(define tree-p (make-panel tree-v (rect 0 0 20 12) '(up down left right)))
+(define doc-p  (make-panel doc-v  (rect 20 0 52 12) '(up down right)))
+(define pop-p  (make-panel pop-v  (rect 30 2 22 6)  borders-all
+                           #:deep 10 #:face 'float-border))
+
+(define panels (list tree-p doc-p pop-p))
+
+;; ★ 显式同步：panel.rect 是尺寸真相；view viewport 由它派生
+(panels-sync! panels)
+(printf "sync 后 view 尺寸：tree=~ax~a doc=~ax~a pop=~ax~a\n\n"
+        (view-width tree-v) (view-height tree-v)
+        (view-width doc-v) (view-height doc-v)
+        (view-width pop-v) (view-height pop-v))
+
+(define W 72) (define H 12)
+
+(displayln "======== 全量一帧（内容 + 边框，按 deep 合成）========")
+(define frame (render-display panels doc-v W H))
+(displayln (screen->string frame))
+
+;;; ---------- 增量：编辑 doc ----------
+
+(void (buffer-edit! doc-b doc-v (op-type ";; hi\n")))
+(define-values (frame2 rends sels)
+  (render-display-patch panels doc-v W H frame))
+(displayln "======== 编辑后（一次 diff，内容+边框一起）========")
+(displayln (screen->string frame2))
+(printf "增量片：render=~a / selection=~a\n\n" (length rends) (length sels))
+
+;;; ---------- 浮窗移动（换 rect）+ 遮挡 ----------
+
+(define pop-p2 (make-panel pop-v (rect 40 3 22 6) borders-all
+                           #:deep 10 #:face 'float-border))
+(define panels2 (list tree-p doc-p pop-p2))
+(panels-sync! panels2)
+(define-values (frame3 rends3 sels3)
+  (render-display-patch panels2 doc-v W H frame2))
+(displayln "======== 浮窗右移（一次 diff）========")
+(displayln (screen->string frame3))
+(printf "增量片：render=~a / selection=~a\n\n" (length rends3) (length sels3))
+
+;;; ---------- 换 view（view 可替换）----------
+
+(define doc2-b (make-buffer "second buffer\nsame slot\n" "other.rkt"))
+(define doc2-v (buffer-add-view! doc2-b 1 1 #:line-numbers? #t))
+(define doc-p2 (make-panel doc2-v (rect 20 0 52 12) '(up down right)))
+(define panels3 (list tree-p doc-p2 pop-p2))
+(panels-sync! panels3)                     ; 新 view 落到内容尺寸
+(define-values (frame4 r4 s4) (render-display-patch panels3 doc2-v W H frame3))
+(displayln "======== 换 view（同一 slot）========")
+(displayln (screen->string frame4))
+(printf "换 view 后增量：render=~a\n" (length r4))
+
+;;; ---------- 光标绝对位置（弹窗定位用）----------
+
+(printf "focus(doc) 光标绝对位置：~a\n"
+        (call-with-values (lambda () (panel-cursor-position doc-p2)) list))
