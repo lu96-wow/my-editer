@@ -39,12 +39,14 @@
 ## panel（显示单位）
 
 ```racket
-(struct panel (view rect borders deep face))
+(struct panel (view rect borders deep face weight))
 ;; view    : 显示槽，可替换（换 view = 造新 panel 值）
 ;; rect    : 外框矩形（尺寸真相）；内容区 = 按存在的边各内缩 1 = panel-content
 ;; borders : (listof 'up 'down 'left 'right)，每边可选
-;; deep    : 越大越在上；浮窗 = deep 高的 panel
+;; deep    : 越大越在上；浮窗 = deep 高的 panel（决定内容遮挡 / 命中）
 ;; face    : 边框 face 符号（#f | symbol | face），宿主设，core 不解释颜色
+;; weight  : 边框 face 权重（默认 0）。deep 相同时大的边框格赢；不影响内容 / 命中。
+;;           焦点框：焦点 panel 给个大 weight 即可（同层压邻居，仍让位于高 deep 浮窗）。
 ```
 
 宿主操作：
@@ -55,6 +57,7 @@
 | 加 / 删 | 往 `panels` 列表里加 / 去掉 |
 | 换 view | 造新 panel（新 view），调 `panels-sync!` |
 | 改边框 / 深度 / face | 造新 panel |
+| 焦点框抬边框 | 焦点 panel 的 `#:weight` 调大（同 deep 时边框 face 赢）；`deep` 不变，命中 / 导航不受影响 |
 | 分屏 / 切分 / 拖分隔条 | **在 core 外**：算 rect → 产出 `(listof panel)`（core 只吃结果） |
 | 命中（鼠标/拖拽） | `(panel-at panels row col)` → 最上 panel \| #f；栈用 `(panel-at-all panels row col)` → 上→下全部（首个 = `panel-at`） |
 | 方向导航（焦点） | `(panel-move panels from dir)`，`dir ∈ left/right/up/down`（同层平铺，`panel-neighbor`）+ `front/back`（跨层前后，`panel-depth-neighbor`）→ panel \| #f |

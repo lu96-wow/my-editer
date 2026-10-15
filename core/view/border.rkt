@@ -5,7 +5,8 @@
 ;;; 输入 panel 列表（按宿主给的顺序），输出按行合并的 run `(row col text face deep)`。
 ;;;
 ;;; **先 owner，再收边**：
-;;;   1. 每格归属 = 覆盖它的 deep 最大的 panel（同 deep 列表靠后者胜）；
+;;;   1. 每格归属 = 覆盖它的 panel 按 (deep, weight, 列表序) 取大者；
+;;;      deep 决定遮挡，weight 只在同 deep 时给边框抬优先级（焦点框用）；
 ;;;   2. 某 panel 的边格，只有它是该格 owner 时才收（被高 deep 浮窗盖住的不收）；
 ;;;   3. 字形 = 该格在**可见边格集合**里的同向延续：
 ;;;        水平边（up/down）→ 看左右；垂直边（left/right）→ 看上下
@@ -38,7 +39,18 @@
 
 ;;; ---------- owner ----------
 
-;; 命中规则见 panel.rkt 的 panel-at（deep 大者胜、同 deep 后者胜）。
+;; 边框归属（比 panel-at 多一层 weight）：deep 大者胜；同 deep 比 weight（大者胜）；
+;; 再同 → 列表靠后者胜。只影响边框 face，不影响内容 / 命中。
+(define (border-owner panels r c)
+  (for/fold ([best #f]) ([p (in-list panels)])
+    (if (and (rect-contains? (panel-rect p) c r)
+             (or (not best) (border-not-lower? p best)))
+        p best)))
+
+(define (border-not-lower? a b)
+  (define da (panel-deep a)) (define db (panel-deep b))
+  (or (> da db)
+      (and (= da db) (>= (panel-weight a) (panel-weight b)))))
 
 ;;; ---------- 可见边格 ----------
 
@@ -58,16 +70,16 @@
     (define b (panel-borders p))
     (when (and (> w 0) (> h 0))
       (when (memq 'up b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (panel-at panels y c) p))
+        (for ([c (in-range x (+ x w))] #:when (eq? (border-owner panels y c) p))
           (add! p (cons y c) #t #f)))
       (when (memq 'down b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (panel-at panels (sub1 (+ y h)) c) p))
+        (for ([c (in-range x (+ x w))] #:when (eq? (border-owner panels (sub1 (+ y h)) c) p))
           (add! p (cons (sub1 (+ y h)) c) #t #f)))
       (when (memq 'left b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (panel-at panels rr x) p))
+        (for ([rr (in-range y (+ y h))] #:when (eq? (border-owner panels rr x) p))
           (add! p (cons rr x) #f #t)))
       (when (memq 'right b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (panel-at panels rr (sub1 (+ x w))) p))
+        (for ([rr (in-range y (+ y h))] #:when (eq? (border-owner panels rr (sub1 (+ x w))) p))
           (add! p (cons rr (sub1 (+ x w))) #f #t)))))
   ;; 字形：同向延续出的臂
   (define (at r c) (hash-ref info (cons r c) #f))
@@ -150,4 +162,17 @@
   ;; 未被盖住的左端仍在
   (check-true (for/or ([r (in-list (panels->border-runs occl))])
                 (and (eq? (list-ref r 3) 'lo-face) (= (car r) 2) (= (cadr r) 0))))
+
+  ;; weight：同 deep 时边框 face 由 big weight 决定（默认 0 → 列表靠后）
+  (define (cell-face ps r c) (list-ref (hash-ref (panels->border-cells ps) (cons r c)) 1))
+  (define p0 (make-panel 'a (rect 0 0 10 6) borders-all #:face 'a-face #:weight 0))
+  (define p1 (make-panel 'b (rect 9 0 10 6) borders-all #:face 'b-face #:weight 1))
+  (check-equal? (cell-face (list p0 p1) 1 9) 'b-face)        ; weight 1 赢
+  (check-equal? (cell-face (list p1 p0) 1 9) 'b-face)        ; 与列表序无关
+  (define p0* (make-panel 'a (rect 0 0 10 6) borders-all #:face 'a-face #:weight 2))
+  (check-equal? (cell-face (list p0* p1) 1 9) 'a-face)       ; 更大的 weight 赢
+  ;; deep 仍然压过 weight：高 deep 浮窗（weight 0）盖住 weight 高的低层
+  (define f (make-panel 'f (rect 9 2 5 2) borders-all #:deep 10 #:face 'f-face #:weight 0))
+  (check-equal? (cell-face (list p0* f) 3 9) 'f-face)
+
   (displayln "border.rkt: ok"))

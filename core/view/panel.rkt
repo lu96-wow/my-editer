@@ -1,13 +1,15 @@
 #lang racket
 
-;;; core/view/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face + 内容区
+;;; core/view/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face + 边框权重 + 内容区
 ;;;
-;;; panel 是**值**（每帧的显示项）：view + 外框 rect + 存在的边 + deep + 边框 face。
+;;; panel 是**值**（每帧的显示项）：view + 外框 rect + 存在的边 + deep + 边框 face + 边框权重。
 ;;;   view    : 显示槽，可替换（换 view = 造一个新 panel 值）
 ;;;   rect    : 外框矩形（尺寸真相在这里）
 ;;;   borders : 存在的边（每边可选）；不存在的那条边，内容顶到外框
-;;;   deep    : 越大越在上；浮窗 = deep 高的 panel
+;;;   deep    : 越大越在上；浮窗 = deep 高的 panel（决定内容遮挡 / 命中）
 ;;;   face    : 边框 face（#f | symbol | face），宿主设；core 不解释颜色
+;;;   weight  : 边框 face 权重。deep 相同时，大的边框格赢（焦点框抬边框用）；
+;;;             不影响 deep 比较，也不影响内容 / 命中。默认 0。
 ;;;
 ;;; 内容区 = 外框按存在的边各内缩 1。view 的 viewport 尺寸由 editor/sync.rkt 的
 ;;; panels-sync! 从 panel-content 落进去 —— 渲染保持纯，绝不 resize。
@@ -29,11 +31,12 @@
          panel-screen->content
          panel-content->screen)
 
-(struct panel (view rect borders deep face) #:transparent)
+(struct panel (view rect borders deep face weight) #:transparent)
 
-;; 便捷构造（关键字）。face 缺省 'window-border。
-(define (make-panel view rect borders #:deep [deep 0] #:face [face 'window-border])
-  (panel view rect borders deep face))
+;; 便捷构造（关键字）。face 缺省 'window-border；weight 缺省 0。
+(define (make-panel view rect borders
+                    #:deep [deep 0] #:face [face 'window-border] #:weight [weight 0])
+  (panel view rect borders deep face weight))
 
 (define borders-all  '(up down left right))
 (define borders-none '())
@@ -213,6 +216,12 @@
   (check-eq? (panel-at ps 9 9) lo)
   (check-false (panel-at ps 10 0))          ; 右边界开
   (check-false (panel-at ps 0 10))
+
+  ;; weight 是边框 face 权重：同 deep 时大者边框赢，且不影响命中
+  (define wa (make-panel 'a (rect 0 0 10 6) borders-all #:face 'a-face #:weight 0))
+  (define wb (make-panel 'b (rect 9 0 10 6) borders-all #:face 'b-face #:weight 1))
+  (check-equal? (panel-weight wb) 1)
+  (check-eq? (panel-at (list wb wa) 1 9) wa)      ; 命中按 deep/列表序，weight 不参与
 
   ;; 同 deep：列表靠后者胜
   (define a (mk 'a 0 0 5 5))

@@ -279,4 +279,10 @@
   (check-equal? (list cr cc) (list (cursor-row pc) (cursor-column pc)))
   (check-equal? (call-with-values (λ () (panel-cursor-position/visible scr5 p3)) list)
                 (list cr cc))
+
+  ;; 边框 weight 变化 → panels 值变了 → 必须重算布局（不能复用旧 border-runs）
+  (define pw (make-panel v (rect 0 0 10 5) borders-all #:weight 1))
+  (define-values (c6 r6 b6) (render-display-patch (list pw) v 12 6 c5))
+  (check-false (eq? (render-cache-layout c5) (render-cache-layout c6)))
+
   (displayln "render.rkt: ok"))
