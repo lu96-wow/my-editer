@@ -25,12 +25,11 @@
 ;; 声明式：editor(3) / status(1) 竖叠放右侧；左侧 tree(4)。
 ;; dock 位置自动推边框：tree 左侧 → 只右；status 底部 → 只上；editor 中 → 全边。
 (define (base-tree)
-  (spec->tree
-   (lay 'lr
-        (pane 'tree #:view tv #:size 4 #:dock 'left)
-        (lay 'tb
-             (pane 'editor #:view ev #:size 3 #:dock 'center)
-             (pane 'status #:view #f #:size 1 #:dock 'bottom)))))
+  (lay 'lr
+       (pane 'tree #:view tv #:size 4 #:dock 'left)
+       (lay 'tb
+            (pane 'editor #:view ev #:size 3 #:dock 'center)
+            (pane 'status #:view #f #:size 1 #:dock 'bottom))))
 
 (define (draw label tree)
   (define ps (tree->panels tree (area)))

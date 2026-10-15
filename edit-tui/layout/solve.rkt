@@ -15,18 +15,19 @@
 
 (provide (struct-out cut)
          cut-at cuts-at
+         tree-resize-seam
          tree->panels tree->placements tree->cuts)
 
 (require "tree.rkt"
          "../../core/view/panel.rkt"
          "../../core/view/base/rect.rkt")
 
-(struct cut (axis offset span-lo span-hi path index before after) #:transparent)
+(struct cut (axis offset span-lo span-hi path index cells-before cells-after) #:transparent)
 ;; axis      'lr（竖缝，offset = 列）| 'tb（横缝，offset = 行）
 ;; span-lo/hi 缝的纵向 / 横向范围 [lo, hi)
-;; path      到所属 split 的「孩子下标」路径；index = 缝左 / 上方的孩子下标
-;; before/after 缝两侧孩子当前的格数（拖拽按格数改 size 用）
-;; 拖拽：改该 split 第 index / index+1 个孩子的 size（见 tree-resize-at）。
+;; path      到所属 split 的「孩子下标」路径；index = 缝左 / 上方的可见孩子下标
+;; cells-before/after 缝两侧可见孩子当前的**格数**（tree 里存的是**权重** size）
+;; 拖缝：用 tree-resize-seam 把格数增量换成新的 size（见文件末）。
 
 ;; 屏幕格 (row, col) 命中哪条缝（缝是 1 格宽/高的线）。
 (define (cut-match? c row col)
@@ -124,3 +125,28 @@
   (call-with-values (λ () (solve tree area)) (λ (pl pa c) pa)))
 (define (tree->cuts tree area)
   (call-with-values (λ () (solve tree area)) (λ (pl pa c) c)))
+
+;;; ---------- 拖缝（按格数 → 权重）----------
+
+;; 沿 path 走到 split（path 是孩子下标表）。
+(define (node-at-path t path)
+  (for/fold ([n t]) ([i (in-list path)]) (list-ref (split-children n) i)))
+
+;; 拖缝：把 seam 左/上可见孩子（cut-index）与其后第一个可见孩子的**权重**按新的格数重分。
+;; delta = 格数增量（lr 用列、tb 用行）。两块总权重不变 → 其它兄弟比例不受影响。
+;; 与 tree-resize-at 同一条“下一个可见孩子”规则。
+(define (tree-resize-seam tree cut delta)
+  (define cs (split-children (node-at-path tree (cut-path cut))))
+  (define i (cut-index cut))
+  (define j (for/first ([k (in-range (add1 i) (length cs))]
+                        #:when (node-visible? (list-ref cs k)))
+              k))
+  (define c (+ (cut-cells-before cut) (cut-cells-after cut)))
+  (define w (and j (+ (node-size (list-ref cs i)) (node-size (list-ref cs j)))))
+  (cond
+    [(or (not j) (zero? c) (not (positive? w))) tree]
+    [else
+     ;; 权重可以是任意正数；两块总权重不变，按新格数比例分（其它兄弟比例不动）。
+     (define eps (/ w 1000))
+     (define ni (max eps (min (- w eps) (* w (/ (+ (cut-cells-before cut) delta) c)))))
+     (tree-resize-at tree (cut-path cut) i ni (- w ni))]))

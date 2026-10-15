@@ -37,16 +37,15 @@
 
 (define tree (box #f))
 (define (base-tree)
-  (spec->tree
-   (lay 'lr
-        (pane 'tree #:view tv #:size 4 #:dock 'left)
-        (lay 'tb
-             (pane 'editor #:view ev #:size 3 #:dock 'center)
-             (pane 'status #:view #f #:size 1 #:dock 'bottom)))))
+  (lay 'lr
+       (pane 'tree #:view tv #:size 4 #:dock 'left)
+       (lay 'tb
+            (pane 'editor #:view ev #:size 3 #:dock 'center)
+            (pane 'status #:view #f #:size 1 #:dock 'bottom))))
 (set-box! tree (base-tree))
 
 (define focus (box ev))                 ; 焦点 = view（core 的 focus 参数）
-(define drag  (box #f))                 ; #f | ('seam 起始 row col descs) | ('select panel view anchor)
+(define drag  (box #f))                 ; #f | ('seam 起始 row col cuts 起始树) | ('select panel view anchor)
 
 (define (area) (rect 0 0 (unbox W) (unbox H)))
 (define (panels) (tree->panels (unbox tree) (area)))
@@ -67,21 +66,12 @@
 
 ;;; ════════════ 鼠标 ════════════
 
-(define (node-at-path t path)
-  (for/fold ([n t]) ([i (in-list path)]) (list-ref (split-children n) i)))
-
 ;; 按下 (row, col)：先看缝（拖大小），否则命中面板 → 焦点 + 落光标 + 起选。
 (define (press! row col)
   (define cs (cuts-at (tree->cuts (unbox tree) (area)) row col))
   (cond
     [(pair? cs)
-     (define descs
-       (for/list ([c (in-list cs)])
-         (define split (node-at-path (unbox tree) (cut-path c)))
-         (define i (cut-index c))
-         (list (cut-path c) i (cut-axis c)
-               (cut-before c) (cut-after c))))
-     (set-box! drag (list 'seam row col descs))]
+     (set-box! drag (list 'seam row col cs (unbox tree)))]
     [else
      (define p (panel-at (panels) row col))
      (cond
@@ -92,18 +82,17 @@
           (set-box! drag (list 'select p (panel-view p) (point l c))))]
        [else (set-box! focus #f)])]))
 
-;; 拖动：缝 → 重分 size；选区 → anchor 固定、head 跟手。
+;; 拖动：缝 → 按格数重分；选区 → anchor 固定、head 跟手。
 (define (move! row col)
   (define d (unbox drag))
   (when d
     (case (car d)
       [(seam)
-       (match-define (list _ r0 c0 descs) d)
-       (for ([desc (in-list descs)])
-         (match-define (list path i axis before after) desc)
-         (define delta (if (eq? axis 'lr) (- col c0) (- row r0)))
-         (set-box! tree (tree-resize-at (unbox tree) path i
-                                        (max 1 (+ before delta)) (max 1 (- after delta)))))]
+       (match-define (list _ r0 c0 cs tree0) d)
+       (set-box! tree
+                 (for/fold ([t tree0]) ([c (in-list cs)])
+                   (define delta (if (eq? (cut-axis c) 'lr) (- col c0) (- row r0)))
+                   (tree-resize-seam t c delta)))]
       [(select)
        (match-define (list _ p v anchor) d)
        (define-values (l c) (panel-screen-position->point p row col))

@@ -27,7 +27,7 @@
          node? node-size node-visible? node-with-size
          make-leaf empty-tree
          tree-find tree-leaves tree-visible-leaves tree-contains?
-         tree-set-content tree-set-size tree-set-weight tree-set-borders tree-set-face
+         tree-set-view tree-set-size tree-set-weight tree-set-borders tree-set-face tree-set-visible
          tree-show tree-hide tree-visible?
          tree-split tree-close tree-move
          tree-detach tree-insert
@@ -85,13 +85,14 @@
   (cond [(leaf? t) (f t)]
         [else (struct-copy split t [children (map (λ (c) (map-leaves c f)) (split-children t))])]))
 
-(define (tree-set-content t id view) (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [view view]) l))))
+(define (tree-set-view t id view) (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [view view]) l))))
 (define (tree-set-size t id size)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [size size]) l))))
 (define (tree-set-weight t id w)     (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [weight w]) l))))
 (define (tree-set-borders t id b)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [borders b]) l))))
 (define (tree-set-face t id f)       (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [face f]) l))))
-(define (tree-show t id) (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? #t]) l))))
-(define (tree-hide t id) (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? #f]) l))))
+(define (tree-set-visible t id v)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? v]) l))))
+(define (tree-show t id) (tree-set-visible t id #t))
+(define (tree-hide t id) (tree-set-visible t id #f))
 
 ;;; ---------- 插入（split / move 共用）----------
 

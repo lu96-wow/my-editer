@@ -49,8 +49,10 @@
 (check-equal? (ids (tree-show t7 'tree)) '(tree editor status))
 
 ;; 改字段
-(check-equal? (leaf-view (tree-find (tree-set-content t2 'tree 'v) 'tree)) 'v)
+(check-equal? (leaf-view (tree-find (tree-set-view t2 'tree 'v) 'tree)) 'v)
 (check-equal? (leaf-weight (tree-find (tree-set-weight t2 'tree 9) 'tree)) 9)
+(check-false (leaf-visible? (tree-find (tree-set-visible t2 'tree #f) 'tree)))
+(check-true (leaf-visible? (tree-find (tree-set-visible (tree-hide t2 'tree) 'tree #t) 'tree)))
 
 ;; 拖缝：按路径改两个相邻可见孩子的 size
 (define t8 (tree-resize-at t2 '() 0 5 7))

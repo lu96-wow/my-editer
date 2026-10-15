@@ -68,6 +68,22 @@
 (define flat-r (tree-resize-at flat-h (cut-path c0) (cut-index c0) 5 7))
 (check-equal? (map leaf-size (tree-leaves flat-r)) '(5 1 7))
 
+;; 拖缝按格数：三块可见时也只重分 seam 两侧，第三块比例不受影响（权重 ≠ 格数）
+(define flat3 (split 'lr (list (make-leaf 'a #f #:size 4)
+                               (make-leaf 'b #f #:size 3)
+                               (make-leaf 'c #f #:size 1))
+                     1))
+(define (width-of t id) (rect-w (cadr (assoc id (tree->placements t area)))))
+(define c3 (car (tree->cuts flat3 area)))              ; a|b 缝，index 0
+(check-equal? (list (cut-cells-before c3) (cut-cells-after c3)) '(52 38))
+(define flat3* (tree-resize-seam flat3 c3 10))         ; 右拖 10 格
+(check-true (> (leaf-size (tree-find flat3* 'a)) 4))
+(check-true (< (leaf-size (tree-find flat3* 'b)) 3))
+(check-equal? (leaf-size (tree-find flat3* 'c)) 1)         ; 第三块权重不变
+(check-equal? (width-of flat3* 'c) (width-of flat3 'c))    ; c 格数也不变
+(check-true (> (width-of flat3* 'a) (width-of flat3 'a)))
+(check-true (< (width-of flat3* 'b) (width-of flat3 'b)))
+
 ;; 整棵子树隐藏 → 不占空间（不产生空档）；只剩一个可见孩子
 (define tr2 (tree-hide (tree-hide tr 'editor) 'status))
 (define pl4 (tree->placements tr2 area))
