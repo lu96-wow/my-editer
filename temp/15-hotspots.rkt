@@ -1,8 +1,8 @@
 #lang racket
-;;; 15 —— core-rebuild 渲染热点拆分
-(require "../core-rebuild/editor.rkt"
-         "../core-rebuild/view/patch.rkt"
-         "../core-rebuild/view/compose.rkt")
+;;; 15 —— core 渲染热点拆分
+(require "../core/editor.rkt"
+         "../core/view/patch.rkt"
+         "../core/view/compose.rkt")
 
 (define (ms) (current-inexact-milliseconds))
 (define (bench label n thunk)

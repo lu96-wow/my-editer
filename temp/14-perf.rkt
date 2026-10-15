@@ -1,9 +1,9 @@
 #lang racket
-;;; 14 —— core-rebuild 渲染性能
+;;; 14 —— core 渲染性能
 ;;;
 ;;; 运行：racket temp/14-perf.rkt
 
-(require "../core-rebuild/editor.rkt")
+(require "../core/editor.rkt")
 
 (define (ms) (current-inexact-milliseconds))
 

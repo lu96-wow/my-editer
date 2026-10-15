@@ -1,5 +1,5 @@
 #lang racket
-;;; 13 —— core-rebuild：panel 进 core（rect 驱动 view + 内置边框 + 一次 diff）
+;;; 13 —— core：panel 进 core（rect 驱动 view + 内置边框 + 一次 diff）
 ;;;
 ;;; 运行：racket temp/13-panel-core.rkt
 ;;;
@@ -7,7 +7,7 @@
 ;;;   panel = (view rect borders deep face)；panels-sync! 把 panel.content 尺寸落进 view
 ;;;   render-display / render-display-patch 形状不变，只是 entries → panels，边框内置
 
-(require "../core-rebuild/editor.rkt")
+(require "../core/editor.rkt")
 
 ;;; ---------- 内容 ----------
 

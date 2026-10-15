@@ -3,7 +3,7 @@
 ;;; edit-tui/theme/frame.rkt —— 框架主题
 ;;;
 ;;; 布局面板的边框 face：窗口 / 聚焦 / 浮窗。
-;;; 键就是 layout panel 的 face 标签，layout-base/border.rkt 画边框时带上。
+;;; 键就是 core panel 的 face 标签，core 画边框时带上。
 
 (require "theme.rkt")
 

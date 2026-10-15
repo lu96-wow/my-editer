@@ -1,13 +1,10 @@
 #lang racket
 
-;;; edit/core-render/main.rkt —— 渲染后端入口（统一）
+;;; edit-tui/core-render/main.rkt —— tui 渲染后端入口
 ;;;
-;;; 一个后端，负责把 core 的渲染值画成 tui 序列：
-;;;   · core 的渲染值（piece）→ render.rkt
-;;; 只产出序列，不自己输出；颜色统一由 theme 解析。
-;;;
-;;; 布局边框（panel → pane）不在这里 —— 在 layout-base/border.rkt。
-;;; face 值（生产者/消费者共用）在 base/face.rkt。
+;;; 把 core 的渲染值（`piece`）画成 racket-tui 序列；只产出序列，不自己输出。
+;;; 边框 / 布局（panel → pane → screen）现在在 core 里，这里只管 piece → tui 序列。
+;;; face 值（生产者/消费者共用）在 base/face.rkt；face 符号 → 样式在 theme/。
 
 (provide (all-from-out "../base/face.rkt"
                        "render.rkt"))

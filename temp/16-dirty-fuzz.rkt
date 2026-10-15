@@ -2,7 +2,7 @@
 ;;; 16 —— 脏区正确性 fuzz：随机编辑/滚动/移光标/动面板后，
 ;;;       增量合成出的屏必须与全量 render-display 完全一致（否则脏行漏了）。
 
-(require "../core-rebuild/editor.rkt")
+(require "../core/editor.rkt")
 
 (random-seed 42)
 (define W 44) (define H 16)
