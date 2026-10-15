@@ -53,7 +53,7 @@ layout 边框 (panel) ─┘         ▲
 face 值本身在 `edit-tui/base/face.rkt`（见上表）。
 
 - `piece.attr` = `face` 或 `(overlay . face)`（overlay ∈ `cursor` / `cursor-secondary` / `selection`）。
-- 边框：**跨 panel 收集边**——所有 panel 的边框格进同一张集合，每格字形由它在该集合里的**四邻连接**决定，所以相邻/相接的边自动收成 T / 十字（`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`）；同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。想共享边只画一条，就由调用方用 `borders` 抑制一侧（逐边模型不自动并线）。
+- 边框：**跨 panel 收集边**——所有 panel 的边框格进同一张集合，每格记「属于水平边还是垂直边」；字形由**同向延续**出的臂决定（水平看左右、垂直看上下）。于是共线相接 / 垂直相交处收成 T / 十字（`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`），而**平行相邻的边不连**（两条并排竖线各自是 `│`，不会合成 `├ ┤`）。同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。
 - **增量 / 清旧位置**：边框作为 decoration 进 core 的 `render-display`，与内容同处一张 screen；`screen-patch` 逐格 diff，框移动 / 消失的旧格自动清掉。
 
 ## theme —— 统一主题（字段与 face 一致）

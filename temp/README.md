@@ -23,6 +23,8 @@ racket temp/02-selection.rkt
 | `08-render.rkt` | display list → screen（全量 + 增量 + 装饰） | 使用层 + 实现层（decorations） |
 | `09-multiview.rkt` | 一份文档多视图，编辑时兄弟视图重基准 | 使用层 + `text/rebase.rkt` |
 | `10-session.rkt` | 编辑会话：连续编辑合并、打断收步 | 会话层 `editor/session.rkt` |
+| `11-panes.rkt` | 用 panel + pane 拼一帧（无 tty，`screen->string`） | `layout-base` + `core-render` |
+| `12-panes-tui.rkt` | 真终端交互：panel 拼屏，按任意键退出 | `tui` + `layout-base` + `core-render` + `theme` |
 
 ## 分层速查
 
