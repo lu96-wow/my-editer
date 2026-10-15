@@ -39,16 +39,16 @@
 (define W 72) (define H 12)
 
 (displayln "======== 全量一帧（内容 + 边框，按 deep 合成）========")
-(define frame (render-display panels doc-v W H))
-(displayln (screen->string frame))
+(define-values (cache0 r0 s0) (render-display-patch panels doc-v W H #f))
+(displayln (screen->string (render-cache-screen cache0)))
 
 ;;; ---------- 增量：编辑 doc ----------
 
 (void (buffer-edit! doc-b doc-v (op-type ";; hi\n")))
-(define-values (frame2 rends sels)
-  (render-display-patch panels doc-v W H frame))
+(define-values (cache1 rends sels)
+  (render-display-patch panels doc-v W H cache0))
 (displayln "======== 编辑后（一次 diff，内容+边框一起）========")
-(displayln (screen->string frame2))
+(displayln (screen->string (render-cache-screen cache1)))
 (printf "增量片：render=~a / selection=~a\n\n" (length rends) (length sels))
 
 ;;; ---------- 浮窗移动（换 rect）+ 遮挡 ----------
@@ -57,10 +57,10 @@
                            #:deep 10 #:face 'float-border))
 (define panels2 (list tree-p doc-p pop-p2))
 (panels-sync! panels2)
-(define-values (frame3 rends3 sels3)
-  (render-display-patch panels2 doc-v W H frame2))
+(define-values (cache2 rends3 sels3)
+  (render-display-patch panels2 doc-v W H cache1))
 (displayln "======== 浮窗右移（一次 diff）========")
-(displayln (screen->string frame3))
+(displayln (screen->string (render-cache-screen cache2)))
 (printf "增量片：render=~a / selection=~a\n\n" (length rends3) (length sels3))
 
 ;;; ---------- 换 view（view 可替换）----------
@@ -70,9 +70,9 @@
 (define doc-p2 (make-panel doc2-v (rect 20 0 52 12) '(up down right)))
 (define panels3 (list tree-p doc-p2 pop-p2))
 (panels-sync! panels3)                     ; 新 view 落到内容尺寸
-(define-values (frame4 r4 s4) (render-display-patch panels3 doc2-v W H frame3))
+(define-values (cache3 r4 s4) (render-display-patch panels3 doc2-v W H cache2))
 (displayln "======== 换 view（同一 slot）========")
-(displayln (screen->string frame4))
+(displayln (screen->string (render-cache-screen cache3)))
 (printf "换 view 后增量：render=~a\n" (length r4))
 
 ;;; ---------- 光标绝对位置（弹窗定位用）----------

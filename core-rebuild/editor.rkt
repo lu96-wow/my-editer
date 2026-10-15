@@ -112,6 +112,7 @@
  panel-sync! panels-sync!
  panel-cursor-position
  render-display render-display-patch
+ render-cache-screen
 
  ;; ==================== 会话（显式合并的交互封装） ====================
  (struct-out edit-session) make-edit-session
