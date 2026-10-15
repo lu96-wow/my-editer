@@ -16,13 +16,25 @@
 
 (provide
  ;; project ⊕ overlay → screen
- render)                          ; document viewport [selections] → screen
+ render                           ; document viewport [selections] → screen
+ render-text                      ; document viewport → (values rows vrows gutter)（文本层，无 overlay）
+ render-assemble)                 ; document viewport rows vrows gutter selections → screen
 
-(define (render bd vp [sels #f])
+;; 文本层：project + vrows（内容缓存缓存这个）
+(define (render-text bd vp)
   (define t (document-text bd))
   (define vrows (viewport-vrows t vp))
   (define-values (rows gutter) (project bd vp vrows))
+  (values rows vrows gutter))
+
+;; 用已算好的文本层 + 当前 selections 组装 screen（overlay 每帧重算）
+(define (render-assemble bd vp rows vrows gutter sels)
+  (define t (document-text bd))
   (screen (viewport-width vp) (viewport-height vp)
           rows
           (if sels (overlay-cursors t vp vrows sels) '())
           (if sels (overlay-regions t vp vrows sels gutter) '())))
+
+(define (render bd vp [sels #f])
+  (define-values (rows vrows gutter) (render-text bd vp))
+  (render-assemble bd vp rows vrows gutter sels))

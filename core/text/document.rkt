@@ -32,7 +32,7 @@
 (provide
  ;; ---------- 类型 ----------
  (struct-out document-immutable)  ; text（版本身份）
- (struct-out document-mutable)    ; face / readonly / slots（盒）
+ (struct-out document-mutable)    ; face / readonly / slots / revision（盒）
  (struct-out document)            ; im ⊕ mut
 
  ;; ---------- 构造 ----------
@@ -43,6 +43,7 @@
  document-slots                   ; document → slots
  document-face                    ; document → face 轨
  document-readonly                ; document → readonly 轨
+ document-revision                ; document → 渲染相关书写后的新 token（缓存失效用）
  document->string                 ; document → 全文
  document-range-text              ; document range → 区间文本
  document-change-text             ; document change → 变更插入文本
@@ -97,10 +98,11 @@
 ;; text : track（行 = string）
 
 ;; 可变部分：外壳不可变，可变性只在 box / slots 里。
-(struct document-mutable (face readonly slots) #:transparent)
+(struct document-mutable (face readonly slots revision) #:transparent)
 ;; face     : box（行 = vector，格值 = face / #f；或 #f = 整轨全默认）
 ;; readonly : box（行 = vector，格值 = #t / #f；或 #f = 整轨全默认）
 ;; slots    : slots 结构体（开放槽容器，见 slots.rkt）
+;; revision : box（gensym token）——任何影响渲染的写路径换新 token，供内容缓存失效
 
 ;; document 本身不可变：只是不可变部分 + 可变部分的不可变对。
 (struct document (im mut) #:transparent)
@@ -112,14 +114,20 @@
 (define (document-face bd) (unbox (document-mutable-face (document-mut bd))))
 (define (document-readonly bd) (unbox (document-mutable-readonly (document-mut bd))))
 
+;; 渲染相关状态一变（文本 / face / readonly）就换新 token。
+(define (document-revision bd) (unbox (document-mutable-revision (document-mut bd))))
+(define (touch! bd)
+  (set-box! (document-mutable-revision (document-mut bd)) (gensym))
+  bd)
+
 ;;; ---------- 端口原子：写回句柄 ----------
 
 (define (document-face-atom bd) (document-mutable-face (document-mut bd)))
 (define (document-readonly-atom bd) (document-mutable-readonly (document-mut bd)))
 
 ;; 写端口：O(1)，不换 document，不碰 history。返回同一个 document 便于串接。
-(define (document-set-face! bd v) (set-box! (document-face-atom bd) v) bd)
-(define (document-set-readonly! bd v) (set-box! (document-readonly-atom bd) v) bd)
+(define (document-set-face! bd v) (set-box! (document-face-atom bd) v) (touch! bd))
+(define (document-set-readonly! bd v) (set-box! (document-readonly-atom bd) v) (touch! bd))
 
 ;;; ---------- 槽通用访问（按 index） ----------
 ;; document 不认识槽名；命名访问器由 slot-dsl.rkt 的宏生成。
@@ -134,9 +142,9 @@
 
 ;;; ---------- 构造 ----------
 
-(define (make-document* text face readonly slots)
+(define (make-document* text face readonly slots revision)
   (document (document-immutable text)
-            (document-mutable face readonly slots)))
+            (document-mutable face readonly slots revision)))
 
 ;; 与文本同形、值全为 default 的属性轨。
 (define (attr-track-for text default)
@@ -147,7 +155,7 @@
 (define (document-open s [chunk-lines default-chunk-lines])
   (freeze-slots!)                                   ; 槽注册必须早于任何文档创建
   (make-document* (track-of-list (string->lines s) chunk-lines)
-                  (box #f) (box #f) (make-slots)))
+                  (box #f) (box #f) (make-slots) (box (gensym))))
 
 (define (document->string bd) (lines->string (track->list (document-text bd))))
 
@@ -163,7 +171,8 @@
   (make-document* new
                   (box (edit-attr (document-face bd) ed))
                   (box (edit-attr (document-readonly bd) ed))
-                  (fork-slots (document-slots bd) (fork-ctx ed changes old new))))
+                  (fork-slots (document-slots bd) (fork-ctx ed changes old new))
+                  (box (gensym))))
 
 ;;; ---------- 端口 ----------
 ;; port-of : document -> box。首次编辑时按当前文本行长 materialize 出真轨。
@@ -171,7 +180,7 @@
 (define (port-edit bd port-of ed)
   (set-box! (port-of bd)
             (ed (or (unbox (port-of bd)) (attr-track-for (document-text bd) #f))))
-  bd)
+  (touch! bd))
 
 (define (port-fill bd port-of l0 c0 l1 c1 val)
   (port-edit bd port-of (edit-fill l0 c0 l1 c1 val)))

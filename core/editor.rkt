@@ -23,6 +23,7 @@
          "editor/query.rkt"
          "editor/attributes.rkt"
          "editor/render.rkt"
+         "editor/layout.rkt"
          "editor/session.rkt"
          ;; 值词汇表（宿主构造 point / range / selection / 读 screen 用）
          "text/base/point.rkt"
@@ -30,6 +31,8 @@
          "text/base/range.rkt"
          "text/base/change.rkt"
          "view/base/screen.rkt"
+         "view/base/rect.rkt"
+         "view/panel.rkt"
          "view/compose.rkt"
          "view/patch.rkt")
 
@@ -101,10 +104,15 @@
  view-mode view-line-numbers? view-width view-height
  view-visible-range view-anchor-point
 
- ;; ==================== 渲染 ====================
- (struct-out display-entry)
- display-entry-cursor-position
+ ;; ==================== 渲染 / 面板 ====================
+ (struct-out rect)
+ (struct-out panel)
+ make-panel borders-all borders-none panel-content
+ buffer-add-panel!
+ panel-sync! panels-sync!
+ panel-cursor-position
  render-display render-display-patch
+ render-cache-screen
 
  ;; ==================== 会话（显式合并的交互封装） ====================
  (struct-out edit-session) make-edit-session

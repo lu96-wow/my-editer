@@ -24,8 +24,7 @@
  (struct-out piece)               ; row / column / text / attr
 
  ;; ---------- 差量 ----------
- screen-patch                     ; old new → (values render selection)
- screen-patch-rows)               ; old new rows → 同上（只 diff 指定行；#f = 全部）
+ screen-patch)                    ; old new → (values render selection)
 
 (struct piece (row column text attr) #:transparent)
 
@@ -33,23 +32,13 @@
 
 ;; → (values render selection)
 (define (screen-patch old new)
-  (screen-patch-rows old new #f))
-
-;; rows : #f = 全部行（旧行为）；否则只 diff 这些行（脏区）。
-;; 尺寸变了 / old=#f → 强制全部行（fresh）。
-(define (screen-patch-rows old new rows)
   (define h (screen-height new))
   (define fresh? (or (not old)
                      (not (= (screen-width old) (screen-width new)))
                      (not (= (screen-height old) (screen-height new)))))
   (define old* (and (not fresh?) old))
-  (define rs (if (or fresh? (not rows))
-                 (in-range h)
-                 (sort (remove-duplicates
-                        (filter (λ (r) (and (exact-nonnegative-integer? r) (< r h))) rows))
-                       <)))
   (define-values (rends sels)
-    (for/lists (rn sl) ([r rs]) (row-patch old* new r)))
+    (for/lists (rn sl) ([r (in-range h)]) (row-patch old* new r)))
   (values (append* rends) (append* sels)))
 
 ;;; ---------- 一格的状态 ----------
