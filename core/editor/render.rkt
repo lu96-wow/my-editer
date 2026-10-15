@@ -23,7 +23,15 @@
          "../text/document.rkt")
 
 (provide
- panel-cursor-position            ; panel → 主光标绝对屏幕位置
+ ;; ---------- 定位（单焦点模型）----------
+ ;; core 的**绘制**支持多焦点（focus 可以是 (listof view)，每个焦点 view 各画光标/选区）；
+ ;; 但下面这些「取焦点光标位置」的 API 按**单焦点**假定：只有一个焦点 view，
+ ;; 合成屏里最多一个主光标。多焦点下要按 panel 取位置，用 panel-cursor-position(/visible)。
+ panel-cursor-position            ; panel → 主光标绝对屏幕位置（几何，不看遮挡/越界）
+ panel-cursor-position/visible    ; screen panel → 可见位置（几何 ∩ 已画光标）
+ screen-primary-cursor            ; screen → 主光标 cursor | #f
+
+ ;; ---------- 渲染 ----------
  render-display                   ; panels focus w h → screen（全量）
  render-display-patch             ; panels focus w h cache → (values cache render selection)（增量）
  render-cache-screen)             ; render-cache → screen
@@ -76,12 +84,39 @@
         [(list? focus) focus]
         [else (list focus)]))
 
+;; panel 的 view 主光标 → 屏幕绝对坐标（**纯几何**：内容区原点 + view 内光标坐标）。
+;;
+;; 不看遮挡、不裁边界：被高 deep 浮窗盖住、或 panel 部分在屏外，它照样返回坐标。
+;; 要「实际画出来的位置」用 panel-cursor-position/visible。
+;; 单焦点模型：宿主传进来的 focus 就是这块 panel 的 view。
 (define (panel-cursor-position p)
   (define v (panel-view p))
   (define c (panel-content p))
   (define-values (r col) (view-cursor-screen-position v))
   (if r (values (+ (rect-y c) r) (+ (rect-x c) col))
         (values #f #f)))
+
+;; panel 的 view 光标在屏幕上的**可见**位置 = 几何位置 ∩ 这一帧真画出来的光标。
+;; 合成（compose-overlay）已经把遮挡 / 越界裁掉，所以 screen-cursors 里在 = 可见。
+;;
+;; 注意：“可见”隐含“有 overlay”：只有**焦点** view 才会在 screen 里画 cursor，
+;; 所以未焦点的 panel 这里恒为 (values #f #f)。
+;; 单焦点模型下，这就是「焦点光标位置」，且已不含遮挡。
+;;   screen panel → (values row col) | (values #f #f)
+(define (panel-cursor-position/visible screen p)
+  (define-values (r c) (panel-cursor-position p))
+  (if (and r
+           (for/or ([cu (in-list (screen-cursors screen))])
+             (and (= (cursor-row cu) r) (= (cursor-column cu) c))))
+      (values r c)
+      (values #f #f)))
+
+;; 合成屏上的主光标（焦点 view 的主选区光标）；被浮窗盖住 / 越界则不在表里。
+;; 单焦点模型：返回的就是「焦点光标」。多焦点会有多个主光标，这个只取第一个，
+;; 要按 view/panel 取用 panel-cursor-position(/visible)。
+;;   screen → cursor | #f
+(define (screen-primary-cursor screen)
+  (for/first ([cu (in-list (screen-cursors screen))] #:when (cursor-primary? cu)) cu))
 
 ;; layout ⊕ focus ⊕ 内容缓存 → (values panes 文本变化屏幕行)。
 (define (scene-panes+changed lay focs old-content new-content)
@@ -236,4 +271,12 @@
   ;; 脏区不改变画面：与全量一致
   (define full (render-display (list p3) v 12 6))
   (check-equal? (screen->string (render-cache-screen c5)) (screen->string full))
+
+  ;; 定位（单焦点）：panel 几何位置 == 合成屏主光标位置 == 可见位置
+  (define scr5 (render-cache-screen c5))
+  (define-values (cr cc) (panel-cursor-position p3))
+  (define pc (screen-primary-cursor scr5))
+  (check-equal? (list cr cc) (list (cursor-row pc) (cursor-column pc)))
+  (check-equal? (call-with-values (λ () (panel-cursor-position/visible scr5 p3)) list)
+                (list cr cc))
   (displayln "render.rkt: ok"))

@@ -110,7 +110,7 @@
  make-panel borders-all borders-none panel-content
  buffer-add-panel!
  panel-sync! panels-sync!
- panel-cursor-position
+ panel-cursor-position panel-cursor-position/visible screen-primary-cursor
  render-display render-display-patch
  render-cache-screen
 

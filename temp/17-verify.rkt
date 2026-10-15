@@ -63,12 +63,20 @@
   (sync!)
   (define-values (c r s) (render-display-patch p doc-v W H cache))
   (set! cache c)
-  (define inc (screen->string (render-cache-screen c)))
+  (define scr (render-cache-screen c))
+  (define inc (screen->string scr))
   (define full (screen->string (render-display p doc-v W H)))
   (unless (equal? inc full) (error 'verify "~a：增量屏 != 全量屏" label))
   (define bytes (render-pieces (append r s)))
-  (printf "── ~a ──  piece: render=~a selection=~a / tui bytes=~a  ✓\n~a\n\n"
-          label (length r) (length s) (bytes-length bytes) inc))
+  ;; 定位（单焦点）：焦点光标 = 合成屏主光标；doc panel 的可见光标位置
+  (define pc (screen-primary-cursor scr))
+  (define doc-panel (cadr p))
+  (define-values (fr fc) (panel-cursor-position/visible scr doc-panel))
+  (printf "── ~a ──  piece: render=~a selection=~a / tui bytes=~a / 焦点光标=~a / doc可见=~a  ✓\n~a\n\n"
+          label (length r) (length s) (bytes-length bytes)
+          (if pc (list (cursor-row pc) (cursor-column pc)) '(#f #f))
+          (if fr (list fr fc) #f)
+          inc))
 
 (define (run-verify!)
   (verify! "首帧（全量）")
