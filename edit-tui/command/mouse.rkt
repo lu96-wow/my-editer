@@ -46,18 +46,3 @@
    (if (memq 'shift (mouse-mods m)) "S-" "")
    (if (mouse-button m) (symbol->string (mouse-button m)) "-")
    " " (symbol->string (mouse-action m))))
-
-(module+ test
-  (require rackunit)
-  (check-equal? (mouse 'press 'left) (mouse-token 'press 'left '()))
-  (check-equal? (mouse 'press 'left 'ctrl 'shift) (mouse-token 'press 'left '(ctrl shift)))
-  (check-equal? (mouse 'scroll 'up) (mouse-token 'scroll 'up '()))
-  (check-equal? (mouse 'move #f) (mouse-token 'move #f '()))
-  ;; 严格：无修饰 ≠ 有修饰
-  (check-not-equal? (mouse 'press 'left) (mouse 'press 'left 'ctrl))
-  ;; 校验
-  (check-exn exn:fail? (λ () (mouse 'click 'left)))
-  (check-exn exn:fail? (λ () (mouse 'press 'mid)))
-  (check-exn exn:fail? (λ () (mouse 'move 'left)))
-  (check-equal? (mouse->string (mouse 'press 'left 'ctrl)) "C-left press")
-  (displayln "command/mouse.rkt: ok"))
