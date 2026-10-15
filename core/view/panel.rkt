@@ -22,6 +22,7 @@
          borders-all borders-none
          panel-content
          panel-at
+         panel-move
          panel-neighbor
          panel-depth-neighbor
          panel-screen->content
@@ -172,6 +173,18 @@
                          (- (rect-y r2) (rect-bottom r)))))
   (+ dx dy))
 
+;;; ---------- 六向入口 ----------
+
+;; 六向移动：left/right/up/down = 同层平铺（panel-neighbor）；
+;;            front/back        = 跨层前后（panel-depth-neighbor）。
+;; 无目标 → #f。这是给键绑定用的单入口。
+(define (panel-move panels from dir)
+  (case dir
+    [(left right up down) (panel-neighbor panels from dir)]
+    [(front back)         (panel-depth-neighbor panels from dir)]
+    [else (error 'panel-move
+                 "方向要是 'left/'right/'up/'down/'front/'back：~a" dir)]))
+
 (module+ test
   (require rackunit)
   (define (mk owner x y w h #:deep [d 0]) (make-panel owner (rect x y w h) borders-all #:deep d))
@@ -253,5 +266,17 @@
   (check-eq? (panel-depth-neighbor (list ga f5 f9) f5 'back) ga)
   (check-false (panel-depth-neighbor (list ga f5) f5 'front))            ; 无更上层
   (check-false (panel-depth-neighbor (list ga f5) ga 'back))            ; 无更下层
+
+  ;; 六向入口
+  (check-eq? (panel-move (list ga gb float1) ga 'right) gb)   ; 同层
+  (check-eq? (panel-move (list ga float1) ga 'front) float1)  ; 跨层
+  (check-eq? (panel-move (list ga f5 f9) f9 'back) f5)
+  (check-false (panel-move (list ga) ga 'up))
+  (check-exn exn:fail? (λ () (panel-move (list ga) ga 'sideways)))
+
+  ;; 不能跨层：该方向只剩不同层 → left/right/up/down 返回 #f（不选浮窗）
+  (define fRight (mk 'fRight 12 2 6 6 #:deep 5))   ; 在 ga 正右，但不同层
+  (check-false (panel-move (list ga fRight) ga 'right))
+  (check-eq? (panel-move (list ga fRight) ga 'front) fRight)  ; 同一块，只有 front 能到
 
   (displayln "panel.rkt: ok"))

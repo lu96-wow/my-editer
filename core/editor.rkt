@@ -111,6 +111,7 @@
  (struct-out panel)
  make-panel borders-all borders-none panel-content
  panel-at                         ; 命中：覆盖 (row,col) 且 deep 最大的 panel（同渲染的 panels）
+ panel-move                       ; 六向移动：left/right/up/down 同层 + front/back 跨层 → panel | #f
  panel-neighbor                   ; 同层方向导航：panels from dir → 该方向最近的 panel | #f
  panel-depth-neighbor             ; 跨层前后：panels from 'front/'back → 按距离最近的 panel | #f
  panel-screen->content panel-content->screen  ; 屏幕 ↔ 内容内坐标（纯几何）
