@@ -28,6 +28,7 @@ racket temp/02-selection.rkt
 | `16-dirty-fuzz.rkt` | 脏区增量渲染随机 fuzz：增量屏 == 全量屏 | `render-display-patch` |
 | `17-verify.rkt` | 布局 + 增量渲染验证；真终端交互 | `panels-sync!` |
 | `18-command.rkt` | 命令层：键序列表 + 组合 + racket-tui 输入 | `edit-tui/command` |
+| `19-bench-neighbor.rkt` | panel 方向导航 / 深度前后 的开销（每次按键一次的 O(N) 查询） | `view/panel.rkt` |
 
 ## 分层速查
 

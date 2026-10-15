@@ -22,6 +22,8 @@
          borders-all borders-none
          panel-content
          panel-at
+         panel-neighbor
+         panel-depth-neighbor
          panel-screen->content
          panel-content->screen)
 
@@ -70,6 +72,106 @@
   (define c (panel-content p))
   (values (+ row (rect-y c)) (+ col (rect-x c))))
 
+;;; ---------- 方向导航 ----------
+
+;; dir 方向、**与 from 同层（deep 相同）**、且垂直轴有重叠的 panel 里，取最近的；无 → #f。
+;; 只在同层平铺里走（deep 不参与排名）；跨层用 panel-depth-neighbor。dir ∈ 'up 'down 'left 'right。
+;; 一遍线性扫描：候选逐个与当前 best 比（不建表、不排序），全等保持靠前者（确定性）。
+;; 比较键：沿轴间隙 → 重叠更长 → 中心更近。
+(define (panel-neighbor panels from dir)
+  (define r (panel-rect from))
+  (define d (panel-deep from))
+  (for/fold ([best #f]) ([p (in-list panels)])
+    (cond
+      [(or (eq? p from)
+           (not (= (panel-deep p) d))
+           (not (beyond? dir r (panel-rect p)))
+           (not (cross-overlap? dir r (panel-rect p))))
+       best]
+      [(not best) p]
+      [(nearer? dir r (panel-rect p) (panel-rect best)) p]
+      [else best])))
+
+;; r2 严格在 r 的 dir 一侧（边可相切，间隙 ≥ 0）。
+(define (beyond? dir r r2)
+  (case dir
+    [(left)  (<= (rect-right r2) (rect-x r))]
+    [(right) (>= (rect-x r2) (rect-right r))]
+    [(up)    (<= (rect-bottom r2) (rect-y r))]
+    [(down)  (>= (rect-y r2) (rect-bottom r))]
+    [else (error 'panel-neighbor "方向要是 'up/'down/'left/'right：~a" dir)]))
+
+;; 垂直轴上是否重叠（半开区间，正长度）。
+(define (cross-overlap? dir r r2)
+  (case dir
+    [(left right) (< (max (rect-y r) (rect-y r2)) (min (rect-bottom r) (rect-bottom r2)))]
+    [(up down)    (< (max (rect-x r) (rect-x r2)) (min (rect-right r) (rect-right r2)))]))
+
+;; 沿轴间隙（beyond? 保证 ≥ 0）。
+(define (axis-gap dir r r2)
+  (case dir
+    [(left)  (- (rect-x r) (rect-right r2))]
+    [(right) (- (rect-x r2) (rect-right r))]
+    [(up)    (- (rect-y r) (rect-bottom r2))]
+    [(down)  (- (rect-y r2) (rect-bottom r))]))
+
+;; 垂直轴上的重叠长度。
+(define (axis-overlap dir r r2)
+  (case dir
+    [(left right) (- (min (rect-bottom r) (rect-bottom r2)) (max (rect-y r) (rect-y r2)))]
+    [(up down)    (- (min (rect-right r) (rect-right r2)) (max (rect-x r) (rect-x r2)))]))
+
+;; 垂直轴上中心距离。
+(define (axis-center-dist dir r r2)
+  (case dir
+    [(left right) (abs (- (+ (rect-y r) (quotient (rect-h r) 2))
+                          (+ (rect-y r2) (quotient (rect-h r2) 2))))]
+    [(up down)    (abs (- (+ (rect-x r) (quotient (rect-w r) 2))
+                          (+ (rect-x r2) (quotient (rect-w r2) 2))))]))
+
+;; a 比 b 更该选？全等 → #f（靠 sort 稳定性保持列表序）。
+(define (nearer? dir r a b)
+  (define ga (axis-gap dir r a)) (define gb (axis-gap dir r b))
+  (cond [(< ga gb) #t] [(> ga gb) #f]
+        [else
+         (define oa (axis-overlap dir r a)) (define ob (axis-overlap dir r b))
+         (cond [(> oa ob) #t] [(< oa ob) #f]
+               [else
+                (define ca (axis-center-dist dir r a)) (define cb (axis-center-dist dir r b))
+                (cond [(< ca cb) #t] [else #f])])]))
+
+;;; ---------- 深度前后 ----------
+
+;; 跨层：toward='front（deep 更大）/ 'back（deep 更小）的 panel 里，按距离取最近的；无 → #f。
+;; 一遍线性扫描；“距离” = 两矩形间隙（相交 = 0），同距取层差最小（逐层步进），全等保持靠前者。
+(define (panel-depth-neighbor panels from toward)
+  (define r (panel-rect from))
+  (define d (panel-deep from))
+  (define (in-depth? p)
+    (case toward
+      [(front) (> (panel-deep p) d)]
+      [(back)  (< (panel-deep p) d)]
+      [else (error 'panel-depth-neighbor "toward 要是 'front 或 'back：~a" toward)]))
+  (define (nearer? p q)                       ; p 比 q（当前 best）更该选？
+    (define gp (rect-gap r (panel-rect p)))
+    (define gq (rect-gap r (panel-rect q)))
+    (cond [(< gp gq) #t] [(> gp gq) #f]
+          [else (< (abs (- (panel-deep p) d))
+                   (abs (- (panel-deep q) d)))]))
+  (for/fold ([best #f]) ([p (in-list panels)])
+    (cond [(or (eq? p from) (not (in-depth? p))) best]
+          [(not best) p]
+          [(nearer? p best) p]
+          [else best])))
+
+;; 两矩形间隙（相交 / 相切 = 0）；Manhattan（x 间隙 + y 间隙）。
+(define (rect-gap r r2)
+  (define dx (max 0 (max (- (rect-x r) (rect-right r2))
+                         (- (rect-x r2) (rect-right r)))))
+  (define dy (max 0 (max (- (rect-y r) (rect-bottom r2))
+                         (- (rect-y r2) (rect-bottom r)))))
+  (+ dx dy))
+
 (module+ test
   (require rackunit)
   (define (mk owner x y w h #:deep [d 0]) (make-panel owner (rect x y w h) borders-all #:deep d))
@@ -104,5 +206,52 @@
   ;; 无边框：内容原点 = 外框原点
   (define pn (make-panel 'v (rect 5 2 10 4) borders-none))
   (check-equal? (call-with-values (λ () (panel-screen->content pn 2 5)) list) '(0 0))
+
+  ;; 方向导航：2×2 平铺
+  (define ga (make-panel 'ga (rect 0 0 10 10) borders-none))   ; 左上
+  (define gb (make-panel 'gb (rect 10 0 10 10) borders-none))  ; 右上
+  (define gc (make-panel 'gc (rect 0 10 10 10) borders-none))  ; 左下
+  (define gd (make-panel 'gd (rect 10 10 10 10) borders-none)) ; 右下
+  (define grid (list ga gb gc gd))
+  (check-eq? (panel-neighbor grid ga 'right) gb)
+  (check-eq? (panel-neighbor grid ga 'down) gc)
+  (check-eq? (panel-neighbor grid gb 'left) ga)
+  (check-eq? (panel-neighbor grid gb 'down) gd)
+  (check-eq? (panel-neighbor grid gc 'right) gd)
+  (check-eq? (panel-neighbor grid gd 'up) gb)
+  (check-false (panel-neighbor grid ga 'left))
+  (check-false (panel-neighbor grid ga 'up))
+
+  ;; 垂直轴无重叠 → 不算候选
+  (define far (make-panel 'far (rect 20 20 5 5) borders-none))
+  (check-false (panel-neighbor (list ga far) ga 'right))
+
+  ;; 先看间隙：近的胜，哪怕对齐差
+  (define near (make-panel 'near (rect 10 5 5 2) borders-none))   ; 间隙 0
+  (define far2 (make-panel 'far2 (rect 12 0 5 10) borders-none))  ; 间隙 2，对齐好
+  (check-eq? (panel-neighbor (list ga near far2) ga 'right) near)
+
+  ;; 间隙同 → 重叠更长者胜
+  (define o4 (make-panel 'o4 (rect 10 0 5 4) borders-none))
+  (define o3 (make-panel 'o3 (rect 10 0 5 3) borders-none))
+  (check-eq? (panel-neighbor (list ga o3 o4) ga 'right) o4)
+
+  ;; 方向导航只看同层：高 deep 浮窗不参与
+  (define float1 (mk 'f1 2 2 6 6 #:deep 5))
+  (check-eq? (panel-neighbor (list ga gb float1) ga 'right) gb)
+  ;; 浮窗层自己的方向导航
+  (define float2 (mk 'f2 12 2 6 6 #:deep 5))
+  (check-eq? (panel-neighbor (list float1 float2) float1 'right) float2)
+  (check-false (panel-neighbor (list float1) float1 'right))
+
+  ;; 深度前后：先矩形距离，再层差（逐层步进）
+  (define f5    (mk 'f5  2 2 6 6 #:deep 5))    ; 与 ga 相交
+  (define f9    (mk 'f9  2 2 6 6 #:deep 9))    ; 与 ga 相交
+  (define f5far (mk 'f5far 30 30 5 5 #:deep 5)) ; 离得远
+  (check-eq? (panel-depth-neighbor (list ga f5 f9 f5far) ga 'front) f5) ; 相交优先于远
+  (check-eq? (panel-depth-neighbor (list ga f5 f9) f9 'back) f5)        ; 层差最小
+  (check-eq? (panel-depth-neighbor (list ga f5 f9) f5 'back) ga)
+  (check-false (panel-depth-neighbor (list ga f5) f5 'front))            ; 无更上层
+  (check-false (panel-depth-neighbor (list ga f5) ga 'back))            ; 无更下层
 
   (displayln "panel.rkt: ok"))
