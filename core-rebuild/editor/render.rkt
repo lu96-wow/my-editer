@@ -35,8 +35,8 @@
 
 ;;; ---------- 缓存对象（宿主持有，core 无状态）----------
 
-;; 每 view 一条：键 = (doc-revision . viewport)；值 = (rows vrows gutter)（文本层）
-(struct content-entry (key data) #:transparent)
+;; 每 view 一条：键 = (doc-revision . viewport)；值 = (rows vrows gutter)（文本层）；sels = 上帧的 overlay
+(struct content-entry (key data sels) #:transparent)
 
 ;; 不透明旧帧：布局层 + 内容层 + 合成屏。
 ;; 注：panel 现在是**值**，layout 直接 captured 列表 + equal? 判等；
@@ -60,8 +60,8 @@
         (content-entry-data cached)
         (let-values ([(rows vrows gutter) (render-text bd vp)])
           (list rows vrows gutter))))
-  (hash-set! new-content v (content-entry key data))
   (define sels (and focused? (view-selections v)))
+  (hash-set! new-content v (content-entry key data sels))
   (match-define (list rows vrows gutter) data)
   (render-assemble bd vp rows vrows gutter sels))
 
@@ -104,20 +104,42 @@
 (define (render-display panels focus total-w total-h)
   (compose-screen (panels->layout panels) focus total-w total-h (make-hasheq) (make-hasheq)))
 
+;; 整帧无变化？布局 / 尺寸 / 每 view 的内容键 / 每 view 的 overlay selections 全同。
+;; 是 → 新屏与旧屏逐格相同，可以跳过合成 + screen-patch（返回旧缓存 + 空差量）。
+(define (same-frame? cache panels focus w h)
+  (and (render-cache? cache)
+       (= w (render-cache-w cache))
+       (= h (render-cache-h cache))
+       (equal? panels (render-cache-panels cache))
+       (let ([old-content (render-cache-content cache)]
+             [focs (focus-views focus)])
+         (for/and ([pl (in-list (layout-placements (render-cache-layout cache)))])
+           (match-define (list v c deep) pl)
+           (define e (hash-ref old-content v #f))
+           (and e
+                (same-content-key? (content-entry-key e)
+                                   (cons (document-revision (view-document v)) (view-viewport v)))
+                (equal? (and (memq v focs) (view-selections v))
+                        (content-entry-sels e)))))))
+
 ;; 增量：旧缓存 + 新 panels → (新缓存, render pieces, selection pieces)。
-;; cache = #f → 冷启动（全量）。
+;; cache = #f → 冷启动（全量）。整帧无变化 → 直接空差量。
 (define (render-display-patch panels focus total-w total-h cache)
-  (define lay
-    (if (and (render-cache? cache)
-             (equal? panels (render-cache-panels cache)))
-        (render-cache-layout cache)          ; 布局没变 → 复用（边框层跳过）
-        (panels->layout panels)))
-  (define old-content (if (render-cache? cache) (render-cache-content cache) (make-hasheq)))
-  (define new-content (make-hasheq))
-  (define new (compose-screen lay focus total-w total-h old-content new-content))
-  (define old (and (render-cache? cache) (render-cache-screen cache)))
-  (define-values (render selection) (screen-patch old new))
-  (values (render-cache total-w total-h panels lay new-content new) render selection))
+  (cond
+    [(same-frame? cache panels focus total-w total-h)
+     (values cache '() '())]
+    [else
+     (define lay
+       (if (and (render-cache? cache)
+                (equal? panels (render-cache-panels cache)))
+           (render-cache-layout cache)          ; 布局没变 → 复用（边框层跳过）
+           (panels->layout panels)))
+     (define old-content (if (render-cache? cache) (render-cache-content cache) (make-hasheq)))
+     (define new-content (make-hasheq))
+     (define new (compose-screen lay focus total-w total-h old-content new-content))
+     (define old (and (render-cache? cache) (render-cache-screen cache)))
+     (define-values (render selection) (screen-patch old new))
+     (values (render-cache total-w total-h panels lay new-content new) render selection)]))
 
 (module+ test
   (require rackunit "ops.rkt" "layout.rkt" "../text/base/point.rkt")
@@ -131,10 +153,12 @@
 
   ;; 冷启动 → 有 layout / 内容
   (define-values (c1 a1 b1) (render-display-patch ps v 12 6 #f))
-  ;; 同样 panels + 同样内容 → layout 与内容都复用
+  ;; 同样 panels + 同样内容 → layout 与内容都复用；整帧无变化 → 空差量（快路径）
   (define-values (c2 a2 b2) (render-display-patch ps v 12 6 c1))
   (check-true (eq? (render-cache-layout c1) (render-cache-layout c2)))
   (check-true (eq? (content-data c1) (content-data c2)))
+  (check-equal? (length a2) 0)
+  (check-equal? (length b2) 0)
 
   ;; rect 变了（新 panel 值）→ layout 重算
   (define p2 (make-panel v (rect 1 0 10 5) borders-all))

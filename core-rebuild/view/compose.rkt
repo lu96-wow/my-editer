@@ -34,14 +34,25 @@
   ;; 多 pane：建 owner 网格，按格遮挡。
   (define single? (and (pair? panes) (null? (cdr panes))))
   (define owner (if single? #f (and (pair? panes) (build-owner width height panes))))
+  (define by-row (if single? #f (build-panes-by-row height panes)))
   (define-values (cursors regions) (compose-overlay width height panes owner))
   (screen width height
           (for/vector ([r (in-range height)])
             (cond
               [(null? panes) '()]
               [single? (compose-row-single width (car panes) r)]
-              [else (compose-row width panes (vector-ref owner r) r)]))
+              [else (compose-row width (vector-ref by-row r) (vector-ref owner r) r)]))
           cursors regions))
+
+;; 按行索引 pane：pane -> 它覆盖的每一行都挂上。避免 compose-row 每行扫全部 pane。
+(define (build-panes-by-row height panes)
+  (define v (make-vector height '()))
+  (for ([p (in-list panes)])
+    (define pr (pane-row p))
+    (define sh (screen-height (pane-screen p)))
+    (for ([r (in-range (max 0 pr) (min height (+ pr sh)))])
+      (vector-set! v r (cons p (vector-ref v r)))))
+  v)
 
 ;; 单 pane 合成一行：run 平移 + 裁剪，无遮挡判定。
 (define (compose-row-single width p row)
@@ -90,6 +101,7 @@
       (f c))))
 
 ;; 合成一行：只为该格 owner 的 pane 画它的字符（下层在同一格的内容被上层遮挡）。
+;; panes 已经是「覆盖本行」的 pane（build-panes-by-row 的结果）。
 (define (compose-row width panes owner-row row)
   (define cells (make-vector width #f))
   (for ([p (in-list panes)])
