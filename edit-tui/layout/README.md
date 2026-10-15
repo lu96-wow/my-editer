@@ -7,6 +7,7 @@ core 只吃 `(listof panel)`；本层负责**产出**它：把布局树解成带
 tree.rkt    布局树（纯）：结构 + 操作（split / close / move / show / hide / resize）
 spec.rkt    声明式构造器（启动时定义）：dock → 边框，直接产出 tree
 solve.rkt   树 → panels / placements / cuts（纯）+ 拖缝（格数 → 权重）
+float.rkt   浮窗（正交覆盖，不参与布局）：叠放 + z + 锚点定位
 main.rkt    入口
 ```
 
@@ -106,6 +107,25 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 | `center` / 不写 | 全边 |
 
 `#:borders` 可显式覆盖。**运行期不再动结构 / 边框，只 `tree-show` / `tree-hide` / `tree-resize-seam`。**
+
+## 浮窗（`float.rkt`）
+
+浮窗用于补全 / 临时信息，**不进布局树**、不参与权重分配，用完即毁：
+
+```racket
+;; 锚点 (row,col) + 尺寸 → 夹进屏幕的外框（下方放不下就翻到上方）
+(define fr (float-rect-at row col 30 10 area))
+(define fs (floats-add fs (make-float 'completion cv fr)))
+;; 渲染 / 命中：和平铺 panels 拼一起（浮窗 deep 高，自然在上）
+(render-display-patch (append (tree->panels tree area) (floats->panels fs)) focus W H cache)
+(panel-at (append tiled (floats->panels fs)) row col)
+;; 用完即毁
+(set! fs (floats-remove fs 'completion))
+```
+
+- 浮窗内容就是 core 的 `view`（和平铺同一套渲染 / 命中）；
+- `key` 同名替换并置顶；表头 = 最上；`floats->panels` 分配 `deep > 0`（平铺 = 0）；
+- face 默认 `'float-border`（见 `theme/frame.rkt`）。
 
 ## 和 core 的边界
 
