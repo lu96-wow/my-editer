@@ -8,15 +8,15 @@
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
 | `edit-tui/base/` | **face 值定义**（`(face fg bg attrs)` + 读写）—— 生产者 / 消费者共用的基础词汇 | 无 |
-| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 | core（`display-entry`） |
-| `edit-tui/core-render/` | 渲染后端：把 core 渲染值 / 布局边框画成 tui 序列 | core、base、layout-base、tui |
+| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 + **边框字形** | core（`display-entry` / `pane`） |
+| `edit-tui/core-render/` | 渲染后端：把 core 渲染值（`piece`）画成 tui 序列 | core、base、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
 
 ```
-core 渲染值 (piece) ─┐
-                     ├─▶ core-render ─▶ tui 序列 ─▶ put-bytes     （宿主决定何时）
-layout 边框 (panel) ─┘         ▲
-                              theme：face 符号 → 颜色
+view  ─▶ display-entry ─┐
+                        ├─▶ core 合成 panes->screen ─▶ screen ─▶ screen-patch ─▶ piece ─▶ core-render ─▶ tui 序列 ─▶ put-bytes
+panel ─▶ border ─▶ pane ┘                                                                    ▲
+                                                                       theme：face 符号 → 颜色
 ```
 
 ## layout —— 面板 + 定位（纯几何）
@@ -38,22 +38,24 @@ layout 边框 (panel) ─┘         ▲
 | **`panel-content`** | **内部区域**：外框按「存在的边」各内缩 1 |
 | `panel-at` `panel-find` | 命中（deep 最大）/ 按 id 找 |
 | `panels->entries` | 面板 + `id→view` → `display-entry`（用内容区定位） |
+| **`panels->border-runs`** | 面板 → 边框 run `(row col text face deep)`（跨 panel 收边 + 同向延续取字形） |
+| **`panels->decorations`** | 面板 → 边框 `pane`（交给 core 合成） |
 
-**边框怎么画不在 layout** —— 在 `edit-tui/core-render/border.rkt`。
+边框的画（字形 / run / pane）在 `border.rkt`，与 panel 同层；它只产出 `pane`，不进 core-render。
+
+- 边框规则：**跨 panel 收集边**——所有 panel 的边框格进同一张集合，每格记「属于水平边还是垂直边」；字形由**同向延续**出的臂决定（水平看左右、垂直看上下）。于是共线相接 / 垂直相交处收成 T / 十字（`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`），而**平行相邻的边不连**（两条并排竖线各自是 `│`，不会合成 `├ ┤`）。同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。
 
 ## core-render —— 统一渲染后端
 
-把两种绘制数据都画成 tui 序列；**不自己输出**（何时 `put-bytes` 由宿主决定）。
+把 core 渲染值（`piece`）画成 tui 序列；**不自己输出**（何时 `put-bytes` 由宿主决定）。
 
 | 模块 | API | 作用 |
 |---|---|---|
 | `render.rkt` | `render-piece` `render-pieces` `render-clear` `face-fragment` | core `piece` → tui 序列 |
-| `border.rkt` | `panels->border-runs` `panels->decorations` | 布局 `panel` 边框 → run / 装饰 `pane` |
 
 face 值本身在 `edit-tui/base/face.rkt`（见上表）。
 
 - `piece.attr` = `face` 或 `(overlay . face)`（overlay ∈ `cursor` / `cursor-secondary` / `selection`）。
-- 边框：**跨 panel 收集边**——所有 panel 的边框格进同一张集合，每格记「属于水平边还是垂直边」；字形由**同向延续**出的臂决定（水平看左右、垂直看上下）。于是共线相接 / 垂直相交处收成 T / 十字（`─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼`），而**平行相邻的边不连**（两条并排竖线各自是 `│`，不会合成 `├ ┤`）。同格重叠 **deep 高的覆盖低的**；每段 run 带该框的 `face` / `deep`。
 - **增量 / 清旧位置**：边框作为 decoration 进 core 的 `render-display`，与内容同处一张 screen；`screen-patch` 逐格 diff，框移动 / 消失的旧格自动清掉。
 
 ## theme —— 统一主题（字段与 face 一致）

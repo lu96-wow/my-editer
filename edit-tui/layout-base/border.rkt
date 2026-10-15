@@ -1,6 +1,9 @@
 #lang racket
 
-;;; edit-tui/core-render/border.rkt —— 布局边框 → 装饰 pane（渲染后端的一部分）
+;;; edit-tui/layout-base/border.rkt —— 面板边框 → 装饰 pane
+;;;
+;;; 布局层的一部分：由 panel 的几何（rect + borders + deep + face）算出边框格与字形，
+;;; 输出 run / pane。不碰 core 的渲染值（piece）。
 ;;;
 ;;; 每块 panel 按自己的 `borders` 把边框格投进一张**全局集合**（跨 panel 收集）。
 ;;; 每格记两件事：它属于**水平边**（up/down）还是**垂直边**（left/right）——角上两者都真。
@@ -20,7 +23,7 @@
 ;;; 遮挡由 core 的合成按 deep 决定：边框作为 decoration 进同一张 screen，
 ;;; screen-patch 逐格 diff，框移动 / 消失的旧格自动清掉。
 
-(require "../layout-base/rect.rkt" "../layout-base/panel.rkt"
+(require "rect.rkt" "panel.rkt"
          "../../core/editor.rkt")
 
 (provide panels->border-runs      ; (listof panel) -> (listof (row col text face deep))
