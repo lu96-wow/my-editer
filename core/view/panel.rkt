@@ -119,13 +119,13 @@
       [(nearer? dir r (panel-rect p) (panel-rect best)) p]
       [else best])))
 
-;; r2 严格在 r 的 dir 一侧（边可相切，间隙 ≥ 0）。
+;; r2 在 r 的 dir 一侧（允许相接 / 共享 1 格接缝：边框重叠是 1 格）。
 (define (beyond? dir r r2)
   (case dir
-    [(left)  (<= (rect-right r2) (rect-x r))]
-    [(right) (>= (rect-x r2) (rect-right r))]
-    [(up)    (<= (rect-bottom r2) (rect-y r))]
-    [(down)  (>= (rect-y r2) (rect-bottom r))]
+    [(left)  (<= (rect-right r2) (add1 (rect-x r)))]
+    [(right) (>= (rect-x r2) (sub1 (rect-right r)))]
+    [(up)    (<= (rect-bottom r2) (add1 (rect-y r)))]
+    [(down)  (>= (rect-y r2) (sub1 (rect-bottom r)))]
     [else (error 'panel-neighbor "方向要是 'up/'down/'left/'right：~a" dir)]))
 
 ;; 垂直轴上是否重叠（半开区间，正长度）。

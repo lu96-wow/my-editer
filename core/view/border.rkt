@@ -4,16 +4,17 @@
 ;;;
 ;;; 输入 panel 列表（按宿主给的顺序），输出按行合并的 run `(row col text face deep)`。
 ;;;
-;;; **先 owner，再收边**：
-;;;   1. 每格归属 = 覆盖它的 panel 按 (deep, weight, 列表序) 取大者；
-;;;      deep 决定遮挡，weight 只在同 deep 时给边框抬优先级（焦点框用）；
-;;;   2. 某 panel 的边格，只有它是该格 owner 时才收（被高 deep 浮窗盖住的不收）；
+;;; **先分层，再收边**：
+;;;   1. 每格归属**最高 deep 那一层**（低的被遮住）；
+;;;      同层多个 panel 的 h?/v? 并集 —— 角上不同方向也能接上（不会缺臂）；
+;;;      face 取该层里 weight 大者、再列表靠后者；
+;;;   2. 同一格低层的边不收（被高 deep 盖住）—— 遮挡与连接一致：被盖住的边
+;;;      不会在浮窗外面长出悬空臂；
 ;;;   3. 字形 = 该格在**可见边格集合**里的同向延续：
 ;;;        水平边（up/down）→ 看左右；垂直边（left/right）→ 看上下
 ;;;      共线相接 / 垂直相交连成 T / 十字；平行相邻不连。
-;;; 这样遮挡和连接一致：被盖住的边不会在浮窗外面长出悬空臂。
 ;;;
-;;; face / deep 取 owner 的；同一格 owner 唯一，所以不冲突。
+;;; 这样接缝重叠（相邻 panel 共享 1 格）时，同层并集能把竖边和横边在角上接成 ┌ ┘ ├。
 ;;; 字形表先写死（Unicode 框线），后面再抽成可替换的 border renderer。
 
 (require "base/rect.rkt" "panel.rkt")
@@ -37,50 +38,45 @@
 (define (border-glyph dirs)
   (hash-ref glyph-table (sort (remove-duplicates dirs) dir<?) #\space))
 
-;;; ---------- owner ----------
-
-;; 边框归属（比 panel-at 多一层 weight）：deep 大者胜；同 deep 比 weight（大者胜）；
-;; 再同 → 列表靠后者胜。只影响边框 face，不影响内容 / 命中。
-(define (border-owner panels r c)
-  (for/fold ([best #f]) ([p (in-list panels)])
-    (if (and (rect-contains? (panel-rect p) c r)
-             (or (not best) (border-not-lower? p best)))
-        p best)))
-
-(define (border-not-lower? a b)
-  (define da (panel-deep a)) (define db (panel-deep b))
-  (or (> da db)
-      (and (= da db) (>= (panel-weight a) (panel-weight b)))))
-
-;;; ---------- 可见边格 ----------
+;;; ---------- 分层与可见边格 ----------
+;;
+;; 每格按 deep 分层：只有**最高 deep 那一层**的 panel 能贡献边（低的被遮住）。
+;; 同层多个 panel 的 h?/v? **并集**（角上不同方向也能接上）；
+;; face 取该层里 weight 大者、再列表靠后者。
 
 ;; → (hash (cons row col) (list glyph face deep))。
 (define (panels->border-cells panels)
-  (define info (make-hash))                    ; cell -> (list face deep h? v?)
-  (define (add! p cell h? v?)
-    (define old (hash-ref info cell #f))
-    (if old
-        (hash-set! info cell (list (car old) (cadr old)
-                                   (or h? (caddr old)) (or v? (cadddr old))))
-        (hash-set! info cell (list (panel-face p) (panel-deep p) h? v?))))
-  (for ([p (in-list panels)])
+  ;; 收集：cell -> (list (list idx panel h? v?) ...)
+  (define raw (make-hash))
+  (define (edge! idx p cell h? v?)
+    (hash-update! raw cell (λ (l) (cons (list idx p h? v?) l)) '()))
+  (for ([p (in-list panels)] [idx (in-naturals)])
     (define r (panel-rect p))
     (define x (rect-x r)) (define y (rect-y r))
     (define w (rect-w r)) (define h (rect-h r))
     (define b (panel-borders p))
     (when (and (> w 0) (> h 0))
       (when (memq 'up b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (border-owner panels y c) p))
-          (add! p (cons y c) #t #f)))
+        (for ([c (in-range x (+ x w))]) (edge! idx p (cons y c) #t #f)))
       (when (memq 'down b)
-        (for ([c (in-range x (+ x w))] #:when (eq? (border-owner panels (sub1 (+ y h)) c) p))
-          (add! p (cons (sub1 (+ y h)) c) #t #f)))
+        (for ([c (in-range x (+ x w))]) (edge! idx p (cons (sub1 (+ y h)) c) #t #f)))
       (when (memq 'left b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (border-owner panels rr x) p))
-          (add! p (cons rr x) #f #t)))
+        (for ([rr (in-range y (+ y h))]) (edge! idx p (cons rr x) #f #t)))
       (when (memq 'right b)
-        (for ([rr (in-range y (+ y h))] #:when (eq? (border-owner panels rr (sub1 (+ x w))) p))
-          (add! p (cons rr (sub1 (+ x w))) #f #t)))))
+        (for ([rr (in-range y (+ y h))]) (edge! idx p (cons rr (sub1 (+ x w))) #f #t)))))
+  ;; 每格：留最高 deep 那层；并 h/v；face 取该层 weight→列表序最大者。
+  (define (higher-face? e f)                    ; e 比 f 更优先（同层）
+    (define we (panel-weight (cadr e))) (define wf (panel-weight (cadr f)))
+    (or (> we wf) (and (= we wf) (> (car e) (car f)))))
+  (define info (make-hash))                     ; cell -> (list face deep h? v?)
+  (for ([(cell es) (in-hash raw)])
+    (define maxd (panel-deep (panel-at panels (car cell) (cdr cell))))
+    (define layer (filter (λ (e) (= (panel-deep (cadr e)) maxd)) es))
+    (define hs (for/or ([e (in-list layer)]) (caddr e)))
+    (define vs (for/or ([e (in-list layer)]) (cadddr e)))
+    (define best (for/fold ([b #f]) ([e (in-list layer)])
+                   (if (or (not b) (higher-face? e b)) e b)))
+    (hash-set! info cell (list (panel-face (cadr best)) maxd hs vs)))
   ;; 字形：同向延续出的臂
   (define (at r c) (hash-ref info (cons r c) #f))
   (define (h? r c) (and (at r c) (caddr (at r c))))
