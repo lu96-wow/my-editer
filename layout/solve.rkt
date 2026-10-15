@@ -12,17 +12,35 @@
 ;;; area 是外层 rect（屏幕坐标，x=列 y=行）。
 
 (provide (struct-out cut)
+         cut-at cuts-at
          tree->panels tree->placements tree->cuts)
 
 (require "tree.rkt"
          "../core/view/panel.rkt"
          "../core/view/base/rect.rkt")
 
-(struct cut (axis offset span-lo span-hi path index) #:transparent)
+(struct cut (axis offset span-lo span-hi path index before after) #:transparent)
 ;; axis      'lr（竖缝，offset = 列）| 'tb（横缝，offset = 行）
 ;; span-lo/hi 缝的纵向 / 横向范围 [lo, hi)
 ;; path      到所属 split 的「孩子下标」路径；index = 缝左 / 上方的孩子下标
+;; before/after 缝两侧孩子当前的格数（拖拽按格数改 size 用）
 ;; 拖拽：改该 split 第 index / index+1 个孩子的 size（见 tree-resize-at）。
+
+;; 屏幕格 (row, col) 命中哪条缝（缝是 1 格宽/高的线）。
+(define (cut-match? c row col)
+  (case (cut-axis c)
+    [(lr) (and (= col (cut-offset c))
+               (<= (cut-span-lo c) row) (< row (cut-span-hi c)))]
+    [(tb) (and (= row (cut-offset c))
+               (<= (cut-span-lo c) col) (< col (cut-span-hi c)))]))
+
+;; 该点命中的**所有**缝（交点 = 竖缝 + 横缝 → 角拖）。
+(define (cuts-at cuts row col)
+  (for/list ([c (in-list cuts)] #:when (cut-match? c row col)) c))
+
+;; 第一条（命中优先级由 cuts 顺序决定）。
+(define (cut-at cuts row col)
+  (for/or ([c (in-list cuts)] #:when (cut-match? c row col)) c))
 
 ;;; ---------- 分额度 ----------
 
@@ -81,10 +99,11 @@
        (define hi  (if (eq? axis 'lr) (rect-bottom r) (rect-right r)))
        (define last (sub1 nvis))
        (define prev-i #f)
+       (define prev-sz #f)
        (for ([vx (in-list vis)] [idx (in-naturals)] [sz (in-list sizes)])
          (define i (car vx)) (define c (cdr vx))
          (when prev-i
-           (set! cuts (cons (cut axis off lo hi path prev-i) cuts)))
+           (set! cuts (cons (cut axis off lo hi path prev-i prev-sz sz) cuts)))
          (define child-outer
            (let ([o (if (< idx last) (remove (if (eq? axis 'lr) 'right 'down) outer) outer)])
              (if (zero? idx) o (remove (if (eq? axis 'lr) 'left 'up) o))))
@@ -94,7 +113,8 @@
                child-outer
                (append path (list i)))
          (set! off (+ off (max 0 (sub1 sz))))           ; 下一块从本块最后一格开始（共享缝）
-         (set! prev-i i))]))
+         (set! prev-i i)
+         (set! prev-sz sz))]))
   (walk tree area '(up down left right) '())
   (values (reverse placements) (reverse panels) (reverse cuts)))
 
@@ -141,6 +161,14 @@
   (define cs (tree->cuts tr area))
   (check-equal? (length cs) 2)
   (check-equal? (sort (map cut-axis cs) symbol<?) '(lr tb))
+  ;; cut-at 命中缝
+  (define x0 (rect-x (rect-of 'editor)))
+  (check-not-false (cut-at cs 5 x0))
+  (check-false (cut-at cs 5 (sub1 x0)))
+  ;; 交点：cuts-at 两条（竖 + 横）
+  (check-equal? (length (cuts-at cs (cut-offset (car (filter (λ (c) (eq? (cut-axis c) 'tb)) cs)))
+                                       x0))
+                2)
 
   ;; 隐藏 tree → 右侧占满（无接缝，1 个可见孩子）
   (define pl2 (tree->placements (tree-hide tr 'tree) area))
