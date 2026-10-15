@@ -3,7 +3,7 @@
 ;;; core/view/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face + 边框权重 + 内容区
 ;;;
 ;;; panel 是**值**（每帧的显示项）：view + 外框 rect + 存在的边 + deep + 边框 face + 边框权重。
-;;;   view    : 显示槽，可替换（换 view = 造一个新 panel 值）
+;;;   view    : 显示槽（可替换，换 view = 造一个新 panel 值）| #f（空面板，无内容）
 ;;;   rect    : 外框矩形（尺寸真相在这里）
 ;;;   borders : 存在的边（每边可选）；不存在的那条边，内容顶到外框
 ;;;   deep    : 越大越在上；浮窗 = deep 高的 panel（决定内容遮挡 / 命中）
@@ -20,7 +20,7 @@
 (require "base/rect.rkt")
 
 (provide (struct-out panel)
-         make-panel
+         make-panel empty-panel panel-empty?
          borders-all borders-none
          panel-content
          panel-at
@@ -37,6 +37,14 @@
 (define (make-panel view rect borders
                     #:deep [deep 0] #:face [face 'window-border] #:weight [weight 0])
   (panel view rect borders deep face weight))
+
+;; 空面板：没有 view（view = #f）→ 没有内容，只有几何 + 边框。
+;; 命中 / 导航 / 边框照常；内容路径（sync / 渲染）会跳过它（透明）。
+(define (empty-panel rect borders
+                     #:deep [deep 0] #:face [face 'window-border] #:weight [weight 0])
+  (panel #f rect borders deep face weight))
+
+(define (panel-empty? p) (not (panel-view p)))
 
 (define borders-all  '(up down left right))
 (define borders-none '())
@@ -232,6 +240,14 @@
   ;; 零尺寸 / 空表
   (check-false (panel-at (list (make-panel 'z (rect 0 0 0 0) borders-none)) 0 0))
   (check-false (panel-at '() 0 0))
+
+  ;; 空面板：view = #f，几何 / 命中 / 内容区照常
+  (define pe (empty-panel (rect 2 1 8 4) borders-all))
+  (check-true (panel-empty? pe))
+  (check-false (panel-view pe))
+  (check-eq? (panel-at (list pe) 2 3) pe)
+  (check-equal? (let ([c (panel-content pe)]) (list (rect-x c) (rect-y c) (rect-w c) (rect-h c)))
+                '(3 2 6 2))                    ; 有边框 → 各内缩 1
 
   ;; panel-at-all：覆盖点的所有 panel，上→下
   (check-equal? (panel-at-all ps 3 3) (list hi lo))       ; deep 5 在 deep 0 上

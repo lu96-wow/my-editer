@@ -17,12 +17,13 @@
          buffer-add-panel!)          ; buffer rect borders … → panel（含新 view）
 
 (define (panel-sync! p)
-  (define c (panel-content p))
   (define v (panel-view p))
-  (define w (max 1 (rect-w c)))       ; viewport 最小 1
-  (define h (max 1 (rect-h c)))
-  (unless (and (= w (view-width v)) (= h (view-height v)))
-    (view-resize! v w h)))
+  (when v                                    ; 空面板没有 view，不同步
+    (define c (panel-content p))
+    (define w (max 1 (rect-w c)))            ; viewport 最小 1
+    (define h (max 1 (rect-h c)))
+    (unless (and (= w (view-width v)) (= h (view-height v)))
+      (view-resize! v w h))))
 
 (define (panels-sync! ps)
   (for-each panel-sync! ps))

@@ -40,7 +40,7 @@
 
 ```racket
 (struct panel (view rect borders deep face weight))
-;; view    : 显示槽，可替换（换 view = 造新 panel 值）
+;; view    : 显示槽，可替换（换 view = 造新 panel 值）| #f（空面板：无内容，只留几何 + 边框）
 ;; rect    : 外框矩形（尺寸真相）；内容区 = 按存在的边各内缩 1 = panel-content
 ;; borders : (listof 'up 'down 'left 'right)，每边可选
 ;; deep    : 越大越在上；浮窗 = deep 高的 panel（决定内容遮挡 / 命中）
@@ -56,6 +56,7 @@
 | 移动 / 改大小 | 造新 panel（同 view，新 rect），调 `panels-sync!` |
 | 加 / 删 | 往 `panels` 列表里加 / 去掉 |
 | 换 view | 造新 panel（新 view），调 `panels-sync!` |
+| 空面板（占位槽） | `(empty-panel rect borders …)`（view = #f）：命中/导航/边框照常，**内容透明**（不产出内容 pane） |
 | 改边框 / 深度 / face | 造新 panel |
 | 焦点框抬边框 | 焦点 panel 的 `#:weight` 调大（同 deep 时边框 face 赢）；`deep` 不变，命中 / 导航不受影响 |
 | 分屏 / 切分 / 拖分隔条 | **在 core 外**：算 rect → 产出 `(listof panel)`（core 只吃结果） |

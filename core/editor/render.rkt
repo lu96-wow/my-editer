@@ -91,10 +91,12 @@
 ;; 单焦点模型：宿主传进来的 focus 就是这块 panel 的 view。
 (define (panel-cursor-position p)
   (define v (panel-view p))
-  (define c (panel-content p))
-  (define-values (r col) (view-cursor-screen-position v))
-  (if r (values (+ (rect-y c) r) (+ (rect-x c) col))
-        (values #f #f)))
+  (if (not v)                                   ; 空面板：没有光标
+      (values #f #f)
+      (let ([c (panel-content p)])
+        (define-values (r col) (view-cursor-screen-position v))
+        (if r (values (+ (rect-y c) r) (+ (rect-x c) col))
+            (values #f #f)))))
 
 ;; panel 的 view 光标在屏幕上的**可见**位置 = 几何位置 ∩ 这一帧真画出来的光标。
 ;; 合成（compose-overlay）已经把遮挡 / 越界裁掉，所以 screen-cursors 里在 = 可见。
@@ -125,15 +127,16 @@
     (for/list ([pl (in-list (layout-placements lay))])
       (match-define (list v c deep) pl)
       (define cw (rect-w c)) (define ch (rect-h c))
-      (define-values (scr chg) (content-screen v (memq v focs) old-content new-content))
-      (when (pair? chg)
-        (set! changed (append (for/list ([i (in-list chg)]) (+ (rect-y c) i)) changed)))
-      (and (> cw 0) (> ch 0) (pane (rect-y c) (rect-x c) scr deep))))
+      (and v                                        ; 空面板（view = #f）：没有内容 pane
+           (let-values ([(scr chg) (content-screen v (memq v focs) old-content new-content)])
+             (when (pair? chg)
+               (set! changed (append (for/list ([i (in-list chg)]) (+ (rect-y c) i)) changed)))
+             (and (> cw 0) (> ch 0) (pane (rect-y c) (rect-x c) scr deep))))))
   (define border-panes
     (for/list ([b (in-list (layout-border-runs lay))])
       (match-define (list row col text face deep) b)
       (pane row col (screen (string-length text) 1 (vector (list (run 0 text face))) '() '()) deep)))
-  (values (append content-panes border-panes) changed))
+  (values (filter values (append content-panes border-panes)) changed))
 
 ;; overlay 按行分组（cursor/region 都在某一行内）。
 (define (overlay-by-row cursors regions)
@@ -162,12 +165,13 @@
              [focs (focus-views focus)])
          (for/and ([pl (in-list (layout-placements (render-cache-layout cache)))])
            (match-define (list v c deep) pl)
-           (define e (hash-ref old-content v #f))
-           (and e
-                (same-content-key? (content-entry-key e)
-                                   (cons (document-revision (view-document v)) (view-viewport v)))
-                (equal? (and (memq v focs) (view-selections v))
-                        (content-entry-sels e)))))))
+           (or (not v)                              ; 空面板：没有内容要比较
+               (let ([e (hash-ref old-content v #f)])
+                 (and e
+                      (same-content-key? (content-entry-key e)
+                                         (cons (document-revision (view-document v)) (view-viewport v)))
+                      (equal? (and (memq v focs) (view-selections v))
+                              (content-entry-sels e)))))))))
 
 ;;; ---------- 全量 ----------
 
@@ -284,5 +288,24 @@
   (define pw (make-panel v (rect 0 0 10 5) borders-all #:weight 1))
   (define-values (c6 r6 b6) (render-display-patch (list pw) v 12 6 c5))
   (check-false (eq? (render-cache-layout c5) (render-cache-layout c6)))
+
+  ;; 空面板：渲染不崩；只有边框，内部透明
+  (define pe (empty-panel (rect 0 0 8 4) borders-all))
+  (check-true (regexp-match? #rx"┌" (screen->string (render-display (list pe) #f 8 4))))
+  (check-equal? (call-with-values (λ () (panel-cursor-position pe)) list) '(#f #f))
+  ;; 空面板的增量：无变化 → 空差量，且屏幕一致
+  (define-values (ce _r _s) (render-display-patch (list pe) #f 8 4 #f))
+  (define-values (ce2 dr ds) (render-display-patch (list pe) #f 8 4 ce))
+  (check-equal? (length dr) 0)
+  (check-equal? (length ds) 0)
+  (check-equal? (screen->string (render-cache-screen ce2))
+                (screen->string (render-display (list pe) #f 8 4)))
+  ;; 叠在内容上：空面板无内容 pane → 内容透出（与不叠加同屏）
+  (define eb (make-buffer "hello\nworld\n"))
+  (define ev (buffer-add-view! eb 8 4 #:line-numbers? #f))
+  (define pv (make-panel ev (rect 0 0 8 4) borders-none))
+  (define base (render-display (list pv) #f 8 4))
+  (define over (render-display (list pv (empty-panel (rect 0 0 8 4) borders-none #:deep 5)) #f 8 4))
+  (check-equal? (screen->string over) (screen->string base))
 
   (displayln "render.rkt: ok"))
