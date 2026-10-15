@@ -51,7 +51,12 @@
 
   (bench "patch 内容编辑（焦点 view 重渲）" 100
          (λ () (void (buffer-edit! b2 focus (op-type "x")))
-              (void (buffer-undo! b2))
+              (render-display-patch panels focus W H c0)))
+
+  (define sc (box 0))
+  (bench "patch 滚动（viewport 变，焦点 view 重渲）" 100
+         (λ () (set-box! sc (modulo (add1 (unbox sc)) 200))
+              (view-scroll-to-line! focus (unbox sc))
               (render-display-patch panels focus W H c0)))
 
   (define m (box 0))

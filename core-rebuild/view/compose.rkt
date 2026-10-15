@@ -21,7 +21,12 @@
 
  ;; ---------- 合成 ----------
  panes->screen                    ; width height panes → screen
- panes->composition)              ; width height panes → composition
+ panes->composition               ; width height panes → composition
+
+ ;; ---------- 逐行（脏区） ----------
+ build-owner-row                  ; width panes row → owner 行向量
+ compose-row-of                   ; width panes row → (listof run)（只合成一行）
+ panes->overlay)                  ; width height panes → (values cursors regions)（owner 行按需）
 
 (struct pane (row column screen deep) #:transparent)
 ;; row/col : 屏幕坐标（可负）；deep : 深度（大 = 上）
@@ -33,9 +38,11 @@
   ;; 单 pane：无遮挡，直接走 run 路径（省掉 cell 往返）。
   ;; 多 pane：建 owner 网格，按格遮挡。
   (define single? (and (pair? panes) (null? (cdr panes))))
-  (define owner (if single? #f (and (pair? panes) (build-owner width height panes))))
+  (define sorted (if single? '() (sort panes < #:key pane-deep)))
+  (define owner (if single? #f (and (pair? panes) (build-owner width height sorted))))
   (define by-row (if single? #f (build-panes-by-row height panes)))
-  (define-values (cursors regions) (compose-overlay width height panes owner))
+  (define-values (cursors regions)
+    (compose-overlay width height panes (λ (r) (and owner (vector-ref owner r)))))
   (screen width height
           (for/vector ([r (in-range height)])
             (cond
@@ -82,14 +89,24 @@
   (if (zero? (string-length text*)) #f (run new-column text* (run-face rn))))
 
 ;; owner[r][c]：覆盖该格的最高 pane（deep 大者；同 deep 列表靠后者）。#f = 无。
-;; 只认 pane 的**矩形**，不看其内容 —— 所以空白格也算被上层遮挡。
-(define (build-owner width height panes)
-  (define ordered (sort panes < #:key pane-deep))    ; 稳定：低 → 高，后者覆盖
+;; ordered 已按 deep 升序（低 → 高）。
+(define (build-owner width height ordered)
   (for/vector ([r (in-range height)])
     (define rowv (make-vector width #f))
     (for ([p (in-list ordered)])
       (pane-columns p width r (lambda (c) (vector-set! rowv c p))))
     rowv))
+
+;; 只建一行的 owner（脏区用）。panes = 全部 pane，内部按 deep 排序。
+(define (build-owner-row width panes row)
+  (define rowv (make-vector width #f))
+  (for ([p (in-list (sort panes < #:key pane-deep))])
+    (pane-columns p width row (lambda (c) (vector-set! rowv c p))))
+  rowv)
+
+;; 只合成一行（脏区用）。
+(define (compose-row-of width panes row)
+  (compose-row width panes (build-owner-row width panes row) row))
 
 ;; 对 pane 覆盖第 r 行的每个屏幕列 c（裁到 [0,width)）调 f。
 (define (pane-columns p width r f)
@@ -149,8 +166,9 @@
 
 ;;; ---------- overlay ----------
 
-;; 所有 pane 自带的 overlay 全部参与合成；再按 owner 遮掉被上层覆盖的格（owner=#f 时无遮挡）。
-(define (compose-overlay width height panes owner)
+;; 所有 pane 自带的 overlay 全部参与合成；再按 owner 遮掉被上层覆盖的格。
+;; owner-at : row → (or owner 行向量 #f)（按需构造，只影响有 overlay 的行）。
+(define (compose-overlay width height panes owner-at)
   (values
    (append*
     (for/list ([p (in-list panes)])
@@ -159,7 +177,8 @@
                 (define r (+ (pane-row p) (cursor-row c)))
                 (define col (+ (pane-column p) (cursor-column c)))
                 (and (>= r 0) (< r height) (>= col 0) (< col width)
-                     (or (not owner) (eq? (vector-ref (vector-ref owner r) col) p))
+                     (let ([orow (owner-at r)])
+                       (or (not orow) (eq? (vector-ref orow col) p)))
                      (cursor r col (cursor-primary? c)))))))
    (append*
     (for/list ([p (in-list panes)])
@@ -168,18 +187,22 @@
          (define r (+ (pane-row p) (region-row g)))
          (if (or (< r 0) (>= r height))
              '()
-             (visible-regions width owner p r
+             (visible-regions width owner-at p r
                               (+ (pane-column p) (region-start-column g))
                               (+ (pane-column p) (region-end-column g))
                               (region-primary? g)))))))))
 
-;; 一条 region 在 [b0,b1) 上对 owner 可见的子段 → region 列表（owner=#f = 整段可见）。
-(define (visible-regions width owner p r b0 b1 primary?)
-  (if (not owner)
+;; 只算 overlay（脏区用）：owner 行按需构造，只覆盖有 overlay 的行。
+(define (panes->overlay width height panes)
+  (compose-overlay width height panes (λ (r) (build-owner-row width panes r))))
+
+;; 一条 region 在 [b0,b1) 上对 owner 可见的子段 → region 列表（orow = #f = 整段可见）。
+(define (visible-regions width owner-at p r b0 b1 primary?)
+  (define orow (owner-at r))
+  (if (not orow)
       (let ([c0 (max 0 b0)] [c1 (min width b1)])
         (if (>= c0 c1) '() (list (region r c0 c1 primary?))))
-      (for/list ([span (in-list (owned-spans (vector-ref owner r) p
-                                              (max 0 b0) (min width b1)))])
+      (for/list ([span (in-list (owned-spans orow p (max 0 b0) (min width b1)))])
         (region r (car span) (cdr span) primary?))))
 
 ;; owner-row 里属于 p 的连续列区间（半开 [a,b)）→ (listof (cons a b))。
