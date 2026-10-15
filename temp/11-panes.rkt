@@ -84,5 +84,18 @@
 (printf "panel-at (5,1)  → owner = ~a\n" (panel-owner (panel-at panels2 5 1)))
 (printf "panel-at (25,1) → owner = ~a\n" (panel-owner (panel-at panels2 25 1)))
 
+;;; ---------- 直接路径：边框序列化也能增量（render-panels-patch）----------
+;;; 与 core 的 render-display-patch 对称：宿主留住返回的格 map，下帧当 old 传回。
+
+(displayln "======== 直接路径：边框增量 ========")
+(define-values (bcells b0) (render-panels-patch #f panels2))
+(printf "首帧（全部边框）：~a bytes\n" (bytes-length b0))
+(define-values (_bcells b1) (render-panels-patch bcells panels2))
+(printf "不动：~a bytes\n" (bytes-length b1))
+(define pop-p3 (make-panel 'popup (rect 44 2 22 6) borders-all
+                           #:deep 10 #:face 'float-border))
+(define-values (_bcells2 b2) (render-panels-patch bcells (list tree-p doc-p pop-p3)))
+(printf "浮窗再右移：~a bytes（新位重画 + 旧位空格清除）\n\n" (bytes-length b2))
+
 ;;; 说明：上面每一步的 rends / sels 就是 `piece`（row col text attr），
 ;;; 交给 edit-tui/core-render 的 render-pieces 即得 tui 序列（见 README 宿主用法）。

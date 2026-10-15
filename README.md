@@ -43,8 +43,10 @@ layout panel ─▶ border ─▶ pane ┘                                      
 | `panels->entries` | 面板 + `owner→view` → `display-entry`（用内容区定位） |
 | **`panels->border-runs`** | 面板 → 边框 run `(row col text face deep)`（跨 panel 收边 + 同向延续取字形） |
 | **`panels->decorations`** | 面板 → 边框 `pane`（交给 core 合成） |
+| `panels->border-cells` `border-cells->runs` | 面板 → 每格 `(glyph face deep)` / 按行合并的 run（增量 diff 的状态） |
 | **`render-panels`** | 面板 → tui 序列（边框，可直接 `put-bytes`） |
-| `render-border-runs` `render-border-run` | 边框 run → tui 序列 |
+| **`render-panels-patch`** | `(旧格 map, 面板)` → `(新格 map, 差分序列)`（增量，变化格重画 + 消失格空格清除） |
+| `render-border-runs` `render-border-run` `render-border-cells` | run / 格 → tui 序列 |
 | **`panels->border-runs`** | 面板 → 边框 run `(row col text face deep)`（跨 panel 收边 + 同向延续取字形） |
 | **`panels->decorations`** | 面板 → 边框 `pane`（交给 core 合成） |
 
@@ -65,7 +67,7 @@ layout panel ─▶ border ─▶ pane ┘                                      
 |---|---|---|
 | `render.rkt` | `render-piece` `render-pieces` `render-clear` `face-fragment` | core `piece` → tui 序列 |
 
-对称地，布局这半的序列化在 `layout-base/render.rkt`（`render-panels` / `render-border-runs`）。
+对称地，布局这半在 `layout-base/render.rkt`：全量 `render-panels`，增量 `render-panels-patch`（格级 diff，和 core 的 `render-display-patch` 一个套路：宿主留住返回的格 map，下帧当 old 传回）。
 
 face 值本身在 `edit-tui/base/face.rkt`（见上表）。
 

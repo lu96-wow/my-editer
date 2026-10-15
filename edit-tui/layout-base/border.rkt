@@ -1,9 +1,8 @@
 #lang racket
 
-;;; edit-tui/layout-base/border.rkt —— 面板边框 → 装饰 pane
+;;; edit-tui/layout-base/border.rkt —— 面板边框 → 装饰 pane / 格 map
 ;;;
-;;; 布局层的一部分：由 panel 的几何（rect + borders + deep + face）算出边框格与字形，
-;;; 输出 run / pane。不碰 core 的渲染值（piece）。
+;;; 布局层的一部分：由 panel 的几何（rect + borders + deep + face）算出边框格与字形。
 ;;;
 ;;; 每块 panel 按自己的 `borders` 把边框格投进一张**全局集合**（跨 panel 收集）。
 ;;; 每格记两件事：它属于**水平边**（up/down）还是**垂直边**（left/right）——角上两者都真。
@@ -19,15 +18,19 @@
 ;;; 同一格被多块框覆盖时，face / deep 取 **deep 高者**（同 deep 先出现者胜）；
 ;;; 水平/垂直标记是所有框的并集（这样跨框的相交仍能成 T/十字）。
 ;;;
-;;; face 由 panel 带（符号标签），输出 run 里带上 → 由 theme 解析成颜色。
-;;; 遮挡由 core 的合成按 deep 决定：边框作为 decoration 进同一张 screen，
-;;; screen-patch 逐格 diff，框移动 / 消失的旧格自动清掉。
+;;; 两种输出：
+;;;   panels->border-cells  每格 (glyph face deep) —— 增量 diff 的**状态**
+;;;   panels->border-runs   按行合并的 run         —— 全量 / 装饰 pane
+;;;
+;;; 序列化（run → tui 字节）在 render.rkt；遮挡由 core 的合成按 deep 决定。
 
 (require "rect.rkt" "panel.rkt"
          "../../core/editor.rkt")
 
-(provide panels->border-runs      ; (listof panel) -> (listof (row col text face deep))
-         panels->decorations)     ; (listof panel) -> (listof pane)
+(provide panels->border-cells      ; (listof panel) -> (hash (cons row col) (list glyph face deep))
+         border-cells->runs        ; cells -> (listof (row col text face deep))
+         panels->border-runs       ; (listof panel) -> (listof (row col text face deep))
+         panels->decorations)      ; (listof panel) -> (listof pane)
 
 ;;; ---------- 字形：方向集 → 制表符 ----------
 ;;;
@@ -63,32 +66,34 @@
        (if (memq 'left b)  (for/list ([rr (in-range y (+ y h))]) (list (cons rr x) #f #t)) '())
        (if (memq 'right b) (for/list ([rr (in-range y (+ y h))]) (list (cons rr (sub1 (+ x w))) #f #t)) '()))))
 
-;; → (listof (list row col text face deep))。同格 deep 高者胜（同 deep 先出现者胜）；
-;; 同一行连续、同 deep、同 face 的格合成一段。
-(define (panels->border-runs ps)
+;;; ---------- 格 map（增量 diff 的状态） ----------
+
+;; → (hash (cons row col) (list glyph face deep))。
+;; 同格 deep 高者胜（同 deep 先出现者胜）；水平/垂直标记取并集。
+(define (panels->border-cells ps)
   ;; 1. 全局边收集：格 -> (list deep face h? v?)。
-  (define cell-info (make-hash))
+  (define info (make-hash))
   (for ([p (in-list ps)])
     (define dp (panel-deep p))
     (define fc (panel-face p))
     (for ([e (in-list (panel-edge-cells p))])
       (match-define (list cell eh ev) e)
-      (define old (hash-ref cell-info cell #f))
+      (define old (hash-ref info cell #f))
       (cond
-        [(not old) (hash-set! cell-info cell (list dp fc eh ev))]
+        [(not old) (hash-set! info cell (list dp fc eh ev))]
         [else
          (define higher? (> dp (car old)))          ; 同 deep 保留先出现者
-         (hash-set! cell-info cell
+         (hash-set! info cell
                     (list (if higher? dp (car old))
                           (if higher? fc (cadr old))
-                          (or eh (caddr old))           ; 水平/垂直标记取并集
+                          (or eh (caddr old))
                           (or ev (cadddr old))))])))
   ;; 2. 字形 = 同向延续出的臂（水平看左右、垂直看上下）。
-  (define (info r c) (hash-ref cell-info (cons r c) #f))
-  (define (h? r c) (and (info r c) (caddr (info r c))))
-  (define (v? r c) (and (info r c) (cadddr (info r c))))
+  (define (at r c) (hash-ref info (cons r c) #f))
+  (define (h? r c) (and (at r c) (caddr (at r c))))
+  (define (v? r c) (and (at r c) (cadddr (at r c))))
   (define (glyph-at r c)
-    (define cur (info r c))
+    (define cur (at r c))
     (define h (caddr cur)) (define v (cadddr cur))
     (border-glyph
      (filter values
@@ -96,14 +101,16 @@
                    (and h (h? r      (add1 c)) 'r)
                    (and v (v? (sub1 r) c)      'u)
                    (and v (v? (add1 r) c)      'd)))))
-  ;; 3. 逐行、同 deep / 同 face、连续 → run。
-  (define rows (make-hash))                   ; row -> (list (list col glyph deep face))
-  (for ([(cell dv) (in-hash cell-info)])
+  (for/hash ([(cell dv) (in-hash info)])
+    (values cell (list (glyph-at (car cell) (cdr cell)) (cadr dv) (car dv)))))
+
+;;; ---------- 格 map → run（按行、同 deep / 同 face、连续合并） ----------
+
+(define (border-cells->runs cells)
+  (define rows (make-hash))                   ; row -> (list (col glyph deep face))
+  (for ([(cell gfd) (in-hash cells)])
     (hash-update! rows (car cell)
-                 (lambda (l) (cons (list (cdr cell)
-                                         (glyph-at (car cell) (cdr cell))
-                                         (car dv) (cadr dv))
-                                   l))
+                 (lambda (l) (cons (list (cdr cell) (car gfd) (caddr gfd) (cadr gfd)) l))
                  '()))
   (append*
    (for/list ([(r cs) (in-hash rows)])
@@ -125,6 +132,9 @@
             [else
              (loop (cdr cs) (list r c (string g) fc dp)
                    (if cur (cons cur acc) acc))])])))))
+
+(define (panels->border-runs ps)
+  (border-cells->runs (panels->border-cells ps)))
 
 ;; → (listof pane)，每段一个 1×N 的 pane（face / deep 都来自该框）。
 (define (panels->decorations ps)
@@ -167,6 +177,11 @@
           (make-panel 'b (rect 0 3 5 3) borders-all)))
   (check-false (has? stacked #\┬))
   (check-false (has? stacked #\┴))
+
+  ;; 格 map：键是坐标，值是 (glyph face deep)
+  (define cells (panels->border-cells one))
+  (check-true (hash-has-key? cells (cons 0 0)))
+  (check-equal? (car (hash-ref cells (cons 0 0))) #\┌)
 
   ;; 全无边框 → 无 run
   (check-equal? (panels->border-runs (list (make-panel 'a (rect 0 0 4 3) borders-none))) '())
