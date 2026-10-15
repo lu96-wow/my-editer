@@ -308,4 +308,12 @@
   (define over (render-display (list pv (empty-panel (rect 0 0 8 4) borders-none #:deep 5)) #f 8 4))
   (check-equal? (screen->string over) (screen->string base))
 
+  ;; panel-set-point!：屏幕格 → 该 panel 主光标（鼠标点哪落哪）
+  (define pset (make-panel v (rect 0 0 10 5) borders-all))
+  (panels-sync! (list pset))
+  (check-true (panel-set-point! pset 2 3))      ; 内容原点 (1,1) → 文档 (1,2)
+  (check-equal? (view-point v) (point 1 2))
+  (check-false (panel-set-point! pset 0 0))     ; 边框上 → 不动
+  (check-false (panel-set-point! pe 2 2))       ; 空面板 → 不动
+
   (displayln "render.rkt: ok"))

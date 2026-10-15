@@ -14,7 +14,7 @@
          "../text/base/point.rkt" "../text/base/selection.rkt"
          "../text/base/range.rkt" "../text/base/change.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
-         "../view/base/viewport.rkt")
+         "../view/base/viewport.rkt" "../view/panel.rkt")
 
 (provide
  ;; ---------- 纯：编辑算子 ----------
@@ -55,6 +55,7 @@
  ;; ---------- 提交：选区 / 定位 ----------
  view-set-selections!             ; view sels [#:ensure?] → void
  view-set-point!                  ; view point → void
+ panel-set-point!                 ; panel 屏幕格 (row,col) → view 主光标；→ 落点?（鼠标点哪落哪）
  view-select-all!                 ; view → void
  view-add-selection!              ; view selection [#:ensure?] → void
  view-remove-selection!           ; view selection [#:ensure?] → void
@@ -300,6 +301,12 @@
   (when ensure? (view-ensure! v)))
 
 (define (view-set-point! v p) (view-set-selections! v (selections-one (caret p))))
+
+;; panel 的屏幕格 (row,col) → 把该 panel 的 view 主光标落到对应文档位置。
+;; 内容外 / 不可见 / 空面板 → #f（不动）。鼠标“点哪落哪”一步到位。
+(define (panel-set-point! p row col)
+  (define-values (l c) (panel-screen-position->point p row col))
+  (and l (begin (view-set-point! (panel-view p) (point l c)) #t)))
 
 (define (view-select-all! v)
   (define t (document-text (view-document v)))

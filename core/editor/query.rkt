@@ -141,15 +141,21 @@
 ;; panel 是显示值；把它带到“文档坐标”要解包 panel.view 的 viewport/document，
 ;; 所以这一对在 editor 层；纯几何平移（屏幕 ↔ 内容内）在 view/panel.rkt。
 
-;; panel 上的屏幕格 (row, col) → 文档 (values line col)；内容外 / 不可见 → (values #f #f)。
+;; panel 上的屏幕格 (row, col) → 文档 (values line col)；内容外 / 不可见 / 空面板 → (values #f #f)。
 (define (panel-screen-position->point p row col)
-  (define-values (r c) (panel-screen->content p row col))
-  (view-screen-position->point (panel-view p) r c))
+  (define v (panel-view p))
+  (if (not v)
+      (values #f #f)
+      (let-values ([(r c) (panel-screen->content p row col)])
+        (view-screen-position->point v r c))))
 
-;; 文档点 → panel 上的绝对屏幕位置（几何，不看遮挡 / 越界）；不可见 → (values #f #f)。
+;; 文档点 → panel 上的绝对屏幕位置（几何，不看遮挡 / 越界）；不可见 / 空面板 → (values #f #f)。
 (define (panel-point->screen-position p pt)
-  (define-values (r c) (view-point->screen-position (panel-view p) pt))
-  (if r (panel-content->screen p r c) (values #f #f)))
+  (define v (panel-view p))
+  (if (not v)
+      (values #f #f)
+      (let-values ([(r c) (view-point->screen-position v pt)])
+        (if r (panel-content->screen p r c) (values #f #f)))))
 
 ;;; ---------- 视口状态 ----------
 

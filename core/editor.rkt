@@ -122,6 +122,7 @@
  ;; 定位（单焦点模型）
  panel-cursor-position panel-cursor-position/visible screen-primary-cursor
  panel-screen-position->point panel-point->screen-position  ; panel ↔ 文档坐标（editor 层）
+ panel-set-point!                 ; panel + 屏幕 (row,col) → 主光标落点（鼠标点哪落哪）
  ;; 渲染
  render-display render-display-patch
  render-cache-screen
