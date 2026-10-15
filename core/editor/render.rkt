@@ -1,6 +1,6 @@
 #lang racket
 
-;;; core-rebuild/editor/render.rkt —— 渲染：panel display list → screen（全量 + 分层脏区增量）
+;;; core/editor/render.rkt —— 渲染：panel display list → screen（全量 + 分层脏区增量）
 ;;;
 ;;;   panel = (view rect borders deep face)
 ;;;   布局层：panels → layout（内容 rect + 边框 run），只依赖面板几何
@@ -234,7 +234,7 @@
      (patch-full panels focus total-w total-h cache)]))
 
 (module+ test
-  (require rackunit "ops.rkt" "layout.rkt" "../text/base/point.rkt")
+  (require rackunit "ops.rkt" "sync.rkt" "../text/base/point.rkt")
   (define b (make-buffer "hi\nthere\n"))
   (define v (buffer-add-view! b))
   (define p  (make-panel v (rect 0 0 10 5) borders-all))

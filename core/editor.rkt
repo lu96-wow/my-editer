@@ -23,7 +23,7 @@
          "editor/query.rkt"
          "editor/attributes.rkt"
          "editor/render.rkt"
-         "editor/layout.rkt"
+         "editor/sync.rkt"
          "editor/session.rkt"
          ;; 值词汇表（宿主构造 point / range / selection / 读 screen 用）
          "text/base/point.rkt"
@@ -33,7 +33,6 @@
          "view/base/screen.rkt"
          "view/base/rect.rkt"
          "view/panel.rkt"
-         "view/compose.rkt"
          "view/patch.rkt")
 
 (provide
@@ -105,12 +104,17 @@
  view-visible-range view-anchor-point
 
  ;; ==================== 渲染 / 面板 ====================
+ ;; 布局素材（宿主算 rect / 命中用）
  (struct-out rect)
+ rect-right rect-bottom rect-inset rect-inset-sides rect-contains?
+ ;; 面板
  (struct-out panel)
  make-panel borders-all borders-none panel-content
  buffer-add-panel!
  panel-sync! panels-sync!
+ ;; 定位（单焦点模型）
  panel-cursor-position panel-cursor-position/visible screen-primary-cursor
+ ;; 渲染
  render-display render-display-patch
  render-cache-screen
 
@@ -143,5 +147,4 @@
  ;; ==================== 值词汇：屏幕 / 合成 ====================
  (struct-out run) (struct-out cursor) (struct-out region) (struct-out screen)
  screen-row screen->string
- (struct-out pane)
  (struct-out piece))

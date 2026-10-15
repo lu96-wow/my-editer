@@ -2,7 +2,9 @@
 
 (require "../../text/base/track.rkt" "../../text/base/line.rkt" "../../text/base/point.rkt" "../../text/base/width.rkt")
 
-;;; layout.rkt —— 布局：buffer 行 ↔ 屏幕行
+;;; layout.rkt —— 文本折行布局：buffer 行 ↔ 屏幕行
+;;;
+;;; 注意：这是「**一行文本怎么折成视觉行**」；与面板摆放 view/layout.rkt 无关。
 ;;;
 ;;; 两种模式只影响「一行怎么切成视觉行」：
 ;;;   clip  一条 buffer 行 = 一条视觉行（列按 left-column 平移）

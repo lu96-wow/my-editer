@@ -1,6 +1,6 @@
 #lang racket
 
-;;; core-rebuild/view/base/rect.rkt —— 矩形 + 算术（几何值）
+;;; core/view/base/rect.rkt —— 矩形 + 算术（几何值）
 ;;;
 ;;; 边框 / 内容区唯一用到的几何值。布局树在 core 外（切分 / 树是 panels 的生产者），
 ;;; core 只吃已定位的 panel，里面带的 rect 就是它。

@@ -1,6 +1,9 @@
 #lang racket
 
-;;; core-rebuild/view/layout.rkt —— 布局骨架（每帧只依赖 panels，不依赖内容 / 焦点）
+;;; core/view/layout.rkt —— 布局骨架（每帧只依赖 panels，不依赖内容 / 焦点）
+;;;
+;;; 注意：这是「**面板在屏幕上的摆放**」；与 view/base/layout.rkt 的「文本折行布局」
+;;; （buffer 行 ↔ 屏幕行）完全无关，只是名字都叫 layout。
 ;;;
 ;;; 渲染分两层，这里是「布局层」的产物：
 ;;;   placements  : 每块 panel 的 (view 内容 rect deep) —— 内容 pane 往哪贴

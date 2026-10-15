@@ -1,6 +1,6 @@
 #lang racket
 
-;;; core-rebuild/view/border.rkt —— 面板边框 → run（固定 Unicode 框线）
+;;; core/view/border.rkt —— 面板边框 → run（固定 Unicode 框线）
 ;;;
 ;;; 输入 panel 列表（按宿主给的顺序），输出按行合并的 run `(row col text face deep)`。
 ;;;

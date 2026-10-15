@@ -1,6 +1,6 @@
 #lang racket
 
-;;; core-rebuild/view/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face + 内容区
+;;; core/view/panel.rkt —— 面板：外框矩形 + 四条边可选边框 + 深度 + 边框 face + 内容区
 ;;;
 ;;; panel 是**值**（每帧的显示项）：view + 外框 rect + 存在的边 + deep + 边框 face。
 ;;;   view    : 显示槽，可替换（换 view = 造一个新 panel 值）
@@ -9,7 +9,7 @@
 ;;;   deep    : 越大越在上；浮窗 = deep 高的 panel
 ;;;   face    : 边框 face（#f | symbol | face），宿主设；core 不解释颜色
 ;;;
-;;; 内容区 = 外框按存在的边各内缩 1。view 的 viewport 尺寸由 editor/layout.rkt 的
+;;; 内容区 = 外框按存在的边各内缩 1。view 的 viewport 尺寸由 editor/sync.rkt 的
 ;;; panels-sync! 从 panel-content 落进去 —— 渲染保持纯，绝不 resize。
 ;;;
 ;;; 身份不在这里（view 可替换，不能拿 view 当身份）：命中 / 布局树在 core 外，

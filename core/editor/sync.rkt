@@ -1,6 +1,6 @@
 #lang racket
 
-;;; core-rebuild/editor/layout.rkt —— panel ↔ view（显式同步 + 一步构造）
+;;; core/editor/sync.rkt —— panel ↔ view（显式同步 + 一步构造）
 ;;;
 ;;; 尺寸的唯一真相在 panel.rect（内容区 = panel-content）。view 的 viewport 尺寸是派
 ;;; 生量，只能由这里写。宿主在「布局变化 / 换 view」之后显式调用；不动时是 no-op。
