@@ -121,7 +121,19 @@
                            (render-pieces (append r s))))
   (flush!))
 
-(define (mouse->rc e) (values (max 0 (sub1 (mouse-event-y e))) (max 0 (sub1 (mouse-event-x e)))))
+(define (dispatch-key! ev)
+  (define-values (st cmd) (key-reader-feed! reader ev))
+  (when (eq? st 'command) ((command-run cmd) '())))
+
+(define (dispatch-mouse! action button x y)
+  (define row (max 0 (sub1 y)))
+  (define col (max 0 (sub1 x)))
+  (case action
+    [(press)   (press! row col)]
+    [(move)    (move! row col)]
+    [(release) (release!)]
+    [(scroll)  (scroll! row col (eq? button 'up))]
+    [else (void)]))
 
 ;;; ════════════ 主循环 ════════════
 
@@ -131,31 +143,15 @@
      (cursor-hide)
      (enable-mouse!)
      (draw!)
-     (let loop ()
-       (define e (read-event))
-       (cond
-         [(resize-event? e)
-          (set-box! W (resize-event-cols e))
-          (set-box! H (resize-event-rows e))
-          (set! cache #f)
-          (draw!) (loop)]
-         [(null-event? e) (loop)]
-         [(key-event? e)
-          (define-values (st cmd) (key-reader-feed! reader e))
-          (when (eq? st 'command) ((command-run cmd) '()))
-          (draw!)
-          (when (unbox running?) (loop))]
-         [(mouse-event? e)
-          (define-values (row col) (mouse->rc e))
-          (case (mouse-event-action e)
-            [(press)   (press! row col)]
-            [(move)    (move! row col)]
-            [(release) (release!)]
-            [(scroll)  (scroll! row col (eq? (mouse-event-button e) 'up))]
-            [else (void)])
-          (draw!)
-          (loop)]
-         [else (loop)])))))
+     ;; 输入分发交给 tui 的 build-input：按语义回调，不再自己 match read-event。
+     ;; 不接 #:text，可打印字符也走 #:key（保留原始 mods），保持命令层 token 一致。
+     (define handler
+       (build-input
+        #:key    (λ (k m) (dispatch-key! (key-event k m)) (draw!))
+        #:mouse  (λ (action button x y mods) (dispatch-mouse! action button x y) (draw!))
+        #:resize (λ (rows cols) (set-box! H rows) (set-box! W cols) (set! cache #f) (draw!))
+        #:null   (λ () (void))))
+     (loop-input/stop (not (unbox running?)) handler))))
 
 ;;; ════════════ headless 自检 ════════════
 

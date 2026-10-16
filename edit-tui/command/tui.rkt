@@ -7,7 +7,9 @@
 ;;;      `mouse-position` mouse-event → 0-based 屏幕 (row, col)
 ;;;   2. `key-reader`    有状态地读一个**键序列**：喂事件，命中叶子就**返回 command**，
 ;;;                      命中前缀就继续等，没命中就报告 —— 由宿主决定怎么办。
-;;;                      读键器持有 keytable 的引用，故**运行时动态合并的表立刻生效**。
+;;;                      匹配逻辑在 keymap.rkt 的纯 `matcher`；本层只把 event → token。
+;;;                      读键器通过 matcher 持有 keytable，故**运行时动态合并立刻生效**。
+;;;                      只用纯匹配时，外部状态机可直接用 `matcher`，不碰本模块。
 ;;;
 ;;; 命令层**只路由、不调用**：命中叶子时返回 command，宿主自己执行。
 ;;; 于是鼠标/键盘统一，handler 能拿位置；也支持数据驱动 world（ctx 由宿主造）。
@@ -23,6 +25,7 @@
          key-reader-reset!
          key-reader-pending
          key-reader-pending-string
+         key-reader-table
          (all-from-out "key.rkt" "mouse.rkt" "keymap.rkt"))
 
 (require tui "key.rkt" "mouse.rkt" "keymap.rkt")
@@ -52,23 +55,27 @@
   (values (max 0 (sub1 (mouse-event-y ev)))
           (max 0 (sub1 (mouse-event-x ev)))))
 
-;;; ---------- 有状态读键（键序列） ----------
+;;; ---------- 有状态读键（event → token → 纯 matcher） ----------
+;;;
+;;; 匹配逻辑在 keymap.rkt 的纯 matcher；本层只把 event 解码成 token。
 
-(struct key-reader (table typed) #:transparent #:mutable)
-;; table : keytable        活动表列表（运行时可变，读键器直接引用）
-;; typed : (listof key?)   已按下的前缀键（正序），用于状态栏显示
+(struct key-reader (matcher) #:transparent #:mutable)
+;; matcher : matcher   纯序列匹配器（持有 keytable + 已按序列）
 
-(define (make-key-reader kt) (key-reader kt '()))
+(define (make-key-reader kt) (key-reader (make-matcher kt)))
 
 (define (key-reader-reset! kr)
-  (set-key-reader-typed! kr '()))
+  (matcher-reset! (key-reader-matcher kr)))
 
 (define (key-reader-pending kr)
-  (define t (key-reader-typed kr))
-  (and (pair? t) t))
+  (matcher-pending (key-reader-matcher kr)))
 
 (define (key-reader-pending-string kr)
-  (string-join (map key->string (key-reader-typed kr)) " "))
+  (string-join (map key->string (or (key-reader-pending kr) '())) " "))
+
+;; 活动表（便捷访问器；运行时并表用 keytable-merge!，换整份用 set-keytable-tables!）
+(define (key-reader-table kr)
+  (matcher-table (key-reader-matcher kr)))
 
 ;; 喂一个事件 → (values status cmd)
 ;;   'command : 命中叶子，cmd = 命中的 command（宿主自己执行 / 处理 input），清空前缀
@@ -77,12 +84,6 @@
 ;;   'ignored : 不是按键事件（鼠标 / resize / null），键表不管
 (define (key-reader-feed! kr ev)
   (define k (event->key ev))
-  (cond
-    [(not k) (values 'ignored #f)]
-    [else
-     (define typed (append (key-reader-typed kr) (list k)))
-     (define-values (status entry) (keytable-lookup (key-reader-table kr) typed))
-     (case status
-       [(command) (key-reader-reset! kr) (values 'command entry)]
-       [(prefix) (set-key-reader-typed! kr typed) (values 'prefix #f)]
-       [else (key-reader-reset! kr) (values 'unbound #f)])]))
+  (if k
+      (matcher-feed! (key-reader-matcher kr) k)
+      (values 'ignored #f)))

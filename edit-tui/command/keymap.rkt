@@ -17,6 +17,13 @@
 ;;;   (keytable-hints kt prefix)    当前前缀下紧接一步的选项（which-key）
 ;;;   (keytable-commands kt prefix) 当前前缀下所有完整绑定（帮助 / 补全）
 ;;;
+;;; 以及一个**纯序列匹配器** matcher：吃 token，记住「正在匹配的序列」。
+;;; 外部状态机可以不碰 event / tui，直接用它：
+;;;   (define m (make-matcher kt))
+;;;   (matcher-feed! m (key 'x 'ctrl))  ; => 'prefix
+;;;   (matcher-pending m)               ; => 正在匹配的序列
+;;;   (matcher-feed! m (key 's 'ctrl))  ; => 'command + command
+;;;
 ;;; 说明与输入需求都存在叶子 command 上（见 command.rkt），查表即得。
 ;;;
 ;;; 表列表是**运行时可变**的：`keytable-merge!` 之后，所有持有同一个 keytable
@@ -43,6 +50,11 @@
          keytable-lookup
          keytable-hints
          keytable-commands
+         (struct-out matcher)
+         make-matcher
+         matcher-feed!
+         matcher-reset!
+         matcher-pending
          (all-from-out "command.rkt"))
 
 (require "command.rkt")
@@ -142,6 +154,33 @@
     [(for/or ([km (in-list tables)]) (keymap-prefix? km seq))
      (values 'prefix #f)]
     [else (values 'unbound #f)]))
+
+;;; ════════════════════════ 纯序列匹配器（无 event / tui） ════════════════════════
+
+(struct matcher (table typed) #:transparent #:mutable)
+;; table : keytable          活动表（可变；运行时并表立刻生效）
+;; typed : (listof token)    已按下的前缀（正序）——**正在匹配的序列**
+
+(define (make-matcher kt) (matcher kt '()))
+
+;; 喂一个 token → (values status entry)
+;;   'command cmd : 命中，typed 清空
+;;   'prefix  #f  : 还是前缀，typed 追加
+;;   'unbound #f  : 没命中，typed 清空
+(define (matcher-feed! m tok)
+  (define typed (append (matcher-typed m) (list tok)))
+  (define-values (status entry) (keytable-lookup (matcher-table m) typed))
+  (case status
+    [(command) (matcher-reset! m) (values 'command entry)]
+    [(prefix) (set-matcher-typed! m typed) (values 'prefix #f)]
+    [else (matcher-reset! m) (values 'unbound #f)]))
+
+(define (matcher-reset! m) (set-matcher-typed! m '()))
+
+;; 正在匹配的序列（token 列表）| #f
+(define (matcher-pending m)
+  (define t (matcher-typed m))
+  (and (pair? t) t))
 
 ;; 当前前缀下**紧接一步**的选项，跨表按 token 合并（which-key 用）。
 ;; => (list (cons token cmd-or-#f) ...)   ; #f = 这步是前缀，还能继续

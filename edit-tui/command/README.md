@@ -153,6 +153,37 @@ world（ctx 由宿主闭包进 run）；需要输入时也只是把 input-spec �
 (when (eq? s 'command) ((command-run cmd) ctx))
 ```
 
+## 外部状态机：纯 matcher + tui build-input
+
+匹配逻辑是**纯的、token 级**的，放在 `keymap.rkt` 的 `matcher` 里，不依赖 event / tui。
+想自己写状态机的宿主直接用它，不必走 `key-reader`：
+
+```racket
+(define m (make-matcher kt))
+(matcher-feed! m (key 'x 'ctrl))            ; => (values 'prefix #f)
+(matcher-pending m)                         ; => (list (key 'x 'ctrl))  ← 正在匹配的序列
+(define-values (st cmd) (matcher-feed! m (key 's 'ctrl)))
+;; st = 'command，cmd = 命中的 command
+```
+
+`key-reader` 只是「event → token → matcher」的薄适配；要不碰 tui 就用 `matcher`。
+
+事件循环交给 tui 的 `build-input`（按语义回调），不要自己 match 裸 `read-event`：
+
+```racket
+(define handler
+  (build-input
+   #:key    (λ (k m) (dispatch-key! (key-event k m)))   ; 所有按键（含可打印字符，带完整 mods）
+   #:mouse  (λ (action button x y m) (dispatch-mouse! action button x y))
+   #:resize (λ (rows cols) (resize! rows cols))
+   #:null   (λ () (void))))
+
+(loop-input/stop (not running?) handler)
+```
+
+**不接 `#:text`**：可打印字符也落到 `#:key`，原始 `mods` 不丢，和命令层 token 语义一致
+（接了 `#:text` 只会拿到字符串、丢掉修饰键）。这样键盘 / 鼠标共用一条派发路径。
+
 ## 运行时动态修改
 
 `keytable` 是可变对象，读键器持有它的引用，所以合并**立刻生效**（正在等前缀也行）：

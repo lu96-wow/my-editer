@@ -109,4 +109,29 @@
                    (keytable-commands kt4 (list (key 'x 'ctrl))))
               '(("C-x" "C-c") ("C-x" "C-s")))
 
+;;; ──────────────────────── 纯 matcher：正在匹配的序列 ────────────────────────
+
+(define m (make-matcher kt))
+(check-equal? (call-with-values (λ () (matcher-feed! m (key 'x 'ctrl))) list)
+              (list 'prefix #f))
+(check-equal? (matcher-pending m) (list (key 'x 'ctrl)))       ; ← 正在匹配的序列
+(define-values (mst mcmd) (matcher-feed! m (key 's 'ctrl)))
+(check-equal? mst 'command)
+(check-equal? ((command-run mcmd)) 'save)
+(check-false (matcher-pending m))                               ; 命中后清空
+;; unbound 也清空
+(begin (matcher-feed! m (key 'x 'ctrl)) (void))
+(check-equal? (matcher-pending m) (list (key 'x 'ctrl)))
+(check-equal? (call-with-values (λ () (matcher-feed! m (key 'nope))) list)
+              (list 'unbound #f))
+(check-false (matcher-pending m))
+
+;; 运行时并表，matcher 立刻看到（持同一个 keytable）
+(define kt-m (make-keytable (keys [(key 'a) (λ () 'a)])))
+(define m2 (make-matcher kt-m))
+(void (keytable-merge! kt-m (keys [(key 'b) (λ () 'b)])))
+(define-values (s-b c-b) (matcher-feed! m2 (key 'b)))
+(check-equal? s-b 'command)
+(check-equal? ((command-run c-b)) 'b)
+
 (displayln "edit-tui/command/keymap.rkt: ok")

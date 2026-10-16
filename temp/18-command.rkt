@@ -178,20 +178,14 @@
    (λ ()
      (cursor-hide)
      (draw!)
-     (let loop ()
-       (define ev (read-event))
-       (cond
-         [(resize-event? ev)
-          (set-box! W (resize-event-cols ev))
-          (set-box! H (resize-event-rows ev))
-          (set! cache #f)
-          (draw!)
-          (loop)]
-         [(null-event? ev) (loop)]
-         [else
-          (void (handle-event! ev))
-          (draw!)
-          (when (unbox running?) (loop))])))))
+     ;; 输入分发交给 tui 的 build-input：按语义回调，不再自己 match read-event。
+     ;; 不接 #:text，可打印字符也走 #:key（保留原始 mods），保持命令层 token 一致。
+     (define handler
+       (build-input
+        #:key    (λ (k m) (handle-event! (key-event k m)) (draw!))
+        #:resize (λ (rows cols) (set-box! H rows) (set-box! W cols) (set! cache #f) (draw!))
+        #:null   (λ () (void))))
+     (loop-input/stop (not (unbox running?)) handler))))
 
 (module+ main
   (if (positive? (vector-length (current-command-line-arguments)))
