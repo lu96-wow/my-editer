@@ -39,14 +39,14 @@
 ;;;
 ;;; ── 值词汇（都是 symbol 值域） ────────────────────────────────────
 ;;;
-;;;   role 名          'editor 'panel …         开放集；见 role.rkt
-;;;   close-policy     'hide 'delete 'keep-last
+;;;   role 名          'editor 'panel 'slot …   开放集；见 role.rkt
+;;;   close-policy     'hide 'delete 'keep-last 'ignore
 ;;;   panel-ref kind   'leaf 'float
 ;;;   drag kind        'seam 'select …          step 只解释 'seam
 ;;;   axis             'lr 'tb                  'lr 左右并排 | 'tb 上下堆叠
 ;;;   side             'before 'after
 ;;;   dir              'left 'right 'up 'down   （panel-move 另有 'front 'back）
-;;;   dock             'left 'right 'top 'bottom 'center/#f
+;;;   dock             'left 'right 'up 'down 'center/#f
 ;;;   borders          'up 'down 'left 'right
 ;;;   mods             'ctrl 'alt 'shift
 ;;;   mouse action     'press 'release 'move 'scroll
@@ -71,7 +71,7 @@
 ;;;   (define-role! 'editor #:splittable? #t #:close 'keep-last)   ; 内置，可覆盖
 ;;;   (run-app
 ;;;     (make-world #:area (rect 0 0 80 24)
-;;;                 #:layout (lay 'tb (pane 'tree #:view tv #:dock 'top)
+;;;                 #:layout (lay 'tb (pane 'tree #:view tv #:dock 'up)
 ;;;                               (pane 'editor #:view ev #:role 'editor))
 ;;;                 #:focus (leaf-ref 'editor)
 ;;;                 #:keytable (make-keytable my-keys focus-keys)))

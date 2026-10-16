@@ -41,6 +41,9 @@ racket temp/02-selection.rkt
 | `29-roles.rkt` | **role 注册表**：`define-role!` 自定义 leaf 角色 → splittable? / close 策略（hide/delete/keep-last） | `edit-tui/app` |
 | `30-editor-only.rkt` | **只有编辑区**：布局根就是一个 borderless `role='editor'` leaf，证明 app 不依赖 tree/status；仍可切分 / keep-last 关闭 | `edit-tui/app` |
 | `31-completion.rkt` | **语法补全浮层**：浮窗 + 临时操作表（`open-overlay`/`close-overlay`），临时表遮蔽编辑区键、浮窗永不占焦点；Tab 弹出、↑↓ 选、Enter 插入、Esc 关闭 | `edit-tui/app` |
+| `32-hello-plugin.rkt` | **样例插件**：模块顶层 `define-doc-kind!` + `define-plugin!`（面板贡献 + on-load）；被 require 即注册 | `edit-tui/app` |
+| `33-plugin-host.rkt` | **插件宿主**：只 `require` 32 就自动多出左侧面板；`plugins-apply` 装配 + 幂等 + “没注册就没有”自检 | `edit-tui/app` |
+| `34-statusbar.rkt` | **底部共享槽**（内置）：状态栏 / 输入栏共用一个 `role='slot'` leaf，内存 buffer；切换只走 API（`slot-show-input`/`slot-show-status`，不绑用户键）；`status-sync!` 镜像 `world.status` | `edit-tui/app` |
 
 ## 分层速查
 

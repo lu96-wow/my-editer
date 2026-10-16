@@ -108,6 +108,8 @@ resource.rkt   资源创建（唯一造 core 对象的地方）
 step.rkt       world-step / world-step*（纯）
 render.rkt     world → bytes（+ 焦点边框投影）
 loop.rkt       run-app（唯一不纯：读事件 / 跑 intent / 重绘）
+plugin.rkt     插件注册 + 声明式载入（define-plugin! / panel-spec / plugins-apply）
+slot.rkt       底部共享槽：状态栏 / 输入栏（slot-install / slot-show* / status-sync!）
 main.rkt       入口：再导出 app/api/
 api/           公共 API 面（见下）
 ```
@@ -186,6 +188,7 @@ event ─▶ command/tui: event->key / event->mouse → token
 - 新面板 / 区域：`layout` 的 `pane #:role` + `define-role!`；布局树原语在 `layout/tree.rkt`。
 - 新效果：加 intent struct + `loop` 的 `run-intents!` 一个 `match` 分支（`invoke` 是逃生舱）。
 - 新内部事件：`world.internal` 注册表，或 `app-event` + `step-internal`。
+- 新插件：写一个模块，顶层 `define-plugin!` + `define-doc-kind!` 等；宿主 `require` 即生效（`plugins-apply` 折进当前 layout）。
 - 新拓展层（minibuffer / which-key）：`world.layers` 栈；输入 spec 已随 command 存在。
 
 各层 README 有更细的扩展点列表；`app/README.md` 末尾有“能力评估 / 不冗余审计 / 暂定清单”。
@@ -207,6 +210,7 @@ event ─▶ command/tui: event->key / event->mouse → token
 | app：文档类型 | `doc-kind` `buffer-*` `view-*` | `doc-kind->keytable` `buffer-add-keytable!` |
 | app：操作原语 | 动词（`mount-` `split-` `focus-` `open-` `show-` …） | `mount-view` `split-left` `focus-insert` `open-overlay` |
 | app：循环 | `world-step` `draw-world` `run-app` | — |
+| app：插件 | `define-plugin!` `panel-spec` `plugins-apply` | — |
 
 动词约定：
 

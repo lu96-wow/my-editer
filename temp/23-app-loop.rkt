@@ -42,7 +42,7 @@
        (pane 'tree   #:view tview #:size 4 #:dock 'left)
        (lay 'tb
             (pane 'editor #:view eview #:size 3 #:dock 'center)
-            (pane 'status #:view #f    #:size 1 #:dock 'bottom))))
+            (pane 'status #:view #f    #:size 1 #:dock 'down))))
 
 ;;; ════════════════ 命令（纯：ctx → (listof intent)） ════════════════
 

@@ -28,6 +28,8 @@
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）+ **焦点边框配色投影** `world-display-panels`；cache 由 loop 持有 | 只读 core + 输出 |
 | `loop.rkt` | `run-app`：查真实终端尺寸 → 画首帧 → 循环（读事件 / 折 inbox / 执行 intent / 合并重绘） | **不纯（唯一）** |
+| `plugin.rkt` | **插件注册 + 声明式载入**：`define-plugin!` / `panel-spec` / `plugins-apply` | 注册期副作用；装配不纯 |
+| `slot.rkt` | **底部共享槽**（内置 chrome）：状态栏 / 输入栏共享一个 leaf；`slot-install` / `slot-show*` / `status-sync!` | 查询纯；同步不纯 |
 | `main.rkt` | 入口：再导出公共 API 面 `api/main.rkt` | — |
 | `api/` | **公共 API 面**：每个实现模块一个同名功能转发模块 + 聚合 `api/main.rkt`（见 `api/README.md`） | 只转发 |
 
@@ -98,6 +100,50 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 
 示例：`temp/31-completion.rkt`。
 
+## 插件（声明载入）
+
+插件 = **模块顶层调用注册接口**；`require` 该模块即注册（Racket 的模块副作用）。
+启动的装配阶段 `plugins-apply` 把注册表折进**当前 world**。
+
+```racket
+;; 插件模块顶层：
+(define-doc-kind! 'file-tree #:keymaps (list tree-keys))     ; 类型 + 键表
+(define-plugin! 'file-tree                                    ; 面板贡献 + 生命周期
+  #:panel   (panel-spec 'tree 'left 1/3 'panel #f)            ; 插到第一个 editor 左侧
+  #:on-load (λ (w) ...))                                      ; 造面板文档 view / 初始化状态
+
+;; 宿主：
+(require ".../app/api/main.rkt")
+(require "plugins/file-tree.rkt")        ; ← 只 require 这一句，插件就生效
+(run-app (make-world ...))               ; run-app 内部 plugins-apply
+```
+
+| 接口 | 作用 |
+|---|---|
+| `define-plugin!` | 注册插件：`panel-spec` + `on-load` / `on-unload` |
+| `panel-spec` | 面板贡献：`id / side / size / role / anchor`（插到当前 layout 的锚点旁） |
+| `plugins-apply` | 装配：逐插件插面板 + 跑 `on-load`（幂等；没 require 就没有） |
+| `plugins-list` / `plugins-known?` / `plugins-reset!` | 查询 / 测试 |
+| `world-ext-ref` / `world-ext-set` | 插件状态（存 `world.ext`，纯、可重放） |
+
+doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本层只管“面板贡献 + 状态 + 装配”。
+
+示例：`temp/32-hello-plugin.rkt`（插件）+ `temp/33-plugin-host.rkt`（宿主）。
+
+## 状态栏 / 输入栏（底部共享槽，内置）
+
+编辑区下方一个固定 leaf（`role='slot'`，close-policy `'ignore` → 不可关）。同一时刻只挂一个
+**内存文档 view**，所以状态栏和输入栏“共享同一位置”：
+
+- `(slot-install w leaf-id members)` —— `members : (listof (cons key view))`，第一项默认显示；
+  槽状态存 `world.ext`。
+- `(slot-show key)` —— 只换显示；`(slot-show-input)` 记住当前焦点并聚焦槽（可打字）；
+  `(slot-show-status)` 切换并恢复焦点。
+- `(slot-active w)` / `(slot-member w key)` —— 查询。
+- `status-sync!`（loop 每帧调）把 `world.status` 镜像进 `'status` member 的 buffer。
+
+约定成员键 `'status`（状态栏，不可编辑）/ `'input`（输入栏，可编辑）。示例：`temp/34-statusbar.rkt`。
+
 ## 异步模型（暂定：下一事件时处理）
 
 - `(spawn id thunk)`：loop 起线程算，完成后把 `(app-event 'task-done (list id v))`
@@ -112,6 +158,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | 想加 | 加在哪 | 不动什么 |
 |---|---|---|
 | 新 document 类型 | `define-doc-kind!` + 小表；`open-document! #:kind` | step / loop |
+| 新插件（面板 + 类型 + 状态） | 写一个模块，顶层 `define-plugin!`（+ `define-doc-kind!` 等）；宿主 `require` 即生效 | step / loop |
 | 新命令 / 键位 | `keytable-merge!` 或 `keys` 表 | loop / step |
 | 某文档临时覆盖 / 插件插拔 | `buffer-add-keytable!` / `buffer-remove-keytable!` | 类型表 / 全局表 |
 | 新编辑算子 | 在 `ops.rkt` 加一个 `focus-*`（吃 ctx，内部 `focus-edit` / `invoke`）；命令表只引名字 | step / loop |
@@ -161,13 +208,14 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 ```racket
 (define-role! 'editor  #:splittable? #t #:close 'keep-last)   ; 内置
 (define-role! 'panel   #:splittable? #f #:close 'hide)        ; 内置
+(define-role! 'slot    #:splittable? #f #:close 'ignore)      ; 内置：固定共享槽（状态栏 / 输入栏）
 (define-role! 'tool    #:splittable? #t #:close 'delete)      ; 自定义
 ```
 
 | 字段 | 含义 |
 |---|---|
 | `splittable?` | `split-left/right/up/down` 是否作用于该 role 的 leaf（新块**继承原 role**） |
-| `close` | `'hide` 只隐不删 · `'delete` 直接删 · `'keep-last` 删，除非是该 role 最后一块 → 清 view 保留占位 |
+| `close` | `'hide` 只隐不删 · `'delete` 直接删 · `'keep-last` 删，除非是该 role 最后一块 → 清 view 保留占位 · `'ignore` 什么都不做（固定 chrome，不可关） |
 
 - 未注册的 role → 保守默认：不 splittable、`close='hide'`。
 - `role-of`（名→行为）· `role-known?`；在 `role.rkt` 内置注册 `'editor` / `'panel`，可覆盖。

@@ -18,8 +18,8 @@
 
 (define tree
   (lay 'tb
-       (pane 'editor #:view ev #:size 8 #:dock 'top)
-       (pane 'status #:view #f #:size 1 #:dock 'bottom)))
+       (pane 'editor #:view ev #:size 8 #:dock 'up)
+       (pane 'status #:view #f #:size 1 #:dock 'down)))
 (define (area) (rect 0 0 W H))
 
 (define cb (make-buffer "add\napply\nappend\narity" "*completion*"))

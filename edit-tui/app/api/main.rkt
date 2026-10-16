@@ -44,7 +44,9 @@
          "resource.rkt"
          "step.rkt"
          "render.rkt"
-         "loop.rkt")
+         "loop.rkt"
+         "plugin.rkt"
+         "slot.rkt")
 
 (provide (all-from-out "intent.rkt"
                        "world.rkt"
@@ -56,4 +58,6 @@
                        "resource.rkt"
                        "step.rkt"
                        "render.rkt"
-                       "loop.rkt"))
+                       "loop.rkt"
+                       "plugin.rkt"
+                       "slot.rkt"))

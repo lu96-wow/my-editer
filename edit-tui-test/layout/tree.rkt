@@ -27,6 +27,12 @@
 (define t4 (tree-close t3 'editor))
 (check-equal? (ids t4) '(tree console status))
 
+;; 塌缩要继承子树 size：拆开再关掉一个，剩下的应拿回整棵子树的额度（否则高度缩水）
+(define tz1 (tree-split (make-leaf 'a #f #:size 8) 'a 'lr 'b #:side 'after))
+(check-equal? (leaf-size (tree-find tz1 'a)) 1)
+(define tz2 (tree-close tz1 'b))
+(check-equal? (leaf-size (tree-find tz2 'a)) 8)
+
 ;; 摘除
 (define-values (t5 removed) (tree-detach t3 'status))
 (check-equal? (ids t5) '(tree editor console))

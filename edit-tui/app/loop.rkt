@@ -23,6 +23,8 @@
          "intent.rkt"
          "step.rkt"
          "render.rkt"
+         "plugin.rkt"
+         "slot.rkt"
          "../../core/editor.rkt")
 
 (provide run-app)
@@ -64,10 +66,13 @@
      ;; 用真实终端尺寸初始化 area（拿不到就保留传入的）。
      ;; 暂定：只在启动时查一次；之后靠 resize-event 更新。
      (define-values (rows cols) (get-window-size))
-     (define w0* (if (and rows cols (positive? rows) (positive? cols))
-                     (world-resize w0 cols rows)
-                     w0))
-     (let loop ([w w0*] [cache #f] [force? #t])
+     ;; 装配：把 require 过的插件折进当前 world（面板贡献 + on-load）。
+     (define w0* (plugins-apply w0))
+     (define w0** (if (and rows cols (positive? rows) (positive? cols))
+                      (world-resize w0* cols rows)
+                      w0*))
+     (let loop ([w w0**] [cache #f] [force? #t])
+       (status-sync! w)                       ; world.status → 状态栏 buffer（本帧显示）
        ;; 先画再等事件：首帧靠 force?，之后靠 world-dirty?。
        (define cache* (if (or force? (world-dirty? w)) (draw-world w cache) cache))
        (define w* (world-mark-clean w))

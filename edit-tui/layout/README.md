@@ -97,15 +97,15 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
   (pane 'tree   #:view tv #:size 4 #:dock 'left)      ; 左侧 → 只留内缝 'right
   (lay 'tb
     (pane 'editor #:view ev #:size 3 #:dock 'center)  ; 中 → 全边
-    (pane 'status #:view #f #:size 1 #:dock 'bottom))) ; 底 → 只留 'up
+    (pane 'status #:view #f #:size 1 #:dock 'down))) ; 底 → 只留 'up
 ```
 
 | dock | 自动边框 |
 |---|---|
 | `left` | `'(right)` |
 | `right` | `'(left)` |
-| `top` | `'(down)` |
-| `bottom` | `'(up)` |
+| `up` | `'(down)` |
+| `down` | `'(up)` |
 | `center` / 不写 | 全边 |
 
 `#:borders` 可显式覆盖。**运行期不再动结构 / 边框，只 `tree-show` / `tree-hide` / `tree-resize-seam`。**

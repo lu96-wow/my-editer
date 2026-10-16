@@ -26,6 +26,8 @@
 | `step.rkt` | `../step.rkt` | 纯状态转移 |
 | `render.rkt` | `../render.rkt` | `world → bytes` + 焦点边框投影 |
 | `loop.rkt` | `../loop.rkt` | `run-app`（唯一不纯入口） |
+| `plugin.rkt` | `../plugin.rkt` | 插件注册 + 声明式载入 |
+| `slot.rkt` | `../slot.rkt` | 底部共享槽（状态栏 / 输入栏） |
 | `main.rkt` | 聚合以上 | require 即得全表面 |
 
 ## 函数（按功能）
@@ -47,6 +49,7 @@
 | 结构 | `world` `ctx` `layer` `drag` `app-event`（含各自访问器） |
 | 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` `world-overlay-views` |
 | 纯更新 | `world-resize` `world-focus-on` `world-push-layer` `world-pop-layer` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
+| 插件状态 | `world-ext-ref` `world-ext-set`（插件名 → 状态；存在 `world.ext`） |
 
 ### panel-ref —— 面板身份
 
@@ -92,6 +95,8 @@
 | `step` | `world-step` `world-step*` |
 | `render` | `draw-world` `world-display-panels` |
 | `loop` | `run-app` |
+| `plugin` | `define-plugin!` · `panel-spec` · `plugins-apply` · `plugins-list` `plugins-known?` `plugins-reset!` |
+| `slot` | `slot-install` · `slot-show` `slot-show-status` `slot-show-input` · `slot-active` · `status-sync!` |
 
 ## 表 / 注册表（运行时数据）
 
@@ -121,13 +126,13 @@
 
 | 词汇 | 值 |
 |---|---|
-| role 名 | `'editor` `'panel` …（开放集，见 `role.rkt`） |
-| close-policy | `'hide` `'delete` `'keep-last` |
+| role 名 | `'editor` `'panel` `'slot` …（开放集，见 `role.rkt`） |
+| close-policy | `'hide` `'delete` `'keep-last` `'ignore` |
 | panel-ref kind | `'leaf` `'float` |
 | drag kind | `'seam` `'select` …（step 只解释 `'seam`） |
 | axis / side | `'lr` `'tb` / `'before` `'after` |
 | dir | `'left` `'right` `'up` `'down`（`panel-move` 另有 `'front` `'back`） |
-| dock | `'left` `'right` `'top` `'bottom` `'center`/`#f` |
+| dock | `'left` `'right` `'up` `'down` `'center`/`#f` |
 | borders | `'up` `'down` `'left` `'right` |
 | face | `'window-border` `'focused-border` `'float-border`（见 `theme/frame.rkt`） |
 | intent | `update` `edit` `select` `scroll` `spawn` `post` `invoke` `open-doc` |

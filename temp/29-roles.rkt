@@ -37,7 +37,7 @@
   (lay 'lr
        (pane 'side   #:view sv #:size 1 #:dock 'left   #:role 'sidebar)
        (lay 'tb
-            (pane 'tool   #:view tv #:size 1 #:dock 'top    #:role 'tool)
+            (pane 'tool   #:view tv #:size 1 #:dock 'up    #:role 'tool)
             (pane 'editor #:view ev #:size 5 #:dock 'center #:role 'editor))))
 
 (define global-keys

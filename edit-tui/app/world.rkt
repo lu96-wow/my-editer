@@ -39,6 +39,7 @@
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
          world-stop
+         world-ext-ref world-ext-set
          world-mark-dirty world-mark-clean)
 
 ;;; ════════════════ 内部事件（异步 / 外部回投） ════════════════
@@ -86,7 +87,8 @@
    running?    ; bool
    dirty?      ; bool
    drag        ; #f | drag?   拖动状态（seam / select …）；step 只解释 kind='seam
-   internal)   ; (hash/c symbol procedure)
+   internal    ; (hash/c symbol procedure)   内部事件 kind → 处理器
+   ext)        ; (hash/c symbol any/c)      扩展状态：特征/插件名 → 状态（纯、可复制）
   #:transparent)
 
 ;;; 设计提醒（见 app/README.md「面向未来」④）：
@@ -101,8 +103,9 @@
                     #:layers [layers '()]
                     #:floats [floats '()]
                     #:status [status ""]
-                    #:internal [internal (hash)])
-  (world area layout floats focus keytable layers '() status #t #f #f internal))
+                    #:internal [internal (hash)]
+                    #:ext [ext (hash)])
+  (world area layout floats focus keytable layers '() status #t #f #f internal ext))
 
 ;;; ---------- 派生 / 更新助手（放这里，step 与 render 共用） ----------
 
@@ -185,3 +188,10 @@
 
 (define (world-mark-dirty w) (struct-copy world w [dirty? #t]))
 (define (world-mark-clean w) (struct-copy world w [dirty? #f]))
+
+;;; ---------- 扩展状态（特征/插件名 → 状态） ----------
+;;; 特征/插件把自己的状态存在 world 里（不是全局哈希），于是 world 仍是纯、可复制、可重放。
+(define (world-ext-ref w name [default #f])
+  (hash-ref (world-ext w) name default))
+(define (world-ext-set w name v)
+  (struct-copy world w [ext (hash-set (world-ext w) name v)]))

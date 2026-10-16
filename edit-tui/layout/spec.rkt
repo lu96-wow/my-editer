@@ -8,10 +8,10 @@
 ;;;     (pane 'tree   #:view tv #:size 4 #:dock 'left)
 ;;;     (lay 'tb
 ;;;       (pane 'editor #:view ev #:size 3)
-;;;       (pane 'status #:view #f #:size 1 #:dock 'bottom)))
+;;;       (pane 'status #:view #f #:size 1 #:dock 'down)))
 ;;;
 ;;; 每个面板用 `#:dock` 声明它贴哪边，**边框由位置自动推**：
-;;;   left → '(right)    right → '(left)    top → '(down)    bottom → '(up)
+;;;   left → '(right)    right → '(left)    up → '(down)    down → '(up)
 ;;;   center / 不写 → 全边
 ;;; 也可以 `#:borders` 直接覆盖。
 ;;;
@@ -31,8 +31,8 @@
   (case dock
     [(left)   '(right)]
     [(right)  '(left)]
-    [(top)    '(down)]
-    [(bottom) '(up)]
+    [(up)     '(down)]
+    [(down)   '(up)]
     [else     '(up down left right)]))     ; center / #f → 全边
 
 ;; 叶子面板：dock 决定默认边框；#:borders 覆盖。构造即 tree 的 leaf。

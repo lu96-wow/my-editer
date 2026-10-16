@@ -145,7 +145,8 @@
       [else
        (define cs (filter values (map go (split-children n))))
        (cond [(null? cs) #f]
-             [(null? (cdr cs)) (car cs)]          ; 塌缩：单孩子顶上来
+             ;; 塌缩：单孩子顶上来，并**继承 split 的 size**（保住整棵子树的额度）
+             [(null? (cdr cs)) (node-with-size (car cs) (split-size n))]
              [else (struct-copy split n [children cs])])]))
   (define t* (go t))
   (values (or t* (empty-tree)) removed))

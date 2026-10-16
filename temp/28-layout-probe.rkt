@@ -30,7 +30,7 @@
 (define W 80) (define H 24)
 (define (base-layout)
   (lay 'tb
-       (pane 'tree   #:view tview #:size 1 #:dock 'top)
+       (pane 'tree   #:view tview #:size 1 #:dock 'up)
        (pane 'editor #:view eview #:size 8 #:dock 'center #:role 'editor)
        (pane 'status #:view sview #:size 1 #:borders '())))
 

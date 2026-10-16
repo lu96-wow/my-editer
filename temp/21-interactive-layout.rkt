@@ -41,7 +41,7 @@
        (pane 'tree #:view tv #:size 4 #:dock 'left)
        (lay 'tb
             (pane 'editor #:view ev #:size 3 #:dock 'center)
-            (pane 'status #:view #f #:size 1 #:dock 'bottom))))
+            (pane 'status #:view #f #:size 1 #:dock 'down))))
 (set-box! tree (base-tree))
 
 (define focus (box ev))                 ; 焦点 = view（core 的 focus 参数）

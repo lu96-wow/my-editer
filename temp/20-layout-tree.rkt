@@ -29,7 +29,7 @@
        (pane 'tree #:view tv #:size 4 #:dock 'left)
        (lay 'tb
             (pane 'editor #:view ev #:size 3 #:dock 'center)
-            (pane 'status #:view #f #:size 1 #:dock 'bottom))))
+            (pane 'status #:view #f #:size 1 #:dock 'down))))
 
 (define (draw label tree)
   (define ps (tree->panels tree (area)))
