@@ -20,6 +20,7 @@
          "../../core/editor.rkt"
          "world.rkt"
          "panel-ref.rkt"
+         "role.rkt"
          "intent.rkt")
 
 (provide
@@ -27,9 +28,11 @@
  layout-op mount-view
  show-pane hide-pane toggle-pane close-pane
  split-pane move-pane resize-seam
- ;; 编辑区切分（只对 role='editor 生效）
- editor-leaf? split-editor
+ ;; 切分（只对 splittable role 生效；见 role.rkt）
+ splittable-leaf? split-editor
  split-left split-right split-up split-down
+ ;; 关闭（带焦点回落）
+ close-focused
  ;; floats
  floats-op add-float remove-float
  ;; focus
@@ -57,38 +60,91 @@
 (define (resize-seam cut delta)
   (layout-op (λ (t) (tree-resize-seam t cut delta))))
 
-;;; ════════════════════════ 编辑区切分（只对编辑区生效） ════════════════════════
+;;; ════════════════════════ 切分（只对 splittable role 生效） ════════════════════════
 ;;;
-;;; 四个原语 split-left/right/up/down：把**焦点所在的编辑区**沿方向切成两块，
-;;; 产生一个新的**空编辑区** panel（view=#f, role='editor），并把焦点移过去。
+;;; 四个原语 split-left/right/up/down：把**焦点所在的、role 声明为 splittable 的 leaf**
+;;; 沿方向切成两块，产生一个新的**空块**（view=#f，**继承原 role**），焦点移过去。
 ;;;
-;;; 「对面板不生效」：目标 leaf 的 role 不是 'editor（如文件树/状态栏）→ 直接 no-op。
-;;; 编辑区初始可以是空 panel（用 leaf 占位），切分后仍是空的，用 mount-view/open-doc 装内容。
+;;; 行为由 role 注册表决定（role.rkt）：`role-splittable? (role-config role)`。
+;;; 非 splittable（如文件树/状态栏）→ no-op。默认 'editor splittable、'panel 不。
+;;; 新块初始为空，用 mount-view/open-doc 装内容。
 
-(define (editor-leaf? l) (and l (eq? (leaf-role l) 'editor)))
+(define (splittable-leaf? l)
+  (and l (role-splittable? (role-config (leaf-role l)))))
 
-;; 焦点所在的编辑区 leaf（不是编辑区 → #f）。
-(define (ctx-editor-leaf ctx)
+;; 焦点所在的 splittable leaf（否则 #f）。
+(define (ctx-splittable-leaf ctx)
   (define w (ctx-world ctx))
   (define r (ctx-ref ctx))
   (and r (eq? (panel-ref-kind r) 'leaf)
        (let ([l (tree-find (world-layout w) (panel-ref-id r))])
-         (and (editor-leaf? l) l))))
+         (and (splittable-leaf? l) l))))
 
-;; 通用：在焦点编辑区旁切一块新的空编辑区。dir 由 axis+side 决定。
+;; 通用：在焦点 splittable leaf 旁切一块新的空块（继承 role）。axis+side 定方向。
 (define (split-editor ctx axis side)
-  (define l (ctx-editor-leaf ctx))
+  (define l (ctx-splittable-leaf ctx))
   (cond
-    [(not l) '()]                                     ; 非编辑区 → 不生效
+    [(not l) '()]                                     ; 非 splittable → 不生效
     [else
-     (define id (gensym 'editor))
-     (append (split-pane (leaf-id l) axis id #:side side #:role 'editor)
+     (define role (leaf-role l))
+     (define id (gensym role))
+     (append (split-pane (leaf-id l) axis id #:side side #:role role)
              (focus! (leaf-ref id)))]))
 
 (define (split-left ctx)  (split-editor ctx 'lr 'before))
 (define (split-right ctx) (split-editor ctx 'lr 'after))
 (define (split-up ctx)    (split-editor ctx 'tb 'before))
 (define (split-down ctx)  (split-editor ctx 'tb 'after))
+
+;;; ════════════════════════ 关闭焦点面板（行为由 role 注册表决定） ════════════════════════
+;;;
+;;; close 策略（见 role.rkt）：
+;;;   'hide      只隐藏，不删（固定面板；再显示用 show-pane/toggle-pane）
+;;;   'delete    直接删 leaf
+;;;   'keep-last 删，除非这是**该 role 的最后一块** → 只清 view（保留空占位），焦点不动
+;;;
+;;; 默认：'panel → hide，'editor → keep-last。
+;;; 不变量（keep-last）：该 role 永远至少有一块 leaf，所以之后仍能 split / open。
+
+;; 关闭 / 隐藏 ref 后的回落目标：优先 splittable 邻居 → 任意其他邻居 → 任意 splittable → #f。
+(define (fallback-ref w ref)
+  (define ps (world-panels w))
+  (define refs (world-panel-refs w))
+  (define from (for/first ([p (in-list ps)] [rf (in-list refs)] #:when (equal? rf ref)) p))
+  (define (ref-of p) (and p (for/first ([p* (in-list ps)] [rf (in-list refs)] #:when (eq? p* p)) rf)))
+  (define (leaf-of r)
+    (and r (eq? (panel-ref-kind r) 'leaf) (tree-find (world-layout w) (panel-ref-id r))))
+  (define (splittable? r) (splittable-leaf? (leaf-of r)))
+  (define nbrs (for/list ([dir (in-list '(left up right down))])
+                 (and from (ref-of (panel-neighbor ps from dir)))))
+  (or (for/first ([r (in-list nbrs)] #:when (splittable? r)) r)
+      (for/first ([r (in-list nbrs)] #:when (and r (not (equal? r ref)))) r)
+      (for/first ([l (in-list (tree-visible-leaves (world-layout w)))]
+                  #:when (splittable-leaf? l))
+        (leaf-ref (leaf-id l)))
+      #f))
+
+(define (count-role tree role)
+  (for/sum ([l (in-list (tree-leaves tree))] #:when (eq? (leaf-role l) role)) 1))
+
+(define (close-focused ctx)
+  (define w (ctx-world ctx))
+  (define ref (ctx-ref ctx))
+  (define l (and ref (eq? (panel-ref-kind ref) 'leaf)
+                 (tree-find (world-layout w) (panel-ref-id ref))))
+  (cond
+    [(not l) '()]
+    [else
+     (define id (leaf-id l))
+     (define role (leaf-role l))
+     (case (role-close (role-config role))
+       [(hide)   (append (hide-pane id)  (focus! (fallback-ref w ref)))]
+       [(delete) (append (close-pane id) (focus! (fallback-ref w ref)))]
+       [(keep-last)
+        (if (= 1 (count-role (world-layout w) role))
+            (append (mount-view id #f)   (focus! ref))   ; 最后一块：清 view，保留占位
+            (append (close-pane id)      (focus! (fallback-ref w ref))))]
+       [else '()])]))
 
 ;;; ════════════════════════ floats ════════════════════════
 

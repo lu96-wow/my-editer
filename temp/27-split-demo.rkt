@@ -8,6 +8,7 @@
 ;;; 键位：
 ;;;   C-b                开 / 关文件树
 ;;;   C-s ←/→/↑/↓        按方向切分编辑区（产生新的空编辑区，焦点移过去）
+;;;   C-s d              关闭/隐藏焦点：编辑区→删除/清空；普通面板→隐藏（显隐用 C-b）
 ;;;   C-w ←/→/↑/↓        在面板间移动焦点
 ;;;   C-o                往当前编辑区开一个文档
 ;;;   C-q                退出
@@ -56,7 +57,7 @@
   (define r (ctx-ref ctx))
   (and r (eq? (panel-ref-kind r) 'leaf)
        (let ([l (tree-find (world-layout (ctx-world ctx)) (panel-ref-id r))])
-         (and (editor-leaf? l) (leaf-id l)))))
+         (and (splittable-leaf? l) (leaf-id l)))))
 
 (define (open-into-focused ctx)
   (define id (focused-editor-id ctx))
@@ -73,6 +74,7 @@
    [(key 's 'ctrl) (key 'right) (λ (ctx) (split-right ctx))]
    [(key 's 'ctrl) (key 'up)    (λ (ctx) (split-up ctx))]
    [(key 's 'ctrl) (key 'down)  (λ (ctx) (split-down ctx))]
+   [(key 's 'ctrl) (key 'd)     (λ (ctx) (close-focused ctx))]
    [(key 'o 'ctrl) (λ (ctx) (open-into-focused ctx))]
    [(key 'q 'ctrl) (λ (ctx) (list (quit)))]))
 
@@ -126,5 +128,40 @@
   (check "C-s → 切分编辑区（多一个 leaf）" (= (add1 n0) (nleaves)))
   (feed! (ctrl 's)) (feed! (plain 'down))
   (check "C-s ↓ 再切分" (= (+ n0 2) (nleaves)))
+
+  (define nb (nleaves))
+  (feed! (ctrl 's)) (feed! (plain 'd))
+  (check "C-s d 关闭焦点面板（leaf 减少）" (= (sub1 nb) (nleaves)))
+  (check "C-s d 后焦点不悬空" (not (equal? #f (world-focus (unbox world*)))))
+
+  ;; 焦点在普通面板（文件树）→ C-s d 只隐藏，不删；C-b 能再显示
+  (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref 'tree)]))
+  (define np0 (nleaves))
+  (feed! (ctrl 's)) (feed! (plain 'd))
+  (check "C-s d 普通面板：leaf 不删" (= np0 (nleaves)))
+  (check "C-s d 普通面板：被隐藏" (not (tree-visible? (world-layout (unbox world*)) 'tree)))
+  (feed! (ctrl 'b))
+  (check "C-b 可再显示" (tree-visible? (world-layout (unbox world*)) 'tree))
+
+  ;; —— 关到编辑区空：最后一块保留为空占位，仍能继续 split ——
+  (define (editors)
+    (for/list ([l (in-list (tree-leaves (world-layout (unbox world*))))]
+               #:when (eq? (leaf-role l) 'editor)) l))
+  (let loop ()
+    (when (> (length (editors)) 1)
+      (define l0 (car (editors)))
+      (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref (leaf-id l0))]))
+      (feed! (ctrl 's)) (feed! (plain 'd))
+      (loop)))
+  (check "关到只剩 1 个编辑区" (= 1 (length (editors))))
+  (define last-e (car (editors)))
+  (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref (leaf-id last-e))]))
+  (feed! (ctrl 's)) (feed! (plain 'd))
+  (check "最后一个编辑区：leaf 保留" (= 1 (length (editors))))
+  (check "最后一个编辑区：view 被清空" (not (leaf-view (car (editors)))))
+  (check "最后一个编辑区：焦点仍在编辑区" (splittable-leaf? (car (editors))))
+  (define nn (nleaves))
+  (feed! (ctrl 's)) (feed! (plain 'right))
+  (check "清空后仍能 split" (= (add1 nn) (nleaves)))
 
   (displayln "split-demo: 自检 OK"))

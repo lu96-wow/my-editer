@@ -22,6 +22,7 @@
 | `panel-ref.rkt` | **panel 稳定身份** `panel-ref`（leaf id / float key）+ 解析成当帧 view / panel | 纯 |
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
+| `role.rkt` | **leaf 角色注册表**：`role → 行为`（`splittable?` / `close` 策略） | 纯 |
 | `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`show-hide-close-pane`/`split-pane`/`focus!`/`focus-move`/`insert-text` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
@@ -98,7 +99,7 @@
 | 类 | 原语 |
 |---|---|
 | layout | `layout-op`（通用 tree→tree）· `mount-view` · `show-pane` `hide-pane` `toggle-pane` `close-pane` · `split-pane` `move-pane` `resize-seam` |
-| **编辑区切分** | `split-left` `split-right` `split-up` `split-down`（只对 `role='editor'` 生效）· `split-editor` · `editor-leaf?` |
+| **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-editor` · `splittable-leaf?` · `close-focused`（按 role 的 close 策略） |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus!`（指定 ref）· `focus-move`（面板间方向，ctx 感知） |
 | document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
@@ -106,19 +107,31 @@
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus! ref))`。
 它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。
 
-### 面板 vs 编辑区（leaf `role`）
+### leaf role 注册表（`role.rkt`）
 
-leaf 带 `role` 区分两种区域，`pane #:role` 构造时指定（默认 `'panel`）：
+leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **不写死** role 名，
+而是查注册表决定行为：
 
-| role | 含义 | 例 |
-|---|---|---|
-| `'panel`（默认） | 固定区域面板 | 文件树 / 状态栏 / state 树 |
-| `'editor` | 编辑区（**可被切分**） | 主编辑区 |
+```racket
+(define-role! 'editor  #:splittable? #t #:close 'keep-last)   ; 内置
+(define-role! 'panel   #:splittable? #f #:close 'hide)        ; 内置
+(define-role! 'tool    #:splittable? #t #:close 'delete)      ; 自定义
+```
 
-- `split-left/right/up/down` 只把**焦点所在的编辑区**切开，产生一个**新的空编辑区**
-  （`view=#f, role='editor`），焦点移过去；对 `role='panel` 的 leaf → no-op。
-- 编辑区初始可以是**空 panel**（用一个空 leaf 占位）：`(pane 'editor #:view #f #:role 'editor)`；
-  之后用 `mount-view` / `open-doc` 往里面装 document。
+| 字段 | 含义 |
+|---|---|
+| `splittable?` | `split-left/right/up/down` 是否作用于该 role 的 leaf（新块**继承原 role**） |
+| `close` | `'hide` 只隐不删 · `'delete` 直接删 · `'keep-last` 删，除非是该 role 最后一块 → 清 view 保留占位 |
+
+- 未注册的 role → 保守默认：不 splittable、`close='hide'`。
+- `role-config`（名→行为）· `role-known?`；在 `role.rkt` 内置注册 `'editor` / `'panel`，可覆盖。
+- `close-focused` 按 `(role-close (role-config (leaf-role l)))` 分派；`split-editor` 按
+  `(role-splittable? (role-config (leaf-role l)))` 判断。不再有硬编码的 `'editor`。
+
+编辑区初始可以是**空 panel**：`(pane 'editor #:view #f #:role 'editor)`；之后 `mount-view` / `open-doc` 装内容。
+`keep-last` 的不变量：该 role 永远至少有一块 leaf，所以关空后仍能 split / open。
+普通面板之所以只隐不删：面板是声明式 `spec` 的固定区域，删了就丢了 view/边框/dock，
+要恢复得另存一套“面板规格”状态；隐藏天然保留。
 
 ## 能力评估（加新功能前先看这张表）
 

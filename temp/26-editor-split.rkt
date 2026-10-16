@@ -46,7 +46,7 @@
   (define r (ctx-ref ctx))
   (and r (eq? (panel-ref-kind r) 'leaf)
        (let ([l (tree-find (world-layout (ctx-world ctx)) (panel-ref-id r))])
-         (and (editor-leaf? l) (leaf-id l)))))
+         (and (splittable-leaf? l) (leaf-id l)))))
 
 ;; 往焦点编辑区开一个文档（open-doc：不纯创建 + 纯装进该 leaf）。
 (define (open-into-focused ctx)
