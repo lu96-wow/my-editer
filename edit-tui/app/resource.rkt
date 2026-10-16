@@ -19,7 +19,7 @@
          "../layout/main.rkt"
          "doc-kind.rkt")
 
-(provide make-resources resources? resources-list resource-register!
+(provide make-resources resources? resources-list
          make-document open-document!
          view-into)
 

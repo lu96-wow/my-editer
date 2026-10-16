@@ -20,7 +20,7 @@
 (provide (struct-out panel-ref)
          leaf-ref float-ref
          ref->view ref->panel
-         panels->refs refs-of panel->ref)
+         panels->refs placements->refs panel->ref)
 
 (struct panel-ref (kind id) #:transparent)
 ;; kind : 'leaf | 'float
@@ -51,14 +51,14 @@
 ;;; ---------- panels ↔ refs（同序）----------
 
 ;; 由一次 solve 的 placements + floats 生成与 panels 同序的 ref 列表。
-(define (refs-of placements floats)
+(define (placements->refs placements floats)
   (append
    (for/list ([pl (in-list placements)]) (leaf-ref (car pl)))
    (for/list ([f (in-list floats)]) (float-ref (float-key f)))))
 
 ;; 与 (append (tree->panels …) (floats->panels …)) **严格同序**的 ref 列表。
 (define (panels->refs layout floats area)
-  (refs-of (tree->placements layout area) floats))
+  (placements->refs (tree->placements layout area) floats))
 
 ;; 命中 panel → ref。panel-at 返回的是列表里的同一个对象（eq?），所以用 eq? 配对。
 (define (panel->ref panels refs p)

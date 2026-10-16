@@ -114,7 +114,7 @@
 (define (world-panels+refs w)
   (define-values (placements tiled _cuts) (tree-solve (world-layout w) (world-area w)))
   (values (append tiled (floats->panels (world-floats w)))
-          (refs-of placements (world-floats w))))
+          (placements->refs placements (world-floats w))))
 
 ;; panel-ref → 当帧 view / panel（不在布局 / 隐藏 → #f）。
 (define (world-ref->view w ref)

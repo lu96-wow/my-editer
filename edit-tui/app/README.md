@@ -28,12 +28,13 @@
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）+ **焦点边框配色投影** `world-display-panels`；cache 由 loop 持有 | 只读 core + 输出 |
 | `loop.rkt` | `run-app`：查真实终端尺寸 → 画首帧 → 循环（读事件 / 折 inbox / 执行 intent / 合并重绘） | **不纯（唯一）** |
-| `main.rkt` | 入口（全部再导出） | — |
+| `main.rkt` | 入口：再导出公共 API 面 `api/main.rkt` | — |
+| `api/` | **公共 API 面**：每个实现模块一个同名功能转发模块 + 聚合 `api/main.rkt`（见 `api/README.md`） | 只转发 |
 
 ## 最小用法
 
 ```racket
-(require "../edit-tui/app/main.rkt")
+(require "../edit-tui/app/api/main.rkt")   ; 公共面（推荐）；app/main.rkt 同样可用
 
 (define my-keys
   (keys

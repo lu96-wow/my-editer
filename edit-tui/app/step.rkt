@@ -154,7 +154,7 @@
   (define floats (world-floats w))
   (define-values (placements tiled cuts) (tree-solve lay area))
   (define ps (append tiled (floats->panels floats)))
-  (define refs (refs-of placements floats))
+  (define refs (placements->refs placements floats))
   (define p (panel-at ps row col))
   (define hit-ref (panel->ref ps refs p))
   (define-values (l c)

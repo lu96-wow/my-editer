@@ -1,6 +1,10 @@
 #lang racket
 
-;;; app/main.rkt —— app 骨架入口（事件循环 + 状态 + 原语），全部再导出
+;;; app/main.rkt —— app 入口：再导出公共 API 面（api/main.rkt）
+;;;
+;;; 实现模块仍在 app/*.rkt；**可用面以 app/api/ 为准**（每个实现模块一个功能转发模块，
+;;; 聚合在 api/main.rkt）。这里只把那个面再导出一遍，供 in-repo demo 继续 require。
+;;; 想用实现细节，直接 require 对应 app/*.rkt，但那不属于稳定面。
 ;;;
 ;;; ═══════════════════════════════════════════════════════════════════
 ;;; 一句话：事件 → 纯 world-step → intent 列表 → loop 解释并重绘。
@@ -30,6 +34,8 @@
 ;;;   step.rkt        world-step / world-step*
 ;;;   render.rkt      draw-world
 ;;;   loop.rkt        run-app（唯一不纯：读事件 / 跑 intent / 重绘）
+;;;
+;;; 以上每个都在 api/ 下有同名功能转发模块；api/main.rkt 聚合全部。
 ;;;
 ;;; ── 值词汇（都是 symbol 值域） ────────────────────────────────────
 ;;;
@@ -70,26 +76,6 @@
 ;;;                 #:focus (leaf-ref 'editor)
 ;;;                 #:keytable (make-keytable my-keys focus-keys)))
 
-(require "world.rkt"
-         "intent.rkt"
-         "panel-ref.rkt"
-         "role.rkt"
-         "doc-kind.rkt"
-         "base-keys.rkt"
-         "ops.rkt"
-         "resource.rkt"
-         "step.rkt"
-         "render.rkt"
-         "loop.rkt")
-
-(provide (all-from-out "world.rkt"
-                       "intent.rkt"
-                       "panel-ref.rkt"
-                       "role.rkt"
-                       "doc-kind.rkt"
-                       "base-keys.rkt"
-                       "ops.rkt"
-                       "resource.rkt"
-                       "step.rkt"
-                       "render.rkt"
-                       "loop.rkt"))
+;; 出口 = 公共 API 面（api/ 下的功能转发模块）。实现模块改名 / 拆分不影响此处的名字。
+(require "api/main.rkt")
+(provide (all-from-out "api/main.rkt"))
