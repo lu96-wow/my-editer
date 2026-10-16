@@ -36,20 +36,18 @@
   (screen-patch-rows old new #f))
 
 ;; rows : #f = 全部行（旧行为）；否则只 diff 这些行（脏区）。
-;; 尺寸变了 / old=#f → 强制全部行（fresh）。
+;; old=#f（冷启动）→ 强制全部行、无旧帧可比；
+;; 尺寸变 → **仍逐格 diff**：旧帧按新宽裁/补后比较，于是「旧非空 → 新空」
+;; （resize 后残留的边框 / 内容）会正常产出空格回擦。旧行越界（r ≥ 旧高）视作空白。
 (define (screen-patch-rows old new rows)
   (define h (screen-height new))
-  (define fresh? (or (not old)
-                     (not (= (screen-width old) (screen-width new)))
-                     (not (= (screen-height old) (screen-height new)))))
-  (define old* (and (not fresh?) old))
-  (define rs (if (or fresh? (not rows))
+  (define rs (if (or (not old) (not rows))
                  (in-range h)
                  (sort (remove-duplicates
                         (filter (λ (r) (and (exact-nonnegative-integer? r) (< r h))) rows))
                        <)))
   (define-values (rends sels)
-    (for/lists (rn sl) ([r rs]) (row-patch old* new r)))
+    (for/lists (rn sl) ([r rs]) (row-patch old new r)))
   (values (append* rends) (append* sels)))
 
 ;;; ---------- 一格的状态 ----------
@@ -57,8 +55,8 @@
 ;;; (list char face overlay)，overlay ∈ {#f, 'selection, 'cursor, 'cursor-secondary}
 ;;; 空白格的“新内容”用 (list #\space #f #f) 表示，于是它自然成为 render 里的空格段。
 
-(define (row-cells s r)
-  (define w (screen-width s))
+;; w = 本帧目标宽度：旧屏可能与新屏不同宽，按 w 裁/补（越界格 = 空白）。
+(define (row-cells s r w)
   (define cells (make-vector w #f))
   (for ([rn (in-list (screen-row s r))])
     (define col (run-column rn))
@@ -88,8 +86,8 @@
 
 (define (row-patch old new r)
   (define w (screen-width new))
-  (define nc (row-cells new r))
-  (define oc (and old (row-cells old r)))
+  (define nc (row-cells new r w))
+  (define oc (and old (< r (screen-height old)) (row-cells old r w)))
   (define rends '()) (define sels '())
   (define (emit! key start chars)
     (when (pair? chars)

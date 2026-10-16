@@ -59,10 +59,30 @@
 (check-equal? rf (list (piece 0 0 "abc" #f) (piece 1 0 "def" #f)))
 (check-equal? vf '())
 
-;; ---------- 尺寸变 → 全量内容 ----------
+;; ---------- 尺寸变 → 仍逐格 diff（旧帧按新宽裁/补）：变化的格发内容，变空的格发空格回擦 ----------
 (define s5 (screen 4 2 (vector (list (run 0 "ab" #f)) (list (run 0 "cd" #f))) '() '()))
 (define-values (rx vx) (screen-patch s1 s5))
-(check-equal? rx (list (piece 0 0 "ab" #f) (piece 1 0 "cd" #f)))
+(check-equal? rx (list (piece 0 2 " " #f)      ; 旧 "c" → 新空
+                       (piece 1 0 "cd " #f)))   ; "de" 变 "cd"，旧 "f" → 新空
+(check-equal? vx '())
+
+;; ---------- 尺寸变（放大）→ 旧边框残留产出空格回擦 ----------
+(define bg-old (screen 4 2 (vector (list (run 0 "ab" #f) (run 3 "|" 'border))
+                                  (list (run 0 "cd" #f) (run 3 "|" 'border))) '() '()))
+(define bg-new (screen 6 2 (vector (list (run 0 "ab" #f))
+                                  (list (run 0 "cd" #f))) '() '()))
+(define-values (rgh vgh) (screen-patch bg-old bg-new))
+(check-equal? rgh (list (piece 0 3 " " #f)     ; 旧右边框列 → 新空
+                        (piece 1 3 " " #f)))
+(check-equal? vgh '())
+
+;; ---------- 尺寸变（变高）→ 旧屏幕没有的行视作空白，不越界 ----------
+(define bh-old (screen 4 1 (vector (list (run 0 "ab" #f))) '() '()))
+(define bh-new (screen 4 3 (vector (list (run 0 "ab" #f))
+                                   (list (run 0 "cd" #f))
+                                   (list (run 0 "ef" #f))) '() '()))
+(define-values (rhz vhz) (screen-patch bh-old bh-new))
+(check-equal? rhz (list (piece 1 0 "cd" #f) (piece 2 0 "ef" #f)))
 
 ;; ---------- 宽字符：右半格随其字符 ----------
 (define sw (screen 10 1 (vector (list (run 0 "中abc" #f))) '() (list (region 0 2 4 #t))))
