@@ -35,6 +35,9 @@ racket temp/02-selection.rkt
 | `23-app-loop.rkt` | **app 事件循环骨架**：world + 纯 step + intent + loop；headless 重放 + 真终端交互 | `edit-tui/app` |
 | `24-doc-kinds.rkt` | **document 类型 → 命令表**：穿透 focus 换表 + 资源管理 + per-document 覆盖 + open-doc + 引用稳定（panel-ref）+ 面板间焦点移动（focus-keys） | `edit-tui/app` |
 | `25-ops.rkt` | **ops 原语层**：布局/焦点/文档用命名原语操作（toggle/split/close/mount/float/focus!） | `edit-tui/app` |
+| `26-editor-split.rkt` | **编辑区切分**：leaf role（panel/editor）+ split-left/right/up/down + 空编辑区占位 | `edit-tui/app` + `edit-tui/layout` |
+| `27-split-demo.rkt` | **交互测试 demo**：顶部文件树 / 中间编辑区 / 底部状态栏；C-b 开关树，C-s+方向键切分 | `edit-tui/app` |
+| `28-layout-probe.rkt` | **布局数据层探针**（诊断）：tree/placements/panels/refs 一致性 + 0/1-based 坐标 + 切分数据 | `edit-tui/app` + `edit-tui/layout` |
 
 ## 分层速查
 

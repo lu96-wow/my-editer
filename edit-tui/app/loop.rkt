@@ -61,13 +61,20 @@
      (cursor-hide)
      (enable-mouse!)
      (define inbox (make-async-channel))
-     (let loop ([w w0] [cache #f])
+     ;; 用真实终端尺寸初始化 area（拿不到就保留传入的）。
+     ;; 暂定：只在启动时查一次；之后靠 resize-event 更新。
+     (define-values (rows cols) (get-window-size))
+     (define w0* (if (and rows cols (positive? rows) (positive? cols))
+                     (world-resize w0 cols rows)
+                     w0))
+     (let loop ([w w0*] [cache #f] [force? #t])
+       ;; 先画再等事件：首帧靠 force?，之后靠 world-dirty?。
+       (define cache* (if (or force? (world-dirty? w)) (draw-world w cache) cache))
+       (define w* (mark-clean w))
        (define ev (read-event))
        ;; 异步/外部结果搭这一班车：与终端事件一起折叠。
        (define batch (cons ev (drain-channel inbox)))
-       (define-values (w1 intents) (world-step* w batch))
+       (define-values (w1 intents) (world-step* w* batch))
        (define w2 (run-intents! w1 intents inbox))
-       (define cache* (if (world-dirty? w2) (draw-world w2 cache) cache))
-       (define w3 (mark-clean w2))
-       (unless (world-running? w3)
-         (loop w3 cache*))))))
+       (when (world-running? w2)
+         (loop w2 cache* #f))))))

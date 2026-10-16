@@ -27,6 +27,9 @@
  layout-op mount-view
  show-pane hide-pane toggle-pane close-pane
  split-pane move-pane resize-seam
+ ;; 编辑区切分（只对 role='editor 生效）
+ editor-leaf? split-editor
+ split-left split-right split-up split-down
  ;; floats
  floats-op add-float remove-float
  ;; focus
@@ -47,12 +50,45 @@
 (define (toggle-pane id)
   (layout-op (λ (t) (if (tree-visible? t id) (tree-hide t id) (tree-show t id)))))
 (define (close-pane id)        (layout-op (λ (t) (tree-close t id))))
-(define (split-pane id axis new-id #:side [side 'after])
-  (layout-op (λ (t) (tree-split t id axis new-id #:side side))))
+(define (split-pane id axis new-id #:side [side 'after] #:role [role 'panel])
+  (layout-op (λ (t) (tree-split t id axis new-id #:side side #:role role))))
 (define (move-pane id target axis #:side [side 'after])
   (layout-op (λ (t) (tree-move t id target axis #:side side))))
 (define (resize-seam cut delta)
   (layout-op (λ (t) (tree-resize-seam t cut delta))))
+
+;;; ════════════════════════ 编辑区切分（只对编辑区生效） ════════════════════════
+;;;
+;;; 四个原语 split-left/right/up/down：把**焦点所在的编辑区**沿方向切成两块，
+;;; 产生一个新的**空编辑区** panel（view=#f, role='editor），并把焦点移过去。
+;;;
+;;; 「对面板不生效」：目标 leaf 的 role 不是 'editor（如文件树/状态栏）→ 直接 no-op。
+;;; 编辑区初始可以是空 panel（用 leaf 占位），切分后仍是空的，用 mount-view/open-doc 装内容。
+
+(define (editor-leaf? l) (and l (eq? (leaf-role l) 'editor)))
+
+;; 焦点所在的编辑区 leaf（不是编辑区 → #f）。
+(define (ctx-editor-leaf ctx)
+  (define w (ctx-world ctx))
+  (define r (ctx-ref ctx))
+  (and r (eq? (panel-ref-kind r) 'leaf)
+       (let ([l (tree-find (world-layout w) (panel-ref-id r))])
+         (and (editor-leaf? l) l))))
+
+;; 通用：在焦点编辑区旁切一块新的空编辑区。dir 由 axis+side 决定。
+(define (split-editor ctx axis side)
+  (define l (ctx-editor-leaf ctx))
+  (cond
+    [(not l) '()]                                     ; 非编辑区 → 不生效
+    [else
+     (define id (gensym 'editor))
+     (append (split-pane (leaf-id l) axis id #:side side #:role 'editor)
+             (focus! (leaf-ref id)))]))
+
+(define (split-left ctx)  (split-editor ctx 'lr 'before))
+(define (split-right ctx) (split-editor ctx 'lr 'after))
+(define (split-up ctx)    (split-editor ctx 'tb 'before))
+(define (split-down ctx)  (split-editor ctx 'tb 'after))
 
 ;;; ════════════════════════ floats ════════════════════════
 

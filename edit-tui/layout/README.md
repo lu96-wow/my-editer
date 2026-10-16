@@ -15,13 +15,14 @@ main.rkt    入口
 
 ```
 node = leaf | split
-  (leaf id view borders face weight size visible?)
+  (leaf id view borders face weight size visible? role)
       id      宿主身份（core 的 panel 没有 id）
       view    core 的 view | #f（空面板）
       borders 每边可选；**默认全边**，只有知道位置的特殊面板才自定义缝
       weight  边框 face 权重（→ core panel 的 weight，焦点框抬边框用）
       size    沿父轴的**权重**
       visible? 显隐
+      role    'panel（默认，固定区域）| 'editor（编辑区，可被切分；见 app/ops）
   (split axis children size)
       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
       children n 叉
@@ -41,6 +42,7 @@ node = leaf | split
 | `tree-close t id` | 删叶子；空 split 剪掉、单孩子 split 塌缩 |
 | `tree-move t id target axis #:side` | 摘出再插到 `target` 旁（换边 / 换父） |
 | `tree-show` / `tree-hide` / `tree-visible?` | 显隐（保留 size）；`tree-set-visible` 是对称的布尔版 |
+| `tree-set-role` | 改叶子 role（`'panel` / `'editor`）；`pane #:role` 可构造时指定 |
 | `tree-set-view` `tree-set-size` `tree-set-weight` `tree-set-borders` `tree-set-face` `tree-set-visible` | 改叶子字段（按 id） |
 | `tree-detach` | 摘出（返回新树 + 被摘节点） |
 

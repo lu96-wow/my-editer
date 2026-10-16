@@ -26,7 +26,7 @@
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）；cache 由 loop 持有 | 只读 core + 输出 |
-| `loop.rkt` | `run-app`：读事件、折 inbox、执行 intent、合并重绘 | **不纯（唯一）** |
+| `loop.rkt` | `run-app`：查真实终端尺寸 → 画首帧 → 循环（读事件 / 折 inbox / 执行 intent / 合并重绘） | **不纯（唯一）** |
 | `main.rkt` | 入口（全部再导出） | — |
 
 ## 最小用法
@@ -98,12 +98,27 @@
 | 类 | 原语 |
 |---|---|
 | layout | `layout-op`（通用 tree→tree）· `mount-view` · `show-pane` `hide-pane` `toggle-pane` `close-pane` · `split-pane` `move-pane` `resize-seam` |
+| **编辑区切分** | `split-left` `split-right` `split-up` `split-down`（只对 `role='editor'` 生效）· `split-editor` · `editor-leaf?` |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus!`（指定 ref）· `focus-move`（面板间方向，ctx 感知） |
 | document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
 
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus! ref))`。
 它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。
+
+### 面板 vs 编辑区（leaf `role`）
+
+leaf 带 `role` 区分两种区域，`pane #:role` 构造时指定（默认 `'panel`）：
+
+| role | 含义 | 例 |
+|---|---|---|
+| `'panel`（默认） | 固定区域面板 | 文件树 / 状态栏 / state 树 |
+| `'editor` | 编辑区（**可被切分**） | 主编辑区 |
+
+- `split-left/right/up/down` 只把**焦点所在的编辑区**切开，产生一个**新的空编辑区**
+  （`view=#f, role='editor`），焦点移过去；对 `role='panel` 的 leaf → no-op。
+- 编辑区初始可以是**空 panel**（用一个空 leaf 占位）：`(pane 'editor #:view #f #:role 'editor)`；
+  之后用 `mount-view` / `open-doc` 往里面装 document。
 
 ## 能力评估（加新功能前先看这张表）
 

@@ -3,7 +3,7 @@
 ;;; layout/tree.rkt —— 布局树（纯）：分裂树 + 权重尺寸 + 显隐
 ;;;
 ;;; node = leaf | split
-;;;   (leaf id view borders face weight size visible?)
+;;;   (leaf id view borders face weight size visible? role)
 ;;;       id      宿主身份（focus / 移动 / 查找用；不放进 core 的 panel）
 ;;;       view    core 的 view | #f（空面板）
 ;;;       borders (listof 'up 'down 'left 'right) —— 默认全边；特殊面板自己指定
@@ -11,6 +11,8 @@
 ;;;       weight  边框 face 权重（core panel 的 weight）
 ;;;       size    沿父轴的**权重**（>0）
 ;;;       visible? 显隐
+;;;       role    'panel（面板，固定区域）| 'editor（编辑区，可被 split 切分）
+;;;               —— 默认 'panel；split 类操作只作用于 'editor（见 app/ops.rkt）
 ;;;   (split axis children size)
 ;;;       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
 ;;;       children (listof node)  —— n 叉
@@ -28,6 +30,7 @@
          make-leaf empty-tree
          tree-find tree-leaves tree-visible-leaves tree-contains?
          tree-set-view tree-set-size tree-set-weight tree-set-borders tree-set-face tree-set-visible
+         tree-set-role
          tree-show tree-hide tree-visible?
          tree-split tree-close tree-move
          tree-detach tree-insert
@@ -38,7 +41,7 @@
 
 (define (borders-default) borders-all)
 
-(struct leaf (id view borders face weight size visible?) #:transparent)
+(struct leaf (id view borders face weight size visible? role) #:transparent)
 (struct split (axis children size) #:transparent)
 
 (define (node? x) (or (leaf? x) (split? x)))
@@ -53,8 +56,9 @@
 (define (empty-tree) (split 'lr '() 1))
 
 (define (make-leaf id view #:borders [borders (borders-default)] #:face [face 'window-border]
-                   #:weight [weight 0] #:size [size 1] #:visible? [visible? #t])
-  (leaf id view borders face weight size visible?))
+                   #:weight [weight 0] #:size [size 1] #:visible? [visible? #t]
+                   #:role [role 'panel])
+  (leaf id view borders face weight size visible? role))
 
 ;;; ---------- 查 ----------
 
@@ -91,6 +95,7 @@
 (define (tree-set-borders t id b)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [borders b]) l))))
 (define (tree-set-face t id f)       (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [face f]) l))))
 (define (tree-set-visible t id v)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? v]) l))))
+(define (tree-set-role t id r)       (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [role r]) l))))
 (define (tree-show t id) (tree-set-visible t id #t))
 (define (tree-hide t id) (tree-set-visible t id #f))
 
@@ -125,8 +130,8 @@
 (define (tree-split t target axis id
                     #:view [view #f] #:borders [borders (borders-default)]
                     #:face [face 'window-border] #:weight [weight 0]
-                    #:side [side 'after])
-  (tree-insert t target axis (make-leaf id view #:borders borders #:face face #:weight weight)
+                    #:side [side 'after] #:role [role 'panel])
+  (tree-insert t target axis (make-leaf id view #:borders borders #:face face #:weight weight #:role role)
                #:side side))
 
 ;;; ---------- 摘除（close / move 共用）----------
