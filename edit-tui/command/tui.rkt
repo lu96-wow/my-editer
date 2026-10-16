@@ -30,10 +30,10 @@
 
 (require tui "key.rkt" "mouse.rkt" "keymap.rkt")
 
-(define mod-order '(ctrl alt shift))
+(define mods-order '(ctrl alt shift))
 
 (define (mods->symbols m)
-  (for/list ([s (in-list mod-order)]
+  (for/list ([s (in-list mods-order)]
              [on? (in-list (list (mods-ctrl? m) (mods-alt? m) (mods-shift? m)))]
              #:when on?)
     s))

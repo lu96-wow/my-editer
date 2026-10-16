@@ -22,7 +22,7 @@
          face-empty
          face-set-fg face-set-bg face-set-attrs
          face-add-attr face-remove-attr
-         face-attrs?)            ; 某属性在不在
+         face-has-attr?)            ; 某属性在不在
 
 (struct face (fg bg attrs) #:prefab)
 ;; fg/bg : #f | symbol
@@ -54,4 +54,4 @@
 
 ;;; ---------- 读 ----------
 
-(define (face-attrs? f a) (and f (and (memq a (face-attrs f)) #t)))
+(define (face-has-attr? f a) (and f (and (memq a (face-attrs f)) #t)))

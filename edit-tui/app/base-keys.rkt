@@ -61,7 +61,7 @@
 
 (define focus-keys
   (keys
-   [(key 'w 'ctrl) (key 'left)  (λ (ctx) (focus-move ctx 'left))]
-   [(key 'w 'ctrl) (key 'right) (λ (ctx) (focus-move ctx 'right))]
-   [(key 'w 'ctrl) (key 'up)    (λ (ctx) (focus-move ctx 'up))]
-   [(key 'w 'ctrl) (key 'down)  (λ (ctx) (focus-move ctx 'down))]))
+   [(key 'w 'ctrl) (key 'left)  (λ (ctx) (focus-panel-move ctx 'left))]
+   [(key 'w 'ctrl) (key 'right) (λ (ctx) (focus-panel-move ctx 'right))]
+   [(key 'w 'ctrl) (key 'up)    (λ (ctx) (focus-panel-move ctx 'up))]
+   [(key 'w 'ctrl) (key 'down)  (λ (ctx) (focus-panel-move ctx 'down))]))

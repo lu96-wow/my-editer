@@ -17,7 +17,7 @@
          cut-at cuts-at
          tree-resize-seam
          tree->panels tree->placements tree->cuts
-         tree-panel-map
+         tree->panel-map
          tree-solve)
 
 (require "tree.rkt"
@@ -129,7 +129,7 @@
   (call-with-values (λ () (solve tree area)) (λ (pl pa c) c)))
 
 ;; 可见 leaf: id → panel（与 tree->panels 同一次 walk，顺序一致）。
-(define (tree-panel-map tree area)
+(define (tree->panel-map tree area)
   (define-values (pl pa c) (solve tree area))
   (for/hash ([p (in-list pl)] [panel (in-list pa)]) (values (car p) panel)))
 

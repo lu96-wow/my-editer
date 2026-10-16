@@ -46,7 +46,7 @@
 | 构造 | `make-world` |
 | 结构 | `world` `ctx` `mode` `drag` `app-event`（含各自访问器） |
 | 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` `world-overlay-views` |
-| 纯更新 | `world-resize` `world-focus-on` `world-push-mode` `world-pop-mode` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `mark-dirty` `mark-clean` |
+| 纯更新 | `world-resize` `world-focus-on` `world-push-mode` `world-pop-mode` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
 
 ### panel-ref —— 面板身份
 
@@ -63,7 +63,7 @@
 
 ### doc-kind —— document 类型
 
-`doc-kind` · `define-doc-kind!` · `kind->keytable` · `buffer-set-kind!` `buffer-kind` · `buffer-add-table!` `buffer-remove-table!` `buffer-clear-tables!` `buffer-keytables` · `view-kind` `view-tables`
+`doc-kind` · `define-doc-kind!` · `doc-kind->keytable` · `buffer-set-kind!` `buffer-kind` · `buffer-add-keytable!` `buffer-remove-keytable!` `buffer-clear-keytables!` `buffer-keytables` · `view-kind` `view-keytables`
 
 ### base-keys —— 基础键表
 
@@ -77,13 +77,13 @@
 | 切分 / 关闭（读 role） | `splittable-leaf?` · `split-focused` · `split-left` `split-right` `split-up` `split-down` · `close-focused` |
 | floats | `floats-op` · `add-float` `remove-float` |
 | modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay` |
-| focus | `focus-on` · `focus-leaf` · `focus-move` |
+| focus | `focus-on` · `focus-leaf` · `focus-panel-move` |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
 ### resource —— 资源
 
-`make-resources` · `resources?` `resources-list` · `make-document` `open-document!` · `view-into`
+`make-resources` · `resources?` `resources-list` · `make-document` `open-document!`
 
 ### runtime
 
@@ -100,12 +100,14 @@
 | role 注册表 | `role.rkt` | `symbol → role` | `define-role!` |
 | doc-kind 注册表 | `doc-kind.rkt` | `symbol → doc-kind` | `define-doc-kind!` |
 | per-buffer kind | `doc-kind.rkt`（weak eq） | `buffer → symbol` | `buffer-set-kind!` |
-| per-buffer 表层 | `doc-kind.rkt`（weak eq） | `buffer → (listof keytable)` | `buffer-add-table!` / `buffer-remove-table!` |
+| per-buffer 表层 | `doc-kind.rkt`（weak eq） | `buffer → (listof keytable)` | `buffer-add-keytable!` / `buffer-remove-keytable!` |
 | `world.internal` | `world` 字段 | `symbol → (world payload → world + intents)` | 命令里放 / 接 `app-event` |
-| `world.modes` | `world` 字段 | `(listof mode)`，栈顶在前 | 命令里 `modify` |
+| `world.modes` | `world` 字段 | `(listof mode)`，栈顶在前 | `push-mode` / `pop-mode` |
 | keytable | `command` 层 | `(listof keymap)` | `make-keytable` / `keytable-merge!` |
 
 ## 命名规约
+
+全层前缀 / 动词表见 `edit-tui/README.md` 的「命名规约」。app 内部：
 
 - **`world-*`**：world 的派生值 / 纯更新（`world-panels` / `world-focus-on`）。
 - **`*-ref` / `ref->*`**：稳定身份及其解析（`leaf-ref` / `ref->view`）。

@@ -28,7 +28,7 @@
 ;;;
 ;;;   焦点（world.focus 是稳定 panel-ref，见 panel-ref.rkt）
 ;;;     focus-on ref / focus-leaf id   切焦点（清 pending）
-;;;     focus-move ctx dir             面板间方向移动
+;;;     focus-panel-move ctx dir             面板间方向移动
 ;;;
 ;;;   焦点 / 主体上的文档操作（吃 ctx；命令表只引这些名字，不碰 core）
 ;;;     focus-insert / focus-delete-* / focus-undo / focus-redo
@@ -63,7 +63,7 @@
  ;; modes / overlays（临时表层 / 浮层）
  push-mode pop-mode open-overlay close-overlay
  ;; focus（面板焦点）
- focus-on focus-leaf focus-move
+ focus-on focus-leaf focus-panel-move
  ;; focus（焦点 / 主体上的文档操作：吃 ctx）
  focus-edit focus-insert focus-delete-backward focus-delete-forward
  focus-undo focus-redo
@@ -186,7 +186,7 @@
 
 ;;; ════════════════════════ modes / overlays（临时表层 / 浮层） ════════════════════════
 ;;;
-;;; 模式层：world.modes 栈（栈顶优先），active-tables 把它压在 kind / 全局之上，
+;;; 模式层：world.modes 栈（栈顶优先），active-keytables 把它压在 kind / 全局之上，
 ;;; 于是临时表可以「遮蔽 / 新增」操作。
 ;;;
 ;;; 浮层（overlay）= 浮窗 + 临时表，**同一把 key** 命名，一起挂 / 一起拆：
@@ -196,8 +196,8 @@
 (define (push-mode m)   (list (modify (λ (w) (world-push-mode w m)))))
 (define (pop-mode name) (list (modify (λ (w) (world-pop-mode w name)))))
 
-(define (open-overlay key fl table)
-  (append (add-float fl) (push-mode (mode key table))))
+(define (open-overlay key fl keytable)
+  (append (add-float fl) (push-mode (mode key keytable))))
 (define (close-overlay key)
   (append (remove-float key) (pop-mode key)))
 
@@ -212,7 +212,7 @@
 
 ;; 面板间方向移动焦点：ctx.ref → 当帧 panel → panel-neighbor → 邻居 ref → focus-on。
 ;; 返回 (listof intent)（无邻居 → '()）。
-(define (focus-move ctx dir)
+(define (focus-panel-move ctx dir)
   (define w (ctx-world ctx))
   (define ps (world-panels w))
   (define refs (world-panel-refs w))

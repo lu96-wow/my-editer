@@ -10,7 +10,7 @@
 ;;;
 ;;; 关键点：
 ;;;   · 浮层 = 浮窗 + 同名临时模式表（key = 'completion），open-overlay / close-overlay 成对；
-;;;   · 模式层在 active-tables 最高，所以 ↑/↓/Enter 被临时表遮蔽（不会走编辑区）；
+;;;   · 模式层在 active-keytables 最高，所以 ↑/↓/Enter 被临时表遮蔽（不会走编辑区）；
 ;;;   · world-focus-on 只接受 leaf → 浮窗永不占焦点，打字/落点始终在编辑区；
 ;;;   · 拥有活动模式的浮窗 view 会被 world-overlay-views 选出 → core 画它的选区高亮。
 

@@ -48,7 +48,7 @@
 ;; 坐标换算用（隐藏 leaf 不在 tree->panels → #f）。
 (define (ref->panel layout floats area ref)
   (case (panel-ref-kind ref)
-    [(leaf)  (hash-ref (tree-panel-map layout area) (panel-ref-id ref) #f)]
+    [(leaf)  (hash-ref (tree->panel-map layout area) (panel-ref-id ref) #f)]
     [(float) (for/first ([x (in-list floats)] [p (in-list (floats->panels floats))]
                          #:when (eq? (float-key x) (panel-ref-id ref))) p)]
     [else #f]))

@@ -8,7 +8,7 @@
 ;;; 覆盖：
 ;;;   · 布局：toggle-pane / split-pane / delete-pane / mount-view
 ;;;   · 浮窗：add-float / remove-float
-;;;   · 焦点：focus-keys（focus-move）+ 直接 focus-on
+;;;   · 焦点：focus-keys（focus-panel-move）+ 直接 focus-on
 ;;;   · 命令里不再出现 struct-copy / tree-* / modify(lambda) 的样板。
 ;;;
 ;;; 键位：C-w ←/→ 焦点移动 · C-b 开关 tree · C-s 切分 · C-d 关闭
@@ -103,7 +103,7 @@
   (feed! (ctrl 'b))
   (check "C-b 显示 tree" (tree-visible? (world-layout (unbox world*)) 'tree))
 
-  ;; 焦点：focus-keys（C-w → 走 ops/focus-move）
+  ;; 焦点：focus-keys（C-w → 走 ops/focus-panel-move）
   (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref 'tree)]))
   (feed! (ctrl 'w)) (feed! (plain 'right))
   (check "C-w → 焦点到 editor" (equal? (world-focus (unbox world*)) (leaf-ref 'editor)))

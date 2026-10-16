@@ -6,7 +6,7 @@
 ;;;
 ;;;   · document（buffer）是数据真身，view 是它在某个 panel 里的显示；
 ;;;   · 创建时给 document 绑类型（kind），类型决定命令表（doc-kind.rkt）；
-;;;   · 布局是 panel 容器，view 可随时用 view-into（= tree-set-view）替换进某个 leaf。
+;;;   · 布局是 panel 容器，view 可随时用 layout 的 tree-set-view 替换进某个 leaf。
 ;;;
 ;;; 本模块是**唯一造 core 对象的地方**（不纯）。world 仍是纯数据，所以：
 ;;;   · 启动装配：直接调用 open-document! 拿 (values buffer view)，再放进 tree；
@@ -16,12 +16,10 @@
 ;;; 暂定：resources 只登记 buffer 列表（够用于查找 / 遍历 / 以后关闭）。
 
 (require "../../core/editor.rkt"
-         "../layout/main.rkt"
          "doc-kind.rkt")
 
 (provide make-resources resources? resources-list
-         make-document open-document!
-         view-into)
+         make-document open-document!)
 
 ;;; ════════════════════════ 已打开资源登记 ════════════════════════
 
@@ -48,9 +46,3 @@
   (define-values (b v) (make-document name text #:kind kind #:line-numbers? ln?))
   (resource-register! res b)
   (values b v))
-
-;;; ════════════════════════ 布局装配（纯） ════════════════════════
-
-;; 把 view 替换进布局树的某个 leaf（core 的 tree-set-view，纯）。
-(define (view-into tree leaf-id view)
-  (tree-set-view tree leaf-id view))

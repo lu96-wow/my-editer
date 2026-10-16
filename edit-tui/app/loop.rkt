@@ -70,7 +70,7 @@
      (let loop ([w w0*] [cache #f] [force? #t])
        ;; 先画再等事件：首帧靠 force?，之后靠 world-dirty?。
        (define cache* (if (or force? (world-dirty? w)) (draw-world w cache) cache))
-       (define w* (mark-clean w))
+       (define w* (world-mark-clean w))
        (define ev (read-event))
        ;; 异步/外部结果搭这一班车：与终端事件一起折叠。
        (define batch (cons ev (drain-channel inbox)))

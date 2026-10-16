@@ -74,7 +74,7 @@
              (λ (w b v)
                (define w1 (world-focus-on w (leaf-ref 'aux)))
                (struct-copy world w1
-                            [layout (view-into (world-layout w) 'aux v)])))))]))
+                            [layout (tree-set-view (world-layout w) 'aux v)])))))]))
 
 (define (make-app-world)
   (make-world #:area (rect 0 0 W H)
@@ -135,10 +135,10 @@
   ;; per-document 覆盖层：给 editor buffer 追加一层，left 被覆盖
   (define override
     (keys [(key 'left) (λ (ctx) (list (modify (λ (w) (struct-copy world w [status "override: left"])))))]))
-  (buffer-add-table! (view-buffer eview) (make-keytable override))
+  (buffer-add-keytable! (view-buffer eview) (make-keytable override))
   (feed! (plain 'left))
   (check "per-document 覆盖 left" (equal? (world-status (unbox world*)) "override: left"))
-  (buffer-remove-table! (view-buffer eview) (make-keytable override))
+  (buffer-remove-keytable! (view-buffer eview) (make-keytable override))
   (check "拔出覆盖层后 left 还原 motion"
          (ormap invoke? (feed! (plain 'left))))
 
@@ -179,7 +179,7 @@
   (define-values (_b4 ev4) (open-document! res "replaced" "n\n" #:kind 'file-tree))
   (set-box! world*
             (struct-copy world (unbox world*)
-                         [layout (view-into (world-layout (unbox world*)) 'editor ev4)]
+                         [layout (tree-set-view (world-layout (unbox world*)) 'editor ev4)]
                          [focus (leaf-ref 'editor)]))
   (check "④ 替换 view：焦点 ref 不变，解析到同 leaf 的新 view"
          (eq? (world-focus-view (unbox world*)) ev4))

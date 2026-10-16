@@ -53,7 +53,7 @@
     [(task-done)
      ;; payload = (list id value)。暂定：只落到 status；扩展点留给 internal。
      (match-define (list id value) payload)
-     (values (mark-dirty (world-set-status w (format "task ~a done: ~a" id value)))
+     (values (world-mark-dirty (world-set-status w (format "task ~a done: ~a" id value)))
              '())]
     [else
      (define h (hash-ref (world-internal w) kind #f))
@@ -71,7 +71,7 @@
      (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
     [(prefix)
      ;; 命中前缀：存进 world（纯数据），状态行显示待续序列。
-     (values (mark-dirty (world-set-status (world-set-pending w seq) (pending->string seq)))
+     (values (world-mark-dirty (world-set-status (world-set-pending w seq) (pending->string seq)))
              '())]
     [else
      ;; 未命中：清前缀。可打印字符 → 插入文本；否则记状态行。
@@ -95,20 +95,20 @@
 ;;;   · 鼠标：命中的 panel 的 ref（点哪个文档就用哪个文档的表）；
 ;;;   · 拖动中：拖动主体 ref（否则指针移出面板就断表）。
 ;;; ref 在此解析成当帧 view 后再按 buffer 的 kind 取表。
-(define (active-tables w [subject-ref (world-focus w)])
+(define (active-keytables w [subject-ref (world-focus w)])
   (define subject (world-ref->view w subject-ref))
   (append
-   (for/list ([m (in-list (world-modes w))] #:when (mode-table m))
-     (mode-table m))
-   (view-tables subject)                        ; document 自己的覆盖层（最优先，可插拔）
-   (list (kind->keytable (view-kind subject)))   ; 类型默认表（穿透到 document 类型）
+   (for/list ([m (in-list (world-modes w))] #:when (mode-keytable m))
+     (mode-keytable m))
+   (view-keytables subject)                        ; document 自己的覆盖层（最优先，可插拔）
+   (list (doc-kind->keytable (view-kind subject)))   ; 类型默认表（穿透到 document 类型）
    (list (world-keytable w))))                  ; 全局表（最低）
 
 ;; subject-ref = #f → 用 focus ref。
 (define (lookup-token w seq [subject-ref #f])
   (define-values (s c)
     (for/fold ([s 'unbound] [c #f])
-              ([t (in-list (active-tables w (or subject-ref (world-focus w))))])
+              ([t (in-list (active-keytables w (or subject-ref (world-focus w))))])
       (if (eq? s 'unbound)
           (keytable-lookup t seq)
           (values s c))))
@@ -121,13 +121,13 @@
 
 (define (step-insert w text)
   (define is (focus-insert (make-ctx w #f) text))
-  (values (if (null? is) w (mark-dirty w)) is))
+  (values (if (null? is) w (world-mark-dirty w)) is))
 
 ;;; ════════════════════════ 鼠标 ════════════════════════
 ;;;
 ;;; 本函数只做**通用路由** + 布局通用机制：
 ;;;   · 拖缝（resize）属于布局 chrome，不属于任何 document 类型 → 总是 step 处理，优先；
-;;;   · 其余鼠标事件 → 查 active-tables（键鼠同一套）。「点击落点」「起选」等
+;;;   · 其余鼠标事件 → 查 active-keytables（键鼠同一套）。「点击落点」「起选」等
 ;;;     行为已下放成类型表里的 `(mouse 'press 'left)` / `(mouse 'move #f)` 命令
 ;;;     （见 base-keys.rkt 的 pointer-keys）。
 ;;;   · 找不到命令时的**兜底极简**：点面板只聚焦，其它无副作用。
@@ -164,7 +164,7 @@
   (cond
     ;; 1) 缝：布局 chrome，优先于任何命令
     [(and (eq? action 'press) (pair? seams))
-     (values (mark-dirty (world-set-drag w
+     (values (world-mark-dirty (world-set-drag w
                                          (drag 'seam #f (list row col seams (world-layout w)))))
              '())]
     ;; 2) 正在拖缝 → 继续通用拖动（不让类型的 move 命令截断）
@@ -179,7 +179,7 @@
      (cond
        [(and (eq? st 'command) cmd) (run-command w cmd ev subject-ref p doc-point)]
        [(eq? action 'press)   (step-mouse-default-press w hit-ref)]
-       [(eq? action 'release) (values (mark-dirty (world-set-drag w #f)) '())]
+       [(eq? action 'release) (values (world-mark-dirty (world-set-drag w #f)) '())]
        [(eq? action 'scroll)  (step-mouse-scroll w hit-ref button)]
        [else (values w '())])]))
 
@@ -195,12 +195,12 @@
     (for/fold ([t lay0]) ([cut (in-list cs)])
       (define delta (if (eq? (cut-axis cut) 'lr) (- col c0) (- row r0)))
       (tree-resize-seam t cut delta)))
-  (values (mark-dirty (world-set-layout w lay*)) '()))
+  (values (world-mark-dirty (world-set-layout w lay*)) '()))
 
 ;; 滚轮兜底：滚命中面板（类型表可覆盖 `(mouse 'scroll …)`）。
 (define (step-mouse-scroll w hit-ref button)
   (define is (focus-scroll (make-ctx w #f hit-ref) (if (eq? button 'up) -3 3)))
-  (values (if (null? is) w (mark-dirty w)) is))
+  (values (if (null? is) w (world-mark-dirty w)) is))
 
 ;;; ════════════════════════ 命令执行 ════════════════════════
 
@@ -208,7 +208,7 @@
   (cond
     [(command-needs-input? cmd)
      ;; 暂定：带 input spec 的命令先只提示；minibuffer 模式接上后在这里 push mode。
-     (values (mark-dirty (world-set-status w (input-prompt (command-input cmd))))
+     (values (world-mark-dirty (world-set-status w (input-prompt (command-input cmd))))
              '())]
     [else
      (define c (make-ctx w ev ref panel doc-point))
@@ -216,7 +216,7 @@
      (define-values (w* effs) (apply-state-intents w intents))
      ;; 视觉类效果（edit/select/scroll/invoke/open-doc）后补一个重绘标记：
      ;; 命令不必自己操心 dirty，也不引入 redraw intent（不冗余）。
-     (values (if (ormap visual-effect? effs) (mark-dirty w*) w*) effs)]))
+     (values (if (ormap visual-effect? effs) (world-mark-dirty w*) w*) effs)]))
 
 ;; ref #f → 用 focus；view 由 ref 当帧解析。
 (define (make-ctx w ev [ref #f] [panel #f] [doc-point #f])
@@ -234,7 +234,7 @@
   (define w*
     (for/fold ([w w]) ([i (in-list intents)] #:when (update? i))
       (define w2 ((update-f i) w))
-      (if (update-dirty? i) (mark-dirty w2) w2)))
+      (if (update-dirty? i) (world-mark-dirty w2) w2)))
   (values w* (filter effect? intents)))
 
 (define (visual-effect? i)

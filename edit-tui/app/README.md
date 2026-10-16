@@ -23,8 +23,8 @@
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
 | `role.rkt` | **leaf 角色注册表**：`role → 行为`（`splittable?` / `close` 策略） | 纯 |
-| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-move`/`focus-insert`/`focus-cursor-*`/`focus-select*` … | 纯构造器 |
-| `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
+| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-panel-move`/`focus-insert`/`focus-cursor-*`/`focus-select*` … | 纯构造器 |
+| `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）+ **焦点边框配色投影** `world-display-panels`；cache 由 loop 持有 | 只读 core + 输出 |
 | `loop.rkt` | `run-app`：查真实终端尺寸 → 画首帧 → 循环（读事件 / 折 inbox / 执行 intent / 合并重绘） | **不纯（唯一）** |
@@ -87,7 +87,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 且**浮窗永不占焦点**。
 
 - **浮窗**：`add-float` / `remove-float`（`layout/float.rkt`）；不进布局树、deep 高、`float-ref` 身份。
-- **临时表**：`push-mode` / `pop-mode` 压进 `world.modes` 栈；它在 `active-tables` 里是**最高层**，
+- **临时表**：`push-mode` / `pop-mode` 压进 `world.modes` 栈；它在 `active-keytables` 里是**最高层**，
   所以能遮蔽 / 新增操作。
 - **成对**：`(open-overlay key float table)` = 弹窗 + 挂表；`(close-overlay key)` = 关窗 + 拆表。
   同一把 `key` 命名浮窗与模式（mode 名 = float key）。
@@ -113,7 +113,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 |---|---|---|
 | 新 document 类型 | `define-doc-kind!` + 小表；`open-document! #:kind` | step / loop |
 | 新命令 / 键位 | `keytable-merge!` 或 `keys` 表 | loop / step |
-| 某文档临时覆盖 / 插件插拔 | `buffer-add-table!` / `buffer-remove-table!` | 类型表 / 全局表 |
+| 某文档临时覆盖 / 插件插拔 | `buffer-add-keytable!` / `buffer-remove-keytable!` | 类型表 / 全局表 |
 | 新编辑算子 | 在 `ops.rkt` 加一个 `focus-*`（吃 ctx，内部 `focus-edit` / `invoke`）；命令表只引名字 | step / loop |
 | 新布局 / 焦点操作 | 加进 `ops.rkt`（`layout-op` 包 tree→tree；`focus-on` 包 world-focus-on） | step / loop |
 | 运行期开文档 | 返回 `(open-doc make f)`（make 造、f 装进布局） | step |
@@ -146,7 +146,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
 | modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay`（浮窗 + 临时表，成对；见下“浮层”） |
-| focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-move`（面板间方向，ctx 感知） |
+| focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-panel-move`（面板间方向，ctx 感知） |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
@@ -233,7 +233,7 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 7. 异步只在“下一终端事件”时处理（已确认可接受）；接口已为“立即处理”留好。
 8. 命令约定 `(λ (ctx) (listof intent))`；旧式 0 参过程需改写。
 9. **document 类型绑定已实现**：类型注册表 + per-buffer 表层，解析在 `step.rkt` 的
-   `active-tables`；类型元数据存 eq 哈希（不放 core 的 document 槽，因为槽随版本 fork）。
+   `active-keytables`；类型元数据存 eq 哈希（不放 core 的 document 槽，因为槽随版本 fork）。
 10. 层序已实现：`mode > document 自己的层 > kind 默认表 > 全局表`。
     “插件全局层”尚未单独建模（可加在 document 层与 kind 层之间）。
 11. `open-doc` intent 采用 `(make f)`：`make` 不纯造对象，`f` 纯变换 world；
@@ -254,21 +254,21 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 - `(define-doc-kind! 'text #:keymaps (list edit-keys motion-keys))`：类型 → 默认表，
   小表分开定义、`make-keytable` 合并（冲突作者期报错）。
 - `(open-document! res name text #:kind 'text)`：资源管理在 document 创建时绑类型。
-- 解析在 `step.rkt` 的 `active-tables`，按 **subject ref**：键盘 = focus，鼠标 = 命中 panel / 拖动主体。
+- 解析在 `step.rkt` 的 `active-keytables`，按 **subject ref**：键盘 = focus，鼠标 = 命中 panel / 拖动主体。
   `ref → view-buffer → buffer-kind → kind 表`。自定义 document（文件树 / state 树）只注册
   自己的 kind + 小表，不改 app。
 - 已验证：`temp/24-doc-kinds.rkt`（换焦点就换表）。
 
 ② **per-document 表层（插件覆盖 / 还原）**
 
-- `(buffer-add-table! b kt)` / `(buffer-remove-table! b kt)`：document 自己的层，优先于 kind 默认表。
+- `(buffer-add-keytable! b kt)` / `(buffer-remove-keytable! b kt)`：document 自己的层，优先于 kind 默认表。
 - 层序：`mode > document 自己的层 > kind 默认表 > 全局表`；查表本就是“第一个非 unbound 胜出”，
   所以覆盖 / 还原天然成立，无需改 `keytable` 的冲突语义。
 - 尚未做的：把“插件全局层”作为独立一层建模（现在插件要么加到全局表，要么 per-document 加）。
 
 ③ **行为即命令：鼠标默认行为已下放**
 
-- `step-mouse` 现在只做：拖缝（布局 chrome，优先）+ 通用路由（查 active-tables）+ 极简兜底（点面板只聚焦）。
+- `step-mouse` 现在只做：拖缝（布局 chrome，优先）+ 通用路由（查 active-keytables）+ 极简兜底（点面板只聚焦）。
 - 「点击落点 + 起选 + 拖选」成为 `base-keys.rkt` 的 `pointer-keys` 表，合并进需要的类型：
   `(define-doc-kind! 'text #:keymaps (list edit-keys motion-keys pointer-keys))`。
 - 非编辑器类型（file-tree）给自己的表加 `(mouse 'press 'left)` 即可，行为完全自己定。

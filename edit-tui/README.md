@@ -165,7 +165,7 @@ inbox ──────┘        │
 
 ```
 event ─▶ command/tui: event->key / event->mouse → token
-      ─▶ active-tables (app/step): mode > per-document > kind 默认 > 全局
+      ─▶ active-keytables (app/step): mode > per-document > kind 默认 > 全局
       ─▶ keytable-lookup (command/keymap) → command
       ─▶ (λ (ctx) (listof intent))
 ```
@@ -182,13 +182,51 @@ event ─▶ command/tui: event->key / event->mouse → token
 ## 扩展点
 
 - 新 document 类型：`define-doc-kind!` + 小表；`open-document! #:kind`（不改 step / loop）。
-- 新键位：`keys` 表合并；per-document 覆盖用 `buffer-add-table!`。
+- 新键位：`keys` 表合并；per-document 覆盖用 `buffer-add-keytable!`。
 - 新面板 / 区域：`layout` 的 `pane #:role` + `define-role!`；布局树原语在 `layout/tree.rkt`。
 - 新效果：加 intent struct + `loop` 的 `run-intents!` 一个 `match` 分支（`invoke` 是逃生舱）。
 - 新内部事件：`world.internal` 注册表，或 `app-event` + `step-internal`。
 - 新模式（minibuffer / which-key）：`world.modes` 栈；输入 spec 已随 command 存在。
 
 各层 README 有更细的扩展点列表；`app/README.md` 末尾有“能力评估 / 不冗余审计 / 暂定清单”。
+
+## 命名规约
+
+命名 = **域前缀**（一眼看出属于哪层 / 哪个逻辑部分）+ **动词**（一眼看出做什么）。
+
+| 层 | 前缀 / 名字 | 例 |
+|---|---|---|
+| base | `face-` | `face-fg` `face-has-attr?` `face-set-bg` |
+| theme | `style` `rgb` `define-theme!` | — |
+| layout | `tree-` `cut-` `float(s)-` `pane` `lay` | `tree-set-view` `cuts-at` `floats-add` `float-rect-at` |
+| command | `key-` `mouse-` `keytable-` `command-` `matcher-` `event->` | `key->string` `keytable-lookup` `event->key` |
+| core-render | `render-` `face-fragment` | `render-piece` |
+| app：world | `world-` | `world-focus-on` `world-set-drag` `world-overlay-views` |
+| app：intent | 名词（`edit` `select` …）+ `modify` | `(edit v op)` `(modify f)` |
+| app：面板身份 | `panel-ref` `*-ref` `ref->*` `*->refs` | `leaf-ref` `ref->view` `panels->refs` |
+| app：文档类型 | `doc-kind` `buffer-*` `view-*` | `doc-kind->keytable` `buffer-add-keytable!` |
+| app：操作原语 | 动词（`mount-` `split-` `focus-` `open-` `show-` …） | `mount-view` `split-left` `focus-insert` `open-overlay` |
+| app：循环 | `world-step` `draw-world` `run-app` | — |
+
+动词约定：
+
+| 语义 | 形式 | 例 |
+|---|---|---|
+| 构造值 | `make-*` | `make-world` `make-float` |
+| 注册 / 定义 | `define-*!` | `define-role!` `define-doc-kind!` |
+| 纯转换 | `a->b` | `ref->view` `tree->panels` `event->key` |
+| 谓词 | `*?` | `face-has-attr?` `focusable-ref?` |
+| 纯 world 转换 | `world-<动词>` / `world-set-*` | `world-focus-on` `world-set-status` |
+| 原地写（改既有对象 / 表） | `*!` | `buffer-add-keytable!` `keytable-merge!` |
+| 返回 intent 的操作 | 动词（无 `!`） | `split-left` `focus-insert` `quit` |
+
+几条取向：
+
+- **`!` 只标“原地写”**（改既有对象 / 表），不标“造新值”或“返回 intent”。
+- **纯 world 转换不带 `!`**（返回新 world）：`world-set-status`、`world-focus-on`、`world-mark-dirty`。
+- **`focus-*` = 文档操作**（作用于当前焦点 / 主体 view）；面板焦点是 `focus-on` / `focus-leaf` /
+  `focus-panel-move`。
+- **`mode.table` 是 `keytable`**：“表列表”叫 `keytable`，“对某 buffer 追加的层”叫 `buffer-add-keytable!`。
 
 ## 约定
 

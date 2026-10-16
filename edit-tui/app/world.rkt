@@ -39,7 +39,7 @@
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
          world-stop
-         mark-dirty mark-clean)
+         world-mark-dirty world-mark-clean)
 
 ;;; ════════════════ 内部事件（异步 / 外部回投） ════════════════
 ;;; 与 tui 的 event? 平行：inbox 里收的是它，world-step 也认它。
@@ -52,7 +52,7 @@
 ;;;
 ;;; 未来（见 app/README.md「面向未来」）：模式会并入 world 的**有序表层**
 ;;; （mode 层 → focus 文档类型层 → 插件覆盖层 → 全局层），支持插拔 / 覆盖 / 还原。
-(struct mode (name table) #:transparent)
+(struct mode (name keytable) #:transparent)
 
 ;;; ════════════════ ctx：命令看到的派生视图 ════════════════
 ;;; 由 world + event 纯派生。命令拿它做决策、产出 intent，不直接改 core。
@@ -139,11 +139,11 @@
 ;; 所有切焦点的地方（指针命令 / 兜底 / open-doc）都该走这个，别裸改 focus 字段。
 (define (world-focus-on w ref)
   (if (or (not ref) (focusable-ref? ref))
-      (mark-dirty (world-set-pending (struct-copy world w [focus ref]) '()))
+      (world-mark-dirty (world-set-pending (struct-copy world w [focus ref]) '()))
       w))
 
 ;;; ---------- 模式栈（临时表层） ----------
-;;; 栈顶优先；active-tables 把它压在 kind / 全局之上 → 临时表可「遮蔽 / 新增」。
+;;; 栈顶优先；active-keytables 把它压在 kind / 全局之上 → 临时表可「遮蔽 / 新增」。
 
 (define (world-push-mode w m)
   (struct-copy world w [modes (cons m (world-modes w))]))
@@ -172,7 +172,7 @@
                      #:when (and (float-view fl) (memq (float-key fl) names)))
             (float-view fl))))
 
-;;; ---------- 原子状态设置（纯；是否重绘由调用方 mark-dirty 决定） ----------
+;;; ---------- 原子状态设置（纯；是否重绘由调用方 world-mark-dirty 决定） ----------
 ;;; 把「回显区 / 拖动 / 布局 / 退出」这类 world 字段的裸 struct-copy 收成命名转换，
 ;;; 让 step / ops 只描述“改哪个状态”，不重复拼 struct-copy。
 
@@ -183,5 +183,5 @@
 (define (world-set-floats w fs)   (struct-copy world w [floats fs]))      ; 浮窗层
 (define (world-stop w)            (struct-copy world w [running? #f]))   ; 退出循环
 
-(define (mark-dirty w) (struct-copy world w [dirty? #t]))
-(define (mark-clean w) (struct-copy world w [dirty? #f]))
+(define (world-mark-dirty w) (struct-copy world w [dirty? #t]))
+(define (world-mark-clean w) (struct-copy world w [dirty? #f]))

@@ -14,17 +14,17 @@
 ;;;
 ;;; 本模块不 require tui：「事件 → 键」的解码在 command/tui.rkt。
 
-(provide mod-order normalize-mods
+(provide mods-order normalize-mods
          key key? key-name key-mods key->string
          char->key-name)
 
 ;; 修饰键的规范顺序：构造 / 打印 / 比较都按它，保证相等性稳定。
-(define mod-order '(ctrl alt shift))
+(define mods-order '(ctrl alt shift))
 
 (struct key-token (name mods) #:transparent)
 
 (define (normalize-mods mods)
-  (for/list ([m (in-list mod-order)] #:when (memq m mods)) m))
+  (for/list ([m (in-list mods-order)] #:when (memq m mods)) m))
 
 (define (char->key-name c)
   (case c
