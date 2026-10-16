@@ -40,6 +40,7 @@ racket temp/02-selection.rkt
 | `28-layout-probe.rkt` | **布局数据层探针**（诊断）：tree/placements/panels/refs 一致性 + 0/1-based 坐标 + 切分数据 | `edit-tui/app` + `edit-tui/layout` |
 | `29-roles.rkt` | **role 注册表**：`define-role!` 自定义 leaf 角色 → splittable? / close 策略（hide/delete/keep-last） | `edit-tui/app` |
 | `30-editor-only.rkt` | **只有编辑区**：布局根就是一个 borderless `role='editor'` leaf，证明 app 不依赖 tree/status；仍可切分 / keep-last 关闭 | `edit-tui/app` |
+| `31-completion.rkt` | **语法补全浮层**：浮窗 + 临时操作表（`open-overlay`/`close-overlay`），临时表遮蔽编辑区键、浮窗永不占焦点；Tab 弹出、↑↓ 选、Enter 插入、Esc 关闭 | `edit-tui/app` |
 
 ## 分层速查
 

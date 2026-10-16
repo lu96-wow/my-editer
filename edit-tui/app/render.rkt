@@ -50,7 +50,7 @@
   (panels-sync! ps*)                       ; 让 view 视口贴合本帧 panel 尺寸
   (define a (world-area w))
   (define-values (cache* rows seqs)
-    (render-display-patch ps* (world-focus-view w) (rect-w a) (rect-h a) cache))
+    (render-display-patch ps* (world-overlay-views w) (rect-w a) (rect-h a) cache))
   (put-bytes (bytes-append (if cache (bytes) (render-clear))
                            (render-pieces (append rows seqs))))
   (flush!)

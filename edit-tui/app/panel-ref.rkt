@@ -19,6 +19,7 @@
 
 (provide (struct-out panel-ref)
          leaf-ref float-ref
+         focusable-ref?
          ref->view ref->panel
          panels->refs placements->refs panel->ref)
 
@@ -28,6 +29,10 @@
 
 (define (leaf-ref id)   (panel-ref 'leaf id))
 (define (float-ref key) (panel-ref 'float key))
+
+;; 可聚焦的身份：只有 leaf —— **浮窗永不占焦点**。
+(define (focusable-ref? ref)
+  (and ref (eq? (panel-ref-kind ref) 'leaf)))
 
 ;;; ---------- ref → 当帧 view / panel ----------
 

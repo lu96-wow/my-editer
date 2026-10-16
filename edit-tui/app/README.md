@@ -81,6 +81,23 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 抬高 weight 后它的整圈（含接缝）都是焦点色。焦点切换 → 投影变 → `same-frame?` 为假 →
 自动重绘，不需要额外的“换边框色”状态或命令；浮窗/普通面板的 face 也各按自己声明。
 
+## 浮层：浮窗 + 临时操作表（`open-overlay` / `close-overlay`）
+
+语法补全这类场景：输入 → 浮窗弹出 + 挂一张临时表 → 选中 / 取消 → 关窗 + 拆表，
+且**浮窗永不占焦点**。
+
+- **浮窗**：`add-float` / `remove-float`（`layout/float.rkt`）；不进布局树、deep 高、`float-ref` 身份。
+- **临时表**：`push-mode` / `pop-mode` 压进 `world.modes` 栈；它在 `active-tables` 里是**最高层**，
+  所以能遮蔽 / 新增操作。
+- **成对**：`(open-overlay key float table)` = 弹窗 + 挂表；`(close-overlay key)` = 关窗 + 拆表。
+  同一把 `key` 命名浮窗与模式（mode 名 = float key）。
+- **不占焦点**：`world-focus-on` 只收 leaf（`focusable-ref?`）；点浮窗的默认行为 no-op。
+- **画选中项**：`world-overlay-views` = 焦点 view + **拥有活动模式的浮窗 view**，交给 core 画 overlay。
+  注意：浮窗 view 在 `panels-sync!` 前是 1×1，设选区要 `#:ensure? #f`，否则会被 `ensure`
+  水平滚走（`temp/31-completion.rkt` 有示例）。
+
+示例：`temp/31-completion.rkt`。
+
 ## 异步模型（暂定：下一事件时处理）
 
 - `(spawn id thunk)`：loop 起线程算，完成后把 `(app-event 'task-done (list id v))`
@@ -128,6 +145,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | layout | `layout-op`（通用 tree→tree）· `mount-view` `clear-view` · `show-pane` `hide-pane` `toggle-pane` `delete-pane` · `split-pane` `move-pane` `resize-seam` |
 | **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
+| modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay`（浮窗 + 临时表，成对；见下“浮层”） |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-move`（面板间方向，ctx 感知） |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
@@ -205,7 +223,8 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 ## 暂定清单（改代码时同步本清单）
 
 1. `area` 用 core `rect`；`status` 是字符串。
-2. `modes` 只带一张额外键表（栈顶优先，可覆盖全局）；`on-event/on-exit/state` 未加。
+2. `modes` 是 `world.modes` 栈（栈顶优先，可覆盖全局）；`push-mode`/`pop-mode` + `open-overlay`/
+   `close-overlay` 已实现；`on-event/on-exit/state` 未加。
 3. `drag` 是**结构化纯数据** `(drag kind subject data)`：`kind='seam` 由 step 解释，
    其余（如 `'select`）由类型命令解释；`subject` 是 **panel-ref**；`data='select` 存 `(ref anchor)`。
 4. `internal` 注册表是内部事件扩展点；默认只认 `'task-done`。

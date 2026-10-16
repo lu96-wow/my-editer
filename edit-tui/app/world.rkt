@@ -34,6 +34,8 @@
          world-ref->view world-ref->panel world-focus-view
          world-resize
          world-focus-on
+         world-push-mode world-pop-mode
+         world-overlay-views
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
          world-stop
@@ -133,9 +135,42 @@
   (struct-copy world w [area (rect 0 0 cols rows)] [dirty? #t]))
 
 ;; 切焦点：传 **panel-ref**；同时清 pending —— 不能跨焦点续前缀。
+;; 只接受 leaf（浮窗永不占焦点）；#f = 清焦点。
 ;; 所有切焦点的地方（指针命令 / 兜底 / open-doc）都该走这个，别裸改 focus 字段。
 (define (world-focus-on w ref)
-  (mark-dirty (world-set-pending (struct-copy world w [focus ref]) '())))
+  (if (or (not ref) (focusable-ref? ref))
+      (mark-dirty (world-set-pending (struct-copy world w [focus ref]) '()))
+      w))
+
+;;; ---------- 模式栈（临时表层） ----------
+;;; 栈顶优先；active-tables 把它压在 kind / 全局之上 → 临时表可「遮蔽 / 新增」。
+
+(define (world-push-mode w m)
+  (struct-copy world w [modes (cons m (world-modes w))]))
+
+;; name → 去掉第一个同名 mode；name = #f → 弹栈顶。
+(define (world-pop-mode w name)
+  (define ms (world-modes w))
+  (define ms*
+    (cond
+      [(not name) (if (null? ms) ms (cdr ms))]
+      [else
+       (let loop ([l ms])
+         (cond [(null? l) '()]
+               [(eq? (mode-name (car l)) name) (cdr l)]
+               [else (cons (car l) (loop (cdr l)))]))]))
+  (struct-copy world w [modes ms*]))
+
+;;; ---------- overlay 可画视图（渲染用） ----------
+;;; 需要画 overlay（光标 / 选区）的 view = 焦点 view + **拥有活动模式的浮窗 view**。
+;;; mode 名 = float key（见 ops 的 open-overlay）。普通浮窗（无模式）不画 overlay，
+;;; 免得静态弹窗里冒出光标。
+(define (world-overlay-views w)
+  (define names (for/list ([m (in-list (world-modes w))]) (mode-name m)))
+  (append (if (world-focus-view w) (list (world-focus-view w)) '())
+          (for/list ([fl (in-list (world-floats w))]
+                     #:when (and (float-view fl) (memq (float-key fl) names)))
+            (float-view fl))))
 
 ;;; ---------- 原子状态设置（纯；是否重绘由调用方 mark-dirty 决定） ----------
 ;;; 把「回显区 / 拖动 / 布局 / 退出」这类 world 字段的裸 struct-copy 收成命名转换，

@@ -45,8 +45,8 @@
 |---|---|
 | 构造 | `make-world` |
 | 结构 | `world` `ctx` `mode` `drag` `app-event`（含各自访问器） |
-| 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` |
-| 纯更新 | `world-resize` `world-focus-on` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `mark-dirty` `mark-clean` |
+| 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` `world-overlay-views` |
+| 纯更新 | `world-resize` `world-focus-on` `world-push-mode` `world-pop-mode` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `mark-dirty` `mark-clean` |
 
 ### panel-ref —— 面板身份
 
@@ -54,6 +54,7 @@
 |---|---|
 | 身份 | `panel-ref` `leaf-ref` `float-ref` |
 | 解析 | `ref->view` `ref->panel` |
+| 可聚焦 | `focusable-ref?`（只有 leaf；浮窗永不占焦点） |
 | panels ↔ refs | `panels->refs` `placements->refs` `panel->ref` |
 
 ### role —— leaf 角色注册表
@@ -75,6 +76,7 @@
 | layout | `layout-op` · `mount-view` `clear-view` · `show-pane` `hide-pane` `toggle-pane` `delete-pane` · `split-pane` `move-pane` `resize-seam` |
 | 切分 / 关闭（读 role） | `splittable-leaf?` · `split-focused` · `split-left` `split-right` `split-up` `split-down` · `close-focused` |
 | floats | `floats-op` · `add-float` `remove-float` |
+| modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay` |
 | focus | `focus-on` · `focus-leaf` · `focus-move` |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
