@@ -23,7 +23,7 @@
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
 | `role.rkt` | **leaf 角色注册表**：`role → 行为`（`splittable?` / `close` 策略） | 纯 |
-| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`show-hide-close-pane`/`split-pane`/`focus!`/`focus-move`/`insert-text` … | 纯构造器 |
+| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-move`/`insert-text` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）；cache 由 loop 持有 | 只读 core + 输出 |
@@ -71,7 +71,7 @@
 | 新命令 / 键位 | `keytable-merge!` 或 `keys` 表 | loop / step |
 | 某文档临时覆盖 / 插件插拔 | `buffer-add-table!` / `buffer-remove-table!` | 类型表 / 全局表 |
 | 新编辑算子 | 返回 `(edit view op)`（或 `ops.rkt` 的 `insert-text` 等） | loop / step |
-| 新布局 / 焦点操作 | 加进 `ops.rkt`（`layout-op` 包 tree→tree；`focus!` 包 world-focus-on） | step / loop |
+| 新布局 / 焦点操作 | 加进 `ops.rkt`（`layout-op` 包 tree→tree；`focus-on` 包 world-focus-on） | step / loop |
 | 运行期开文档 | 返回 `(open-doc make f)`（make 造、f 装进布局） | step |
 | 新 world 字段 | `world` 加字段 + `modify` | 语义不变 |
 | 新内部事件 | `world` 的 `internal` 注册表：`kind → (world payload → world + intents)`；或 `app-event` + `step-internal` | 其它 kind |
@@ -98,13 +98,13 @@
 
 | 类 | 原语 |
 |---|---|
-| layout | `layout-op`（通用 tree→tree）· `mount-view` · `show-pane` `hide-pane` `toggle-pane` `close-pane` · `split-pane` `move-pane` `resize-seam` |
-| **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-editor` · `splittable-leaf?` · `close-focused`（按 role 的 close 策略） |
+| layout | `layout-op`（通用 tree→tree）· `mount-view` `clear-view` · `show-pane` `hide-pane` `toggle-pane` `delete-pane` · `split-pane` `move-pane` `resize-seam` |
+| **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
-| focus | `focus!`（指定 ref）· `focus-move`（面板间方向，ctx 感知） |
+| focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-move`（面板间方向，ctx 感知） |
 | document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
 
-单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus! ref))`。
+单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus-leaf 'editor))`。
 它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。
 
 ### leaf role 注册表（`role.rkt`）
@@ -124,9 +124,9 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 | `close` | `'hide` 只隐不删 · `'delete` 直接删 · `'keep-last` 删，除非是该 role 最后一块 → 清 view 保留占位 |
 
 - 未注册的 role → 保守默认：不 splittable、`close='hide'`。
-- `role-config`（名→行为）· `role-known?`；在 `role.rkt` 内置注册 `'editor` / `'panel`，可覆盖。
-- `close-focused` 按 `(role-close (role-config (leaf-role l)))` 分派；`split-editor` 按
-  `(role-splittable? (role-config (leaf-role l)))` 判断。不再有硬编码的 `'editor`。
+- `role-of`（名→行为）· `role-known?`；在 `role.rkt` 内置注册 `'editor` / `'panel`，可覆盖。
+- `close-focused` 按 `(role-close-policy (role-of (leaf-role l)))` 分派；`split-focused` 按
+  `(role-splittable? (role-of (leaf-role l)))` 判断。不再有硬编码的 `'editor`。
 
 编辑区初始可以是**空 panel**：`(pane 'editor #:view #f #:role 'editor)`；之后 `mount-view` / `open-doc` 装内容。
 `keep-last` 的不变量：该 role 永远至少有一块 leaf，所以关空后仍能 split / open。

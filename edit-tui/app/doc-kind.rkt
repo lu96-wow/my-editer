@@ -32,17 +32,17 @@
 
 (provide (struct-out doc-kind)
          define-doc-kind!
-         kind-table
+         kind->keytable
          buffer-set-kind! buffer-kind
          buffer-add-table! buffer-remove-table! buffer-clear-tables! buffer-keytables
          view-kind view-tables)
 
 ;;; ════════════════════════ 类型注册表 ════════════════════════
 
-(struct doc-kind (name table) #:transparent)
-;; name  : symbol
-;; table : keytable   该类型的默认命令表（可由多张小表 merge 而成）
-;; 暂定：一个类型一张 table；将来要“类型内多层”就把 table 换成 (listof keytable)。
+(struct doc-kind (name keytable) #:transparent)
+;; name     : symbol
+;; keytable : keytable   该类型的默认命令表（可由多张小表 merge 而成）
+;; 暂定：一个类型一张 keytable；将来要“类型内多层”就把 keytable 换成 (listof keytable)。
 
 (define registry (make-hasheq))            ; symbol → doc-kind
 
@@ -59,9 +59,9 @@
   (void))
 
 ;; 类型名 → 命令表（未注册 = 空表，方便“有类型但暂时没绑定”）。
-(define (kind-table name)
+(define (kind->keytable name)
   (define k (and name (hash-ref registry name #f)))
-  (if k (doc-kind-table k) (make-keytable)))
+  (if k (doc-kind-keytable k) (make-keytable)))
 
 ;;; ════════════════════════ document → 类型 / 额外层 ════════════════════════
 

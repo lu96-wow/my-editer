@@ -2,19 +2,44 @@
 
 ;;; app/ops.rkt —— 操作「根对象」的原语层（layout / focus / document）
 ;;;
-;;; 命里不再手写 `(modify (λ (w) (struct-copy world w [layout …])))`。
-;;; 所有原语都是**纯构造器**：只产出 intent，不改状态、不碰 core、不新增状态。
+;;; 上层命令里不再手写 `(modify (λ (w) (struct-copy world w [layout …])))`：
+;;; 调这里的命名原语即可。所有原语都是**纯构造器**：只产出 intent，不改状态、
+;;; 不碰 core、不新增状态。
 ;;;
 ;;; 约定：所有原语返回 `(listof intent)`（正是命令的返回类型），于是：
 ;;;   单操作命令  (λ (ctx) (hide-pane 'tree))
-;;;   多操作命令  (λ (ctx) (append (hide-pane 'tree) (focus! ref)))
+;;;   多操作命令  (λ (ctx) (append (hide-pane 'tree) (focus-leaf 'editor)))
 ;;;
-;;; 三类根：
-;;;   layout   tree→tree / floats→floats 的纯变换，包成“改 world 根字段”的 intent
-;;;   focus    改 world.focus（稳定 panel-ref）
-;;;   document 编辑 intent 的命名封装（避免上层重复 op-* / invoke）
+;;; ── 归纳：这套原语做什么 ────────────────────────────────────────────
 ;;;
-;;; 高级/任意布局改动直接用 `layout-op` 传一个 tree→tree 函数。
+;;;   布局结构（tree）
+;;;     mount-view / clear-view   装 / 卸某 leaf 的 view
+;;;     show-pane / hide-pane / toggle-pane   显隐（结构不动）
+;;;     delete-pane               删 leaf（原始操作，不看 role 策略）
+;;;     split-pane / move-pane / resize-seam  切分 / 移动 / 拖缝
+;;;     layout-op                 任意 tree→tree（逃生舱）
+;;;
+;;;   切分 / 关闭（读 role 注册表，见 role.rkt）
+;;;     split-left/right/up/down  把**焦点所在的 splittable leaf**切成两块，
+;;;                               新块继承原 role、view=#f，焦点移过去
+;;;     close-focused             按 role 的 close-policy 分派：
+;;;                                 'hide → hide-pane；'delete → delete-pane；
+;;;                                 'keep-last → 最后一块只 clear-view，否则 delete-pane
+;;;
+;;;   焦点（world.focus 是稳定 panel-ref，见 panel-ref.rkt）
+;;;     focus-on ref / focus-leaf id   切焦点（清 pending）
+;;;     focus-move ctx dir             面板间方向移动
+;;;
+;;;   文档（编辑 intent 的命名封装，底层是 edit / invoke）
+;;;     insert-text / delete-backward / delete-forward / navigate / undo / redo
+;;;
+;;; ── 值词汇（本模块用到的） ──────────────────────────────────────────
+;;;
+;;;   axis        : 'lr | 'tb                    （'lr 左右并排 | 'tb 上下堆叠）
+;;;   side        : 'before | 'after
+;;;   dir         : 'left | 'right | 'up | 'down
+;;;   leaf role   : 任意 symbol（见 role.rkt）
+;;;   panel-ref   : (leaf-ref id) | (float-ref key)（见 panel-ref.rkt）
 
 (require "../layout/main.rkt"
          "../../core/editor.rkt"
@@ -24,35 +49,35 @@
          "intent.rkt")
 
 (provide
- ;; layout
- layout-op mount-view
- show-pane hide-pane toggle-pane close-pane
+ ;; layout（结构 / 显隐 / 切分 / 移动 / 缝）
+ layout-op mount-view clear-view
+ show-pane hide-pane toggle-pane delete-pane
  split-pane move-pane resize-seam
- ;; 切分（只对 splittable role 生效；见 role.rkt）
- splittable-leaf? split-editor
+ ;; 切分 / 关闭（读 role 策略）
+ splittable-leaf? split-focused
  split-left split-right split-up split-down
- ;; 关闭（带焦点回落）
  close-focused
  ;; floats
  floats-op add-float remove-float
  ;; focus
- focus! focus-move
+ focus-on focus-leaf focus-move
  ;; document
  insert-text delete-backward delete-forward
  navigate undo redo)
 
-;;; ════════════════════════ layout ════════════════════════
+;;; ════════════════════════ layout 结构 ════════════════════════
 
 ;; 通用：tree → tree 的纯变换，包成“改 world.layout”的 intent。
 (define (layout-op f)
   (list (modify (λ (w) (struct-copy world w [layout (f (world-layout w))])))))
 
-(define (mount-view leaf-id v) (layout-op (λ (t) (tree-set-view t leaf-id v))))
-(define (show-pane id)         (layout-op (λ (t) (tree-show t id))))
-(define (hide-pane id)         (layout-op (λ (t) (tree-hide t id))))
+(define (mount-view id v)  (layout-op (λ (t) (tree-set-view t id v))))
+(define (clear-view id)    (mount-view id #f))          ; 卸掉 view，保留 leaf（空占位）
+(define (show-pane id)     (layout-op (λ (t) (tree-show t id))))
+(define (hide-pane id)     (layout-op (λ (t) (tree-hide t id))))
 (define (toggle-pane id)
   (layout-op (λ (t) (if (tree-visible? t id) (tree-hide t id) (tree-show t id)))))
-(define (close-pane id)        (layout-op (λ (t) (tree-close t id))))
+(define (delete-pane id)   (layout-op (λ (t) (tree-close t id))))   ; 原始删除，不读 role
 (define (split-pane id axis new-id #:side [side 'after] #:role [role 'panel])
   (layout-op (λ (t) (tree-split t id axis new-id #:side side #:role role))))
 (define (move-pane id target axis #:side [side 'after])
@@ -60,17 +85,14 @@
 (define (resize-seam cut delta)
   (layout-op (λ (t) (tree-resize-seam t cut delta))))
 
-;;; ════════════════════════ 切分（只对 splittable role 生效） ════════════════════════
+;;; ════════════════════════ 切分（读 role 的 splittable?） ════════════════════════
 ;;;
-;;; 四个原语 split-left/right/up/down：把**焦点所在的、role 声明为 splittable 的 leaf**
+;;; 四个原语 split-left/right/up/down 把**焦点所在的、role 声明为 splittable 的 leaf**
 ;;; 沿方向切成两块，产生一个新的**空块**（view=#f，**继承原 role**），焦点移过去。
-;;;
-;;; 行为由 role 注册表决定（role.rkt）：`role-splittable? (role-config role)`。
-;;; 非 splittable（如文件树/状态栏）→ no-op。默认 'editor splittable、'panel 不。
-;;; 新块初始为空，用 mount-view/open-doc 装内容。
+;;; 非 splittable（如文件树 / 状态栏）→ no-op。默认 'editor splittable、'panel 不。
 
 (define (splittable-leaf? l)
-  (and l (role-splittable? (role-config (leaf-role l)))))
+  (and l (role-splittable? (role-of (leaf-role l)))))
 
 ;; 焦点所在的 splittable leaf（否则 #f）。
 (define (ctx-splittable-leaf ctx)
@@ -81,7 +103,7 @@
          (and (splittable-leaf? l) l))))
 
 ;; 通用：在焦点 splittable leaf 旁切一块新的空块（继承 role）。axis+side 定方向。
-(define (split-editor ctx axis side)
+(define (split-focused ctx axis side)
   (define l (ctx-splittable-leaf ctx))
   (cond
     [(not l) '()]                                     ; 非 splittable → 不生效
@@ -89,19 +111,19 @@
      (define role (leaf-role l))
      (define id (gensym role))
      (append (split-pane (leaf-id l) axis id #:side side #:role role)
-             (focus! (leaf-ref id)))]))
+             (focus-leaf id))]))
 
-(define (split-left ctx)  (split-editor ctx 'lr 'before))
-(define (split-right ctx) (split-editor ctx 'lr 'after))
-(define (split-up ctx)    (split-editor ctx 'tb 'before))
-(define (split-down ctx)  (split-editor ctx 'tb 'after))
+(define (split-left ctx)  (split-focused ctx 'lr 'before))
+(define (split-right ctx) (split-focused ctx 'lr 'after))
+(define (split-up ctx)    (split-focused ctx 'tb 'before))
+(define (split-down ctx)  (split-focused ctx 'tb 'after))
 
-;;; ════════════════════════ 关闭焦点面板（行为由 role 注册表决定） ════════════════════════
+;;; ════════════════════════ 关闭焦点面板（读 role 的 close-policy） ════════════════════════
 ;;;
-;;; close 策略（见 role.rkt）：
+;;; close-policy（见 role.rkt）：
 ;;;   'hide      只隐藏，不删（固定面板；再显示用 show-pane/toggle-pane）
 ;;;   'delete    直接删 leaf
-;;;   'keep-last 删，除非这是**该 role 的最后一块** → 只清 view（保留空占位），焦点不动
+;;;   'keep-last 删，除非这是**该 role 的最后一块** → 只 clear-view（保留空占位），焦点不动
 ;;;
 ;;; 默认：'panel → hide，'editor → keep-last。
 ;;; 不变量（keep-last）：该 role 永远至少有一块 leaf，所以之后仍能 split / open。
@@ -137,13 +159,13 @@
     [else
      (define id (leaf-id l))
      (define role (leaf-role l))
-     (case (role-close (role-config role))
-       [(hide)   (append (hide-pane id)  (focus! (fallback-ref w ref)))]
-       [(delete) (append (close-pane id) (focus! (fallback-ref w ref)))]
+     (case (role-close-policy (role-of role))
+       [(hide)   (append (hide-pane id)   (focus-on (fallback-ref w ref)))]
+       [(delete) (append (delete-pane id) (focus-on (fallback-ref w ref)))]
        [(keep-last)
         (if (= 1 (count-role (world-layout w) role))
-            (append (mount-view id #f)   (focus! ref))   ; 最后一块：清 view，保留占位
-            (append (close-pane id)      (focus! (fallback-ref w ref))))]
+            (append (clear-view id)  (focus-on ref))            ; 最后一块：清 view，保留占位
+            (append (delete-pane id) (focus-on (fallback-ref w ref))))]
        [else '()])]))
 
 ;;; ════════════════════════ floats ════════════════════════
@@ -155,11 +177,14 @@
 
 ;;; ════════════════════════ focus ════════════════════════
 
-;; 切到指定 panel-ref（会清 pending）。
-(define (focus! ref)
+;; 切到指定 panel-ref（清 pending）。返回 (listof intent)。
+(define (focus-on ref)
   (list (modify (λ (w) (world-focus-on w ref)))))
 
-;; 面板间方向移动焦点：ctx.ref → 当帧 panel → panel-neighbor → 邻居 ref → focus!。
+;; 便捷：按 leaf id 切焦点。
+(define (focus-leaf id) (focus-on (leaf-ref id)))
+
+;; 面板间方向移动焦点：ctx.ref → 当帧 panel → panel-neighbor → 邻居 ref → focus-on。
 ;; 返回 (listof intent)（无邻居 → '()）。
 (define (focus-move ctx dir)
   (define w (ctx-world ctx))
@@ -173,7 +198,7 @@
      (define nbr (panel-neighbor ps from dir))
      (define nbr-ref (and nbr (for/first ([p (in-list ps)] [rf (in-list refs)]
                                           #:when (eq? p nbr)) rf)))
-     (if nbr-ref (focus! nbr-ref) '())]))
+     (if nbr-ref (focus-on nbr-ref) '())]))
 
 ;;; ════════════════════════ document（薄封装编辑原语） ════════════════════════
 

@@ -67,25 +67,25 @@
 (define (leaves) (tree-leaves (layout)))
 (define (count-role r) (for/sum ([l (in-list (leaves))] #:when (eq? (leaf-role l) r)) 1))
 (define (set-focus! id) (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref id)])))
-(define (role-of id) (leaf-role (tree-find (layout) id)))
+(define (leaf-role-of id) (leaf-role (tree-find (layout) id)))
 (define (view-of id) (leaf-view (tree-find (layout) id)))
 
 (define (run-check!)
   (set-box! world* (make-app-world))
 
   (printf "内置：editor splittable=~a close=~a；panel splittable=~a close=~a\n"
-          (role-splittable? (role-config 'editor)) (role-close (role-config 'editor))
-          (role-splittable? (role-config 'panel))  (role-close (role-config 'panel)))
+          (role-splittable? (role-of 'editor)) (role-close-policy (role-of 'editor))
+          (role-splittable? (role-of 'panel))  (role-close-policy (role-of 'panel)))
 
   (check "内置 'editor：可切分 + keep-last"
-         (and (role-splittable? (role-config 'editor))
-              (eq? (role-close (role-config 'editor)) 'keep-last)))
+         (and (role-splittable? (role-of 'editor))
+              (eq? (role-close-policy (role-of 'editor)) 'keep-last)))
   (check "内置 'panel：不可切分 + hide"
-         (and (not (role-splittable? (role-config 'panel)))
-              (eq? (role-close (role-config 'panel)) 'hide)))
+         (and (not (role-splittable? (role-of 'panel)))
+              (eq? (role-close-policy (role-of 'panel)) 'hide)))
   (check "自定义 'tool 已注册" (role-known? 'tool))
   (check "未注册 role 保守默认（不切分/hide）"
-         (and (not (role-splittable? (role-config 'nope))) (eq? (role-close (role-config 'nope)) 'hide)))
+         (and (not (role-splittable? (role-of 'nope))) (eq? (role-close-policy (role-of 'nope)) 'hide)))
 
   ;; tool：splittable，新块继承 role 'tool
   (set-focus! 'tool)
@@ -93,7 +93,7 @@
   (feed! (ctrl 's)) (feed! (plain 'right))
   (check "tool 可切分（+1）" (= (add1 nt0) (count-role 'tool)))
   (define new-id (panel-ref-id (world-focus (unbox world*))))
-  (check "新块继承 role='tool" (eq? (role-of new-id) 'tool))
+  (check "新块继承 role='tool" (eq? (leaf-role-of new-id) 'tool))
   ;; tool：close='delete' → 直接删（即使只剩一块也删）
   (feed! (ctrl 's)) (feed! (plain 'd))
   (check "tool close='delete'：删掉一块" (= nt0 (count-role 'tool)))

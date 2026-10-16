@@ -3,39 +3,54 @@
 ;;; app/role.rkt —— leaf「角色」→ 行为 的注册表
 ;;;
 ;;; layout 的 leaf 有一个自由符号字段 `role`（默认 'panel）。app **不写死** role 名，
-;;; 而是查这张表决定该角色的行为：能不能被 split、关闭时怎么处理。
+;;; 而是查这张表决定该角色的行为。新增一种区域只需 `define-role!` + `pane #:role`，
+;;; 不用改 ops。
 ;;;
-;;;   (define-role! 'editor #:splittable? #t #:close 'keep-last)   ; 编辑区
-;;;   (define-role! 'panel  #:splittable? #f #:close 'hide)        ; 固定面板
+;;; ── 值词汇（role 相关） ──────────────────────────────────────────────
 ;;;
-;;; 关闭策略 close：
-;;;   'hide        只隐藏，不删（固定面板；再显示用 show-pane/toggle-pane）
-;;;   'delete      直接删 leaf
-;;;   'keep-last   删，除非这是**该 role 的最后一块** → 只清 view（保留空占位）
+;;;   role 名        : 任意 symbol（开放集）。内置：
+;;;                      'editor  编辑区
+;;;                      'panel   固定面板（默认）
+;;;                    用户可自定义，如 'tool / 'sidebar。
 ;;;
-;;; 未注册的 role → 保守默认：不 splittable、close='hide'。
-;;; 这两个内置默认在模块加载时注册；上层可 `define-role!` 覆盖或新增。
+;;;   splittable?    : #t | #f
+;;;                      #t → split-left/right/up/down 作用于该 role 的 leaf
+;;;
+;;;   close-policy   : 'hide | 'delete | 'keep-last
+;;;                      'hide       只隐藏，不删（再显示用 show-pane/toggle-pane）
+;;;                      'delete     直接删 leaf
+;;;                      'keep-last  删，除非这是**该 role 的最后一块** → 只清 view
+;;;                                  （保留空占位，焦点不动）
+;;;
+;;;   未注册的 role  → 保守默认：splittable? #f、close-policy 'hide
+;;;
+;;; ── 用法 ────────────────────────────────────────────────────────────
+;;;
+;;;   (define-role! 'editor #:splittable? #t #:close 'keep-last)   ; 内置，可覆盖
+;;;   (role-of 'editor)              ; → role 结构
+;;;   (role-splittable? (role-of r)) ; → bool
+;;;   (role-close-policy (role-of r)) ; → 'hide | 'delete | 'keep-last
 
 (provide (struct-out role)
          define-role!
-         role-config role-known?)
+         role-of role-known?)
 
-(struct role (name splittable? close) #:transparent)
-;; name       : symbol
-;; splittable?: bool    split-left/right/up/down 是否作用于该 role 的 leaf
-;; close      : 'hide | 'delete | 'keep-last
+(struct role (name splittable? close-policy) #:transparent)
+;; name         : symbol
+;; splittable?  : bool
+;; close-policy : 'hide | 'delete | 'keep-last
 
 (define registry (make-hasheq))            ; symbol → role
 
-(define (define-role! name #:splittable? [splittable? #f] #:close [close 'hide])
+(define (define-role! name #:splittable? [splittable? #f] #:close [close-policy 'hide])
   (unless (symbol? name) (error 'define-role! "role 名要是 symbol：~a" name))
-  (unless (memq close '(hide delete keep-last))
-    (error 'define-role! "close 要是 'hide/'delete/'keep-last：~a" close))
-  (hash-set! registry name (role name splittable? close))
+  (unless (memq close-policy '(hide delete keep-last))
+    (error 'define-role! "close 要是 'hide/'delete/'keep-last：~a" close-policy))
+  (hash-set! registry name (role name splittable? close-policy))
   (void))
 
 ;; role 名 → 行为（未注册 = 保守默认）。
-(define (role-config name)
+(define (role-of name)
   (hash-ref registry name (λ () (role name #f 'hide))))
 
 (define (role-known? name) (and name (hash-has-key? registry name)))

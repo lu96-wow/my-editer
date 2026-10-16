@@ -107,7 +107,7 @@
    (for/list ([m (in-list (world-modes w))] #:when (mode-table m))
      (mode-table m))
    (view-tables subject)                        ; document 自己的覆盖层（最优先，可插拔）
-   (list (kind-table (view-kind subject)))      ; 类型默认表（穿透到 document 类型）
+   (list (kind->keytable (view-kind subject)))   ; 类型默认表（穿透到 document 类型）
    (list (world-keytable w))))                  ; 全局表（最低）
 
 ;; subject-ref = #f → 用 focus ref。

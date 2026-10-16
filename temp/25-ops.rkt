@@ -6,9 +6,9 @@
 ;;;   racket temp/25-ops.rkt tui     # 交互
 ;;;
 ;;; 覆盖：
-;;;   · 布局：toggle-pane / split-pane / close-pane / mount-view
+;;;   · 布局：toggle-pane / split-pane / delete-pane / mount-view
 ;;;   · 浮窗：add-float / remove-float
-;;;   · 焦点：focus-keys（focus-move）+ 直接 focus!
+;;;   · 焦点：focus-keys（focus-move）+ 直接 focus-on
 ;;;   · 命令里不再出现 struct-copy / tree-* / modify(lambda) 的样板。
 ;;;
 ;;; 键位：C-w ←/→ 焦点移动 · C-b 开关 tree · C-s 切分 · C-d 关闭
@@ -55,7 +55,7 @@
    [(key 's 'ctrl) (λ (ctx) (define id (focused-leaf-id ctx))
                            (if id (split-pane id 'lr 'extra) '()))]
    [(key 'd 'ctrl) (λ (ctx) (define id (focused-leaf-id ctx))
-                           (if id (close-pane id) '()))]
+                           (if id (delete-pane id) '()))]
    [(key 'm 'ctrl) (λ (ctx) (mount-view 'tree eview2))]
    [(key 'p 'ctrl) (λ (ctx) (add-float (make-float 'demo #f
                                                    (float-rect-at 3 5 20 4 (world-area (ctx-world ctx))))))]
@@ -125,7 +125,7 @@
   (feed! (ctrl 'o))
   (check "C-o 移除浮窗" (null? (world-floats (unbox world*))))
 
-  ;; 布局：close-pane
+  ;; 布局：delete-pane
   (set-box! world* (struct-copy world (unbox world*) [focus (leaf-ref 'extra)]))
   (feed! (ctrl 'd))
   (check "C-d 关闭 focused leaf 'extra"
