@@ -21,7 +21,7 @@
 ;;;
 ;;; 完整层优先级（由 step.rkt 的 active-keytables 组合）：
 ;;;
-;;;   mode 表  >  document 自己的层  >  kind 默认表  >  全局表
+;;;   layer 表  >  document 自己的层  >  kind 默认表  >  全局表
 ;;;
 ;;; 为什么不用 core 的 document 槽存类型：core 的槽是**随版本 fork** 的（reset/transform），
 ;;; 而“文档类型”是文档级元数据、不该随每次编辑变化。所以这里用 eq 哈希按 buffer 身份存，

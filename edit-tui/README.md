@@ -98,7 +98,7 @@ main.rkt    入口
 
 ```
 intent.rkt     效果即数据：状态意图 update + 效果意图 edit/select/scroll/spawn/post/invoke/open-doc
-world.rkt      world / ctx / mode / app-event / drag + 派生 + ref 解析
+world.rkt      world / ctx / layer / app-event / drag + 派生 + ref 解析
 panel-ref.rkt  panel 稳定身份（leaf id / float key）+ 当帧解析
 role.rkt       leaf 角色注册表（splittable? / close-policy）
 doc-kind.rkt   document 类型 → 命令表 + per-document 表层
@@ -165,7 +165,7 @@ inbox ──────┘        │
 
 ```
 event ─▶ command/tui: event->key / event->mouse → token
-      ─▶ active-keytables (app/step): mode > per-document > kind 默认 > 全局
+      ─▶ active-keytables (app/step): 拓展层 > per-document > kind 默认 > 全局
       ─▶ keytable-lookup (command/keymap) → command
       ─▶ (λ (ctx) (listof intent))
 ```
@@ -186,7 +186,7 @@ event ─▶ command/tui: event->key / event->mouse → token
 - 新面板 / 区域：`layout` 的 `pane #:role` + `define-role!`；布局树原语在 `layout/tree.rkt`。
 - 新效果：加 intent struct + `loop` 的 `run-intents!` 一个 `match` 分支（`invoke` 是逃生舱）。
 - 新内部事件：`world.internal` 注册表，或 `app-event` + `step-internal`。
-- 新模式（minibuffer / which-key）：`world.modes` 栈；输入 spec 已随 command 存在。
+- 新拓展层（minibuffer / which-key）：`world.layers` 栈；输入 spec 已随 command 存在。
 
 各层 README 有更细的扩展点列表；`app/README.md` 末尾有“能力评估 / 不冗余审计 / 暂定清单”。
 
@@ -226,7 +226,7 @@ event ─▶ command/tui: event->key / event->mouse → token
 - **纯 world 转换不带 `!`**（返回新 world）：`world-set-status`、`world-focus-on`、`world-mark-dirty`。
 - **`focus-*` = 文档操作**（作用于当前焦点 / 主体 view）；面板焦点是 `focus-on` / `focus-leaf` /
   `focus-panel-move`。
-- **`mode.table` 是 `keytable`**：“表列表”叫 `keytable`，“对某 buffer 追加的层”叫 `buffer-add-keytable!`。
+- **`layer.keytable` 是 `keytable`**：“表列表”叫 `keytable`，“对某 buffer 追加的层”叫 `buffer-add-keytable!`。
 
 ## 约定
 

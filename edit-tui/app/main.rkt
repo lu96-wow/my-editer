@@ -23,7 +23,7 @@
 ;;;
 ;;; ── 模块 ──────────────────────────────────────────────────────────
 ;;;
-;;;   world.rkt       world / ctx / drag / mode / app-event + ref 解析助手
+;;;   world.rkt       world / ctx / drag / layer / app-event + ref 解析助手
 ;;;   panel-ref.rkt   leaf/float 的稳定身份 + 解析（ref → view/panel）
 ;;;   role.rkt        leaf role → 行为：splittable? / close-policy
 ;;;   doc-kind.rkt    document 类型 → 命令表（+ per-buffer 覆盖层）
@@ -58,7 +58,7 @@
 ;;; ── 判定点（都在「查表」） ────────────────────────────────────────
 ;;;
 ;;;   事件分派   app-event > key > mouse > resize > paste > null
-;;;   命令表     subject ref → view→buffer→kind；层序 mode > per-doc > kind > 全局
+;;;   命令表     subject ref → view→buffer→kind；层序 layer > per-doc > kind > 全局
 ;;;   鼠标       命中缝优先；否则命中 panel；拖动中按 drag.subject
 ;;;   role       splittable? / close-policy（role.rkt）
 ;;;   重绘       world.dirty?（首帧 force?）

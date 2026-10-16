@@ -60,8 +60,8 @@
  close-focused
  ;; floats
  floats-op add-float remove-float
- ;; modes / overlays（临时表层 / 浮层）
- push-mode pop-mode open-overlay close-overlay
+ ;; layers / overlays（拓展层 / 浮层）
+ push-layer pop-layer open-overlay close-overlay
  ;; focus（面板焦点）
  focus-on focus-leaf focus-panel-move
  ;; focus（焦点 / 主体上的文档操作：吃 ctx）
@@ -184,22 +184,22 @@
 (define (add-float fl)     (floats-op (λ (fs) (floats-add fs fl))))
 (define (remove-float key) (floats-op (λ (fs) (floats-remove fs key))))
 
-;;; ════════════════════════ modes / overlays（临时表层 / 浮层） ════════════════════════
+;;; ════════════════════════ layers / overlays（拓展层 / 浮层） ════════════════════════
 ;;;
-;;; 模式层：world.modes 栈（栈顶优先），active-keytables 把它压在 kind / 全局之上，
-;;; 于是临时表可以「遮蔽 / 新增」操作。
+;;; 拓展层：world.layers 栈（栈顶优先），active-keytables 把它压在 kind / 全局之上，
+;;; 于是临时层可以「遮蔽 / 新增」操作。
 ;;;
-;;; 浮层（overlay）= 浮窗 + 临时表，**同一把 key** 命名，一起挂 / 一起拆：
-;;;   (open-overlay  key float table)  弹窗 + 挂表
-;;;   (close-overlay key)             关窗 + 拆表
-;;; 浮窗永不占焦点（world-focus-on 只收 leaf；拥有活动模式的浮窗 view 才画 overlay）。
-(define (push-mode m)   (list (modify (λ (w) (world-push-mode w m)))))
-(define (pop-mode name) (list (modify (λ (w) (world-pop-mode w name)))))
+;;; 浮层（overlay）= 浮窗 + 临时拓展层，**同一把 key** 命名，一起挂 / 一起拆：
+;;;   (open-overlay  key float keytable)  弹窗 + 挂层
+;;;   (close-overlay key)                 关窗 + 拆层
+;;; 浮窗永不占焦点（world-focus-on 只收 leaf；拥有活动拓展层的浮窗 view 才画 overlay）。
+(define (push-layer l)   (list (modify (λ (w) (world-push-layer w l)))))
+(define (pop-layer name) (list (modify (λ (w) (world-pop-layer w name)))))
 
 (define (open-overlay key fl keytable)
-  (append (add-float fl) (push-mode (mode key keytable))))
+  (append (add-float fl) (push-layer (layer key keytable))))
 (define (close-overlay key)
-  (append (remove-float key) (pop-mode key)))
+  (append (remove-float key) (pop-layer key)))
 
 ;;; ════════════════════════ focus ════════════════════════
 

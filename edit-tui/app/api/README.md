@@ -16,7 +16,7 @@
 | api 模块 | 转发 | 功能 |
 |---|---|---|
 | `intent.rkt` | `../intent.rkt` | 效果即数据：状态意图 / 效果意图 |
-| `world.rkt` | `../world.rkt` | 世界状态 + `ctx` / `drag` / `mode` / `app-event` + 派生 |
+| `world.rkt` | `../world.rkt` | 世界状态 + `ctx` / `drag` / `layer` / `app-event` + 派生 |
 | `panel-ref.rkt` | `../panel-ref.rkt` | panel 稳定身份与当帧解析 |
 | `role.rkt` | `../role.rkt` | leaf 角色注册表（splittable? / close-policy） |
 | `doc-kind.rkt` | `../doc-kind.rkt` | document 类型 → 命令表 + per-document 表层 |
@@ -44,9 +44,9 @@
 | 类别 | 名字 |
 |---|---|
 | 构造 | `make-world` |
-| 结构 | `world` `ctx` `mode` `drag` `app-event`（含各自访问器） |
+| 结构 | `world` `ctx` `layer` `drag` `app-event`（含各自访问器） |
 | 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` `world-overlay-views` |
-| 纯更新 | `world-resize` `world-focus-on` `world-push-mode` `world-pop-mode` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
+| 纯更新 | `world-resize` `world-focus-on` `world-push-layer` `world-pop-layer` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
 
 ### panel-ref —— 面板身份
 
@@ -76,7 +76,7 @@
 | layout | `layout-op` · `mount-view` `clear-view` · `show-pane` `hide-pane` `toggle-pane` `delete-pane` · `split-pane` `move-pane` `resize-seam` |
 | 切分 / 关闭（读 role） | `splittable-leaf?` · `split-focused` · `split-left` `split-right` `split-up` `split-down` · `close-focused` |
 | floats | `floats-op` · `add-float` `remove-float` |
-| modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay` |
+| layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay` |
 | focus | `focus-on` · `focus-leaf` · `focus-panel-move` |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
@@ -102,7 +102,7 @@
 | per-buffer kind | `doc-kind.rkt`（weak eq） | `buffer → symbol` | `buffer-set-kind!` |
 | per-buffer 表层 | `doc-kind.rkt`（weak eq） | `buffer → (listof keytable)` | `buffer-add-keytable!` / `buffer-remove-keytable!` |
 | `world.internal` | `world` 字段 | `symbol → (world payload → world + intents)` | 命令里放 / 接 `app-event` |
-| `world.modes` | `world` 字段 | `(listof mode)`，栈顶在前 | `push-mode` / `pop-mode` |
+| `world.layers` | `world` 字段 | `(listof layer)`，栈顶在前 | `push-layer` / `pop-layer` |
 | keytable | `command` 层 | `(listof keymap)` | `make-keytable` / `keytable-merge!` |
 
 ## 命名规约

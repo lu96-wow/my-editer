@@ -18,7 +18,7 @@
 | 文件 | 职责 | 纯? |
 |---|---|---|
 | `intent.rkt` | 效果即数据：`update`（状态意图）+ `edit/select/scroll/spawn/post/invoke/open-doc`（效果意图） | 纯，无依赖 |
-| `world.rkt` | `world` / `ctx` / `mode` / `app-event` / `drag` + 派生助手（`world-panels` / `world-panels+refs` / `world-ref->view` 等） | 纯数据 |
+| `world.rkt` | `world` / `ctx` / `layer` / `app-event` / `drag` + 派生助手（`world-panels` / `world-panels+refs` / `world-ref->view` 等） | 纯数据 |
 | `panel-ref.rkt` | **panel 稳定身份** `panel-ref`（leaf id / float key）+ 解析成当帧 view / panel | 纯 |
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
@@ -87,12 +87,12 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 且**浮窗永不占焦点**。
 
 - **浮窗**：`add-float` / `remove-float`（`layout/float.rkt`）；不进布局树、deep 高、`float-ref` 身份。
-- **临时表**：`push-mode` / `pop-mode` 压进 `world.modes` 栈；它在 `active-keytables` 里是**最高层**，
+- **临时拓展层**：`push-layer` / `pop-layer` 压进 `world.layers` 栈；它在 `active-keytables` 里是**最高层**，
   所以能遮蔽 / 新增操作。
 - **成对**：`(open-overlay key float table)` = 弹窗 + 挂表；`(close-overlay key)` = 关窗 + 拆表。
-  同一把 `key` 命名浮窗与模式（mode 名 = float key）。
+  同一把 `key` 命名浮窗与拓展层（层名 = float key）。
 - **不占焦点**：`world-focus-on` 只收 leaf（`focusable-ref?`）；点浮窗的默认行为 no-op。
-- **画选中项**：`world-overlay-views` = 焦点 view + **拥有活动模式的浮窗 view**，交给 core 画 overlay。
+- **画选中项**：`world-overlay-views` = 焦点 view + **拥有活动拓展层的浮窗 view**，交给 core 画 overlay。
   注意：浮窗 view 在 `panels-sync!` 前是 1×1，设选区要 `#:ensure? #f`，否则会被 `ensure`
   水平滚走（`temp/31-completion.rkt` 有示例）。
 
@@ -120,7 +120,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | 新 world 字段 | `world` 加字段 + `modify` | 语义不变 |
 | 新内部事件 | `world` 的 `internal` 注册表：`kind → (world payload → world + intents)`；或 `app-event` + `step-internal` | 其它 kind |
 | 新面板 / 布局 | `layout` 的 tree / float | loop |
-| 新模式（minibuffer / which-key） | `world-modes` 栈（暂定最小） | 命令表 |
+| 新拓展层（minibuffer / which-key） | `world-layers` 栈（暂定最小） | 命令表 |
 | 新效果类型 | 加效果 struct + `loop.rkt` 的 `run-intents!` 一个 `match` 分支 | step |
 
 `internal` 是「不改 `step.rkt` 就能加内部事件」的口子；`invoke` 是「不改 intent 集
@@ -145,7 +145,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | layout | `layout-op`（通用 tree→tree）· `mount-view` `clear-view` · `show-pane` `hide-pane` `toggle-pane` `delete-pane` · `split-pane` `move-pane` `resize-seam` |
 | **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
-| modes / overlays | `push-mode` `pop-mode` · `open-overlay` `close-overlay`（浮窗 + 临时表，成对；见下“浮层”） |
+| layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay`（浮窗 + 临时拓展层，成对；见下“浮层”） |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-panel-move`（面板间方向，ctx 感知） |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
 | session | `show-status`（写状态行）· `quit`（退出） |
@@ -192,9 +192,9 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 
 **骨架暂不管（要加就先扩这里）：**
 
-- **minibuffer / 输入模式**：`command-input` spec 已随命令表存着，但 `step` 目前只
+- **minibuffer / 输入**：`command-input` spec 已随命令表存着，但 `step` 目前只
   把 prompt 写进 status；接法是在 `run-command` 的 `command-needs-input?` 分支 push
-  一个 mode（`world-modes`），mode 收字符、回车后回调 —— 不需要动 loop。
+  一个拓展层（`world-layers`），层收字符、回车后回调 —— 不需要动 loop。
 - **前缀超时 / which-key**：`world-pending` 是数据，接法 = 在 loop 的等待集合里加
   `alarm-evt`（走 `on-source`），超时向 inbox 投 `(app-event 'prefix-timeout '())`；
   which-key 用现成的 `keytable-hints` + `world-pending` 渲染成一个 float。
@@ -223,7 +223,7 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 ## 暂定清单（改代码时同步本清单）
 
 1. `area` 用 core `rect`；`status` 是字符串。
-2. `modes` 是 `world.modes` 栈（栈顶优先，可覆盖全局）；`push-mode`/`pop-mode` + `open-overlay`/
+2. `layers` 是 `world.layers` 栈（栈顶优先，可覆盖全局）；`push-layer`/`pop-layer` + `open-overlay`/
    `close-overlay` 已实现；`on-event/on-exit/state` 未加。
 3. `drag` 是**结构化纯数据** `(drag kind subject data)`：`kind='seam` 由 step 解释，
    其余（如 `'select`）由类型命令解释；`subject` 是 **panel-ref**；`data='select` 存 `(ref anchor)`。
@@ -234,7 +234,7 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 8. 命令约定 `(λ (ctx) (listof intent))`；旧式 0 参过程需改写。
 9. **document 类型绑定已实现**：类型注册表 + per-buffer 表层，解析在 `step.rkt` 的
    `active-keytables`；类型元数据存 eq 哈希（不放 core 的 document 槽，因为槽随版本 fork）。
-10. 层序已实现：`mode > document 自己的层 > kind 默认表 > 全局表`。
+10. 层序已实现：`拓展层 > document 自己的层 > kind 默认表 > 全局表`。
     “插件全局层”尚未单独建模（可加在 document 层与 kind 层之间）。
 11. `open-doc` intent 采用 `(make f)`：`make` 不纯造对象，`f` 纯变换 world；
     所以 `run-intents!` 现在把 world 当折叠值穿下去。
@@ -262,7 +262,7 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 ② **per-document 表层（插件覆盖 / 还原）**
 
 - `(buffer-add-keytable! b kt)` / `(buffer-remove-keytable! b kt)`：document 自己的层，优先于 kind 默认表。
-- 层序：`mode > document 自己的层 > kind 默认表 > 全局表`；查表本就是“第一个非 unbound 胜出”，
+- 层序：`拓展层 > document 自己的层 > kind 默认表 > 全局表`；查表本就是“第一个非 unbound 胜出”，
   所以覆盖 / 还原天然成立，无需改 `keytable` 的冲突语义。
 - 尚未做的：把“插件全局层”作为独立一层建模（现在插件要么加到全局表，要么 per-document 加）。
 

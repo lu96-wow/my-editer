@@ -9,10 +9,10 @@
 ;;;       选中后 Enter 把候选插进**编辑区焦点**，同时关窗 + 拆表；Esc 只关不插。
 ;;;
 ;;; 关键点：
-;;;   · 浮层 = 浮窗 + 同名临时模式表（key = 'completion），open-overlay / close-overlay 成对；
-;;;   · 模式层在 active-keytables 最高，所以 ↑/↓/Enter 被临时表遮蔽（不会走编辑区）；
+;;;   · 浮层 = 浮窗 + 同名临时拓展层表（key = 'completion），open-overlay / close-overlay 成对；
+;;;   · 拓展层在 active-keytables 最高，所以 ↑/↓/Enter 被临时表遮蔽（不会走编辑区）；
 ;;;   · world-focus-on 只接受 leaf → 浮窗永不占焦点，打字/落点始终在编辑区；
-;;;   · 拥有活动模式的浮窗 view 会被 world-overlay-views 选出 → core 画它的选区高亮。
+;;;   · 拥有活动拓展层的浮窗 view 会被 world-overlay-views 选出 → core 画它的选区高亮。
 
 (require tui
          "../core/editor.rkt"
@@ -25,7 +25,7 @@
 ;;; ════════════════ 文档 ════════════════
 
 (define-doc-kind! 'text       #:keymaps (list edit-keys motion-keys pointer-keys))
-(define-doc-kind! 'completion #:keymaps '())          ; 浮窗自己的表：空（交互走模式表）
+(define-doc-kind! 'completion #:keymaps '())          ; 浮窗自己的表：空（交互走拓展层表）
 
 (define res (make-resources))
 (define-values (eb eview) (open-document! res "main.rkt" "\n" #:kind 'text))
@@ -141,7 +141,7 @@
   (set-box! world* (make-app-world))
   (feed! (plain 'tab))
   (check "TAB：浮窗出现" (not (equal? #f (overlay-view (w)))))
-  (check "TAB：临时表已挂" (= 1 (length (world-modes (w)))))
+  (check "TAB：临时表已挂" (= 1 (length (world-layers (w)))))
   (check "TAB：焦点仍在编辑区" (equal? (leaf-ref 'editor) (world-focus (w))))
   (check "TAB：默认选第 0 个候选" (= 0 (float-line)))
   (check "overlay views = 编辑区 + 浮窗" (= 2 (length (world-overlay-views (w)))))
@@ -157,14 +157,14 @@
   (feed! (plain 'enter))
   (check "Enter：候选插进编辑区" (string=? (buffer-string eb) "beta\n"))
   (check "Enter：浮窗关闭" (equal? #f (overlay-view (w))))
-  (check "Enter：临时表拆掉" (null? (world-modes (w))))
+  (check "Enter：临时表拆掉" (null? (world-layers (w))))
   (check "Enter：焦点仍在编辑区" (equal? (leaf-ref 'editor) (world-focus (w))))
 
   ;; Esc 只关不插
   (feed! (plain 'tab))
   (feed! (plain 'escape))
   (check "Esc：浮窗关闭" (equal? #f (overlay-view (w))))
-  (check "Esc：临时表拆掉" (null? (world-modes (w))))
+  (check "Esc：临时表拆掉" (null? (world-layers (w))))
   (check "Esc：正文未被插入" (string=? (buffer-string eb) "beta\n"))
 
   (displayln "completion: 自检 OK"))

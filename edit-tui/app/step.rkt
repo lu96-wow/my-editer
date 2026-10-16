@@ -87,7 +87,7 @@
 ;;; 活动表：按优先级逐张查，第一个非 unbound 胜出（= 覆盖语义）。
 ;;;
 ;;; 层序（高 → 低）：
-;;;   mode 表  >  document 自己的层（per-doc 插件）  >  focus 的 kind 默认表  >  全局表
+;;;   layer 表  >  document 自己的层（per-doc 插件）  >  focus 的 kind 默认表  >  全局表
 ;;;
 ;;; “subject 的 kind 默认表”就是命令表穿透到 document 类型的地方。
 ;;; subject 是**命令作用的主体身份（panel-ref）**：
@@ -98,8 +98,8 @@
 (define (active-keytables w [subject-ref (world-focus w)])
   (define subject (world-ref->view w subject-ref))
   (append
-   (for/list ([m (in-list (world-modes w))] #:when (mode-keytable m))
-     (mode-keytable m))
+   (for/list ([l (in-list (world-layers w))] #:when (layer-keytable l))
+     (layer-keytable l))
    (view-keytables subject)                        ; document 自己的覆盖层（最优先，可插拔）
    (list (doc-kind->keytable (view-kind subject)))   ; 类型默认表（穿透到 document 类型）
    (list (world-keytable w))))                  ; 全局表（最低）
@@ -207,7 +207,7 @@
 (define (run-command w cmd ev [ref #f] [panel #f] [doc-point #f])
   (cond
     [(command-needs-input? cmd)
-     ;; 暂定：带 input spec 的命令先只提示；minibuffer 模式接上后在这里 push mode。
+     ;; 暂定：带 input spec 的命令先只提示；minibuffer 拓展层接上后在这里 push layer。
      (values (world-mark-dirty (world-set-status w (input-prompt (command-input cmd))))
              '())]
     [else

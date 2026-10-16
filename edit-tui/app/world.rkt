@@ -1,6 +1,6 @@
 #lang racket
 
-;;; app/world.rkt —— 应用世界（纯数据）+ mode / ctx / 内部事件
+;;; app/world.rkt —— 应用世界（纯数据）+ layer / ctx / 内部事件
 ;;;
 ;;; world 是编辑器的**全部逻辑状态**，全都是值：
 ;;;   · 布局 tree、浮窗、焦点、keytable、pending、drag…… 都是纯数据；
@@ -13,7 +13,7 @@
 ;;; 暂定清单（改这里时同步 app/README.md）：
 ;;;   · area 用 core 的 rect 表示（屏幕全幅 0,0,w,h）。
 ;;;   · status 是纯字符串；以后要富状态栏 → 换成数据 + 注册渲染器。
-;;;   · modes 只带一张额外键表（栈顶优先）；on-event / on-exit / state 以后加。
+;;;   · layers 只带一张额外键表（栈顶优先）；on-event / on-exit / state 以后加。
 ;;;   · internal 是扩展点：kind → (world payload → (values world (listof intent)))。
 ;;;     async 回投、插件自定义内部事件都走这里，loop 不需要知道 kind。
 ;;;   · drag 是纯数据（seam / select 两种），所以拖拽可 headless 重放。
@@ -26,7 +26,7 @@
 
 (provide (struct-out world)
          make-world
-         (struct-out mode)
+         (struct-out layer)
          (struct-out ctx)
          (struct-out app-event)
          (struct-out drag)
@@ -34,7 +34,7 @@
          world-ref->view world-ref->panel world-focus-view
          world-resize
          world-focus-on
-         world-push-mode world-pop-mode
+         world-push-layer world-pop-layer
          world-overlay-views
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
@@ -46,13 +46,13 @@
 ;;; kind 是开的 symbol；payload 任意。默认只认识 'task-done（见 step.rkt）。
 (struct app-event (kind payload) #:transparent)
 
-;;; ════════════════ 模式 ════════════════
+;;; ════════════════ 拓展层 ════════════════
 ;;; 暂定最小：只带一张额外键表。栈顶优先查表，命中即用，否则落全局表。
-;;; 以后 minibuffer / which-key 都是 mode，而不是特例代码。
+;;; 以后 minibuffer / which-key 都是 layer，而不是特例代码。
 ;;;
-;;; 未来（见 app/README.md「面向未来」）：模式会并入 world 的**有序表层**
-;;; （mode 层 → focus 文档类型层 → 插件覆盖层 → 全局层），支持插拔 / 覆盖 / 还原。
-(struct mode (name keytable) #:transparent)
+;;; 未来（见 app/README.md「面向未来」）：拓展层会并入 world 的**有序表层**
+;;; （拓展层 → focus 文档类型层 → 插件覆盖层 → 全局层），支持插拔 / 覆盖 / 还原。
+(struct layer (name keytable) #:transparent)
 
 ;;; ════════════════ ctx：命令看到的派生视图 ════════════════
 ;;; 由 world + event 纯派生。命令拿它做决策、产出 intent，不直接改 core。
@@ -79,8 +79,8 @@
    layout      ; layout tree（纯）
    floats      ; (listof float)
    focus       ; panel-ref | #f      稳定的 panel 身份（不是 view 值；见 panel-ref.rkt）
-   keytable    ; keytable（全局表）   ← 未来：有序表层（mode/类型/插件/全局）
-   modes       ; (listof mode)（栈顶在前）
+   keytable    ; keytable（全局表）   ← 未来：有序表层（拓展层/类型/插件/全局）
+   layers      ; (listof layer)（栈顶在前）
    pending     ; (listof token)   未读完的键前缀（纯数据，替代可变 matcher）
    status      ; string
    running?    ; bool
@@ -98,11 +98,11 @@
                     #:layout layout
                     #:focus [focus #f]
                     #:keytable [keytable (make-keytable)]
-                    #:modes [modes '()]
+                    #:layers [layers '()]
                     #:floats [floats '()]
                     #:status [status ""]
                     #:internal [internal (hash)])
-  (world area layout floats focus keytable modes '() status #t #f #f internal))
+  (world area layout floats focus keytable layers '() status #t #f #f internal))
 
 ;;; ---------- 派生 / 更新助手（放这里，step 与 render 共用） ----------
 
@@ -142,31 +142,31 @@
       (world-mark-dirty (world-set-pending (struct-copy world w [focus ref]) '()))
       w))
 
-;;; ---------- 模式栈（临时表层） ----------
+;;; ---------- 拓展层栈（运行时插拔） ----------
 ;;; 栈顶优先；active-keytables 把它压在 kind / 全局之上 → 临时表可「遮蔽 / 新增」。
 
-(define (world-push-mode w m)
-  (struct-copy world w [modes (cons m (world-modes w))]))
+(define (world-push-layer w l)
+  (struct-copy world w [layers (cons l (world-layers w))]))
 
-;; name → 去掉第一个同名 mode；name = #f → 弹栈顶。
-(define (world-pop-mode w name)
-  (define ms (world-modes w))
-  (define ms*
+;; name → 去掉第一个同名 layer；name = #f → 弹栈顶。
+(define (world-pop-layer w name)
+  (define ls (world-layers w))
+  (define ls*
     (cond
-      [(not name) (if (null? ms) ms (cdr ms))]
+      [(not name) (if (null? ls) ls (cdr ls))]
       [else
-       (let loop ([l ms])
+       (let loop ([l ls])
          (cond [(null? l) '()]
-               [(eq? (mode-name (car l)) name) (cdr l)]
+               [(eq? (layer-name (car l)) name) (cdr l)]
                [else (cons (car l) (loop (cdr l)))]))]))
-  (struct-copy world w [modes ms*]))
+  (struct-copy world w [layers ls*]))
 
 ;;; ---------- overlay 可画视图（渲染用） ----------
-;;; 需要画 overlay（光标 / 选区）的 view = 焦点 view + **拥有活动模式的浮窗 view**。
-;;; mode 名 = float key（见 ops 的 open-overlay）。普通浮窗（无模式）不画 overlay，
+;;; 需要画 overlay（光标 / 选区）的 view = 焦点 view + **拥有活动拓展层的浮窗 view**。
+;;; layer 名 = float key（见 ops 的 open-overlay）。普通浮窗（无拓展层）不画 overlay，
 ;;; 免得静态弹窗里冒出光标。
 (define (world-overlay-views w)
-  (define names (for/list ([m (in-list (world-modes w))]) (mode-name m)))
+  (define names (for/list ([m (in-list (world-layers w))]) (layer-name m)))
   (append (if (world-focus-view w) (list (world-focus-view w)) '())
           (for/list ([fl (in-list (world-floats w))]
                      #:when (and (float-view fl) (memq (float-key fl) names)))
