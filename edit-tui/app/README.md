@@ -22,6 +22,7 @@
 | `panel-ref.rkt` | **panel 稳定身份** `panel-ref`（leaf id / float key）+ 解析成当帧 view / panel | 纯 |
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
+| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`show-hide-close-pane`/`split-pane`/`focus!`/`focus-move`/`insert-text` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）；cache 由 loop 持有 | 只读 core + 输出 |
@@ -68,7 +69,8 @@
 | 新 document 类型 | `define-doc-kind!` + 小表；`open-document! #:kind` | step / loop |
 | 新命令 / 键位 | `keytable-merge!` 或 `keys` 表 | loop / step |
 | 某文档临时覆盖 / 插件插拔 | `buffer-add-table!` / `buffer-remove-table!` | 类型表 / 全局表 |
-| 新编辑算子 | 返回 `(edit view op)` | loop / step |
+| 新编辑算子 | 返回 `(edit view op)`（或 `ops.rkt` 的 `insert-text` 等） | loop / step |
+| 新布局 / 焦点操作 | 加进 `ops.rkt`（`layout-op` 包 tree→tree；`focus!` 包 world-focus-on） | step / loop |
 | 运行期开文档 | 返回 `(open-doc make f)`（make 造、f 装进布局） | step |
 | 新 world 字段 | `world` 加字段 + `modify` | 语义不变 |
 | 新内部事件 | `world` 的 `internal` 注册表：`kind → (world payload → world + intents)`；或 `app-event` + `step-internal` | 其它 kind |
@@ -78,6 +80,30 @@
 
 `internal` 是「不改 `step.rkt` 就能加内部事件」的口子；`invoke` 是「不改 intent 集
 就能接 core 新操作」的逃生舱。两者都刻意保留。
+
+## 操作原语层（`ops.rkt`）
+
+命令里不再手写 `(modify (λ (w) (struct-copy world w [layout …])))`，而是调用命名原语。
+所有原语都是**纯构造器**，返回 `(listof intent)`（正是命令的返回类型）：
+
+```racket
+(define global-keys
+  (keys
+   [(key 'b 'ctrl) (λ (ctx) (toggle-pane 'tree))]
+   [(key 's 'ctrl) (λ (ctx) (split-pane (focused-leaf-id ctx) 'lr 'new))]
+   [(key 'm 'ctrl) (λ (ctx) (mount-view 'tree some-view))]
+   [(key 'p 'ctrl) (λ (ctx) (add-float (make-float 'pop #f rect)))]))
+```
+
+| 类 | 原语 |
+|---|---|
+| layout | `layout-op`（通用 tree→tree）· `mount-view` · `show-pane` `hide-pane` `toggle-pane` `close-pane` · `split-pane` `move-pane` `resize-seam` |
+| floats | `floats-op` · `add-float` `remove-float` |
+| focus | `focus!`（指定 ref）· `focus-move`（面板间方向，ctx 感知） |
+| document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
+
+单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus! ref))`。
+它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。
 
 ## 能力评估（加新功能前先看这张表）
 

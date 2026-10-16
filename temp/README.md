@@ -34,6 +34,7 @@ racket temp/02-selection.rkt
 | `22-float.rkt` | 浮窗：锚点定位 + 叠放 + z（不进布局树） | `edit-tui/layout` |
 | `23-app-loop.rkt` | **app 事件循环骨架**：world + 纯 step + intent + loop；headless 重放 + 真终端交互 | `edit-tui/app` |
 | `24-doc-kinds.rkt` | **document 类型 → 命令表**：穿透 focus 换表 + 资源管理 + per-document 覆盖 + open-doc + 引用稳定（panel-ref）+ 面板间焦点移动（focus-keys） | `edit-tui/app` |
+| `25-ops.rkt` | **ops 原语层**：布局/焦点/文档用命名原语操作（toggle/split/close/mount/float/focus!） | `edit-tui/app` |
 
 ## 分层速查
 
