@@ -2,6 +2,8 @@
 
 文本编辑器。分层清楚，各层只做一件事，**都在 Racket 里可单测**。
 
+`edit-tui/` 的分层、目录与数据流见 [`edit-tui/README.md`](edit-tui/README.md)。
+
 ## 目录
 
 | 目录 | 职责 | 依赖 |
@@ -12,7 +14,7 @@
 | `edit-tui/command/` | 输入 token + 键表（trie）+ 有状态读键（纯，唯一碰 tui 的是 `tui.rkt` 适配） | tui |
 | `edit-tui/core-render/` | 渲染后端：把 core 渲染值（`piece`）画成 tui 序列 | core、base、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
-| `edit-tui/app/` | **编辑器骨架**：`world` + 纯 `step` + `intent` + 事件循环（数据驱动，可 headless 测）；公共面在 `app/api/` | core、layout、command、core-render |
+| `edit-tui/app/` | **编辑器骨架**：`world` + 纯 `step` + `intent` + 事件循环（数据驱动，可 headless 测）；公共面在 `app/api/` | core、layout、command、core-render、tui |
 
 ```
 core   view ─▶ display-entry ─┐

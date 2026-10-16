@@ -30,8 +30,9 @@
 ;;;     focus-on ref / focus-leaf id   切焦点（清 pending）
 ;;;     focus-move ctx dir             面板间方向移动
 ;;;
-;;;   文档（编辑 intent 的命名封装，底层是 edit / invoke）
-;;;     insert-text / delete-backward / delete-forward / navigate / undo / redo
+;;;   焦点 / 主体上的文档操作（吃 ctx；命令表只引这些名字，不碰 core）
+;;;     focus-insert / focus-delete-* / focus-undo / focus-redo
+;;;     focus-cursor-* / focus-select*  （见文件末）
 ;;;
 ;;; ── 值词汇（本模块用到的） ──────────────────────────────────────────
 ;;;
@@ -59,11 +60,14 @@
  close-focused
  ;; floats
  floats-op add-float remove-float
- ;; focus
+ ;; focus（面板焦点）
  focus-on focus-leaf focus-move
- ;; document
- insert-text delete-backward delete-forward
- navigate undo redo)
+ ;; focus（焦点 / 主体上的文档操作：吃 ctx）
+ focus-edit focus-insert focus-delete-backward focus-delete-forward
+ focus-undo focus-redo
+ focus-cursor-left focus-cursor-right focus-cursor-up focus-cursor-down
+ focus-cursor-home focus-cursor-end
+ focus-select focus-select-range focus-select-begin focus-select-update)
 
 ;;; ════════════════════════ layout 结构 ════════════════════════
 
@@ -200,11 +204,75 @@
                                           #:when (eq? p nbr)) rf)))
      (if nbr-ref (focus-on nbr-ref) '())]))
 
-;;; ════════════════════════ document（薄封装编辑原语） ════════════════════════
+;;; ════════════════════════ focus：焦点 / 主体上的文档操作 ════════════════════════
+;;;
+;;; 命令表只引用这些名字，不直接碰 core，也不手写 (on-view …)。约定：
+;;;   · 吃 ctx（命令看到的派生视图），内部解析**主体 view**（键盘 = focus；
+;;;     鼠标 = 命中 / 拖动主体），返回 (listof intent)；
+;;;   · 无主体（ctx-view = #f）→ 一律 no-op（'()）。
 
-(define (insert-text v text) (list (edit v (op-type text))))
-(define (delete-backward v)  (list (edit v (op-backspace))))
-(define (delete-forward v)   (list (edit v (op-delete))))
-(define (navigate v op)      (list (invoke (λ () (op v)))))
-(define (undo v)             (list (invoke (λ () (buffer-undo! (view-buffer v))))))
-(define (redo v)             (list (invoke (λ () (buffer-redo! (view-buffer v))))))
+;; 通用：把 core 文本算子作用到主体 view（escape hatch，命名原语底层用它）。
+(define (focus-edit ctx op)
+  (define v (ctx-view ctx))
+  (if v (list (edit v op)) '()))
+
+(define (focus-insert ctx text)     (focus-edit ctx (op-type text)))
+(define (focus-delete-backward ctx) (focus-edit ctx (op-backspace)))
+(define (focus-delete-forward ctx)  (focus-edit ctx (op-delete)))
+
+(define (focus-undo ctx)
+  (define v (ctx-view ctx))
+  (if v (list (invoke (λ () (buffer-undo! (view-buffer v))))) '()))
+(define (focus-redo ctx)
+  (define v (ctx-view ctx))
+  (if v (list (invoke (λ () (buffer-redo! (view-buffer v))))) '()))
+
+;; 光标移动：core 的 view-*! 是就地副作用，用 invoke 兜。
+(define (focus-invoke ctx op)          ; 内部工具
+  (define v (ctx-view ctx))
+  (if v (list (invoke (λ () (op v)))) '()))
+(define (focus-cursor-left ctx)  (focus-invoke ctx view-left!))
+(define (focus-cursor-right ctx) (focus-invoke ctx view-right!))
+(define (focus-cursor-up ctx)    (focus-invoke ctx view-up!))
+(define (focus-cursor-down ctx)  (focus-invoke ctx view-down!))
+(define (focus-cursor-home ctx)  (focus-invoke ctx view-home!))
+(define (focus-cursor-end ctx)   (focus-invoke ctx view-end!))
+
+;; 光标 / 选区（point / selection 是 core 值词汇）。
+(define (focus-select ctx pt)
+  (define v (ctx-view ctx))
+  (if (and v pt) (list (select v (selections-one (caret pt)))) '()))
+(define (focus-select-range ctx a b)
+  (define v (ctx-view ctx))
+  (if (and v a b) (list (select v (selections-one (selection a b)))) '()))
+
+;; 拖选生命周期由状态模型持有：按下进入（聚焦主体 + 记 drag + 落光标），移动时更新。
+(define (focus-select-begin ctx)
+  (define ref (ctx-ref ctx))
+  (define pt  (ctx-doc-point ctx))
+  (cond
+    [(and ref pt)
+     (append (focus-on ref)
+             (list (modify (λ (w)
+                             (struct-copy world w [drag (drag 'select ref (list ref pt))]))))
+             (focus-select ctx pt))]
+    [ref (focus-on ref)]
+    [else '()]))
+
+(define (focus-select-update ctx row col)
+  (define w (ctx-world ctx))
+  (define d (world-drag w))
+  (cond
+    [(and (drag? d) (eq? (drag-kind d) 'select))
+     (define ref (drag-subject d))
+     (define anchor (cadr (drag-data d)))
+     (define pt (focus-point-at w ref row col))
+     (if pt (focus-select-range ctx anchor pt) '())]
+    [else '()]))
+
+;; ref 的当帧 panel 上，窗口格 (row,col) → 文档点；无 panel / 内容外 → #f。
+(define (focus-point-at w ref row col)
+  (define p (world-ref->panel w ref))
+  (and p
+       (let-values ([(l c) (panel-screen-position->point p row col)])
+         (and l (point l c)))))

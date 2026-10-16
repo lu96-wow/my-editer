@@ -23,7 +23,7 @@
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
 | `role.rkt` | **leaf 角色注册表**：`role → 行为`（`splittable?` / `close` 策略） | 纯 |
-| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-move`/`insert-text` … | 纯构造器 |
+| `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-move`/`focus-insert`/`focus-cursor-*`/`focus-select*` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
 | `render.rkt` | `world` → bytes（布局→panel→patch）+ **焦点边框配色投影** `world-display-panels`；cache 由 loop 持有 | 只读 core + 输出 |
@@ -38,7 +38,7 @@
 
 (define my-keys
   (keys
-   [(key 'left)  (λ (ctx) (let ([v (ctx-view ctx)]) (if v (list (invoke (λ () (view-left! v)))) '())))]
+   [(key 'left)  focus-cursor-left]   ; ops 的状态模型函数：吃 ctx，内部解析主体 view
    [(key 'b 'ctrl) (λ (ctx) (list (modify (λ (w) (struct-copy world w [running? #f])))))]))
 
 (run-app (make-world #:area (rect 0 0 80 24)
@@ -53,6 +53,9 @@
 - 需要改 world → 返回 `(modify f)`（`f : world → world`）；
 - 需要动 core → 返回对应效果意图（`edit` / `select` / `scroll`），
   没有专用意图的用 `(invoke thunk)` 兜底；
+- 文档编辑优先用 `ops.rkt` 的 `focus-*`（吃 `ctx`，内部解析主体 view：键盘 = focus，
+  鼠标 = 命中 / 拖动主体；无主体 → no-op）。命令表**只引用这些名字**，
+  不手写 `(edit (ctx-view ctx) …)`、不 require core（见 `base-keys.rkt`）。
 - 命令**不直接改 core**，所以能 headless 重放（见 `temp/23-app-loop.rkt`）。
 
 ## 焦点边框配色（render 投影，不新增状态）
@@ -91,7 +94,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | 新 document 类型 | `define-doc-kind!` + 小表；`open-document! #:kind` | step / loop |
 | 新命令 / 键位 | `keytable-merge!` 或 `keys` 表 | loop / step |
 | 某文档临时覆盖 / 插件插拔 | `buffer-add-table!` / `buffer-remove-table!` | 类型表 / 全局表 |
-| 新编辑算子 | 返回 `(edit view op)`（或 `ops.rkt` 的 `insert-text` 等） | loop / step |
+| 新编辑算子 | 在 `ops.rkt` 加一个 `focus-*`（吃 ctx，内部 `focus-edit` / `invoke`）；命令表只引名字 | step / loop |
 | 新布局 / 焦点操作 | 加进 `ops.rkt`（`layout-op` 包 tree→tree；`focus-on` 包 world-focus-on） | step / loop |
 | 运行期开文档 | 返回 `(open-doc make f)`（make 造、f 装进布局） | step |
 | 新 world 字段 | `world` 加字段 + `modify` | 语义不变 |
@@ -123,7 +126,7 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-move`（面板间方向，ctx 感知） |
-| document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
+| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` |
 
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus-leaf 'editor))`。
 它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。

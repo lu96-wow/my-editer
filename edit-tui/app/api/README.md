@@ -76,7 +76,7 @@
 | 切分 / 关闭（读 role） | `splittable-leaf?` · `split-focused` · `split-left` `split-right` `split-up` `split-down` · `close-focused` |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus-on` · `focus-leaf` · `focus-move` |
-| document | `insert-text` · `delete-backward` `delete-forward` · `navigate` · `undo` `redo` |
+| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` |
 
 ### resource —— 资源
 
