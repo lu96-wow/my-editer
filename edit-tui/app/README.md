@@ -18,7 +18,7 @@
 | 文件 | 职责 | 纯? |
 |---|---|---|
 | `intent.rkt` | 效果即数据：`update`（状态意图）+ `edit/select/scroll/spawn/post/invoke/open-doc`（效果意图） | 纯，无依赖 |
-| `world.rkt` | `world` / `ctx` / `mode` / `app-event` / `drag` + 派生助手（`world-panels` / `world-ref->view` 等） | 纯数据 |
+| `world.rkt` | `world` / `ctx` / `mode` / `app-event` / `drag` + 派生助手（`world-panels` / `world-panels+refs` / `world-ref->view` 等） | 纯数据 |
 | `panel-ref.rkt` | **panel 稳定身份** `panel-ref`（leaf id / float key）+ 解析成当帧 view / panel | 纯 |
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
 | `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
@@ -26,7 +26,7 @@
 | `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-move`/`insert-text` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型；`view-into` 替换进布局 | 不纯（造 core 对象） |
 | `step.rkt` | `world-step` / `world-step*`：事件 → 新 world + intent 列表 | **纯** |
-| `render.rkt` | `world` → bytes（布局→panel→patch）；cache 由 loop 持有 | 只读 core + 输出 |
+| `render.rkt` | `world` → bytes（布局→panel→patch）+ **焦点边框配色投影** `world-display-panels`；cache 由 loop 持有 | 只读 core + 输出 |
 | `loop.rkt` | `run-app`：查真实终端尺寸 → 画首帧 → 循环（读事件 / 折 inbox / 执行 intent / 合并重绘） | **不纯（唯一）** |
 | `main.rkt` | 入口（全部再导出） | — |
 
@@ -53,6 +53,26 @@
 - 需要动 core → 返回对应效果意图（`edit` / `select` / `scroll`），
   没有专用意图的用 `(invoke thunk)` 兜底；
 - 命令**不直接改 core**，所以能 headless 重放（见 `temp/23-app-loop.rkt`）。
+
+## 焦点边框配色（render 投影，不新增状态）
+
+core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接缝**上靠 `panel.weight` 争色
+（同 `deep` 时 weight 大者赢，见 `core/view/border.rkt`）。所以 app 只用两步：
+
+1. 主题给两个 face：`'window-border`（普通）/ `'focused-border`（焦点）（见 `theme/frame.rkt`）；
+2. `render.rkt` 每帧把**焦点 ref** 对应的 panel 投影成 `face='focused-border` + `weight=1`，
+   其余保持各自声明的 face（默认 `'window-border`）= 同一个普通色。
+
+```racket
+;; world.rkt：一次 solve，panels 与 refs 严格同序
+(world-panels+refs w)      ; → (values (listof panel) (listof panel-ref))
+;; render.rkt：纯投影，不改 world / layout
+(world-display-panels w)   ; 焦点那块 → focused-border + weight 1
+```
+
+`weight` 是关键：只改 face 的话，焦点框在与邻居的共享接缝上会被邻居的普通色盖掉；
+抬高 weight 后它的整圈（含接缝）都是焦点色。焦点切换 → 投影变 → `same-frame?` 为假 →
+自动重绘，不需要额外的“换边框色”状态或命令；浮窗/普通面板的 face 也各按自己声明。
 
 ## 异步模型（暂定：下一事件时处理）
 

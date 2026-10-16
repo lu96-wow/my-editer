@@ -39,6 +39,7 @@ racket temp/02-selection.rkt
 | `27-split-demo.rkt` | **交互测试 demo**：顶部文件树 / 中间编辑区 / 底部状态栏；C-b 开关树，C-s+方向键切分，C-s d 关闭面板 | `edit-tui/app` |
 | `28-layout-probe.rkt` | **布局数据层探针**（诊断）：tree/placements/panels/refs 一致性 + 0/1-based 坐标 + 切分数据 | `edit-tui/app` + `edit-tui/layout` |
 | `29-roles.rkt` | **role 注册表**：`define-role!` 自定义 leaf 角色 → splittable? / close 策略（hide/delete/keep-last） | `edit-tui/app` |
+| `30-editor-only.rkt` | **只有编辑区**：布局根就是一个 borderless `role='editor'` leaf，证明 app 不依赖 tree/status；仍可切分 / keep-last 关闭 | `edit-tui/app` |
 
 ## 分层速查
 

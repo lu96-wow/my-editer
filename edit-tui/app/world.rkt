@@ -30,7 +30,7 @@
          (struct-out ctx)
          (struct-out app-event)
          (struct-out drag)
-         world-panels world-panel-refs
+         world-panels world-panel-refs world-panels+refs
          world-ref->view world-ref->panel world-focus-view
          world-resize
          world-focus-on
@@ -104,12 +104,17 @@
 ;; 当前所有 panel：平铺 + 浮窗（浮窗 deep 高，自然在上）。
 ;; 命中、渲染、拖缝都用同一份，保证一致。
 (define (world-panels w)
-  (append (tree->panels (world-layout w) (world-area w))
-          (floats->panels (world-floats w))))
+  (call-with-values (λ () (world-panels+refs w)) (λ (ps _refs) ps)))
 
 ;; 与 world-panels **严格同序**的 ref 列表（命中 panel → ref 反查用）。
 (define (world-panel-refs w)
-  (panels->refs (world-layout w) (world-floats w) (world-area w)))
+  (call-with-values (λ () (world-panels+refs w)) (λ (_ps refs) refs)))
+
+;; 一次 solve 同时拿 panels 与同序 refs（渲染 / 命中共用，不重复解树）。
+(define (world-panels+refs w)
+  (define-values (placements tiled _cuts) (tree-solve (world-layout w) (world-area w)))
+  (values (append tiled (floats->panels (world-floats w)))
+          (refs-of placements (world-floats w))))
 
 ;; panel-ref → 当帧 view / panel（不在布局 / 隐藏 → #f）。
 (define (world-ref->view w ref)
