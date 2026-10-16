@@ -1,37 +1,50 @@
 #lang racket
 
-;;; command/keymap.rkt —— 键表（纯）：token 序列 → 过程
+;;; command/keymap.rkt —— 表（trie）+ 表列表操作对象
 ;;;
-;;; token 是不透明、equal? 可比的值（键令牌、鼠标令牌…）。表是一棵 trie：
+;;; token 是不透明、equal? 可比的值（键令牌、鼠标令牌…）。
+;;;
+;;; 一张 **keymap（表）** 是一棵 trie：
 ;;;     叶子   过程     命中即执行
 ;;;     子树   keymap   前缀，继续读键
 ;;;
-;;; 组合 `keymap-merge`：按顺序折叠，**后加入的表覆盖前面的**——
-;;;   · 同一路径（同序列）→ 后面的叶子替换前面的；
-;;;   · 一个键下两边都是子树 → 递归合并（各自不冲突的续键都保留）；
-;;;   · 一边叶子一边子树 → 后面的整体替换前面的（前缀也是「同键」）。
+;;; 一个 **keytable（操作对象）** 是「表的列表」。它只有两个 API：
+;;;
+;;;   (keytable-merge! kt km ...)   把若干张表合并进来
+;;;   (keytable-lookup kt seq)      在一串 token（前缀序列）上查表
+;;;
+;;; 表列表是**运行时可变**的：`keytable-merge!` 之后，所有持有同一个 keytable
+;;; 的读键器立刻看到新表；调用方也可以直接 `set-keytable-tables!` 换掉整份表。
+;;;
+;;; 合并**有冲突直接 error**（不再「后表覆盖前表」）。冲突 = 同一条 token 序列
+;;; 被两个表同时占用：
+;;;   · 两条相同序列都有叶子（两个过程抢同一个键）；
+;;;   · 同一序列上一张表是叶子、另一张是子树（一个过程遮住更长的序列）。
+;;; 两边都是子树则继续往下比：C-x C-s 与 C-x C-c 可以共存（前缀 C-x 是共享的）。
 ;;;
 ;;; 构造 DSL `keys`：每条绑定写成一对方括号，最后一格是过程，前面是要按的 token。
 ;;;
 ;;;     (keys [(key 'left)                 (λ () …)]
+;;;           [(key 'x 'ctrl) (key 's 'ctrl) (λ () …)]
 ;;;           [(mouse 'press 'left)        (λ () …)])
 ;;;
-;;; 宿主读到事件后调 `keymap-step` 推进；`empty-keymap` 是空表。
+;;; 宿主读到事件后喂 `keytable-lookup`；空表用 `(make-keytable)`。
 
-(provide (struct-out keymap)
-         empty-keymap
-         keymap-set keymap-ref keymap-lookup keymap-step
-         keymap-merge
-         keys)
+(provide keys
+         (struct-out keytable)
+         make-keytable
+         keytable-merge!
+         keytable-lookup)
+
+;;; ════════════════════════ 表（trie，纯） ════════════════════════
 
 ;; token 由调用方给：键用 (key …)，鼠标用 (mouse …)。表本身不关心 token 类型。
-
 (struct keymap (bindings) #:transparent)
 ;; bindings : (hash/c any/c (or/c keymap? procedure?))   ; 键 = 任意 equal? 可比 token
 
 (define empty-keymap (keymap (hash)))
 
-;; 插入一条 seq → proc。路径上的旧叶子 / 旧子树按「后插覆盖」处理。
+;; 插入一条 seq → proc。路径上的旧叶子 / 旧子树按「后插覆盖」处理（构表内部用）。
 (define (keymap-set km seq proc)
   (unless (pair? seq)
     (error 'keymap-set "序列要是非空 token 列表，得到 ~a" seq))
@@ -46,6 +59,10 @@
           (hash-set h k (keymap (go (keymap-bindings sub*) (cdr seq)))))))
   (keymap (go (keymap-bindings km) seq)))
 
+;; 单步查一个键 → 子树 | 过程 | #f
+(define (keymap-lookup km k)
+  (and km (hash-ref (keymap-bindings km) k #f)))
+
 ;; 精确查一条完整序列 → 过程 | #f（序列前缀对但没到底 → #f）
 (define (keymap-ref km seq)
   (let loop ([cur km] [seq seq])
@@ -53,30 +70,67 @@
           [(not (keymap? cur)) #f]
           [else (loop (keymap-lookup cur (car seq)) (cdr seq))])))
 
-;; 单步查一个键 → 子树 | 过程 | #f
-(define (keymap-lookup km k)
-  (and km (hash-ref (keymap-bindings km) k #f)))
+;; 这条序列是不是某条更长绑定的前缀（走到子树）？
+(define (keymap-prefix? km seq)
+  (let loop ([cur km] [seq seq])
+    (cond [(null? seq) (keymap? cur)]
+          [(not (keymap? cur)) #f]
+          [else (define e (keymap-lookup cur (car seq)))
+                (and e (loop e (cdr seq)))])))
 
-;; 单步推进：'unbound（没这个键）/ 'prefix（进入子树）/ 'command（叶子）
-(define (keymap-step km k)
-  (define e (keymap-lookup km k))
-  (cond [(not e) (values 'unbound #f)]
-        [(keymap? e) (values 'prefix e)]
-        [else (values 'command e)]))
+;; 两棵表的冲突序列（listof token）| #f。见文件头「冲突」定义。
+(define (keymap-conflict-seq a b)
+  (define (node-conflict ea eb rev-prefix)
+    (cond
+      [(and (keymap? ea) (keymap? eb))
+       (for/or ([(k eb*) (in-hash (keymap-bindings eb))])
+         (define ea* (hash-ref (keymap-bindings ea) k #f))
+         (and ea* (node-conflict ea* eb* (cons k rev-prefix))))]
+      [else (reverse rev-prefix)]))          ; 叶子 vs 叶子 / 叶子 vs 子树
+  (for/or ([(k eb) (in-hash (keymap-bindings b))])
+    (define ea (hash-ref (keymap-bindings a) k #f))
+    (and ea (node-conflict ea eb (list k)))))
 
-;; 合并：后面的覆盖前面的。
-(define (keymap-merge kms)
-  (define (merge2 a b)
-    (keymap
-     (for/fold ([h (keymap-bindings a)]) ([(k eb) (in-hash (keymap-bindings b))])
-       (define ea (hash-ref h k #f))
-       (hash-set h k
-                 (if (and (keymap? ea) (keymap? eb))
-                     (merge2 ea eb)
-                     eb)))))
-  (for/fold ([acc empty-keymap]) ([km (in-list kms)]) (merge2 acc km)))
+;;; ════════════════════════ 操作对象：表列表 ════════════════════════
 
-;; keys DSL：[(key …) … proc] —— 最后一格是过程，其余是键序列。
+(struct keytable (tables) #:transparent #:mutable)
+;; tables : (listof keymap)  按加入顺序；查找时逐张扫
+
+;; 空表，或直接带若干张初始表（一样走冲突检查）。
+(define (make-keytable . kms)
+  (apply keytable-merge! (keytable '()) kms))
+
+;; 合并若干张表。任何冲突 → error，且**不改动** kt（原子）。
+(define (keytable-merge! kt . kms)
+  (for ([km (in-list kms)])
+    (unless (keymap? km)
+      (error 'keytable-merge! "要合并的是 keymap（keys 构造），得到 ~a" km)))
+  (define seen (keytable-tables kt))
+  (for ([km (in-list kms)])
+    (for ([other (in-list seen)])
+      (define seq (keymap-conflict-seq other km))
+      (when seq
+        (error 'keytable-merge! "键表冲突：序列 ~v 被重复绑定" seq)))
+    (set! seen (cons km seen)))
+  (set-keytable-tables! kt (append (keytable-tables kt) kms))
+  kt)
+
+;; 查一条完整 token 序列，逐张表扫。
+;;   (values 'command proc)  某张表精确命中叶子
+;;   (values 'prefix  #f)    没有叶子，但有表以该序列为前缀（还有续键）
+;;   (values 'unbound #f)    哪张表都没有这条路径
+(define (keytable-lookup kt seq)
+  (define tables (keytable-tables kt))
+  (cond
+    [(for/or ([km (in-list tables)]) (keymap-ref km seq))
+     => (λ (proc) (values 'command proc))]
+    [(for/or ([km (in-list tables)]) (keymap-prefix? km seq))
+     (values 'prefix #f)]
+    [else (values 'unbound #f)]))
+
+;;; ════════════════════════ 构造 DSL ════════════════════════
+
+;; keys：[seq … proc] —— 最后一格是过程，其余是 token 序列。产出一张表。
 (define-syntax keys
   (syntax-rules ()
     [(_ [seq ... proc] ...)

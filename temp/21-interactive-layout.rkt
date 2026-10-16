@@ -58,11 +58,12 @@
                      (tree-show (unbox tree) 'tree)))
 )
 
-(define keymap
-  (keys [(key 'b 'ctrl)          (λ (ctx) (toggle-tree!))]
-        [(key 'q)                (λ (ctx) (set-box! running? #f))]
-        [(key 'x 'ctrl) (key 'c 'ctrl) (λ (ctx) (set-box! running? #f))]))
-(define reader (make-key-reader keymap))
+(define keytable
+  (make-keytable
+   (keys [(key 'b 'ctrl)          (λ (ctx) (toggle-tree!))]
+         [(key 'q)                (λ (ctx) (set-box! running? #f))]
+         [(key 'x 'ctrl) (key 'c 'ctrl) (λ (ctx) (set-box! running? #f))])))
+(define reader (make-key-reader keytable))
 
 ;;; ════════════ 鼠标 ════════════
 

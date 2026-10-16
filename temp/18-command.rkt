@@ -12,7 +12,7 @@
 ;;;   C-x C-s               save（多键序列）
 ;;;   C-x C-c               退出
 ;;;   C-p ← / C-p →         前缀 + 方向
-;;;   C-s                   被用户表覆盖（演示「后表赢」）
+;;;   C-t                   运行时并入的新表（演示动态加表）
 ;;;   其它可打印字符         插入文本（键表未命中 → 文本通道）
 
 (require tui
@@ -67,11 +67,13 @@
     (λ () (set-box! save-count (add1 (unbox save-count)))
          (note! (format "saved via C-s #~a" (unbox save-count))))]))
 
-;; 用户表：故意接管 C-s —— 合并时后表赢。
-(define user-keys
-  (keys [(key 's 'ctrl) (λ () (note! "user override: C-s 被用户表接管"))]))
+;; 用户表：故意和 global-keys 的 C-s 绑同一条序列 —— 合并会直接报错
+;; （新语义：冲突不覆盖，直接 error）。
+(define conflicting-user-keys
+  (keys [(key 's 'ctrl) (λ () (note! "never: 这张表不会被接受"))]))
 
-(define active-keys (keymap-merge (list edit-keys global-keys user-keys)))
+;; 操作对象：可变的表列表。edit + global 合成活动表。
+(define active-keys (make-keytable edit-keys global-keys))
 (define reader (make-key-reader active-keys))
 
 ;;; ════════════════════════ 事件处理 ════════════════════════
@@ -102,8 +104,17 @@
   (check "插入 Hi!" (string-prefix? (buffer-string doc-b) "Hi!"))
   (press! 'x #:ctrl #t) (press! 's #:ctrl #t)
   (check "C-x C-s" (equal? (unbox message) "saved via C-x C-s #1"))
+  ;; 冲突合并 → 报错，活动表不变（原子）
+  (check "冲突表被拒绝"
+         (with-handlers ([exn:fail? (λ (_) #t)])
+           (keytable-merge! active-keys conflicting-user-keys)
+           #f))
   (press! 's #:ctrl #t)
-  (check "C-s 被用户表覆盖" (equal? (unbox message) "user override: C-s 被用户表接管"))
+  (check "C-s 仍是 global" (equal? (unbox message) "saved via C-s #2"))
+  ;; 运行时并入一张不冲突的新表，立即可用（读键器持有同一个 keytable）
+  (keytable-merge! active-keys (keys [(key 't 'ctrl) (λ () (note! "dynamic C-t"))]))
+  (press! 't #:ctrl #t)
+  (check "运行时新表生效" (equal? (unbox message) "dynamic C-t"))
   (press! 'p #:ctrl #t)
   (check "C-p 进入前缀" (equal? (key-reader-pending-string reader) "C-p"))
   (press! 'left)

@@ -28,9 +28,10 @@
 
 ;; 读键：返回 proc，由调用方执行
 (define hits '())
-(define km (keys [(key 'x 'ctrl) (key 's 'ctrl) (λ () (set! hits (cons 'save hits)))]
-                 [(key 'q) (λ () (set! hits (cons 'q hits)))]))
-(define kr (make-key-reader km))
+(define kt (make-keytable
+           (keys [(key 'x 'ctrl) (key 's 'ctrl) (λ () (set! hits (cons 'save hits)))]
+                 [(key 'q) (λ () (set! hits (cons 'q hits)))])))
+(define kr (make-key-reader kt))
 (check-equal? (call-with-values (λ () (key-reader-feed! kr (ke #\x #:ctrl #t))) list)
               (list 'prefix #f))
 (check-equal? (key-reader-pending-string kr) "C-x")
@@ -54,16 +55,24 @@
               (list 'unbound #f))
 (check-false (key-reader-pending kr))
 
-;; 鼠标表：单 token 直接命中（复用 keymap）
-(define mm (keys [(mouse 'press 'left) (λ () 'click)]
-                 [(mouse 'press 'left 'ctrl) (λ () 'multi-cursor)]))
-(define-values (ms1 mp1) (keymap-step mm (event->mouse (me 'press 'left))))
+;; 运行时动态加表：读键器持有同一个 keytable，新表立刻生效
+(void (keytable-merge! kt (keys [(key 'q 'ctrl) (λ () (set! hits (cons 'quit hits)))])))
+(define-values (s4 p4) (key-reader-feed! kr (ke #\q #:ctrl #t)))
+(check-equal? s4 'command)
+(p4)
+(check-equal? (car hits) 'quit)
+
+;; 鼠标表：单 token 直接命中（复用 keytable + 单元素序列查找）
+(define mm (make-keytable
+            (keys [(mouse 'press 'left) (λ () 'click)]
+                  [(mouse 'press 'left 'ctrl) (λ () 'multi-cursor)])))
+(define-values (ms1 mp1) (keytable-lookup mm (list (event->mouse (me 'press 'left)))))
 (check-equal? ms1 'command)
 (check-equal? (mp1) 'click)
-(define-values (ms2 mp2) (keymap-step mm (event->mouse (me 'press 'left #:ctrl #t))))
+(define-values (ms2 mp2) (keytable-lookup mm (list (event->mouse (me 'press 'left #:ctrl #t)))))
 (check-equal? ms2 'command)
 (check-equal? (mp2) 'multi-cursor)   ; 严格：Ctrl+左键走另一条
-(define-values (ms3 _) (keymap-step mm (event->mouse (me 'press 'right))))
+(define-values (ms3 _) (keytable-lookup mm (list (event->mouse (me 'press 'right)))))
 (check-equal? ms3 'unbound)
 
 (displayln "edit-tui/command/tui.rkt: ok")
