@@ -1,16 +1,17 @@
 #lang racket
 
 ;;; 由 edit-tui/command/keymap.rkt 的测试外移而来（edit-tui 只留实现）。
-;;; 新版：keytable = 表列表操作对象；merge 冲突报错；lookup 走前缀序列。
+;;; 新版：keytable = 表列表操作对象；merge 冲突报错；叶子是 command（run/note/input）。
 (require rackunit
          "../../edit-tui/command/keymap.rkt"
+         "../../edit-tui/command/command.rkt"
          "../../edit-tui/command/key.rkt")
 
 (define (status kt seq)
   (call-with-values (λ () (keytable-lookup kt seq)) (λ (s _) s)))
 (define (value kt seq)
   (call-with-values (λ () (keytable-lookup kt seq))
-    (λ (_ e) (and (procedure? e) (e)))))
+    (λ (s c) (and (eq? s 'command) ((command-run c))))))
 
 (define base
   (keys [(key 'left)                       (λ () 'left)]
@@ -67,5 +68,45 @@
 
 ;; keys 产出的仍是一张普通表；make-keytable 可直接带初值
 (check-equal? (value (make-keytable base) (list (key 'left))) 'left)
+
+;;; ──────────────────────── command：note / input ────────────────────────
+
+(define kt4
+  (make-keytable
+   (keys [(key 'x 'ctrl) (key 's 'ctrl) (cmd #:note "保存" (λ () 'save))]
+         [(key 'x 'ctrl) (key 'c 'ctrl) (cmd #:note (λ () "退出（动态说明）") (λ () 'quit))]
+         [(key 'f 'ctrl) (key 'x 'ctrl)
+          (cmd #:note "另存为"
+               #:input (input 'string "文件名: " #f)
+               (λ (path) path))]))) 
+
+;; note 是 command 自身带的，随查表结果一起回来
+(check-false (cdr (assoc (key 'x 'ctrl) (keytable-hints kt4 '())))) ; 前缀那格没有叶子
+(define-values (s-save c-save) (keytable-lookup kt4 (list (key 'x 'ctrl) (key 's 'ctrl))))
+(check-equal? (command-note-string c-save) "保存")
+(define-values (s-quit c-quit) (keytable-lookup kt4 (list (key 'x 'ctrl) (key 'c 'ctrl))))
+(check-equal? (command-note-string c-quit) "退出（动态说明）")
+
+;; input spec：需要输入 + 提示语；宿主收完再 (run value)
+(define-values (s-input c-input) (keytable-lookup kt4 (list (key 'f 'ctrl) (key 'x 'ctrl))))
+(check-equal? s-input 'command)
+(check-true (command-needs-input? c-input))
+(check-equal? (input-prompt (command-input c-input)) "文件名: ")
+(check-equal? ((command-run c-input) "/tmp/a") "/tmp/a")
+;; 无 input 的直接执行
+(check-false (command-needs-input? c-save))
+
+;; which-key：当前前缀下紧接一步的选项（含说明）
+(check-equal? (map (λ (h) (list (key->string (car h)) (and (cdr h) (command-note-string (cdr h)))))
+                   (keytable-hints kt4 (list (key 'x 'ctrl))))
+              '(("C-c" "退出（动态说明）") ("C-s" "保存")))
+(check-equal? (map (λ (h) (key->string (car h)))
+                   (keytable-hints kt4 '()))
+              '("C-f" "C-x"))
+
+;; 帮助 / 补全：当前前缀下所有完整绑定
+(check-equal? (map (λ (p) (map key->string (car p)))
+                   (keytable-commands kt4 (list (key 'x 'ctrl))))
+              '(("C-x" "C-c") ("C-x" "C-s")))
 
 (displayln "edit-tui/command/keymap.rkt: ok")

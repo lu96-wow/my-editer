@@ -1,11 +1,12 @@
 # command —— 命令层（输入 token → lambda）
 
-只提供**能力**，不规定策略：把一串输入 token 绑到一个 lambda，表可以组合，
-合并**冲突直接报错**。事件、循环、重绘、位置分派仍归宿主。
+只提供**能力**，不规定策略：把一串输入 token 绑到一个**命令**（过程 + 说明 + 输入需求），
+表可以组合，合并**冲突直接报错**。事件、循环、重绘、位置分派仍归宿主。
 
 ```
 key.rkt     键令牌（纯）
 mouse.rkt   鼠标令牌（纯）
+command.rkt 命令记录：run / note / input（纯）
 keymap.rkt  keymap（表 = trie）+ keytable（表列表操作对象，纯）
 tui.rkt     racket-tui 适配：event->key / event->mouse / mouse-position + 有状态读键
 main.rkt    入口（全部再导出）
@@ -43,7 +44,33 @@ button ∈ `left middle right`（press/release）| `up down`（scroll）| `#f`�
    [(mouse 'press 'left)           (λ () (place-cursor))])) ; 鼠标单 token
 ```
 
-表是一棵 trie：token → 子树（前缀）或 token → 过程（叶子）。
+表是一棵 trie：token → 子树（前缀）或 token → **command**（叶子，见下）。
+
+## 命令：note / input
+
+叶子不是裸过程，而是一份 `command`，把「怎么执行」「叫什么」「要不要先收输入」一起存进表：
+
+```racket
+(struct command (run note input))
+(struct input   (kind prompt init))
+
+(cmd #:note "保存" (λ () (save)))
+(cmd #:note "另存为" #:input (input 'string "文件名: ") (λ (path) (save-as path)))
+```
+
+- `note`：`#f | string | (-> string)` —— which-key / 状态栏 / 帮助用的说明；
+- `input`：`#f | input`。`kind ∈ string key key-seq number choice any`，
+  `prompt` 是提示语，`init` 是初值 / 候选项；
+- 裸过程仍可写（note / input 为空），`keys` 自动包成 command。
+
+state 层拿到 `command` 后：
+
+```racket
+(if (command-needs-input? cmd)
+    ;; 先按 input-spec 收值 v（minibuffer / 补全），再：
+    ((command-run cmd) v)
+    ((command-run cmd)))
+```
 
 ## 操作对象 keytable（两个 API）
 
@@ -77,9 +104,26 @@ button ∈ `left middle right`（press/release）| `up down`（scroll）| `#f`�
 
 ```racket
 (keytable-lookup kt seq)
-;; => (values 'command proc)  某张表精确命中叶子
-;;           'prefix  #f      没有叶子，但有表以该序列为前缀（还有续键）
+;; => (values 'command cmd)  某张表精确命中命令（command：run/note/input）
+;;           'prefix  #f      没有命令，但有表以该序列为前缀（还有续键）
 ;;           'unbound #f      哪张表都没有这条路径
+```
+
+## which-key / 帮助
+
+说明随表存，所以不必再维护一张「序列 → 文案」表：查当前前缀即可列出后续。
+
+```racket
+(keytable-hints kt (list (key 'p 'ctrl)))
+;; => (list (cons token cmd-or-#f) ...)      ; #f = 这步还是前缀，还能继续
+(keytable-commands kt (list (key 'p 'ctrl)))
+;; => (list (cons (listof token) cmd) ...)   ; 展开到完整序列（帮助 / 命令列表）
+```
+
+```racket
+(for ([h (in-list (keytable-hints kt prefix))])
+  (printf "~a  ~a\n" (key->string (car h))
+          (or (and (cdr h) (command-note-string (cdr h))) "…")))
 ```
 
 ## 读键 / 分派
@@ -88,23 +132,25 @@ button ∈ `left middle right`（press/release）| `up down`（scroll）| `#f`�
 (define kt     (make-keytable edit-keys global-keys))
 (define reader (make-key-reader kt))
 
-(define-values (status proc) (key-reader-feed! reader ev))
-;; status 'command : 命中叶子，proc = 命中的过程，**由宿主调用**
+(define-values (status cmd) (key-reader-feed! reader ev))
+;; status 'command : 命中叶子，cmd = 命中的 command，**由宿主执行**
 ;;        'prefix  : 命中前缀，继续等下一个键
 ;;        'unbound : 没命中，清空前缀 —— 宿主可把它当文本 / 提示
 ;;        'ignored : 不是按键事件（鼠标 / resize / null）
-(proc ctx)     ; ← 宿主自己调用；ctx 由宿主造（world / event / 命中的 panel+point …）
+(if (command-needs-input? cmd)
+    ((command-run cmd) collected-value)   ; ctx 由宿主闭包进 run；位置/世界同理
+    ((command-run cmd)))
 ```
 
 命令层**只路由、不调用**：这样鼠标/键盘统一，handler 能拿位置，也支持数据驱动
-world（proc 拿得到 world）。
+world（ctx 由宿主闭包进 run）；需要输入时也只是把 input-spec 交给 state 层。
 
 鼠标没有序列，给单元素序列：
 
 ```racket
 (define m (event->mouse ev))                          ; mouse-event → 鼠标 token | #f
-(define-values (s p) (keytable-lookup mousetable (list m)))
-(when (eq? s 'command) (p ctx))
+(define-values (s cmd) (keytable-lookup mousetable (list m)))
+(when (eq? s 'command) ((command-run cmd) ctx))
 ```
 
 ## 运行时动态修改

@@ -8,10 +8,12 @@
 
 (require "key.rkt"
          "mouse.rkt"
+         "command.rkt"
          "keymap.rkt"
          "tui.rkt")
 
 (provide (all-from-out "key.rkt"
                        "mouse.rkt"
+                       "command.rkt"
                        "keymap.rkt"
                        "tui.rkt"))

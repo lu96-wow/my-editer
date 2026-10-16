@@ -141,8 +141,8 @@
           (draw!) (loop)]
          [(null-event? e) (loop)]
          [(key-event? e)
-          (define-values (st proc) (key-reader-feed! reader e))
-          (when (eq? st 'command) (proc '()))
+          (define-values (st cmd) (key-reader-feed! reader e))
+          (when (eq? st 'command) ((command-run cmd) '()))
           (draw!)
           (when (unbox running?) (loop))]
          [(mouse-event? e)

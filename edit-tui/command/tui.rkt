@@ -5,12 +5,13 @@
 ;;;   1. `event->key`    key-event    → 键令牌（其余 → #f）
 ;;;      `event->mouse`  mouse-event  → 鼠标令牌（其余 → #f）
 ;;;      `mouse-position` mouse-event → 0-based 屏幕 (row, col)
-;;;   2. `key-reader`    有状态地读一个**键序列**：喂事件，命中叶子就**返回**过程，
+;;;   2. `key-reader`    有状态地读一个**键序列**：喂事件，命中叶子就**返回 command**，
 ;;;                      命中前缀就继续等，没命中就报告 —— 由宿主决定怎么办。
 ;;;                      读键器持有 keytable 的引用，故**运行时动态合并的表立刻生效**。
 ;;;
-;;; 命令层**只路由、不调用**：命中叶子时返回 proc，宿主自己 `(proc ctx)`。
-;;; 于是鼠标/键盘统一，handler 能拿位置；也支持数据驱动 world（proc 拿得到 world）。
+;;; 命令层**只路由、不调用**：命中叶子时返回 command，宿主自己执行。
+;;; 于是鼠标/键盘统一，handler 能拿位置；也支持数据驱动 world（ctx 由宿主造）。
+;;; 命令带说明 / 输入需求时（command-note / command-input），宿主据此显示 note 或先收输入。
 ;;; 鼠标无序列：`(keytable-lookup mousetable (list (event->mouse ev)))`。
 ;;;
 ;;; 读键循环本身在宿主：命中/位置/上下文表 / 拖拽状态都在宿主。
@@ -69,9 +70,9 @@
 (define (key-reader-pending-string kr)
   (string-join (map key->string (key-reader-typed kr)) " "))
 
-;; 喂一个事件 → (values status proc)
-;;   'command : 命中叶子，proc = 命中的过程（宿主自己调用），清空前缀
-;;   'prefix  : 命中前缀，继续等下一个键（proc = #f）
+;; 喂一个事件 → (values status cmd)
+;;   'command : 命中叶子，cmd = 命中的 command（宿主自己执行 / 处理 input），清空前缀
+;;   'prefix  : 命中前缀，继续等下一个键（cmd = #f）
 ;;   'unbound : 没命中，清空前缀（宿主可拿原事件当文本 / 提示）
 ;;   'ignored : 不是按键事件（鼠标 / resize / null），键表不管
 (define (key-reader-feed! kr ev)

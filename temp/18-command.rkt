@@ -13,6 +13,7 @@
 ;;;   C-x C-c               退出
 ;;;   C-p ← / C-p →         前缀 + 方向
 ;;;   C-t                   运行时并入的新表（演示动态加表）
+;;;   C-o                   触发后先收输入（演示 command 的 input spec）
 ;;;   其它可打印字符         插入文本（键表未命中 → 文本通道）
 
 (require tui
@@ -58,14 +59,21 @@
 (define global-keys
   (keys
    [(key 'x 'ctrl) (key 's 'ctrl)
-    (λ () (set-box! save-count (add1 (unbox save-count)))
-         (note! (format "saved via C-x C-s #~a" (unbox save-count))))]
-   [(key 'x 'ctrl) (key 'c 'ctrl) (λ () (set-box! running? #f))]
-   [(key 'p 'ctrl) (key 'left)    (λ () (note! "focus ← (C-p ←)"))]
-   [(key 'p 'ctrl) (key 'right)   (λ () (note! "focus → (C-p →)"))]
+    (cmd #:note "保存（C-x C-s）"
+         (λ () (set-box! save-count (add1 (unbox save-count)))
+              (note! (format "saved via C-x C-s #~a" (unbox save-count)))))]
+   [(key 'x 'ctrl) (key 'c 'ctrl) (cmd #:note "退出" (λ () (set-box! running? #f)))]
+   [(key 'p 'ctrl) (key 'left)    (cmd #:note "焦点 ←" (λ () (note! "focus ← (C-p ←)")))]
+   [(key 'p 'ctrl) (key 'right)   (cmd #:note "焦点 →" (λ () (note! "focus → (C-p →)")))]
    [(key 's 'ctrl)
-    (λ () (set-box! save-count (add1 (unbox save-count)))
-         (note! (format "saved via C-s #~a" (unbox save-count))))]))
+    (cmd #:note "保存（C-s）"
+         (λ () (set-box! save-count (add1 (unbox save-count)))
+              (note! (format "saved via C-s #~a" (unbox save-count)))))]
+   ;; 需要输入的命令：note 给出说明，input 给出提示语；宿主收完再 (run value)
+   [(key 'o 'ctrl)
+    (cmd #:note "打开文件"
+         #:input (input 'string "打开: " #f)
+         (λ (name) (note! (format "open ~a" name))))]))
 
 ;; 用户表：故意和 global-keys 的 C-s 绑同一条序列 —— 合并会直接报错
 ;; （新语义：冲突不覆盖，直接 error）。
@@ -78,12 +86,17 @@
 
 ;;; ════════════════════════ 事件处理 ════════════════════════
 
-;; 喂一个事件：命令层只返回 proc，这里执行；未命中且是可打印字符 → 文本通道。
+;; 喂一个事件：命令层只返回 command，这里执行；未命中且是可打印字符 → 文本通道。
+;; 需要输入的命令（command-input）本应由 state 层进 minibuffer；headless 里直接给个值。
 ;; 返回状态（headless 检查用）。
 (define (handle-event! ev)
-  (define-values (status proc) (key-reader-feed! reader ev))
+  (define-values (status cmd) (key-reader-feed! reader ev))
   (case status
-    [(command) (proc)]
+    [(command)
+     (cond [(command-needs-input? cmd)
+            (note! (input-prompt (command-input cmd)))
+            ((command-run cmd) "demo.txt")]
+           [else ((command-run cmd))])]
     [(unbound)
      (define k (and (key-event? ev) (key-event-key ev)))
      (define m (and (key-event? ev) (key-event-mods ev)))
@@ -124,6 +137,16 @@
   (check "方向键 + Backspace" (string-prefix? (buffer-string doc-b) "Hi"))
   (press! 'z #:ctrl #t)
   (check "C-z 撤销" (string-prefix? (buffer-string doc-b) "Hi!"))
+  ;; 需要输入的命令：note 说明 + input 提示，收完值再执行
+  (press! 'o #:ctrl #t)
+  (check "C-o 输入命令" (equal? (unbox message) "open demo.txt"))
+  ;; which-key：C-p 前缀下有什么、叫什么
+  (press! 'p #:ctrl #t)
+  (for ([h (in-list (keytable-hints active-keys (list (key 'p 'ctrl))))])
+    (printf "  C-p ~a  ~a\n" (key->string (car h))
+            (or (and (cdr h) (command-note-string (cdr h))) "（前缀）")))
+  (press! 'z #:ctrl #t)   ; 清掉 C-p 前缀（(C-p C-z) 未绑定）
+  (key-reader-reset! reader)
   (printf "\n结束：\n~a\n" (buffer-string doc-b))
   (displayln "command demo: 全部 OK"))
 
