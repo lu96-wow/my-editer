@@ -31,6 +31,9 @@ racket temp/02-selection.rkt
 | `19-bench-neighbor.rkt` | panel 方向导航 / 深度前后 的开销（每次按键一次的 O(N) 查询） | `view/panel.rkt` |
 | `20-layout-tree.rkt` | 布局树：tree → panels → screen（显隐 / 移动 / cuts） | `edit-tui/layout` |
 | `21-interactive-layout.rkt` | 交互（with-tui）：点击落光标 / 拖选 / 拖接缝 / 角拖 / 滚轮 / C-b 开关面板 | `edit-tui/layout` + `edit-tui/command` + core |
+| `22-float.rkt` | 浮窗：锚点定位 + 叠放 + z（不进布局树） | `edit-tui/layout` |
+| `23-app-loop.rkt` | **app 事件循环骨架**：world + 纯 step + intent + loop；headless 重放 + 真终端交互 | `edit-tui/app` |
+| `24-doc-kinds.rkt` | **document 类型 → 命令表**：穿透 focus 换表 + 资源管理 + per-document 覆盖 + open-doc + 引用稳定（panel-ref）+ 面板间焦点移动（focus-keys） | `edit-tui/app` |
 
 ## 分层速查
 

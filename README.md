@@ -8,9 +8,11 @@
 |---|---|---|
 | `core/` | 文本引擎 + 渲染值（buffer / view / document / history；`piece` / `screen` / face 端口） | 无 |
 | `edit-tui/base/` | **face 值定义**（`(face fg bg attrs)` + 读写）—— 生产者 / 消费者共用的基础词汇 | 无 |
-| `edit-tui/layout-base/` | 布局 = 一堆面板（`rect` + 四边可选边框 + `deep` + 边框 `face`）+ 定位 + 边框字形 + **边框序列化** | core（`display-entry` / `pane`）、tui |
+| `edit-tui/layout/` | 布局树（`tree → panels`）+ 声明式 `spec` + 拖缝 `cuts` + 浮窗 `float`（纯几何） | core |
+| `edit-tui/command/` | 输入 token + 键表（trie）+ 有状态读键（纯，唯一碰 tui 的是 `tui.rkt` 适配） | tui |
 | `edit-tui/core-render/` | 渲染后端：把 core 渲染值（`piece`）画成 tui 序列 | core、base、tui |
 | `edit-tui/theme/` | 统一主题：face 符号 → 样式（fg bg attrs），装进 tui 样式表 | tui |
+| `edit-tui/app/` | **编辑器骨架**：`world` + 纯 `step` + `intent` + 事件循环（数据驱动，可 headless 测） | core、layout、command、core-render |
 
 ```
 core   view ─▶ display-entry ─┐
