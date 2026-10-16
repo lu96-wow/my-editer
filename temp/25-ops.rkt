@@ -47,8 +47,6 @@
   (define r (ctx-ref ctx))
   (and r (eq? (panel-ref-kind r) 'leaf) (panel-ref-id r)))
 
-(define (quit) (modify (λ (w) (struct-copy world w [running? #f]))))
-
 (define global-keys
   (keys
    [(key 'b 'ctrl) (λ (ctx) (toggle-pane 'tree))]
@@ -60,7 +58,7 @@
    [(key 'p 'ctrl) (λ (ctx) (add-float (make-float 'demo #f
                                                    (float-rect-at 3 5 20 4 (world-area (ctx-world ctx))))))]
    [(key 'o 'ctrl) (λ (ctx) (remove-float 'demo))]
-   [(key 'q 'ctrl) (λ (ctx) (list (quit)))]))
+   [(key 'q 'ctrl) (λ (ctx) (quit))]))
 
 (define (make-app-world)
   (make-world #:area (rect 0 0 W H)

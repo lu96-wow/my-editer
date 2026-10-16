@@ -39,7 +39,7 @@
 (define my-keys
   (keys
    [(key 'left)  focus-cursor-left]   ; ops 的状态模型函数：吃 ctx，内部解析主体 view
-   [(key 'b 'ctrl) (λ (ctx) (list (modify (λ (w) (struct-copy world w [running? #f])))))]))
+   [(key 'b 'ctrl) (λ (ctx) (quit))]))
 
 (run-app (make-world #:area (rect 0 0 80 24)
                      #:layout my-layout
@@ -56,6 +56,9 @@
 - 文档编辑优先用 `ops.rkt` 的 `focus-*`（吃 `ctx`，内部解析主体 view：键盘 = focus，
   鼠标 = 命中 / 拖动主体；无主体 → no-op）。命令表**只引用这些名字**，
   不手写 `(edit (ctx-view ctx) …)`、不 require core（见 `base-keys.rkt`）。
+- 改 world 字段走 `world.rkt` 的**原子转换**（`world-focus-on` / `world-resize` /
+  `world-set-status` / `world-set-pending` / `world-set-drag` / `world-set-layout` /
+  `world-set-floats` / `world-stop`）；step / ops 不裸 `(struct-copy world …)`。
 - 命令**不直接改 core**，所以能 headless 重放（见 `temp/23-app-loop.rkt`）。
 
 ## 焦点边框配色（render 投影，不新增状态）
@@ -126,7 +129,8 @@ core 的每个边框格只能有一个 face；**相邻面板共享的 1 格接�
 | **切分 / 关闭** | `split-left` `split-right` `split-up` `split-down`（只对 splittable role 生效）· `split-focused` · `splittable-leaf?` · `close-focused`（按 role 的 close-policy） |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-move`（面板间方向，ctx 感知） |
-| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` |
+| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
+| session | `show-status`（写状态行）· `quit`（退出） |
 
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus-leaf 'editor))`。
 它只是“命名 + 集中”，**不新增状态、不改 world 字段**；底层仍是 `modify` / `edit` / `invoke`。
@@ -189,7 +193,7 @@ leaf 有一个自由符号 `role`（`pane #:role`，默认 `'panel`）。app **�
 | 没有 | 替代 |
 |---|---|
 | `redraw` intent | world 的 `dirty?`（`modify` / 视觉效果自动置位），loop 统一重绘 |
-| `quit` intent | `(modify (λ (w) (struct-copy world w [running? #f])))` |
+| `quit` intent | `ops.rkt` 的 `(quit)` op（命名构造器，仍不引入 quit intent 类型） |
 | `message` intent | world 的 `status` 字段 |
 | `set-point` 效果 | `(select view (selections-one (caret pt)))`（core 已有 `caret`） |
 | `focus` 效果 | world 的 `focus` 字段（纯变换） |

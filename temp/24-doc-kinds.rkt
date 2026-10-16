@@ -62,12 +62,10 @@
                                      (tree-hide lay 'tree)
                                      (tree-show lay 'tree))]))))
 
-(define (stop) (modify (λ (w) (struct-copy world w [running? #f]))))
-
 (define global-keys
   (keys
    [(key 'b 'ctrl) (λ (ctx) (list (toggle-tree)))]
-   [(key 'x 'ctrl) (key 'c 'ctrl) (λ (ctx) (list (stop)))]
+   [(key 'x 'ctrl) (key 'c 'ctrl) (λ (ctx) (quit))]
    ;; 运行期打开：open-doc = 不纯创建（解释器）+ 纯 world 变换（装进布局 / 切焦点）
    [(key 'n 'ctrl)
     (λ (ctx)

@@ -40,7 +40,6 @@
             (pane 'tool   #:view tv #:size 1 #:dock 'top    #:role 'tool)
             (pane 'editor #:view ev #:size 5 #:dock 'center #:role 'editor))))
 
-(define (quit) (modify (λ (w) (struct-copy world w [running? #f]))))
 (define global-keys
   (keys
    [(key 's 'ctrl) (key 'left)  (λ (ctx) (split-left ctx))]

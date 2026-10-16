@@ -19,6 +19,7 @@
          "intent.rkt"
          "doc-kind.rkt"
          "panel-ref.rkt"
+         "ops.rkt"
          "../command/main.rkt"
          "../layout/main.rkt"
          "../../core/editor.rkt")
@@ -52,8 +53,7 @@
     [(task-done)
      ;; payload = (list id value)。暂定：只落到 status；扩展点留给 internal。
      (match-define (list id value) payload)
-     (values (mark-dirty (struct-copy world w
-                                      [status (format "task ~a done: ~a" id value)]))
+     (values (mark-dirty (world-set-status w (format "task ~a done: ~a" id value)))
              '())]
     [else
      (define h (hash-ref (world-internal w) kind #f))
@@ -68,27 +68,21 @@
   (case status
     [(command)
      ;; 命中叶子：先清前缀（并清掉前缀提示 status），再执行命令。
-     (run-command (struct-copy world w [pending '()] [status ""]) cmd ev)]
+     (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
     [(prefix)
      ;; 命中前缀：存进 world（纯数据），状态行显示待续序列。
-     (values (mark-dirty (struct-copy world w
-                                      [pending seq]
-                                      [status (pending->string seq)]))
+     (values (mark-dirty (world-set-status (world-set-pending w seq) (pending->string seq)))
              '())]
     [else
      ;; 未命中：清前缀。可打印字符 → 插入文本；否则记状态行。
-     (define w1 (struct-copy world w [pending '()]))
+     (define w1 (world-set-pending w '()))
      (define k (key-event-key ev))
      (define m (key-event-mods ev))
      (cond
        [(and (char? k) (not (mods-ctrl? m)) (not (mods-alt? m)))
         (step-insert w1 (string k))]
        [else
-        (values w1
-                (list (modify (λ (w)
-                                (struct-copy world w
-                                             [status (format "unbound: ~a"
-                                                             (key->string tok))])))))])]))
+        (values w1 (show-status (format "unbound: ~a" (key->string tok))))])]))
 
 ;;; 活动表：按优先级逐张查，第一个非 unbound 胜出（= 覆盖语义）。
 ;;;
@@ -126,10 +120,8 @@
 ;;; ════════════════════════ 插入文本（键盘 / 粘贴共用） ════════════════════════
 
 (define (step-insert w text)
-  (define v (world-focus-view w))
-  (if v
-      (values (mark-dirty w) (list (edit v (op-type text))))
-      (values w '())))
+  (define is (focus-insert (make-ctx w #f) text))
+  (values (if (null? is) w (mark-dirty w)) is))
 
 ;;; ════════════════════════ 鼠标 ════════════════════════
 ;;;
@@ -172,8 +164,8 @@
   (cond
     ;; 1) 缝：布局 chrome，优先于任何命令
     [(and (eq? action 'press) (pair? seams))
-     (values (mark-dirty (struct-copy world w
-                                      [drag (drag 'seam #f (list row col seams (world-layout w)))]))
+     (values (mark-dirty (world-set-drag w
+                                         (drag 'seam #f (list row col seams (world-layout w)))))
              '())]
     ;; 2) 正在拖缝 → 继续通用拖动（不让类型的 move 命令截断）
     [(and (eq? action 'move) (drag? d) (eq? (drag-kind d) 'seam))
@@ -187,8 +179,8 @@
      (cond
        [(and (eq? st 'command) cmd) (run-command w cmd ev subject-ref p doc-point)]
        [(eq? action 'press)   (step-mouse-default-press w hit-ref)]
-       [(eq? action 'release) (values (mark-dirty (struct-copy world w [drag #f])) '())]
-       [(eq? action 'scroll)  (step-mouse-scroll w button p)]
+       [(eq? action 'release) (values (mark-dirty (world-set-drag w #f)) '())]
+       [(eq? action 'scroll)  (step-mouse-scroll w hit-ref button)]
        [else (values w '())])]))
 
 ;; 兜底：点面板只聚焦（不落点 —— 落点是类型命令的事）；点空白清焦点。
@@ -203,15 +195,12 @@
     (for/fold ([t lay0]) ([cut (in-list cs)])
       (define delta (if (eq? (cut-axis cut) 'lr) (- col c0) (- row r0)))
       (tree-resize-seam t cut delta)))
-  (values (mark-dirty (struct-copy world w [layout lay*])) '()))
+  (values (mark-dirty (world-set-layout w lay*)) '()))
 
-;; 滚轮兜底：滚光标所在面板（类型表可覆盖 `(mouse 'scroll …)`）。
-(define (step-mouse-scroll w button p)
-  (cond
-    [(and p (not (panel-empty? p)))
-     (values (mark-dirty w)
-             (list (scroll (panel-view p) (if (eq? button 'up) -3 3))))]
-    [else (values w '())]))
+;; 滚轮兜底：滚命中面板（类型表可覆盖 `(mouse 'scroll …)`）。
+(define (step-mouse-scroll w hit-ref button)
+  (define is (focus-scroll (make-ctx w #f hit-ref) (if (eq? button 'up) -3 3)))
+  (values (if (null? is) w (mark-dirty w)) is))
 
 ;;; ════════════════════════ 命令执行 ════════════════════════
 
@@ -219,8 +208,7 @@
   (cond
     [(command-needs-input? cmd)
      ;; 暂定：带 input spec 的命令先只提示；minibuffer 模式接上后在这里 push mode。
-     (values (mark-dirty (struct-copy world w
-                                      [status (input-prompt (command-input cmd))]))
+     (values (mark-dirty (world-set-status w (input-prompt (command-input cmd))))
              '())]
     [else
      (define c (make-ctx w ev ref panel doc-point))

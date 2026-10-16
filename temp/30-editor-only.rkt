@@ -38,8 +38,6 @@
 
 ;;; ════════════════ 命令 ════════════════
 
-(define (quit) (modify (λ (w) (struct-copy world w [running? #f]))))
-
 (define global-keys
   (keys
    [(key 's 'ctrl) (key 'left)  (λ (ctx) (split-left ctx))]
@@ -47,7 +45,7 @@
    [(key 's 'ctrl) (key 'up)    (λ (ctx) (split-up ctx))]
    [(key 's 'ctrl) (key 'down)  (λ (ctx) (split-down ctx))]
    [(key 's 'ctrl) (key 'd)     (λ (ctx) (close-focused ctx))]
-   [(key 'q 'ctrl) (λ (ctx) (list (quit)))]))
+   [(key 'q 'ctrl) (λ (ctx) (quit))]))
 
 (define (make-app-world)
   (make-world #:area (rect 0 0 80 24)

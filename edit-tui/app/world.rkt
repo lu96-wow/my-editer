@@ -34,6 +34,9 @@
          world-ref->view world-ref->panel world-focus-view
          world-resize
          world-focus-on
+         world-set-status world-set-pending world-set-drag world-set-layout
+         world-set-floats
+         world-stop
          mark-dirty mark-clean)
 
 ;;; ════════════════ 内部事件（异步 / 外部回投） ════════════════
@@ -132,7 +135,18 @@
 ;; 切焦点：传 **panel-ref**；同时清 pending —— 不能跨焦点续前缀。
 ;; 所有切焦点的地方（指针命令 / 兜底 / open-doc）都该走这个，别裸改 focus 字段。
 (define (world-focus-on w ref)
-  (mark-dirty (struct-copy world w [focus ref] [pending '()])))
+  (mark-dirty (world-set-pending (struct-copy world w [focus ref]) '())))
+
+;;; ---------- 原子状态设置（纯；是否重绘由调用方 mark-dirty 决定） ----------
+;;; 把「回显区 / 拖动 / 布局 / 退出」这类 world 字段的裸 struct-copy 收成命名转换，
+;;; 让 step / ops 只描述“改哪个状态”，不重复拼 struct-copy。
+
+(define (world-set-status w text) (struct-copy world w [status text]))   ; 状态行 / 提示
+(define (world-set-pending w seq) (struct-copy world w [pending seq]))   ; 键前缀
+(define (world-set-drag w d)      (struct-copy world w [drag d]))        ; 拖动状态（#f = 结束）
+(define (world-set-layout w t)    (struct-copy world w [layout t]))      ; 布局树
+(define (world-set-floats w fs)   (struct-copy world w [floats fs]))      ; 浮窗层
+(define (world-stop w)            (struct-copy world w [running? #f]))   ; 退出循环
 
 (define (mark-dirty w) (struct-copy world w [dirty? #t]))
 (define (mark-clean w) (struct-copy world w [dirty? #f]))

@@ -67,13 +67,16 @@
  focus-undo focus-redo
  focus-cursor-left focus-cursor-right focus-cursor-up focus-cursor-down
  focus-cursor-home focus-cursor-end
- focus-select focus-select-range focus-select-begin focus-select-update)
+ focus-select focus-select-range focus-select-begin focus-select-update
+ focus-scroll
+ ;; session / app 控制
+ show-status quit)
 
 ;;; ════════════════════════ layout 结构 ════════════════════════
 
 ;; 通用：tree → tree 的纯变换，包成“改 world.layout”的 intent。
 (define (layout-op f)
-  (list (modify (λ (w) (struct-copy world w [layout (f (world-layout w))])))))
+  (list (modify (λ (w) (world-set-layout w (f (world-layout w)))))))
 
 (define (mount-view id v)  (layout-op (λ (t) (tree-set-view t id v))))
 (define (clear-view id)    (mount-view id #f))          ; 卸掉 view，保留 leaf（空占位）
@@ -175,7 +178,7 @@
 ;;; ════════════════════════ floats ════════════════════════
 
 (define (floats-op f)
-  (list (modify (λ (w) (struct-copy world w [floats (f (world-floats w))])))))
+  (list (modify (λ (w) (world-set-floats w (f (world-floats w)))))))
 (define (add-float fl)     (floats-op (λ (fs) (floats-add fs fl))))
 (define (remove-float key) (floats-op (λ (fs) (floats-remove fs key))))
 
@@ -254,7 +257,7 @@
     [(and ref pt)
      (append (focus-on ref)
              (list (modify (λ (w)
-                             (struct-copy world w [drag (drag 'select ref (list ref pt))]))))
+                             (world-set-drag w (drag 'select ref (list ref pt))))))
              (focus-select ctx pt))]
     [ref (focus-on ref)]
     [else '()]))
@@ -276,3 +279,18 @@
   (and p
        (let-values ([(l c) (panel-screen-position->point p row col)])
          (and l (point l c)))))
+
+;; 滚轮：滚主体 view。
+(define (focus-scroll ctx delta)
+  (define v (ctx-view ctx))
+  (if v (list (scroll v delta)) '()))
+
+;;; ════════════════════════ session / app 控制 ════════════════════════
+
+;; 状态行 / 提示（回显区）。
+(define (show-status text)
+  (list (modify (λ (w) (world-set-status w text)))))
+
+;; 退出事件循环。
+(define (quit)
+  (list (modify world-stop)))

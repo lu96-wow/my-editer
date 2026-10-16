@@ -46,7 +46,7 @@
 | 构造 | `make-world` |
 | 结构 | `world` `ctx` `mode` `drag` `app-event`（含各自访问器） |
 | 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` |
-| 纯更新 | `world-resize` `world-focus-on` `mark-dirty` `mark-clean` |
+| 纯更新 | `world-resize` `world-focus-on` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `mark-dirty` `mark-clean` |
 
 ### panel-ref —— 面板身份
 
@@ -76,7 +76,8 @@
 | 切分 / 关闭（读 role） | `splittable-leaf?` · `split-focused` · `split-left` `split-right` `split-up` `split-down` · `close-focused` |
 | floats | `floats-op` · `add-float` `remove-float` |
 | focus | `focus-on` · `focus-leaf` · `focus-move` |
-| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` |
+| **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
+| session | `show-status`（写状态行）· `quit`（退出） |
 
 ### resource —— 资源
 

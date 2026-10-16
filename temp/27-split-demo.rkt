@@ -51,8 +51,6 @@
 
 ;;; ════════════════ 命令 ════════════════
 
-(define (quit) (modify (λ (w) (struct-copy world w [running? #f]))))
-
 (define (focused-editor-id ctx)
   (define r (ctx-ref ctx))
   (and r (eq? (panel-ref-kind r) 'leaf)
@@ -76,7 +74,7 @@
    [(key 's 'ctrl) (key 'down)  (λ (ctx) (split-down ctx))]
    [(key 's 'ctrl) (key 'd)     (λ (ctx) (close-focused ctx))]
    [(key 'o 'ctrl) (λ (ctx) (open-into-focused ctx))]
-   [(key 'q 'ctrl) (λ (ctx) (list (quit)))]))
+   [(key 'q 'ctrl) (λ (ctx) (quit))]))
 
 (define (make-app-world)
   (make-world #:area (rect 0 0 W H)

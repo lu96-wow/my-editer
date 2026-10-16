@@ -66,8 +66,6 @@
                                      (tree-hide lay 'tree)
                                      (tree-show lay 'tree))]))))
 
-(define (stop) (modify (λ (w) (struct-copy world w [running? #f]))))
-
 (define edit-keys
   (keys
    [(key 'left)      (λ (c) (nav! c view-left!))]
@@ -84,7 +82,7 @@
   (keys
    [(key 'b 'ctrl) (λ (c) (list (toggle-tree)))]
    [(key 't 'ctrl) (λ (c) (list (spawn 'demo (λ () (sleep 0.3) "async ok"))))]
-   [(key 'x 'ctrl) (key 'c 'ctrl) (λ (c) (list (stop)))]))
+   [(key 'x 'ctrl) (key 'c 'ctrl) (λ (c) (quit))]))
 
 ;;; ════════════════ 世界 ════════════════
 
