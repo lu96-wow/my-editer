@@ -18,7 +18,8 @@
          "../model/input.rkt"
          "../model/resources.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/chrome.rkt"
+         (except-in "../bootstrap/chrome.rkt" input-show)
+         "../input.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 
@@ -67,7 +68,10 @@
                 (chrome-input-view s2))
   (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s2))
                               "Save "))
+  (check-true (input-active? s2))
+  (check-equal? (input-value s2 (make-engine-view engine)) "")
   (define s3a (feed engine s2 (plain #\y)))
+  (check-equal? (input-value s3a (make-engine-view engine)) "y")
   (define s3 (feed engine s3a (app:key-event (key 'enter))))
   (check-equal? (region-active (workspace-region (state-workspace s3) crid))
                 (chrome-status-view s3))
@@ -190,5 +194,27 @@
 (check-equal? (file->string path-a) "xA\n")
 (check-equal? (file->string path-b) "yB\n")
 (for ([p (list path-a path-b)]) (when (file-exists? p) (delete-file p)))
+
+
+;;; ════════════════ 输入占用：新 input 替换旧 input ════════════════
+
+(define path-replace (path->string (make-temporary-file "rebuild-replace-~a.txt")))
+(let-values ([(engine s0 vid crid) (make-case path-replace)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))          ; save-confirm
+  (check-not-false (resources-confirm (state-resources s2)))
+  (define s3 (feed engine s2 (ctrl 'x)))
+  (define s4 (feed engine s3 (ctrl 'f)))          ; 新 input：open-file
+  (check-false (resources-confirm (state-resources s4)))
+  (check-true (input-active? s4))
+  (check-equal? (input-value s4 (make-engine-view engine)) "")
+  (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s4))
+                              "Open file: "))
+  (check-equal? (region-active (workspace-region (state-workspace s4) crid))
+                (chrome-input-view s4))
+  ;; Esc 关掉 input，回到 status
+  (define s5 (feed engine s4 (app:key-event (key 'escape))))
+  (check-false (input-active? s5)))
+(when (file-exists? path-replace) (delete-file path-replace))
 
 (displayln "edit-tui-rebuild save: ok")

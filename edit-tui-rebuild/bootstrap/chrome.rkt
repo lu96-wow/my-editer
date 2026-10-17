@@ -107,8 +107,11 @@
 
 ;; 结束输入：切回 status，恢复进入前的焦点。
 (define (input-finish state)
+  (define input-focused? (equal? (state-focus state) (input-view state)))
   (define s1 (chrome-show-status state))
-  (state-workspace* s1 (λ (ws) (workspace-pop-focus ws))))
+  (if input-focused?
+      (state-workspace* s1 (λ (ws) (workspace-pop-focus ws)))
+      s1))
 
 ;; 输入栏完整字符串（含 prompt 前缀）。
 (define (input-read-text state ev)

@@ -39,8 +39,9 @@
          "effects/interpreter.rkt"
          "projection/render.rkt"
          "bootstrap/defaults.rkt"
-         "bootstrap/chrome.rkt"
+         (except-in "bootstrap/chrome.rkt" input-show)
          "bootstrap/commands.rkt"
+         "input.rkt"
          "runtime/run.rkt")
 
 (provide (all-from-out "base/id.rkt"
@@ -67,6 +68,7 @@
                        "effects/interpreter.rkt"
                        "projection/render.rkt"
                        "bootstrap/defaults.rkt"
-                       "bootstrap/chrome.rkt"
                        "bootstrap/commands.rkt"
-                       "runtime/run.rkt"))
+                       "input.rkt"
+                       "runtime/run.rkt")
+         (all-from-out "bootstrap/chrome.rkt"))

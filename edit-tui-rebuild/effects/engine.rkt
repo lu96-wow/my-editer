@@ -26,7 +26,7 @@
          (struct-out engine-view)
          make-engine-view
          engine-view-doc-text engine-view-doc-name engine-view-doc-version
-         engine-view-view-text
+         engine-view-view-text engine-view-view-readonly-at?
          engine-version=?
          engine-view-view-point engine-view-view-point-line engine-view-view-point-column
          engine-view-view-selections engine-view-view-cursor-position
@@ -224,6 +224,10 @@
 (define (engine-view-view-text ev vid)
   (define v (ev-view ev vid))
   (and v (buffer-string (view-buffer v))))
+
+(define (engine-view-view-readonly-at? ev vid line col)
+  (define v (ev-view ev vid))
+  (and v (view-readonly-at? v line col)))
 
 ;; 当前文档版本 = core 的 opaque document token。
 ;; 用 engine-version=?（eq?）比较：编辑 -> 新 token；undo 回保存点 -> 恢复同一 token。

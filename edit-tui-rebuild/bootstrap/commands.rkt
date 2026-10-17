@@ -36,7 +36,8 @@
          "../../core/view/panel.rkt"
          "../../core/view/base/rect.rkt"
          "../dispatch/context.rkt"
-         "../bootstrap/chrome.rkt"
+         (except-in "../bootstrap/chrome.rkt" input-show)
+         "../input.rkt"
          (prefix-in app: "../base/event.rkt"))
 
 ;;; ════════════════ 小工具 ════════════════

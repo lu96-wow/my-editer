@@ -101,6 +101,44 @@ edit-tui-rebuild/test/run.sh
 ```
 
 
+## 通用输入栏 API
+
+```racket
+(require "edit-tui-rebuild/input.rkt")
+```
+
+| API | 作用 |
+|---|---|
+| `input-show state prompt` | 切到 input 栏，写只读 prompt 前缀 |
+| `input-active? state` | 当前是否在 input 栏 |
+| `input-read-text state ev` | 完整 buffer 字符串（prompt + 输入） |
+| `input-value state ev` | 只取用户输入（自动跳过只读前缀） |
+| `input-finish state` | 切回 status，恢复进入前焦点 |
+| `input-write-prompt state prompt` | 只改 prompt（不切焦点） |
+
+提交匹配：
+
+```racket
+(environment-add-input-command
+ env
+ (make-input-command
+  'my-input
+  (input-command-prefix "My prompt: ")
+  (λ (ctx value) ...)))
+```
+
+输入是 document，没有额外的 prompt 状态机。
+
+**占用规则：新的 input 替换旧的 input。**  
+如果当前已经在 input 栏，再调用 `input-show`：
+
+- 结束旧 input；
+- 清掉旧 input 的外部 pending 状态（目前是 `resources.confirm`，即取消旧的保存确认 / 关闭动作）；
+- 写入新 prompt，重新聚焦 input；
+- 焦点栈保持平衡（旧 input 先 pop，新 input 再 push）。
+
+低层 `chrome-input-show` 不做替换清理；其他逻辑应调用 `input.rkt` 的 `input-show`。
+
 ## 公共面
 
 ```racket
