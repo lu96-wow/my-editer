@@ -102,6 +102,11 @@
 (check-true (string-contains? (status-line s1 ev) "C-x"))
 (check-false (string-contains? (status-line s1 ev) "msg"))
 
+;; 调试 State 行
+(check-true (string-contains? (state-line s0 ev) "focus=view:1"))
+(check-true (string-contains? (state-line s0 ev) "docs=1"))
+(check-equal? (chrome-line s0 ev 'state) (state-line s0 ev))
+
 ;; prompt
 (define s2 (state-input* s0 (λ (i) (input-set-prompt i (make-prompt 'string #:label "name: " #:text "bob")))))
 (check-equal? (prompt-line s2) "name: bob")

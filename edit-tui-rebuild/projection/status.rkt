@@ -16,6 +16,7 @@
          status-path
          status-sequence
          prompt-line
+         state-line
          chrome-line
          region-line)
 
@@ -65,12 +66,30 @@
   (define p (input-prompt-session (state-input state)))
   (and p (string-append (prompt-label p) (prompt-text p))))
 
+;;; ---------- 调试用：把 State 压成一行 ----------
+
+;; 给 demo / 诊断用：focus / 光标 / 文档 / view / region / pending / message。
+(define (state-line state ev)
+  (define pos (status-position state ev))
+  (define ws (state-workspace state))
+  (define focus (state-focus state))
+  (format "state focus=~a pos=~a docs=~a views=~a regions=~a pending=~a msg=~a"
+          (if focus (id->string focus) "-")
+          (if pos (format "~a:~a" (car pos) (cdr pos)) "-")
+          (hash-count (workspace-docs ws))
+          (hash-count (workspace-views ws))
+          (hash-count (workspace-regions ws))
+          (or (status-sequence state) "-")
+          (let ([m (chrome-message (state-chrome state))])
+            (if (string=? m "") "-" m))))
+
 ;;; ---------- chrome region ----------
 
 ;; chrome 成员键 -> 文本。未知成员 -> ""。
 (define (chrome-line state ev key)
   (case key
     [(status) (status-line state ev)]
+    [(state)  (state-line state ev)]
     [(input)  (or (prompt-line state) "")]
     [else ""]))
 

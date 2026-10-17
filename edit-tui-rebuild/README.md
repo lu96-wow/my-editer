@@ -54,6 +54,7 @@ runtime/
   run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
 demo/
   basic.rkt       最小交互 demo
+  state.rkt       主编辑区 + 一行 State 观察条
 main.rkt          公共面（聚合以上）
 ```
 
@@ -102,7 +103,16 @@ edit-tui-rebuild/test/run.sh
 
 ```bash
 racket edit-tui-rebuild/demo/basic.rkt
+racket edit-tui-rebuild/demo/state.rkt   # 底部一行直接显示底层 State
 ```
+
+`state.rkt` 的底栏内容：
+
+```
+state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
+```
+
+操作时可以直接观察 focus / 光标 / docs / views / regions / pending / message 的变化。
 
 默认键位：
 

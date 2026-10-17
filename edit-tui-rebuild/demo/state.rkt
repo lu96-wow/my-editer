@@ -1,0 +1,60 @@
+#lang racket
+
+;;; edit-tui-rebuild/demo/state.rkt —— 主编辑区 + 一行 State 观察条
+;;;
+;;;   racket edit-tui-rebuild/demo/state.rkt
+;;;
+;;; 底部一行不是普通状态栏，而是把底层 State 压成一行：
+;;;   focus / 光标 / docs / views / regions / pending / message
+;;; 操作时可以直接看到 State 的变化。
+;;;
+;;; 键位：
+;;;   ←→↑↓ Home End       移动
+;;;   Enter/Backspace/Del  编辑
+;;;   C-z / C-y            undo / redo
+;;;   C-b / C-v            右 / 下切分（same document 多 view）
+;;;   C-w                  关闭当前 view
+;;;   M-方向               焦点在 region 间移动
+;;;   C-q                  退出
+
+(require "../../edit-tui/theme/main.rkt"
+         "../base/id.rkt"
+         "../model/layout.rkt"
+         "../model/state.rkt"
+         "../model/workspace.rkt"
+         "../model/chrome.rkt"
+         "../effects/engine.rkt"
+         "../bootstrap/defaults.rkt"
+         "../runtime/run.rkt")
+
+(define did (doc-id 1))
+(define vid (view-id 1))
+(define editor-rid (region-id 1))
+(define state-rid (region-id 2))
+
+(define engine (make-engine))
+(void (engine-create-doc! engine did "main.rkt"
+                          "State observer demo\n\nEdit this buffer. The bottom line is the raw app State:\n  focus / cursor / docs / views / regions / pending / message\n\nTry:\n  C-b  split right\n  C-v  split down\n  C-w  close view\n  M-←  move focus\n  C-q  quit\n"))
+(void (engine-create-view! engine vid did))
+
+(define ws0 (workspace-empty))
+(define ws1 (workspace-add-doc ws0 did (make-doc-meta "main.rkt" #:path "main.rkt")))
+(define ws2 (workspace-add-view ws1 vid (view-meta did (hash))))
+(define ws3 (workspace-add-region ws2 editor-rid
+                                  (region editor-rid (list (view-member vid)) vid 'editor)))
+(define ws4 (workspace-add-region ws3 state-rid
+                                  (region state-rid (list (chrome-member 'state)) 'state 'slot)))
+(define layout*
+  (make-split 'tb
+              (list (make-leaf editor-rid (flex 1))
+                    (make-leaf state-rid (fixed 1) #:borders '()))
+              (flex 1)))
+(define ws5 (struct-copy workspace ws4 [layout layout*]))
+(define state
+  (state-set-focus
+   (state-chrome* (make-state #:workspace ws5 #:ids (make-id-counter 2 2 3 1))
+                  (λ (c) (chrome-set-message c "ready")))
+   vid))
+
+(module+ main
+  (run-app default-env state engine))
