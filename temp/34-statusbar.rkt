@@ -21,7 +21,7 @@
 ;;; ════════════════ 文档（状态/输入都是内存 buffer） ════════════════
 
 (define-doc-kind! 'text   #:keymaps (list edit-keys motion-keys pointer-keys))
-(define-doc-kind! 'status #:keymaps '())
+(define-doc-kind! 'status #:keymaps (list motion-keys))   ; 只读，但可移光标水平滚动
 
 ;; 输入栏：可编辑，但 Enter/Esc 归 minibuffer（不要合并含 enter 的 edit-keys）
 (define input-edit-keys
@@ -59,7 +59,7 @@
                             (pane 'editor #:view eview #:size 1 #:dock 'center #:role 'editor)
                             (pane 'slot   #:view #f    #:fixed 1 #:borders '()     #:role 'slot))
               #:focus (leaf-ref 'editor)
-              #:keytable (make-keytable ask-keys prefix-keys)
+              #:keytable (make-keytable ask-keys prefix-keys focus-keys)
               #:prefix-keys (make-keytable prefix-edit-keys)))
 
 (define (boot)
@@ -157,5 +157,18 @@
   (feed! (plain 'escape))
   (check "Esc 取消回状态栏" (eq? (slot-active (w)) 'status))
   (check "Esc 取消后会话清" (not (minibuffer-of (w))))
+
+  ;; 6) 状态栏可聚焦 + 移动键水平滚动（屏幕小时看超长序列的尾部）
+  (set-box! world* (world-set-status (w) (string-join (for/list ([i (in-range 40)]) "C-x") " ")))
+  (status-sync! (w))
+  (apply-intents! (focus-leaf 'slot))
+  (check "焦点切到状态栏" (equal? (leaf-ref 'slot) (world-focus (w))))
+  (feed! (plain 'end))
+  (define sv (world-ref->view (w) (leaf-ref 'slot)))
+  (define dc (point-column (view-anchor-point sv)))
+  (check "End 让状态栏水平滚动" (> dc 0))
+  (check "光标到行尾" (= (view-point-column sv) (string-length (buffer-string (view-buffer sv)))))
+  (status-sync! (w))                       ; 模拟 loop 每帧 sync
+  (check "sync 后仍保持滚动" (> (point-column (view-anchor-point sv)) 0))
 
   (displayln "statusbar: 自检 OK"))

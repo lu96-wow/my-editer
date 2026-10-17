@@ -18,7 +18,7 @@
 
 (provide (struct-out slot)
          slot-install slot-of slot-member slot-active
-         slot-mount slot-focus-input slot-focus-status
+         slot-mount slot-focus-input slot-focus-status slot-focused?
          slot-show slot-show-status slot-show-input)
 
 (define slot-key 'slot)                              ; world.ext 里的保留键
@@ -47,6 +47,12 @@
   (define s (slot-of w))
   (define v (and s (world-ref->view w (leaf-ref (slot-leaf-id s)))))
   (and s (for/first ([(k mv) (in-hash (slot-members s))] #:when (eq? mv v)) k)))
+
+;; 焦点是否在槽上（status / input 成员）。
+(define (slot-focused? w)
+  (define s (slot-of w))
+  (define f (world-focus w))
+  (and s f (eq? (panel-ref-kind f) 'leaf) (eqv? (panel-ref-id f) (slot-leaf-id s))))
 
 ;;; ---------- 挂载（纯） ----------
 

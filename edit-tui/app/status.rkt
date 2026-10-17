@@ -9,6 +9,7 @@
 
 (require racket/string
          "../../core/editor.rkt"
+         "../layout/main.rkt"
          "../command/main.rkt"
          "world.rkt"
          "resource.rkt"
@@ -17,14 +18,25 @@
 (provide status-line status-sync!
          status-position status-path status-sequence)
 
-;; 焦点 view 的 (行 . 列)，1-based；无焦点 → #f。
+;; 状态栏要报告的 view：焦点在槽（chrome）上时用第一个 'editor view，
+;; 否则用焦点 view。否则移动状态栏光标会改变“状态行”自身 → 每帧重写 → 滚动被重置。
+(define (status-view w)
+  (define fv (world-focus-view w))
+  (if (slot-focused? w)
+      (or (for/first ([l (in-list (tree-visible-leaves (world-layout w)))]
+                      #:when (and (eq? (leaf-role l) 'editor) (leaf-view l)))
+            (leaf-view l))
+          fv)
+      fv))
+
+;; 报告 view 的 (行 . 列)，1-based；无 → #f。
 (define (status-position w)
-  (define v (world-focus-view w))
+  (define v (status-view w))
   (and v (cons (add1 (view-point-line v)) (add1 (view-point-column v)))))
 
-;; 焦点 buffer 的路径（内存文档没有 → #f）。
+;; 报告 view 的 buffer 路径（内存文档没有 → #f）。
 (define (status-path w)
-  (define v (world-focus-view w))
+  (define v (status-view w))
   (and v (buffer-path (view-buffer v))))
 
 ;; 正在输入的键序列（world.pending）；没有 → #f。

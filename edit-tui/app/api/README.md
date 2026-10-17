@@ -99,7 +99,7 @@
 | `render` | `draw-world` `world-display-panels` |
 | `loop` | `run-app` |
 | `plugin` | `define-plugin!` · `panel-spec` · `plugins-apply` · `plugins-list` `plugins-known?` `plugins-reset!` |
-| `slot` | `slot-install` · `slot-show` `slot-show-status` `slot-show-input` · `slot-active` · `slot-focus-input` `slot-focus-status` |
+| `slot` | `slot-install` · `slot-show` `slot-show-status` `slot-show-input` · `slot-active` · `slot-focus-input` `slot-focus-status` · `slot-focused?` |
 | `status` | `status-line` · `status-sync!` · `status-position` `status-path` `status-sequence` |
 | `minibuffer` | `minibuffer-enter` `minibuffer-submit` `minibuffer-cancel` · `minibuffer-keys` · `minibuffer-of` `minibuffer-text` |
 

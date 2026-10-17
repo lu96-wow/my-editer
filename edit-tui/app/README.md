@@ -154,6 +154,12 @@ doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本�
 **键序列编辑**（`world.prefix-keys`）：pending 非空时，`step-key` 先把当前键在**前缀编辑表**里
 单独查（不拼进序列）。`base-keys` 的 `prefix-edit-keys` 把 `C-d` 绑到 `pending-backspace`、`C-g` 绑到 `pending-clear`，
 于是 `C-x C-y` 按 `C-d` → `C-x`，按 `C-g` → 清空。宿主装：`#:prefix-keys (make-keytable prefix-edit-keys)`。
+命中命令时只清 `pending`，**不清 `world.status`**（状态消息保留，滚动状态栏不会被重置）。
+
+**状态栏滚动**：状态栏是只读单行 buffer；给它的 doc-kind 合并 `motion-keys`（`←/→/Home/End`），
+用 `focus-keys` 把焦点移到槽后即可水平滚动，屏幕小时也能看超长状态行。
+报告位置/路径时，若焦点在槽上则取第一个 `'editor` view —— 否则移动状态栏光标会改变状态行自身，
+每帧 `status-sync!` 会把滚动重置。
 
 约定成员键 `'status`（状态栏，不可编辑）/ `'input`（输入栏，可编辑）。示例：`temp/34-statusbar.rkt`。
 

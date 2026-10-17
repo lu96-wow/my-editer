@@ -77,7 +77,7 @@
      (case status
        [(command)
         ;; 命中叶子：先清前缀（并清掉前缀提示 status），再执行命令。
-        (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
+        (run-command (world-set-pending w '()) cmd ev)]
        [(prefix)
         ;; 命中前缀：存进 world（纯数据）；状态栏投影会显示待续序列。
         (values (world-mark-dirty (world-set-pending w seq)) '())]
