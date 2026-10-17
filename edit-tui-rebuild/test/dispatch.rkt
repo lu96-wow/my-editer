@@ -162,6 +162,45 @@
 (define t7 (dispatch env s0 (key-event (key 'left))))
 (check-true (string-contains? (chrome-message (state-chrome (transition-state t7))) "unbound"))
 
+;;; ════════════════ 键盘：前缀 + 未绑定键 = 丢掉前缀，不卡住 ════════════════
+
+;; C-x 之后按一个没绑定的键：pending 必须清空，并且报告完整序列
+(define t-u1 (dispatch env s0 (ctrl 'x)))
+(define t-u2 (dispatch env (transition-state t-u1) (plain 'p)))
+(check-equal? (input-pending (state-input (transition-state t-u2))) '())
+(check-equal? (chrome-message (state-chrome (transition-state t-u2))) "unbound: C-x p")
+;; 带前缀时**不插入**字符（否则会在文档里留下 p）
+(check-equal? (transition-effects t-u2) '())
+
+;; 下一个键恢复正常：C-x C-s 仍然能命中 "xs"
+(define t-u3 (dispatch env (transition-state t-u2) (ctrl 'x)))
+(check-equal? (input-pending (state-input (transition-state t-u3))) (list (key 'x 'ctrl)))
+(define t-u4 (dispatch env (transition-state t-u3) (ctrl 's)))
+(check-equal? (chrome-message (state-chrome (transition-state t-u4))) "xs")
+(check-equal? (input-pending (state-input (transition-state t-u4))) '())
+
+;; 前缀 + 可打印键在 insert 模式下也不插入
+(check-equal? (transition-effects t-u2) '())
+;; 直接用（无前缀）时仍然插入
+(define t-u5 (dispatch env s0 (plain 'p)))
+(check-equal? (length (transition-effects t-u5)) 1)
+
+;;; ════════════════ 消息只活到下一次动作 ════════════════
+
+;; 未绑定键留下的消息，被下一次按键清掉
+(define t-m1 (dispatch env s0 (key-event (key 'left))))
+(check-true (string-contains? (chrome-message (state-chrome (transition-state t-m1))) "unbound"))
+(define t-m2 (dispatch env (transition-state t-m1) (plain 'a)))
+(check-equal? (chrome-message (state-chrome (transition-state t-m2))) "mode")
+
+;; 命令会覆盖消息；什么消息都不产生的命令之后，状态栏回空
+(define t-m3 (dispatch env (transition-state t-m2) (plain 'b)))  ; 未绑定 -> 插入，无消息
+(check-equal? (chrome-message (state-chrome (transition-state t-m3))) "")
+
+;; 鼠标 move / resize / 内部事件不清消息
+(define t-m4 (dispatch env (transition-state t-m1) (plain 'b)))
+(check-equal? (chrome-message (state-chrome (transition-state t-m4))) "")
+
 ;;; ════════════════ 键盘：层序 ════════════════
 
 ;; input mode 最高

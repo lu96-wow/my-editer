@@ -20,6 +20,7 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"
+         "../model/chrome.rkt"
          "../plugins/resource/model.rkt"
          "../plugins/filetree/model.rkt"
          "../effects/engine.rkt"
@@ -223,6 +224,11 @@
 (define s-del-n* (feed engine s-del-n (app:key-event (key 'enter))))
 (check-true (file-exists? new-file))
 (check-false (input-active? s-del-n*))
+;; 取消会留一条 "cancelled: …"，但不能常驻：下一次按键就清掉
+(check-true (string-contains? (chrome-message (state-chrome s-del-n*)) "cancelled"))
+;; 方向键只发 nav effect、不产生消息 -> 状态栏恢复干净
+(define s-del-n-next (feed engine s-del-n* (app:key-event (key 'down))))
+(check-equal? (chrome-message (state-chrome s-del-n-next)) "")
 ;; y：确认删除
 (sync-filetree-panel! s-del-n* engine)
 (define s-del2-prompt (feed engine (set-line! s-del-n* new-idx) (ctrl 'd)))

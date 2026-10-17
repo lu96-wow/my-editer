@@ -47,19 +47,32 @@
 ;;; ════════════════ 入口 ════════════════
 
 (define (dispatch env state event #:subject [subject #f] #:engine [engine #f])
+  ;; 操作会清掉上一次的提示：消息只活到“下一次用户动作”。
+  ;; 拖拽 move / resize / 内部事件不清，避免拖动时消息闪没。
+  (define state*
+    (if (message-expiring-event? event)
+        (state-chrome* state chrome-clear-message)
+        state))
   (define t
     (case (event-kind event)
-      [(key)      (dispatch-key env state event (or subject (state-focus state)) engine)]
-      [(mouse)    (dispatch-mouse env state event subject engine)]
-      [(resize)   (dispatch-resize state event)]
-      [(paste)    (dispatch-paste state event subject)]
+      [(key)      (dispatch-key env state* event (or subject (state-focus state*)) engine)]
+      [(mouse)    (dispatch-mouse env state* event subject engine)]
+      [(resize)   (dispatch-resize state* event)]
+      [(paste)    (dispatch-paste state* event subject)]
       [(internal) (dispatch-internal env state event)]
       [(tick)     (dispatch-tick env state event)]
-      [(quit)     (transition-pure (state-mark-quit state))]
-      [else       (transition-pure state)]))
+      [(quit)     (transition-pure (state-mark-quit state*))]
+      [else       (transition-pure state*)]))
   ;; 每次 dispatch 都推进 revision：运行时据此重绘。
   (transition (state-bump-revision (transition-state t))
               (transition-effects t)))
+
+;; 哪些事件算“用户动作”（清旧消息）。
+(define (message-expiring-event? event)
+  (case (event-kind event)
+    [(key paste) #t]
+    [(mouse) (memq (mouse-action (mouse-event-token event)) '(press release))]
+    [else #f]))
 
 ;;; ════════════════ 键盘 ════════════════
 
@@ -91,7 +104,8 @@
     [(prefix)
      (transition-pure (state-input* state (λ (i) (input-set-pending i seq))))]
     [else
-     (dispatch-unbound env state (key-event-token event) subject)]))
+     ;; 未命中：丢掉 pending（不然会卡在 C-x 前缀里），并按完整序列报告。
+     (dispatch-unbound env (state-input* state input-clear-pending) seq subject)]))
 
 ;;; ════════════════ 鼠标 ════════════════
 
@@ -204,15 +218,25 @@
 ;; 未命中：按 subject 的 mode.fallback 决定。
 ;;   'insert + 可打印字符 -> insert-text-effect
 ;;   'ignore / 不可打印     -> chrome 消息
-(define (dispatch-unbound env state tok subject)
+;;
+;; seq 是**完整**尝试序列（可能有前缀）：带前缀时绝不插入字符，
+;; 否则 C-x p 会在文档里留一个 p —— 只报告 "unbound: C-x p"。
+(define (dispatch-unbound env state seq subject)
   (define mode-id (subject-mode-id state subject))
   (define fallback (if mode-id (mode-fallback (environment-mode env mode-id)) 'ignore))
+  (define tok (last seq))
   (define text (token-text tok))
   (cond
+    [(> (length seq) 1)
+     (notice state (format "unbound: ~a" (sequence->string seq)))]
     [(and (eq? fallback 'insert) text subject)
      (transition state (list (insert-text-effect subject text)))]
     [else
-     (notice state (format "unbound: ~a" (key->string tok)))]))
+     (notice state (format "unbound: ~a" (sequence->string seq)))]))
+
+;; 键序列 -> 显示串：C-x p
+(define (sequence->string seq)
+  (string-join (for/list ([t (in-list seq)]) (key->string t)) " "))
 
 ;; 可打印字符（不含 Ctrl/Alt）。shift 暂不参与大小写，后续由 key 层规范化。
 (define (token-text tok)

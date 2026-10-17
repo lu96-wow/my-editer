@@ -87,7 +87,15 @@ runtime 只负责遍历，不认识任何具体面板。
 - 文档是不是“基础设施”（状态栏 / 输入栏 / 插件面板）由 `doc-meta.internal?` 声明，
   框架不再维护 “哪些 mode 是 chrome” 的字面量列表。
 
-## 5. 扩展点（都是数据）
+## 5. 两条“不留后遗症”的派发规则
+
+- **未命中就丢 pending**：`C-x` 后按未绑定键 -> 清空前缀、报告完整序列、不插入字符；
+- **消息只活到下一次动作**：按键 / 粘贴 / 鼠标按下抬起会先清 `chrome.message`，
+  移动 / resize / 内部事件不清。提示不会常驻状态栏。
+
+两条都在 `dispatch/pipeline.rkt`，`test/dispatch.rkt` + `test/runtime.rkt` 覆盖。
+
+## 6. 扩展点（都是数据）
 
 | 想加的东西 | 加在哪 |
 |---|---|
@@ -103,7 +111,7 @@ runtime 只负责遍历，不认识任何具体面板。
 | 插件自己的状态 | `state.store` + `plugin-state*` |
 | 每帧同步 | `panel-spec.sync`（自动进 `env.panel-syncs`） |
 
-## 6. 约束怎么保证
+## 7. 约束怎么保证
 
 `test/layers.rkt` 检查四件事，任何一条破了就红：
 

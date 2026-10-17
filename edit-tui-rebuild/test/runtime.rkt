@@ -100,6 +100,20 @@
 (define s10 (feed s9a (app:paste-event "P")))
 (check-equal? (engine-view-doc-text (ev) did) "Pxyabc\n")
 
+;;; ════════════════ 前缀 + 未绑定键：不卡住、不插入、只报告 ════════════════
+
+(define u0-text (engine-view-doc-text (ev) did))
+(define u1 (feed s10 (ctrl 'x)))                 ; C-x：前缀
+(check-equal? (input-pending (state-input u1)) (list (key 'x 'ctrl)))
+(define u2 (feed u1 (plain 'p)))                 ; C-x p：未绑定
+(check-equal? (input-pending (state-input u2)) '())
+(check-equal? (chrome-message (state-chrome u2)) "unbound: C-x p")
+(check-equal? (engine-view-doc-text (ev) did) u0-text)   ; 没有插入 p
+;; 下一个键恢复正常
+(define u3 (feed u2 (plain 'q)))
+(check-equal? (engine-view-doc-text (ev) did) "Pqxyabc\n")
+(check-equal? (chrome-message (state-chrome u3)) "")     ; 上一次的提示已被清掉
+
 ;;; ════════════════ 切分 / 焦点 / 关闭 ════════════════
 
 ;; C-w →：向右拆出一个**空** region（不复制 document，也不新增 view）
