@@ -108,8 +108,11 @@
 (define (engine-set-view-text! e vid text)
   (define v (engine-view-object e vid))
   (when v
+    (define n (string-length text))
     (buffer-set-document! (view-buffer v) text)
-    (view-set-point! v (point 0 (string-length text))))
+    (view-scroll-to-line! v 0)
+    (view-scroll-to-column! v 0)
+    (view-set-selections! v (selections-one (caret (point 0 n))) #:ensure? #f))
   (void))
 
 ;;; ---------- 删除 ----------
@@ -154,15 +157,20 @@
      (buffer-edit! (view-buffer v) v (op-type text))]
     [(set-text-effect vid text)
      (define v (need-view e vid))
+     (define n (string-length text))
      (buffer-set-document! (view-buffer v) text)
-     (view-set-point! v (point 0 (string-length text)))]
+     (view-scroll-to-line! v 0)
+     (view-scroll-to-column! v 0)
+     (view-set-selections! v (selections-one (caret (point 0 n))) #:ensure? #f)]
     [(set-input-prompt-effect vid prompt)
      (define v (need-view e vid))
      (define b (view-buffer v))
      (define n (string-length prompt))
      (buffer-set-document! b prompt)
      (buffer-readonly-range! b (range-of (point 0 0) (point 0 n)) #t)
-     (view-set-point! v (point 0 n))]
+     (view-scroll-to-line! v 0)
+     (view-scroll-to-column! v 0)
+     (view-set-selections! v (selections-one (caret (point 0 n))) #:ensure? #f)]
     [(select-effect vid sels)
      (view-set-selections! (need-view e vid) sels)]
     [(scroll-effect vid delta)
