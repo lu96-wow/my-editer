@@ -211,8 +211,12 @@
 (define new-idx (index-of-line s-cd5 (λ (l) (equal? (filetree-line-path l) (filetree-normalize-path new-file)))))
 (define s-del-prompt (feed engine (set-line! s-cd5 new-idx) (ctrl 'd)))
 (check-true (input-active? s-del-prompt))
+;; 输入占用时 C-b 不改变文件树显隐
+(define s-del-prompt-b (feed engine s-del-prompt (ctrl 'b)))
+(check-true (tree-visible? (workspace-layout (state-workspace s-del-prompt-b)) ft-rid))
+(check-true (input-active? s-del-prompt-b))
 ;; n：取消，文件仍在
-(define s-del-n (feed engine s-del-prompt (plain #\n)))
+(define s-del-n (feed engine s-del-prompt-b (plain #\n)))
 (define s-del-n* (feed engine s-del-n (app:key-event (key 'enter))))
 (check-true (file-exists? new-file))
 (check-false (input-active? s-del-n*))

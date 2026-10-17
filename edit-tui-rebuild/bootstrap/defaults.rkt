@@ -69,6 +69,7 @@
   (keys
    [(key 'enter)     'input-submit]
    [(key 'escape)    'input-cancel]
+   [(key 'g 'ctrl)   'input-cancel]
    [(key 'backspace) 'backspace]
    [(key 'delete)    'delete]
    [(key 'left)      'nav-left]

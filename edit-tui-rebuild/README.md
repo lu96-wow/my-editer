@@ -195,6 +195,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
 | `C-x C-o` | 在同一 region 的多个 view 之间循环 active / focus |
 | `C-x C-p` | 提交 resource placement 到当前/点击的 panel |
+| `C-g` / `Esc` | 取消当前 input |
 | `C-x C-g` | 取消 placement |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
