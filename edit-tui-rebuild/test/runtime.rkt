@@ -16,9 +16,11 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/chrome.rkt"
+         "../model/input.rkt"
          "../effects/engine.rkt"
          "../bootstrap/defaults.rkt"
-         "../runtime/run.rkt")
+         "../runtime/run.rkt"
+         "../../core/editor/ops.rkt")
 
 (define did (doc-id 1))
 (define vid (view-id 1))
@@ -115,9 +117,42 @@
 (check-equal? (hash-count (workspace-views (state-workspace s14))) 1)
 (check-equal? (state-focus s14) vid)
 
+;;; ════════════════ 点击定位 / 拖选 ════════════════
+
+;; 真实 loop 会先 sync view；headless 里手动 sync 到一个足够大的尺寸。
+(engine-sync-view! engine vid 80 20)
+;; 把 viewport 水平滚动归零（headless 里之前 view 只有 1×1，可能留下 left-column）
+(view-set-left-column! (engine-view-object engine vid) 0)
+(define s-click (feed s14 (app:mouse-event (mouse 'press 'left) 1 2)))
+(check-equal? (state-focus s-click) vid)
+(check-equal? (engine-view-view-point-column (ev) vid) 1)
+(check-not-false (input-gesture (state-input s-click)))
+(check-eq? (gesture-kind (input-gesture (state-input s-click))) 'select)
+
+(define s-drag (feed s-click (app:mouse-event (mouse 'move #f) 1 4)))
+(check-equal? (engine-view-view-point-column (ev) vid) 3)
+(check-equal? (gesture-owner (input-gesture (state-input s-drag))) vid)
+
+(define s-release (feed s-drag (app:mouse-event (mouse 'release 'left) 1 4)))
+(check-false (input-gesture (state-input s-release)))
+
+;;; ════════════════ 关闭 region / panel ════════════════
+
+;; 再 split 一次，然后 M-w 关闭整个 region（不是只关 view）
+(define s-split2 (feed s-release (ctrl 'b)))
+(check-equal? (hash-count (workspace-views (state-workspace s-split2))) 2)
+(check-equal? (hash-count (workspace-regions (state-workspace s-split2))) 4)
+(define new-rid (region-key (workspace-view-region (state-workspace s-split2)
+                                                   (state-focus s-split2))))
+(define s-close-region (feed s-split2 (meta 'w)))
+(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 1)
+(check-equal? (hash-count (workspace-regions (state-workspace s-close-region))) 3)
+(check-false (tree-contains? (workspace-layout (state-workspace s-close-region)) new-rid))
+(check-equal? (state-focus s-close-region) vid)
+
 ;;; ════════════════ 退出 ════════════════
 
-(define s15 (feed s14 (ctrl 'q)))
+(define s15 (feed s-close-region (ctrl 'q)))
 (check-true (runtime-quit? (state-runtime s15)))
 
 (displayln "edit-tui-rebuild runtime: ok")

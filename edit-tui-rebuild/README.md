@@ -123,5 +123,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-z` / `C-y` | undo / redo |
 | `C-b` / `C-v` | 向右 / 向下切分（same document 多 view） |
 | `C-w` | 关闭当前 view |
+| `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `M-方向` | region 间焦点移动 |
+| 左键点击 | 聚焦 view 并把光标落到点击位置 |
+| 左键拖动 | 从按下位置开始拖选 |
 | `C-q` | 退出 |

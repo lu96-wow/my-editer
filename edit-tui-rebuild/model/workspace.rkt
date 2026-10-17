@@ -37,6 +37,7 @@
          workspace-add-doc workspace-add-view workspace-add-region
          workspace-remove-doc
          workspace-remove-view
+         workspace-remove-region
          workspace-doc-of-view
          workspace-view-region
          workspace-region-members
@@ -169,6 +170,13 @@
                [stack (for/list ([x (in-list (workspace-stack w))]
                                  #:unless (equal? x vid))
                         x)]))
+
+;; 移除一个 region：清 regions 表 + 把它从 layout 里摘掉。
+;; view / 其它 region 的处理由调用方决定（close-region 命令会先清 view）。
+(define (workspace-remove-region w rid)
+  (struct-copy workspace w
+               [regions (hash-remove (workspace-regions w) rid)]
+               [layout (tree-close (workspace-layout w) rid)]))
 
 ;; 关闭文档：移除 doc + 它所有 view（含 region 成员 / 焦点）。
 (define (workspace-remove-doc w did)

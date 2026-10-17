@@ -8,6 +8,7 @@
 (provide default-command-table
          split-view-command
          close-view-command
+         close-region-command
          focus-move-command)
 
 (require "../base/id.rkt"
@@ -17,14 +18,19 @@
          "../model/workspace.rkt"
          "../model/layout.rkt"
          "../model/chrome.rkt"
+         "../model/input.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
          "../env/role.rkt"
          "../projection/geometry.rkt"
+         "../effects/engine.rkt"
          "../../core/editor/ops.rkt"
+         "../../core/text/base/point.rkt"
+         "../../core/text/base/selection.rkt"
          "../../core/view/panel.rkt"
          "../../core/view/base/rect.rkt"
-         "../dispatch/context.rkt")
+         "../dispatch/context.rkt"
+         (prefix-in app: "../base/event.rkt"))
 
 ;;; ════════════════ 小工具 ════════════════
 
@@ -149,6 +155,84 @@
      (transition (state-set-workspace s ws**)
                  (list (close-view-effect vid)))]))
 
+;;; ════════════════ 关闭 region / panel ════════════════
+
+(define (subject-region ctx)
+  (define subj (ctx-subject ctx))
+  (define ws (state-workspace (ctx-state ctx)))
+  (cond
+    [(view-id? subj) (workspace-view-region ws subj)]
+    [(region-id? subj) (workspace-region ws subj)]
+    [else #f]))
+
+(define (count-role-regions ws role)
+  (for/sum ([r (in-hash-values (workspace-regions ws))]
+            #:when (eq? (region-role r) role))
+    1))
+
+;; 去掉 region 里所有 view（不删 region）；返回新 workspace + close-view effects。
+(define (drop-region-views ws rid)
+  (define vids (workspace-region-views ws rid))
+  (values (for/fold ([w ws]) ([vid (in-list vids)])
+            (workspace-remove-view w vid))
+          (for/list ([vid (in-list vids)]) (close-view-effect vid))))
+
+;; 其它 region 的 active view（排除 rid）；没有 -> #f。
+(define (fallback-view ws rid)
+  (for/first ([r (in-hash-values (workspace-regions ws))]
+              #:unless (equal? (region-key r) rid)
+              #:when (view-id? (region-active r)))
+    (region-active r)))
+
+(define (close-region-command)
+  (cmd (λ (ctx) (close-region ctx))))
+
+(define (close-region ctx)
+  (define s (ctx-state ctx))
+  (define ws (state-workspace s))
+  (define reg (subject-region ctx))
+  (cond
+    [(not reg) (message ctx "close-region: no region")]
+    [else
+     (define rid (region-key reg))
+     (define role (region-role reg))
+     (define policy (role-close-policy (environment-role (ctx-env ctx) role)))
+     (case policy
+       [(ignore)
+        (message ctx "close-region: region ignores close")]
+
+       [(hide)
+        ;; 只从布局里隐藏；views / region 元数据都保留，之后可 show-region。
+        (define ws1 (struct-copy workspace ws
+                                 [layout (tree-hide (workspace-layout ws) rid)]))
+        (define fb (fallback-view ws1 rid))
+        (define ws2 (workspace-set-focus* ws1 fb #:push? #f))
+        (transition (state-set-workspace s ws2) '())]
+
+       [(delete)
+        (define-values (ws1 evs) (drop-region-views ws rid))
+        (define ws2 (workspace-remove-region ws1 rid))
+        (define fb (fallback-view ws2 rid))
+        (define ws3 (workspace-set-focus* ws2 fb #:push? #f))
+        (transition (state-set-workspace s ws3) evs)]
+
+       [(keep-last)
+        (if (> (count-role-regions ws role) 1)
+            ;; 不是最后一块：按 delete 处理
+            (let-values ([(ws1 evs) (drop-region-views ws rid)])
+              (define ws2 (workspace-remove-region ws1 rid))
+              (define fb (fallback-view ws2 rid))
+              (define ws3 (workspace-set-focus* ws2 fb #:push? #f))
+              (transition (state-set-workspace s ws3) evs))
+            ;; 最后一块：清掉 views，但保留空 region 占位
+            (let-values ([(ws1 evs) (drop-region-views ws rid)])
+              (define fb (fallback-view ws1 rid))
+              (define ws2 (workspace-set-focus* ws1 fb #:push? #f))
+              (transition (state-set-workspace s ws2) evs)))]
+
+       [else
+        (message ctx (format "close-region: unknown policy ~a" policy))])]))
+
 ;;; ════════════════ 焦点移动 ════════════════
 
 (define (focus-move-command dir)
@@ -182,6 +266,77 @@
          (transition-pure (state-set-focus s target-vid))
          (message ctx "focus: no neighbor view"))]))
 
+;;; ════════════════ 鼠标：点击落点 / 拖选 ════════════════
+
+;; 屏幕 (row,col) -> 焦点 view 的文档 point。
+;; view 的屏幕坐标是「panel 内容区」内的坐标，所以要先减去内容区原点。
+(define (screen->point ctx vid row col)
+  (define s (ctx-state ctx))
+  (define ws (state-workspace s))
+  (define reg (workspace-view-region ws vid))
+  (define eview (ctx-engine ctx))
+  (cond
+    [(not (and reg eview)) #f]
+    [else
+     (define area (frame-area s))
+     (define-values (rps _cuts) (geometry-solve (workspace-layout ws) area))
+     (define rp
+       (for/first ([p (in-list rps)]
+                   #:when (equal? (region-panel-region p) (region-key reg)))
+         p))
+     (cond
+       [(not rp) #f]
+       [else
+        (define content (region-panel-content rp))
+        (define-values (line c)
+          (engine-view-view-screen-position->point
+           eview vid
+           (- row (rect-y content))
+           (- col (rect-x content))))
+        (and line (point line c))])]))
+
+(define (pointer-press-command)
+  (cmd (λ (ctx)
+         (define vid (view-subject ctx))
+         (define ev (ctx-event ctx))
+         (if (not (and vid (app:mouse-event? ev)))
+             (transition-pure (ctx-state ctx))
+             (let ([pt (screen->point ctx vid
+                                      (app:mouse-event-row ev)
+                                      (app:mouse-event-col ev))])
+               (if (not pt)
+                   (transition-pure (state-set-focus (ctx-state ctx) vid))
+                   (let* ([s1 (state-set-focus (ctx-state ctx) vid)]
+                          [s2 (state-input*
+                               s1
+                               (λ (i)
+                                 (input-set-gesture
+                                  i (make-gesture 'select vid (list vid pt)))))] )
+                     (transition s2
+                                 (list (select-effect
+                                        vid
+                                        (selections-one (caret pt))))))))))))
+
+(define (pointer-drag-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define d (input-gesture (state-input s)))
+         (define ev (ctx-event ctx))
+         (if (not (and (gesture? d) (eq? (gesture-kind d) 'select)))
+             (transition-pure s)
+             (let* ([vid (gesture-owner d)]
+                    [anchor (cadr (gesture-data d))]
+                    [pt (and (app:mouse-event? ev)
+                             (screen->point ctx vid
+                                            (app:mouse-event-row ev)
+                                            (app:mouse-event-col ev)))])
+               (if pt
+                   (transition s
+                               (list (select-effect
+                                      vid
+                                      (selections-one (selection anchor pt)))))
+                   (transition-pure s)))))))
+
 ;;; ════════════════ 默认命令表 ════════════════
 
 (define (default-command-table)
@@ -200,7 +355,10 @@
         'split-right  (split-view-command 'right)
         'split-down   (split-view-command 'down)
         'close-view   (close-view-command)
+        'close-region (close-region-command)
         'focus-left   (focus-move-command 'left)
         'focus-right  (focus-move-command 'right)
         'focus-up     (focus-move-command 'up)
-        'focus-down   (focus-move-command 'down)))
+        'focus-down   (focus-move-command 'down)
+        'pointer-press (pointer-press-command)
+        'pointer-drag  (pointer-drag-command)))

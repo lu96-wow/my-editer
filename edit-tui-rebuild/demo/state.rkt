@@ -34,7 +34,7 @@
 
 (define engine (make-engine))
 (void (engine-create-doc! engine did "main.rkt"
-                          "State observer demo\n\nEdit this buffer. The bottom line is the raw app State:\n  focus / cursor / docs / views / regions / pending / message\n\nTry:\n  C-b  split right\n  C-v  split down\n  C-w  close view\n  M-←  move focus\n  C-q  quit\n"))
+                          "State observer demo\n\nEdit this buffer. The bottom line is the raw app State:\n  focus / cursor / docs / views / regions / pending / message\n\nTry:\n  C-b  split right\n  C-v  split down\n  C-w  close view\n  M-w  close panel/region\n  M-←  move focus\n  C-q  quit\n"))
 (void (engine-create-view! engine vid did))
 
 (define ws0 (workspace-empty))

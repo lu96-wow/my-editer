@@ -18,9 +18,10 @@
 ;;;   C-q                 退出
 
 (provide default-env
-         text-keys global-keys)
+         text-keys pointer-keys global-keys)
 
 (require "../../edit-tui/command/key.rkt"
+         "../../edit-tui/command/mouse.rkt"
          "../base/keymap.rkt"
          "../base/transition.rkt"
          "../model/state.rkt"
@@ -44,12 +45,18 @@
    [(key 'z 'ctrl)   'undo]
    [(key 'y 'ctrl)   'redo]))
 
+(define pointer-keys
+  (keys
+   [(mouse 'press 'left) 'pointer-press]
+   [(mouse 'move #f)      'pointer-drag]))
+
 (define global-keys
   (keys
    [(key 'q 'ctrl)                 'quit]
    [(key 'b 'ctrl)                 'split-right]
    [(key 'v 'ctrl)                 'split-down]
    [(key 'w 'ctrl)                 'close-view]
+   [(key 'w 'alt)                  'close-region]
    [(key 'left 'alt)               'focus-left]
    [(key 'right 'alt)              'focus-right]
    [(key 'up 'alt)                 'focus-up]
@@ -59,7 +66,7 @@
   (environment-merge
    default-environment
    (make-environment
-    #:modes (hash 'text   (make-mode #:keymaps (list text-keys) #:fallback 'insert)
+    #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
                   'status (make-mode #:fallback 'ignore)
                   'input  (make-mode #:fallback 'insert))
     #:commands (default-command-table)
