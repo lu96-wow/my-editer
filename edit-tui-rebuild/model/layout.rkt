@@ -3,10 +3,11 @@
 ;;; model/layout.rkt —— 纯布局树（region id + 尺寸），不依赖 core
 ;;;
 ;;; node = leaf | split
-;;;   (leaf region dim visible?)
+;;;   (leaf region dim visible? borders)
 ;;;       region  : region-id（成员表在 workspace.regions）
 ;;;       dim     : 沿父轴的尺寸
 ;;;       visible?: 显隐（隐藏不占额度）
+;;;       borders : (listof 'up 'down 'left 'right) 外边框声明
 ;;;   (split axis children dim)
 ;;;       axis    : 'lr（左右并排）| 'tb（上下堆叠）
 ;;;       children: (listof node)
@@ -24,9 +25,10 @@
          fixed flex ->dim dim-fixed? dim-flex?
          node? node-dim node-with-dim node-visible?
          make-leaf make-split empty-tree
+         leaf-borders-all leaf-borders-none
          tree-find tree-leaves tree-regions tree-visible-regions
          tree-contains? tree-visible?
-         tree-set-dim tree-set-visible tree-show tree-hide
+         tree-set-dim tree-set-visible tree-set-borders tree-show tree-hide
          tree-split tree-close tree-move
          tree-detach tree-insert)
 
@@ -44,8 +46,11 @@
 
 ;;; ---------- 节点 ----------
 
-(struct leaf (region dim visible?) #:transparent)
+(struct leaf (region dim visible? borders) #:transparent)
 (struct split (axis children dim) #:transparent)
+
+(define leaf-borders-all '(up down left right))
+(define leaf-borders-none '())
 
 (define (node? x) (or (leaf? x) (split? x)))
 (define (node-dim n) (->dim (if (leaf? n) (leaf-dim n) (split-dim n))))
@@ -56,8 +61,10 @@
   (define d* (->dim d))
   (if (leaf? n) (struct-copy leaf n [dim d*]) (struct-copy split n [dim d*])))
 
-(define (make-leaf region [d 1] #:visible? [visible? #t])
-  (leaf region (->dim d) visible?))
+(define (make-leaf region [d 1]
+                   #:visible? [visible? #t]
+                   #:borders [borders leaf-borders-all])
+  (leaf region (->dim d) visible? borders))
 
 (define (make-split axis children [d 1])
   (split axis children (->dim d)))
@@ -106,6 +113,10 @@
   (map-leaves t (λ (l) (if (equal? (leaf-region l) rid)
                            (struct-copy leaf l [visible? v])
                            l))))
+(define (tree-set-borders t rid bs)
+  (map-leaves t (λ (l) (if (equal? (leaf-region l) rid)
+                           (struct-copy leaf l [borders bs])
+                           l))))
 (define (tree-show t rid) (tree-set-visible t rid #t))
 (define (tree-hide t rid) (tree-set-visible t rid #f))
 
@@ -144,8 +155,10 @@
 (define (tree-split t target axis region
                     #:dim [d 1]
                     #:visible? [visible? #t]
+                    #:borders [borders leaf-borders-all]
                     #:side [side 'after])
-  (tree-insert t target axis (make-leaf region d #:visible? visible?)
+  (tree-insert t target axis
+               (make-leaf region d #:visible? visible? #:borders borders)
                #:side side))
 
 ;;; ---------- 摘除 / 关闭 / 移动 ----------

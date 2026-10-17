@@ -10,7 +10,7 @@
 | 2 | `env/` 注册表（role / mode / scope / command） | ✅ |
 | 3 | `dispatch/` 规则管线 + 键盘/鼠标统一 | ✅ |
 | 4 | `effects/` engine 适配 + 文件 IO（spawn/timer 留给 runtime） | ✅ |
-| 5 | `projection/` geometry / render / status | 待做 |
+| 5 | `projection/` geometry / render / status | ✅ |
 | 6 | `bootstrap/` + runtime | 待做 |
 
 ## 块 1：base + model
@@ -40,8 +40,12 @@ dispatch/
   rules.rkt       有序规则：mode 层 / per-doc 层 / mode 默认 / global
   pipeline.rkt    event -> transition（键盘 / 鼠标 / prompt / 内部事件）
 effects/
-  engine.rkt      core buffer/view 的唯一拥有者 + 只读 engine-view
+  engine.rkt      core buffer/view 的唯一拥有者 + 只读 engine-view + view 尺寸同步
   interpreter.rkt effect -> transition（引擎写 / open / save / 文件 IO / quit）
+projection/
+  geometry.rkt    region 树 -> region-panel / 内容区 / 接缝（纯）
+  status.rkt      状态栏 / prompt 文本投影（纯）
+  render.rkt      state + engine -> panels / chrome / bytes（不输出、不写 core）
 ```
 
 核心约定：
@@ -57,7 +61,9 @@ effects/
 - State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；
 - `spawn` / `timer` / `emit` 是 Runtime effect，解释器显式报错，等 runtime 块接线；
 - 文档版本用 core 的 **opaque document token**：`buffer-version` / `buffer-version=?`，不存文本快照；
-  编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较。
+  编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较；
+- 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
+  chrome region（状态栏/输入栏）不是 core view，由 `projection/render` 按差异画文本。
 
 ## 测试
 
@@ -66,5 +72,6 @@ racket edit-tui-rebuild/test/base-model.rkt
 racket edit-tui-rebuild/test/env.rkt
 racket edit-tui-rebuild/test/dispatch.rkt
 racket edit-tui-rebuild/test/effects.rkt
+racket edit-tui-rebuild/test/projection.rkt
 edit-tui-rebuild/test/run.sh
 ```

@@ -20,6 +20,7 @@
          engine-add-doc! engine-add-view!
          engine-apply!
          engine-effect?
+         engine-sync-view! engine-sync-views!
          ;; 只读查询接口（ctx.engine）
          (struct-out engine-view)
          make-engine-view
@@ -79,6 +80,27 @@
   (unless b (error 'engine-create-view! "doc 不存在：~a" did))
   (define v (buffer-add-view! b width height #:line-numbers? line-numbers?))
   (engine-add-view! e vid v))
+
+;;; ---------- 视口同步（panel 内容是尺寸真相） ----------
+
+;; 把一个 view 的 viewport 落到内容区尺寸；尺寸不变则不写。
+(define (engine-sync-view! e vid width height)
+  (define v (engine-view-object e vid))
+  (when v
+    (define w (max 1 width))
+    (define h (max 1 height))
+    (unless (and (= w (view-width v)) (= h (view-height v)))
+      (view-resize! v w h)))
+  (void))
+
+;; placements : (listof (list view-id width height)) 或 (listof (list view-id rect))
+(define (engine-sync-views! e placements)
+  (for ([p (in-list placements)])
+    (define vid (car p))
+    (define w (if (rect? (cadr p)) (rect-w (cadr p)) (cadr p)))
+    (define h (if (rect? (cadr p)) (rect-h (cadr p)) (caddr p)))
+    (engine-sync-view! e vid w h))
+  (void))
 
 ;;; ---------- 删除 ----------
 
