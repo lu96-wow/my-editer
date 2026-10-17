@@ -209,7 +209,18 @@
 
 (sync-filetree-panel! s-cd5 engine)
 (define new-idx (index-of-line s-cd5 (λ (l) (equal? (filetree-line-path l) (filetree-normalize-path new-file)))))
-(define s-del (feed engine (set-line! s-cd5 new-idx) (ctrl 'd)))
+(define s-del-prompt (feed engine (set-line! s-cd5 new-idx) (ctrl 'd)))
+(check-true (input-active? s-del-prompt))
+;; n：取消，文件仍在
+(define s-del-n (feed engine s-del-prompt (plain #\n)))
+(define s-del-n* (feed engine s-del-n (app:key-event (key 'enter))))
+(check-true (file-exists? new-file))
+(check-false (input-active? s-del-n*))
+;; y：确认删除
+(sync-filetree-panel! s-del-n* engine)
+(define s-del2-prompt (feed engine (set-line! s-del-n* new-idx) (ctrl 'd)))
+(define s-del2-y (feed engine s-del2-prompt (plain #\y)))
+(define s-del (feed engine s-del2-y (app:key-event (key 'enter))))
 (check-false (file-exists? new-file))
 (sync-filetree-panel! s-del engine)
 (check-false (for/first ([l (in-list (lines s-del))]

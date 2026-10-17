@@ -16,7 +16,7 @@
 ;;;           没有 editor panel 时自动创建并放入。
 ;;; C-n f     创建文件
 ;;; C-n C-n f 创建文件夹
-;;; C-d       删除文件
+;;; C-d       删除文件（input 栏 y/n 确认）
 ;;; C-x C-p   placement 提交到当前/点击的 panel
 ;;; C-b       显示 / 隐藏文件树面板
 ;;; C-w ←→↑↓  在编辑区拆分

@@ -268,6 +268,7 @@
              (input-show ctx (format "Create folder in ~a: " dir))))))
 
 (define (delete-file-command)
+  ;; C-d 先进入 input 栏确认 y/n，不直接删。
   (cmd (λ (ctx)
          (define l (selected-line ctx))
          (cond
@@ -275,13 +276,7 @@
            [(not (filetree-file? l)) (message ctx "filetree: select a file")]
            [else
             (define path (filetree-line-path l))
-            (transition (ctx-state ctx)
-                        (list (delete-file-effect
-                               path
-                               (λ (s ok?)
-                                 (if ok?
-                                     (notice-state s (format "deleted: ~a" path))
-                                     (notice-state s (format "delete failed: ~a" path)))))))]))))
+            (input-show ctx (format "Delete file: ~a (y/n) " path))]))))
 
 (define (create-file-handler ctx matched)
   (define dir (cadr matched))
@@ -303,6 +298,25 @@
                              (if ok?
                                  (notice-state s2 (format "created: ~a" path))
                                  (notice-state s2 (format "create failed: ~a" path)))))))] )]))
+
+(define (delete-file-handler ctx matched)
+  (define path (cadr matched))
+  (define answer (string-trim (caddr matched)))
+  (define s (input-finish (ctx-state ctx)))
+  (cond
+    [(string=? answer "y")
+     (transition s
+                 (list (delete-file-effect
+                        path
+                        (λ (s2 ok?)
+                          (if ok?
+                              (notice-state s2 (format "deleted: ~a" path))
+                              (notice-state s2 (format "delete failed: ~a" path)))))))]
+    [(string=? answer "n")
+     (notice-state s (format "cancelled: ~a" path))]
+    [else
+     ;; 非法答案：重新显示确认 prompt
+     (input-show-state s (format "Delete file: ~a (y/n) " path))]))
 
 (define (create-folder-handler ctx matched)
   (define dir (cadr matched))
@@ -334,7 +348,11 @@
    (make-input-command
     'filetree-create-folder
     (input-command-regexp #rx"^Create folder in (.*): (.*)$")
-    create-folder-handler)))
+    create-folder-handler)
+   (make-input-command
+    'filetree-delete-confirm
+    (input-command-regexp #rx"^Delete file: (.*) \\(y/n\\) (.*)$")
+    delete-file-handler)))
 
 (define filetree-keys
   (keys
