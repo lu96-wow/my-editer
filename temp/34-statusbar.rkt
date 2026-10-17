@@ -55,8 +55,8 @@
 (define (base-world)
   (make-world #:area (rect 0 0 60 12)
               #:layout (lay 'tb
-                            (pane 'editor #:view eview #:size 4 #:dock 'center #:role 'editor)
-                            (pane 'slot   #:view #f    #:size 1 #:borders '()      #:role 'slot))
+                            (pane 'editor #:view eview #:size 1 #:dock 'center #:role 'editor)
+                            (pane 'slot   #:view #f    #:fixed 1 #:borders '()     #:role 'slot))
               #:focus (leaf-ref 'editor)
               #:keytable (make-keytable ask-keys prefix-keys)))
 

@@ -1,35 +1,39 @@
 #lang racket
 
-;;; layout/tree.rkt —— 布局树（纯）：分裂树 + 权重尺寸 + 显隐
+;;; layout/tree.rkt —— 布局树（纯）：分裂树 + 固定/弹性尺寸 + 显隐
 ;;;
 ;;; node = leaf | split
-;;;   (leaf id view borders face weight size visible? role)
+;;;   (leaf id view borders face weight dim visible? role)
 ;;;       id      宿主身份（focus / 移动 / 查找用；不放进 core 的 panel）
 ;;;       view    core 的 view | #f（空面板）
 ;;;       borders (listof 'up 'down 'left 'right) —— 默认全边；特殊面板自己指定
 ;;;       face    边框 face 符号
 ;;;       weight  边框 face 权重（core panel 的 weight）
-;;;       size    沿父轴的**权重**（>0）
+;;;       dim     沿父轴的**尺寸**（见下）
 ;;;       visible? 显隐
-;;;       role    'panel（面板，固定区域）| 'editor（编辑区，可被 split 切分）
-;;;               —— 默认 'panel；split 类操作只作用于 'editor（见 app/ops.rkt）
-;;;   (split axis children size)
+;;;       role    'panel（面板，固定区域）| 'editor | 'slot | …（见 app/role.rkt）
+;;;   (split axis children dim)
 ;;;       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
 ;;;       children (listof node)  —— n 叉
 ;;;
-;;; 显隐只在**叶子**上；split 是纯分组，只在至少有一个可见叶子时才占空间。
+;;; dim（尺寸）是 tagged union：
+;;;   (fixed n)                  固定 **n 格内容**（不含自身边框；solver 自动加边框厚度）
+;;;   (flex w #:min lo #:max hi) 弹性：按权重 w 分；lo/hi 是内容格上下限（#f = 不限）
+;;; 数字 = (flex n)，兼容旧的 `#:size n`。
 ;;;
-;;; 尺寸是**权重**：同层内按 size 比例分配沿轴额度（窗口 resize 自动按比例）。
-;;; 隐藏的从分配里跳过，但 size 保留 → 再显示按原比例回来。
+;;; 分配见 solve.rkt：固定先取，剩余按权重分给 flex（钳制 min/max）；
+;;; 没有 flex 时余量给第一个孩子（让末尾固定面板贴底）。
 ;;;
 ;;; 全部操作是 (tree → tree) 纯函数，用 leaf id 定位。core 不认识树；
 ;;; 「树 → (listof panel)」在 solve.rkt。
 
 (provide (struct-out leaf) (struct-out split)
-         node? node-size node-visible? node-with-size
+         (struct-out dim)
+         fixed flex ->dim dim-fixed? dim-flex?
+         node? node-dim node-visible? node-with-dim
          make-leaf empty-tree
          tree-find tree-leaves tree-visible-leaves tree-contains?
-         tree-set-view tree-set-size tree-set-weight tree-set-borders tree-set-face tree-set-visible
+         tree-set-view tree-set-dim tree-set-weight tree-set-borders tree-set-face tree-set-visible
          tree-set-role
          tree-show tree-hide tree-visible?
          tree-split tree-close tree-move
@@ -41,24 +45,41 @@
 
 (define (borders-default) borders-all)
 
-(struct leaf (id view borders face weight size visible? role) #:transparent)
-(struct split (axis children size) #:transparent)
+;;; ---------- 尺寸 ----------
+
+(struct dim (kind value lo hi) #:transparent)
+;; kind 'fixed : value = 内容格数（nat）；lo/hi 忽略
+;; kind 'flex  : value = 权重（>0）；lo/hi = 内容 min/max（#f | nat）
+
+(define (fixed n) (dim 'fixed (max 0 (inexact->exact (floor n))) #f #f))
+(define (flex w #:min [lo #f] #:max [hi #f]) (dim 'flex w lo hi))
+(define (->dim x) (if (dim? x) x (flex x)))
+(define (dim-fixed? d) (eq? (dim-kind d) 'fixed))
+(define (dim-flex? d)  (eq? (dim-kind d) 'flex))
+
+;;; ---------- 节点 ----------
+
+(struct leaf (id view borders face weight dim visible? role) #:transparent)
+(struct split (axis children dim) #:transparent)
 
 (define (node? x) (or (leaf? x) (split? x)))
-(define (node-size n) (if (leaf? n) (leaf-size n) (split-size n)))
+(define (node-dim n) (->dim (if (leaf? n) (leaf-dim n) (split-dim n))))
 ;; 可见性只在叶子上；分组节点“可见” = 至少有一个可见叶子（全隐藏的分组不占空间）。
 (define (node-visible? n)
   (cond [(leaf? n) (leaf-visible? n)]
         [else (for/or ([c (in-list (split-children n))]) (node-visible? c))]))
-(define (node-with-size n s) (if (leaf? n) (struct-copy leaf n [size s]) (struct-copy split n [size s])))
+(define (node-with-dim n d)
+  (define d* (->dim d))
+  (if (leaf? n) (struct-copy leaf n [dim d*]) (struct-copy split n [dim d*])))
 
 ;; 空布局（没有叶子）。
-(define (empty-tree) (split 'lr '() 1))
+(define (empty-tree) (split 'lr '() (flex 1)))
 
+;; #:size 接受数字（= flex 权重）或 dim。
 (define (make-leaf id view #:borders [borders (borders-default)] #:face [face 'window-border]
                    #:weight [weight 0] #:size [size 1] #:visible? [visible? #t]
                    #:role [role 'panel])
-  (leaf id view borders face weight size visible? role))
+  (leaf id view borders face weight (->dim size) visible? role))
 
 ;;; ---------- 查 ----------
 
@@ -90,12 +111,12 @@
         [else (struct-copy split t [children (map (λ (c) (map-leaves c f)) (split-children t))])]))
 
 (define (tree-set-view t id view) (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [view view]) l))))
-(define (tree-set-size t id size)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [size size]) l))))
-(define (tree-set-weight t id w)     (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [weight w]) l))))
-(define (tree-set-borders t id b)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [borders b]) l))))
-(define (tree-set-face t id f)       (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [face f]) l))))
-(define (tree-set-visible t id v)    (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? v]) l))))
-(define (tree-set-role t id r)       (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [role r]) l))))
+(define (tree-set-dim t id d)      (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [dim (->dim d)]) l))))
+(define (tree-set-weight t id w)   (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [weight w]) l))))
+(define (tree-set-borders t id b)  (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [borders b]) l))))
+(define (tree-set-face t id f)     (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [face f]) l))))
+(define (tree-set-visible t id v)  (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [visible? v]) l))))
+(define (tree-set-role t id r)     (map-leaves t (λ (l) (if (eqv? (leaf-id l) id) (struct-copy leaf l [role r]) l))))
 (define (tree-show t id) (tree-set-visible t id #t))
 (define (tree-hide t id) (tree-set-visible t id #f))
 
@@ -103,15 +124,16 @@
 
 ;; 把 node 插到 target 叶旁边：若 target 的父 split 与 axis 同向且 target 是直接孩子，
 ;; 作为同层兄弟插入（n 叉不加深）；否则把 target 叶替换成 (split axis [target node])。
+;; 新块用 flex 1（wrap）/ 继承 target 的 dim（同轴兄弟）。
 (define (tree-insert t target axis node #:side [side 'after])
   (define (go n)
     (cond
       [(leaf? n)
        (if (eqv? (leaf-id n) target)
-           (let ([base (node-with-size n 1)]
-                 [ins  (node-with-size node 1)])
+           (let ([base (node-with-dim n (flex 1))]
+                 [ins  (node-with-dim node (flex 1))])
              (split axis (if (eq? side 'after) (list base ins) (list ins base))
-                    (leaf-size n)))
+                    (leaf-dim n)))
            n)]
       [else
        (if (and (eq? axis (split-axis n))
@@ -121,7 +143,7 @@
                          (append*
                           (for/list ([c (in-list (split-children n))])
                             (if (and (leaf? c) (eqv? (leaf-id c) target))
-                                (let ([ins (node-with-size node (node-size c))])
+                                (let ([ins (node-with-dim node (node-dim c))])
                                   (if (eq? side 'after) (list c ins) (list ins c)))
                                 (list c))))])
            (struct-copy split n [children (map go (split-children n))]))]))
@@ -145,8 +167,8 @@
       [else
        (define cs (filter values (map go (split-children n))))
        (cond [(null? cs) #f]
-             ;; 塌缩：单孩子顶上来，并**继承 split 的 size**（保住整棵子树的额度）
-             [(null? (cdr cs)) (node-with-size (car cs) (split-size n))]
+             ;; 塌缩：单孩子顶上来，并**继承 split 的 dim**（保住整棵子树的额度）
+             [(null? (cdr cs)) (node-with-dim (car cs) (split-dim n))]
              [else (struct-copy split n [children cs])])]))
   (define t* (go t))
   (values (or t* (empty-tree)) removed))
@@ -166,7 +188,7 @@
          (tree-insert t* target axis moved #:side side)
          t)]))
 
-;;; ---------- 拖缝：按路径改两个相邻可见孩子的 size ----------
+;;; ---------- 拖缝：按路径改两个相邻可见孩子的 dim ----------
 
 ;; 从 i 之后找第一个可见孩子（隐藏孩子不占额度，跳过）。
 (define (next-visible-index cs i)
@@ -176,7 +198,9 @@
 
 ;; path = 从根到 split 的孩子下标表；i = 缝左 / 上方的**可见**孩子（原始下标）。
 ;; 右 / 下方伙伴是 i 之后第一个**可见**孩子 —— 中间夹了隐藏孩子时，index+1 未必是它。
-(define (tree-resize-at t path i s-i s-i+1)
+;; d-i / d-i+1 可以给数字（= flex 权重）或 dim。
+(define (tree-resize-at t path i d-i d-i+1)
+  (define di (->dim d-i)) (define dj (->dim d-i+1))
   (define (go n path)
     (define cs (split-children n))
     (cond
@@ -184,8 +208,8 @@
        (define j (next-visible-index cs i))
        (if j
            (struct-copy split n
-                        [children (list-set (list-set cs i (node-with-size (list-ref cs i) s-i))
-                                            j (node-with-size (list-ref cs j) s-i+1))])
+                        [children (list-set (list-set cs i (node-with-dim (list-ref cs i) di))
+                                            j (node-with-dim (list-ref cs j) dj))])
            n)]
       [else
        (define k (car path))

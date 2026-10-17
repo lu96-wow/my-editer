@@ -3,6 +3,8 @@
 ;;; 由 edit-tui/layout/tree.rkt 的测试外移而来（edit-tui 只留实现）。
 (require rackunit
          "../../edit-tui/layout/tree.rkt")
+(define (leaf-size* l) (dim-value (leaf-dim l)))
+
 
 (define t1 (tree-split (make-leaf 'editor #f) 'editor 'lr 'tree #:side 'before))
 (define (ids t) (map leaf-id (tree-leaves t)))
@@ -29,9 +31,9 @@
 
 ;; 塌缩要继承子树 size：拆开再关掉一个，剩下的应拿回整棵子树的额度（否则高度缩水）
 (define tz1 (tree-split (make-leaf 'a #f #:size 8) 'a 'lr 'b #:side 'after))
-(check-equal? (leaf-size (tree-find tz1 'a)) 1)
+(check-equal? (leaf-size* (tree-find tz1 'a)) 1)
 (define tz2 (tree-close tz1 'b))
-(check-equal? (leaf-size (tree-find tz2 'a)) 8)
+(check-equal? (leaf-size* (tree-find tz2 'a)) 8)
 
 ;; 摘除
 (define-values (t5 removed) (tree-detach t3 'status))
@@ -50,7 +52,7 @@
 ;; 显隐：隐藏保留 size，恢复回来
 (define t7 (tree-hide t2 'tree))
 (check-false (tree-visible? t7 'tree))
-(check-equal? (leaf-size (tree-find t7 'tree)) (leaf-size (tree-find t2 'tree)))
+(check-equal? (leaf-size* (tree-find t7 'tree)) (leaf-size* (tree-find t2 'tree)))
 (check-equal? (map leaf-id (tree-visible-leaves t7)) '(editor status))
 (check-equal? (ids (tree-show t7 'tree)) '(tree editor status))
 
@@ -62,14 +64,15 @@
 
 ;; 拖缝：按路径改两个相邻可见孩子的 size
 (define t8 (tree-resize-at t2 '() 0 5 7))
-(check-equal? (leaf-size (tree-find t8 'tree)) 5)
-(check-equal? (leaf-size (tree-find t8 'editor)) 7)
+(check-equal? (leaf-size* (tree-find t8 'tree)) 5)
+(check-equal? (leaf-size* (tree-find t8 'editor)) 7)
 ;; 中间夹隐藏孩子时，伙伴取下一个**可见**孩子（不是 index+1）
 (define t2h (tree-hide t2 'editor))
 (check-equal? (map leaf-id (tree-visible-leaves t2h)) '(tree status))
 (define t9 (tree-resize-at t2h '() 0 5 7))
-(check-equal? (leaf-size (tree-find t9 'tree)) 5)
-(check-equal? (leaf-size (tree-find t9 'status)) 7)      ; 跳到 status
-(check-equal? (leaf-size (tree-find t9 'editor)) 1)      ; 隐藏的没被动
+(check-equal? (leaf-size* (tree-find t9 'tree)) 5)
+(check-equal? (leaf-size* (tree-find t9 'status)) 7)      ; 跳到 status
+(check-equal? (leaf-size* (tree-find t9 'editor)) 1)      ; 隐藏的没被动
 
 (displayln "edit-tui/layout/tree.rkt: ok")
+

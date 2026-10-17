@@ -6,7 +6,7 @@ core 只吃 `(listof panel)`；本层负责**产出**它：把布局树解成带
 ```
 tree.rkt    布局树（纯）：结构 + 操作（split / close / move / show / hide / resize）
 spec.rkt    声明式构造器（启动时定义）：dock → 边框，直接产出 tree
-solve.rkt   树 → panels / placements / cuts（纯）+ 拖缝（格数 → 权重）
+solve.rkt   树 → panels / placements / cuts（纯）+ fixed/flex 分配 + 拖缝
 float.rkt   浮窗（正交覆盖，不参与布局）：叠放 + z + 锚点定位
 main.rkt    入口
 ```
@@ -15,15 +15,15 @@ main.rkt    入口
 
 ```
 node = leaf | split
-  (leaf id view borders face weight size visible? role)
+  (leaf id view borders face weight dim visible? role)
       id      宿主身份（core 的 panel 没有 id）
       view    core 的 view | #f（空面板）
       borders 每边可选；**默认全边**，只有知道位置的特殊面板才自定义缝
       weight  边框 face 权重（→ core panel 的 weight，焦点框抬边框用）
-      size    沿父轴的**权重**
+      dim     沿父轴的尺寸（见下）
       visible? 显隐
-      role    'panel（默认，固定区域）| 'editor（编辑区，可被切分；见 app/ops）
-  (split axis children size)
+      role    'panel（默认，固定区域）| 'editor | 'slot | …（见 app/role.rkt）
+  (split axis children dim)
       axis    'lr（左右并排，竖缝）| 'tb（上下堆叠，横缝）
       children n 叉
 
@@ -31,8 +31,20 @@ node = leaf | split
 至少有一个可见叶子时才占空间（叶子全隐藏 → 整组不占额度）。
 ```
 
-**尺寸是权重**：同层按 `size` 比例分配沿轴额度（窗口 resize 自动按比例）。
-隐藏的从分配里跳过，但 `size` 保留 → 再显示按原比例回来。
+**尺寸 `dim`**（`tree.rkt`）：
+
+```racket
+(struct dim (kind value lo hi))
+(fixed n)                          ; 固定 n 格**内容**（不含自身边框）
+(flex w #:min lo #:max hi)         ; 弹性权重 w；lo/hi = 内容上下限（#f = 不限）
+;; 数字 = (flex n)，兼容旧 #:size n
+```
+
+- fixed/min/max 都以**内容格**计：solver 自动加上该孩子沿轴的**边框厚度**（leaf 按有效边，split 为 0），
+  所以状态栏写 `(fixed 1)` 就永远是 1 行内容，**不管它是末尾还是中间孩子**。
+- 分配（`solve.rkt` 的 `alloc-dims`）：fixed 先取，剩余按权重分给 flex（钳制 min/max）；
+  没有 flex 时余量给**第一个孩子**（让末尾固定面板贴底）。
+- 隐藏的从分配里跳过，但 `dim` 保留 → 再显示按原值回来。
 
 ## 操作（全 `tree → tree` 纯函数，用 leaf id 定位）
 
@@ -41,9 +53,9 @@ node = leaf | split
 | `tree-split t target axis id …` | 在 `target` 旁切一刀；同轴则作兄弟插入（不加深），异轴则嵌套 |
 | `tree-close t id` | 删叶子；空 split 剪掉、单孩子 split 塌缩 |
 | `tree-move t id target axis #:side` | 摘出再插到 `target` 旁（换边 / 换父） |
-| `tree-show` / `tree-hide` / `tree-visible?` | 显隐（保留 size）；`tree-set-visible` 是对称的布尔版 |
-| `tree-set-role` | 改叶子 role（`'panel` / `'editor`）；`pane #:role` 可构造时指定 |
-| `tree-set-view` `tree-set-size` `tree-set-weight` `tree-set-borders` `tree-set-face` `tree-set-visible` | 改叶子字段（按 id） |
+| `tree-show` / `tree-hide` / `tree-visible?` | 显隐（保留 dim）；`tree-set-visible` 是对称的布尔版 |
+| `tree-set-role` | 改叶子 role（`'panel` / `'editor` / `'slot` …）；`pane #:role` 可构造时指定 |
+| `tree-set-view` `tree-set-dim` `tree-set-weight` `tree-set-borders` `tree-set-face` `tree-set-visible` | 改叶子字段（按 id） |
 | `tree-detach` | 摘出（返回新树 + 被摘节点） |
 
 ## 生产者
@@ -54,7 +66,7 @@ node = leaf | split
 (tree->cuts       tree area)   ; → (listof cut)
 ```
 
-- 同层按权重比例分整数格（余数补给前面几块）；
+- 同层分配：fixed 取固定内容格（+边框），flex 按权重分剩余（钳制 min/max；整数用最大余数法）；
 - `leaf` → `make-panel`（`view = #f` 就是空面板）。
 
 ### 接缝（相邻面板边界重叠）
@@ -80,11 +92,12 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 - `axis 'lr` → 竖缝（`offset` 是列）；`'tb` → 横缝（`offset` 是行）；
 - `span-lo/hi`：缝的范围；
 - `path` + `index`：缝所属 split 的「孩子下标路径」和左/上**可见**孩子下标；
-- `cells-before`/`cells-after`：缝两侧可见孩子当前的**格数**（tree 里存的是**权重** `size`）。
+- `cells-before`/`cells-after`：缝两侧可见孩子当前的 **rect 格数**（tree 里存的是 `dim`）。
 
-拖缝用 `(tree-resize-seam tree cut delta)`：`delta` 是格数增量，它把这两块的
-**总权重**按新格数比例重分（其他兄弟比例不受影响）；底层 `tree-resize-at`
-则是按 `path`+`index` 直接改两个可见孩子的 `size`（权重）。
+拖缝用 `(tree-resize-seam tree cut delta)`：`delta` 是格数增量。
+flex+flex 时把两块**总权重**按新格数比例重分（其它兄弟不受影响）；
+fixed 侧直接改固定值（**不钉住**，固定面板也能拖）；fixed+flex 时 flex 侧吸收。
+底层 `tree-resize-at` 直接改两个可见孩子的 `dim`（数字 = flex 权重）。
 
 命中：`cut-at`（第一条）/ `cuts-at`（全部，交点 = 竖缝 + 横缝 → 角拖）。
 
@@ -94,11 +107,20 @@ status 是 `(up left)`（上缝 + 左接缝）。三块交界处自然收成 `�
 
 ```racket
 (lay 'lr
-  (pane 'tree   #:view tv #:size 4 #:dock 'left)      ; 左侧 → 只留内缝 'right
+  (pane 'tree   #:view tv #:size 1 #:max 30 #:dock 'left)   ; 弹性，最多 30 列
   (lay 'tb
-    (pane 'editor #:view ev #:size 3 #:dock 'center)  ; 中 → 全边
-    (pane 'status #:view #f #:size 1 #:dock 'down))) ; 底 → 只留 'up
+    (pane 'editor #:view ev #:size 1 #:dock 'center)       ; 弹性（吸收剩余）
+    (pane 'status #:view #f #:fixed 1 #:dock 'down)))      ; 固定 1 行内容
 ```
+
+尺寸关键字：
+
+| 写法 | 含义 |
+|---|---|
+| `#:size n` | 弹性权重 n（默认 1） |
+| `#:fixed n` | 固定 n 格**内容**（与 `#:size` 二选一） |
+| `#:min n` / `#:max n` | 弹性的内容上下限（配 `#:size`） |
+| `#:size (fixed n)` / `(flex w #:min .. #:max ..)` | 直接给 dim |
 
 | dock | 自动边框 |
 |---|---|

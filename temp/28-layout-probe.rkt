@@ -46,10 +46,10 @@
   (cond
     [(leaf? t)
      (printf "~a leaf ~a role=~a size=~a view=~a\n"
-             ind (leaf-id t) (leaf-role t) (leaf-size t)
+             ind (leaf-id t) (leaf-role t) (dim-value (leaf-dim t))
              (if (leaf-view t) "有" "#f"))]
     [else
-     (printf "~a split ~a size=~a\n" ind (split-axis t) (split-size t))
+     (printf "~a split ~a size=~a\n" ind (split-axis t) (dim-value (split-dim t)))
      (for ([c (in-list (split-children t))]) (show-tree c (string-append ind "  ")))]))
 
 (define (hline s) (printf "\n=== ~a ===\n" s))

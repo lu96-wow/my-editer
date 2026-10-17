@@ -4,6 +4,8 @@
 (require rackunit
          "../../edit-tui/layout/spec.rkt"
          "../../edit-tui/layout/tree.rkt")
+(define (leaf-size* l) (dim-value (leaf-dim l)))
+
 
 (check-equal? (dock-borders 'left) '(right))
 (check-equal? (dock-borders 'up) '(down))
@@ -22,10 +24,11 @@
 (check-equal? (leaf-borders (tree-find t 'tree)) '(right))
 (check-equal? (leaf-borders (tree-find t 'editor)) '(up down left right))
 (check-equal? (leaf-borders (tree-find t 'status)) '(up))
-(check-equal? (leaf-size (tree-find t 'tree)) 4)
+(check-equal? (leaf-size* (tree-find t 'tree)) 4)
 ;; #:borders 覆盖 dock；pane 直接产出 leaf
 (define t2 (pane 'x #:view #f #:dock 'left #:borders '(down)))
 (check-true (leaf? t2))
 (check-equal? (leaf-borders t2) '(down))
 
 (displayln "edit-tui/layout/spec.rkt: ok")
+

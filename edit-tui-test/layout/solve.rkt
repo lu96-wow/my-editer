@@ -6,6 +6,8 @@
          "../../edit-tui/layout/tree.rkt"
          "../../core/view/panel.rkt"
          "../../core/view/base/rect.rkt")
+(define (leaf-size* l) (dim-value (leaf-dim l)))
+
 
 ;; 直接搭：左 tree(4) ｜ 右 tb[editor(3) / status(1)]
 (define tr
@@ -66,7 +68,7 @@
 (define c0 (car csh))
 (check-equal? (cut-index c0) 0)
 (define flat-r (tree-resize-at flat-h (cut-path c0) (cut-index c0) 5 7))
-(check-equal? (map leaf-size (tree-leaves flat-r)) '(5 1 7))
+(check-equal? (map leaf-size* (tree-leaves flat-r)) '(5 1 7))
 
 ;; 拖缝按格数：三块可见时也只重分 seam 两侧，第三块比例不受影响（权重 ≠ 格数）
 (define flat3 (split 'lr (list (make-leaf 'a #f #:size 4)
@@ -75,11 +77,11 @@
                      1))
 (define (width-of t id) (rect-w (cadr (assoc id (tree->placements t area)))))
 (define c3 (car (tree->cuts flat3 area)))              ; a|b 缝，index 0
-(check-equal? (list (cut-cells-before c3) (cut-cells-after c3)) '(52 38))
+(check-equal? (list (cut-cells-before c3) (cut-cells-after c3)) '(51 38))
 (define flat3* (tree-resize-seam flat3 c3 10))         ; 右拖 10 格
-(check-true (> (leaf-size (tree-find flat3* 'a)) 4))
-(check-true (< (leaf-size (tree-find flat3* 'b)) 3))
-(check-equal? (leaf-size (tree-find flat3* 'c)) 1)         ; 第三块权重不变
+(check-true (> (leaf-size* (tree-find flat3* 'a)) 4))
+(check-true (< (leaf-size* (tree-find flat3* 'b)) 3))
+(check-equal? (leaf-size* (tree-find flat3* 'c)) 1)         ; 第三块权重不变
 (check-equal? (width-of flat3* 'c) (width-of flat3 'c))    ; c 格数也不变
 (check-true (> (width-of flat3* 'a) (width-of flat3 'a)))
 (check-true (< (width-of flat3* 'b) (width-of flat3 'b)))
@@ -95,4 +97,53 @@
 (define pl3 (tree->placements tr (rect 0 0 1 1)))
 (check-true (for/and ([pl (in-list pl3)]) (>= (rect-w (cadr pl)) 0)))
 
+;; ---------- 固定尺寸 / min / max ----------
+(define area2 (rect 0 0 60 12))
+(define (panel-by t id)
+  (define pls (tree->placements t area2))
+  (define ps (tree->panels t area2))
+  (cdr (assoc id (map cons (map car pls) ps))))
+(define (content-h t id) (rect-h (panel-content (panel-by t id))))
+(define (content-w t id) (rect-w (panel-content (panel-by t id))))
+
+;; 状态栏固定 1 行内容（末尾孩子：上边框 + 1 内容 → rect 2）
+(define tfix (split 'tb (list (make-leaf 'editor #f #:size (flex 1))
+                              (make-leaf 'slot #f #:size (fixed 1) #:borders '()))
+                    (flex 1)))
+(check-equal? (content-h tfix 'slot) 1)
+
+;; 抽屉在状态栏之后：状态栏变中间孩子（上下边框）仍是 1 行内容；抽屉固定 2 行内容
+(define tdrawer (split 'tb (list (make-leaf 'editor #f #:size (flex 1))
+                                 (make-leaf 'slot #f #:size (fixed 1) #:borders '())
+                                 (make-leaf 'drawer #f #:size (fixed 2)))
+                       (flex 1)))
+(check-equal? (content-h tdrawer 'slot) 1)
+(check-equal? (content-h tdrawer 'drawer) 2)
+
+;; flex max：侧栏内容不超过 10（内容 max，solver 自动加边框厚度）
+(define tmax (split 'lr (list (make-leaf 'side #f #:size (flex 1 #:max 10))
+                              (make-leaf 'editor #f #:size (flex 1)))
+                    (flex 1)))
+(check-equal? (content-w tmax 'side) 10)
+
+;; flex min：窄屏下侧栏至少 5 内容（编辑器 flex 吸收）
+(define tmin (split 'lr (list (make-leaf 'side #f #:size (flex 1 #:min 5))
+                              (make-leaf 'editor #f #:size (flex 1)))
+                    (flex 1)))
+(define area-narrow (rect 0 0 12 12))
+(define (content-w* t area id)
+  (define pls (tree->placements t area)) (define ps (tree->panels t area))
+  (rect-w (panel-content (cdr (assoc id (map cons (map car pls) ps))))))
+(define w-min (content-w* tmin area-narrow 'side))
+(check-true (>= w-min 5))
+
+;; 没有 flex 时余量给第一个孩子（末尾固定面板贴底）
+(define tnoflex (split 'tb (list (make-leaf 'top #f #:size (fixed 2))
+                                 (make-leaf 'bot #f #:size (fixed 1)))
+                       (flex 1)))
+(define plnoflex (tree->placements tnoflex area2))
+(define botr (cadr (assoc 'bot plnoflex)))
+(check-equal? (+ (rect-y botr) (rect-h botr)) 12)   ; bot 贴底
+
 (displayln "edit-tui/layout/solve.rkt: ok")
+

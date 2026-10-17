@@ -98,5 +98,5 @@
          (let-values ([(axis side) (side->axis/side (panel-spec-side ps))])
            (define lay* (tree-split lay anchor axis (panel-spec-id ps)
                                     #:side side #:role (panel-spec-role ps)))
-           (world-set-layout w (tree-set-size lay* (panel-spec-id ps)
+           (world-set-layout w (tree-set-dim lay* (panel-spec-id ps)
                                               (panel-spec-size ps)))))]))

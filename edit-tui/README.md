@@ -59,12 +59,13 @@ main.rkt    入口：require 即安装
 ```
 tree.rkt    node = leaf | split；split/close/move/show/hide/weight/role
 spec.rkt    声明式 pane / lay（直接产出 tree；dock → 边框）
-solve.rkt   tree → panels / placements / cuts + 拖缝
+solve.rkt   tree → panels / placements / cuts + fixed/flex 分配 + 拖缝
 float.rkt   浮窗（正交覆盖，不进树）
 main.rkt    入口
 ```
 
-- leaf 字段：`id view borders face weight size visible? role`；
+- leaf 字段：`id view borders face weight dim visible? role`；
+- `dim` = `(fixed n)`（固定 n 格内容）或 `(flex w #:min .. #:max ..)`（弹性）；数字 = flex 权重；
 - 相邻面板**共享 1 格接缝**，边框格由 border-owner（deep / weight / 列表序）选 face；
 - `panel` 的尺寸真相在 `rect`，view 的 viewport 是派生量（由 core 的 `panels-sync!` 落）。
 - 详见 `layout/README.md`。
