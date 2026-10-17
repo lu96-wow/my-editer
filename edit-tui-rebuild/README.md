@@ -59,6 +59,7 @@ demo/
   basic.rkt       最小交互 demo
   state.rkt       主编辑区 + 一行 State 观察条
   save.rkt        status/input 共享槽 + y/n/yall/nall 保存确认
+  resource.rkt    资源列表面板（buffer）+ 显式 placement
 main.rkt          公共面（聚合以上）
 ```
 
@@ -98,6 +99,7 @@ racket edit-tui-rebuild/test/projection.rkt
 racket edit-tui-rebuild/test/runtime.rkt
 racket edit-tui-rebuild/test/save.rkt
 racket edit-tui-rebuild/test/views.rkt
+racket edit-tui-rebuild/test/resource-panel.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -159,6 +161,7 @@ edit-tui-rebuild/test/run.sh
 racket edit-tui-rebuild/demo/basic.rkt
 racket edit-tui-rebuild/demo/state.rkt   # 底部一行直接显示底层 State
 racket edit-tui-rebuild/demo/save.rkt    # status/input 共享槽 + 保存确认
+racket edit-tui-rebuild/demo/resource.rkt # 资源列表面板 + placement
 ```
 
 `state.rkt` 的底栏内容：
@@ -186,6 +189,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-x C-d` | 把当前 view 从 panel 摘出来（保留 view / engine view / document） |
 | `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
 | `C-x C-o` | 在同一 region 的多个 view 之间循环 active / focus |
+| `C-x C-p` | 提交 resource placement 到当前/点击的 panel |
+| `C-x C-g` | 取消 placement |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
@@ -251,3 +256,39 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 - `bootstrap/chrome.rkt`：安装共享槽、input show/finish、status buffer 同步；
 - `bootstrap/commands.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
 - `bootstrap/defaults.rkt`：`input-keys` + `default-input-commands`。
+
+
+## 资源列表面板
+
+`demo/resource.rkt`：
+
+- `*resources*` 也是 core buffer view，挂在 role `'resource` 的 panel；
+- document 行：
+  - 绿色 = 至少有一个 attached view；
+  - 黄色 = 只有 detached view / 无 view；
+- view 行缩进在 document 下：
+  - `region:X`
+  - `*` = active
+  - `[focus]`
+  - `[placing]`
+- `Tab` 折叠/展开 document；
+- `v` 给选中 doc 新建 detached view；
+- `n` 新建 scratch doc + detached view；
+- `r` 选中 view 进入 placement；
+- 然后鼠标或 `M-方向` 把焦点移到目标 panel：
+  - 鼠标左键直接点到目标 panel 会提交；
+  - 或按 `C-x C-p` 提交到当前焦点 panel；
+- 提交会替换目标 panel 的 active view；旧 view 只 **detach**，不销毁；
+- `d` detach 选中 view；`c` 销毁选中 view；`Esc` / `C-x C-g` 取消 placement。
+- placement 时点击目标 panel 会直接替换该 panel 的 active view；旧 view 被 detach 保留。
+
+API：
+
+```racket
+(install-resource-panel! engine state region-id)
+(sync-resource-panel! state engine)
+(resource-lines state)
+(resource-line-at state line)
+```
+
+`sync-resource-panel!` 由 runtime 每帧调用；资源面板不参与保存确认。

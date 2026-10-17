@@ -41,6 +41,7 @@
          "../dispatch/context.rkt"
          (except-in "../bootstrap/chrome.rkt" input-show)
          "../input.rkt"
+         "../bootstrap/resource-commands.rkt"
          (prefix-in app: "../base/event.rkt"))
 
 ;;; ════════════════ 小工具 ════════════════
@@ -271,7 +272,7 @@
        (or (not saved) (not (engine-version=? saved cur)))))
 
 (define (saveable-doc? dm)
-  (not (memq (doc-meta-mode dm) '(status state input))))
+  (not (memq (doc-meta-mode dm) '(status state input resources))))
 
 (define (dirty-docs state ev)
   (sort (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
@@ -829,7 +830,8 @@
 ;;; ════════════════ 默认命令表 ════════════════
 
 (define (default-command-table)
-  (hash 'quit         (request-quit-command)
+  (define base
+    (hash 'quit         (request-quit-command)
         'request-quit (request-quit-command)
         'request-close-file (request-close-file-command)
         'nav-left     (nav-command 'left)
@@ -862,3 +864,5 @@
         'focus-down   (focus-move-command 'down)
         'pointer-press (pointer-press-command)
         'pointer-drag  (pointer-drag-command)))
+  (for/fold ([h base]) ([(k v) (in-hash (resource-command-table))])
+    (hash-set h k v)))

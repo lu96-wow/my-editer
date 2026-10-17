@@ -13,4 +13,10 @@
   (list
    (list 'window-border  (style (rgb 90 96 110) #f '()))
    (list 'focused-border (style (rgb 120 180 240) #f '()))
-   (list 'float-border   (style (rgb 190 150 240) #f '()))))
+   (list 'float-border   (style (rgb 190 150 240) #f '()))
+   ;; 资源列表面板
+   (list 'resource-open     (style (rgb 120 220 120) #f '()))
+   (list 'resource-detached (style (rgb 220 200 120) #f '()))
+   (list 'resource-view     (style (rgb 180 180 190) #f '()))
+   (list 'resource-focus    (style (rgb 120 180 240) #f '()))
+   (list 'resource-pending  (style (rgb 240 160 120) #f '()))))

@@ -41,6 +41,8 @@
          "bootstrap/defaults.rkt"
          (except-in "bootstrap/chrome.rkt" input-show)
          "bootstrap/commands.rkt"
+         "bootstrap/resource-panel.rkt"
+         "bootstrap/resource-commands.rkt"
          "input.rkt"
          "runtime/run.rkt")
 
@@ -69,6 +71,8 @@
                        "projection/render.rkt"
                        "bootstrap/defaults.rkt"
                        "bootstrap/commands.rkt"
+                       "bootstrap/resource-panel.rkt"
+                       "bootstrap/resource-commands.rkt"
                        "input.rkt"
                        "runtime/run.rkt")
          (all-from-out "bootstrap/chrome.rkt"))

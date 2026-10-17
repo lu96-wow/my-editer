@@ -33,6 +33,7 @@
          "../env/environment.rkt"
          "../dispatch/pipeline.rkt"
          "../bootstrap/chrome.rkt"
+         "../bootstrap/resource-panel.rkt"
          "../projection/geometry.rkt"
          "../projection/render.rkt"
          "../../core/view/base/rect.rkt"
@@ -132,6 +133,7 @@
 ;; 先同步 view 尺寸（唯一写 core 的地方），再投影/输出。
 (define (run-frame state engine cache #:status-parts [status-parts #f])
   (sync-chrome! state engine status-parts)
+  (sync-resource-panel! state engine)
   (define-values (_ps _cs placements)
     (project-frame state engine #:status-parts status-parts))
   (engine-sync-views! engine placements)

@@ -27,9 +27,11 @@
          "../model/state.rkt"
          "../model/chrome.rkt"
          "../env/mode.rkt"
+         "../env/rule.rkt"
          "../env/environment.rkt"
          "../env/defaults.rkt"
          "../projection/status.rkt"
+         "resource-commands.rkt"
          "commands.rkt")
 
 (define text-keys
@@ -71,6 +73,8 @@
    [(key 'x 'ctrl) (key 'd 'ctrl)  'detach-view]
    [(key 'x 'ctrl) (key 'a 'ctrl)  'attach-detached]
    [(key 'x 'ctrl) (key 'o 'ctrl)  'cycle-view]
+   [(key 'x 'ctrl) (key 'p 'ctrl)  'resource-place-commit]
+   [(key 'x 'ctrl) (key 'g 'ctrl)  'resource-cancel]
    [(key 'q 'ctrl)                 'request-quit]
    [(key 'n 'ctrl)                 'new-document]
    [(key 'b 'ctrl)                 'split-right]
@@ -88,8 +92,11 @@
    (make-environment
     #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
                   'status (make-mode #:fallback 'ignore)
-                  'input  (make-mode #:keymaps (list input-keys) #:fallback 'insert))
+                  'input  (make-mode #:keymaps (list input-keys) #:fallback 'insert)
+                  'resources (make-mode #:keymaps (list resource-keys) #:fallback 'ignore))
     #:commands (default-command-table)
+    #:scopes (hash 'placing placement-scope)
+    #:rules (list (make-rule 'placing placement-keys))
     #:keymaps (hash 'global global-keys)
     #:input-commands (default-input-commands)
     #:status full-status-parts
