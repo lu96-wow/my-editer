@@ -100,7 +100,8 @@
   (engine-create-view! engine vid did #:line-numbers? (open-doc-spec-line-numbers? spec))
   (define dm (make-doc-meta (open-doc-spec-name spec)
                             #:path (open-doc-spec-path spec)
-                            #:mode (open-doc-spec-mode spec)))
+                            #:mode (open-doc-spec-mode spec)
+                            #:keymap-layers (open-doc-spec-keymaps spec)))
   (define ws (state-workspace s2))
   (define ws* (workspace-add-doc ws did dm))
   (define ws** (workspace-add-view ws* vid (view-meta did (hash))))
@@ -161,4 +162,10 @@
 
 (define (interpret-effects! engine state effects)
   (for/fold ([t (transition-pure state)]) ([e (in-list effects)])
-    (transition-bind t (λ (s) (interpret-effect! engine s e)))))
+    (transition-bind t (λ (s) (interpret-effect-tree! engine s e)))))
+
+;; 回调可以返回带 effect 的 transition（例如 read-file -> open-doc），
+;; 这里递归解释新产生的 effects。
+(define (interpret-effect-tree! engine state effect)
+  (define t (interpret-effect! engine state effect))
+  (interpret-effects! engine (transition-state t) (transition-effects t)))

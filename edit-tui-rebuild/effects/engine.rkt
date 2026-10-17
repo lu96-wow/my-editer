@@ -236,13 +236,14 @@
 
 ;;; ════════════════════════ open-doc 请求 ════════════════════════
 
-(struct open-doc-spec (name text mode path line-numbers?) #:transparent)
+(struct open-doc-spec (name text mode path line-numbers? keymaps) #:transparent)
 
 (define (make-open-doc-spec name text
                             #:mode [mode 'text]
                             #:path [path #f]
-                            #:line-numbers? [line-numbers? #f])
-  (open-doc-spec name text mode path line-numbers?))
+                            #:line-numbers? [line-numbers? #f]
+                            #:keymaps [keymaps '()])
+  (open-doc-spec name text mode path line-numbers? keymaps))
 
 ;; 便捷构造 effect：k : (state doc-id view-id -> transition)。
 (define (open-doc-effect* spec k)

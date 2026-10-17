@@ -51,8 +51,15 @@
    [(mouse 'press 'left) 'pointer-press]
    [(mouse 'move #f)      'pointer-drag]))
 
+(define prompt-keys
+  (keys
+   [(key 'enter)  'prompt-submit]
+   [(key 'escape) 'prompt-cancel]))
+
 (define global-keys
   (keys
+   [(key 'x 'ctrl) (key 'f 'ctrl)  'open-file]
+   [(key 'x 'ctrl) (key 'k 'ctrl)  'close-file]
    [(key 'q 'ctrl)                 'quit]
    [(key 'n 'ctrl)                 'new-document]
    [(key 'b 'ctrl)                 'split-right]
@@ -72,7 +79,8 @@
                   'status (make-mode #:fallback 'ignore)
                   'input  (make-mode #:fallback 'insert))
     #:commands (default-command-table)
-    #:keymaps (hash 'global global-keys)
+    #:keymaps (hash 'global global-keys
+                    'prompt prompt-keys)
     #:status full-status-parts
     #:handlers (hash 'job-done
                      (λ (s payload)

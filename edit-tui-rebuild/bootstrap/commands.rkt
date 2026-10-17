@@ -11,7 +11,8 @@
          close-region-command
          focus-move-command)
 
-(require "../base/id.rkt"
+(require racket/path
+         "../base/id.rkt"
          "../base/effect.rkt"
          "../base/transition.rkt"
          "../model/state.rkt"
@@ -21,6 +22,7 @@
          "../model/input.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
+         "../env/doc-type.rkt"
          "../env/role.rkt"
          "../projection/geometry.rkt"
          "../effects/engine.rkt"
@@ -161,10 +163,8 @@
   (for/or ([m (in-list (region-members reg))]) (view-member? m)))
 
 ;; 目标 region：当前 view 所在 region；没有 view 时找第一个空的 editor region。
-(define (target-region-for-new-view ctx)
-  (define s (ctx-state ctx))
+(define (target-region-for-new-view* s subj)
   (define ws (state-workspace s))
-  (define subj (ctx-subject ctx))
   (cond
     [(and (view-id? subj) (workspace-view-region ws subj))]
     [else
@@ -172,6 +172,9 @@
                  #:when (and (eq? (region-role r) 'editor)
                              (not (region-has-view? r))))
        r)]))
+
+(define (target-region-for-new-view ctx)
+  (target-region-for-new-view* (ctx-state ctx) (ctx-subject ctx)))
 
 (define (mount-view-in-region s rid vid)
   (define ws (state-workspace s))
@@ -201,6 +204,94 @@
                     (make-open-doc-spec "*scratch*" "")
                     (λ (s* _did vid)
                       (mount-view-in-region s* (region-key target) vid)))))]))))
+
+;;; ════════════════ 打开 / 关闭文件 ════════════════
+
+(define (notice-state s text)
+  (transition-pure
+   (state-chrome* s (λ (c) (chrome-set-message c text)))))
+
+;; 把新打开的 doc/view 装进当前 region（或空 editor region）。
+(define (mount-opened-document s vid)
+  (define target (target-region-for-new-view* s (state-focus s)))
+  (cond
+    [(not target) (notice-state s "open: no editor region")]
+    [else (mount-view-in-region s (region-key target) vid)]))
+
+;; 打开文件：读盘成功 -> open-doc-effect（携带 mode + per-doc keymaps）。
+(define (open-file-from-path ctx s path)
+  (define env (ctx-env ctx))
+  (define dt (environment-doc-type-for-path env path))
+  (define mode (if dt (doc-type-mode dt) 'text))
+  (define keymaps (if dt (doc-type-keymaps dt) '()))
+  (define name (let ([n (file-name-from-path path)])
+                 (if n (path->string n) path)))
+  (transition
+   s
+   (list (read-file-effect
+          path
+          (λ (s* text)
+            (if text
+                (transition
+                 s*
+                 (list (open-doc-effect
+                        (make-open-doc-spec name text
+                                            #:path path
+                                            #:mode mode
+                                            #:keymaps keymaps)
+                        (λ (s** _did vid)
+                          (mount-opened-document s** vid)))))
+                (notice-state s* (format "open failed: ~a" path))))))))
+
+(define (open-file-prompt-command)
+  (cmd (λ (ctx)
+         (transition-pure
+          (state-input*
+           (ctx-state ctx)
+           (λ (i)
+             (input-set-prompt
+              i (make-prompt 'string
+                             #:label "open file: "
+                             #:handler 'open-file))))))))
+
+(define (prompt-submit-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define p (input-prompt-session (state-input s)))
+         (cond
+           [(not p) (transition-pure s)]
+           [else
+            (define s1 (state-input* s (λ (i) (input-set-prompt i #f))))
+            (case (prompt-handler p)
+              [(open-file) (open-file-from-path ctx s1 (prompt-text p))]
+              [else (notice-state s1 (format "unsupported prompt: ~a" (prompt-handler p)))])]))))
+
+(define (prompt-cancel-command)
+  (cmd (λ (ctx)
+         (transition-pure
+          (state-input* (ctx-state ctx) (λ (i) (input-set-prompt i #f)))))))
+
+;; 关闭当前 view 所属的 document（所有 view 一起关）。
+(define (close-file-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define vid (view-subject ctx))
+         (define ws (state-workspace s))
+         (define did (and vid (workspace-doc-of-view ws vid)))
+         (cond
+           [(not did) (message ctx "close-file: no document")]
+           [else
+            (define doomed
+              (for/list ([(v vm) (in-hash (workspace-views ws))]
+                         #:when (equal? (view-meta-doc vm) did))
+                v))
+            (define fallback
+              (for/first ([(v vm) (in-hash (workspace-views ws))]
+                          #:unless (equal? (view-meta-doc vm) did))
+                v))
+            (define ws* (workspace-set-focus* ws fallback #:push? #f))
+            (transition (state-set-workspace s ws*)
+                        (list (close-doc-effect did)))]))))
 
 ;;; ════════════════ 关闭 region / panel ════════════════
 
@@ -408,6 +499,10 @@
         'close-view   (close-view-command)
         'close-region (close-region-command)
         'new-document (new-document-command)
+        'open-file    (open-file-prompt-command)
+        'close-file   (close-file-command)
+        'prompt-submit (prompt-submit-command)
+        'prompt-cancel (prompt-cancel-command)
         'focus-left   (focus-move-command 'left)
         'focus-right  (focus-move-command 'right)
         'focus-up     (focus-move-command 'up)

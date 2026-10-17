@@ -90,7 +90,11 @@
 (define (run-transition-effects engine t inbox)
   (for/fold ([t2 (transition-pure (transition-state t))])
             ([e (in-list (transition-effects t))])
-    (transition-bind t2 (λ (s) (run-one-effect engine s e inbox)))))
+    (transition-bind t2
+                     (λ (s)
+                       (define t1 (run-one-effect engine s e inbox))
+                       ;; effect 解释时可能产生新 effect（read-file -> open-doc），递归跑完。
+                       (run-transition-effects engine t1 inbox)))))
 
 (define (run-one-effect engine state effect inbox)
   (cond

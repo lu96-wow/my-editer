@@ -35,6 +35,7 @@ env/
   scope.rkt       scope 谓词（state -> bool）
   command.rkt     复用旧 command 结构（run / note / input）
   rule.rkt        scope + keymap 的规则
+  doc-type.rkt    路径扩展名 -> mode + per-document keymaps
   environment.rkt role/mode/scope/command/keymap/handler/rules/status 的只读聚合
   defaults.rkt    内置 role / mode
 dispatch/
@@ -71,6 +72,8 @@ main.rkt          公共面（聚合以上）
 - `env.rules` 是带 scope 的规则层，层序：input modes > per-doc > env.rules > mode > global；
 - 状态栏是 `status-part` 列表，不是写死的字符串：`environment.status` 决定用哪些段；
   `default-status-parts` 只有 focus 行列 + path，`full-status-parts` 再加 pending/message；
+- 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
+  命令派发按 subject view → doc → mode/per-doc layers，不按 layout region；
 - dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
 - prompt 的文本编辑目前是最小实现（append / backspace），后续块再泛化输入类型；
 - State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；
@@ -130,6 +133,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-w` | 关闭当前 view |
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `C-n` | 新建 document/view（空 editor region 也能接） |
+| `C-x C-f` | 打开文件（prompt 输入路径） |
+| `C-x C-k` | 关闭当前 document 的所有 view |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
