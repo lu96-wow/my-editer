@@ -14,7 +14,7 @@
 ;;;   输入答案后按 Enter。
 ;;; C-x C-k 关闭当前 document 也会走同一套确认。
 ;;;
-;;; 其它键：编辑、C-b/C-v split、C-w close view、M-w close panel、
+;;; 其它键：编辑、C-w arrows split、C-w C-w close view、M-w close panel、
 ;;; C-x C-f open file、M-方向 focus。
 
 (require "../../edit-tui/theme/main.rkt"

@@ -8,8 +8,8 @@
 ;;;   ←→↑↓ Home End       移动
 ;;;   Enter/Backspace/Del  编辑
 ;;;   C-z / C-y            undo / redo
-;;;   C-b / C-v            右 / 下切分（same document 多 view）
-;;;   C-w                  关闭当前 view
+;;;   C-w ←→↑↓             左/右/上/下切分（same document 多 view）
+;;;   C-w C-w              关闭当前 view
 ;;;   M-方向               焦点在 region 间移动
 ;;;   C-q                  退出
 
@@ -31,7 +31,7 @@
 
 (define engine (make-engine))
 (void (engine-create-doc! engine did "main.rkt"
-                          "hello, rebuild!\n\nC-b/C-v split, C-w close view, M-w close panel, C-n new doc,
+                          "hello, rebuild!\n\nC-w arrows split, C-w C-w close view, M-w close panel, C-n new doc,
 C-x C-f open file, C-x C-k close doc, C-x C-d detach view, C-x C-a reattach, C-q quit (asks to save if dirty).\n"))
 (void (engine-create-view! engine vid did))
 

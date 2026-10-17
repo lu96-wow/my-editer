@@ -30,6 +30,8 @@
          "../model/filetree.rkt"
          "../effects/engine.rkt"
          "../projection/filetree.rkt"
+         "../projection/geometry.rkt"
+         "../../core/view/base/rect.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
          "../env/doc-type.rkt"
@@ -157,6 +159,80 @@
                                         (λ (s* _did vid)
                                           (begin-open-placement s* vid)))))))))))]))
 
+;; C-b：显示 / 隐藏文件树面板。
+;; 隐藏时记录当前 region 在父轴上的内容尺寸；显示时用该宽度恢复（fixed），
+;; 若记录为 0 / 未记录，则使用最小值 20。
+(define filetree-min-size 20)
+
+(define (region-parent-axis layout rid)
+  (let loop ([n layout])
+    (cond
+      [(leaf? n) #f]
+      [else
+       (define cs (split-children n))
+       (cond
+         [(for/or ([c (in-list cs)])
+            (and (leaf? c) (equal? (leaf-region c) rid)))
+          (split-axis n)]
+         [else
+          (for/or ([c (in-list cs)]) (loop c))])])))
+
+(define (region-content-size layout area rid axis)
+  (define-values (rps _cuts) (geometry-solve layout area))
+  (define rp (for/first ([p (in-list rps)]
+                         #:when (equal? (region-panel-region p) rid))
+               p))
+  (and rp
+       (let ([c (region-panel-content rp)])
+         (if (eq? axis 'lr) (rect-w c) (rect-h c)))))
+
+(define (toggle-filetree-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define f (state-filetree s))
+         (define rvid (filetree-view f))
+         (define ws (state-workspace s))
+         (define reg (and rvid (workspace-view-region ws rvid)))
+         (cond
+           [(not reg) (message ctx "filetree: not installed")]
+           [else
+            (define rid (region-key reg))
+            (define layout (workspace-layout ws))
+            (define visible? (tree-visible? layout rid))
+            (cond
+              [visible?
+               ;; 先量当前尺寸，再隐藏
+               (define axis (or (region-parent-axis layout rid) 'lr))
+               (define w (state-window s))
+               (define area (rect 0 0 (window-cols w) (window-rows w)))
+               (define size (or (region-content-size layout area rid axis) 0))
+               (define s1 (state-filetree* s (λ (f*) (filetree-set-width f* size))))
+               (define ws1 (struct-copy workspace ws [layout (tree-hide layout rid)]))
+               (define ws2
+                 (if (equal? (state-focus s1) rvid)
+                     (let ([fb (for/first ([(v vm) (in-hash (workspace-views ws1))]
+                                          #:when (and (workspace-view-attached? ws1 v)
+                                                      (not (equal? v rvid))
+                                                      (let ([dm (workspace-doc ws1 (view-meta-doc vm))])
+                                                        (and dm
+                                                             (not (memq (doc-meta-mode dm)
+                                                                        '(status state input resources filetree)))))))
+                                v)])
+                       (workspace-set-focus* ws1 fb #:push? #f))
+                     ws1))
+               (transition-pure
+                (state-chrome*
+                 (state-set-workspace s1 ws2)
+                 (λ (c) (chrome-set-message c (format "filetree hidden (~a)" size)))))]
+              [else
+               (define recorded (or (filetree-width f) 0))
+               (define size (if (positive? recorded) recorded filetree-min-size))
+               (define layout* (tree-show (tree-set-dim layout rid (fixed size)) rid))
+               (transition-pure
+                (state-chrome*
+                 (state-set-workspace s (struct-copy workspace ws [layout layout*]))
+                 (λ (c) (chrome-set-message c (format "filetree shown (~a)" size)))))] )]))))
+
 (define (filetree-enter-command)
   (cmd (λ (ctx)
          (define l (selected-line ctx))
@@ -276,6 +352,7 @@
         'filetree-home  (nav-command 'home)
         'filetree-end   (nav-command 'end)
         'filetree-enter (filetree-enter-command)
+        'toggle-filetree (toggle-filetree-command)
         'filetree-create-file (create-file-prompt-command)
         'filetree-create-folder (create-folder-prompt-command)
         'filetree-delete (delete-file-command)))

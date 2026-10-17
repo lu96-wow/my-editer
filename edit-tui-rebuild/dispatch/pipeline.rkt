@@ -30,6 +30,9 @@
          "../model/workspace.rkt"
          "../model/input.rkt"
          "../model/chrome.rkt"
+         "../model/layout.rkt"
+         "../projection/geometry.rkt"
+         "../../core/view/base/rect.rkt"
          "../env/environment.rkt"
          "../env/role.rkt"
          "../env/mode.rkt"
@@ -99,31 +102,59 @@
   (define tok (mouse-event-token event))
   (define action (mouse-action tok))
   (define gesture (input-gesture (state-input state)))
+  (define row (mouse-event-row event))
+  (define col (mouse-event-col event))
+  (define ws (state-workspace state))
+  (define win (state-window state))
+  (define area (rect 0 0 (window-cols win) (window-rows win)))
+  (define-values (_rps cuts) (geometry-solve (workspace-layout ws) area))
+  (define seams (cuts-at cuts row col))
   (define subject*
     (if (and (memq action '(move release)) gesture (gesture-owner gesture))
         (gesture-owner gesture)
         subject))
-  (define-values (st v)
-    (if subject*
-        (lookup-rules (rules-for env state subject*) (list tok))
-        (values 'unbound #f)))
   (cond
-    [(eq? st 'leaf)
-     (run-command env state event subject* engine v)]
+    ;; 1) 缝：布局 chrome，优先于命令
+    [(and (eq? action 'press) (pair? seams))
+     (transition-pure
+      (state-input* state
+                     (λ (i)
+                       (input-set-gesture
+                        i (make-gesture 'seam #f
+                                        (list row col seams (workspace-layout ws)))))))]
+    ;; 2) 正在拖缝
+    [(and (eq? action 'move) (gesture? gesture) (eq? (gesture-kind gesture) 'seam))
+     (match-define (list r0 c0 cuts0 lay0) (gesture-data gesture))
+     (define lay*
+       (for/fold ([t lay0]) ([cut (in-list cuts0)])
+         (define delta (if (eq? (cut-axis cut) 'lr) (- col c0) (- row r0)))
+         (tree-resize-seam t cut delta)))
+     (transition-pure
+      (state-workspace* state (λ (w) (struct-copy workspace w [layout lay*]))))]
+    [(and (eq? action 'release) (gesture? gesture) (eq? (gesture-kind gesture) 'seam))
+     (transition-pure (state-input* state (λ (i) (input-set-gesture i #f))))]
     [else
-     (case action
-       [(press)
-        (if (focusable-subject? env state subject*)
-            (transition-pure (state-set-focus state subject*))
-            (transition-pure state))]
-       [(release)
-        (transition-pure (state-input* state (λ (i) (input-set-gesture i #f))))]
-       [(scroll)
-        (if subject*
-            (transition state (list (scroll-effect subject*
-                                                   (if (eq? (mouse-button tok) 'up) -3 3))))
-            (transition-pure state))]
-       [else (transition-pure state)])]))
+     (define-values (st v)
+       (if subject*
+           (lookup-rules (rules-for env state subject*) (list tok))
+           (values 'unbound #f)))
+     (cond
+       [(eq? st 'leaf)
+        (run-command env state event subject* engine v)]
+       [else
+        (case action
+          [(press)
+           (if (focusable-subject? env state subject*)
+               (transition-pure (state-set-focus state subject*))
+               (transition-pure state))]
+          [(release)
+           (transition-pure (state-input* state (λ (i) (input-set-gesture i #f))))]
+          [(scroll)
+           (if subject*
+               (transition state (list (scroll-effect subject*
+                                                      (if (eq? (mouse-button tok) 'up) -3 3))))
+               (transition-pure state))]
+          [else (transition-pure state)])])]))
 
 ;;; ════════════════ 其它事件 ════════════════
 

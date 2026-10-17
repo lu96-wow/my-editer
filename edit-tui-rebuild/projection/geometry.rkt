@@ -21,6 +21,7 @@
          region-panel-map
          region-panel-at
          cut-at cuts-at
+         tree-resize-seam
          leaf-effective-borders
          axis-thickness)
 
@@ -239,3 +240,64 @@
 
 (define (cut-at cuts row col)
   (for/or ([c (in-list cuts)] #:when (cut-match? c row col)) c))
+
+;;; ════════════════ 拖缝（按格数 → 新 dim） ════════════════
+
+(define (node-at-path t path)
+  (for/fold ([n t]) ([i (in-list path)]) (list-ref (split-children n) i)))
+
+(define (next-visible-index cs i)
+  (for/first ([j (in-range (add1 i) (length cs))]
+              #:when (node-visible? (list-ref cs j)))
+    j))
+
+;; tree-resize-at：path 到 split；i = 缝左/上方可见孩子原始下标。
+(define (tree-resize-at t path i d-i d-i+1)
+  (define di (->dim d-i)) (define dj (->dim d-i+1))
+  (define (go n path)
+    (define cs (split-children n))
+    (cond
+      [(null? path)
+       (define j (next-visible-index cs i))
+       (if j
+           (struct-copy split n
+                        [children (list-set (list-set cs i (node-with-dim (list-ref cs i) di))
+                                            j (node-with-dim (list-ref cs j) dj))])
+           n)]
+      [else
+       (define k (car path))
+       (struct-copy split n [children (list-set cs k (go (list-ref cs k) (cdr path)))])]))
+  (go t path))
+
+(define (resize-dims di dj ci cj delta)
+  (cond
+    [(and (dim-flex? di) (dim-flex? dj))
+     (define w (+ (dim-value di) (dim-value dj)))
+     (define tot (max 1 (+ ci cj)))
+     (define eps (/ w 1000))
+     (define ni (max eps (min (- w eps) (* w (/ ci tot)))))
+     (list (flex ni #:min (dim-lo di) #:max (dim-hi di))
+           (flex (- w ni) #:min (dim-lo dj) #:max (dim-hi dj)))]
+    [(and (dim-fixed? di) (dim-fixed? dj))
+     (list (fixed (max 0 (+ (dim-value di) delta)))
+           (fixed (max 0 (- (dim-value dj) delta))))]
+    [(dim-fixed? di)
+     (list (fixed (max 0 (+ (dim-value di) delta))) dj)]
+    [else
+     (list di (fixed (max 0 (- (dim-value dj) delta))))]))
+
+(define (tree-resize-seam tree cut delta)
+  (define cs (split-children (node-at-path tree (cut-path cut))))
+  (define i (cut-index cut))
+  (define j (for/first ([k (in-range (add1 i) (length cs))]
+                        #:when (node-visible? (list-ref cs k)))
+              k))
+  (cond
+    [(not j) tree]
+    [else
+     (define di (node-dim (list-ref cs i)))
+     (define dj (node-dim (list-ref cs j)))
+     (define ci (max 0 (+ (cut-cells-before cut) delta)))
+     (define cj (max 0 (- (cut-cells-after cut) delta)))
+     (define ds (resize-dims di dj ci cj delta))
+     (tree-resize-at tree (cut-path cut) i (car ds) (cadr ds))]))

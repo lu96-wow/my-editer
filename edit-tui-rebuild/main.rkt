@@ -38,6 +38,7 @@
          "dispatch/pipeline.rkt"
          "effects/engine.rkt"
          "effects/interpreter.rkt"
+         "projection/geometry.rkt"
          "projection/render.rkt"
          "bootstrap/defaults.rkt"
          (except-in "bootstrap/chrome.rkt" input-show)
@@ -73,7 +74,8 @@
                        "dispatch/pipeline.rkt"
                        "effects/engine.rkt"
                        "effects/interpreter.rkt"
-                       "projection/render.rkt"
+                       "projection/geometry.rkt"
+         "projection/render.rkt"
                        "bootstrap/defaults.rkt"
                        "bootstrap/commands.rkt"
                        "bootstrap/resource-panel.rkt"

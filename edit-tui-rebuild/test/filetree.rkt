@@ -24,6 +24,8 @@
          "../model/filetree.rkt"
          "../effects/engine.rkt"
          "../bootstrap/filetree-panel.rkt"
+         "../projection/geometry.rkt"
+         "../../core/view/base/rect.rkt"
          (except-in "../bootstrap/chrome.rkt" input-show)
          "../input.rkt"
          "../bootstrap/defaults.rkt"
@@ -71,6 +73,27 @@
   (for/or ([l (in-list (lines s))] [i (in-naturals)] #:when (pred l)) i))
 
 ;;; ════════════════ 行 / 颜色 / 缩进 ════════════════
+
+;;; ════════════════ C-b 显隐 ════════════════
+(define s-hidden (feed engine state (ctrl 'b)))
+(check-false (tree-visible? (workspace-layout (state-workspace s-hidden)) ft-rid))
+(check-false (state-focus s-hidden))
+(define hidden-size (filetree-width (state-filetree s-hidden)))
+(check-true (and hidden-size (>= hidden-size 20)))
+(define s-shown (feed engine s-hidden (ctrl 'b)))
+(check-true (tree-visible? (workspace-layout (state-workspace s-shown)) ft-rid))
+(define ft-leaf (tree-find (workspace-layout (state-workspace s-shown)) ft-rid))
+(check-true (dim-fixed? (leaf-dim ft-leaf)))
+(check-equal? (dim-value (leaf-dim ft-leaf)) hidden-size)
+
+;; 记录为 0 -> 显示时用最小值 20
+(define s-hidden-zero (feed engine s-shown (ctrl 'b)))
+(define s-zero (state-filetree* s-hidden-zero
+                               (λ (f) (filetree-set-width f 0))))
+(define s-show-zero (feed engine s-zero (ctrl 'b)))
+(define ft-leaf-zero (tree-find (workspace-layout (state-workspace s-show-zero)) ft-rid))
+(check-true (dim-fixed? (leaf-dim ft-leaf-zero)))
+(check-equal? (dim-value (leaf-dim ft-leaf-zero)) 20)
 
 (define ls0 (lines state))
 (define root-line (car ls0))
@@ -129,6 +152,12 @@
              (filetree-line-face l))
           'filetree-open)
 
+;; 嵌套在 lr 里的 filetree 也能 C-b 显隐（parent-axis 递归）
+(define s-hidden-nested (feed engine s-open (ctrl 'b)))
+(check-false (tree-visible? (workspace-layout (state-workspace s-hidden-nested)) ft-rid))
+(define s-shown-nested (feed engine s-hidden-nested (ctrl 'b)))
+(check-true (tree-visible? (workspace-layout (state-workspace s-shown-nested)) ft-rid))
+
 ;;; ════════════════ 打开 b：已有 editor -> placement，用户选 panel ════════════════
 
 (define s-open-ft (feed engine s-open (meta 'left)))
@@ -186,6 +215,33 @@
 (check-false (for/first ([l (in-list (lines s-del))]
                          #:when (equal? (filetree-line-path l) (filetree-normalize-path new-file)))
                #t))
+
+
+;;; ════════════════ 左侧全高布局：记录/恢复的是宽度 ════════════════
+
+(define e2 (make-engine))
+(define fr2 (region-id 1))
+(define er2 (region-id 2))
+(define t0 (make-state #:ids (make-id-counter 1 1 3 1)))
+(define t1 (install-filetree-panel! e2 t0 fr2 (path->string root)))
+(define t2 (state-workspace* t1 (λ (ws) (workspace-add-region ws er2 (region er2 '() #f 'editor)))))
+(define lr-lay
+  (make-split 'lr
+              (list (make-leaf fr2 (fixed 28) #:borders '(right))
+                    (make-leaf er2 (flex 1)))
+              (flex 1)))
+(define t3 (state-set-workspace t2 (struct-copy workspace (state-workspace t2) [layout lr-lay])))
+(define t4 (state-set-focus t3 (filetree-panel-view t3)))
+(define t-area (rect 0 0 80 24))
+(define-values (t-rps _t-cuts) (geometry-solve (workspace-layout (state-workspace t4)) t-area))
+(define t-rp (for/first ([p (in-list t-rps)] #:when (equal? (region-panel-region p) fr2)) p))
+(define width-before (rect-w (region-panel-content t-rp)))
+(define t-hidden (feed e2 t4 (ctrl 'b)))
+(check-equal? (filetree-width (state-filetree t-hidden)) width-before)
+(define t-shown (feed e2 t-hidden (ctrl 'b)))
+(define-values (t-rps2 _t-cuts2) (geometry-solve (workspace-layout (state-workspace t-shown)) t-area))
+(define t-rp2 (for/first ([p (in-list t-rps2)] #:when (equal? (region-panel-region p) fr2)) p))
+(check-equal? (rect-w (region-panel-content t-rp2)) width-before)
 
 (delete-directory/files root)
 (displayln "edit-tui-rebuild filetree: ok")

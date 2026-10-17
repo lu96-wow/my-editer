@@ -50,6 +50,18 @@
   (define s (state-set-focus (make-state #:workspace ws #:ids (make-id-counter 2 2 2 1)) vid))
   (values eng s did vid rid))
 
+;;; ════════════════ C-w 四向拆分 ════════════════
+
+(let-values ([(eng s did vid rid) (make-one)])
+  (define s1 (feed eng s (ctrl 'w) (app:key-event (key 'left))))
+  (check-equal? (hash-count (workspace-regions (state-workspace s1))) 2)
+  (define s2 (feed eng s1 (ctrl 'w) (app:key-event (key 'up))))
+  (check-equal? (hash-count (workspace-regions (state-workspace s2))) 3)
+  (define s3 (feed eng s2 (ctrl 'w) (app:key-event (key 'down))))
+  (check-equal? (hash-count (workspace-regions (state-workspace s3))) 4)
+  (define s4 (feed eng s3 (ctrl 'w) (app:key-event (key 'right))))
+  (check-equal? (hash-count (workspace-regions (state-workspace s4))) 5))
+
 ;;; ════════════════ detach / attach ════════════════
 
 (let-values ([(eng s did vid rid) (make-one)])
@@ -72,7 +84,7 @@
 ;;; ════════════════ close view：销毁 view，保留 doc ════════════════
 
 (let-values ([(eng s did vid rid) (make-one)])
-  (define s1 (feed eng s (ctrl 'w)))
+  (define s1 (feed eng s (ctrl 'w) (ctrl 'w)))
   (check-false (engine-view-exists? eng vid))
   (check-false (workspace-view (state-workspace s1) vid))
   (check-not-false (workspace-doc (state-workspace s1) did))
@@ -83,7 +95,7 @@
 ;; 两个 editor region；M-w 删除被聚焦的那个，但 view 要保留
 (let-values ([(eng s did vid rid) (make-one)])
   ;; 用 split 造第二个 region/view
-  (define s1 (feed eng s (ctrl 'b)))
+  (define s1 (feed eng s (ctrl 'w) (app:key-event (key 'right))))
   (define s2 (feed eng s1 (meta 'w)))       ; 删除当前（新）region
   (define ws (state-workspace s2))
   ;; 两个 view 都还在；至少一个 detached
@@ -109,7 +121,7 @@
   (define s2 (feed eng s1 (ctrl 'x)))
   (define s3 (feed eng s2 (ctrl 'd)))       ; detach
   (check-false (resources-confirm (state-resources s3)))
-  (define s4 (feed eng s3 (ctrl 'w)))       ; close view（focus 已 #f，no-op）
+  (define s4 (feed eng s3 (ctrl 'w) (ctrl 'w)))       ; close view（focus 已 #f，no-op）
   (check-false (resources-confirm (state-resources s4))))
 
 

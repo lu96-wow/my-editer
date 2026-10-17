@@ -102,6 +102,7 @@ racket edit-tui-rebuild/test/save.rkt
 racket edit-tui-rebuild/test/views.rkt
 racket edit-tui-rebuild/test/resource-panel.rkt
 racket edit-tui-rebuild/test/filetree.rkt
+racket edit-tui-rebuild/test/seam.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -182,8 +183,9 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `←→↑↓` / `Home` / `End` | 移动 |
 | `Enter` / `Backspace` / `Delete` | 编辑 |
 | `C-z` / `C-y` | undo / redo |
-| `C-b` / `C-v` | 向右 / 向下切分（same document 多 view） |
-| `C-w` | 关闭当前 view |
+| `C-b` | 显示 / 隐藏文件树面板 |
+| `C-w ←→↑↓` | 左 / 右 / 上 / 下切分（same document 多 view） |
+| `C-w C-w` | 关闭当前 view |
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `C-n` | 新建 document/view（空 editor region 也能接） |
 | `C-x C-f` | 打开文件（input document 输入路径） |
@@ -204,7 +206,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 
 采用 **保留空 region，只清 view**：
 
-- `C-w` close-view：移除当前 view；region 留在布局里；
+- `C-w C-w` close-view：移除当前 view；region 留在布局里；
 - `M-w` close-region + role `'editor keep-last`：
   - 同 role 还有别的 region → 删除当前 region；
   - 已经是最后一个 editor region → 关闭其中所有 view，但**保留空 region 占位**。
@@ -224,7 +226,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 
 | 操作 | 结果 |
 |---|---|
-| `C-w` close view | 销毁 view（engine view + view-meta）；document 保留 |
+| `C-w C-w` close view | 销毁 view（engine view + view-meta）；document 保留 |
 | `C-x C-d` detach view | 从 region 成员表移除；view / engine view / document 全部保留 |
 | `M-w` close region/panel | 把 region 内 view 全部 detach，再删除/保留 region；**不销毁 view** |
 | `C-x C-k` close document | 销毁该 document 的所有 view + document |
@@ -319,6 +321,10 @@ API：
 
 `demo/filetree.rkt [root]`：
 
+- 布局是左侧文件树 + 右侧 editor/status：
+  - 文件树占满左侧高度；
+  - 文件树上/下/左边框关闭，只保留右侧分隔边；
+  - 初始 editor panel 是空占位，打开文件后进入 placement，点击右侧 editor 或 `C-x C-p` 放入。
 - `*filetree*` 是 core buffer view；
 - 第一行固定是根目录完整路径；
 - 目录/文件按 **2 空格/层** 缩进；
@@ -327,6 +333,10 @@ API：
   - 目录蓝色；
   - 文件灰色；
   - 已打开的 document 绿色。
+- `C-b` 显示 / 隐藏文件树面板：
+  - 隐藏时记录当前 region 在父轴上的内容尺寸（宽度/高度）；
+  - 显示时用该尺寸作为 fixed 恢复，挤出隐藏时让出的空间；
+  - 尺寸为 0 / 未记录时使用最小值 20。
 - `Enter`：
   - root/dir → 展开/折叠
   - file → 打开：
@@ -360,3 +370,18 @@ API：
 | `C-d` | 删除文件 |
 | `←→↑↓ Home End` | 在文件树内移动 |
 | `C-x C-p` | placement 提交到当前/点击 panel |
+
+
+## 拖动 panel 接缝
+
+鼠标拖动相邻 panel 的共享接缝可以 resize：
+
+- `geometry-solve` 产出 `cut`（axis / offset / path / 两侧 rect 格数）；
+- press 命中 cut → `gesture 'seam`；
+- move → `tree-resize-seam` 按格数增量改两侧 dim：
+  - flex + flex：总权重不变，按新格数比例重分；
+  - fixed + fixed：直接改固定值；
+  - fixed + flex：固定侧改，flex 侧吸收；
+- release → 清 gesture。
+
+接缝是 layout chrome，不进命令表，也不受文档类型影响。

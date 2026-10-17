@@ -11,16 +11,17 @@
          empty-filetree
          filetree-expanded?
          filetree-toggle-expand
-         filetree-set-view filetree-set-root)
+         filetree-set-view filetree-set-root filetree-set-width)
 
-(struct filetree (view root expanded) #:transparent)
+(struct filetree (view root expanded width) #:transparent)
 
-(define (empty-filetree) (filetree #f "" (hash)))
+(define (empty-filetree) (filetree #f "" (hash) #f))
 
 (define (make-filetree #:view [view #f]
                        #:root [root ""]
-                       #:expanded [expanded (hash)])
-  (filetree view root expanded))
+                       #:expanded [expanded (hash)]
+                       #:width [width #f])
+  (filetree view root expanded width))
 
 (define (filetree-expanded? f path)
   (hash-has-key? (filetree-expanded f) path))
@@ -34,3 +35,4 @@
 
 (define (filetree-set-view f vid) (struct-copy filetree f [view vid]))
 (define (filetree-set-root f root) (struct-copy filetree f [root root]))
+(define (filetree-set-width f w) (struct-copy filetree f [width w]))

@@ -26,7 +26,7 @@
 ;;;   2. 用鼠标 / M-方向把焦点移到目标 panel；
 ;;;   3. C-x C-p 提交：替换目标 panel 的 active view，旧 view 被 detach 保留。
 ;;;
-;;; 其它：C-w close view，M-w close panel，C-x C-k close doc，
+;;; 其它：C-w C-w close view，M-w close panel，C-x C-k close doc，
 ;;; C-x C-s save，C-q quit。
 
 (require "../../edit-tui/theme/main.rkt"

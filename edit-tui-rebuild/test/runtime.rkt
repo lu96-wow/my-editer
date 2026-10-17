@@ -102,7 +102,7 @@
 ;;; ════════════════ 切分 / 焦点 / 关闭 ════════════════
 
 ;; C-b：向右切分，新 view 聚焦
-(define s11 (feed s10 (ctrl 'b)))
+(define s11 (feed s10 (ctrl 'w) (app:key-event (key 'right))))
 (check-equal? (hash-count (engine-views engine)) 4)
 (check-equal? (hash-count (workspace-views (state-workspace s11))) 4)
 (check-equal? (workspace-focus (state-workspace s11)) (view-id 4))
@@ -119,7 +119,7 @@
 (check-equal? (state-focus s13) (view-id 4))
 
 ;; C-w：关闭当前 view，焦点回落到另一个 view
-(define s14 (feed s13 (ctrl 'w)))
+(define s14 (feed s13 (ctrl 'w) (ctrl 'w)))
 (check-equal? (hash-count (engine-views engine)) 3)
 (check-equal? (hash-count (workspace-views (state-workspace s14))) 3)
 (check-equal? (state-focus s14) vid)
@@ -146,7 +146,7 @@
 ;;; ════════════════ 关闭 region / panel ════════════════
 
 ;; 再 split 一次，然后 M-w 关闭整个 region（不是只关 view）
-(define s-split2 (feed s-release (ctrl 'b)))
+(define s-split2 (feed s-release (ctrl 'w) (app:key-event (key 'right))))
 (check-equal? (hash-count (workspace-views (state-workspace s-split2))) 4)
 (check-equal? (hash-count (workspace-regions (state-workspace s-split2))) 4)
 (define new-rid (region-key (workspace-view-region (state-workspace s-split2)
