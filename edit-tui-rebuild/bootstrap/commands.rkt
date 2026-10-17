@@ -10,6 +10,9 @@
          close-view-command
          close-region-command
          request-close-doc
+         detach-view-command
+         attach-detached-command
+         cycle-region-view-command
          default-input-commands
          focus-move-command)
 
@@ -49,6 +52,8 @@
 (define (view-subject ctx)
   (define s (ctx-subject ctx))
   (and (view-id? s) s))
+
+(define (input-busy? ctx) (state-input-active? (ctx-state ctx)))
 
 (define (frame-area state)
   (rect 0 0 (window-cols (state-window state)) (window-rows (state-window state))))
@@ -104,6 +109,7 @@
   (define reg (and vid (workspace-view-region ws vid)))
   (define role (and reg (region-role reg)))
   (cond
+    [(input-busy? ctx) (message ctx "split: input active")]
     [(not (and did reg)) (message ctx "split: no view")]
     [(not (role-splittable? (environment-role (ctx-env ctx) role)))
      (message ctx "split: region not splittable")]
@@ -154,11 +160,14 @@
     [else
      (define source-rid (and reg (region-key reg)))
      (define ws* (workspace-remove-view ws vid))
-     ;; 优先同 region 里的其它 view，其次任意剩余 view。
+     ;; 优先同 region 里的其它真实 document view，其次任意 attached 真实 view。
      (define fallback
        (or (and source-rid
-                (for/first ([v (in-list (workspace-region-views ws* source-rid))]) v))
-           (for/first ([v (in-hash-keys (workspace-views ws*))]) v)))
+                (for/first ([v (in-list (workspace-region-views ws* source-rid))]
+                            #:when (let ([vm (workspace-view ws* v)])
+                                     (and vm (real-view? ws* vm))))
+                  v))
+           (fallback-attached-view ws*)))
      (define ws** (workspace-set-focus* ws* fallback #:push? #f))
      (transition (state-set-workspace s ws**)
                  (list (close-view-effect vid)))]))
@@ -184,17 +193,10 @@
 
 (define (mount-view-in-region s rid vid)
   (define ws (state-workspace s))
-  (define reg (workspace-region ws rid))
   (cond
-    [(not reg) (transition-pure s)]
+    [(not (workspace-region ws rid)) (transition-pure s)]
     [else
-     (define members
-       (if (for/or ([m (in-list (region-members reg))])
-             (and (view-member? m) (equal? (member-key m) vid)))
-           (region-members reg)
-           (append (region-members reg) (list (view-member vid)))))
-     (define reg* (struct-copy region reg [members members] [active vid]))
-     (define ws* (workspace-add-region ws rid reg*))
+     (define ws* (workspace-attach-view ws rid vid))
      (transition-pure (state-set-focus (state-set-workspace s ws*) vid))]))
 
 (define (new-document-command)
@@ -202,6 +204,7 @@
          (define s (ctx-state ctx))
          (define target (target-region-for-new-view ctx))
          (cond
+           [(input-busy? ctx) (message ctx "new: input active")]
            [(not target) (message ctx "new: no editor region")]
            [else
             (transition
@@ -213,9 +216,11 @@
 
 ;;; ════════════════ 打开 / 关闭文件 ════════════════
 
+(define (notice-state-value s text)
+  (state-chrome* s (λ (c) (chrome-set-message c text))))
+
 (define (notice-state s text)
-  (transition-pure
-   (state-chrome* s (λ (c) (chrome-set-message c text)))))
+  (transition-pure (notice-state-value s text)))
 
 ;; 把新打开的 doc/view 装进当前 region（或空 editor region）。
 (define (mount-opened-document s vid)
@@ -251,7 +256,7 @@
 
 (define (open-file-prompt-command)
   (cmd (λ (ctx)
-         (input-show (ctx-state ctx) "Open file: "))))
+         (input-show ctx "Open file: "))))
 
 (define (close-doc-action* state did)
   (close-doc-action state did))
@@ -269,9 +274,10 @@
   (not (memq (doc-meta-mode dm) '(status state input))))
 
 (define (dirty-docs state ev)
-  (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
-             #:when (and (saveable-doc? dm) (doc-dirty? state ev did)))
-    did))
+  (sort (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
+                   #:when (and (saveable-doc? dm) (doc-dirty? state ev did)))
+          did)
+        string<? #:key id->string))
 
 (define (doc-label state did)
   (define dm (workspace-doc (state-workspace state) did))
@@ -309,15 +315,18 @@
               (list-ref (save-confirm-docs c) idx)))))
 
 ;; 显示当前 confirm 项的 prompt（input document）。
-(define (save-confirm-show state did)
-  (input-show state (save-confirm-label state did)))
+(define (save-confirm-show ctx did)
+  (input-show ctx (save-confirm-label (ctx-state ctx) did)))
+
+(define (save-confirm-show-state state did)
+  (input-show-state state (save-confirm-label state did)))
 
 (define (save-confirm-start ctx docs action)
-  (define s (ctx-state ctx))
-  (define s1 (state-resources* s
-                              (λ (r)
-                                (resources-set-confirm r (make-save-confirm docs action)))))
-  (save-confirm-show s1 (car docs)))
+  (define s1 (state-resources*
+              (ctx-state ctx)
+              (λ (r) (resources-set-confirm r (make-save-confirm docs action)))))
+  (define ctx* (make-ctx (ctx-env ctx) s1 (ctx-event ctx) (ctx-subject ctx) (ctx-engine ctx)))
+  (save-confirm-show ctx* (car docs)))
 
 ;; 当前项处理完：还有下一个 -> 显示下一项；否则执行 action。
 (define (confirm-next state)
@@ -334,7 +343,7 @@
                      (λ (r)
                        (resources-set-confirm
                         r (struct-copy save-confirm c [index idx*]))))])
-           (save-confirm-show s1 did))
+           (save-confirm-show-state s1 did))
          (confirm-finish state))]))
 
 (define (confirm-finish state)
@@ -347,32 +356,61 @@
      (close-doc-action s1 (cdr action))]
     [else (transition-pure s1)]))
 
-(define (confirm-save-current state did)
-  (if (not did)
-      (confirm-finish state)
-      (transition state
-                  (list (save-doc-effect
-                         did
-                         (λ (s ok?)
-                           (if ok?
-                               (confirm-next s)
-                               (notice-state s (format "save failed: ~a"
-                                                       (or (doc-label s did) did))))))))))
-
-;; 保存当前 + 后面所有 dirty docs，然后执行 action。
-(define (save-docs-then state docs)
+(define (confirm-save-current ctx state did)
+  (define dm (and did (workspace-doc (state-workspace state) did)))
   (cond
-    [(null? docs) (confirm-finish state)]
+    [(not did) (confirm-finish state)]
+    ;; 没有 path：先进入 save-as 输入；保存成功后继续 confirm-next。
+    [(not (doc-meta-path dm))
+     (input-show (make-ctx (ctx-env ctx) state (ctx-event ctx)
+                           (ctx-subject ctx) (ctx-engine ctx))
+                 "Save as: ")]
     [else
      (transition state
                  (list (save-doc-effect
-                        (car docs)
+                        did
                         (λ (s ok?)
                           (if ok?
-                              (save-docs-then s (cdr docs))
-                              (notice-state s (format "save failed: ~a"
-                                                      (or (doc-label s (car docs))
-                                                          (car docs)))))))))] ))
+                              (confirm-next s)
+                              (save-confirm-show-state
+                               (notice-state-value
+                                s (format "save failed: ~a"
+                                          (or (doc-label s did) did)))
+                               did))))))]))
+
+;; 保存当前 + 后面所有 dirty docs，然后执行 action。
+(define (save-docs-then state docs [offset 0])
+  (cond
+    [(null? docs) (confirm-finish state)]
+    [else
+     (define did (car docs))
+     (define dm (workspace-doc (state-workspace state) did))
+     (cond
+       ;; 没有 path：停在当前项，提示用户 y 走 Save as。
+       [(not (doc-meta-path dm))
+        (define c (resources-confirm (state-resources state)))
+        (define idx (+ (save-confirm-index c) offset))
+        (define s1 (state-resources*
+                    state
+                    (λ (r)
+                      (resources-set-confirm
+                       r (struct-copy save-confirm c [index idx])))))
+        (save-confirm-show-state
+         (notice-state-value s1 (format "no path; press y to Save as: ~a"
+                                        (doc-label s1 did)))
+         did)]
+       [else
+        (transition state
+                    (list (save-doc-effect
+                           did
+                           (λ (s ok?)
+                             (if ok?
+                                 (save-docs-then s (cdr docs) (add1 offset))
+                                 (save-confirm-show-state
+                                  (notice-state-value
+                                   s (format "save failed: ~a"
+                                             (or (doc-label s did) did)))
+                                  did))))))])]))
 
 ;; ════════════════ 输入栏提交 ════════════════
 
@@ -393,10 +431,7 @@
             ((input-command-handler (car hit)) ctx (cdr hit))]))))
 
 (define (input-cancel-command)
-  (cmd (λ (ctx)
-         (define s (ctx-state ctx))
-         (define s1 (state-resources* s (λ (r) (resources-set-confirm r #f))))
-         (transition-pure (input-finish s1)))))
+  (cmd (λ (ctx) (transition-pure (input-cancel ctx)))))
 
 ;; 把整串输入（prompt + answer）交给 handler。
 (define (handle-save-answer ctx state answer)
@@ -404,15 +439,68 @@
   (define c (resources-confirm (state-resources state)))
   (cond
     [(not c) (transition-pure state)]
-    [(string=? a "y") (confirm-save-current state (confirm-current-doc state))]
+    [(string=? a "y") (confirm-save-current ctx state (confirm-current-doc state))]
     [(string=? a "n") (confirm-next state)]
     [(string=? a "yall")
      (save-docs-then state
-                     (drop (save-confirm-docs c) (save-confirm-index c)))]
+                     (drop (save-confirm-docs c) (save-confirm-index c))
+                     0)]
     [(string=? a "nall") (confirm-finish state)]
-    [else (notice-state state "answer must be y/n/yall/nall")]))
+    [else
+     (define did (confirm-current-doc state))
+     (if did
+         (save-confirm-show-state
+          (notice-state-value state "answer must be y/n/yall/nall")
+          did)
+         (notice-state state "answer must be y/n/yall/nall"))]))
 
-;; 输入栏默认命令：open-file / save-confirm。
+;; 把当前 document 存到指定 path；成功后若在 confirm 流程里就继续下一项。
+(define (save-doc-to-path ctx state path)
+  (define vid (state-focus state))
+  (define ws (state-workspace state))
+  (define did (and vid (workspace-doc-of-view ws vid)))
+  (define dm (and did (workspace-doc ws did)))
+  (cond
+    [(not did) (notice-state state "save-as: no document")]
+    [else
+     (define dm* (struct-copy doc-meta dm [path path]))
+     (define ws* (workspace-add-doc ws did dm*))
+     (define s1 (state-set-workspace state ws*))
+     (transition s1
+                 (list (save-doc-effect
+                        did
+                        (λ (s ok?)
+                          (cond
+                            [(not ok?)
+                             (input-show-state
+                              (notice-state-value s (format "save failed: ~a" path))
+                              "Save as: ")]
+                            [(resources-confirm (state-resources s)) (confirm-next s)]
+                            [else (notice-state s (format "saved: ~a" path))])))))]))
+
+(define (save-current-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define vid (state-focus s))
+         (define ws (state-workspace s))
+         (define did (and vid (workspace-doc-of-view ws vid)))
+         (define dm (and did (workspace-doc ws did)))
+         (define path (and dm (doc-meta-path dm)))
+         (cond
+           [(input-busy? ctx) (message ctx "save: input active")]
+           [(not did) (message ctx "save: no document")]
+           [(not path) (input-show ctx "Save as: ")]
+           [else
+            (transition
+             s
+             (list (save-doc-effect
+                    did
+                    (λ (s* ok?)
+                      (if ok?
+                          (notice-state s* (format "saved: ~a" path))
+                          (notice-state s* (format "save failed: ~a" path)))))))]))))
+
+;; 输入栏默认命令：open-file / save-confirm / save-as。
 (define (default-input-commands)
   (list
    (make-input-command
@@ -427,7 +515,17 @@
     (λ (ctx matched)
       ;; matched = (full path answer)
       (define state (input-finish (ctx-state ctx)))
-      (handle-save-answer ctx state (caddr matched))))))
+      (handle-save-answer ctx state (caddr matched)))
+    #:cancel (λ (s)
+               (state-resources* s (λ (r) (resources-set-confirm r #f)))))
+   (make-input-command
+    'save-as
+    (input-command-prefix "Save as: ")
+    (λ (ctx path)
+      (define state (input-finish (ctx-state ctx)))
+      (save-doc-to-path ctx state path))
+    #:cancel (λ (s)
+               (state-resources* s (λ (r) (resources-set-confirm r #f)))))))
 
 (define (request-quit-command)
   (cmd (λ (ctx)
@@ -441,6 +539,7 @@
 (define (request-close-doc ctx did)
   (define s (ctx-state ctx))
   (cond
+    [(input-busy? ctx) (message ctx "close-doc: input active")]
     [(not did) (message ctx "close-doc: no document")]
     [(doc-dirty? s (ctx-engine ctx) did)
      (save-confirm-start ctx (list did) (cons 'close-doc did))]
@@ -463,6 +562,83 @@
          (if did (close-doc-action s did)
              (message ctx "close-file: no document")))))
 
+;;; ════════════════ detach / attach view（资源层，不关 view） ════════════════
+
+(define (real-view? ws vm)
+  (define dm (workspace-doc ws (view-meta-doc vm)))
+  (and dm (saveable-doc? dm)))
+
+(define (fallback-attached-view ws [exclude #f])
+  (for/first ([(v vm) (in-hash (workspace-views ws))]
+              #:when (and (real-view? ws vm)
+                          (workspace-view-attached? ws v)
+                          (not (equal? v exclude))))
+    v))
+
+;; 把当前 view 从 panel 里拿出来，但保留 view + engine view + document。
+(define (detach-view-command)
+  (cmd (λ (ctx)
+         (cond
+           [(input-busy? ctx) (message ctx "detach: input active")]
+           [else
+            (define s (ctx-state ctx))
+            (define vid (view-subject ctx))
+            (cond
+              [(not vid) (message ctx "detach: no view")]
+              [else
+               (define ws (state-workspace s))
+               (define ws* (workspace-detach-view ws vid))
+               (define focus* (fallback-attached-view ws* vid))
+               (define ws** (workspace-set-focus* ws* focus* #:push? #f))
+               (transition-pure (state-set-workspace s ws**))])]))))
+
+;; 把第一个 detached view 挂到当前 region（演示 / 临时入口）。
+(define (attach-detached-command)
+  (cmd (λ (ctx)
+         (cond
+           [(input-busy? ctx) (message ctx "attach: input active")]
+           [else
+            (define s (ctx-state ctx))
+            (define ws (state-workspace s))
+            (define detached (workspace-detached-views ws))
+            (define fallback-region
+              (or (and (state-focus s)
+                       (workspace-view-region ws (state-focus s)))
+                  (for/first ([r (in-hash-values (workspace-regions ws))]
+                              #:when (eq? (region-role r) 'editor))
+                    r)))
+            (cond
+              [(null? detached) (message ctx "attach: no detached view")]
+              [(not fallback-region) (message ctx "attach: no region")]
+              [else
+               (define vid (car detached))
+               (define ws* (workspace-attach-view ws (region-key fallback-region) vid))
+               (transition-pure (state-set-focus (state-set-workspace s ws*) vid))])]))))
+
+;; 在同一 region 的多个 view 之间循环 active / focus。
+(define (cycle-region-view-command)
+  (cmd (λ (ctx)
+         (cond
+           [(input-busy? ctx) (message ctx "cycle: input active")]
+           [else
+            (define s (ctx-state ctx))
+            (define vid (view-subject ctx))
+            (define ws (state-workspace s))
+            (define reg (and vid (workspace-view-region ws vid)))
+            (cond
+              [(not reg) (message ctx "cycle: no region")]
+              [else
+               (define vids (workspace-region-views ws (region-key reg)))
+               (cond
+                 [(< (length vids) 2) (message ctx "cycle: single view")]
+                 [else
+                  (define active (region-active reg))
+                  (define idx (index-of vids active))
+                  (define next (list-ref vids (modulo (add1 (or idx -1))
+                                                      (length vids))))
+                  (define ws* (workspace-attach-view ws (region-key reg) next))
+                  (transition-pure (state-set-focus (state-set-workspace s ws*) next))])])]))))
+
 ;;; ════════════════ 关闭 region / panel ════════════════
 
 (define (subject-region ctx)
@@ -482,12 +658,12 @@
 (define (last-region-of-role? ws role)
   (= 1 (count-role-regions ws role)))
 
-;; 去掉 region 里所有 view（不删 region）；返回新 workspace + close-view effects。
+;; 把 region 里所有 view **摘出来**（保留资源），返回新 workspace + 无 effect。
 (define (drop-region-views ws rid)
   (define vids (workspace-region-views ws rid))
   (values (for/fold ([w ws]) ([vid (in-list vids)])
-            (workspace-remove-view w vid))
-          (for/list ([vid (in-list vids)]) (close-view-effect vid))))
+            (workspace-detach-view w vid))
+          '()))
 
 ;; 其它 region 的 active view（排除 rid）；没有 -> #f。
 (define (fallback-view ws rid)
@@ -556,6 +732,7 @@
   (define ws (state-workspace s))
   (define reg (and vid (workspace-view-region ws vid)))
   (cond
+    [(input-busy? ctx) (message ctx "focus: input active")]
     [(not reg) (message ctx "focus: no view")]
     [else
      (define-values (rps _cuts)
@@ -669,9 +846,13 @@
         'split-right  (split-view-command 'right)
         'split-down   (split-view-command 'down)
         'close-view   (close-view-command)
+        'detach-view  (detach-view-command)
+        'attach-detached (attach-detached-command)
+        'cycle-view  (cycle-region-view-command)
         'close-region (close-region-command)
         'new-document (new-document-command)
         'open-file    (open-file-prompt-command)
+        'save-current (save-current-command)
         'close-file   (request-close-file-command)
         'input-submit (input-submit-command)
         'input-cancel (input-cancel-command)

@@ -155,7 +155,7 @@
                [doc-types (hash-set (environment-doc-types env) (doc-type-name dt) dt)]))
 
 (define (environment-add-input-command env c)
-  (struct-copy environment env [input-commands (append (environment-input-commands env) (list c))]))
+  (struct-copy environment env [input-commands (cons c (environment-input-commands env))]))
 
 ;; 覆盖式合并：b 的同名项覆盖 a。插件 / 用户配置用这个。
 (define (environment-merge a b)

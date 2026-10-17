@@ -97,6 +97,7 @@ racket edit-tui-rebuild/test/effects.rkt
 racket edit-tui-rebuild/test/projection.rkt
 racket edit-tui-rebuild/test/runtime.rkt
 racket edit-tui-rebuild/test/save.rkt
+racket edit-tui-rebuild/test/views.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -109,12 +110,14 @@ edit-tui-rebuild/test/run.sh
 
 | API | 作用 |
 |---|---|
-| `input-show state prompt` | 切到 input 栏，写只读 prompt 前缀 |
+| `input-show ctx prompt` | 切到 input 栏，写只读 prompt 前缀（ctx 含 env/state/engine） |
 | `input-active? state` | 当前是否在 input 栏 |
 | `input-read-text state ev` | 完整 buffer 字符串（prompt + 输入） |
 | `input-value state ev` | 只取用户输入（自动跳过只读前缀） |
+| `input-cancel ctx` | 找当前 input owner 的 cancel，清外部状态后结束 |
 | `input-finish state` | 切回 status，恢复进入前焦点 |
 | `input-write-prompt state prompt` | 只改 prompt（不切焦点） |
+| `input-show-state state prompt` | 低层显示（用于已经 finish 旧 input 的内部流程） |
 
 提交匹配：
 
@@ -124,7 +127,8 @@ edit-tui-rebuild/test/run.sh
  (make-input-command
   'my-input
   (input-command-prefix "My prompt: ")
-  (λ (ctx value) ...)))
+  (λ (ctx value) ...)
+  #:cancel (λ (state) state)))   ; 被新 input 替换时清理外部状态
 ```
 
 输入是 document，没有额外的 prompt 状态机。
@@ -132,8 +136,9 @@ edit-tui-rebuild/test/run.sh
 **占用规则：新的 input 替换旧的 input。**  
 如果当前已经在 input 栏，再调用 `input-show`：
 
+- 用当前 buffer 字符串匹配 `input-command`；
+- 调它的 `#:cancel` 清理外部 pending 状态（例如 save-confirm 的 `resources.confirm`）；
 - 结束旧 input；
-- 清掉旧 input 的外部 pending 状态（目前是 `resources.confirm`，即取消旧的保存确认 / 关闭动作）；
 - 写入新 prompt，重新聚焦 input；
 - 焦点栈保持平衡（旧 input 先 pop，新 input 再 push）。
 
@@ -176,7 +181,11 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `C-n` | 新建 document/view（空 editor region 也能接） |
 | `C-x C-f` | 打开文件（input document 输入路径） |
-| `C-x C-k` | 关闭当前 document 的所有 view |
+| `C-x C-s` | 保存当前 document；无 path 时进入 `Save as:` 输入 |
+| `C-x C-k` | 关闭当前 document 的所有 view + document |
+| `C-x C-d` | 把当前 view 从 panel 摘出来（保留 view / engine view / document） |
+| `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
+| `C-x C-o` | 在同一 region 的多个 view 之间循环 active / focus |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
@@ -201,6 +210,23 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；`C-n` 会优先找空 editor region 装新 document/view，所以空占位不是死状态。
 
 
+## view 资源生命周期
+
+区分四件事：
+
+| 操作 | 结果 |
+|---|---|
+| `C-w` close view | 销毁 view（engine view + view-meta）；document 保留 |
+| `C-x C-d` detach view | 从 region 成员表移除；view / engine view / document 全部保留 |
+| `M-w` close region/panel | 把 region 内 view 全部 detach，再删除/保留 region；**不销毁 view** |
+| `C-x C-k` close document | 销毁该 document 的所有 view + document |
+
+- `workspace.views` 是 view 资源表；detached view 仍在这里；
+- `workspace-detached-views` 可列出没有挂到 region 的 view；
+- `workspace-attach-view` 强制 view 单成员：挂到目标 region 前先从旧 region 移除；
+- 关闭 panel 现在不会销毁 view，所以之后可以从资源列表重新挂回；
+- 目前还没有正式 buffer-list 面板，`C-x C-a` 只是“挂回第一个 detached view”的临时入口。
+
 ## 保存确认 / status+input 共享槽
 
 `demo/save.rkt` 演示：
@@ -213,6 +239,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
   - `n` 跳过当前；
   - `yall` 保存剩余全部；
   - `nall` 跳过剩余全部；
+  - 非法答案 / 保存失败会重新显示当前确认 prompt；
+  - 无 path 的 doc：`y` 进入 `Save as:` 输入；`yall` 会停在该 doc 提示先用 `y` Save as。
   - 输入在 input buffer 里，Enter 提交。
 - status/input 的 buffer 文档 mode 是 `'status` / `'input`（state demo 可用 `'state`），
   不参与保存确认。

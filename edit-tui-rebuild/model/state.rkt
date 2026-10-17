@@ -26,7 +26,8 @@
          state-set-chrome state-set-runtime state-set-ids state-set-resources
          state-workspace* state-input* state-chrome* state-runtime* state-resources*
          state-mark-quit state-bump-revision
-         state-focus state-set-focus)
+         state-focus state-set-focus
+         state-input-active?)
 
 (require "workspace.rkt"
          "input.rkt"
@@ -96,5 +97,14 @@
 ;;; ---------- 焦点便捷 ----------
 
 (define (state-focus s) (workspace-focus (state-workspace s)))
+
+;; 输入栏是否占用中：chrome slot 的 active 是 input view。
+(define (state-input-active? s)
+  (define slot (chrome-slot-info (state-chrome s)))
+  (and slot
+       (equal? (region-active
+                (workspace-region (state-workspace s)
+                                  (chrome-slot-region slot)))
+               (chrome-slot-input-view slot))))
 (define (state-set-focus s vid)
   (state-workspace* s (λ (w) (workspace-set-focus w vid))))

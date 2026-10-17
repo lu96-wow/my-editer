@@ -152,14 +152,14 @@
 (define new-rid (region-key (workspace-view-region (state-workspace s-split2)
                                                    (state-focus s-split2))))
 (define s-close-region (feed s-split2 (meta 'w)))
-(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 3)
+(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 4)
 (check-equal? (hash-count (workspace-regions (state-workspace s-close-region))) 3)
 (check-false (tree-contains? (workspace-layout (state-workspace s-close-region)) new-rid))
 (check-equal? (state-focus s-close-region) vid)
 
 ;;; ════════════════ 边界：最后一个 editor region ════════════════
 
-;; keep-last：只剩一个 editor region 时，不删 region，只清掉里面的 view。
+;; keep-last：只剩一个 editor region 时，不删 region，只把 view 摘出来（保留资源）。
 (define eng-last (make-engine))
 (define did-l (doc-id 1))
 (define vid-l (view-id 1))
@@ -182,9 +182,9 @@
 (check-true (tree-contains? (workspace-layout (state-workspace s-last-closed)) rid-l))
 (check-not-false (workspace-region (state-workspace s-last-closed) rid-l))
 (check-equal? (workspace-region-views (state-workspace s-last-closed) rid-l) '())
-(check-false (workspace-view (state-workspace s-last-closed) vid-l))
+(check-not-false (workspace-view (state-workspace s-last-closed) vid-l))
 (check-false (state-focus s-last-closed))
-(check-false (engine-view-exists? eng-last vid-l))
+(check-true (engine-view-exists? eng-last vid-l))
 
 ;; 空 region 仍然可以接收新 document/view
 (define s-last-new (feed-on eng-last s-last-closed (ctrl 'n)))

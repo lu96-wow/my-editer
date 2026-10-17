@@ -66,7 +66,11 @@
 (define global-keys
   (keys
    [(key 'x 'ctrl) (key 'f 'ctrl)  'open-file]
+   [(key 'x 'ctrl) (key 's 'ctrl)  'save-current]
    [(key 'x 'ctrl) (key 'k 'ctrl)  'request-close-file]
+   [(key 'x 'ctrl) (key 'd 'ctrl)  'detach-view]
+   [(key 'x 'ctrl) (key 'a 'ctrl)  'attach-detached]
+   [(key 'x 'ctrl) (key 'o 'ctrl)  'cycle-view]
    [(key 'q 'ctrl)                 'request-quit]
    [(key 'n 'ctrl)                 'new-document]
    [(key 'b 'ctrl)                 'split-right]

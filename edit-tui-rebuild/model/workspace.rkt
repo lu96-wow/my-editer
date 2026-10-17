@@ -38,6 +38,10 @@
          workspace-remove-doc
          workspace-remove-view
          workspace-remove-region
+         workspace-detach-view
+         workspace-attach-view
+         workspace-view-attached?
+         workspace-detached-views
          workspace-doc-of-view
          workspace-view-region
          workspace-region-members
@@ -48,21 +52,19 @@
 
 ;;; ---------- 元数据 ----------
 
-(struct doc-meta (name path mode dirty? saved-version keymap-layers) #:transparent)
+(struct doc-meta (name path mode saved-version keymap-layers) #:transparent)
 ;; name          : string（展示 / 状态栏）
 ;; path          : string | #f（内存文档无路径）
 ;; mode          : symbol（原 doc-kind；决定默认命令表）
-;; dirty?        : bool
 ;; saved-version : any/c（引擎版本标记；#f = 未保存过 / 新文档）
 ;; keymap-layers : (listof keymap)（per-doc 覆盖层，优先于 mode 默认表）
 
 (define (make-doc-meta name
                        #:path [path #f]
                        #:mode [mode 'text]
-                       #:dirty? [dirty? #f]
                        #:saved-version [saved-version #f]
                        #:keymap-layers [keymap-layers '()])
-  (doc-meta name path mode dirty? saved-version keymap-layers))
+  (doc-meta name path mode saved-version keymap-layers))
 
 (struct view-meta (doc options) #:transparent)
 ;; doc     : doc-id
@@ -148,6 +150,56 @@
 
 (define (workspace-add-region w rid r)
   (struct-copy workspace w [regions (hash-set (workspace-regions w) rid r)]))
+
+;;; ---------- view ↔ region 成员关系 ----------
+
+;; 把 vid 从所有 region 的 members 移除；active 落在剩余第一个成员。
+(define (remove-view-from-regions w vid)
+  (for/fold ([w w])
+            ([(rid r) (in-hash (workspace-regions w))])
+    (define members* (filter (λ (m) (not (and (view-member? m)
+                                                (equal? (member-key m) vid))))
+                             (region-members r)))
+    (define active*
+      (if (equal? (region-active r) vid)
+          (and (pair? members*) (member-key (car members*)))
+          (region-active r)))
+    (workspace-add-region w rid
+                          (struct-copy region r
+                                       [members members*]
+                                       [active active*]))))
+
+;; 仅摘掉成员关系：view / view-meta / engine view 都保留。
+(define (workspace-detach-view w vid)
+  (remove-view-from-regions w vid))
+
+;; 挂到指定 region：先确保单成员关系，再把它设为 active。
+(define (workspace-attach-view w rid vid)
+  (define reg (workspace-region w rid))
+  (cond
+    [(or (not reg) (not (workspace-view w vid))) w]
+    [else
+     (define w1 (remove-view-from-regions w vid))
+     (define reg1 (workspace-region w1 rid))
+     (define members (region-members reg1))
+     (define members*
+       (if (for/or ([m (in-list members)])
+             (and (view-member? m) (equal? (member-key m) vid)))
+           members
+           (append members (list (view-member vid)))))
+     (workspace-add-region w1 rid
+                           (struct-copy region reg1
+                                        [members members*]
+                                        [active vid]))]))
+
+(define (workspace-view-attached? w vid)
+  (and (workspace-view-region w vid) #t))
+
+(define (workspace-detached-views w)
+  (sort (for/list ([(vid vm) (in-hash (workspace-views w))]
+                   #:unless (workspace-view-attached? w vid))
+          vid)
+        string<? #:key (λ (v) (~v v))))
 
 ;; 移除一个 view：清 views 表、所有 region 的成员 / active、焦点 / 栈。
 ;;; 空 region 暂留（后续 region ops 可剪枝）；layout 只引用 region，不直接引用 view。

@@ -32,7 +32,7 @@
 (define engine (make-engine))
 (void (engine-create-doc! engine did "main.rkt"
                           "hello, rebuild!\n\nC-b/C-v split, C-w close view, M-w close panel, C-n new doc,
-C-x C-f open file, C-x C-k close file, C-q quit (asks to save if dirty).\n"))
+C-x C-f open file, C-x C-k close doc, C-x C-d detach view, C-x C-a reattach, C-q quit (asks to save if dirty).\n"))
 (void (engine-create-view! engine vid did))
 
 (define ws0 (workspace-empty))

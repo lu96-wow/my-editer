@@ -7,6 +7,7 @@
 ;;;
 ;;;   match   : string -> any/c | #f
 ;;;   handler : ctx value -> transition
+;;;   cancel  : #f | (state -> state)   被新 input 替换时清理外部状态
 ;;;
 ;;; 这样输入栏不需要 state 里的 prompt 状态机；prompt/答案都在 buffer 里。
 
@@ -16,13 +17,14 @@
          input-command-regexp
          input-command-list)
 
-(struct input-command (name match handler) #:transparent)
+(struct input-command (name match handler cancel) #:transparent)
 ;; name    : symbol
 ;; match   : string -> any/c | #f
 ;; handler : ctx value -> transition
+;; cancel  : #f | (state -> state)
 
-(define (make-input-command name match handler)
-  (input-command name match handler))
+(define (make-input-command name match handler #:cancel [cancel #f])
+  (input-command name match handler cancel))
 
 ;; 固定前缀匹配：返回前缀之后的字符串。
 (define (input-command-prefix prefix)

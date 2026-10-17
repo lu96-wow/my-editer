@@ -5,17 +5,19 @@
 ;;; 输入栏是 *input* document：
 ;;;   · prompt 前缀是只读 buffer 文本；
 ;;;   · 用户输入就是前缀之后的内容；
-;;;   · 其他逻辑可以：
-;;;       - input-show      显示 prompt / 切到输入栏
-;;;       - input-active?   判断当前是否在输入态
-;;;       - input-read-text 读完整 buffer（prompt + 输入）
-;;;       - input-value     只读用户输入（自动跳过只读 prefix）
-;;;       - input-finish    结束输入，切回 status / 恢复焦点
-;;;       - input-command   + environment.input-commands 做提交匹配
+;;;   · 提交由 environment.input-commands 匹配完整 buffer 字符串。
 ;;;
-;;; 这是“generic”层：打开文件、保存确认只是默认的 input-command。
+;;; 占用规则：后进来的 input 替换先前的 input。
+;;; 替换时：
+;;;   1. 用当前 input 字符串匹配 input-command；
+;;;   2. 调它的 cancel 清理外部 pending 状态；
+;;;   3. input-finish（切回 status / pop 焦点）；
+;;;   4. 显示新 prompt。
+;;;
+;;; 这样 input 本身不需要 prompt 状态机；外部状态由 input-command.cancel 负责。
 
-(provide input-show input-finish input-write-prompt
+(provide input-show input-show-state input-cancel
+         input-finish input-write-prompt
          input-read-text input-value input-active? input-view
          (struct-out input-command)
          make-input-command
@@ -25,30 +27,14 @@
 
 (require (rename-in "bootstrap/chrome.rkt" [input-show chrome-input-show])
          "env/input-command.rkt"
-         "model/resources.rkt"
+         "env/environment.rkt"
          "model/state.rkt"
          "model/workspace.rkt"
          "model/chrome.rkt"
-         "effects/engine.rkt")
+         "effects/engine.rkt"
+         "dispatch/context.rkt")
 
-;; 新的 input 请求会取消旧的 input；旧 input 的外部 pending 状态（目前只有
-;; save-confirm 队列）也一并清掉。之后由调用方用 input-show 显示新 prompt。
-(define (input-show state prompt)
-  (define s0
-    (if (input-active? state)
-        (state-resources*
-         (input-finish state)
-         (λ (r) (resources-set-confirm r #f)))
-        state))
-  (chrome-input-show s0 prompt))
-
-(define (input-active? state)
-  (define slot (chrome-slot-info (state-chrome state)))
-  (and slot
-       (equal? (region-active
-                (workspace-region (state-workspace state)
-                                  (chrome-slot-region slot)))
-               (chrome-slot-input-view slot))))
+(define (input-active? state) (state-input-active? state))
 
 ;; 只读 prefix 之后的用户输入。
 (define (input-value state ev)
@@ -65,3 +51,25 @@
            [(engine-view-view-readonly-at? ev vid 0 i) (loop (add1 i))]
            [else i])))
      (substring text start)]))
+
+;; 取消当前 input：按当前字符串找到 owner，调 cancel，再 finish。
+(define (input-cancel ctx)
+  (define state (ctx-state ctx))
+  (define text (input-read-text state (ctx-engine ctx)))
+  (define hit (and text
+                   (input-command-list
+                    (environment-input-commands (ctx-env ctx))
+                    text)))
+  (define cancel (and hit (input-command-cancel (car hit))))
+  (input-finish (if cancel (cancel state) state)))
+
+;; 新 input：如果已有 input，先取消旧的，再替换。
+(define (input-show ctx prompt)
+  (define s0 (if (input-active? (ctx-state ctx))
+                 (input-cancel ctx)
+                 (ctx-state ctx)))
+  (chrome-input-show s0 prompt))
+
+;; 不处理替换的底层显示；用于“已经 finish 了旧 input，再显示下一项”的内部流程。
+(define (input-show-state state prompt)
+  (chrome-input-show state prompt))

@@ -8,6 +8,7 @@
          racket/file
          racket/async-channel
          "../../edit-tui/command/key.rkt"
+         "../../edit-tui/command/mouse.rkt"
          (prefix-in app: "../base/event.rkt")
          "../base/id.rkt"
          "../base/transition.rkt"
@@ -20,6 +21,7 @@
          "../effects/engine.rkt"
          (except-in "../bootstrap/chrome.rkt" input-show)
          "../input.rkt"
+         "../projection/render.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 
@@ -70,6 +72,12 @@
                               "Save "))
   (check-true (input-active? s2))
   (check-equal? (input-value s2 (make-engine-view engine)) "")
+  ;; 回归：prompt 必须真的画出来（不能被 viewport left-column 滚走）
+  (define-values (_dbg-ps _dbg-cs dbg-pls) (project-frame s2 engine))
+  (engine-sync-views! engine dbg-pls)
+  (define-values (_dbg-cache dbg-bytes)
+    (render-frame s2 engine #f #:status-parts #f))
+  (check-true (string-contains? (bytes->string/utf-8 dbg-bytes) "y/n/yall/nall"))
   (define s3a (feed engine s2 (plain #\y)))
   (check-equal? (input-value s3a (make-engine-view engine)) "y")
   (define s3 (feed engine s3a (app:key-event (key 'enter))))
@@ -212,9 +220,108 @@
                               "Open file: "))
   (check-equal? (region-active (workspace-region (state-workspace s4) crid))
                 (chrome-input-view s4))
+  ;; 输入态是模态的：鼠标 / 焦点移动命令不改变焦点
+  (define s4m (feed engine s4 (app:mouse-event (mouse 'press 'left) 1 1)))
+  (check-equal? (state-focus s4m) (chrome-input-view s4m))
+  (define s4k (feed engine s4m (app:key-event (key 'left 'alt))))
+  (check-equal? (state-focus s4k) (chrome-input-view s4k))
+  (check-true (input-active? s4k))
   ;; Esc 关掉 input，回到 status
-  (define s5 (feed engine s4 (app:key-event (key 'escape))))
+  (define s5 (feed engine s4k (app:key-event (key 'escape))))
   (check-false (input-active? s5)))
 (when (file-exists? path-replace) (delete-file path-replace))
+
+
+;;; ════════════════ C-x C-s / save-as ════════════════
+
+;; 已有 path：直接保存，不退出
+(define path-cs (path->string (make-temporary-file "rebuild-cs-~a.txt")))
+(when (file-exists? path-cs) (delete-file path-cs))
+(let-values ([(engine s0 vid crid) (make-case path-cs)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'x)))
+  (define s3 (feed engine s2 (ctrl 's)))
+  (check-equal? (file->string path-cs) "xhello\n")
+  (check-false (runtime-quit? (state-runtime s3))))
+(delete-file path-cs)
+
+;; 无 path：C-x C-s 进入 Save as 输入
+(define path-sa (path->string (make-temporary-file "rebuild-sa-~a.txt")))
+(when (file-exists? path-sa) (delete-file path-sa))
+(let-values ([(engine s0 vid crid) (make-case #f)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'x)))
+  (define s3 (feed engine s2 (ctrl 's)))
+  (check-true (input-active? s3))
+  (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s3))
+                              "Save as: "))
+  (define s4 (for/fold ([s s3]) ([c (in-string path-sa)]) (feed engine s (plain c))))
+  (define s5 (feed engine s4 (app:key-event (key 'enter))))
+  (check-false (input-active? s5))
+  (check-equal? (file->string path-sa) "xhello\n")
+  (check-equal? (doc-meta-path (workspace-doc (state-workspace s5) (doc-id 1))) path-sa))
+(delete-file path-sa)
+
+;; 无 path 的 dirty doc：save-confirm 的 y 进入 Save as，然后继续 finish
+(define path-cf (path->string (make-temporary-file "rebuild-cf-~a.txt")))
+(when (file-exists? path-cf) (delete-file path-cf))
+(let-values ([(engine s0 vid crid) (make-case #f)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))
+  (define s3a (feed engine s2 (plain #\y)))
+  (define s3 (feed engine s3a (app:key-event (key 'enter))))
+  (check-true (input-active? s3))
+  (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s3))
+                              "Save as: "))
+  (define s4 (for/fold ([s s3]) ([c (in-string path-cf)]) (feed engine s (plain c))))
+  (define s5 (feed engine s4 (app:key-event (key 'enter))))
+  (check-true (runtime-quit? (state-runtime s5)))
+  (check-equal? (file->string path-cf) "xhello\n"))
+(delete-file path-cf)
+
+
+;;; ════════════════ 保存失败 / 无 path 的 yall：回到确认 prompt ════════════════
+
+;; 保存失败：y 之后重新显示当前确认 prompt，而不是停在无输入状态
+(let-values ([(engine s0 vid crid) (make-case "/nonexistent-dir-rebuild/x.txt")])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))
+  (define s3a (feed engine s2 (plain #\y)))
+  (define s3 (feed engine s3a (app:key-event (key 'enter))))
+  (check-true (input-active? s3))
+  (check-not-false (resources-confirm (state-resources s3)))
+  (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s3))
+                              "Save "))
+  (define s4a (feed engine s3 (plain #\n)))
+  (define s4 (feed engine s4a (app:key-event (key 'enter))))
+  (check-true (runtime-quit? (state-runtime s4))))
+
+;; 无 path + yall：停在当前项，提示用 y 走 Save as
+(let-values ([(engine s0 vid crid) (make-case #f)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))
+  (define s3a (feed engine s2 (plain #\y)))
+  (define s3b (feed engine s3a (plain #\a)))
+  (define s3c (feed engine s3b (plain #\l)))
+  (define s3d (feed engine s3c (plain #\l)))
+  (define s3 (feed engine s3d (app:key-event (key 'enter))))
+  (check-true (input-active? s3))
+  (check-not-false (resources-confirm (state-resources s3)))
+  (define s4a (feed engine s3 (plain #\n)))
+  (define s4 (feed engine s4a (app:key-event (key 'enter))))
+  (check-true (runtime-quit? (state-runtime s4))))
+
+
+;; 非法答案：重新显示确认 prompt
+(let-values ([(engine s0 vid crid) (make-case #f)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))
+  (define s3a (feed engine s2 (plain #\z)))
+  (define s3 (feed engine s3a (app:key-event (key 'enter))))
+  (check-true (input-active? s3))
+  (check-not-false (resources-confirm (state-resources s3)))
+  (define s4a (feed engine s3 (plain #\n)))
+  (define s4 (feed engine s4a (app:key-event (key 'enter))))
+  (check-true (runtime-quit? (state-runtime s4))))
 
 (displayln "edit-tui-rebuild save: ok")

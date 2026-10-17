@@ -91,10 +91,14 @@
 ;;; ════════════════ 鼠标 ════════════════
 
 (define (dispatch-mouse env state event subject engine)
+  (if (state-input-active? state)
+      (transition-pure state)          ; 输入栏模态：输入中忽略鼠标
+      (dispatch-mouse* env state event subject engine)))
+
+(define (dispatch-mouse* env state event subject engine)
   (define tok (mouse-event-token event))
   (define action (mouse-action tok))
   (define gesture (input-gesture (state-input state)))
-  ;; 拖动中 / 释放：主体优先用手势 owner（指针移出面板也不断表）。
   (define subject*
     (if (and (memq action '(move release)) gesture (gesture-owner gesture))
         (gesture-owner gesture)
@@ -117,7 +121,7 @@
        [(scroll)
         (if subject*
             (transition state (list (scroll-effect subject*
-                                                      (if (eq? (mouse-button tok) 'up) -3 3))))
+                                                   (if (eq? (mouse-button tok) 'up) -3 3))))
             (transition-pure state))]
        [else (transition-pure state)])]))
 

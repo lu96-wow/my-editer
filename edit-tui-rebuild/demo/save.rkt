@@ -9,8 +9,9 @@
 ;;;   *input*  : 输入栏 / 保存确认
 ;;; 同一时刻只显示 active 的那个；prompt 结束会切回 status。
 ;;;
-;;; 编辑文件后 C-q：会进入 y/n/! all/? none 的保存确认。
-;;;   y = 保存当前；n = 跳过当前；! = 保存剩余全部；? = 跳过剩余全部
+;;; 编辑文件后 C-q：会进入 y/n/yall/nall 的保存确认。
+;;;   y = 保存当前；n = 跳过当前；yall = 保存剩余全部；nall = 跳过剩余全部
+;;;   输入答案后按 Enter。
 ;;; C-x C-k 关闭当前 document 也会走同一套确认。
 ;;;
 ;;; 其它键：编辑、C-b/C-v split、C-w close view、M-w close panel、
