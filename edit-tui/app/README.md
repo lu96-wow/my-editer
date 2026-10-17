@@ -152,8 +152,8 @@ doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本�
 （读值、跑命令、回状态栏），`Esc` → `minibuffer-cancel`。切换不绑定用户键。
 
 **键序列编辑**（`world.prefix-keys`）：pending 非空时，`step-key` 先把当前键在**前缀编辑表**里
-单独查（不拼进序列）。`base-keys` 的 `prefix-edit-keys` 把 `C-d` 绑到 `pending-backspace`，
-于是 `C-x C-y` 按 `C-d` → `C-x`。宿主装：`#:prefix-keys (make-keytable prefix-edit-keys)`。
+单独查（不拼进序列）。`base-keys` 的 `prefix-edit-keys` 把 `C-d` 绑到 `pending-backspace`、`C-g` 绑到 `pending-clear`，
+于是 `C-x C-y` 按 `C-d` → `C-x`，按 `C-g` → 清空。宿主装：`#:prefix-keys (make-keytable prefix-edit-keys)`。
 
 约定成员键 `'status`（状态栏，不可编辑）/ `'input`（输入栏，可编辑）。示例：`temp/34-statusbar.rkt`。
 
@@ -208,7 +208,7 @@ doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本�
 | layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay`（浮窗 + 临时拓展层，成对；见下“浮层”） |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-panel-move`（面板间方向，ctx 感知） |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
-| prefix-edit | `pending-backspace`（删掉最后一个待续 token；C-d） |
+| prefix-edit | `pending-backspace`（删最后一个待续 token；C-d）· `pending-clear`（清空；C-g） |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus-leaf 'editor))`。

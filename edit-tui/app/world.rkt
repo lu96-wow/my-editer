@@ -39,7 +39,7 @@
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
          world-stop
-         world-pending-pop
+         world-pending-pop world-pending-clear
          world-ext-ref world-ext-set
          world-mark-dirty world-mark-clean)
 
@@ -194,6 +194,8 @@
                 [else (loop (cdr l) (cons (car l) acc))]))
         '()))
   (world-set-pending w p*))
+;; 清空当前键前缀（取消序列）。
+(define (world-pending-clear w) (world-set-pending w '()))
 (define (world-set-drag w d)      (struct-copy world w [drag d]))        ; 拖动状态（#f = 结束）
 (define (world-set-layout w t)    (struct-copy world w [layout t]))      ; 布局树
 (define (world-set-floats w fs)   (struct-copy world w [floats fs]))      ; 浮窗层

@@ -84,7 +84,7 @@
 | layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay` |
 | focus | `focus-on` · `focus-leaf` · `focus-panel-move` |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
-| prefix-edit | `pending-backspace` |
+| prefix-edit | `pending-backspace`（删最后一个）· `pending-clear`（C-g 清空） |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
 ### resource —— 资源

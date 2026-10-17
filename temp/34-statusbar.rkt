@@ -120,6 +120,12 @@
   (feed! (ctrl 'd))
   (check "再 C-d 清空" (null? (world-pending (w))))
 
+  ;; C-g 清空整个序列
+  (feed! (ctrl 'x)) (feed! (ctrl 'y))
+  (feed! (ctrl 'g))
+  (check "C-g 清空序列" (null? (world-pending (w))))
+  (check "C-g 后状态栏无序列" (not (has? (status-line (w)) "C-y")))
+
   ;; 3) 未命中：C-x 之后按 up → unbound，序列清空
   (feed! (ctrl 'x))
   (feed! (plain 'up))

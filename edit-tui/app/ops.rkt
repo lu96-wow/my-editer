@@ -72,7 +72,7 @@
  focus-select focus-select-range focus-select-begin focus-select-update
  focus-scroll
  ;; 前缀编辑（键序列进行中）
- pending-backspace
+ pending-backspace pending-clear
  ;; session / app 控制
  show-status quit)
 
@@ -311,6 +311,10 @@
 ;; 前缀编辑：删掉最后一个待续 token（“命令 backspace”）。
 (define (pending-backspace)
   (list (modify world-pending-pop)))
+
+;; 前缀编辑：清空整个待续序列（取消）。
+(define (pending-clear)
+  (list (modify (λ (w) (world-set-status (world-pending-clear w) "")))))
 
 ;; 状态行 / 提示（回显区）。
 (define (show-status text)

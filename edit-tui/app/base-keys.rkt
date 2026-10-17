@@ -63,7 +63,8 @@
 
 (define prefix-edit-keys
   (keys
-   [(key 'd 'ctrl) (λ (ctx) (pending-backspace))]))
+   [(key 'd 'ctrl) (λ (ctx) (pending-backspace))]
+   [(key 'g 'ctrl) (λ (ctx) (pending-clear))]))
 
 ;;; ════════════════════════ 焦点移动（面板间，与文档类型无关） ════════════════════════
 
