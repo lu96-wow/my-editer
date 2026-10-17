@@ -20,7 +20,7 @@
 | `panel-ref.rkt` | `../panel-ref.rkt` | panel 稳定身份与当帧解析 |
 | `role.rkt` | `../role.rkt` | leaf 角色注册表（splittable? / close-policy） |
 | `doc-kind.rkt` | `../doc-kind.rkt` | document 类型 → 命令表 + per-document 表层 |
-| `base-keys.rkt` | `../base-keys.rkt` | 基础键表（edit / motion / pointer / focus） |
+| `base-keys.rkt` | `../base-keys.rkt` | 基础键表（edit / motion / pointer / focus / prefix-edit） |
 | `ops.rkt` | `../ops.rkt` | 操作根对象的纯原语 |
 | `resource.rkt` | `../resource.rkt` | 资源（document / view）创建与装配 |
 | `step.rkt` | `../step.rkt` | 纯状态转移 |
@@ -50,7 +50,7 @@
 | 构造 | `make-world` |
 | 结构 | `world` `ctx` `layer` `drag` `app-event`（含各自访问器） |
 | 派生 | `world-panels` `world-panel-refs` `world-panels+refs` `world-ref->view` `world-ref->panel` `world-focus-view` `world-overlay-views` |
-| 纯更新 | `world-resize` `world-focus-on` `world-push-layer` `world-pop-layer` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
+| 纯更新 | `world-resize` `world-focus-on` `world-push-layer` `world-pop-layer` `world-pending-pop` `world-set-status` `world-set-pending` `world-set-drag` `world-set-layout` `world-set-floats` `world-stop` `world-mark-dirty` `world-mark-clean` |
 | 插件状态 | `world-ext-ref` `world-ext-set`（插件名 → 状态；存在 `world.ext`） |
 
 ### panel-ref —— 面板身份
@@ -72,7 +72,7 @@
 
 ### base-keys —— 基础键表
 
-`edit-keys` · `motion-keys` · `pointer-keys` · `focus-keys`
+`edit-keys` · `motion-keys` · `pointer-keys` · `focus-keys` · `prefix-edit-keys`
 
 ### ops —— 操作原语（全部返回 `(listof intent)`）
 
@@ -84,6 +84,7 @@
 | layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay` |
 | focus | `focus-on` · `focus-leaf` · `focus-panel-move` |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
+| prefix-edit | `pending-backspace` |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
 ### resource —— 资源

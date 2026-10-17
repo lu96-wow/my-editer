@@ -48,6 +48,7 @@
 (define prefix-keys
   (keys
    [(key 'x 'ctrl) (key 's 'ctrl) (λ (ctx) (show-status "saved"))]
+   [(key 'x 'ctrl) (key 'y 'ctrl) (key 'z 'ctrl) (λ (ctx) (show-status "xyz"))]  ; C-x C-y 是前缀
    [(key 'x 'ctrl) (key 'q 'ctrl) (λ (ctx) (quit))]))
 
 ;;; ════════════════ 布局：编辑区 + 底部固定槽 ════════════════
@@ -58,7 +59,8 @@
                             (pane 'editor #:view eview #:size 1 #:dock 'center #:role 'editor)
                             (pane 'slot   #:view #f    #:fixed 1 #:borders '()     #:role 'slot))
               #:focus (leaf-ref 'editor)
-              #:keytable (make-keytable ask-keys prefix-keys)))
+              #:keytable (make-keytable ask-keys prefix-keys)
+              #:prefix-keys (make-keytable prefix-edit-keys)))
 
 (define (boot)
   (slot-install (base-world) 'slot (list (cons 'status sview) (cons 'input iview))))
@@ -108,6 +110,15 @@
   (feed! (ctrl 's))
   (check "命令后序列清空" (not (has? (status-line (w)) "C-x")))
   (check "命令消息 saved" (has? (status-line (w)) "saved"))
+
+  ;; 2b) 前缀编辑：C-x C-y → C-d → C-x → C-d → 空
+  (feed! (ctrl 'x)) (feed! (ctrl 'y))
+  (check "待续 C-x C-y" (equal? (map key->string (world-pending (w))) '("C-x" "C-y")))
+  (feed! (ctrl 'd))
+  (check "C-d 回退到 C-x" (equal? (map key->string (world-pending (w))) '("C-x")))
+  (check "状态栏显示 C-x" (has? (status-line (w)) "C-x"))
+  (feed! (ctrl 'd))
+  (check "再 C-d 清空" (null? (world-pending (w))))
 
   ;; 3) 未命中：C-x 之后按 up → unbound，序列清空
   (feed! (ctrl 'x))

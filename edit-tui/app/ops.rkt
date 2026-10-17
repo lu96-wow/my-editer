@@ -71,6 +71,8 @@
  focus-cursor-home focus-cursor-end
  focus-select focus-select-range focus-select-begin focus-select-update
  focus-scroll
+ ;; 前缀编辑（键序列进行中）
+ pending-backspace
  ;; session / app 控制
  show-status quit)
 
@@ -305,6 +307,10 @@
   (if v (list (scroll v delta)) '()))
 
 ;;; ════════════════════════ session / app 控制 ════════════════════════
+
+;; 前缀编辑：删掉最后一个待续 token（“命令 backspace”）。
+(define (pending-backspace)
+  (list (modify world-pending-pop)))
 
 ;; 状态行 / 提示（回显区）。
 (define (show-status text)

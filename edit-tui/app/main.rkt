@@ -27,7 +27,7 @@
 ;;;   panel-ref.rkt   leaf/float 的稳定身份 + 解析（ref → view/panel）
 ;;;   role.rkt        leaf role → 行为：splittable? / close-policy
 ;;;   doc-kind.rkt    document 类型 → 命令表（+ per-buffer 覆盖层）
-;;;   base-keys.rkt   小表：edit / motion / pointer / focus
+;;;   base-keys.rkt   小表：edit / motion / pointer / focus / prefix-edit
 ;;;   ops.rkt         操作 layout / focus / document 的命名原语
 ;;;   resource.rkt    造 document + view（绑类型）
 ;;;   intent.rkt      效果即数据

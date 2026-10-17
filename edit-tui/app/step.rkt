@@ -65,25 +65,32 @@
 
 (define (step-key w ev)
   (define tok (event->key ev))
-  (define seq (append (world-pending w) (list tok)))
-  (define-values (status cmd) (lookup-token w seq))
-  (case status
-    [(command)
-     ;; 命中叶子：先清前缀（并清掉前缀提示 status），再执行命令。
-     (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
-    [(prefix)
-     ;; 命中前缀：存进 world（纯数据）；状态栏投影会显示待续序列。
-     (values (world-mark-dirty (world-set-pending w seq)) '())]
+  (cond
+    ;; 前缀编辑：pending 非空时，前缀编辑表里的键**单独**查（不拼进序列）
+    [(and (pair? (world-pending w))
+          (let-values ([(st cmd) (keytable-lookup (world-prefix-keys w) (list tok))])
+            (and (eq? st 'command) cmd)))
+     => (λ (cmd) (run-command w cmd ev))]
     [else
-     ;; 未命中：清前缀。可打印字符 → 插入文本；否则记状态行。
-     (define w1 (world-set-pending w '()))
-     (define k (key-event-key ev))
-     (define m (key-event-mods ev))
-     (cond
-       [(and (char? k) (not (mods-ctrl? m)) (not (mods-alt? m)))
-        (step-insert w1 (string k))]
+     (define seq (append (world-pending w) (list tok)))
+     (define-values (status cmd) (lookup-token w seq))
+     (case status
+       [(command)
+        ;; 命中叶子：先清前缀（并清掉前缀提示 status），再执行命令。
+        (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
+       [(prefix)
+        ;; 命中前缀：存进 world（纯数据）；状态栏投影会显示待续序列。
+        (values (world-mark-dirty (world-set-pending w seq)) '())]
        [else
-        (values w1 (show-status (format "unbound: ~a" (key->string tok))))])]))
+        ;; 未命中：清前缀。可打印字符 → 插入文本；否则记状态行。
+        (define w1 (world-set-pending w '()))
+        (define k (key-event-key ev))
+        (define m (key-event-mods ev))
+        (cond
+          [(and (char? k) (not (mods-ctrl? m)) (not (mods-alt? m)))
+           (step-insert w1 (string k))]
+          [else
+           (values w1 (show-status (format "unbound: ~a" (key->string tok))))])])]))
 
 ;;; 活动表：按优先级逐张查，第一个非 unbound 胜出（= 覆盖语义）。
 ;;;

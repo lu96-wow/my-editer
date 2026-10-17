@@ -103,7 +103,7 @@ world.rkt      world / ctx / layer / app-event / drag + 派生 + ref 解析
 panel-ref.rkt  panel 稳定身份（leaf id / float key）+ 当帧解析
 role.rkt       leaf 角色注册表（splittable? / close-policy）
 doc-kind.rkt   document 类型 → 命令表 + per-document 表层
-base-keys.rkt  基础小表：edit / motion / pointer / focus
+base-keys.rkt  基础小表：edit / motion / pointer / focus / prefix-edit
 ops.rkt        操作根对象的纯原语（返回 (listof intent)）
 resource.rkt   资源创建（唯一造 core 对象的地方）
 step.rkt       world-step / world-step*（纯）

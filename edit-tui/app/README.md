@@ -21,7 +21,7 @@
 | `world.rkt` | `world` / `ctx` / `layer` / `app-event` / `drag` + 派生助手（`world-panels` / `world-panels+refs` / `world-ref->view` 等） | 纯数据 |
 | `panel-ref.rkt` | **panel 稳定身份** `panel-ref`（leaf id / float key）+ 解析成当帧 view / panel | 纯 |
 | `doc-kind.rkt` | **document 类型 → 命令表** 绑定：类型注册表 + per-document 表层（插拔 / 覆盖 / 还原） | 纯 + eq 哈希 |
-| `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点） | 纯命令 |
+| `base-keys.rkt` | 基础小表：`edit-keys`（编辑）/ `motion-keys`（移动）/ `pointer-keys`（指针）/ `focus-keys`（面板间焦点）/ `prefix-edit-keys`（键序列编辑） | 纯命令 |
 | `role.rkt` | **leaf 角色注册表**：`role → 行为`（`splittable?` / `close` 策略） | 纯 |
 | `ops.rkt` | **操作根对象的原语层**：`layout-op`/`mount-view`/`clear-view`/`show-hide-toggle-delete-pane`/`split-pane`/`focus-on`/`focus-leaf`/`focus-panel-move`/`focus-insert`/`focus-cursor-*`/`focus-select*` … | 纯构造器 |
 | `resource.rkt` | **资源管理**：`open-document!` 造 buffer+view 并绑类型、可选路径（`buffer-path`） | 不纯（造 core 对象） |
@@ -151,6 +151,10 @@ doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本�
 （存会话 + 切输入栏），prompt 作为只读前缀写进输入 buffer；输入栏的 `Enter` → `minibuffer-submit`
 （读值、跑命令、回状态栏），`Esc` → `minibuffer-cancel`。切换不绑定用户键。
 
+**键序列编辑**（`world.prefix-keys`）：pending 非空时，`step-key` 先把当前键在**前缀编辑表**里
+单独查（不拼进序列）。`base-keys` 的 `prefix-edit-keys` 把 `C-d` 绑到 `pending-backspace`，
+于是 `C-x C-y` 按 `C-d` → `C-x`。宿主装：`#:prefix-keys (make-keytable prefix-edit-keys)`。
+
 约定成员键 `'status`（状态栏，不可编辑）/ `'input`（输入栏，可编辑）。示例：`temp/34-statusbar.rkt`。
 
 ## 异步模型（暂定：下一事件时处理）
@@ -204,6 +208,7 @@ doc-kind / role / 键表仍用各自的 `define-*!` 在插件顶层注册；本�
 | layers / overlays | `push-layer` `pop-layer` · `open-overlay` `close-overlay`（浮窗 + 临时拓展层，成对；见下“浮层”） |
 | focus | `focus-on`（指定 ref）· `focus-leaf`（指定 leaf id）· `focus-panel-move`（面板间方向，ctx 感知） |
 | **focus（文档）** | `focus-edit`（通用）· `focus-insert` · `focus-delete-backward` `focus-delete-forward` · `focus-undo` `focus-redo` · `focus-cursor-left/right/up/down/home/end` · `focus-select` `focus-select-range` `focus-select-begin` `focus-select-update` · `focus-scroll` |
+| prefix-edit | `pending-backspace`（删掉最后一个待续 token；C-d） |
 | session | `show-status`（写状态行）· `quit`（退出） |
 
 单操作命令直接 `(λ (ctx) (hide-pane 'tree))`；多操作 `(append (hide-pane 'tree) (focus-leaf 'editor))`。

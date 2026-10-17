@@ -39,6 +39,7 @@
          world-set-status world-set-pending world-set-drag world-set-layout
          world-set-floats
          world-stop
+         world-pending-pop
          world-ext-ref world-ext-set
          world-mark-dirty world-mark-clean)
 
@@ -81,6 +82,7 @@
    floats      ; (listof float)
    focus       ; panel-ref | #f      稳定的 panel 身份（不是 view 值；见 panel-ref.rkt）
    keytable    ; keytable（全局表）   ← 未来：有序表层（拓展层/类型/插件/全局）
+   prefix-keys ; keytable（前缀编辑表：pending 非空时单独查，不拼进序列）
    layers      ; (listof layer)（栈顶在前）
    pending     ; (listof token)   未读完的键前缀（纯数据，替代可变 matcher）
    status      ; string
@@ -100,12 +102,13 @@
                     #:layout layout
                     #:focus [focus #f]
                     #:keytable [keytable (make-keytable)]
+                    #:prefix-keys [prefix-keys (make-keytable)]
                     #:layers [layers '()]
                     #:floats [floats '()]
                     #:status [status ""]
                     #:internal [internal (hash)]
                     #:ext [ext (hash)])
-  (world area layout floats focus keytable layers '() status #t #f #f internal ext))
+  (world area layout floats focus keytable prefix-keys layers '() status #t #f #f internal ext))
 
 ;;; ---------- 派生 / 更新助手（放这里，step 与 render 共用） ----------
 
@@ -181,6 +184,16 @@
 
 (define (world-set-status w text) (struct-copy world w [status text]))   ; 状态行 / 提示
 (define (world-set-pending w seq) (struct-copy world w [pending seq]))   ; 键前缀
+;; 前缀编辑：删掉最后一个待续 token（“命令 backspace”）。
+(define (world-pending-pop w)
+  (define p (world-pending w))
+  (define p*
+    (if (pair? p)
+        (let loop ([l p] [acc '()])
+          (cond [(null? (cdr l)) (reverse acc)]
+                [else (loop (cdr l) (cons (car l) acc))]))
+        '()))
+  (world-set-pending w p*))
 (define (world-set-drag w d)      (struct-copy world w [drag d]))        ; 拖动状态（#f = 结束）
 (define (world-set-layout w t)    (struct-copy world w [layout t]))      ; 布局树
 (define (world-set-floats w fs)   (struct-copy world w [floats fs]))      ; 浮窗层

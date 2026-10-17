@@ -22,7 +22,7 @@
          "world.rkt"
          "ops.rkt")
 
-(provide edit-keys motion-keys pointer-keys focus-keys)
+(provide edit-keys motion-keys pointer-keys focus-keys prefix-edit-keys)
 
 ;;; ════════════════════════ 编辑 ════════════════════════
 
@@ -56,6 +56,14 @@
     (λ (ctx)
       (define-values (row col) (mouse-position (ctx-event ctx)))
       (focus-select-update ctx row col))]))
+
+;;; ════════════════════════ 前缀编辑（键序列进行中） ════════════════════════
+;;; pending 非空时，step 会把这些键**单独**查（不拼进序列）：
+;;;   C-d  删掉最后一个待续 token（C-x C-y → C-x）
+
+(define prefix-edit-keys
+  (keys
+   [(key 'd 'ctrl) (λ (ctx) (pending-backspace))]))
 
 ;;; ════════════════════════ 焦点移动（面板间，与文档类型无关） ════════════════════════
 
