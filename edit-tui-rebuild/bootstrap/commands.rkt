@@ -324,11 +324,15 @@
   (input-show-state state (save-confirm-label state did)))
 
 (define (save-confirm-start ctx docs action)
+  ;; 先取消旧 input（若占用），再写新的 confirm；否则 input-show 的取消钩子
+  ;; 会清掉刚设置的新 confirm。
+  (define base (if (input-active? (ctx-state ctx))
+                   (input-cancel ctx)
+                   (ctx-state ctx)))
   (define s1 (state-resources*
-              (ctx-state ctx)
+              base
               (λ (r) (resources-set-confirm r (make-save-confirm docs action)))))
-  (define ctx* (make-ctx (ctx-env ctx) s1 (ctx-event ctx) (ctx-subject ctx) (ctx-engine ctx)))
-  (save-confirm-show ctx* (car docs)))
+  (save-confirm-show-state s1 (car docs)))
 
 ;; 当前项处理完：还有下一个 -> 显示下一项；否则执行 action。
 (define (confirm-next state)

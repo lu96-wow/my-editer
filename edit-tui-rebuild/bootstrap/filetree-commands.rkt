@@ -283,46 +283,58 @@
                                      (notice-state s (format "deleted: ~a" path))
                                      (notice-state s (format "delete failed: ~a" path)))))))]))))
 
+(define (create-file-handler ctx matched)
+  (define dir (cadr matched))
+  (define name (caddr matched))
+  (define s (input-finish (ctx-state ctx)))
+  (cond
+    [(string=? (string-trim name) "")
+     (notice-state s "create file: empty name")]
+    [else
+     (define path (resolve-path dir (string-trim name)))
+     (cond
+       [(or (file-exists? path) (directory-exists? path))
+        (notice-state s (format "already exists: ~a" path))]
+       [else
+        (transition s
+                    (list (write-file-effect
+                           path ""
+                           (λ (s2 ok?)
+                             (if ok?
+                                 (notice-state s2 (format "created: ~a" path))
+                                 (notice-state s2 (format "create failed: ~a" path)))))))] )]))
+
+(define (create-folder-handler ctx matched)
+  (define dir (cadr matched))
+  (define name (caddr matched))
+  (define s (input-finish (ctx-state ctx)))
+  (cond
+    [(string=? (string-trim name) "")
+     (notice-state s "create folder: empty name")]
+    [else
+     (define path (resolve-path dir (string-trim name)))
+     (cond
+       [(or (file-exists? path) (directory-exists? path))
+        (notice-state s (format "already exists: ~a" path))]
+       [else
+        (transition s
+                    (list (make-directory-effect
+                           path
+                           (λ (s2 ok?)
+                             (if ok?
+                                 (notice-state s2 (format "created: ~a" path))
+                                 (notice-state s2 (format "create failed: ~a" path)))))))] )]))
+
 (define filetree-input-commands
   (list
    (make-input-command
     'filetree-create-file
     (input-command-regexp #rx"^Create file in (.*): (.*)$")
-    (λ (ctx matched)
-      (define dir (cadr matched))
-      (define name (caddr matched))
-      (define s (input-finish (ctx-state ctx)))
-      (cond
-        [(string=? (string-trim name) "")
-         (notice-state s "create file: empty name")]
-        [else
-         (define path (resolve-path dir (string-trim name)))
-         (transition s
-                     (list (write-file-effect
-                            path ""
-                            (λ (s2 ok?)
-                              (if ok?
-                                  (notice-state s2 (format "created: ~a" path))
-                                  (notice-state s2 (format "create failed: ~a" path)))))))])))
+    create-file-handler)
    (make-input-command
     'filetree-create-folder
     (input-command-regexp #rx"^Create folder in (.*): (.*)$")
-    (λ (ctx matched)
-      (define dir (cadr matched))
-      (define name (caddr matched))
-      (define s (input-finish (ctx-state ctx)))
-      (cond
-        [(string=? (string-trim name) "")
-         (notice-state s "create folder: empty name")]
-        [else
-         (define path (resolve-path dir (string-trim name)))
-         (transition s
-                     (list (make-directory-effect
-                            path
-                            (λ (s2 ok?)
-                              (if ok?
-                                  (notice-state s2 (format "created: ~a" path))
-                                  (notice-state s2 (format "create failed: ~a" path)))))))])))))
+    create-folder-handler)))
 
 (define filetree-keys
   (keys

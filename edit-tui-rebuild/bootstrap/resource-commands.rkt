@@ -175,37 +175,44 @@
     [(not selected) (message ctx "place: no selected view")]
     [else
      (define ws (state-workspace s))
-     (define target-reg
-       (cond
-         [(and target (view-id? target)) (workspace-view-region ws target)]
-         [(and target (region-id? target)) (workspace-region ws target)]
-         [else #f]))
      (cond
-       [(not target-reg) (message ctx "place: choose a target panel")]
+       [(not (workspace-view ws selected))
+        (transition-pure
+         (state-chrome*
+          (state-resources* s (λ (r) (resources-set-pending r #f)))
+          (λ (c) (chrome-set-message c "place: selected view no longer exists"))))]
        [else
-        (define target-region (workspace-region ws (region-key target-reg)))
-        (define target-active (region-active target-region))
-        (define target-active-view
-          (and target-active (workspace-view ws target-active)))
-        (define target-doc
-          (and target-active-view (workspace-doc ws (view-meta-doc target-active-view))))
+        (define target-reg
+          (cond
+            [(and target (view-id? target)) (workspace-view-region ws target)]
+            [(and target (region-id? target)) (workspace-region ws target)]
+            [else #f]))
         (cond
-          [(or (eq? (region-role target-region) 'slot)
-               (and target-doc
-                    (memq (doc-meta-mode target-doc) '(status state input resources))))
-           (message ctx "place: target is chrome, choose an editor panel")]
+          [(not target-reg) (message ctx "place: choose a target panel")]
           [else
-           (define ws1
-             (if (and target-active-view (not (equal? target-active selected)))
-                 (workspace-detach-view ws target-active)
-                 ws))
-           (define ws2 (workspace-attach-view ws1 (region-key target-reg) selected))
-           (define s1 (state-set-workspace s ws2))
-           (define s2 (state-resources* s1 (λ (r) (resources-set-pending r #f))))
-           (transition-pure
-            (state-chrome*
-             (state-set-focus s2 selected)
-             (λ (c) (chrome-set-message c "view placed"))))])])]))
+           (define target-region (workspace-region ws (region-key target-reg)))
+           (define target-active (region-active target-region))
+           (define target-active-view
+             (and target-active (workspace-view ws target-active)))
+           (define target-doc
+             (and target-active-view (workspace-doc ws (view-meta-doc target-active-view))))
+           (cond
+             [(or (memq (region-role target-region) '(slot resource filetree))
+                  (and target-doc
+                       (memq (doc-meta-mode target-doc) '(status state input resources filetree))))
+              (message ctx "place: target is chrome, choose an editor panel")]
+             [else
+              (define ws1
+                (if (and target-active-view (not (equal? target-active selected)))
+                    (workspace-detach-view ws target-active)
+                    ws))
+              (define ws2 (workspace-attach-view ws1 (region-key target-reg) selected))
+              (define s1 (state-set-workspace s ws2))
+              (define s2 (state-resources* s1 (λ (r) (resources-set-pending r #f))))
+              (transition-pure
+               (state-chrome*
+                (state-set-focus s2 selected)
+                (λ (c) (chrome-set-message c "view placed"))))])])])]))
 
 (define (commit-placement-command)
   (cmd (λ (ctx) (place-into ctx (state-focus (ctx-state ctx))))))

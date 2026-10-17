@@ -28,7 +28,7 @@
 ;; face : symbol | #f
 
 (define (listed-doc? dm)
-  (not (memq (doc-meta-mode dm) '(status state input resources))))
+  (not (memq (doc-meta-mode dm) '(status state input resources filetree))))
 
 (define (doc-label dm)
   (or (doc-meta-path dm) (doc-meta-name dm) "*untitled*"))

@@ -324,4 +324,21 @@
   (define s4 (feed engine s4a (app:key-event (key 'enter))))
   (check-true (runtime-quit? (state-runtime s4))))
 
+
+;;; ════════════════ C-q while save-confirm active：替换旧 input 但保留新 confirm ════════════════
+
+(let-values ([(engine s0 vid crid) (make-case #f)])
+  (define s1 (feed engine s0 (plain #\x)))
+  (define s2 (feed engine s1 (ctrl 'q)))
+  (check-not-false (resources-confirm (state-resources s2)))
+  (define s3 (feed engine s2 (ctrl 'q)))
+  (check-not-false (resources-confirm (state-resources s3)))
+  (check-true (input-active? s3))
+  (define s4a (feed engine s3 (plain #\n)))
+  (define s4b (feed engine s4a (plain #\a)))
+  (define s4c (feed engine s4b (plain #\l)))
+  (define s4d (feed engine s4c (plain #\l)))
+  (define s4 (feed engine s4d (app:key-event (key 'enter))))
+  (check-true (runtime-quit? (state-runtime s4))))
+
 (displayln "edit-tui-rebuild save: ok")
