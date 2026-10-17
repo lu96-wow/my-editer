@@ -170,6 +170,10 @@
             #:when (eq? (region-role r) role))
     1))
 
+;; keep-last 的边界：同 role 只剩这一块。
+(define (last-region-of-role? ws role)
+  (= 1 (count-role-regions ws role)))
+
 ;; 去掉 region 里所有 view（不删 region）；返回新 workspace + close-view effects。
 (define (drop-region-views ws rid)
   (define vids (workspace-region-views ws rid))
@@ -217,7 +221,7 @@
         (transition (state-set-workspace s ws3) evs)]
 
        [(keep-last)
-        (if (> (count-role-regions ws role) 1)
+        (if (not (last-region-of-role? ws role))
             ;; 不是最后一块：按 delete 处理
             (let-values ([(ws1 evs) (drop-region-views ws rid)])
               (define ws2 (workspace-remove-region ws1 rid))

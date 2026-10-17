@@ -128,3 +128,20 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
 | `C-q` | 退出 |
+
+## 边界决定：最后一个 editor region
+
+采用 **保留空 region，只清 view**：
+
+- `C-w` close-view：移除当前 view；region 留在布局里；
+- `M-w` close-region + role `'editor keep-last`：
+  - 同 role 还有别的 region → 删除当前 region；
+  - 已经是最后一个 editor region → 关闭其中所有 view，但**保留空 region 占位**。
+
+原因：
+
+1. 不引入“空布局 / 没有任何 panel”的特殊状态；
+2. split / open 始终有一个 editor region 可以当锚点；
+3. 与 role 的 `keep-last` 语义一致，不需要在 split 时额外补 panel。
+
+代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；后续 `open-doc` / `new-view` 命令应优先往空 editor region 里装内容。

@@ -52,6 +52,8 @@
 (define inbox (make-async-channel))
 (define (feed s . evs)
   (transition-state (process-events default-env engine inbox s evs)))
+(define (feed-on eng s . evs)
+  (transition-state (process-events default-env eng (make-async-channel) s evs)))
 (define (plain c) (app:key-event (key c)))
 (define (ctrl c)  (app:key-event (key c 'ctrl)))
 (define (meta c)  (app:key-event (key c 'alt)))
@@ -149,6 +151,35 @@
 (check-equal? (hash-count (workspace-regions (state-workspace s-close-region))) 3)
 (check-false (tree-contains? (workspace-layout (state-workspace s-close-region)) new-rid))
 (check-equal? (state-focus s-close-region) vid)
+
+;;; ════════════════ 边界：最后一个 editor region ════════════════
+
+;; keep-last：只剩一个 editor region 时，不删 region，只清掉里面的 view。
+(define eng-last (make-engine))
+(define did-l (doc-id 1))
+(define vid-l (view-id 1))
+(define rid-l (region-id 1))
+(void (engine-create-doc! eng-last did-l "last.rkt" "last view
+"))
+(void (engine-create-view! eng-last vid-l did-l))
+(define ws-last
+  (let* ([ws (workspace-empty)]
+         [ws (workspace-add-doc ws did-l (make-doc-meta "last.rkt"))]
+         [ws (workspace-add-view ws vid-l (view-meta did-l (hash)))]
+         [ws (workspace-add-region ws rid-l
+                                   (region rid-l (list (view-member vid-l)) vid-l 'editor))])
+    (struct-copy workspace ws [layout (make-leaf rid-l)])))
+(define s-last
+  (state-set-focus (make-state #:workspace ws-last
+                               #:ids (make-id-counter 2 2 2 1))
+                   vid-l))
+(define s-last-closed (feed-on eng-last s-last (meta 'w)))
+(check-true (tree-contains? (workspace-layout (state-workspace s-last-closed)) rid-l))
+(check-not-false (workspace-region (state-workspace s-last-closed) rid-l))
+(check-equal? (workspace-region-views (state-workspace s-last-closed) rid-l) '())
+(check-false (workspace-view (state-workspace s-last-closed) vid-l))
+(check-false (state-focus s-last-closed))
+(check-false (engine-view-exists? eng-last vid-l))
 
 ;;; ════════════════ 退出 ════════════════
 
