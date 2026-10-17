@@ -181,6 +181,14 @@
 (check-false (state-focus s-last-closed))
 (check-false (engine-view-exists? eng-last vid-l))
 
+;; 空 region 仍然可以接收新 document/view
+(define s-last-new (feed-on eng-last s-last-closed (ctrl 'n)))
+(check-equal? (workspace-region-views (state-workspace s-last-new) rid-l)
+              (list (view-id 2)))
+(check-equal? (state-focus s-last-new) (view-id 2))
+(check-true (engine-view-exists? eng-last (view-id 2)))
+(check-true (tree-contains? (workspace-layout (state-workspace s-last-new)) rid-l))
+
 ;;; ════════════════ 退出 ════════════════
 
 (define s15 (feed s-close-region (ctrl 'q)))

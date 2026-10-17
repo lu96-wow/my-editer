@@ -73,11 +73,16 @@
   (define pos (status-position state ev))
   (define ws (state-workspace state))
   (define focus (state-focus state))
-  (format "state focus=~a pos=~a docs=~a views=~a regions=~a pending=~a msg=~a"
+  (define editors
+    (for/sum ([r (in-hash-values (workspace-regions ws))]
+              #:when (eq? (region-role r) 'editor))
+      1))
+  (format "state focus=~a pos=~a docs=~a views=~a editors=~a regions=~a pending=~a msg=~a"
           (if focus (id->string focus) "-")
           (if pos (format "~a:~a" (car pos) (cdr pos)) "-")
           (hash-count (workspace-docs ws))
           (hash-count (workspace-views ws))
+          editors
           (hash-count (workspace-regions ws))
           (or (status-sequence state) "-")
           (let ([m (chrome-message (state-chrome state))])

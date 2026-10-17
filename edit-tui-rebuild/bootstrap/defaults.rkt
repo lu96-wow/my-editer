@@ -53,6 +53,7 @@
 (define global-keys
   (keys
    [(key 'q 'ctrl)                 'quit]
+   [(key 'n 'ctrl)                 'new-document]
    [(key 'b 'ctrl)                 'split-right]
    [(key 'v 'ctrl)                 'split-down]
    [(key 'w 'ctrl)                 'close-view]

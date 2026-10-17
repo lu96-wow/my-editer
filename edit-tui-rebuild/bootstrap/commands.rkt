@@ -155,6 +155,53 @@
      (transition (state-set-workspace s ws**)
                  (list (close-view-effect vid)))]))
 
+;;; ════════════════ 新建 view / document ════════════════
+
+(define (region-has-view? reg)
+  (for/or ([m (in-list (region-members reg))]) (view-member? m)))
+
+;; 目标 region：当前 view 所在 region；没有 view 时找第一个空的 editor region。
+(define (target-region-for-new-view ctx)
+  (define s (ctx-state ctx))
+  (define ws (state-workspace s))
+  (define subj (ctx-subject ctx))
+  (cond
+    [(and (view-id? subj) (workspace-view-region ws subj))]
+    [else
+     (for/first ([r (in-hash-values (workspace-regions ws))]
+                 #:when (and (eq? (region-role r) 'editor)
+                             (not (region-has-view? r))))
+       r)]))
+
+(define (mount-view-in-region s rid vid)
+  (define ws (state-workspace s))
+  (define reg (workspace-region ws rid))
+  (cond
+    [(not reg) (transition-pure s)]
+    [else
+     (define members
+       (if (for/or ([m (in-list (region-members reg))])
+             (and (view-member? m) (equal? (member-key m) vid)))
+           (region-members reg)
+           (append (region-members reg) (list (view-member vid)))))
+     (define reg* (struct-copy region reg [members members] [active vid]))
+     (define ws* (workspace-add-region ws rid reg*))
+     (transition-pure (state-set-focus (state-set-workspace s ws*) vid))]))
+
+(define (new-document-command)
+  (cmd (λ (ctx)
+         (define s (ctx-state ctx))
+         (define target (target-region-for-new-view ctx))
+         (cond
+           [(not target) (message ctx "new: no editor region")]
+           [else
+            (transition
+             s
+             (list (open-doc-effect
+                    (make-open-doc-spec "*scratch*" "")
+                    (λ (s* _did vid)
+                      (mount-view-in-region s* (region-key target) vid)))))]))))
+
 ;;; ════════════════ 关闭 region / panel ════════════════
 
 (define (subject-region ctx)
@@ -360,6 +407,7 @@
         'split-down   (split-view-command 'down)
         'close-view   (close-view-command)
         'close-region (close-region-command)
+        'new-document (new-document-command)
         'focus-left   (focus-move-command 'left)
         'focus-right  (focus-move-command 'right)
         'focus-up     (focus-move-command 'up)

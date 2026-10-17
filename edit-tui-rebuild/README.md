@@ -124,6 +124,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-b` / `C-v` | 向右 / 向下切分（same document 多 view） |
 | `C-w` | 关闭当前 view |
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
+| `C-n` | 新建 document/view（空 editor region 也能接） |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
@@ -144,4 +145,4 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 2. split / open 始终有一个 editor region 可以当锚点；
 3. 与 role 的 `keep-last` 语义一致，不需要在 split 时额外补 panel。
 
-代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；后续 `open-doc` / `new-view` 命令应优先往空 editor region 里装内容。
+代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；`C-n` 会优先找空 editor region 装新 document/view，所以空占位不是死状态。
