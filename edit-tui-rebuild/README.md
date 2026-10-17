@@ -75,6 +75,7 @@ main.rkt          公共面（聚合以上）
 - `env.rules` 是带 scope 的规则层，层序：input modes > per-doc > env.rules > mode > global；
 - 状态栏是 `status-part` 列表，不是写死的字符串：`environment.status` 决定用哪些段；
   `default-status-parts` 只有 focus 行列 + path，`full-status-parts` 再加 pending/message；
+  - path 在文件树根目录下时显示**相对路径**，否则显示绝对路径；
 - 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
   命令派发按 subject view → doc → mode/per-doc layers，不按 layout region；
 - dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
