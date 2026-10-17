@@ -8,7 +8,7 @@
 ;;;   ←→↑↓ Home End       移动
 ;;;   Enter/Backspace/Del  编辑
 ;;;   C-z / C-y            undo / redo
-;;;   C-w ←→↑↓             左/右/上/下切分（same document 多 view）
+;;;   C-w ←→↑↓             左/右/上/下拆出一个空窗口
 ;;;   C-w C-w              关闭当前 view
 ;;;   M-方向               焦点在 region 间移动
 ;;;   C-q                  退出

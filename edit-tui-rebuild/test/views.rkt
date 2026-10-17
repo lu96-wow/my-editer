@@ -95,9 +95,11 @@
 
 ;; 两个 editor region；M-w 删除被聚焦的那个，但 view 要保留
 (let-values ([(eng s did vid rid) (make-one)])
-  ;; 用 split 造第二个 region/view
+  ;; split 出一个空 region，再 C-n 把第二个 document 装进去
   (define s1 (feed eng s (ctrl 'w) (app:key-event (key 'right))))
-  (define s2 (feed eng s1 (meta 'w)))       ; 删除当前（新）region
+  (check-equal? (length (workspace-region-views (state-workspace s1) (state-focus s1))) 0)
+  (define s1b (feed eng s1 (ctrl 'n)))
+  (define s2 (feed eng s1b (meta 'w)))      ; 删除当前（新）region
   (define ws (state-workspace s2))
   ;; 两个 view 都还在；至少一个 detached
   (check-equal? (hash-count (workspace-views ws)) 2)

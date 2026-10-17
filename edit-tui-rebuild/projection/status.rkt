@@ -61,10 +61,12 @@
          (workspace-view ws active)
          active)))
 
+;; 焦点可能是 view（有文档）、region（空面板）或 #f；后两种都退回第一个 editor view，
+;; 这样状态栏不会因为“焦点在空窗口”而失去位置信息。
 (define (status-view state)
   (define f (state-focus state))
   (cond
-    [(not f) (first-editor-view state)]
+    [(not (view-id? f)) (first-editor-view state)]
     [(chrome-slot-view? state f) (or (first-editor-view state) f)]
     [else f]))
 

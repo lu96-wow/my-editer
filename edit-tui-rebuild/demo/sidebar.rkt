@@ -24,7 +24,7 @@
 ;;;   C-n f / C-d    文件树：建文件 / 删文件（y/n 确认）
 ;;;   v n r d c      资源列表：新 view / 新 doc / placement / detach / 关 view
 ;;;   C-x C-p        提交 placement 到当前 panel
-;;;   C-w ←→↑↓       编辑区拆分；C-w C-w 关 view；M-方向 移动焦点
+;;;   C-w ←→↑↓       拆出一个空窗口；C-w C-w 关 view；M-方向 移动焦点
 ;;;   C-q            退出
 
 (require "../../edit-tui/theme/main.rkt"

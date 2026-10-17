@@ -37,12 +37,11 @@
 
 (define (focus-move ctx dir)
   (define s (ctx-state ctx))
-  (define vid (view-subject ctx))
   (define ws (state-workspace s))
-  (define reg (and vid (workspace-view-region ws vid)))
+  (define reg (region-subject ctx))
   (cond
     [(input-busy? ctx) (message ctx "focus: input active")]
-    [(not reg) (message ctx "focus: no view")]
+    [(not reg) (message ctx "focus: no region")]
     [else
      (define target-rid (region-neighbor (workspace-layout ws)
                                          (frame-area s)
@@ -50,9 +49,11 @@
                                          dir))
      (define target-reg (and target-rid (workspace-region ws target-rid)))
      (define target-vid (and target-reg (workspace-region-active ws target-rid)))
-     (if (view-id? target-vid)
-         (transition-pure (state-set-focus s target-vid))
-         (message ctx "focus: no neighbor view"))]))
+     (cond
+       [(not target-rid) (message ctx "focus: no neighbor")]
+       ;; 落到邻居的 active view；邻居是空 region 就把焦点放在 region 上。
+       [(view-id? target-vid) (transition-pure (state-set-focus s target-vid))]
+       [else (transition-pure (state-set-focus s target-rid))])]))
 
 ;;; ════════════════ 鼠标：点击落点 / 拖选 ════════════════
 

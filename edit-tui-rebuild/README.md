@@ -110,6 +110,8 @@ main.rkt        公共面
 - 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
 - 输入栏是 *input* document：prompt 前缀写进 buffer 且 readonly，提交时读完整字符串，
   交给 `environment.input-commands` 匹配；
+- `focus` 是 `view-id | region-id | #f`：有文档时是 view，空窗口（刚拆出来 / 关光 view 的 panel）
+  时是 region-id，什么都没有时是 #f；状态栏对后两种退回“第一个 editor view”投影位置；
 - `internal?` 文档（状态栏 / 输入栏 / 插件面板）不参与保存确认、不进资源列表、不能当 placement 目标；
 - 文档版本用 core 的 opaque token：`buffer-version` / `buffer-version=?`；
 - 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
@@ -134,6 +136,7 @@ racket edit-tui-rebuild/test/plugin.rkt
 racket edit-tui-rebuild/test/plugin-detach.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
+racket edit-tui-rebuild/test/split.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -217,7 +220,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `Enter` / `Backspace` / `Delete` | 编辑 |
 | `C-z` / `C-y` | undo / redo |
 | `C-b` | 显示 / 隐藏文件树面板 |
-| `C-w ←→↑↓` | 左 / 右 / 上 / 下切分（same document 多 view） |
+| `C-w ←→↑↓` | 左 / 右 / 上 / 下拆出一个**空窗口**（焦点移到空窗口，之后 `C-n` / 打开文件装进去） |
 | `C-w C-w` | 关闭当前 view |
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `C-n` | 新建 document/view（空 editor region 也能接） |
@@ -235,6 +238,28 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | 左键拖动 | 从按下位置开始拖选 |
 | `C-q` | 退出；有 dirty document 时进入保存确认 |
 | `y` / `n` / `yall` / `nall` + Enter | 保存确认：当前保存 / 跳过 / 保存剩余 / 跳过剩余 |
+
+## 切分 = 拆出一个空窗口
+
+`C-w ←→↑↓` **不复制 document**，也不给同一 document 再加 view，而是：
+
+```
+源 region（成员 / active / 焦点内容都不动）
+   ├── 原 region        members = (view ...)   保持原样
+   └── 新 region        members = '()          空窗口，role / 边框跟随源 region
+```
+
+- 焦点移到新 region（`focus = region-id`）——所以 `C-n` / `C-x C-f` / 文件树 Enter
+  会直接装进这个空窗口（`target-region-for-new-view*` 认 region-id）；
+- 空窗口也能再拆（`C-w →` 在空窗口上继续拆）；
+- 焦点可以在「有文档的 view」和「空 region」之间用 `M-方向` 来回移动；
+- 空窗口按 region-id 视为可聚焦（鼠标点它 / `M-方向` 落上去），渲染成带**聚焦边框**的空面板；
+- role 不可切分（`'filetree` / `'resource` 这类面板）时拒绝：`split: region not splittable`。
+
+同一 region 里放多个 view 的能力仍然在（`C-n` 会把新 view 挂进当前 region，
+placement 也会把 detached view 放进去），用 `Tab` / `C-x C-o` 切换。
+
+`test/split.rkt` 守着这些约定。
 
 ## 边界决定：最后一个 editor region
 

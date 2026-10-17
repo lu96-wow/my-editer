@@ -95,7 +95,14 @@
        (set! chromes (cons (chrome-entry rid line c) chromes))
        (set! panels (cons (make-panel #f r borders) panels))]
       [else
-       (set! panels (cons (make-panel #f r borders) panels))]))
+       ;; 没有成员的 region（刚拆出来的空窗口 / 关光 view 的 panel）：
+       ;; 焦点可能正好在它上面（focus = region-id），给它聚焦边框做视觉反馈。
+       (define focused? (and focus (equal? focus rid)))
+       (set! panels
+             (cons (make-panel #f r borders
+                               #:face (if focused? 'focused-border 'window-border)
+                               #:weight (if focused? 1 0))
+                   panels))]))
   (values (reverse panels) (reverse chromes) (reverse placements)))
 
 (define (project-view-placements state engine #:status-parts [status-parts #f])

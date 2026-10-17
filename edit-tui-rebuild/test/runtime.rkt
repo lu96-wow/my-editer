@@ -102,26 +102,35 @@
 
 ;;; ════════════════ 切分 / 焦点 / 关闭 ════════════════
 
-;; C-b：向右切分，新 view 聚焦
+;; C-w →：向右拆出一个**空** region（不复制 document，也不新增 view）
 (define s11 (feed s10 (ctrl 'w) (app:key-event (key 'right))))
-(check-equal? (hash-count (engine-views engine)) 4)
-(check-equal? (hash-count (workspace-views (state-workspace s11))) 4)
-(check-equal? (workspace-focus (state-workspace s11)) (view-id 4))
-(check-equal? (state-focus s11) (view-id 4))
-;; 同 document：两个 view 看同一 buffer
-(check-equal? (engine-view-doc-text (ev) (doc-id 1)) "Pxyabc\n")
+(check-equal? (hash-count (engine-views engine)) 3)          ; view 没变多
+(check-equal? (hash-count (workspace-views (state-workspace s11))) 3)
+(check-equal? (hash-count (workspace-regions (state-workspace s11))) 3)
+(define split-rid (state-focus s11))
+(check-true (region-id? split-rid))
+(check-equal? (workspace-region-views (state-workspace s11) split-rid) '())
+(check-equal? (region-role (workspace-region (state-workspace s11) split-rid)) 'editor)
 
-;; M-left：焦点从右块回到左块
+;; M-left：焦点从空 region 回到左边有文档的 view
 (define s12 (feed s11 (meta 'left)))
 (check-equal? (state-focus s12) vid)
 
-;; 点击右块：焦点回到右块（mouse subject 走 geometry）
-(define s13 (feed s12 (app:mouse-event (mouse 'press 'left) 1 75)))
-(check-equal? (state-focus s13) (view-id 4))
+;; M-right 再回到空 region（焦点可以停在空 region 上）
+(define s12b (feed s12 (meta 'right)))
+(check-equal? (state-focus s12b) split-rid)
 
-;; C-w：关闭当前 view，焦点回落到另一个 view
-(define s14 (feed s13 (ctrl 'w) (ctrl 'w)))
-(check-equal? (hash-count (engine-views engine)) 3)
+;; 点击空 region 也只聚焦它（没有 view 可以落点）
+(define s13 (feed s12 (app:mouse-event (mouse 'press 'left) 1 75)))
+(check-equal? (state-focus s13) split-rid)
+
+;; 在空 region 里 C-n：新 document 装进去
+(define s13n (feed s13 (ctrl 'n)))
+(check-equal? (length (workspace-region-views (state-workspace s13n) split-rid)) 1)
+(check-true (view-id? (state-focus s13n)))
+
+;; C-w C-w：关闭这个新 view，region 留着（变成空 region）
+(define s14 (feed s13n (ctrl 'w) (ctrl 'w)))
 (check-equal? (hash-count (workspace-views (state-workspace s14))) 3)
 (check-equal? (state-focus s14) vid)
 
@@ -146,14 +155,14 @@
 
 ;;; ════════════════ 关闭 region / panel ════════════════
 
-;; 再 split 一次，然后 M-w 关闭整个 region（不是只关 view）
+;; 再拆一个空 region，然后 M-w 关闭整个 region（不是只关 view）
 (define s-split2 (feed s-release (ctrl 'w) (app:key-event (key 'right))))
-(check-equal? (hash-count (workspace-views (state-workspace s-split2))) 4)
+(check-equal? (hash-count (workspace-views (state-workspace s-split2))) 3)
 (check-equal? (hash-count (workspace-regions (state-workspace s-split2))) 4)
-(define new-rid (region-key (workspace-view-region (state-workspace s-split2)
-                                                   (state-focus s-split2))))
+(define new-rid (state-focus s-split2))
+(check-true (region-id? new-rid))
 (define s-close-region (feed s-split2 (meta 'w)))
-(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 4)
+(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 3)
 (check-equal? (hash-count (workspace-regions (state-workspace s-close-region))) 3)
 (check-false (tree-contains? (workspace-layout (state-workspace s-close-region)) new-rid))
 (check-equal? (state-focus s-close-region) vid)

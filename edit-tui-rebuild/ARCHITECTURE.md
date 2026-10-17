@@ -77,6 +77,8 @@ runtime 只负责遍历，不认识任何具体面板。
 
 - `workspace` 里放**框架级**的会话信息：docs / views / regions / layout / focus /
   `root`（工作区根，状态栏按它投影相对路径）/ `placement`（等待放进 panel 的 view）；
+- `focus` 可以是 `view-id` 或 `region-id`：切分（`C-w ←→↑↓`）拆出的是**空 region**，
+  焦点落在 region 上，下一次开文档就装进去；
 - `confirm` 是保存确认队列（quit / close-doc 用，属于框架）；
 - region 是“一块位置里可切换的成员”：sidebar / chrome 槽都是多成员 region，
   `active` 决定显示谁，`role.switchable?` 决定 Tab 能不能切；

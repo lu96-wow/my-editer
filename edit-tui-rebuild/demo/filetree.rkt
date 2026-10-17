@@ -19,7 +19,7 @@
 ;;; C-d       删除文件（input 栏 y/n 确认）
 ;;; C-x C-p   placement 提交到当前/点击的 panel
 ;;; C-b       显示 / 隐藏文件树面板
-;;; C-w ←→↑↓  在编辑区拆分
+;;; C-w ←→↑↓  在编辑区拆出一个空窗口
 
 (require "../../edit-tui/theme/main.rkt"
          "../base/id.rkt"

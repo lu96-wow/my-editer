@@ -1,10 +1,12 @@
 #lang racket
 
 ;;; layer  : bootstrap/commands
-;;; effect : engine view 创建/销毁（open-view-effect / close-view-effect）
+;;; effect : 只有 close-view 会销毁 engine view（close-view-effect）；
+;;;          新建 document / 打开文件发 open-doc-effect
 ;;;
-;;; view 生命周期命令（不涉及 document 生命周期）：
-;;;   split-*          同一 document 再开一个 view，按 role 的 splittable? 判定
+;;; region / view 生命周期命令（不涉及 document 生命周期）：
+;;;   split-*          **拆出一个空 region**（不带 document / view），按 role 的
+;;;                    splittable? 判定；焦点移到新 region，之后 C-n / 打开文件就装进去
 ;;;   close-view       role 的 close-policy；'ignore 拒绝
 ;;;   new-document     open-doc-effect + 装进当前/空 editor region
 ;;;   detach-view      从 region 摘出（保留 view / engine view / document）
@@ -14,7 +16,7 @@
 ;;;
 ;;; 焦点回退一律用 “真实文档 view”（util/real-view?），不会落到 internal 文档上。
 
-(provide split-view-command
+(provide split-region-command
          close-view-command
          new-document-command
          detach-view-command
@@ -39,29 +41,31 @@
 
 ;;; ════════════════ 切分 / 关闭 ════════════════
 
-(define (split-view-command dir)
-  (cmd (λ (ctx) (split-view ctx dir))))
+(define (split-region-command dir)
+  (cmd (λ (ctx) (split-region ctx dir))))
 
-(define (split-view ctx dir)
+;; 拆出一个**空** region：不复制 document，也不再给同一 document 加 view。
+;;
+;;   原 region 不动（成员 / active / 焦点内容都保留）；
+;;   新 region 的 members = '()，焦点移到这个空 region（focus = region-id）。
+;;
+;; 新 region 的 role 跟随源 region；边框跟随源叶子；尺寸由 layout 的 split 决定。
+;; 之后在新 region 里 C-n / 打开文件 / 文件树 Enter 就会把文档装进去。
+(define (split-region ctx dir)
   (define s (ctx-state ctx))
-  (define vid (view-subject ctx))
   (define ws (state-workspace s))
-  (define did (and vid (workspace-doc-of-view ws vid)))
-  (define reg (and vid (workspace-view-region ws vid)))
+  (define reg (region-subject ctx))
   (define role (and reg (region-role reg)))
   (cond
     [(input-busy? ctx) (message ctx "split: input active")]
-    [(not (and did reg)) (message ctx "split: no view")]
+    [(not reg) (message ctx "split: no region")]
     [(not (role-splittable? (environment-role (ctx-env ctx) role)))
      (message ctx "split: region not splittable")]
     [else
      (define rid (region-key reg))
      (define leaf (tree-find (workspace-layout ws) rid))
      (define borders (if leaf (leaf-borders leaf) leaf-borders-all))
-     (transition s
-                 (list (open-view-effect did
-                                          (λ (s* nvid)
-                                            (mount-split s* rid borders nvid dir)))))]))
+     (mount-split s rid borders dir)]))
 (define (axis/side dir)
   (case dir
     [(left)  (values 'lr 'before)]
@@ -70,20 +74,21 @@
     [(down)  (values 'tb 'after)]
     [else (error 'split-view "未知方向：~a" dir)]))
 
-(define (mount-split s source-rid borders nvid dir)
+(define (mount-split s source-rid borders dir)
   (define-values (axis side) (axis/side dir))
   (define-values (nrid s1) (state-next-id s 'region))
   (define ws (state-workspace s1))
   (define source-reg (workspace-region ws source-rid))
   (define new-reg (region nrid
-                          (list (view-member nvid))
-                          nvid
+                          '()                  ; 空窗口：没有成员
+                          #f
                           (if source-reg (region-role source-reg) 'editor)))
   (define ws* (workspace-add-region ws nrid new-reg))
   (define layout* (tree-split (workspace-layout ws*) source-rid axis nrid
                               #:side side #:borders borders))
   (define s2 (state-set-workspace s1 (struct-copy workspace ws* [layout layout*])))
-  (transition-pure (state-set-focus s2 nvid)))
+  ;; 焦点移到空 region：下一次 C-n / 打开文件就落在它里面。
+  (transition-pure (state-set-focus s2 nrid)))
 
 (define (close-view-command)
   (cmd (λ (ctx) (close-view ctx))))
@@ -118,11 +123,13 @@
 (define (region-has-view? reg)
   (for/or ([m (in-list (region-members reg))]) (view-member? m)))
 
-;; 目标 region：当前 view 所在 region；没有 view 时找第一个空的 editor region。
+;; 目标 region：subject 指向的 region（view 所在 / region-id 本身）；
+;; 都没有时找第一个空的 editor region（例如刚拆出来的窗口）。
 (define (target-region-for-new-view* s subj)
   (define ws (state-workspace s))
   (cond
-    [(and (view-id? subj) (workspace-view-region ws subj))]
+    [(view-id? subj) (workspace-view-region ws subj)]
+    [(region-id? subj) (workspace-region ws subj)]
     [else
      (for/first ([r (in-hash-values (workspace-regions ws))]
                  #:when (and (eq? (region-role r) 'editor)
@@ -211,9 +218,8 @@
   (cmd
    (λ (ctx)
      (define s (ctx-state ctx))
-     (define vid (view-subject ctx))
      (define ws (state-workspace s))
-     (define reg (and vid (workspace-view-region ws vid)))
+     (define reg (region-subject ctx))
      (cond
        [(input-busy? ctx)
         (message ctx "switch: input active")]

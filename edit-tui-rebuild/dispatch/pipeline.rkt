@@ -24,7 +24,8 @@
          dispatch-mouse
          dispatch-internal)
 
-(require "../base/event.rkt"
+(require "../base/id.rkt"
+         "../base/event.rkt"
          "../base/effect.rkt"
          "../base/keymap.rkt"
          "../base/transition.rkt"
@@ -226,9 +227,13 @@
            [else #f]))))
 
 ;; 主体（view）所在区域的 role 是否可聚焦。
+;; subject 可以是 view（有文档）或 region（空面板 / 刚拆出来的空窗口）。
 (define (focusable-subject? env state subject)
   (define ws (state-workspace state))
-  (define r (and subject (workspace-view-region ws subject)))
+  (define r (cond
+              [(view-id? subject) (workspace-view-region ws subject)]
+              [(region-id? subject) (workspace-region ws subject)]
+              [else #f]))
   (and r (role-focusable? (environment-role env (region-role r)))))
 
 (define (notice state text)

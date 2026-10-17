@@ -5,7 +5,8 @@
 ;;;
 ;;; 命令层共用的小工具：
 ;;;   message / notice-state          往 chrome.message 写一句话
-;;;   view-subject                    取 ctx.subject 里的 view-id
+;;;   view-subject                    取 ctx.subject 里的 view-id（region 焦点 -> #f）
+;;;   region-subject                  subject 指向的 region（view -> 所在 region；region-id -> 自己）
 ;;;   input-busy?                     输入栏是否占用（占用时多数命令拒绝执行）
 ;;;   frame-area                      终端尺寸 -> core rect
 ;;;   real-view? / fallback-attached-view
@@ -17,6 +18,7 @@
          notice-state
          notice-state-value
          view-subject
+         region-subject
          input-busy?
          frame-area
          real-view?
@@ -39,6 +41,16 @@
 (define (view-subject ctx)
   (define s (ctx-subject ctx))
   (and (view-id? s) s))
+
+;; 焦点可以是 view-id（有文档）或 region-id（空面板 / 刚拆出来的空窗口）。
+;; 需要“作用在哪块区域”的命令（split / focus / close-region / new-document）用这个。
+(define (region-subject ctx)
+  (define subj (ctx-subject ctx))
+  (define ws (state-workspace (ctx-state ctx)))
+  (cond
+    [(view-id? subj) (workspace-view-region ws subj)]
+    [(region-id? subj) (workspace-region ws subj)]
+    [else #f]))
 
 (define (input-busy? ctx) (state-input-active? (ctx-state ctx)))
 
