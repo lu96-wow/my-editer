@@ -36,7 +36,7 @@ model/         纯状态（只依赖 base）
   layout.rkt      region 布局树（纯几何）
   input.rkt       pending / modes / gesture
   chrome.rkt      message / log
-  overlay.rkt     浮层（popup：id / 锚 view / lines / selected）
+  workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
   save.rkt        保存确认队列（框架级）
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/handler/rules/status/doc-type/input-command/panel-sync
@@ -151,7 +151,7 @@ racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/split.rkt
 racket edit-tui-rebuild/test/hooks.rkt
 racket edit-tui-rebuild/test/plugins.rkt
-racket edit-tui-rebuild/test/popup.rkt
+racket edit-tui-rebuild/test/float.rkt
 edit-tui-rebuild/test/run.sh
 ```
 

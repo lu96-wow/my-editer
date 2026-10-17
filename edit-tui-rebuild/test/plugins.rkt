@@ -23,7 +23,6 @@
          "../model/workspace.rkt"
          "../model/layout.rkt"
          "../model/chrome.rkt"
-         "../model/overlay.rkt"
          "../model/input.rkt"
          "../effects/engine.rkt"
          "../effects/panel.rkt"
@@ -31,6 +30,7 @@
          "../chrome/slot.rkt"
          "../projection/render.rkt"
          "../plugins/docs/plugin.rkt"
+         "../plugins/completion/plugin.rkt"
          "../plugins/filetree/plugin.rkt"
          "../plugins/builtin.rkt"
          "../runtime/run.rkt"
@@ -41,6 +41,7 @@
 
 (define editor-rid (region-id 1))
 (define docs-rid (region-id 2))
+(define completion-rid (region-id 3))
 (define did (doc-id 1))
 (define vid (view-id 1))
 
@@ -76,11 +77,12 @@
   (define s0 (make-state #:workspace (struct-copy workspace ws [layout lay])
                          #:ids (make-id-counter 2 2 3 1)))
   (define s1 (install-docs-panel! engine s0 docs-rid))
+  (define s1b (install-completion-popup! engine s1 completion-rid))
   ;; 文档面板初始收起（和 demo 一致）
-  (define s1b (state-workspace* s1 (λ (ws)
-                                     (struct-copy workspace ws
-                                                  [layout (tree-hide (workspace-layout ws) docs-rid)]))))
-  (define s2 (startup! editor-env engine (state-set-focus s1b vid)))
+  (define s1c (state-workspace* s1b (λ (ws)
+                                      (struct-copy workspace ws
+                                                   [layout (tree-hide (workspace-layout ws) docs-rid)]))))
+  (define s2 (startup! editor-env engine (state-set-focus s1c vid)))
   (values engine s2))
 
 (define (feed engine s . evs)
@@ -126,10 +128,17 @@
 ;; 注意：光标 / 文本在 engine 里（State 只存 id），所以用例必须**顺序**推进，
 ;; 不能拿旧的 state 再喂新事件。
 
-(define (popup-of s) (state-popup-get s 'completion))
-(define (popup-open? s) (and (popup-of s) #t))
+(define (popup-open? s) (completion-open? s))
 (define (in-popup-mode? s)
   (and (memq 'completion-popup (input-modes (state-input s))) #t))
+;; 弹窗内容是**文档**：候选 = 行，选中 = 文档光标行
+(define (popup-lines* engine s)
+  (string-split (or (engine-view-view-text (make-engine-view engine)
+                                           (completion-popup-view s))
+                    "")
+                "\n"))
+(define (popup-sel engine s)
+  (engine-view-view-point-line (make-engine-view engine) (completion-popup-view s)))
 
 (let-values ([(engine s0) (make-world)])
   ;; 光标走 Home/End + Down 到第 3 行行尾，再输入前缀 "squ"
@@ -144,16 +153,16 @@
   (define s3 (apply feed engine s2 cl-slash))
   (check-true (popup-open? s3))
   (check-true (in-popup-mode? s3))
-  (check-equal? (popup-selected (popup-of s3)) 0)
-  (check-not-false (member "square" (popup-lines (popup-of s3))))
+  (check-equal? (popup-sel engine s3) 0)
+  (check-not-false (member "square" (popup-lines* engine s3)))
   (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
 
   ;; Down / Up 被临时键表接住：移动选择而不是移动光标
   (define s4 (feed engine s3 (app:key-event (key 'down))))
-  (check-equal? (popup-selected (popup-of s4)) 1)
+  (check-equal? (popup-sel engine s4) 1)
   (check-equal? (engine-view-view-point-column (make-engine-view engine) vid) 37)
   (define s5 (feed engine s4 (app:key-event (key 'up))))
-  (check-equal? (popup-selected (popup-of s5)) 0)
+  (check-equal? (popup-sel engine s5) 0)
 
   ;; Enter：接受选中候选，关弹窗 + 摘掉临时键表
   (define s6 (feed engine s5 (app:key-event (key 'enter))))

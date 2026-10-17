@@ -10,7 +10,7 @@
 ;;;   views   : view-id -> view-meta
 ;;;   regions : region-id -> region
 ;;;   layout  : tree<region-id>（几何在 model/layout.rkt）
-;;;   overlays: (listof overlay)（浮窗层；先留字段，后续块实现）
+;;;   floats  : (listof float)（浮层 = 不在 layout 树里的 region，叠在上面）
 ;;;   focus   : view-id | #f
 ;;;   stack   : (listof view-id)   焦点历史（返回时用）
 ;;;
@@ -30,6 +30,7 @@
          (struct-out member)
          (struct-out region)
          (struct-out workspace)
+         (struct-out float)
          make-doc-meta
          view-member chrome-member
          view-member? chrome-member? member-key
@@ -52,7 +53,8 @@
          workspace-set-focus workspace-set-focus* workspace-pop-focus
          workspace-focus-view
          workspace-set-root
-         workspace-set-placement)
+         workspace-set-placement
+         workspace-float workspace-add-float workspace-remove-float)
 
 ;;; ---------- 元数据 ----------
 
@@ -96,14 +98,24 @@
 ;; role         : symbol（role 注册表的键；行为由 env/role 查表，不存这里）
 ;;                如 'editor / 'panel / 'slot；focusable? 由 role 行为决定。
 
+;;; ---------- 浮层 ----------
+
+;; 浮层 = 一块**不在 layout 树里**的 region：叠在平铺面板上面（deep 更高），
+;; 位置每帧按 anchor view 的光标算。内容仍然是 document/view（所有显示都走 core）。
+(struct float (id region view anchor) #:transparent)
+;; id     : symbol        浮层标识（同一时刻同名只留一个）
+;; region : region-id     浮层的 region（不在 layout 里，只由浮层投影引用）
+;; view   : view-id       浮层的 view（buffer 支撑，内容 = 文档文本）
+;; anchor : view-id | #f  面板贴着这个 view 的光标（#f = 屏幕左上角）
+
 ;;; ---------- workspace ----------
 
-(struct workspace (docs views regions layout overlays focus stack root placement) #:transparent)
+(struct workspace (docs views regions layout floats focus stack root placement) #:transparent)
 ;; docs    : (hash/c doc-id doc-meta)
 ;; views   : (hash/c view-id view-meta)
 ;; regions : (hash/c region-id region)
 ;; layout  : node（model/layout.rkt；可以没有叶子）
-;; overlays: (listof overlay)（暂定）
+;; floats  : (listof float)（model/float.rkt；每帧按锚点算屏幕矩形，deep 高于平铺面板）
 ;; focus   : view-id | #f
 ;; stack   : (listof view-id)
 ;; root    : string   工作区根目录（绝对路径；"" = 未设置）
@@ -121,18 +133,37 @@
                         #:views [views (hash)]
                         #:regions [regions (hash)]
                         #:layout [layout (empty-tree)]
-                        #:overlays [overlays '()]
+                        #:floats [floats '()]
                         #:focus [focus #f]
                         #:stack [stack '()]
                         #:root [root ""]
                         #:placement [placement #f])
-  (workspace docs views regions layout overlays focus stack root placement))
+  (workspace docs views regions layout floats focus stack root placement))
 
 (define (workspace-set-root w root)
   (struct-copy workspace w [root root]))
 
 (define (workspace-set-placement w vid)
   (struct-copy workspace w [placement vid]))
+
+;;; ---------- 浮层（增删查） ----------
+
+(define (workspace-float w id)
+  (for/first ([f (in-list (workspace-floats w))] #:when (eq? (float-id f) id))
+    f))
+
+;; 同名浮层只留一个（新的顶掉旧的）
+(define (workspace-add-float w f)
+  (struct-copy workspace w
+               [floats (cons f (for/list ([x (in-list (workspace-floats w))]
+                                          #:unless (eq? (float-id x) (float-id f)))
+                                 x))]))
+
+(define (workspace-remove-float w id)
+  (struct-copy workspace w
+               [floats (for/list ([f (in-list (workspace-floats w))]
+                                  #:unless (eq? (float-id f) id))
+                         f)]))
 
 ;;; ---------- 查 ----------
 

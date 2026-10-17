@@ -162,7 +162,7 @@
   '("effects/engine.rkt"
     "effects/interpreter.rkt"      ; set-faces / replace-range 是 core 端口的写回
     "projection/geometry.rkt"
-    "projection/popup.rkt"
+    "projection/float.rkt"
     "projection/render.rkt"
     "effects/panel.rkt"
     "bootstrap/commands/table.rkt"

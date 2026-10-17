@@ -30,8 +30,7 @@
          "../effects/engine.rkt"
          "../projection/geometry.rkt"
          "../projection/status.rkt"
-         "../projection/popup.rkt"
-         "../model/overlay.rkt"
+         "../projection/float.rkt"
          "../../core/view/panel.rkt"
          "../../core/view/base/rect.rkt"
          "../../core/view/patch.rkt"          ; piece
@@ -46,10 +45,11 @@
 ;; line   : string（chrome 成员的投影文本）
 ;; rect   : 内容区 rect（屏幕坐标）
 
-(struct frame-cache (core chrome popups) #:transparent)
+(struct frame-cache (core chrome) #:transparent)
 ;; core   : core 的 render-cache | #f
 ;; chrome : (hash/c region-id chrome-entry)  上一帧 chrome
-;; popups : (listof popup-entry)             上一帧浮层（变了就整屏重画）
+;;
+;; 浮层不在这里：它是真的 panel（在 core 的 screen 里），core 的 diff 自己管。
 
 ;;; ════════════════ 投影 ════════════════
 
@@ -106,6 +106,18 @@
                                #:face (if focused? 'focused-border 'window-border)
                                #:weight (if focused? 1 0))
                    panels))]))
+  ;; 浮层：不在 layout 里，作为 deep 更高的 panel 叠上去。
+  ;; 内容仍是 document/view —— core 的 screen 里就有它，擦除/遮挡由 core 的 diff 负责。
+  (for ([fp (in-list (project-floats state ev))])
+    (define vid (float-panel-view fp))
+    (define v (engine-view-object engine vid))
+    (when v
+      (define r (float-panel-rect fp))
+      (define borders float-borders)
+      (set! placements (cons (list vid (rect-content r borders)) placements))
+      (set! panels
+            (cons (make-panel v r borders #:deep 1 #:face 'focused-border)
+                  panels))))
   (values (reverse panels) (reverse chromes) (reverse placements)))
 
 (define (project-view-placements state engine #:status-parts [status-parts #f])
@@ -122,21 +134,7 @@
   (define area (frame-area state))
   (define focus-id (state-focus state))
   (define focus-view (and focus-id (engine-view-object engine focus-id)))
-  ;; 浮层**不在** core 的 screen 里（它是在 panels 之后叠加的额外 piece），
-  ;; 所以 core 的增量 diff 无法“擦掉”它：core 的缓存认为那一块已经是正文。
-  ;; 处理办法（和 chrome 一样，但 chrome 底下是空的、浮层底下是正文）：
-  ;;   1. 浮层变了（出现 / 消失 / 移动 / 选中行动了）就先自己**清掉旧矩形**；
-  ;;   2. 再让 core 丢掉缓存整屏重画一次，把底下的正文画回来；
-  ;;      注意 screen-patch 在 old=#f 时只产出“非空白”格，所以第 1 步的清屏是必需的。
-  (define popups (project-popups state (make-engine-view engine)))
-  (define old-popups (if (frame-cache? cache) (frame-cache-popups cache) '()))
-  (define popups-changed? (not (equal? popups old-popups)))
-  (define popups-clear
-    (if popups-changed?
-        (append* (for/list ([e (in-list old-popups)])
-                   (clear-rect-pieces (popup-entry-rect e))))
-        '()))
-  (define core-cache (and (not popups-changed?) (frame-cache? cache) (frame-cache-core cache)))
+  (define core-cache (and (frame-cache? cache) (frame-cache-core cache)))
   (define-values (core-cache* rows sels)
     (render-display-patch panels focus-view
                           (rect-w area) (rect-h area)
@@ -147,12 +145,10 @@
   (define core-redrew? (or (pair? rows) (pair? sels)))
   (define-values (chrome* chrome-pieces)
     (chrome-diff-pieces old-chrome chromes core-redrew?))
-  ;; 浮层每帧整块重画（它自己盖满矩形），顺序：先擦旧 -> 正文/选区 -> chrome -> 新浮层
-  (define popup-pieces (append* (for/list ([e (in-list popups)]) (popup-entry-pieces e))))
-  (define all-pieces (append popups-clear rows sels chrome-pieces popup-pieces))
+  (define all-pieces (append rows sels chrome-pieces))
   (define out (bytes-append (if cache (bytes) (render-clear))
                             (render-pieces all-pieces)))
-  (values (frame-cache core-cache* chrome* popups) out))
+  (values (frame-cache core-cache* chrome*) out))
 
 ;;; ════════════════ chrome 文本 ════════════════
 

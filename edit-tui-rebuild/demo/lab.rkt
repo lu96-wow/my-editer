@@ -35,6 +35,7 @@
          "../plugins/filetree/plugin.rkt"
          "../plugins/resource/plugin.rkt"
          "../plugins/docs/plugin.rkt"
+         "../plugins/completion/plugin.rkt"
          "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
@@ -48,6 +49,7 @@
 (define editor-rid (region-id 2))
 (define docs-rid (region-id 3))
 (define chrome-rid (region-id 4))
+(define completion-rid (region-id 5))
 
 (define sample
   (string-join
@@ -96,8 +98,10 @@
 (define s3 (install-resource-panel! engine s2 sidebar-rid))
 ;; 文档面板
 (define s4 (install-docs-panel! engine s3 docs-rid))
+;; 补全浮层（*completion* 文档 + region；不在 layout 树里，弹窗时才出现）
+(define s4b (install-completion-popup! engine s4 completion-rid))
 ;; status/input 槽
-(define s5 (install-chrome! engine s4 chrome-rid))
+(define s5 (install-chrome! engine s4b chrome-rid))
 (define ftv (filetree-panel-view s5))
 
 ;; 布局：左侧 sidebar | 右侧 editor；status 一行；docs 在 status **下面**，固定高度。

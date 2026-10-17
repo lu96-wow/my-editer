@@ -130,7 +130,7 @@ command ──▶ transition{state+effects}
 | 给文本上色 | `set-faces-effect doc fills` |
 | 替换一段文本（补全） | `replace-range-effect view range text` |
 | 把光标夹回窗口（布局刚变） | `ensure-view-effect view` -> core 的 `view-ensure!` |
-| 浮层弹窗 | `workspace.overlays`（`model/overlay.rkt`）+ `projection/popup.rkt`；**叠加层必须自己擦旧矩形**（core 的 diff 看不见它） |
+| 浮层弹窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` → 作为 `deep` 更高的 panel 交给 core；**所有显示都是 document**，擦除由 core 的 diff 负责 |
 | 临时改变按键含义 | `state.input.modes` 挂一张 keymap（最高规则层） |
 
 ## 8. 约束怎么保证

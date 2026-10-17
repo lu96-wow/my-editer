@@ -77,22 +77,23 @@ racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
 
 用到的两个框架能力：
 
-- **浮层**：`model/overlay.rkt` 的 `popup{id, view, lines, selected}` 存在 `workspace.overlays`，
-  `projection/popup.rkt` 每帧按“锚点 view 的光标”算屏幕矩形（优先光标下方，放不下翻到上方，
-  水平夹在面板内），`projection/render.rkt` 在面板之后画上去。
+- **浮层 = document**（`workspace.floats` + `projection/float.rkt`）：
+  弹窗是一块**不在 layout 树里**的 region（真实 document + view），
+  绘制时作为 `deep` 更高的 panel 交给 core 合成。于是：
 
-  **绘制/清理的约束（踩过一次）**：浮层是在 core 的 panels 之后叠加的额外 piece，
-  **不在 core 的 screen 缓存里**。core 的增量 diff 只比较“自己的旧屏 vs 新屏”，
-  所以它不知道浮层盖过什么；而且 `screen-patch` 在 `old = #f`（冷启动 / 强制整屏）时
-  **只产出非空白格**。于是“丢掉 core 缓存重画”并不足以擦掉浮层。
-  正确做法（`projection/render.rkt`）：
+  | 需求 | 手段 |
+  |---|---|
+  | 候选列表 | 浮层文档的文本（`set-text-effect`） |
+  | 选中行 | 浮层文档的光标行（`select-effect`）+ 一条 `'selection` face（`set-faces-effect`） |
+  | 位置 | `projection/float.rkt` 每帧按“锚点 view 的光标”算矩形（下方优先，放不下翻上面，水平夹在面板内） |
+  | 出现 / 移动 / 消失 | core 的增量 diff（浮层就在 core 的 screen 里） |
 
-  1. 浮层变了（出现 / 消失 / 移动 / 选中行变化）→ 先自己**清掉旧矩形**（写空格）；
-  2. 再让 core 丢掉缓存整屏重画一次 —— 被清掉的格子里，正文的非空白格会被画回来，
-     本来就是空白的格子保持空格，正好对；
-  3. 新浮层每帧整块重画（它自己盖满矩形）。
+  因为它是真的 panel，**擦除和“底下正文画回来”全部由 core 负责**，框架不记任何矩形
+  —— 之前把它当“叠加 piece”画在 core 之后，core 的 diff 看不见它，关掉就会留残影。
+  `test/float.rkt` 用 `render-frame` 的字节做回归（关掉后浮层文本消失、底下正文回来）。
 
-  `test/popup.rkt` 用 `render-frame` 的字节做回归：去掉第 1 步，3 条断言会红。
+  配套的一条规则：`set-text-effect` **不**发 `after-edit` 信号（它是“整篇展示内容替换”，
+  状态栏 / 面板 / 浮层都用它）；否则补全一写自己的浮层文档就会被自己的 after-edit 钩子关掉。
 - **临时键表**：打开弹窗时把 `'completion-popup` 这张 keymap 挂到 `state.input.modes`
   （`dispatch/rules.rkt` 的 `input-mode-rules` 是最高一层），关掉时摘掉。
   于是 `↑↓` 只在弹窗开着时改变含义，弹窗一关就还给编辑器。

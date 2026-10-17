@@ -152,10 +152,15 @@
                            (replace-range-effect-text effect)))
   (transition-pure (state-emit state 'after-edit (list (effect-doc state effect)))))
 
-;; 这次 engine 写是不是“改文本”（insert / edit / set-text / undo / redo）。
+;; 这次 engine 写是不是“**用户改文本**”（insert / edit / undo / redo / replace-range）。
+;;
+;; 注意 set-text-effect 不算：它是“整篇展示内容替换”（状态栏 / 面板 / 浮层都用它），
+;; 如果也算 after-edit，插件写自己的展示文档就会触发 after-edit（例如补全一开就被自己的
+;; 钩子关掉）。
 (define (edit-write? effect)
-  (or (edit-effect? effect) (insert-text-effect? effect) (set-text-effect? effect)
-      (undo-effect? effect) (redo-effect? effect)))
+  (or (edit-effect? effect) (insert-text-effect? effect)
+      (undo-effect? effect) (redo-effect? effect)
+      (replace-range-effect? effect)))
 
 ;; effect 作用在哪个 doc 上（给信号用）：view -> doc 的对应关系在 State 里。
 (define (effect-doc state effect)

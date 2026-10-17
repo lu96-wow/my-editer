@@ -29,7 +29,8 @@
          cut-at cuts-at
          tree-resize-seam
          leaf-effective-borders
-         axis-thickness)
+         axis-thickness
+         rect-content)
 
 (require "../model/layout.rkt"
          "../model/state.rkt"
