@@ -133,6 +133,7 @@ racket edit-tui-rebuild/test/panel.rkt
 racket edit-tui-rebuild/test/plugin.rkt
 racket edit-tui-rebuild/test/plugin-detach.rkt
 racket edit-tui-rebuild/test/layers.rkt
+racket edit-tui-rebuild/test/sidebar.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -197,6 +198,7 @@ racket edit-tui-rebuild/demo/save.rkt    # status/input 共享槽 + 保存确认
 racket edit-tui-rebuild/demo/resource.rkt # 资源列表面板 + placement
 racket edit-tui-rebuild/demo/filetree.rkt [root] # 文件树面板
 racket edit-tui-rebuild/demo/plugin.rkt   # 最小插件（命令 + 键 + store + 状态栏段）
+racket edit-tui-rebuild/demo/sidebar.rkt  # 文件树 + 资源列表共用一个面板位置（Tab 切换）
 ```
 
 `state.rkt` 的底栏内容：
@@ -224,7 +226,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-x C-k` | 关闭当前 document 的所有 view + document |
 | `C-x C-d` | 把当前 view 从 panel 摘出来（保留 view / engine view / document） |
 | `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
-| `C-x C-o` | 在同一 region 的多个 view 之间循环 active / focus |
+| `Tab` / `C-x C-o` | 在同一 region 的多个成员之间切换 active / focus（共用面板位置） |
 | `C-x C-p` | 提交 resource placement 到当前/点击的 panel |
 | `C-g` / `Esc` | 取消当前 input |
 | `C-x C-g` | 取消 placement |
@@ -471,6 +473,36 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
   `emit-effect`。
 - **`panel-spec` 不含 install**：安装需要 region-id 与布局位置（宿主的策略），
   所以只有 `panel-spec-install!` 这个薄封装，没有自动布局。
+
+## 共用面板位置（Tab 切换）
+
+一个 region 可以有多个成员，`active` 决定显示谁——chrome 槽早就是这么做的
+（status / input）。同一套机制可以用来把**文件树和资源列表放进同一个面板位置**：
+
+```racket
+(define sidebar-rid (region-id 1))
+
+;; 两次 install 传同一个 region-id
+(install-filetree-panel! engine state sidebar-rid root)   ; role = 'filetree（第一次决定）
+(install-resource-panel! engine state sidebar-rid)        ; 追加成员，active = 资源列表
+```
+
+- `panel-region-add!` 是这一步的原语：region 不存在就建，存在就**追加成员**并设为 active；
+  role 由第一次安装决定（同一块位置只有一个 role）；
+- 布局里只放一个叶子：`(make-leaf sidebar-rid (fixed 30) #:borders '(right))`；
+- **Tab**（全局 `switch-member`，也绑在 `C-x C-o`）把 active 挪到下一个成员并聚焦它：
+
+| 情况 | 行为 |
+|---|---|
+| 焦点在 sidebar（2 个成员） | 切到另一个面板，焦点跟着走 |
+| region 只有一个成员（普通 editor） | 提示 `switch: single member` |
+| `role.switchable? = #f`（`'slot`） | 提示 `this panel is not switchable` —— 状态栏/输入栏由框架切，不能靠 Tab 手切 |
+| 输入栏占用 | 提示 `switch: input active` |
+
+- 被挡住的面板**不重建 buffer**（`panel-visible?` 闸门）：文件树在后台时不再扫盘；
+- `C-b`（文件树的显隐）作用在 region 上，所以隐藏的是整个 sidebar。
+
+`demo/sidebar.rkt` 是完整例子，`test/sidebar.rkt` 覆盖上面四条规则。
 
 ## 资源列表面板
 

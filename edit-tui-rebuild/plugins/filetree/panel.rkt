@@ -28,7 +28,8 @@
 
 (define (sync-filetree-panel! state engine)
   (define vid (filetree-panel-view state))
-  (when vid
+  ;; 与别的面板共用一块位置时，被挡住就不扫盘 / 不重建 buffer。
+  (when (and vid (panel-visible? state vid))
     (define lines (filetree-lines state dir-entries))
     (panel-sync-buffer! engine state vid
                         #:texts (map filetree-line-text lines)

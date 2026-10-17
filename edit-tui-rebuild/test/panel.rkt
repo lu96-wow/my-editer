@@ -97,7 +97,12 @@
 (check-equal? (hash-count (workspace-docs (state-workspace empty-state))) 0)
 
 ;; 装了之后 sync 会写 buffer；拆掉之后回到“不写”。
-(define fs0 (install-filetree-panel! engine s0 srid (current-directory)))
+;; 面板要在布局里才算可见（panel-visible? 的闸门），否则同步会跳过。
+(define fs-lay (make-split 'lr (list (make-leaf srid (flex 1))) (flex 1)))
+(define fs-base (state-set-workspace s0
+                                     (struct-copy workspace (state-workspace s0)
+                                                  [layout fs-lay])))
+(define fs0 (install-filetree-panel! engine fs-base srid (current-directory)))
 (define fvid (filetree-panel-view fs0))
 (check-true (view-id? fvid))
 (sync-filetree-panel! fs0 engine)

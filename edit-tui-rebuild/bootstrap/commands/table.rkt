@@ -41,7 +41,7 @@
         'close-view   (close-view-command)
         'detach-view  (detach-view-command)
         'attach-detached (attach-detached-command)
-        'cycle-view  (cycle-region-view-command)
+        'switch-member (switch-member-command)
         'close-region (close-region-command)
         'new-document (new-document-command)
         'open-file    (open-file-prompt-command)

@@ -19,7 +19,8 @@
   (hash 'editor   (make-role #:splittable? #t #:close 'keep-last #:focusable? #t
                              #:target? #t)
         'panel    (make-role #:splittable? #f #:close 'hide      #:focusable? #f)
-        'slot     (make-role #:splittable? #f #:close 'ignore    #:focusable? #t)
+        'slot     (make-role #:splittable? #f #:close 'ignore    #:focusable? #t
+                             #:switch? #f)
         'tool     (make-role #:splittable? #t #:close 'delete    #:focusable? #t
                              #:target? #t)
         'resource (make-role #:splittable? #f #:close 'ignore    #:focusable? #t)

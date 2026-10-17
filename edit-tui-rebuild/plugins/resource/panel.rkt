@@ -28,7 +28,7 @@
 
 (define (sync-resource-panel! state engine)
   (define vid (resource-view state))
-  (when vid
+  (when (and vid (panel-visible? state vid))
     (define lines (resource-lines state))
     (panel-sync-buffer! engine state vid
                         #:texts (map resource-line-text lines)

@@ -35,6 +35,9 @@
     (panel-create-view! engine state #:name "*status*" #:mode status-mode))
   (define-values (s2 input-vid)
     (panel-create-view! engine s1 #:name "*input*" #:mode 'input))
+  ;; 两个成员、一个位置：active 决定显示 status 还是 input。
+  ;; 切换由框架（chrome-show-input / chrome-show-status）驱动；
+  ;; role 'slot 的 switch? = #f，所以 Tab 不会把状态栏换成输入栏。
   (define s3
     (panel-region-install! s2 region-id
                            #:role 'slot

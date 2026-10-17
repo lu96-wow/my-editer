@@ -6,7 +6,7 @@
 
 ;;; 面板本身是 *resources* buffer view，选中项 = buffer 光标行。
 ;;; 命令：
-;;;   tab  折叠/展开 document
+;;;   Enter  折叠/展开 document（Tab 是全局 switch-member，用于切换同一位置的另一个面板）
 ;;;   v    给选中 document 新建一个 detached view
 ;;;   n    新建 scratch document + detached view
 ;;;   r    选中 view -> 进入 placement（等待用户选目标 panel）
@@ -179,7 +179,6 @@
    [(key 'home)   'resource-home]
    [(key 'end)    'resource-end]
    [(key 'enter)  'resource-enter]
-   [(key 'tab)    'resource-toggle]
    [(key 'v)      'resource-new-view]
    [(key 'n)      'resource-new-doc]
    [(key 'r)      'resource-place]
@@ -195,7 +194,6 @@
         'resource-home  (nav-command 'home)
         'resource-end   (nav-command 'end)
         'resource-enter (resource-enter-command)
-        'resource-toggle (toggle-collapse-command)
         'resource-new-view (new-view-command)
         'resource-new-doc (new-doc-command)
         'resource-place (start-placement-command)

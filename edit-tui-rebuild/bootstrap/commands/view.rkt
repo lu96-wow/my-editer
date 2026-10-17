@@ -9,7 +9,8 @@
 ;;;   new-document     open-doc-effect + 装进当前/空 editor region
 ;;;   detach-view      从 region 摘出（保留 view / engine view / document）
 ;;;   attach-detached  把第一个 detached view 挂回当前 region
-;;;   cycle-view       同一 region 内切换 active / focus
+;;;   switch-member    同一 region 内切换 active / focus（Tab / C-x C-o）
+;;;                    role.switchable? = #f 时拒绝（chrome 槽：status/input 由框架控制）
 ;;;
 ;;; 焦点回退一律用 “真实文档 view”（util/real-view?），不会落到 internal 文档上。
 
@@ -18,7 +19,7 @@
          new-document-command
          detach-view-command
          attach-detached-command
-         cycle-region-view-command
+         switch-member-command
          target-region-for-new-view
          target-region-for-new-view*
          mount-view-in-region)
@@ -196,26 +197,38 @@
                (define ws* (workspace-attach-view ws (region-key fallback-region) vid))
                (transition-pure (state-set-focus (state-set-workspace s ws*) vid))])]))))
 
-;; 在同一 region 的多个 view 之间循环 active / focus。
-(define (cycle-region-view-command)
-  (cmd (λ (ctx)
-         (cond
-           [(input-busy? ctx) (message ctx "cycle: input active")]
-           [else
-            (define s (ctx-state ctx))
-            (define vid (view-subject ctx))
-            (define ws (state-workspace s))
-            (define reg (and vid (workspace-view-region ws vid)))
-            (cond
-              [(not reg) (message ctx "cycle: no region")]
-              [else
-               (define vids (workspace-region-views ws (region-key reg)))
-               (cond
-                 [(< (length vids) 2) (message ctx "cycle: single view")]
-                 [else
-                  (define active (region-active reg))
-                  (define idx (index-of vids active))
-                  (define next (list-ref vids (modulo (add1 (or idx -1))
-                                                      (length vids))))
-                  (define ws* (workspace-attach-view ws (region-key reg) next))
-                  (transition-pure (state-set-focus (state-set-workspace s ws*) next))])])]))))
+;; 在同一 region 的多个成员之间循环 active / focus。
+;;
+;; 这是“文件树 / 资源列表共用一个面板位置”的切换动作：两个面板是同一 region 的
+;; 两个 view，Tab 把 active 挪到下一个成员并聚焦它。
+;;
+;; 拒绝条件：
+;;   · 输入栏占用时（输入是模态的）；
+;;   · role.switchable? = #f（'slot：status / input 的切换由框架驱动，
+;;     不能靠用户按 Tab 把状态栏换成输入栏）；
+;;   · region 只有一个成员。
+(define (switch-member-command)
+  (cmd
+   (λ (ctx)
+     (define s (ctx-state ctx))
+     (define vid (view-subject ctx))
+     (define ws (state-workspace s))
+     (define reg (and vid (workspace-view-region ws vid)))
+     (cond
+       [(input-busy? ctx)
+        (message ctx "switch: input active")]
+       [(not reg)
+        (message ctx "switch: no region")]
+       [(not (role-switchable? (environment-role (ctx-env ctx) (region-role reg))))
+        (message ctx "switch: this panel is not switchable")]
+       [else
+        (define vids (workspace-region-views ws (region-key reg)))
+        (cond
+          [(< (length vids) 2)
+           (message ctx "switch: single member")]
+          [else
+           (define active (region-active reg))
+           (define idx (index-of vids active))
+           (define next (list-ref vids (modulo (add1 (or idx -1)) (length vids))))
+           (define ws* (workspace-attach-view ws (region-key reg) next))
+           (transition-pure (state-set-focus (state-set-workspace s ws*) next))])]))))

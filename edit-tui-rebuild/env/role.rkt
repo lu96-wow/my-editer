@@ -11,6 +11,8 @@
 ;;;   close-policy: 'hide | 'delete | 'keep-last' | 'ignore'
 ;;;   focusable?  : 能否成为 focus
 ;;;   target?     : 能否成为 placement（把 view 放进哪个 panel）的目标
+;;;   switchable? : 能否用 Tab 在 region 的多个成员之间切换
+;;;                 （chrome 槽关掉：status/input 的切换由框架决定，不该用户手动）
 ;;;
 ;;; 未注册 role -> role-default（保守：不可切、只隐藏、不可聚焦）。
 
@@ -18,18 +20,20 @@
          make-role
          role-default)
 
-(struct role (splittable? close-policy focusable? target?) #:transparent)
+(struct role (splittable? close-policy focusable? target? switchable?) #:transparent)
 ;; splittable?  : bool
 ;; close-policy : 'hide | 'delete | 'keep-last | 'ignore
 ;; focusable?   : bool
 ;; target?      : bool   能否接收 placement（'slot / 面板类区域不能）
+;; switchable?  : bool   Tab 能否切换 active 成员
 
 (define (make-role #:splittable? [splittable? #f]
                    #:close [close-policy 'hide]
                    #:focusable? [focusable? #f]
-                   #:target? [target? #f])
+                   #:target? [target? #f]
+                   #:switch? [switchable? #t])
   (unless (memq close-policy '(hide delete keep-last ignore))
     (error 'make-role "close-policy 要是 hide/delete/keep-last/ignore：~a" close-policy))
-  (role splittable? close-policy focusable? target?))
+(role splittable? close-policy focusable? target? switchable?))
 
 (define role-default (make-role))

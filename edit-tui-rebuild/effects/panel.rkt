@@ -15,16 +15,20 @@
 ;;; 前两件是**同构动作**，所以抽到这里，让每个面板只剩“行投影 + 命令 + sync”：
 ;;;
 ;;;   panel-create-view!    分配 doc/view id -> engine 建对象 -> 写 meta
-;;;   panel-region-install! 建 region（role + members + active）
-;;;   panel-install!        上面两个的组合（单 view 面板）
+;;;   panel-region-add!     把一个 view 加进 region（region 不存在就建）；active = 该 view
+;;;   panel-region-install! 一次建 region（多个成员 + 指定 active）；chrome 槽用
+;;;   panel-install!        create-view + region-add（单 view 面板）
 ;;;   panel-uninstall!      region 内 view/doc + engine 对象 + region + layout 剪枝
 ;;;   panel-sync-buffer!    把 (texts, faces) 写进 buffer view，光标夹在文本内
+;;;   panel-visible?        该 view 是否是所在 region 的 active 成员，且 region 在布局里可见
 ;;;
 ;;; 面板**不**自己分配 id、不自己 new region、不自己写 focus 规则：
 ;;; 这些都属于装配层，插件只声明参数（name / mode / role / 是否可聚焦由 role 决定）。
 
 (provide panel-create-view!
+         panel-region-add!
          panel-region-install!
+         panel-visible?
          panel-install!
          panel-uninstall!
          panel-sync-buffer!)
@@ -32,6 +36,7 @@
 (require "../base/id.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
+         "../model/layout.rkt"
          "../effects/engine.rkt"
          "../../core/editor/ops.rkt"
          "../../core/editor/attributes.rkt"
@@ -65,6 +70,31 @@
   (define ws2 (workspace-add-view ws1 vid (view-meta did options)))
   (values (state-set-workspace s2 ws2) vid))
 
+;; 把一个 view 加进 region；region 不存在就用 role 建一个。
+;;   · region 已存在 -> 保留它的 role（同一区域放多个面板时，role 由第一个决定）；
+;;   · 成员已存在 -> 只把它设为 active（幂等，重复安装同 rid 不会产生重复成员）。
+;; 这正是“文件树 + 资源列表共用一个面板位置”的基础：两次 install 传同一个 rid。
+(define (panel-region-add! state rid vid #:role [role 'panel])
+  (state-workspace*
+   state
+   (λ (ws)
+     (define reg (workspace-region ws rid))
+     (cond
+       [(not reg)
+        (workspace-add-region ws rid
+                              (region rid (list (view-member vid)) vid role))]
+       [else
+        (define members (region-members reg))
+        (define members*
+          (if (for/or ([m (in-list members)])
+                (and (view-member? m) (equal? (member-key m) vid)))
+              members
+              (append members (list (view-member vid)))))
+        (workspace-add-region ws rid
+                              (struct-copy region reg
+                                           [members members*]
+                                           [active vid]))]))))
+
 ;; 建一个 region；role 决定 splittable? / close-policy / focusable?（查 env）。
 ;; active 默认取最后一个成员。
 (define (panel-region-install! state rid
@@ -80,17 +110,25 @@
    (λ (ws)
      (workspace-add-region ws rid (region rid members active* role)))))
 
-;; 单 view 面板：建 view + 建 region。多 view 面板（chrome 槽）用上面两个自己拼。
+;; 面板：建 view + 加进 region（同名 rid => 与已有面板共用一块位置）。
 (define (panel-install! engine state rid
                         #:name [name "*panel*"]
                         #:mode [mode 'text]
                         #:role [role 'panel])
   (define-values (s1 vid) (panel-create-view! engine state #:name name #:mode mode))
-  (values (panel-region-install! s1 rid
-                                 #:role role
-                                 #:members (list (view-member vid))
-                                 #:active vid)
-          vid))
+  (values (panel-region-add! s1 rid vid #:role role) vid))
+
+;;; ════════════════ 可见性（面板是否被同一 region 的其它成员挡住） ════════════════
+
+;; 每帧同步用它做闸门：被别的成员挡住、或整个 region 被隐藏时，不重建文本
+;; （文件树因此不会在后台扫盘）。
+(define (panel-visible? state vid)
+  (define ws (state-workspace state))
+  (define reg (workspace-view-region ws vid))
+  (and reg
+       (equal? (region-active reg) vid)
+       (tree-visible? (workspace-layout ws) (region-key reg))
+       #t))
 
 ;;; ════════════════ 拆 ════════════════
 

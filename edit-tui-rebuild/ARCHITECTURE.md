@@ -78,6 +78,8 @@ runtime 只负责遍历，不认识任何具体面板。
 - `workspace` 里放**框架级**的会话信息：docs / views / regions / layout / focus /
   `root`（工作区根，状态栏按它投影相对路径）/ `placement`（等待放进 panel 的 view）；
 - `confirm` 是保存确认队列（quit / close-doc 用，属于框架）；
+- region 是“一块位置里可切换的成员”：sidebar / chrome 槽都是多成员 region，
+  `active` 决定显示谁，`role.switchable?` 决定 Tab 能不能切；
 - `store` 是插件命名空间：`store['filetree]`、`store['resources]` …
   面板自己的 UI 状态都在这里，拔掉插件就跟着消失；
 - 文档是不是“基础设施”（状态栏 / 输入栏 / 插件面板）由 `doc-meta.internal?` 声明，
@@ -95,6 +97,7 @@ runtime 只负责遍历，不认识任何具体面板。
 | 输入栏提交 | `env.input-commands` |
 | 区域行为 | `env.roles`（splittable? / close-policy / focusable? / target?） |
 | 面板 | `plugin.panels`（`panel-spec`）+ 宿主调 `panel-spec-install!` |
+| 同一位置放多个面板 | 多次 install 传同一个 `region-id`；`Tab`（`switch-member`）切 active |
 | 插件自己的状态 | `state.store` + `plugin-state*` |
 | 每帧同步 | `panel-spec.sync`（自动进 `env.panel-syncs`） |
 
