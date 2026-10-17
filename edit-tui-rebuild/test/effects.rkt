@@ -37,7 +37,8 @@
 (check-equal? (engine-view-view-point-line ev vid) 0)
 (check-equal? (engine-view-view-point-column ev vid) 0)
 (check-equal? (engine-view-view-line-numbers? ev vid) #f)
-(check-equal? (engine-view-doc-version ev did) "abc\n")
+(check-true (engine-version=? (engine-view-doc-version ev did)
+                              (engine-view-doc-version (make-engine-view eng) did)))
 (check-equal? (call-with-values (λ () (engine-view-view-cursor-position ev vid)) list)
               '(0 0))
 
@@ -144,8 +145,15 @@
                                           (transition-pure st))))))
 (check-true saved?)
 (check-equal? (file->string tmp) "!save me")
-(check-equal? (doc-meta-saved-version (workspace-doc (state-workspace s5) (doc-id 1)))
-              "!save me")
+(define ev3 (make-engine-view eng3))
+(define saved-token (doc-meta-saved-version (workspace-doc (state-workspace s5) (doc-id 1))))
+(check-true (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
+
+;; 版本 token：编辑 -> 变；undo 回保存点 -> 恢复同一 token；文本内容相同也按身份算
+(engine-apply! eng3 (insert-text-effect (view-id 1) "Z"))
+(check-false (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
+(engine-apply! eng3 (undo-effect (view-id 1)))
+(check-true (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
 
 ;; read-file
 (define read-val #f)

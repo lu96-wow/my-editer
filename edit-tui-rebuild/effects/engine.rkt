@@ -24,6 +24,7 @@
          (struct-out engine-view)
          make-engine-view
          engine-view-doc-text engine-view-doc-name engine-view-doc-version
+         engine-version=?
          engine-view-view-point engine-view-view-point-line engine-view-view-point-column
          engine-view-view-selections engine-view-view-cursor-position
          engine-view-view-screen-position->point
@@ -167,11 +168,13 @@
   (define b (ev-buffer ev did))
   (and b (buffer-name b)))
 
-;; 当前文档版本（这里用文本快照；保存 / dirty 比较用）。
-;; 暂定：用 string，避免依赖 core 内部 document 表示；以后可换成引擎版本号。
+;; 当前文档版本 = core 的 opaque document token。
+;; 用 engine-version=?（eq?）比较：编辑 -> 新 token；undo 回保存点 -> 恢复同一 token。
 (define (engine-view-doc-version ev did)
   (define b (ev-buffer ev did))
-  (and b (buffer-string b)))
+  (and b (buffer-version b)))
+
+(define (engine-version=? a b) (buffer-version=? a b))
 
 (define (engine-view-view-point ev vid)
   (define v (ev-view ev vid))

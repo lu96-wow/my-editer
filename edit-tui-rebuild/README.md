@@ -55,7 +55,9 @@ effects/
 - dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
 - prompt 的文本编辑目前是最小实现（append / backspace），后续块再泛化输入类型；
 - State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；
-- `spawn` / `timer` / `emit` 是 Runtime effect，解释器显式报错，等 runtime 块接线。
+- `spawn` / `timer` / `emit` 是 Runtime effect，解释器显式报错，等 runtime 块接线；
+- 文档版本用 core 的 **opaque document token**：`buffer-version` / `buffer-version=?`，不存文本快照；
+  编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较。
 
 ## 测试
 

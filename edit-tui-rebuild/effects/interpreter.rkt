@@ -108,22 +108,28 @@
   (define ws (state-workspace state))
   (define dm (workspace-doc ws did))
   (define path (and dm (doc-meta-path dm)))
-  (define text (and (engine-doc-exists? engine did)
-                    (engine-view-doc-text (make-engine-view engine) did)))
+  (define ev (make-engine-view engine))
+  ;; 保存的是“开始写盘时的版本”；写完若当前版本变了，不能把新编辑误标成已保存。
+  (define start-version (and (engine-doc-exists? engine did)
+                             (engine-view-doc-version ev did)))
+  (define text (and start-version (engine-view-doc-text ev did)))
   (define ok?
     (and path text
          (with-handlers ([exn:fail? (λ (_) #f)])
            (display-to-file text path #:exists 'truncate)
            #t)))
+  (define same-version?
+    (and ok? start-version
+         (engine-version=? start-version (engine-view-doc-version ev did))))
   (define state*
-    (if ok?
+    (if (and ok? same-version?)
         (state-workspace*
          state
          (λ (ws*)
            (define dm* (workspace-doc ws* did))
            (if dm*
                (workspace-add-doc ws* did
-                                  (struct-copy doc-meta dm* [saved-version text]))
+                                  (struct-copy doc-meta dm* [saved-version start-version]))
                ws*)))
         state))
   (if k (k state* ok?) (transition-pure state*)))

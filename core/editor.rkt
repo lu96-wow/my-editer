@@ -47,6 +47,9 @@
  view-buffer
  view-selections
  buffer? view?
+ ;; 不透明版本 token：当前 document 身份；比较用 buffer-version=?
+ (rename-out [buffer-document buffer-version])
+ buffer-version=?
 
  ;; ==================== 编辑 ====================
  op-type op-type-ignore-readonly
@@ -157,3 +160,12 @@
  (struct-out run) (struct-out cursor) (struct-out region) (struct-out screen)
  screen-row screen->string
  (struct-out piece))
+
+
+;;; ==================== 版本 token ====================
+;;; document 是不可变值，每次编辑产生新值；history 的 undo 会恢复**同一个**
+;;; document 对象。于是把当前 document 当作 opaque version token 用 eq? 比较：
+;;;   · dirty = 当前版本 ≠ 保存基线；
+;;;   · undo 回保存点 -> 恢复同一 token -> clean；
+;;;   · 不向宿主暴露 document 内部结构。
+(define (buffer-version=? a b) (eq? a b))
