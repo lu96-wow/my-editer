@@ -8,6 +8,8 @@
 ;;; 方案 B 的边界：
 ;;;   · State 只存 doc-id / view-id 与元数据；
 ;;;   · engine 持有真正的 core buffer / view 句柄；
+;;   · 尺寸同步（engine-sync-view!）在**真的变了**之后会 view-ensure!，
+;;     即“布局一变就把光标夹回窗口”；命令也可以显式发 ensure-view-effect；
 ;;;   · 命令只能通过 engine-view（只读查询）读，写操作一律走 effect；
 ;;;   · 解释器在边缘调用本模块。
 ;;;

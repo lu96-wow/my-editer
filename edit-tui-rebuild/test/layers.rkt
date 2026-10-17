@@ -219,7 +219,19 @@
     (check-not-false (member here thread-allowed)
                 (format "线程 / inbox 不在 runtime：~a" here))))
 
-;;; ════════════════ 6. 结构快照（防止层被悄悄合并） ════════════════
+;;; ════════════════ 6. 约定：信号点词表与“上色不发 after-edit” ════════════════
+
+(require "../base/signal.rkt")
+
+;; 标准信号点是**数据**（不是散落在代码里的 symbol）：四个点都在，
+;; 且 known-signal-point? 认得它们；加新点必须同时改这份词表。
+(check-equal? (sort (map symbol->string signal-points) string<?)
+              '("after-edit" "after-nav" "document-opened" "focus-changed"))
+(for ([p (in-list signal-points)])
+  (check-true (known-signal-point? p)))
+(check-false (known-signal-point? 'after-faces))
+
+;;; ════════════════ 7. 结构快照（防止层被悄悄合并） ════════════════
 
 ;; 顶层目录 = 层；少一个/多一个都值得停下来看一眼。
 (define impl-dirs

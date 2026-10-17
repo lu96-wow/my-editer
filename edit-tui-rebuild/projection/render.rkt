@@ -5,6 +5,7 @@
 ;;; effect : 无（纯投影：只读 engine，不写 core；输出交给 runtime）
 
 ;;;   project-frame  : state engine -> (values panels chrome-entries view-placements)
+;;;                    panels = 平铺面板 + 浮层面板（浮层 deep 更高，叠在上面）
 ;;;   render-frame   : state engine cache -> (values frame-cache bytes)
 ;;;
 ;;; 投影**不写 core**：
@@ -12,6 +13,9 @@
 ;;;   · view 的 viewport 尺寸由 Runtime 在渲染前调用
 ;;;     `(engine-sync-views! engine view-placements)`；
 ;;;   · 本模块不 put-bytes、不 flush。
+;;;
+;;; 浮层（workspace.floats）是**真的 panel + view**：core 的 screen 里就有它，
+;;; 所以出现 / 移动 / 消失都由 core 的增量 diff 负责，这里不做任何擦除。
 ;;;
 ;;; chrome region（状态栏 / 输入栏）不是 core view：自己按内容区画文本。
 ;;; 为了避免重复输出，frame-cache 记住上一帧的 chrome 行；只有变化时才：

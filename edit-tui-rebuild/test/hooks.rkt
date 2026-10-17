@@ -143,6 +143,30 @@
   (check-true (insert-text-effect? (cadr es)))     ; hook 的在后面
   (check-equal? (insert-text-effect-text (cadr es)) "H"))
 
+;;; ════════════════ 6b. 什么算“一次编辑”：set-text / set-faces 不发 after-edit ════════════════
+
+(require "../effects/interpreter.rkt"
+         "../../core/text/base/point.rkt"
+         "../../core/text/base/range.rkt")
+
+(let-values ([(engine s0) (make-engine+state)])
+  (define (signals-of effect)
+    (signals-queue (state-signals (transition-state (interpret-effect! engine s0 effect)))))
+  ;; 用户编辑 -> after-edit
+  (check-not-false (for/first ([g (in-list (signals-of (insert-text-effect vid "x")))]
+                               #:when (eq? (signal-point g) 'after-edit))
+                     g))
+  (check-not-false (for/first ([g (in-list (signals-of (replace-range-effect vid (range-of (point 0 0) (point 0 0)) "y")))]
+                               #:when (eq? (signal-point g) 'after-edit))
+                     g))
+  ;; 整篇展示替换 / 上色 -> 不发 after-edit（否则面板 / 浮层写完就被自己的钩子触发）
+  (check-false (for/first ([g (in-list (signals-of (set-text-effect vid "z")))]
+                           #:when (eq? (signal-point g) 'after-edit))
+                 g))
+  (check-false (for/first ([g (in-list (signals-of (set-faces-effect did '())))]
+                           #:when (eq? (signal-point g) 'after-edit))
+                 g)))
+
 ;;; ════════════════ 7. 焦点变化自动发信号并跑 hook ════════════════
 
 (let-values ([(engine s0) (make-engine+state)])

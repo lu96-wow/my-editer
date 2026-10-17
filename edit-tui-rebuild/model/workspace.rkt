@@ -15,6 +15,8 @@
 ;;;   stack   : (listof view-id)   焦点历史（返回时用）
 ;;;
 ;;; doc-meta 是**文档级**元数据：path / mode / dirty / 保存版本 / per-doc 键表层。
+;; internal? 标记“基础设施文档”（状态栏 / 输入栏 / 插件面板 / 浮层）：
+;;   不参与保存确认、不进资源列表、不能当 placement 目标、不高亮。
 ;;; view-meta 是**显示级**元数据：它显示哪个 doc、自己的选项。一个 doc 可有多个 view。
 ;;;
 ;;; region 是“一块位置里可切换的成员”：

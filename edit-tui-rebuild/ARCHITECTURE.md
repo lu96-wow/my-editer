@@ -133,7 +133,64 @@ command ──▶ transition{state+effects}
 | 浮层弹窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` → 作为 `deep` 更高的 panel 交给 core；**所有显示都是 document**，擦除由 core 的 diff 负责 |
 | 临时改变按键含义 | `state.input.modes` 挂一张 keymap（最高规则层） |
 
-## 8. 约束怎么保证
+## 8. 约定（不变量）
+
+这些是代码里靠不住的“口头约定”，现在都写在这里；能做成数据的已经做成数据。
+
+### 8.1 信号与钩子
+
+| 约定 | 在哪 |
+|---|---|
+| 标准信号点只有 `document-opened` / `after-edit` / `after-nav` / `focus-changed` | `base/signal.rkt` 的 `signal-points`（数据，可查） |
+| **hook 只在 `settle` 里跑**（effect 解释之后），`dispatch` 不跑 | `runtime/run.rkt`、`dispatch/pipeline.rkt` 注释 |
+| 同一 `point` 按 `priority` 降序；同 priority 按注册顺序（稳定排序） | `dispatch/hooks.rkt` |
+| hook 可以再 emit；多轮直到队列空，上限 8 轮（防自激） | `dispatch/hooks.rkt` 的 `max-rounds` |
+| hook 的 `proc` 拿**只读** `engine-view`（与命令的 `ctx.engine` 同源），写 engine 必须发 effect | `env/hook.rkt` |
+| effect 顺序：命令的在前，hook 的在后 | `dispatch/hooks.rkt` 的 `loop` |
+
+### 8.2 什么算“一次编辑”
+
+| 写 | 发 `after-edit`？ |
+|---|---|
+| `edit` / `insert` / `undo` / `redo` / `replace-range` | ✅ |
+| `set-text-effect`（整篇展示替换：状态栏 / 面板 / 浮层） | ❌ |
+| `set-faces-effect`（上色） | ❌（否则 hook 自激） |
+
+实现在 `effects/interpreter.rkt` 的 `edit-write?`；补全插件额外按 doc 过滤一次。
+
+### 8.3 显示一律用 document
+
+| 显示物 | 实现 |
+|---|---|
+| 编辑器 / 文件树 / 资源列表 / 文档面板 | region + view（buffer 支撑） |
+| 状态栏 / 输入栏 | 同一个 region 的两个 view（chrome 槽） |
+| 补全浮层 | **不在 layout 里的 region + view**（`workspace.floats`） |
+
+所以：**没有“额外绘制”的 UI**。要显示新东西就建 document，用
+`set-text-effect` / `set-faces-effect` / `select-effect` 写它。
+
+### 8.4 浮层（`workspace.floats`）
+
+- 是 region + view，**不进 layout 树**；
+- 每帧由 `projection/float.rkt` 按 anchor view 的光标算矩形，作为 `deep 1` 的 panel 交给 core；
+- 鼠标命中**先查浮层**（`runtime/run.rkt` 的 `subject-for`），不会穿透到下面的编辑器；
+- role 用 `'panel`（不可聚焦）→ 焦点始终留在编辑器；上下键靠**临时键表**接管；
+- 因为它是真的 panel，擦除 / 遮挡 / 移动全由 core 的增量 diff 负责。
+
+### 8.5 布局变化后的光标夹取
+
+- `engine-sync-view!` 在尺寸**真的变了**之后调用 core 的 `view-ensure!`（自动）；
+- 需要立刻夹（例如刚打开底部面板）时发 `ensure-view-effect`；
+- 只在尺寸变化时 ensure，所以用户主动滚动不会被抢回来。
+
+### 8.6 文档元数据
+
+- `doc-meta.internal?` = 基础设施文档（chrome / 面板 / 浮层）：不保存、不进资源列表、
+  不能当 placement 目标、不上色；
+- 由创建方声明（`effects/panel.rkt` 的 `panel-create-view!` 默认 `#t`），
+  框架不维护“哪些 mode 是 chrome”的字面量列表。
+
+## 9. 约束怎么保证
 
 `test/layers.rkt` 检查四件事，任何一条破了就红：
 

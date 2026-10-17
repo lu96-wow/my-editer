@@ -13,25 +13,34 @@
 ;;;   · hook 可以再 emit，排空过程是“跑一轮 -> 有新信号 -> 再跑一轮”；
 ;;;   · 信号是**纯数据**，所以整个 hook 链可以 headless 重放。
 ;;;
-;;; 词表（暂定，够三个插件用）：
+;;; 词表见 signal-points（下面的 define）。
 ;;;
-;;;   document-opened  (list doc-id)          打开文档完成（engine 已就绪）
-;;;   after-edit       (list doc-id)          文档文本被改（插入 / 删除 / 替换 / undo）
-;;;   after-nav        (list view-id)         光标推进（没有改文本）
-;;;   focus-changed    (list view-id|region-id|#f)
-;;;   interact         (list view-id)         用户刚按了一个命令键（给补全/文档消隐用）
-;;;
-;;; 注意：**没有** "after-faces" —— 上色本身不发 after-edit，否则 hook 会自激。
+;;; 两条约定：
+;;;   · **没有** "after-faces"：上色本身不发 after-edit，否则 hook 会自激；
+;;;   · `set-text-effect`（整篇展示替换）**不算编辑**，不发 after-edit
+;;;     —— 见 effects/interpreter.rkt 的 edit-write?。
 
 (provide (struct-out signal)
          (struct-out signals)
          make-signal
+         signal-points
+         known-signal-point?
          signals-empty
          signals-add
          signals-take)
 
+;; 标准信号点（词表）。扩展点仍是开放的 symbol：插件可以定义自己的 point，
+;; 但**框架发出的**只有下面这些 —— 写在数据里，测试和文档都引用它。
+(define signal-points
+  '(document-opened   ; (doc-id)          打开文档完成（engine 已就绪）
+    after-edit        ; (doc-id)          用户改了文本（insert / edit / undo / redo / replace-range）
+    after-nav         ; (view-id)         光标推进（没改文本）
+    focus-changed))   ; (view-id|region-id|#f)
+
+(define (known-signal-point? p) (and (memq p signal-points) #t))
+
 (struct signal (point args) #:transparent)
-;; point : symbol
+;; point : symbol（标准点见 signal-points；插件可自定义）
 ;; args  : any/c
 
 (define (make-signal point args)

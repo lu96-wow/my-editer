@@ -4,6 +4,8 @@
 
 - **现在的分层 / 副作用白名单 / 扩展点**：[`ARCHITECTURE.md`](ARCHITECTURE.md)
 - **插件怎么写（高亮 / 补全 / 文档 三个例子 + 与上一代的取舍）**：[`PLUGINS.md`](PLUGINS.md)
+- **约定 / 不变量**（信号点、什么算编辑、所有显示都是 document、浮层规则）：
+  [`ARCHITECTURE.md` §8](ARCHITECTURE.md)
 - 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
 
 所有分层规则由 `test/layers.rkt` 机器检查。

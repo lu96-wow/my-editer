@@ -24,9 +24,7 @@
 ;;;
 ;;; 暂定：整篇重扫。要增量时只改 lex.rkt 的接口内部（fills 形状不变）。
 
-(provide highlight-plugin
-         highlight-doc
-         highlighted-version)
+(provide highlight-plugin)
 
 (require racket/path
          "../../base/id.rkt"

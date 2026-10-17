@@ -41,29 +41,35 @@
          "../dispatch/pipeline.rkt"
          "../chrome/slot.rkt"
          "../projection/geometry.rkt"
+         "../projection/float.rkt"
          "../projection/render.rkt"
          "tui-adapter.rkt")
 
 ;;; ════════════════ 事件 → subject ════════════════
 
-;; 鼠标命中：region → active member。
+;; 鼠标命中：**先浮层，再平铺面板**（浮层 deep 更高，点上去不该穿透）。
 ;;   view member  -> view-id（文档命令按它查表）
 ;;   chrome member-> region-id（chrome 自己决定要不要响应）
-(define (subject-for state ev)
+(define (subject-for engine state ev)
   (case (app:event-kind ev)
     [(mouse)
      (define ws (state-workspace state))
-     (define w (state-window state))
-     (define area (window-area w))
-     (define-values (rps _cuts) (geometry-solve (workspace-layout ws) area))
-     (define rp (region-panel-at rps (app:mouse-event-row ev) (app:mouse-event-col ev)))
-     (define reg (and rp (workspace-region ws (region-panel-region rp))))
-     (and reg
-          (let ([active (region-active reg)])
-            (or (for/first ([m (in-list (region-members reg))]
-                            #:when (equal? (member-key m) active))
-                  (and (view-member? m) (member-key m)))
-                (region-key reg))))]
+     (define area (window-area (state-window state)))
+     (define row (app:mouse-event-row ev))
+     (define col (app:mouse-event-col ev))
+     (define float-vid (float-panel-at state (make-engine-view engine) row col))
+     (cond
+       [float-vid float-vid]
+       [else
+        (define-values (rps _cuts) (geometry-solve (workspace-layout ws) area))
+        (define rp (region-panel-at rps row col))
+        (define reg (and rp (workspace-region ws (region-panel-region rp))))
+        (and reg
+             (let ([active (region-active reg)])
+               (or (for/first ([m (in-list (region-members reg))]
+                               #:when (equal? (member-key m) active))
+                     (and (view-member? m) (member-key m)))
+                   (region-key reg))))])]
     [(paste) (state-focus state)]
     [else #f]))
 
@@ -99,7 +105,7 @@
     (transition-bind
      t
      (λ (s)
-       (define subject (subject-for s e))
+       (define subject (subject-for engine s e))
        (define t1 (dispatch env s e
                             #:subject subject
                             #:engine (make-engine-view engine)))

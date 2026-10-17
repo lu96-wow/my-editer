@@ -28,18 +28,9 @@
 ;;;      于是 Up/Down 只在浮层开着时改变含义，关掉立刻还给编辑器。
 
 (provide completion-plugin
-         install-completion-popup!
-         completion-open
-         completion-accept
-         completion-cancel
-         completion-move
-         completion-candidates
-         completion-session
-         completion-popup-view
-         completion-open?
-         prefix-at
-         local-words
-         completion-mode-name)
+         install-completion-popup!     ; 宿主装配时调用（建 *completion* 文档 + region）
+         completion-open?              ; 浮层是否开着
+         completion-popup-view)        ; 浮层文档的 view-id（测试 / 诊断用）
 
 (require racket/string
          "../../../edit-tui/command/key.rkt"
@@ -167,14 +158,6 @@
   (define i (selected-index ev pvid))
   (and (< i (length ls)) (list-ref ls i)))
 
-;; 选中行的 face（整行高亮）—— 写回弹窗文档
-(define (selection-faces ev pvid)
-  (define ls (popup-lines ev pvid))
-  (define i (selected-index ev pvid))
-  (if (< i (length ls))
-      (list (list i 0 i (string-length (list-ref ls i)) 'selection))
-      '()))
-
 (define (popup-doc state)
   (define pvid (completion-popup-view state))
   (and pvid (workspace-doc-of-view (state-workspace state) pvid)))
@@ -287,8 +270,6 @@
 (define (completion-cancel ctx)
   (transition-pure (close-popup (ctx-state ctx))))
 
-(define (cmd-with f) (cmd f))
-
 (define completion-keys
   (keys [(key 'c 'ctrl) (key '/) 'complete-open]))
 
@@ -315,11 +296,11 @@
           #:modes (hash 'completion (make-mode #:keymaps (list completion-doc-keys)
                                                #:fallback 'ignore))
           #:keymaps (hash completion-mode-name completion-popup-keys)
-          #:commands (hash 'complete-open (cmd-with completion-open)
-                           'complete-next (cmd-with (λ (ctx) (completion-move ctx 1)))
-                           'complete-prev (cmd-with (λ (ctx) (completion-move ctx -1)))
-                           'complete-accept (cmd-with completion-accept)
-                           'complete-cancel (cmd-with completion-cancel))
+          #:commands (hash 'complete-open (cmd completion-open)
+                           'complete-next (cmd (λ (ctx) (completion-move ctx 1)))
+                           'complete-prev (cmd (λ (ctx) (completion-move ctx -1)))
+                           'complete-accept (cmd completion-accept)
+                           'complete-cancel (cmd completion-cancel))
           #:rules (list (make-rule 'always completion-keys)))
    ;; 浮层开着时又**在编辑器里**打字 / 焦点变了 -> 关掉浮层（文本照常进编辑器）。
    ;; 写浮层自己的文档（set-text-effect）不算编辑，这里再按 doc 过滤一次更稳。

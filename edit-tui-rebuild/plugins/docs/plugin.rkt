@@ -21,13 +21,9 @@
 ;;; 面板 / 命令 / 钩子的形状不变。
 
 (provide docs-plugin
-         install-docs-panel!
-         docs-panel-spec
-         docs-panel-view
-         docs-toggle-command
-         docs-text-for
-         identifier-at
-         docs-open?)
+         install-docs-panel!     ; 宿主装配时调用（建 *docs* 文档 + region）
+         docs-panel-view         ; 面板 view-id（测试 / 诊断用）
+         docs-open?)             ; 面板当前是否显示
 
 (require racket/list
          racket/string
