@@ -9,6 +9,7 @@
 ;;;   chrome    消息 / 日志（model/chrome.rkt）
 ;;;   runtime   quit? / revision
 ;;;   ids       单调 id 分配器（document / view / region / job）
+;;;   store     插件命名空间：symbol -> 插件自己的纯数据
 ;;;
 ;;; **不装**：core 的 buffer / view 句柄、渲染 cache、inbox、线程。
 ;;; 需要读文本 / 光标时通过 engine-view（只读查询）拿；写走 effect。
@@ -24,9 +25,10 @@
          state-next-id
          state-set-window state-set-workspace state-set-input
          state-set-chrome state-set-runtime state-set-ids state-set-resources
-         state-set-filetree
+         state-set-filetree state-set-store
          state-workspace* state-input* state-chrome* state-runtime* state-resources*
-         state-filetree*
+         state-filetree* state-store*
+         plugin-state plugin-state-set plugin-state*
          state-mark-quit state-bump-revision
          state-focus state-set-focus
          state-input-active?)
@@ -57,7 +59,7 @@
 
 ;;; ---------- 根 State ----------
 
-(struct state (window workspace input chrome runtime ids resources filetree) #:transparent)
+(struct state (window workspace input chrome runtime ids resources filetree store) #:transparent)
 
 (define (make-state #:window [window (make-window 24 80)]
                     #:workspace [workspace (workspace-empty)]
@@ -66,8 +68,9 @@
                     #:runtime [runtime (make-runtime)]
                     #:ids [ids (make-id-counter)]
                     #:resources [resources (resources-empty)]
-                    #:filetree [filetree (empty-filetree)])
-  (state window workspace input chrome runtime ids resources filetree))
+                    #:filetree [filetree (empty-filetree)]
+                    #:store [store (hash)])
+  (state window workspace input chrome runtime ids resources filetree store))
 
 (define (state-empty) (make-state))
 
@@ -81,6 +84,7 @@
 (define (state-set-ids s ids)     (struct-copy state s [ids ids]))
 (define (state-set-resources s r) (struct-copy state s [resources r]))
 (define (state-set-filetree s f)  (struct-copy state s [filetree f]))
+(define (state-set-store s st)    (struct-copy state s [store st]))
 
 ;; 先拿当前切片、改完再放回（命令里常用）。
 (define (state-workspace* s f) (state-set-workspace s (f (state-workspace s))))
@@ -89,6 +93,18 @@
 (define (state-runtime* s f)   (state-set-runtime s (f (state-runtime s))))
 (define (state-resources* s f) (state-set-resources s (f (state-resources s))))
 (define (state-filetree* s f)   (state-set-filetree s (f (state-filetree s))))
+(define (state-store* s f)      (state-set-store s (f (state-store s))))
+
+;;; ---------- 插件命名空间 ----------
+;;
+;;; 插件状态 = store 里的一个槽（键是 plugin-id）。
+;;; 框架不认识任何具体插件：读写都通过这两个函数，投影 / 命令只 require 自己的键。
+(define (plugin-state s id [default #f])
+  (hash-ref (state-store s) id default))
+(define (plugin-state-set s id v)
+  (state-set-store s (hash-set (state-store s) id v)))
+(define (plugin-state* s id f [default #f])
+  (plugin-state-set s id (f (plugin-state s id default))))
 
 (define (state-mark-quit s)
   (state-runtime* s (λ (r) (struct-copy runtime r [quit? #t]))))

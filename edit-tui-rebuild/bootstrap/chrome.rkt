@@ -23,34 +23,23 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
-         "../projection/status.rkt")
+         "../projection/status.rkt"
+         "panel.rkt")
 
+;; 一个 region、两个成员：active 决定显示 status 还是 input。
+;; 装配动作复用 bootstrap/panel.rkt；这里只额外记 chrome-slot 元数据。
 (define (install-chrome! engine state region-id #:status-mode [status-mode 'status])
-  ;; status document/view
-  (define-values (status-did s1) (state-next-id state 'doc))
-  (define-values (status-vid s2) (state-next-id s1 'view))
-  (void (engine-create-doc! engine status-did "*status*" ""))
-  (void (engine-create-view! engine status-vid status-did))
-  ;; input document/view
-  (define-values (input-did s3) (state-next-id s2 'doc))
-  (define-values (input-vid s4) (state-next-id s3 'view))
-  (void (engine-create-doc! engine input-did "*input*" ""))
-  (void (engine-create-view! engine input-vid input-did))
-
-  (define ws (state-workspace s4))
-  (define ws1 (workspace-add-doc ws status-did
-                                 (make-doc-meta "*status*" #:mode status-mode)))
-  (define ws2 (workspace-add-view ws1 status-vid (view-meta status-did (hash))))
-  (define ws3 (workspace-add-doc ws2 input-did
-                                 (make-doc-meta "*input*" #:mode 'input)))
-  (define ws4 (workspace-add-view ws3 input-vid (view-meta input-did (hash))))
-  (define reg (region region-id
-                      (list (view-member status-vid) (view-member input-vid))
-                      status-vid
-                      'slot))
-  (define ws5 (workspace-add-region ws4 region-id reg))
-  (define s5 (state-set-workspace s4 ws5))
-  (state-chrome* s5
+  (define-values (s1 status-vid)
+    (panel-create-view! engine state #:name "*status*" #:mode status-mode))
+  (define-values (s2 input-vid)
+    (panel-create-view! engine s1 #:name "*input*" #:mode 'input))
+  (define s3
+    (panel-region-install! s2 region-id
+                           #:role 'slot
+                           #:members (list (view-member status-vid)
+                                           (view-member input-vid))
+                           #:active status-vid))
+  (state-chrome* s3
                  (λ (c)
                    (chrome-set-slot c (make-chrome-slot region-id status-vid input-vid)))))
 

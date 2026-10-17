@@ -50,8 +50,10 @@ projection/
   status.rkt      状态栏文本投影（纯）
   render.rkt      state + engine -> panels / chrome / bytes（不输出、不写 core）
 bootstrap/
+  panel.rkt       面板装配原语：create-view / region-install / install / uninstall / sync-buffer
+  plugin.rkt      插件描述符 + 纯装配 plugins-apply（env 合并 + 状态栏追加 + state-init）
   commands.rkt    默认命令（导航 / 编辑 / split / close / focus / quit）
-  defaults.rkt    默认 Environment（命令 + keymap + mode + job-done handler）
+  defaults.rkt    默认 Environment（命令 + keymap + mode + panel-syncs + job-done handler）
 runtime/
   tui-adapter.rkt 终端事件 -> base/event
   run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
@@ -104,6 +106,8 @@ racket edit-tui-rebuild/test/views.rkt
 racket edit-tui-rebuild/test/resource-panel.rkt
 racket edit-tui-rebuild/test/filetree.rkt
 racket edit-tui-rebuild/test/seam.rkt
+racket edit-tui-rebuild/test/panel.rkt
+racket edit-tui-rebuild/test/plugin.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -167,6 +171,7 @@ racket edit-tui-rebuild/demo/state.rkt   # 底部一行直接显示底层 State
 racket edit-tui-rebuild/demo/save.rkt    # status/input 共享槽 + 保存确认
 racket edit-tui-rebuild/demo/resource.rkt # 资源列表面板 + placement
 racket edit-tui-rebuild/demo/filetree.rkt [root] # 文件树面板
+racket edit-tui-rebuild/demo/plugin.rkt   # 最小插件（命令 + 键 + store + 状态栏段）
 ```
 
 `state.rkt` 的底栏内容：
@@ -279,6 +284,123 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 - `bootstrap/commands.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
 - `bootstrap/defaults.rkt`：`input-keys` + `default-input-commands`。
 
+
+## 面板装配原语（`bootstrap/panel.rkt`）
+
+一个 buffer 支撑的面板在四处留痕：
+
+| 位置 | 内容 | 谁负责 |
+|---|---|---|
+| `engine` | document + view（唯一可变边界） | `panel-create-view!` |
+| `workspace` | `doc-meta` / `view-meta` / `region` | `panel-create-view!` + `panel-region-install!` |
+| `layout` | 引用 `region-id` 的叶子 | 调用方（装配顺序 / 尺寸是策略） |
+| 插件切片 | 自己的 view-id / 展开集合 / 宽度 … | 插件自己（`state.resources` / `state.filetree`） |
+
+```racket
+;; 建 doc + view（不建 region）
+(define-values (state' vid) (panel-create-view! engine state #:name "*x*" #:mode 'x))
+;; 建 region（role 决定 splittable? / close-policy / focusable?）
+(panel-region-install! state' rid #:role 'tool #:members (list (view-member vid)) #:active vid)
+;; 单 view 面板 = 上面两个
+(define-values (state'' vid) (panel-install! engine state rid #:name … #:mode … #:role …))
+;; 卸载：engine 对象 + workspace view/doc + region + layout 叶子（可重复调用）
+(panel-uninstall! engine state'' rid)
+;; 每帧同步：文本变了才重写 buffer，face 每帧重写，光标夹在文本内
+(panel-sync-buffer! engine state vid #:texts texts #:faces faces)
+```
+
+`panel-uninstall!` 是 `panel-install!` 的严格反操作：`test/panel.rkt` 断言 docs /
+views / regions / layout / engine 全部回到安装前（这也是“面板可拆”的基线）。
+
+### 每帧同步注册表
+
+`run-frame` 不再认识具体面板，只遍历 `environment.panel-syncs`：
+
+```racket
+(struct environment (… panel-syncs))   ; (listof (state engine -> any))
+(environment-add-panel-sync env f)     ; 追加（执行顺序 = 注册顺序）
+```
+
+默认 env 注册了 `sync-resource-panel!` 与 `sync-filetree-panel!`；面板没安装时它们
+`view = #f`，直接 no-op。所以“拔掉一个面板”在 runtime 层是零成本。
+
+### 可拆现状（暂定）
+
+已经解耦：
+
+- 面板的装配动作（id 分配 / region 拼装 / 卸载）不再各写一份；
+- 每帧刷新由 env 表驱动，`runtime/run.rkt` 不 require 任何面板模块；
+- 面板命令 / 键表只通过 `*-command-table` / `*-keys` 暴露。
+
+仍写死（下一步做插件系统时要动）：
+
+| 位置 | 内容 | 目标 |
+|---|---|---|
+| `model/state.rkt` | `resources` / `filetree` 两个切片写进根 struct | `state.store`（插件命名空间） |
+| `bootstrap/defaults.rkt` | `require` 两个面板 + `mode`/`global-keys`/`input-commands` 直接塞 | `core-env` + 插件贡献，`environment-merge` 合并 |
+| `bootstrap/commands.rkt` | `default-command-table` 末尾 fold 两个插件表 | 插件声明 `commands` hash |
+| `model/resources.rkt` | `confirm`（框架级）与 `collapsed/pending/view`（面板级）混装 | 拆 `state.save` + 插件切片 |
+| `projection/status.rkt` | `(filetree-root (state-filetree state))` 算相对路径 | `workspace.root` 或插件注册 status-part |
+| 3 处 `'(status state input resources filetree)` | 字面量“哪些 mode 是 chrome” | `mode` 属性 `chrome?` / `saveable?` |
+
+## 插件（`bootstrap/plugin.rkt`）
+
+插件是一份**数据**，不是 require 顺序：
+
+```racket
+(struct plugin (id env status-parts state-init))
+
+(make-plugin
+ 'demo
+ #:env          (make-environment #:commands … #:rules (list (make-rule 'always keys)))
+ #:status-parts (list (make-status-part 'demo render))
+ #:state-init   (λ (s) (plugin-state-set s 'demo 0)))
+```
+
+| 字段 | 作用 | 语义 |
+|---|---|---|
+| `id` | `state.store` 的键 | 插件命名空间 |
+| `env` | roles / modes / scopes / commands / keymaps / rules / doc-types / handlers / panel-syncs | **覆盖**（`environment-merge`，后者优先） |
+| `status-parts` | 状态栏段 | **追加**（放在现有段之前） |
+| `state-init` | `state -> state` | 初始化自己的 store 槽 |
+
+### 为什么 `status-parts` 不放在 `env` 里
+
+`environment-merge` 是覆盖语义（a 的 status 被 b 整体替换）。插件通常想
+“再加一段”而不是“换掉整条状态栏”，所以把加法语义提到 `plugin` 字段上，避免歧义。
+两个语义都有测试（`test/plugin.rkt` 第 2、5 条）。
+
+### 纯装配
+
+```racket
+(define-values (env' state') (plugins-apply env state (list p1 p2)))
+```
+
+`plugins-apply` 是纯函数：merge env → 追加状态栏段 → 跑 `state-init`。
+副作用（建 engine 对象 / 装面板）不在这里，由 `bootstrap/panel.rkt` 的装配动作做，
+插件只声明参数。
+
+### 插件现在能做什么（不改框架任何文件）
+
+- 新命令 + 新键位（`env.commands` + `env.rules` / `env.keymaps`）
+- 新 document mode / 按扩展名匹配（`env.modes` + `env.doc-types`）
+- 新条件层（`env.rules` + `env.scopes`）
+- 状态栏段（`status-parts`）
+- 输入栏提交逻辑（`env.input-commands`）
+- 内部事件处理（`env.handlers`：`job-done` / `tick`）
+- 自己的状态（`state.store` + `plugin-state*`）
+
+`demo/plugin.rkt` 就是这四样的最小组合：命令 `demo-hi` + 键 `h` +
+store 槽 + 状态栏段 `hi×N`。
+
+### 还没做（暂定）
+
+- **enable / disable / reload**：`environment` 是无来源的纯值，反查“哪条贡献来自哪个插件”
+  需要额外记 provenance；目前只支持“启动时装配一次”。
+- **插件自带面板**：`panel-install!` 已经通用，但还没有把“`panel-spec` → 装配”接到
+  `plugin` 上（需要先拆掉 `state.resources` / `state.filetree` 两个写死的切片）。
+- **插件自定义 effect**：`effects/interpreter.rkt` 的 `cond` 是封闭的；插件只能用内置 effect +
+  `emit-effect`。
 
 ## 资源列表面板
 

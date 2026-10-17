@@ -33,6 +33,8 @@
          "../projection/status.rkt"
          "resource-commands.rkt"
          "filetree-commands.rkt"
+         "resource-panel.rkt"
+         "filetree-panel.rkt"
          "commands.rkt")
 
 (define text-keys
@@ -118,6 +120,9 @@
     #:input-commands (append (default-input-commands)
                              filetree-input-commands)
     #:status full-status-parts
+    ;; 面板每帧同步：runtime 只遍历这张表，不认识具体面板。
+    ;; 以后把 filetree / resource 拆成插件时，改由插件贡献这两项。
+    #:panel-syncs (list sync-resource-panel! sync-filetree-panel!)
     #:handlers (hash 'job-done
                      (λ (s payload)
                        (transition-pure

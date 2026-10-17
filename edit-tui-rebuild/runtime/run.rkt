@@ -33,8 +33,6 @@
          "../env/environment.rkt"
          "../dispatch/pipeline.rkt"
          "../bootstrap/chrome.rkt"
-         "../bootstrap/resource-panel.rkt"
-         "../bootstrap/filetree-panel.rkt"
          "../projection/geometry.rkt"
          "../projection/render.rkt"
          "../../core/view/base/rect.rkt"
@@ -132,10 +130,13 @@
 ;;; ════════════════ 渲染 ════════════════
 
 ;; 先同步 view 尺寸（唯一写 core 的地方），再投影/输出。
-(define (run-frame state engine cache #:status-parts [status-parts #f])
+;; 先跑每帧同步（唯一写 core 的地方），再投影/输出。
+;;   1. chrome 槽（status 文本，由 environment.status 决定段）
+;;   2. environment.panel-syncs（插件面板自己声明的同步器，按注册顺序）
+(define (run-frame env state engine cache #:status-parts [status-parts #f])
   (sync-chrome! state engine status-parts)
-  (sync-resource-panel! state engine)
-  (sync-filetree-panel! state engine)
+  (for ([sync (in-list (environment-panel-syncs env))])
+    (sync state engine))
   (define-values (_ps _cs placements)
     (project-frame state engine #:status-parts status-parts))
   (engine-sync-views! engine placements)
@@ -162,7 +163,7 @@
            (state-set-window state (make-window rows cols))
            state))
      (let loop ([state state0] [cache #f])
-       (define cache* (run-frame state engine cache
+       (define cache* (run-frame env state engine cache
                                  #:status-parts (environment-status env)))
        (define ev (read-event))
        (define app-ev (tui-event->app ev))
