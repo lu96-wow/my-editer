@@ -74,6 +74,34 @@
                                 (λ (r) (resources-toggle-collapse r (resource-line-doc l)))))
              (message ctx "resources: select a document line")))))
 
+;; Enter:
+;;   doc line  -> 展开 / 折叠
+;;   view line -> attached: 设为 active + focus（打开）
+;;                detached: 进入 placement（带选择）
+(define (resource-enter-command)
+  (cmd (λ (ctx)
+         (define l (selected-line ctx))
+         (cond
+           [(not l) (message ctx "resources: no line")]
+           [(resource-doc-line? l)
+            (transition-pure
+             (state-resources* (ctx-state ctx)
+                               (λ (r) (resources-toggle-collapse r (resource-line-doc l)))))]
+           [else
+            (define vid (resource-line-view l))
+            (define s (ctx-state ctx))
+            (define ws (state-workspace s))
+            (if (workspace-view-attached? ws vid)
+                (let* ([reg (workspace-view-region ws vid)]
+                       [ws* (workspace-attach-view ws (region-key reg) vid)]
+                       [s1 (state-set-focus (state-set-workspace s ws*) vid)])
+                  (transition-pure
+                   (state-chrome* s1 (λ (c) (chrome-set-message c "opened view")))))
+                (transition-pure
+                 (state-chrome*
+                  (state-resources* s (λ (r) (resources-set-pending r vid)))
+                  (λ (c) (chrome-set-message c "place: choose target panel")))))]))))
+
 (define (new-view-command)
   (cmd (λ (ctx)
          (cond
@@ -204,6 +232,7 @@
    [(key 'down)   'resource-down]
    [(key 'home)   'resource-home]
    [(key 'end)    'resource-end]
+   [(key 'enter)  'resource-enter]
    [(key 'tab)    'resource-toggle]
    [(key 'v)      'resource-new-view]
    [(key 'n)      'resource-new-doc]
@@ -217,6 +246,7 @@
         'resource-down  (nav-command 'down)
         'resource-home  (nav-command 'home)
         'resource-end   (nav-command 'end)
+        'resource-enter (resource-enter-command)
         'resource-toggle (toggle-collapse-command)
         'resource-new-view (new-view-command)
         'resource-new-doc (new-doc-command)

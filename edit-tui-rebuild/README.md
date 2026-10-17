@@ -263,15 +263,16 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 `demo/resource.rkt`：
 
 - `*resources*` 也是 core buffer view，挂在 role `'resource` 的 panel；
-- document 行：
-  - 绿色 = 至少有一个 attached view；
-  - 黄色 = 只有 detached view / 无 view；
-- view 行缩进在 document 下：
+- document 行绿色，view 行蓝色：两种资源用颜色区分；
+- view 行缩进在 document 下（不显示折叠符号，Tab 直接折叠/展开）：
   - `region:X`
   - `*` = active
   - `[focus]`
   - `[placing]`
-- `Tab` 折叠/展开 document；
+- `Enter`：
+  - document 行 → 折叠/展开；
+  - view 行 → attached 则设为 active + focus；detached 则进入 placement（带选择）；
+- `Tab` 也折叠/展开 document；
 - `v` 给选中 doc 新建 detached view；
 - `n` 新建 scratch doc + detached view；
 - `r` 选中 view 进入 placement；

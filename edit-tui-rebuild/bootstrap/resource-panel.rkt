@@ -5,7 +5,7 @@
 ;;; 安装一个 *resources* document/view，挂在 role='resource 的 region。
 ;;; 每帧 sync：
 ;;;   · 从 workspace.docs / workspace.views 生成行；
-;;;   · document 行绿色 = 有 attached view；黄色 = 只有 detached view / 无 view；
+;;;   · document 行绿色；view 行蓝色，缩进在 document 下；
 ;;;   · view 行缩进在 doc 下，可折叠；
 ;;;   · view 行显示 region / active / detached / placing。
 ;;;

@@ -5,13 +5,14 @@
 ;;;   racket edit-tui-rebuild/demo/resource.rkt
 ;;;
 ;;; 左侧 *resources* 面板本身也是 buffer：
-;;;   ▾ main.rkt  open       绿色 = 至少一个 attached view
-;;;       view:1  region:1 *  [focus]
-;;;       view:2  detached
-;;;   ▸ other.txt detached   黄色 = 只有 detached view / 无 view
+;;;   main.rkt               绿色 = document
+;;;     view:1  region:1 *  [focus]
+;;;     view:2  detached
+;;;   other.txt              蓝色 = view（缩进在 document 下）
 ;;;
 ;;; 资源面板键：
 ;;;   ↑↓ Home End   移动选中行
+;;;   Enter         document 行：折叠/展开；view 行：打开（attached 聚焦 / detached 进入 placement）
 ;;;   Tab           折叠 / 展开 document
 ;;;   v             给选中 document 新建 detached view
 ;;;   n             新建 scratch document + detached view

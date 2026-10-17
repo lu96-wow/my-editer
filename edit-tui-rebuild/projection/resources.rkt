@@ -3,7 +3,8 @@
 ;;; projection/resources.rkt —— 资源列表的纯投影
 ;;;
 ;;; 行：
-;;;   doc  line : 绿色 = document 至少有一个 attached view；黄色 = 只有 detached view / 无 view
+;;;   doc  line : 绿色（document）
+;;;   view line : 蓝色（view），缩进在 document 下
 ;;;   view line : 缩进在 doc 下；显示 region / active / detached / placing
 ;;;
 ;;; 折叠集合在 state.resources.collapsed，选中项由 buffer 光标行决定。
@@ -52,17 +53,12 @@
      (define did (car p))
      (define dm (cdr p))
      (define vids (doc-views ws did))
-     (define attached
-       (for/list ([vid (in-list vids)] #:when (workspace-view-attached? ws vid)) vid))
-     (define open? (pair? attached))
      (define collapsed? (resources-collapsed? res did))
      (define doc-line
+       ; 文档行像文件夹：只显示名字；view 行缩进在下面。
        (resource-line 'doc did #f
-                      (format "~a ~a  ~a"
-                              (if collapsed? "▸" "▾")
-                              (doc-label dm)
-                              (cond [open? "open"] [(pair? vids) "detached"] [else "no view"]))
-                      (if open? 'resource-open 'resource-detached)))
+                      (doc-label dm)
+                      'resource-document))
      (define view-lines
        (if collapsed?
            '()
