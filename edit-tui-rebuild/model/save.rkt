@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/save.rkt —— 保存确认流程（框架级，纯数据）
-;;;
+;;; layer  : model
+;;; effect : 无（纯数据）
+
 ;;; 退出 / 关闭文档时如果还有 dirty 文档，就排一个队列逐个问：
 ;;;
 ;;;   docs   : (listof doc-id)        待确认的文档（顺序 = 询问顺序）

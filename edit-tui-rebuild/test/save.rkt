@@ -17,12 +17,13 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../model/input.rkt"
-         "../model/resources.rkt"
+         "../plugins/resource/model.rkt"
          "../effects/engine.rkt"
-         (except-in "../bootstrap/chrome.rkt" input-show)
-         "../input.rkt"
+         (except-in "../chrome/slot.rkt" input-show)
+         "../chrome/input.rkt"
          "../projection/render.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define (make-case path)

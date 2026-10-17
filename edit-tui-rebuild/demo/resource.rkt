@@ -36,9 +36,10 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/chrome.rkt"
-         "../bootstrap/resource-plugin.rkt"
+         "../chrome/slot.rkt"
+         "../plugins/resource/plugin.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define d1 (doc-id 1))

@@ -8,7 +8,7 @@
          "../../edit-tui/command/key.rkt"
          "../../edit-tui/command/mouse.rkt"
          "../base/keymap.rkt"
-         "../base/status.rkt"
+         "../base/status-part.rkt"
          "../base/transition.rkt"
          "../env/role.rkt"
          "../env/mode.rkt"

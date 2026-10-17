@@ -28,9 +28,10 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/chrome.rkt"
-         "../bootstrap/filetree-plugin.rkt"
+         "../chrome/slot.rkt"
+         "../plugins/filetree/plugin.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define args (current-command-line-arguments))

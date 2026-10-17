@@ -22,8 +22,8 @@
          "../model/workspace.rkt"
          "../model/layout.rkt"
          "../model/chrome.rkt"
-         "../model/filetree.rkt"
-         "../model/resources.rkt"
+         "../plugins/filetree/model.rkt"
+         "../plugins/resource/model.rkt"
          "../effects/engine.rkt"
          "../env/environment.rkt"
          "../env/mode.rkt"
@@ -31,11 +31,13 @@
          "../env/command.rkt"
          "../dispatch/pipeline.rkt"
          "../dispatch/rules.rkt"
+         "../effects/panel.rkt"
          "../bootstrap/panel.rkt"
-         "../bootstrap/plugin.rkt"
+         "../env/plugin.rkt"
          "../bootstrap/defaults.rkt"
-         "../bootstrap/filetree-plugin.rkt"
-         "../bootstrap/resource-plugin.rkt"
+         "../plugins/builtin.rkt"
+         "../plugins/filetree/plugin.rkt"
+         "../plugins/resource/plugin.rkt"
          "../runtime/run.rkt")
 
 ;;; ════════════════ 1. core-env 是干净的 ════════════════

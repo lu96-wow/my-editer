@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/input-command.rkt —— 输入栏字符串匹配 + 处理（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值 + 纯匹配）
+
 ;;; 输入栏是 *input* document，buffer 内容 = prompt 前缀 + 用户输入。
 ;;; 提交时拿**完整字符串**，按顺序匹配 input-command：
 ;;;

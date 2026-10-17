@@ -1,7 +1,9 @@
 #lang racket
 
-;;; bootstrap/chrome.rkt —— 安装共享 chrome 槽：status bar + input bar（core buffer）
-;;;
+;;; chrome/slot.rkt —— 安装共享 chrome 槽：status bar + input bar（core buffer）
+;;; layer  : chrome
+;;; effect : **IO**：安装 status/input 两个 core view，并每帧写 status buffer
+
 ;;; 两个成员都是真正的 core view（buffer 支撑），放在同一个 region：
 ;;;   status-view : mode 'status，只读投影
 ;;;   input-view  : mode 'input，编辑输入
@@ -24,10 +26,10 @@
          "../model/chrome.rkt"
          "../effects/engine.rkt"
          "../projection/status.rkt"
-         "panel.rkt")
+         "../effects/panel.rkt")
 
 ;; 一个 region、两个成员：active 决定显示 status 还是 input。
-;; 装配动作复用 bootstrap/panel.rkt；这里只额外记 chrome-slot 元数据。
+;; 装配动作复用 effects/panel.rkt；这里只额外记 chrome-slot 元数据。
 (define (install-chrome! engine state region-id #:status-mode [status-mode 'status])
   (define-values (s1 status-vid)
     (panel-create-view! engine state #:name "*status*" #:mode status-mode))

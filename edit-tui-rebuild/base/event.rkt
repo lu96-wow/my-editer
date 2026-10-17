@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; base/event.rkt —— 应用事件（纯值，不依赖 tui）
-;;;
+;;; layer  : base
+;;; effect : 无（纯事件 ADT）
+
 ;;; Runtime 的 tui 适配层把终端事件解码成这里的值；reducer 只认识这些值。
 ;;; 于是 step / dispatch 可以在 headless 下直接喂事件，不需要终端。
 ;;;

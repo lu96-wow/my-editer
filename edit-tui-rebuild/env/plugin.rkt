@@ -1,6 +1,9 @@
 #lang racket
 
-;;; bootstrap/plugin.rkt —— 插件描述符 + 纯装配（装配层，本身是纯函数）
+;;; layer  : env
+;;; effect : 无（纯值 + 纯 fold）
+
+;;; env/plugin.rkt —— 插件描述符 + 纯装配（env 层，纯值/纯函数）
 ;;;
 ;;; 插件 = 一份数据，不是 require 顺序：
 ;;;
@@ -31,14 +34,15 @@
 ;;;   (plugins-apply env state plugins)   -> (values env' state')
 ;;;
 ;;; 先 merge env，再追加状态栏段，再把面板的 sync 挂到 env.panel-syncs，最后跑 state-init。
-;;; 副作用（建 engine 对象 / 装面板）不在这里：那是 bootstrap/panel.rkt 的装配动作。
+;;; 副作用（建 engine 对象 / 装面板）不在这里：
+;;;   安装是 effects/panel.rkt 的 panel-install! / panel-spec-install!，
+;;;   而“哪些插件算内置”是 plugins/builtin.rkt。
 ;;;
 ;;; 暂定：还没有 plugin-disable / reload —— 那需要记“哪条贡献来自哪个插件”
 ;;; （environment 目前是无来源的纯值）。先只支持“启动时装配一次”。
 
 (provide (struct-out panel-spec)
          make-panel-spec
-         panel-spec-install!
          (struct-out plugin)
          make-plugin
          plugin?
@@ -46,9 +50,8 @@
          plugins-apply)
 
 (require "../model/state.rkt"
-         "../env/environment.rkt"
-         "../base/status.rkt"
-         "panel.rkt")
+         "environment.rkt"
+         "../base/status-part.rkt")
 
 ;;; ════════════════ 面板描述 ════════════════
 
@@ -71,14 +74,6 @@
   (unless (or (not sync) (procedure? sync))
     (error 'make-panel-spec "sync 要是过程或 #f：~a" sync))
   (panel-spec id name role mode sync))
-
-;; 按 spec 装一个面板（宿主给的 region-id 决定它落在布局哪里）。
-;; 这是 bootstrap/panel.rkt 的薄封装，只是省掉重复的 #:name / #:mode / #:role。
-(define (panel-spec-install! engine state rid spec)
-  (panel-install! engine state rid
-                  #:name (panel-spec-name spec)
-                  #:mode (panel-spec-mode spec)
-                  #:role (panel-spec-role spec)))
 
 ;;; ════════════════ 插件 ════════════════
 

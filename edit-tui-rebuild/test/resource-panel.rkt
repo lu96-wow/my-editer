@@ -14,14 +14,15 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"
-         "../model/resources.rkt"
+         "../plugins/resource/model.rkt"
          "../model/chrome.rkt"
          "../../edit-tui/command/mouse.rkt"
          "../projection/geometry.rkt"
          "../../core/view/base/rect.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/resource-plugin.rkt"
+         "../plugins/resource/plugin.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define (feed eng s . evs)

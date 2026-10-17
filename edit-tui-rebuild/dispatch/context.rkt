@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; dispatch/context.rkt —— 命令看到的派生视图（纯值）
-;;;
+;;; layer  : dispatch
+;;; effect : 无（纯值）
+
 ;;; ctx 由 dispatch 构造，命令拿它做决策、返回 transition。
 ;;; 命令**不直接**改 core；需要读文本 / 光标时通过 engine（只读查询接口）。
 ;;;

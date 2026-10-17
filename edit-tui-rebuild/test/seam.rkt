@@ -18,6 +18,7 @@
          "../effects/engine.rkt"
          "../projection/geometry.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt"
          "../../core/view/base/rect.rkt")
 

@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/rule.rkt —— 带 scope 的命令表规则（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; 一条规则 = scope + keymap。dispatch 按顺序试：
 ;;;    scope 成立 + keymap 命中 leaf    -> 执行
 ;;;    scope 成立 + keymap 命中 prefix  -> 继续读键

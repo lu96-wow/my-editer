@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/input.rkt —— 输入状态（纯数据）
-;;;
+;;; layer  : model
+;;; effect : 无（纯数据）
+
 ;;; 输入栏的 prompt/输入文本不在这里：它是 *input* document 的 buffer。
 ;;; 这里只保留与“按键序列 / 模态 / 手势”有关的状态。
 ;;;

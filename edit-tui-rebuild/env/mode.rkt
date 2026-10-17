@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/mode.rkt —— document 模式（原 doc-kind）→ 默认 keymap + fallback（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; mode 名是开放 symbol，存在 environment 的 modes 表；结构不带名字（表键即名字）。
 ;;;
 ;;;   keymaps : (listof keymap)  有序；前面的层优先（第一个非 unbound 胜出）

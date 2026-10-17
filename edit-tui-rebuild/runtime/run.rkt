@@ -1,7 +1,10 @@
 #lang racket
 
 ;;; runtime/run.rkt —— 事件循环（唯一不纯的装配层）
-;;;
+;;; layer  : runtime
+;;; effect : **壳**：read-event / put-bytes / spawn / timer 线程 / 渲染输出
+;;;            （唯一从终端输入走到终端输出的模块）
+
 ;;;   tui event ──▶ base/event ──▶ dispatch ──▶ transition
 ;;;                                                   │
 ;;;                          engine/IO effect ◀──────┤
@@ -32,10 +35,9 @@
          "../effects/interpreter.rkt"
          "../env/environment.rkt"
          "../dispatch/pipeline.rkt"
-         "../bootstrap/chrome.rkt"
+         "../chrome/slot.rkt"
          "../projection/geometry.rkt"
          "../projection/render.rkt"
-         "../../core/view/base/rect.rkt"
          "tui-adapter.rkt")
 
 ;;; ════════════════ 事件 → subject ════════════════
@@ -48,7 +50,7 @@
     [(mouse)
      (define ws (state-workspace state))
      (define w (state-window state))
-     (define area (rect 0 0 (window-cols w) (window-rows w)))
+     (define area (window-area w))
      (define-values (rps _cuts) (geometry-solve (workspace-layout ws) area))
      (define rp (region-panel-at rps (app:mouse-event-row ev) (app:mouse-event-col ev)))
      (define reg (and rp (workspace-region ws (region-panel-region rp))))

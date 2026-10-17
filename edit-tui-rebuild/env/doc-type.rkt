@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/doc-type.rkt —— 文件 / document 类型注册项（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; document-type 决定“打开一个路径时，新 document 携带什么”：
 ;;;   extensions : 匹配的扩展名（小写，不带点；'("*") = 任意）
 ;;;   mode       : 默认 mode（决定默认 keymaps）

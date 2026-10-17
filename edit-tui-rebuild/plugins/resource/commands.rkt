@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; bootstrap/resource-commands.rkt —— 资源列表面板的命令 / keymap
-;;;
+;;; layer  : plugins/resource
+;;; effect : 命令：只改 State 或发 engine effect（open-view/close-view）
+
 ;;; 面板本身是 *resources* buffer view，选中项 = buffer 光标行。
 ;;; 命令：
 ;;;   tab  折叠/展开 document
@@ -19,22 +21,22 @@
 
 (provide resource-keys resource-command-table)
 
-(require "../base/id.rkt"
-         "../base/effect.rkt"
-         "../base/transition.rkt"
-         "../base/keymap.rkt"
-         "../../edit-tui/command/key.rkt"
-         "../model/state.rkt"
-         "../model/workspace.rkt"
-         "../model/chrome.rkt"
-         "../model/resources.rkt"
-         "../effects/engine.rkt"
-         "../projection/resources.rkt"
-         "../env/command.rkt"
-         "../env/environment.rkt"
-         "../env/scope.rkt"
-         "../../edit-tui/command/mouse.rkt"
-         "../dispatch/context.rkt")
+(require "../../base/id.rkt"
+         "../../base/effect.rkt"
+         "../../base/transition.rkt"
+         "../../base/keymap.rkt"
+         "../../../edit-tui/command/key.rkt"
+         "../../model/state.rkt"
+         "../../model/workspace.rkt"
+         "../../model/chrome.rkt"
+         "model.rkt"
+         "../../effects/engine.rkt"
+         "lines.rkt"
+         "../../env/command.rkt"
+         "../../env/environment.rkt"
+         "../../env/scope.rkt"
+         "../../../edit-tui/command/mouse.rkt"
+         "../../dispatch/context.rkt")
 
 (define (message ctx text)
   (transition-pure

@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/defaults.rkt —— 内置 role / mode 默认值（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; 这里只放“没有命令也能成立”的默认：role 行为、mode 的 fallback。
 ;;; 默认键表 / 命令在 bootstrap/defaults（需要 ops，放后面块）。
 

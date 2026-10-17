@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; dispatch/rules.rkt —— 活动命令表的有序规则（纯）
-;;;
+;;; layer  : dispatch
+;;; effect : 无（纯查表：规则层序）
+
 ;;; 一条规则 = scope + keymap。dispatch 按顺序试：
 ;;;   scope 成立 + keymap 命中（leaf） -> 执行
 ;;;   scope 成立 + keymap 命中（prefix） -> 继续读键

@@ -17,10 +17,11 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../model/input.rkt"
-         "../model/resources.rkt"
+         "../plugins/resource/model.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/chrome.rkt"
+         "../chrome/slot.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt"
          "../../core/editor/ops.rkt")
 

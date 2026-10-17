@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; base/keymap.rkt —— 通用 token → 值 的前缀表（纯，不依赖 command 层）
-;;;
+;;; layer  : base
+;;; effect : 无（纯前缀表）
+
 ;;; 与旧 command/keymap.rkt 的区别：叶子是**任意值**，不要求是 command。
 ;;; 于是 rebuild 可以把 `command-spec`、测试用的符号、菜单项都放进同一结构；
 ;;; 由 dispatch 决定叶子值怎么解释。

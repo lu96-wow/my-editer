@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; base/id.rkt —— 稳定身份 + 单调分配器（纯）
-;;;
+;;; layer  : base
+;;; effect : 无（纯值 + 纯分配器）
+
 ;;; State 只存 id，不存 core 的 buffer / view 句柄（见 DESIGN.md 方案 B）。
 ;;; id 是带 kind 的透明结构：doc / view / region / job。kind 让不同命名空间
 ;;; 不会撞值，也方便日志和断言。

@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; projection/render.rkt —— State + Engine → panels / chrome / bytes（投影，不输出）
-;;;
+;;; layer  : projection
+;;; effect : 无（纯投影：只读 engine，不写 core；输出交给 runtime）
+
 ;;;   project-frame  : state engine -> (values panels chrome-entries view-placements)
 ;;;   render-frame   : state engine cache -> (values frame-cache bytes)
 ;;;

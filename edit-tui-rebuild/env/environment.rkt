@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/environment.rkt —— 装配期只读环境（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值 + 纯合并）
+
 ;;; Environment 把“行为策略”集中成一个值，而不是模块级全局表：
 ;;;
 ;;;   roles    : role-id    -> role
@@ -56,7 +58,7 @@
          "rule.rkt"
          "doc-type.rkt"
          "input-command.rkt"
-         "../base/status.rkt")
+         "../base/status-part.rkt")
 
 (struct environment (roles modes scopes commands keymaps handlers rules status doc-types input-commands panel-syncs) #:transparent)
 ;; roles    : (hash/c symbol role)

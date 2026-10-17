@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/filetree.rkt —— 文件树面板状态（插件切片，纯数据）
-;;;
+;;; layer  : plugins/filetree
+;;; effect : 无（纯数据）
+
 ;;; 只放“这个面板自己的 UI 状态”：
 ;;;
 ;;;   view     : filetree 面板自己的 view-id | #f

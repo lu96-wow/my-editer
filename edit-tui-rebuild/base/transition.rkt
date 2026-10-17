@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; base/transition.rkt —— 一次状态转移：新 State + 有序效果（纯）
-;;;
+;;; layer  : base
+;;; effect : 无（纯值 + 纯组合子）
+
 ;;; 命令的统一返回类型：
 ;;;
 ;;;     command : ctx -> transition

@@ -1,7 +1,9 @@
 #lang racket
 
-;;; projection/resources.rkt —— 资源列表的纯投影
-;;;
+;;; plugins/resource/lines.rkt —— 资源列表的纯投影
+;;; layer  : plugins/resource
+;;; effect : 无（纯投影：state -> 行）
+
 ;;; 行：
 ;;;   doc  line : 绿色（document）
 ;;;   view line : 蓝色（view），缩进在 document 下
@@ -16,10 +18,10 @@
          resource-doc-line?
          resource-view-line?)
 
-(require "../base/id.rkt"
-         "../model/state.rkt"
-         "../model/workspace.rkt"
-         "../model/resources.rkt")
+(require "../../base/id.rkt"
+         "../../model/state.rkt"
+         "../../model/workspace.rkt"
+         "model.rkt")
 
 (struct resource-line (kind doc view text face) #:transparent)
 ;; kind : 'doc | 'view

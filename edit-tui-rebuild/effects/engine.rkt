@@ -1,7 +1,10 @@
 #lang racket
 
 ;;; effects/engine.rkt —— core buffer / view 的唯一拥有者（不纯：可变引擎）
-;;;
+;;; layer  : effects
+;;; effect : **引擎**：core buffer / view 的唯一可变拥有者
+;;;            （engine-create-doc! / engine-create-view! / engine-remove-* / engine-apply!）
+
 ;;; 方案 B 的边界：
 ;;;   · State 只存 doc-id / view-id 与元数据；
 ;;;   · engine 持有真正的 core buffer / view 句柄；

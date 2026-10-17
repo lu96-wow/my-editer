@@ -28,7 +28,7 @@
          "../../edit-tui/theme/main.rkt"
          "../base/id.rkt"
          "../base/keymap.rkt"
-         "../base/status.rkt"
+         "../base/status-part.rkt"
          "../base/transition.rkt"
          "../model/layout.rkt"
          "../model/state.rkt"
@@ -38,9 +38,10 @@
          "../env/command.rkt"
          "../env/environment.rkt"
          "../env/rule.rkt"
-         "../bootstrap/chrome.rkt"
+         "../chrome/slot.rkt"
          "../bootstrap/defaults.rkt"
-         "../bootstrap/plugin.rkt"
+         "../plugins/builtin.rkt"
+         "../env/plugin.rkt"
          "../dispatch/context.rkt"
          "../runtime/run.rkt")
 
@@ -96,7 +97,7 @@
   (define engine (make-engine))
   (void (engine-create-doc! engine did "plugin.rkt"
                             (string-join
-                             '("This demo's whole \"plugin system\" is bootstrap/plugin.rkt."
+                             '("This demo's whole \"plugin system\" is env/plugin.rkt."
                                ""
                                "The plugin contributes: a command (demo-hi), a key (h), a store slot,"
                                "and one status-bar part (hi×N). No framework file mentions it."

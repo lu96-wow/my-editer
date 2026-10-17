@@ -20,15 +20,17 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"
-         "../model/resources.rkt"
-         "../model/filetree.rkt"
+         "../plugins/resource/model.rkt"
+         "../plugins/filetree/model.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/filetree-plugin.rkt"
+         "../plugins/filetree/plugin.rkt"
+         "../plugins/filetree/scan.rkt"
          "../projection/geometry.rkt"
          "../../core/view/base/rect.rkt"
-         (except-in "../bootstrap/chrome.rkt" input-show)
-         "../input.rkt"
+         (except-in "../chrome/slot.rkt" input-show)
+         "../chrome/input.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define root (build-path (find-system-path 'temp-dir)
@@ -68,7 +70,7 @@
     (view-set-selections! (engine-view-object engine ftv)
                         (selections-one (caret (point line 0))))
   s)
-(define (lines s) (filetree-lines s))
+(define (lines s) (filetree-lines s dir-entries))
 (define (index-of-line s pred)
   (for/or ([l (in-list (lines s))] [i (in-naturals)] #:when (pred l)) i))
 

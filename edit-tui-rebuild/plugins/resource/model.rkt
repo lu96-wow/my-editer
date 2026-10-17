@@ -1,11 +1,13 @@
 #lang racket
 
 ;;; model/resources.rkt —— 资源列表面板的**自己的**状态（插件切片，纯数据）
-;;;
+;;; layer  : plugins/resource
+;;; effect : 无（纯数据）
+
 ;;;   collapsed : doc-id -> #t        资源列表里折叠的 document
 ;;;   view      : #f | view-id        资源列表面板自己的 view
 ;;;
-;;; 这个切片放在 state.store 的 'resources 槽里（见 bootstrap/resource-panel.rkt），
+;;; 这个切片放在 state.store 的 'resources 槽里（见 plugins/resource/panel.rkt），
 ;;; 不是根 State 的字段：拔掉资源面板插件后，这部分状态跟着消失，框架不受影响。
 ;;;
 ;;; 不在这里的两个近邻：

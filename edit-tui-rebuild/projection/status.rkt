@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; projection/status.rkt —— 状态栏 / 输入栏文本投影（纯、可组合）
-;;;
+;;; layer  : projection
+;;; effect : 无（纯投影：state -> 状态栏文本）
+
 ;;; 状态栏不再写死成“位置 + path + pending/message”：
 ;;;   · 一个段 = status-part（name + render）；
 ;;;   · environment.status 提供段列表；#f = 用这里默认段；
@@ -29,7 +31,7 @@
          racket/path
          "../base/id.rkt"
          "../model/layout.rkt"
-         "../base/status.rkt"
+         "../base/status-part.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"

@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/chrome.rkt —— 界面附属状态：消息 / 日志 / 共享 chrome 槽（纯数据）
-;;;
+;;; layer  : model
+;;; effect : 无（纯数据）
+
 ;;; 状态栏文本不提前拼好，而是投影层计算。
 ;;; chrome-slot 描述“状态栏 / 输入栏共用的区域”：
 ;;;   region       : region-id

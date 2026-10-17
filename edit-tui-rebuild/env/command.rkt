@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/command.rkt —— 命令注册表的“值”部分（复用旧 command 层的纯数据）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; 命令 = command 结构（run / note / input），注册表是 environment.commands：
 ;;;
 ;;;     command-id : symbol

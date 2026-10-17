@@ -1,7 +1,9 @@
 #lang racket
 
-;;; bootstrap/resource-plugin.rkt —— 资源列表 = 一个插件
-;;;
+;;; plugins/resource/plugin.rkt —— 资源列表 = 一个插件
+;;; layer  : plugins/resource
+;;; effect : 无（声明）；install-resource-panel! 会建 engine 对象（装配动作）
+
 ;;; 贡献：
 ;;;   panel-spec      : 面板身份（名字 / role / mode / 每帧同步）
 ;;;   install         : 宿主给 region-id，插件把 view 装好
@@ -18,18 +20,19 @@
          resource-panel-spec
          resource-plugin-mode
          install-resource-panel!)
-(provide (all-from-out "resource-panel.rkt"))
+(provide (all-from-out "panel.rkt"))
 
-(require "../model/state.rkt"
-         "../model/resources.rkt"
-         "../../edit-tui/command/key.rkt"
-         "../../edit-tui/command/mouse.rkt"
-         "../base/keymap.rkt"
-         "../env/mode.rkt"
-         "../env/environment.rkt"
-         "../bootstrap/plugin.rkt"
-         "resource-commands.rkt"
-         "resource-panel.rkt")
+(require "../../model/state.rkt"
+         "model.rkt"
+         "../../../edit-tui/command/key.rkt"
+         "../../../edit-tui/command/mouse.rkt"
+         "../../base/keymap.rkt"
+         "../../env/mode.rkt"
+         "../../env/environment.rkt"
+         "../../env/plugin.rkt"
+         "../../bootstrap/panel.rkt"
+         "commands.rkt"
+         "panel.rkt")
 
 (define pointer-keys
   (keys

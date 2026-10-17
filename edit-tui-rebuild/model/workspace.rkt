@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/workspace.rkt —— 文档 / 视图 / 区域 / 布局 / 焦点（纯数据）
-;;;
+;;; layer  : model
+;;; effect : 无（纯数据 + 纯更新）
+
 ;;; 这里只放 id 和元数据，不放 core 的 buffer / view 句柄：
 ;;;
 ;;;   docs    : doc-id  -> doc-meta
@@ -62,7 +64,7 @@
 ;; keymap-layers : (listof keymap)（per-doc 覆盖层，优先于 mode 默认表）
 ;; internal?     : bool  基础设施文档（状态栏 / 输入栏 / 面板）
 ;;                 -> 不参与保存确认、不进资源列表、不能当 placement 目标。
-;;                 由创建方声明（bootstrap/panel.rkt 默认 #t），
+;;                 由创建方声明（effects/panel.rkt 默认 #t），
 ;;                 框架不需要维护“哪些 mode 是 chrome”的字面量列表。
 
 (define (make-doc-meta name

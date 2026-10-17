@@ -1,7 +1,10 @@
 #lang racket
 
 ;;; effects/interpreter.rkt —— effect → transition 的边缘解释器（不纯）
-;;;
+;;; layer  : effects
+;;; effect : **IO**：执行 effect —— 文件读写、文档开关、保存、退出；
+;;;            引擎写通过 effects/engine.rkt
+
 ;;; 分工：
 ;;;   · edit / insert / select / scroll / nav / undo / redo -> engine-apply!
 ;;;   · open-doc / close-doc / save-doc                         -> engine + State

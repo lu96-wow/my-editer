@@ -19,9 +19,10 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"
-         "../model/resources.rkt"
+         "../plugins/resource/model.rkt"
          "../effects/engine.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define inbox (make-async-channel))

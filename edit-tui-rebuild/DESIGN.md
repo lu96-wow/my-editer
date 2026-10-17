@@ -1,6 +1,10 @@
 # edit-tui-rebuild —— 状态机分析与重建设计
 
-> 实现状态：块 1–6 已完成，可运行 `demo/basic.rkt`。进度与用法见 `README.md`。
+> 实现状态：块 1–6 已完成，可运行 `demo/basic.rkt`。
+>
+> **这是“为什么这样设计”的历史文档**（对旧 `edit-tui/app` 的审计 + 目标模型）。
+> 当前实际的目录、层序、副作用白名单见 [`ARCHITECTURE.md`](ARCHITECTURE.md)，
+> 用法见 [`README.md`](README.md)。
 
 本文先给出现有 `edit-tui/app` 的**实际状态机**，再把状态 / 策略 / 效果 / 投影分层，
 最后给出重建目标。重建按“层”推进，不按文件搬家。

@@ -14,7 +14,7 @@
          "../model/workspace.rkt"
          "../model/input.rkt"
          "../model/chrome.rkt"
-         "../model/filetree.rkt"
+         "../plugins/filetree/model.rkt"
          "../effects/engine.rkt"
          "../projection/geometry.rkt"
          "../projection/status.rkt"

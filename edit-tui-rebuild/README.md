@@ -1,6 +1,11 @@
 # edit-tui-rebuild
 
-重建中的编辑器骨架。设计、状态清点、目标分层见 [`DESIGN.md`](DESIGN.md)。
+重建中的编辑器骨架。
+
+- **现在的分层 / 副作用白名单 / 扩展点**：[`ARCHITECTURE.md`](ARCHITECTURE.md)
+- 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
+
+所有分层规则由 `test/layers.rkt` 机器检查。
 
 ## 进度
 
@@ -13,95 +18,102 @@
 | 5 | `projection/` geometry / render / status | ✅ |
 | 6 | `bootstrap/` + runtime | ✅ |
 
-## 块 1：base + model
+## 目录
 
 ```
-base/
+base/          纯词汇（0 依赖）
   id.rkt          带 kind 的稳定 id + 纯分配器
   event.rkt       应用事件 ADT（不依赖 tui）
   effect.rkt      效果 ADT（引擎写 / IO / 调度）
   transition.rkt  State + 有序 effects + 组合子
-  keymap.rkt      通用 token -> 值 的前缀表（叶子任意值）
-  status.rkt      status-part：状态栏可组合段
-model/
-  layout.rkt      region 布局树（纯几何，不依赖 core）
+  keymap.rkt      通用 token -> 值 的前缀表
+  status-part.rkt 状态栏段（render 由使用方提供）
+model/         纯状态（只依赖 base）
+  state.rkt       根 State：window / workspace / input / chrome / runtime / ids / confirm / store
   workspace.rkt   doc / view / region / layout / focus / overlay / root / placement
+  layout.rkt      region 布局树（纯几何）
   input.rkt       pending / modes / gesture
   chrome.rkt      message / log
-  save.rkt        保存确认队列（框架级：quit / close-doc）
-  resources.rkt   资源面板自己的切片（store['resources]）
-  filetree.rkt    文件树面板自己的切片（store['filetree]）
-  state.rkt       根 State：window / workspace / input / chrome / runtime / ids /
-                  confirm / store
-env/
+  save.rkt        保存确认队列（框架级）
+env/           纯策略（只依赖 base + model）
+  environment.rkt role/mode/scope/command/keymap/handler/rules/status/doc-type/input-command/panel-sync
   role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
   mode.rkt        document 模式 -> keymaps / fallback
-  scope.rkt       scope 谓词（state -> bool）
-  command.rkt     复用旧 command 结构（run / note / input）
+  scope.rkt       scope 谓词
+  command.rkt     命令值（复用旧 command 结构）
   rule.rkt        scope + keymap 的规则
-  doc-type.rkt    路径扩展名 -> mode + per-document keymaps
-  environment.rkt role/mode/scope/command/keymap/handler/rules/status 的只读聚合
-  defaults.rkt    内置 role / mode
-dispatch/
-  context.rkt     命令看到的 ctx（env/state/event/subject/engine）
-  rules.rkt       有序规则：mode 层 / per-doc 层 / mode 默认 / global
-  pipeline.rkt    event -> transition（键盘 / 鼠标 / 内部事件）
-effects/
-  engine.rkt      core buffer/view 的唯一拥有者 + 只读 engine-view + view 尺寸同步
-  interpreter.rkt effect -> transition（引擎写 / open / save / 文件 IO / quit）
-projection/
-  geometry.rkt    region 树 -> region-panel / 内容区 / 接缝（纯）
-  status.rkt      状态栏文本投影（纯）
-  render.rkt      state + engine -> panels / chrome / bytes（不输出、不写 core）
-bootstrap/
-  panel.rkt       面板装配原语：create-view / region-install / install / uninstall / sync-buffer
+  doc-type.rkt    路径 -> mode + per-document keymaps
+  input-command.rkt 输入栏字符串匹配
   plugin.rkt      插件描述符（plugin / panel-spec）+ 纯装配（plugins-env / plugins-apply）
-  commands.rkt    框架命令（导航 / 编辑 / split / close / focus / save / placement / quit）
-  chrome.rkt      status/input 共享槽（框架 chrome）
-  filetree-panel.rkt     文件树：同步 + view（投影委托 projection/filetree）
-  filetree-commands.rkt  文件树命令 + 键表 + input-commands
-  filetree-plugin.rkt    文件树插件：panel-spec + 安装 + mode/commands/规则
-  resource-panel.rkt     资源列表：同步 + view
-  resource-commands.rkt  资源列表命令 + 键表
-  resource-plugin.rkt    资源插件：panel-spec + 安装 + mode/commands
-  defaults.rkt    core-env（只有框架）+ default-plugins + default-env
-runtime/
+  defaults.rkt    内置 role / mode
+effects/       边界（core 只在这里被拥有）
+  engine.rkt      core buffer/view 的唯一可变拥有者
+  panel.rkt       面板↔引擎适配：create-view / region-install / install / uninstall / sync-buffer
+  interpreter.rkt effect -> transition（文件 IO / 文档开关 / 保存 / 退出）
+projection/    纯投影
+  geometry.rkt    layout -> region-panel / cut / window-area / region-neighbor
+  status.rkt      状态栏文本投影 + 默认段
+  render.rkt      state + engine -> panels / chrome / bytes
+dispatch/      纯派发
+  context.rkt     命令看到的 ctx
+  rules.rkt       规则层序（input modes > per-doc > env.rules > mode > global）
+  pipeline.rkt    event -> transition
+chrome/        框架 chrome
+  slot.rkt        安装 status/input 槽（两个 core view）
+  input.rkt       输入栏 API（input-show / input-finish / input-cancel …）
+bootstrap/     装配
+  panel.rkt       panel-spec -> panel-install!（唯一缝）
+  commands/
+    util.rkt        message / notice / real-view? / fallback-attached-view
+    edit.rkt        导航 / 插入 / 删除 / undo / redo / quit
+    view.rkt        split / close-view / new-document / detach / attach / cycle
+    region.rkt      close-region（按 role 的 close-policy）
+    focus.rkt       focus 方向移动 + 鼠标落点/拖选
+    document.rkt    open / save / save-as / 保存确认 / 关闭 / 退出
+    placement.rkt   把 detached view 放进 panel
+    table.rkt       框架命令表
+  defaults.rkt    core-env（只有框架）
+plugins/       内置插件（每个一个目录）
+  builtin.rkt     default-plugins + default-env（core-env + 插件）
+  filetree/
+    model.rkt       store['filetree]（view / expanded / width）
+    scan.rkt        读目录（唯一 IO）
+    lines.rkt       纯投影：条��� -> 行
+    panel.rkt       写 *filetree* buffer
+    commands.rkt    Enter / C-b / C-n f / C-d …
+    plugin.rkt      panel-spec + mode + commands + 规则 + install
+  resource/
+    model.rkt       store['resources]（collapsed / view）
+    lines.rkt       纯投影：doc/view -> 行
+    panel.rkt       写 *resources* buffer
+    commands.rkt    tab / v / n / r / d / c
+    plugin.rkt      panel-spec + mode + commands + install
+runtime/       壳
   tui-adapter.rkt 终端事件 -> base/event
   run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
-demo/
-  basic.rkt       最小交互 demo
-  state.rkt       主编辑区 + 一行 State 观察条
-  save.rkt        status/input 共享槽 + y/n/yall/nall 保存确认
-  resource.rkt    资源列表面板（buffer）+ 显式 placement
-  filetree.rkt    文件树面板（buffer）+ 文件打开 placement
-main.rkt          公共面（聚合以上）
+demo/           可交互 demo
+main.rkt        公共面
 ```
 
 核心约定：
 
 - State 只存 **id + 元数据**，不存 core 的 buffer / view 句柄；
 - 命令返回 `(transition state effects)`，效果按顺序解释；
-- 切焦点不再自动清 pending；输入状态独立；
-- 区域几何在 layout leaf，区域成员/active 在 region，避免两处真相；
-- role/mode/scope/command 都在 Environment 值里，注册是 `environment-add-*`，不是模块级 `set!`；
+- 切焦点不自动清 pending；输入状态独立；
+- 区域几何在 layout leaf，成员/active 在 region，避免两处真相；
+- role/mode/scope/command/plugin 都在 Environment 值里，注册是 `environment-add-*`，不是模块级 `set!`；
 - 命令 id 作为 keymap 叶子，dispatch 再用 env 查命令实现；
-- `env.rules` 是带 scope 的规则层，层序：input modes > per-doc > env.rules > mode > global；
-- 状态栏是 `status-part` 列表，不是写死的字符串：`environment.status` 决定用哪些段；
-  `default-status-parts` 只有 focus 行列 + path，`full-status-parts` 再加 pending/message；
-  - path 在文件树根目录下时显示**相对路径**，否则显示绝对路径；
+- 层序：input modes > per-doc > env.rules > mode > global（`dispatch/rules.rkt`）；
+- 状态栏是 `status-part` 列表：`default-status-parts` 只有 focus 行列 + path，
+  `full-status-parts` 再加 pending/message；
+  - path 在 `workspace.root` 下时显示**相对路径**，否则绝对路径；
 - 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
-  命令派发按 subject view → doc → mode/per-doc layers，不按 layout region；
-- dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
-- 输入栏是 *input* document：prompt 前缀写进 buffer 且 readonly，输入文本就是前缀后的内容；
-  提交时读完整 buffer 字符串，交给 `environment.input-commands` 匹配；
-- State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；
-- `spawn` / `timer` / `emit` 是 Runtime effect，解释器显式报错，等 runtime 块接线；
-- 文档版本用 core 的 **opaque document token**：`buffer-version` / `buffer-version=?`，不存文本快照；
-  编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较；
+- 输入栏是 *input* document：prompt 前缀写进 buffer 且 readonly，提交时读完整字符串，
+  交给 `environment.input-commands` 匹配；
+- `internal?` 文档（状态栏 / 输入栏 / 插件面板）不参与保存确认、不进资源列表、不能当 placement 目标；
+- 文档版本用 core 的 opaque token：`buffer-version` / `buffer-version=?`；
 - 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
-  status/input 是 chrome slot 里的两个 core view（buffer 支撑）；`projection/render` 也保留 projection chrome 兼容路径；
-- Runtime 是唯一不纯装配层：`with-tui` / `read-event` / `put-bytes` / inbox / spawn / timer；
-  `spawn` / `timer` 的回投事件在“下一个终端事件”到达时排空（与旧骨架一致）。
+- `spawn` / `timer` 的回投事件在“下一个终端事件”到达时排空。
 
 ## 测试
 
@@ -120,6 +132,7 @@ racket edit-tui-rebuild/test/seam.rkt
 racket edit-tui-rebuild/test/panel.rkt
 racket edit-tui-rebuild/test/plugin.rkt
 racket edit-tui-rebuild/test/plugin-detach.rkt
+racket edit-tui-rebuild/test/layers.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -127,7 +140,7 @@ edit-tui-rebuild/test/run.sh
 ## 通用输入栏 API
 
 ```racket
-(require "edit-tui-rebuild/input.rkt")
+(require "edit-tui-rebuild/chrome/input.rkt")
 ```
 
 | API | 作用 |
@@ -164,7 +177,7 @@ edit-tui-rebuild/test/run.sh
 - 写入新 prompt，重新聚焦 input；
 - 焦点栈保持平衡（旧 input 先 pop，新 input 再 push）。
 
-低层 `chrome-input-show` 不做替换清理；其他逻辑应调用 `input.rkt` 的 `input-show`。
+低层 `chrome-input-show` 不做替换清理；其他逻辑应调用 `chrome/input.rkt` 的 `input-show`。
 
 ## 公共面
 
@@ -292,12 +305,12 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 实现位置：
 
 - `model/save.rkt`：`save-confirm` 队列 / 当前 index / 完成后 action（`state.confirm`）；
-- `bootstrap/chrome.rkt`：安装共享槽、input show/finish、status buffer 同步；
-- `bootstrap/commands.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
-- `bootstrap/defaults.rkt`：`input-keys` + `default-input-commands`。
+- `chrome/slot.rkt`：安装共享槽、input show/finish、status buffer 同步；
+- `bootstrap/commands/document.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
+- `bootstrap/commands/document.rkt`：`default-input-commands`；`bootstrap/defaults.rkt`：`input-keys`。
 
 
-## 面板装配原语（`bootstrap/panel.rkt`）
+## 面板装配原语（`effects/panel.rkt`）
 
 一个 buffer 支撑的面板在四处留痕：
 
@@ -306,7 +319,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `engine` | document + view（唯一可变边界） | `panel-create-view!` |
 | `workspace` | `doc-meta` / `view-meta` / `region` | `panel-create-view!` + `panel-region-install!` |
 | `layout` | 引用 `region-id` 的叶子 | 调用方（装配顺序 / 尺寸是策略） |
-| 插件切片 | 自己的 view-id / 展开集合 / 宽度 … | 插件自己（`state.store['resources]` / `state.filetree`） |
+| 插件切片 | 自己的 view-id / 展开集合 / 宽度 … | 插件自己（`state.store['resources]` / `store['filetree]`） |
 
 ```racket
 ;; 建 doc + view（不建 region）
@@ -342,7 +355,7 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 
 | 原来 | 现在 |
 |---|---|
-| 面板装配代码各写一份 | `bootstrap/panel.rkt`（install / uninstall / sync-buffer） |
+| 面板装配代码各写一份 | `effects/panel.rkt`（install / uninstall / sync-buffer） |
 | `run-frame` 里三行硬调 sync | `environment.panel-syncs`（`panel-spec` 自动挂上） |
 | `state.resources.confirm`（框架级） | `state.confirm`（`model/save.rkt`） |
 | `state.resources.collapsed` / `.view` | `state.store['resources]` |
@@ -370,7 +383,7 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 | `effects/interpreter.rkt` | effect 解释是封闭 `cond` | 插件只能用内置 effect + `emit-effect` |
 | `panel-spec` | 只有 sync，没有 install | 安装需要 region-id + 布局位置，由宿主决定 |
 
-## 插件（`bootstrap/plugin.rkt`）
+## 插件（`env/plugin.rkt`）
 
 插件是一份**数据**，不是 require 顺序：
 
@@ -428,7 +441,7 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 ```
 
 `plugins-apply` 是纯函数：merge env → 追加状态栏段 → 挂面板 sync → 跑 `state-init`。
-副作用（建 engine 对象 / 装面板）不在这里，由 `bootstrap/panel.rkt` 的装配动作做，
+副作用（建 engine 对象 / 装面板）不在这里，由 `effects/panel.rkt` 的装配动作做，
 插件只声明参数。
 
 ### 插件现在能做什么（不改框架任何文件）
@@ -443,9 +456,9 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 
 内置插件就是这么写的：
 
-- `bootstrap/filetree-plugin.rkt`：`panel-spec` + mode `'filetree` + `filetree-command-table`
+- `plugins/filetree/plugin.rkt`：`panel-spec` + mode `'filetree` + `filetree-command-table`
   + `filetree-input-commands` + `C-b` 规则；
-- `bootstrap/resource-plugin.rkt`：`panel-spec` + mode `'resources` + `resource-command-table`。
+- `plugins/resource/plugin.rkt`：`panel-spec` + mode `'resources` + `resource-command-table`。
 
 `demo/plugin.rkt` 是最小的“没有面板”的插件：命令 `demo-hi` + 键 `h` + store 槽 +
 状态栏段 `hi×N`，框架侧零改动。

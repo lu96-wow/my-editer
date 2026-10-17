@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; runtime/tui-adapter.rkt —— racket-tui 事件 → 应用事件（唯一 tui 解码点）
-;;;
+;;; layer  : runtime
+;;; effect : 无（纯适配：tui 事件 -> 应用事件）
+
 ;;; 只做两件事：
 ;;;   · 终端事件 → base/event.rkt 的值；
 ;;;   · 鼠标 1-based 坐标 → 0-based 屏幕格。

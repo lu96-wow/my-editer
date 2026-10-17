@@ -24,8 +24,9 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/chrome.rkt"
+         "../chrome/slot.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../runtime/run.rkt")
 
 (define did (doc-id 1))

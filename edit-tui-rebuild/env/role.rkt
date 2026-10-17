@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/role.rkt —— 区域角色 → 行为（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; role 名是开放 symbol（'editor / 'panel / 'slot / 'tool …），实际行为由
 ;;; environment 的 roles 表查到。role 结构**不带名字**：表键就是名字，避免冗余。
 ;;;

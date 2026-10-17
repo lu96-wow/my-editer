@@ -1,7 +1,10 @@
 #lang racket
 
 ;;; bootstrap/filetree-commands.rkt —— 文件树面板命令
-;;;
+;;; layer  : plugins/filetree
+;;; effect : 命令：显隐只改 State；创建/删除文件发 IO effect；
+;;;            面板内导航发 engine effect
+
 ;;; Enter:
 ;;;   root/dir -> 展开/折叠
 ;;;   file     -> 打开文件；已有 editor panel 时进入 placement，让用户选 panel；
@@ -17,27 +20,27 @@
 
 (require racket/path
          racket/string
-         "../base/id.rkt"
-         "../base/effect.rkt"
-         "../base/transition.rkt"
-         "../base/keymap.rkt"
-         "../../edit-tui/command/key.rkt"
-         "../model/state.rkt"
-         "../model/workspace.rkt"
-         "../model/layout.rkt"
-         "../model/chrome.rkt"
-         "../model/resources.rkt"
-         "../model/filetree.rkt"
-         "../effects/engine.rkt"
-         "../projection/filetree.rkt"
-         "../projection/geometry.rkt"
-         "../../core/view/base/rect.rkt"
-         "../env/command.rkt"
-         "../env/environment.rkt"
-         "../env/doc-type.rkt"
-         "../env/input-command.rkt"
-         "../input.rkt"
-         "../dispatch/context.rkt")
+         "../../base/id.rkt"
+         "../../base/effect.rkt"
+         "../../base/transition.rkt"
+         "../../base/keymap.rkt"
+         "../../../edit-tui/command/key.rkt"
+         "../../model/state.rkt"
+         "../../model/workspace.rkt"
+         "../../model/layout.rkt"
+         "../../model/chrome.rkt"
+         "../resource/model.rkt"
+         "model.rkt"
+         "../../effects/engine.rkt"
+         "lines.rkt"
+         "scan.rkt"
+         "../../projection/geometry.rkt"
+         "../../env/command.rkt"
+         "../../env/environment.rkt"
+         "../../env/doc-type.rkt"
+         "../../env/input-command.rkt"
+         "../../chrome/input.rkt"
+         "../../dispatch/context.rkt")
 
 (define (message ctx text)
   (transition-pure
@@ -50,7 +53,7 @@
 (define (selected-line ctx)
   (define vid (ctx-subject ctx))
   (define line (and vid (engine-view-view-point-line (ctx-engine ctx) vid)))
-  (and line (filetree-line-at (ctx-state ctx) line)))
+  (and line (filetree-line-at (ctx-state ctx) line dir-entries)))
 
 (define (selected-dir ctx)
   (define l (selected-line ctx))
@@ -164,28 +167,6 @@
 ;; 若记录为 0 / 未记录，则使用最小值 20。
 (define filetree-min-size 20)
 
-(define (region-parent-axis layout rid)
-  (let loop ([n layout])
-    (cond
-      [(leaf? n) #f]
-      [else
-       (define cs (split-children n))
-       (cond
-         [(for/or ([c (in-list cs)])
-            (and (leaf? c) (equal? (leaf-region c) rid)))
-          (split-axis n)]
-         [else
-          (for/or ([c (in-list cs)]) (loop c))])])))
-
-(define (region-content-size layout area rid axis)
-  (define-values (rps _cuts) (geometry-solve layout area))
-  (define rp (for/first ([p (in-list rps)]
-                         #:when (equal? (region-panel-region p) rid))
-               p))
-  (and rp
-       (let ([c (region-panel-content rp)])
-         (if (eq? axis 'lr) (rect-w c) (rect-h c)))))
-
 (define (toggle-filetree-command)
   (cmd (λ (ctx)
          (define s (ctx-state ctx))
@@ -206,7 +187,7 @@
                     [visible?
                      (define axis (or (region-parent-axis layout rid) 'lr))
                      (define w (state-window s))
-                     (define area (rect 0 0 (window-cols w) (window-rows w)))
+                     (define area (window-area w))
                      (define size (or (region-content-size layout area rid axis) 0))
                      (define s1 (plugin-state* s 'filetree (λ (f*) (filetree-set-width f* size)) (empty-filetree)))
                      (define ws1 (struct-copy workspace ws [layout (tree-hide layout rid)]))

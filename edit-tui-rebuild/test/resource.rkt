@@ -21,9 +21,10 @@
          "../env/doc-type.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
-         "../bootstrap/chrome.rkt"
-         "../bootstrap/commands.rkt"
+         "../chrome/slot.rkt"
+         "../bootstrap/commands/table.rkt"
          "../bootstrap/defaults.rkt"
+         "../plugins/builtin.rkt"
          "../dispatch/context.rkt"
          "../runtime/run.rkt")
 

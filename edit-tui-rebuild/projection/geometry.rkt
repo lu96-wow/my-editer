@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; projection/geometry.rkt —— region 布局树 → 屏幕几何（纯）
-;;;
+;;; layer  : projection
+;;; effect : 无（纯几何；产出 core rect / panel 值）
+
 ;;;   geometry-solve : layout area -> (values (listof region-panel) (listof cut))
 ;;;
 ;;; region-panel = 一块区域在屏幕上的外框 + 有效边框 + 内容区。
@@ -20,13 +22,19 @@
          geometry-solve
          region-panel-map
          region-panel-at
+         window-area
+         region-parent-axis
+         region-content-size
+         region-neighbor
          cut-at cuts-at
          tree-resize-seam
          leaf-effective-borders
          axis-thickness)
 
 (require "../model/layout.rkt"
-         "../../core/view/base/rect.rkt")
+         "../model/state.rkt"
+         "../../core/view/base/rect.rkt"
+         "../../core/view/panel.rkt")
 
 ;;; ════════════════ 结果类型 ════════════════
 
@@ -220,6 +228,50 @@
 
 (define (region-panel-map panels)
   (for/hash ([p (in-list panels)]) (values (region-panel-region p) p)))
+
+;;; ════════════════ 常用查询 ════════════════
+
+;; 终端窗口 -> 布局区域（布局原点固定在 (0,0)）。
+;; 放在这里而不是 dispatch：dispatch 只做派发，不应该知道 rect 的构造。
+(define (window-area window)
+  (rect 0 0 (window-cols window) (window-rows window)))
+
+;; region 在父 split 的轴上（顶层单叶 -> #f）。
+(define (region-parent-axis layout rid)
+  (let loop ([n layout])
+    (cond
+      [(leaf? n) #f]
+      [else
+       (define cs (split-children n))
+       (cond
+         [(for/or ([c (in-list cs)]) (and (leaf? c) (equal? (leaf-region c) rid)))
+          (split-axis n)]
+         [else (for/or ([c (in-list cs)]) (loop c))])])))
+
+;; region 内容区在 axis 上的格数（不含边框）。
+(define (region-content-size layout area rid axis)
+  (define-values (rps _cuts) (geometry-solve layout area))
+  (define rp (for/first ([p (in-list rps)]
+                         #:when (equal? (region-panel-region p) rid))
+               p))
+  (and rp
+       (let ([c (region-panel-content rp)])
+         (if (eq? axis 'lr) (rect-w c) (rect-h c)))))
+
+;; from-rid 在 dir 方向上的邻居 region-id（用 core 的方向导航）。
+(define (region-neighbor layout area from-rid dir)
+  (define-values (rps _cuts) (geometry-solve layout area))
+  (define panels
+    (for/list ([rp (in-list rps)])
+      (make-panel (region-panel-region rp)
+                  (region-panel-rect rp)
+                  (region-panel-borders rp))))
+  (define from
+    (for/first ([p (in-list panels)]
+                #:when (equal? (panel-view p) from-rid))
+      p))
+  (define nbr (and from (panel-neighbor panels from dir)))
+  (and nbr (panel-view nbr)))
 
 (define (region-panel-at panels row col)
   (for/first ([p (in-list panels)]

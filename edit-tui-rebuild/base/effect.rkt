@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; base/effect.rkt —— 效果即数据（纯值，不执行）
-;;;
+;;; layer  : base
+;;; effect : 无（效果是数据；执行在 effects/interpreter）
+
 ;;; 命令返回 Transition（见 transition.rkt），其中 effects 是一串**有序**效果；
 ;;; Runtime 在边缘按顺序解释。State 里绝不直接持有 core 句柄。
 ;;;

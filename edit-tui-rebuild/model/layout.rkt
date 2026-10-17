@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/layout.rkt —— 纯布局树（region id + 尺寸），不依赖 core
-;;;
+;;; layer  : model
+;;; effect : 无（纯几何树）
+
 ;;; node = leaf | split
 ;;;   (leaf region dim visible? borders)
 ;;;       region  : region-id（成员表在 workspace.regions）

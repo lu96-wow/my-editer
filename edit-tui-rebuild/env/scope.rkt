@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; env/scope.rkt —— 作用域谓词（纯值）
-;;;
+;;; layer  : env
+;;; effect : 无（纯值）
+
 ;;; scope 名是开放 symbol，存在 environment 的 scopes 表；结构不带名字。
 ;;; dispatch 按 scope 过滤候选规则：
 ;;;

@@ -1,7 +1,9 @@
 #lang racket
 
-;;; bootstrap/filetree-plugin.rkt —— 文件树 = 一个插件
-;;;
+;;; plugins/filetree/plugin.rkt —— 文件树 = 一个插件
+;;; layer  : plugins/filetree
+;;; effect : 无（声明）；install-filetree-panel! 会建 engine 对象（装配动作）
+
 ;;; 插件贡献四样东西（全部是数据 + 一个已存在的同步函数）：
 ;;;
 ;;;   panel-spec      : 面板身份（名字 / role / mode / 每帧同步）
@@ -23,21 +25,24 @@
          filetree-plugin-mode
          install-filetree-panel!)
 ;; 宿主只需要 require 插件：安装 / 同步 / view 查询都在这里。
-(provide (all-from-out "filetree-panel.rkt"))
+(provide (all-from-out "panel.rkt")
+         (all-from-out "scan.rkt"))
 
-(require "../model/state.rkt"
-         "../model/workspace.rkt"
-         "../model/filetree.rkt"
-         "../projection/filetree.rkt"
-         "../../edit-tui/command/key.rkt"
-         "../../edit-tui/command/mouse.rkt"
-         "../base/keymap.rkt"
-         "../env/mode.rkt"
-         "../env/environment.rkt"
-         "../env/rule.rkt"
-         "../bootstrap/plugin.rkt"
-         "filetree-commands.rkt"
-         "filetree-panel.rkt")
+(require "../../model/state.rkt"
+         "../../model/workspace.rkt"
+         "model.rkt"
+         "lines.rkt"
+         "scan.rkt"
+         "../../../edit-tui/command/key.rkt"
+         "../../../edit-tui/command/mouse.rkt"
+         "../../base/keymap.rkt"
+         "../../env/mode.rkt"
+         "../../env/environment.rkt"
+         "../../env/rule.rkt"
+         "../../env/plugin.rkt"
+         "../../bootstrap/panel.rkt"
+         "commands.rkt"
+         "panel.rkt")
 
 (define pointer-keys
   (keys

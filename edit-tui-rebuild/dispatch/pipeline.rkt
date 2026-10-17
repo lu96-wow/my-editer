@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; dispatch/pipeline.rkt —— 事件 → Transition 的统一派发（纯）
-;;;
+;;; layer  : dispatch
+;;; effect : 无（事件 -> transition；不执行 effect）
+
 ;;;   dispatch env state event [#:subject s] [#:engine e] -> transition
 ;;;
 ;;; 关键点：
@@ -32,7 +34,6 @@
          "../model/chrome.rkt"
          "../model/layout.rkt"
          "../projection/geometry.rkt"
-         "../../core/view/base/rect.rkt"
          "../env/environment.rkt"
          "../env/role.rkt"
          "../env/mode.rkt"
@@ -106,7 +107,7 @@
   (define col (mouse-event-col event))
   (define ws (state-workspace state))
   (define win (state-window state))
-  (define area (rect 0 0 (window-cols win) (window-rows win)))
+  (define area (window-area win))
   (define-values (_rps cuts) (geometry-solve (workspace-layout ws) area))
   (define seams (cuts-at cuts row col))
   (define subject*

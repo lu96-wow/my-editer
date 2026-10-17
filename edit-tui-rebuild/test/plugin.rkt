@@ -16,7 +16,7 @@
          (prefix-in app: "../base/event.rkt")
          "../base/id.rkt"
          "../base/keymap.rkt"
-         "../base/status.rkt"
+         "../base/status-part.rkt"
          "../base/transition.rkt"
          "../model/layout.rkt"
          "../model/state.rkt"
@@ -27,9 +27,10 @@
          "../env/environment.rkt"
          "../env/rule.rkt"
          "../projection/status.rkt"
-         "../bootstrap/chrome.rkt"
+         "../chrome/slot.rkt"
          "../bootstrap/defaults.rkt"
-         "../bootstrap/plugin.rkt"
+         "../plugins/builtin.rkt"
+         "../env/plugin.rkt"
          "../dispatch/context.rkt"
          "../runtime/run.rkt")
 

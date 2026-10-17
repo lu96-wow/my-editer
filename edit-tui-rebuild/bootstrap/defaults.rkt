@@ -1,32 +1,21 @@
 #lang racket
 
-;;; bootstrap/defaults.rkt —— 框架默认 Environment（命令 + 键表 + mode）
+;;; layer  : bootstrap
+;;; effect : 无（纯值：构造 Environment + keymap）
 ;;;
-;;; 这里只装**框架自己**的默认值（core-env）：
-;;;   · 编辑 / 导航 / 拆分 / 焦点 / 保存 / placement；
-;;;   · editor / slot 等 mode；
-;;;   · 状态栏段、input-commands、job-done handler。
+;;; 框架默认 Environment（core-env）。这里只装**框架自己**的默认值：
+;;;   · 编辑 / 导航 / 拆分 / 焦点 / 保存 / placement 命令与全局键；
+;;;   · text / status / state / input 四种 mode；
+;;;   · placement 的 scope 规则、input-commands、状态栏段、job-done handler。
 ;;;
-;;; 文件树 / 资源列表是插件（bootstrap/filetree-plugin.rkt 等）：
-;;;   (plugins-env core-env (list (filetree-plugin) (resource-plugin)))
-;;; default-env = core-env + 两个内置插件，方便 demo 直接用。
+;;; 不含任何插件：文件树 / 资源列表的 mode / 命令 / 键 / 面板同步都在插件里，
+;;; 由 plugins/builtin.rkt 组装成 default-env。
+;;; 依赖方向因此是 plugins -> bootstrap，而不是反过来。
 ;;;
-;;; 可替换性：命令实现来自 bootstrap/commands.rkt，keymap 只存 command-id，
+;;; 可替换性：命令实现来自 bootstrap/commands/*，keymap 只存 command-id，
 ;;; 用户 / 插件用 environment-merge 覆盖同名项即可。
-;;;
-;;; 默认键位（最小可用）：
-;;;   ←→↑↓ Home End      光标
-;;;   Enter / Backspace / Delete
-;;;   C-z / C-y            undo / redo
-;;;   C-b                 向右切分（same document 多 view）
-;;;   C-v                 向下切分
-;;;   C-w                 关闭当前 view
-;;;   M-←/→/↑/↓           焦点在 region 间移动
-;;;   C-q                 退出
 
 (provide core-env
-         default-env
-         default-plugins
          text-keys pointer-keys nav-keys input-keys core-global-keys)
 
 (require "../../edit-tui/command/key.rkt"
@@ -38,12 +27,12 @@
          "../env/mode.rkt"
          "../env/rule.rkt"
          "../env/environment.rkt"
+         "../env/plugin.rkt"
          "../env/defaults.rkt"
          "../projection/status.rkt"
-         "plugin.rkt"
-         "filetree-plugin.rkt"
-         "resource-plugin.rkt"
-         "commands.rkt")
+         "commands/table.rkt"
+         "commands/document.rkt"
+         "commands/placement.rkt")
 
 (define text-keys
   (keys
@@ -134,15 +123,3 @@
                                        (λ (c)
                                          (chrome-set-message
                                           c (format "job done: ~a" payload))))))))))
-
-;;; ════════════════ 内置插件 ════════════════
-
-;; 每个插件自带：面板 spec（sync 自动挂上）、mode、commands、input-commands、规则。
-(define (default-plugins)
-  (list (filetree-plugin)
-        (resource-plugin)))
-
-;;; ════════════════ default-env = core + 内置插件 ════════════════
-
-(define default-env
-  (plugins-env core-env (default-plugins)))

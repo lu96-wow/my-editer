@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; model/state.rkt —— 根 State（纯数据，方案 B）
-;;;
+;;; layer  : model
+;;; effect : 无（纯数据 + 纯更新助手）
+
 ;;; State 只装：
 ;;;   window    会话信息（终端尺寸）
 ;;;   workspace 文档 / 视图 / 区域 / 布局 / 焦点（model/workspace.rkt）

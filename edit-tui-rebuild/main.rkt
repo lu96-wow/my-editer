@@ -1,26 +1,35 @@
 #lang racket
 
-;;; edit-tui-rebuild/main.rkt —— 重建骨架的公共面
+;;; edit-tui-rebuild/main.rkt —— 公共面（只 require / provide）
 ;;;
-;;; 只聚合“给宿主用”的模块；实现模块仍可直接 require。
+;;; layer  : main
+;;; effect : 无（不构造、不执行任何东西）
 ;;;
-;;;   base/      id / event / effect / transition / keymap / status
-;;;   model/     state / workspace / input / chrome / save / resources / filetree
-;;;   env/       environment / role / mode / scope / command / rule / doc-type /
-;;;              input-command / defaults
-;;;   dispatch/  pipeline（event -> transition）
-;;;   effects/   engine（唯一 core 拥有者）/ interpreter
-;;;   projection/ geometry / render / status / resources / filetree
-;;;   bootstrap/ panel（通用装配）/ plugin（插件描述符+纯装配）/ defaults / commands /
-;;;              chrome / resource-panel + resource-commands + resource-plugin /
-;;;              filetree-panel + filetree-commands + filetree-plugin
-;;;   runtime/   run-app（唯一不纯的装配/循环）
+;;; 层序（依赖只能往下）：
 ;;;
-;;; 典型用法见 demo/basic.rkt。
+;;;   base      纯词汇：id / event / effect / transition / keymap / status-part
+;;;   model     纯状态：state / workspace / layout / input / chrome / save
+;;;   env       纯策略：environment / role / mode / scope / command / rule /
+;;;             doc-type / input-command / plugin / defaults
+;;;   effects   边界：engine（core 拥有者）/ panel（面板↔引擎）/ interpreter（IO）
+;;;   projection 纯投影：geometry / status / render
+;;;   dispatch  纯派发：context / rules / pipeline
+;;;   chrome    框架 chrome：slot（status/input 槽）/ input（输入栏 API）
+;;;   bootstrap 装配：panel-spec 落地 / commands/* / defaults（core-env）
+;;;   plugins   内置插件：filetree / resource / builtin（core-env + 插件 = default-env）
+;;;   runtime   壳：run（事件循环）/ tui-adapter
 ;;;
-;;; 插件化现状（暂定）：filetree / resource 仍是 bootstrap 的一部分，
-;;; 但装配动作已收敛到 bootstrap/panel.rkt，每帧刷新通过
-;;; `environment.panel-syncs` 注册，runtime 不认识具体面板。
+;;; 有副作用的模块只有这几个（其余都必须纯，见 test/layers.rkt 的白名单）：
+;;;   effects/engine.rkt      core buffer/view 的唯一可变拥有者
+;;;   effects/panel.rkt       创建/销毁面板的 core 对象、写面板 buffer
+;;;   effects/interpreter.rkt 文件 IO / 文档开关 / 保存 / 退出
+;;;   chrome/slot.rkt         安装 status/input core view 并写 status buffer
+;;;   plugins/*/panel.rkt     写各自面板的 buffer
+;;;   plugins/filetree/scan.rkt        读目录
+;;;   plugins/filetree/commands.rkt    建/删文件（effect）、存在性检查
+;;;   runtime/run.rkt         终端 IO、线程、渲染输出
+;;;
+;;; 直接 require 实现模块也可以；这里只是给宿主一个入口。
 
 ;;; ── base ──
 (require "base/id.rkt"
@@ -28,16 +37,15 @@
          "base/effect.rkt"
          "base/transition.rkt"
          "base/keymap.rkt"
-         "base/status.rkt")
+         "base/status-part.rkt")
 
 ;;; ── model ──
 (require "model/state.rkt"
          "model/workspace.rkt"
+         "model/layout.rkt"
          "model/input.rkt"
          "model/chrome.rkt"
-         "model/save.rkt"
-         "model/resources.rkt"
-         "model/filetree.rkt")
+         "model/save.rkt")
 
 ;;; ── env ──
 (require "env/environment.rkt"
@@ -48,33 +56,49 @@
          "env/rule.rkt"
          "env/doc-type.rkt"
          "env/input-command.rkt"
+         "env/plugin.rkt"
          "env/defaults.rkt")
 
-;;; ── dispatch / effects / projection ──
-(require "dispatch/pipeline.rkt"
-         "effects/engine.rkt"
-         "effects/interpreter.rkt"
-         "projection/geometry.rkt"
-         "projection/render.rkt"
+;;; ── effects ──
+(require "effects/engine.rkt"
+         "effects/panel.rkt"
+         "effects/interpreter.rkt")
+
+;;; ── projection ──
+(require "projection/geometry.rkt"
          "projection/status.rkt"
-         "projection/resources.rkt"
-         "projection/filetree.rkt")
+         "projection/render.rkt")
+
+;;; ── dispatch ──
+(require "dispatch/context.rkt"
+         "dispatch/rules.rkt"
+         "dispatch/pipeline.rkt")
+
+;;; ── chrome ──
+(require (except-in "chrome/slot.rkt" input-show)
+         "chrome/input.rkt")
 
 ;;; ── bootstrap ──
-(require "bootstrap/panel.rkt"
-         "bootstrap/plugin.rkt"
-         "bootstrap/defaults.rkt"
-         "bootstrap/commands.rkt"
-         (except-in "bootstrap/chrome.rkt" input-show)
-         "bootstrap/resource-panel.rkt"
-         "bootstrap/resource-commands.rkt"
-         "bootstrap/resource-plugin.rkt"
-         "bootstrap/filetree-panel.rkt"
-         "bootstrap/filetree-commands.rkt"
-         "bootstrap/filetree-plugin.rkt")
+(require "effects/panel.rkt"
+         "bootstrap/commands/table.rkt"
+         "bootstrap/defaults.rkt")
 
-;;; ── 输入栏 API + runtime ──
-(require "input.rkt"
+;;; ── plugins ──
+(require "plugins/filetree/model.rkt"
+         "plugins/filetree/scan.rkt"
+         "plugins/filetree/lines.rkt"
+         "plugins/filetree/panel.rkt"
+         "plugins/filetree/commands.rkt"
+         "plugins/filetree/plugin.rkt"
+         "plugins/resource/model.rkt"
+         "plugins/resource/lines.rkt"
+         "plugins/resource/panel.rkt"
+         "plugins/resource/commands.rkt"
+         "plugins/resource/plugin.rkt"
+         "plugins/builtin.rkt")
+
+;;; ── runtime ──
+(require "runtime/tui-adapter.rkt"
          "runtime/run.rkt")
 
 ;;; ── 导出 ──
@@ -84,15 +108,14 @@
                        "base/effect.rkt"
                        "base/transition.rkt"
                        "base/keymap.rkt"
-                       "base/status.rkt"
-                       "model/state.rkt"
+                       "base/status-part.rkt")
+         (all-from-out "model/state.rkt"
                        "model/workspace.rkt"
+                       "model/layout.rkt"
                        "model/input.rkt"
                        "model/chrome.rkt"
-                       "model/save.rkt"
-         "model/resources.rkt"
-                       "model/filetree.rkt"
-                       "env/environment.rkt"
+                       "model/save.rkt")
+         (all-from-out "env/environment.rkt"
                        "env/role.rkt"
                        "env/mode.rkt"
                        "env/scope.rkt"
@@ -100,25 +123,33 @@
                        "env/rule.rkt"
                        "env/doc-type.rkt"
                        "env/input-command.rkt"
-                       "env/defaults.rkt"
-                       "dispatch/pipeline.rkt"
-                       "effects/engine.rkt"
-                       "effects/interpreter.rkt"
-                       "projection/geometry.rkt"
-                       "projection/render.rkt"
+                       "env/plugin.rkt"
+                       "env/defaults.rkt")
+         (all-from-out "effects/engine.rkt"
+                       "effects/panel.rkt"
+                       "effects/interpreter.rkt")
+         (all-from-out "projection/geometry.rkt"
                        "projection/status.rkt"
-                       "projection/resources.rkt"
-                       "projection/filetree.rkt"
-                       "bootstrap/panel.rkt"
-                       "bootstrap/plugin.rkt"
-                       "bootstrap/defaults.rkt"
-                       "bootstrap/commands.rkt"
-                       "bootstrap/resource-panel.rkt"
-                       "bootstrap/resource-commands.rkt"
-                       "bootstrap/resource-plugin.rkt"
-                       "bootstrap/filetree-panel.rkt"
-                       "bootstrap/filetree-commands.rkt"
-                       "bootstrap/filetree-plugin.rkt"
-                       "input.rkt"
+                       "projection/render.rkt")
+         (all-from-out "dispatch/context.rkt"
+                       "dispatch/rules.rkt"
+                       "dispatch/pipeline.rkt")
+         (all-from-out "chrome/input.rkt")
+         (all-from-out "effects/panel.rkt"
+                       "bootstrap/commands/table.rkt"
+                       "bootstrap/defaults.rkt")
+         (all-from-out "plugins/filetree/model.rkt"
+                       "plugins/filetree/scan.rkt"
+                       "plugins/filetree/lines.rkt"
+                       "plugins/filetree/panel.rkt"
+                       "plugins/filetree/commands.rkt"
+                       "plugins/filetree/plugin.rkt"
+                       "plugins/resource/model.rkt"
+                       "plugins/resource/lines.rkt"
+                       "plugins/resource/panel.rkt"
+                       "plugins/resource/commands.rkt"
+                       "plugins/resource/plugin.rkt"
+                       "plugins/builtin.rkt")
+         (all-from-out "runtime/tui-adapter.rkt"
                        "runtime/run.rkt")
-         (all-from-out "bootstrap/chrome.rkt"))
+         (all-from-out "chrome/slot.rkt"))

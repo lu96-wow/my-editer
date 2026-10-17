@@ -1,7 +1,9 @@
 #lang racket
 
 ;;; input.rkt —— 通用输入栏 API
-;;;
+;;; layer  : chrome
+;;; effect : 只发 engine effect（写 input buffer 的 prompt / 选择）；不直接改 core
+
 ;;; 输入栏是 *input* document：
 ;;;   · prompt 前缀是只读 buffer 文本；
 ;;;   · 用户输入就是前缀之后的内容；
@@ -25,14 +27,14 @@
          input-command-regexp
          input-command-list)
 
-(require (rename-in "bootstrap/chrome.rkt" [input-show chrome-input-show])
-         "env/input-command.rkt"
-         "env/environment.rkt"
-         "model/state.rkt"
-         "model/workspace.rkt"
-         "model/chrome.rkt"
-         "effects/engine.rkt"
-         "dispatch/context.rkt")
+(require (rename-in "slot.rkt" [input-show chrome-input-show])
+         "../env/input-command.rkt"
+         "../env/environment.rkt"
+         "../model/state.rkt"
+         "../model/workspace.rkt"
+         "../model/chrome.rkt"
+         "../effects/engine.rkt"
+         "../dispatch/context.rkt")
 
 (define (input-active? state) (state-input-active? state))
 
