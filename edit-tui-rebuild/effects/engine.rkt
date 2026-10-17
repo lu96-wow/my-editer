@@ -23,7 +23,7 @@
          engine-add-doc! engine-add-view!
          engine-apply!
          engine-effect?
-         engine-sync-view! engine-sync-views!
+         engine-sync-view! engine-sync-views! engine-ensure-view!
          engine-set-view-text!
          ;; 只读查询接口（ctx.engine）
          (struct-out engine-view)
@@ -95,7 +95,16 @@
     (define w (max 1 width))
     (define h (max 1 height))
     (unless (and (= w (view-width v)) (= h (view-height v)))
-      (view-resize! v w h)))
+      (view-resize! v w h)
+      ;; 尺寸变了（面板开关 / 拆分 / 隐藏）就把光标夹回窗口：
+      ;; core 的 view-ensure! 会重算视口锚点，保证主光标可见。
+      (view-ensure! v)))
+  (void))
+
+;; 显式“把某个 view 的光标夹进窗口”（命令 / 插件在布局变化后主动调用）
+(define (engine-ensure-view! e vid)
+  (define v (engine-view-object e vid))
+  (when v (view-ensure! v))
   (void))
 
 ;; placements : (listof (list view-id width height)) 或 (listof (list view-id rect))

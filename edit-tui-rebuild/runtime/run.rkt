@@ -16,16 +16,20 @@
 ;;;
 ;;; 说明：
 ;;;   · dispatch 是纯的；解释 effect 才碰 engine / 文件 / 线程。
-;;;   · inbox 只在“下一个终端事件”到达时排空（与旧骨架一致）；效果刚 emit 的事件
+;;;   · hook（上色 / 补全 / 文档）在 settle 里跑：一定发生在 effect 解释之后；
+;;   · inbox 只在“下一个终端事件”到达时排空（与旧骨架一致）；效果刚 emit 的事件
 ;;;     会在本批次结束时再排空一次。
 ;;;   · 渲染缓存由 loop 持有；State 不存 cache / inbox / 线程。
 
 (provide run-app
          run-frame
-         process-events)
+         process-events
+         startup!)
 
 (require tui
          racket/async-channel
+         "../base/signal.rkt"
+         "../dispatch/hooks.rkt"
          (prefix-in app: "../base/event.rkt")
          "../base/effect.rkt"
          "../base/transition.rkt"
@@ -65,7 +69,30 @@
 
 ;;; ════════════════ 事件批处理 ════════════════
 
-;; 逐个事件：dispatch → 解释 effect → 再下一个。
+;; ════════════════ 一批事件 -> 稳定状态 ════════════════
+;;
+;; settlement = 反复做三件事，直到没有新信号：
+;;
+;;   1. 解释 effect（写 engine / IO / emit 信号）
+;;   2. 排空信号 -> 跑 hook（hook 读的是**写完之后**的 engine-view）
+;;   3. hook 可能加新 effect，回到 1
+;;
+;; 关键是顺序：hook 必须在 effect 解释之后跑，否则“after-edit 后重新上色”会
+;; 拿编辑前的文本。轮数上限防 hook 自激。
+(define (settle env engine inbox t)
+  (let loop ([t t] [round 0])
+    ;; 1. 解释 effect（会 emit 信号，engine 已经落盘）
+    (define t1 (run-transition-effects engine t inbox))
+    ;; 2. 这批 effect 已经消费掉，清空再跑 hook（否则下一轮会重复执行）
+    (define t1* (transition (transition-state t1) '()))
+    ;; 3. 排空信号 -> 跑 hook；hook 可能加新 effect
+    (define t2 (run-hooks env (make-engine-view engine) t1*))
+    (cond
+      [(null? (transition-effects t2)) t2]
+      [(>= round 8) t2]
+      [else (loop t2 (add1 round))])))
+
+;; 逐个事件：dispatch → settle → 再下一个。
 ;; 这样 open-doc 之后的事件能看到新 view，顺序不会被“先折状态、后跑 effect”打乱。
 (define (process-events env engine inbox state events)
   (for/fold ([t (transition-pure state)]) ([e (in-list events)])
@@ -76,7 +103,7 @@
        (define t1 (dispatch env s e
                             #:subject subject
                             #:engine (make-engine-view engine)))
-       (run-transition-effects engine t1 inbox)))))
+       (settle env engine inbox t1)))))
 
 ;; 本批次里 emit 出来的事件也处理掉；spawn/timer 若已就绪也会被带出来。
 (define (drain-and-process env engine inbox t)
@@ -129,6 +156,27 @@
     (define v (async-channel-try-get ch))
     (if v (loop (cons v acc)) (reverse acc))))
 
+;;; ════════════════ 首帧前的初始化 ════════════════
+
+;; 宿主可能绕过 open-doc-effect 直接建文档（demo 常这样），那样就没有
+;; `document-opened` 信号。这里在首帧前给每个已有文档补一次，并把 hook 产生的
+;; effect 解释掉（语法高亮就靠它完成初次上色）。
+;;
+;; 暂定：只跑纯 / 引擎类 effect；startup hook 里不要 spawn / timer。
+(define (startup! env engine state)
+  (define dids
+    (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
+               #:unless (doc-meta-internal? dm))
+      did))
+  (let loop ([state (for/fold ([s state]) ([did (in-list dids)])
+                      (state-emit s 'document-opened (list did)))]
+             [round 0])
+    ;; run-hooks 的第二个参数是**只读 engine-view**（和命令的 ctx.engine 一样）
+    (define s* (transition-state (settle env engine (make-async-channel) (transition-pure state))))
+    (if (or (null? (signals-queue (state-signals s*))) (>= round 4))
+        s*
+        (loop s* (add1 round)))))
+
 ;;; ════════════════ 渲染 ════════════════
 
 ;; 先同步 view 尺寸（唯一写 core 的地方），再投影/输出。
@@ -161,9 +209,10 @@
      ;; 用真实终端尺寸初始化；拿不到就保留传入的 State.window。
      (define-values (rows cols) (get-window-size))
      (define state0
-       (if (and rows cols (positive? rows) (positive? cols))
-           (state-set-window state (make-window rows cols))
-           state))
+       (startup! env engine
+                 (if (and rows cols (positive? rows) (positive? cols))
+                     (state-set-window state (make-window rows cols))
+                     state)))
      (let loop ([state state0] [cache #f])
        (define cache* (run-frame env state engine cache
                                  #:status-parts (environment-status env)))

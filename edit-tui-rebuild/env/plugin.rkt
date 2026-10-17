@@ -7,13 +7,14 @@
 ;;;
 ;;; 插件 = 一份数据，不是 require 顺序：
 ;;;
-;;;   (struct plugin (id env status-parts panels state-init))
+;;;   (struct plugin (id env status-parts panels hooks state-init))
 ;;;     id           : symbol                     插件命名空间（store 的键）
 ;;;     env          : environment                贡献（roles/modes/commands/keymaps/
 ;;;                                               rules/scopes/doc-types/handlers/
 ;;;                                               input-commands）
 ;;;     status-parts : (listof status-part)       追加的状态栏段（**加法**语义）
 ;;;     panels       : (listof panel-spec)        自带面板（每帧同步自动挂上）
+;;;     hooks        : (listof hook)              信号 -> 旁观者逻辑（语法高亮/补全/文档都挂这里）
 ;;;     state-init   : (state -> state) | #f       写自己的 store 槽
 ;;;
 ;;;   (struct panel-spec (id name role mode sync))
@@ -33,7 +34,7 @@
 ;;;   (plugins-env   env plugins)         -> env'
 ;;;   (plugins-apply env state plugins)   -> (values env' state')
 ;;;
-;;; 先 merge env，再追加状态栏段，再把面板的 sync 挂到 env.panel-syncs，最后跑 state-init。
+;;; 先 merge env，再追加状态栏段 / 面板 sync / hook，最后跑 state-init。
 ;;; 副作用（建 engine 对象 / 装面板）不在这里：
 ;;;   安装是 effects/panel.rkt 的 panel-install! / panel-spec-install!，
 ;;;   而“哪些插件算内置”是 plugins/builtin.rkt。
@@ -50,8 +51,9 @@
          plugins-apply)
 
 (require "../model/state.rkt"
+         "../base/status-part.rkt"
          "environment.rkt"
-         "../base/status-part.rkt")
+         "hook.rkt")
 
 ;;; ════════════════ 面板描述 ════════════════
 
@@ -77,12 +79,13 @@
 
 ;;; ════════════════ 插件 ════════════════
 
-(struct plugin (id env status-parts panels state-init) #:transparent)
+(struct plugin (id env status-parts panels hooks state-init) #:transparent)
 
 (define (make-plugin id
                      #:env [env (environment-empty)]
                      #:status-parts [status-parts '()]
                      #:panels [panels '()]
+                     #:hooks [hooks '()]
                      #:state-init [state-init #f])
   (unless (symbol? id) (error 'make-plugin "plugin id 要是 symbol：~a" id))
   (unless (environment? env) (error 'make-plugin "env 要是 environment：~a" env))
@@ -90,17 +93,21 @@
     (unless (status-part? p) (error 'make-plugin "status-parts 里要 status-part：~a" p)))
   (for ([p (in-list panels)])
     (unless (panel-spec? p) (error 'make-plugin "panels 里要 panel-spec：~a" p)))
+  (for ([h (in-list hooks)])
+    (unless (hook? h) (error 'make-plugin "hooks 里要 hook：~a" h)))
   (unless (or (not state-init) (procedure? state-init))
     (error 'make-plugin "state-init 要是过程或 #f：~a" state-init))
-  (plugin id env status-parts panels state-init))
+  (plugin id env status-parts panels hooks state-init))
 
 ;; 单个插件的 env 贡献：merge + 状态栏追加 + 面板 sync 追加。
 (define (plugin-env-apply env p)
   (define env1 (environment-merge env (plugin-env p)))
   (define env2 (environment-add-status-parts env1 (plugin-status-parts p)))
-  (for/fold ([env env2]) ([spec (in-list (plugin-panels p))])
-    (define sync (panel-spec-sync spec))
-    (if sync (environment-add-panel-sync env sync) env)))
+  (define env3
+    (for/fold ([env env2]) ([spec (in-list (plugin-panels p))])
+      (define sync (panel-spec-sync spec))
+      (if sync (environment-add-panel-sync env sync) env)))
+  (environment-add-hooks env3 (plugin-hooks p)))
 
 (define (plugins-env env plugins)
   (for/fold ([env env]) ([p (in-list plugins)])

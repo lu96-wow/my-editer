@@ -1,0 +1,132 @@
+# edit-tui-rebuild 的插件：三个例子与上一代的取舍
+
+> 目标是把“语法高亮 / 补全 / 文档”做成**纯数据插件**，框架侧不加 if。
+> 这里先记录从 `history/edit4` 提取出来的功能核心与取舍，再说明本仓库的实现。
+
+## 1. 从 edit4 提取的功能核心
+
+edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）值得保留的只有四件事：
+
+| 机制 | 是什么 | 为什么重要 |
+|---|---|---|
+| **信号 + 钩子** | 命令用 `emit!` 把 `(point . args)` 追加到 `World.signals`；runtime 反复“取信号 → 按 priority 跑匹配的 reaction → 直到没有新信号” | 让“文本改了之后重算高亮 / 重算补全候选 / 刷新文档”变成**旁观者**逻辑，命令不需要认识它们 |
+| **decor 协议** | `decor { open: path text -> (state layer); change: state layer ctx -> (state layer dirty) }`，layer 是“每行一个 face 向量”，dirty 是“哪几行脏” | 上色是一个可以增量、可以分层（括号底色 / 同词着色 / 语法前景）的**纯函数**，与渲染解耦 |
+| **补全菜单** | 不抢焦点的浮窗；Up/Down/Tab/Enter/Esc 用“有菜单就操作菜单”的命令接住；打字走基础 insert，`after-insert` 钩子重筛 | 补全的难点不是候选，而是**菜单与会话**（谁持有、谁刷新、谁取消） |
+| **文档服务** | `M-h` 订阅 `complete-selection`；本地定义走纯函数，stdlib 走 `#:services 'doc` 的异步 worker，结果按 key 缓存、同一时刻只允许一个在途 | 文档查询是慢操作，必须**防抖 + 缓存 + 可取消**，而且不能阻塞输入 |
+
+**没有照搬的**（不是功能核心，或者属于它们那套 World 的管道）：
+
+- `World` / `content` / `layout` 的整套可变搬运，`service` 注册表，`sync` 插件（多 view 同步渲染），
+  `doc-key-matchers`（按文档类型再套一层键表），`prompt-kind` 注册表；
+- `decor` 的增量状态机（`dirty.rkt` 的跨行状态收敛）——我们先用“整篇重扫”，接口不变。
+
+## 2. 本仓库的实现
+
+### 2.1 信号与钩子（框架）
+
+| 文件 | 内容 |
+|---|---|
+| `base/signal.rkt` | `signal { point, args }` + `signals` FIFO 队列 |
+| `env/hook.rkt` | `hook { point, when, priority, proc }`，`proc : (state engine-view args -> transition)` |
+| `dispatch/hooks.rkt` | `run-hooks`：排空信号、按 priority 降序跑、hook 可再 emit（轮数上限防自激） |
+| `runtime/run.rkt` | `settle`：**先解释 effect，再跑 hook**（hook 读到的是写完之后的文本），hook 加的 effect 再解释一轮 |
+
+信号词表：`document-opened`、`after-edit`、`after-nav`、`focus-changed`
+（发出点：`effects/interpreter.rkt` 知道文本真的变了；`dispatch` 比较焦点前后）。
+
+> 顺序是这条链最容易被写错的地方：hook 在 dispatch 里跑会拿到**编辑前**的文本。
+> 所以 hook 一律在 `settle` 里跑。`test/plugins.rkt` 的高亮用例守着它。
+
+### 2.2 两个新的 effect
+
+| effect | 用途 | 解释（`effects/interpreter.rkt`） |
+|---|---|---|
+| `set-faces-effect doc fills` | 整篇重设 face（语法高亮） | `buffer-face-all! #f` + `buffer-face-batch!` |
+| `replace-range-effect view range text` | 替换一段（补全） | `buffer-replace-range!` |
+
+`fills` 用 core 的 fill 形状 `(l0 c0 l1 c1 face)`，插件侧用 `plugins/highlight/lex.rkt` 生成。
+
+### 2.3 语法高亮（`plugins/highlight/`）
+
+- `lex.rkt`：纯词法（行注释 / 块注释 / 字符串 / 数字 + 关键字表）→ fills；
+- `plugin.rkt`：两条 hook（`document-opened` / `after-edit`），用 core 的版本 token 去重，
+  发一个 `set-faces-effect`。
+
+**按文件类型启用**（edit4 的 `#:applies?`）：hook 的 `when` 拿到 `(state engine-view args)`，
+所以可以按“这是哪个文档”判断。高亮只对 Racket 文件生效：
+
+```racket
+racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
+```
+
+`core-env` 里注册了 doc-type：打开 `.rkt` 自动用 mode `'racket`（键位暂时同 text）。
+`(highlight-plugin #:enabled? #f)` 可以整块关掉。
+
+暂定：整篇重扫（O(n)）。要做增量时只改 `lex.rkt` 内部，fills 形状不变。
+
+### 2.4 补全（`plugins/completion/`，浮层菜单）
+
+`C-c /` 打开**浮层菜单**（不插入文本）：
+
+| 键 | 作用 |
+|---|---|
+| `↑` / `↓` | 在候选里移动选择（此时**不移动光标**） |
+| `Enter` / `Tab` | 接受：把前缀换成选中的候选 |
+| `Esc` / `C-g` | 取消 |
+| 其它可打印键 | 关掉弹窗、照常输入（`after-edit` 钩子关弹窗） |
+
+用到的两个框架能力：
+
+- **浮层**：`model/overlay.rkt` 的 `popup{id, view, lines, selected}` 存在 `workspace.overlays`，
+  `projection/popup.rkt` 每帧按“锚点 view 的光标”算屏幕矩形（优先光标下方，放不下翻到上方，
+  水平夹在面板内），`projection/render.rkt` 在面板之后画上去。
+
+  **绘制/清理的约束（踩过一次）**：浮层是在 core 的 panels 之后叠加的额外 piece，
+  **不在 core 的 screen 缓存里**。core 的增量 diff 只比较“自己的旧屏 vs 新屏”，
+  所以它不知道浮层盖过什么；而且 `screen-patch` 在 `old = #f`（冷启动 / 强制整屏）时
+  **只产出非空白格**。于是“丢掉 core 缓存重画”并不足以擦掉浮层。
+  正确做法（`projection/render.rkt`）：
+
+  1. 浮层变了（出现 / 消失 / 移动 / 选中行变化）→ 先自己**清掉旧矩形**（写空格）；
+  2. 再让 core 丢掉缓存整屏重画一次 —— 被清掉的格子里，正文的非空白格会被画回来，
+     本来就是空白的格子保持空格，正好对；
+  3. 新浮层每帧整块重画（它自己盖满矩形）。
+
+  `test/popup.rkt` 用 `render-frame` 的字节做回归：去掉第 1 步，3 条断言会红。
+- **临时键表**：打开弹窗时把 `'completion-popup` 这张 keymap 挂到 `state.input.modes`
+  （`dispatch/rules.rkt` 的 `input-mode-rules` 是最高一层），关掉时摘掉。
+  于是 `↑↓` 只在弹窗开着时改变含义，弹窗一关就还给编辑器。
+
+会话记在 `store['completion]`（view / line / start / end / last / cands），
+**用缓冲内容而不是版本号判断是否还有效**：光标仍在 `[start,end)` 末尾，且该区间就是上次的候选。
+
+还没做：异步候选源（module exports / 模糊匹配）、输入即过滤（现在打字会关掉弹窗）。
+
+### 2.5 文档（`plugins/docs/`）
+
+- 面板 `*docs*`（`panel-spec` + `store['docs]`，和文件树/资源列表同构），
+  放在 **status 行下面**，`(fixed 8)` 固定高度；
+- `C-c h` 打开 / 再按收起 —— **只手动关闭**：`after-nav` 只刷新内容，
+  焦点变化不会把它收起来（看着文档改代码不会被焦点移动打断）；
+- 打开时会改变布局（编辑区变矮），所以同一个 transition 里发一个 `ensure-view-effect`，
+  由 core 的 `view-ensure!` 把焦点 view 的光标夹回窗口；平时任何面板尺寸变化也由
+  `engine-sync-view!`（尺寸真的变了才）自动 ensure；
+- 文档来源：内置关键字表 + 当前文档的顶层 `(define …)` 行（纯函数）。
+
+还没做：stdlib/网络文档（要 `spawn-effect` + 缓存 + 防抖）、多来源合并。
+
+## 3. 三个插件的“零框架改动”清单
+
+| 需求 | 用到的框架能力 | 是否改框架 |
+|---|---|---|
+| 语法高亮 | `set-faces-effect` + `document-opened`/`after-edit` 钩子 + `store` + hook 的 `when`（按文件类型） | 只加了一个 effect 和信号点 |
+| 补全 | `replace-range-effect` + `store` + `env.rules` 绑定 `M-/` | 只加了一个 effect |
+| 文档面板 | `panel-spec` + `store` + `after-nav`/`focus-changed` 钩子 | 不需要 |
+
+## 4. 验收
+
+```
+racket edit-tui-rebuild/test/plugins.rkt   # 高亮 / 补全 / 文档
+racket edit-tui-rebuild/test/hooks.rkt     # 信号 / 钩子 / 顺序 / 自激保护
+racket edit-tui-rebuild/demo/lab.rkt       # 三个插件一起跑
+```

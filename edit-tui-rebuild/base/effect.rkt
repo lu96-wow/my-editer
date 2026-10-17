@@ -42,6 +42,9 @@
          (struct-out insert-text-effect)
          (struct-out set-text-effect)
          (struct-out set-input-prompt-effect)
+         (struct-out set-faces-effect)
+         (struct-out replace-range-effect)
+         (struct-out ensure-view-effect)
          (struct-out select-effect)
          (struct-out scroll-effect)
          (struct-out nav-effect)
@@ -66,6 +69,13 @@
 (struct insert-text-effect (view text) #:transparent)
 (struct set-text-effect (view text)    #:transparent)
 (struct set-input-prompt-effect (view prompt) #:transparent)
+;; 整篇重设一个 document 的 face（语法高亮）：先清空，再按 fills 上色。
+;;   fills : (listof (list l0 c0 l1 c1 face))   坐标是 (line, col)，与 core 的 fill 形状一致
+(struct set-faces-effect (doc fills) #:transparent)
+;; 替换一个 view 的 range（补全用）：range 是 core 的 range 值，text 是替换文本。
+(struct replace-range-effect (view range text) #:transparent)
+;; 把这个 view 的光标夹进窗口（布局刚变化时用：例如打开底部文档面板）。
+(struct ensure-view-effect (view) #:transparent)
 (struct select-effect (view selections)#:transparent)
 (struct scroll-effect (view delta)     #:transparent)
 (struct nav-effect     (view dir)      #:transparent)
@@ -88,6 +98,7 @@
 (define (effect? x)
   (or (edit-effect? x) (insert-text-effect? x) (set-text-effect? x)
       (set-input-prompt-effect? x)
+      (set-faces-effect? x) (replace-range-effect? x) (ensure-view-effect? x)
       (select-effect? x) (scroll-effect? x)
       (nav-effect? x) (undo-effect? x) (redo-effect? x)
       (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
@@ -101,6 +112,9 @@
         [(insert-text-effect? x) 'insert-text]
         [(set-text-effect? x)    'set-text]
         [(set-input-prompt-effect? x) 'set-input-prompt]
+        [(set-faces-effect? x) 'set-faces]
+        [(replace-range-effect? x) 'replace-range]
+        [(ensure-view-effect? x)   'ensure-view]
         [(select-effect? x)    'select]
         [(scroll-effect? x)    'scroll]
         [(nav-effect? x)       'nav]

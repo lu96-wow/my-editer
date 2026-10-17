@@ -13,6 +13,7 @@
 ;;;   keymaps  : name       -> keymap
 ;;;   handlers : event-kind -> (state payload -> transition)
 ;;;   panel-syncs : (listof (state engine -> any))   每帧渲染前要跑的面板同步
+;;;   hooks    : (listof hook)               信号 -> 旁观者逻辑（按 point + priority 跑）
 ;;;
 ;;; 好处：
 ;;;   · 多个 app 实例可以有不同的 env；
@@ -47,6 +48,9 @@
          environment-add-input-command
          environment-panel-syncs
          environment-add-panel-sync
+         environment-hooks
+         environment-add-hook
+         environment-add-hooks
          environment-merge)
 
 (require "../base/keymap.rkt"
@@ -58,9 +62,10 @@
          "rule.rkt"
          "doc-type.rkt"
          "input-command.rkt"
+         "hook.rkt"
          "../base/status-part.rkt")
 
-(struct environment (roles modes scopes commands keymaps handlers rules status doc-types input-commands panel-syncs) #:transparent)
+(struct environment (roles modes scopes commands keymaps handlers rules status doc-types input-commands panel-syncs hooks) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
@@ -71,11 +76,12 @@
 ;; status   : #f | (listof status-part)   #f = 用投影默认段
 ;; doc-types: (hash/c symbol doc-type)    打开文件时按路径匹配
 ;; input-commands: (listof input-command) 输入栏字符串匹配（高 -> 低）
+;; hooks    : (listof hook)               信号点 -> 旁观者逻辑（按 priority 降序）
 ;; panel-syncs: (listof procedure)        每帧渲染前调用 (state engine -> any)；
 ;;             面板由插件贡献时挂在这里，runtime 只负责遍历，不认识具体面板。
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '()))
+  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '()))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
@@ -87,9 +93,10 @@
                           #:status [status #f]
                           #:doc-types [doc-types (hash)]
                           #:input-commands [input-commands '()]
-                          #:panel-syncs [panel-syncs '()])
+                          #:panel-syncs [panel-syncs '()]
+                          #:hooks [hooks '()])
   (environment roles modes scopes commands keymaps handlers rules status
-               doc-types input-commands panel-syncs))
+               doc-types input-commands panel-syncs hooks))
 
 ;;; ---------- 查 ----------
 
@@ -179,6 +186,14 @@
   (struct-copy environment env
                [panel-syncs (append (environment-panel-syncs env) (list f))]))
 
+;; 钩子：append（同一 point 按 priority 排序是运行时的事）。
+(define (environment-add-hook env h)
+  (unless (hook? h) (error 'environment-add-hook "要 hook：~a" h))
+  (struct-copy environment env [hooks (append (environment-hooks env) (list h))]))
+
+(define (environment-add-hooks env hs)
+  (for/fold ([e env]) ([h (in-list hs)]) (environment-add-hook e h)))
+
 ;; 覆盖式合并：b 的同名项覆盖 a。插件 / 用户配置用这个。
 (define (environment-merge a b)
   (define (overlay ka kb)
@@ -194,5 +209,6 @@
                (or (environment-status b) (environment-status a))
                (overlay (environment-doc-types a) (environment-doc-types b))
                (append (environment-input-commands b) (environment-input-commands a))
-               ;; 同步器不重名、不去重：a 的在先，b 的在后
-               (append (environment-panel-syncs a) (environment-panel-syncs b))))
+               ;; 同步器 / 钩子不重名、不去重：a 的在先，b 的在后
+               (append (environment-panel-syncs a) (environment-panel-syncs b))
+               (append (environment-hooks a) (environment-hooks b))))

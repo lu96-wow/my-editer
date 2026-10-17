@@ -160,11 +160,14 @@
 ;; 面板装配（创建/销毁/写 buffer）、命令（effect 里的 op/point/selection 值）。
 (define core-allowed
   '("effects/engine.rkt"
+    "effects/interpreter.rkt"      ; set-faces / replace-range 是 core 端口的写回
     "projection/geometry.rkt"
+    "projection/popup.rkt"
     "projection/render.rkt"
     "effects/panel.rkt"
     "bootstrap/commands/table.rkt"
     "bootstrap/commands/focus.rkt"
+    "plugins/completion/plugin.rkt"   ; replace-range / select 需要 core 的 point/range/selection 值
     "runtime/run.rkt"))
 
 (for ([p (in-list impl-files)])

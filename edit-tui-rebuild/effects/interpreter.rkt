@@ -7,9 +7,16 @@
 
 ;;; 分工：
 ;;;   · edit / insert / select / scroll / nav / undo / redo -> engine-apply!
+;;;   · set-faces（语法高亮）                                    -> core 端口写回
+;;;   · replace-range（补全）                                    -> core buffer 替换
+;;;   · ensure-view（布局变化后夹光标）                           -> core view-ensure!
 ;;;   · open-doc / close-doc / save-doc                         -> engine + State
 ;;;   · read-file / write-file                                  -> 文件 IO + 回调
 ;;;   · quit                                                    -> State.quit?
+;;;
+;;; 信号：解释器是唯一知道“文本真的变了”的地方，所以由它发
+;;;   after-edit（doc-id）/ after-nav（view-id）/ document-opened（doc-id）。
+;;; 上色本身不发 after-edit（否则 hook 自激）。
 ;;;
 ;;; 暂定：
 ;;;   · spawn / timer / emit 是 Runtime effect，等 runtime 块接线；这里显式报错，
@@ -24,10 +31,14 @@
 
 (require racket/file
          "../base/effect.rkt"
+         "../base/id.rkt"
          "../base/transition.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
-         "engine.rkt")
+         "engine.rkt"
+         "../../core/editor/attributes.rkt"
+         "../../core/editor/ops.rkt"
+         "../../core/editor/state.rkt")
 
 ;;; ════════════════ 分类 ════════════════
 
@@ -40,6 +51,22 @@
   (cond
     [(engine-effect? effect)
      (engine-apply! engine effect)
+     ;; 文本被改 / 光标推进：把“发生了什么”记成信号，旁观者（高亮/补全/文档）自己接。
+     (transition-pure
+      (cond
+        [(edit-write? effect)
+         (state-emit state 'after-edit (list (effect-doc state effect)))]
+        [(nav-effect? effect) (state-emit state 'after-nav (list (nav-effect-view effect)))]
+        [else state]))]
+
+    [(set-faces-effect? effect)
+     (interpret-set-faces! engine state effect)]
+
+    [(replace-range-effect? effect)
+     (interpret-replace-range! engine state effect)]
+
+    [(ensure-view-effect? effect)
+     (engine-ensure-view! engine (ensure-view-effect-view effect))
      (transition-pure state)]
 
     [(open-doc-effect? effect)
@@ -104,6 +131,43 @@
 
     [else (error 'interpret-effect! "未知 effect：~a" effect)]))
 
+;;; ════════════════ 上色 / 替换 ════════════════
+
+;; 整篇重设 face：先清空（避免旧色残留），再按 fills 写一次。
+(define (interpret-set-faces! engine state effect)
+  (define did (set-faces-effect-doc effect))
+  (define b (engine-doc-buffer engine did))
+  (when b
+    (buffer-face-all! b #f)
+    (buffer-face-batch! b (set-faces-effect-fills effect)))
+  (transition-pure state))
+
+;; 替换一个 view 的 range（补全把前缀换成候选）：算一次编辑，所以发 after-edit。
+(define (interpret-replace-range! engine state effect)
+  (define vid (replace-range-effect-view effect))
+  (define v (engine-view-object engine vid))
+  (when v
+    (buffer-replace-range! (view-buffer v)
+                           (replace-range-effect-range effect)
+                           (replace-range-effect-text effect)))
+  (transition-pure (state-emit state 'after-edit (list (effect-doc state effect)))))
+
+;; 这次 engine 写是不是“改文本”（insert / edit / set-text / undo / redo）。
+(define (edit-write? effect)
+  (or (edit-effect? effect) (insert-text-effect? effect) (set-text-effect? effect)
+      (undo-effect? effect) (redo-effect? effect)))
+
+;; effect 作用在哪个 doc 上（给信号用）：view -> doc 的对应关系在 State 里。
+(define (effect-doc state effect)
+  (define vid (cond [(edit-effect? effect) (edit-effect-view effect)]
+                    [(insert-text-effect? effect) (insert-text-effect-view effect)]
+                    [(set-text-effect? effect) (set-text-effect-view effect)]
+                    [(undo-effect? effect) (undo-effect-view effect)]
+                    [(redo-effect? effect) (redo-effect-view effect)]
+                    [(replace-range-effect? effect) (replace-range-effect-view effect)]
+                    [else #f]))
+  (and vid (workspace-doc-of-view (state-workspace state) vid)))
+
 ;;; ════════════════ open-doc ════════════════
 
 (define (interpret-open-doc! engine state effect)
@@ -125,7 +189,7 @@
   (define ws (state-workspace s2))
   (define ws* (workspace-add-doc ws did dm))
   (define ws** (workspace-add-view ws* vid (view-meta did (hash))))
-  (define s3 (state-set-workspace s2 ws**))
+  (define s3 (state-emit (state-set-workspace s2 ws**) 'document-opened (list did)))
   (if k
       (k s3 did vid)
       (transition-pure s3)))

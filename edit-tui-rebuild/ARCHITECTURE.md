@@ -87,7 +87,23 @@ runtime 只负责遍历，不认识任何具体面板。
 - 文档是不是“基础设施”（状态栏 / 输入栏 / 插件面板）由 `doc-meta.internal?` 声明，
   框架不再维护 “哪些 mode 是 chrome” 的字面量列表。
 
-## 5. 两条“不留后遗症”的派发规则
+## 5. 信号与钩子
+
+```
+command ──▶ transition{state+effects}
+              │
+              │  runtime: 1) 解释 effect（文本落地、发信号）
+              ▼
+          信号队列 ──▶ hook（priority 降序，纯：state engine-view args -> transition）
+              │
+              ▼  hook 又可加 effect / emit 信号 -> 再来一轮（上限 8）
+```
+
+- 信号点：`document-opened` / `after-edit` / `after-nav` / `focus-changed`；
+- **hook 在 effect 解释之后跑**（`runtime/run.rkt` 的 `settle`），所以读到的是新文本；
+- hook 的 proc 拿只读 `engine-view`，与命令的 `ctx.engine` 同源，不能写 engine。
+
+## 6. 两条“不留后遗症”的派发规则
 
 - **未命中就丢 pending**：`C-x` 后按未绑定键 -> 清空前缀、报告完整序列、不插入字符；
 - **消息只活到下一次动作**：按键 / 粘贴 / 鼠标按下抬起会先清 `chrome.message`，
@@ -95,7 +111,7 @@ runtime 只负责遍历，不认识任何具体面板。
 
 两条都在 `dispatch/pipeline.rkt`，`test/dispatch.rkt` + `test/runtime.rkt` 覆盖。
 
-## 6. 扩展点（都是数据）
+## 7. 扩展点（都是数据）
 
 | 想加的东西 | 加在哪 |
 |---|---|
@@ -110,8 +126,14 @@ runtime 只负责遍历，不认识任何具体面板。
 | 同一位置放多个面板 | 多次 install 传同一个 `region-id`；`Tab`（`switch-member`）切 active |
 | 插件自己的状态 | `state.store` + `plugin-state*` |
 | 每帧同步 | `panel-spec.sync`（自动进 `env.panel-syncs`） |
+| 旁观者逻辑（改完文本要重算什么） | `env.hooks`：`hook {point, when, priority, proc}` |
+| 给文本上色 | `set-faces-effect doc fills` |
+| 替换一段文本（补全） | `replace-range-effect view range text` |
+| 把光标夹回窗口（布局刚变） | `ensure-view-effect view` -> core 的 `view-ensure!` |
+| 浮层弹窗 | `workspace.overlays`（`model/overlay.rkt`）+ `projection/popup.rkt`；**叠加层必须自己擦旧矩形**（core 的 diff 看不见它） |
+| 临时改变按键含义 | `state.input.modes` 挂一张 keymap（最高规则层） |
 
-## 7. 约束怎么保证
+## 8. 约束怎么保证
 
 `test/layers.rkt` 检查四件事，任何一条破了就红：
 

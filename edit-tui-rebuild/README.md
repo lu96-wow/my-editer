@@ -3,6 +3,7 @@
 重建中的编辑器骨架。
 
 - **现在的分层 / 副作用白名单 / 扩展点**：[`ARCHITECTURE.md`](ARCHITECTURE.md)
+- **插件怎么写（高亮 / 补全 / 文档 三个例子 + 与上一代的取舍）**：[`PLUGINS.md`](PLUGINS.md)
 - 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
 
 所有分层规则由 `test/layers.rkt` 机器检查。
@@ -28,12 +29,14 @@ base/          纯词汇（0 依赖）
   transition.rkt  State + 有序 effects + 组合子
   keymap.rkt      通用 token -> 值 的前缀表
   status-part.rkt 状态栏段（render 由使用方提供）
+  signal.rkt      信号（point + args）与 FIFO 队列
 model/         纯状态（只依赖 base）
   state.rkt       根 State：window / workspace / input / chrome / runtime / ids / confirm / store
   workspace.rkt   doc / view / region / layout / focus / overlay / root / placement
   layout.rkt      region 布局树（纯几何）
   input.rkt       pending / modes / gesture
   chrome.rkt      message / log
+  overlay.rkt     浮层（popup：id / 锚 view / lines / selected）
   save.rkt        保存确认队列（框架级）
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/handler/rules/status/doc-type/input-command/panel-sync
@@ -44,6 +47,7 @@ env/           纯策略（只依赖 base + model）
   rule.rkt        scope + keymap 的规则
   doc-type.rkt    路径 -> mode + per-document keymaps
   input-command.rkt 输入栏字符串匹配
+  hook.rkt        钩子（point / when / priority / proc）
   plugin.rkt      插件描述符（plugin / panel-spec）+ 纯装配（plugins-env / plugins-apply）
   defaults.rkt    内置 role / mode
 effects/       边界（core 只在这里被拥有）
@@ -57,6 +61,7 @@ projection/    纯投影
 dispatch/      纯派发
   context.rkt     命令看到的 ctx
   rules.rkt       规则层序（input modes > per-doc > env.rules > mode > global）
+  hooks.rkt       排空信号 -> 跑 hook（纯）
   pipeline.rkt    event -> transition
 chrome/        框架 chrome
   slot.rkt        安装 status/input 槽（两个 core view）
@@ -74,7 +79,7 @@ bootstrap/     装配
     table.rkt       框架命令表
   defaults.rkt    core-env（只有框架）
 plugins/       内置插件（每个一个目录）
-  builtin.rkt     default-plugins + default-env（core-env + 插件）
+  builtin.rkt     default-plugins / default-env / editor-plugins / editor-env
   filetree/
     model.rkt       store['filetree]（view / expanded / width）
     scan.rkt        读目录（唯一 IO）
@@ -82,6 +87,13 @@ plugins/       内置插件（每个一个目录）
     panel.rkt       写 *filetree* buffer
     commands.rkt    Enter / C-b / C-n f / C-d …
     plugin.rkt      panel-spec + mode + commands + 规则 + install
+  highlight/
+    lex.rkt         纯词法：文本 -> 每行 face 区间
+    plugin.rkt      syntax 高亮插件（只对 .rkt / mode 'racket 生效）
+  completion/
+    plugin.rkt      C-c / 原地补全（replace-range 会话）
+  docs/
+    plugin.rkt      C-c h 文档面板（底部固定高度；after-nav 只刷新不关闭）
   resource/
     model.rkt       store['resources]（collapsed / view）
     lines.rkt       纯投影：doc/view -> 行
@@ -137,6 +149,9 @@ racket edit-tui-rebuild/test/plugin-detach.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/split.rkt
+racket edit-tui-rebuild/test/hooks.rkt
+racket edit-tui-rebuild/test/plugins.rkt
+racket edit-tui-rebuild/test/popup.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -202,6 +217,7 @@ racket edit-tui-rebuild/demo/resource.rkt # 资源列表面板 + placement
 racket edit-tui-rebuild/demo/filetree.rkt [root] # 文件树面板
 racket edit-tui-rebuild/demo/plugin.rkt   # 最小插件（命令 + 键 + store + 状态栏段）
 racket edit-tui-rebuild/demo/sidebar.rkt  # 文件树 + 资源列表共用一个面板位置（Tab 切换）
+racket edit-tui-rebuild/demo/lab.rkt      # 语法高亮 + C-c / 补全弹窗 + C-c h 文档面板
 ```
 
 `state.rkt` 的底栏内容：
@@ -236,6 +252,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
+| `C-c /` | 补全弹窗：光标前的词 -> 候选浮层；`↑↓` 选，`Enter`/`Tab` 接受，`Esc` 取消（`editor-env`） |
+| `C-c h` | 文档面板开关：status 下方固定 8 行，打开时会把焦点 view 夹回窗口，**手动关闭**（`editor-env`） |
 | `C-q` | 退出；有 dirty document 时进入保存确认 |
 | `y` / `n` / `yall` / `nall` + Enter | 保存确认：当前保存 / 跳过 / 保存剩余 / 跳过剩余 |
 

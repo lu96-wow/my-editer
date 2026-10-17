@@ -63,9 +63,17 @@
       [(tick)     (dispatch-tick env state event)]
       [(quit)     (transition-pure (state-mark-quit state*))]
       [else       (transition-pure state*)]))
+  ;; 焦点变化记成信号（命令自己不需要知道谁关心焦点）。
+  (define s-pre (state-focus state*))
+  (define s-post (state-focus (transition-state t)))
+  (define t*
+    (if (equal? s-pre s-post)
+        t
+        (transition (state-emit (transition-state t) 'focus-changed (list s-post))
+                    (transition-effects t))))
   ;; 每次 dispatch 都推进 revision：运行时据此重绘。
-  (transition (state-bump-revision (transition-state t))
-              (transition-effects t)))
+  (transition (state-bump-revision (transition-state t*))
+              (transition-effects t*)))
 
 ;; 哪些事件算“用户动作”（清旧消息）。
 (define (message-expiring-event? event)

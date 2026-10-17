@@ -27,6 +27,7 @@
          "../env/mode.rkt"
          "../env/rule.rkt"
          "../env/environment.rkt"
+         "../env/doc-type.rkt"
          "../env/plugin.rkt"
          "../env/defaults.rkt"
          "../projection/status.rkt"
@@ -107,9 +108,15 @@
    default-environment
    (make-environment
     #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
+                  ;; 'racket 暂时沿用 text 的键位；语法高亮等按 mode 匹配的插件认它。
+                  'racket (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
                   'status (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
                   'state  (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
                   'input  (make-mode #:keymaps (list input-keys pointer-keys) #:fallback 'insert))
+    ;; 打开 .rkt 文件自动用 'racket mode（doc-type 决定 mode + per-doc 键表）
+    #:doc-types (hash 'racket (make-doc-type 'racket
+                                             #:extensions '("rkt" "rktl" "rktd")
+                                             #:mode 'racket))
     #:commands (default-command-table)
     ;; placement 是框架级交互：workspace.placement + 一份 scope 规则（点目标 panel 提交）。
     #:scopes (hash 'placing placement-scope)

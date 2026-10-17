@@ -8,11 +8,11 @@
 ;;; 层序（依赖只能往下）：
 ;;;
 ;;;   base      纯词汇：id / event / effect / transition / keymap / status-part
-;;;   model     纯状态：state / workspace / layout / input / chrome / save
+;;;   model     纯状态：state / workspace / layout / input / chrome / save / overlay
 ;;;   env       纯策略：environment / role / mode / scope / command / rule /
 ;;;             doc-type / input-command / plugin / defaults
 ;;;   effects   边界：engine（core 拥有者）/ panel（面板↔引擎）/ interpreter（IO）
-;;;   projection 纯投影：geometry / status / render
+;;;   projection 纯投影：geometry / popup（浮层）/ status / render
 ;;;   dispatch  纯派发：context / rules / pipeline
 ;;;   chrome    框架 chrome：slot（status/input 槽）/ input（输入栏 API）
 ;;;   bootstrap 装配：panel-spec 落地 / commands/* / defaults（core-env）
@@ -41,6 +41,7 @@
 
 ;;; ── model ──
 (require "model/state.rkt"
+         "model/overlay.rkt"
          "model/workspace.rkt"
          "model/layout.rkt"
          "model/input.rkt"
@@ -66,6 +67,7 @@
 
 ;;; ── projection ──
 (require "projection/geometry.rkt"
+         "projection/popup.rkt"
          "projection/status.rkt"
          "projection/render.rkt")
 
@@ -109,6 +111,7 @@
                        "base/transition.rkt"
                        "base/keymap.rkt"
                        "base/status-part.rkt")
+         (all-from-out "model/overlay.rkt")
          (all-from-out "model/state.rkt"
                        "model/workspace.rkt"
                        "model/layout.rkt"
@@ -128,6 +131,7 @@
          (all-from-out "effects/engine.rkt"
                        "effects/panel.rkt"
                        "effects/interpreter.rkt")
+         (all-from-out "projection/popup.rkt")
          (all-from-out "projection/geometry.rkt"
                        "projection/status.rkt"
                        "projection/render.rkt")

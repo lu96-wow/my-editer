@@ -12,6 +12,7 @@
 ;;;   confirm   保存确认队列（model/save.rkt）
 ;;;   runtime   quit? / revision
 ;;;   ids       单调 id 分配器（document / view / region / job）
+;;;   signals   待处理的信号队列（base/signal.rkt），由 dispatch/hooks.rkt 排空
 ;;;   store     插件命名空间：symbol -> 插件自己的纯数据
 ;;;             （面板切片都在这里：'resources / 'filetree …）
 ;;;
@@ -28,7 +29,8 @@
          state-next-id
          state-set-window state-set-workspace state-set-input
          state-set-chrome state-set-runtime state-set-ids state-set-confirm
-         state-set-store
+         state-set-store state-set-signals
+         state-emit state-drain-signals
          state-workspace* state-input* state-chrome* state-runtime* state-confirm*
          state-store*
          plugin-state plugin-state-set plugin-state*
@@ -36,7 +38,8 @@
          state-focus state-set-focus
          state-input-active?)
 
-(require "workspace.rkt"
+(require "../base/signal.rkt"
+         "workspace.rkt"
          "input.rkt"
          "chrome.rkt"
          "save.rkt"
@@ -61,7 +64,7 @@
 
 ;;; ---------- 根 State ----------
 
-(struct state (window workspace input chrome runtime ids confirm store) #:transparent)
+(struct state (window workspace input chrome runtime ids confirm signals store) #:transparent)
 
 (define (make-state #:window [window (make-window 24 80)]
                     #:workspace [workspace (workspace-empty)]
@@ -70,8 +73,9 @@
                     #:runtime [runtime (make-runtime)]
                     #:ids [ids (make-id-counter)]
                     #:confirm [confirm #f]
+                    #:signals [signals (signals-empty)]
                     #:store [store (hash)])
-  (state window workspace input chrome runtime ids confirm store))
+  (state window workspace input chrome runtime ids confirm signals store))
 
 (define (state-empty) (make-state))
 
@@ -85,6 +89,7 @@
 (define (state-set-ids s ids)     (struct-copy state s [ids ids]))
 (define (state-set-confirm s c)   (struct-copy state s [confirm c]))
 (define (state-set-store s st)    (struct-copy state s [store st]))
+(define (state-set-signals s sig) (struct-copy state s [signals sig]))
 
 ;; 先拿当前切片、改完再放回（命令里常用）。
 (define (state-workspace* s f) (state-set-workspace s (f (state-workspace s))))
@@ -93,6 +98,17 @@
 (define (state-runtime* s f)   (state-set-runtime s (f (state-runtime s))))
 (define (state-confirm* s f)   (state-set-confirm s (f (state-confirm s))))
 (define (state-store* s f)      (state-set-store s (f (state-store s))))
+
+;;; ---------- 信号 ----------
+
+;; 发一个信号（追加到队列尾部，FIFO）。
+(define (state-emit s point args)
+  (state-set-signals s (signals-add (state-signals s) (make-signal point args))))
+
+;; 取走全部信号：返回 (values state' (listof signal))，队列清空。
+(define (state-drain-signals s)
+  (define-values (sigs* queue*) (signals-take (state-signals s)))
+  (values (state-set-signals s sigs*) queue*))
 
 ;;; ---------- 插件命名空间 ----------
 ;;
