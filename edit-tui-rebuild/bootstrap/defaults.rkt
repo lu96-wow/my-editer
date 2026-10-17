@@ -53,6 +53,16 @@
    [(mouse 'press 'left) 'pointer-press]
    [(mouse 'move #f)      'pointer-drag]))
 
+;; 所有 chrome / 只读面板的移动表
+(define nav-keys
+  (keys
+   [(key 'left)  'nav-left]
+   [(key 'right) 'nav-right]
+   [(key 'up)    'nav-up]
+   [(key 'down)  'nav-down]
+   [(key 'home)  'nav-home]
+   [(key 'end)   'nav-end]))
+
 ;; 输入栏是普通 document：Enter 提交 / Esc 取消，其余是编辑键。
 (define input-keys
   (keys
@@ -91,9 +101,10 @@
    default-environment
    (make-environment
     #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
-                  'status (make-mode #:fallback 'ignore)
-                  'input  (make-mode #:keymaps (list input-keys) #:fallback 'insert)
-                  'resources (make-mode #:keymaps (list resource-keys) #:fallback 'ignore))
+                  'status (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
+                  'state  (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
+                  'input  (make-mode #:keymaps (list input-keys pointer-keys) #:fallback 'insert)
+                  'resources (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore))
     #:commands (default-command-table)
     #:scopes (hash 'placing placement-scope)
     #:rules (list (make-rule 'placing placement-keys))

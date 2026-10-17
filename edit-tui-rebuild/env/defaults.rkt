@@ -16,7 +16,7 @@
 (define default-roles
   (hash 'editor (make-role #:splittable? #t #:close 'keep-last #:focusable? #t)
         'panel  (make-role #:splittable? #f #:close 'hide      #:focusable? #f)
-        'slot   (make-role #:splittable? #f #:close 'ignore    #:focusable? #f)
+        'slot   (make-role #:splittable? #f #:close 'ignore    #:focusable? #t)
         'tool   (make-role #:splittable? #t #:close 'delete    #:focusable? #t)
         'resource (make-role #:splittable? #f #:close 'ignore  #:focusable? #t)))
 

@@ -228,6 +228,8 @@
 
 (define resource-keys
   (keys
+   [(key 'left)   'resource-left]
+   [(key 'right)  'resource-right]
    [(key 'up)     'resource-up]
    [(key 'down)   'resource-down]
    [(key 'home)   'resource-home]
@@ -242,7 +244,9 @@
    [(key 'escape) 'resource-cancel]))
 
 (define (resource-command-table)
-  (hash 'resource-up    (nav-command 'up)
+  (hash 'resource-left  (nav-command 'left)
+        'resource-right (nav-command 'right)
+        'resource-up    (nav-command 'up)
         'resource-down  (nav-command 'down)
         'resource-home  (nav-command 'home)
         'resource-end   (nav-command 'end)

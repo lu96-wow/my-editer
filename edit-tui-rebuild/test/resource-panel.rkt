@@ -16,6 +16,9 @@
          "../model/layout.rkt"
          "../model/resources.rkt"
          "../model/chrome.rkt"
+         "../../edit-tui/command/mouse.rkt"
+         "../projection/geometry.rkt"
+         "../../core/view/base/rect.rkt"
          "../effects/engine.rkt"
          "../bootstrap/resource-panel.rkt"
          "../bootstrap/defaults.rkt"
@@ -53,6 +56,29 @@
    (state-set-workspace s1
                         (struct-copy workspace (state-workspace s1) [layout lay]))
    rvid))
+
+;;; ════════════════ 鼠标点击资源面板：聚焦 + 落点 ════════════════
+
+(define-values (rps _cuts)
+  (geometry-solve (workspace-layout (state-workspace state)) (rect 0 0 80 24)))
+(define rp (for/first ([p (in-list rps)]
+                       #:when (equal? (region-panel-region p) rrid))
+             p))
+(define rc (region-panel-content rp))
+(engine-sync-view! engine rvid (rect-w rc) (rect-h rc))
+(sync-resource-panel! state engine)
+(define s-click
+  (feed engine state
+        (app:mouse-event (mouse 'press 'left) (rect-y rc) (rect-x rc))))
+(check-equal? (state-focus s-click) rvid)
+(check-equal? (engine-view-view-point-line (make-engine-view engine) rvid) 0)
+(define s-click2
+  (feed engine s-click
+        (app:mouse-event (mouse 'press 'left) (add1 (rect-y rc)) (rect-x rc))))
+(check-equal? (engine-view-view-point-line (make-engine-view engine) rvid) 1)
+;; 复位到 doc 行，后续测试从 line 0 开始
+(void (feed engine s-click2 (app:key-event (key 'up))))
+(check-equal? (engine-view-view-point-line (make-engine-view engine) rvid) 0)
 
 ;;; ════════════════ 行 / 颜色 ════════════════
 

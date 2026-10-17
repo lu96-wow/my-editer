@@ -232,6 +232,21 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 - 关闭 panel 现在不会销毁 view，所以之后可以从资源列表重新挂回；
 - 目前还没有正式 buffer-list 面板，`C-x C-a` 只是“挂回第一个 detached view”的临时入口。
 
+## 状态面板移动
+
+以下 mode 都绑了 `nav-keys` + `pointer-keys`：
+
+- `status`
+- `state`
+- `input`
+- `resources`
+
+状态栏/输入栏的共享槽 role `'slot` 现在是 focusable，所以：
+
+- 鼠标点击状态栏会聚焦并落点；
+- 方向键 / Home / End 可在状态栏里移动；
+- 焦点在 chrome 上时，状态栏位置/路径仍报告第一个 editor view，避免自指。
+
 ## 保存确认 / status+input 共享槽
 
 `demo/save.rkt` 演示：
@@ -264,7 +279,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 
 - `*resources*` 也是 core buffer view，挂在 role `'resource` 的 panel；
 - document 行绿色，view 行蓝色：两种资源用颜色区分；
-- view 行缩进在 document 下（不显示折叠符号，Tab 直接折叠/展开）：
+- view 行缩进在 document 下（不显示折叠符号，Tab/Enter 折叠展开）：
+  - `←→↑↓ Home End` 可在面板内移动光标；鼠标点击也会聚焦并落点；
   - `region:X`
   - `*` = active
   - `[focus]`
@@ -272,6 +288,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 - `Enter`：
   - document 行 → 折叠/展开；
   - view 行 → attached 则设为 active + focus；detached 则进入 placement（带选择）；
+- `←→↑↓ Home End` 在资源面板内自由移动；
 - `Tab` 也折叠/展开 document；
 - `v` 给选中 doc 新建 detached view；
 - `n` 新建 scratch doc + detached view；

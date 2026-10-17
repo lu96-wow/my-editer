@@ -27,9 +27,11 @@
 
 (require racket/string
          "../base/id.rkt"
+         "../model/layout.rkt"
          "../base/status.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
+         "../model/layout.rkt"
          "../model/input.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
@@ -37,15 +39,41 @@
 
 ;;; ════════════════ 基础投影 ════════════════
 
+;; 焦点在 chrome（status/input）上时，状态栏报告第一个 editor view，
+;; 避免移动状态栏光标导致状态栏文本自指。
+(define (chrome-slot-view? state vid)
+  (define slot (chrome-slot-info (state-chrome state)))
+  (and slot
+       (or (equal? vid (chrome-slot-status-view slot))
+           (equal? vid (chrome-slot-input-view slot)))))
+
+(define (first-editor-view state)
+  (define ws (state-workspace state))
+  (for/first ([rid (in-list (tree-visible-regions (workspace-layout ws)))])
+    (define reg (workspace-region ws rid))
+    (define active (and reg (region-active reg)))
+    (and reg
+         (eq? (region-role reg) 'editor)
+         active
+         (workspace-view ws active)
+         active)))
+
+(define (status-view state)
+  (define f (state-focus state))
+  (cond
+    [(not f) (first-editor-view state)]
+    [(chrome-slot-view? state f) (or (first-editor-view state) f)]
+    [else f]))
+
 (define (status-position state ev)
-  (define vid (state-focus state))
+  (define vid (status-view state))
   (define line (and vid (engine-view-view-point-line ev vid)))
   (define col  (and vid (engine-view-view-point-column ev vid)))
   (and line col (cons (add1 line) (add1 col))))
 
 (define (status-path state)
   (define ws (state-workspace state))
-  (define vid (state-focus state))
+  (define vid (status-view state))
   (define did (and vid (workspace-doc-of-view ws vid)))
   (define dm (and did (workspace-doc ws did)))
   (and dm (doc-meta-path dm)))
