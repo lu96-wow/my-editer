@@ -42,6 +42,15 @@
     [(open-doc-effect? effect)
      (interpret-open-doc! engine state effect)]
 
+    [(open-view-effect? effect)
+     (interpret-open-view! engine state effect)]
+
+    [(close-view-effect? effect)
+     (define vid (close-view-effect-view effect))
+     (engine-remove-view! engine vid)
+     (transition-pure
+      (state-workspace* state (λ (ws) (workspace-remove-view ws vid))))]
+
     [(close-doc-effect? effect)
      (engine-remove-doc! engine (close-doc-effect-doc effect))
      (transition-pure
@@ -99,6 +108,20 @@
   (if k
       (k s3 did vid)
       (transition-pure s3)))
+
+;;; ════════════════ open-view ════════════════
+
+(define (interpret-open-view! engine state effect)
+  (define did (open-view-effect-doc effect))
+  (define k (open-view-effect-k effect))
+  (unless (engine-doc-exists? engine did)
+    (error 'interpret-open-view! "doc 不存在：~a" did))
+  (define-values (vid s1) (state-next-id state 'view))
+  (engine-create-view! engine vid did)
+  (define ws (state-workspace s1))
+  (define ws* (workspace-add-view ws vid (view-meta did (hash))))
+  (define s2 (state-set-workspace s1 ws*))
+  (if k (k s2 vid) (transition-pure s2)))
 
 ;;; ════════════════ save-doc ════════════════
 

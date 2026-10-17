@@ -11,7 +11,7 @@
 | 3 | `dispatch/` 规则管线 + 键盘/鼠标统一 | ✅ |
 | 4 | `effects/` engine 适配 + 文件 IO（spawn/timer 留给 runtime） | ✅ |
 | 5 | `projection/` geometry / render / status | ✅ |
-| 6 | `bootstrap/` + runtime | 待做 |
+| 6 | `bootstrap/` + runtime | ✅ |
 
 ## 块 1：base + model
 
@@ -46,6 +46,15 @@ projection/
   geometry.rkt    region 树 -> region-panel / 内容区 / 接缝（纯）
   status.rkt      状态栏 / prompt 文本投影（纯）
   render.rkt      state + engine -> panels / chrome / bytes（不输出、不写 core）
+bootstrap/
+  commands.rkt    默认命令（导航 / 编辑 / split / close / focus / quit）
+  defaults.rkt    默认 Environment（命令 + keymap + mode + job-done handler）
+runtime/
+  tui-adapter.rkt 终端事件 -> base/event
+  run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
+demo/
+  basic.rkt       最小交互 demo
+main.rkt          公共面（聚合以上）
 ```
 
 核心约定：
@@ -63,7 +72,9 @@ projection/
 - 文档版本用 core 的 **opaque document token**：`buffer-version` / `buffer-version=?`，不存文本快照；
   编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较；
 - 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
-  chrome region（状态栏/输入栏）不是 core view，由 `projection/render` 按差异画文本。
+  chrome region（状态栏/输入栏）不是 core view，由 `projection/render` 按差异画文本；
+- Runtime 是唯一不纯装配层：`with-tui` / `read-event` / `put-bytes` / inbox / spawn / timer；
+  `spawn` / `timer` 的回投事件在“下一个终端事件”到达时排空（与旧骨架一致）。
 
 ## 测试
 
@@ -73,5 +84,34 @@ racket edit-tui-rebuild/test/env.rkt
 racket edit-tui-rebuild/test/dispatch.rkt
 racket edit-tui-rebuild/test/effects.rkt
 racket edit-tui-rebuild/test/projection.rkt
+racket edit-tui-rebuild/test/runtime.rkt
 edit-tui-rebuild/test/run.sh
 ```
+
+
+## 公共面
+
+```racket
+(require "edit-tui-rebuild/main.rkt")
+```
+
+聚合了 base / model / env / dispatch / effects / projection / bootstrap / runtime 的公共导出。
+需要键/鼠标 token 时再 require `edit-tui/command/key.rkt` / `mouse.rkt`。
+
+## 交互 demo
+
+```bash
+racket edit-tui-rebuild/demo/basic.rkt
+```
+
+默认键位：
+
+| 键 | 作用 |
+|---|---|
+| `←→↑↓` / `Home` / `End` | 移动 |
+| `Enter` / `Backspace` / `Delete` | 编辑 |
+| `C-z` / `C-y` | undo / redo |
+| `C-b` / `C-v` | 向右 / 向下切分（same document 多 view） |
+| `C-w` | 关闭当前 view |
+| `M-方向` | region 间焦点移动 |
+| `C-q` | 退出 |

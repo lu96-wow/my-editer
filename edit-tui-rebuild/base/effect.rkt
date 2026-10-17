@@ -16,6 +16,8 @@
 ;;;     undo-effect     view
 ;;;     redo-effect     view
 ;;;     open-doc-effect spec k        k : state doc-id view-id -> transition
+;;;     open-view-effect doc k        k : state view-id -> transition
+;;;     close-view-effect view
 ;;;     close-doc-effect doc
 ;;;     save-doc-effect doc k          k : state ok? -> transition
 ;;;
@@ -38,6 +40,8 @@
          (struct-out undo-effect)
          (struct-out redo-effect)
          (struct-out open-doc-effect)
+         (struct-out open-view-effect)
+         (struct-out close-view-effect)
          (struct-out close-doc-effect)
          (struct-out save-doc-effect)
          (struct-out read-file-effect)
@@ -56,6 +60,8 @@
 (struct undo-effect    (view)          #:transparent)
 (struct redo-effect    (view)          #:transparent)
 (struct open-doc-effect  (spec k)      #:transparent)
+(struct open-view-effect (doc k)       #:transparent)
+(struct close-view-effect (view)       #:transparent)
 (struct close-doc-effect (doc)         #:transparent)
 (struct save-doc-effect  (doc k)       #:transparent)
 (struct read-file-effect (path k)      #:transparent)
@@ -68,7 +74,8 @@
 (define (effect? x)
   (or (edit-effect? x) (insert-text-effect? x) (select-effect? x) (scroll-effect? x)
       (nav-effect? x) (undo-effect? x) (redo-effect? x)
-      (open-doc-effect? x) (close-doc-effect? x) (save-doc-effect? x)
+      (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
+      (close-doc-effect? x) (save-doc-effect? x)
       (read-file-effect? x) (write-file-effect? x)
       (spawn-effect? x) (timer-effect? x) (emit-effect? x) (quit-effect? x)))
 
@@ -81,6 +88,8 @@
         [(undo-effect? x)      'undo]
         [(redo-effect? x)      'redo]
         [(open-doc-effect? x)  'open-doc]
+        [(open-view-effect? x) 'open-view]
+        [(close-view-effect? x)'close-view]
         [(close-doc-effect? x) 'close-doc]
         [(save-doc-effect? x)  'save-doc]
         [(read-file-effect? x) 'read-file]
