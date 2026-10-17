@@ -16,8 +16,7 @@
 ;;; 注意：这里把“层序”集中成一个函数，而不是散在 step-key 的 append 里。
 ;;; 以后加“插件全局层”只需在 append 里插一段，或把 extra rules 放进 environment。
 
-(provide (struct-out rule)
-         make-rule
+(provide (all-from-out "../env/rule.rkt")
          rules-for
          subject-mode-id
          prefix-rules
@@ -29,16 +28,8 @@
          "../model/workspace.rkt"
          "../model/input.rkt"
          "../env/environment.rkt"
-         "../env/scope.rkt")
-
-(struct rule (scope keymap) #:transparent)
-;; scope  : symbol    'always 或 environment.scopes 里的键
-;; keymap : keymap
-
-(define (make-rule scope keymap)
-  (unless (symbol? scope) (error 'make-rule "scope 要是 symbol：~a" scope))
-  (unless (keymap? keymap) (error 'make-rule "keymap 要是 keymap：~a" keymap))
-  (rule scope keymap))
+         "../env/scope.rkt"
+         "../env/rule.rkt")
 
 ;;; ---------- 当前 focus / subject 的 mode ----------
 
@@ -72,12 +63,20 @@
 (define (global-rules env)
   (list (make-rule 'always (environment-keymap env 'global))))
 
+;; environment.rules 是插件 / 用户注册的带 scope 层。
+(define (extra-rules env state)
+  (define scopes (environment-scopes env))
+  (for/list ([r (in-list (environment-rules env))]
+             #:when (scope-ok? scopes state (rule-scope r)))
+    r))
+
 ;; 按层序生成，再按 scope 过滤。subject 决定 mode / per-doc 层。
 (define (rules-for env state subject)
   (define scopes (environment-scopes env))
   (for/list ([r (in-list
                  (append (input-mode-rules env state)
                          (doc-layer-rules state subject)
+                         (extra-rules env state)
                          (mode-rules env state subject)
                          (global-rules env)))]
              #:when (scope-ok? scopes state (rule-scope r)))

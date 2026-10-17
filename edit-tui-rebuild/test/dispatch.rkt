@@ -20,6 +20,8 @@
          "../env/role.rkt"
          "../env/mode.rkt"
          "../env/command.rkt"
+         "../env/scope.rkt"
+         "../env/rule.rkt"
          "../env/environment.rkt"
          "../env/defaults.rkt"
          "../dispatch/context.rkt"
@@ -281,5 +283,33 @@
 (define t27 (dispatch env-bad s0 (key-event (key 'u))))
 (check-true (string-contains? (chrome-message (state-chrome (transition-state t27)))
                               "unknown command"))
+
+;;; ════════════════ 带 scope 的规则层 ════════════════
+
+(define scoped-km (keys [(key 'a) 'note-rule]))
+(define scoped-env
+  (environment-merge
+   env
+   (make-environment
+    #:scopes (hash 'yes (make-scope (λ (s) #t))
+                   'no  (make-scope (λ (s) #f)))
+    #:rules (list (make-rule 'yes scoped-km)
+                  (make-rule 'no scoped-km))
+    #:commands (hash 'note-rule (cmd-note "rule")))))
+
+;; scope 成立：规则在 mode 之前，覆盖 mode 的 'a
+(define t-rule (dispatch scoped-env s0 (plain 'a)))
+(check-equal? (chrome-message (state-chrome (transition-state t-rule))) "rule")
+
+;; scope 不成立：规则被过滤，落回 mode
+(define no-scope-env
+  (environment-merge
+   env
+   (make-environment
+    #:scopes (hash 'no (make-scope (λ (s) #f)))
+    #:rules (list (make-rule 'no scoped-km))
+    #:commands (hash 'note-rule (cmd-note "rule")))))
+(define t-no-rule (dispatch no-scope-env s0 (plain 'a)))
+(check-equal? (chrome-message (state-chrome (transition-state t-no-rule))) "mode")
 
 (displayln "edit-tui-rebuild dispatch: ok")

@@ -29,6 +29,7 @@
          "../env/mode.rkt"
          "../env/environment.rkt"
          "../env/defaults.rkt"
+         "../projection/status.rkt"
          "commands.rkt")
 
 (define text-keys
@@ -72,6 +73,7 @@
                   'input  (make-mode #:fallback 'insert))
     #:commands (default-command-table)
     #:keymaps (hash 'global global-keys)
+    #:status full-status-parts
     #:handlers (hash 'job-done
                      (λ (s payload)
                        (transition-pure

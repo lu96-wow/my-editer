@@ -22,6 +22,7 @@ base/
   effect.rkt      效果 ADT（引擎写 / IO / 调度）
   transition.rkt  State + 有序 effects + 组合子
   keymap.rkt      通用 token -> 值 的前缀表（叶子任意值）
+  status.rkt      status-part：状态栏可组合段
 model/
   layout.rkt      region 布局树（纯几何，不依赖 core）
   workspace.rkt   doc / view / region / layout / focus / overlay
@@ -33,7 +34,8 @@ env/
   mode.rkt        document 模式 -> keymaps / fallback
   scope.rkt       scope 谓词（state -> bool）
   command.rkt     复用旧 command 结构（run / note / input）
-  environment.rkt role/mode/scope/command/keymap/handler 的只读聚合
+  rule.rkt        scope + keymap 的规则
+  environment.rkt role/mode/scope/command/keymap/handler/rules/status 的只读聚合
   defaults.rkt    内置 role / mode
 dispatch/
   context.rkt     命令看到的 ctx（env/state/event/subject/engine）
@@ -66,6 +68,9 @@ main.rkt          公共面（聚合以上）
 - 区域几何在 layout leaf，区域成员/active 在 region，避免两处真相；
 - role/mode/scope/command 都在 Environment 值里，注册是 `environment-add-*`，不是模块级 `set!`；
 - 命令 id 作为 keymap 叶子，dispatch 再用 env 查命令实现；
+- `env.rules` 是带 scope 的规则层，层序：input modes > per-doc > env.rules > mode > global；
+- 状态栏是 `status-part` 列表，不是写死的字符串：`environment.status` 决定用哪些段；
+  `default-status-parts` 只有 focus 行列 + path，`full-status-parts` 再加 pending/message；
 - dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
 - prompt 的文本编辑目前是最小实现（append / backspace），后续块再泛化输入类型；
 - State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；

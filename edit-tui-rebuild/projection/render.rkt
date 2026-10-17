@@ -61,7 +61,7 @@
 ;;   panels          : (listof core panel)
 ;;   chrome-entries  : (listof chrome-entry)
 ;;   view-placements : (listof (list view-id content-rect)) 给 engine-sync-views!
-(define (project-frame state engine)
+(define (project-frame state engine #:status-parts [status-parts #f])
   (define ws (state-workspace state))
   (define ev (make-engine-view engine))
   (define focus (state-focus state))
@@ -89,23 +89,24 @@
                                #:weight (if focused? 1 0))
                    panels))]
       [(and m (chrome-member? m))
-       (define line (chrome-line state ev (member-key m)))
+       (define line (chrome-line state ev (member-key m) status-parts))
        (set! chromes (cons (chrome-entry rid line c) chromes))
        (set! panels (cons (make-panel #f r borders) panels))]
       [else
        (set! panels (cons (make-panel #f r borders) panels))]))
   (values (reverse panels) (reverse chromes) (reverse placements)))
 
-(define (project-view-placements state engine)
-  (define-values (_ps _cs placements) (project-frame state engine))
+(define (project-view-placements state engine #:status-parts [status-parts #f])
+  (define-values (_ps _cs placements) (project-frame state engine #:status-parts status-parts))
   placements)
 
 ;;; ════════════════ 渲染 ════════════════
 
 ;; 纯投影：返回新 cache + bytes（不 put）。
 ;; 调用方应先用 project-view-placements + engine-sync-views! 同步 view 尺寸。
-(define (render-frame state engine cache)
-  (define-values (panels chromes placements) (project-frame state engine))
+(define (render-frame state engine cache #:status-parts [status-parts #f])
+  (define-values (panels chromes placements)
+    (project-frame state engine #:status-parts status-parts))
   (define area (frame-area state))
   (define focus-id (state-focus state))
   (define focus-view (and focus-id (engine-view-object engine focus-id)))

@@ -30,6 +30,7 @@
          "../model/workspace.rkt"
          "../effects/engine.rkt"
          "../effects/interpreter.rkt"
+         "../env/environment.rkt"
          "../dispatch/pipeline.rkt"
          "../projection/geometry.rkt"
          "../projection/render.rkt"
@@ -124,10 +125,12 @@
 ;;; ════════════════ 渲染 ════════════════
 
 ;; 先同步 view 尺寸（唯一写 core 的地方），再投影/输出。
-(define (run-frame state engine cache)
-  (define-values (_ps _cs placements) (project-frame state engine))
+(define (run-frame state engine cache #:status-parts [status-parts #f])
+  (define-values (_ps _cs placements)
+    (project-frame state engine #:status-parts status-parts))
   (engine-sync-views! engine placements)
-  (define-values (cache* bytes) (render-frame state engine cache))
+  (define-values (cache* bytes)
+    (render-frame state engine cache #:status-parts status-parts))
   (unless (zero? (bytes-length bytes))
     (put-bytes bytes)
     (flush!))
@@ -149,7 +152,8 @@
            (state-set-window state (make-window rows cols))
            state))
      (let loop ([state state0] [cache #f])
-       (define cache* (run-frame state engine cache))
+       (define cache* (run-frame state engine cache
+                                 #:status-parts (environment-status env)))
        (define ev (read-event))
        (define app-ev (tui-event->app ev))
        (define batch (append (if app-ev (list app-ev) '())

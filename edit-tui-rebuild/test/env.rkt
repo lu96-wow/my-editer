@@ -8,11 +8,13 @@
          "../../edit-tui/command/key.rkt"
          "../../edit-tui/command/mouse.rkt"
          "../base/keymap.rkt"
+         "../base/status.rkt"
          "../base/transition.rkt"
          "../env/role.rkt"
          "../env/mode.rkt"
          "../env/scope.rkt"
          "../env/command.rkt"
+         "../env/rule.rkt"
          "../env/environment.rkt"
          "../env/defaults.rkt"
          "../model/state.rkt")
@@ -144,6 +146,24 @@
 (check-eq? (role-close-policy (environment-role env2 'editor)) 'hide)
 (check-eq? (environment-command env2 'save) c-save)
 (check-eq? (environment-keymap env2 'global) km)
+
+;; 规则：新规则在前；merge 时 b 的规则优先
+(define rule1 (make-rule 'always km))
+(define rule2 (make-rule 'always (keys [(key 'q) 'save])))
+(define env4 (environment-add-rule env2 rule1))
+(check-equal? (environment-rules env4) (list rule1))
+(check-equal? (environment-rules
+               (environment-merge env4 (make-environment #:rules (list rule2))))
+              (list rule2 rule1))
+
+;; 状态栏段：environment.status 默认 #f，新增段放最前
+(define part1 (make-status-part 'p1 (λ (s e) "one")))
+(define part2 (make-status-part 'p2 (λ (s e) "two")))
+(check-false (environment-status (environment-empty)))
+(define env5 (environment-add-status-part (environment-empty) part1))
+(check-equal? (environment-status env5) (list part1))
+(check-equal? (environment-status (environment-add-status-part env5 part2))
+              (list part2 part1))
 
 ;; handler
 (define env3

@@ -99,8 +99,8 @@
 (define s1 (state-chrome* (state-input* s0 (λ (i) (input-set-pending i (list (key 'x 'ctrl)))))
                           (λ (c) (chrome-set-message c "msg"))))
 (check-equal? (status-sequence s1) "C-x")
-(check-true (string-contains? (status-line s1 ev) "C-x"))
-(check-false (string-contains? (status-line s1 ev) "msg"))
+(check-true (string-contains? (status-line s1 ev full-status-parts) "C-x"))
+(check-false (string-contains? (status-line s1 ev full-status-parts) "msg"))
 
 ;; 调试 State 行
 (check-true (string-contains? (state-line s0 ev) "focus=view:1"))
@@ -142,10 +142,13 @@
                              ws2)
                             vid2))
 
-(define-values (panels chromes placements) (project-frame s3 eng2))
+(define render-parts full-status-parts)
+(define-values (panels chromes placements)
+  (project-frame s3 eng2 #:status-parts render-parts))
 (check-equal? (length panels) 2)
 (check-equal? (length chromes) 1)
-(check-equal? (chrome-entry-line (car chromes)) (status-line s3 (make-engine-view eng2)))
+(check-equal? (chrome-entry-line (car chromes))
+              (status-line s3 (make-engine-view eng2) render-parts))
 (check-equal? (length placements) 1)
 
 ;; 焦点 panel 用 focused-border
@@ -156,7 +159,7 @@
 
 ;; 同步 view 尺寸 -> 渲染
 (engine-sync-views! eng2 placements)
-(define-values (cache bytes) (render-frame s3 eng2 #f))
+(define-values (cache bytes) (render-frame s3 eng2 #f #:status-parts render-parts))
 (check-true (frame-cache? cache))
 (check-true (positive? (bytes-length bytes)))
 (define text (bytes->string/utf-8 bytes))
@@ -164,21 +167,21 @@
 (check-true (string-contains? text "hello status"))
 
 ;; 同一状态再渲染：无变化 -> 空输出
-(define-values (cache2 bytes2) (render-frame s3 eng2 cache))
+(define-values (cache2 bytes2) (render-frame s3 eng2 cache #:status-parts render-parts))
 (check-true (frame-cache? cache2))
 (check-equal? (bytes-length bytes2) 0)
 
 ;; 状态消息变化 -> 只出 chrome 差分（含新文本）
 (define s4 (state-chrome* s3 (λ (c) (chrome-set-message c "changed"))))
-(define-values (cache3 bytes3) (render-frame s4 eng2 cache2))
+(define-values (cache3 bytes3) (render-frame s4 eng2 cache2 #:status-parts render-parts))
 (check-true (positive? (bytes-length bytes3)))
 (check-true (string-contains? (bytes->string/utf-8 bytes3) "changed"))
 
 ;; resize -> 几何变 -> 非空输出
 (define s5 (state-set-window s4 (make-window 12 50)))
-(define-values (_panels5 _chromes5 placements5) (project-frame s5 eng2))
+(define-values (_panels5 _chromes5 placements5) (project-frame s5 eng2 #:status-parts render-parts))
 (engine-sync-views! eng2 placements5)
-(define-values (_cache4 bytes4) (render-frame s5 eng2 cache3))
+(define-values (_cache4 bytes4) (render-frame s5 eng2 cache3 #:status-parts render-parts))
 (check-true (positive? (bytes-length bytes4)))
 
 ;; chrome 消失 -> 清旧矩形
@@ -186,7 +189,7 @@
   (struct-copy workspace (state-workspace s5)
                [layout (make-leaf rid (flex 1))]))
 (define s6 (state-set-workspace s5 ws6))
-(define-values (_cache5 bytes5) (render-frame s6 eng2 cache3))
+(define-values (_cache5 bytes5) (render-frame s6 eng2 cache3 #:status-parts render-parts))
 (check-true (positive? (bytes-length bytes5)))
 
 (displayln "edit-tui-rebuild projection: ok")

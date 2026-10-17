@@ -33,6 +33,9 @@
          environment-add-command
          environment-add-keymap
          environment-add-handler
+         environment-add-rule
+         environment-add-rules
+         environment-add-status-part
          environment-merge)
 
 (require "../base/keymap.rkt"
@@ -40,26 +43,32 @@
          "role.rkt"
          "mode.rkt"
          "scope.rkt"
-         "command.rkt")
+         "command.rkt"
+         "rule.rkt"
+         "../base/status.rkt")
 
-(struct environment (roles modes scopes commands keymaps handlers) #:transparent)
+(struct environment (roles modes scopes commands keymaps handlers rules status) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
 ;; commands : (hash/c symbol command)
 ;; keymaps  : (hash/c symbol keymap)
 ;; handlers : (hash/c symbol procedure)   (state payload -> transition)
+;; rules    : (listof rule)               带 scope 的额外表（高 -> 低）
+;; status   : #f | (listof status-part)   #f = 用投影默认段
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) (hash)))
+  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
                           #:scopes [scopes (hash)]
                           #:commands [commands (hash)]
                           #:keymaps [keymaps (hash)]
-                          #:handlers [handlers (hash)])
-  (environment roles modes scopes commands keymaps handlers))
+                          #:handlers [handlers (hash)]
+                          #:rules [rules '()]
+                          #:status [status #f])
+  (environment roles modes scopes commands keymaps handlers rules status))
 
 ;;; ---------- 查 ----------
 
@@ -110,6 +119,16 @@
   (unless (procedure? h) (error 'environment-add-handler "handler 要是过程：~a" h))
   (struct-copy environment env [handlers (hash-set (environment-handlers env) kind h)]))
 
+;; 新规则放最前（优先）。
+(define (environment-add-rule env r)
+  (struct-copy environment env [rules (cons r (environment-rules env))]))
+(define (environment-add-rules env rs)
+  (struct-copy environment env [rules (append rs (environment-rules env))]))
+
+;; 状态栏段：新段放最前。传入 #f 表示恢复默认段。
+(define (environment-add-status-part env part)
+  (struct-copy environment env [status (cons part (or (environment-status env) '()))]))
+
 ;; 覆盖式合并：b 的同名项覆盖 a。插件 / 用户配置用这个。
 (define (environment-merge a b)
   (define (overlay ka kb)
@@ -119,4 +138,7 @@
                (overlay (environment-scopes a)   (environment-scopes b))
                (overlay (environment-commands a) (environment-commands b))
                (overlay (environment-keymaps a)  (environment-keymaps b))
-               (overlay (environment-handlers a) (environment-handlers b))))
+               (overlay (environment-handlers a) (environment-handlers b))
+               ;; b 的规则在前 = 后合并的 env 优先
+               (append (environment-rules b) (environment-rules a))
+               (or (environment-status b) (environment-status a))))
