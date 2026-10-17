@@ -27,7 +27,9 @@
 | `render.rkt` | `../render.rkt` | `world → bytes` + 焦点边框投影 |
 | `loop.rkt` | `../loop.rkt` | `run-app`（唯一不纯入口） |
 | `plugin.rkt` | `../plugin.rkt` | 插件注册 + 声明式载入 |
-| `slot.rkt` | `../slot.rkt` | 底部共享槽（状态栏 / 输入栏） |
+| `slot.rkt` | `../slot.rkt` | 底部共享槽容器（状态栏 / 输入栏） |
+| `status.rkt` | `../status.rkt` | 状态栏文本投影 |
+| `minibuffer.rkt` | `../minibuffer.rkt` | 命令输入（输入栏会话） |
 | `main.rkt` | 聚合以上 | require 即得全表面 |
 
 ## 函数（按功能）
@@ -86,7 +88,7 @@
 
 ### resource —— 资源
 
-`make-resources` · `resources?` `resources-list` · `make-document` `open-document!`
+`make-resources` · `resources?` `resources-list` · `make-document` `open-document!` · `buffer-path` `buffer-set-path!`
 
 ### runtime
 
@@ -96,7 +98,9 @@
 | `render` | `draw-world` `world-display-panels` |
 | `loop` | `run-app` |
 | `plugin` | `define-plugin!` · `panel-spec` · `plugins-apply` · `plugins-list` `plugins-known?` `plugins-reset!` |
-| `slot` | `slot-install` · `slot-show` `slot-show-status` `slot-show-input` · `slot-active` · `status-sync!` |
+| `slot` | `slot-install` · `slot-show` `slot-show-status` `slot-show-input` · `slot-active` · `slot-focus-input` `slot-focus-status` |
+| `status` | `status-line` · `status-sync!` · `status-position` `status-path` `status-sequence` |
+| `minibuffer` | `minibuffer-enter` `minibuffer-submit` `minibuffer-cancel` · `minibuffer-keys` · `minibuffer-of` `minibuffer-text` |
 
 ## 表 / 注册表（运行时数据）
 

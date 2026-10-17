@@ -24,7 +24,7 @@
          "step.rkt"
          "render.rkt"
          "plugin.rkt"
-         "slot.rkt"
+         "status.rkt"
          "../../core/editor.rkt")
 
 (provide run-app)

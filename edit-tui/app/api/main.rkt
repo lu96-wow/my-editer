@@ -46,7 +46,9 @@
          "render.rkt"
          "loop.rkt"
          "plugin.rkt"
-         "slot.rkt")
+         "slot.rkt"
+         "status.rkt"
+         "minibuffer.rkt")
 
 (provide (all-from-out "intent.rkt"
                        "world.rkt"
@@ -60,4 +62,6 @@
                        "render.rkt"
                        "loop.rkt"
                        "plugin.rkt"
-                       "slot.rkt"))
+                       "slot.rkt"
+                       "status.rkt"
+                       "minibuffer.rkt"))

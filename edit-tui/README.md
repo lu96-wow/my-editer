@@ -109,7 +109,9 @@ step.rkt       world-step / world-step*（纯）
 render.rkt     world → bytes（+ 焦点边框投影）
 loop.rkt       run-app（唯一不纯：读事件 / 跑 intent / 重绘）
 plugin.rkt     插件注册 + 声明式载入（define-plugin! / panel-spec / plugins-apply）
-slot.rkt       底部共享槽：状态栏 / 输入栏（slot-install / slot-show* / status-sync!）
+slot.rkt       底部共享槽容器（slot-install / slot-show* / slot-focus-*）
+status.rkt     状态栏文本投影（行列 / buffer 路径 / 键序列）
+minibuffer.rkt 命令输入（#:input → 输入栏；submit / cancel）
 main.rkt       入口：再导出 app/api/
 api/           公共 API 面（见下）
 ```

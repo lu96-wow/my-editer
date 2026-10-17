@@ -19,7 +19,8 @@
          "doc-kind.rkt")
 
 (provide make-resources resources? resources-list
-         make-document open-document!)
+         make-document open-document!
+         buffer-set-path! buffer-path)
 
 ;;; ════════════════════════ 已打开资源登记 ════════════════════════
 
@@ -32,17 +33,26 @@
   b)
 (define (resources-list res) (resources-docs res))
 
+;;; ════════════════════════ 路径元数据（可选） ════════════════════════
+;;; 文档 → 磁盘路径。weak eq 哈希按 buffer 身份存（和 doc-kind 同理）：
+;;; 内存文档没有路径（#f），状态栏就不显示路径。
+
+(define path-tbl (make-weak-hasheq))
+(define (buffer-set-path! b p) (hash-set! path-tbl b p) b)
+(define (buffer-path b) (hash-ref path-tbl b #f))
+
 ;;; ════════════════════════ 造 document + view ════════════════════════
 
 ;; 创建 buffer + view 并绑类型。不登记、不做别的事。
-(define (make-document name text #:kind [kind 'text] #:line-numbers? [ln? #f])
+(define (make-document name text #:kind [kind 'text] #:line-numbers? [ln? #f] #:path [path #f])
   (define b (make-buffer text name))
   (define v (buffer-add-view! b #:line-numbers? ln?))
   (buffer-set-kind! b kind)
+  (when path (buffer-set-path! b path))
   (values b v))
 
 ;; 创建并登记。启动装配常用。
-(define (open-document! res name text #:kind [kind 'text] #:line-numbers? [ln? #f])
-  (define-values (b v) (make-document name text #:kind kind #:line-numbers? ln?))
+(define (open-document! res name text #:kind [kind 'text] #:line-numbers? [ln? #f] #:path [path #f])
+  (define-values (b v) (make-document name text #:kind kind #:line-numbers? ln? #:path path))
   (resource-register! res b)
   (values b v))

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; app/slot.rkt —— 底部共享槽：状态栏 / 输入栏（内置 chrome）
+;;; app/slot.rkt —— 底部共享槽：状态栏 / 输入栏的**容器机制**
 ;;;
 ;;; 一个 layout leaf（role='slot'）同时是多个**内存文档 view** 的容器（members）；
 ;;; 同一时刻只挂一个 member 的 view —— 于是状态栏和输入栏“共享同一位置”。
@@ -9,19 +9,17 @@
 ;;; 槽状态（leaf id + member 表 + 进入输入栏前的焦点）存 world.ext（纯、可重放）。
 ;;; 约定：成员键 'status = 状态栏，'input = 输入栏。
 ;;;
-;;; world.status 是逻辑状态行文本；status-sync!（不纯，loop 每帧调）把它镜像进
-;;; 'status member 的 buffer —— 和 panels-sync! 同理，是“本帧显示”的一次写。
+;;; 本模块只管“容器 / 切换”；状态栏文本投影在 status.rkt，输入会话在 minibuffer.rkt。
 
-(require "../../core/editor.rkt"
-         "../layout/main.rkt"
+(require "../layout/main.rkt"
          "world.rkt"
          "panel-ref.rkt"
          "intent.rkt")
 
 (provide (struct-out slot)
          slot-install slot-of slot-member slot-active
-         slot-show slot-show-status slot-show-input
-         status-sync!)
+         slot-mount slot-focus-input slot-focus-status
+         slot-show slot-show-status slot-show-input)
 
 (define slot-key 'slot)                              ; world.ext 里的保留键
 
@@ -59,43 +57,33 @@
       (world-set-layout w (tree-set-view (world-layout w) (slot-leaf-id s) v))
       w))
 
+;;; ---------- 焦点转移（纯） ----------
+
+;; 切到输入栏：记住当前焦点（若不是槽），聚焦槽（可以开始打字）。
+(define (slot-focus-input w)
+  (define s (slot-of w))
+  (cond
+    [(not s) w]
+    [else
+     (define lid (slot-leaf-id s))
+     (define f (world-focus w))
+     (define pf (if (and f (eq? (panel-ref-kind f) 'leaf) (eqv? (panel-ref-id f) lid))
+                    (slot-prev-focus s)      ; 已在槽里 → 保留旧焦点
+                    f))
+     (world-focus-on
+      (world-ext-set (slot-mount w 'input) slot-key (struct-copy slot s [prev-focus pf]))
+      (leaf-ref lid))]))
+
+;; 切回状态栏：恢复进入前的焦点。
+(define (slot-focus-status w)
+  (define s (slot-of w))
+  (if s
+      (world-focus-on (slot-mount w 'status) (slot-prev-focus s))
+      w))
+
 ;;; ---------- 切换（op，返回 intent） ----------
 
 ;; 只换显示（不动焦点）。
-(define (slot-show key)
-  (list (modify (λ (w) (slot-mount w key)))))
-
-;; 切到输入栏：记住当前焦点（若不是槽），再聚焦槽（可以开始打字）。
-(define (slot-show-input)
-  (list (modify (λ (w)
-                  (define s (slot-of w))
-                  (if s
-                      (let* ([lid (slot-leaf-id s)]
-                             [f (world-focus w)]
-                             [pf (if (and f (eq? (panel-ref-kind f) 'leaf)
-                                          (eqv? (panel-ref-id f) lid))
-                                     (slot-prev-focus s)   ; 已在槽里 → 保留旧焦点
-                                     f)])
-                        (world-focus-on
-                         (world-ext-set (slot-mount w 'input) slot-key
-                                        (struct-copy slot s [prev-focus pf]))
-                         (leaf-ref lid)))
-                      w)))))
-
-;; 切回状态栏：恢复进入前的焦点。
-(define (slot-show-status)
-  (list (modify (λ (w)
-                  (define s (slot-of w))
-                  (if s
-                      (world-focus-on (slot-mount w 'status) (slot-prev-focus s))
-                      w)))))
-
-;;; ---------- 状态行同步（不纯；loop 每帧调） ----------
-
-;; 把 world.status 镜像进 'status member 的 buffer。
-(define (status-sync! w)
-  (define v (slot-member w 'status))
-  (when v
-    (define b (view-buffer v))
-    (unless (string=? (buffer-string b) (world-status w))
-      (buffer-set-document! b (world-status w)))))
+(define (slot-show key)   (list (modify (λ (w) (slot-mount w key)))))
+(define (slot-show-input) (list (modify slot-focus-input)))
+(define (slot-show-status)(list (modify slot-focus-status)))

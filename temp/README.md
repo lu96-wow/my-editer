@@ -43,7 +43,7 @@ racket temp/02-selection.rkt
 | `31-completion.rkt` | **语法补全浮层**：浮窗 + 临时操作表（`open-overlay`/`close-overlay`），临时表遮蔽编辑区键、浮窗永不占焦点；Tab 弹出、↑↓ 选、Enter 插入、Esc 关闭 | `edit-tui/app` |
 | `32-hello-plugin.rkt` | **样例插件**：模块顶层 `define-doc-kind!` + `define-plugin!`（面板贡献 + on-load）；被 require 即注册 | `edit-tui/app` |
 | `33-plugin-host.rkt` | **插件宿主**：只 `require` 32 就自动多出左侧面板；`plugins-apply` 装配 + 幂等 + “没注册就没有”自检 | `edit-tui/app` |
-| `34-statusbar.rkt` | **底部共享槽**（内置）：状态栏 / 输入栏共用一个 `role='slot'` leaf，内存 buffer；切换只走 API（`slot-show-input`/`slot-show-status`，不绑用户键）；`status-sync!` 镜像 `world.status` | `edit-tui/app` |
+| `34-statusbar.rkt` | **状态栏 + 输入栏**（内置）：状态栏显示焦点行列 / buffer 路径 / 键序列（`world.pending`）；带 `#:input` 的命令自动切输入栏（Enter 提交 / Esc 取消），提交/取消后回状态栏并清序列 | `edit-tui/app` |
 
 ## 分层速查
 

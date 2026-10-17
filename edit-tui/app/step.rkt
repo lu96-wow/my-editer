@@ -20,6 +20,8 @@
          "doc-kind.rkt"
          "panel-ref.rkt"
          "ops.rkt"
+         "slot.rkt"
+         "minibuffer.rkt"
          "../command/main.rkt"
          "../layout/main.rkt"
          "../../core/editor.rkt")
@@ -70,9 +72,8 @@
      ;; 命中叶子：先清前缀（并清掉前缀提示 status），再执行命令。
      (run-command (world-set-status (world-set-pending w '()) "") cmd ev)]
     [(prefix)
-     ;; 命中前缀：存进 world（纯数据），状态行显示待续序列。
-     (values (world-mark-dirty (world-set-status (world-set-pending w seq) (pending->string seq)))
-             '())]
+     ;; 命中前缀：存进 world（纯数据）；状态栏投影会显示待续序列。
+     (values (world-mark-dirty (world-set-pending w seq)) '())]
     [else
      ;; 未命中：清前缀。可打印字符 → 插入文本；否则记状态行。
      (define w1 (world-set-pending w '()))
@@ -113,9 +114,6 @@
           (keytable-lookup t seq)
           (values s c))))
   (values s c))
-
-(define (pending->string seq)
-  (string-join (map key->string seq) " "))
 
 ;;; ════════════════════════ 插入文本（键盘 / 粘贴共用） ════════════════════════
 
@@ -207,9 +205,18 @@
 (define (run-command w cmd ev [ref #f] [panel #f] [doc-point #f])
   (cond
     [(command-needs-input? cmd)
-     ;; 暂定：带 input spec 的命令先只提示；minibuffer 拓展层接上后在这里 push layer。
-     (values (world-mark-dirty (world-set-status w (input-prompt (command-input cmd))))
-             '())]
+     (define prompt (input-prompt (command-input cmd)))
+     (cond
+       ;; 宿主没装输入槽 → 退回旧行为：只把 prompt 写进状态行
+       [(not (slot-of w))
+        (values (world-mark-dirty (world-set-status w prompt)) '())]
+       [else
+        ;; 带 input spec：存输入会话 + 切输入栏；prompt 写进输入 buffer 留给解释器。
+        (define w1 (minibuffer-enter w cmd prompt))
+        (values (world-mark-dirty w1)
+                (list (invoke (λ ()
+                                (define iv (slot-member w1 'input))
+                                (when iv (minibuffer-set-prompt! iv prompt))))))])]
     [else
      (define c (make-ctx w ev ref panel doc-point))
      (define intents (->intent-list ((command-run cmd) c)))
