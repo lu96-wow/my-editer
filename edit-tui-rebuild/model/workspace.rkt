@@ -48,23 +48,30 @@
          workspace-region-active
          workspace-region-views
          workspace-set-focus workspace-set-focus* workspace-pop-focus
-         workspace-focus-view)
+         workspace-focus-view
+         workspace-set-root
+         workspace-set-placement)
 
 ;;; ---------- 元数据 ----------
 
-(struct doc-meta (name path mode saved-version keymap-layers) #:transparent)
+(struct doc-meta (name path mode saved-version keymap-layers internal?) #:transparent)
 ;; name          : string（展示 / 状态栏）
 ;; path          : string | #f（内存文档无路径）
 ;; mode          : symbol（原 doc-kind；决定默认命令表）
 ;; saved-version : any/c（引擎版本标记；#f = 未保存过 / 新文档）
 ;; keymap-layers : (listof keymap)（per-doc 覆盖层，优先于 mode 默认表）
+;; internal?     : bool  基础设施文档（状态栏 / 输入栏 / 面板）
+;;                 -> 不参与保存确认、不进资源列表、不能当 placement 目标。
+;;                 由创建方声明（bootstrap/panel.rkt 默认 #t），
+;;                 框架不需要维护“哪些 mode 是 chrome”的字面量列表。
 
 (define (make-doc-meta name
                        #:path [path #f]
                        #:mode [mode 'text]
                        #:saved-version [saved-version #f]
-                       #:keymap-layers [keymap-layers '()])
-  (doc-meta name path mode saved-version keymap-layers))
+                       #:keymap-layers [keymap-layers '()]
+                       #:internal? [internal? #f])
+  (doc-meta name path mode saved-version keymap-layers internal?))
 
 (struct view-meta (doc options) #:transparent)
 ;; doc     : doc-id
@@ -89,7 +96,7 @@
 
 ;;; ---------- workspace ----------
 
-(struct workspace (docs views regions layout overlays focus stack) #:transparent)
+(struct workspace (docs views regions layout overlays focus stack root placement) #:transparent)
 ;; docs    : (hash/c doc-id doc-meta)
 ;; views   : (hash/c view-id view-meta)
 ;; regions : (hash/c region-id region)
@@ -97,9 +104,15 @@
 ;; overlays: (listof overlay)（暂定）
 ;; focus   : view-id | #f
 ;; stack   : (listof view-id)
+;; root    : string   工作区根目录（绝对路径；"" = 未设置）
+;;           文档路径相对于它投影（状态栏），文件树也以它为根。
+;;           放在 workspace 而不是某个面板的切片的理由：它不是某一个面板的 UI 状态，
+;;           而是“这个工作区从哪里看”的框架级信息；面板拔掉也不应该丢。
+;; placement: view-id | #f  正在等待“放进某个 panel”的 view（placement 模式）
+;;           资源面板和文件树面板都会发起它，所以属于 workspace，不是某个面板的切片。
 
 (define (workspace-empty)
-  (workspace (hash) (hash) (hash) (empty-tree) '() #f '()))
+  (workspace (hash) (hash) (hash) (empty-tree) '() #f '() "" #f))
 
 ;; 允许调用方只覆盖部分字段；其余保持空。
 (define (make-workspace #:docs [docs (hash)]
@@ -108,8 +121,16 @@
                         #:layout [layout (empty-tree)]
                         #:overlays [overlays '()]
                         #:focus [focus #f]
-                        #:stack [stack '()])
-  (workspace docs views regions layout overlays focus stack))
+                        #:stack [stack '()]
+                        #:root [root ""]
+                        #:placement [placement #f])
+  (workspace docs views regions layout overlays focus stack root placement))
+
+(define (workspace-set-root w root)
+  (struct-copy workspace w [root root]))
+
+(define (workspace-set-placement w vid)
+  (struct-copy workspace w [placement vid]))
 
 ;;; ---------- 查 ----------
 

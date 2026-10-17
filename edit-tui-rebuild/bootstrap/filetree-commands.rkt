@@ -112,7 +112,7 @@
       (attach-and-focus s1 rid vid)
       (transition-pure
        (state-chrome*
-        (state-resources* s1 (λ (r) (resources-set-pending r vid)))
+        (state-workspace* s1 (λ (w) (workspace-set-placement w vid)))
         (λ (c) (chrome-set-message c "open file: choose target panel"))))))
 
 (define (open-file-placement ctx state path)
@@ -192,7 +192,7 @@
          (if (state-input-active? s)
              (message ctx "filetree: input active")
              (let ()
-               (define f (state-filetree s))
+               (define f (plugin-state s 'filetree (empty-filetree)))
                (define rvid (filetree-view f))
                (define ws (state-workspace s))
                (define reg (and rvid (workspace-view-region ws rvid)))
@@ -208,7 +208,7 @@
                      (define w (state-window s))
                      (define area (rect 0 0 (window-cols w) (window-rows w)))
                      (define size (or (region-content-size layout area rid axis) 0))
-                     (define s1 (state-filetree* s (λ (f*) (filetree-set-width f* size))))
+                     (define s1 (plugin-state* s 'filetree (λ (f*) (filetree-set-width f* size)) (empty-filetree)))
                      (define ws1 (struct-copy workspace ws [layout (tree-hide layout rid)]))
                      (define ws2
                        (if (equal? (state-focus s1) rvid)
@@ -217,8 +217,7 @@
                                                             (not (equal? v rvid))
                                                             (let ([dm (workspace-doc ws1 (view-meta-doc vm))])
                                                               (and dm
-                                                                   (not (memq (doc-meta-mode dm)
-                                                                              '(status state input resources filetree)))))))
+                                                                   (not (doc-meta-internal? dm))))))
                                       v)])
                              (workspace-set-focus* ws1 fb #:push? #f))
                            ws1))
@@ -242,10 +241,11 @@
            [(not l) (message ctx "filetree: no line")]
            [(filetree-dir? l)
             (transition-pure
-             (state-filetree*
-              (ctx-state ctx)
+             (plugin-state*
+              (ctx-state ctx) 'filetree
               (λ (f) (filetree-toggle-expand
-                      f (filetree-normalize-path (filetree-line-path l))))))]
+                      f (filetree-normalize-path (filetree-line-path l))))
+              (empty-filetree)))]
            [else
             (open-file-placement ctx (ctx-state ctx) (filetree-line-path l))]))))
 

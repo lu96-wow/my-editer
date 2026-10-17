@@ -42,17 +42,20 @@
 
 ;; 建一个空白的 document + view。
 ;;   name / mode -> doc-meta；options -> view-meta
+;;   internal? 默认 #t：面板 / chrome 的文档是基础设施，不参与保存/资源列表/placement
 ;; → (values state' view-id)
 (define (panel-create-view! engine state
                             #:name [name "*panel*"]
                             #:mode [mode 'text]
-                            #:options [options (hash)])
+                            #:options [options (hash)]
+                            #:internal? [internal? #t])
   (define-values (did s1) (state-next-id state 'doc))
   (define-values (vid s2) (state-next-id s1 'view))
   (void (engine-create-doc! engine did name ""))
   (void (engine-create-view! engine vid did))
   (define ws (state-workspace s2))
-  (define ws1 (workspace-add-doc ws did (make-doc-meta name #:mode mode)))
+  (define ws1 (workspace-add-doc ws did
+                                 (make-doc-meta name #:mode mode #:internal? internal?)))
   (define ws2 (workspace-add-view ws1 vid (view-meta did options)))
   (values (state-set-workspace s2 ws2) vid))
 

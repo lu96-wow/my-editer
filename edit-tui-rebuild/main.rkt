@@ -5,15 +5,15 @@
 ;;; 只聚合“给宿主用”的模块；实现模块仍可直接 require。
 ;;;
 ;;;   base/      id / event / effect / transition / keymap / status
-;;;   model/     state / workspace / input / chrome / resources / filetree
+;;;   model/     state / workspace / input / chrome / save / resources / filetree
 ;;;   env/       environment / role / mode / scope / command / rule / doc-type /
 ;;;              input-command / defaults
 ;;;   dispatch/  pipeline（event -> transition）
 ;;;   effects/   engine（唯一 core 拥有者）/ interpreter
 ;;;   projection/ geometry / render / status / resources / filetree
 ;;;   bootstrap/ panel（通用装配）/ plugin（插件描述符+纯装配）/ defaults / commands /
-;;;              chrome / resource-panel + resource-commands /
-;;;              filetree-panel + filetree-commands
+;;;              chrome / resource-panel + resource-commands + resource-plugin /
+;;;              filetree-panel + filetree-commands + filetree-plugin
 ;;;   runtime/   run-app（唯一不纯的装配/循环）
 ;;;
 ;;; 典型用法见 demo/basic.rkt。
@@ -35,6 +35,7 @@
          "model/workspace.rkt"
          "model/input.rkt"
          "model/chrome.rkt"
+         "model/save.rkt"
          "model/resources.rkt"
          "model/filetree.rkt")
 
@@ -67,8 +68,10 @@
          (except-in "bootstrap/chrome.rkt" input-show)
          "bootstrap/resource-panel.rkt"
          "bootstrap/resource-commands.rkt"
+         "bootstrap/resource-plugin.rkt"
          "bootstrap/filetree-panel.rkt"
-         "bootstrap/filetree-commands.rkt")
+         "bootstrap/filetree-commands.rkt"
+         "bootstrap/filetree-plugin.rkt")
 
 ;;; ── 输入栏 API + runtime ──
 (require "input.rkt"
@@ -86,7 +89,8 @@
                        "model/workspace.rkt"
                        "model/input.rkt"
                        "model/chrome.rkt"
-                       "model/resources.rkt"
+                       "model/save.rkt"
+         "model/resources.rkt"
                        "model/filetree.rkt"
                        "env/environment.rkt"
                        "env/role.rkt"
@@ -111,8 +115,10 @@
                        "bootstrap/commands.rkt"
                        "bootstrap/resource-panel.rkt"
                        "bootstrap/resource-commands.rkt"
+                       "bootstrap/resource-plugin.rkt"
                        "bootstrap/filetree-panel.rkt"
                        "bootstrap/filetree-commands.rkt"
+                       "bootstrap/filetree-plugin.rkt"
                        "input.rkt"
                        "runtime/run.rkt")
          (all-from-out "bootstrap/chrome.rkt"))

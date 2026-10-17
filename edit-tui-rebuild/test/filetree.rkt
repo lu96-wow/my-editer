@@ -23,7 +23,7 @@
          "../model/resources.rkt"
          "../model/filetree.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/filetree-panel.rkt"
+         "../bootstrap/filetree-plugin.rkt"
          "../projection/geometry.rkt"
          "../../core/view/base/rect.rkt"
          (except-in "../bootstrap/chrome.rkt" input-show)
@@ -78,7 +78,7 @@
 (define s-hidden (feed engine state (ctrl 'b)))
 (check-false (tree-visible? (workspace-layout (state-workspace s-hidden)) ft-rid))
 (check-false (state-focus s-hidden))
-(define hidden-size (filetree-width (state-filetree s-hidden)))
+(define hidden-size (filetree-width (plugin-state s-hidden 'filetree (empty-filetree))))
 (check-true (and hidden-size (>= hidden-size 20)))
 (define s-shown (feed engine s-hidden (ctrl 'b)))
 (check-true (tree-visible? (workspace-layout (state-workspace s-shown)) ft-rid))
@@ -88,8 +88,9 @@
 
 ;; 记录为 0 -> 显示时用最小值 20
 (define s-hidden-zero (feed engine s-shown (ctrl 'b)))
-(define s-zero (state-filetree* s-hidden-zero
-                               (λ (f) (filetree-set-width f 0))))
+(define s-zero (plugin-state* s-hidden-zero 'filetree
+                               (λ (f) (filetree-set-width f 0))
+                               (empty-filetree)))
 (define s-show-zero (feed engine s-zero (ctrl 'b)))
 (define ft-leaf-zero (tree-find (workspace-layout (state-workspace s-show-zero)) ft-rid))
 (check-true (dim-fixed? (leaf-dim ft-leaf-zero)))
@@ -165,8 +166,8 @@
 (sync-filetree-panel! s-open-ft engine)
 (define b-idx (index-of-line s-open-ft (λ (l) (equal? (filetree-line-path l) (filetree-normalize-path b-path)))))
 (define s-pending (feed engine (set-line! s-open-ft b-idx) (app:key-event (key 'enter))))
-(check-not-false (resources-pending (state-resources s-pending)))
-(define pending-vid (resources-pending (state-resources s-pending)))
+(check-not-false (workspace-placement (state-workspace s-pending)))
+(define pending-vid (workspace-placement (state-workspace s-pending)))
 (check-false (workspace-view-attached? (state-workspace s-pending) pending-vid))
 ;; 聚焦目标 editor panel
 (define s-target (feed engine s-pending (meta 'right)))
@@ -252,7 +253,7 @@
 (define t-rp (for/first ([p (in-list t-rps)] #:when (equal? (region-panel-region p) fr2)) p))
 (define width-before (rect-w (region-panel-content t-rp)))
 (define t-hidden (feed e2 t4 (ctrl 'b)))
-(check-equal? (filetree-width (state-filetree t-hidden)) width-before)
+(check-equal? (filetree-width (plugin-state t-hidden 'filetree (empty-filetree))) width-before)
 (define t-shown (feed e2 t-hidden (ctrl 'b)))
 (define-values (t-rps2 _t-cuts2) (geometry-solve (workspace-layout (state-workspace t-shown)) t-area))
 (define t-rp2 (for/first ([p (in-list t-rps2)] #:when (equal? (region-panel-region p) fr2)) p))

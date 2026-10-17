@@ -17,8 +17,7 @@
 ;;;   2. 焦点移到目标 panel（鼠标/M-方向），按 C-x C-p 提交。
 ;;; 提交时替换目标 region 的 active view；旧 view 被 detach，不销毁。
 
-(provide resource-keys resource-command-table
-         placement-keys placement-scope)
+(provide resource-keys resource-command-table)
 
 (require "../base/id.rkt"
          "../base/effect.rkt"
@@ -70,8 +69,9 @@
          (define l (selected-line ctx))
          (if (and l (resource-doc-line? l))
              (transition-pure
-              (state-resources* (ctx-state ctx)
-                                (λ (r) (resources-toggle-collapse r (resource-line-doc l)))))
+              (plugin-state* (ctx-state ctx) 'resources
+                                (λ (r) (resource-panel-toggle-collapse r (resource-line-doc l)))
+                                (resource-panel-empty)))
              (message ctx "resources: select a document line")))))
 
 ;; Enter:
@@ -85,8 +85,9 @@
            [(not l) (message ctx "resources: no line")]
            [(resource-doc-line? l)
             (transition-pure
-             (state-resources* (ctx-state ctx)
-                               (λ (r) (resources-toggle-collapse r (resource-line-doc l)))))]
+             (plugin-state* (ctx-state ctx) 'resources
+                               (λ (r) (resource-panel-toggle-collapse r (resource-line-doc l)))
+                               (resource-panel-empty)))]
            [else
             (define vid (resource-line-view l))
             (define s (ctx-state ctx))
@@ -99,7 +100,7 @@
                    (state-chrome* s1 (λ (c) (chrome-set-message c "opened view")))))
                 (transition-pure
                  (state-chrome*
-                  (state-resources* s (λ (r) (resources-set-pending r vid)))
+                  (state-workspace* s (λ (w) (workspace-set-placement w vid)))
                   (λ (c) (chrome-set-message c "place: choose target panel")))))]))))
 
 (define (new-view-command)
@@ -131,8 +132,8 @@
              (message ctx "resources: select a view")
              (transition-pure
               (state-chrome*
-               (state-resources* (ctx-state ctx)
-                                 (λ (r) (resources-set-pending r vid)))
+               (state-workspace* (ctx-state ctx)
+                                 (λ (w) (workspace-set-placement w vid)))
                (λ (c) (chrome-set-message c "place: choose target panel, then C-x C-p"))))))))
 
 (define (detach-selected-command)
@@ -160,72 +161,6 @@
                           (λ (ws) (workspace-remove-view ws vid)))
                          (list (close-view-effect vid)))))))
 
-(define (cancel-placement-command)
-  (cmd (λ (ctx)
-         (transition-pure
-          (state-resources* (ctx-state ctx)
-                            (λ (r) (resources-set-pending r #f)))))))
-
-;; 把 pending view 放到 target（view-id / region-id）所在 region。
-(define (place-into ctx target)
-  (define s (ctx-state ctx))
-  (define r (state-resources s))
-  (define selected (resources-pending r))
-  (cond
-    [(not selected) (message ctx "place: no selected view")]
-    [else
-     (define ws (state-workspace s))
-     (cond
-       [(not (workspace-view ws selected))
-        (transition-pure
-         (state-chrome*
-          (state-resources* s (λ (r) (resources-set-pending r #f)))
-          (λ (c) (chrome-set-message c "place: selected view no longer exists"))))]
-       [else
-        (define target-reg
-          (cond
-            [(and target (view-id? target)) (workspace-view-region ws target)]
-            [(and target (region-id? target)) (workspace-region ws target)]
-            [else #f]))
-        (cond
-          [(not target-reg) (message ctx "place: choose a target panel")]
-          [else
-           (define target-region (workspace-region ws (region-key target-reg)))
-           (define target-active (region-active target-region))
-           (define target-active-view
-             (and target-active (workspace-view ws target-active)))
-           (define target-doc
-             (and target-active-view (workspace-doc ws (view-meta-doc target-active-view))))
-           (cond
-             [(or (memq (region-role target-region) '(slot resource filetree))
-                  (and target-doc
-                       (memq (doc-meta-mode target-doc) '(status state input resources filetree))))
-              (message ctx "place: target is chrome, choose an editor panel")]
-             [else
-              (define ws1
-                (if (and target-active-view (not (equal? target-active selected)))
-                    (workspace-detach-view ws target-active)
-                    ws))
-              (define ws2 (workspace-attach-view ws1 (region-key target-reg) selected))
-              (define s1 (state-set-workspace s ws2))
-              (define s2 (state-resources* s1 (λ (r) (resources-set-pending r #f))))
-              (transition-pure
-               (state-chrome*
-                (state-set-focus s2 selected)
-                (λ (c) (chrome-set-message c "view placed"))))])])])]))
-
-(define (commit-placement-command)
-  (cmd (λ (ctx) (place-into ctx (state-focus (ctx-state ctx))))))
-
-(define (place-at-command)
-  (cmd (λ (ctx) (place-into ctx (ctx-subject ctx)))))
-
-(define placement-scope
-  (make-scope (λ (s) (and (resources-pending (state-resources s)) #t))))
-
-(define placement-keys
-  (keys [(mouse 'press 'left) 'resource-place-at]))
-
 (define (nav-command dir)
   (cmd (λ (ctx)
          (define vid (ctx-subject ctx))
@@ -248,7 +183,7 @@
    [(key 'r)      'resource-place]
    [(key 'd)      'resource-detach]
    [(key 'c)      'resource-close]
-   [(key 'escape) 'resource-cancel]))
+   [(key 'escape) 'place-cancel]))
 
 (define (resource-command-table)
   (hash 'resource-left  (nav-command 'left)
@@ -263,7 +198,4 @@
         'resource-new-doc (new-doc-command)
         'resource-place (start-placement-command)
         'resource-detach (detach-selected-command)
-        'resource-close (close-selected-command)
-        'resource-cancel (cancel-placement-command)
-        'resource-place-commit (commit-placement-command)
-        'resource-place-at (place-at-command)))
+        'resource-close (close-selected-command)))

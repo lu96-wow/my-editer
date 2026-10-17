@@ -14,7 +14,10 @@
          attach-detached-command
          cycle-region-view-command
          default-input-commands
-         focus-move-command)
+         focus-move-command
+         place-into
+         placement-keys
+         placement-scope)
 
 (require racket/path
          "../base/id.rkt"
@@ -25,12 +28,15 @@
          "../model/layout.rkt"
          "../model/chrome.rkt"
          "../model/input.rkt"
-         "../model/resources.rkt"
+         "../model/save.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
          "../env/doc-type.rkt"
          "../env/input-command.rkt"
          "../env/role.rkt"
+         "../env/scope.rkt"
+         "../base/keymap.rkt"
+         "../../edit-tui/command/mouse.rkt"
          "../projection/geometry.rkt"
          "../effects/engine.rkt"
          "../../core/editor/ops.rkt"
@@ -41,8 +47,6 @@
          "../dispatch/context.rkt"
          (except-in "../bootstrap/chrome.rkt" input-show)
          "../input.rkt"
-         "../bootstrap/resource-commands.rkt"
-         "../bootstrap/filetree-commands.rkt"
          (prefix-in app: "../base/event.rkt"))
 
 ;;; ════════════════ 小工具 ════════════════
@@ -273,7 +277,7 @@
        (or (not saved) (not (engine-version=? saved cur)))))
 
 (define (saveable-doc? dm)
-  (not (memq (doc-meta-mode dm) '(status state input resources filetree))))
+  (not (doc-meta-internal? dm)))
 
 (define (dirty-docs state ev)
   (sort (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
@@ -310,7 +314,7 @@
 
 ;; 当前 confirm 的 doc。
 (define (confirm-current-doc state)
-  (define c (resources-confirm (state-resources state)))
+  (define c (state-confirm state))
   (and c
        (let ([idx (save-confirm-index c)])
          (and (< idx (length (save-confirm-docs c)))
@@ -329,14 +333,12 @@
   (define base (if (input-active? (ctx-state ctx))
                    (input-cancel ctx)
                    (ctx-state ctx)))
-  (define s1 (state-resources*
-              base
-              (λ (r) (resources-set-confirm r (make-save-confirm docs action)))))
+  (define s1 (state-set-confirm base (make-save-confirm docs action)))
   (save-confirm-show-state s1 (car docs)))
 
 ;; 当前项处理完：还有下一个 -> 显示下一项；否则执行 action。
 (define (confirm-next state)
-  (define c (resources-confirm (state-resources state)))
+  (define c (state-confirm state))
   (cond
     [(not c) (transition-pure state)]
     [else
@@ -344,18 +346,15 @@
      (define idx* (add1 (save-confirm-index c)))
      (if (< idx* (length docs))
          (let* ([did (list-ref docs idx*)]
-                [s1 (state-resources*
-                     state
-                     (λ (r)
-                       (resources-set-confirm
-                        r (struct-copy save-confirm c [index idx*]))))])
+                [s1 (state-set-confirm
+                     state (struct-copy save-confirm c [index idx*]))])
            (save-confirm-show-state s1 did))
          (confirm-finish state))]))
 
 (define (confirm-finish state)
-  (define c (resources-confirm (state-resources state)))
+  (define c (state-confirm state))
   (define action (and c (save-confirm-action c)))
-  (define s1 (state-resources* state (λ (r) (resources-set-confirm r #f))))
+  (define s1 (state-set-confirm state #f))
   (cond
     [(eq? action 'quit) (transition-pure (state-mark-quit s1))]
     [(and (pair? action) (eq? (car action) 'close-doc))
@@ -394,13 +393,10 @@
      (cond
        ;; 没有 path：停在当前项，提示用户 y 走 Save as。
        [(not (doc-meta-path dm))
-        (define c (resources-confirm (state-resources state)))
+        (define c (state-confirm state))
         (define idx (+ (save-confirm-index c) offset))
-        (define s1 (state-resources*
-                    state
-                    (λ (r)
-                      (resources-set-confirm
-                       r (struct-copy save-confirm c [index idx])))))
+        (define s1 (state-set-confirm
+                    state (struct-copy save-confirm c [index idx])))
         (save-confirm-show-state
          (notice-state-value s1 (format "no path; press y to Save as: ~a"
                                         (doc-label s1 did)))
@@ -442,7 +438,7 @@
 ;; 把整串输入（prompt + answer）交给 handler。
 (define (handle-save-answer ctx state answer)
   (define a (string-trim answer))
-  (define c (resources-confirm (state-resources state)))
+  (define c (state-confirm state))
   (cond
     [(not c) (transition-pure state)]
     [(string=? a "y") (confirm-save-current ctx state (confirm-current-doc state))]
@@ -481,7 +477,7 @@
                              (input-show-state
                               (notice-state-value s (format "save failed: ~a" path))
                               "Save as: ")]
-                            [(resources-confirm (state-resources s)) (confirm-next s)]
+                            [(state-confirm s) (confirm-next s)]
                             [else (notice-state s (format "saved: ~a" path))])))))]))
 
 (define (save-current-command)
@@ -522,16 +518,14 @@
       ;; matched = (full path answer)
       (define state (input-finish (ctx-state ctx)))
       (handle-save-answer ctx state (caddr matched)))
-    #:cancel (λ (s)
-               (state-resources* s (λ (r) (resources-set-confirm r #f)))))
+    #:cancel (λ (s) (state-set-confirm s #f)))
    (make-input-command
     'save-as
     (input-command-prefix "Save as: ")
     (λ (ctx path)
       (define state (input-finish (ctx-state ctx)))
       (save-doc-to-path ctx state path))
-    #:cancel (λ (s)
-               (state-resources* s (λ (r) (resources-set-confirm r #f)))))))
+    #:cancel (λ (s) (state-set-confirm s #f)))))
 
 (define (request-quit-command)
   (cmd (λ (ctx)
@@ -832,6 +826,78 @@
                                       (selections-one (selection anchor pt)))))
                    (transition-pure s)))))))
 
+(define (place-cancel-command)
+  (cmd (λ (ctx)
+         (transition-pure
+          (state-workspace* (ctx-state ctx)
+                            (λ (w) (workspace-set-placement w #f)))))))
+
+;;; ════════════════ placement（把 detached view 放进某个 panel） ════════════════
+;;
+;; placement 是**框架级**交互，不是某个面板的命令：
+;;   · 资源面板的 r、文件树面板的 Enter(open) 都只是把 workspace.placement 设成某个 view-id；
+;;   · 之后鼠标点目标 panel（placement scope 规则）或 C-x C-p（当前焦点）提交；
+;;   · C-x C-g / Esc 取消。
+;;
+;; 所以 place-into / scope / keys 住在这里，面板插件只负责“发起”。
+(define (place-into ctx target)
+  (define s (ctx-state ctx))
+  (define ws (state-workspace s))
+  (define selected (workspace-placement ws))
+  (cond
+    [(not selected) (message ctx "place: no selected view")]
+    [else
+     (cond
+       [(not (workspace-view ws selected))
+        (transition-pure
+         (state-chrome*
+          (state-workspace* s (λ (w) (workspace-set-placement w #f)))
+          (λ (c) (chrome-set-message c "place: selected view no longer exists"))))]
+       [else
+        (define target-reg
+          (cond
+            [(and target (view-id? target)) (workspace-view-region ws target)]
+            [(and target (region-id? target)) (workspace-region ws target)]
+            [else #f]))
+        (cond
+          [(not target-reg) (message ctx "place: choose a target panel")]
+          [else
+           (define target-region (workspace-region ws (region-key target-reg)))
+           (define target-active (region-active target-region))
+           (define target-active-view
+             (and target-active (workspace-view ws target-active)))
+           (define target-doc
+             (and target-active-view (workspace-doc ws (view-meta-doc target-active-view))))
+           ;; 目标合法性完全由 role.target? + doc.internal? 决定，不看具体面板名字。
+           (cond
+             [(or (not (role-target? (environment-role (ctx-env ctx) (region-role target-region))))
+                  (and target-doc (doc-meta-internal? target-doc)))
+              (message ctx "place: target is not an editor panel")]
+             [else
+              (define ws1
+                (if (and target-active-view (not (equal? target-active selected)))
+                    (workspace-detach-view ws target-active)
+                    ws))
+              (define ws2 (workspace-attach-view ws1 (region-key target-reg) selected))
+              (define s1 (state-set-workspace s ws2))
+              (define s2 (state-workspace* s1 (λ (w) (workspace-set-placement w #f))))
+              (transition-pure
+               (state-chrome*
+                (state-set-focus s2 selected)
+                (λ (c) (chrome-set-message c "view placed"))))])])])]))
+
+(define (place-commit-command)
+  (cmd (λ (ctx) (place-into ctx (state-focus (ctx-state ctx))))))
+
+(define (place-at-command)
+  (cmd (λ (ctx) (place-into ctx (ctx-subject ctx)))))
+
+(define placement-scope
+  (make-scope (λ (s) (and (workspace-placement (state-workspace s)) #t))))
+
+(define placement-keys
+  (keys [(mouse 'press 'left) 'place-at]))
+
 ;;; ════════════════ 默认命令表 ════════════════
 
 (define (default-command-table)
@@ -865,14 +931,13 @@
         'close-file   (request-close-file-command)
         'input-submit (input-submit-command)
         'input-cancel (input-cancel-command)
+        'place-commit (place-commit-command)
+        'place-cancel (place-cancel-command)
+        'place-at     (place-at-command)
         'focus-left   (focus-move-command 'left)
         'focus-right  (focus-move-command 'right)
         'focus-up     (focus-move-command 'up)
         'focus-down   (focus-move-command 'down)
         'pointer-press (pointer-press-command)
         'pointer-drag  (pointer-drag-command)))
-  (define h1
-    (for/fold ([h base]) ([(k v) (in-hash (resource-command-table))])
-      (hash-set h k v)))
-  (for/fold ([h h1]) ([(k v) (in-hash (filetree-command-table))])
-    (hash-set h k v)))
+  base)

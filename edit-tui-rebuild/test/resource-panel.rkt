@@ -20,7 +20,7 @@
          "../projection/geometry.rkt"
          "../../core/view/base/rect.rkt"
          "../effects/engine.rkt"
-         "../bootstrap/resource-panel.rkt"
+         "../bootstrap/resource-plugin.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 
@@ -46,7 +46,7 @@
     ws))
 (define s0 (make-state #:workspace ws0 #:ids (make-id-counter 2 2 3 1)))
 (define s1 (install-resource-panel! engine s0 rrid))
-(define rvid (resources-view (state-resources s1)))
+(define rvid (resource-panel-view (plugin-state s1 'resources (resource-panel-empty))))
 (define lay (make-split 'lr
                         (list (make-leaf rrid (flex 1))
                               (make-leaf erid (flex 2)))
@@ -93,10 +93,10 @@
 ;;; ════════════════ 折叠 ════════════════
 
 (define s2 (feed engine state (app:key-event (key 'enter))))
-(check-true (resources-collapsed? (state-resources s2) d1))
+(check-true (resource-panel-collapsed? (plugin-state s2 'resources (resource-panel-empty)) d1))
 (check-equal? (length (resource-lines s2)) 1)
 (define s3 (feed engine s2 (app:key-event (key 'enter))))
-(check-false (resources-collapsed? (state-resources s3) d1))
+(check-false (resource-panel-collapsed? (plugin-state s3 'resources (resource-panel-empty)) d1))
 (check-equal? (length (resource-lines s3)) 2)
 
 ;;; ════════════════ 面板内创建 detached view ════════════════
@@ -116,7 +116,7 @@
 (define s5 (feed engine s4 (app:key-event (key 'down))))
 (define s6 (feed engine s5 (app:key-event (key 'down))))
 (define s7 (feed engine s6 (app:key-event (key 'enter))))
-(check-equal? (resources-pending (state-resources s7)) v2)
+(check-equal? (workspace-placement (state-workspace s7)) v2)
 ;; 焦点移到右 panel
 (define s8 (feed engine s7 (meta 'right)))
 (check-equal? (state-focus s8) v1)
@@ -124,7 +124,7 @@
 (define s9 (feed engine s8 (ctrl 'x)))
 (define s10 (feed engine s9 (ctrl 'p)))
 (check-equal? (state-focus s10) v2)
-(check-false (resources-pending (state-resources s10)))
+(check-false (workspace-placement (state-workspace s10)))
 (check-equal? (region-active (workspace-view-region (state-workspace s10) v2)) v2)
 (check-false (workspace-view-attached? (state-workspace s10) v1))
 (check-true (engine-view-exists? engine v1)) ; 旧 view 只 detach，不销毁

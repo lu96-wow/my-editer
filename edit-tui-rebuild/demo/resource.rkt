@@ -37,7 +37,7 @@
          "../model/chrome.rkt"
          "../effects/engine.rkt"
          "../bootstrap/chrome.rkt"
-         "../bootstrap/resource-panel.rkt"
+         "../bootstrap/resource-plugin.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 

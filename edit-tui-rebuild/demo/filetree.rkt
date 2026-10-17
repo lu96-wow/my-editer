@@ -29,7 +29,7 @@
          "../model/chrome.rkt"
          "../effects/engine.rkt"
          "../bootstrap/chrome.rkt"
-         "../bootstrap/filetree-panel.rkt"
+         "../bootstrap/filetree-plugin.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 

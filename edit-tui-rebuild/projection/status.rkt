@@ -29,12 +29,10 @@
          racket/path
          "../base/id.rkt"
          "../model/layout.rkt"
-         "../model/filetree.rkt"
          "../base/status.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/layout.rkt"
-         "../model/filetree.rkt"
          "../model/input.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
@@ -74,10 +72,11 @@
   (define col  (and vid (engine-view-view-point-column ev vid)))
   (and line col (cons (add1 line) (add1 col))))
 
-;; 文件树根路径下的文档只显示相对路径；其它文档显示绝对路径。
+;; 工作区根目录（workspace.root）下的文档只显示相对路径；其它文档显示绝对路径。
+;; 这里不读任何面板切片：文件树插件拔掉后状态栏照常工作。
 (define (display-doc-path state dm)
   (define p (and dm (doc-meta-path dm)))
-  (define root (filetree-root (state-filetree state)))
+  (define root (workspace-root (state-workspace state)))
   (cond
     [(not p) #f]
     [(or (not root) (string=? root ""))

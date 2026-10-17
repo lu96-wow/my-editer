@@ -120,9 +120,9 @@
   (define s1 (feed eng s (plain #\x)))      ; dirty
   (define s2 (feed eng s1 (ctrl 'x)))
   (define s3 (feed eng s2 (ctrl 'd)))       ; detach
-  (check-false (resources-confirm (state-resources s3)))
+  (check-false (state-confirm s3))
   (define s4 (feed eng s3 (ctrl 'w) (ctrl 'w)))       ; close view（focus 已 #f，no-op）
-  (check-false (resources-confirm (state-resources s4))))
+  (check-false (state-confirm s4)))
 
 
 ;;; ════════════════ 同一 region 多 view：cycle active / focus ════════════════

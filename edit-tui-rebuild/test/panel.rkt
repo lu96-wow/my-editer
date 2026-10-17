@@ -24,8 +24,8 @@
          "../effects/engine.rkt"
          "../env/environment.rkt"
          "../bootstrap/panel.rkt"
-         "../bootstrap/resource-panel.rkt"
-         "../bootstrap/filetree-panel.rkt"
+         "../bootstrap/resource-plugin.rkt"
+         "../bootstrap/filetree-plugin.rkt"
          "../bootstrap/defaults.rkt"
          "../../core/editor/ops.rkt"
          "../../core/editor/query.rkt"
@@ -103,7 +103,7 @@
 (check-true (positive? (string-length
                         (engine-view-view-text (make-engine-view engine) fvid))))
 (define fs1 (panel-uninstall! engine
-                             (state-filetree* fs0 (λ (f) (filetree-set-view f #f)))
+                             (plugin-state* fs0 'filetree (λ (f) (filetree-set-view f #f)) (empty-filetree))
                              srid))
 (check-equal? (filetree-panel-view fs1) #f)
 (check-eqv? (sync-filetree-panel! fs1 engine) (void))

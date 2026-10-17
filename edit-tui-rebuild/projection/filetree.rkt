@@ -7,7 +7,7 @@
 ;;;   dir    : 缩进 2 空格/层，蓝色
 ;;;   file   : 灰色；如果 workspace 里已打开同 path 的 document，则绿色
 ;;;
-;;; 展开集合在 state.filetree.expanded。
+;;; 展开集合在插件切片 store['filetree]；根目录在 workspace.root。
 
 (provide (struct-out filetree-line)
          filetree-lines
@@ -58,8 +58,8 @@
 (define (indent depth) (make-string (* 2 depth) #\space))
 
 (define (filetree-lines state)
-  (define f (state-filetree state))
-  (define root (filetree-root f))
+  (define root (workspace-root (state-workspace state)))
+  (define f (plugin-state state 'filetree (empty-filetree)))  ; 只管 expanded
   (define opened (open-doc-paths state))
   (cond
     [(or (not root) (string=? root "")) '()]

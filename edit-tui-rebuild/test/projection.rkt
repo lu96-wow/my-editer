@@ -96,14 +96,14 @@
 (check-true (string-contains? (status-line s0 ev) "1:1"))
 (check-true (string-contains? (status-line s0 ev) "/tmp/main.rkt"))
 
-;; 文件树根下的 doc 显示相对路径；根外显示绝对路径
+;; workspace.root 下的 doc 显示相对路径；根外显示绝对路径
 (define ws-root
   (workspace-add-doc (state-workspace s0) did
                      (struct-copy doc-meta (workspace-doc (state-workspace s0) did)
                                   [path "/tmp/root/a/b.txt"])))
 (define s-root
-  (state-filetree* (state-set-workspace s0 ws-root)
-                   (λ (f) (filetree-set-root f "/tmp/root"))))
+  (state-set-workspace s0
+                       (workspace-set-root ws-root "/tmp/root")))
 (check-equal? (status-path s-root) "a/b.txt")
 
 (define ws-out
@@ -111,8 +111,8 @@
                      (struct-copy doc-meta (workspace-doc (state-workspace s0) did)
                                   [path "/tmp/other/x.txt"])))
 (define s-out
-  (state-filetree* (state-set-workspace s0 ws-out)
-                   (λ (f) (filetree-set-root f "/tmp/root"))))
+  (state-set-workspace s0
+                       (workspace-set-root ws-out "/tmp/root")))
 (check-equal? (status-path s-out) "/tmp/other/x.txt")
 
 ;; pending 优先于 message

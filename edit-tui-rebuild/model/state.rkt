@@ -7,9 +7,11 @@
 ;;;   workspace 文档 / 视图 / 区域 / 布局 / 焦点（model/workspace.rkt）
 ;;;   input     键序列 / 模态 / 手势 / prompt（model/input.rkt）
 ;;;   chrome    消息 / 日志（model/chrome.rkt）
+;;;   confirm   保存确认队列（model/save.rkt）
 ;;;   runtime   quit? / revision
 ;;;   ids       单调 id 分配器（document / view / region / job）
 ;;;   store     插件命名空间：symbol -> 插件自己的纯数据
+;;;             （面板切片都在这里：'resources / 'filetree …）
 ;;;
 ;;; **不装**：core 的 buffer / view 句柄、渲染 cache、inbox、线程。
 ;;; 需要读文本 / 光标时通过 engine-view（只读查询）拿；写走 effect。
@@ -17,17 +19,16 @@
 (provide (struct-out window)
          (struct-out runtime)
          (struct-out state)
-         (struct-out resources)
          make-window
          make-runtime
          make-state
          state-empty
          state-next-id
          state-set-window state-set-workspace state-set-input
-         state-set-chrome state-set-runtime state-set-ids state-set-resources
-         state-set-filetree state-set-store
-         state-workspace* state-input* state-chrome* state-runtime* state-resources*
-         state-filetree* state-store*
+         state-set-chrome state-set-runtime state-set-ids state-set-confirm
+         state-set-store
+         state-workspace* state-input* state-chrome* state-runtime* state-confirm*
+         state-store*
          plugin-state plugin-state-set plugin-state*
          state-mark-quit state-bump-revision
          state-focus state-set-focus
@@ -36,8 +37,7 @@
 (require "workspace.rkt"
          "input.rkt"
          "chrome.rkt"
-         "resources.rkt"
-         "filetree.rkt"
+         "save.rkt"
          "../base/id.rkt")
 
 ;;; ---------- 会话 ----------
@@ -59,7 +59,7 @@
 
 ;;; ---------- 根 State ----------
 
-(struct state (window workspace input chrome runtime ids resources filetree store) #:transparent)
+(struct state (window workspace input chrome runtime ids confirm store) #:transparent)
 
 (define (make-state #:window [window (make-window 24 80)]
                     #:workspace [workspace (workspace-empty)]
@@ -67,10 +67,9 @@
                     #:chrome [chrome (chrome-empty)]
                     #:runtime [runtime (make-runtime)]
                     #:ids [ids (make-id-counter)]
-                    #:resources [resources (resources-empty)]
-                    #:filetree [filetree (empty-filetree)]
+                    #:confirm [confirm #f]
                     #:store [store (hash)])
-  (state window workspace input chrome runtime ids resources filetree store))
+  (state window workspace input chrome runtime ids confirm store))
 
 (define (state-empty) (make-state))
 
@@ -82,8 +81,7 @@
 (define (state-set-chrome s c)    (struct-copy state s [chrome c]))
 (define (state-set-runtime s r)   (struct-copy state s [runtime r]))
 (define (state-set-ids s ids)     (struct-copy state s [ids ids]))
-(define (state-set-resources s r) (struct-copy state s [resources r]))
-(define (state-set-filetree s f)  (struct-copy state s [filetree f]))
+(define (state-set-confirm s c)   (struct-copy state s [confirm c]))
 (define (state-set-store s st)    (struct-copy state s [store st]))
 
 ;; 先拿当前切片、改完再放回（命令里常用）。
@@ -91,8 +89,7 @@
 (define (state-input* s f)     (state-set-input s (f (state-input s))))
 (define (state-chrome* s f)    (state-set-chrome s (f (state-chrome s))))
 (define (state-runtime* s f)   (state-set-runtime s (f (state-runtime s))))
-(define (state-resources* s f) (state-set-resources s (f (state-resources s))))
-(define (state-filetree* s f)   (state-set-filetree s (f (state-filetree s))))
+(define (state-confirm* s f)   (state-set-confirm s (f (state-confirm s))))
 (define (state-store* s f)      (state-set-store s (f (state-store s))))
 
 ;;; ---------- 插件命名空间 ----------

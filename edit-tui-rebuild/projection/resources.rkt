@@ -7,7 +7,8 @@
 ;;;   view line : 蓝色（view），缩进在 document 下
 ;;;   view line : 缩进在 doc 下；显示 region / active / detached / placing
 ;;;
-;;; 折叠集合在 state.resources.collapsed，选中项由 buffer 光标行决定。
+;;; 折叠集合在插件切片 store['resources]；placement 在 workspace.placement；
+;;; 选中项由 buffer 光标行决定。
 
 (provide (struct-out resource-line)
          resource-lines
@@ -28,7 +29,7 @@
 ;; face : symbol | #f
 
 (define (listed-doc? dm)
-  (not (memq (doc-meta-mode dm) '(status state input resources filetree))))
+  (not (doc-meta-internal? dm)))
 
 (define (doc-label dm)
   (or (doc-meta-path dm) (doc-meta-name dm) "*untitled*"))
@@ -41,7 +42,7 @@
 
 (define (resource-lines state)
   (define ws (state-workspace state))
-  (define res (state-resources state))
+  (define res (plugin-state state 'resources (resource-panel-empty)))
   (define focus (state-focus state))
   (define docs
     (sort (for/list ([(did dm) (in-hash (workspace-docs ws))]
@@ -53,7 +54,7 @@
      (define did (car p))
      (define dm (cdr p))
      (define vids (doc-views ws did))
-     (define collapsed? (resources-collapsed? res did))
+     (define collapsed? (resource-panel-collapsed? res did))
      (define doc-line
        ; 文档行像文件夹：只显示名字；view 行缩进在下面。
        (resource-line 'doc did #f
@@ -66,7 +67,7 @@
              (define reg (workspace-view-region ws vid))
              (define active? (and reg (equal? (region-active reg) vid)))
              (define focused? (equal? focus vid))
-             (define pending? (equal? (resources-pending res) vid))
+             (define pending? (equal? (workspace-placement ws) vid))
              (resource-line
               'view did vid
               (format "  ~a~a~a~a"

@@ -197,7 +197,7 @@
 ;;; ════════════════ 退出 ════════════════
 
 (define s15 (feed s-close-region (ctrl 'q)))
-(check-not-false (resources-confirm (state-resources s15)))
+(check-not-false (state-confirm s15))
 ;; nall + Enter：跳过所有 dirty docs，然后执行 quit
 (define s15a (feed s15 (plain #\n)))
 (define s15b (feed s15a (plain #\a)))

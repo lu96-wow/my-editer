@@ -1,11 +1,18 @@
 #lang racket
 
-;;; bootstrap/defaults.rkt —— 默认 Environment（命令 + 键表 + mode）
+;;; bootstrap/defaults.rkt —— 框架默认 Environment（命令 + 键表 + mode）
 ;;;
-;;; 这是可替换的“默认配置”，不是框架核心：
-;;;   · 命令实现来自 bootstrap/commands.rkt；
-;;;   · keymap 只存 command-id；
-;;;   · 用户 / 插件用 environment-merge 覆盖同名项即可。
+;;; 这里只装**框架自己**的默认值（core-env）：
+;;;   · 编辑 / 导航 / 拆分 / 焦点 / 保存 / placement；
+;;;   · editor / slot 等 mode；
+;;;   · 状态栏段、input-commands、job-done handler。
+;;;
+;;; 文件树 / 资源列表是插件（bootstrap/filetree-plugin.rkt 等）：
+;;;   (plugins-env core-env (list (filetree-plugin) (resource-plugin)))
+;;; default-env = core-env + 两个内置插件，方便 demo 直接用。
+;;;
+;;; 可替换性：命令实现来自 bootstrap/commands.rkt，keymap 只存 command-id，
+;;; 用户 / 插件用 environment-merge 覆盖同名项即可。
 ;;;
 ;;; 默认键位（最小可用）：
 ;;;   ←→↑↓ Home End      光标
@@ -17,8 +24,10 @@
 ;;;   M-←/→/↑/↓           焦点在 region 间移动
 ;;;   C-q                 退出
 
-(provide default-env
-         text-keys pointer-keys global-keys)
+(provide core-env
+         default-env
+         default-plugins
+         text-keys pointer-keys nav-keys input-keys core-global-keys)
 
 (require "../../edit-tui/command/key.rkt"
          "../../edit-tui/command/mouse.rkt"
@@ -31,10 +40,9 @@
          "../env/environment.rkt"
          "../env/defaults.rkt"
          "../projection/status.rkt"
-         "resource-commands.rkt"
-         "filetree-commands.rkt"
-         "resource-panel.rkt"
-         "filetree-panel.rkt"
+         "plugin.rkt"
+         "filetree-plugin.rkt"
+         "resource-plugin.rkt"
          "commands.rkt")
 
 (define text-keys
@@ -79,7 +87,7 @@
    [(key 'home)      'nav-home]
    [(key 'end)       'nav-end]))
 
-(define global-keys
+(define core-global-keys
   (keys
    [(key 'x 'ctrl) (key 'f 'ctrl)  'open-file]
    [(key 'x 'ctrl) (key 's 'ctrl)  'save-current]
@@ -87,11 +95,10 @@
    [(key 'x 'ctrl) (key 'd 'ctrl)  'detach-view]
    [(key 'x 'ctrl) (key 'a 'ctrl)  'attach-detached]
    [(key 'x 'ctrl) (key 'o 'ctrl)  'cycle-view]
-   [(key 'x 'ctrl) (key 'p 'ctrl)  'resource-place-commit]
-   [(key 'x 'ctrl) (key 'g 'ctrl)  'resource-cancel]
+   [(key 'x 'ctrl) (key 'p 'ctrl)  'place-commit]
+   [(key 'x 'ctrl) (key 'g 'ctrl)  'place-cancel]
    [(key 'q 'ctrl)                 'request-quit]
    [(key 'n 'ctrl)                 'new-document]
-   [(key 'b 'ctrl)                 'toggle-filetree]
    [(key 'w 'ctrl) (key 'left)     'split-left]
    [(key 'w 'ctrl) (key 'right)    'split-right]
    [(key 'w 'ctrl) (key 'up)       'split-up]
@@ -103,26 +110,23 @@
    [(key 'up 'alt)                 'focus-up]
    [(key 'down 'alt)               'focus-down]))
 
-(define default-env
+;;; ════════════════ core-env：只有框架自己 ════════════════
+
+(define core-env
   (environment-merge
    default-environment
    (make-environment
     #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
                   'status (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
                   'state  (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
-                  'input  (make-mode #:keymaps (list input-keys pointer-keys) #:fallback 'insert)
-                  'resources (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore)
-                  'filetree (make-mode #:keymaps (list filetree-keys pointer-keys) #:fallback 'ignore))
+                  'input  (make-mode #:keymaps (list input-keys pointer-keys) #:fallback 'insert))
     #:commands (default-command-table)
+    ;; placement 是框架级交互：workspace.placement + 一份 scope 规则（点目标 panel 提交）。
     #:scopes (hash 'placing placement-scope)
     #:rules (list (make-rule 'placing placement-keys))
-    #:keymaps (hash 'global global-keys)
-    #:input-commands (append (default-input-commands)
-                             filetree-input-commands)
+    #:keymaps (hash 'global core-global-keys)
+    #:input-commands (default-input-commands)
     #:status full-status-parts
-    ;; 面板每帧同步：runtime 只遍历这张表，不认识具体面板。
-    ;; 以后把 filetree / resource 拆成插件时，改由插件贡献这两项。
-    #:panel-syncs (list sync-resource-panel! sync-filetree-panel!)
     #:handlers (hash 'job-done
                      (λ (s payload)
                        (transition-pure
@@ -130,3 +134,15 @@
                                        (λ (c)
                                          (chrome-set-message
                                           c (format "job done: ~a" payload))))))))))
+
+;;; ════════════════ 内置插件 ════════════════
+
+;; 每个插件自带：面板 spec（sync 自动挂上）、mode、commands、input-commands、规则。
+(define (default-plugins)
+  (list (filetree-plugin)
+        (resource-plugin)))
+
+;;; ════════════════ default-env = core + 内置插件 ════════════════
+
+(define default-env
+  (plugins-env core-env (default-plugins)))
