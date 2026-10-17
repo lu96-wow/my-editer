@@ -76,6 +76,20 @@
          #t))
      ((write-file-effect-k effect) state ok?)]
 
+    [(make-directory-effect? effect)
+     (define ok?
+       (with-handlers ([exn:fail? (λ (_) #f)])
+         (make-directory* (make-directory-effect-path effect))
+         #t))
+     ((make-directory-effect-k effect) state ok?)]
+
+    [(delete-file-effect? effect)
+     (define ok?
+       (with-handlers ([exn:fail? (λ (_) #f)])
+         (delete-file (delete-file-effect-path effect))
+         #t))
+     ((delete-file-effect-k effect) state ok?)]
+
     [(quit-effect? effect) (transition-pure (state-mark-quit state))]
 
     [(spawn-effect? effect)

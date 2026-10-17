@@ -25,6 +25,7 @@
          "model/workspace.rkt"
          "model/input.rkt"
          "model/chrome.rkt"
+         "model/filetree.rkt"
          "env/environment.rkt"
          "env/role.rkt"
          "env/mode.rkt"
@@ -43,6 +44,8 @@
          "bootstrap/commands.rkt"
          "bootstrap/resource-panel.rkt"
          "bootstrap/resource-commands.rkt"
+         "bootstrap/filetree-panel.rkt"
+         "bootstrap/filetree-commands.rkt"
          "input.rkt"
          "runtime/run.rkt")
 
@@ -56,6 +59,8 @@
                        "model/workspace.rkt"
                        "model/input.rkt"
                        "model/chrome.rkt"
+                       "model/filetree.rkt"
+         "model/filetree.rkt"
                        "env/environment.rkt"
                        "env/role.rkt"
                        "env/mode.rkt"
@@ -73,6 +78,10 @@
                        "bootstrap/commands.rkt"
                        "bootstrap/resource-panel.rkt"
                        "bootstrap/resource-commands.rkt"
+                       "bootstrap/filetree-panel.rkt"
+                       "bootstrap/filetree-commands.rkt"
+         "bootstrap/filetree-panel.rkt"
+         "bootstrap/filetree-commands.rkt"
                        "input.rkt"
                        "runtime/run.rkt")
          (all-from-out "bootstrap/chrome.rkt"))

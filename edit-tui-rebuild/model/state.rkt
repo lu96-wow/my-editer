@@ -24,7 +24,9 @@
          state-next-id
          state-set-window state-set-workspace state-set-input
          state-set-chrome state-set-runtime state-set-ids state-set-resources
+         state-set-filetree
          state-workspace* state-input* state-chrome* state-runtime* state-resources*
+         state-filetree*
          state-mark-quit state-bump-revision
          state-focus state-set-focus
          state-input-active?)
@@ -33,6 +35,7 @@
          "input.rkt"
          "chrome.rkt"
          "resources.rkt"
+         "filetree.rkt"
          "../base/id.rkt")
 
 ;;; ---------- 会话 ----------
@@ -54,7 +57,7 @@
 
 ;;; ---------- 根 State ----------
 
-(struct state (window workspace input chrome runtime ids resources) #:transparent)
+(struct state (window workspace input chrome runtime ids resources filetree) #:transparent)
 
 (define (make-state #:window [window (make-window 24 80)]
                     #:workspace [workspace (workspace-empty)]
@@ -62,8 +65,9 @@
                     #:chrome [chrome (chrome-empty)]
                     #:runtime [runtime (make-runtime)]
                     #:ids [ids (make-id-counter)]
-                    #:resources [resources (resources-empty)])
-  (state window workspace input chrome runtime ids resources))
+                    #:resources [resources (resources-empty)]
+                    #:filetree [filetree (empty-filetree)])
+  (state window workspace input chrome runtime ids resources filetree))
 
 (define (state-empty) (make-state))
 
@@ -76,6 +80,7 @@
 (define (state-set-runtime s r)   (struct-copy state s [runtime r]))
 (define (state-set-ids s ids)     (struct-copy state s [ids ids]))
 (define (state-set-resources s r) (struct-copy state s [resources r]))
+(define (state-set-filetree s f)  (struct-copy state s [filetree f]))
 
 ;; 先拿当前切片、改完再放回（命令里常用）。
 (define (state-workspace* s f) (state-set-workspace s (f (state-workspace s))))
@@ -83,6 +88,7 @@
 (define (state-chrome* s f)    (state-set-chrome s (f (state-chrome s))))
 (define (state-runtime* s f)   (state-set-runtime s (f (state-runtime s))))
 (define (state-resources* s f) (state-set-resources s (f (state-resources s))))
+(define (state-filetree* s f)   (state-set-filetree s (f (state-filetree s))))
 
 (define (state-mark-quit s)
   (state-runtime* s (λ (r) (struct-copy runtime r [quit? #t]))))

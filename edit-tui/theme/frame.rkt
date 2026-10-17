@@ -18,4 +18,9 @@
    (list 'resource-document (style (rgb 120 220 120) #f '()))   ; 绿色：document
    (list 'resource-view     (style (rgb 150 190 230) #f '()))   ; 蓝色：view
    (list 'resource-focus    (style (rgb 120 180 240) #f '()))
-   (list 'resource-pending  (style (rgb 240 160 120) #f '()))))
+   (list 'resource-pending  (style (rgb 240 160 120) #f '()))
+   ;; 文件树
+   (list 'filetree-root (style (rgb 120 220 220) #f '(bold)))
+   (list 'filetree-dir  (style (rgb 140 190 240) #f '(bold)))
+   (list 'filetree-file (style (rgb 180 180 190) #f '()))
+   (list 'filetree-open (style (rgb 120 220 120) #f '()))))

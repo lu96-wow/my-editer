@@ -32,6 +32,7 @@
          "../env/defaults.rkt"
          "../projection/status.rkt"
          "resource-commands.rkt"
+         "filetree-commands.rkt"
          "commands.rkt")
 
 (define text-keys
@@ -104,12 +105,14 @@
                   'status (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
                   'state  (make-mode #:keymaps (list nav-keys pointer-keys) #:fallback 'ignore)
                   'input  (make-mode #:keymaps (list input-keys pointer-keys) #:fallback 'insert)
-                  'resources (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore))
+                  'resources (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore)
+                  'filetree (make-mode #:keymaps (list filetree-keys pointer-keys) #:fallback 'ignore))
     #:commands (default-command-table)
     #:scopes (hash 'placing placement-scope)
     #:rules (list (make-rule 'placing placement-keys))
     #:keymaps (hash 'global global-keys)
-    #:input-commands (default-input-commands)
+    #:input-commands (append (default-input-commands)
+                             filetree-input-commands)
     #:status full-status-parts
     #:handlers (hash 'job-done
                      (λ (s payload)

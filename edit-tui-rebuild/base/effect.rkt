@@ -26,6 +26,8 @@
 ;;;   IO / 异步 / 调度（Runtime 解释）
 ;;;     read-file-effect  path k       k : state text|#f -> transition
 ;;;     write-file-effect path text k  k : state ok? -> transition
+;;;     make-directory-effect path k   k : state ok? -> transition
+;;;     delete-file-effect path k      k : state ok? -> transition
 ;;;     spawn-effect      job thunk   完成后回投 internal-event 'job-done
 ;;;     timer-effect      delay event 到点回投 event
 ;;;     emit-effect       event       立即回投（排在当前批次后）
@@ -50,6 +52,8 @@
          (struct-out save-doc-effect)
          (struct-out read-file-effect)
          (struct-out write-file-effect)
+         (struct-out make-directory-effect)
+         (struct-out delete-file-effect)
          (struct-out spawn-effect)
          (struct-out timer-effect)
          (struct-out emit-effect)
@@ -72,6 +76,8 @@
 (struct save-doc-effect  (doc k)       #:transparent)
 (struct read-file-effect (path k)      #:transparent)
 (struct write-file-effect(path text k) #:transparent)
+(struct make-directory-effect (path k) #:transparent)
+(struct delete-file-effect (path k)    #:transparent)
 (struct spawn-effect     (job thunk)   #:transparent)
 (struct timer-effect     (delay event) #:transparent)
 (struct emit-effect      (event)       #:transparent)
@@ -85,6 +91,7 @@
       (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
       (close-doc-effect? x) (save-doc-effect? x)
       (read-file-effect? x) (write-file-effect? x)
+      (make-directory-effect? x) (delete-file-effect? x)
       (spawn-effect? x) (timer-effect? x) (emit-effect? x) (quit-effect? x)))
 
 (define (effect-kind x)
@@ -104,6 +111,8 @@
         [(save-doc-effect? x)  'save-doc]
         [(read-file-effect? x) 'read-file]
         [(write-file-effect? x)'write-file]
+        [(make-directory-effect? x) 'make-directory]
+        [(delete-file-effect? x)    'delete-file]
         [(spawn-effect? x)     'spawn]
         [(timer-effect? x)     'timer]
         [(emit-effect? x)      'emit]

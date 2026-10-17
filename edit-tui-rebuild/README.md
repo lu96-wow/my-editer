@@ -60,6 +60,7 @@ demo/
   state.rkt       主编辑区 + 一行 State 观察条
   save.rkt        status/input 共享槽 + y/n/yall/nall 保存确认
   resource.rkt    资源列表面板（buffer）+ 显式 placement
+  filetree.rkt    文件树面板（buffer）+ 文件打开 placement
 main.rkt          公共面（聚合以上）
 ```
 
@@ -100,6 +101,7 @@ racket edit-tui-rebuild/test/runtime.rkt
 racket edit-tui-rebuild/test/save.rkt
 racket edit-tui-rebuild/test/views.rkt
 racket edit-tui-rebuild/test/resource-panel.rkt
+racket edit-tui-rebuild/test/filetree.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -162,6 +164,7 @@ racket edit-tui-rebuild/demo/basic.rkt
 racket edit-tui-rebuild/demo/state.rkt   # 底部一行直接显示底层 State
 racket edit-tui-rebuild/demo/save.rkt    # status/input 共享槽 + 保存确认
 racket edit-tui-rebuild/demo/resource.rkt # 资源列表面板 + placement
+racket edit-tui-rebuild/demo/filetree.rkt [root] # 文件树面板
 ```
 
 `state.rkt` 的底栏内容：
@@ -310,3 +313,50 @@ API：
 ```
 
 `sync-resource-panel!` 由 runtime 每帧调用；资源面板不参与保存确认。
+
+
+## 文件树面板
+
+`demo/filetree.rkt [root]`：
+
+- `*filetree*` 是 core buffer view；
+- 第一行固定是根目录完整路径；
+- 目录/文件按 **2 空格/层** 缩进；
+- 颜色：
+  - 根目录青色；
+  - 目录蓝色；
+  - 文件灰色；
+  - 已打开的 document 绿色。
+- `Enter`：
+  - root/dir → 展开/折叠
+  - file → 打开：
+    - 已有 attached view → 直接聚焦已有 view；
+    - 只有 detached view → 进入 placement，用户自己选 panel；
+    - 尚未打开 → 进入 placement；没有 editor panel 时自动创建并放入。
+- `C-n f` 创建文件；
+- `C-n C-n f` 创建文件夹；
+- `C-d` 删除文件（只删文件，不删目录）；
+- 方向键 / Home / End / 鼠标点击都可用。
+
+API：
+
+```racket
+(install-filetree-panel! engine state region-id root)
+(sync-filetree-panel! state engine)
+(filetree-panel-view state)
+(filetree-lines state)
+(filetree-line-at state line)
+```
+
+文件树/资源面板自身 document 不参与保存确认。
+
+## 文件树键
+
+| 键 | 作用 |
+|---|---|
+| `Enter` | 目录折叠/展开；文件打开 |
+| `C-n f` | 创建文件 |
+| `C-n C-n f` | 创建文件夹 |
+| `C-d` | 删除文件 |
+| `←→↑↓ Home End` | 在文件树内移动 |
+| `C-x C-p` | placement 提交到当前/点击 panel |

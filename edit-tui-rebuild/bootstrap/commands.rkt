@@ -42,6 +42,7 @@
          (except-in "../bootstrap/chrome.rkt" input-show)
          "../input.rkt"
          "../bootstrap/resource-commands.rkt"
+         "../bootstrap/filetree-commands.rkt"
          (prefix-in app: "../base/event.rkt"))
 
 ;;; ════════════════ 小工具 ════════════════
@@ -272,7 +273,7 @@
        (or (not saved) (not (engine-version=? saved cur)))))
 
 (define (saveable-doc? dm)
-  (not (memq (doc-meta-mode dm) '(status state input resources))))
+  (not (memq (doc-meta-mode dm) '(status state input resources filetree))))
 
 (define (dirty-docs state ev)
   (sort (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
@@ -864,5 +865,8 @@
         'focus-down   (focus-move-command 'down)
         'pointer-press (pointer-press-command)
         'pointer-drag  (pointer-drag-command)))
-  (for/fold ([h base]) ([(k v) (in-hash (resource-command-table))])
+  (define h1
+    (for/fold ([h base]) ([(k v) (in-hash (resource-command-table))])
+      (hash-set h k v)))
+  (for/fold ([h h1]) ([(k v) (in-hash (filetree-command-table))])
     (hash-set h k v)))
