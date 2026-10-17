@@ -51,16 +51,23 @@
    [(mouse 'press 'left) 'pointer-press]
    [(mouse 'move #f)      'pointer-drag]))
 
-(define prompt-keys
+;; 输入栏是普通 document：Enter 提交 / Esc 取消，其余是编辑键。
+(define input-keys
   (keys
-   [(key 'enter)  'prompt-submit]
-   [(key 'escape) 'prompt-cancel]))
+   [(key 'enter)     'input-submit]
+   [(key 'escape)    'input-cancel]
+   [(key 'backspace) 'backspace]
+   [(key 'delete)    'delete]
+   [(key 'left)      'nav-left]
+   [(key 'right)     'nav-right]
+   [(key 'home)      'nav-home]
+   [(key 'end)       'nav-end]))
 
 (define global-keys
   (keys
    [(key 'x 'ctrl) (key 'f 'ctrl)  'open-file]
-   [(key 'x 'ctrl) (key 'k 'ctrl)  'close-file]
-   [(key 'q 'ctrl)                 'quit]
+   [(key 'x 'ctrl) (key 'k 'ctrl)  'request-close-file]
+   [(key 'q 'ctrl)                 'request-quit]
    [(key 'n 'ctrl)                 'new-document]
    [(key 'b 'ctrl)                 'split-right]
    [(key 'v 'ctrl)                 'split-down]
@@ -77,10 +84,10 @@
    (make-environment
     #:modes (hash 'text   (make-mode #:keymaps (list text-keys pointer-keys) #:fallback 'insert)
                   'status (make-mode #:fallback 'ignore)
-                  'input  (make-mode #:fallback 'insert))
+                  'input  (make-mode #:keymaps (list input-keys) #:fallback 'insert))
     #:commands (default-command-table)
-    #:keymaps (hash 'global global-keys
-                    'prompt prompt-keys)
+    #:keymaps (hash 'global global-keys)
+    #:input-commands (default-input-commands)
     #:status full-status-parts
     #:handlers (hash 'job-done
                      (λ (s payload)

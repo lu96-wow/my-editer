@@ -20,6 +20,7 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
+         "../bootstrap/chrome.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 
@@ -31,26 +32,30 @@
 (define engine (make-engine))
 (void (engine-create-doc! engine did "main.rkt"
                           "hello, rebuild!\n\nC-b/C-v split, C-w close view, M-w close panel, C-n new doc,
-C-x C-f open file, C-x C-k close file, C-q quit.\n"))
+C-x C-f open file, C-x C-k close file, C-q quit (asks to save if dirty).\n"))
 (void (engine-create-view! engine vid did))
 
 (define ws0 (workspace-empty))
-(define ws1 (workspace-add-doc ws0 did (make-doc-meta "main.rkt" #:path "main.rkt")))
+(define baseline0 (engine-view-doc-version (make-engine-view engine) did))
+(define ws1 (workspace-add-doc ws0 did (make-doc-meta "main.rkt" #:path "main.rkt" #:saved-version baseline0)))
 (define ws2 (workspace-add-view ws1 vid (view-meta did (hash))))
 (define ws3 (workspace-add-region ws2 editor-rid
                                   (region editor-rid (list (view-member vid)) vid 'editor)))
-(define ws4 (workspace-add-region ws3 status-rid
-                                  (region status-rid (list (chrome-member 'status)) 'status 'slot)))
+(define state0
+  (make-state #:workspace ws3
+              #:ids (make-id-counter 2 2 3 1)))
+(define state1 (install-chrome! engine state0 status-rid))
 (define layout*
   (make-split 'tb
               (list (make-leaf editor-rid (flex 1))
                     (make-leaf status-rid (fixed 1) #:borders '()))
               (flex 1)))
-(define ws5 (struct-copy workspace ws4 [layout layout*]))
+(define state2 (state-set-workspace state1
+                                    (struct-copy workspace (state-workspace state1)
+                                                 [layout layout*])))
 (define state
   (state-set-focus
-   (state-chrome* (make-state #:workspace ws5 #:ids (make-id-counter 2 2 3 1))
-                  (λ (c) (chrome-set-message c "ready")))
+   (state-chrome* state2 (λ (c) (chrome-set-message c "ready")))
    vid))
 
 (module+ main

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/test/dispatch.rkt —— 块 3：规则管线 / 键盘 / 鼠标 / prompt
+;;; edit-tui-rebuild/test/dispatch.rkt —— 块 3：规则管线 / 键盘 / 鼠标
 ;;;
 ;;; 运行：racket edit-tui-rebuild/test/dispatch.rkt
 
@@ -72,28 +72,12 @@
          (transition (ctx-state ctx)
                      (list (insert-text-effect (ctx-subject ctx) text))))))
 
-;; prompt 提交 / 取消
-(define (cmd-prompt-submit)
-  (cmd (λ (ctx)
-         (define s (ctx-state ctx))
-         (define p (input-prompt-session (state-input s)))
-         (transition-pure
-          (state-input*
-           (state-chrome* s (λ (c) (chrome-set-message c (prompt-text p))))
-           (λ (i) (input-set-prompt i #f)))))))
-
-(define (cmd-prompt-cancel)
-  (cmd (λ (ctx)
-         (transition-pure
-          (state-input* (ctx-state ctx) (λ (i) (input-set-prompt i #f)))))))
-
 ;; 键表
 (define mode-km
   (keys
    [(key 'a) 'note-mode]
    [(key 'x 'ctrl) (key 's 'ctrl) 'note-xs]
    [(key 'x 'ctrl) (key 'y 'ctrl) (key 'z 'ctrl) 'note-xyz]  ; C-x C-y 是前缀
-   [(key 'f 'alt) 'ask]
    [(mouse 'press 'left) 'note-click]))
 
 (define overlay-km
@@ -106,10 +90,6 @@
   (keys [(key 'd 'ctrl) 'prefix-back]
         [(key 'g 'ctrl) 'prefix-clear]))
 
-(define prompt-km
-  (keys [(key 'enter) 'prompt-submit]
-        [(key 'escape) 'prompt-cancel]))
-
 (define global-km
   (keys [(key 'q 'ctrl) 'quit-cmd]))
 
@@ -121,10 +101,6 @@
         'note-xs        (cmd-note "xs")
         'note-xyz       (cmd-note "xyz")
         'note-click     (cmd-note "click")
-        'ask            (cmd (λ (ctx) ctx)
-                              #:input (command-input-spec 'string "name: " #f))
-        'prompt-submit  (cmd-prompt-submit)
-        'prompt-cancel  (cmd-prompt-cancel)
         'prefix-back    (cmd (λ (ctx)
                                (transition-pure
                                 (state-input* (ctx-state ctx) input-clear-pending))))
@@ -143,8 +119,7 @@
     #:keymaps (hash 'global global-km
                     'overlay overlay-km
                     'doc doc-km
-                    'prefix prefix-km
-                    'prompt prompt-km))))
+                    'prefix prefix-km))))
 
 ;;; ════════════════ 键盘：mode 表 ════════════════
 
@@ -203,34 +178,6 @@
 (define-values (s-global v1*** v2*** r1***) (state* #:focus (view-id 1)))
 (define t10 (dispatch env s-global (ctrl 'q)))
 (check-true (runtime-quit? (state-runtime (transition-state t10))))
-
-;;; ════════════════ prompt ════════════════
-
-(define t11 (dispatch env s0 (alt 'f)))
-(define s11 (transition-state t11))
-(check-not-false (input-prompt-session (state-input s11)))
-(check-equal? (prompt-label (input-prompt-session (state-input s11))) "name: ")
-(check-equal? (prompt-handler (input-prompt-session (state-input s11))) 'ask)
-
-;; 输入 bob
-(define s12 (transition-state (dispatch env s11 (plain 'b))))
-(define s13 (transition-state (dispatch env s12 (plain 'o))))
-(define s14 (transition-state (dispatch env s13 (plain 'b))))
-(check-equal? (prompt-text (input-prompt-session (state-input s14))) "bob")
-
-;; backspace
-(define s15 (transition-state (dispatch env s14 (key-event (key 'backspace)))))
-(check-equal? (prompt-text (input-prompt-session (state-input s15))) "bo")
-
-;; Enter -> prompt-submit 命令（读 prompt text，写 chrome，清 prompt）
-(define t16 (dispatch env s15 (key-event (key 'enter))))
-(check-equal? (chrome-message (state-chrome (transition-state t16))) "bo")
-(check-false (input-prompt-session (state-input (transition-state t16))))
-
-;; Escape -> cancel
-(define s17 (transition-state (dispatch env s0 (alt 'f))))
-(define t18 (dispatch env s17 (key-event (key 'escape))))
-(check-false (input-prompt-session (state-input (transition-state t18))))
 
 ;;; ════════════════ 鼠标 ════════════════
 

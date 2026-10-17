@@ -5,7 +5,7 @@
 ;;;   dispatch env state event [#:subject s] [#:engine e] -> transition
 ;;;
 ;;; 关键点：
-;;;   · 键盘 / 鼠标 / prompt 共用“规则 → command-id → command”的路径；
+;;;   · 键盘 / 鼠标共用“规则 → command-id → command”的路径；
 ;;;   · keymap 叶子存 command-id，命令实现由 env 查；
 ;;;   · subject 由事件决定：键盘 = focus，鼠标 = 命中（调用方给），手势 = owner；
 ;;;   · 未命中时用 mode.fallback 决定“插入文本 / 忽略”，不再把插入写死在 step；
@@ -13,8 +13,8 @@
 ;;;
 ;;; 暂定：
 ;;;   · 鼠标 hit-test 在 projection/geometry（块 5），这里只接收 subject；
-;;;   · prompt 的文本编辑先用最小实现（append / backspace），
-;;;     prompt 专用命令表 / 输入类型在后续块完善；
+;;;   · 输入栏是普通 document；输入文本通过 input mode 的编辑命令进入 buffer，
+;;;     提交时由 input-submit 读 buffer 字符串匹配输入命令。
 ;;;   · seam 拖动是 gesture scope，等 geometry 块接。
 
 (provide dispatch
@@ -24,6 +24,7 @@
 
 (require "../base/event.rkt"
          "../base/effect.rkt"
+         "../base/keymap.rkt"
          "../base/transition.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
@@ -60,24 +61,20 @@
 (define (dispatch-key env state event subject engine)
   (define tok (key-event-token event))
   (define in (state-input state))
+  (define pending (input-pending in))
   (cond
-    ;; prompt 激活：先查 prompt 表，再走 prompt 文本编辑
-    [(input-prompt-session in) (dispatch-prompt env state event subject engine)]
-    [else
-     (define pending (input-pending in))
+    ;; pending 非空：先单独查 prefix 表（不拼进序列）
+    [(pair? pending)
+     (define-values (st v) (lookup-rules (prefix-rules env) (list tok)))
      (cond
-       ;; pending 非空：先单独查 prefix 表（不拼进序列）
-       [(pair? pending)
-        (define-values (st v) (lookup-rules (prefix-rules env) (list tok)))
-        (cond
-          [(eq? st 'leaf)
-           (run-command env
-                        (state-input* state input-clear-pending)
-                        event subject engine v)]
-          [else (dispatch-key-normal env state event subject engine
-                                     (append pending (list tok)))])]
-       [else
-        (dispatch-key-normal env state event subject engine (list tok))])]))
+       [(eq? st 'leaf)
+        (run-command env
+                     (state-input* state input-clear-pending)
+                     event subject engine v)]
+       [else (dispatch-key-normal env state event subject engine
+                                  (append pending (list tok)))])]
+    [else
+     (dispatch-key-normal env state event subject engine (list tok))]))
 
 (define (dispatch-key-normal env state event subject engine seq)
   (define-values (st v) (lookup-rules (rules-for env state subject) seq))
@@ -90,41 +87,6 @@
      (transition-pure (state-input* state (λ (i) (input-set-pending i seq))))]
     [else
      (dispatch-unbound env state (key-event-token event) subject)]))
-
-;;; ════════════════ prompt（暂定最小） ════════════════
-
-(define (dispatch-prompt env state event subject engine)
-  (define tok (key-event-token event))
-  (define-values (st v) (lookup-rules (prompt-rules env) (list tok)))
-  (cond
-    [(eq? st 'leaf)
-     (run-command env
-                  (state-input* state input-clear-pending)
-                  event subject engine v)]
-    [else
-     (define text (token-text tok))
-     (define p (input-prompt-session (state-input state)))
-     (cond
-       [text
-        (transition-pure
-         (state-input* state
-                        (λ (i)
-                          (input-set-prompt i
-                                            (struct-copy prompt p
-                                                         [text (string-append (prompt-text p) text)])))))]
-       [(eq? (key-name tok) 'backspace)
-        (transition-pure
-         (state-input* state
-                        (λ (i)
-                          (input-set-prompt i (prompt-delete-last p)))))]
-       [else
-        (notice state (format "prompt: unbound ~a" (key->string tok)))])]))
-
-(define (prompt-delete-last p)
-  (define s (prompt-text p))
-  (if (zero? (string-length s))
-      p
-      (struct-copy prompt p [text (substring s 0 (sub1 (string-length s)))])))
 
 ;;; ════════════════ 鼠标 ════════════════
 
@@ -191,17 +153,8 @@
     [(not c)
      (notice state (format "unknown command: ~a" id))]
     [(command-needs-input? c)
-     (define spec (command-input c))
-     (define init (command-input-spec-init spec))
-     (transition-pure
-      (state-input* state
-                     (λ (i)
-                       (input-set-prompt
-                        i
-                        (make-prompt (command-input-spec-kind spec)
-                                     #:label (command-input-spec-prompt spec)
-                                     #:text (if (string? init) init "")
-                                     #:handler id)))))]
+     ;; rebuild 的输入栏是 document；旧 command #:input 不再驱动 state prompt。
+     (notice state (format "command ~a needs input; use input document" id))]
     [else
      (define ctx (make-ctx env state event subject engine))
      (define t (command-run/ctx c ctx))

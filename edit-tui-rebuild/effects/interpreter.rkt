@@ -98,9 +98,12 @@
   (define-values (vid s2) (state-next-id s1 'view))
   (engine-create-doc! engine did (open-doc-spec-name spec) (open-doc-spec-text spec))
   (engine-create-view! engine vid did #:line-numbers? (open-doc-spec-line-numbers? spec))
+  ;; 打开时把“当前版本”作为保存基线：新文档从 clean 开始。
+  (define version (engine-view-doc-version (make-engine-view engine) did))
   (define dm (make-doc-meta (open-doc-spec-name spec)
                             #:path (open-doc-spec-path spec)
                             #:mode (open-doc-spec-mode spec)
+                            #:saved-version version
                             #:keymap-layers (open-doc-spec-keymaps spec)))
   (define ws (state-workspace s2))
   (define ws* (workspace-add-doc ws did dm))

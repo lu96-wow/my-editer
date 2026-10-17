@@ -26,7 +26,7 @@ base/
 model/
   layout.rkt      region 布局树（纯几何，不依赖 core）
   workspace.rkt   doc / view / region / layout / focus / overlay
-  input.rkt       pending / modes / gesture / prompt
+  input.rkt       pending / modes / gesture
   chrome.rkt      message / log
   state.rkt       根 State：window / workspace / input / chrome / runtime / ids
 env/
@@ -41,13 +41,13 @@ env/
 dispatch/
   context.rkt     命令看到的 ctx（env/state/event/subject/engine）
   rules.rkt       有序规则：mode 层 / per-doc 层 / mode 默认 / global
-  pipeline.rkt    event -> transition（键盘 / 鼠标 / prompt / 内部事件）
+  pipeline.rkt    event -> transition（键盘 / 鼠标 / 内部事件）
 effects/
   engine.rkt      core buffer/view 的唯一拥有者 + 只读 engine-view + view 尺寸同步
   interpreter.rkt effect -> transition（引擎写 / open / save / 文件 IO / quit）
 projection/
   geometry.rkt    region 树 -> region-panel / 内容区 / 接缝（纯）
-  status.rkt      状态栏 / prompt 文本投影（纯）
+  status.rkt      状态栏文本投影（纯）
   render.rkt      state + engine -> panels / chrome / bytes（不输出、不写 core）
 bootstrap/
   commands.rkt    默认命令（导航 / 编辑 / split / close / focus / quit）
@@ -58,6 +58,7 @@ runtime/
 demo/
   basic.rkt       最小交互 demo
   state.rkt       主编辑区 + 一行 State 观察条
+  save.rkt        status/input 共享槽 + y/n/yall/nall 保存确认
 main.rkt          公共面（聚合以上）
 ```
 
@@ -75,13 +76,14 @@ main.rkt          公共面（聚合以上）
 - 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
   命令派发按 subject view → doc → mode/per-doc layers，不按 layout region；
 - dispatch 只接收 subject（view-id / region-id），鼠标 hit-test 留给 projection/geometry；
-- prompt 的文本编辑目前是最小实现（append / backspace），后续块再泛化输入类型；
+- 输入栏是 *input* document：prompt 前缀写进 buffer 且 readonly，输入文本就是前缀后的内容；
+  提交时读完整 buffer 字符串，交给 `environment.input-commands` 匹配；
 - State 不存 core 句柄；engine 是可变边界，命令只通过 engine-view 读；
 - `spawn` / `timer` / `emit` 是 Runtime effect，解释器显式报错，等 runtime 块接线；
 - 文档版本用 core 的 **opaque document token**：`buffer-version` / `buffer-version=?`，不存文本快照；
   编辑 -> 新 token，undo 回保存点 -> 恢复同一 token（clean），保存时用 token 做异步快照比较；
 - 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
-  chrome region（状态栏/输入栏）不是 core view，由 `projection/render` 按差异画文本；
+  status/input 是 chrome slot 里的两个 core view（buffer 支撑）；`projection/render` 也保留 projection chrome 兼容路径；
 - Runtime 是唯一不纯装配层：`with-tui` / `read-event` / `put-bytes` / inbox / spawn / timer；
   `spawn` / `timer` 的回投事件在“下一个终端事件”到达时排空（与旧骨架一致）。
 
@@ -94,6 +96,7 @@ racket edit-tui-rebuild/test/dispatch.rkt
 racket edit-tui-rebuild/test/effects.rkt
 racket edit-tui-rebuild/test/projection.rkt
 racket edit-tui-rebuild/test/runtime.rkt
+racket edit-tui-rebuild/test/save.rkt
 edit-tui-rebuild/test/run.sh
 ```
 
@@ -112,6 +115,7 @@ edit-tui-rebuild/test/run.sh
 ```bash
 racket edit-tui-rebuild/demo/basic.rkt
 racket edit-tui-rebuild/demo/state.rkt   # 底部一行直接显示底层 State
+racket edit-tui-rebuild/demo/save.rkt    # status/input 共享槽 + 保存确认
 ```
 
 `state.rkt` 的底栏内容：
@@ -133,12 +137,13 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-w` | 关闭当前 view |
 | `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
 | `C-n` | 新建 document/view（空 editor region 也能接） |
-| `C-x C-f` | 打开文件（prompt 输入路径） |
+| `C-x C-f` | 打开文件（input document 输入路径） |
 | `C-x C-k` | 关闭当前 document 的所有 view |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
-| `C-q` | 退出 |
+| `C-q` | 退出；有 dirty document 时进入保存确认 |
+| `y` / `n` / `yall` / `nall` + Enter | 保存确认：当前保存 / 跳过 / 保存剩余 / 跳过剩余 |
 
 ## 边界决定：最后一个 editor region
 
@@ -156,3 +161,27 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 3. 与 role 的 `keep-last` 语义一致，不需要在 split 时额外补 panel。
 
 代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；`C-n` 会优先找空 editor region 装新 document/view，所以空占位不是死状态。
+
+
+## 保存确认 / status+input 共享槽
+
+`demo/save.rkt` 演示：
+
+- status 与 input 都是真正的 core view（buffer 支撑），放在同一个 region；
+- 平时 active = status；prompt/保存确认时 active = input；
+- 输入结束切回 status，并恢复进入前的焦点；
+- `C-q` / `C-x C-k` 遇到 dirty document 时触发全局保存确认：
+  - `y` 保存当前；
+  - `n` 跳过当前；
+  - `yall` 保存剩余全部；
+  - `nall` 跳过剩余全部；
+  - 输入在 input buffer 里，Enter 提交。
+- status/input 的 buffer 文档 mode 是 `'status` / `'input`（state demo 可用 `'state`），
+  不参与保存确认。
+
+实现位置：
+
+- `model/resources.rkt`：`save-confirm` 队列 / 当前 index / 完成后 action；
+- `bootstrap/chrome.rkt`：安装共享槽、input show/finish、status buffer 同步；
+- `bootstrap/commands.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
+- `bootstrap/defaults.rkt`：`input-keys` + `default-input-commands`。

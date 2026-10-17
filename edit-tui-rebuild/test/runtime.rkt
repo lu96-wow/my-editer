@@ -17,7 +17,9 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../model/input.rkt"
+         "../model/resources.rkt"
          "../effects/engine.rkt"
+         "../bootstrap/chrome.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt"
          "../../core/editor/ops.rkt")
@@ -35,18 +37,21 @@
   (let* ([ws (workspace-empty)]
          [ws (workspace-add-doc ws did (make-doc-meta "main.rkt" #:path "/tmp/main.rkt"))]
          [ws (workspace-add-view ws vid (view-meta did (hash)))]
-         [ws (workspace-add-region ws erid (region erid (list (view-member vid)) vid 'editor))]
-         [ws (workspace-add-region ws srid (region srid (list (chrome-member 'status)) 'status 'slot))]
-         [lay (make-split 'tb
-                          (list (make-leaf erid (flex 1))
-                                (make-leaf srid (fixed 1) #:borders '()))
-                          (flex 1))])
-    (struct-copy workspace ws [layout lay])))
+         [ws (workspace-add-region ws erid (region erid (list (view-member vid)) vid 'editor))])
+    ws))
 
+(define s-base
+  (make-state #:workspace ws0 #:ids (make-id-counter 2 2 3 1)))
+(define s-chrome (install-chrome! engine s-base srid))
+(define lay
+  (make-split 'tb
+              (list (make-leaf erid (flex 1))
+                    (make-leaf srid (fixed 1) #:borders '()))
+              (flex 1)))
 (define s0
   (state-set-focus
-   (make-state #:workspace ws0
-               #:ids (make-id-counter 2 2 3 1))
+   (state-set-workspace s-chrome
+                        (struct-copy workspace (state-workspace s-chrome) [layout lay]))
    vid))
 
 (define inbox (make-async-channel))
@@ -98,10 +103,10 @@
 
 ;; C-b：向右切分，新 view 聚焦
 (define s11 (feed s10 (ctrl 'b)))
-(check-equal? (hash-count (engine-views engine)) 2)
-(check-equal? (hash-count (workspace-views (state-workspace s11))) 2)
-(check-equal? (workspace-focus (state-workspace s11)) (view-id 2))
-(check-equal? (state-focus s11) (view-id 2))
+(check-equal? (hash-count (engine-views engine)) 4)
+(check-equal? (hash-count (workspace-views (state-workspace s11))) 4)
+(check-equal? (workspace-focus (state-workspace s11)) (view-id 4))
+(check-equal? (state-focus s11) (view-id 4))
 ;; 同 document：两个 view 看同一 buffer
 (check-equal? (engine-view-doc-text (ev) (doc-id 1)) "Pxyabc\n")
 
@@ -111,12 +116,12 @@
 
 ;; 点击右块：焦点回到右块（mouse subject 走 geometry）
 (define s13 (feed s12 (app:mouse-event (mouse 'press 'left) 1 75)))
-(check-equal? (state-focus s13) (view-id 2))
+(check-equal? (state-focus s13) (view-id 4))
 
 ;; C-w：关闭当前 view，焦点回落到另一个 view
 (define s14 (feed s13 (ctrl 'w)))
-(check-equal? (hash-count (engine-views engine)) 1)
-(check-equal? (hash-count (workspace-views (state-workspace s14))) 1)
+(check-equal? (hash-count (engine-views engine)) 3)
+(check-equal? (hash-count (workspace-views (state-workspace s14))) 3)
 (check-equal? (state-focus s14) vid)
 
 ;;; ════════════════ 点击定位 / 拖选 ════════════════
@@ -142,12 +147,12 @@
 
 ;; 再 split 一次，然后 M-w 关闭整个 region（不是只关 view）
 (define s-split2 (feed s-release (ctrl 'b)))
-(check-equal? (hash-count (workspace-views (state-workspace s-split2))) 2)
+(check-equal? (hash-count (workspace-views (state-workspace s-split2))) 4)
 (check-equal? (hash-count (workspace-regions (state-workspace s-split2))) 4)
 (define new-rid (region-key (workspace-view-region (state-workspace s-split2)
                                                    (state-focus s-split2))))
 (define s-close-region (feed s-split2 (meta 'w)))
-(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 1)
+(check-equal? (hash-count (workspace-views (state-workspace s-close-region))) 3)
 (check-equal? (hash-count (workspace-regions (state-workspace s-close-region))) 3)
 (check-false (tree-contains? (workspace-layout (state-workspace s-close-region)) new-rid))
 (check-equal? (state-focus s-close-region) vid)
@@ -192,6 +197,13 @@
 ;;; ════════════════ 退出 ════════════════
 
 (define s15 (feed s-close-region (ctrl 'q)))
-(check-true (runtime-quit? (state-runtime s15)))
+(check-not-false (resources-confirm (state-resources s15)))
+;; nall + Enter：跳过所有 dirty docs，然后执行 quit
+(define s15a (feed s15 (plain #\n)))
+(define s15b (feed s15a (plain #\a)))
+(define s15c (feed s15b (plain #\l)))
+(define s15d (feed s15c (plain #\l)))
+(define s16 (feed s15d (app:key-event (key 'enter))))
+(check-true (runtime-quit? (state-runtime s16)))
 
 (displayln "edit-tui-rebuild runtime: ok")

@@ -10,6 +10,8 @@
 ;;;   引擎写（Engine 解释；唯一持有 core buffer/view 的地方）
 ;;;     edit-effect     view op
 ;;;     insert-text-effect view text    （text 是数据；engine 转成 op-type）
+;;;     set-text-effect    view text    （整篇设置）
+;;;     set-input-prompt-effect view prompt  （整篇设置 + prompt 前缀只读）
 ;;;     select-effect   view selections
 ;;;     scroll-effect   view delta
 ;;;     nav-effect      view dir        ('left/'right/'up/'down/'home/'end)
@@ -34,6 +36,8 @@
 
 (provide (struct-out edit-effect)
          (struct-out insert-text-effect)
+         (struct-out set-text-effect)
+         (struct-out set-input-prompt-effect)
          (struct-out select-effect)
          (struct-out scroll-effect)
          (struct-out nav-effect)
@@ -54,6 +58,8 @@
 
 (struct edit-effect   (view op)        #:transparent)
 (struct insert-text-effect (view text) #:transparent)
+(struct set-text-effect (view text)    #:transparent)
+(struct set-input-prompt-effect (view prompt) #:transparent)
 (struct select-effect (view selections)#:transparent)
 (struct scroll-effect (view delta)     #:transparent)
 (struct nav-effect     (view dir)      #:transparent)
@@ -72,7 +78,9 @@
 (struct quit-effect      ()            #:transparent)
 
 (define (effect? x)
-  (or (edit-effect? x) (insert-text-effect? x) (select-effect? x) (scroll-effect? x)
+  (or (edit-effect? x) (insert-text-effect? x) (set-text-effect? x)
+      (set-input-prompt-effect? x)
+      (select-effect? x) (scroll-effect? x)
       (nav-effect? x) (undo-effect? x) (redo-effect? x)
       (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
       (close-doc-effect? x) (save-doc-effect? x)
@@ -82,6 +90,8 @@
 (define (effect-kind x)
   (cond [(edit-effect? x)      'edit]
         [(insert-text-effect? x) 'insert-text]
+        [(set-text-effect? x)    'set-text]
+        [(set-input-prompt-effect? x) 'set-input-prompt]
         [(select-effect? x)    'select]
         [(scroll-effect? x)    'scroll]
         [(nav-effect? x)       'nav]

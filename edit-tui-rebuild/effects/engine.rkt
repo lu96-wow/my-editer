@@ -21,10 +21,12 @@
          engine-apply!
          engine-effect?
          engine-sync-view! engine-sync-views!
+         engine-set-view-text!
          ;; 只读查询接口（ctx.engine）
          (struct-out engine-view)
          make-engine-view
          engine-view-doc-text engine-view-doc-name engine-view-doc-version
+         engine-view-view-text
          engine-version=?
          engine-view-view-point engine-view-view-point-line engine-view-view-point-column
          engine-view-view-selections engine-view-view-cursor-position
@@ -102,6 +104,14 @@
     (engine-sync-view! e vid w h))
   (void))
 
+;; 直接整篇写一个 view 的 buffer（状态栏同步 / prompt 前缀用）。
+(define (engine-set-view-text! e vid text)
+  (define v (engine-view-object e vid))
+  (when v
+    (buffer-set-document! (view-buffer v) text)
+    (view-set-point! v (point 0 (string-length text))))
+  (void))
+
 ;;; ---------- 删除 ----------
 
 (define (engine-remove-view! e vid)
@@ -127,8 +137,10 @@
 ;;; ════════════════════════ 写效果（引擎部分） ════════════════════════
 
 (define (engine-effect? e)
-  (or (edit-effect? e) (insert-text-effect? e) (select-effect? e)
-      (scroll-effect? e) (nav-effect? e) (undo-effect? e) (redo-effect? e)))
+  (or (edit-effect? e) (insert-text-effect? e) (set-text-effect? e)
+      (set-input-prompt-effect? e)
+      (select-effect? e) (scroll-effect? e) (nav-effect? e)
+      (undo-effect? e) (redo-effect? e)))
 
 ;; 应用一个“只改 core”的 effect。返回 void。
 ;; 不是引擎 effect（open/close/io/…）-> error，调用方应先用 engine-effect? 判断。
@@ -140,6 +152,17 @@
     [(insert-text-effect vid text)
      (define v (need-view e vid))
      (buffer-edit! (view-buffer v) v (op-type text))]
+    [(set-text-effect vid text)
+     (define v (need-view e vid))
+     (buffer-set-document! (view-buffer v) text)
+     (view-set-point! v (point 0 (string-length text)))]
+    [(set-input-prompt-effect vid prompt)
+     (define v (need-view e vid))
+     (define b (view-buffer v))
+     (define n (string-length prompt))
+     (buffer-set-document! b prompt)
+     (buffer-readonly-range! b (range-of (point 0 0) (point 0 n)) #t)
+     (view-set-point! v (point 0 n))]
     [(select-effect vid sels)
      (view-set-selections! (need-view e vid) sels)]
     [(scroll-effect vid delta)
@@ -189,6 +212,10 @@
 (define (engine-view-doc-name ev did)
   (define b (ev-buffer ev did))
   (and b (buffer-name b)))
+
+(define (engine-view-view-text ev vid)
+  (define v (ev-view ev vid))
+  (and v (buffer-string (view-buffer v))))
 
 ;; 当前文档版本 = core 的 opaque document token。
 ;; 用 engine-version=?（eq?）比较：编辑 -> 新 token；undo 回保存点 -> 恢复同一 token。

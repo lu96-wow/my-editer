@@ -24,6 +24,7 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../effects/engine.rkt"
+         "../bootstrap/chrome.rkt"
          "../bootstrap/defaults.rkt"
          "../runtime/run.rkt")
 
@@ -34,26 +35,29 @@
 
 (define engine (make-engine))
 (void (engine-create-doc! engine did "main.rkt"
-                          "State observer demo\n\nEdit this buffer. The bottom line is the raw app State:\n  focus / cursor / docs / views / regions / pending / message\n\nTry:\n  C-b  split right\n  C-v  split down\n  C-w  close view\n  M-w  close panel/region\n  M-←  move focus\n  C-q  quit\n"))
+                          "State observer demo\n\nEdit this buffer. The bottom line is the raw app State:\n  focus / cursor / docs / views / regions / pending / message\n\nTry:\n  C-b  split right\n  C-v  split down\n  C-w  close view\n  M-w  close panel/region\n  M-←  move focus\n  C-q  quit (asks to save if dirty)\n"))
 (void (engine-create-view! engine vid did))
 
 (define ws0 (workspace-empty))
-(define ws1 (workspace-add-doc ws0 did (make-doc-meta "main.rkt" #:path "main.rkt")))
+(define baseline (engine-view-doc-version (make-engine-view engine) did))
+(define ws1 (workspace-add-doc ws0 did (make-doc-meta "main.rkt" #:path "main.rkt"
+                                                      #:saved-version baseline)))
 (define ws2 (workspace-add-view ws1 vid (view-meta did (hash))))
 (define ws3 (workspace-add-region ws2 editor-rid
                                   (region editor-rid (list (view-member vid)) vid 'editor)))
-(define ws4 (workspace-add-region ws3 state-rid
-                                  (region state-rid (list (chrome-member 'state)) 'state 'slot)))
+(define state0 (make-state #:workspace ws3 #:ids (make-id-counter 2 2 3 1)))
+(define state1 (install-chrome! engine state0 state-rid #:status-mode 'state))
 (define layout*
   (make-split 'tb
               (list (make-leaf editor-rid (flex 1))
                     (make-leaf state-rid (fixed 1) #:borders '()))
               (flex 1)))
-(define ws5 (struct-copy workspace ws4 [layout layout*]))
+(define state2 (state-set-workspace state1
+                                    (struct-copy workspace (state-workspace state1)
+                                                 [layout layout*])))
 (define state
   (state-set-focus
-   (state-chrome* (make-state #:workspace ws5 #:ids (make-id-counter 2 2 3 1))
-                  (λ (c) (chrome-set-message c "ready")))
+   (state-chrome* state2 (λ (c) (chrome-set-message c "ready")))
    vid))
 
 (module+ main

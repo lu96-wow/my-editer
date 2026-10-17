@@ -8,7 +8,7 @@
 ;;;   其余继续下一条
 ;;;
 ;;; 层序（高 -> 低）：
-;;;   input.modes（临时模态 / overlay / prompt）
+;;;   input.modes（临时模态 / overlay）
 ;;;   document 自己的 keymap-layers（per-doc 插件覆盖）
 ;;;   mode 默认 keymaps（原 doc-kind）
 ;;;   global
@@ -20,7 +20,6 @@
          rules-for
          subject-mode-id
          prefix-rules
-         prompt-rules
          lookup-rules)
 
 (require "../base/keymap.rkt"
@@ -82,13 +81,10 @@
              #:when (scope-ok? scopes state (rule-scope r)))
     r))
 
-;; 前缀编辑 / prompt 是独立的第一层：pending 非空时先单独查 prefix 表，
-;; prompt 激活时先查 prompt 表；未命中再落普通 rules。
+;; 前缀编辑是独立的第一层：pending 非空时先单独查 prefix 表，
+;; 未命中再落普通 rules。
 (define (prefix-rules env)
   (list (make-rule 'always (environment-keymap env 'prefix))))
-
-(define (prompt-rules env)
-  (list (make-rule 'always (environment-keymap env 'prompt))))
 
 ;;; ---------- 查表 ----------
 

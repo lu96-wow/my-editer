@@ -21,7 +21,6 @@
          status-path-part
          status-sequence-part
          status-message-part
-         prompt-line
          state-line
          chrome-line
          region-line)
@@ -99,12 +98,6 @@
       (and s (positive? (string-length s)) s)))
   (string-join (filter values pieces) "  "))
 
-;;; ════════════════ prompt ════════════════
-
-(define (prompt-line state)
-  (define p (input-prompt-session (state-input state)))
-  (and p (string-append (prompt-label p) (prompt-text p))))
-
 ;;; ════════════════ 调试 State 行 ════════════════
 
 (define (state-line state ev)
@@ -132,7 +125,6 @@
   (case key
     [(status) (status-line state ev parts)]
     [(state)  (state-line state ev)]
-    [(input)  (or (prompt-line state) "")]
     [else ""]))
 
 (define (region-line state ev rid [parts #f])

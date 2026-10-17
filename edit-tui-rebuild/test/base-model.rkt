@@ -198,8 +198,6 @@
 (check-equal? (input-pending (input-clear-pending in1)) '())
 (check-equal? (input-modes (input-push-mode in0 'overlay)) '(overlay))
 (check-equal? (input-modes (input-pop-mode (input-push-mode in0 'overlay))) '())
-(check-equal? (prompt-kind (make-prompt 'string)) 'string)
-(check-equal? (prompt-label (make-prompt 'string #:label "x: ")) "x: ")
 (check-equal? (gesture-kind (make-gesture 'seam #f 'data)) 'seam)
 (check-false (idle-gesture? (make-gesture 'seam #f 'data)))
 (check-true (idle-gesture? #f))

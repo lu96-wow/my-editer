@@ -21,6 +21,7 @@
          "../env/doc-type.rkt"
          "../env/command.rkt"
          "../env/environment.rkt"
+         "../bootstrap/chrome.rkt"
          "../bootstrap/commands.rkt"
          "../bootstrap/defaults.rkt"
          "../dispatch/context.rkt"
@@ -59,17 +60,26 @@
 (void (engine-create-doc! engine did "main.rkt" "initial\n"))
 (void (engine-create-view! engine vid did))
 
-(define ws
+(define crid (region-id 2))
+(define ws0
   (let* ([ws (workspace-empty)]
          [ws (workspace-add-doc ws did (make-doc-meta "main.rkt"))]
          [ws (workspace-add-view ws vid (view-meta did (hash)))]
          [ws (workspace-add-region ws rid
                                    (region rid (list (view-member vid)) vid 'editor))])
-    (struct-copy workspace ws [layout (make-leaf rid)])))
+    ws))
+(define s-base (make-state #:workspace ws0
+                           #:ids (make-id-counter 2 2 3 1)))
+(define s-chrome (install-chrome! engine s-base crid))
+(define lay (make-split 'tb
+                        (list (make-leaf rid (flex 1))
+                              (make-leaf crid (fixed 1) #:borders '()))
+                        (flex 1)))
 (define s0
-  (state-set-focus (make-state #:workspace ws
-                               #:ids (make-id-counter 2 2 2 1))
-                   vid))
+  (state-set-focus
+   (state-set-workspace s-chrome
+                        (struct-copy workspace (state-workspace s-chrome) [layout lay]))
+   vid))
 
 (define inbox (make-async-channel))
 (define (feed s . evs)
@@ -82,25 +92,26 @@
 
 (define s1 (feed s0 (ctrl 'x)))
 (define s2 (feed s1 (ctrl 'f)))
-(check-not-false (input-prompt-session (state-input s2)))
-(check-equal? (prompt-handler (input-prompt-session (state-input s2))) 'open-file)
-(check-equal? (prompt-label (input-prompt-session (state-input s2))) "open file: ")
+(check-equal? (region-active (workspace-region (state-workspace s2) crid))
+              (chrome-input-view s2))
+(check-equal? (engine-view-view-text (ev) (chrome-input-view s2)) "Open file: ")
 
 ;; 输入路径
 (define s3
   (for/fold ([s s2]) ([c (in-string path)])
     (feed s (plain c))))
-(check-equal? (prompt-text (input-prompt-session (state-input s3))) path)
+(check-equal? (engine-view-view-text (ev) (chrome-input-view s3))
+              (string-append "Open file: " path))
 
 ;; Enter -> read-file -> open-doc -> mount
 (define s4 (feed s3 (app:key-event (key 'enter))))
-(check-equal? (hash-count (workspace-docs (state-workspace s4))) 2)
-(check-equal? (hash-count (workspace-views (state-workspace s4))) 2)
-(check-equal? (state-focus s4) (view-id 2))
-(check-equal? (engine-view-doc-text (ev) (doc-id 2)) "file text\n")
+(check-equal? (hash-count (workspace-docs (state-workspace s4))) 4)
+(check-equal? (hash-count (workspace-views (state-workspace s4))) 4)
+(check-equal? (state-focus s4) (view-id 4))
+(check-equal? (engine-view-doc-text (ev) (doc-id 4)) "file text\n")
 
 ;; 打开的 document 携带 doc-type 的 mode + keymaps
-(define dm (workspace-doc (state-workspace s4) (doc-id 2)))
+(define dm (workspace-doc (state-workspace s4) (doc-id 4)))
 (check-equal? (doc-meta-path dm) path)
 (check-equal? (doc-meta-mode dm) 'text)
 (check-equal? (length (doc-meta-keymap-layers dm)) 1)
@@ -114,11 +125,11 @@
 
 (define s6 (feed s5 (ctrl 'x)))
 (define s7 (feed s6 (ctrl 'k)))
-(check-equal? (hash-count (workspace-docs (state-workspace s7))) 1)
-(check-equal? (hash-count (workspace-views (state-workspace s7))) 1)
+(check-equal? (hash-count (workspace-docs (state-workspace s7))) 3)
+(check-equal? (hash-count (workspace-views (state-workspace s7))) 3)
 (check-equal? (state-focus s7) vid)
-(check-false (workspace-doc (state-workspace s7) (doc-id 2)))
-(check-false (engine-view-doc-text (ev) (doc-id 2)))
+(check-false (workspace-doc (state-workspace s7) (doc-id 4)))
+(check-false (engine-view-doc-text (ev) (doc-id 4)))
 (check-equal? (engine-view-doc-text (ev) did) "initial\n")
 
 (delete-file tmp)

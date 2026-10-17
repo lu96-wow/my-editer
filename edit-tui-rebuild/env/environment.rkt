@@ -39,6 +39,8 @@
          environment-add-doc-type
          environment-doc-type
          environment-doc-type-for-path
+         environment-input-commands
+         environment-add-input-command
          environment-merge)
 
 (require "../base/keymap.rkt"
@@ -49,9 +51,10 @@
          "command.rkt"
          "rule.rkt"
          "doc-type.rkt"
+         "input-command.rkt"
          "../base/status.rkt")
 
-(struct environment (roles modes scopes commands keymaps handlers rules status doc-types) #:transparent)
+(struct environment (roles modes scopes commands keymaps handlers rules status doc-types input-commands) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
@@ -61,9 +64,10 @@
 ;; rules    : (listof rule)               带 scope 的额外表（高 -> 低）
 ;; status   : #f | (listof status-part)   #f = 用投影默认段
 ;; doc-types: (hash/c symbol doc-type)    打开文件时按路径匹配
+;; input-commands: (listof input-command) 输入栏字符串匹配（高 -> 低）
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f (hash)))
+  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f (hash) '()))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
@@ -73,8 +77,10 @@
                           #:handlers [handlers (hash)]
                           #:rules [rules '()]
                           #:status [status #f]
-                          #:doc-types [doc-types (hash)])
-  (environment roles modes scopes commands keymaps handlers rules status doc-types))
+                          #:doc-types [doc-types (hash)]
+                          #:input-commands [input-commands '()])
+  (environment roles modes scopes commands keymaps handlers rules status
+               doc-types input-commands))
 
 ;;; ---------- 查 ----------
 
@@ -97,6 +103,7 @@
   (for/first ([dt (in-hash-values (environment-doc-types env))]
               #:when (doc-type-matches-path? dt path))
     dt))
+
 
 (define (environment-handler env kind)
   (hash-ref (environment-handlers env) kind #f))
@@ -147,6 +154,9 @@
   (struct-copy environment env
                [doc-types (hash-set (environment-doc-types env) (doc-type-name dt) dt)]))
 
+(define (environment-add-input-command env c)
+  (struct-copy environment env [input-commands (append (environment-input-commands env) (list c))]))
+
 ;; 覆盖式合并：b 的同名项覆盖 a。插件 / 用户配置用这个。
 (define (environment-merge a b)
   (define (overlay ka kb)
@@ -160,4 +170,5 @@
                ;; b 的规则在前 = 后合并的 env 优先
                (append (environment-rules b) (environment-rules a))
                (or (environment-status b) (environment-status a))
-               (overlay (environment-doc-types a) (environment-doc-types b))))
+               (overlay (environment-doc-types a) (environment-doc-types b))
+               (append (environment-input-commands b) (environment-input-commands a))))
