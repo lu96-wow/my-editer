@@ -1,8 +1,8 @@
-# edit-tui —— 状态机分析与重建设计
+# edit-tui —— 状态机分析与重建设计（历史记录）
 
 > 实现状态：块 1–6 已完成，可运行 `demo/basic.rkt`。
 >
-> **这是“为什么这样设计”的历史文档**（对旧 `edit-tui/app` 的审计 + 目标模型）。
+> **这是“为什么这样设计”的历史文档**（对已删除的旧 `edit-tui/app` 的审计 + 目标模型）。
 > 当前实际的目录、层序、副作用白名单见 [`ARCHITECTURE.md`](ARCHITECTURE.md)，
 > 用法见 [`README.md`](README.md)。
 

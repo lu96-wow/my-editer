@@ -33,26 +33,27 @@ runtime 只负责遍历，不认识任何具体面板。
 
 | 层 | 目录 | 内容 | 允许依赖 |
 |---|---|---|---|
-| 0 | `base/` | id / event / effect / transition / keymap / status-part | 自己 |
-| 1 | `model/` | state / workspace / layout / input / chrome / save | 0–1 |
-| 2 | `env/` | environment / role / mode / scope / command / rule / doc-type / input-command / plugin / defaults | 0–2 |
-| 3 | `effects/` | engine（core 拥有者）/ panel（面板↔引擎）/ interpreter（IO） | 0–1, 3 |
-| 4 | `projection/` | geometry / status / render | 0–4 |
-| 5 | `dispatch/` | context / rules / pipeline | 0–5 |
-| 6 | `chrome/` | slot（status/input 槽）/ input（输入栏 API） | 0–6 |
-| 7 | `bootstrap/` | panel（spec→install）/ commands/* / defaults（core-env） | 0–7 |
-| 8 | `plugins/` | filetree/ + resource/ + builtin（default-env） | 0–8 |
+| 0 | `base/` | id / event / effect / transition / keymap / status-part / face | 自己 |
+| 0 | `command/` | key / mouse / command / keymap + tui 适配 | base / command |
+| 0 | `core-render/` | piece → tui 序列 | base / core-render / core / tui |
+| 0 | `theme/` | face 符号 → tui style | theme / tui |
+| 1 | `model/` | state / workspace / layout / input / chrome / save / face-layer / face-decor | 0–1 + command |
+| 2 | `env/` | environment / role / mode / scope / command / rule / doc-type / input-command / plugin / defaults | 0–2 + command |
+| 3 | `effects/` | engine（core 拥有者）/ paint（face 写回）/ panel / interpreter（IO） | 0–1, 3 + command |
+| 4 | `projection/` | geometry / status / render | 0–4 + command + core-render |
+| 5 | `dispatch/` | context / rules / pipeline | 0–5 + command |
+| 6 | `chrome/` | slot（status/input 槽）/ input（输入栏 API） | 0–6 + command |
+| 7 | `bootstrap/` | panel（spec→install）/ commands/* / defaults（core-env） | 0–7 + command |
+| 8 | `plugins/` | filetree/ + resource/ + highlight/ + completion/ + docs/ + lang/ | 0–8 + command |
 | 9 | `runtime/` | run / tui-adapter | 全部 |
 | — | `main.rkt` | 公共面（只 require/provide） | 全部 |
 
-两条跨层例外，都是**词汇**而不是实现：
-
-- `edit-tui/command/{key,mouse,command}.rkt`：token 与 command 结构，任何层都可以 require；
-- `edit-tui/core-render/`、`core/`：见下面白名单。
+`command/` / `core-render/` / `theme/` 是本地词汇与后端层；`core/` 仍是仓库根外部引擎，
+只允许出现在白名单模块里（见 §3）。
 
 ## 3. 有副作用的模块（白名单）
 
-其余所有模块必须是纯的（`world-step` 可 headless 重放）。全部副作用只有 12 处（其中 lang/* 只在 worker 进程里跑）：
+其余所有模块必须是纯的（`world-step` 可 headless 重放）。副作用集中在下面这些边缘模块（其中 lang/* 只在 worker 进程里跑）：
 
 | 模块 | 副作用 |
 |---|---|
@@ -67,15 +68,19 @@ runtime 只负责遍历，不认识任何具体面板。
 | `plugins/lang/module-index.rkt` | 只在 worker 里构建已安装模块路径索引 |
 | `plugins/lang/docs.rkt` | 只在 worker 里查 xref / blueboxes |
 | `plugins/lang/doc-html.rkt` | 只在 worker 里读 HTML 文档页 |
+| `command/tui.rkt` | 终端 input adapter（`read-event` / key decode） |
+| `theme/main.rkt` | require 即把主题写入 tui 样式表 |
 | `runtime/run.rkt` | 终端 IO、`spawn` / `timer` 线程、`put-bytes` |
 
 `core/...` 只允许出现在：`effects/engine.rkt`、`effects/paint.rkt`、`effects/panel.rkt`、
-`projection/{geometry,render}.rkt`、`bootstrap/commands/{table,focus}.rkt`、`runtime/run.rkt`。
+`projection/{geometry,render}.rkt`、`bootstrap/commands/{table,focus}.rkt`、
+`core-render/render.rkt`、`runtime/run.rkt`。
 
 另外 `model/face-decor.rkt` 只允许 require `core/text/base/*` 的**纯值词汇**
 （track / change / point / range / line），不碰 buffer / view / history。
 
-`tui` / `read-event` / `put-bytes` / 线程只允许出现在 `runtime/run.rkt`。
+`tui` / `read-event` / `put-bytes` / 线程：只允许出现在 `runtime/run.rkt`；
+`command/tui.rkt`、`core-render/render.rkt`、`theme/theme.rkt` 是明确的 tui 边缘。
 
 ## 4. 状态归位
 
