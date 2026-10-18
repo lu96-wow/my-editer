@@ -280,6 +280,9 @@
        (cond
          [(null? events) (void)]
          [else
+          ;; resize 会改变终端网格：丢掉上一帧 cache，让 render-frame 先清一次屏再全量重画。
+          (when (for/or ([e (in-list events)]) (app:resize-event? e))
+            (set-box! cache-box #f))
           (define t (process-events env engine inbox (unbox state-box) events
                                     #:worker worker))
           (define t2 (drain-and-process env engine inbox t #:worker worker))
