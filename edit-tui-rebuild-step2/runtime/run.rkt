@@ -157,10 +157,16 @@
   (cond
     ;; 纯计算交给后台（独立进程）；结果以 job-done 信号回来。
     ;; 没有 worker（place 起不来）→ 同步内联，语义相同、只是不换进程。
-    [(submit-service-effect? effect)
-     (define job (submit-service-effect-job effect))
-     (define kind (submit-service-effect-kind effect))
-     (define payload (submit-service-effect-payload effect))
+    [(or (submit-service-effect? effect) (query-effect? effect))
+     (define job (if (query-effect? effect)
+                     (query-effect-job effect)
+                     (submit-service-effect-job effect)))
+     (define kind (if (query-effect? effect)
+                      (query-effect-kind effect)
+                      (submit-service-effect-kind effect)))
+     (define payload (if (query-effect? effect)
+                         (query-effect-payload effect)
+                         (submit-service-effect-payload effect)))
      (cond
        [worker (worker-submit! worker job kind payload) (transition-pure state)]
        [else
@@ -211,7 +217,16 @@
 ;; effect 解释掉（decor 也会在 settle 里按 doc-meta 挂上）。
 ;;
 ;; 暂定：只跑纯 / 引擎类 effect；startup hook 里不要 spawn / timer。
+(define (ensure-service-kinds! env)
+  (define declared (environment-service-kinds env))
+  (unless (null? declared)
+    (define known (worker-known-service-kinds))
+    (for ([k (in-list declared)] #:unless (memq k known))
+      (error 'startup! "service kind 未在 worker 实现：~a（可用：~a）" k known))))
+
 (define (startup! env engine state #:worker [worker #f])
+  ;; 插件声明的 service kind 必须能在 worker 里找到实现。
+  (ensure-service-kinds! env)
   ;; face 层序是 env 数据：启动时交给引擎（引擎负责合成 / 写回 core）
   (engine-set-face-layers! engine (environment-face-layers env))
   (define dids
@@ -250,9 +265,10 @@
     (sync state engine))
   ;; 光标相关 decor（同词高亮等）：每帧对焦点 view 推进一次；光标没变时是 no-op。
   (engine-paint-advance! engine (state-focus state))
-  (define-values (_ps placements) (project-frame state engine))
+  ;; 一帧只投影一次：panels 交给 render-frame*，placements 交给 engine-sync-views!。
+  (define-values (panels placements) (project-frame state engine))
   (engine-sync-views! engine placements)
-  (define-values (cache* bytes) (render-frame state engine cache))
+  (define-values (cache* bytes) (render-frame* state engine cache panels))
   (unless (zero? (bytes-length bytes))
     (put-bytes bytes)
     (flush!))

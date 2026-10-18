@@ -21,16 +21,16 @@
 | # | 步骤 | 状态 |
 |---|---|---|
 | 1 | layout 不再静默失败（`tree-insert/tree-split` → `(values tree ok?)`、`empty-tree?`） | ✅ |
-| 2 | input session 带身份（`input-session{tag,data,prompt}`，不再用 prompt 正则认亲） | ⬜ |
-| 3 | `validate-env` 装配期校验（keymap 叶子 / scope / layer / part 名） | ⬜ |
+| 2 | input session 带身份（`input-session{tag,data,cancel,prompt}`，不再用 prompt 正则认亲） | ✅ |
+| 3 | `validate-env` 装配期校验（keymap 叶子 / scope / layer / part 名） | ✅（`validate-environment`） |
 | 4 | view / region 消失时浮层跟着消失 | ✅ |
 | 5 | 删 chrome 的第二条渲染通道（`chrome-entry` / `chrome-line` / `chrome-member`） | ✅ |
-| 6 | `toggle-region!` 原语（hide/show + 尺寸记忆 + 焦点回退） | ⬜ |
-| 7 | `panel-spec` 加 `key / install / hint / placement`，统一 `install-panel!` | ⬜ |
-| 8 | `interaction` 栈（`state.pending` LIFO + `env.interactions` 取消） | ⬜ |
-| 9 | `query-effect` + `service` 模块声明（取代插件里的 cache/pending/job 三件套） | ⬜ |
-| 10 | env provenance + `plugin-uninstall!` | ⬜ |
-| 11 | `project-frame` 只用一次 + `layout-snapshot` | ⬜ |
+| 6 | `toggle-region!` 原语（hide/show + 尺寸记忆 + 焦点回退） | ✅ |
+| 7 | `panel-spec` 加 `key / install / hint / placement`，统一 `install-panel!` | ✅ |
+| 8 | `interaction` 栈（`state.pending` LIFO + `env.interactions` 取消） | ✅ |
+| 9 | `query-effect` + `service` 模块声明（取代插件里的 cache/pending/job 三件套） | ✅（`model/service.rkt` + `service-request` + `query-effect` + `env/service.rkt`） |
+| 10 | env provenance + `plugin-uninstall!` | ✅（env 撤销 + store + panel） |
+| 11 | `project-frame` 只用一次 + `layout-snapshot` | ✅（`render-frame*` + `geometry-snapshot`） |
 | 12 | effect 的 `k` → 数据 continuation | ⬜ |
 
 ---

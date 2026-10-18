@@ -23,6 +23,7 @@
 
 (provide (struct-out worker)
          worker-entry-path
+         worker-known-service-kinds
          worker-start!
          worker-submit!
          worker-stop!)
@@ -43,6 +44,11 @@
       (variable-reference->module-path-index (#%variable-reference)))))
   (path->string (simplify-path (build-path (path-only (path->complete-path here))
                                            ".." "plugins" "worker.rkt"))))
+
+;; worker 实现的 service kind 表（plugins/worker.rkt 的 service-kinds）。
+;; 只在 startup 校验 / 调试时用；不在热路径。
+(define (worker-known-service-kinds)
+  (dynamic-require (string->path (worker-entry-path)) 'service-kinds))
 
 ;; 起一个 worker；失败 → #f（调用方走同步降级）。
 (define (worker-start! inbox)

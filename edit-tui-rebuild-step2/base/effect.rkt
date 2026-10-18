@@ -46,6 +46,7 @@
          (struct-out replace-range-effect)
          (struct-out ensure-view-effect)
          (struct-out submit-service-effect)
+         (struct-out query-effect)
          (struct-out select-effect)
          (struct-out scroll-effect)
          (struct-out nav-effect)
@@ -88,6 +89,9 @@
 ;;
 ;; 为什么是 effect 而不是直接调用：worker 是 runtime 的私有资源，插件只描述工作。
 (struct submit-service-effect (job kind payload) #:transparent)
+;; query-effect 是 submit-service-effect 的语义化别名：一次性只读查询 / 纯计算。
+;; runtime 的处理与 submit-service-effect 相同；新代码优先用 query-effect。
+(struct query-effect (job kind payload) #:transparent)
 (struct select-effect (view selections)#:transparent)
 (struct scroll-effect (view delta)     #:transparent)
 (struct nav-effect     (view dir)      #:transparent)
@@ -111,7 +115,7 @@
   (or (edit-effect? x) (insert-text-effect? x) (set-text-effect? x)
       (set-input-prompt-effect? x)
       (set-face-layer-effect? x) (replace-range-effect? x) (ensure-view-effect? x)
-      (submit-service-effect? x)
+      (submit-service-effect? x) (query-effect? x)
       (select-effect? x) (scroll-effect? x)
       (nav-effect? x) (undo-effect? x) (redo-effect? x)
       (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
@@ -129,6 +133,7 @@
         [(replace-range-effect? x) 'replace-range]
         [(ensure-view-effect? x)   'ensure-view]
         [(submit-service-effect? x) 'submit-service]
+        [(query-effect? x) 'query]
         [(select-effect? x)    'select]
         [(scroll-effect? x)    'scroll]
         [(nav-effect? x)       'nav]

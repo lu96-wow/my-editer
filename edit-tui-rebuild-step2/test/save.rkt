@@ -17,6 +17,7 @@
          "../model/workspace.rkt"
          "../model/chrome.rkt"
          "../model/input.rkt"
+         "../model/interaction.rkt"
          "../plugins/resource/model.rkt"
          "../effects/engine.rkt"
          (except-in "../chrome/slot.rkt" input-show)
@@ -72,6 +73,8 @@
   (check-true (string-prefix? (engine-view-view-text (make-engine-view engine) (chrome-input-view s2))
                               "Save "))
   (check-true (input-active? s2))
+  (check-eq? (interaction-kind (state-interaction-top s2)) 'input)
+  (check-true (and (interaction-find (state-interactions s2) 'confirm) #t))
   (check-equal? (input-value s2 (make-engine-view engine)) "")
   ;; 回归：prompt 必须真的画出来（不能被 viewport left-column 滚走）
   (define-values (_dbg-ps dbg-pls) (project-frame s2 engine))
@@ -88,7 +91,8 @@
   (check-true (runtime-quit? (state-runtime s3)))
   (check-true (file-exists? path-y))
   (check-equal? (file->string path-y) "xhello\n")
-  (check-false (state-confirm s3)))
+  (check-false (state-confirm s3))
+  (check-equal? (state-interactions s3) '()))
 (delete-file path-y)
 
 ;;; ════════════════ n：跳过，不写盘 ════════════════

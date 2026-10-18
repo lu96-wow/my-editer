@@ -30,6 +30,7 @@
 
 (require "../../model/state.rkt"
          "../../model/workspace.rkt"
+         "../../model/layout.rkt"
          "model.rkt"
          "lines.rkt"
          "scan.rkt"
@@ -52,26 +53,36 @@
 (define (filetree-plugin-mode)
   (make-mode #:keymaps (list filetree-keys pointer-keys) #:fallback 'ignore))
 
+;; panel-spec 的 install：面板创建后写 store['filetree] 的 view-id，
+;; 并把 workspace.root 展开（root 由便捷安装先写进 workspace）。
+(define (install-filetree-panel-state! _engine state _rid vid)
+  (define root (workspace-root (state-workspace state)))
+  (plugin-state*
+   state 'filetree
+   (λ (f)
+     (define f1 (if (or (not root) (string=? root "") (filetree-expanded? f root))
+                    f
+                    (filetree-toggle-expand f root)))
+     (filetree-set-view f1 vid))
+   (empty-filetree)))
+
 (define (filetree-panel-spec)
   (make-panel-spec
                    #:name "*filetree*"
                    #:role 'filetree
                    #:mode 'filetree
-                   #:sync sync-filetree-panel!))
+                   #:sync sync-filetree-panel!
+                   #:install install-filetree-panel-state!
+                   #:hint (fixed 30)
+                   #:owner 'filetree
+                   #:key 'filetree))
 
-;; 便捷安装：按 spec 建面板 + 写 workspace.root + 展开根目录。
+;; 便捷安装：先写 workspace.root，再按 spec 装面板（install 回调负责 store / 展开）。
 (define (install-filetree-panel! engine state rid root)
   (define root* (filetree-normalize-path root))
-  (define-values (s1 vid) (panel-spec-install! engine state rid (filetree-panel-spec)))
-  (define s2 (state-workspace* s1 (λ (ws) (workspace-set-root ws root*))))
-  (plugin-state*
-   s2 'filetree
-   (λ (f)
-     (define f1 (if (filetree-expanded? f root*)
-                    f
-                    (filetree-toggle-expand f root*)))
-     (filetree-set-view f1 vid))
-   (empty-filetree)))
+  (define state* (state-workspace* state (λ (ws) (workspace-set-root ws root*))))
+  (define-values (s1 _vid) (panel-spec-install! engine state* rid (filetree-panel-spec)))
+  s1)
 
 (define (filetree-plugin)
   (make-plugin

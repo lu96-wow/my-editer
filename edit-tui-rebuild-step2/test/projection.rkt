@@ -37,6 +37,11 @@
                     (make-leaf r2 (flex 1)))
               (flex 1)))
 (define-values (ps-lr cuts-lr) (geometry-solve lay-lr area))
+;; geometry-snapshot 与 geometry-solve 同源，供一帧共用
+(define snap-lr (geometry-snapshot lay-lr area))
+(check-equal? (layout-snapshot-area snap-lr) area)
+(check-equal? (layout-snapshot-regions snap-lr) ps-lr)
+(check-equal? (layout-snapshot-cuts snap-lr) cuts-lr)
 (check-equal? (length ps-lr) 2)
 (check-equal? (map region-panel-region ps-lr) (list r1 r2))
 (check-true (for/and ([p (in-list ps-lr)])
@@ -189,6 +194,10 @@
 ;; 正文由 core 画（首字符 h 是光标，单独一次输出），状态栏由它自己的 buffer 画
 (check-true (string-contains? text "world"))
 (check-true (string-contains? text "hello status"))
+
+;; render-frame* 用已经投影过的 panels，输出应与 render-frame 完全一致
+(define-values (_cache-p bytes-p) (render-frame* s3 eng2 #f panels))
+(check-equal? bytes-p bytes)
 
 ;; 同一状态再渲染：无变化 -> 空输出
 (define-values (cache2 bytes2) (render-frame s3 eng2 cache))

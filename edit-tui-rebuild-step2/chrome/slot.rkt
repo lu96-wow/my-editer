@@ -24,6 +24,8 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/chrome.rkt"
+         "../model/input.rkt"
+         "../model/interaction.rkt"
          "../effects/engine.rkt"
          "../projection/status.rkt"
          "../effects/panel.rkt")
@@ -91,18 +93,28 @@
 (define (input-view state) (chrome-input-view state))
 
 ;; 切到 input 栏，写入 prompt（前缀只读），焦点移到 input view。
-(define (input-show state prompt)
+;; #:session 记录“谁占用了 input”（tag / data / cancel）；旧调用不传时是 #f。
+(define (input-show state prompt
+                    #:session [session #f]
+                    #:interaction [interaction #f])
   (define vid (input-view state))
   (cond
     [(not vid) (transition-pure state)]
     [else
-     (define s1 (state-set-focus (chrome-show-input state) vid))
-     (transition s1 (list (set-input-prompt-effect vid prompt)))]))
+     (define s1
+       (state-input*
+        (state-set-focus (chrome-show-input state) vid)
+        (λ (i) (input-set-session i session))))
+     (define s2 (if interaction (state-interaction-push s1 interaction) s1))
+     (transition s2 (list (set-input-prompt-effect vid prompt)))]))
 
-;; 结束输入：切回 status，恢复进入前的焦点。
+;; 结束输入：清 session，切回 status，恢复进入前的焦点。
 (define (input-finish state)
-  (define input-focused? (equal? (state-focus state) (input-view state)))
-  (define s1 (chrome-show-status state))
+  (define state* (state-interaction-pop-kind
+                  (state-input* state (λ (i) (input-set-session i #f)))
+                  'input))
+  (define input-focused? (equal? (state-focus state*) (input-view state*)))
+  (define s1 (chrome-show-status state*))
   (if input-focused?
       (state-workspace* s1 (λ (ws) (workspace-pop-focus ws)))
       s1))

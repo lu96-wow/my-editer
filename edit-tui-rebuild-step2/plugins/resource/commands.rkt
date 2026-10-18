@@ -36,7 +36,8 @@
          "../../env/environment.rkt"
          "../../env/scope.rkt"
          "../../command/mouse.rkt"
-         "../../dispatch/context.rkt")
+         "../../dispatch/context.rkt"
+         (only-in "../../bootstrap/commands/placement.rkt" set-placement))
 
 (define (message ctx text)
   (transition-pure
@@ -102,7 +103,7 @@
                    (state-chrome* s1 (λ (c) (chrome-set-message c "opened view")))))
                 (transition-pure
                  (state-chrome*
-                  (state-workspace* s (λ (w) (workspace-set-placement w vid)))
+                  (set-placement s vid)
                   (λ (c) (chrome-set-message c "place: choose target panel")))))]))))
 
 (define (new-view-command)
@@ -134,8 +135,7 @@
              (message ctx "resources: select a view")
              (transition-pure
               (state-chrome*
-               (state-workspace* (ctx-state ctx)
-                                 (λ (w) (workspace-set-placement w vid)))
+               (set-placement (ctx-state ctx) vid)
                (λ (c) (chrome-set-message c "place: choose target panel, then C-x C-p"))))))))
 
 (define (detach-selected-command)

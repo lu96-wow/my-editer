@@ -10,7 +10,19 @@
 > `env/extension.rkt`（contribution / owner / validate）、`env/panel-spec.rkt`、
 > `plugin #:contributions`、`plugins-env` / `plugins-apply` 装配期校验。
 > 另外已加 `environment.base` + `environment-remove-owner`：可以从 base 重建，
-> 按插件撤销 commands / rules / hooks / decors / panel-syncs 等贡献。
+> 按插件撤销 commands / rules / hooks / decors / panel-syncs 等贡献；
+> `bootstrap/plugin.rkt` 的 `plugin-uninstall!` 再把 env 撤销、`store[plugin-id]`
+> 清理、`#:regions` 的面板卸载串起来；`model/service.rkt` 收掉了 completion / docs
+> 重复的 cache / pending / jobs，并加了 `service-request` / `query-effect`；
+> `env/service.rkt` 声明 service kind 并在 startup 校验；
+> `render-frame*` 让一帧只投影一次；
+> `input-session` 让输入栏替换 / 取消不再靠 prompt 正则认亲；
+> `panel-spec.install / hint / owner+key` 收掉了各插件“install 后写 store”的重复；
+> `workspace.panel-index` 让 `plugin-uninstall!` 能按 owner 只卸自己的面板；
+> `panel-spec.placement` 让共享 sidebar 的新面板可以不抢 active；
+> `toggle-region!` 收掉了 filetree 自己的显隐 / 尺寸记忆 / 焦点回退；
+> `cancel-current` 用 `state.interactions` 的 LIFO 栈统一取消 input / pending /
+> placement / confirm，取消函数注册在 `environment.interactions`。
 > 执行器没有改；详见 [`STEP2.md`](STEP2.md)。
 
 ---
@@ -107,7 +119,7 @@
 ### 1.3 这次收敛的局限
 
 - 只处理了“重复路径”和“静默失败”，没有处理“扩展点碎片化”。
-- 没有引入 owner / provenance，因此 `plugin-uninstall!` / reload 仍然做不了。
+- rebuild 当时没有引入 owner / provenance；step2 已补上 contribution owner、`environment-remove-owner`、`plugin-uninstall!`（reload 仍未做）。
 - `project-frame` 仍然在 `run-frame` 和 `render-frame` 里各调一次（`REBUILD.md` 第 11 步未做）。
 - `panel-spec` 仍只有 `name / role / mode / sync`，安装位置仍由宿主决定。
 
@@ -831,7 +843,7 @@ cache (done/pending) + jobs (id -> tag) + job-add/take + on-job + pending-add/de
 ;; hint    : 'left | 'right | 'bottom | 'top | (fixed n) | (flex n) | #f
 ```
 
-- `install` 由宿主 `panel-spec-install!` 调用，插件可以在里面设置自己的 store（view-id / root / expanded）。
+- `install` 由宿主 `panel-spec-install!` 调用，插件可以在里面设置自己的 store（view-id / root / expanded）；`hint` 只在 leaf 已存在时改 dim。
 - `hint` 只是布局建议；最终位置仍由宿主决定。
 - 不要在 `panel-spec` 里放绝对坐标 / layout path；那是宿主策略。
 

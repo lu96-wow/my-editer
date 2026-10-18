@@ -33,6 +33,7 @@
          (struct-out region)
          (struct-out workspace)
          (struct-out float)
+         (struct-out panel-entry)
          make-doc-meta
          view-member
          view-region-member? region-member-key
@@ -56,7 +57,13 @@
          workspace-focus-view
          workspace-set-root
          workspace-set-placement
-         workspace-float workspace-add-float workspace-remove-float)
+         workspace-float workspace-add-float workspace-remove-float
+         workspace-panel-register
+         workspace-panel-unregister-view
+         workspace-panel-unregister-region
+         workspace-panel-views-by-owner
+         workspace-panel-regions-by-owner
+         workspace-panel-view workspace-panel-region)
 
 ;;; ---------- 元数据 ----------
 
@@ -111,9 +118,64 @@
 ;; view   : view-id       浮层的 view（buffer 支撑，内容 = 文档文本）
 ;; anchor : view-id | #f  面板贴着这个 view 的光标（#f = 屏幕左上角）
 
+;;; ---------- 已安装面板索引 ----------
+
+(struct panel-entry (owner key region view) #:transparent)
+;; owner  : symbol
+;; key    : symbol          panel-spec.key（同一 owner 下唯一）
+;; region : region-id
+;; view   : view-id
+
+;; 同一 owner+key 只保留最新安装；其余 append。
+(define (workspace-panel-register w owner key rid vid)
+  (define kept
+    (for/list ([e (in-list (workspace-panel-index w))]
+               #:unless (and (eq? (panel-entry-owner e) owner)
+                             (eq? (panel-entry-key e) key)))
+      e))
+  (struct-copy workspace w
+               [panel-index (append kept (list (panel-entry owner key rid vid)))]))
+
+(define (workspace-panel-unregister-view w vid)
+  (struct-copy workspace w
+               [panel-index
+                (for/list ([e (in-list (workspace-panel-index w))]
+                           #:unless (equal? (panel-entry-view e) vid))
+                  e)]))
+
+(define (workspace-panel-unregister-region w rid)
+  (struct-copy workspace w
+               [panel-index
+                (for/list ([e (in-list (workspace-panel-index w))]
+                           #:unless (equal? (panel-entry-region e) rid))
+                  e)]))
+
+(define (workspace-panel-views-by-owner w owner)
+  (for/list ([e (in-list (workspace-panel-index w))]
+             #:when (eq? (panel-entry-owner e) owner))
+    (panel-entry-view e)))
+
+(define (workspace-panel-regions-by-owner w owner)
+  (remove-duplicates
+   (for/list ([e (in-list (workspace-panel-index w))]
+              #:when (eq? (panel-entry-owner e) owner))
+     (panel-entry-region e))))
+
+(define (workspace-panel-view w owner key)
+  (for/first ([e (in-list (workspace-panel-index w))]
+              #:when (and (eq? (panel-entry-owner e) owner)
+                          (eq? (panel-entry-key e) key)))
+    (panel-entry-view e)))
+
+(define (workspace-panel-region w owner key)
+  (for/first ([e (in-list (workspace-panel-index w))]
+              #:when (and (eq? (panel-entry-owner e) owner)
+                          (eq? (panel-entry-key e) key)))
+    (panel-entry-region e)))
+
 ;;; ---------- workspace ----------
 
-(struct workspace (docs views regions layout floats focus stack root placement) #:transparent)
+(struct workspace (docs views regions layout floats focus stack root placement panel-index) #:transparent)
 ;; docs    : (hash/c doc-id doc-meta)
 ;; views   : (hash/c view-id view-meta)
 ;; regions : (hash/c region-id region)
@@ -127,9 +189,11 @@
 ;;           而是“这个工作区从哪里看”的框架级信息；面板拔掉也不应该丢。
 ;; placement: view-id | #f  正在等待“放进某个 panel”的 view（placement 模式）
 ;;           资源面板和文件树面板都会发起它，所以属于 workspace，不是某个面板的切片。
+;; panel-index: (listof panel-entry)  已安装面板的 owner / key / region / view 索引；
+;;           面板卸载时清掉对应条目。
 
 (define (workspace-empty)
-  (workspace (hash) (hash) (hash) (empty-tree) '() #f '() "" #f))
+  (workspace (hash) (hash) (hash) (empty-tree) '() #f '() "" #f '()))
 
 ;; 允许调用方只覆盖部分字段；其余保持空。
 (define (make-workspace #:docs [docs (hash)]
@@ -140,8 +204,9 @@
                         #:focus [focus #f]
                         #:stack [stack '()]
                         #:root [root ""]
-                        #:placement [placement #f])
-  (workspace docs views regions layout floats focus stack root placement))
+                        #:placement [placement #f]
+                        #:panel-index [panel-index '()])
+  (workspace docs views regions layout floats focus stack root placement panel-index))
 
 (define (workspace-set-root w root)
   (struct-copy workspace w [root root]))
@@ -280,6 +345,8 @@
   (struct-copy workspace w
                [views (hash-remove (workspace-views w) vid)]
                [regions regions*]
+               [panel-index (for/list ([e (in-list (workspace-panel-index w))]
+                                       #:unless (equal? (panel-entry-view e) vid)) e)]
                [floats (drop-floats w (λ (f) (equal? (float-view f) vid)))]
                [focus (and (workspace-focus w)
                            (not (equal? (workspace-focus w) vid))
@@ -296,6 +363,8 @@
   (struct-copy workspace w
                [regions (hash-remove (workspace-regions w) rid)]
                [layout (tree-close (workspace-layout w) rid)]
+               [panel-index (for/list ([e (in-list (workspace-panel-index w))]
+                                       #:unless (equal? (panel-entry-region e) rid)) e)]
                [floats (drop-floats w (λ (f) (equal? (float-region f) rid)))]))
 
 ;; 关闭文档：移除 doc + 它所有 view（含 region 成员 / 焦点）。

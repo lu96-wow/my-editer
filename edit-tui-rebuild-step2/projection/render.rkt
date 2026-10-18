@@ -7,6 +7,8 @@
 ;;;   project-frame  : state engine -> (values panels view-placements)
 ;;;                    panels = 平铺面板 + 浮层面板（浮层 deep 更高，叠在上面）
 ;;;   render-frame   : state engine cache -> (values frame-cache bytes)
+;;;   render-frame*  : state engine cache panels -> (values frame-cache bytes)
+;;;                    Runtime 已经 project-frame 过一次时用它，避免同一帧投影两遍。
 ;;;
 ;;; 投影**不写 core**：
 ;;;   · panels 只引用 engine 里的 view 句柄；
@@ -24,7 +26,8 @@
 (provide (struct-out frame-cache)
          project-frame
          project-view-placements
-         render-frame)
+         render-frame
+         render-frame*)
 
 (require "../model/state.rkt"
          "../model/workspace.rkt"
@@ -65,7 +68,9 @@
   (define ws (state-workspace state))
   (define ev (make-engine-view engine))
   (define focus (state-focus state))
-  (define-values (rps _cuts) (geometry-solve (workspace-layout ws) (frame-area state)))
+  ;; 一帧一份几何快照：region-panel 给本轮所有面板 + 浮层共用。
+  (define snap (geometry-snapshot (workspace-layout ws) (frame-area state)))
+  (define rps (layout-snapshot-regions snap))
   (define panels '())
   (define placements '())
   (for ([rp (in-list rps)])
@@ -98,7 +103,7 @@
                    panels))]))
   ;; 浮层：不在 layout 里，作为 deep 更高的 panel 叠上去。
   ;; 内容仍是 document/view —— core 的 screen 里就有它，擦除/遮挡由 core 的 diff 负责。
-  (for ([fp (in-list (project-floats state ev))])
+  (for ([fp (in-list (project-floats state ev #:region-panels rps))])
     (define vid (float-panel-view fp))
     (define v (engine-view-object engine vid))
     (when v
@@ -117,9 +122,15 @@
 ;;; ════════════════ 渲染 ════════════════
 
 ;; 纯投影：返回新 cache + bytes（不 put）。
-;; 调用方应先用 project-view-placements + engine-sync-views! 同步 view 尺寸。
+;;
+;; render-frame 是“自己投影一次”的便捷入口（测试 / 单帧调用）。
+;; Runtime 已经 project-frame 拿过 placements 时用 render-frame*，
+;; 避免同一帧再遍历一次 layout / floats。
 (define (render-frame state engine cache)
   (define-values (panels _placements) (project-frame state engine))
+  (render-frame* state engine cache panels))
+
+(define (render-frame* state engine cache panels)
   (define area (frame-area state))
   (define focus-id (state-focus state))
   (define focus-view (and focus-id (engine-view-object engine focus-id)))

@@ -50,6 +50,7 @@
          "../base/keymap.rkt"
          "../base/status-part.rkt"
          "../model/face-decor.rkt"
+         "../model/layout.rkt"
          "environment.rkt"
          "role.rkt"
          "mode.rkt"
@@ -59,7 +60,8 @@
          "doc-type.rkt"
          "input-command.rkt"
          "hook.rkt"
-         "panel-spec.rkt")
+         "panel-spec.rkt"
+         "service.rkt")
 
 ;;; ════════════════ 贡献描述 ════════════════
 
@@ -67,7 +69,7 @@
 (define contribution-kinds
   '(status status-parts status-part
     command keymap rule mode scope role doc-type input-command
-    panel panel-sync hook decor face-layer))
+    panel panel-sync hook decor face-layer interaction service))
 
 (define (contribution-kind? k)
   (and (memq k contribution-kinds) #t))
@@ -93,6 +95,8 @@
 ;;   hook           hook
 ;;   decor          face-decor
 ;;   face-layer     symbol
+;;   interaction    (cons symbol handler)   handler : (ctx data -> transition)
+;;   service        service-spec
 
 (define (make-contribution owner kind payload)
   (unless (symbol? owner)
@@ -181,6 +185,15 @@
        (unless (symbol? p)
          (error 'environment-add-contribution "face-layer payload 要是 symbol：~a" p))
        (environment-add-face-layer env p)]
+      [(interaction)
+       (unless (and (pair? p) (symbol? (car p)) (procedure? (cdr p)))
+         (error 'environment-add-contribution
+                "interaction payload 要是 (cons symbol handler)：~a" p))
+       (environment-add-interaction env (car p) (cdr p))]
+      [(service)
+       (unless (service-spec? p)
+         (error 'environment-add-contribution "service payload 要是 service-spec：~a" p))
+       (environment-add-service env p)]
       [else
        (error 'environment-add-contribution "未知 kind：~a" kind)]))
   (struct-copy environment env*
@@ -243,7 +256,11 @@
    (for/list ([l (in-list (environment-face-layers env))])
      (mk 'face-layer l))
    (for/list ([d (in-list (environment-decors env))])
-     (mk 'decor d))))
+     (mk 'decor d))
+   (for/list ([(kind handler) (in-hash (environment-interactions env))])
+     (mk 'interaction (cons kind handler)))
+   (for/list ([spec (in-hash-values (environment-services env))])
+     (mk 'service spec))))
 
 ;; 从 base 重建，去掉某 owner 的全部 contribution。
 ;; 要求 env 有 base 快照（plugins-env 会在第一个插件贡献前自动写）。
@@ -389,6 +406,27 @@
     (unless (procedure? f)
       (add! (err 'panel-syncs "panel-sync 不是过程：~a" f))))
 
+  ;; 11b. interactions：kind / handler
+  (for ([(kind handler) (in-hash (environment-interactions env))])
+    (unless (symbol? kind)
+      (add! (err 'interactions "interaction kind 不是 symbol：~a" kind)))
+    (unless (procedure? handler)
+      (add! (err 'interactions "interaction ~a 的 handler 不是过程：~a" kind handler))))
+
+  ;; 11c. services：kind / description / pure?
+  (for ([(kind spec) (in-hash (environment-services env))])
+    (unless (symbol? kind)
+      (add! (err 'services "service kind 不是 symbol：~a" kind)))
+    (unless (service-spec? spec)
+      (add! (err 'services "service ~a 不是 service-spec：~a" kind spec)))
+    (when (service-spec? spec)
+      (unless (eq? (service-spec-kind spec) kind)
+        (add! (err 'services "service key ~a 与 spec.kind ~a 不一致"
+                   kind (service-spec-kind spec))))
+      (unless (boolean? (service-spec-pure? spec))
+        (add! (err 'services "service ~a 的 pure? 不是 boolean：~a"
+                   kind (service-spec-pure? spec))))))
+
   ;; 12. panels（从 contributions 里取）：mode / role / sync
   (for ([c (in-list (environment-contributions env))]
         #:when (and (contribution? c) (eq? (contribution-kind c) 'panel)))
@@ -404,7 +442,20 @@
                    (panel-spec-name p) (panel-spec-role p))))
       (unless (or (not (panel-spec-sync p)) (procedure? (panel-spec-sync p)))
         (add! (err 'panels "panel ~a 的 sync 不是过程：~a"
-                   (panel-spec-name p) (panel-spec-sync p))))))
+                   (panel-spec-name p) (panel-spec-sync p))))
+      (unless (or (not (panel-spec-install p)) (procedure? (panel-spec-install p)))
+        (add! (err 'panels "panel ~a 的 install 不是过程：~a"
+                   (panel-spec-name p) (panel-spec-install p))))
+      (unless (or (not (panel-spec-hint p)) (dim? (panel-spec-hint p)))
+        (add! (err 'panels "panel ~a 的 hint 不是 dim：~a"
+                   (panel-spec-name p) (panel-spec-hint p))))
+      (unless (or (and (not (panel-spec-owner p)) (not (panel-spec-key p)))
+                  (and (symbol? (panel-spec-owner p)) (symbol? (panel-spec-key p))))
+        (add! (err 'panels "panel ~a 的 owner/key 不合法：~a / ~a"
+                   (panel-spec-name p) (panel-spec-owner p) (panel-spec-key p))))
+      (unless (memq (panel-spec-placement p) '(active inactive))
+        (add! (err 'panels "panel ~a 的 placement 不合法：~a"
+                   (panel-spec-name p) (panel-spec-placement p))))))
 
   out)
 

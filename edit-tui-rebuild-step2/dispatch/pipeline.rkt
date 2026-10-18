@@ -31,6 +31,7 @@
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/input.rkt"
+         "../model/interaction.rkt"
          "../model/chrome.rkt"
          "../model/layout.rkt"
          "../projection/geometry.rkt"
@@ -90,6 +91,27 @@
     [(mouse) (memq (mouse-action (mouse-event-token event)) '(press release))]
     [else #f]))
 
+;;; ════════════════ pending 键序列 ════════════════
+
+;; pending 也是 interaction 栈的一项（kind = 'pending，data = 键序列）。
+;; 清 pending 时同时 pop，避免栈里留下过期条目。
+(define (state-set-pending state seq)
+  (state-interaction-push
+   (state-interaction-pop-kind
+    (state-input* state (λ (i) (input-set-pending i seq)))
+    'pending)
+   (make-interaction 'pending 'pending seq)))
+
+(define (state-clear-pending state)
+  (state-interaction-pop-kind
+   (state-input* state input-clear-pending)
+   'pending))
+
+(define (cancel-token? tok)
+  (and (key? tok)
+       (or (equal? tok (key 'g 'ctrl))
+           (equal? tok (key 'escape)))))
+
 ;;; ════════════════ 键盘 ════════════════
 
 (define (dispatch-key env state event subject engine)
@@ -103,7 +125,7 @@
      (cond
        [(eq? st 'leaf)
         (run-command env
-                     (state-input* state input-clear-pending)
+                     (state-clear-pending state)
                      event subject engine v)]
        [else (dispatch-key-normal env state event subject engine
                                   (append pending (list tok)))])]
@@ -115,13 +137,18 @@
   (case st
     [(leaf)
      (run-command env
-                  (state-input* state input-clear-pending)
+                  (state-clear-pending state)
                   event subject engine v)]
     [(prefix)
-     (transition-pure (state-input* state (λ (i) (input-set-pending i seq))))]
+     (transition-pure (state-set-pending state seq))]
     [else
-     ;; 未命中：丢掉 pending（不然会卡在 C-x 前缀里），并按完整序列报告。
-     (dispatch-unbound env (state-input* state input-clear-pending) seq subject)]))
+     ;; 未命中：如果有前缀且最后一个是 C-g / Esc，取消当前交互（pending handler 会清
+     ;; pending + pop）；否则丢掉 pending 并按完整序列报告。
+     (cond
+       [(and (> (length seq) 1) (cancel-token? (last seq)))
+        (run-command env state event subject engine 'cancel-current)]
+       [else
+        (dispatch-unbound env (state-clear-pending state) seq subject)])]))
 
 ;;; ════════════════ 鼠标 ════════════════
 

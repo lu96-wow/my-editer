@@ -38,8 +38,8 @@ runtime 只负责遍历，不认识任何具体面板。
 | 0 | `command/` | key / mouse / command / keymap + tui 适配 | base / command |
 | 0 | `core-render/` | piece → tui 序列 | base / core-render / core / tui |
 | 0 | `theme/` | face 符号 → tui style | theme / tui |
-| 1 | `model/` | state / workspace / layout / input / chrome / save / face-layer / face-decor | 0–1 + command |
-| 2 | `env/` | environment / role / mode / scope / command / rule / doc-type / input-command / panel-spec / extension / plugin / defaults | 0–2 + command |
+| 1 | `model/` | state / workspace / layout / input / chrome / save / face-layer / face-decor / service / interaction | 0–1 + command |
+| 2 | `env/` | environment / role / mode / scope / command / rule / doc-type / input-command / panel-spec / service / extension / plugin / defaults | 0–2 + command |
 | 3 | `effects/` | engine（core 拥有者）/ paint（face 写回）/ panel / interpreter（IO） | 0–1, 3 + command |
 | 4 | `projection/` | geometry / status / render | 0–4 + command + core-render |
 | 5 | `dispatch/` | context / rules / pipeline | 0–5 + command |
@@ -90,12 +90,18 @@ runtime 只负责遍历，不认识任何具体面板。
 ```
 
 - `workspace` 里放**框架级**的会话信息：docs / views / regions / layout / focus /
-  `root`（工作区根，状态栏按它投影相对路径）/ `placement`（等待放进 panel 的 view）；
+  `root`（工作区根，状态栏按它投影相对路径）/ `placement`（等待放进 panel 的 view）/
+  `panel-index`（owner + key -> region / view 的已安装面板索引）；
 - `focus` 可以是 `view-id` 或 `region-id`：切分（`C-w ←→↑↓`）拆出的是**空 region**，
   焦点落在 region 上，下一次开文档就装进去；
 - `confirm` 是保存确认队列（quit / close-doc 用，属于框架）；
 - region 是“一块位置里可切换的成员”：sidebar / chrome 槽都是多成员 region，
   `active` 决定显示谁，`role.switchable?` 决定 Tab 能不能切；
+- `input` 只存 pending / modes / gesture / session-info；session 记录“谁占用了输入栏”，
+  替换时直接调它的 cancel，不再靠 prompt 正则认亲；
+- `interactions` 是进行中的交互栈（input / pending / placement / confirm）；状态仍在原字段，
+  栈条目只存 kind + data，取消函数在 `environment.interactions`；`cancel-current`
+  先 input，再栈顶；
 - `store` 是插件命名空间：`store['filetree]`、`store['resources]` …
   面板自己的 UI 状态都在这里，拔掉插件就跟着消失；
 - 文档是不是“基础设施”（状态栏 / 输入栏 / 插件面板）由 `doc-meta.internal?` 声明，
@@ -147,7 +153,7 @@ command ──▶ transition{state+effects}
 | 一次性静态 face 层（补全选中行等） | `set-face-layer-effect doc layer fills` | `engine-set-face-layer!` -> `effects/paint` 的 static 层 | 命令 / hook 发 |
 | **增量 face 装饰** | `plugin.decors`（`face-decor`：open/change） | `effects/paint` 的 document slot；core slot fork 自动推进 | 装配时按 doc-meta 挂到 engine |
 | 层的顺序 | `env.face-layers`（先低后高） | `runtime/startup!` 交给引擎 | 启动 |
-| 后台纯计算 | `submit-service-effect job kind payload` | `runtime/worker.rkt`（独立 place） | 命令 / hook 发 |
+| 后台纯计算 | `query-effect job kind payload`（`submit-service-effect` 兼容） | `runtime/worker.rkt`（独立 place） | 命令 / hook 发 |
 | 替换一段文本 | `replace-range-effect view range text` | `effects/interpreter` | 命令 / hook 发 |
 | 布局变了夹光标 | `ensure-view-effect view` | `effects/interpreter`（core `view-ensure!`） | 命令 / hook 发 |
 | 浮窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` | `projection/render`（作为 deep 更高的 panel） | 每帧 |
@@ -188,7 +194,7 @@ command ──▶ transition{state+effects}
 | undo / redo | core history | 旧 document 的 decor state / layer / face port 一起回来，不重算 |
 | 一次性层 | `set-face-layer-effect` | 写 `paint-state.static`；文本编辑时由 `fork-ctx-edit` 自动平移 |
 | 后台服务 | `plugins/worker.rkt` 的 `service-run` | **纯**：只吃 payload、吐结果；高亮已不走 worker，仍可用于其他一次性计算 |
-| 跨进程载荷 | `submit-service-effect` | 不能带 core 的不可序列化值（如版本 token / track / transparent change）；用 job-id 对账过期结果 |
+| 跨进程载荷 | `query-effect` / `submit-service-effect` | 不能带 core 的不可序列化值（如版本 token / track / transparent change）；用 job-id 对账过期结果 |
 
 ### 7.4.1 统一贡献清单（step2）
 
@@ -206,6 +212,19 @@ command ──▶ transition{state+effects}
 - `environment.contributions` 记录来源；`environment.base` 是第一次加插件贡献前的快照；
 - `environment-remove-owner` 从 `base` + 其他 owner 的 contributions 重建，
   因此 status-parts / hooks / decors / commands / rules / face-layers 都能按插件撤销；
+- `panel-spec` 增加可选 `install : (engine state rid vid -> state)`、`hint : dim | #f`、
+  `owner / key`、`placement : active | inactive`；`panel-spec-install!` 在建好
+  doc / view / region 后调用 install、应用 hint、登记 panel-index，并按 placement
+  决定是否抢 active；
+- `bootstrap/plugin.rkt` 的 `plugin-uninstall!` 把 env 撤销 + `plugin-state-clear` +
+  panel 卸载串起来；没有 `#:regions` 时按 panel-index 只卸该 owner 的 view，
+  共享 region 里的其它面板保留；
+- 插件 store 约定“一个插件一个 key”（`'filetree` / `'resources` / `'completion` / `'docs`），
+  这样 `plugin-state-clear` 一次清干净；
+- `model/service.rkt` 提供通用 `cache / pending / jobs` + `service-request`，
+  completion / docs 不再各写一套；
+- `environment.interactions` 按 kind 注册取消函数；`model/interaction.rkt` 的栈条目只存数据；
+- `env/service.rkt` 声明 worker service kind；`startup!` 校验它们存在于 `plugins/worker.rkt` 的 `service-kinds`；
 - `plugins-env` / `plugins-apply` 在装配末尾跑 `validate-environment!`：
   keymap 叶子必须是已注册命令、rule scope 必须已注册、decor layer 必须已声明且唯一、
   panel mode / role 必须已注册；
@@ -279,6 +298,14 @@ command ──▶ transition{state+effects}
 - 鼠标命中**先查浮层**（`runtime/run.rkt` 的 `subject-for`），不会穿透到下面的编辑器；
 - role 用 `'panel`（不可聚焦）→ 焦点始终留在编辑器；上下键靠**临时键表**接管；
 - 因为它是真的 panel，擦除 / 遮挡 / 移动全由 core 的增量 diff 负责。
+
+### 8.4.1 region 显隐
+
+- `bootstrap/commands/layout.rkt` 的 `toggle-region!` 统一 hide / show：
+  - hide 时把内容尺寸写进 leaf 的 `fixed dim`，再 `tree-hide`；
+  - show 时直接 `tree-show`，尺寸从 leaf 恢复；
+  - 焦点在 region 里就退到 region 外的第一个真实文档 view，否则 `#f`；
+- filetree 的 `C-b` 走这个原语，不再自己维护 width。
 
 ### 8.5 布局变化后的光标夹取
 

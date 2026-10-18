@@ -26,6 +26,7 @@
          "../env/mode.rkt"
          "../env/panel-spec.rkt"
          "../env/plugin.rkt"
+         "../env/service.rkt"
          "../env/role.rkt"
          "../env/rule.rkt"
          "../env/scope.rkt"
@@ -185,6 +186,27 @@
            (λ () (make-contribution 'demo 'nope 'payload)))
 
 (displayln "edit-tui extension: ok")
+
+;;; ════════════════ 6b. interaction contribution ════════════════
+
+(define ihandler (λ (ctx data) (transition-pure (ctx-state ctx))))
+(define env-int
+  (environment-add-contribution
+   (environment-empty)
+   (make-contribution 'demo 'interaction (cons 'custom ihandler))))
+(check-eq? (environment-interaction env-int 'custom) ihandler)
+(check-true (environment-valid? env-int))
+
+;;; ════════════════ 6c. service contribution ════════════════
+
+(define svc-spec (make-service-spec 'demo-svc #:description "demo service"))
+(define env-svc
+  (environment-add-contribution
+   (environment-empty)
+   (make-contribution 'demo 'service svc-spec)))
+(check-eq? (environment-service env-svc 'demo-svc) svc-spec)
+(check-equal? (environment-service-kinds env-svc) '(demo-svc))
+(check-true (environment-valid? env-svc))
 
 ;;; ════════════════ 7. merge 保留 provenance；旧字段也转成 contribution ════════════════
 

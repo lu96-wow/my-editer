@@ -29,11 +29,12 @@
          state-next-id
          state-set-window state-set-workspace state-set-input
          state-set-chrome state-set-runtime state-set-ids state-set-confirm
-         state-set-store state-set-signals
+         state-set-store state-set-signals state-set-interactions
          state-emit state-drain-signals
          state-workspace* state-input* state-chrome* state-runtime* state-confirm*
-         state-store*
-         plugin-state plugin-state-set plugin-state*
+         state-store* state-interactions* 
+         state-interaction-top state-interaction-push state-interaction-pop-id state-interaction-pop-kind
+         plugin-state plugin-state-set plugin-state* plugin-state-clear
          state-mark-quit state-bump-revision
          state-focus state-set-focus
          state-input-active?)
@@ -43,6 +44,7 @@
          "input.rkt"
          "chrome.rkt"
          "save.rkt"
+         "interaction.rkt"
          "../base/id.rkt")
 
 ;;; ---------- 会话 ----------
@@ -64,7 +66,7 @@
 
 ;;; ---------- 根 State ----------
 
-(struct state (window workspace input chrome runtime ids confirm signals store) #:transparent)
+(struct state (window workspace input chrome runtime ids confirm signals store interactions) #:transparent)
 
 (define (make-state #:window [window (make-window 24 80)]
                     #:workspace [workspace (workspace-empty)]
@@ -74,8 +76,9 @@
                     #:ids [ids (make-id-counter)]
                     #:confirm [confirm #f]
                     #:signals [signals (signals-empty)]
-                    #:store [store (hash)])
-  (state window workspace input chrome runtime ids confirm signals store))
+                    #:store [store (hash)]
+                    #:interactions [interactions '()])
+  (state window workspace input chrome runtime ids confirm signals store interactions))
 
 (define (state-empty) (make-state))
 
@@ -90,6 +93,7 @@
 (define (state-set-confirm s c)   (struct-copy state s [confirm c]))
 (define (state-set-store s st)    (struct-copy state s [store st]))
 (define (state-set-signals s sig) (struct-copy state s [signals sig]))
+(define (state-set-interactions s is) (struct-copy state s [interactions is]))
 
 ;; 先拿当前切片、改完再放回（命令里常用）。
 (define (state-workspace* s f) (state-set-workspace s (f (state-workspace s))))
@@ -98,6 +102,23 @@
 (define (state-runtime* s f)   (state-set-runtime s (f (state-runtime s))))
 (define (state-confirm* s f)   (state-set-confirm s (f (state-confirm s))))
 (define (state-store* s f)      (state-set-store s (f (state-store s))))
+(define (state-interactions* s f) (state-set-interactions s (f (state-interactions s))))
+
+;;; ---------- 交互栈 ----------
+
+(define (state-interaction-top s)
+  (and (pair? (state-interactions s)) (car (state-interactions s))))
+
+(define (state-interaction-push s i)
+  (state-set-interactions s (cons i (state-interactions s))))
+
+(define (state-interaction-pop-id s id)
+  (state-set-interactions
+   s (for/list ([x (in-list (state-interactions s))] #:unless (eq? (interaction-id x) id)) x)))
+
+(define (state-interaction-pop-kind s kind)
+  (state-set-interactions
+   s (for/list ([x (in-list (state-interactions s))] #:unless (eq? (interaction-kind x) kind)) x)))
 
 ;;; ---------- 信号 ----------
 
@@ -120,6 +141,9 @@
   (state-set-store s (hash-set (state-store s) id v)))
 (define (plugin-state* s id f [default #f])
   (plugin-state-set s id (f (plugin-state s id default))))
+;; 清掉一个插件的命名空间（卸载用）。
+(define (plugin-state-clear s id)
+  (state-set-store s (hash-remove (state-store s) id)))
 
 (define (state-mark-quit s)
   (state-runtime* s (λ (r) (struct-copy runtime r [quit? #t]))))

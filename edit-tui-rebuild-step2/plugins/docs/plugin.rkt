@@ -35,6 +35,7 @@
          "../../model/workspace.rkt"
          "../../model/layout.rkt"
          "../../model/chrome.rkt"
+         "../../model/service.rkt"
          "../../effects/engine.rkt"
          "../../env/command.rkt"
          "../../env/environment.rkt"
@@ -42,30 +43,47 @@
          "../../env/rule.rkt"
          "../../env/hook.rkt"
          "../../env/plugin.rkt"
+         "../../env/service.rkt"
          "../../bootstrap/panel.rkt"
          "../../dispatch/context.rkt"
          "../lang/context.rkt"
          "../lang/pool.rkt"
          "../lang/local-docs.rkt")
 
-(define panel-key 'docs)
-(define state-key 'docs-state)
-(define cache-key 'docs-cache)
-(define jobs-key 'docs-jobs)
+(define store-key 'docs)
+
+;; 一个插件的状态只占 store 的一个 key：store['docs] 下再分 panel / state /
+;; cache / jobs。这样 plugin-uninstall! 清一个 key 就干净了。
+(define (docs-store state)
+  (plugin-state state store-key
+                (hash 'panel #f
+                      'state #f
+                      'service (service-empty))))
+(define (store-ref state key) (hash-ref (docs-store state) key))
+(define (store-set state key value)
+  (plugin-state-set state store-key
+                    (hash-set (docs-store state) key value)))
 
 ;;; ════════════════ 面板 ════════════════
 
-(define (docs-panel-view state) (plugin-state state panel-key #f))
+(define (docs-panel-view state) (store-ref state 'panel))
+
+(define (install-docs-panel-state! _engine state _rid vid)
+  (store-set state 'panel vid))
 
 (define (docs-panel-spec)
   (make-panel-spec #:name "*docs*"
                    #:role 'tool
                    #:mode 'docs
-                   #:sync #f))
+                   #:sync #f
+                   #:install install-docs-panel-state!
+                   #:hint (fixed 8)
+                   #:owner 'docs
+                   #:key 'docs))
 
 (define (install-docs-panel! engine state rid)
-  (define-values (s1 vid) (panel-spec-install! engine state rid (docs-panel-spec)))
-  (plugin-state-set s1 panel-key vid))
+  (define-values (s1 _vid) (panel-spec-install! engine state rid (docs-panel-spec)))
+  s1)
 
 (define docs-keys
   (keys [(key 'left)  'nav-left]
@@ -77,35 +95,24 @@
 
 ;;; ════════════════ store：当前文档 / 缓存 / job ════════════════
 
-(define (docs-state state) (plugin-state state state-key #f))
-(define (set-docs-state state d) (plugin-state-set state state-key d))
+(define (docs-state state) (store-ref state 'state))
+(define (set-docs-state state d) (store-set state 'state d))
 
-(define (cache-of state)
-  (plugin-state state cache-key (hash 'done (hash) 'pending (hash))))
-(define (cache-get state key) (hash-ref (hash-ref (cache-of state) 'done) key #f))
-(define (cache-has? state key) (hash-has-key? (hash-ref (cache-of state) 'done) key))
+(define (service-of state) (store-ref state 'service))
+(define (cache-get state key) (service-cache-ref (service-of state) key #f))
+(define (cache-has? state key) (service-cache-has? (service-of state) key))
 (define (cache-put state key value)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'done (hash-set (hash-ref c 'done) key value))))
-(define (pending? state key)
-  (hash-ref (hash-ref (cache-of state) 'pending) key #f))
-(define (pending-add state key)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'pending (hash-set (hash-ref c 'pending) key #t))))
+  (store-set state 'service
+             (service-cache-set (service-of state) key value)))
+(define (pending? state key) (service-pending? (service-of state) key))
 (define (pending-del state key)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'pending (hash-remove (hash-ref c 'pending) key))))
+  (store-set state 'service
+             (service-pending-del (service-of state) key)))
 
-(define (jobs-of state) (plugin-state state jobs-key (hash)))
-(define (job-add state jid key)
-  (plugin-state-set state jobs-key (hash-set (jobs-of state) jid key)))
 (define (job-take state jid)
-  (define js (jobs-of state))
-  (values (hash-ref js jid #f)
-          (plugin-state-set state jobs-key (hash-remove js jid))))
+  (define-values (key service*)
+    (service-job-take (service-of state) jid))
+  (values key (store-set state 'service service*)))
 
 ;;; ════════════════ 光标处标识符 ════════════════
 
@@ -264,9 +271,9 @@
 ;;; ════════════════ 提交 doc 查询 ════════════════
 
 (define (submit-doc-job state key ident mods)
-  (define-values (jid s1) (state-next-id state 'job))
-  (define s2 (pending-add (job-add s1 jid key) key))
-  (transition s2 (list (submit-service-effect jid 'doc (list 'doc ident mods)))))
+  (define-values (s1 service* effect)
+    (service-request state (service-of state) 'doc (list 'doc ident mods) key))
+  (transition (store-set s1 'service service*) (list effect)))
 
 ;;; ════════════════ 命令：C-c h / M-d ════════════════
 
@@ -382,6 +389,9 @@
    'docs
    #:env (make-environment
           #:modes (hash 'docs (make-mode #:keymaps (list docs-keys) #:fallback 'ignore))
+          #:services (hash 'doc
+                           (make-service-spec 'doc
+                                              #:description "xref / blueboxes / HTML 文档查询"))
           #:commands (hash 'docs-toggle (cmd docs-toggle-command)
                            'docs-show (cmd docs-show-command))
           #:rules (list (make-rule 'always docs-keys-table)))

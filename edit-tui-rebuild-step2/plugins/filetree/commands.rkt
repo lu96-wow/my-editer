@@ -40,7 +40,9 @@
          "../../env/doc-type.rkt"
          "../../env/input-command.rkt"
          "../../chrome/input.rkt"
-         "../../dispatch/context.rkt")
+         "../../dispatch/context.rkt"
+         "../../bootstrap/commands/layout.rkt"
+         (only-in "../../bootstrap/commands/placement.rkt" set-placement))
 
 (define (message ctx text)
   (transition-pure
@@ -117,7 +119,7 @@
       (attach-and-focus s1 rid vid)
       (transition-pure
        (state-chrome*
-        (state-workspace* s1 (λ (w) (workspace-set-placement w vid)))
+        (set-placement s1 vid)
         (λ (c) (chrome-set-message c "open file: choose target panel"))))))
 
 (define (open-file-placement ctx state path)
@@ -183,40 +185,15 @@
                  [(not reg) (message ctx "filetree: not installed")]
                  [else
                   (define rid (region-key reg))
-                  (define layout (workspace-layout ws))
-                  (define visible? (tree-visible? layout rid))
-                  (cond
-                    [visible?
-                     (define axis (or (region-parent-axis layout rid) 'lr))
-                     (define w (state-window s))
-                     (define area (window-area w))
-                     (define size (or (region-content-size layout area rid axis) 0))
-                     (define s1 (plugin-state* s 'filetree (λ (f*) (filetree-set-width f* size)) (empty-filetree)))
-                     (define ws1 (struct-copy workspace ws [layout (tree-hide layout rid)]))
-                     (define ws2
-                       (if (equal? (state-focus s1) rvid)
-                           (let ([fb (for/first ([(v vm) (in-hash (workspace-views ws1))]
-                                                #:when (and (workspace-view-attached? ws1 v)
-                                                            (not (equal? v rvid))
-                                                            (let ([dm (workspace-doc ws1 (view-meta-doc vm))])
-                                                              (and dm
-                                                                   (not (doc-meta-internal? dm))))))
-                                      v)])
-                             (workspace-set-focus* ws1 fb #:push? #f))
-                           ws1))
-                     (transition-pure
-                      (state-chrome*
-                       (state-set-workspace s1 ws2)
-                       (λ (c) (chrome-set-message c (format "filetree hidden (~a)" size)))))]
-                    [else
-                     (define recorded (or (filetree-width f) 0))
-                     (define size (if (positive? recorded) recorded filetree-min-size))
-                     (define layout* (tree-show (tree-set-dim layout rid (fixed size)) rid))
-                     (transition-pure
-                      (state-chrome*
-                       (state-set-workspace s (struct-copy workspace ws [layout layout*]))
-                       (λ (c) (chrome-set-message c (format "filetree shown (~a)" size)))))] )]))))))
-
+                  (define-values (s* visible? size)
+                    (toggle-region! s rid #:min filetree-min-size))
+                  (if visible?
+                      (transition-pure
+                       (state-chrome*
+                        s* (λ (c) (chrome-set-message c (format "filetree shown (~a)" size)))))
+                      (transition-pure
+                       (state-chrome*
+                        s* (λ (c) (chrome-set-message c (format "filetree hidden (~a)" size))))))]))))))
 (define (filetree-enter-command)
   (cmd (λ (ctx)
          (define l (selected-line ctx))
@@ -243,14 +220,18 @@
          (define dir (selected-dir ctx))
          (if (not dir)
              (message ctx "filetree: no directory")
-             (input-show ctx (format "Create file in ~a: " dir))))))
+             (input-show ctx (format "Create file in ~a: " dir)
+                        #:tag 'filetree-create-file
+                        #:data dir)))))
 
 (define (create-folder-prompt-command)
   (cmd (λ (ctx)
          (define dir (selected-dir ctx))
          (if (not dir)
              (message ctx "filetree: no directory")
-             (input-show ctx (format "Create folder in ~a: " dir))))))
+             (input-show ctx (format "Create folder in ~a: " dir)
+                        #:tag 'filetree-create-folder
+                        #:data dir)))))
 
 (define (delete-file-command)
   ;; C-d 先进入 input 栏确认 y/n，不直接删。
@@ -261,7 +242,9 @@
            [(not (filetree-file? l)) (message ctx "filetree: select a file")]
            [else
             (define path (filetree-line-path l))
-            (input-show ctx (format "Delete file: ~a (y/n) " path))]))))
+            (input-show ctx (format "Delete file: ~a (y/n) " path)
+                        #:tag 'filetree-delete-confirm
+                        #:data path)]))))
 
 (define (create-file-handler ctx matched)
   (define dir (cadr matched))
@@ -301,7 +284,9 @@
      (notice-state s (format "cancelled: ~a" path))]
     [else
      ;; 非法答案：重新显示确认 prompt
-     (input-show-state s (format "Delete file: ~a (y/n) " path))]))
+     (input-show-state s (format "Delete file: ~a (y/n) " path)
+                              #:tag 'filetree-delete-confirm
+                              #:data path)]))
 
 (define (create-folder-handler ctx matched)
   (define dir (cadr matched))

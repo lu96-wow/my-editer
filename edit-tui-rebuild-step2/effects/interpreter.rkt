@@ -42,7 +42,7 @@
 
 (define (runtime-effect? e)
   (or (spawn-effect? e) (timer-effect? e) (emit-effect? e)
-      (submit-service-effect? e)))
+      (submit-service-effect? e) (query-effect? e)))
 
 ;;; ════════════════ 单个 effect ════════════════
 
@@ -134,6 +134,8 @@
      (error 'interpret-effect! "emit 是 Runtime effect，尚未接线")]
     [(submit-service-effect? effect)
      (error 'interpret-effect! "submit-service 是 Runtime effect，由 runtime 解释")]
+    [(query-effect? effect)
+     (error 'interpret-effect! "query 是 Runtime effect，由 runtime 解释")]
 
     [else (error 'interpret-effect! "未知 effect：~a" effect)]))
 
