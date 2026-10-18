@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 无（纯 command 值）
+
 ;;; command/command.rkt —— 表叶子上的「命令」：要跑的过程 + 说明 + 输入需求
 ;;;
 ;;; 表（keymap）只认 token → 叶子。叶子以前是裸过程，现在统一是一份 command：

@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : theme
+;;; effect : 无（纯主题数据）
+
 ;;; edit-tui/theme/frame.rkt —— 框架主题
 ;;;
 ;;; 颜色与 history/edit4/config/palette.rkt 同步（树 / 资源 / 边框 / chrome）。

@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 无（纯鼠标 token）
+
 ;;; command/mouse.rkt —— 鼠标令牌（纯，不碰 tui）
 ;;;
 ;;; (mouse action button 修饰…)  相等用 equal?。

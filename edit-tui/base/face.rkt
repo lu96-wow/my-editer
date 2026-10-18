@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : base
+;;; effect : 无（纯 face 值）
+
 ;;; edit-tui/base/face.rkt —— face 结构 + 读 / 写操作（纯值）
 ;;;
 ;;; core 的 face 端口存 `#f`（默认，整轨惰性）或一个 face。face 三分量：

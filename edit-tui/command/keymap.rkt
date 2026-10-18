@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 无（纯 trie）
+
 ;;; command/keymap.rkt —— 表（trie）+ 表列表操作对象
 ;;;
 ;;; token 是不透明、equal? 可比的值（键令牌、鼠标令牌…）。

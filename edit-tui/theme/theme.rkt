@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : theme
+;;; effect : 无（纯 style 机制）
+
 ;;; edit-tui/theme/theme.rkt —— 主题机制（字段与渲染层 face 一致）
 ;;;
 ;;; 一个 style 就是 fg / bg / attrs（和 base/face.rkt 的 face 同字段）：

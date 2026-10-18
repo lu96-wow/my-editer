@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 无（纯键 token）
+
 ;;; command/key.rkt —— 按键令牌（纯，不碰 tui）
 ;;;
 ;;; 一个「键」= 键名 + 一组规范化修饰键，用 equal? 比较：

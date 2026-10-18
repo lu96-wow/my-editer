@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : core-render
+;;; effect : 无（纯 piece -> tui 序列）
+
 ;;; core-render/render.rkt —— core 渲染数据 -> tui 序列
 ;;;
 ;;; 只做一件事：把 core 的渲染值（`piece`）画成 tui 序列。

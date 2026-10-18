@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 无（只 require/provide）
+
 ;;; command/main.rkt —— 命令层入口
 ;;;
 ;;; 纯的部分：key / keymap（可单测，不 require tui）；

@@ -1,9 +1,13 @@
 #lang racket
 
+;;; layer  : theme
+;;; effect : 无（纯主题数据）
+
 ;;; edit-tui/theme/core.rkt —— 渲染核心主题
 ;;;
 ;;; 颜色与 history/edit4/config/palette.rkt 同步。
 ;;; 键就是 core-render / 插件渲染时会遇到的 face 符号；只在这里写具体颜色。
+;;; 与 edit4 palette 的对应关系见 edit-tui/CONSTRAINTS.md §9。
 
 (require "theme.rkt")
 

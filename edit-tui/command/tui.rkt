@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : command
+;;; effect : 终端 IO 适配：event -> token
+
 ;;; command/tui.rkt —— 命令层的 tui 适配：事件 → token → 键表
 ;;;
 ;;;   1. `event->key`    key-event    → 键令牌（其余 → #f）

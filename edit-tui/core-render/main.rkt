@@ -1,5 +1,8 @@
 #lang racket
 
+;;; layer  : core-render
+;;; effect : 无（只 require/provide）
+
 ;;; edit-tui/core-render/main.rkt —— tui 渲染后端入口
 ;;;
 ;;; 把 core 的渲染值（`piece`）画成 racket-tui 序列；只产出序列，不自己输出。
