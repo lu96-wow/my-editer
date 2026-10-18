@@ -19,6 +19,7 @@
          "../projection/geometry.rkt"
          "../projection/status.rkt"
          "../projection/render.rkt"
+         "../chrome/slot.rkt"
          "../../core/view/base/rect.rkt"
          "../../core/view/panel.rkt")
 
@@ -36,6 +37,11 @@
                     (make-leaf r2 (flex 1)))
               (flex 1)))
 (define-values (ps-lr cuts-lr) (geometry-solve lay-lr area))
+;; geometry-snapshot 与 geometry-solve 同源，供一帧共用
+(define snap-lr (geometry-snapshot lay-lr area))
+(check-equal? (layout-snapshot-area snap-lr) area)
+(check-equal? (layout-snapshot-regions snap-lr) ps-lr)
+(check-equal? (layout-snapshot-cuts snap-lr) cuts-lr)
 (check-equal? (length ps-lr) 2)
 (check-equal? (map region-panel-region ps-lr) (list r1 r2))
 (check-true (for/and ([p (in-list ps-lr)])
@@ -125,25 +131,32 @@
 ;; 调试 State 行
 (check-true (string-contains? (state-line s0 ev) "focus=view:1"))
 (check-true (string-contains? (state-line s0 ev) "docs=1"))
-(check-equal? (chrome-line s0 ev 'state) (state-line s0 ev))
+(check-true (string-contains? (state-line s0 ev) "regions="))
 
 ;;; ════════════════ render ════════════════
 
-;; 区域：editor + 底部 status slot
+;; 区域：editor + 底部 status 槽。**状态栏也是 document**（内部文档 + view），
+;; 文本由 sync-chrome! 每帧写进 buffer，渲染走同一条 panel 路径。
 (define rid (region-id 1))
 (define sid (region-id 2))
 (define eng2 (make-engine))
 (define did2 (doc-id 1))
 (define vid2 (view-id 1))
+(define sdid (doc-id 2))
+(define svid (view-id 2))
 (void (engine-create-doc! eng2 did2 "main.rkt" "hello\nworld\n"))
 (void (engine-create-view! eng2 vid2 did2))
+(void (engine-create-doc! eng2 sdid "*status*" ""))
+(void (engine-create-view! eng2 svid sdid))
 
 (define ws2
   (let* ([ws (workspace-empty)]
          [ws (workspace-add-doc ws did2 (make-doc-meta "main.rkt" #:path "/tmp/main.rkt"))]
          [ws (workspace-add-view ws vid2 (view-meta did2 (hash)))]
+         [ws (workspace-add-doc ws sdid (make-doc-meta "*status*" #:mode 'status #:internal? #t))]
+         [ws (workspace-add-view ws svid (view-meta sdid (hash)))]
          [ws (workspace-add-region ws rid (region rid (list (view-member vid2)) vid2 'editor))]
-         [ws (workspace-add-region ws sid (region sid (list (chrome-member 'status)) 'status 'slot))]
+         [ws (workspace-add-region ws sid (region sid (list (view-member svid)) svid 'slot))]
          [ws (struct-copy workspace ws
                           [layout (make-split 'tb
                                               (list (make-leaf rid (flex 1))
@@ -152,58 +165,64 @@
     ws))
 (define s3 (state-set-focus (state-set-workspace
                              (state-chrome* (make-state #:window (make-window 10 40))
-                                            (λ (c) (chrome-set-message c "hello status")))
+                                            (λ (c)
+                                              (chrome-set-slot
+                                               (chrome-set-message c "hello status")
+                                               (make-chrome-slot sid svid svid))))
                              ws2)
                             vid2))
 
 (define render-parts full-status-parts)
-(define-values (panels chromes placements)
-  (project-frame s3 eng2 #:status-parts render-parts))
+(define-values (panels placements) (project-frame s3 eng2))
 (check-equal? (length panels) 2)
-(check-equal? (length chromes) 1)
-(check-equal? (chrome-entry-line (car chromes))
-              (status-line s3 (make-engine-view eng2) render-parts))
-(check-equal? (length placements) 1)
+(check-equal? (length placements) 2)      ; editor + status view 都要同步尺寸
 
 ;; 焦点 panel 用 focused-border
 (define focused-panel
-  (for/first ([p (in-list panels)] #:when (panel-view p)) p))
-(check-eq? (panel-face focused-panel) 'focused-border)
+  (for/first ([p (in-list panels)] #:when (and (panel-view p)
+                                               (eq? (panel-face p) 'focused-border)))
+    p))
 (check-eq? (panel-weight focused-panel) 1)
 
-;; 同步 view 尺寸 -> 渲染
+;; 每帧同步：状态栏文本落进它自己的 buffer（唯一写口），然后渲染
+(sync-chrome! s3 eng2 render-parts)
 (engine-sync-views! eng2 placements)
-(define-values (cache bytes) (render-frame s3 eng2 #f #:status-parts render-parts))
+(define-values (cache bytes) (render-frame s3 eng2 #f))
 (check-true (frame-cache? cache))
 (check-true (positive? (bytes-length bytes)))
 (define text (bytes->string/utf-8 bytes))
-(check-true (string-contains? text "hello"))
+;; 正文由 core 画（首字符 h 是光标，单独一次输出），状态栏由它自己的 buffer 画
+(check-true (string-contains? text "world"))
 (check-true (string-contains? text "hello status"))
 
+;; render-frame* 用已经投影过的 panels，输出应与 render-frame 完全一致
+(define-values (_cache-p bytes-p) (render-frame* s3 eng2 #f panels))
+(check-equal? bytes-p bytes)
+
 ;; 同一状态再渲染：无变化 -> 空输出
-(define-values (cache2 bytes2) (render-frame s3 eng2 cache #:status-parts render-parts))
+(define-values (cache2 bytes2) (render-frame s3 eng2 cache))
 (check-true (frame-cache? cache2))
 (check-equal? (bytes-length bytes2) 0)
 
-;; 状态消息变化 -> 只出 chrome 差分（含新文本）
+;; 状态消息变化 -> 同步 + 渲染后有输出（状态栏是 normal panel，走 core 的 diff）
 (define s4 (state-chrome* s3 (λ (c) (chrome-set-message c "changed"))))
-(define-values (cache3 bytes3) (render-frame s4 eng2 cache2 #:status-parts render-parts))
+(sync-chrome! s4 eng2 render-parts)
+(define-values (cache3 bytes3) (render-frame s4 eng2 cache2))
 (check-true (positive? (bytes-length bytes3)))
 (check-true (string-contains? (bytes->string/utf-8 bytes3) "changed"))
 
 ;; resize -> 几何变 -> 非空输出
 (define s5 (state-set-window s4 (make-window 12 50)))
-(define-values (_panels5 _chromes5 placements5) (project-frame s5 eng2 #:status-parts render-parts))
+(define-values (_panels5 placements5) (project-frame s5 eng2))
 (engine-sync-views! eng2 placements5)
-(define-values (_cache4 bytes4) (render-frame s5 eng2 cache3 #:status-parts render-parts))
+(sync-chrome! s5 eng2 render-parts)
+(define-values (_cache4 bytes4) (render-frame s5 eng2 cache3))
 (check-true (positive? (bytes-length bytes4)))
 
-;; chrome 消失 -> 清旧矩形
-(define ws6
-  (struct-copy workspace (state-workspace s5)
-               [layout (make-leaf rid (flex 1))]))
+;; status 槽从布局里消失 -> 那一行被擦掉（core diff 负责）
+(define ws6 (struct-copy workspace (state-workspace s5) [layout (make-leaf rid (flex 1))]))
 (define s6 (state-set-workspace s5 ws6))
-(define-values (_cache5 bytes5) (render-frame s6 eng2 cache3 #:status-parts render-parts))
+(define-values (_cache5 bytes5) (render-frame s6 eng2 cache3))
 (check-true (positive? (bytes-length bytes5)))
 
 (displayln "edit-tui projection: ok")

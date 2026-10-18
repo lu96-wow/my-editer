@@ -23,6 +23,7 @@
          "../base/keymap.rkt"
          "../base/transition.rkt"
          "../model/state.rkt"
+         "../model/input.rkt"
          "../model/chrome.rkt"
          "../env/mode.rkt"
          "../env/rule.rkt"
@@ -31,10 +32,13 @@
          "../env/doc-type.rkt"
          "../env/plugin.rkt"
          "../env/defaults.rkt"
+         "../dispatch/context.rkt"
          "../projection/status.rkt"
          "commands/table.rkt"
          "commands/document.rkt"
-         "commands/placement.rkt")
+         "commands/placement.rkt"
+         (only-in "commands/util.rkt" notice-result-handler)
+         "../chrome/input.rkt")
 
 (define text-keys
   (keys
@@ -89,6 +93,8 @@
    [(key 'x 'ctrl) (key 'o 'ctrl)  'switch-member]
    [(key 'x 'ctrl) (key 'p 'ctrl)  'place-commit]
    [(key 'x 'ctrl) (key 'g 'ctrl)  'place-cancel]
+   [(key 'g 'ctrl)                 'cancel-current]
+   [(key 'escape)                  'cancel-current]
    [(key 'q 'ctrl)                 'request-quit]
    [(key 'n 'ctrl)                 'new-document]
    [(key 'w 'ctrl) (key 'left)     'split-left]
@@ -124,6 +130,16 @@
     #:rules (list (make-rule 'placing placement-keys))
     #:keymaps (hash 'global core-global-keys)
     #:input-commands (default-input-commands)
+    #:continuations (hash-set (save-continuation-handlers)
+                              'notice-result notice-result-handler)
+    #:interactions (hash 'input (λ (ctx _data) (transition-pure (input-cancel ctx)))
+                         'placement (λ (ctx _data) (placement-cancel ctx))
+                         'confirm (λ (ctx _data) (confirm-cancel ctx))
+                         'pending (λ (ctx _data)
+                                    (transition-pure
+                                     (state-interaction-pop-kind
+                                      (state-input* (ctx-state ctx) input-clear-pending)
+                                      'pending))))
     #:status full-status-parts
     ;; 内部事件 / tick 也是信号（见 dispatch/pipeline.rkt）。
     ;; 框架**不**默认处理 job-done：它是提交者自己的事（谁提交谁对账）；

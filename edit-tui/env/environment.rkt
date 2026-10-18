@@ -55,6 +55,18 @@
          environment-decors
          environment-add-decor
          environment-add-decors
+         environment-contributions
+         environment-base
+         environment-interactions
+         environment-interaction
+         environment-add-interaction
+         environment-services
+         environment-service
+         environment-service-kinds
+         environment-add-service
+         environment-continuations
+         environment-continuation
+         environment-add-continuation
          environment-merge)
 
 (require "../base/keymap.rkt"
@@ -67,10 +79,11 @@
          "doc-type.rkt"
          "input-command.rkt"
          "hook.rkt"
+         "service.rkt"
          "../base/status-part.rkt"
          "../model/face-decor.rkt")
 
-(struct environment (roles modes scopes commands keymaps rules status doc-types input-commands panel-syncs hooks face-layers decors) #:transparent)
+(struct environment (roles modes scopes commands keymaps rules status doc-types input-commands panel-syncs hooks face-layers decors contributions base interactions services continuations) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
@@ -85,9 +98,18 @@
 ;; decors   : (listof face-decor)         增量 face 装饰（按文档 applies? 过滤后挂到 engine）
 ;; panel-syncs: (listof procedure)        每帧渲染前调用 (state engine -> any)；
 ;;             面板由插件贡献时挂在这里，runtime 只负责遍历，不认识具体面板。
+;; contributions: (listof contribution)  带 owner 的贡献清单（env/extension.rkt）。
+;;             编译后的字段仍是上面这些；contributions 只用于 provenance / 校验 / uninstall。
+;; base     : environment | #f            第一次加 contribution 前的快照；
+;;             environment-remove-owner 从它重建（#f = 没有可重建的 base）。
+;; interactions : (hash/c symbol procedure)  interaction kind -> cancel(ctx, data)；
+;;             栈条目只存 kind + data，取消函数在 env 里。
+;; services : (hash/c symbol service-spec)   worker service 能力声明。
+;; continuations : (hash/c symbol procedure)  effect data continuation 的 tag -> handler；
+;;                 handler : (state data . results -> transition)。
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '() '() '()))
+  (environment (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '() '() '() '() #f (hash) (hash) (hash)))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
@@ -101,9 +123,15 @@
                           #:panel-syncs [panel-syncs '()]
                           #:hooks [hooks '()]
                           #:face-layers [face-layers '()]
-                          #:decors [decors '()])
+                          #:decors [decors '()]
+                          #:contributions [contributions '()]
+                          #:base [base #f]
+                          #:interactions [interactions (hash)]
+                          #:services [services (hash)]
+                          #:continuations [continuations (hash)])
   (environment roles modes scopes commands keymaps rules status
-               doc-types input-commands panel-syncs hooks face-layers decors))
+               doc-types input-commands panel-syncs hooks face-layers decors
+               contributions base interactions services continuations))
 
 ;;; ---------- 查 ----------
 
@@ -206,6 +234,38 @@
   (unless (face-decor? d) (error 'environment-add-decor "要 face-decor：~a" d))
   (struct-copy environment env [decors (append (environment-decors env) (list d))]))
 
+(define (environment-add-interaction env kind handler)
+  (unless (symbol? kind) (error 'environment-add-interaction "kind 要是 symbol：~a" kind))
+  (unless (procedure? handler) (error 'environment-add-interaction "handler 要是过程：~a" handler))
+  (struct-copy environment env
+               [interactions (hash-set (environment-interactions env) kind handler)]))
+
+(define (environment-interaction env kind)
+  (hash-ref (environment-interactions env) kind #f))
+
+(define (environment-service env kind)
+  (hash-ref (environment-services env) kind #f))
+(define (environment-service-kinds env)
+  (sort (hash-keys (environment-services env)) symbol<?))
+
+(define (environment-add-service env spec)
+  (unless (service-spec? spec)
+    (error 'environment-add-service "要 service-spec：~a" spec))
+  (struct-copy environment env
+               [services (hash-set (environment-services env)
+                                   (service-spec-kind spec) spec)]))
+
+(define (environment-continuation env tag)
+  (hash-ref (environment-continuations env) tag #f))
+
+(define (environment-add-continuation env tag handler)
+  (unless (symbol? tag)
+    (error 'environment-add-continuation "tag 要是 symbol：~a" tag))
+  (unless (procedure? handler)
+    (error 'environment-add-continuation "handler 要是过程：~a" handler))
+  (struct-copy environment env
+               [continuations (hash-set (environment-continuations env) tag handler)]))
+
 (define (environment-add-decors env ds)
   (for/fold ([e env]) ([d (in-list ds)]) (environment-add-decor e d)))
 
@@ -227,4 +287,10 @@
                (append (environment-panel-syncs a) (environment-panel-syncs b))
                (append (environment-hooks a) (environment-hooks b))
                (append (environment-face-layers a) (environment-face-layers b))
-               (append (environment-decors a) (environment-decors b))))
+               (append (environment-decors a) (environment-decors b))
+               (append (environment-contributions a) (environment-contributions b))
+               ;; base 只保留一侧的快照；真正的“可重建”由 plugin-env-apply 显式设置。
+               (or (environment-base a) (environment-base b))
+               (overlay (environment-interactions a) (environment-interactions b))
+               (overlay (environment-services a) (environment-services b))
+               (overlay (environment-continuations a) (environment-continuations b))))

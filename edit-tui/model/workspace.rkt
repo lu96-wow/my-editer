@@ -21,7 +21,7 @@
 ;;;
 ;;; region 是“一块位置里可切换的成员”：
 ;;;   · editor 区域：members = 若干 view-member；
-;;;   · 状态栏/输入栏：members = chrome-member 'status / 'input；
+;  · 状态栏/输入栏也是 view-member（它们就是 document）；
 ;;;   · active 决定当前显示哪个成员。
 ;;; 几何（size / visible?）在 layout 的 leaf 上，不在 region 上，避免两处真相。
 
@@ -33,9 +33,10 @@
          (struct-out region)
          (struct-out workspace)
          (struct-out float)
+         (struct-out panel-entry)
          make-doc-meta
-         view-member chrome-member
-         view-region-member? chrome-region-member? region-member-key
+         view-member
+         view-region-member? region-member-key
          make-workspace
          workspace-empty
          workspace-doc workspace-view workspace-region
@@ -56,7 +57,13 @@
          workspace-focus-view
          workspace-set-root
          workspace-set-placement
-         workspace-float workspace-add-float workspace-remove-float)
+         workspace-float workspace-add-float workspace-remove-float
+         workspace-panel-register
+         workspace-panel-unregister-view
+         workspace-panel-unregister-region
+         workspace-panel-views-by-owner
+         workspace-panel-regions-by-owner
+         workspace-panel-view workspace-panel-region)
 
 ;;; ---------- 元数据 ----------
 
@@ -86,13 +93,14 @@
 ;;; ---------- 成员 / 区域 ----------
 
 (struct region-member (kind key) #:transparent)
-;; kind : 'view | 'chrome
-;; key  : view-id | symbol
+;; kind : 'view（保留字段：将来可能有别的成员来源）
+;; key  : view-id
+;;
+;; 没有 'chrome 这一种：状态栏 / 输入栏都是普通 view（document），
+;; 走同一套渲染 / 同步 / 命中路径（不能有第二条绘制路径）。
 
 (define (view-member v)   (region-member 'view v))
-(define (chrome-member k) (region-member 'chrome k))
-(define (view-region-member? m)  (and (region-member? m) (eq? (region-member-kind m) 'view)))
-(define (chrome-region-member? m)(and (region-member? m) (eq? (region-member-kind m) 'chrome)))
+(define (view-region-member? m) (and (region-member? m) (eq? (region-member-kind m) 'view)))
 (struct region (key members active role) #:transparent)
 ;; key          : region-id
 ;; members      : (listof member)
@@ -110,9 +118,64 @@
 ;; view   : view-id       浮层的 view（buffer 支撑，内容 = 文档文本）
 ;; anchor : view-id | #f  面板贴着这个 view 的光标（#f = 屏幕左上角）
 
+;;; ---------- 已安装面板索引 ----------
+
+(struct panel-entry (owner key region view) #:transparent)
+;; owner  : symbol
+;; key    : symbol          panel-spec.key（同一 owner 下唯一）
+;; region : region-id
+;; view   : view-id
+
+;; 同一 owner+key 只保留最新安装；其余 append。
+(define (workspace-panel-register w owner key rid vid)
+  (define kept
+    (for/list ([e (in-list (workspace-panel-index w))]
+               #:unless (and (eq? (panel-entry-owner e) owner)
+                             (eq? (panel-entry-key e) key)))
+      e))
+  (struct-copy workspace w
+               [panel-index (append kept (list (panel-entry owner key rid vid)))]))
+
+(define (workspace-panel-unregister-view w vid)
+  (struct-copy workspace w
+               [panel-index
+                (for/list ([e (in-list (workspace-panel-index w))]
+                           #:unless (equal? (panel-entry-view e) vid))
+                  e)]))
+
+(define (workspace-panel-unregister-region w rid)
+  (struct-copy workspace w
+               [panel-index
+                (for/list ([e (in-list (workspace-panel-index w))]
+                           #:unless (equal? (panel-entry-region e) rid))
+                  e)]))
+
+(define (workspace-panel-views-by-owner w owner)
+  (for/list ([e (in-list (workspace-panel-index w))]
+             #:when (eq? (panel-entry-owner e) owner))
+    (panel-entry-view e)))
+
+(define (workspace-panel-regions-by-owner w owner)
+  (remove-duplicates
+   (for/list ([e (in-list (workspace-panel-index w))]
+              #:when (eq? (panel-entry-owner e) owner))
+     (panel-entry-region e))))
+
+(define (workspace-panel-view w owner key)
+  (for/first ([e (in-list (workspace-panel-index w))]
+              #:when (and (eq? (panel-entry-owner e) owner)
+                          (eq? (panel-entry-key e) key)))
+    (panel-entry-view e)))
+
+(define (workspace-panel-region w owner key)
+  (for/first ([e (in-list (workspace-panel-index w))]
+              #:when (and (eq? (panel-entry-owner e) owner)
+                          (eq? (panel-entry-key e) key)))
+    (panel-entry-region e)))
+
 ;;; ---------- workspace ----------
 
-(struct workspace (docs views regions layout floats focus stack root placement) #:transparent)
+(struct workspace (docs views regions layout floats focus stack root placement panel-index) #:transparent)
 ;; docs    : (hash/c doc-id doc-meta)
 ;; views   : (hash/c view-id view-meta)
 ;; regions : (hash/c region-id region)
@@ -126,9 +189,11 @@
 ;;           而是“这个工作区从哪里看”的框架级信息；面板拔掉也不应该丢。
 ;; placement: view-id | #f  正在等待“放进某个 panel”的 view（placement 模式）
 ;;           资源面板和文件树面板都会发起它，所以属于 workspace，不是某个面板的切片。
+;; panel-index: (listof panel-entry)  已安装面板的 owner / key / region / view 索引；
+;;           面板卸载时清掉对应条目。
 
 (define (workspace-empty)
-  (workspace (hash) (hash) (hash) (empty-tree) '() #f '() "" #f))
+  (workspace (hash) (hash) (hash) (empty-tree) '() #f '() "" #f '()))
 
 ;; 允许调用方只覆盖部分字段；其余保持空。
 (define (make-workspace #:docs [docs (hash)]
@@ -139,8 +204,9 @@
                         #:focus [focus #f]
                         #:stack [stack '()]
                         #:root [root ""]
-                        #:placement [placement #f])
-  (workspace docs views regions layout floats focus stack root placement))
+                        #:placement [placement #f]
+                        #:panel-index [panel-index '()])
+  (workspace docs views regions layout floats focus stack root placement panel-index))
 
 (define (workspace-set-root w root)
   (struct-copy workspace w [root root]))
@@ -160,6 +226,10 @@
                [floats (cons f (for/list ([x (in-list (workspace-floats w))]
                                           #:unless (eq? (float-id x) (float-id f)))
                                  x))]))
+
+;; 丢并掉满足 pred 的浮层（view / region 消失时用）。
+(define (drop-floats w pred)
+  (for/list ([f (in-list (workspace-floats w))] #:unless (pred f)) f))
 
 (define (workspace-remove-float w id)
   (struct-copy workspace w
@@ -259,6 +329,9 @@
 
 ;; 移除一个 view：清 views 表、所有 region 的成员 / active、焦点 / 栈。
 ;;; 空 region 暂留（后续 region ops 可剪枝）；layout 只引用 region，不直接引用 view。
+;; 移除一个 view：清 views 表、所有 region 的成员 / active、焦点 / 栈。
+;;; 空 region 暂留（后续 region ops 可剪枝）；layout 只引用 region，不直接引用 view。
+;;; 浮层引用的是 view 资源：view 消失后浮层必须跟着消失（否则“弹窗还在”的判断会失真）。
 (define (workspace-remove-view w vid)
   (define (drop-member m)
     (not (and (view-region-member? m) (equal? (region-member-key m) vid))))
@@ -272,6 +345,9 @@
   (struct-copy workspace w
                [views (hash-remove (workspace-views w) vid)]
                [regions regions*]
+               [panel-index (for/list ([e (in-list (workspace-panel-index w))]
+                                       #:unless (equal? (panel-entry-view e) vid)) e)]
+               [floats (drop-floats w (λ (f) (equal? (float-view f) vid)))]
                [focus (and (workspace-focus w)
                            (not (equal? (workspace-focus w) vid))
                            (workspace-focus w))]
@@ -281,10 +357,15 @@
 
 ;; 移除一个 region：清 regions 表 + 把它从 layout 里摘掉。
 ;; view / 其它 region 的处理由调用方决定（close-region 命令会先清 view）。
+;; 移除一个 region：清 regions 表 + 把它从 layout 里摘掉，并丢弃引用它的浮层。
+;; view / 其它 region 的处理由调用方决定（close-region 命令会先清 view）。
 (define (workspace-remove-region w rid)
   (struct-copy workspace w
                [regions (hash-remove (workspace-regions w) rid)]
-               [layout (tree-close (workspace-layout w) rid)]))
+               [layout (tree-close (workspace-layout w) rid)]
+               [panel-index (for/list ([e (in-list (workspace-panel-index w))]
+                                       #:unless (equal? (panel-entry-region e) rid)) e)]
+               [floats (drop-floats w (λ (f) (equal? (float-region f) rid)))]))
 
 ;; 关闭文档：移除 doc + 它所有 view（含 region 成员 / 焦点）。
 (define (workspace-remove-doc w did)

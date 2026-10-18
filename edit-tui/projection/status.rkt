@@ -23,9 +23,7 @@
          status-path-part
          status-sequence-part
          status-message-part
-         state-line
-         chrome-line
-         region-line)
+         state-line)
 
 (require racket/string
          racket/path
@@ -169,21 +167,3 @@
           (or (status-sequence state) "-")
           (let ([m (chrome-message (state-chrome state))])
             (if (string=? m "") "-" m))))
-
-;;; ════════════════ chrome region ════════════════
-
-(define (chrome-line state ev key [parts #f])
-  (case key
-    [(status) (status-line state ev parts)]
-    [(state)  (state-line state ev)]
-    [else ""]))
-
-(define (region-line state ev rid [parts #f])
-  (define ws (state-workspace state))
-  (define reg (workspace-region ws rid))
-  (and reg
-       (let ([active (region-active reg)])
-         (for/first ([m (in-list (region-members reg))]
-                     #:when (equal? (region-member-key m) active))
-           (and (chrome-region-member? m)
-                (chrome-line state ev (region-member-key m) parts))))))

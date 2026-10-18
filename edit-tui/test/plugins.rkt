@@ -300,7 +300,7 @@
 (define clk-s5 (state-set-focus clk-s4 clk-vid))
 
 ;; 一帧：投影 -> 同步 view 尺寸（真实 app 由 run-frame 做）
-(define-values (_clk-ps _clk-cs clk-placements) (project-frame clk-s5 clk-engine))
+(define-values (_clk-ps clk-placements) (project-frame clk-s5 clk-engine))
 (engine-sync-views! clk-engine clk-placements)
 
 ; 编辑器内容区从 (row 1, col 27) 开始；屏幕 (4, 37) -> 内容 (3, 10) -> 文档 (3, 10)
@@ -320,7 +320,7 @@
 (let-values ([(engine s0) (make-world)])
   (define ev (make-engine-view engine))
   ;; 先走一帧，让 view 有真实尺寸
-  (define-values (_p _c pl) (project-frame s0 engine))
+  (define-values (_p pl) (project-frame s0 engine))
   (engine-sync-views! engine pl)
   ;; 光标移到最后一行
   ;; 光标移到最后一行，并站在 "define" 里面（没有标识符就不会开面板）
@@ -332,7 +332,7 @@
   (define s2 (apply feed engine s1 cl-h))
   (check-true (docs-open? s2))
   ;; 下一帧：投影 -> sync（尺寸变了 -> engine 里会 view-ensure!）
-  (define-values (_p2 _c2 pl2) (project-frame s2 engine))
+  (define-values (_p2 pl2) (project-frame s2 engine))
   (engine-sync-views! engine pl2)
   (define v (engine-view-object engine vid))
   (define top (view-top-line v))

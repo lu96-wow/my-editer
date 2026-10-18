@@ -46,7 +46,9 @@
          "model/input.rkt"
          "model/chrome.rkt"
          "model/save.rkt"
-         "model/face-decor.rkt")
+         "model/face-decor.rkt"
+         "model/service.rkt"
+         "model/interaction.rkt")
 
 ;;; ── env ──
 (require "env/environment.rkt"
@@ -57,6 +59,9 @@
          "env/rule.rkt"
          "env/doc-type.rkt"
          "env/input-command.rkt"
+         "env/hook.rkt"
+         "env/panel-spec.rkt"
+         "env/extension.rkt"
          "env/plugin.rkt"
          "env/defaults.rkt")
 
@@ -84,6 +89,7 @@
 ;;; ── bootstrap ──
 (require "effects/panel.rkt"
          "bootstrap/commands/table.rkt"
+         "bootstrap/plugin.rkt"
          "bootstrap/defaults.rkt")
 
 ;;; ── plugins ──
@@ -118,7 +124,9 @@
                        "model/input.rkt"
                        "model/chrome.rkt"
                        "model/save.rkt"
-                       "model/face-decor.rkt")
+                       "model/face-decor.rkt"
+         "model/service.rkt"
+         "model/interaction.rkt")
          (all-from-out "env/environment.rkt"
                        "env/role.rkt"
                        "env/mode.rkt"
@@ -127,6 +135,9 @@
                        "env/rule.rkt"
                        "env/doc-type.rkt"
                        "env/input-command.rkt"
+                       "env/hook.rkt"
+                       "env/panel-spec.rkt"
+                       "env/extension.rkt"
                        "env/plugin.rkt"
                        "env/defaults.rkt")
          (all-from-out "effects/engine.rkt"
@@ -143,6 +154,7 @@
          (all-from-out "chrome/input.rkt")
          (all-from-out "effects/panel.rkt"
                        "bootstrap/commands/table.rkt"
+                       "bootstrap/plugin.rkt"
                        "bootstrap/defaults.rkt")
          (all-from-out "plugins/filetree/model.rkt"
                        "plugins/filetree/scan.rkt"

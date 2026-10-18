@@ -35,6 +35,7 @@
          "../../model/workspace.rkt"
          "../../model/input.rkt"
          "../../model/chrome.rkt"
+         "../../model/service.rkt"
          "../../effects/engine.rkt"
          "../../effects/panel.rkt"
          "../../env/command.rkt"
@@ -42,6 +43,7 @@
          "../../env/environment.rkt"
          "../../env/hook.rkt"
          "../../env/plugin.rkt"
+         "../../env/service.rkt"
          "../../env/rule.rkt"
          "../../bootstrap/panel.rkt"
          "../../dispatch/context.rkt"
@@ -55,36 +57,49 @@
 
 ;;; ════════════════ store ════════════════
 
-(define session-key 'completion-session)
-(define popup-view-key 'completion-popup-view)
-(define popup-region-key 'completion-popup-region)
-(define cache-key 'completion-cache)
-(define jobs-key 'completion-jobs)
-
+(define store-key 'completion)
 (define popup-id 'completion)
 (define completion-mode-name 'completion-popup)
 
-(define (completion-session state) (plugin-state state session-key #f))
-(define (set-session state s) (plugin-state-set state session-key s))
+;; 一个插件的状态只占 store 的一个 key：store['completion] 下再分 session /
+;; popup / cache / jobs。这样 plugin-uninstall! 清一个 key 就干净了。
+(define (completion-store state)
+  (plugin-state state store-key
+                (hash 'session #f
+                      'popup-view #f
+                      'popup-region #f
+                      'service (service-empty))))
+(define (store-ref state key) (hash-ref (completion-store state) key))
+(define (store-set state key value)
+  (plugin-state-set state store-key
+                    (hash-set (completion-store state) key value)))
 
-(define (completion-popup-view state) (plugin-state state popup-view-key #f))
-(define (popup-region state) (plugin-state state popup-region-key #f))
+(define (completion-session state) (store-ref state 'session))
+(define (set-session state s) (store-set state 'session s))
+
+(define (completion-popup-view state) (store-ref state 'popup-view))
+(define (popup-region state) (store-ref state 'popup-region))
 (define (popup-float state)
   (and (popup-region state)
        (workspace-float (state-workspace state) popup-id)))
 
 ;;; ════════════════ 安装 ════════════════
 
+(define (install-completion-popup-state! _engine state rid vid)
+  (store-set (store-set state 'popup-view vid) 'popup-region rid))
+
+(define (completion-panel-spec)
+  (make-panel-spec #:name "*completion*"
+                   #:role 'panel
+                   #:mode 'completion
+                   #:sync #f
+                   #:install install-completion-popup-state!
+                   #:owner 'completion
+                   #:key 'completion))
+
 (define (install-completion-popup! engine state rid)
-  (define-values (s1 vid)
-    (panel-spec-install! engine state rid
-                         (make-panel-spec #:name "*completion*"
-                                          #:role 'panel
-                                          #:mode 'completion
-                                          #:sync #f)))
-  (plugin-state-set
-   (plugin-state-set s1 popup-view-key vid)
-   popup-region-key rid))
+  (define-values (s1 _vid) (panel-spec-install! engine state rid (completion-panel-spec)))
+  s1)
 
 (define (completion-open? state) (and (popup-float state) #t))
 
@@ -163,37 +178,27 @@
 
 ;;; ════════════════ 缓存 / job ════════════════
 
-(define (cache-of state)
-  (plugin-state state cache-key (hash 'exports (hash) 'pending (hash))))
+(define (service-of state) (store-ref state 'service))
 (define (cache-get state key)
-  (hash-ref (hash-ref (cache-of state) 'exports) key #f))
+  (service-cache-ref (service-of state) key #f))
 (define (cache-put state key value)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'exports (hash-set (hash-ref c 'exports) key value))))
+  (store-set state 'service
+             (service-cache-set (service-of state) key value)))
 (define (pending? state key)
-  (hash-ref (hash-ref (cache-of state) 'pending) key #f))
-(define (pending-add state key)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'pending (hash-set (hash-ref c 'pending) key #t))))
+  (service-pending? (service-of state) key))
 (define (pending-del state key)
-  (define c (cache-of state))
-  (plugin-state-set state cache-key
-                    (hash-set c 'pending (hash-remove (hash-ref c 'pending) key))))
+  (store-set state 'service
+             (service-pending-del (service-of state) key)))
 
-(define (jobs-of state) (plugin-state state jobs-key (hash)))
-(define (job-add state jid kind tag)
-  (plugin-state-set state jobs-key (hash-set (jobs-of state) jid (cons kind tag))))
 (define (job-take state jid)
-  (define js (jobs-of state))
-  (values (hash-ref js jid #f)
-          (plugin-state-set state jobs-key (hash-remove js jid))))
+  (define-values (job service*)
+    (service-job-take (service-of state) jid))
+  (values job (store-set state 'service service*)))
 
 (define (submit-job state kind payload tag)
-  (define-values (jid s1) (state-next-id state 'job))
-  (define s2 (pending-add (job-add s1 jid kind tag) tag))
-  (transition s2 (list (submit-service-effect jid kind payload))))
+  (define-values (s1 service* effect)
+    (service-request state (service-of state) kind payload (cons kind tag)))
+  (transition (store-set s1 'service service*) (list effect)))
 
 ;;; ════════════════ 菜单浮层 ════════════════
 
@@ -486,6 +491,12 @@
           #:modes (hash 'completion (make-mode #:keymaps (list completion-doc-keys)
                                                #:fallback 'ignore))
           #:keymaps (hash completion-mode-name completion-popup-keys)
+          #:services (hash 'completion-exports
+                           (make-service-spec 'completion-exports
+                                              #:description "require 导出 / 模块路径")
+                           'module-paths
+                           (make-service-spec 'module-paths
+                                              #:description "已安装模块路径索引"))
           #:commands (hash 'complete-open (cmd completion-open)
                            'complete-next (cmd (λ (ctx) (completion-move ctx 1)))
                            'complete-prev (cmd (λ (ctx) (completion-move ctx -1)))

@@ -52,14 +52,18 @@
               (max m (string-display-width l))))
   (values (max 1 w) (max 1 rows)))
 
-;; anchor view 的内容区 + 光标位置（用来定位）
-(define (anchor-area state ev anchor)
+;; anchor view 的内容区 + 光标位置（用来定位）。
+;; region-panels 可由 project-frame 的 geometry-snapshot 传入，避免每个浮层重解一次布局。
+(define (anchor-area state ev anchor [region-panels #f])
   (define ws (state-workspace state))
   (define reg (and anchor (workspace-view-region ws anchor)))
   (cond
     [(not reg) #f]
     [else
-     (define-values (rps _cuts) (geometry-solve (workspace-layout ws) (frame-area state)))
+     (define rps
+       (or region-panels
+           (let-values ([(rps _cuts) (geometry-solve (workspace-layout ws) (frame-area state))])
+             rps)))
      (define rp (for/first ([x (in-list rps)]
                             #:when (equal? (region-panel-region x) (region-key reg)))
                   x))
@@ -69,7 +73,7 @@
         (define-values (crow ccol) (engine-view-view-cursor-position ev anchor))
         (and crow (values (region-panel-content rp) crow ccol))])]))
 
-(define (float-rect state ev f)
+(define (float-rect state ev f [region-panels #f])
   (define anchor (float-anchor f))
   (define-values (cw ch) (float-size ev (float-view f)))
   ;; 含边框的目标尺寸
@@ -80,7 +84,7 @@
      (rect 0 0 (min w (window-cols (state-window state)))
            (min h (window-rows (state-window state))))]
     [else
-     (define-values (content crow ccol) (anchor-area state ev anchor))
+     (define-values (content crow ccol) (anchor-area state ev anchor region-panels))
      (cond
        [(not content)
         (rect 0 0 (min w (window-cols (state-window state)))
@@ -99,9 +103,10 @@
                        (min x0 (+ (rect-x content) (- aw w*)))))
         (rect x y w* h*)])]))
 
-(define (project-floats state ev)
+(define (project-floats state ev #:region-panels [region-panels #f])
   (for/list ([f (in-list (workspace-floats (state-workspace state)))])
-    (float-panel f (float-region f) (float-view f) (float-rect state ev f))))
+    (float-panel f (float-region f) (float-view f)
+                 (float-rect state ev f region-panels))))
 
 ;; 鼠标命中：浮层叠在最上面，先查它们。命中 → 该浮层的 view-id。
 (define (float-panel-at state ev row col)

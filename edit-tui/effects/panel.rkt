@@ -31,6 +31,7 @@
          panel-visible?
          panel-install!
          panel-uninstall!
+         panel-uninstall-view!
          panel-sync-buffer!)
 
 (require "../base/id.rkt"
@@ -74,7 +75,7 @@
 ;;   · region 已存在 -> 保留它的 role（同一区域放多个面板时，role 由第一个决定）；
 ;;   · 成员已存在 -> 只把它设为 active（幂等，重复安装同 rid 不会产生重复成员）。
 ;; 这正是“文件树 + 资源列表共用一个面板位置”的基础：两次 install 传同一个 rid。
-(define (panel-region-add! state rid vid #:role [role 'panel])
+(define (panel-region-add! state rid vid #:role [role 'panel] #:active? [active? #t])
   (state-workspace*
    state
    (λ (ws)
@@ -93,7 +94,7 @@
         (workspace-add-region ws rid
                               (struct-copy region reg
                                            [members members*]
-                                           [active vid]))]))))
+                                           [active (if active? vid (or (region-active reg) vid))]))]))))
 
 ;; 建一个 region；role 决定 splittable? / close-policy / focusable?（查 env）。
 ;; active 默认取最后一个成员。
@@ -114,9 +115,10 @@
 (define (panel-install! engine state rid
                         #:name [name "*panel*"]
                         #:mode [mode 'text]
-                        #:role [role 'panel])
+                        #:role [role 'panel]
+                        #:active? [active? #t])
   (define-values (s1 vid) (panel-create-view! engine state #:name name #:mode mode))
-  (values (panel-region-add! s1 rid vid #:role role) vid))
+  (values (panel-region-add! s1 rid vid #:role role #:active? active?) vid))
 
 ;;; ════════════════ 可见性（面板是否被同一 region 的其它成员挡住） ════════════════
 
@@ -162,6 +164,21 @@
          (engine-remove-doc! engine did)
          (state-workspace* s (λ (w) (workspace-remove-doc w did)))))
      (state-workspace* s2 (λ (w) (workspace-remove-region w rid)))]))
+
+;;; ════════════════ 卸载单个 view ════════════════
+
+;; 只卸载一个面板 view（以及它的 doc），保留 region / 其它成员。
+;; 用于共享 sidebar 时按插件卸载，不会误删同一 region 里的另一个面板。
+(define (panel-uninstall-view! engine state vid)
+  (define ws (state-workspace state))
+  (define did (workspace-doc-of-view ws vid))
+  (engine-remove-view! engine vid)
+  (define s1 (state-workspace* state (λ (w) (workspace-remove-view w vid))))
+  (cond
+    [(not did) s1]
+    [else
+     (engine-remove-doc! engine did)
+     (state-workspace* s1 (λ (w) (workspace-remove-doc w did)))]))
 
 ;;; ════════════════ 每帧同步 ════════════════
 

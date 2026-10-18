@@ -39,6 +39,7 @@
          "../base/transition.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
+         "../model/chrome.rkt"
          "../model/face-decor.rkt"
          "../effects/engine.rkt"
          "../effects/interpreter.rkt"
@@ -106,7 +107,7 @@
 (define (settle env engine inbox t #:worker [worker #f])
   (let loop ([t t] [round 0])
     ;; 1. 解释 effect（会 emit 信号，engine 已经落盘）
-    (define t1 (run-transition-effects engine t inbox #:worker worker))
+    (define t1 (run-transition-effects env engine t inbox #:worker worker))
     ;; 新文档：在 hook 跑之前挂上 decor（open 整篇 + 写回 face）。
     (ensure-doc-decors! env engine (transition-state t1))
     ;; 2. 这批 effect 已经消费掉，清空再跑 hook（否则下一轮会重复执行）
@@ -143,23 +144,29 @@
 
 ;;; ════════════════ effect 解释 ════════════════
 
-(define (run-transition-effects engine t inbox #:worker [worker #f])
+(define (run-transition-effects env engine t inbox #:worker [worker #f])
   (for/fold ([t2 (transition-pure (transition-state t))])
             ([e (in-list (transition-effects t))])
     (transition-bind t2
                      (λ (s)
-                       (define t1 (run-one-effect engine s e inbox #:worker worker))
+                       (define t1 (run-one-effect env engine s e inbox #:worker worker))
                        ;; effect 解释时可能产生新 effect（read-file -> open-doc），递归跑完。
-                       (run-transition-effects engine t1 inbox #:worker worker)))))
+                       (run-transition-effects env engine t1 inbox #:worker worker)))))
 
-(define (run-one-effect engine state effect inbox #:worker [worker #f])
+(define (run-one-effect env engine state effect inbox #:worker [worker #f])
   (cond
     ;; 纯计算交给后台（独立进程）；结果以 job-done 信号回来。
     ;; 没有 worker（place 起不来）→ 同步内联，语义相同、只是不换进程。
-    [(submit-service-effect? effect)
-     (define job (submit-service-effect-job effect))
-     (define kind (submit-service-effect-kind effect))
-     (define payload (submit-service-effect-payload effect))
+    [(or (submit-service-effect? effect) (query-effect? effect))
+     (define job (if (query-effect? effect)
+                     (query-effect-job effect)
+                     (submit-service-effect-job effect)))
+     (define kind (if (query-effect? effect)
+                      (query-effect-kind effect)
+                      (submit-service-effect-kind effect)))
+     (define payload (if (query-effect? effect)
+                         (query-effect-payload effect)
+                         (submit-service-effect-payload effect)))
      (cond
        [worker (worker-submit! worker job kind payload) (transition-pure state)]
        [else
@@ -185,7 +192,8 @@
      (async-channel-put inbox (emit-effect-event effect))
      (transition-pure state)]
 
-    [else (interpret-effect! engine state effect)]))
+    [else (interpret-effect! engine state effect
+                              #:continuations (environment-continuations env))]))
 
 ;;; ════════════════ 后台服务（无 worker 时的同步降级） ════════════════
 
@@ -210,7 +218,16 @@
 ;; effect 解释掉（decor 也会在 settle 里按 doc-meta 挂上）。
 ;;
 ;; 暂定：只跑纯 / 引擎类 effect；startup hook 里不要 spawn / timer。
+(define (ensure-service-kinds! env)
+  (define declared (environment-service-kinds env))
+  (unless (null? declared)
+    (define known (worker-known-service-kinds))
+    (for ([k (in-list declared)] #:unless (memq k known))
+      (error 'startup! "service kind 未在 worker 实现：~a（可用：~a）" k known))))
+
 (define (startup! env engine state #:worker [worker #f])
+  ;; 插件声明的 service kind 必须能在 worker 里找到实现。
+  (ensure-service-kinds! env)
   ;; face 层序是 env 数据：启动时交给引擎（引擎负责合成 / 写回 core）
   (engine-set-face-layers! engine (environment-face-layers env))
   (define dids
@@ -229,21 +246,30 @@
 
 ;;; ════════════════ 渲染 ════════════════
 
-;; 先同步 view 尺寸（唯一写 core 的地方），再投影/输出。
-;; 先跑每帧同步（唯一写 core 的地方），再投影/输出。
-;;   1. chrome 槽（status 文本，由 environment.status 决定段）
-;;   2. environment.panel-syncs（插件面板自己声明的同步器，按注册顺序）
+;; 每帧同步：这是**唯一**写 core 的时机（面板文本 / 状态栏文本 / 光标 decor）。
+;;
+;;   (frame-syncs env state) = 插件注册的同步器 + 框架自己的
+;;
+;; 框架自己的只有状态栏，而且是否装由 State 决定（chrome.slot-info 是安装时写下的事实），
+;; runtime 不认识任何具体面板名；要加一个新的“每帧投影到 view”的东西，
+;; 走 environment-add-panel-sync（插件）或往 state-frame-syncs 里加（框架）。
+;; 框架自带的每帧同步器：签名与插件的一致（state engine -> any），
+;; 需要的额外参数（status 段）在这里闭包住。
+(define (state-frame-syncs state [status-parts #f])
+  (if (chrome-slot-info (state-chrome state))
+      (list (λ (s e) (sync-chrome! s e status-parts)))
+      '()))
+
 (define (run-frame env state engine cache #:status-parts [status-parts #f])
-  (sync-chrome! state engine status-parts)
-  (for ([sync (in-list (environment-panel-syncs env))])
+  (for ([sync (in-list (append (environment-panel-syncs env)
+                               (state-frame-syncs state status-parts)))])
     (sync state engine))
   ;; 光标相关 decor（同词高亮等）：每帧对焦点 view 推进一次；光标没变时是 no-op。
   (engine-paint-advance! engine (state-focus state))
-  (define-values (_ps _cs placements)
-    (project-frame state engine #:status-parts status-parts))
+  ;; 一帧只投影一次：panels 交给 render-frame*，placements 交给 engine-sync-views!。
+  (define-values (panels placements) (project-frame state engine))
   (engine-sync-views! engine placements)
-  (define-values (cache* bytes)
-    (render-frame state engine cache #:status-parts status-parts))
+  (define-values (cache* bytes) (render-frame* state engine cache panels))
   (unless (zero? (bytes-length bytes))
     (put-bytes bytes)
     (flush!))

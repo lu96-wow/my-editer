@@ -63,13 +63,13 @@
                       (workspace-add-float ws (float 'demo frid fvid anchor)))))
 
 (define (frame-1 engine s)
-  (define-values (_p _c placements) (project-frame s engine))
+  (define-values (_p placements) (project-frame s engine))
   (engine-sync-views! engine placements)
   (let-values ([(cache bytes) (render-frame s engine #f)])
     (values cache bytes)))
 
 (define (frame-n engine s cache)
-  (define-values (_p _c placements) (project-frame s engine))
+  (define-values (_p placements) (project-frame s engine))
   (engine-sync-views! engine placements)
   (render-frame s engine cache))
 
@@ -134,3 +134,34 @@
   (define t3 (text-of b3))
   (check-false (string-contains? t3 "ZZTOP") "关掉后不能残留浮层文本")
   (check-true (string-contains? t3 "line-") "旧位置的正文要画回来"))
+
+;;; ════════════════ 悬空浮层：view / region 消失时自动清掉 ════════════════
+;;
+;; 浮层引用的是 view 资源；如果 view 被销毁而 floats 还留着，
+;; “弹窗还开着”的判断（completion-open? 这类）就会失真，临时键表也摘不掉。
+
+(let-values ([(engine s0) (make-world)])
+  (define s1 (with-float s0))
+  (check-not-false (workspace-float (state-workspace s1) 'demo))
+  ;; 销毁浮层的 view → 浮层跟着消失（同一个 workspace 操作，不靠调用方记得）
+  (define s2 (state-workspace* s1 (λ (ws) (workspace-remove-view ws fvid))))
+  (check-false (workspace-float (state-workspace s2) 'demo)))
+
+(let-values ([(engine s0) (make-world)])
+  (define s1 (with-float s0))
+  ;; 销毁浮层的 region → 同样消失
+  (define s2 (state-workspace* s1 (λ (ws) (workspace-remove-region ws frid))))
+  (check-false (workspace-float (state-workspace s2) 'demo)))
+
+;; 锚点 view 消失、浮层自己的 view 还在：浮层保留（anchor 失效 → 退到左上角），
+;; 因为它引用的是自己的 view，不是锚点。
+(let-values ([(engine s0) (make-world)])
+  (define s1 (with-float s0))
+  (define s2 (state-workspace* s1 (λ (ws) (workspace-remove-doc ws did))))
+  (check-not-false (workspace-float (state-workspace s2) 'demo)))
+
+;; 浮层自己的文档被删（连带浮层 view）→ 消失
+(let-values ([(engine s0) (make-world)])
+  (define s1 (with-float s0))
+  (define s2 (state-workspace* s1 (λ (ws) (workspace-remove-view ws fvid))))
+  (check-false (workspace-float (state-workspace s2) 'demo)))

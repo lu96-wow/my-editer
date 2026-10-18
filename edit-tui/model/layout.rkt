@@ -26,7 +26,7 @@
          (struct-out split)
          fixed flex ->dim dim-fixed? dim-flex?
          node? node-dim node-with-dim node-visible?
-         make-leaf make-split empty-tree
+         make-leaf make-split empty-tree empty-tree?
          leaf-borders-all leaf-borders-none
          tree-find tree-leaves tree-regions tree-visible-regions
          tree-contains? tree-visible?
@@ -71,7 +71,10 @@
 (define (make-split axis children [d 1])
   (split axis children (->dim d)))
 
+;; 空布局 = 没有孩子的 split（唯一的“没有内容”表示）。
+;; 用谓词而不是让调用方去 pair? 探 split-children。
 (define (empty-tree) (split 'lr '() (flex 1)))
+(define (empty-tree? n) (and (split? n) (null? (split-children n))))
 
 ;;; ---------- 查 ----------
 
@@ -128,32 +131,45 @@
 ;;   · 若 target 的父 split 与 axis 同向且 target 是直接孩子 → 同层兄弟（n 叉，不加深）；
 ;;   · 否则把 target 叶替换成 (split axis [target node])。
 ;; 同层兄弟继承 target 的 dim；新包一层时双方都用 flex 1。
+;;
+;; → (values 新树 inserted?)
+;;   inserted? = #f 表示 target 不在树里：返回的树与入参相同。
+;;   **装配动作必须检查这个值** —— 以前静默 no-op 会造成“region 已登记但布局里没有”。
 (define (tree-insert t target axis node #:side [side 'after])
+  (define found? #f)
+  (define (hit!)
+    (set! found? #t))
   (define (go n)
     (cond
       [(leaf? n)
        (if (equal? (leaf-region n) target)
-           (let ([base (node-with-dim n (flex 1))]
-                 [ins  (node-with-dim node (flex 1))])
-             (split axis (if (eq? side 'after) (list base ins) (list ins base))
-                    (leaf-dim n)))
+           (begin
+             (hit!)
+             (let ([base (node-with-dim n (flex 1))]
+                   [ins  (node-with-dim node (flex 1))])
+               (split axis (if (eq? side 'after) (list base ins) (list ins base))
+                      (leaf-dim n))))
            n)]
       [else
        (if (and (eq? axis (split-axis n))
                 (for/or ([c (in-list (split-children n))])
                   (and (leaf? c) (equal? (leaf-region c) target))))
-           (struct-copy
-            split n
-            [children
-             (append*
-              (for/list ([c (in-list (split-children n))])
-                (if (and (leaf? c) (equal? (leaf-region c) target))
-                    (let ([ins (node-with-dim node (node-dim c))])
-                      (if (eq? side 'after) (list c ins) (list ins c)))
-                    (list c))))])
+           (begin
+             (hit!)
+             (struct-copy
+              split n
+              [children
+               (append*
+                (for/list ([c (in-list (split-children n))])
+                  (if (and (leaf? c) (equal? (leaf-region c) target))
+                      (let ([ins (node-with-dim node (node-dim c))])
+                        (if (eq? side 'after) (list c ins) (list ins c)))
+                      (list c))))]))
            (struct-copy split n [children (map go (split-children n))]))]))
-  (go t))
+  (define t* (go t))
+  (values t* found?))
 
+;; → (values 新树 inserted?)（语义同 tree-insert）
 (define (tree-split t target axis region
                     #:dim [d 1]
                     #:visible? [visible? #t]
@@ -191,6 +207,9 @@
     [(or (not (tree-contains? t rid)) (not (tree-contains? t target))) t]
     [else
      (define-values (t* moved) (tree-detach t rid))
-     (if (and moved (tree-contains? t* target))
-         (tree-insert t* target axis moved #:side side)
-         t)]))
+     (cond
+       [(not (and moved (tree-contains? t* target))) t]
+       [else
+        ;; 这里 target 一定在树里；仍走 ok? 以便将来 tree-insert 语义变化时立刻显形。
+        (define-values (t** ok?) (tree-insert t* target axis moved #:side side))
+        (if ok? t** t)])]))

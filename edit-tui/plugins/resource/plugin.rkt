@@ -23,6 +23,7 @@
 (provide (all-from-out "panel.rkt"))
 
 (require "../../model/state.rkt"
+         "../../model/layout.rkt"
          "model.rkt"
          "../../command/key.rkt"
          "../../command/mouse.rkt"
@@ -42,19 +43,26 @@
 (define (resource-plugin-mode)
   (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore))
 
+(define (install-resource-panel-state! _engine state _rid vid)
+  (plugin-state* state 'resources
+                 (λ (r) (resource-panel-set-view r vid))
+                 (resource-panel-empty)))
+
 (define (resource-panel-spec)
   (make-panel-spec
                    #:name "*resources*"
                    #:role 'resource
                    #:mode 'resources
-                   #:sync sync-resource-panel!))
+                   #:sync sync-resource-panel!
+                   #:install install-resource-panel-state!
+                   #:hint (fixed 30)
+                   #:owner 'resources
+                   #:key 'resources))
 
-;; 便捷安装：按 spec 建面板 + 记面板 view-id。
+;; 便捷安装：按 spec 建面板（install 回调负责 store['resources] 的 view-id）。
 (define (install-resource-panel! engine state rid)
-  (define-values (s1 vid) (panel-spec-install! engine state rid (resource-panel-spec)))
-  (plugin-state* s1 'resources
-                 (λ (r) (resource-panel-set-view r vid))
-                 (resource-panel-empty)))
+  (define-values (s1 _vid) (panel-spec-install! engine state rid (resource-panel-spec)))
+  s1)
 
 (define (resource-plugin)
   (make-plugin

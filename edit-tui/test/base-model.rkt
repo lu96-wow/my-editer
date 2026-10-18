@@ -95,25 +95,36 @@
 (define rc (region-id 3))
 (define rd (region-id 4))
 
-(define lt (tree-split (make-leaf ra (fixed 8)) ra 'lr rb))
+(define lt (let-values ([(t _ok?) (tree-split (make-leaf ra (fixed 8)) ra 'lr rb)]) t))
 (check-equal? (tree-regions lt) (list ra rb))
 (check-true (tree-contains? lt ra))
 (check-false (tree-contains? lt rc))
 (check-true (tree-visible? lt rb))
 
+;; tree-split / tree-insert 的第二个值：target 不在树里就是 #f，树原样不动
+(let-values ([(t ok?) (tree-split lt (region-id 99) 'lr (region-id 100))])
+  (check-false ok?)
+  (check-equal? (tree-regions t) (tree-regions lt)))
+(let-values ([(t ok?) (tree-insert lt rb 'lr (make-leaf (region-id 100)))])
+  (check-true ok?))
+
+;; 空布局是独立谓词，不靠 pair? 探 children
+(check-true (empty-tree? (empty-tree)))
+(check-false (empty-tree? lt))
+
 ;; 同轴再插：n 叉，不加深
-(define lt2 (tree-split lt rb 'lr rc))
+(define lt2 (let-values ([(t _ok?) (tree-split lt rb 'lr rc)]) t))
 (check-equal? (tree-regions lt2) (list ra rb rc))
 (check-equal? (split-axis lt2) 'lr)
 
 ;; 异轴插：嵌套
-(define lt3 (tree-split lt2 rb 'tb rd))
+(define lt3 (let-values ([(t _ok?) (tree-split lt2 rb 'tb rd)]) t))
 (check-equal? (tree-regions lt3) (list ra rb rd rc))
 
 ;; 关闭：删叶 + 单孩子 split 塌缩；塌缩继承 split 的 dim
 (define lt4 (tree-close lt3 rd))
 (check-equal? (tree-regions lt4) (list ra rb rc))
-(define ltz1 (tree-split (make-leaf ra (fixed 8)) ra 'lr rb))
+(define ltz1 (let-values ([(t _ok?) (tree-split (make-leaf ra (fixed 8)) ra 'lr rb)]) t))
 (define ltz2 (tree-close ltz1 rb))
 (check-equal? (leaf-dim (tree-find ltz2 ra)) (fixed 8))
 

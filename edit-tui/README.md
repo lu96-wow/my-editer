@@ -9,8 +9,11 @@
 - **约定 / 不变量**（信号点、什么算编辑、所有显示都是 document、浮层规则）：
   [`ARCHITECTURE.md` §8](ARCHITECTURE.md)
 - 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
+- **rebuild 做了什么 / 全函数归纳 / 可变与不可变状态 / 扩展点收敛方案**：
+  [`ANALYSIS.md`](ANALYSIS.md)（全量顶层定义索引见 [`FUNCTION-INDEX.md`](FUNCTION-INDEX.md)）
+- **step2 已落地：统一贡献清单 + 装配期校验**：[`STEP2.md`](STEP2.md)
 
-所有分层规则由 `test/layers.rkt` 机器检查。
+所有分层规则由 `test/layers.rkt` 机器检查；`test/run.sh` 会先 `raco make` 再跑。
 
 ## 进度
 
@@ -36,17 +39,19 @@ base/          纯词汇（0 依赖）
   signal.rkt      信号（point + args）与 FIFO 队列
 model/         纯状态（只依赖 base）
   state.rkt       根 State：window / workspace / input / chrome / runtime / ids / confirm / store
-  workspace.rkt   doc / view / region / layout / focus / overlay / root / placement
+  workspace.rkt   doc / view / region / layout / focus / overlay / root / placement / panel-index
   layout.rkt      region 布局树（纯几何）
-  input.rkt       pending / modes / gesture
+  input.rkt       pending / modes / gesture / input-session（tag/data/cancel）
   chrome.rkt      message / log
   workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
   save.rkt        保存确认队列（框架级）
   face-layer.rkt  face 分层合成（逐分量合并；层序 = env.face-layers）
   face-decor.rkt  增量 face 装饰协议 + dirty / refresh-layer / stateful-advance
+  service.rkt     插件异步查询的通用 cache / pending / jobs
+  interaction.rkt 进行中的交互栈（input / placement / confirm）
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
-                  input-command/panel-sync/hook/decor
+                  input-command/panel-sync/hook/decor/interaction/service/continuation
   role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
   mode.rkt        document 模式 -> keymaps / fallback
   scope.rkt       scope 谓词
@@ -54,8 +59,11 @@ env/           纯策略（只依赖 base + model）
   rule.rkt        scope + keymap 的规则
   doc-type.rkt    路径 -> mode + per-document keymaps
   input-command.rkt 输入栏字符串匹配
-  hook.rkt        钩子（point / when / priority / proc）
-  plugin.rkt      插件描述符（plugin / panel-spec）+ 纯装配（plugins-env / plugins-apply）
+  hook.rkt        钩子（point / when / priority / proc；独立模块）
+  panel-spec.rkt  面板描述符（name / role / mode / sync / install / hint / owner / key / placement）
+  service.rkt     worker service 声明（kind / description / pure?）
+  extension.rkt   统一 contribution（owner / kind / payload）+ 装配期校验
+  plugin.rkt      插件描述符 + 纯装配（plugins-env / plugins-apply）
   defaults.rkt    内置 role / mode
 effects/       边界（core 只在这里被拥有）
   engine.rkt      core buffer/view 的唯一可变拥有者
@@ -65,7 +73,7 @@ effects/       边界（core 只在这里被拥有）
 projection/    纯投影
   geometry.rkt    layout -> region-panel / cut / window-area / region-neighbor
   status.rkt      状态栏文本投影 + 默认段
-  render.rkt      state + engine -> panels / chrome / bytes
+  render.rkt      state + engine -> panels / bytes
 dispatch/      纯派发
   context.rkt     命令看到的 ctx
   rules.rkt       规则层序（input modes > per-doc > env.rules > mode > global）
@@ -73,9 +81,10 @@ dispatch/      纯派发
   pipeline.rkt    event -> transition
 chrome/        框架 chrome
   slot.rkt        安装 status/input 槽（两个 core view）
-  input.rkt       输入栏 API（input-show / input-finish / input-cancel …）
+  input.rkt       输入栏 API（input-show #:tag/#:data/#:cancel / input-finish …）
 bootstrap/     装配
   panel.rkt       panel-spec -> panel-install!（唯一缝）
+  plugin.rkt      plugin-uninstall!（env 撤销 + store 清理 + panel 卸载）
   commands/
     util.rkt        message / notice / real-view? / fallback-attached-view
     edit.rkt        导航 / 插入 / 删除 / undo / redo / quit
@@ -84,12 +93,14 @@ bootstrap/     装配
     focus.rkt       focus 方向移动 + 鼠标落点/拖选
     document.rkt    open / save / save-as / 保存确认 / 关闭 / 退出
     placement.rkt   把 detached view 放进 panel
+    cancel.rkt      当前交互取消（input / placement / nothing）
     table.rkt       框架命令表
+    layout.rkt      toggle-region!（显隐 / 尺寸记忆 / 焦点回退）
   defaults.rkt    core-env（只有框架）
 plugins/       内置插件（每个一个目录）
   builtin.rkt     default-plugins / default-env / editor-plugins / editor-env
   filetree/
-    model.rkt       store['filetree]（view / expanded / width）
+    model.rkt       store['filetree]（view / expanded；显隐尺寸在 layout leaf）
     scan.rkt        读目录（唯一 IO）
     lines.rkt       纯投影：条��� -> 行
     panel.rkt       写 *filetree* buffer
@@ -173,6 +184,13 @@ racket edit-tui/test/seam.rkt
 racket edit-tui/test/panel.rkt
 racket edit-tui/test/plugin.rkt
 racket edit-tui/test/plugin-detach.rkt
+racket edit-tui/test/plugin-uninstall.rkt
+racket edit-tui/test/toggle-region.rkt
+racket edit-tui/test/service.rkt
+racket edit-tui/test/input-session.rkt
+racket edit-tui/test/interaction.rkt
+racket edit-tui/test/cancel.rkt
+racket edit-tui/test/extension.rkt
 racket edit-tui/test/layers.rkt
 racket edit-tui/test/sidebar.rkt
 racket edit-tui/test/split.rkt
@@ -276,7 +294,7 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
 | `Tab` / `C-x C-o` | 在同一 region 的多个成员之间切换 active / focus（共用面板位置） |
 | `C-x C-p` | 提交 resource placement 到当前/点击的 panel |
-| `C-g` / `Esc` | 取消当前 input |
+| `C-g` / `Esc` | 取消当前交互：input / placement；没有则提示 |
 | `C-x C-g` | 取消 placement |
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |

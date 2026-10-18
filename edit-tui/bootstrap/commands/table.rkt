@@ -14,7 +14,8 @@
          "region.rkt"
          "focus.rkt"
          "document.rkt"
-         "placement.rkt")
+         "placement.rkt"
+         "cancel.rkt")
 
 ;;; ════════════════ 默认命令表 ════════════════
 
@@ -52,6 +53,7 @@
         'place-commit (place-commit-command)
         'place-cancel (place-cancel-command)
         'place-at     (place-at-command)
+        'cancel-current (cancel-current-command)
         'focus-left   (focus-move-command 'left)
         'focus-right  (focus-move-command 'right)
         'focus-up     (focus-move-command 'up)

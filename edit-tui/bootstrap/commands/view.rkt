@@ -65,7 +65,7 @@
      (define rid (region-key reg))
      (define leaf (tree-find (workspace-layout ws) rid))
      (define borders (if leaf (leaf-borders leaf) leaf-borders-all))
-     (mount-split s rid borders dir)]))
+     (mount-split ctx s rid borders dir)]))
 (define (axis/side dir)
   (case dir
     [(left)  (values 'lr 'before)]
@@ -74,21 +74,27 @@
     [(down)  (values 'tb 'after)]
     [else (error 'split-view "未知方向：~a" dir)]))
 
-(define (mount-split s source-rid borders dir)
+(define (mount-split ctx s source-rid borders dir)
   (define-values (axis side) (axis/side dir))
   (define-values (nrid s1) (state-next-id s 'region))
   (define ws (state-workspace s1))
-  (define source-reg (workspace-region ws source-rid))
-  (define new-reg (region nrid
-                          '()                  ; 空窗口：没有成员
-                          #f
-                          (if source-reg (region-role source-reg) 'editor)))
-  (define ws* (workspace-add-region ws nrid new-reg))
-  (define layout* (tree-split (workspace-layout ws*) source-rid axis nrid
-                              #:side side #:borders borders))
-  (define s2 (state-set-workspace s1 (struct-copy workspace ws* [layout layout*])))
-  ;; 焦点移到空 region：下一次 C-n / 打开文件就落在它里面。
-  (transition-pure (state-set-focus s2 nrid)))
+  ;; tree-split 的第二个值就是“target 在不在树里”：不在就**不能**继续
+  ;; （以前会静默返回原树，于是 region 已登记但布局里没有 → 不可见的死状态）。
+  (define-values (layout* ok?)
+    (tree-split (workspace-layout ws) source-rid axis nrid
+                #:side side #:borders borders))
+  (cond
+    [(not ok?) (message ctx "split: source region has no layout leaf")]
+    [else
+     (define source-reg (workspace-region ws source-rid))
+     (define new-reg (region nrid
+                             '()                  ; 空窗口：没有成员
+                             #f
+                             (if source-reg (region-role source-reg) 'editor)))
+     (define ws* (workspace-add-region ws nrid new-reg))
+     (define s2 (state-set-workspace s1 (struct-copy workspace ws* [layout layout*])))
+     ;; 焦点移到空 region：下一次 C-n / 打开文件就落在它里面。
+     (transition-pure (state-set-focus s2 nrid))]))
 
 (define (close-view-command)
   (cmd (λ (ctx) (close-view ctx))))

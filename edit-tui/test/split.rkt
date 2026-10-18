@@ -91,7 +91,7 @@
               1)
 
 ;; 空 region 也会渲染成一个（空）面板，并且因为焦点在它上面而显示聚焦边框
-(define-values (panels _chromes _placements) (project-frame s1 engine))
+(define-values (panels _placements) (project-frame s1 engine))
 (check-equal? (length panels) 2)
 ;; 空面板没有 view（panel-view = #f），所以只能按 face 判断“有且只有一个聚焦面板”
 (check-equal? (length (for/list ([p (in-list panels)]

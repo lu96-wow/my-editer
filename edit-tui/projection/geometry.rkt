@@ -19,6 +19,8 @@
 
 (provide (struct-out region-panel)
          (struct-out cut)
+         (struct-out layout-snapshot)
+         geometry-snapshot
          geometry-solve
          region-panel-map
          region-panel-at
@@ -46,6 +48,10 @@
 ;; content : 内容区 rect（外框按存在的边内缩）
 
 (struct cut (axis offset span-lo span-hi path index cells-before cells-after) #:transparent)
+
+;; 一帧的布局快照：area + region-panel + cuts。
+;; project-frame / 浮层 / 测试用同一份几何，避免同一帧重复 geometry-solve。
+(struct layout-snapshot (area regions cuts) #:transparent)
 ;; axis        'lr（竖缝，offset=列）| 'tb（横缝，offset=行）
 ;; span-lo/hi  缝的纵向 / 横向范围 [lo, hi)
 ;; path        到所属 split 的孩子下标路径
@@ -226,6 +232,10 @@
   (values (reverse panels) (reverse cuts)))
 
 (define (geometry-solve tree area) (solve tree area))
+
+(define (geometry-snapshot tree area)
+  (define-values (regions cuts) (geometry-solve tree area))
+  (layout-snapshot area regions cuts))
 
 (define (region-panel-map panels)
   (for/hash ([p (in-list panels)]) (values (region-panel-region p) p)))

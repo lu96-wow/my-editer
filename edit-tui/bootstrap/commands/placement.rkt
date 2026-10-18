@@ -15,7 +15,10 @@
          place-at-command
          place-cancel-command
          placement-scope
-         placement-keys)
+         placement-keys
+         set-placement
+         clear-placement
+         placement-cancel)
 
 (require "../../env/command.rkt"
          "../../base/id.rkt"
@@ -24,6 +27,7 @@
          "../../model/state.rkt"
          "../../model/workspace.rkt"
          "../../model/chrome.rkt"
+         "../../model/interaction.rkt"
          "../../env/environment.rkt"
          "../../env/role.rkt"
          "../../env/scope.rkt"
@@ -31,11 +35,22 @@
          "../../command/mouse.rkt"
          "util.rkt")
 
+(define (set-placement state vid)
+  (state-interaction-push
+   (state-workspace* state (λ (w) (workspace-set-placement w vid)))
+   (make-interaction 'placement 'placement #f)))
+
+(define (clear-placement state)
+  (state-interaction-pop-id
+   (state-workspace* state (λ (w) (workspace-set-placement w #f)))
+   'placement))
+
+;; interaction 的 cancel：清 placement + pop，返回 transition。
+(define (placement-cancel ctx)
+  (notice-state (clear-placement (ctx-state ctx)) "placement cancelled"))
+
 (define (place-cancel-command)
-  (cmd (λ (ctx)
-         (transition-pure
-          (state-workspace* (ctx-state ctx)
-                            (λ (w) (workspace-set-placement w #f)))))))
+  (cmd (λ (ctx) (placement-cancel ctx))))
 
 ;;; ════════════════ placement（把 detached view 放进某个 panel） ════════════════
 ;;
@@ -56,7 +71,7 @@
        [(not (workspace-view ws selected))
         (transition-pure
          (state-chrome*
-          (state-workspace* s (λ (w) (workspace-set-placement w #f)))
+          (clear-placement s)
           (λ (c) (chrome-set-message c "place: selected view no longer exists"))))]
        [else
         (define target-reg
@@ -85,7 +100,7 @@
                     ws))
               (define ws2 (workspace-attach-view ws1 (region-key target-reg) selected))
               (define s1 (state-set-workspace s ws2))
-              (define s2 (state-workspace* s1 (λ (w) (workspace-set-placement w #f))))
+              (define s2 (clear-placement s1))
               (transition-pure
                (state-chrome*
                 (state-set-focus s2 selected)
