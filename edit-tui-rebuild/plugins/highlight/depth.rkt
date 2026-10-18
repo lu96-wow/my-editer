@@ -45,7 +45,7 @@
   (for/sum ([e (in-list stack)] #:when (bracket-entry? e)) 1))
 
 ;; 扫一整行；返回 (values 行尾栈 face 向量)。
-(define (depth-line stack line ln)
+(define (depth-line stack line)
   (define n (string-length line))
   (define vec (make-vector n #f))
   (define st stack)
@@ -123,5 +123,5 @@
 (define (depth-fills text)
   (for/fold ([acc '()] [stack '()] #:result acc)
             ([line (in-list (string-split text "\n"))] [lno (in-naturals)])
-    (define-values (stack* vec) (depth-line stack line lno))
+    (define-values (stack* vec) (depth-line stack line))
     (values (append acc (vector->fills lno vec)) stack*)))

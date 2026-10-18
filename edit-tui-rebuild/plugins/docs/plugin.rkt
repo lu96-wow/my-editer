@@ -24,7 +24,6 @@
 
 (require racket/list
          racket/string
-         racket/path
          "../../../edit-tui/command/key.rkt"
          "../../base/keymap.rkt"
          "../../base/transition.rkt"
@@ -43,8 +42,7 @@
          "../../env/plugin.rkt"
          "../../bootstrap/panel.rkt"
          "../../dispatch/context.rkt"
-         "../../plugins/highlight/kind.rkt"
-         "../lang/source.rkt"
+         "../lang/context.rkt"
          "../lang/pool.rkt"
          "../lang/local-docs.rkt")
 
@@ -158,44 +156,27 @@
         "set!"    "(set! id value)\n修改绑定。"
         "begin"   "(begin body ...)\n顺序求值，返回最后一个值。"))
 
-(define (focused-vid state)
-  (define f (state-focus state))
-  (and (view-id? f) f))
-
-(define (doc-meta-of-view state vid)
-  (define did (and vid (workspace-doc-of-view (state-workspace state) vid)))
-  (and did (workspace-doc (state-workspace state) did)))
-
-(define (open-local-texts state ev)
-  (for/hash ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
-             #:when (doc-meta-path dm))
-    (values (path->string (path->complete-path (doc-meta-path dm)))
-            (or (engine-view-doc-text ev did) ""))))
-
-;; 解析当前 Racket 文档的 require 上下文。返回 hash 或 #f。
+;; 当前标识符的文档上下文：源码上下文 + 绑定 / 候选模块 / 本地定义 / 内置文档。
 (define (doc-context state ev vid ident)
-  (define dm (doc-meta-of-view state vid))
-  (cond
-    [(not (racket-doc-meta? dm)) #f]
-    [else
-     (define text (or (engine-view-view-text ev vid) ""))
-     (define path (doc-meta-path dm))
-     (define base-dir
-       (if path
-           (let-values ([(d _f _n) (split-path path)])
-             (if (path? d) d (current-directory)))
-           (current-directory)))
-     (define-values (lang forms) (requires-context text))
-     (define parsed (requires-of-forms lang forms #:base-dir base-dir))
-     (define mods0 (if (null? parsed) '(racket/base) parsed))
-     (define open (open-local-texts state ev))
-     (define binding
-       (with-handlers ([exn:fail? (λ (_) #f)])
-         (spec-binding-of ident (require-specs-of-forms lang forms) base-dir open)))
-     (define mods (if binding (cons (car binding) (remove (car binding) mods0)) mods0))
-     (hash 'path path 'base-dir base-dir 'open open 'binding binding
-           'mods mods 'key (list ident mods) 'local (local-def text (string->symbol ident))
-           'builtin (hash-ref builtin-docs ident #f))]))
+  (define ctx (source-context state ev vid))
+  (and ctx
+       (let* ([specs (hash-ref ctx 'specs)]
+              [parsed (hash-ref ctx 'parsed)]
+              [mods0 (if (null? parsed) '(racket/base) parsed)]
+              [binding
+               (with-handlers ([exn:fail? (λ (_) #f)])
+                 (spec-binding-of ident specs
+                                  (hash-ref ctx 'base-dir)
+                                  (hash-ref ctx 'open)))]
+              [mods (if binding
+                        (cons (car binding) (remove (car binding) mods0))
+                        mods0)])
+         (define ctx* (hash-set (hash-set (hash-set ctx 'binding binding)
+                                          'mods mods)
+                               'key (list ident mods)))
+         (hash-set (hash-set ctx* 'local (local-def (hash-ref ctx 'text)
+                                                    (string->symbol ident)))
+                   'builtin (hash-ref builtin-docs ident #f)))))
 
 ;;; ════════════════ 生成面板文本 ════════════════
 

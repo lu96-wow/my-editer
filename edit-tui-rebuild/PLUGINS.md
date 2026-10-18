@@ -94,7 +94,7 @@ paint-write!  只把 dirty 行写回 core face port
 
 - 候选 = 关键字 + 当前文档顶层定义 + 打开文档里的词；
 - Racket 文档再解析 `require`，把 `only-in` / `except-in` / `prefix-in` / `rename-in`
-  之后的**真正绑定名**作为候选（`plugins/lang/pool.rkt`）；
+  之后的**真正绑定名**作为候选（`plugins/lang/context.rkt` + `pool.rkt`）；
 - `module->exports` 走 worker（`completion-exports`），结果按
   `(specs, base-dir, 打开的本地文本)` 缓存；同一 key 只允许一个在途；
 - `(require …)` / `#lang ` 光标处补**模块路径**（worker 的 `module-paths`）；

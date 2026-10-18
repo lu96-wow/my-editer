@@ -111,6 +111,7 @@ plugins/       内置插件（每个一个目录）
   docs/
     plugin.rkt      C-c h / M-d 文档面板：本地定义 + xref/bluebox（worker）
   lang/
+    context.rkt     当前文档的 require 上下文（补全 / 文档共用，纯查询）
     source.rkt      require / 定义 / provide 启发式解析（纯）
     pool.rkt        require spec -> 绑定名 / 模块导出（纯）
     module-index.rkt 已安装模块路径索引（worker）

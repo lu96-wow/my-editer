@@ -56,15 +56,6 @@
    (list 'bg-depth-7 (style #f (rgb 38 48 34) '()))
    (list 'bg-depth-8 (style #f (rgb 44 38 54) '()))
 
-   ;; 兼容旧名（代码里仍有地方可能用 bg-bracket-*）
-   (list 'bg-bracket-0 (style #f (rgb 36 40 58) '()))
-   (list 'bg-bracket-1 (style #f (rgb 28 47 49) '()))
-   (list 'bg-bracket-2 (style #f (rgb 48 46 30) '()))
-   (list 'bg-bracket-3 (style #f (rgb 30 49 40) '()))
-   (list 'bg-bracket-4 (style #f (rgb 42 34 58) '()))
-   (list 'bg-bracket-5 (style #f (rgb 34 44 58) '()))
-   (list 'bg-bracket-6 (style #f (rgb 38 48 34) '()))
-   (list 'bg-bracket-7 (style #f (rgb 44 38 54) '()))
 
    ;; 装饰背景
    (list 'bg-word-mark (style #f (rgb 60 70 90) '()))

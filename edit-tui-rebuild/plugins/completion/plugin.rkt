@@ -44,9 +44,9 @@
          "../../bootstrap/panel.rkt"
          "../../dispatch/context.rkt"
          "../../plugins/highlight/lex.rkt"
-         "../../plugins/highlight/kind.rkt"
          "../lang/source.rkt"
          "../lang/pool.rkt"
+         "../lang/context.rkt"
          "../../../core/text/base/point.rkt"
          "../../../core/text/base/selection.rkt"
          "../../../core/text/base/range.rkt")
@@ -132,39 +132,6 @@
    equal?))
 
 ;;; ════════════════ 打开文档 / 模块上下文 ════════════════
-
-(define (focused-vid state)
-  (define f (state-focus state))
-  (and (view-id? f) f))
-
-(define (doc-meta-of-view state vid)
-  (define did (and vid (workspace-doc-of-view (state-workspace state) vid)))
-  (and did (workspace-doc (state-workspace state) did)))
-
-(define (open-local-texts state ev)
-  (for/hash ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
-             #:when (doc-meta-path dm))
-    (values (path->string (path->complete-path (doc-meta-path dm)))
-            (or (engine-view-doc-text ev did) ""))))
-
-(define (imports-context state ev vid)
-  (define dm (doc-meta-of-view state vid))
-  (cond
-    [(not (racket-doc-meta? dm)) #f]
-    [else
-     (define text (or (engine-view-view-text ev vid) ""))
-     (define-values (lang forms) (requires-context text))
-     (define specs (require-specs-of-forms lang forms))
-     (define specs* (if (pair? specs) specs (list 'racket/base)))
-     (define path (doc-meta-path dm))
-     (define base-dir
-       (if path
-           (let-values ([(d _f _n) (split-path path)])
-             (if (path? d) d (current-directory)))
-           (current-directory)))
-     (define open (open-local-texts state ev))
-     (define locals (map symbol->string (definitions-of-forms forms)))
-     (list specs* base-dir open locals)]))
 
 (define (module-path-context? state ev vid)
   (define text (or (and vid (engine-view-view-text ev vid)) ""))
@@ -346,16 +313,16 @@
             (open-with-pool state ev vid prefix paths #f #f #f #f)
             (transition-pure state))]
        [else
-        (define ctx (imports-context state ev vid))
+        (define ctx (source-context state ev vid))
         (cond
           [(not ctx)
            (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #f)]
           [else
-           (define specs (car ctx)) (define base-dir (cadr ctx))
-           (define open (caddr ctx)) (define locals (cadddr ctx))
-           (define key (list specs (path->string base-dir)
-                             (sort (for/list ([(p t) (in-hash open)]) (cons p t))
-                                   string<? #:key car)))
+           (define specs (hash-ref ctx 'specs))
+           (define base-dir (hash-ref ctx 'base-dir))
+           (define open (hash-ref ctx 'open))
+           (define locals (hash-ref ctx 'locals))
+           (define key (export-key ctx))
            (define exp (cache-get state key))
            (if (list? exp)
                (open-with-pool state ev vid prefix
@@ -383,15 +350,15 @@
            (transition-pure (msg state "completion: loading module list…"))]
           [else (submit-job state 'completion-exports '(module-paths) 'module-paths)])]
        [else
-        (define ctx* (imports-context state ev vid))
+        (define ctx* (source-context state ev vid))
         (cond
           [(not ctx*) (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #f)]
           [else
-           (define specs (car ctx*)) (define base-dir (cadr ctx*))
-           (define open (caddr ctx*)) (define locals (cadddr ctx*))
-           (define key (list specs (path->string base-dir)
-                             (sort (for/list ([(p t) (in-hash open)]) (cons p t))
-                                   string<? #:key car)))
+           (define specs (hash-ref ctx* 'specs))
+           (define base-dir (hash-ref ctx* 'base-dir))
+           (define open (hash-ref ctx* 'open))
+           (define locals (hash-ref ctx* 'locals))
+           (define key (export-key ctx*))
            (define exp (cache-get state key))
            (cond
              [(list? exp)

@@ -38,8 +38,6 @@
          "../../core/text/document.rkt"
          "../../core/text/base/track.rkt"
          "../../core/text/base/line.rkt"
-         "../../core/text/base/point.rkt"
-         "../../core/text/base/range.rkt"
          "../../core/editor/state.rkt"
          "../../core/editor/attributes.rkt"
          "../model/face-decor.rkt"

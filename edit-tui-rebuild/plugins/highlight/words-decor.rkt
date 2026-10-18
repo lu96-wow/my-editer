@@ -10,8 +10,7 @@
 
 (provide words-face-decor)
 
-(require (except-in racket/list range)
-         "../../model/face-decor.rkt"
+(require "../../model/face-decor.rkt"
          "../../model/face-layer.rkt"
          "lex.rkt")
 

@@ -19,8 +19,8 @@
 
 (define (wrap-bg x) (and x (face-set-bg face-empty x)))
 
-(define (scan-line stack ln line)
-  (define-values (stack* vec) (depth-line stack line ln))
+(define (scan-line stack _ln line)
+  (define-values (stack* vec) (depth-line stack line))
   (values stack* (for/vector ([x (in-vector vec)]) (wrap-bg x))))
 
 (define (depth-open _path text)
