@@ -143,7 +143,7 @@
   (check-true (insert-text-effect? (cadr es)))     ; hook 的在后面
   (check-equal? (insert-text-effect-text (cadr es)) "H"))
 
-;;; ════════════════ 6b. 什么算“一次编辑”：set-text / set-faces 不发 after-edit ════════════════
+;;; ════════════════ 6b. 什么算“一次编辑”：set-text / face 层不发 after-edit ════════════════
 
 (require "../effects/interpreter.rkt"
          "../../core/text/base/point.rkt"
@@ -163,7 +163,7 @@
   (check-false (for/first ([g (in-list (signals-of (set-text-effect vid "z")))]
                            #:when (eq? (signal-point g) 'after-edit))
                  g))
-  (check-false (for/first ([g (in-list (signals-of (set-faces-effect did '())))]
+  (check-false (for/first ([g (in-list (signals-of (set-face-layer-effect did 'x '())))]
                            #:when (eq? (signal-point g) 'after-edit))
                  g)))
 

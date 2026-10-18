@@ -181,8 +181,8 @@
                (list (set-text-effect pvid (string-join cands "\n"))
                      (select-effect pvid (selections-one (caret (point 0 0)))))
                (if doc
-                   (list (set-faces-effect doc
-                                           (list (list 0 0 0 (string-length (car cands)) 'selection))))
+                   (list (set-face-layer-effect doc 'completion-selection
+                                                (list (list 0 0 0 (string-length (car cands)) 'selection))))
                    '()))))
 
 ;; 关闭：去浮层 + 摘临时键表 + 清会话
@@ -244,7 +244,8 @@
                  (append
                   (list (select-effect pvid (selections-one (caret (point i 0)))))
                   (if doc
-                      (list (set-faces-effect doc (list (list i 0 i (string-length text) 'selection))))
+                      (list (set-face-layer-effect doc 'completion-selection
+                                                   (list (list i 0 i (string-length text) 'selection))))
                       '())))]))
 
 ;; Enter / Tab：接受（把编辑器里 [start,end) 换成弹窗里选中的那一行）

@@ -46,11 +46,34 @@ edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）
 
 `fills` 用 core 的 fill 形状 `(l0 c0 l1 c1 face)`，插件侧用 `plugins/highlight/lex.rkt` 生成。
 
-### 2.3 语法高亮（`plugins/highlight/`）
+### 2.3 语法高亮（`plugins/highlight/`）—— 两个插件、两层、后台算
 
-- `lex.rkt`：纯词法（行注释 / 块注释 / 字符串 / 数字 + 关键字表）→ fills；
-- `plugin.rkt`：两条 hook（`document-opened` / `after-edit`），用 core 的版本 token 去重，
-  发一个 `set-faces-effect`。
+两个插件、两层，互不覆盖；计算都在**后台进程**里按提交顺序执行：
+
+| 文件 | 层 | 写什么 |
+|---|---|---|
+| `plugins/highlight/plugin.rkt` | `'syntax-fg` | 每格只写**前景**分量（`face-set-fg`） |
+| `plugins/highlight/depth-plugin.rkt` | `'depth-bg` | 每格只写**背景**分量（`face-set-bg`），括号深度 |
+| `lex.rkt` / `depth.rkt` | — | 纯扫描：文本 → fills |
+
+流程（非阻塞）：
+
+```
+document-opened / after-edit  → submit-service-effect（kind + (doc text)）
+                                        │
+                              runtime worker（独立 place）
+                                        │  按提交顺序执行
+                              job-done 信号（job-id + 结果）
+                                        │
+              job-id 对账（丢弃过期） → set-face-layer-effect doc 'layer fills
+```
+
+- **一个 place = 一条队列**：两个插件提交的 job 顺序执行；结果各写各的层，
+  合成按 `env.face-layers` 的顺序做（`model/face-layer.rkt`：逐分量合并，
+  后层非默认分量覆盖前层，attrs 并集）。
+- 跨进程只传可序列化的东西：`(doc-id text)` / `(doc-id fills)`；
+  **版本 token 不跨进程**（它是 core 的 document 值），过期用 job-id 对账。
+- 没有 worker（例如已在 place 里）→ runtime 同步内联执行，语义相同。
 
 **按文件类型启用**（edit4 的 `#:applies?`）：hook 的 `when` 拿到 `(state engine-view args)`，
 所以可以按“这是哪个文档”判断。高亮只对 Racket 文件生效：
@@ -120,7 +143,7 @@ racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
 
 | 需求 | 用到的框架能力 | 是否改框架 |
 |---|---|---|
-| 语法高亮 | `set-faces-effect` + `document-opened`/`after-edit` 钩子 + `store` + hook 的 `when`（按文件类型） | 只加了一个 effect 和信号点 |
+| 语法高亮 | `set-face-layer-effect` + `submit-service-effect` + `document-opened`/`after-edit`/`job-done` 钩子 + hook 的 `when`（按文件类型） | 加了“一层 face”和“后台服务”两个 effect |
 | 补全 | `replace-range-effect` + `store` + `env.rules` 绑定 `M-/` | 只加了一个 effect |
 | 文档面板 | `panel-spec` + `store` + `after-nav`/`focus-changed` 钩子 | 不需要 |
 

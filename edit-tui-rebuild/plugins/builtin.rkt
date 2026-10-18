@@ -24,6 +24,7 @@
          "filetree/plugin.rkt"
          "resource/plugin.rkt"
          "highlight/plugin.rkt"
+         "highlight/depth-plugin.rkt"
          "completion/plugin.rkt"
          "docs/plugin.rkt")
 
@@ -38,9 +39,12 @@
 
 (define (editor-plugins)
   (append (default-plugins)
-          (list (highlight-plugin)
-                (completion-plugin)
-                (docs-plugin))))
+          (list
+           ;; 两个高亮插件：一个只写前景、一个只写背景；层的顺序 = 先背景后前景
+           (depth-bg-plugin)
+           (highlight-plugin)
+           (completion-plugin)
+           (docs-plugin))))
 
 (define editor-env
   (plugins-env core-env (editor-plugins)))

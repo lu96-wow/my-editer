@@ -31,6 +31,10 @@
    (list 'fg-syntax-string  (style (rgb 190 220 140) #f '()))
    (list 'fg-syntax-comment (style (rgb 120 120 130) #f '(italic)))
    (list 'fg-syntax-number  (style (rgb 200 170 240) #f '()))
+   ;; 括号深度底色（plugins/highlight/depth-plugin.rkt 写的就是 bg 分量）
+   (list 'bg-depth-1       (style #f (rgb 26 32 44) '()))
+   (list 'bg-depth-2       (style #f (rgb 34 42 58) '()))
+   (list 'bg-depth-3       (style #f (rgb 44 54 72) '()))
 
    ;; 括号深度（背景）
    (list 'bg-bracket-0 (style #f (rgb 36 40 58) '()))

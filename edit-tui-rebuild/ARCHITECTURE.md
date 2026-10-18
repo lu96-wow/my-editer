@@ -130,7 +130,9 @@ command ──▶ transition{state+effects}
 | 状态栏段 | `plugin.status-parts`（追加语义） | `projection/status` | 每帧投影 |
 | 输入栏提交 | `env.input-commands`（字符串匹配） | `chrome/input` | 输入栏 Enter |
 | 插件自己的状态 | `state.store` + `plugin-state*` | 插件自己 | — |
-| 给文本上色 | `set-faces-effect doc fills` | `effects/interpreter` | 命令 / hook 发 |
+| 给文本上色（**一层** face） | `set-face-layer-effect doc layer fills` | `engine-set-face-layer!`（合成后写回 core） | 命令 / hook 发 |
+| 层的顺序 | `env.face-layers`（先低后高） | `runtime/startup!` 交给引擎 | 启动 |
+| 后台纯计算 | `submit-service-effect job kind payload` | `runtime/worker.rkt`（独立 place） | 命令 / hook 发 |
 | 替换一段文本 | `replace-range-effect view range text` | `effects/interpreter` | 命令 / hook 发 |
 | 布局变了夹光标 | `ensure-view-effect view` | `effects/interpreter`（core `view-ensure!`） | 命令 / hook 发 |
 | 浮窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` | `projection/render`（作为 deep 更高的 panel） | 每帧 |
@@ -157,7 +159,18 @@ command ──▶ transition{state+effects}
 暂定：以后若要再收敛，可以让 runtime 每帧发 `before-render` 信号，把面板同步改成
 `set-text-effect` / `set-faces-effect`（纯 hook + effect）。
 
-### 7.4 命名与对称
+### 7.4 face 分层与后台计算
+
+| 概念 | 位置 | 约定 |
+|---|---|---|
+| face 分量 | `edit-tui/base/face.rkt`（fg / bg / attrs） | 插件只写自己那一分量 |
+| 层的合成 | `model/face-layer.rkt` 的 `compose-layers` | 逐分量合并；同分量后层覆盖；attrs 并集 |
+| 层序 | `env.face-layers` | 先低后高；由 `startup!` 交给引擎 |
+| 后台服务 | `plugins/worker.rkt` 的 `service-run` | **纯**：只吃 payload、吐结果；payload/result 必须可跨 place |
+| 跨进程载荷 | `submit-service-effect` | 不能带 core 的不可序列化值（如版本 token）；用 job-id 对账过期结果 |
+| 一个 worker 一条队列 | `runtime/worker.rkt` | 多个插件按提交顺序执行（同一文档的层顺序稳定） |
+
+### 7.5 命名与对称
 
 | 规则 | 例子 |
 |---|---|
@@ -169,7 +182,7 @@ command ──▶ transition{state+effects}
 | 信号点：过去式 / 发生后 | `document-opened`、`after-edit`、`after-nav`、`focus-changed`；internal 事件名即 point |
 | 不能和 `racket/base` 撞名 | `member` → `region-member`（见 §8.6） |
 
-### 7.5 加扩展点前的检查清单
+### 7.6 加扩展点前的检查清单
 
 1. 已有注册表能不能表达？（高亮 / 补全 / 文档三个插件全部用已有注册表，没加新表）
 2. 新表是否只是“另一种触发时机”？→ 统一到 `env.hooks` 或 `env.panel-syncs`。

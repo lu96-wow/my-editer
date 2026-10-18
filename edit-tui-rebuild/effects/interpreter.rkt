@@ -7,7 +7,7 @@
 
 ;;; 分工：
 ;;;   · edit / insert / select / scroll / nav / undo / redo -> engine-apply!
-;;;   · set-faces（语法高亮）                                    -> core 端口写回
+;;;   · set-face-layer（语法高亮 / 底色等：一层 face）           -> engine 合成后写回
 ;;;   · replace-range（补全）                                    -> core buffer 替换
 ;;;   · ensure-view（布局变化后夹光标）                           -> core view-ensure!
 ;;;   · open-doc / close-doc / save-doc                         -> engine + State
@@ -43,7 +43,8 @@
 ;;; ════════════════ 分类 ════════════════
 
 (define (runtime-effect? e)
-  (or (spawn-effect? e) (timer-effect? e) (emit-effect? e)))
+  (or (spawn-effect? e) (timer-effect? e) (emit-effect? e)
+      (submit-service-effect? e)))
 
 ;;; ════════════════ 单个 effect ════════════════
 
@@ -59,8 +60,12 @@
         [(nav-effect? effect) (state-emit state 'after-nav (list (nav-effect-view effect)))]
         [else state]))]
 
-    [(set-faces-effect? effect)
-     (interpret-set-faces! engine state effect)]
+    [(set-face-layer-effect? effect)
+     (engine-set-face-layer! engine
+                             (set-face-layer-effect-doc effect)
+                             (set-face-layer-effect-layer effect)
+                             (set-face-layer-effect-fills effect))
+     (transition-pure state)]
 
     [(replace-range-effect? effect)
      (interpret-replace-range! engine state effect)]
@@ -128,19 +133,12 @@
      (error 'interpret-effect! "timer 是 Runtime effect，尚未接线")]
     [(emit-effect? effect)
      (error 'interpret-effect! "emit 是 Runtime effect，尚未接线")]
+    [(submit-service-effect? effect)
+     (error 'interpret-effect! "submit-service 是 Runtime effect，由 runtime 解释")]
 
     [else (error 'interpret-effect! "未知 effect：~a" effect)]))
 
 ;;; ════════════════ 上色 / 替换 ════════════════
-
-;; 整篇重设 face：先清空（避免旧色残留），再按 fills 写一次。
-(define (interpret-set-faces! engine state effect)
-  (define did (set-faces-effect-doc effect))
-  (define b (engine-doc-buffer engine did))
-  (when b
-    (buffer-face-all! b #f)
-    (buffer-face-batch! b (set-faces-effect-fills effect)))
-  (transition-pure state))
 
 ;; 替换一个 view 的 range（补全把前缀换成候选）：算一次编辑，所以发 after-edit。
 (define (interpret-replace-range! engine state effect)

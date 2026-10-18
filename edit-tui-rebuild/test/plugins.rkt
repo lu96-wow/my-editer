@@ -35,6 +35,7 @@
          "../plugins/builtin.rkt"
          "../runtime/run.rkt"
          "../dispatch/hooks.rkt"
+         "../model/face-layer.rkt"
          "../../core/editor/query.rkt"
          "../../core/editor/state.rkt"
          "../../core/text/base/point.rkt")
@@ -94,7 +95,14 @@
 (define cl-h (list (ctrl 'c) (app:key-event (key 'h))))
 
 (define (buffer-of engine) (engine-doc-buffer engine did))
+;; 现在是**分层**的：cell 上是 face 结构（fg / bg / attrs），
+;; 所以断言按分量来（`fg-at` / `bg-at`），而不是整 face 名。
 (define (face-at engine line col) (buffer-face-at (buffer-of engine) line col))
+(define (component getter engine line col)
+  (define f (face-at engine line col))
+  (and f (if (symbol? f) (and (eq? getter face-fg) f) (getter f))))
+(define (fg-at engine line col) (component face-fg engine line col))
+(define (bg-at engine line col) (component face-bg engine line col))
 (define (col-of line sub)
   (define m (regexp-match-positions (regexp (regexp-quote sub)) line))
   (and m (caar m)))
@@ -105,12 +113,16 @@
 (let-values ([(engine s0) (make-world)])
   (define l0 (list-ref (lines-of engine) 0))
   (define l1 (list-ref (lines-of engine) 1))
-  (check-eq? (face-at engine 0 (col-of l0 "comment")) 'fg-syntax-comment)
-  (check-eq? (face-at engine 1 (col-of l1 "define")) 'fg-syntax-def)
-  (check-eq? (face-at engine 1 (col-of l1 "\"s\"")) 'fg-syntax-string)
-  (check-eq? (face-at engine 1 (col-of l1 "42")) 'fg-syntax-number)
-  ;; 括号本身不上色
-  (check-false (face-at engine 1 0))
+  (check-eq? (fg-at engine 0 (col-of l0 "comment")) 'fg-syntax-comment)
+  (check-eq? (fg-at engine 1 (col-of l1 "define")) 'fg-syntax-def)
+  (check-eq? (fg-at engine 1 (col-of l1 "\"s\"")) 'fg-syntax-string)
+  (check-eq? (fg-at engine 1 (col-of l1 "42")) 'fg-syntax-number)
+  ;; 括号本身没有语法前景，但有**另一个插件的背景层**（两个插件协作用例）
+  (check-false (fg-at engine 1 0))
+  (check-eq? (bg-at engine 1 0) 'bg-depth-1)
+  ;; 同一格上两个分量同时存在：define 有前景（语法层）+ 背景（深度层）
+  (check-eq? (fg-at engine 1 (col-of l1 "define")) 'fg-syntax-def)
+  (check-eq? (bg-at engine 1 (col-of l1 "define")) 'bg-depth-1)
 
   ;; 上色不改“文档版本”，所以文档不会因此变脏
   (define dm (workspace-doc (state-workspace s0) did))
@@ -120,7 +132,7 @@
   ;; 编辑：插入一个关键字，after-edit 后重新上色
   (define s1 (feed engine s0 (plain #\space) (plain #\() (plain #\i) (plain #\f)))
   (define new-line (list-ref (lines-of engine) 0))
-  (check-eq? (face-at engine 0 (col-of new-line "if")) 'fg-syntax-control))
+  (check-eq? (fg-at engine 0 (col-of new-line "if")) 'fg-syntax-control))
 
 ;; 插件按文件类型启用：非 Racket 文件（.txt / mode 'text）不上色
 (let* ([engine (make-engine)]

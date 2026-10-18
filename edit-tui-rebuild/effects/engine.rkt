@@ -27,6 +27,8 @@
          engine-effect?
          engine-sync-view! engine-sync-views! engine-ensure-view!
          engine-set-view-text!
+         engine-set-face-layer!
+         engine-set-face-layers!
          ;; 只读查询接口（ctx.engine）
          (struct-out engine-view)
          make-engine-view
@@ -43,16 +45,77 @@
          open-doc-effect*)
 
 (require "../../core/editor.rkt"
-         "../base/effect.rkt")
+         (only-in "../../core/text/document.rkt" document-text)
+         (only-in "../../core/editor/state.rkt" buffer-document)
+         "../../core/text/base/track.rkt"
+         (only-in "../../core/text/base/line.rkt" track-line-length)
+         "../base/effect.rkt"
+         "../model/face-layer.rkt")
 
 ;;; ════════════════════════ 引擎 ════════════════════════
 
-(struct engine (docs views) #:mutable #:transparent)
-;; docs  : (hash/c doc-id buffer)
-;; views : (hash/c view-id view)
+(struct engine (docs views face-layers face-order) #:mutable #:transparent)
+;; docs       : (hash/c doc-id buffer)
+;; views      : (hash/c view-id view)
+;; face-layers: (make-hasheq) buffer -> (hash/c symbol (listof fill))   每层的 fills
+;; face-order : (listof symbol)   层序（先低后高），由宿主在启动时设置
+;;
+;; 为什么以 **buffer** 为键而不是 doc-id：文本一变就要把该 buffer 的层作废，
+;; 而 `engine-apply!` 手上只有 view（能拿到 buffer，拿不到 doc-id）。
 
 (define (make-engine)
-  (engine (hash) (hash)))
+  (engine (hash) (hash) (make-hasheq) '()))
+
+;;; ---------- face 层 ----------
+
+;; 层序：越靠后越“在上面”（后层的非 #f 分量覆盖前层）。
+(define (engine-set-face-layers! e order)
+  (set-engine-face-order! e order)
+  (void))
+
+(define (layers-of e b) (hash-ref (engine-face-layers e) b (hash)))
+
+;; 设置某个 buffer 的某层 fills，然后**合成所有层**并整篇写回 core 的 face 端口。
+;;
+;; 为什么整篇写：core 的 face 端口是“每格一个值”，分层是框架的概念；
+;; 合成后只剩一张 face 表，写回仍然只有一次 `buffer-face-batch!`。
+;;
+;; 坐标来自“提交这个 job 时的文本”；回来时文本可能又变了 —— 所以：
+;;   · 文本一变就清层（见 `engine-clear-face-layers!`），旧层不会残留；
+;;   · 写回前再 `clip-fills` 夹一遍（防御：coord 一律不能越出当前文本）。
+(define (engine-set-face-layer! e did layer fills)
+  (define b (engine-doc-buffer e did))
+  (when b
+    (hash-set! (engine-face-layers e) b (hash-set (layers-of e b) layer fills))
+    (write-faces! e b))
+  (void))
+
+;; 文本变了：这个 buffer 的层全部作废（fill 的坐标属于旧文本），并清掉 core 的 face。
+(define (engine-clear-face-layers! e b)
+  (when b
+    (hash-remove! (engine-face-layers e) b)
+    (buffer-face-all! b #f))
+  (void))
+
+(define (write-faces! e b)
+  (buffer-face-all! b #f)
+  (buffer-face-batch! b (clip-fills b (compose-layers (engine-face-order e) (layers-of e b)))))
+
+;; fills 夹到当前文本：行越界丢弃，列越界夹到行尾，空区间去掉。
+(define (clip-fills b fills)
+  (define t (document-text (buffer-document b)))
+  (define n (track-length t))
+  (define (linelen i) (track-line-length t i))
+  (filter values
+          (for/list ([f (in-list fills)]
+                     #:when (< (list-ref f 0) n))
+    (define l0 (list-ref f 0))
+    (define l1 (min (list-ref f 2) (sub1 n)))
+    (define c0 (min (list-ref f 1) (linelen l0)))
+    (define c1 (if (= l1 (list-ref f 2))
+                   (min (list-ref f 3) (linelen l1))
+                   (linelen l1)))
+            (and (< c0 c1) (list l0 c0 l1 c1 (list-ref f 4))))))
 
 (define (engine-doc-buffer e did)
   (hash-ref (engine-docs e) did #f))
@@ -165,12 +228,15 @@
   (match effect
     [(edit-effect vid op)
      (define v (need-view e vid))
+     (engine-clear-face-layers! e (view-buffer v))
      (buffer-edit! (view-buffer v) v op)]
     [(insert-text-effect vid text)
      (define v (need-view e vid))
+     (engine-clear-face-layers! e (view-buffer v))
      (buffer-edit! (view-buffer v) v (op-type text))]
     [(set-text-effect vid text)
      (define v (need-view e vid))
+     (engine-clear-face-layers! e (view-buffer v))
      (define n (string-length text))
      (buffer-set-document! (view-buffer v) text)
      (view-scroll-to-line! v 0)
@@ -192,9 +258,13 @@
     [(nav-effect vid dir)
      (apply-nav! (need-view e vid) dir)]
     [(undo-effect vid)
-     (buffer-undo! (view-buffer (need-view e vid)))]
+     (define v (need-view e vid))
+     (engine-clear-face-layers! e (view-buffer v))
+     (buffer-undo! (view-buffer v))]
     [(redo-effect vid)
-     (buffer-redo! (view-buffer (need-view e vid)))]
+     (define v (need-view e vid))
+     (engine-clear-face-layers! e (view-buffer v))
+     (buffer-redo! (view-buffer v))]
     [_ (error 'engine-apply! "不是引擎 effect：~a" effect)])
   (void))
 

@@ -136,6 +136,8 @@
 (define external-prefixes
   ;; token 词汇（key/mouse/command 结构）与 core 引擎：任意层都可以用它（core 另行白名单）。
   '("../edit-tui/command/" "../../edit-tui/command/" "../../../edit-tui/command/"
+    "../edit-tui/base/" "../../edit-tui/base/"      ; face 值（纯词汇）
+    "racket/place" "racket/async-channel"          ; 跨进程基元（runtime 白名单另有检查）
     "../edit-tui/core-render/" "../../edit-tui/core-render/"
     "../../../core/" "../../core/"))
 
@@ -207,7 +209,8 @@
 ;;; ════════════════ 5. 终端 / 线程只在壳里 ════════════════
 
 (define tui-allowed '("runtime/run.rkt"))
-(define thread-allowed '("runtime/run.rkt"))
+;; 线程 / place / inbox 只在壳里（worker 也是壳的一部分）
+(define thread-allowed '("runtime/run.rkt" "runtime/worker.rkt"))
 
 (for ([p (in-list impl-files)])
   (define here (rel p))

@@ -42,9 +42,10 @@
          (struct-out insert-text-effect)
          (struct-out set-text-effect)
          (struct-out set-input-prompt-effect)
-         (struct-out set-faces-effect)
+         (struct-out set-face-layer-effect)
          (struct-out replace-range-effect)
          (struct-out ensure-view-effect)
+         (struct-out submit-service-effect)
          (struct-out select-effect)
          (struct-out scroll-effect)
          (struct-out nav-effect)
@@ -69,13 +70,24 @@
 (struct insert-text-effect (view text) #:transparent)
 (struct set-text-effect (view text)    #:transparent)
 (struct set-input-prompt-effect (view prompt) #:transparent)
-;; 整篇重设一个 document 的 face（语法高亮）：先清空，再按 fills 上色。
+;; 设置一个 document 的**一个 face 层**（语法高亮 / 括号底色……）。
+;;   layer : symbol                             层名（层序见 environment.face-layers）
 ;;   fills : (listof (list l0 c0 l1 c1 face))   坐标是 (line, col)，与 core 的 fill 形状一致
-(struct set-faces-effect (doc fills) #:transparent)
+;;
+;; 语义：替换该层的内容；各层按 layer 顺序**逐分量合成**（模型在 model/face-layer.rkt），
+;; 所以“写前景的插件”和“写背景的插件”不会互相覆盖。
+(struct set-face-layer-effect (doc layer fills) #:transparent)
 ;; 替换一个 view 的 range（补全用）：range 是 core 的 range 值，text 是替换文本。
 (struct replace-range-effect (view range text) #:transparent)
 ;; 把这个 view 的光标夹进窗口（布局刚变化时用：例如打开底部文档面板）。
 (struct ensure-view-effect (view) #:transparent)
+;; 把一段**纯计算**交给后台 worker（多进程）去做，结果以 job-done 信号回来。
+;;   job     : any/c（调用方自定，回来时原样带回，用于对账 / 丢弃过期结果）
+;;   kind    : symbol（worker 里的 service 名）
+;;   payload : any/c（必须可跨 place 传递：list / vector / string / symbol / number / #:prefab struct）
+;;
+;; 为什么是 effect 而不是直接调用：worker 是 runtime 的私有资源，插件只描述工作。
+(struct submit-service-effect (job kind payload) #:transparent)
 (struct select-effect (view selections)#:transparent)
 (struct scroll-effect (view delta)     #:transparent)
 (struct nav-effect     (view dir)      #:transparent)
@@ -98,7 +110,8 @@
 (define (effect? x)
   (or (edit-effect? x) (insert-text-effect? x) (set-text-effect? x)
       (set-input-prompt-effect? x)
-      (set-faces-effect? x) (replace-range-effect? x) (ensure-view-effect? x)
+      (set-face-layer-effect? x) (replace-range-effect? x) (ensure-view-effect? x)
+      (submit-service-effect? x)
       (select-effect? x) (scroll-effect? x)
       (nav-effect? x) (undo-effect? x) (redo-effect? x)
       (open-doc-effect? x) (open-view-effect? x) (close-view-effect? x)
@@ -112,9 +125,10 @@
         [(insert-text-effect? x) 'insert-text]
         [(set-text-effect? x)    'set-text]
         [(set-input-prompt-effect? x) 'set-input-prompt]
-        [(set-faces-effect? x) 'set-faces]
+        [(set-face-layer-effect? x) 'set-face-layer]
         [(replace-range-effect? x) 'replace-range]
         [(ensure-view-effect? x)   'ensure-view]
+        [(submit-service-effect? x) 'submit-service]
         [(select-effect? x)    'select]
         [(scroll-effect? x)    'scroll]
         [(nav-effect? x)       'nav]

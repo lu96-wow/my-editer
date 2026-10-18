@@ -21,7 +21,10 @@
 
 ;; kind : 'doc | 'view | 'region | 'job | …
 ;; n    : positive integer
-(struct id (kind n) #:transparent)
+;;
+;; `#:prefab`：id 会作为 job payload 跨 place（后台 worker）传递，
+;; 需要可序列化；prefab 仍然支持 equal? 比较与 struct-copy。
+(struct id (kind n) #:prefab)
 
 (define (doc-id? x)    (and (id? x) (eq? (id-kind x) 'doc)))
 (define (view-id? x)   (and (id? x) (eq? (id-kind x) 'view)))

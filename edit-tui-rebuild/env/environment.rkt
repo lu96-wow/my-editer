@@ -13,6 +13,7 @@
 ;;;   keymaps  : name       -> keymap
 ;;;   panel-syncs : (listof (state engine -> any))   每帧渲染前要跑的面板同步
 ;;;   hooks    : (listof hook)               信号 -> 旁观者逻辑（按 point + priority 跑）
+;;;   face-layers : (listof symbol)          face 层序（先低后高；后层非 #f 分量覆盖前层）
 ;;;
 ;;; 好处：
 ;;;   · 多个 app 实例可以有不同的 env；
@@ -45,6 +46,9 @@
          environment-panel-syncs
          environment-add-panel-sync
          environment-add-panel-syncs
+         environment-face-layers
+         environment-add-face-layer
+         environment-add-face-layers
          environment-hooks
          environment-add-hook
          environment-add-hooks
@@ -62,7 +66,7 @@
          "hook.rkt"
          "../base/status-part.rkt")
 
-(struct environment (roles modes scopes commands keymaps rules status doc-types input-commands panel-syncs hooks) #:transparent)
+(struct environment (roles modes scopes commands keymaps rules status doc-types input-commands panel-syncs hooks face-layers) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
@@ -73,11 +77,12 @@
 ;; doc-types: (hash/c symbol doc-type)    打开文件时按路径匹配
 ;; input-commands: (listof input-command) 输入栏字符串匹配（高 -> 低）
 ;; hooks    : (listof hook)               信号点 -> 旁观者逻辑（按 priority 降序）
+;; face-layers : (listof symbol)          face 层序（先低后高）
 ;; panel-syncs: (listof procedure)        每帧渲染前调用 (state engine -> any)；
 ;;             面板由插件贡献时挂在这里，runtime 只负责遍历，不认识具体面板。
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '()))
+  (environment (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '() '()))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
@@ -89,9 +94,10 @@
                           #:doc-types [doc-types (hash)]
                           #:input-commands [input-commands '()]
                           #:panel-syncs [panel-syncs '()]
-                          #:hooks [hooks '()])
+                          #:hooks [hooks '()]
+                          #:face-layers [face-layers '()])
   (environment roles modes scopes commands keymaps rules status
-               doc-types input-commands panel-syncs hooks))
+               doc-types input-commands panel-syncs hooks face-layers))
 
 ;;; ---------- 查 ----------
 
@@ -181,6 +187,14 @@
 (define (environment-add-hooks env hs)
   (for/fold ([e env]) ([h (in-list hs)]) (environment-add-hook e h)))
 
+;; face 层：**追加**（越靠后越在上面）。
+(define (environment-add-face-layer env l)
+  (unless (symbol? l) (error 'environment-add-face-layer "层名要是 symbol：~a" l))
+  (struct-copy environment env [face-layers (append (environment-face-layers env) (list l))]))
+
+(define (environment-add-face-layers env ls)
+  (for/fold ([e env]) ([l (in-list ls)]) (environment-add-face-layer e l)))
+
 ;; 覆盖式合并：b 的同名项覆盖 a。插件 / 用户配置用这个。
 (define (environment-merge a b)
   (define (overlay ka kb)
@@ -197,4 +211,5 @@
                (append (environment-input-commands b) (environment-input-commands a))
                ;; 同步器 / 钩子不重名、不去重：a 的在先，b 的在后
                (append (environment-panel-syncs a) (environment-panel-syncs b))
-               (append (environment-hooks a) (environment-hooks b))))
+               (append (environment-hooks a) (environment-hooks b))
+               (append (environment-face-layers a) (environment-face-layers b))))

@@ -40,6 +40,7 @@ model/         纯状态（只依赖 base）
   chrome.rkt      message / log
   workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
   save.rkt        保存确认队列（框架级）
+  face-layer.rkt  face 分层合成（逐分量合并；层序 = env.face-layers）
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
                   input-command/panel-sync/hook
@@ -90,9 +91,12 @@ plugins/       内置插件（每个一个目录）
     panel.rkt       写 *filetree* buffer
     commands.rkt    Enter / C-b / C-n f / C-d …
     plugin.rkt      panel-spec + mode + commands + 规则 + install
+  worker.rkt      后台 worker 的入口（独立 place；按 kind 分派纯计算）
   highlight/
     lex.rkt         纯词法：文本 -> 每行 face 区间
-    plugin.rkt      syntax 高亮插件（只对 .rkt / mode 'racket 生效）
+    depth.rkt       括号深度 -> 背景 fills
+    plugin.rkt      语法高亮插件（层 'syntax-fg；只对 .rkt 生效）
+    depth-plugin.rkt 括号底色插件（层 'depth-bg；与上面同一格共存）
   completion/
     plugin.rkt      C-c / 原地补全（replace-range 会话）
   docs/
@@ -105,6 +109,7 @@ plugins/       内置插件（每个一个目录）
     plugin.rkt      panel-spec + mode + commands + install
 runtime/       壳
   tui-adapter.rkt 终端事件 -> base/event
+  worker.rkt      后台 worker（独立 place；一个 worker 一条队列）
   run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
 demo/           可交互 demo
 main.rkt        公共面
@@ -154,6 +159,8 @@ racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/split.rkt
 racket edit-tui-rebuild/test/hooks.rkt
 racket edit-tui-rebuild/test/plugins.rkt
+racket edit-tui-rebuild/test/face-layer.rkt
+racket edit-tui-rebuild/test/worker.rkt
 racket edit-tui-rebuild/test/float.rkt
 edit-tui-rebuild/test/run.sh
 ```
