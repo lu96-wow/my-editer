@@ -9,6 +9,8 @@
 - **约定 / 不变量**（信号点、什么算编辑、所有显示都是 document、浮层规则）：
   [`ARCHITECTURE.md` §8](ARCHITECTURE.md)
 - 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
+- **rebuild 做了什么 / 全函数归纳 / 可变与不可变状态 / 扩展点收敛方案**：
+  [`ANALYSIS.md`](ANALYSIS.md)（全量顶层定义索引见 [`FUNCTION-INDEX.md`](FUNCTION-INDEX.md)）
 
 所有分层规则由 `test/layers.rkt` 机器检查。
 
