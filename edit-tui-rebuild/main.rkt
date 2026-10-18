@@ -45,7 +45,8 @@
          "model/layout.rkt"
          "model/input.rkt"
          "model/chrome.rkt"
-         "model/save.rkt")
+         "model/save.rkt"
+         "model/face-decor.rkt")
 
 ;;; ── env ──
 (require "env/environment.rkt"
@@ -61,6 +62,7 @@
 
 ;;; ── effects ──
 (require "effects/engine.rkt"
+         "effects/paint.rkt"
          "effects/panel.rkt"
          "effects/interpreter.rkt")
 
@@ -115,7 +117,8 @@
                        "model/layout.rkt"
                        "model/input.rkt"
                        "model/chrome.rkt"
-                       "model/save.rkt")
+                       "model/save.rkt"
+                       "model/face-decor.rkt")
          (all-from-out "env/environment.rkt"
                        "env/role.rkt"
                        "env/mode.rkt"
@@ -127,6 +130,7 @@
                        "env/plugin.rkt"
                        "env/defaults.rkt")
          (all-from-out "effects/engine.rkt"
+                       "effects/paint.rkt"
                        "effects/panel.rkt"
                        "effects/interpreter.rkt")
          (all-from-out "projection/float.rkt")

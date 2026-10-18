@@ -18,7 +18,7 @@ edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）
 
 - `World` / `content` / `layout` 的整套可变搬运，`service` 注册表，`sync` 插件（多 view 同步渲染），
   `doc-key-matchers`（按文档类型再套一层键表），`prompt-kind` 注册表；
-- `decor` 的增量状态机（`dirty.rkt` 的跨行状态收敛）——我们先用“整篇重扫”，接口不变。
+- `decor` 的增量状态机：**这一版已经补上**（见 `INCREMENTAL.md`）；语法高亮 / 括号深度现在就是 face-decor。
 
 ## 2. 本仓库的实现
 
@@ -41,51 +41,50 @@ edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）
 
 | effect | 用途 | 解释（`effects/interpreter.rkt`） |
 |---|---|---|
-| `set-faces-effect doc fills` | 整篇重设 face（语法高亮） | `buffer-face-all! #f` + `buffer-face-batch!` |
+| `set-face-layer-effect doc layer fills` | 一次性静态层（补全选中行等） | `effects/paint` 的 `paint-state.static`；文本编辑时自动平移 |
 | `replace-range-effect view range text` | 替换一段（补全） | `buffer-replace-range!` |
 
 `fills` 用 core 的 fill 形状 `(l0 c0 l1 c1 face)`，插件侧用 `plugins/highlight/lex.rkt` 生成。
 
-### 2.3 语法高亮（`plugins/highlight/`）—— 两个插件、两层、后台算
+### 2.3 语法高亮（`plugins/highlight/`）—— 两个增量 face decor
 
-两个插件、两层，互不覆盖；计算都在**后台进程**里按提交顺序执行：
+两个插件、两层，互不覆盖；它们不是 hook，而是每个文档一份持续状态：
 
 | 文件 | 层 | 写什么 |
 |---|---|---|
-| `plugins/highlight/plugin.rkt` | `'syntax-fg` | 每格只写**前景**分量（`face-set-fg`） |
-| `plugins/highlight/depth-plugin.rkt` | `'depth-bg` | 每格只写**背景**分量（`face-set-bg`），括号深度 |
-| `lex.rkt` / `depth.rkt` | — | 纯扫描：文本 → fills |
+| `plugins/highlight/syntax-decor.rkt` | `'syntax-fg` | 每格只写**前景**分量（`face-set-fg`） |
+| `plugins/highlight/depth-decor.rkt` | `'depth-bg` | 每格只写**背景**分量（`face-set-bg`），括号深度 |
+| `lex.rkt` / `depth.rkt` | — | 纯行级扫描：`state × line -> (state', 行 face 向量)` |
 
-流程（非阻塞）：
+流程（同步、增量）：
 
 ```
-document-opened / after-edit  → submit-service-effect（kind + (doc text)）
-                                        │
-                              runtime worker（独立 place）
-                                        │  按提交顺序执行
-                              job-done 信号（job-id + 结果）
-                                        │
-              job-id 对账（丢弃过期） → set-face-layer-effect doc 'layer fills
+document-opened / 文本编辑
+        │
+        ▼
+core document-edit-tracks
+        │  fork slots
+        ▼
+effects/paint.rkt 的 face-paint slot
+        │  每个 decor 调 change(state, layer, ctx)
+        │    changes -> dirty 行
+        │    refresh-layer / stateful-advance 只重扫脏行
+        ▼
+paint-write!  只把 dirty 行写回 core face port
 ```
 
-- **一个 place = 一条队列**：两个插件提交的 job 顺序执行；结果各写各的层，
-  合成按 `env.face-layers` 的顺序做（`model/face-layer.rkt`：逐分量合并，
-  后层非默认分量覆盖前层，attrs 并集）。
-- 跨进程只传可序列化的东西：`(doc-id text)` / `(doc-id fills)`；
-  **版本 token 不跨进程**（它是 core 的 document 值），过期用 job-id 对账。
-- 没有 worker（例如已在 place 里）→ runtime 同步内联执行，语义相同。
+- **状态在 document slot 里**：undo / redo 回到旧 document 时，decor 的 state / layer
+  和 face port 一起回来，不需要重算。
+- **一个文本编辑只重扫脏行**；跨行状态（块注释 / 字符串 / 括号栈）用
+  `stateful-advance` 从首个脏行重扫到状态收敛。
+- **两个插件仍然各写一个分量**：合成在 `effects/paint.rkt` 按 `env.face-layers`
+  的层序做，同分量后层覆盖，attrs 并集。
+- **没有后台 worker 路径**：高亮不再 `submit-service-effect` / `job-done`；
+  worker 只保留给一次性纯计算。同步 decor 的正确性由 core 的版本顺序保证。
+- `set-face-layer-effect` 仍然存在，但只用于一次性静态层（例如补全选中行）。
 
-**按文件类型启用**（edit4 的 `#:applies?`）：hook 的 `when` 拿到 `(state engine-view args)`，
-所以可以按“这是哪个文档”判断。高亮只对 Racket 文件生效：
-
-```racket
-racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
-```
-
-`core-env` 里注册了 doc-type：打开 `.rkt` 自动用 mode `'racket`（键位暂时同 text）。
-`(highlight-plugin #:enabled? #f)` 可以整块关掉。
-
-暂定：整篇重扫（O(n)）。要做增量时只改 `lex.rkt` 内部，fills 形状不变。
+高亮只对 Racket 文件生效：`face-decor` 的 `applies?` 看 doc-meta（mode / path 后缀），
+由 `runtime/run.rkt` 在文档打开后过滤并挂到 engine。
 
 ### 2.4 补全（`plugins/completion/`，浮层菜单）
 
@@ -107,7 +106,7 @@ racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
   | 需求 | 手段 |
   |---|---|
   | 候选列表 | 浮层文档的文本（`set-text-effect`） |
-  | 选中行 | 浮层文档的光标行（`select-effect`）+ 一条 `'selection` face（`set-faces-effect`） |
+  | 选中行 | 浮层文档的光标行（`select-effect`）+ 一条 `'selection` face（`set-face-layer-effect`） |
   | 位置 | `projection/float.rkt` 每帧按“锚点 view 的光标”算矩形（下方优先，放不下翻上面，水平夹在面板内） |
   | 出现 / 移动 / 消失 | core 的增量 diff（浮层就在 core 的 screen 里） |
 
@@ -143,7 +142,7 @@ racket-doc? = mode 是 'racket，或路径后缀 ∈ {rkt,rktl,rktd,scratch}
 
 | 需求 | 用到的框架能力 | 是否改框架 |
 |---|---|---|
-| 语法高亮 | `set-face-layer-effect` + `submit-service-effect` + `document-opened`/`after-edit`/`job-done` 钩子 + hook 的 `when`（按文件类型） | 加了“一层 face”和“后台服务”两个 effect |
+| 语法高亮 | `face-decor`（open/change）+ `effects/paint` 的 document slot + 脏行写回 | 加了“每文档 decor slot”和 change 透传；不再用 hook / worker |
 | 补全 | `replace-range-effect` + `store` + `env.rules` 绑定 `M-/` | 只加了一个 effect |
 | 文档面板 | `panel-spec` + `store` + `after-nav`/`focus-changed` 钩子 | 不需要 |
 

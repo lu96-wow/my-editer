@@ -7,16 +7,17 @@
 
 ;;; 分工：
 ;;;   · edit / insert / select / scroll / nav / undo / redo -> engine-apply!
-;;;   · set-face-layer（语法高亮 / 底色等：一层 face）           -> engine 合成后写回
-;;;   · replace-range（补全）                                    -> core buffer 替换
-;;;   · ensure-view（布局变化后夹光标）                           -> core view-ensure!
+;;;   · set-face-layer（一次性静态层，如补全选中行）             -> engine 写 paint slot
+;;;   · replace-range（补全）                                    -> engine-replace-range!
+;;;   · ensure-view（布局变化后夹光标）                           -> engine-ensure-view!
 ;;;   · open-doc / close-doc / save-doc                         -> engine + State
 ;;;   · read-file / write-file                                  -> 文件 IO + 回调
 ;;;   · quit                                                    -> State.quit?
 ;;;
 ;;; 信号：解释器是唯一知道“文本真的变了”的地方，所以由它发
-;;;   after-edit（doc-id）/ after-nav（view-id）/ document-opened（doc-id）。
-;;; 上色本身不发 after-edit（否则 hook 自激）。
+;;;   after-edit（doc-id changes）/ after-nav（view-id）/ document-opened（doc-id）。
+;;; 高亮 decor 在 document slot 的 fork 里直接拿 changes，不依赖这个信号；
+;;; 上色本身也不发 after-edit（否则 hook 自激）。
 ;;;
 ;;; 暂定：
 ;;;   · spawn / timer / emit 是 Runtime effect，等 runtime 块接线；这里显式报错，
@@ -35,10 +36,7 @@
          "../base/transition.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
-         "engine.rkt"
-         "../../core/editor/attributes.rkt"
-         "../../core/editor/ops.rkt"
-         "../../core/editor/state.rkt")
+         "engine.rkt")
 
 ;;; ════════════════ 分类 ════════════════
 
@@ -51,12 +49,13 @@
 (define (interpret-effect! engine state effect)
   (cond
     [(engine-effect? effect)
-     (engine-apply! engine effect)
-     ;; 文本被改 / 光标推进：把“发生了什么”记成信号，旁观者（高亮/补全/文档）自己接。
+     (define changes (engine-apply! engine effect))
+     ;; 文本被改 / 光标推进：把“发生了什么”记成信号，旁观者（补全/文档）自己接。
+     ;; 高亮 decor 不靠这个信号，它在 document slot 的 fork 里拿 changes。
      (transition-pure
       (cond
-        [(edit-write? effect)
-         (state-emit state 'after-edit (list (effect-doc state effect)))]
+        [(and (edit-write? effect) (pair? changes))
+         (state-emit state 'after-edit (list (effect-doc state effect) changes))]
         [(nav-effect? effect) (state-emit state 'after-nav (list (nav-effect-view effect)))]
         [else state]))]
 
@@ -143,12 +142,13 @@
 ;; 替换一个 view 的 range（补全把前缀换成候选）：算一次编辑，所以发 after-edit。
 (define (interpret-replace-range! engine state effect)
   (define vid (replace-range-effect-view effect))
-  (define v (engine-view-object engine vid))
-  (when v
-    (buffer-replace-range! (view-buffer v)
-                           (replace-range-effect-range effect)
-                           (replace-range-effect-text effect)))
-  (transition-pure (state-emit state 'after-edit (list (effect-doc state effect)))))
+  (define changes (engine-replace-range! engine vid
+                                         (replace-range-effect-range effect)
+                                         (replace-range-effect-text effect)))
+  (transition-pure
+   (if (pair? changes)
+       (state-emit state 'after-edit (list (effect-doc state effect) changes))
+       state)))
 
 ;; 这次 engine 写是不是“**用户改文本**”（insert / edit / undo / redo / replace-range）。
 ;;

@@ -8,7 +8,7 @@
 ;;; runtime 起 place 时会 `(dynamic-require 'service-run)` 这个模块，然后循环收
 ;;; `(vector 'job id kind payload)`、算、回 `(vector 'done id result)`。
 ;;;
-;;; 这里就是“插件把纯计算登记到后台”的唯一入口：按 `kind` 分派。
+;;; 这里就是“一次性纯计算登记到后台”的唯一入口：按 `kind` 分派。
 ;;; 新增一种后台计算 = 加一条 case + 一个纯函数模块。
 ;;;
 ;;; 约束（重要）：
@@ -16,9 +16,9 @@
 ;;;   · payload / result 要能跨 place 传递：list / vector / string / symbol /
 ;;;     number / prefab struct（face 就是 #:prefab）。
 ;;;
-;;; 目前的服务：
-;;;   syntax-fills  (vector doc-id text) → (vector doc-id fills)   语法（前景）
-;;;   depth-fills   (vector doc-id text) → (vector doc-id fills)   括号深度（背景）
+;;; 目前保留的服务（**高亮已不走这里**；语法 / 深度现在是 face-decor）：
+;;;   syntax-fills  (vector doc-id text) → (vector doc-id fills)   整篇语法（前景）
+;;;   depth-fills   (vector doc-id text) → (vector doc-id fills)   整篇括号深度（背景）
 ;;;
 ;;; 为什么不带版本 token：它是 core 的 document 值，**不可跨 place 传递**。
 ;;; 过期结果由父进程用 job-id 对账（每个 doc 只认最近一次 job）。

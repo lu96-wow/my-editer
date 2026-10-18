@@ -144,8 +144,7 @@
                                           #:keymaps (hash 'global (keys))))
      (list (depth-bg-plugin) (highlight-plugin))))
   (check-equal? (environment-face-layers env) '(depth-bg syntax-fg))
-  ;; startup! 会跑 document-opened -> 两个插件各提交一个 job ->
-  ;; 没有 worker 时同步内联执行 -> job-done 应用各层
+  ;; startup! 会按 doc-meta 挂上两个 face-decor，open 整篇后写回两层。
   (startup! env engine s0)
   (define b (engine-doc-buffer engine did))
   (check-equal? (face-fg (buffer-face-at b 0 1)) 'fg-syntax-def)   ; 前景：define

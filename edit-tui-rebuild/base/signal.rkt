@@ -33,7 +33,7 @@
 ;; 但**框架发出的**只有下面这些 —— 写在数据里，测试和文档都引用它。
 (define standard-signal-points
   '(document-opened   ; (doc-id)                    打开文档完成（engine 已就绪）
-    after-edit        ; (doc-id)                    用户改了文本（insert / edit / undo / redo / replace-range）
+    after-edit        ; (doc-id changes)              用户改了文本（insert / edit / undo / redo / replace-range）
     after-nav         ; (view-id)                   光标推进（没改文本）
     focus-changed     ; (view-id|region-id|#f)      焦点变了
     job-done          ; (job-id value)              spawn 的结果回来了（internal 事件）

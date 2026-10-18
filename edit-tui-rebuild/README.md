@@ -41,9 +41,10 @@ model/         纯状态（只依赖 base）
   workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
   save.rkt        保存确认队列（框架级）
   face-layer.rkt  face 分层合成（逐分量合并；层序 = env.face-layers）
+  face-decor.rkt  增量 face 装饰协议 + dirty / refresh-layer / stateful-advance
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
-                  input-command/panel-sync/hook
+                  input-command/panel-sync/hook/decor
   role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
   mode.rkt        document 模式 -> keymaps / fallback
   scope.rkt       scope 谓词
@@ -56,6 +57,7 @@ env/           纯策略（只依赖 base + model）
   defaults.rkt    内置 role / mode
 effects/       边界（core 只在这里被拥有）
   engine.rkt      core buffer/view 的唯一可变拥有者
+  paint.rkt       每文档 face-paint slot：decor 状态 / 静态层 / 脏行写回
   panel.rkt       面板↔引擎适配：create-view / region-install / install / uninstall / sync-buffer
   interpreter.rkt effect -> transition（文件 IO / 文档开关 / 保存 / 退出）
 projection/    纯投影
@@ -91,12 +93,14 @@ plugins/       内置插件（每个一个目录）
     panel.rkt       写 *filetree* buffer
     commands.rkt    Enter / C-b / C-n f / C-d …
     plugin.rkt      panel-spec + mode + commands + 规则 + install
-  worker.rkt      后台 worker 的入口（独立 place；按 kind 分派纯计算）
+  worker.rkt      后台 worker 的入口（独立 place；按 kind 分派纯计算；高亮已不走这里）
   highlight/
-    lex.rkt         纯词法：文本 -> 每行 face 区间
-    depth.rkt       括号深度 -> 背景 fills
-    plugin.rkt      语法高亮插件（层 'syntax-fg；只对 .rkt 生效）
-    depth-plugin.rkt 括号底色插件（层 'depth-bg；与上面同一格共存）
+    lex.rkt         纯词法：行 + 跨行状态 -> 行 face 向量
+    depth.rkt       括号栈：行 + 栈 -> 背景向量
+    syntax-decor.rkt  语法高亮 face-decor（层 'syntax-fg；只对 .rkt 生效）
+    depth-decor.rkt   括号深度 face-decor（层 'depth-bg；与前景层共存）
+    plugin.rkt      语法高亮插件（贡献 decor）
+    depth-plugin.rkt 括号底色插件（贡献 decor）
   completion/
     plugin.rkt      C-c / 原地补全（replace-range 会话）
   docs/

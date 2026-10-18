@@ -36,6 +36,7 @@
          "../base/transition.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
+         "../model/face-decor.rkt"
          "../effects/engine.rkt"
          "../effects/interpreter.rkt"
          "../env/environment.rkt"
@@ -75,6 +76,18 @@
     [(paste) (state-focus state)]
     [else #f]))
 
+;; 打开 / 创建文档后，把 env 里适用该文档的增量 decor 挂到 engine。
+;; 幂等：已挂过的 doc 不重复 open。
+(define (ensure-doc-decors! env engine state)
+  (for ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
+        #:unless (doc-meta-internal? dm))
+    (unless (engine-decors-attached? engine did)
+      (define decors
+        (for/list ([d (in-list (environment-decors env))]
+                   #:when ((face-decor-applies? d) dm))
+          d))
+      (engine-attach-decors! engine did decors (doc-meta-path dm)))))
+
 ;;; ════════════════ 事件批处理 ════════════════
 
 ;; ════════════════ 一批事件 -> 稳定状态 ════════════════
@@ -91,6 +104,8 @@
   (let loop ([t t] [round 0])
     ;; 1. 解释 effect（会 emit 信号，engine 已经落盘）
     (define t1 (run-transition-effects engine t inbox #:worker worker))
+    ;; 新文档：在 hook 跑之前挂上 decor（open 整篇 + 写回 face）。
+    (ensure-doc-decors! env engine (transition-state t1))
     ;; 2. 这批 effect 已经消费掉，清空再跑 hook（否则下一轮会重复执行）
     (define t1* (transition (transition-state t1) '()))
     ;; 3. 排空信号 -> 跑 hook；hook 可能加新 effect
@@ -189,7 +204,7 @@
 
 ;; 宿主可能绕过 open-doc-effect 直接建文档（demo 常这样），那样就没有
 ;; `document-opened` 信号。这里在首帧前给每个已有文档补一次，并把 hook 产生的
-;; effect 解释掉（语法高亮就靠它完成初次上色）。
+;; effect 解释掉（decor 也会在 settle 里按 doc-meta 挂上）。
 ;;
 ;; 暂定：只跑纯 / 引擎类 effect；startup hook 里不要 spawn / timer。
 (define (startup! env engine state #:worker [worker #f])
@@ -219,6 +234,8 @@
   (sync-chrome! state engine status-parts)
   (for ([sync (in-list (environment-panel-syncs env))])
     (sync state engine))
+  ;; 光标相关 decor（同词高亮等）：每帧对焦点 view 推进一次；光标没变时是 no-op。
+  (engine-paint-advance! engine (state-focus state))
   (define-values (_ps _cs placements)
     (project-frame state engine #:status-parts status-parts))
   (engine-sync-views! engine placements)

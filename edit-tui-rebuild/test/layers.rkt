@@ -162,7 +162,9 @@
 ;; 面板装配（创建/销毁/写 buffer）、命令（effect 里的 op/point/selection 值）。
 (define core-allowed
   '("effects/engine.rkt"
+    "effects/paint.rkt"         ; document slot + face port 的写回
     "effects/interpreter.rkt"      ; set-faces / replace-range 是 core 端口的写回
+    "model/face-decor.rkt"         ; 纯 core track / change 词汇（不碰 buffer/view）
     "projection/geometry.rkt"
     "projection/float.rkt"
     "projection/render.rkt"

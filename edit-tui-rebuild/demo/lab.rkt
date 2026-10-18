@@ -6,8 +6,8 @@
 ;;;
 ;;; 这一版把三个“写代码用”的插件装到一起（plugins/builtin.rkt 的 editor-env）：
 ;;;
-;;;   highlight   语法高亮：写前景层 'syntax-fg（后台算，set-face-layer-effect）
-;;;   depth-bg    括号深度底色：写背景层 'depth-bg（同一个后台 worker，按提交顺序执行）
+;;;   highlight   语法高亮：写前景层 'syntax-fg（face-decor，增量）
+;;;   depth-bg    括号深度底色：写背景层 'depth-bg（face-decor，增量）
 ;;;   completion  M-/ 原地补全，再按循环候选（replace-range-effect）
 ;;;   docs        M-h 在右侧面板看光标处的文档（after-nav 自动刷新）
 ;;;

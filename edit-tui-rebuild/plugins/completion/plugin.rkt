@@ -3,7 +3,7 @@
 ;;; plugins/completion/plugin.rkt —— 补全（文档浮层 + 临时键表）
 ;;;
 ;;; layer  : plugins/completion
-;;; effect : set-text-effect / set-faces-effect（写弹窗文档）、select-effect（弹窗光标）、
+;;; effect : set-text-effect / set-face-layer-effect（写弹窗文档）、select-effect（弹窗光标）、
 ;;;          replace-range-effect（把候选写回编辑器）
 ;;;
 ;;; 流程：
@@ -20,7 +20,7 @@
 ;;;      只是不在 layout 树里，绘制时作为 deep 更高的 panel 交给 core 合成。
 ;;;      「所有显示都用 document」于是成立：
 ;;;        候选列表 = 文档文本（set-text-effect）
-;;;        选中行   = 该文档的光标行（select-effect）+ 一条 face（set-faces-effect）
+;;;        选中行   = 该文档的光标行（select-effect）+ 一条 face（set-face-layer-effect）
 ;;;      擦除 / 移动 / 遮挡全部由 core 的增量 diff 负责 —— 框架不需要记任何矩形。
 ;;;
 ;;;   2. **临时键表**：打开浮层时把 'completion-popup 这张 keymap 挂到

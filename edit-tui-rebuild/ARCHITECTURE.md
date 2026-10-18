@@ -51,11 +51,12 @@ runtime 只负责遍历，不认识任何具体面板。
 
 ## 3. 有副作用的模块（白名单）
 
-其余所有模块必须是纯的（`world-step` 可 headless 重放）。全部副作用只有 8 处：
+其余所有模块必须是纯的（`world-step` 可 headless 重放）。全部副作用只有 9 处：
 
 | 模块 | 副作用 |
 |---|---|
 | `effects/engine.rkt` | core buffer / view 的唯一可变拥有者（create / remove / apply） |
+| `effects/paint.rkt` | 每文档 `face-paint` document slot；合成后写 core face port（脏行） |
 | `effects/panel.rkt` | 面板的 core 对象创建/销毁、写面板 buffer（`panel-sync-buffer!`） |
 | `effects/interpreter.rkt` | 文件读写、文档开关、保存、退出 |
 | `chrome/slot.rkt` | 安装 status/input 两个 core view + 每帧写 status buffer |
@@ -64,8 +65,11 @@ runtime 只负责遍历，不认识任何具体面板。
 | `plugins/*/panel.rkt` | 写各自面板的 buffer |
 | `runtime/run.rkt` | 终端 IO、`spawn` / `timer` 线程、`put-bytes` |
 
-`core/...` 只允许出现在：`effects/engine.rkt`、`effects/panel.rkt`、
+`core/...` 只允许出现在：`effects/engine.rkt`、`effects/paint.rkt`、`effects/panel.rkt`、
 `projection/{geometry,render}.rkt`、`bootstrap/commands/{table,focus}.rkt`、`runtime/run.rkt`。
+
+另外 `model/face-decor.rkt` 只允许 require `core/text/base/*` 的**纯值词汇**
+（track / change / point / range / line），不碰 buffer / view / history。
 
 `tui` / `read-event` / `put-bytes` / 线程只允许出现在 `runtime/run.rkt`。
 
@@ -99,7 +103,7 @@ command ──▶ transition{state+effects}
               ▼  hook 又可加 effect / emit 信号 -> 再来一轮（上限 8）
 ```
 
-- 信号点：`document-opened` / `after-edit` / `after-nav` / `focus-changed`；
+- 信号点：`document-opened` / `after-edit (doc-id changes)` / `after-nav` / `focus-changed`；
 - **hook 在 effect 解释之后跑**（`runtime/run.rkt` 的 `settle`），所以读到的是新文本；
 - hook 的 proc 拿只读 `engine-view`，与命令的 `ctx.engine` 同源，不能写 engine。
 
@@ -130,7 +134,8 @@ command ──▶ transition{state+effects}
 | 状态栏段 | `plugin.status-parts`（追加语义） | `projection/status` | 每帧投影 |
 | 输入栏提交 | `env.input-commands`（字符串匹配） | `chrome/input` | 输入栏 Enter |
 | 插件自己的状态 | `state.store` + `plugin-state*` | 插件自己 | — |
-| 给文本上色（**一层** face） | `set-face-layer-effect doc layer fills` | `engine-set-face-layer!`（合成后写回 core） | 命令 / hook 发 |
+| 一次性静态 face 层（补全选中行等） | `set-face-layer-effect doc layer fills` | `engine-set-face-layer!` -> `effects/paint` 的 static 层 | 命令 / hook 发 |
+| **增量 face 装饰** | `plugin.decors`（`face-decor`：open/change） | `effects/paint` 的 document slot；core slot fork 自动推进 | 装配时按 doc-meta 挂到 engine |
 | 层的顺序 | `env.face-layers`（先低后高） | `runtime/startup!` 交给引擎 | 启动 |
 | 后台纯计算 | `submit-service-effect job kind payload` | `runtime/worker.rkt`（独立 place） | 命令 / hook 发 |
 | 替换一段文本 | `replace-range-effect view range text` | `effects/interpreter` | 命令 / hook 发 |
@@ -142,33 +147,38 @@ command ──▶ transition{state+effects}
 | 曾经的诱惑 | 结论 |
 |---|---|
 | `env.handlers`（`internal` 事件 → 过程） | **删掉**：内部事件 / `tick` 直接发信号（point = 事件名 / `tick`），和 `env.hooks` 用同一张表 —— 两个“事件 → transition”的注册表没必要 |
-| 插件专用的 `decor` / `highlighter` 注册表 | 不需要：高亮 = 「`after-edit` hook + `set-faces-effect`」 |
+| 插件专用的 `decor` / `highlighter` 注册表 | **只保留 face-decor**：它不是通用装饰器，只做“每文档一份 face 状态 + 脏行写回”；补全 / 文档仍用 hook |
 | 插件专用的 `completion` / `popup` API | 不需要：浮层 = `workspace.floats` + 一张临时 keymap |
 | `panel-spec.id` | **删掉**：没人读；面板身份由 `name / role / mode` 表达 |
 | `environment-add-rules` | **删掉**：没有调用者（“为对称而对称”的 API 也是负担） |
 
-### 7.3 回调只有三种，各有触发源
+### 7.3 回调只有四种，各有触发源
 
 | 注册表 | 形状 | 触发 | 纯度 |
 |---|---|---|---|
 | `env.hooks` | `(state engine-view args -> transition)` | 信号（`standard-signal-points`） | 纯（可发 effect） |
 | `env.panel-syncs` | `(state engine -> any)` | 每帧渲染前 | **不纯**（直接写 core 缓冲） |
 | `env.rules` | `scope + keymap` | 按键 / 鼠标 | 纯（查表） |
+| `env.decors` | `face-decor`（open/change） | document slot fork / 光标推进 | 纯（change 不能原地改 state/layer） |
 
 `panel-syncs` 单独存在的理由：它每帧都跑、且直接写 core，不是“发生了一件事”的旁观逻辑。
 暂定：以后若要再收敛，可以让 runtime 每帧发 `before-render` 信号，把面板同步改成
-`set-text-effect` / `set-faces-effect`（纯 hook + effect）。
+`set-text-effect` / `set-face-layer-effect`（纯 hook + effect）。
 
-### 7.4 face 分层与后台计算
+### 7.4 face 分层、增量 decor 与后台计算
 
 | 概念 | 位置 | 约定 |
 |---|---|---|
 | face 分量 | `edit-tui/base/face.rkt`（fg / bg / attrs） | 插件只写自己那一分量 |
-| 层的合成 | `model/face-layer.rkt` 的 `compose-layers` | 逐分量合并；同分量后层覆盖；attrs 并集 |
-| 层序 | `env.face-layers` | 先低后高；由 `startup!` 交给引擎 |
-| 后台服务 | `plugins/worker.rkt` 的 `service-run` | **纯**：只吃 payload、吐结果；payload/result 必须可跨 place |
-| 跨进程载荷 | `submit-service-effect` | 不能带 core 的不可序列化值（如版本 token）；用 job-id 对账过期结果 |
-| 一个 worker 一条队列 | `runtime/worker.rkt` | 多个插件按提交顺序执行（同一文档的层顺序稳定） |
+| 层的合成 | `model/face-layer.rkt` 的 `compose-face` + `effects/paint.rkt` | 按 `env.face-layers` 逐分量合并；同分量后层覆盖；attrs 并集 |
+| 增量协议 | `model/face-decor.rkt` | `open : path track -> (state, layer)`；`change : state layer ctx -> (state, layer, dirty)`；layer 是逐行 face 向量 track |
+| 增量状态 | `effects/paint.rkt` 的 `face-paint` document slot | 每文档一份 decors / entries / static / dirty；core 的 `document-edit-tracks` 自动 fork |
+| 脏行重扫 | `refresh-layer` / `stateful-advance` | 只重扫 change 波及的行；跨行状态（块注释 / 字符串 / 括号栈）重扫到状态收敛 |
+| 写回 | `paint-write!` | 只写 dirty 行：先清该行，再写合成后的 runs |
+| undo / redo | core history | 旧 document 的 decor state / layer / face port 一起回来，不重算 |
+| 一次性层 | `set-face-layer-effect` | 写 `paint-state.static`；文本编辑时由 `fork-ctx-edit` 自动平移 |
+| 后台服务 | `plugins/worker.rkt` 的 `service-run` | **纯**：只吃 payload、吐结果；高亮已不走 worker，仍可用于其他一次性计算 |
+| 跨进程载荷 | `submit-service-effect` | 不能带 core 的不可序列化值（如版本 token / track / transparent change）；用 job-id 对账过期结果 |
 
 ### 7.5 命名与对称
 
@@ -209,9 +219,9 @@ command ──▶ transition{state+effects}
 
 | 写 | 发 `after-edit`？ |
 |---|---|
-| `edit` / `insert` / `undo` / `redo` / `replace-range` | ✅ |
+| `edit` / `insert` / `undo` / `redo` / `replace-range` | ✅（args = `(doc-id changes)`；无变化不发） |
 | `set-text-effect`（整篇展示替换：状态栏 / 面板 / 浮层） | ❌ |
-| `set-faces-effect`（上色） | ❌（否则 hook 自激） |
+| `set-face-layer-effect`（一次性静态层） | ❌（否则 hook 自激） |
 
 实现在 `effects/interpreter.rkt` 的 `edit-write?`；补全插件额外按 doc 过滤一次。
 
@@ -224,7 +234,7 @@ command ──▶ transition{state+effects}
 | 补全浮层 | **不在 layout 里的 region + view**（`workspace.floats`） |
 
 所以：**没有“额外绘制”的 UI**。要显示新东西就建 document，用
-`set-text-effect` / `set-faces-effect` / `select-effect` 写它。
+`set-text-effect` / `set-face-layer-effect` / `select-effect` 写它。
 
 ### 8.4 浮层（`workspace.floats`）
 

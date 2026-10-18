@@ -12,10 +12,11 @@
 ;;;   (list l0 c0 l1 c1 face)        —— 半开区间 [c0, c1)
 ;;; 跨行状态（块注释深度 / 是否在字符串里）只在 lex-lines 内部使用。
 ;;;
-;;; 暂定：每次都整篇重扫（O(n)）。文档改大以后可以加“脏行 + 跨行状态收敛”，
-;;; 接口不变（fills 输出）。
+;;; 行级接口 `syntax-line` 返回跨行状态 + 行 face 向量，供 face-decor 增量使用；
+;;; `lex-fills` 是保留的整篇接口（旧 worker / 调试）。
 
 (provide lex-fills
+         syntax-line
          merge-fills
          keyword-set
          symbol-char?)
@@ -122,6 +123,23 @@
          (set! out (cons (list lno i lno end (keyword-face w)) out)))
        (loop end)]
       [else (loop (add1 i))])))
+
+;; 一行 -> (values 新状态 face 向量)。face 向量与字符一一对应，值 = face 符号 | #f。
+;; 这是增量 decor 用的行级接口；lex-fills 仍保留给旧的整篇扫描 / worker。
+(define (syntax-line st line lno)
+  (define n (string-length line))
+  (define-values (state* fills) (lex-line st line lno))
+  (define words (word-fills line lno fills))
+  (define vec (make-vector n #f))
+  (for ([f (in-list fills)])
+    (for ([i (in-range (list-ref f 1) (min n (list-ref f 3)))])
+      (vector-set! vec i (list-ref f 4))))
+  ;; 关键字只填空位，不覆盖注释 / 字符串 / 数字。
+  (for ([f (in-list words)])
+    (for ([i (in-range (list-ref f 1) (min n (list-ref f 3)))])
+      (unless (vector-ref vec i)
+        (vector-set! vec i (list-ref f 4)))))
+  (values state* vec))
 
 ;; 整篇扫描：文本 -> fills
 ;; 合并同一行、同 face、首尾相接的区间（减少 fill 数）

@@ -51,34 +51,34 @@
 ;;; ════════════════ 引擎 effect ════════════════
 
 ;; insert
-(engine-apply! eng (insert-text-effect vid "XY"))
+(void (engine-apply! eng (insert-text-effect vid "XY")))
 (check-equal? (engine-view-doc-text ev did) "XYabc\n")
 (check-equal? (engine-view-view-point-column ev vid) 2)
 
 ;; nav
-(engine-apply! eng (nav-effect vid 'left))
+(void (engine-apply! eng (nav-effect vid 'left)))
 (check-equal? (engine-view-view-point-column ev vid) 1)
-(engine-apply! eng (nav-effect vid 'home))
+(void (engine-apply! eng (nav-effect vid 'home)))
 (check-equal? (engine-view-view-point-column ev vid) 0)
-(engine-apply! eng (nav-effect vid 'end))
+(void (engine-apply! eng (nav-effect vid 'end)))
 (check-equal? (engine-view-view-point-column ev vid) 5)
 
 ;; select
-(engine-apply! eng (select-effect vid (selections-one (caret (point 0 1)))))
+(void (engine-apply! eng (select-effect vid (selections-one (caret (point 0 1))))))
 (check-equal? (engine-view-view-point-column ev vid) 1)
 
 ;; edit op（backspace）
-(engine-apply! eng (edit-effect vid (op-backspace)))
+(void (engine-apply! eng (edit-effect vid (op-backspace))))
 (check-equal? (engine-view-doc-text ev did) "Yabc\n")
 
 ;; undo / redo
-(engine-apply! eng (undo-effect vid))
+(void (engine-apply! eng (undo-effect vid)))
 (check-equal? (engine-view-doc-text ev did) "XYabc\n")
-(engine-apply! eng (redo-effect vid))
+(void (engine-apply! eng (redo-effect vid)))
 (check-equal? (engine-view-doc-text ev did) "Yabc\n")
 
 ;; scroll（不报错即可）
-(engine-apply! eng (scroll-effect vid 3))
+(void (engine-apply! eng (scroll-effect vid 3)))
 
 ;;; ════════════════ 解释器：open / close ════════════════
 
@@ -135,7 +135,7 @@
               (path->string tmp))
 
 ;; 修改后 save
-(engine-apply! eng3 (insert-text-effect (view-id 1) "!"))
+(void (engine-apply! eng3 (insert-text-effect (view-id 1) "!")))
 (define saved? #f)
 (define s5
   (transition-state
@@ -150,9 +150,9 @@
 (check-true (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
 
 ;; 版本 token：编辑 -> 变；undo 回保存点 -> 恢复同一 token；文本内容相同也按身份算
-(engine-apply! eng3 (insert-text-effect (view-id 1) "Z"))
+(void (engine-apply! eng3 (insert-text-effect (view-id 1) "Z")))
 (check-false (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
-(engine-apply! eng3 (undo-effect (view-id 1)))
+(void (engine-apply! eng3 (undo-effect (view-id 1))))
 (check-true (engine-version=? saved-token (engine-view-doc-version ev3 (doc-id 1))))
 
 ;; read-file

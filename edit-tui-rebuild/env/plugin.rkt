@@ -50,6 +50,7 @@
          plugins-apply)
 
 (require "../model/state.rkt"
+         "../model/face-decor.rkt"
          "../base/status-part.rkt"
          "environment.rkt"
          "hook.rkt")
@@ -75,13 +76,14 @@
 
 ;;; ════════════════ 插件 ════════════════
 
-(struct plugin (id env status-parts panels hooks state-init) #:transparent)
+(struct plugin (id env status-parts panels hooks decors state-init) #:transparent)
 
 (define (make-plugin id
                      #:env [env (environment-empty)]
                      #:status-parts [status-parts '()]
                      #:panels [panels '()]
                      #:hooks [hooks '()]
+                     #:decors [decors '()]
                      #:state-init [state-init #f])
   (unless (symbol? id) (error 'make-plugin "plugin id 要是 symbol：~a" id))
   (unless (environment? env) (error 'make-plugin "env 要是 environment：~a" env))
@@ -91,20 +93,24 @@
     (unless (panel-spec? p) (error 'make-plugin "panels 里要 panel-spec：~a" p)))
   (for ([h (in-list hooks)])
     (unless (hook? h) (error 'make-plugin "hooks 里要 hook：~a" h)))
+  (for ([d (in-list decors)])
+    (unless (face-decor? d) (error 'make-plugin "decors 里要 face-decor：~a" d)))
   (unless (or (not state-init) (procedure? state-init))
     (error 'make-plugin "state-init 要是过程或 #f：~a" state-init))
-  (plugin id env status-parts panels hooks state-init))
+  (plugin id env status-parts panels hooks decors state-init))
 
 ;; 单个插件的 env 贡献：merge + 状态栏追加 + 面板 sync 追加。
 (define (plugin-env-apply env p)
   (define env1 (environment-merge env (plugin-env p)))
   (define env2 (environment-add-status-parts env1 (plugin-status-parts p)))
-  (environment-add-hooks
-   (environment-add-panel-syncs env2
-                                (for/list ([spec (in-list (plugin-panels p))]
-                                           #:when (panel-spec-sync spec))
-                                  (panel-spec-sync spec)))
-   (plugin-hooks p)))
+  (environment-add-decors
+   (environment-add-hooks
+    (environment-add-panel-syncs env2
+                                 (for/list ([spec (in-list (plugin-panels p))]
+                                            #:when (panel-spec-sync spec))
+                                   (panel-spec-sync spec)))
+    (plugin-hooks p))
+   (plugin-decors p)))
 
 (define (plugins-env env plugins)
   (for/fold ([env env]) ([p (in-list plugins)])
