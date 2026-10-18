@@ -98,13 +98,25 @@ plugins/       内置插件（每个一个目录）
     lex.rkt         纯词法：行 + 跨行状态 -> 行 face 向量
     depth.rkt       括号栈：行 + 栈 -> 背景向量
     syntax-decor.rkt  语法高亮 face-decor（层 'syntax-fg；只对 .rkt 生效）
-    depth-decor.rkt   括号深度 face-decor（层 'depth-bg；与前景层共存）
+    depth-decor.rkt   括号深度 face-decor（层 'depth-bg）
+    word-color-decor.rkt 同词同色 face-decor（层 'word-color）
+    words-decor.rkt   光标当前词 face-decor（层 'words）
+    kind.rkt        Racket 文件判断（doc-meta）
     plugin.rkt      语法高亮插件（贡献 decor）
     depth-plugin.rkt 括号底色插件（贡献 decor）
+    word-color-plugin.rkt 同词同色插件
+    words-plugin.rkt 当前词高亮插件
   completion/
-    plugin.rkt      C-c / 原地补全（replace-range 会话）
+    plugin.rkt      C-c / / M-/ 补全：本地词 + require 导出（worker）+ 模块路径
   docs/
-    plugin.rkt      C-c h 文档面板（底部固定高度；after-nav 只刷新不关闭）
+    plugin.rkt      C-c h / M-d 文档面板：本地定义 + xref/bluebox（worker）
+  lang/
+    source.rkt      require / 定义 / provide 启发式解析（纯）
+    pool.rkt        require spec -> 绑定名 / 模块导出（纯）
+    module-index.rkt 已安装模块路径索引（worker）
+    local-docs.rkt  当前文档顶层定义摘要（纯）
+    docs.rkt        xref + blueboxes (+ HTML) 文档查询（worker）
+    doc-html.rkt    HTML 文档页 -> markdown（worker）
   resource/
     model.rkt       store['resources]（collapsed / view）
     lines.rkt       纯投影：doc/view -> 行

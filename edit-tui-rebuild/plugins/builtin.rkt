@@ -25,6 +25,8 @@
          "resource/plugin.rkt"
          "highlight/plugin.rkt"
          "highlight/depth-plugin.rkt"
+         "highlight/word-color-plugin.rkt"
+         "highlight/words-plugin.rkt"
          "completion/plugin.rkt"
          "docs/plugin.rkt")
 
@@ -40,9 +42,11 @@
 (define (editor-plugins)
   (append (default-plugins)
           (list
-           ;; 两个高亮插件：一个只写前景、一个只写背景；层的顺序 = 先背景后前景
+           ;; 层叠顺序 = edit4：括号背景 → 同词着色 → 语法前景 → 当前词
            (depth-bg-plugin)
+           (word-color-plugin)
            (highlight-plugin)
+           (words-plugin)
            (completion-plugin)
            (docs-plugin))))
 

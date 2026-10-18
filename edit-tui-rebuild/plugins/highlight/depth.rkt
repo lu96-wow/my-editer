@@ -15,7 +15,7 @@
          depth-line
          depth-face-of)
 
-(define max-depth 3)
+(define max-depth 8)
 
 ;; 深度 -> 背景 face 名（超出上限按上限）
 (define (depth-face-of depth)
@@ -23,7 +23,12 @@
   (case d
     [(1) 'bg-depth-1]
     [(2) 'bg-depth-2]
-    [else 'bg-depth-3]))
+    [(3) 'bg-depth-3]
+    [(4) 'bg-depth-4]
+    [(5) 'bg-depth-5]
+    [(6) 'bg-depth-6]
+    [(7) 'bg-depth-7]
+    [else 'bg-depth-8]))
 
 ;;; ════════════════ 括号栈 ════════════════
 

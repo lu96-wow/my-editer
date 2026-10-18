@@ -12,27 +12,11 @@
 
 (provide syntax-face-decor)
 
-(require racket/path
-         "../../model/face-decor.rkt"
+(require "../../model/face-decor.rkt"
          "../../model/face-layer.rkt"
-         "../../model/workspace.rkt"
+         "kind.rkt"
          "lex.rkt")
 
-(define racket-extensions '("rkt" "rktl" "rktd" "scratch"))
-
-(define (racket-path? path)
-  (and path
-       (let ([e (filename-extension path)])
-         (and e (for/or ([ext (in-list racket-extensions)])
-                  (string=? ext (string-downcase (bytes->string/utf-8 e))))))))
-
-(define (racket-doc-meta? dm)
-  (and dm
-       (not (doc-meta-internal? dm))
-       (or (eq? (doc-meta-mode dm) 'racket)
-           (racket-path? (doc-meta-path dm)))))
-
-;; 词法状态 = (cons block-depth in-string?)，与 lex.rkt 的 lex-line 一致。
 (define init-state (cons 0 #f))
 
 ;; 把 lex 的 face 符号包装成“只写前景”的 face。

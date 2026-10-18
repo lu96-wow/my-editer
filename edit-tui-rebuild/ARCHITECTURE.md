@@ -51,7 +51,7 @@ runtime 只负责遍历，不认识任何具体面板。
 
 ## 3. 有副作用的模块（白名单）
 
-其余所有模块必须是纯的（`world-step` 可 headless 重放）。全部副作用只有 9 处：
+其余所有模块必须是纯的（`world-step` 可 headless 重放）。全部副作用只有 12 处（其中 lang/* 只在 worker 进程里跑）：
 
 | 模块 | 副作用 |
 |---|---|
@@ -63,6 +63,9 @@ runtime 只负责遍历，不认识任何具体面板。
 | `plugins/filetree/scan.rkt` | 读目录（`directory-list` / `file-exists?`） |
 | `plugins/filetree/commands.rkt` | 建/删文件前存在性检查（写盘本身发 effect） |
 | `plugins/*/panel.rkt` | 写各自面板的 buffer |
+| `plugins/lang/module-index.rkt` | 只在 worker 里构建已安装模块路径索引 |
+| `plugins/lang/docs.rkt` | 只在 worker 里查 xref / blueboxes |
+| `plugins/lang/doc-html.rkt` | 只在 worker 里读 HTML 文档页 |
 | `runtime/run.rkt` | 终端 IO、`spawn` / `timer` 线程、`put-bytes` |
 
 `core/...` 只允许出现在：`effects/engine.rkt`、`effects/paint.rkt`、`effects/panel.rkt`、

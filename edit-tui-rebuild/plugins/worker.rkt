@@ -12,13 +12,16 @@
 ;;; 新增一种后台计算 = 加一条 case + 一个纯函数模块。
 ;;;
 ;;; 约束（重要）：
-;;;   · 本模块与它 require 的模块必须是**纯**的（不碰 State / core / 文件）；
+;;;   · 本模块不碰 State / core；可以在 worker 进程里做只读的模块 / 文档查询；
 ;;;   · payload / result 要能跨 place 传递：list / vector / string / symbol /
 ;;;     number / prefab struct（face 就是 #:prefab）。
 ;;;
 ;;; 目前保留的服务（**高亮已不走这里**；语法 / 深度现在是 face-decor）：
-;;;   syntax-fills  (vector doc-id text) → (vector doc-id fills)   整篇语法（前景）
-;;;   depth-fills   (vector doc-id text) → (vector doc-id fills)   整篇括号深度（背景）
+;;;   syntax-fills      (vector doc-id text) → (vector doc-id fills)   整篇语法（前景）
+;;;   depth-fills       (vector doc-id text) → (vector doc-id fills)   整篇括号深度（背景）
+;;;   completion-exports  (list [specs base-dir open]) / '(module-paths) → (listof string)
+;;;   doc               (list 'doc name mods) → string | #f
+;;;   module-paths      — → (listof string)
 ;;;
 ;;; 为什么不带版本 token：它是 core 的 document 值，**不可跨 place 传递**。
 ;;; 过期结果由父进程用 job-id 对账（每个 doc 只认最近一次 job）。
@@ -26,11 +29,16 @@
 (provide service-run
          service-kinds)
 
-(require "../model/face-layer.rkt"
+(require racket/match
+         "../model/face-layer.rkt"
          "highlight/lex.rkt"
-         "highlight/depth.rkt")
+         "highlight/depth.rkt"
+         "lang/pool.rkt"
+         "lang/docs.rkt"
+         "lang/module-index.rkt")
 
-(define service-kinds '(syntax-fills depth-fills))
+(define service-kinds
+  '(syntax-fills depth-fills completion-exports doc module-paths))
 
 (define (service-run kind payload)
   (case kind
@@ -40,6 +48,19 @@
     [(depth-fills)
      (match-define (vector did text) payload)
      (vector did (depth-fills-for text))]
+    [(completion-exports)
+     (match payload
+       ['(module-paths) (force module-paths)]
+       [(list 'exports base-dir specs open)
+        (append* (for/list ([s (in-list specs)]) (spec-names s base-dir open)))]
+       [_ '()])]
+    [(module-paths) (force module-paths)]
+    [(doc)
+     (match payload
+       [(list 'doc name mods)
+        (define d (docs-for name #:modules mods))
+        (and d (doc->text d))]
+       [_ #f])]
     [else (error 'service-run "未知 service：~a（可用：~a）" kind service-kinds)]))
 
 ;;; ════════════════ 两种 fills（都只写自己那一分量） ════════════════

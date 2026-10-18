@@ -55,14 +55,14 @@
 
 ;;; ════════════════ 夹具：一个 editor + 一个 docs 面板 ════════════════
 
-(define (make-world)
+(define (make-world [text program] [path "/tmp/lab.rkt"] [name "lab.rkt"])
   (define engine (make-engine))
-  (void (engine-create-doc! engine did "lab.rkt" program))
+  (void (engine-create-doc! engine did name text))
   (void (engine-create-view! engine vid did))
   (define ws
     (let* ([ws (workspace-empty)]
            [ws (workspace-add-doc ws did
-                                  (make-doc-meta "lab.rkt" #:path "/tmp/lab.rkt"
+                                  (make-doc-meta name #:path path
                                                  #:saved-version
                                                  (engine-view-doc-version
                                                   (make-engine-view engine) did)))]
@@ -134,6 +134,16 @@
   (define new-line (list-ref (lines-of engine) 0))
   (check-eq? (fg-at engine 0 (col-of new-line "if")) 'fg-syntax-control))
 
+;; 同词着色 / 当前词背景（edit4 的 word-color + words）
+(let-values ([(engine s0) (make-world)])
+  (define l1 (list-ref (lines-of engine) 1))
+  (define c (col-of l1 "square"))
+  (check-true (regexp-match? #rx"^fg-word-" (symbol->string (fg-at engine 1 c))))
+  (define s1 (apply feed engine s0 (app:key-event (key 'down))
+                    (for/list ([_ (in-range c)]) (app:key-event (key 'right)))))
+  (void s1)
+  (check-eq? (bg-at engine 1 c) 'bg-word-mark))
+
 ;; 插件按文件类型启用：非 Racket 文件（.txt / mode 'text）不上色
 (let* ([engine (make-engine)]
        [did2 (doc-id 1)]
@@ -184,7 +194,7 @@
   (check-true (popup-open? s3))
   (check-true (in-popup-mode? s3))
   (check-equal? (popup-sel engine s3) 0)
-  (check-true (for/or ([l (in-list (popup-lines* engine s3))]) (equal? l "square")))
+  (check-true (for/or ([l (in-list (popup-lines* engine s3))]) (string-contains? l "square")))
   (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
 
   ;; Down / Up 被临时键表接住：移动选择而不是移动光标
@@ -219,6 +229,18 @@
   ;; 关掉之后 Down 恢复成“移动光标”（模态已摘）
   (define s11 (feed engine s10 (app:key-event (key 'up))))
   (check-false (popup-open? s11)))
+
+;; require 的模块导出（worker 的 completion-exports）：racket/list 的 first
+(let-values ([(engine s0) (make-world "#lang racket/base\n(require racket/list)\n"
+                                      "/tmp/imports.rkt" "imports.rkt")])
+  (define s1 (feed engine s0 (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))))
+  (define s2 (feed engine s1 (plain #\f) (plain #\i) (plain #\r)))
+  (define s3 (apply feed engine s2 cl-slash))
+  (check-true (completion-open? s3))
+  (check-true (for/or ([l (in-list (popup-lines* engine s3))])
+                (string-contains? l "first"))))
 
 ;; 没有候选 / 光标处没有词 -> 只提示，不开弹窗
 (let-values ([(engine s0) (make-world)])
@@ -338,7 +360,7 @@
   (define s3 (feed engine s2 (app:key-event (key 'home))))
   (define s3b (apply feed engine s3 (for/list ([_ (in-range 3)]) (app:key-event (key 'right)))))
   (check-true (docs-open? s3b))
-  (check-true (string-contains? (docs-text engine s3b) "define name value"))
+  (check-true (string-contains? (docs-text engine s3b) "syntax"))
 
   ;; 面板不会自动收起：焦点离开编辑器也照样在
   (define s4 (transition-state

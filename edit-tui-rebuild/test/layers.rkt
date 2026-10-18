@@ -197,9 +197,12 @@
                "\n"))
 
 (define io-allowed
-  '("effects/interpreter.rkt"     ; 文件读写是 effect 的语义
-    "plugins/filetree/scan.rkt"   ; 读目录（面板观察者）
-    "plugins/filetree/commands.rkt")) ; 建/删文件前的存在性检查
+  '("effects/interpreter.rkt"        ; 文件读写是 effect 的语义
+    "plugins/filetree/scan.rkt"      ; 读目录（面板观察者）
+    "plugins/filetree/commands.rkt"  ; 建/删文件前的存在性检查
+    "plugins/lang/module-index.rkt"  ; 只在 worker 里构建模块路径索引
+    "plugins/lang/docs.rkt"          ; 只在 worker 里查 xref / blueboxes
+    "plugins/lang/doc-html.rkt"))    ; 只在 worker 里读 HTML 文档页
 
 (for ([p (in-list impl-files)])
   (define here (rel p))

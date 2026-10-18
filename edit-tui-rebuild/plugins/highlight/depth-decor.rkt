@@ -12,25 +12,10 @@
 
 (provide depth-face-decor)
 
-(require racket/path
-         "../../model/face-decor.rkt"
+(require "../../model/face-decor.rkt"
          "../../model/face-layer.rkt"
-         "../../model/workspace.rkt"
+         "kind.rkt"
          "depth.rkt")
-
-(define racket-extensions '("rkt" "rktl" "rktd" "scratch"))
-
-(define (racket-path? path)
-  (and path
-       (let ([e (filename-extension path)])
-         (and e (for/or ([ext (in-list racket-extensions)])
-                  (string=? ext (string-downcase (bytes->string/utf-8 e))))))))
-
-(define (racket-doc-meta? dm)
-  (and dm
-       (not (doc-meta-internal? dm))
-       (or (eq? (doc-meta-mode dm) 'racket)
-           (racket-path? (doc-meta-path dm)))))
 
 (define (wrap-bg x) (and x (face-set-bg face-empty x)))
 

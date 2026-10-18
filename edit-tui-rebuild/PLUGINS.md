@@ -12,7 +12,7 @@ edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）
 | **信号 + 钩子** | 命令用 `emit!` 把 `(point . args)` 追加到 `World.signals`；runtime 反复“取信号 → 按 priority 跑匹配的 reaction → 直到没有新信号” | 让“文本改了之后重算高亮 / 重算补全候选 / 刷新文档”变成**旁观者**逻辑，命令不需要认识它们 |
 | **decor 协议** | `decor { open: path text -> (state layer); change: state layer ctx -> (state layer dirty) }`，layer 是“每行一个 face 向量”，dirty 是“哪几行脏” | 上色是一个可以增量、可以分层（括号底色 / 同词着色 / 语法前景）的**纯函数**，与渲染解耦 |
 | **补全菜单** | 不抢焦点的浮窗；Up/Down/Tab/Enter/Esc 用“有菜单就操作菜单”的命令接住；打字走基础 insert，`after-insert` 钩子重筛 | 补全的难点不是候选，而是**菜单与会话**（谁持有、谁刷新、谁取消） |
-| **文档服务** | `M-h` 订阅 `complete-selection`；本地定义走纯函数，stdlib 走 `#:services 'doc` 的异步 worker，结果按 key 缓存、同一时刻只允许一个在途 | 文档查询是慢操作，必须**防抖 + 缓存 + 可取消**，而且不能阻塞输入 |
+| **文档服务** | `C-c h` / `M-d`；本地定义走纯函数，stdlib 走 `#:services 'doc` 的异步 worker，结果按 key 缓存、同一时刻只允许一个在途；也订阅 `complete-selection` | 文档查询是慢操作，必须**防抖 + 缓存**，而且不能阻塞输入 |
 
 **没有照搬的**（不是功能核心，或者属于它们那套 World 的管道）：
 
@@ -46,15 +46,17 @@ edit4 的插件系统（`plugin.rkt` / `core/hook.rkt` / `decor/protocol.rkt`）
 
 `fills` 用 core 的 fill 形状 `(l0 c0 l1 c1 face)`，插件侧用 `plugins/highlight/lex.rkt` 生成。
 
-### 2.3 语法高亮（`plugins/highlight/`）—— 两个增量 face decor
+### 2.3 语法高亮（`plugins/highlight/`）—— 四个增量 face decor
 
-两个插件、两层，互不覆盖；它们不是 hook，而是每个文档一份持续状态：
+四个插件、四层，互不覆盖；它们不是 hook，而是每个文档一份持续状态：
 
 | 文件 | 层 | 写什么 |
 |---|---|---|
-| `plugins/highlight/syntax-decor.rkt` | `'syntax-fg` | 每格只写**前景**分量（`face-set-fg`） |
-| `plugins/highlight/depth-decor.rkt` | `'depth-bg` | 每格只写**背景**分量（`face-set-bg`），括号深度 |
-| `lex.rkt` / `depth.rkt` | — | 纯行级扫描：`state × line -> (state', 行 face 向量)` |
+| `plugins/highlight/depth-decor.rkt` | `'depth-bg` | 括号深度背景（`face-set-bg`） |
+| `plugins/highlight/word-color-decor.rkt` | `'word-color` | 同词同色前景（djb2 → 12 色） |
+| `plugins/highlight/syntax-decor.rkt` | `'syntax-fg` | 语法前景（关键字 / 字符串 / 注释 / 数字） |
+| `plugins/highlight/words-decor.rkt` | `'words` | 光标当前 token 的背景（`bg-word-mark`） |
+| `lex.rkt` / `depth.rkt` / `kind.rkt` | — | 纯行级扫描 / 适用范围判断：`state × line -> (state', 行 face 向量)` |
 
 流程（同步、增量）：
 
@@ -77,8 +79,8 @@ paint-write!  只把 dirty 行写回 core face port
   和 face port 一起回来，不需要重算。
 - **一个文本编辑只重扫脏行**；跨行状态（块注释 / 字符串 / 括号栈）用
   `stateful-advance` 从首个脏行重扫到状态收敛。
-- **两个插件仍然各写一个分量**：合成在 `effects/paint.rkt` 按 `env.face-layers`
-  的层序做，同分量后层覆盖，attrs 并集。
+- **每层只写自己的分量**：合成在 `effects/paint.rkt` 按 `env.face-layers`
+  的层序做，同分量后层覆盖，attrs 并集（与 edit4 的 bracket → word-color → syntax → words 一致）。
 - **没有后台 worker 路径**：高亮不再 `submit-service-effect` / `job-done`；
   worker 只保留给一次性纯计算。同步 decor 的正确性由 core 的版本顺序保证。
 - `set-face-layer-effect` 仍然存在，但只用于一次性静态层（例如补全选中行）。
@@ -86,65 +88,49 @@ paint-write!  只把 dirty 行写回 core face port
 高亮只对 Racket 文件生效：`face-decor` 的 `applies?` 看 doc-meta（mode / path 后缀），
 由 `runtime/run.rkt` 在文档打开后过滤并挂到 engine。
 
-### 2.4 补全（`plugins/completion/`，浮层菜单）
+### 2.4 补全（`plugins/completion/`，浮层菜单 + 异步候选池）
 
-`C-c /` 打开**浮层菜单**（不插入文本）：
+`C-c /` 或 `M-/` 打开**浮层菜单**（不插入文本）；与 edit4 对齐：
+
+- 候选 = 关键字 + 当前文档顶层定义 + 打开文档里的词；
+- Racket 文档再解析 `require`，把 `only-in` / `except-in` / `prefix-in` / `rename-in`
+  之后的**真正绑定名**作为候选（`plugins/lang/pool.rkt`）；
+- `module->exports` 走 worker（`completion-exports`），结果按
+  `(specs, base-dir, 打开的本地文本)` 缓存；同一 key 只允许一个在途；
+- `(require …)` / `#lang ` 光标处补**模块路径**（worker 的 `module-paths`）；
+- 选中候选广播 `complete-selection`，docs 插件可跟随。
 
 | 键 | 作用 |
 |---|---|
-| `↑` / `↓` | 在候选里移动选择（此时**不移动光标**） |
+| `↑` / `↓` | 移动候选（不移动光标） |
 | `Enter` / `Tab` | 接受：把前缀换成选中的候选 |
 | `Esc` / `C-g` | 取消 |
-| 其它可打印键 | 关掉弹窗、照常输入（`after-edit` 钩子关弹窗） |
+| 其它可打印键 | 照常插入，`after-edit` 按新前缀重筛（不是关掉弹窗） |
 
-用到的两个框架能力：
-
-- **浮层 = document**（`workspace.floats` + `projection/float.rkt`）：
-  弹窗是一块**不在 layout 树里**的 region（真实 document + view），
-  绘制时作为 `deep` 更高的 panel 交给 core 合成。于是：
-
-  | 需求 | 手段 |
-  |---|---|
-  | 候选列表 | 浮层文档的文本（`set-text-effect`） |
-  | 选中行 | 浮层文档的光标行（`select-effect`）+ 一条 `'selection` face（`set-face-layer-effect`） |
-  | 位置 | `projection/float.rkt` 每帧按“锚点 view 的光标”算矩形（下方优先，放不下翻上面，水平夹在面板内） |
-  | 出现 / 移动 / 消失 | core 的增量 diff（浮层就在 core 的 screen 里） |
-
-  因为它是真的 panel，**擦除和“底下正文画回来”全部由 core 负责**，框架不记任何矩形
-  —— 之前把它当“叠加 piece”画在 core 之后，core 的 diff 看不见它，关掉就会留残影。
-  `test/float.rkt` 用 `render-frame` 的字节做回归（关掉后浮层文本消失、底下正文回来）。
-
-  配套的一条规则：`set-text-effect` **不**发 `after-edit` 信号（它是“整篇展示内容替换”，
-  状态栏 / 面板 / 浮层都用它）；否则补全一写自己的浮层文档就会被自己的 after-edit 钩子关掉。
-- **临时键表**：打开弹窗时把 `'completion-popup` 这张 keymap 挂到 `state.input.modes`
-  （`dispatch/rules.rkt` 的 `input-mode-rules` 是最高一层），关掉时摘掉。
-  于是 `↑↓` 只在弹窗开着时改变含义，弹窗一关就还给编辑器。
-
-会话记在 `store['completion]`（view / line / start / end / last / cands），
-**用缓冲内容而不是版本号判断是否还有效**：光标仍在 `[start,end)` 末尾，且该区间就是上次的候选。
-
-还没做：异步候选源（module exports / 模糊匹配）、输入即过滤（现在打字会关掉弹窗）。
+浮层仍然是 document：候选行 = 文档文本，选中行 = 文档光标行 + `complete` /
+`complete-selected` face。窗口只显示选中项附近的 8 行（`popup-window`），
+选中行用空格补齐到浮窗内容宽，所以底色盖满整行。
 
 ### 2.5 文档（`plugins/docs/`）
 
-- 面板 `*docs*`（`panel-spec` + `store['docs]`，和文件树/资源列表同构），
-  放在 **status 行下面**，`(fixed 8)` 固定高度；
-- `C-c h` 打开 / 再按收起 —— **只手动关闭**：`after-nav` 只刷新内容，
-  焦点变化不会把它收起来（看着文档改代码不会被焦点移动打断）；
-- 打开时会改变布局（编辑区变矮），所以同一个 transition 里发一个 `ensure-view-effect`，
-  由 core 的 `view-ensure!` 把焦点 view 的光标夹回窗口；平时任何面板尺寸变化也由
-  `engine-sync-view!`（尺寸真的变了才）自动 ensure；
-- 文档来源：内置关键字表 + 当前文档的顶层 `(define …)` 行（纯函数）。
+- 面板 `*docs*`（`panel-spec` + `store`），放在 status 行下面，固定高度；
+- `C-c h` 打开 / 再按收起；`M-d` 强制显示当前标识符；`after-nav` 跟随光标刷新；
+- **文档来源（与 edit4 对齐）**：
+  1. 当前文档顶层定义（`plugins/lang/local-docs.rkt`，纯）；
+  2. 标准库 / 已安装包（`plugins/lang/docs.rkt`：`setup/xref` + `scribble/blueboxes`，
+     bluebox 缺失时用 `doc-html.rkt` 抽 HTML 正文），走 worker 的 `doc` 服务；
+  3. 内置关键字表（离线兜底）；
+- 查询按 `(名字, 候选模块)` 缓存；同一时刻只允许一个 doc 查询在途；
+- 补全选中项变化时，如果文档面板开着，会跟随更新（`complete-selection`）。
+- 打开面板改变布局时，同一 transition 发 `ensure-view-effect`，把焦点 view 的光标夹回窗口。
 
-还没做：stdlib/网络文档（要 `spawn-effect` + 缓存 + 防抖）、多来源合并。
-
-## 3. 三个插件的“零框架改动”清单
+## 3. 插件的“零框架改动”清单
 
 | 需求 | 用到的框架能力 | 是否改框架 |
 |---|---|---|
 | 语法高亮 | `face-decor`（open/change）+ `effects/paint` 的 document slot + 脏行写回 | 加了“每文档 decor slot”和 change 透传；不再用 hook / worker |
-| 补全 | `replace-range-effect` + `store` + `env.rules` 绑定 `M-/` | 只加了一个 effect |
-| 文档面板 | `panel-spec` + `store` + `after-nav`/`focus-changed` 钩子 | 不需要 |
+| 补全 | `replace-range-effect` + `store` + `env.rules` + `submit-service-effect`（模块导出）+ `complete-selection` 信号 | 用了已有 effect / hook，没有新增框架表 |
+| 文档面板 | `panel-spec` + `store` + `after-nav`/`complete-selection`/`job-done` 钩子 + `submit-service-effect`（xref） | 用了已有 effect / hook |
 
 ## 4. 验收
 

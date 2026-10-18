@@ -17,9 +17,10 @@
 ;;; 说明：
 ;;;   · dispatch 是纯的；解释 effect 才碰 engine / 文件 / 线程。
 ;;;   · hook（上色 / 补全 / 文档）在 settle 里跑：一定发生在 effect 解释之后；
-;;   · inbox 只在“下一个终端事件”到达时排空（与旧骨架一致）；效果刚 emit 的事件
-;;;     会在本批次结束时再排空一次。
-;;;   · 渲染缓存由 loop 持有；State 不存 cache / inbox / 线程。
+;;   · inbox 通过 racket-tui 的 `on-source` 并进 `read-event` 的等待集合：后台结果
+;;;     一到就唤醒回调，处理 + 重绘都在回调里完成（不用等下一次按键）。
+;;;   · 效果刚 emit 的事件会在本批次结束时再排空一次。
+;;;   · 渲染缓存由 loop / 回调共享的 box 持有；State 不存 cache / inbox / 线程。
 
 (provide run-app
          run-frame
@@ -265,16 +266,32 @@
                      (state-set-window state (make-window rows cols))
                      state)
                  #:worker worker))
-     (let loop ([state state0] [cache #f])
-       (define cache* (run-frame env state engine cache
-                                 #:status-parts (environment-status env)))
+
+     ;; 后台结果（worker job-done / 文档查询 / 补全模块导出）要能自己唤醒重绘。
+     ;; racket-tui 的 on-source 把 inbox 并进 read-event 的等待集合；read-event 处理完源
+     ;; 事件后继续等终端事件，所以处理 + 重绘放在回调里，用 box 共享 state / cache。
+     (define state-box (box state0))
+     (define cache-box (box #f))
+     (define (render! s)
+       (set-box! cache-box
+                 (run-frame env s engine (unbox cache-box)
+                            #:status-parts (environment-status env))))
+     (define (handle! events)
+       (cond
+         [(null? events) (void)]
+         [else
+          (define t (process-events env engine inbox (unbox state-box) events
+                                    #:worker worker))
+          (define t2 (drain-and-process env engine inbox t #:worker worker))
+          (define s (transition-state t2))
+          (set-box! state-box s)
+          (render! s)]))
+     (on-source inbox (λ (_ready) (handle! (drain-channel inbox))))
+
+     (let loop ()
+       (render! (unbox state-box))
        (define ev (read-event))
-       (define app-ev (tui-event->app ev))
-       (define batch (append (if app-ev (list app-ev) '())
-                             (drain-channel inbox)))
-       (define t (process-events env engine inbox state batch #:worker worker))
-       (define t2 (drain-and-process env engine inbox t #:worker worker))
-       (define state* (transition-state t2))
-       (unless (runtime-quit? (state-runtime state*))
-         (loop state* cache*))
-       (worker-stop! worker)))))
+       (handle! (filter values (list (tui-event->app ev))))
+       (if (runtime-quit? (state-runtime (unbox state-box)))
+           (worker-stop! worker)
+           (loop))))))
