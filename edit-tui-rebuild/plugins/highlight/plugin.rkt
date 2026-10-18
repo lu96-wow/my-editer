@@ -47,8 +47,9 @@
 (define (racket-path? path)
   (and path
        (let ([e (filename-extension path)])
-         (and e (member (string-downcase (bytes->string/utf-8 e)) racket-extensions)
-              #t))))
+         (and e
+              (for/or ([ext (in-list racket-extensions)])
+                (string=? ext (string-downcase (bytes->string/utf-8 e))))))))
 
 ;; doc 是不是 Racket 文件：模式优先（doc-type 可以把它设成 'racket），否则看路径后缀。
 (define (racket-doc? state did)

@@ -6,7 +6,7 @@
 ;;;
 ;;;   1. 高亮：startup! 之后 document-face-at 能读到 keyword / string / comment / number 的 face；
 ;;;      编辑后（after-edit 信号）重新上色，且不把文档标脏；**非 .rkt 文件不上色**；
-;;;   2. 补全：C-c / 用候选替换光标前的词；再按循环；无候选时只提示；
+;;;   2. 补全：C-c / 打开**文档浮层**（不改文本）；↑↓ 选；Enter 接受；Esc 取消；
 ;;;   3. 文档：C-c h 打开面板并写入标识符文档；after-nav 跟随光标刷新；
 ;;;      面板**不会自动收起**，只有 C-c h 再按一次才关。
 
@@ -87,7 +87,6 @@
 
 (define (feed engine s . evs)
   (transition-state (process-events editor-env engine (make-async-channel) s evs)))
-(define (meta c) (app:key-event (key c 'alt)))
 (define (plain c) (app:key-event (key c)))
 (define (ctrl c) (app:key-event (key c 'ctrl)))
 ;; C-c 是前缀：C-c / 补全，C-c h 文档
@@ -123,6 +122,25 @@
   (define new-line (list-ref (lines-of engine) 0))
   (check-eq? (face-at engine 0 (col-of new-line "if")) 'fg-syntax-control))
 
+;; 插件按文件类型启用：非 Racket 文件（.txt / mode 'text）不上色
+(let* ([engine (make-engine)]
+       [did2 (doc-id 1)]
+       [vid2 (view-id 1)]
+       [rid2 (region-id 1)])
+  (void (engine-create-doc! engine did2 "notes" ";; not racket\n(define x 1)"))
+  (void (engine-create-view! engine vid2 did2))
+  (define ws
+    (let* ([ws (workspace-empty)]
+           [ws (workspace-add-doc ws did2 (make-doc-meta "notes" #:path "/tmp/notes.txt"))]
+           [ws (workspace-add-view ws vid2 (view-meta did2 (hash)))]
+           [ws (workspace-add-region ws rid2
+                                     (region rid2 (list (view-member vid2)) vid2 'editor))])
+      (struct-copy workspace ws [layout (make-leaf rid2)])))
+  (define st (startup! editor-env engine (state-set-focus (make-state #:workspace ws) vid2)))
+  (void st)
+  (check-false (buffer-face-at (engine-doc-buffer engine did2) 1 1)   ; "define" 不上色
+               "非 .rkt 文件不应高亮"))
+
 ;;; ════════════════ 2. 补全（C-c / 弹窗 + 临时键表） ════════════════
 ;;
 ;; 注意：光标 / 文本在 engine 里（State 只存 id），所以用例必须**顺序**推进，
@@ -154,7 +172,7 @@
   (check-true (popup-open? s3))
   (check-true (in-popup-mode? s3))
   (check-equal? (popup-sel engine s3) 0)
-  (check-not-false (member "square" (popup-lines* engine s3)))
+  (check-true (for/or ([l (in-list (popup-lines* engine s3))]) (equal? l "square")))
   (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
 
   ;; Down / Up 被临时键表接住：移动选择而不是移动光标

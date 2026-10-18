@@ -184,6 +184,6 @@
   (and reg
        (let ([active (region-active reg)])
          (for/first ([m (in-list (region-members reg))]
-                     #:when (equal? (member-key m) active))
-           (and (chrome-member? m)
-                (chrome-line state ev (member-key m) parts))))))
+                     #:when (equal? (region-member-key m) active))
+           (and (chrome-region-member? m)
+                (chrome-line state ev (region-member-key m) parts))))))

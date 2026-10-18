@@ -192,7 +192,7 @@ loop:
 | `running?` | `world.running?` | 运行时 | `state.runtime.quit?` |
 | `dirty?` | `world.dirty?` | 每帧 | 投影修订号（派生，不是领域状态） |
 | `drag` | `world.drag` | 手势中 | `state.input.gesture` |
-| `internal` | `world.internal` | 启动 | `env.handlers` |
+| `internal` | `world.internal` | 启动 | `env.hooks`（内部事件当信号发；**不再有 handlers 表**） |
 | `slot` | `world.ext` | 启动 + 会话 | `state.workspace.regions` |
 | `minibuffer` | `world.ext` | 输入中 | `state.input.prompt` |
 | 插件状态 | `world.ext` | 插件生命周期 | `state.plugins[id]`（有类型/命名空间） |
@@ -268,7 +268,8 @@ loop:
 ### 5.1 四个顶层概念
 
 ```
-Environment   装配期只读：roles / modes / scopes / commands / keymaps / plugins / handlers
+Environment   装配期只读：roles / modes / scopes / commands / keymaps / rules /
+                            status / doc-types / input-commands / panel-syncs / hooks
 State         运行期纯数据：workspace / input / chrome / runtime
 Engine        可变文档引擎：core buffer/view 的拥有者；State 只存 id
 Runtime       壳：事件源、效果解释器、渲染输出、cache、inbox、线程
@@ -370,7 +371,7 @@ Runtime       壳：事件源、效果解释器、渲染输出、cache、inbox�
    scopes       ; scope-id -> (state -> bool)
    commands     ; command-id -> command-spec（run/note/input）
    keymaps      ; named keymap
-   handlers     ; event-kind -> handler
+   hooks        ; signal-point -> reaction（内部事件 / tick 也走这里）
    plugins))    ; plugin-id -> plugin-contribution
 ```
 

@@ -59,7 +59,7 @@
 (define ws (state-workspace s2l))
 (check-equal? (hash-count (workspace-regions ws)) 1)
 (define reg (workspace-region ws sidebar-rid))
-(check-equal? (map member-key (region-members reg)) (list ftv rsv))
+(check-equal? (map region-member-key (region-members reg)) (list ftv rsv))
 (check-equal? (region-role reg) 'filetree)     ; 第一次安装决定 role
 (check-true (role-switchable? (environment-role default-env 'filetree)))
 

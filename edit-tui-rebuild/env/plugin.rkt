@@ -10,14 +10,13 @@
 ;;;   (struct plugin (id env status-parts panels hooks state-init))
 ;;;     id           : symbol                     插件命名空间（store 的键）
 ;;;     env          : environment                贡献（roles/modes/commands/keymaps/
-;;;                                               rules/scopes/doc-types/handlers/
-;;;                                               input-commands）
+;;;                                               rules/scopes/doc-types/input-commands）
 ;;;     status-parts : (listof status-part)       追加的状态栏段（**加法**语义）
 ;;;     panels       : (listof panel-spec)        自带面板（每帧同步自动挂上）
 ;;;     hooks        : (listof hook)              信号 -> 旁观者逻辑（语法高亮/补全/文档都挂这里）
 ;;;     state-init   : (state -> state) | #f       写自己的 store 槽
 ;;;
-;;;   (struct panel-spec (id name role mode sync))
+;;;   (struct panel-spec (name role mode sync))
 ;;;     面板身份 = 名字 / role / mode / 每帧同步；安装还需要 region-id 与
 ;;;     layout 位置，那是宿主的策略，所以 install 不在 spec 里。
 ;;;
@@ -57,25 +56,22 @@
 
 ;;; ════════════════ 面板描述 ════════════════
 
-(struct panel-spec (id name role mode sync) #:transparent)
-;; id   : symbol     插件内唯一的面板 id
+(struct panel-spec (name role mode sync) #:transparent)
 ;; name : string     document 名（资源列表 / 调试里可见）
 ;; role : symbol     区域角色（splittable? / close-policy / focusable? / target?）
 ;; mode : symbol     document mode（决定面板内键表）
 ;; sync : (state engine -> any)  每帧渲染前的同步（挂到 env.panel-syncs）
 
-(define (make-panel-spec id
-                         #:name [name "*panel*"]
+(define (make-panel-spec #:name [name "*panel*"]
                          #:role [role 'panel]
                          #:mode [mode 'text]
                          #:sync [sync #f])
-  (unless (symbol? id) (error 'make-panel-spec "id 要是 symbol：~a" id))
   (unless (string? name) (error 'make-panel-spec "name 要是 string：~a" name))
   (unless (symbol? role) (error 'make-panel-spec "role 要是 symbol：~a" role))
   (unless (symbol? mode) (error 'make-panel-spec "mode 要是 symbol：~a" mode))
   (unless (or (not sync) (procedure? sync))
     (error 'make-panel-spec "sync 要是过程或 #f：~a" sync))
-  (panel-spec id name role mode sync))
+  (panel-spec name role mode sync))
 
 ;;; ════════════════ 插件 ════════════════
 
@@ -103,11 +99,12 @@
 (define (plugin-env-apply env p)
   (define env1 (environment-merge env (plugin-env p)))
   (define env2 (environment-add-status-parts env1 (plugin-status-parts p)))
-  (define env3
-    (for/fold ([env env2]) ([spec (in-list (plugin-panels p))])
-      (define sync (panel-spec-sync spec))
-      (if sync (environment-add-panel-sync env sync) env)))
-  (environment-add-hooks env3 (plugin-hooks p)))
+  (environment-add-hooks
+   (environment-add-panel-syncs env2
+                                (for/list ([spec (in-list (plugin-panels p))]
+                                           #:when (panel-spec-sync spec))
+                                  (panel-spec-sync spec)))
+   (plugin-hooks p)))
 
 (define (plugins-env env plugins)
   (for/fold ([env env]) ([p (in-list plugins)])

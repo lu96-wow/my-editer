@@ -54,7 +54,7 @@
   (plugin-state state store-key #f))
 
 (define (docs-panel-spec)
-  (make-panel-spec 'docs
+  (make-panel-spec
                    #:name "*docs*"
                    #:role 'tool
                    #:mode 'docs

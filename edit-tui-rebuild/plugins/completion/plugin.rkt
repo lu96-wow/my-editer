@@ -81,7 +81,7 @@
 (define (install-completion-popup! engine state rid)
   (define-values (s1 vid)
     (panel-spec-install! engine state rid
-                         (make-panel-spec 'completion
+                         (make-panel-spec
                                           #:name "*completion*"
                                           #:role 'panel       ; 不可聚焦：焦点始终留在编辑器
                                           #:mode 'completion

@@ -41,7 +41,8 @@ model/         纯状态（只依赖 base）
   workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
   save.rkt        保存确认队列（框架级）
 env/           纯策略（只依赖 base + model）
-  environment.rkt role/mode/scope/command/keymap/handler/rules/status/doc-type/input-command/panel-sync
+  environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
+                  input-command/panel-sync/hook
   role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
   mode.rkt        document 模式 -> keymaps / fallback
   scope.rkt       scope 谓词
@@ -449,7 +450,7 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 | 字段 | 作用 | 语义 |
 |---|---|---|
 | `id` | `state.store` 的键 | 插件命名空间 |
-| `env` | roles / modes / scopes / commands / keymaps / rules / doc-types / handlers / input-commands | **覆盖**（`environment-merge`，后者优先） |
+| `env` | roles / modes / scopes / commands / keymaps / rules / doc-types / input-commands | **覆盖**（`environment-merge`，后者优先） |
 | `status-parts` | 状态栏段 | **追加**（放在现有段之前） |
 | `panels` | 自带面板 | 每个 `panel-spec.sync` 自动追加到 `env.panel-syncs` |
 | `state-init` | `state -> state` | 初始化自己的 store 槽 |
@@ -498,7 +499,7 @@ views / regions / layout / engine 全部回到安装前（这也是“面板可�
 - 新条件层（`env.rules` + `env.scopes`）
 - 状态栏段（`status-parts`）
 - 输入栏提交逻辑（`env.input-commands`）
-- 内部事件处理（`env.handlers`：`job-done` / `tick`）
+- 内部事件处理（`job-done` / `tick` 也是信号，挂在 `env.hooks` 上）
 - 自己的状态（`state.store` + `plugin-state*`）
 
 内置插件就是这么写的：

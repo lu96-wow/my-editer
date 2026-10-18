@@ -87,7 +87,7 @@
         (define members (region-members reg))
         (define members*
           (if (for/or ([m (in-list members)])
-                (and (view-member? m) (equal? (member-key m) vid)))
+                (and (view-region-member? m) (equal? (region-member-key m) vid)))
               members
               (append members (list (view-member vid)))))
         (workspace-add-region ws rid
@@ -103,7 +103,7 @@
                                #:active [active #f])
   (define active*
     (or active
-        (and (pair? members) (member-key (last members)))
+        (and (pair? members) (region-member-key (last members)))
         #f))
   (state-workspace*
    state
@@ -146,8 +146,8 @@
     [(not reg) state]
     [else
      (define vids
-       (for/list ([m (in-list (region-members reg))] #:when (view-member? m))
-         (member-key m)))
+       (for/list ([m (in-list (region-members reg))] #:when (view-region-member? m))
+         (region-member-key m)))
      (define dids
        (remove-duplicates
         (filter values

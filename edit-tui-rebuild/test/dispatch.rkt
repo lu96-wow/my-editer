@@ -13,6 +13,7 @@
          "../base/keymap.rkt"
          "../base/transition.rkt"
          "../model/layout.rkt"
+         "../effects/engine.rkt"
          "../model/state.rkt"
          "../model/workspace.rkt"
          "../model/input.rkt"
@@ -26,6 +27,9 @@
          "../env/defaults.rkt"
          "../dispatch/context.rkt"
          "../dispatch/rules.rkt"
+         "../env/hook.rkt"
+         "../base/signal.rkt"
+         "../dispatch/hooks.rkt"
          "../dispatch/pipeline.rkt")
 
 ;;; ════════════════ 测试世界 ════════════════
@@ -248,15 +252,21 @@
 (define t24 (dispatch env s0 (paste-event "hi") #:subject v1))
 (check-equal? (insert-text-effect-text (car (transition-effects t24))) "hi")
 
-;; internal handler
+;; internal 事件 -> 信号（同一套 env.hooks；dispatch 只记信号，settle 里才跑 hook）
 (define env2
-  (environment-add-handler env 'job-done
-                            (λ (s payload)
-                              (transition-pure
-                               (state-chrome* s
-                                              (λ (c) (chrome-set-message c (format "done ~a" payload))))))))
+  (environment-add-hook env
+                        (make-hook 'job-done
+                                   (λ (s ev args)
+                                     (transition-pure
+                                      (state-chrome* s
+                                                     (λ (c) (chrome-set-message c (format "done ~a" args)))))))))
 (define t25 (dispatch env2 s0 (internal-event 'job-done 'v)))
-(check-equal? (chrome-message (state-chrome (transition-state t25))) "done v")
+;; dispatch 本身只发信号；跑 hook 是 runtime 的 settle 的职责
+(check-equal? (chrome-message (state-chrome (transition-state t25))) "")
+(check-equal? (map signal-point (signals-queue (state-signals (transition-state t25))))
+              '(job-done))
+(define t25b (run-hooks env2 (make-engine-view (make-engine)) t25))
+(check-equal? (chrome-message (state-chrome (transition-state t25b))) "done v")
 
 ;; quit-event
 (define t26 (dispatch env s0 (quit-event)))

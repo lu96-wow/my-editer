@@ -53,7 +53,7 @@
   (make-mode #:keymaps (list filetree-keys pointer-keys) #:fallback 'ignore))
 
 (define (filetree-panel-spec)
-  (make-panel-spec 'filetree
+  (make-panel-spec
                    #:name "*filetree*"
                    #:role 'filetree
                    #:mode 'filetree

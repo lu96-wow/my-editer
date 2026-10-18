@@ -29,13 +29,13 @@
 
 (provide (struct-out doc-meta)
          (struct-out view-meta)
-         (struct-out member)
+         (struct-out region-member)
          (struct-out region)
          (struct-out workspace)
          (struct-out float)
          make-doc-meta
          view-member chrome-member
-         view-member? chrome-member? member-key
+         view-region-member? chrome-region-member? region-member-key
          make-workspace
          workspace-empty
          workspace-doc workspace-view workspace-region
@@ -85,14 +85,14 @@
 
 ;;; ---------- 成员 / 区域 ----------
 
-(struct member (kind key) #:transparent)
+(struct region-member (kind key) #:transparent)
 ;; kind : 'view | 'chrome
 ;; key  : view-id | symbol
 
-(define (view-member v)   (member 'view v))
-(define (chrome-member k) (member 'chrome k))
-(define (view-member? m)  (and (member? m) (eq? (member-kind m) 'view)))
-(define (chrome-member? m)(and (member? m) (eq? (member-kind m) 'chrome)))
+(define (view-member v)   (region-member 'view v))
+(define (chrome-member k) (region-member 'chrome k))
+(define (view-region-member? m)  (and (region-member? m) (eq? (region-member-kind m) 'view)))
+(define (chrome-region-member? m)(and (region-member? m) (eq? (region-member-kind m) 'chrome)))
 (struct region (key members active role) #:transparent)
 ;; key          : region-id
 ;; members      : (listof member)
@@ -180,7 +180,7 @@
 (define (workspace-view-region w vid)
   (for/first ([r (in-hash-values (workspace-regions w))]
               #:when (for/or ([m (in-list (region-members r))])
-                       (and (view-member? m) (equal? (member-key m) vid))))
+                       (and (view-region-member? m) (equal? (region-member-key m) vid))))
     r))
 
 (define (workspace-region-members w rid)
@@ -193,8 +193,8 @@
 
 (define (workspace-region-views w rid)
   (for/list ([m (in-list (or (workspace-region-members w rid) '()))]
-             #:when (view-member? m))
-    (member-key m)))
+             #:when (view-region-member? m))
+    (region-member-key m)))
 
 ;;; ---------- 增 / 删 ----------
 
@@ -213,12 +213,12 @@
 (define (remove-view-from-regions w vid)
   (for/fold ([w w])
             ([(rid r) (in-hash (workspace-regions w))])
-    (define members* (filter (λ (m) (not (and (view-member? m)
-                                                (equal? (member-key m) vid))))
+    (define members* (filter (λ (m) (not (and (view-region-member? m)
+                                                (equal? (region-member-key m) vid))))
                              (region-members r)))
     (define active*
       (if (equal? (region-active r) vid)
-          (and (pair? members*) (member-key (car members*)))
+          (and (pair? members*) (region-member-key (car members*)))
           (region-active r)))
     (workspace-add-region w rid
                           (struct-copy region r
@@ -240,7 +240,7 @@
      (define members (region-members reg1))
      (define members*
        (if (for/or ([m (in-list members)])
-             (and (view-member? m) (equal? (member-key m) vid)))
+             (and (view-region-member? m) (equal? (region-member-key m) vid)))
            members
            (append members (list (view-member vid)))))
      (workspace-add-region w1 rid
@@ -261,12 +261,12 @@
 ;;; 空 region 暂留（后续 region ops 可剪枝）；layout 只引用 region，不直接引用 view。
 (define (workspace-remove-view w vid)
   (define (drop-member m)
-    (not (and (view-member? m) (equal? (member-key m) vid))))
+    (not (and (view-region-member? m) (equal? (region-member-key m) vid))))
   (define regions*
     (for/hash ([(rid r) (in-hash (workspace-regions w))])
       (define members* (filter drop-member (region-members r)))
       (define active* (if (equal? (region-active r) vid)
-                          (and (pair? members*) (member-key (car members*)))
+                          (and (pair? members*) (region-member-key (car members*)))
                           (region-active r)))
       (values rid (struct-copy region r [members members*] [active active*]))))
   (struct-copy workspace w

@@ -15,6 +15,7 @@
          "../env/scope.rkt"
          "../env/command.rkt"
          "../env/rule.rkt"
+         "../env/hook.rkt"
          "../env/environment.rkt"
          "../env/defaults.rkt"
          "../model/state.rkt")
@@ -111,7 +112,7 @@
 (check-equal? (environment-mode env0 'text) mode-default)
 (check-false (environment-command env0 'save))
 (check-equal? (environment-keymap env0 'global) empty-keymap)
-(check-false (environment-handler env0 'job-done))
+(check-equal? (environment-hooks env0) '())
 
 (define env1
   (environment-add-role
@@ -165,10 +166,10 @@
 (check-equal? (environment-status (environment-add-status-part env5 part2))
               (list part2 part1))
 
-;; handler
+;; hook（内部事件 / tick 也是信号，统一走这一套）
 (define env3
-  (environment-add-handler env2 'job-done (λ (s p) (transition-pure s))))
-(check-true (procedure? (environment-handler env3 'job-done)))
+  (environment-add-hook env2 (make-hook 'job-done (λ (s ev args) (transition-pure s)))))
+(check-equal? (length (environment-hooks env3)) (add1 (length (environment-hooks env2))))
 
 ;;; ════════════════ defaults ════════════════
 

@@ -13,7 +13,7 @@
 ;;;   · hook 可以再 emit，排空过程是“跑一轮 -> 有新信号 -> 再跑一轮”；
 ;;;   · 信号是**纯数据**，所以整个 hook 链可以 headless 重放。
 ;;;
-;;; 词表见 signal-points（下面的 define）。
+;;; 词表见 standard-signal-points（下面的 define）。
 ;;;
 ;;; 两条约定：
 ;;;   · **没有** "after-faces"：上色本身不发 after-edit，否则 hook 会自激；
@@ -23,7 +23,7 @@
 (provide (struct-out signal)
          (struct-out signals)
          make-signal
-         signal-points
+         standard-signal-points
          known-signal-point?
          signals-empty
          signals-add
@@ -31,16 +31,21 @@
 
 ;; 标准信号点（词表）。扩展点仍是开放的 symbol：插件可以定义自己的 point，
 ;; 但**框架发出的**只有下面这些 —— 写在数据里，测试和文档都引用它。
-(define signal-points
-  '(document-opened   ; (doc-id)          打开文档完成（engine 已就绪）
-    after-edit        ; (doc-id)          用户改了文本（insert / edit / undo / redo / replace-range）
-    after-nav         ; (view-id)         光标推进（没改文本）
-    focus-changed))   ; (view-id|region-id|#f)
+(define standard-signal-points
+  '(document-opened   ; (doc-id)                    打开文档完成（engine 已就绪）
+    after-edit        ; (doc-id)                    用户改了文本（insert / edit / undo / redo / replace-range）
+    after-nav         ; (view-id)                   光标推进（没改文本）
+    focus-changed     ; (view-id|region-id|#f)      焦点变了
+    job-done          ; (job-id value)              spawn 的结果回来了（internal 事件）
+    tick))            ; (tick-id)                   定时事件
 
-(define (known-signal-point? p) (and (memq p signal-points) #t))
+;; 其余点由宿主 / 插件自己定义（`post` 的 internal 事件名就是 point），这个表只是
+;; “框架一定会发的那几个”，便于测试与文档引用。
+
+(define (known-signal-point? p) (and (memq p standard-signal-points) #t))
 
 (struct signal (point args) #:transparent)
-;; point : symbol（标准点见 signal-points；插件可自定义）
+;; point : symbol（标准点见 standard-signal-points；插件可自定义）
 ;; args  : any/c
 
 (define (make-signal point args)

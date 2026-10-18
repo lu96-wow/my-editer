@@ -43,7 +43,7 @@
   (make-mode #:keymaps (list resource-keys pointer-keys) #:fallback 'ignore))
 
 (define (resource-panel-spec)
-  (make-panel-spec 'resources
+  (make-panel-spec
                    #:name "*resources*"
                    #:role 'resource
                    #:mode 'resources

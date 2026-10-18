@@ -21,8 +21,7 @@
 
 (provide dispatch
          dispatch-key
-         dispatch-mouse
-         dispatch-internal)
+         dispatch-mouse)
 
 (require "../base/id.rkt"
          "../base/event.rkt"
@@ -59,8 +58,17 @@
       [(mouse)    (dispatch-mouse env state* event subject engine)]
       [(resize)   (dispatch-resize state* event)]
       [(paste)    (dispatch-paste state* event subject)]
-      [(internal) (dispatch-internal env state event)]
-      [(tick)     (dispatch-tick env state event)]
+      ;;
+      ;; 内部事件 / tick 不是“命令输入”，而是**信号**：
+      ;; 统一走 `standard-signal-points` 一套注册表（env.hooks），不另设 handler 表。
+      ;;   internal : point = (internal-event-kind ev)，args = payload
+      ;;   tick     : point = 'tick，args = (list id)
+      [(internal) (transition-pure
+                   (state-emit state
+                               (internal-event-kind event)
+                               (internal-event-payload event)))]
+      [(tick)     (transition-pure
+                   (state-emit state 'tick (list (tick-event-id event))))]
       [(quit)     (transition-pure (state-mark-quit state*))]
       [else       (transition-pure state*)]))
   ;; 焦点变化记成信号（命令自己不需要知道谁关心焦点）。
@@ -191,18 +199,6 @@
   (if subject
       (transition state (list (insert-text-effect subject (paste-event-text event))))
       (notice state "paste: no subject")))
-
-(define (dispatch-internal env state event)
-  (define h (environment-handler env (internal-event-kind event)))
-  (if h
-      (h state (internal-event-payload event))
-      (transition-pure state)))
-
-(define (dispatch-tick env state event)
-  (define h (environment-handler env 'tick))
-  (if h
-      (h state (tick-event-id event))
-      (transition-pure state)))
 
 ;;; ════════════════ 命令执行 ════════════════
 

@@ -121,7 +121,7 @@
 ;;; ════════════════ 新建 view / document ════════════════
 
 (define (region-has-view? reg)
-  (for/or ([m (in-list (region-members reg))]) (view-member? m)))
+  (for/or ([m (in-list (region-members reg))]) (view-region-member? m)))
 
 ;; 目标 region：subject 指向的 region（view 所在 / region-id 本身）；
 ;; 都没有时找第一个空的 editor region（例如刚拆出来的窗口）。

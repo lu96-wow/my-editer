@@ -11,7 +11,6 @@
 ;;;   scopes   : scope-id   -> scope
 ;;;   commands : command-id -> command
 ;;;   keymaps  : name       -> keymap
-;;;   handlers : event-kind -> (state payload -> transition)
 ;;;   panel-syncs : (listof (state engine -> any))   每帧渲染前要跑的面板同步
 ;;;   hooks    : (listof hook)               信号 -> 旁观者逻辑（按 point + priority 跑）
 ;;;
@@ -29,16 +28,13 @@
          environment-mode
          environment-command
          environment-keymap
-         environment-handler
          environment-mode-keymaps
          environment-add-role
          environment-add-mode
          environment-add-scope
          environment-add-command
          environment-add-keymap
-         environment-add-handler
          environment-add-rule
-         environment-add-rules
          environment-add-status-part
          environment-add-status-parts
          environment-add-doc-type
@@ -48,6 +44,7 @@
          environment-add-input-command
          environment-panel-syncs
          environment-add-panel-sync
+         environment-add-panel-syncs
          environment-hooks
          environment-add-hook
          environment-add-hooks
@@ -65,13 +62,12 @@
          "hook.rkt"
          "../base/status-part.rkt")
 
-(struct environment (roles modes scopes commands keymaps handlers rules status doc-types input-commands panel-syncs hooks) #:transparent)
+(struct environment (roles modes scopes commands keymaps rules status doc-types input-commands panel-syncs hooks) #:transparent)
 ;; roles    : (hash/c symbol role)
 ;; modes    : (hash/c symbol mode)
 ;; scopes   : (hash/c symbol scope)
 ;; commands : (hash/c symbol command)
 ;; keymaps  : (hash/c symbol keymap)
-;; handlers : (hash/c symbol procedure)   (state payload -> transition)
 ;; rules    : (listof rule)               带 scope 的额外表（高 -> 低）
 ;; status   : #f | (listof status-part)   #f = 用投影默认段
 ;; doc-types: (hash/c symbol doc-type)    打开文件时按路径匹配
@@ -81,21 +77,20 @@
 ;;             面板由插件贡献时挂在这里，runtime 只负责遍历，不认识具体面板。
 
 (define (environment-empty)
-  (environment (hash) (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '()))
+  (environment (hash) (hash) (hash) (hash) (hash) '() #f (hash) '() '() '()))
 
 (define (make-environment #:roles [roles (hash)]
                           #:modes [modes (hash)]
                           #:scopes [scopes (hash)]
                           #:commands [commands (hash)]
                           #:keymaps [keymaps (hash)]
-                          #:handlers [handlers (hash)]
                           #:rules [rules '()]
                           #:status [status #f]
                           #:doc-types [doc-types (hash)]
                           #:input-commands [input-commands '()]
                           #:panel-syncs [panel-syncs '()]
                           #:hooks [hooks '()])
-  (environment roles modes scopes commands keymaps handlers rules status
+  (environment roles modes scopes commands keymaps rules status
                doc-types input-commands panel-syncs hooks))
 
 ;;; ---------- 查 ----------
@@ -120,9 +115,6 @@
               #:when (doc-type-matches-path? dt path))
     dt))
 
-
-(define (environment-handler env kind)
-  (hash-ref (environment-handlers env) kind #f))
 
 (define (environment-mode-keymaps env id)
   (mode-keymaps (environment-mode env id)))
@@ -151,17 +143,9 @@
   (unless (keymap? km) (error 'environment-add-keymap "要是 keymap：~a" km))
   (struct-copy environment env [keymaps (hash-set (environment-keymaps env) name km)]))
 
-(define (environment-add-handler env kind h)
-  (unless (symbol? kind) (error 'environment-add-handler "事件 kind 要是 symbol：~a" kind))
-  (unless (procedure? h) (error 'environment-add-handler "handler 要是过程：~a" h))
-  (struct-copy environment env [handlers (hash-set (environment-handlers env) kind h)]))
-
 ;; 新规则放最前（优先）。
 (define (environment-add-rule env r)
   (struct-copy environment env [rules (cons r (environment-rules env))]))
-(define (environment-add-rules env rs)
-  (struct-copy environment env [rules (append rs (environment-rules env))]))
-
 ;; 状态栏段：新段放最前。传入 #f 表示恢复默认段。
 (define (environment-add-status-part env part)
   (environment-add-status-parts env (list part)))
@@ -186,6 +170,9 @@
   (struct-copy environment env
                [panel-syncs (append (environment-panel-syncs env) (list f))]))
 
+(define (environment-add-panel-syncs env fs)
+  (for/fold ([e env]) ([f (in-list fs)]) (environment-add-panel-sync e f)))
+
 ;; 钩子：append（同一 point 按 priority 排序是运行时的事）。
 (define (environment-add-hook env h)
   (unless (hook? h) (error 'environment-add-hook "要 hook：~a" h))
@@ -203,7 +190,6 @@
                (overlay (environment-scopes a)   (environment-scopes b))
                (overlay (environment-commands a) (environment-commands b))
                (overlay (environment-keymaps a)  (environment-keymaps b))
-               (overlay (environment-handlers a) (environment-handlers b))
                ;; b 的规则在前 = 后合并的 env 优先
                (append (environment-rules b) (environment-rules a))
                (or (environment-status b) (environment-status a))

@@ -67,8 +67,8 @@
         (and reg
              (let ([active (region-active reg)])
                (or (for/first ([m (in-list (region-members reg))]
-                               #:when (equal? (member-key m) active))
-                     (and (view-member? m) (member-key m)))
+                               #:when (equal? (region-member-key m) active))
+                     (and (view-region-member? m) (region-member-key m)))
                    (region-key reg))))])]
     [(paste) (state-focus state)]
     [else #f]))

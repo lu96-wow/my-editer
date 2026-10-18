@@ -27,6 +27,7 @@
          "../env/mode.rkt"
          "../env/rule.rkt"
          "../env/environment.rkt"
+         "../env/hook.rkt"
          "../env/doc-type.rkt"
          "../env/plugin.rkt"
          "../env/defaults.rkt"
@@ -124,10 +125,11 @@
     #:keymaps (hash 'global core-global-keys)
     #:input-commands (default-input-commands)
     #:status full-status-parts
-    #:handlers (hash 'job-done
-                     (λ (s payload)
-                       (transition-pure
-                        (state-chrome* s
-                                       (λ (c)
-                                         (chrome-set-message
-                                          c (format "job done: ~a" payload))))))))))
+    ;; 内部事件 / tick 也是信号（见 dispatch/pipeline.rkt），所以这里用 hook 而不是 handler 表
+    #:hooks (list (make-hook 'job-done
+                             (λ (s ev args)
+                               (transition-pure
+                                (state-chrome* s
+                                               (λ (c)
+                                                 (chrome-set-message
+                                                  c (format "job done: ~a" args)))))))))))

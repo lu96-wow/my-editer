@@ -113,25 +113,69 @@ command ──▶ transition{state+effects}
 
 ## 7. 扩展点（都是数据）
 
-| 想加的东西 | 加在哪 |
+### 7.1 全景表
+
+| 想扩展 | 加什么数据 | 谁消费 | 触发时机 |
+|---|---|---|---|
+| 命令 | `env.commands` | `dispatch/run-command` | 键 / 鼠标命中 |
+| 键位 / 前缀 | `env.keymaps`、`env.modes[].keymaps` | `dispatch/rules` | 按键 |
+| 有条件的键表 | `env.rules`（`scope` + keymap）、`env.scopes` | `dispatch/rules` | 按键（**用规则，别覆盖 `global` 表**） |
+| 按键的临时语义 | `env.keymaps[name]` + `state.input.modes` | `dispatch/rules` 第一层 | 模态开着时 |
+| 文档类型 → mode | `env.doc-types`（路径匹配） | `effects/interpreter` | 打开文件 |
+| 区域行为 | `env.roles`（splittable? / close-policy / focusable? / target? / switchable?） | 命令 + 派发 | 关闭 / 切分 / Tab / placement |
+| 面板 | `plugin.panels`（`panel-spec`） | `effects/panel` + `env.panel-syncs` | 装配 / 每帧 |
+| 同一位置多个面板 | 多次 install 传同一个 `region-id` | `panel-region-add!` + `switch-member` | Tab |
+| 每帧刷新面板 | `panel-spec.sync`（自动进 `env.panel-syncs`） | `runtime/run-frame` | 每帧 |
+| **旁观者逻辑** | `plugin.hooks`（`hook`） | `dispatch/hooks.rkt` | 信号出现时 |
+| 状态栏段 | `plugin.status-parts`（追加语义） | `projection/status` | 每帧投影 |
+| 输入栏提交 | `env.input-commands`（字符串匹配） | `chrome/input` | 输入栏 Enter |
+| 插件自己的状态 | `state.store` + `plugin-state*` | 插件自己 | — |
+| 给文本上色 | `set-faces-effect doc fills` | `effects/interpreter` | 命令 / hook 发 |
+| 替换一段文本 | `replace-range-effect view range text` | `effects/interpreter` | 命令 / hook 发 |
+| 布局变了夹光标 | `ensure-view-effect view` | `effects/interpreter`（core `view-ensure!`） | 命令 / hook 发 |
+| 浮窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` | `projection/render`（作为 deep 更高的 panel） | 每帧 |
+
+### 7.2 不存在的扩展点（曾经有 / 考虑过，结论是不加）
+
+| 曾经的诱惑 | 结论 |
 |---|---|
-| 命令 | `env.commands` |
-| 键位 / 前缀 / 全局键 | `env.keymaps` 或 `env.rules`（**规则**，别覆盖 `global` 表） |
-| 条件键表 | `env.rules` + `env.scopes` |
-| 文档 mode / 按扩展名匹配 | `env.modes` + `env.doc-types` |
-| 状态栏段 | `plugin.status-parts`（追加语义） |
-| 输入栏提交 | `env.input-commands` |
-| 区域行为 | `env.roles`（splittable? / close-policy / focusable? / target?） |
-| 面板 | `plugin.panels`（`panel-spec`）+ 宿主调 `panel-spec-install!` |
-| 同一位置放多个面板 | 多次 install 传同一个 `region-id`；`Tab`（`switch-member`）切 active |
-| 插件自己的状态 | `state.store` + `plugin-state*` |
-| 每帧同步 | `panel-spec.sync`（自动进 `env.panel-syncs`） |
-| 旁观者逻辑（改完文本要重算什么） | `env.hooks`：`hook {point, when, priority, proc}` |
-| 给文本上色 | `set-faces-effect doc fills` |
-| 替换一段文本（补全） | `replace-range-effect view range text` |
-| 把光标夹回窗口（布局刚变） | `ensure-view-effect view` -> core 的 `view-ensure!` |
-| 浮层弹窗 | `workspace.floats`（region + view，不在 layout 里）+ `projection/float.rkt` → 作为 `deep` 更高的 panel 交给 core；**所有显示都是 document**，擦除由 core 的 diff 负责 |
-| 临时改变按键含义 | `state.input.modes` 挂一张 keymap（最高规则层） |
+| `env.handlers`（`internal` 事件 → 过程） | **删掉**：内部事件 / `tick` 直接发信号（point = 事件名 / `tick`），和 `env.hooks` 用同一张表 —— 两个“事件 → transition”的注册表没必要 |
+| 插件专用的 `decor` / `highlighter` 注册表 | 不需要：高亮 = 「`after-edit` hook + `set-faces-effect`」 |
+| 插件专用的 `completion` / `popup` API | 不需要：浮层 = `workspace.floats` + 一张临时 keymap |
+| `panel-spec.id` | **删掉**：没人读；面板身份由 `name / role / mode` 表达 |
+| `environment-add-rules` | **删掉**：没有调用者（“为对称而对称”的 API 也是负担） |
+
+### 7.3 回调只有三种，各有触发源
+
+| 注册表 | 形状 | 触发 | 纯度 |
+|---|---|---|---|
+| `env.hooks` | `(state engine-view args -> transition)` | 信号（`standard-signal-points`） | 纯（可发 effect） |
+| `env.panel-syncs` | `(state engine -> any)` | 每帧渲染前 | **不纯**（直接写 core 缓冲） |
+| `env.rules` | `scope + keymap` | 按键 / 鼠标 | 纯（查表） |
+
+`panel-syncs` 单独存在的理由：它每帧都跑、且直接写 core，不是“发生了一件事”的旁观逻辑。
+暂定：以后若要再收敛，可以让 runtime 每帧发 `before-render` 信号，把面板同步改成
+`set-text-effect` / `set-faces-effect`（纯 hook + effect）。
+
+### 7.4 命名与对称
+
+| 规则 | 例子 |
+|---|---|
+| `environment-add-X` / `-add-Xs` 成对，但**只导出有调用者的** | `add-hook(s)`、`add-status-part(s)`、`add-panel-sync(s)`；`add-rules` 已删 |
+| 状态结构 vs 投影结果 | `region` / `region-panel`，`float` / `float-panel` |
+| effect 用动词短语 + `-effect` | `set-text-effect`（整篇设）、`replace-range-effect`（动作）、`ensure-view-effect` |
+| engine 的原地写带 `!` | `engine-create-view!`、`engine-ensure-view!`、`panel-region-add!` |
+| hook 的 `when` 与 `proc` **同签名** | 都是 `(state engine-view args)`：gate 与动作看到同一份数据 |
+| 信号点：过去式 / 发生后 | `document-opened`、`after-edit`、`after-nav`、`focus-changed`；internal 事件名即 point |
+| 不能和 `racket/base` 撞名 | `member` → `region-member`（见 §8.6） |
+
+### 7.5 加扩展点前的检查清单
+
+1. 已有注册表能不能表达？（高亮 / 补全 / 文档三个插件全部用已有注册表，没加新表）
+2. 新表是否只是“另一种触发时机”？→ 统一到 `env.hooks` 或 `env.panel-syncs`。
+3. 新字段有人读吗？（`panel-spec.id` 这种就是负担）
+4. 名字会被 `struct-out` 带出去掩盖基础函数吗？
+5. 加了以后 `test/layers.rkt`（层序 / 副作用白名单 / 头声明）还能过吗？
 
 ## 8. 约定（不变量）
 
@@ -183,7 +227,19 @@ command ──▶ transition{state+effects}
 - 需要立刻夹（例如刚打开底部面板）时发 `ensure-view-effect`；
 - 只在尺寸变化时 ensure，所以用户主动滚动不会被抢回来。
 
-### 8.6 文档元数据
+### 8.6 命名：不要和 `racket/base` 撞名
+
+`(struct-out ...)` 会把构造函数导出到所有 require 它的模块里，撞名会**静默改变语义**：
+
+| 曾经的坑 | 现在 |
+|---|---|
+| `(struct member (kind key))` → require 的模块里 `(member x lst)` 变成了结构构造器（恒真） | 改名 **`region-member`**（`region-member-key` / `region-member?`） |
+| `(struct region ...)`（workspace）与 core 的 `screen` 的 `region` | `projection/render.rkt` 用 `(only-in ... screen? screen-width ...)` 显式收窄 |
+
+新加 struct 前先确认名字没被 `racket/base` / 平台层占用；宁可长一点
+（`region-member`、`signal-point`），也不要让“看起来是基础函数”的名字被遮蔽。
+
+### 8.7 文档元数据
 
 - `doc-meta.internal?` = 基础设施文档（chrome / 面板 / 浮层）：不保存、不进资源列表、
   不能当 placement 目标、不上色；

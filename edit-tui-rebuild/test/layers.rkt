@@ -225,9 +225,10 @@
 
 ;; 标准信号点是**数据**（不是散落在代码里的 symbol）：四个点都在，
 ;; 且 known-signal-point? 认得它们；加新点必须同时改这份词表。
-(check-equal? (sort (map symbol->string signal-points) string<?)
-              '("after-edit" "after-nav" "document-opened" "focus-changed"))
-(for ([p (in-list signal-points)])
+(check-equal? (sort (map symbol->string standard-signal-points) string<?)
+              '("after-edit" "after-nav" "document-opened" "focus-changed"
+                "job-done" "tick"))
+(for ([p (in-list standard-signal-points)])
   (check-true (known-signal-point? p)))
 (check-false (known-signal-point? 'after-faces))
 

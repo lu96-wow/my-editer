@@ -63,7 +63,7 @@
 
 (define (active-member reg)
   (for/first ([m (in-list (region-members reg))]
-              #:when (equal? (member-key m) (region-active reg)))
+              #:when (equal? (region-member-key m) (region-active reg)))
     m))
 
 ;; → (values panels chrome-entries view-placements)
@@ -86,8 +86,8 @@
     (define r (region-panel-rect rp))
     (define c (region-panel-content rp))
     (cond
-      [(and m (view-member? m))
-       (define vid (member-key m))
+      [(and m (view-region-member? m))
+       (define vid (region-member-key m))
        (define v (engine-view-object engine vid))
        (when v
          (set! placements (cons (list vid c) placements)))
@@ -97,8 +97,8 @@
                                #:face (if focused? 'focused-border 'window-border)
                                #:weight (if focused? 1 0))
                    panels))]
-      [(and m (chrome-member? m))
-       (define line (chrome-line state ev (member-key m) status-parts))
+      [(and m (chrome-region-member? m))
+       (define line (chrome-line state ev (region-member-key m) status-parts))
        (set! chromes (cons (chrome-entry rid line c) chromes))
        (set! panels (cons (make-panel #f r borders) panels))]
       [else
