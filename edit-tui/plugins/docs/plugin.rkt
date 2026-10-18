@@ -224,7 +224,7 @@
                    ""
                    (format "  (原 ~a)" (cadr binding))))))
 
-(define (docs-lines name local std binding [builtin #f])
+(define (docs-lines name local std binding [builtin #f] [pending? #f])
   (define doc-text (or std builtin))
   (append
    (list name)
@@ -232,6 +232,7 @@
    (if local (list "── 本地定义 ──" local) '())
    (cond
      [doc-text (cons (if local "── 文档 ──" "") (string-split (string-trim doc-text) "\n"))]
+     [pending? (list "(查询中…)")]
      [(not local) (list "(无本地文档)"
                         (format "在线: ~a" (online-docs name)))]
      [else '()])))
@@ -239,13 +240,13 @@
 (define (docs-text d)
   (string-join (docs-lines (hash-ref d 'name) (hash-ref d 'local #f)
                            (hash-ref d 'std #f) (hash-ref d 'binding #f)
-                           (hash-ref d 'builtin #f))
+                           (hash-ref d 'builtin #f) (hash-ref d 'pending #f))
                "\n"))
 
 (define (docs-fills d)
   (define lines (docs-lines (hash-ref d 'name) (hash-ref d 'local #f)
                             (hash-ref d 'std #f) (hash-ref d 'binding #f)
-                            (hash-ref d 'builtin #f)))
+                            (hash-ref d 'builtin #f) (hash-ref d 'pending #f)))
   (for/list ([l (in-list lines)] [i (in-naturals)])
     (list i 0 i (string-length l)
           (cond [(zero? i) 'docs]
@@ -327,24 +328,27 @@
         (define pending (pending? state key))
         (define local-module? (hash-ref ctx* 'local-module? #f))
         (define d (hash 'name ident 'orig orig 'local local 'std cached
-                        'builtin builtin
+                        'builtin builtin 'pending pending
                         'binding (hash-ref ctx* 'binding #f)
                         'key key 'target vid))
         (cond
           ;; 没有任何本地/内置文档，也没有缓存：先查询，成功后自动打开。
           ;; 本地模块的 xref 不可用：直接显示内存里的定义（或明确说无文档）。
           [(and (not local) (not builtin) (not cached?))
+           (define d* (if local-module? d (hash-set d 'pending #t)))
+           (define s1 (state-chrome* state
+                                     (λ (c)
+                                       (if local-module?
+                                           (chrome-set-message c (format "docs: no docs for ~a" ident))
+                                           (chrome-set-message c (format "docs: querying ~a…" ident))))))
+           (define t1 (write-docs (set-docs-state (show-docs s1 ident) d*) d*))
            (cond
-             [pending
-              (transition-pure (state-chrome* state
-                                              (λ (c) (chrome-set-message c (format "docs: querying ~a…" ident)))))]
-             [local-module?
-              (write-docs (show-docs state ident) d)]
+             [local-module? t1]
+             [pending (transition (transition-state t1) (transition-effects t1))]
              [else
-              (define s1 (state-chrome* state
-                                        (λ (c) (chrome-set-message c (format "docs: querying ~a…" ident)))))
-              (transition-bind (submit-doc-job s1 key orig (hash-ref ctx* 'mods))
-                               (λ (s2) (transition-pure (set-docs-state s2 d))))])]
+              (transition-bind t1
+                               (λ (s2)
+                                 (submit-doc-job s2 key orig (hash-ref ctx* 'mods))))])]
           [else
            (define s1 (set-docs-state (show-docs state ident) d))
            (define s2 (write-docs s1 d))
@@ -405,7 +409,8 @@
      (define d (docs-state s3))
      (cond
        [(and d (equal? (hash-ref d 'key #f) key))
-        (define d* (hash-set d 'std (and (string? result) result)))
+        (define d* (hash-set (hash-set d 'std (and (string? result) result))
+                             'pending #f))
         (define s4 (set-docs-state s3 d*))
         (cond
           [(string? result)
@@ -413,11 +418,12 @@
           [(or (hash-ref d* 'local #f) (hash-ref d* 'builtin #f))
            (write-docs s4 d*)]
           [else
-           (transition-pure
+           (write-docs
             (state-chrome* s4
                            (λ (c) (chrome-set-message c
                                                       (format "docs: no docs for ~a"
-                                                              (hash-ref d* 'name))))))])]
+                                                              (hash-ref d* 'name)))))
+            d*)])]
        [else (transition-pure s3)])]))
 
 

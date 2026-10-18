@@ -187,7 +187,7 @@ docs        <-- 面板开着时更新；不自动改布局
 | 文档跟随 | 补全选中项变化时自动打开 docs 面板并显示该候选；菜单关闭时只自动收起“由补全打开”的面板（`store['docs].auto?`），手动 C-c h 打开的不动 |
 | 补全 job | `completion-exports` 结果按 key 缓存；本地池先开菜单，`job-done` 回来后并入当前菜单的 pool（不阻塞输入） |
 | 自动弹出 | `after-edit` 且本次**插入了文本**、光标前词非空、焦点在非 internal 文档时就开（1 个字符也开）；接受候选后用 `suppress-auto?` 抑制自身 replace-range 触发的重开 |
-| 文档 job | `doc` 结果按 key 缓存；unknown 首次查询成功后自动打开；worker 失败时保留 builtin 文档兜底 |
+| 文档 job | `doc` 结果按 key 缓存；选中项先立即显示名字 / 本地定义 / `(查询中…)`，worker 回来再替换；失败时保留 builtin 或清成“无本地文档” |
 | 词的定义 | 补全前缀 / 文档查询都走 `plugins/lang/word.rkt` 的 `word-before`（Racket 词字符与 `highlight/lex.rkt` 同一份） |
 | 定义扫描 | 补全 / 文档共用 `plugins/lang/source.rkt` 的 `def-names`；覆盖 `define/contract`、`define-values`、`define-syntax(es)`、`struct` 访问器 / setter 等，避免两边各漏一边 |
 | 本地标识符 | 补全的本地词与词高亮 / 当前词高亮共用 `plugins/lang/word.rkt` 的 `line-tokens`（`let` 绑定、lambda 参数、普通变量都在候选里） |

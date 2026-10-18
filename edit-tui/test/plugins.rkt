@@ -256,6 +256,21 @@
   (check-true (docs-open? s1))
   (check-true (string-contains? (docs-text* engine s1) "define")))
 
+;; 补全移动选中项时，docs 面板同步切换到该候选的文档
+(let-values ([(engine s0) (make-world)])
+  (define s1 (feed engine s0 (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'home))
+                   (app:key-event (key 'down)) (app:key-event (key 'home))
+                   (app:key-event (key 'end))))
+  (define s2 (feed engine s1 (plain #\s) (plain #\q) (plain #\u)))
+  (check-true (popup-open? s2))
+  (check-true (docs-open? s2))
+  (check-true (string-contains? (docs-text* engine s2) "(define (square x)"))
+  (define s3 (feed engine s2 (app:key-event (key 'down))))
+  (check-equal? (popup-sel engine s3) 1)
+  (check-true (docs-open? s3))
+  (check-true (string-contains? (docs-text* engine s3) "(define (square-two y)")))
+
 ;; 本地标识符（let 绑定 / 参数等）也在候选里：与词高亮走同一份 line-tokens
 (let-values ([(engine s0)
               (make-world
