@@ -1,0 +1,139 @@
+#lang racket
+
+;;; chrome/slot.rkt —— 安装共享 chrome 槽：status bar + input bar（core buffer）
+;;; layer  : chrome
+;;; effect : **IO**：安装 status/input 两个 core view，并每帧写 status buffer
+
+;;; 两个成员都是真正的 core view（buffer 支撑），放在同一个 region：
+;;;   status-view : mode 'status，只读投影
+;;;   input-view  : mode 'input，编辑输入
+;;; active 决定当前显示哪个；输入结束切回 status。
+;;;
+;;; 本模块只负责“安装 / 切换显示”，不负责 prompt 逻辑。
+
+(provide install-chrome!
+         chrome-show-input chrome-show-status
+         chrome-status-view chrome-input-view
+         chrome-show-view
+         input-view input-show input-finish input-read-text input-write-prompt
+         sync-chrome!)
+
+(require "../base/id.rkt"
+         "../base/effect.rkt"
+         "../base/transition.rkt"
+         "../model/state.rkt"
+         "../model/workspace.rkt"
+         "../model/chrome.rkt"
+         "../effects/engine.rkt"
+         "../projection/status.rkt"
+         "../effects/panel.rkt")
+
+;; 一个 region、两个成员：active 决定显示 status 还是 input。
+;; 装配动作复用 effects/panel.rkt；这里只额外记 chrome-slot 元数据。
+(define (install-chrome! engine state region-id #:status-mode [status-mode 'status])
+  (define-values (s1 status-vid)
+    (panel-create-view! engine state #:name "*status*" #:mode status-mode))
+  (define-values (s2 input-vid)
+    (panel-create-view! engine s1 #:name "*input*" #:mode 'input))
+  ;; 两个成员、一个位置：active 决定显示 status 还是 input。
+  ;; 切换由框架（chrome-show-input / chrome-show-status）驱动；
+  ;; role 'slot 的 switch? = #f，所以 Tab 不会把状态栏换成输入栏。
+  (define s3
+    (panel-region-install! s2 region-id
+                           #:role 'slot
+                           #:members (list (view-member status-vid)
+                                           (view-member input-vid))
+                           #:active status-vid))
+  (state-chrome* s3
+                 (λ (c)
+                   (chrome-set-slot c (make-chrome-slot region-id status-vid input-vid)))))
+
+(define (chrome-slot* state)
+  (chrome-slot-info (state-chrome state)))
+
+(define (chrome-status-view state)
+  (define s (chrome-slot* state))
+  (and s (chrome-slot-status-view s)))
+
+(define (chrome-input-view state)
+  (define s (chrome-slot* state))
+  (and s (chrome-slot-input-view s)))
+
+(define (chrome-show-view state view-id)
+  (define s (chrome-slot* state))
+  (if (not s)
+      state
+      (state-workspace*
+       state
+       (λ (ws)
+         (define reg (workspace-region ws (chrome-slot-region s)))
+         (if reg
+             (workspace-add-region ws (chrome-slot-region s)
+                                   (struct-copy region reg [active view-id]))
+             ws)))))
+
+(define (chrome-show-input state)
+  (define v (chrome-input-view state))
+  (if v (chrome-show-view state v) state))
+
+(define (chrome-show-status state)
+  (define v (chrome-status-view state))
+  (if v (chrome-show-view state v) state))
+
+
+;;; ════════════════ input document ════════════════
+;;;
+;;; 输入栏 = *input* document 的 buffer：
+;;;   · prompt 前缀写进 buffer，并用 readonly range 保护；
+;;;   · 输入文本就是 buffer 里前缀之后的内容；
+;;;   · 提交时读完整 buffer 字符串，交给 input-command 匹配。
+
+(define (input-view state) (chrome-input-view state))
+
+;; 切到 input 栏，写入 prompt（前缀只读），焦点移到 input view。
+(define (input-show state prompt)
+  (define vid (input-view state))
+  (cond
+    [(not vid) (transition-pure state)]
+    [else
+     (define s1 (state-set-focus (chrome-show-input state) vid))
+     (transition s1 (list (set-input-prompt-effect vid prompt)))]))
+
+;; 结束输入：切回 status，恢复进入前的焦点。
+(define (input-finish state)
+  (define input-focused? (equal? (state-focus state) (input-view state)))
+  (define s1 (chrome-show-status state))
+  (if input-focused?
+      (state-workspace* s1 (λ (ws) (workspace-pop-focus ws)))
+      s1))
+
+;; 输入栏完整字符串（含 prompt 前缀）。
+(define (input-read-text state ev)
+  (define vid (input-view state))
+  (and vid (engine-view-view-text ev vid)))
+
+;; 只改 prompt / 输入内容（输入过程中切换下一个确认项时用）。
+(define (input-write-prompt state prompt)
+  (define vid (input-view state))
+  (if vid
+      (transition state (list (set-input-prompt-effect vid prompt)))
+      (transition-pure state)))
+
+;;; ════════════════ status buffer 同步 ════════════════
+
+;; 在渲染前把 status-line 写进 status view 的 buffer。
+;; 只写 status view；input view 由 prompt 自己管。
+(define (sync-chrome! state engine status-parts)
+  (define sv (chrome-status-view state))
+  (when sv
+    (define ev (make-engine-view engine))
+    (define ws (state-workspace state))
+    (define did (workspace-doc-of-view ws sv))
+    (define dm (and did (workspace-doc ws did)))
+    (define text (if (and dm (eq? (doc-meta-mode dm) 'state))
+                     (state-line state ev)
+                     (status-line state ev status-parts)))
+    (define cur (or (engine-view-view-text ev sv) ""))
+    (unless (string=? text cur)
+      (engine-set-view-text! engine sv text)))
+  (void))
