@@ -5,9 +5,9 @@
 
 ## `base/effect.rkt`
 
-**structs**: `edit-effect`:70, `insert-text-effect`:71, `set-text-effect`:72, `set-input-prompt-effect`:73, `set-face-layer-effect`:80, `replace-range-effect`:82, `ensure-view-effect`:84, `submit-service-effect`:91, `query-effect`:94, `select-effect`:95, `scroll-effect`:96, `nav-effect`:97, `undo-effect`:98, `redo-effect`:99, `open-doc-effect`:100, `open-view-effect`:101, `close-view-effect`:102, `close-doc-effect`:103, `save-doc-effect`:104, `read-file-effect`:105, `write-file-effect`:106, `make-directory-effect`:107, `delete-file-effect`:108, `spawn-effect`:109, `timer-effect`:110, `emit-effect`:111, `quit-effect`:112
+**structs**: `continuation`:74, `edit-effect`:81, `insert-text-effect`:82, `set-text-effect`:83, `set-input-prompt-effect`:84, `set-face-layer-effect`:91, `replace-range-effect`:93, `ensure-view-effect`:95, `submit-service-effect`:102, `query-effect`:105, `select-effect`:106, `scroll-effect`:107, `nav-effect`:108, `undo-effect`:109, `redo-effect`:110, `open-doc-effect`:111, `open-view-effect`:112, `close-view-effect`:113, `close-doc-effect`:114, `save-doc-effect`:115, `read-file-effect`:116, `write-file-effect`:117, `make-directory-effect`:118, `delete-file-effect`:119, `spawn-effect`:120, `timer-effect`:121, `emit-effect`:122, `quit-effect`:123
 
-**definitions**: `effect?`:114, `effect-kind`:127
+**definitions**: `make-continuation`:76, `effect?`:125, `effect-kind`:138
 
 ## `base/event.rkt`
 
@@ -57,7 +57,7 @@
 
 ## `bootstrap/commands/document.rkt`
 
-**definitions**: `confirm-cancel-state`:57, `confirm-cancel`:60, `mount-opened-document`:64, `open-file-from-path`:71, `open-file-prompt-command`:95, `close-doc-action*`:99, `doc-dirty?`:104, `saveable-doc?`:111, `dirty-docs`:114, `doc-label`:120, `save-confirm-label`:124, `close-doc-action`:127, `confirm-current-doc`:148, `save-confirm-show`:156, `save-confirm-show-state`:162, `save-confirm-start`:168, `confirm-next`:181, `confirm-finish`:195, `confirm-save-current`:206, `save-docs-then`:231, `input-submit-command`:263, `input-cancel-command`:279, `handle-save-answer`:283, `save-doc-to-path`:304, `save-current-command`:330, `default-input-commands`:355, `request-quit-command`:379, `request-close-doc`:388, `request-close-file-command`:397, `close-file-command`:406
+**definitions**: `confirm-cancel-state`:58, `confirm-cancel`:61, `mount-opened-document`:65, `open-file-from-path`:72, `open-file-prompt-command`:96, `close-doc-action*`:100, `doc-dirty?`:105, `saveable-doc?`:112, `dirty-docs`:115, `doc-label`:121, `save-confirm-label`:125, `close-doc-action`:128, `confirm-current-doc`:149, `save-confirm-show`:157, `save-confirm-show-state`:163, `save-confirm-start`:169, `confirm-next`:182, `confirm-finish`:196, `confirm-save-current`:207, `save-docs-then`:225, `save-continuation-handlers`:249, `input-submit-command`:290, `input-cancel-command`:306, `handle-save-answer`:310, `save-doc-to-path`:331, `save-current-command`:347, `default-input-commands`:368, `request-quit-command`:392, `request-close-doc`:401, `request-close-file-command`:410, `close-file-command`:419
 
 ## `bootstrap/commands/edit.rkt`
 
@@ -85,7 +85,7 @@
 
 ## `bootstrap/commands/util.rkt`
 
-**definitions**: `message`:37, `view-subject`:41, `region-subject`:47, `input-busy?`:55, `frame-area`:57, `notice-state-value`:60, `notice-state`:63, `real-view?`:68, `fallback-attached-view`:72
+**definitions**: `message`:40, `view-subject`:44, `region-subject`:50, `input-busy?`:58, `frame-area`:60, `notice-state-value`:63, `notice-state`:66, `notice-result-handler`:70, `notice-result-continuation`:73, `real-view?`:78, `fallback-attached-view`:82
 
 ## `bootstrap/commands/view.rkt`
 
@@ -93,7 +93,7 @@
 
 ## `bootstrap/defaults.rkt`
 
-**definitions**: `text-keys`:42, `pointer-keys`:56, `nav-keys`:62, `input-keys`:72, `core-global-keys`:84, `core-env`:112
+**definitions**: `text-keys`:43, `pointer-keys`:57, `nav-keys`:63, `input-keys`:73, `core-global-keys`:85, `core-env`:113
 
 ## `bootstrap/panel.rkt`
 
@@ -171,7 +171,7 @@
 
 ## `effects/interpreter.rkt`
 
-**definitions**: `runtime-effect?`:43, `interpret-effect!`:49, `interpret-replace-range!`:145, `edit-write?`:160, `effect-doc`:166, `interpret-open-doc!`:178, `interpret-open-view!`:204, `interpret-save-doc!`:218, `interpret-effects!`:252, `interpret-effect-tree!`:258
+**definitions**: `runtime-effect?`:43, `apply-continuation`:52, `interpret-effect!`:67, `interpret-replace-range!`:163, `edit-write?`:178, `effect-doc`:184, `interpret-open-doc!`:196, `interpret-open-view!`:220, `interpret-save-doc!`:234, `interpret-effects!`:268, `interpret-effect-tree!`:274
 
 ## `effects/paint.rkt`
 
@@ -199,15 +199,15 @@
 
 ## `env/environment.rkt`
 
-**structs**: `environment`:83
+**structs**: `environment`:86
 
-**definitions**: `environment-empty`:106, `make-environment`:109, `environment-role`:132, `environment-mode`:135, `environment-command`:138, `environment-keymap`:141, `environment-doc-type`:144, `environment-doc-type-for-path`:147, `environment-mode-keymaps`:153, `environment-add-role`:158, `environment-add-mode`:162, `environment-add-scope`:166, `environment-add-command`:170, `environment-add-keymap`:175, `environment-add-rule`:181, `environment-add-status-part`:184, `environment-add-status-parts`:188, `environment-add-doc-type`:194, `environment-add-input-command`:198, `environment-add-panel-sync`:202, `environment-add-panel-syncs`:207, `environment-add-hook`:211, `environment-add-hooks`:215, `environment-add-face-layer`:219, `environment-add-face-layers`:223, `environment-add-decor`:227, `environment-add-interaction`:231, `environment-interaction`:237, `environment-service`:240, `environment-service-kinds`:242, `environment-add-service`:245, `environment-add-decors`:252, `environment-merge`:256
+**definitions**: `environment-empty`:111, `make-environment`:114, `environment-role`:138, `environment-mode`:141, `environment-command`:144, `environment-keymap`:147, `environment-doc-type`:150, `environment-doc-type-for-path`:153, `environment-mode-keymaps`:159, `environment-add-role`:164, `environment-add-mode`:168, `environment-add-scope`:172, `environment-add-command`:176, `environment-add-keymap`:181, `environment-add-rule`:187, `environment-add-status-part`:190, `environment-add-status-parts`:194, `environment-add-doc-type`:200, `environment-add-input-command`:204, `environment-add-panel-sync`:208, `environment-add-panel-syncs`:213, `environment-add-hook`:217, `environment-add-hooks`:221, `environment-add-face-layer`:225, `environment-add-face-layers`:229, `environment-add-decor`:233, `environment-add-interaction`:237, `environment-interaction`:243, `environment-service`:246, `environment-service-kinds`:248, `environment-add-service`:251, `environment-continuation`:258, `environment-add-continuation`:261, `environment-add-decors`:269, `environment-merge`:273
 
 ## `env/extension.rkt`
 
-**structs**: `contribution`:77, `validation-error`:288
+**structs**: `contribution`:77, `validation-error`:296
 
-**definitions**: `contribution-kinds`:69, `contribution-kind?`:74, `make-contribution`:101, `environment-add-contribution`:111, `environment-add-contributions`:203, `environment-strip-contributions`:211, `environment-attach-contributions`:217, `environment->contributions`:228, `environment-remove-owner`:267, `environment-owner-contributions`:281, `err`:292, `keymap-leaf-values`:296, `check-keymap`:303, `check-unique-name`:310, `validate-environment`:319, `validate-environment!`:462, `environment-valid?`:474
+**definitions**: `contribution-kinds`:69, `contribution-kind?`:74, `make-contribution`:102, `environment-add-contribution`:112, `environment-add-contributions`:209, `environment-strip-contributions`:217, `environment-attach-contributions`:223, `environment->contributions`:234, `environment-remove-owner`:275, `environment-owner-contributions`:289, `err`:300, `keymap-leaf-values`:304, `check-keymap`:311, `check-unique-name`:318, `validate-environment`:327, `validate-environment!`:477, `environment-valid?`:489
 
 ## `env/hook.rkt`
 
@@ -335,7 +335,7 @@
 
 ## `plugins/filetree/commands.rkt`
 
-**definitions**: `message`:47, `notice-state`:51, `selected-line`:55, `selected-dir`:60, `doc-views`:69, `find-doc-by-path`:75, `ensure-editor-region`:83, `attach-and-focus`:107, `begin-open-placement`:116, `open-file-placement`:125, `filetree-min-size`:172, `toggle-filetree-command`:174, `filetree-enter-command`:197, `resolve-path`:214, `create-file-prompt-command`:218, `create-folder-prompt-command`:227, `delete-file-command`:236, `create-file-handler`:249, `delete-file-handler`:270, `create-folder-handler`:291, `filetree-input-commands`:312, `filetree-keys`:327, `nav-command`:340, `filetree-command-table`:347
+**definitions**: `message`:48, `notice-state`:52, `selected-line`:56, `selected-dir`:61, `doc-views`:70, `find-doc-by-path`:76, `ensure-editor-region`:84, `attach-and-focus`:108, `begin-open-placement`:117, `open-file-placement`:126, `filetree-min-size`:173, `toggle-filetree-command`:175, `filetree-enter-command`:198, `resolve-path`:215, `create-file-prompt-command`:219, `create-folder-prompt-command`:228, `delete-file-command`:237, `create-file-handler`:250, `delete-file-handler`:270, `create-folder-handler`:290, `filetree-input-commands`:310, `filetree-keys`:325, `nav-command`:338, `filetree-command-table`:345
 
 ## `plugins/filetree/lines.rkt`
 
@@ -489,7 +489,7 @@
 
 ## `runtime/run.rkt`
 
-**definitions**: `subject-for`:60, `ensure-doc-decors!`:85, `settle`:107, `process-events`:124, `drain-and-process`:136, `run-transition-effects`:147, `run-one-effect`:156, `inline-service-run`:200, `drain-channel`:208, `ensure-service-kinds!`:220, `startup!`:227, `state-frame-syncs`:257, `run-frame`:262, `run-app`:279
+**definitions**: `subject-for`:60, `ensure-doc-decors!`:85, `settle`:107, `process-events`:124, `drain-and-process`:136, `run-transition-effects`:147, `run-one-effect`:156, `inline-service-run`:201, `drain-channel`:209, `ensure-service-kinds!`:221, `startup!`:228, `state-frame-syncs`:258, `run-frame`:263, `run-app`:280
 
 ## `runtime/tui-adapter.rkt`
 

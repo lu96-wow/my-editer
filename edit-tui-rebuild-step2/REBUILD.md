@@ -31,7 +31,7 @@
 | 9 | `query-effect` + `service` 模块声明（取代插件里的 cache/pending/job 三件套） | ✅（`model/service.rkt` + `service-request` + `query-effect` + `env/service.rkt`） |
 | 10 | env provenance + `plugin-uninstall!` | ✅（env 撤销 + store + panel） |
 | 11 | `project-frame` 只用一次 + `layout-snapshot` | ✅（`render-frame*` + `geometry-snapshot`） |
-| 12 | effect 的 `k` → 数据 continuation | ⬜ |
+| 12 | effect 的 `k` → 数据 continuation | 🟡（基础设施 + save-doc / filetree IO 已迁移；read-file / open-doc / open-view 未迁） |
 
 ---
 

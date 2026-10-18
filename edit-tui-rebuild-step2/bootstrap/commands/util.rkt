@@ -17,6 +17,8 @@
 (provide message
          notice-state
          notice-state-value
+         notice-result-continuation
+         notice-result-handler
          view-subject
          region-subject
          input-busy?
@@ -26,6 +28,7 @@
 
 (require "../../base/id.rkt"
          "../../base/transition.rkt"
+         "../../base/effect.rkt"
          "../../model/state.rkt"
          "../../model/workspace.rkt"
          "../../model/chrome.rkt"
@@ -62,6 +65,13 @@
 
 (define (notice-state s text)
   (transition-pure (notice-state-value s text)))
+
+;; 通用结果通知 continuation：data = (success-msg . fail-msg)。
+(define (notice-result-handler state data ok?)
+  (notice-state state (if ok? (car data) (cdr data))))
+
+(define (notice-result-continuation success-msg fail-msg)
+  (make-continuation 'notice-result (cons success-msg fail-msg)))
 
 ;; “真实文档 view” = 不是 infrastructure 文档（状态栏 / 输入栏 / 插件面板）。
 ;; 这里直接看 doc-meta.internal?，不依赖 document.rkt 的 saveable-doc?（否则循环 require）。

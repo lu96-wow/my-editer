@@ -26,6 +26,7 @@
          input-submit-command
          input-cancel-command
          confirm-cancel
+         save-continuation-handlers
          default-input-commands
          saveable-doc?
          dirty-docs)
@@ -218,14 +219,7 @@
      (transition state
                  (list (save-doc-effect
                         did
-                        (λ (s ok?)
-                          (if ok?
-                              (confirm-next s)
-                              (save-confirm-show-state
-                               (notice-state-value
-                                s (format "save failed: ~a"
-                                          (or (doc-label s did) did)))
-                               did))))))]))
+                        (make-continuation 'save-confirm did))))]))
 
 ;; 保存当前 + 后面所有 dirty docs，然后执行 action。
 (define (save-docs-then state docs [offset 0])
@@ -249,14 +243,47 @@
         (transition state
                     (list (save-doc-effect
                            did
-                           (λ (s ok?)
-                             (if ok?
-                                 (save-docs-then s (cdr docs) (add1 offset))
-                                 (save-confirm-show-state
-                                  (notice-state-value
-                                   s (format "save failed: ~a"
-                                             (or (doc-label s did) did)))
-                                  did))))))])]))
+                           (make-continuation 'save-docs-then (cons docs offset)))))])]))
+
+;;; save-doc 的数据 continuation handlers（注册在 core-env）。
+(define (save-continuation-handlers)
+  (hash
+   'save-current
+   (λ (s path ok?)
+     (if ok?
+         (notice-state s (format "saved: ~a" path))
+         (notice-state s (format "save failed: ~a" path))))
+   'save-as
+   (λ (s path ok?)
+     (cond
+       [(not ok?)
+        (input-show-state
+         (notice-state-value s (format "save failed: ~a" path))
+         "Save as: "
+         #:tag 'save-as
+         #:data path
+         #:cancel confirm-cancel-state)]
+       [(state-confirm s) (confirm-next s)]
+       [else (notice-state s (format "saved: ~a" path))]))
+   'save-confirm
+   (λ (s did ok?)
+     (if ok?
+         (confirm-next s)
+         (save-confirm-show-state
+          (notice-state-value
+           s (format "save failed: ~a" (or (doc-label s did) did)))
+          did)))
+   'save-docs-then
+   (λ (s data ok?)
+     (define docs (car data))
+     (define offset (cdr data))
+     (define did (car docs))
+     (if ok?
+         (save-docs-then s (cdr docs) (add1 offset))
+         (save-confirm-show-state
+          (notice-state-value
+           s (format "save failed: ~a" (or (doc-label s did) did)))
+          did)))))
 
 ;; ════════════════ 输入栏提交 ════════════════
 
@@ -315,17 +342,7 @@
      (transition s1
                  (list (save-doc-effect
                         did
-                        (λ (s ok?)
-                          (cond
-                            [(not ok?)
-                             (input-show-state
-                              (notice-state-value s (format "save failed: ~a" path))
-                              "Save as: "
-                              #:tag 'save-as
-                              #:data path
-                              #:cancel confirm-cancel-state)]
-                            [(state-confirm s) (confirm-next s)]
-                            [else (notice-state s (format "saved: ~a" path))])))))]))
+                        (make-continuation 'save-as path))))]))
 
 (define (save-current-command)
   (cmd (λ (ctx)
@@ -339,18 +356,14 @@
            [(input-busy? ctx) (message ctx "save: input active")]
            [(not did) (message ctx "save: no document")]
            [(not path) (input-show ctx "Save as: "
-                                  #:tag 'save-as
-                                  #:cancel confirm-cancel-state)]
+                                   #:tag 'save-as
+                                   #:cancel confirm-cancel-state)]
            [else
             (transition
              s
              (list (save-doc-effect
                     did
-                    (λ (s* ok?)
-                      (if ok?
-                          (notice-state s* (format "saved: ~a" path))
-                          (notice-state s* (format "save failed: ~a" path)))))))]))))
-
+                    (make-continuation 'save-current path))))]))))
 ;; 输入栏默认命令：open-file / save-confirm / save-as。
 (define (default-input-commands)
   (list

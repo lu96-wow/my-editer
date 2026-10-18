@@ -51,7 +51,7 @@ model/         纯状态（只依赖 base）
   interaction.rkt 进行中的交互栈（input / placement / confirm）
 env/           纯策略（只依赖 base + model）
   environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
-                  input-command/panel-sync/hook/decor/interaction
+                  input-command/panel-sync/hook/decor/interaction/service/continuation
   role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
   mode.rkt        document 模式 -> keymaps / fallback
   scope.rkt       scope 谓词

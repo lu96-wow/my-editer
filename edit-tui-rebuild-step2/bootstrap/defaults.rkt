@@ -37,6 +37,7 @@
          "commands/table.rkt"
          "commands/document.rkt"
          "commands/placement.rkt"
+         (only-in "commands/util.rkt" notice-result-handler)
          "../chrome/input.rkt")
 
 (define text-keys
@@ -129,6 +130,8 @@
     #:rules (list (make-rule 'placing placement-keys))
     #:keymaps (hash 'global core-global-keys)
     #:input-commands (default-input-commands)
+    #:continuations (hash-set (save-continuation-handlers)
+                              'notice-result notice-result-handler)
     #:interactions (hash 'input (λ (ctx _data) (transition-pure (input-cancel ctx)))
                          'placement (λ (ctx _data) (placement-cancel ctx))
                          'confirm (λ (ctx _data) (confirm-cancel ctx))

@@ -197,3 +197,22 @@
 (check-false (runtime-quit? (state-runtime (transition-state t-batch))))
 
 (displayln "edit-tui effects: ok")
+
+;;; ════════════════ data continuation ════════════════
+
+(define eng5 (make-engine))
+(define s6 (state-empty))
+(define spec5 (make-open-doc-spec "cont" "x"))
+(define cont (make-continuation 'test-open 'payload))
+(define t-cont
+  (interpret-effect! eng5 s6
+                     (open-doc-effect* spec5 cont)
+                     #:continuations
+                     (hash 'test-open
+                           (λ (st data did vid)
+                             (transition-pure
+                              (plugin-state-set st 'cont (list data did vid)))))))
+(check-equal? (plugin-state (transition-state t-cont) 'cont)
+              (list 'payload (doc-id 1) (view-id 1)))
+
+(displayln "edit-tui effects: ok")

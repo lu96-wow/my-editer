@@ -107,7 +107,7 @@
 (define (settle env engine inbox t #:worker [worker #f])
   (let loop ([t t] [round 0])
     ;; 1. 解释 effect（会 emit 信号，engine 已经落盘）
-    (define t1 (run-transition-effects engine t inbox #:worker worker))
+    (define t1 (run-transition-effects env engine t inbox #:worker worker))
     ;; 新文档：在 hook 跑之前挂上 decor（open 整篇 + 写回 face）。
     (ensure-doc-decors! env engine (transition-state t1))
     ;; 2. 这批 effect 已经消费掉，清空再跑 hook（否则下一轮会重复执行）
@@ -144,16 +144,16 @@
 
 ;;; ════════════════ effect 解释 ════════════════
 
-(define (run-transition-effects engine t inbox #:worker [worker #f])
+(define (run-transition-effects env engine t inbox #:worker [worker #f])
   (for/fold ([t2 (transition-pure (transition-state t))])
             ([e (in-list (transition-effects t))])
     (transition-bind t2
                      (λ (s)
-                       (define t1 (run-one-effect engine s e inbox #:worker worker))
+                       (define t1 (run-one-effect env engine s e inbox #:worker worker))
                        ;; effect 解释时可能产生新 effect（read-file -> open-doc），递归跑完。
-                       (run-transition-effects engine t1 inbox #:worker worker)))))
+                       (run-transition-effects env engine t1 inbox #:worker worker)))))
 
-(define (run-one-effect engine state effect inbox #:worker [worker #f])
+(define (run-one-effect env engine state effect inbox #:worker [worker #f])
   (cond
     ;; 纯计算交给后台（独立进程）；结果以 job-done 信号回来。
     ;; 没有 worker（place 起不来）→ 同步内联，语义相同、只是不换进程。
@@ -192,7 +192,8 @@
      (async-channel-put inbox (emit-effect-event effect))
      (transition-pure state)]
 
-    [else (interpret-effect! engine state effect)]))
+    [else (interpret-effect! engine state effect
+                              #:continuations (environment-continuations env))]))
 
 ;;; ════════════════ 后台服务（无 worker 时的同步降级） ════════════════
 

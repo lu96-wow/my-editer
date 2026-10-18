@@ -38,7 +38,9 @@
 ;;; 暂定：open-doc / read-file 的 k 是过程。效果是运行时值，不属于 State；
 ;;; 若以后要“效果日志可序列化”，把 k 换成 command-id + args，由 env 查表。
 
-(provide (struct-out edit-effect)
+(provide (struct-out continuation)
+         make-continuation
+         (struct-out edit-effect)
          (struct-out insert-text-effect)
          (struct-out set-text-effect)
          (struct-out set-input-prompt-effect)
@@ -66,6 +68,15 @@
          (struct-out emit-effect)
          (struct-out quit-effect)
          effect? effect-kind)
+
+;; 数据 continuation：effect 里不再必须夹带闭包。
+;; tag -> handler 注册在 environment.continuations；handler : (state data . results -> transition)。
+(struct continuation (tag data) #:transparent)
+
+(define (make-continuation tag data)
+  (unless (symbol? tag)
+    (error 'make-continuation "tag 要是 symbol：~a" tag))
+  (continuation tag data))
 
 (struct edit-effect   (view op)        #:transparent)
 (struct insert-text-effect (view text) #:transparent)

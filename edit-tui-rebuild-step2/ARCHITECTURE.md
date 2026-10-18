@@ -225,6 +225,8 @@ command ──▶ transition{state+effects}
   completion / docs 不再各写一套；
 - `environment.interactions` 按 kind 注册取消函数；`model/interaction.rkt` 的栈条目只存数据；
 - `env/service.rkt` 声明 worker service kind；`startup!` 校验它们存在于 `plugins/worker.rkt` 的 `service-kinds`；
+- effect 的 `k` 支持数据 continuation：`continuation{tag,data}` + `environment.continuations`
+  的 handler；旧的过程 `k` 仍兼容（save-doc / filetree IO 已迁移）；
 - `plugins-env` / `plugins-apply` 在装配末尾跑 `validate-environment!`：
   keymap 叶子必须是已注册命令、rule scope 必须已注册、decor layer 必须已声明且唯一、
   panel mode / role 必须已注册；

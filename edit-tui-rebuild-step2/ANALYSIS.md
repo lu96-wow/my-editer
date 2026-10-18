@@ -22,7 +22,8 @@
 > `panel-spec.placement` 让共享 sidebar 的新面板可以不抢 active；
 > `toggle-region!` 收掉了 filetree 自己的显隐 / 尺寸记忆 / 焦点回退；
 > `cancel-current` 用 `state.interactions` 的 LIFO 栈统一取消 input / pending /
-> placement / confirm，取消函数注册在 `environment.interactions`。
+> placement / confirm，取消函数注册在 `environment.interactions`；
+> effect `k` 支持数据 continuation（save-doc / filetree IO 已迁移）。
 > 执行器没有改；详见 [`STEP2.md`](STEP2.md)。
 
 ---

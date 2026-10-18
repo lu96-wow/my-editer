@@ -42,7 +42,8 @@
          "../../chrome/input.rkt"
          "../../dispatch/context.rkt"
          "../../bootstrap/commands/layout.rkt"
-         (only-in "../../bootstrap/commands/placement.rkt" set-placement))
+         (only-in "../../bootstrap/commands/placement.rkt" set-placement)
+         (only-in "../../bootstrap/commands/util.rkt" notice-result-continuation))
 
 (define (message ctx text)
   (transition-pure
@@ -262,10 +263,9 @@
         (transition s
                     (list (write-file-effect
                            path ""
-                           (λ (s2 ok?)
-                             (if ok?
-                                 (notice-state s2 (format "created: ~a" path))
-                                 (notice-state s2 (format "create failed: ~a" path)))))))] )]))
+                           (notice-result-continuation
+                            (format "created: ~a" path)
+                            (format "create failed: ~a" path)))))] )]))
 
 (define (delete-file-handler ctx matched)
   (define path (cadr matched))
@@ -276,10 +276,9 @@
      (transition s
                  (list (delete-file-effect
                         path
-                        (λ (s2 ok?)
-                          (if ok?
-                              (notice-state s2 (format "deleted: ~a" path))
-                              (notice-state s2 (format "delete failed: ~a" path)))))))]
+                        (notice-result-continuation
+                         (format "deleted: ~a" path)
+                         (format "delete failed: ~a" path)))))]
     [(string=? answer "n")
      (notice-state s (format "cancelled: ~a" path))]
     [else
@@ -304,10 +303,9 @@
         (transition s
                     (list (make-directory-effect
                            path
-                           (λ (s2 ok?)
-                             (if ok?
-                                 (notice-state s2 (format "created: ~a" path))
-                                 (notice-state s2 (format "create failed: ~a" path)))))))] )]))
+                           (notice-result-continuation
+                            (format "created: ~a" path)
+                            (format "create failed: ~a" path)))))] )]))
 
 (define filetree-input-commands
   (list

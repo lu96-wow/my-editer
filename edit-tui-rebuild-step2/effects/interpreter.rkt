@@ -44,9 +44,27 @@
   (or (spawn-effect? e) (timer-effect? e) (emit-effect? e)
       (submit-service-effect? e) (query-effect? e)))
 
+;;; ════════════════ continuation ════════════════
+
+;; k 既可以是旧的 (state . results -> transition) 过程，也可以是数据 continuation。
+;; 数据 continuation 的 tag 在 environment.continuations 里查 handler：
+;;   handler : (state data . results -> transition)
+(define (apply-continuation k state results continuations)
+  (cond
+    [(not k) (transition-pure state)]
+    [(procedure? k) (apply k state results)]
+    [(continuation? k)
+     (define tag (continuation-tag k))
+     (define handler (and continuations (hash-ref continuations tag #f)))
+     (unless handler
+       (error 'interpret-effect! "没有注册 continuation：~a" tag))
+     (apply handler state (continuation-data k) results)]
+    [else
+     (error 'interpret-effect! "continuation 既不是过程也不是 continuation：~a" k)]))
+
 ;;; ════════════════ 单个 effect ════════════════
 
-(define (interpret-effect! engine state effect)
+(define (interpret-effect! engine state effect #:continuations [continuations #f])
   (cond
     [(engine-effect? effect)
      (define changes (engine-apply! engine effect))
@@ -74,10 +92,10 @@
      (transition-pure state)]
 
     [(open-doc-effect? effect)
-     (interpret-open-doc! engine state effect)]
+     (interpret-open-doc! engine state effect continuations)]
 
     [(open-view-effect? effect)
-     (interpret-open-view! engine state effect)]
+     (interpret-open-view! engine state effect continuations)]
 
     [(close-view-effect? effect)
      (define vid (close-view-effect-view effect))
@@ -92,14 +110,14 @@
                         (λ (ws) (workspace-remove-doc ws (close-doc-effect-doc effect)))))]
 
     [(save-doc-effect? effect)
-     (interpret-save-doc! engine state effect)]
+     (interpret-save-doc! engine state effect continuations)]
 
     [(read-file-effect? effect)
      (define path (read-file-effect-path effect))
      (define text
        (with-handlers ([exn:fail? (λ (_) #f)])
          (file->string path)))
-     ((read-file-effect-k effect) state text)]
+     (apply-continuation (read-file-effect-k effect) state (list text) continuations)]
 
     [(write-file-effect? effect)
      (define ok?
@@ -108,21 +126,21 @@
                           (write-file-effect-path effect)
                           #:exists 'truncate)
          #t))
-     ((write-file-effect-k effect) state ok?)]
+     (apply-continuation (write-file-effect-k effect) state (list ok?) continuations)]
 
     [(make-directory-effect? effect)
      (define ok?
        (with-handlers ([exn:fail? (λ (_) #f)])
          (make-directory* (make-directory-effect-path effect))
          #t))
-     ((make-directory-effect-k effect) state ok?)]
+     (apply-continuation (make-directory-effect-k effect) state (list ok?) continuations)]
 
     [(delete-file-effect? effect)
      (define ok?
        (with-handlers ([exn:fail? (λ (_) #f)])
          (delete-file (delete-file-effect-path effect))
          #t))
-     ((delete-file-effect-k effect) state ok?)]
+     (apply-continuation (delete-file-effect-k effect) state (list ok?) continuations)]
 
     [(quit-effect? effect) (transition-pure (state-mark-quit state))]
 
@@ -175,7 +193,7 @@
 
 ;;; ════════════════ open-doc ════════════════
 
-(define (interpret-open-doc! engine state effect)
+(define (interpret-open-doc! engine state effect continuations)
   (define spec (open-doc-effect-spec effect))
   (define k (open-doc-effect-k effect))
   (unless (open-doc-spec? spec)
@@ -195,13 +213,11 @@
   (define ws* (workspace-add-doc ws did dm))
   (define ws** (workspace-add-view ws* vid (view-meta did (hash))))
   (define s3 (state-emit (state-set-workspace s2 ws**) 'document-opened (list did)))
-  (if k
-      (k s3 did vid)
-      (transition-pure s3)))
+  (apply-continuation k s3 (list did vid) continuations))
 
 ;;; ════════════════ open-view ════════════════
 
-(define (interpret-open-view! engine state effect)
+(define (interpret-open-view! engine state effect continuations)
   (define did (open-view-effect-doc effect))
   (define k (open-view-effect-k effect))
   (unless (engine-doc-exists? engine did)
@@ -211,11 +227,11 @@
   (define ws (state-workspace s1))
   (define ws* (workspace-add-view ws vid (view-meta did (hash))))
   (define s2 (state-set-workspace s1 ws*))
-  (if k (k s2 vid) (transition-pure s2)))
+  (apply-continuation k s2 (list vid) continuations))
 
 ;;; ════════════════ save-doc ════════════════
 
-(define (interpret-save-doc! engine state effect)
+(define (interpret-save-doc! engine state effect continuations)
   (define did (save-doc-effect-doc effect))
   (define k (save-doc-effect-k effect))
   (define ws (state-workspace state))
@@ -245,16 +261,17 @@
                                   (struct-copy doc-meta dm* [saved-version start-version]))
                ws*)))
         state))
-  (if k (k state* ok?) (transition-pure state*)))
+  (apply-continuation k state* (list ok?) continuations))
 
 ;;; ════════════════ 批量 ════════════════
 
-(define (interpret-effects! engine state effects)
+(define (interpret-effects! engine state effects #:continuations [continuations #f])
   (for/fold ([t (transition-pure state)]) ([e (in-list effects)])
-    (transition-bind t (λ (s) (interpret-effect-tree! engine s e)))))
+    (transition-bind t (λ (s) (interpret-effect-tree! engine s e continuations)))))
 
 ;; 回调可以返回带 effect 的 transition（例如 read-file -> open-doc），
 ;; 这里递归解释新产生的 effects。
-(define (interpret-effect-tree! engine state effect)
-  (define t (interpret-effect! engine state effect))
-  (interpret-effects! engine (transition-state t) (transition-effects t)))
+(define (interpret-effect-tree! engine state effect continuations)
+  (define t (interpret-effect! engine state effect #:continuations continuations))
+  (interpret-effects! engine (transition-state t) (transition-effects t)
+                      #:continuations continuations))

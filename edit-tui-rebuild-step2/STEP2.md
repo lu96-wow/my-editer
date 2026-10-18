@@ -280,6 +280,38 @@ filetree 的 `C-b` 已经改成调用它；`store['filetree].width` 不再需要
 - input mode 的 `C-g` / `Esc` -> input-cancel；
 - completion popup mode 的 `C-g` / `Esc` -> close-popup。
 
+### 3.7.1 effect continuation 数据化（第一步）
+
+`base/effect.rkt`：
+
+```racket
+(struct continuation (tag data))
+(make-continuation tag data)
+```
+
+effect 的 `k` 现在可以是：
+
+- 旧的过程（兼容）；
+- `continuation` 数据；interpreter 按 tag 在
+  `environment.continuations` 里查 handler：
+  ```racket
+  handler : (state data . results -> transition)
+  ```
+
+已迁移：
+
+- `save-doc-effect`：
+  - `'save-current` / `'save-as` / `'save-confirm` / `'save-docs-then`
+  - handler 注册在 `core-env` 的 `save-continuation-handlers`；
+- filetree 的 `write-file-effect` / `make-directory-effect` / `delete-file-effect`
+  - 统一用 `'notice-result` + `notice-result-handler`。
+
+`runtime/run.rkt` 把 `environment.continuations` 传给 interpreter。
+`test/effects.rkt` 增加了一个纯数据 continuation 的直接用例。
+
+还没迁移：`read-file-effect`、`open-doc-effect`、`open-view-effect` 的 mount /
+open 回调仍是过程。
+
 ### 3.8 interaction 栈
 
 `model/interaction.rkt` + `state.interactions`：
@@ -366,6 +398,6 @@ bash test/run.sh   # 先 raco make，再逐个跑
 ## 7. 下一步（未做）
 
 - interaction 栈已收 input / pending / placement / confirm；`env.interactions` 已注册。
-- effect 的 `k` 数据化（`panel-spec` 的 `key / install / hint / placement` 已全部落地）。
+- effect 的 `k` 数据化：save-doc / filetree IO 已迁移；read-file / open-doc / open-view 仍是过程。
 - effect 的 `k` 数据化。
 - `layout-snapshot`（`project-frame` 已经一帧只调一次，快照还没做）。

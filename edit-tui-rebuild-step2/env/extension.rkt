@@ -69,7 +69,7 @@
 (define contribution-kinds
   '(status status-parts status-part
     command keymap rule mode scope role doc-type input-command
-    panel panel-sync hook decor face-layer interaction service))
+    panel panel-sync hook decor face-layer interaction service continuation))
 
 (define (contribution-kind? k)
   (and (memq k contribution-kinds) #t))
@@ -97,6 +97,7 @@
 ;;   face-layer     symbol
 ;;   interaction    (cons symbol handler)   handler : (ctx data -> transition)
 ;;   service        service-spec
+;;   continuation   (cons symbol handler)   handler : (state data . results -> transition)
 
 (define (make-contribution owner kind payload)
   (unless (symbol? owner)
@@ -194,6 +195,11 @@
        (unless (service-spec? p)
          (error 'environment-add-contribution "service payload 要是 service-spec：~a" p))
        (environment-add-service env p)]
+      [(continuation)
+       (unless (and (pair? p) (symbol? (car p)) (procedure? (cdr p)))
+         (error 'environment-add-contribution
+                "continuation payload 要是 (cons symbol handler)：~a" p))
+       (environment-add-continuation env (car p) (cdr p))]
       [else
        (error 'environment-add-contribution "未知 kind：~a" kind)]))
   (struct-copy environment env*
@@ -260,7 +266,9 @@
    (for/list ([(kind handler) (in-hash (environment-interactions env))])
      (mk 'interaction (cons kind handler)))
    (for/list ([spec (in-hash-values (environment-services env))])
-     (mk 'service spec))))
+     (mk 'service spec))
+   (for/list ([(tag handler) (in-hash (environment-continuations env))])
+     (mk 'continuation (cons tag handler)))))
 
 ;; 从 base 重建，去掉某 owner 的全部 contribution。
 ;; 要求 env 有 base 快照（plugins-env 会在第一个插件贡献前自动写）。
@@ -412,6 +420,13 @@
       (add! (err 'interactions "interaction kind 不是 symbol：~a" kind)))
     (unless (procedure? handler)
       (add! (err 'interactions "interaction ~a 的 handler 不是过程：~a" kind handler))))
+
+  ;; 11b.2 continuations：tag / handler
+  (for ([(tag handler) (in-hash (environment-continuations env))])
+    (unless (symbol? tag)
+      (add! (err 'continuations "continuation tag 不是 symbol：~a" tag)))
+    (unless (procedure? handler)
+      (add! (err 'continuations "continuation ~a 的 handler 不是过程：~a" tag handler))))
 
   ;; 11c. services：kind / description / pure?
   (for ([(kind spec) (in-hash (environment-services env))])
