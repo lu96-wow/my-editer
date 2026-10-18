@@ -184,12 +184,19 @@ docs        <-- 面板开着时更新；不自动改布局
 | 弹窗不抢焦点 | role = `'panel`；焦点始终在编辑器 |
 | `set-text-effect` 不发 after-edit | 否则弹窗写自己会触发自己的 after-edit / 关闭 |
 | 弹窗选中行 | 静态 `'completion` / `'complete-selected` 层；文本更新后要重发 face |
-| 文档跟随 | docs 只在面板已经打开时跟随；不会因为补全自动改布局 |
-| 补全 job | `completion-exports` 结果按 key 缓存；`job-done` 回来后才打开菜单 |
-| 文档 job | `doc` 结果按 key 缓存；unknown 首次查询成功后自动打开 |
+| 文档跟随 | 补全选中项变化时自动打开 docs 面板并显示该候选；菜单关闭时只自动收起“由补全打开”的面板（`store['docs].auto?`），手动 C-c h 打开的不动 |
+| 补全 job | `completion-exports` 结果按 key 缓存；本地池先开菜单，`job-done` 回来后并入当前菜单的 pool（不阻塞输入） |
+| 自动弹出 | `after-edit` 且本次**插入了文本**、光标前词非空、焦点在非 internal 文档时就开（1 个字符也开）；接受候选后用 `suppress-auto?` 抑制自身 replace-range 触发的重开 |
+| 文档 job | `doc` 结果按 key 缓存；unknown 首次查询成功后自动打开；worker 失败时保留 builtin 文档兜底 |
+| 词的定义 | 补全前缀 / 文档查询都走 `plugins/lang/word.rkt` 的 `word-before`（Racket 词字符与 `highlight/lex.rkt` 同一份） |
+| 定义扫描 | 补全 / 文档共用 `plugins/lang/source.rkt` 的 `def-names`；覆盖 `define/contract`、`define-values`、`define-syntax(es)`、`struct` 访问器 / setter 等，避免两边各漏一边 |
+| 本地标识符 | 补全的本地词与词高亮 / 当前词高亮共用 `plugins/lang/word.rkt` 的 `line-tokens`（`let` 绑定、lambda 参数、普通变量都在候选里） |
+| 本地模块来源 | `pool.rkt` 先看打开文档的当前 buffer（内存优先），没有再读磁盘模块；`file` spec 同样。open-map / module 查询的 key 统一走 `module-path-key`（绝对 + 消掉 `.` / `..`），否则 `a/../b.rkt` 会查不到内存文档 |
 
-补充：补全的 `filter-pool` **排除与 prefix 完全相同的候选**，避免 Enter 接受
-一个无变化的词；模块路径补全同样如此（要继续输入才能选中更具体路径）。
+补充：补全候选**包含与 prefix 完全相同的已知名字**（关键字 / 顶层定义 / require 导入名），
+所以输入完整 `define` 也能看到它；接受等于 prefix 的候选只关菜单、不发替换。
+当前文档里刚敲出的普通词不会进入自己的候选池（否则任意新词都会自弹）；
+其它打开文档的词仍可补全。
 
 ---
 

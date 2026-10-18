@@ -28,27 +28,15 @@
       one))
 
 ;; 顶层定义表单 → (listof (cons name snippet))。
+;; 名字集合由 source.rkt 的 def-names 统一给出（define/contract、struct 访问器、
+;; define-values 等与补全候选完全一致）。
 (define (def-snippets f)
   (cond
     [(not (pair? f)) '()]
     [else
      (define snip (form->string f))
-     (case (car f)
-       [(define define-syntax define-syntax-rule)
-        (define t (and (pair? (cdr f)) (cadr f)))
-        (cond
-          [(symbol? t) (list (cons t snip))]
-          [(and (pair? t) (symbol? (car t))) (list (cons (car t) snip))]
-          [else '()])]
-       [(define-values)
-        (define t (and (pair? (cdr f)) (cadr f)))
-        (cond
-          [(and (pair? t) (andmap symbol? t)) (for/list ([n (in-list t)]) (cons n snip))]
-          [else '()])]
-       [(struct struct* define-struct)
-        (define t (and (pair? (cdr f)) (cadr f)))
-        (if (symbol? t) (list (cons t snip)) '())]
-       [else '()])]))
+     (for/list ([n (in-list (def-names f))])
+       (cons n snip))]))
 
 ;; 源码文本 → (hash 名 -> 摘要)。
 (define (local-defs text)

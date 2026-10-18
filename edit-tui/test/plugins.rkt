@@ -6,7 +6,7 @@
 ;;;
 ;;;   1. 高亮：startup! 之后 document-face-at 能读到 keyword / string / comment / number 的 face；
 ;;;      编辑后（after-edit 信号）重新上色，且不把文档标脏；**非 .rkt 文件不上色**；
-;;;   2. 补全：C-c / 打开**文档浮层**（不改文本）；↑↓ 选；Enter 接受；Esc 取消；
+;;;   2. 补全：输入词前缀后**自动弹出文档浮层**（不改文本）；↑↓ 选；Enter 接受；Esc 取消；
 ;;;   3. 文档：C-c h 打开面板并写入标识符文档；after-nav 跟随光标刷新；
 ;;;      面板**不会自动收起**，只有 C-c h 再按一次才关。
 
@@ -90,8 +90,7 @@
   (transition-state (process-events editor-env engine (make-async-channel) s evs)))
 (define (plain c) (app:key-event (key c)))
 (define (ctrl c) (app:key-event (key c 'ctrl)))
-;; C-c 是前缀：C-c / 补全，C-c h 文档
-(define cl-slash (list (ctrl 'c) (app:key-event (key '/))))
+;; C-c h 文档（补全现在是输入后自动弹出，不再占用 C-c /）
 (define cl-h (list (ctrl 'c) (app:key-event (key 'h))))
 
 (define (buffer-of engine) (engine-doc-buffer engine did))
@@ -163,7 +162,7 @@
   (check-false (buffer-face-at (engine-doc-buffer engine did2) 1 1)   ; "define" 不上色
                "非 .rkt 文件不应高亮"))
 
-;;; ════════════════ 2. 补全（C-c / 弹窗 + 临时键表） ════════════════
+;;; ════════════════ 2. 补全（输入后自动弹窗 + 临时键表） ════════════════
 ;;
 ;; 注意：光标 / 文本在 engine 里（State 只存 id），所以用例必须**顺序**推进，
 ;; 不能拿旧的 state 再喂新事件。
@@ -179,56 +178,62 @@
                 "\n"))
 (define (popup-sel engine s)
   (engine-view-view-point-line (make-engine-view engine) (completion-popup-view s)))
+(define (docs-text* engine s)
+  (let ([dvid (docs-panel-view s)])
+    (and dvid (engine-view-view-text (make-engine-view engine) dvid))))
 
 (let-values ([(engine s0) (make-world)])
-  ;; 光标走 Home/End + Down 到第 3 行行尾，再输入前缀 "squ"
+  ;; 光标走 Home/End + Down 到第 3 行行尾
   (define s1 (feed engine s0 (app:key-event (key 'end))
                    (app:key-event (key 'down)) (app:key-event (key 'home))
                    (app:key-event (key 'down)) (app:key-event (key 'home))
                    (app:key-event (key 'end))))
-  (define s2 (feed engine s1 (plain #\s) (plain #\q) (plain #\u)))
-  (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
 
-  ;; C-c / ：开弹窗，**不改文本**，并把临时键表挂到 input.modes
-  (define s3 (apply feed engine s2 cl-slash))
-  (check-true (popup-open? s3))
-  (check-true (in-popup-mode? s3))
-  (check-equal? (popup-sel engine s3) 0)
-  (check-true (for/or ([l (in-list (popup-lines* engine s3))]) (string-contains? l "square")))
+  ;; 输入第一个词字符就自动弹（不设 2 字符门槛）
+  (define s1a (feed engine s1 (plain #\s)))
+  (check-true (popup-open? s1a))
+  (define s2 (feed engine s1a (plain #\q) (plain #\u)))
+  (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
+  (check-true (popup-open? s2))
+  (check-true (in-popup-mode? s2))
+  (check-equal? (popup-sel engine s2) 0)
+  (check-true (for/or ([l (in-list (popup-lines* engine s2))]) (string-contains? l "square")))
   (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))squ")
 
   ;; Down / Up 被临时键表接住：移动选择而不是移动光标
-  (define s4 (feed engine s3 (app:key-event (key 'down))))
+  (define s4 (feed engine s2 (app:key-event (key 'down))))
   (check-equal? (popup-sel engine s4) 1)
   (check-equal? (engine-view-view-point-column (make-engine-view engine) vid) 37)
   (define s5 (feed engine s4 (app:key-event (key 'up))))
   (check-equal? (popup-sel engine s5) 0)
 
-  ;; Enter：接受选中候选，关弹窗 + 摘掉临时键表
+  ;; Enter：接受选中候选，关弹窗 + 摘掉临时键表。
+  ;; 接受本身会发 after-edit（replace-range）；suppress-auto 保证不会立刻又弹开。
   (define s6 (feed engine s5 (app:key-event (key 'enter))))
   (check-false (popup-open? s6))
   (check-false (in-popup-mode? s6))
   (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))square")
 
-  ;; 再按 C-c / ：前缀变成 "square"，Esc 取消后文本不变
-  (define s7 (apply feed engine s6 cl-slash))
+  ;; 新词再输入 -> 再次自动弹；Esc 取消后文本不变
+  (define s7a (feed engine s6 (plain #\space)))
+  (define s7 (feed engine s7a (plain #\s) (plain #\q)))
   (check-true (popup-open? s7))
   (define s8 (feed engine s7 (app:key-event (key 'escape))))
   (check-false (popup-open? s8))
   (check-false (in-popup-mode? s8))
-  (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))square")
+  (check-equal? (list-ref (lines-of engine) 2) "(define (square-two y) (square y))square sq")
 
-  ;; 弹窗开着时继续打字：弹窗关掉，字符照常插入
-  (define s9 (apply feed engine s8 cl-slash))
+  ;; 继续打字：当前文档里的标识符也在候选里（这里就是刚输入的 sqx）
+  (define s9 (feed engine s8 (plain #\x)))
   (check-true (popup-open? s9))
-  (define s10 (feed engine s9 (plain #\x)))
-  (check-false (popup-open? s10))
-  (check-false (in-popup-mode? s10))
-  (check-true (string-suffix? (list-ref (lines-of engine) 2) "squarex"))
+  (check-true (for/or ([l (in-list (popup-lines* engine s9))])
+                (string-contains? l "sqx")))
+  (check-true (string-suffix? (list-ref (lines-of engine) 2) "square sqx"))
 
-  ;; 关掉之后 Down 恢复成“移动光标”（模态已摘）
-  (define s11 (feed engine s10 (app:key-event (key 'up))))
-  (check-false (popup-open? s11)))
+  ;; Esc 关菜单后 Down 恢复成“移动光标”
+  (define s9b (feed engine s9 (app:key-event (key 'escape))))
+  (define s10 (feed engine s9b (app:key-event (key 'down))))
+  (check-false (popup-open? s10)))
 
 ;; require 的模块导出（worker 的 completion-exports）：racket/list 的 first
 (let-values ([(engine s0) (make-world "#lang racket/base\n(require racket/list)\n"
@@ -237,18 +242,93 @@
                    (app:key-event (key 'down)) (app:key-event (key 'end))
                    (app:key-event (key 'down)) (app:key-event (key 'end))))
   (define s2 (feed engine s1 (plain #\f) (plain #\i) (plain #\r)))
-  (define s3 (apply feed engine s2 cl-slash))
-  (check-true (completion-open? s3))
-  (check-true (for/or ([l (in-list (popup-lines* engine s3))])
+  (check-true (completion-open? s2))
+  (check-true (for/or ([l (in-list (popup-lines* engine s2))])
                 (string-contains? l "first"))))
 
-;; 没有候选 / 光标处没有词 -> 只提示，不开弹窗
+; 输入完整词 define：候选里仍保留它（接受=关菜单，不再替换），文档也能查内置定义
+(let-values ([(engine s0) (make-world "" #f "scratch")])
+  (define s1 (for/fold ([s s0]) ([c (in-string "define")]) (feed engine s (plain c))))
+  (check-true (popup-open? s1))
+  (check-true (for/or ([l (in-list (popup-lines* engine s1))])
+                (string-contains? l "define")))
+  ;; 补全选中 define 时 docs 面板自动显示它的文档
+  (check-true (docs-open? s1))
+  (check-true (string-contains? (docs-text* engine s1) "define")))
+
+;; 本地标识符（let 绑定 / 参数等）也在候选里：与词高亮走同一份 line-tokens
+(let-values ([(engine s0)
+              (make-world
+               (string-join
+                '("(define (f)"
+                  "  (let ([local-id 1]) local-id))")
+                "\n")
+               "/tmp/local-ids.rkt" "local-ids.rkt")])
+  (define s1 (feed engine s0 (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'enter))))
+  (define s2 (for/fold ([s s1]) ([c (in-string "local")]) (feed engine s (plain c))))
+  (check-true (popup-open? s2))
+  (check-true (for/or ([l (in-list (popup-lines* engine s2))])
+                (string-contains? l "local-id"))))
+
+;; 没有候选时只提示，不开弹窗
 (let-values ([(engine s0) (make-world)])
-  (define s1 (apply feed engine s0 cl-slash))                  ; 光标在 1:1 的 "(" 上
-  (check-false (popup-open? s1))
-  (check-true (or (string-contains? (chrome-message (state-chrome s1)) "no word at point")
-                  (string-contains? (chrome-message (state-chrome s1)) "no match")))
-  (check-equal? (list-ref (lines-of engine) 0) ";; comment line"))
+  (define s1 (feed engine s0 (plain #\z)))
+  ;; "z" 可能命中 racket 导出的 zero? 等候选；"zz" 没有候选 -> 关+提示
+  (define s2 (feed engine s1 (plain #\z)))
+  (check-false (popup-open? s2))
+  (check-true (string-prefix? (list-ref (lines-of engine) 0) "zz")))
+
+;; 扫描器：define/contract、struct 访问器等常见绑定形式也要进补全 / 本地文档
+(let-values ([(engine s0)
+              (make-world
+               (string-join
+                '("#lang racket"
+                  "(define/contract (contract-fn x) (-> integer? integer?) x)"
+                  "(struct point (x y) #:mutable)")
+                "\n")
+               "/tmp/contract.rkt" "contract.rkt")])
+  ;; 到末尾新行，输入 poi -> 自动弹窗应包含 struct 的谓词 / 访问器
+  (define s1 (feed engine s0 (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'enter))))
+  (define s2 (for/fold ([s s1]) ([c (in-string "poi")]) (feed engine s (plain c))))
+  (check-true (popup-open? s2))
+  (check-true (for/or ([l (in-list (popup-lines* engine s2))])
+                (string-contains? l "point?")))
+  (check-true (for/or ([l (in-list (popup-lines* engine s2))])
+                (string-contains? l "point-x")))
+
+  ;; 再换一行完整输入 contract-fn：补全选中它时 docs 自动显示 define/contract 摘要
+  (define s3 (feed engine s2 (app:key-event (key 'escape)) (app:key-event (key 'enter))))
+  (define s4 (for/fold ([s s3]) ([c (in-string "contract-fn")]) (feed engine s (plain c))))
+  (check-true (docs-open? s4))
+  (check-true (string-contains? (docs-text* engine s4) "define/contract")))
+
+;; 文档查询用 rename-in 的**原名**：head -> first
+(let-values ([(engine s0)
+              (make-world
+               (string-join
+                '("#lang racket/base"
+                  "(require (rename-in racket/list [first head]))")
+                "\n")
+               "/tmp/rename.rkt" "rename.rkt")])
+  (define s1 (feed engine s0 (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'down)) (app:key-event (key 'end))
+                   (app:key-event (key 'enter))))
+  (define s2 (feed engine s1 (plain #\h) (plain #\e) (plain #\a)))
+  (check-true (popup-open? s2))
+  ;; head 是导入名：输入完整词后候选仍保留；docs 自动按原名 first 查
+  (define s2b (feed engine s2 (plain #\d)))
+  (check-true (popup-open? s2b))
+  (check-true (for/or ([l (in-list (popup-lines* engine s2b))])
+                (string-contains? l "head")))
+  (check-true (docs-open? s2b))
+  (check-true (string-contains? (docs-text* engine s2b) "first")))
 
 ;;; ════════════════ 2b. 点击落点（嵌套布局里要点到编辑器，不是侧栏） ════════════════
 
@@ -323,10 +403,10 @@
   (define-values (_p pl) (project-frame s0 engine))
   (engine-sync-views! engine pl)
   ;; 光标移到最后一行
-  ;; 光标移到最后一行，并站在 "define" 里面（没有标识符就不会开面板）
+  ;; 光标移到最后一行，并停在 "define" 词尾（没有词就不会开面板）
   (define s1 (apply feed engine s0
                     (append (for/list ([_ (in-range 3)]) (app:key-event (key 'down)))
-                            (for/list ([_ (in-range 3)]) (app:key-event (key 'right))))))
+                            (for/list ([_ (in-range 7)]) (app:key-event (key 'right))))))
   (check-equal? (engine-view-view-point-line (make-engine-view engine) vid) 2)
   ;; 打开底部 docs 面板（布局变化）
   (define s2 (apply feed engine s1 cl-h))
@@ -347,8 +427,8 @@
     (and dvid (engine-view-view-text (make-engine-view engine) dvid))))
 
 (let-values ([(engine s0) (make-world)])
-  ;; 光标放到第 2 行 "square" 里面（不用鼠标：headless 里 view 没有尺寸，落点不可靠）
-  (define rights (for/list ([_ (in-range 12)]) (app:key-event (key 'right))))
+  ;; 光标放到第 2 行 "square" 的词尾（文档按光标前词查询；不用鼠标：headless 里 view 没有尺寸）
+  (define rights (for/list ([_ (in-range 15)]) (app:key-event (key 'right))))
   (define s1 (apply feed engine s0 (app:key-event (key 'down)) rights))
   (check-false (docs-open? s1))                                ; 初始收起
 
@@ -358,7 +438,7 @@
 
   ;; 光标移到 "define" -> after-nav 刷新
   (define s3 (feed engine s2 (app:key-event (key 'home))))
-  (define s3b (apply feed engine s3 (for/list ([_ (in-range 3)]) (app:key-event (key 'right)))))
+  (define s3b (apply feed engine s3 (for/list ([_ (in-range 7)]) (app:key-event (key 'right)))))
   (check-true (docs-open? s3b))
   (check-true (string-contains? (docs-text engine s3b) "syntax"))
 
@@ -380,6 +460,8 @@
   (define s1 (feed engine s0 (app:key-event (key 'down))
                    (app:key-event (key 'end))))
   (define s2 (feed engine s1 (plain #\space) (plain #\z) (plain #\z) (plain #\z)))
+  ;; 补全选中没有文档的名字时，docs 自动打开但显示“无本地文档”；C-c h 收起
+  (check-true (docs-open? s2))
+  (check-true (string-contains? (docs-text* engine s2) "无本地文档"))
   (define s3 (apply feed engine s2 cl-h))
-  (check-false (docs-open? s3))
-  (check-true (string-contains? (chrome-message (state-chrome s3)) "no docs for")))
+  (check-false (docs-open? s3)))

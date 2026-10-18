@@ -18,18 +18,10 @@
   (define vec (make-vector (string-length line) #f))
   (when (and cursor (= ln (car cursor)))
     (define cc (cdr cursor))
-    (define n (string-length line))
-    (let loop ([i 0])
-      (cond
-        [(>= i n) (void)]
-        [(symbol-char? (string-ref line i))
-         (define end (let next ([j (add1 i)])
-                       (if (and (< j n) (symbol-char? (string-ref line j))) (next (add1 j)) j)))
-         (when (and (<= i cc) (<= cc end))
-           (for ([k (in-range i end)])
-             (vector-set! vec k (face-set-bg face-empty 'bg-word-mark))))
-         (loop end)]
-        [else (loop (add1 i))])))
+    (for ([m (in-list (line-tokens line))])
+      (when (and (<= (car m) cc) (<= cc (cdr m)))
+        (for ([k (in-range (car m) (cdr m))])
+          (vector-set! vec k (face-set-bg face-empty 'bg-word-mark))))))
   vec)
 
 (define (words-open _path text)

@@ -1,6 +1,6 @@
 # Function Index
 
-> 自动生成：`edit-tui-rebuild-step2` 下除 `test/`、`demo/`、`compiled/` 外的所有**顶层** `struct` / `define` / `define-syntax`。
+> 自动生成：`edit-tui/` 下除 `test/`、`demo/`、`compiled/` 外的所有**顶层** `struct` / `define` / `define-syntax`。
 > 行号只用于导航；`struct` 行不展开自动生成的构造器 / 谓词 / 访问器。
 
 ## `base/effect.rkt`
@@ -327,11 +327,11 @@
 
 ## `plugins/completion/plugin.rkt`
 
-**definitions**: `store-key`:60, `popup-id`:61, `completion-mode-name`:62, `completion-store`:66, `store-ref`:72, `store-set`:73, `completion-session`:77, `set-session`:78, `completion-popup-view`:80, `popup-region`:81, `popup-float`:82, `install-completion-popup-state!`:88, `completion-panel-spec`:91, `install-completion-popup!`:100, `completion-open?`:104, `line-at`:108, `prefix-at`:114, `doc-words`:123, `open-doc-ids`:130, `local-words`:135, `base-pool`:141, `module-path-context?`:153, `filter-pool`:165, `rank-candidates`:172, `service-of`:181, `cache-get`:182, `cache-put`:184, `pending?`:187, `pending-del`:189, `job-take`:193, `submit-job`:198, `popup-window`:205, `session-candidates`:209, `session-index`:210, `session-name`:211, `session-binding`:215, `selection-state`:222, `popup-content`:228, `popup-doc`:245, `render-popup`:250, `open-popup`:269, `close-popup`:281, `msg`:294, `open-with-pool`:297, `maybe-open-cached`:309, `completion-open`:340, `completion-move`:382, `completion-refine-hook`:392, `completion-accept`:417, `completion-cancel`:441, `completion-noop`:444, `completion-on-job`:448, `completion-keys`:467, `completion-popup-keys`:471, `completion-doc-keys`:481, `completion-plugin`:487
+**definitions**: `store-key`:62, `popup-id`:63, `completion-mode-name`:64, `completion-store`:68, `store-ref`:75, `store-set`:76, `completion-session`:80, `set-session`:81, `completion-popup-view`:83, `popup-region`:84, `popup-float`:85, `install-completion-popup-state!`:91, `completion-panel-spec`:94, `install-completion-popup!`:103, `completion-open?`:107, `prefix-at`:111, `completion-target?`:122, `inserting-changes?`:127, `doc-words`:134, `open-doc-ids`:139, `local-words`:145, `base-pool`:151, `module-path-context?`:163, `filter-pool`:175, `rank-candidates`:182, `service-of`:191, `cache-get`:192, `cache-put`:194, `pending?`:197, `pending-del`:199, `job-take`:203, `submit-job`:208, `popup-window`:215, `session-candidates`:219, `session-index`:220, `session-name`:221, `session-binding`:225, `selection-state`:232, `popup-content`:238, `popup-doc`:255, `render-popup`:260, `open-popup`:279, `close-popup`:291, `msg`:304, `open-with-pool`:307, `maybe-open-cached`:320, `start-completion`:356, `completion-move`:401, `completion-refine`:411, `completion-after-edit-hook`:437, `completion-accept`:462, `completion-cancel`:492, `completion-noop`:495, `completion-on-job`:499, `completion-popup-keys`:527, `completion-doc-keys`:537, `completion-plugin`:543
 
 ## `plugins/docs/plugin.rkt`
 
-**definitions**: `store-key`:53, `docs-store`:57, `store-ref`:62, `store-set`:63, `docs-panel-view`:69, `install-docs-panel-state!`:71, `docs-panel-spec`:74, `install-docs-panel!`:84, `docs-keys`:88, `docs-state`:98, `set-docs-state`:99, `service-of`:101, `cache-get`:102, `cache-has?`:103, `cache-put`:104, `pending?`:107, `pending-del`:108, `job-take`:112, `ident-char?`:119, `line-at`:123, `identifier-at`:129, `builtin-docs`:141, `doc-context`:169, `online-docs`:192, `origin-text`:195, `docs-lines`:203, `docs-text`:214, `docs-fills`:219, `docs-region`:230, `docs-open?`:234, `hide-docs`:238, `show-docs`:247, `docs-panel-doc`:257, `write-docs`:261, `submit-doc-job`:273, `docs-show-impl`:280, `docs-show-command`:323, `docs-toggle-command`:327, `docs-on-nav`:335, `docs-on-selection`:345, `docs-on-job`:353, `docs-keys-table`:383, `docs-plugin`:387
+**definitions**: `store-key`:55, `docs-store`:59, `store-ref`:65, `store-set`:66, `docs-panel-view`:72, `install-docs-panel-state!`:74, `docs-panel-spec`:77, `install-docs-panel!`:87, `docs-keys`:91, `docs-state`:101, `set-docs-state`:102, `service-of`:104, `cache-get`:105, `cache-has?`:106, `cache-put`:107, `pending?`:110, `pending-del`:111, `job-take`:115, `word-before-point`:125, `builtin-docs`:133, `fallback-source-context`:162, `doc-context`:176, `online-docs`:216, `origin-text`:219, `docs-lines`:227, `docs-text`:239, `docs-fills`:245, `docs-region`:257, `docs-open?`:261, `hide-docs`:265, `show-docs`:274, `docs-panel-doc`:284, `write-docs`:288, `submit-doc-job`:300, `docs-show-impl`:307, `docs-show-command`:356, `docs-toggle-command`:360, `docs-on-nav`:369, `docs-on-selection`:380, `docs-on-job`:396, `docs-keys-table`:426, `docs-plugin`:430
 
 ## `plugins/filetree/commands.rkt`
 
@@ -379,7 +379,7 @@
 
 ## `plugins/highlight/lex.rkt`
 
-**definitions**: `symbol-char?`:27, `keyword-set`:31, `keyword-faces`:39, `keyword-face`:62, `lex-line`:66, `word-fills`:110, `syntax-line`:129, `merge-fills`:146, `lex-fills`:167
+**definitions**: `keyword-set`:31, `keyword-faces`:39, `keyword-face`:62, `lex-line`:66, `word-fills`:110, `syntax-line`:129, `merge-fills`:146, `lex-fills`:167
 
 ## `plugins/highlight/plugin.rkt`
 
@@ -391,7 +391,7 @@
 
 ## `plugins/highlight/word-color-decor.rkt`
 
-**definitions**: `word-color-count`:18, `word-hash`:21, `word-color-line`:25, `word-color-open`:42, `word-color-change`:45, `word-color-face-decor`:54
+**definitions**: `word-color-count`:18, `word-hash`:21, `word-color-line`:25, `word-color-open`:35, `word-color-change`:38, `word-color-face-decor`:47
 
 ## `plugins/highlight/word-color-plugin.rkt`
 
@@ -399,7 +399,7 @@
 
 ## `plugins/highlight/words-decor.rkt`
 
-**definitions**: `words-line`:17, `words-open`:35, `words-change`:38, `words-face-decor`:54
+**definitions**: `words-line`:17, `words-open`:27, `words-change`:30, `words-face-decor`:46
 
 ## `plugins/highlight/words-plugin.rkt`
 
@@ -423,7 +423,7 @@
 
 ## `plugins/lang/local-docs.rkt`
 
-**definitions**: `snippet-width`:19, `form->string`:22, `def-snippets`:31, `local-defs`:54, `local-def`:60
+**definitions**: `snippet-width`:19, `form->string`:22, `def-snippets`:33, `local-defs`:42, `local-def`:48
 
 ## `plugins/lang/module-index.rkt`
 
@@ -431,11 +431,15 @@
 
 ## `plugins/lang/pool.rkt`
 
-**definitions**: `exports-cache`:33, `module-exports`:38, `distinct-strings`:51, `spec-names`:62, `local-module-path`:97, `spec-local-paths`:104, `spec-renames`:121, `spec-binding-of`:136, `spec-binding-in`:139, `leaf-module`:181
+**definitions**: `exports-cache`:33, `module-exports`:38, `distinct-strings`:51, `local-module-names`:63, `spec-names`:71, `local-module-path`:105, `file-spec-path`:112, `spec-local-paths`:121, `spec-renames`:140, `spec-binding-of`:155, `spec-binding-in`:158, `leaf-module`:202
 
 ## `plugins/lang/source.rkt`
 
-**definitions**: `line-end`:29, `skip-sexp-comment`:37, `skip-leading-trivia`:47, `directive-lang`:81, `strip-reader-lines`:87, `read-forms`:98, `module-context`:117, `requires-max-forms`:132, `requires-max-chars`:133, `requires-context`:134, `require-wrappers`:141, `list-elems`:145, `spec->paths`:153, `requires-of-forms`:177, `require-specs-of-forms`:189, `define-names`:199, `def-names`:206, `distinct-symbols`:222, `definitions-of-forms`:230, `distinct-strings`:235, `struct-fields`:248, `struct-out-names`:259, `contract-out-name`:266, `provide-names`:270, `provides-of-forms`:299, `text-before`:312, `last-open-paren`:322, `tokens`:349, `module-heads`:355, `first-arg-heads`:356, `lang-context?`:359, `require-context?`:374
+**definitions**: `local-file-path`:31, `module-path-key`:36, `line-end`:41, `skip-sexp-comment`:49, `skip-leading-trivia`:59, `directive-lang`:93, `strip-reader-lines`:99, `read-forms`:110, `module-context`:129, `requires-max-forms`:144, `requires-max-chars`:145, `requires-context`:146, `require-wrappers`:153, `list-elems`:157, `spec->paths`:165, `requires-of-forms`:190, `require-specs-of-forms`:202, `define-like-heads`:213, `struct-like-heads`:218, `values-like-heads`:222, `define-names`:224, `form-has-keyword?`:232, `struct-form-info`:244, `struct-def-names`:269, `def-names`:292, `distinct-symbols`:306, `definitions-of-forms`:314, `distinct-strings`:319, `struct-fields`:332, `struct-out-names`:341, `contract-out-name`:348, `provide-names`:352, `provides-of-forms`:381, `text-before`:394, `last-open-paren`:404, `tokens`:431, `module-heads`:437, `first-arg-heads`:438, `lang-context?`:441, `require-context?`:456
+
+## `plugins/lang/word.rkt`
+
+**definitions**: `symbol-char?`:23, `ident-start?`:28, `line-tokens`:33, `word-before`:45
 
 ## `plugins/resource/commands.rkt`
 

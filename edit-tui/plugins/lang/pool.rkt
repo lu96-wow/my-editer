@@ -57,6 +57,15 @@
 
 ;;; ================= require spec → 引入的绑定名 =================
 
+;; 本地模块的导出名：**内存优先**。
+;; 同一路径已经作为文档打开时，用当前缓冲区文本（可能未保存 / 半成品）；
+;; 否则从磁盘模块取导出。open : 绝对路径字符串 -> buffer 文本 | #f。
+(define (local-module-names p open)
+  (define text (and open (hash-ref open (module-path-key p) #f)))
+  (if text
+      (provides-of-forms text)
+      (module-exports p)))
+
 ;; specs : 原始 require spec；open : hash 绝对路径字符串 -> 该文档**当前缓冲区文本** | #f。
 ;; 打开的本地文件优先用缓冲区（可解析半成品），否则 module-exports 磁盘模块。
 (define (spec-names s base-dir [open #f])
@@ -65,10 +74,7 @@
       [(symbol? s) (module-exports s)]
       [(string? s)
        (define p (local-module-path s base-dir))
-       (cond
-         [(not p) '()]
-         [(and open (hash-ref open (path->string p) #f)) => provides-of-forms]
-         [else (module-exports p)])]
+       (if p (local-module-names p open) '())]
       [(pair? s)
        (define h (and (symbol? (car s)) (car s)))
        (cond
@@ -88,6 +94,8 @@
          [(memq h '(for-syntax for-template for-label)) (spec-names (cadr s) base-dir open)]
          [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-names x base-dir open)))]
          [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-names x base-dir open)))]
+         [(eq? h 'file) (define p (file-spec-path s base-dir))
+                        (if p (local-module-names p open) '())]
          [(memq h '(lib planet)) (module-exports s)]
          [(eq? h 'quote) (spec-names (cadr s) base-dir open)]
          [else '()])]
@@ -98,9 +106,18 @@
   (if (zero? (string-length s))
       #f
       (let ([p (string->path s)])
-        (path->complete-path (if (absolute-path? p) p (build-path base-dir p))))))
+        (local-file-path (if (absolute-path? p) p (build-path base-dir p))))))
 
-;; spec 里引用的本地文件（字符串 spec，含包装内）→ (listof 绝对路径字符串)。
+;; (file "...") 的本地路径（相对 base-dir 解析）；非法 / 其他 spec → #f。
+(define (file-spec-path s base-dir)
+  (and (pair? s) (eq? (car s) 'file) (pair? (cdr s))
+       (let ([v (cadr s)])
+         (cond [(string? v) (local-module-path v base-dir)]
+               [(path? v) (local-file-path
+                           (if (absolute-path? v) v (build-path base-dir v)))]
+               [else #f]))))
+
+;; spec 里引用的本地文件（字符串 / file spec，含包装内）→ (listof 绝对路径字符串)。
 (define (spec-local-paths s base-dir)
   (cond
     [(string? s) (define p (local-module-path s base-dir))
@@ -113,6 +130,8 @@
        [(memq h '(for-syntax for-template for-label)) (spec-local-paths (cadr s) base-dir)]
        [(eq? h 'for-meta) (append* (for/list ([x (in-list (cddr s))]) (spec-local-paths x base-dir)))]
        [(eq? h 'combine-in) (append* (for/list ([x (in-list (cdr s))]) (spec-local-paths x base-dir)))]
+       [(eq? h 'file) (define p (file-spec-path s base-dir))
+                      (if p (list (path->string p)) '())]
        [(eq? h 'quote) (spec-local-paths (cadr s) base-dir)]
        [else '()])]
     [else '()]))
@@ -142,7 +161,7 @@
     [(symbol? s) (and (member name (spec-names s base-dir open)) (list s name))]
     ;; 本地文件：打开的用缓冲区 provides，否则磁盘模块（同正向 spec-names）。
     [(string? s) (define p (local-module-path s base-dir))
-                 (and p (member name (spec-names s base-dir open)) (list p name))]
+                 (and p (member name (local-module-names p open)) (list p name))]
     [(pair? s)
      (define h (and (symbol? (car s)) (car s)))
      (define (rec spec) (spec-binding-in name spec base-dir open))
@@ -172,6 +191,8 @@
        [(memq h '(for-syntax for-template for-label)) (rec (cadr s))]
        [(eq? h 'for-meta) (for/or ([x (in-list (cddr s))]) (spec-binding-in name x base-dir open))]
        [(eq? h 'combine-in) (for/or ([x (in-list (cdr s))]) (spec-binding-in name x base-dir open))]
+       [(eq? h 'file) (define p (file-spec-path s base-dir))
+                      (and p (member name (local-module-names p open)) (list p name))]
        [(memq h '(lib planet)) (and (member name (spec-names s base-dir open)) (list s name))]
        [(eq? h 'quote) (rec (cadr s))]
        [else #f])]
@@ -189,6 +210,7 @@
        [(memq h '(prefix-in prefix-rename-in)) (leaf-module (caddr spec) base-dir)]
        [(memq h '(for-syntax for-template for-label)) (leaf-module (cadr spec) base-dir)]
        [(eq? h 'for-meta) (and (pair? (cddr spec)) (leaf-module (cadr (cddr spec)) base-dir))]
+       [(eq? h 'file) (or (file-spec-path spec base-dir) spec)]
        [(eq? h 'quote) (leaf-module (cadr spec) base-dir)]
        [else spec])]
     [else spec]))

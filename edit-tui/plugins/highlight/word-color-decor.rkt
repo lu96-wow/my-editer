@@ -24,20 +24,13 @@
 
 (define (word-color-line _ln line)
   (define vec (make-vector (string-length line) #f))
-  (define n (string-length line))
-  (let loop ([i 0])
-    (cond
-      [(>= i n) vec]
-      [(symbol-char? (string-ref line i))
-       (define end (let next ([j (add1 i)])
-                     (if (and (< j n) (symbol-char? (string-ref line j))) (next (add1 j)) j)))
-       (define w (substring line i end))
-       (define face (string->symbol
-                     (format "fg-word-~a" (modulo (word-hash w) word-color-count))))
-       (for ([k (in-range i end)])
-         (vector-set! vec k (face-set-fg face-empty face)))
-       (loop end)]
-      [else (loop (add1 i))])))
+  (for ([m (in-list (line-tokens line))])
+    (define w (substring line (car m) (cdr m)))
+    (define face (string->symbol
+                  (format "fg-word-~a" (modulo (word-hash w) word-color-count))))
+    (for ([k (in-range (car m) (cdr m))])
+      (vector-set! vec k (face-set-fg face-empty face))))
+  vec)
 
 (define (word-color-open _path text)
   (values #f (scan-track text word-color-line)))

@@ -19,14 +19,14 @@
          syntax-line
          merge-fills
          keyword-set
-         symbol-char?)
+         symbol-char?
+         ident-start?
+         line-tokens)
 
 (require racket/list
-         racket/string)
-
-(define (symbol-char? c)
-  (or (char-alphabetic? c) (char-numeric? c)
-      (memv c '(#\- #\_ #\? #\! #\* #\/ #\> #\< #\= #\+ #\. #\% #\& #\:))))
+         racket/string
+         ;; “词字符”与补全 / 文档共用同一份定义（plugins/lang/word.rkt）。
+         "../lang/word.rkt")
 
 (define keyword-set
   (for/hash ([k (in-list '("define" "define-values" "lambda" "let" "let*" "let-values"

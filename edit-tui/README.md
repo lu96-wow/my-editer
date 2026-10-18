@@ -120,13 +120,14 @@ plugins/       内置插件（每个一个目录）
     word-color-plugin.rkt 同词同色插件
     words-plugin.rkt 当前词高亮插件
   completion/
-    plugin.rkt      C-c / / M-/ 补全：本地词 + require 导出（worker）+ 模块路径
+    plugin.rkt      输入后自动补全：本地词 + require 导出（worker）+ 模块路径
   docs/
-    plugin.rkt      C-c h / M-d 文档面板：本地定义 + xref/bluebox（worker）
+    plugin.rkt      C-c h / M-d 文档面板：光标前词 + 本地定义 + xref/bluebox（worker）
   lang/
     context.rkt     当前文档的 require 上下文（补全 / 文档共用，纯查询）
-    source.rkt      require / 定义 / provide 启发式解析（纯）
-    pool.rkt        require spec -> 绑定名 / 模块导出（纯）
+    word.rkt        光标前词（补全前缀 / 文档查询共用的唯一词定义）
+    source.rkt      require / 定义 / provide 启发式解析（含 define/contract、struct 访问器）
+    pool.rkt        require spec -> 绑定名（打开文档优先，磁盘模块兜底）
     module-index.rkt 已安装模块路径索引（worker）
     local-docs.rkt  当前文档顶层定义摘要（纯）
     docs.rkt        xref + blueboxes (+ HTML) 文档查询（worker）
@@ -264,7 +265,7 @@ racket edit-tui/demo/resource.rkt # 资源列表面板 + placement
 racket edit-tui/demo/filetree.rkt [root] # 文件树面板
 racket edit-tui/demo/plugin.rkt   # 最小插件（命令 + 键 + store + 状态栏段）
 racket edit-tui/demo/sidebar.rkt  # 文件树 + 资源列表共用一个面板位置（Tab 切换）
-racket edit-tui/demo/lab.rkt      # 语法高亮 + C-c / 补全弹窗 + C-c h 文档面板
+racket edit-tui/demo/lab.rkt      # 语法高亮 + 自动补全 + C-c h 文档面板
 ```
 
 `state.rkt` 的底栏内容：
@@ -299,8 +300,8 @@ state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
 | `M-方向` | region 间焦点移动 |
 | 左键点击 | 聚焦 view 并把光标落到点击位置 |
 | 左键拖动 | 从按下位置开始拖选 |
-| `C-c /` | 补全弹窗：光标前的词 -> 候选浮层；`↑↓` 选，`Enter`/`Tab` 接受，`Esc` 取消（`editor-env`） |
-| `C-c h` | 文档面板开关：status 下方固定 8 行，打开时会把焦点 view 夹回窗口，**手动关闭**（`editor-env`） |
+| 输入词字符 | 输入第一个词字符就自动弹出补全：光标前的词 -> 候选浮层，包含关键字 / 顶层定义 / 本地标识符 / require 导入名；`↑↓` 选，`Enter`/`Tab` 接受，`Esc` 取消。选中项会联动 docs 面板（`editor-env`） |
+| `C-c h` | 文档面板开关：按**光标前的词**查文档；status 下方固定 8 行，打开时会把焦点 view 夹回窗口，**手动关闭**（`editor-env`） |
 | `C-q` | 退出；有 dirty document 时进入保存确认 |
 | `y` / `n` / `yall` / `nall` + Enter | 保存确认：当前保存 / 跳过 / 保存剩余 / 跳过剩余 |
 

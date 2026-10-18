@@ -8,14 +8,14 @@
 ;;;
 ;;;   highlight   语法高亮：写前景层 'syntax-fg（face-decor，增量）
 ;;;   depth-bg    括号深度底色：写背景层 'depth-bg（face-decor，增量）
-;;;   completion  M-/ 原地补全，再按循环候选（replace-range-effect）
-;;;   docs        M-h 在右侧面板看光标处的文档（after-nav 自动刷新）
+;;;   completion  输入词前缀后自动弹补全菜单，Enter 接受（replace-range-effect）
+;;;   docs        C-c h 在右侧面板看光标前词的文档（after-nav 自动刷新）
 ;;;
 ;;; 它们都不需要改框架：全部是 plugin 数据（hook / command / rule / mode / panel）。
 ;;;
 ;;; 键位：
-;;;   C-c /          补全（重复按循环候选）
-;;;   C-c h          文档面板开关（光标处标识符；面板在下方面板区，固定 8 行，手动关闭）
+;;   输入 >= 2 个词字符  补全菜单自动弹出（↑↓ 选，Enter/Tab 接受，Esc 取消）
+;;;   C-c h          文档面板开关（光标前的词；面板在下方面板区，固定 8 行，手动关闭）
 ;;;   ↑↓←→ Home End  移动；Enter / Backspace / Delete 编辑
 ;;;   C-z / C-y      undo / redo
 ;;;   C-w ←→↑↓       拆出一个空窗口；C-w C-w 关 view
@@ -56,8 +56,8 @@
   (string-join
    '(";; lab.rkt —— 高亮 / 补全 / 文档 演示"
      ";;"
-     ";; C-c /  在光标处补全（再按换下一个候选）"
-     ";; C-c h  看光标处标识符的文档（下方固定高度面板）"
+     ";; 输入至少 2 个词字符  自动弹出补全（↑↓ 选，Enter 接受，Esc 取消）"
+     ";; C-c h  看光标前词的文档（下方固定高度面板）"
      ""
      "(define (square x)"
      "  (* x x))"
@@ -132,7 +132,7 @@
   (state-set-focus
    (state-chrome*
     s7
-    (λ (c) (chrome-set-message c "C-c / complete   C-c h docs   Tab switch sidebar")))
+    (λ (c) (chrome-set-message c "type to complete   C-c h docs   Tab switch sidebar")))
    vid))
 
 ;; 首帧前补 document-opened（让高亮插件给这个预先建好的文档上色）

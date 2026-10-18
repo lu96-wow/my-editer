@@ -36,7 +36,7 @@
 (define (open-local-texts state ev)
   (for/hash ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
              #:when (doc-meta-path dm))
-    (values (path->string (path->complete-path (doc-meta-path dm)))
+    (values (module-path-key (doc-meta-path dm))
             (or (engine-view-doc-text ev did) ""))))
 
 ;; 解析当前 view 的 Racket require 上下文。非 Racket 文档 -> #f。

@@ -254,10 +254,11 @@
 | `plugins/highlight/word-color-decor.rkt` | `word-hash`、`word-color-line`、`word-color-open/change`、`word-color-face-decor` | 同词同色前景 | 纯 |
 | `plugins/highlight/words-decor.rkt` | `words-line`、`words-open/change`、`words-face-decor` | 光标当前词背景 | 纯 |
 | `plugins/highlight/*plugin.rkt` | `highlight-plugin` / `depth-bg-plugin` / `word-color-plugin` / `words-plugin` | 只贡献 face layer + decor | 纯声明 |
-| `plugins/completion/plugin.rkt` | session / popup / cache / pending / job、`prefix-at`、`base-pool`、`filter-pool`、`rank-candidates`、`open-with-pool`、`completion-open/move/refine/accept/cancel`、`completion-on-job`、`completion-plugin` | 补全浮层 + 本地词 + require 导出 + 模块路径 | 不纯：effects + worker；session / cache / jobs 在 `store` |
-| `plugins/docs/plugin.rkt` | `docs-panel-spec`、`identifier-at`、`doc-context`、`docs-lines`、`write-docs`、`docs-show-impl`、`docs-on-nav/selection/job`、`docs-plugin` | 文档面板 + 本地定义 + xref/bluebox + HTML 兜底 | 不纯：effects + worker；state/cache/jobs 在 `store` |
-| `plugins/lang/source.rkt` | `skip-leading-trivia`、`module-context`、`requires-context`、`spec->paths`、`definitions-of-forms`、`provides-of-forms`、`require-context?` / `lang-context?` | 源码启发式解析：require / define / provide | 纯（对任意半成品文本全函数） |
-| `plugins/lang/pool.rkt` | `module-exports`、`distinct-strings`、`spec-names`、`spec-local-paths`、`spec-binding-of`、`leaf-module` | require spec → 绑定名 / 模块导出 | **进程内 `exports-cache` 可变**；主线程 / worker 都可能用 |
+| `plugins/completion/plugin.rkt` | session / popup / cache / pending / job、`prefix-at`、`completion-after-edit-hook`、`base-pool`、`filter-pool`、`rank-candidates`、`open-with-pool`、`start-completion`、`completion-move/refine/accept/cancel`、`completion-on-job`、`completion-plugin` | 自动补全浮层 + 本地词 + require 导出 + 模块路径 | 不纯：effects + worker；session / cache / jobs 在 `store` |
+| `plugins/lang/word.rkt` | `symbol-char?`、`word-before` | 光标前词（补全前缀 / 文档查询共用） | 纯 |
+| `plugins/docs/plugin.rkt` | `docs-panel-spec`、`word-before-point`、`doc-context`、`docs-lines`、`write-docs`、`docs-show-impl`、`docs-on-nav/selection/job`、`docs-plugin` | 文档面板 + 光标前词 + 本地定义 + xref/bluebox + HTML 兜底 | 不纯：effects + worker；state/cache/jobs 在 `store` |
+| `plugins/lang/source.rkt` | `module-path-key`、`skip-leading-trivia`、`module-context`、`requires-context`、`spec->paths`、`def-names` / `struct-def-names`、`definitions-of-forms`、`provides-of-forms`、`require-context?` / `lang-context?` | 源码启发式解析：require / define / provide（含 define/contract、struct 访问器） | 纯（对任意半成品文本全函数） |
+| `plugins/lang/pool.rkt` | `module-exports`、`local-module-names`、`distinct-strings`、`spec-names`、`file-spec-path`、`spec-local-paths`、`spec-binding-of`、`leaf-module` | require spec → 绑定名 / 模块导出（打开文档优先于磁盘） | **进程内 `exports-cache` 可变**；主线程 / worker 都可能用 |
 | `plugins/lang/context.rkt` | `focused-vid`、`doc-meta-of-view`、`open-local-texts`、`source-context`、`export-key` | 当前文档 require 上下文（补全 / docs 共用） | 纯查询 |
 | `plugins/lang/local-docs.rkt` | `form->string`、`def-snippets`、`local-defs`、`local-def` | 当前文档顶层定义摘要 | 纯 |
 | `plugins/lang/module-index.rkt` | `rkt-file?`、`rel->module`、`dir-modules`、`collects-modules`、`pkg-modules`、`module-paths` | 已安装模块路径索引 | IO + 惰性 `delay` 缓存；只在 worker |

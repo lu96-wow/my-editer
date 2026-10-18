@@ -19,9 +19,21 @@
 
 (provide require-context? lang-context?
          module-context requires-context requires-of-forms require-specs-of-forms
-         definitions-of-forms provides-of-forms)
+         definitions-of-forms provides-of-forms def-names
+         local-file-path module-path-key)
 
 (require racket/list racket/path racket/string)
+
+;;; ================= 路径 =================
+
+;; 本地文件路径的稳定形式：绝对路径 + 消掉 "." / ".."。
+;; 不查文件系统（文档可能尚未保存；只是为了让 open-map / module 查询用同一个 key）。
+(define (local-file-path p)
+  (simplify-path
+   (path->complete-path (if (path? p) p (string->path p)))
+   #f))
+
+(define (module-path-key p) (path->string (local-file-path p)))
 
 ;;; ================= reader =================
 
@@ -158,7 +170,8 @@
       [(string? s) (if (zero? (string-length s))
                        '()
                        (let ([p (string->path s)])
-                         (list (list 'file (path->complete-path (if (absolute-path? p) p (build-path base-dir p)))))))]
+                         (list (list 'file (local-file-path
+                                            (if (absolute-path? p) p (build-path base-dir p)))))))]
       [(pair? s)
        (define h (car s))
        (cond
@@ -195,7 +208,19 @@
 
 ;;; ================= 顶层定义名 =================
 
-;; (define name …) / (define (name args) …) / (define-syntax-rule (name args) …) → name
+;; (define name …) / (define (name args) …) / (define-syntax-rule (name args) …) → name。
+;; define/contract、define-for-syntax、define/match 等常见包装也按同样形状处理。
+(define define-like-heads
+  '(define define-syntax define-syntax-rule
+    define/contract define/contract/span define-for-syntax define/match
+    define/match* define-runtime-path))
+
+(define struct-like-heads
+  '(struct struct* struct/contract define-struct
+    define-serializable-struct define-serializable-struct/versions))
+
+(define values-like-heads '(define-values define-syntaxes))
+
 (define (define-names f)
   (define target (and (pair? (cdr f)) (cadr f)))
   (cond
@@ -203,19 +228,78 @@
     [(and (pair? target) (symbol? (car target))) (list (car target))]
     [else '()]))
 
+;; 表单里是否出现某个关键字（用于 struct 的 #:mutable）。
+(define (form-has-keyword? f kw)
+  (cond
+    [(keyword? f) (eq? f kw)]
+    [(pair? f) (or (form-has-keyword? (car f) kw)
+                   (form-has-keyword? (cdr f) kw))]
+    [(vector? f)
+     (for/or ([x (in-vector f)]) (form-has-keyword? x kw))]
+    [else #f]))
+
+;; struct 表单 → (values 类型名 字段名表 mutable?)。
+;; 兼容 (struct name (field ...))、(struct name super (field ...))、
+;; (struct/contract name ([field contract] ...))、define-struct / serializable 版本。
+(define (struct-form-info f)
+  (define t (and (pair? (cdr f)) (cadr f)))
+  (cond
+    [(not (symbol? t)) (values #f '() #f)]
+    [else
+     (define head (car f))
+     (define after-ty (cddr f))
+     ;; struct 可以有 super：字段表在第一个 list 位置；struct/contract 字段项是
+     ;; (field contract ...) / (field #:mutable ...)，取首符号。
+     (define field-list
+       (cond
+         [(null? after-ty) '()]
+         [(list? (car after-ty)) (car after-ty)]
+         [(and (pair? (cdr after-ty)) (list? (cadr after-ty))) (cadr after-ty)]
+         [else '()]))
+     (define fields
+       (for/list ([x (in-list field-list)]
+                  #:when (or (symbol? x) (and (pair? x) (symbol? (car x)))))
+         (if (symbol? x) x (car x))))
+     (define mutable?
+       (or (memq head '(define-struct define-serializable-struct
+                                     define-serializable-struct/versions))
+           (form-has-keyword? f '#:mutable)))
+     (values t fields mutable?)]))
+
+(define (struct-def-names f)
+  (define-values (t fields mutable?) (struct-form-info f))
+  (cond
+    [(not t) '()]
+    [else
+     (define base (symbol->string t))
+     (define old-api? (memq (car f) '(define-struct define-serializable-struct
+                                                 define-serializable-struct/versions)))
+     (define type-name (if old-api? #f t))
+     (define ctor (if old-api?
+                      (string->symbol (string-append "make-" base))
+                      t))
+     (append
+      (filter values (list type-name ctor))
+      (list (string->symbol (string-append base "?"))
+            (string->symbol (string-append "struct:" base)))
+      (for/list ([fld (in-list fields)])
+        (string->symbol (format "~a-~a" base fld)))
+      (if mutable?
+          (for/list ([fld (in-list fields)])
+            (string->symbol (format "set-~a-~a!" base fld)))
+          '()))]))
+
 (define (def-names f)
   (cond
     [(not (pair? f)) '()]
     [else
-     (case (car f)
-       [(define define-syntax define-syntax-rule) (define-names f)]
-       [(define-values)
-        (if (and (pair? (cdr f)) (pair? (cadr f)))
-            (filter symbol? (cadr f))
-            '())]
-       [(struct struct* define-struct)
-        (let ([t (and (pair? (cdr f)) (cadr f))])
-          (if (symbol? t) (list t) '()))]
+     (define head (car f))
+     (cond
+       [(memq head define-like-heads) (define-names f)]
+       [(memq head values-like-heads)
+        (define target (and (pair? (cdr f)) (cadr f)))
+        (if (list? target) (filter symbol? (list-elems target)) '())]
+       [(memq head struct-like-heads) (struct-def-names f)]
        [else '()])]))
 
 ;; 符号去重（哈希 O(n)）；大文件里定义多时 remove-duplicates 的 O(n²) 会卡。
@@ -248,11 +332,9 @@
 (define (struct-fields forms)
   (define h (make-hash))
   (for ([f (in-list forms)])
-    (when (and (pair? f) (memq (car f) '(struct struct* define-struct)))
-      (define t (and (pair? (cdr f)) (cadr f)))
-      (define fs (and (pair? (cddr f)) (cadr (cdr f))))
-      (when (and (symbol? t) (pair? fs))
-        (hash-set! h t (filter symbol? fs)))))
+    (when (and (pair? f) (memq (car f) struct-like-heads))
+      (define-values (t fs _mutable?) (struct-form-info f))
+      (when t (hash-set! h t fs))))
   h)
 
 ;; struct-out：结构名 + name? + name-field（字段已知时）。

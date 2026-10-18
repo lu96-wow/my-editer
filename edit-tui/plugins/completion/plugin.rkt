@@ -9,9 +9,10 @@
 ;;; 与 edit4 对齐的功能：
 ;;;   · 候选 = 关键字 + 当前文档顶层定义 + 打开文档里的词；
 ;;;   · Racket 文档再按 require 解析出「真正导入的绑定名」（pool.rkt）；
+;;;     同一个本地模块若已在内存里打开，优先用当前 buffer，磁盘模块只作兜底；
 ;;;   · module->exports 走 worker（completion-exports），结果缓存、在途去重；
 ;;;   · `(require …)` / `#lang ` 光标处补模块路径（module-paths）；
-;;;   · 菜单是 document 浮层；↑↓/Tab/Enter/Esc/打字重筛；
+;;;   · 菜单是 document 浮层；**输入后自动弹出**，↑↓/Tab/Enter/Esc/打字重筛；
 ;;;   · 选中候选广播 `complete-selection`，docs 插件可订阅。
 ;;;
 ;;; 不抢焦点：浮层 region role = 'panel；临时键表挂在 state.input.modes。
@@ -44,16 +45,17 @@
          "../../env/hook.rkt"
          "../../env/plugin.rkt"
          "../../env/service.rkt"
-         "../../env/rule.rkt"
          "../../bootstrap/panel.rkt"
          "../../dispatch/context.rkt"
          "../../plugins/highlight/lex.rkt"
          "../lang/source.rkt"
          "../lang/pool.rkt"
          "../lang/context.rkt"
+         "../lang/word.rkt"
          "../../../core/text/base/point.rkt"
          "../../../core/text/base/selection.rkt"
-         "../../../core/text/base/range.rkt")
+         "../../../core/text/base/range.rkt"
+         "../../../core/text/base/change.rkt")
 
 ;;; ════════════════ store ════════════════
 
@@ -68,6 +70,7 @@
                 (hash 'session #f
                       'popup-view #f
                       'popup-region #f
+                      'suppress-auto? #f
                       'service (service-empty))))
 (define (store-ref state key) (hash-ref (completion-store state) key))
 (define (store-set state key value)
@@ -103,35 +106,42 @@
 
 (define (completion-open? state) (and (popup-float state) #t))
 
-;;; ════════════════ 光标前的前缀 ════════════════
-
-(define (line-at ev vid)
-  (define text (or (engine-view-view-text ev vid) ""))
-  (define line (or (engine-view-view-point-line ev vid) 0))
-  (define lines (string-split text "\n"))
-  (if (< line (length lines)) (list-ref lines line) ""))
+;;; ════════════════ 光标前的前缀（补全自动弹出 / 重筛） ════════════════
 
 (define (prefix-at ev vid)
-  (define line (line-at ev vid))
-  (define col (min (or (engine-view-view-point-column ev vid) 0) (string-length line)))
-  (define start (let loop ([i col])
-                  (if (and (> i 0) (symbol-char? (string-ref line (sub1 i)))) (loop (sub1 i)) i)))
-  (values start (substring line start col)))
+  (define text (or (engine-view-view-text ev vid) ""))
+  (define line (or (engine-view-view-point-line ev vid) 0))
+  (define lines (string-split text "\n" #:trim? #f))
+  (define line-text (if (< line (length lines)) (list-ref lines line) ""))
+  (define col (min (or (engine-view-view-point-column ev vid) 0)
+                   (string-length line-text)))
+  (define prefix (word-before text line col))
+  (values (- col (string-length prefix)) prefix))
+
+;; 自动补全只对“真正的编辑文档”生效（状态栏 / 面板 / 浮层不弹）。
+(define (completion-target? state vid)
+  (define dm (doc-meta-of-view state vid))
+  (and dm (not (doc-meta-internal? dm))))
+
+;; 这次编辑是否插入了文本（删除 / 导航不主动弹菜单；已开时仍会重筛）。
+(define (inserting-changes? changes)
+  (for/or ([c (in-list changes)])
+    (not (range-empty? (change-after c)))))
 
 ;;; ════════════════ 本地候选池 ════════════════
 
+;; 与词高亮同一份 line-tokens：本地标识符（let / lambda 参数 / 普通变量）也算候选。
 (define (doc-words text)
   (for*/list ([line (in-list (string-split text "\n"))]
-              [w (in-list (string-split line #px"[^\\w\\-?!*<>=+./%&:]+"))]
-              #:when (and (positive? (string-length w))
-                          (char-alphabetic? (string-ref w 0))))
-    w))
+              [m (in-list (line-tokens line))])
+    (substring line (car m) (cdr m))))
 
 (define (open-doc-ids state)
   (for/list ([(did dm) (in-hash (workspace-docs (state-workspace state)))]
              #:unless (doc-meta-internal? dm))
     did))
 
+;; 所有打开文档里的标识符（含当前文档的局部变量）。
 (define (local-words state ev)
   (sort (remove-duplicates
          (append* (for/list ([did (in-list (open-doc-ids state))])
@@ -165,7 +175,7 @@
 (define (filter-pool pool prefix)
   (define plen (string-length prefix))
   (for/list ([x (in-list pool)]
-             #:when (and (> (string-length x) plen)
+             #:when (and (>= (string-length x) plen)
                          (string=? prefix (substring x 0 plen))))
     x))
 
@@ -221,7 +231,8 @@
 
 (define (selection-state state s)
   (define vid (hash-ref s 'view))
-  (define name (session-name s))
+  ;; 模块路径补全没有“标识符文档”：docs? = #f 时广播 name = #f，docs 不跟着弹。
+  (define name (and (hash-ref s 'docs? #f) (session-name s)))
   (state-emit state 'complete-selection
               (list vid name (and name (session-binding s name)))))
 
@@ -294,7 +305,7 @@
 (define (msg state text)
   (state-chrome* state (λ (c) (chrome-set-message c text))))
 
-(define (open-with-pool state ev vid prefix pool specs base-dir open docs?)
+(define (open-with-pool state ev vid prefix pool specs base-dir open docs? [key #f])
   (define cands (rank-candidates (filter-pool pool prefix)))
   (cond
     [(null? cands) (transition-pure (msg state (format "completion: no match for ~a" prefix)))]
@@ -303,13 +314,15 @@
      (define line (or (engine-view-view-point-line ev vid) 0))
      (define s (hash 'view vid 'line line 'start start 'prefix prefix
                      'pool pool 'candidates cands 'index 0
-                     'specs specs 'base-dir base-dir 'open open 'docs? docs?))
+                     'specs specs 'base-dir base-dir 'open open 'docs? docs?
+                     'key key))
      (open-popup state s)]))
 
 (define (maybe-open-cached state ev)
   (define vid (focused-vid state))
   (cond
-    [(or (not vid) (completion-open? state)) (transition-pure state)]
+    [(or (not vid) (completion-open? state) (not (completion-target? state vid)))
+     (transition-pure state)]
     [else
      (define-values (_start prefix) (prefix-at ev vid))
      (cond
@@ -323,7 +336,7 @@
         (define ctx (source-context state ev vid))
         (cond
           [(not ctx)
-           (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #f)]
+           (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #t)]
           [else
            (define specs (hash-ref ctx 'specs))
            (define base-dir (hash-ref ctx 'base-dir))
@@ -337,47 +350,53 @@
                                specs base-dir open #t)
                (transition-pure state))])])]))
 
-(define (completion-open ctx)
-  (define state (ctx-state ctx))
-  (define ev (ctx-engine ctx))
-  (define vid (ctx-subject ctx))
+;; 自动 / 重试共用：按当前光标前缀打开菜单。本地池（关键字 / 定义 / 已打开文档词）
+;; 立即可用；require 导出缓存没命中时同时提交 job，job-done 后并进当前菜单。
+;; quiet? 时不在状态栏刷“loading”提示。
+(define (start-completion state ev vid [quiet? #f])
+  (define-values (_start prefix) (prefix-at ev vid))
+  (define (notice text)
+    (if quiet? (transition-pure state) (transition-pure (msg state text))))
   (cond
-    [(not (view-id? vid)) (transition-pure (msg state "completion: no view"))]
-    [(completion-open? state) (transition-pure (close-popup state))]
-    [else
-     (define-values (_start prefix) (prefix-at ev vid))
+    [(zero? (string-length prefix))
+     (notice "completion: no word at point")]
+    [(module-path-context? state ev vid)
+     (define paths (cache-get state 'module-paths))
      (cond
-       [(zero? (string-length prefix))
-        (transition-pure (msg state "completion: no word at point"))]
-       [(module-path-context? state ev vid)
-        (define paths (cache-get state 'module-paths))
-        (cond
-          [(list? paths) (open-with-pool state ev vid prefix paths #f #f #f #f)]
-          [(pending? state 'module-paths)
-           (transition-pure (msg state "completion: loading module list…"))]
-          [else (submit-job state 'completion-exports '(module-paths) 'module-paths)])]
+       [(list? paths) (open-with-pool state ev vid prefix paths #f #f #f #f)]
+       [(pending? state 'module-paths)
+        (notice "completion: loading module list…")]
+       [else (submit-job state 'completion-exports '(module-paths) 'module-paths)])]
+    [else
+     (define ctx* (source-context state ev vid))
+     (cond
+       [(not ctx*) (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #t)]
        [else
-        (define ctx* (source-context state ev vid))
+        (define specs (hash-ref ctx* 'specs))
+        (define base-dir (hash-ref ctx* 'base-dir))
+        (define open (hash-ref ctx* 'open))
+        (define locals (hash-ref ctx* 'locals))
+        (define key (export-key ctx*))
+        (define exp (cache-get state key))
+        (define local-pool (append locals (base-pool state ev vid)))
         (cond
-          [(not ctx*) (open-with-pool state ev vid prefix (base-pool state ev vid) #f #f #f #f)]
+          [(list? exp)
+           (open-with-pool state ev vid prefix
+                           (append exp local-pool)
+                           specs base-dir open #t key)]
           [else
-           (define specs (hash-ref ctx* 'specs))
-           (define base-dir (hash-ref ctx* 'base-dir))
-           (define open (hash-ref ctx* 'open))
-           (define locals (hash-ref ctx* 'locals))
-           (define key (export-key ctx*))
-           (define exp (cache-get state key))
-           (cond
-             [(list? exp)
-              (open-with-pool state ev vid prefix
-                              (append exp locals (base-pool state ev vid))
-                              specs base-dir open #t)]
-             [(pending? state key)
-              (transition-pure (msg state "completion: loading require exports…"))]
-             [else
-              (submit-job state 'completion-exports
-                          (list 'exports (path->string base-dir) specs open)
-                          key)])])])]))
+           ;; 本地候选（关键字 / 顶层定义 / 已打开文档词）先开菜单；
+           ;; require 导出在后台补，不阻塞输入。
+           (define t-open (open-with-pool state ev vid prefix local-pool
+                                         specs base-dir open #t key))
+           (if (pending? state key)
+               t-open
+               (transition-bind
+                t-open
+                (λ (s)
+                  (submit-job s 'completion-exports
+                              (list 'exports (path->string base-dir) specs open)
+                              key))))])])]))
 
 (define (completion-move ctx delta)
   (define state (ctx-state ctx))
@@ -389,7 +408,7 @@
      (define s1 (hash-set s 'index (modulo (+ (session-index s) delta) n)))
      (render-popup (set-session state s1) s1)]))
 
-(define (completion-refine-hook state ev args)
+(define (completion-refine state ev)
   (define s (completion-session state))
   (cond
     [(not s) (transition-pure state)]
@@ -414,6 +433,32 @@
                                    (or (engine-view-view-point-line ev vid) 0)))
               (render-popup (set-session state s2) s2)])])])]))
 
+;; after-edit：菜单开着就重筛；没开且本次刚插入了词字符时自动打开（1 个字符也弹）。
+(define (completion-after-edit-hook state ev args)
+  (cond
+    [(completion-session state) (completion-refine state ev)]
+    [(store-ref state 'suppress-auto?)
+     ;; 接受候选也会发 after-edit（replace-range）；不要刚替换完又把自己弹开。
+     (transition-pure (store-set state 'suppress-auto? #f))]
+    [else
+     (define did (and (pair? args) (car args)))
+     (define changes (and (pair? args) (pair? (cdr args)) (cadr args)))
+     (cond
+       [(not (and (list? changes) (inserting-changes? changes)))
+        (transition-pure state)]
+       [else
+        (define vid (focused-vid state))
+        (cond
+          [(or (not vid)
+               (not (completion-target? state vid))
+               (not (equal? did (workspace-doc-of-view (state-workspace state) vid))))
+           (transition-pure state)]
+          [else
+           (define-values (_start prefix) (prefix-at ev vid))
+           (cond
+             [(zero? (string-length prefix)) (transition-pure state)]
+             [else (start-completion state ev vid #t)])])])]))
+
 (define (completion-accept ctx)
   (define state (ctx-state ctx))
   (define s (completion-session state))
@@ -428,9 +473,15 @@
      (define s1 (close-popup (state-input* state input-clear-pending)))
      (cond
        [(not cand) (transition-pure s1)]
+       ;; 光标前已经是完整候选：不用替换，接受 = 关菜单（避免发一次无变化的编辑）。
+       [(string=? cand prefix)
+        (transition-pure
+         (state-chrome* s1 (lambda (c) (chrome-set-message c (format "complete: ~a" cand)))))]
        [else
         (transition
-         (state-chrome* s1 (lambda (c) (chrome-set-message c (format "complete: ~a" cand))))
+         (store-set (state-chrome* s1
+                                   (lambda (c) (chrome-set-message c (format "complete: ~a" cand))))
+                    'suppress-auto? #t)
          (list (replace-range-effect vid
                                      (range-of (point line start)
                                                (point line (+ start (string-length prefix))))
@@ -459,14 +510,19 @@
        [(and (eq? kind 'completion-exports)
              (list? result)
              (andmap string? result))
-        (maybe-open-cached (cache-put s2 tag result) ev)]
+        (define s3 (cache-put s2 tag result))
+        (define cur (completion-session s3))
+        (cond
+          ;; 菜单已经用本地池开着了：把 require 导出并进 pool，按当前前缀重筛。
+          [(and cur (equal? (hash-ref cur 'key #f) tag))
+           (define pool* (remove-duplicates
+                          (append result (hash-ref cur 'pool))
+                          equal?))
+           (completion-refine (set-session s3 (hash-set cur 'pool pool*)) ev)]
+          [else (maybe-open-cached s3 ev)])]
        [else (transition-pure s2)])]))
 
 ;;; ════════════════ 键位 ════════════════
-
-(define completion-keys
-  (keys [(key 'c 'ctrl) (key '/) 'complete-open]
-        [(key '/ 'alt) 'complete-open]))
 
 (define completion-popup-keys
   (keys [(key 'up)     'complete-prev]
@@ -497,14 +553,12 @@
                            'module-paths
                            (make-service-spec 'module-paths
                                               #:description "已安装模块路径索引"))
-          #:commands (hash 'complete-open (cmd completion-open)
-                           'complete-next (cmd (λ (ctx) (completion-move ctx 1)))
+          #:commands (hash 'complete-next (cmd (λ (ctx) (completion-move ctx 1)))
                            'complete-prev (cmd (λ (ctx) (completion-move ctx -1)))
                            'complete-accept (cmd completion-accept)
                            'complete-cancel (cmd completion-cancel)
-                           'complete-noop (cmd completion-noop))
-          #:rules (list (make-rule 'always completion-keys)))
-   #:hooks (list (make-hook 'after-edit completion-refine-hook)
+                           'complete-noop (cmd completion-noop)))
+   #:hooks (list (make-hook 'after-edit completion-after-edit-hook)
                  (make-hook 'focus-changed
                             (λ (s ev _args)
                               (define cur (completion-session s))

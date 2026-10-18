@@ -7,7 +7,7 @@
 ;;;
 ;;; 结构：
 ;;;   面板 *docs*（role 'tool，mode 'docs）—— buffer 支撑的固定高度面板；
-;;;   C-c h / M-d -> 取光标处标识符，显示文档；C-c h 再按收起；
+;;   C-c h / M-d -> 取**光标前的词**（word-before），显示文档；C-c h 再按收起；
 ;;;   after-nav   -> 面板开着就跟随光标刷新；
 ;;;   complete-selection -> 补全选中项变化时，如果面板开着就更新。
 ;;;
@@ -48,6 +48,8 @@
          "../../dispatch/context.rkt"
          "../lang/context.rkt"
          "../lang/pool.rkt"
+         "../lang/word.rkt"
+         "../lang/source.rkt"
          "../lang/local-docs.rkt")
 
 (define store-key 'docs)
@@ -58,6 +60,7 @@
   (plugin-state state store-key
                 (hash 'panel #f
                       'state #f
+                      'auto? #f
                       'service (service-empty))))
 (define (store-ref state key) (hash-ref (docs-store state) key))
 (define (store-set state key value)
@@ -114,27 +117,16 @@
     (service-job-take (service-of state) jid))
   (values key (store-set state 'service service*)))
 
-;;; ════════════════ 光标处标识符 ════════════════
+;;; ════════════════ 光标前的词 ════════════════
 
-(define (ident-char? c)
-  (or (char-alphabetic? c) (char-numeric? c)
-      (memv c '(#\- #\_ #\? #\! #\* #\> #\< #\= #\+ #\. #\/ #\% #\& #\:))))
-
-(define (line-at ev vid)
-  (define text (or (engine-view-view-text ev vid) ""))
-  (define line (or (engine-view-view-point-line ev vid) 0))
-  (define lines (string-split text "\n"))
-  (if (< line (length lines)) (list-ref lines line) ""))
-
-(define (identifier-at ev vid)
-  (define line (line-at ev vid))
-  (define n (string-length line))
-  (define col (min (or (engine-view-view-point-column ev vid) 0) n))
-  (define start (let loop ([i col])
-                  (if (and (> i 0) (ident-char? (string-ref line (sub1 i)))) (loop (sub1 i)) i)))
-  (define end (let loop ([i col])
-                (if (and (< i n) (ident-char? (string-ref line i))) (loop (add1 i)) i)))
-  (and (< start end) (substring line start end)))
+;; 文档按**光标前的词**查询（与补全前缀同一个原语）：光标停在词尾时得到完整词，
+;; 在词中输入时得到已输入的前缀。不再取“光标格上的词”，所以 after-nav / 手动
+;; 触发都不依赖光标是否恰好落在标识符字符上。
+(define (word-before-point ev vid)
+  (define w (word-before (or (engine-view-view-text ev vid) "")
+                         (or (engine-view-view-point-line ev vid) 0)
+                         (or (engine-view-view-point-column ev vid) 0)))
+  (and (positive? (string-length w)) w))
 
 ;;; ════════════════ 内置 / 本地 / 候选模块 ════════════════
 
@@ -165,11 +157,26 @@
         "set!"    "(set! id value)\n修改绑定。"
         "begin"   "(begin body ...)\n顺序求值，返回最后一个值。"))
 
+;; 没有 #lang / 没有 path 的 scratch buffer：仍然按 racket/base 的上下文
+;; 提供内置文档和当前 buffer 的本地定义（source-context 对非 Racket meta 返回 #f）。
+(define (fallback-source-context state ev vid)
+  (define text (or (engine-view-view-text ev vid) ""))
+  (define-values (_lang forms) (module-context text))
+  (hash 'path #f
+        'text text
+        'base-dir (current-directory)
+        'open (open-local-texts state ev)
+        'lang #f
+        'forms forms
+        'specs '(racket/base)
+        'parsed '(racket/base)
+        'locals (map symbol->string (definitions-of-forms forms))))
+
 ;; 当前标识符的文档上下文：源码上下文 + 绑定 / 候选模块 / 本地定义 / 内置文档。
 (define (doc-context state ev vid ident)
-  (define ctx (source-context state ev vid))
-  (and ctx
-       (let* ([specs (hash-ref ctx 'specs)]
+  (define ctx (or (source-context state ev vid)
+                  (fallback-source-context state ev vid)))
+  (let* ([specs (hash-ref ctx 'specs)]
               [parsed (hash-ref ctx 'parsed)]
               [mods0 (if (null? parsed) '(racket/base) parsed)]
               [binding
@@ -179,13 +186,30 @@
                                   (hash-ref ctx 'open)))]
               [mods (if binding
                         (cons (car binding) (remove (car binding) mods0))
-                        mods0)])
-         (define ctx* (hash-set (hash-set (hash-set ctx 'binding binding)
-                                          'mods mods)
-                               'key (list ident mods)))
-         (hash-set (hash-set ctx* 'local (local-def (hash-ref ctx 'text)
-                                                    (string->symbol ident)))
-                   'builtin (hash-ref builtin-docs ident #f)))))
+                        mods0)]
+              ;; prefix-in / rename-in 后候选名是新的；查 xref / bluebox 要用
+              ;; binding 里的**原名**（例如 p:first -> first），否则查不到目标。
+              [orig (if binding (cadr binding) ident)])
+         ;; 本地模块（path / string 来源）：它的定义可能在另一个打开的 buffer 里。
+         ;; 优先用内存文本；这是补全“内存优先”同一条规则在文档侧的应用。
+         (define local-module?
+           (and binding (let ([m (car binding)]) (or (path? m) (string? m)))))
+         (define imported-local
+           (and local-module?
+                (let* ([m (car binding)]
+                       [text* (and (or (path? m) (string? m))
+                                   (hash-ref (hash-ref ctx 'open)
+                                             (module-path-key m) #f))])
+                  (and text* (local-def text* (string->symbol orig))))))
+         (define local (or (local-def (hash-ref ctx 'text) (string->symbol orig))
+                           imported-local))
+         (define ctx* (hash-set (hash-set (hash-set (hash-set ctx 'binding binding)
+                                                    'mods mods)
+                                          'orig orig)
+                               'key (list orig mods)))
+         (hash-set (hash-set (hash-set ctx* 'local local)
+                             'local-module? local-module?)
+                   'builtin (hash-ref builtin-docs orig #f))))
 
 ;;; ════════════════ 生成面板文本 ════════════════
 
@@ -200,25 +224,28 @@
                    ""
                    (format "  (原 ~a)" (cadr binding))))))
 
-(define (docs-lines name local std binding)
+(define (docs-lines name local std binding [builtin #f])
+  (define doc-text (or std builtin))
   (append
    (list name)
    (if (origin-text name binding) (list (origin-text name binding)) '())
    (if local (list "── 本地定义 ──" local) '())
    (cond
-     [std (cons (if local "── 文档 ──" "") (string-split (string-trim std) "\n"))]
+     [doc-text (cons (if local "── 文档 ──" "") (string-split (string-trim doc-text) "\n"))]
      [(not local) (list "(无本地文档)"
                         (format "在线: ~a" (online-docs name)))]
      [else '()])))
 
 (define (docs-text d)
   (string-join (docs-lines (hash-ref d 'name) (hash-ref d 'local #f)
-                           (hash-ref d 'std #f) (hash-ref d 'binding #f))
+                           (hash-ref d 'std #f) (hash-ref d 'binding #f)
+                           (hash-ref d 'builtin #f))
                "\n"))
 
 (define (docs-fills d)
   (define lines (docs-lines (hash-ref d 'name) (hash-ref d 'local #f)
-                            (hash-ref d 'std #f) (hash-ref d 'binding #f)))
+                            (hash-ref d 'std #f) (hash-ref d 'binding #f)
+                            (hash-ref d 'builtin #f)))
   (for/list ([l (in-list lines)] [i (in-naturals)])
     (list i 0 i (string-length l)
           (cond [(zero? i) 'docs]
@@ -270,9 +297,9 @@
 
 ;;; ════════════════ 提交 doc 查询 ════════════════
 
-(define (submit-doc-job state key ident mods)
+(define (submit-doc-job state key name mods)
   (define-values (s1 service* effect)
-    (service-request state (service-of state) 'doc (list 'doc ident mods) key))
+    (service-request state (service-of state) 'doc (list 'doc name mods) key))
   (transition (store-set s1 'service service*) (list effect)))
 
 ;;; ════════════════ 命令：C-c h / M-d ════════════════
@@ -282,7 +309,7 @@
     [(not (view-id? vid))
      (transition-pure (state-chrome* state (λ (c) (chrome-set-message c "docs: no view"))))]
     [else
-     (define ident (or forced-ident (identifier-at ev vid)))
+     (define ident (or forced-ident (word-before-point ev vid)))
      (define ctx* (and ident (doc-context state ev vid ident)))
      (cond
        [(not ident)
@@ -294,30 +321,36 @@
         (define local (hash-ref ctx* 'local #f))
         (define builtin (hash-ref ctx* 'builtin #f))
         (define key (hash-ref ctx* 'key))
+        (define orig (hash-ref ctx* 'orig ident))
         (define cached? (cache-has? state key))
         (define cached (and cached? (cache-get state key)))
         (define pending (pending? state key))
-        (define d (hash 'name ident 'local local 'std cached
+        (define local-module? (hash-ref ctx* 'local-module? #f))
+        (define d (hash 'name ident 'orig orig 'local local 'std cached
+                        'builtin builtin
                         'binding (hash-ref ctx* 'binding #f)
                         'key key 'target vid))
         (cond
           ;; 没有任何本地/内置文档，也没有缓存：先查询，成功后自动打开。
+          ;; 本地模块的 xref 不可用：直接显示内存里的定义（或明确说无文档）。
           [(and (not local) (not builtin) (not cached?))
            (cond
              [pending
               (transition-pure (state-chrome* state
                                               (λ (c) (chrome-set-message c (format "docs: querying ~a…" ident)))))]
+             [local-module?
+              (write-docs (show-docs state ident) d)]
              [else
               (define s1 (state-chrome* state
                                         (λ (c) (chrome-set-message c (format "docs: querying ~a…" ident)))))
-              (transition-bind (submit-doc-job s1 key ident (hash-ref ctx* 'mods))
+              (transition-bind (submit-doc-job s1 key orig (hash-ref ctx* 'mods))
                                (λ (s2) (transition-pure (set-docs-state s2 d))))])]
           [else
            (define s1 (set-docs-state (show-docs state ident) d))
            (define s2 (write-docs s1 d))
-           (if (or cached? pending)
+           (if (or cached? pending local-module?)
                (transition (transition-state s2) (transition-effects s2))
-               (transition-bind (submit-doc-job (transition-state s2) key ident (hash-ref ctx* 'mods))
+               (transition-bind (submit-doc-job (transition-state s2) key orig (hash-ref ctx* 'mods))
                                 (λ (s3) (transition s3 (transition-effects s2)))))])])]))
 
 (define (docs-show-command ctx)
@@ -327,7 +360,8 @@
 (define (docs-toggle-command ctx)
   (define state (ctx-state ctx))
   (cond
-    [(docs-open? state) (transition-pure (hide-docs state))]
+    [(docs-open? state)
+     (transition-pure (store-set (hide-docs state) 'auto? #f))]
     [else (docs-show-command ctx)]))
 
 ;;; ════════════════ 钩子 ════════════════
@@ -341,14 +375,23 @@
     [else
      (docs-show-impl state ev vid)]))
 
-;; completion 选中项变化：面板开着就跟随；不自动改布局。
+;; completion 选中项变化：补全时自动显示选中项的文档；菜单关闭时只有当这次
+;; 文档面板是补全自动打开的时候才收起，手动 C-c h 打开的面板保持不变。
 (define (docs-on-selection state ev args)
   (define vid (car args))
   (define name (cadr args))
   (cond
-    [(or (not name) (not (docs-open? state)) (not (view-id? vid))) (transition-pure state)]
-    [(string? name) (docs-show-impl state ev vid name)]
-    [else (transition-pure state)]))
+    [(or (not name) (not (view-id? vid)))
+     (cond
+       [(and (store-ref state 'auto?) (docs-open? state))
+        (transition-pure (store-set (hide-docs state) 'auto? #f))]
+       [else (transition-pure state)])]
+    [(not (string? name)) (transition-pure state)]
+    [else
+     (define was-open? (docs-open? state))
+     (define s1 (if was-open? state (show-docs state name)))
+     (define s2 (if was-open? s1 (store-set s1 'auto? #t)))
+     (docs-show-impl s2 ev vid name)]))
 
 (define (docs-on-job state ev args)
   (define jid (car args))
