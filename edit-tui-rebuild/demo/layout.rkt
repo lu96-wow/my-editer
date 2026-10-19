@@ -4,7 +4,7 @@
 ;;;   filetree | editor(empty)
 ;;;            | state
 ;;;
-;;; 布局状态只存 split 关系 + panel 资源；rect 由 layout-pass 算。
+;;; 布局状态只存 split 关系 + panel 资源；rect 由 layout-solve 算。
 
 (require "../../core/editor.rkt"
          (prefix-in p: "../model/panel.rkt")
@@ -42,11 +42,11 @@
 (define l0 (l:make-layout #:root (l:leaf 'editor)
                           #:panels (hash 'editor editor-panel)
                           #:focus 'editor))
-(define-values (l1 ok1) (l:layout-attach l0 'editor 'left ft-panel))
-(define-values (l2 ok2) (l:layout-attach l1 'editor 'down state-panel))
+(define-values (l1 ok1) (l:layout-panel-attach l0 'editor 'left ft-panel))
+(define-values (l2 ok2) (l:layout-panel-attach l1 'editor 'down state-panel))
 (unless (and ok1 ok2) (error 'demo "layout attach failed"))
 
 ;; ---------- 渲染 ----------
-(define panels (layout->panels l2 (rect 0 0 W H)))
+(define panels (layout->render-panels l2 (rect 0 0 W H)))
 (panels-sync! panels)
 (displayln (screen->string (render-display panels #f W H)))

@@ -1,15 +1,15 @@
 #lang racket
 
-;;; edit-tui-rebuild/model/layout.rkt —— split tree + panel 状态 + layout pass
+;;; edit-tui-rebuild/model/layout.rkt —— split tree + panel 状态 + layout-solve
 ;;;
 ;;; 状态：
 ;;;   layout = root + panels + focus + next-split-id
 ;;;   node   = leaf(panel-id) | split(id, axis, left, right, ratio)
 ;;;
-;;; split 关系只存结构 / 比例；rect 不进树，由 layout-pass 算。
+;;; split 关系只存结构 / 比例；rect 不进树，由 layout-solve 算。
 ;;; panel 资源负责 view / 固定尺寸 / 隐藏 / 恢复信息。
 ;;;
-;;; 渲染列表 `(listof core panel)` 是 layout-pass 的投影，见 projection/geometry.rkt。
+;;; 渲染列表 `(listof core panel)` 是 layout-solve 的投影，见 projection/geometry.rkt。
 ;;;
 ;;; 固定尺寸：
 ;;;   fixed-w / fixed-h 是 panel 资源上的实际值（#f = flex）。
@@ -18,7 +18,7 @@
 ;;;
 ;;; 隐藏：
 ;;;   panel.hidden? = #t；仍留在 split 树里。
-;;;   layout-pass 跳过隐藏 leaf；兄弟吸收父 rect。
+;;;   layout-solve 跳过隐藏 leaf；兄弟吸收父 rect。
 ;;;   hide 记录 restore = (rect . parent-rect)；show 按比例恢复。
 ;;;
 ;;; 删除：
@@ -34,43 +34,42 @@
  (struct-out leaf)
  (struct-out split)
  (struct-out layout)
- node? layout-node?
+ layout-node? layout-tree?
  layout-empty? make-layout empty-layout
 
  ;; ---------- panel 资源 ----------
- layout-add-panel layout-panel layout-panels layout-panel-ids
+ layout-panel-add layout-panel layout-panel-resources layout-panel-ids
  layout-focus layout-set-focus
- layout-update-panel
+ layout-panel-update
  layout-visible-panel-ids
- layout-panel-views layout-panel-active
- layout-set-active layout-cycle-active
+ layout-panel-view-ids layout-panel-active-view
+ layout-panel-set-active-view layout-panel-cycle-active-view
 
- ;; ---------- layout pass ----------
- (struct-out pass)
+ ;; ---------- layout-solve ----------
+ (struct-out layout-solution)
  (struct-out seam)
- layout-pass
- layout-rects layout-split-rects
- layout-seams layout-seam-at layout-panel-at
- layout-seam-rect
+ layout-solve
+ layout-panel-rects layout-split-rects
+ layout-seams layout-seam-at layout-panel-id-at
 
  ;; ---------- 结构操作 ----------
  layout-split
- layout-attach
- layout-remove
- layout-clear-panel
- layout-set-ratio
- layout-resize-seam
+ layout-panel-attach
+ layout-panel-remove
+ layout-panel-clear-content
+ layout-split-set-ratio
+ layout-seam-resize
  (struct-out drag)
- layout-drag-start layout-drag-move
- layout-set-fixed
+ layout-seam-drag-start layout-seam-drag-move
+ layout-panel-set-fixed
 
  ;; ---------- 隐藏 / 显示 ----------
- layout-hide
- layout-show
+ layout-panel-hide
+ layout-panel-show
 
  ;; ---------- 查询 ----------
- layout-visible? layout-node-visible?
- layout-fixed-size
+ layout-panel-visible? layout-subtree-visible?
+ layout-panel-fixed-size
  layout-focus-fallback
  layout-validate layout-valid?)
 
@@ -87,8 +86,8 @@
 (define empty-layout (layout #f (hash) #f 0))
 
 (define (layout-empty? l) (not (layout-root l)))
-(define (node? x) (or (leaf? x) (split? x)))
-(define (layout-node? x) (or (not x) (node? x)))
+(define (layout-node? x) (or (leaf? x) (split? x)))
+(define (layout-tree? x) (or (not x) (layout-node? x)))
 
 (define (make-layout #:root [root #f]
                      #:panels [panels (hash)]
@@ -101,19 +100,19 @@
 (define (layout-panel l id)
   (hash-ref (layout-panel-map l) id #f))
 
-(define (layout-panels l)
+(define (layout-panel-resources l)
   (hash-values (layout-panel-map l)))
 
 (define (layout-panel-ids l)
   (hash-keys (layout-panel-map l)))
 
-(define (layout-add-panel l p)
+(define (layout-panel-add l p)
   (when (layout-panel l (panel-id p))
-    (error 'layout-add-panel "panel id 已存在：~a" (panel-id p)))
+    (error 'layout-panel-add "panel id 已存在：~a" (panel-id p)))
   (struct-copy layout l
                [panel-map (hash-set (layout-panel-map l) (panel-id p) p)]))
 
-(define (layout-update-panel l id f)
+(define (layout-panel-update l id f)
   (define p (layout-panel l id))
   (cond
     [(not p) (values l #f)]
@@ -127,26 +126,26 @@
 
 ;;; ════════════════ panel 内的 view 顺序切换 ════════════════
 
-(define (layout-panel-views l id)
+(define (layout-panel-view-ids l id)
   (define p (layout-panel l id))
   (if p (panel-views p) '()))
 
-(define (layout-panel-active l id)
+(define (layout-panel-active-view l id)
   (define p (layout-panel l id))
   (and p (panel-active p)))
 
 ;; → (values layout' ok?)
-(define (layout-set-active l id view-id)
+(define (layout-panel-set-active-view l id view-id)
   (define p (layout-panel l id))
   (cond
     [(not p) (values l #f)]
     [(not (memq view-id (panel-views p))) (values l #f)]
     [else
-     (layout-update-panel l id (λ (p) (panel-set-active p view-id)))]))
+     (layout-panel-update l id (λ (p) (panel-set-active p view-id)))]))
 
 ;; 顺序切换：step = 1 下一个，-1 上一个。
 ;; → (values layout' ok?)
-(define (layout-cycle-active l id [step 1])
+(define (layout-panel-cycle-active-view l id [step 1])
   (define p (layout-panel l id))
   (cond
     [(not p) (values l #f)]
@@ -160,7 +159,7 @@
                        i)
                      0))
      (define next (list-ref views (modulo (+ idx step) n)))
-     (layout-update-panel l id (λ (p) (panel-set-active p next)))]))
+     (layout-panel-update l id (λ (p) (panel-set-active p next)))]))
 
 
 ;;; ════════════════ 可见性 / 固定 ════════════════
@@ -169,14 +168,14 @@
   (define p (layout-panel l (leaf-panel-id leaf)))
   (and p (panel-visible? p)))
 
-(define (layout-node-visible? l n)
+(define (layout-subtree-visible? l n)
   (cond
     [(not n) #f]
     [(leaf? n) (leaf-visible? l n)]
-    [else (or (layout-node-visible? l (split-left n))
-              (layout-node-visible? l (split-right n)))]))
+    [else (or (layout-subtree-visible? l (split-left n))
+              (layout-subtree-visible? l (split-right n)))]))
 
-(define (layout-visible? l id)
+(define (layout-panel-visible? l id)
   (define p (layout-panel l id))
   (and p (panel-visible? p)))
 
@@ -192,19 +191,19 @@
             [else (error 'node-fixed-size "axis 要是 'lr 或 'tb：~a" axis)]))]
     [else #f]))
 
-(define (layout-fixed-size l id axis)
+(define (layout-panel-fixed-size l id axis)
   (define p (layout-panel l id))
   (and p
        (case axis
          [(lr) (panel-fixed-w p)]
          [(tb) (panel-fixed-h p)]
-         [else (error 'layout-fixed-size "axis 要是 'lr 或 'tb：~a" axis)])))
+         [else (error 'layout-panel-fixed-size "axis 要是 'lr 或 'tb：~a" axis)])))
 
-;;; ════════════════ layout pass ════════════════
+;;; ════════════════ layout-solve ════════════════
 
 (struct seam (split-id axis rect) #:transparent)
-(struct pass (rects split-rects seams) #:transparent)
-;; rects       : panel-id -> rect（仅可见 panel）
+(struct layout-solution (panel-rects split-rects seams) #:transparent)
+;; panel-rects : panel-id -> rect（仅可见 panel）
 ;; split-rects : split-id -> rect
 ;; seams       : (listof seam)，按树序
 
@@ -242,7 +241,7 @@
                 (rect-w right-r) 1)]
     [else (error 'make-seam-rect "axis 要是 'lr 或 'tb：~a" axis)]))
 
-(define (layout-pass l area)
+(define (layout-solve l area)
   (define rects (make-hasheq))
   (define split-rects (make-hasheq))
   (define seams '())
@@ -250,15 +249,15 @@
     (cond
       [(not n) (void)]
       [(leaf? n)
-       (when (layout-node-visible? l n)
+       (when (layout-subtree-visible? l n)
          (hash-set! rects (leaf-panel-id n) r))]
       [else
        (hash-set! split-rects (split-id n) r)
        (define axis (split-axis n))
        (define left (split-left n))
        (define right (split-right n))
-       (define lv? (layout-node-visible? l left))
-       (define rv? (layout-node-visible? l right))
+       (define lv? (layout-subtree-visible? l left))
+       (define rv? (layout-subtree-visible? l right))
        (cond
          [(not lv?)
           (when rv? (walk right r))]
@@ -284,28 +283,27 @@
           (set! seams (cons (seam (split-id n) axis (make-seam-rect axis r1 r2))
                             seams))])]))
   (walk (layout-root l) area)
-  (pass rects split-rects (reverse seams)))
+  (layout-solution rects split-rects (reverse seams)))
 
-(define (layout-rects l area)
-  (pass-rects (layout-pass l area)))
+(define (layout-panel-rects l area)
+  (layout-solution-panel-rects (layout-solve l area)))
 
 (define (layout-split-rects l area)
-  (pass-split-rects (layout-pass l area)))
+  (layout-solution-split-rects (layout-solve l area)))
 
 (define (layout-seams l area)
-  (pass-seams (layout-pass l area)))
+  (layout-solution-seams (layout-solve l area)))
 
 (define (layout-seam-at l area row col)
   (for/first ([s (in-list (layout-seams l area))]
               #:when (rect-contains? (seam-rect s) col row))
     s))
 
-(define (layout-panel-at l area row col)
-  (for/first ([(id r) (in-hash (layout-rects l area))]
+(define (layout-panel-id-at l area row col)
+  (for/first ([(id r) (in-hash (layout-panel-rects l area))]
               #:when (rect-contains? r col row))
     id))
 
-(define (layout-seam-rect s) (seam-rect s))
 
 ;;; ════════════════ 树更新 ════════════════
 
@@ -382,7 +380,7 @@
   (define (walk n)
     (cond
       [(not n) (void)]
-      [(leaf? n) (when (layout-node-visible? l n)
+      [(leaf? n) (when (layout-subtree-visible? l n)
                    (set! out (cons (leaf-panel-id n) out)))]
       [else (walk (split-left n)) (walk (split-right n))]))
   (walk (layout-root l))
@@ -414,7 +412,7 @@
   (define p (layout-panel l id))
   (and p
        (panel-visible? p)
-       (config-focusable? config (panel-kind p))))
+       (config-panel-focusable? config (panel-kind p))))
 
 (define (first-focusable-in-node l config n)
   (cond
@@ -456,7 +454,7 @@
     [(not (tree-has-leaf? (layout-root l) target-id)) (values l #f #f)]
     [(not (panel-visible? target-panel)) (values l #f #f)]
     [(layout-panel l (panel-id new-panel))
-     (error 'layout-attach "panel id 已存在：~a" (panel-id new-panel))]
+     (error 'layout-panel-attach "panel id 已存在：~a" (panel-id new-panel))]
     [else
      (define-values (axis new-first?) (direction->axis dir))
      (define sid (layout-next-split-id l))
@@ -478,7 +476,7 @@
   (define target (layout-panel l target-id))
   (cond
     [(not target) (values l #f)]
-    [(not (config-splittable? config (panel-kind target))) (values l #f)]
+    [(not (config-panel-splittable? config (panel-kind target))) (values l #f)]
     [(panel-hidden? target) (values l #f)]
     [else
      ;; 新 panel 与目标同 kind、空内容；固定尺寸不继承。
@@ -491,17 +489,17 @@
      (define-values (l* _sid ok?) (insert-node l target-id dir p #:ratio ratio))
      (values l* ok?)]))
 
-(define (layout-attach l target-id dir p #:ratio [ratio 1/2])
+(define (layout-panel-attach l target-id dir p #:ratio [ratio 1/2])
   (define-values (l* _sid ok?) (insert-node l target-id dir p #:ratio ratio))
   (values l* ok?))
 
 ;;; ════════════════ 删除 / 清空 ════════════════
 
-(define (layout-remove l id #:config [config default-config])
+(define (layout-panel-remove l id #:config [config default-config])
   (define p (layout-panel l id))
   (cond
     [(not p) (values l #f)]
-    [(not (config-deletable? config (panel-kind p))) (values l #f)]
+    [(not (config-panel-deletable? config (panel-kind p))) (values l #f)]
     [else
      (define-values (root* _direct? found?) (remove-leaf (layout-root l) id))
      (cond
@@ -516,30 +514,30 @@
         (values l2 #t)])]))
 
 ;; 只清内容，不删 panel / split 关系。用于“最后一个 editor 关掉”。
-(define (layout-clear-panel l id)
-  (layout-update-panel l id
+(define (layout-panel-clear-content l id)
+  (layout-panel-update l id
                        (λ (p) (panel-set-views p '() #f))))
 
-(define (layout-set-fixed l id axis value)
-  (layout-update-panel l id (λ (p) (panel-set-fixed p axis value))))
+(define (layout-panel-set-fixed l id axis value)
+  (layout-panel-update l id (λ (p) (panel-set-fixed p axis value))))
 
 ;;; ════════════════ 尺寸限制 ════════════════
 
 (define (visible-children l n)
-  (filter (λ (c) (layout-node-visible? l c))
+  (filter (λ (c) (layout-subtree-visible? l c))
           (list (split-left n) (split-right n))))
 
 (define (panel-min-size l config id axis)
   (define p (layout-panel l id))
   (cond
     [(or (not p) (not (panel-visible? p))) 0]
-    [else (rule-min-size (config-rule config (panel-kind p)) axis)]))
+    [else (panel-rule-min-size (config-panel-rule config (panel-kind p)) axis)]))
 
 (define (panel-max-size l config id axis)
   (define p (layout-panel l id))
   (cond
     [(or (not p) (not (panel-visible? p))) #f]
-    [else (rule-max-size (config-rule config (panel-kind p)) axis)]))
+    [else (panel-rule-max-size (config-panel-rule config (panel-kind p)) axis)]))
 
 ;; 子树沿某个轴的最小 / 最大格数。
 ;; 同轴 split：孩子加起来；垂直轴 split：取孩子的 max / min。
@@ -588,9 +586,9 @@
 
 ;;; ════════════════ ratio / seam resize ════════════════
 
-(define (layout-set-ratio l sid ratio)
+(define (layout-split-set-ratio l sid ratio)
   (unless (and (real? ratio) (<= 0 ratio 1))
-    (error 'layout-set-ratio "ratio 要在 [0,1]：~a" ratio))
+    (error 'layout-split-set-ratio "ratio 要在 [0,1]：~a" ratio))
   (define-values (root* changed?)
     (update-split (layout-root l) sid
                   (λ (s) (struct-copy split s [ratio ratio]))))
@@ -598,12 +596,12 @@
           changed?))
 
 ;; delta 是沿 split 轴的格数；只有两边都 flex 时才能拖。
-(define (layout-resize-seam l area sid delta #:config [config default-config])
+(define (layout-seam-resize l area sid delta #:config [config default-config])
   (define s (find-split (layout-root l) sid))
   (cond
     [(not s) (values l #f)]
-    [(not (and (layout-node-visible? l (split-left s))
-               (layout-node-visible? l (split-right s))))
+    [(not (and (layout-subtree-visible? l (split-left s))
+               (layout-subtree-visible? l (split-right s))))
      (values l #f)]
     [(or (node-fixed-size l (split-left s) (split-axis s))
          (node-fixed-size l (split-right s) (split-axis s)))
@@ -625,7 +623,7 @@
               (define upper (cdr b))
               (define cur (round-ratio E (split-ratio s)))
               (define new-left (max lower (min upper (+ cur delta))))
-              (layout-set-ratio l sid (/ new-left E))])])])]))
+              (layout-split-set-ratio l sid (/ new-left E))])])])]))
 
 ;;; ════════════════ 拖动状态 ════════════════
 
@@ -633,7 +631,7 @@
 ;; move 用“从起点到当前的绝对 delta”，所以重复 move 不会累积错。
 (struct drag (split-id axis start-row start-col start-ratio) #:transparent)
 
-(define (layout-drag-start l area row col #:config [config default-config])
+(define (layout-seam-drag-start l area row col #:config [config default-config])
   (define s* (layout-seam-at l area row col))
   (cond
     [(not s*) #f]
@@ -650,7 +648,7 @@
              (seam-bounds l config s (axis-extent r (split-axis s)))
              (drag (split-id s) (split-axis s) row col (split-ratio s)))])]))
 
-(define (layout-drag-move l area d row col #:config [config default-config])
+(define (layout-seam-drag-move l area d row col #:config [config default-config])
   (define s (find-split (layout-root l) (drag-split-id d)))
   (cond
     [(not s) (values l #f)]
@@ -678,7 +676,7 @@
                                 (- row (drag-start-row d))))
               (define start-left (round-ratio E (drag-start-ratio d)))
               (define new-left (max lower (min upper (+ start-left delta))))
-              (layout-set-ratio l (drag-split-id d) (/ new-left E))])])])]))
+              (layout-split-set-ratio l (drag-split-id d) (/ new-left E))])])])]))
 
 ;;; ════════════════ 隐藏 / 显示 ════════════════
 
@@ -693,14 +691,14 @@
 (define (axis-size r axis)
   (axis-extent r axis))
 
-(define (layout-hide l area id #:config [config default-config])
+(define (layout-panel-hide l area id #:config [config default-config])
   (define p (layout-panel l id))
   (cond
     [(or (not p) (panel-hidden? p)) (values l #f)]
-    [(not (config-hideable? config (panel-kind p))) (values l #f)]
+    [(not (config-panel-hideable? config (panel-kind p))) (values l #f)]
     [else
-     (define pass (layout-pass l area))
-     (define r (hash-ref (pass-rects pass) id #f))
+     (define pass (layout-solve l area))
+     (define r (hash-ref (layout-solution-panel-rects pass) id #f))
      (cond
        [(not r) (values l #f)]
        [else
@@ -726,7 +724,7 @@
          (/ old-S old-E)
          1/2)]))
 
-(define (layout-show l area id)
+(define (layout-panel-show l area id)
   (define p (layout-panel l id))
   (cond
     [(or (not p) (not (panel-hidden? p))) (values l #f)]
@@ -739,13 +737,13 @@
        [(not parent) (values l1 #t)]
        [else
         (define axis (split-axis parent))
-        (define fixed (layout-fixed-size l1 id axis))
+        (define fixed (layout-panel-fixed-size l1 id axis))
         (cond
           [fixed (values l1 #t)]         ; 固定轴：比例不重要
           [else
            (define r (restore-ratio p axis))
            (define r* (if (eq? side 'left) r (- 1 r)))
-           (define-values (l2 _) (layout-set-ratio l1 (split-id parent) r*))
+           (define-values (l2 _) (layout-split-set-ratio l1 (split-id parent) r*))
            (values l2 #t)])])]))
 
 ;;; ════════════════ 校验 ════════════════
@@ -753,11 +751,11 @@
 ;; 检查每个可见 panel 的当前 rect 是否满足 config 的 min / max。
 ;; → (listof (list panel-id axis actual min max))
 (define (layout-validate l area config)
-  (define pass (layout-pass l area))
+  (define pass (layout-solve l area))
   (append*
-   (for/list ([(id r) (in-hash (pass-rects pass))])
+   (for/list ([(id r) (in-hash (layout-solution-panel-rects pass))])
      (define p (layout-panel l id))
-     (define rule (config-rule config (panel-kind p)))
+     (define rule (config-panel-rule config (panel-kind p)))
      (define w (rect-w r))
      (define h (rect-h r))
      (append

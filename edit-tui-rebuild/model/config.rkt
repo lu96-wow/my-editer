@@ -15,13 +15,13 @@
          make-layout-config
          default-panel-rule
          default-config
-         config-rule
-         config-splittable?
-         config-hideable?
-         config-deletable?
-         config-focusable?
-         rule-min-size
-         rule-max-size)
+         config-panel-rule
+         config-panel-splittable?
+         config-panel-hideable?
+         config-panel-deletable?
+         config-panel-focusable?
+         panel-rule-min-size
+         panel-rule-max-size)
 
 (struct panel-rule
   (splittable? hideable? deletable? focusable?
@@ -95,30 +95,30 @@
                      #:min-w 1 #:max-w #f
                      #:min-h 1 #:max-h #f))))
 
-(define (config-rule config kind)
+(define (config-panel-rule config kind)
   (or (hash-ref (layout-config-rules config) kind #f)
       (layout-config-default-rule config)))
 
-(define (config-splittable? config kind)
-  (panel-rule-splittable? (config-rule config kind)))
+(define (config-panel-splittable? config kind)
+  (panel-rule-splittable? (config-panel-rule config kind)))
 
-(define (config-hideable? config kind)
-  (panel-rule-hideable? (config-rule config kind)))
+(define (config-panel-hideable? config kind)
+  (panel-rule-hideable? (config-panel-rule config kind)))
 
-(define (config-deletable? config kind)
-  (panel-rule-deletable? (config-rule config kind)))
+(define (config-panel-deletable? config kind)
+  (panel-rule-deletable? (config-panel-rule config kind)))
 
-(define (config-focusable? config kind)
-  (panel-rule-focusable? (config-rule config kind)))
+(define (config-panel-focusable? config kind)
+  (panel-rule-focusable? (config-panel-rule config kind)))
 
-(define (rule-min-size rule axis)
+(define (panel-rule-min-size rule axis)
   (case axis
     [(lr) (panel-rule-min-w rule)]
     [(tb) (panel-rule-min-h rule)]
-    [else (error 'rule-min-size "axis 要是 'lr 或 'tb：~a" axis)]))
+    [else (error 'panel-rule-min-size "axis 要是 'lr 或 'tb：~a" axis)]))
 
-(define (rule-max-size rule axis)
+(define (panel-rule-max-size rule axis)
   (case axis
     [(lr) (panel-rule-max-w rule)]
     [(tb) (panel-rule-max-h rule)]
-    [else (error 'rule-max-size "axis 要是 'lr 或 'tb：~a" axis)]))
+    [else (error 'panel-rule-max-size "axis 要是 'lr 或 'tb：~a" axis)]))
