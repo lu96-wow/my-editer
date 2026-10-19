@@ -2,10 +2,10 @@
 
 ;;; config 规则 / min-max / focus fallback 测试。
 (require rackunit
-         "../model/config.rkt"
-         "../model/layout.rkt"
-         "../model/panel.rkt"
-         "../../core/view/base/rect.rkt")
+         "../api/config.rkt"
+         "../api/layout.rkt"
+         "../api/panel.rkt"
+         "../api/base.rkt")
 
 (define area (rect 0 0 80 24))
 
@@ -23,7 +23,7 @@
                          #:active 'status-view
                          #:fixed-h 1))
   (define ed (make-empty-editor-panel 'editor))
-  (define l0 (make-layout #:root (leaf 'editor)
+  (define l0 (make-layout #:root (make-leaf 'editor)
                           #:panels (hash 'editor ed)
                           #:focus 'editor))
   (attach! (attach! l0 'editor 'left ft) 'editor 'down st))

@@ -2,10 +2,10 @@
 
 ;;; geometry 测试：layout-solve → core panel 列表。
 (require rackunit
-         "../model/layout.rkt"
-         "../model/panel.rkt"
-         "../projection/geometry.rkt"
-         "../../core/view/base/rect.rkt"
+         "../api/layout.rkt"
+         "../api/panel.rkt"
+         "../api/geometry.rkt"
+         "../api/base.rkt"
          (prefix-in core- "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))
@@ -35,7 +35,7 @@
                        #:fixed-h 1))
 (define ed (make-empty-editor-panel 'editor))
 
-(define l0 (make-layout #:root (leaf 'editor)
+(define l0 (make-layout #:root (make-leaf 'editor)
                         #:panels (hash 'editor ed)
                         #:focus 'editor))
 (define l1 (attach! l0 'editor 'left ft))

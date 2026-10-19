@@ -35,7 +35,7 @@
  (struct-out split)
  (struct-out layout)
  layout-node? layout-tree?
- layout-empty? make-layout empty-layout
+ layout-empty? make-layout empty-layout make-leaf
 
  ;; ---------- panel 资源 ----------
  layout-panel-add layout-panel layout-panel-resources layout-panel-ids
@@ -94,6 +94,11 @@
                      #:focus [focus #f]
                      #:next-split-id [next-split-id 0])
   (layout root panels focus next-split-id))
+
+(define (make-leaf panel-id)
+  (when (not panel-id)
+    (error 'make-leaf "panel-id 不能是 #f"))
+  (leaf panel-id))
 
 ;;; ════════════════ panel 资源 ════════════════
 

@@ -2,11 +2,11 @@
 
 ;;; 焦点导航测试：方向 / 鼠标 / focusable 过滤 / hidden。
 (require rackunit
-         "../model/config.rkt"
-         "../model/layout.rkt"
-         "../model/panel.rkt"
-         "../projection/focus.rkt"
-         "../../core/view/base/rect.rkt"
+         "../api/config.rkt"
+         "../api/layout.rkt"
+         "../api/panel.rkt"
+         "../api/focus.rkt"
+         "../api/base.rkt"
          (prefix-in c: "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))
@@ -25,7 +25,7 @@
                          #:active 'status-view
                          #:fixed-h 1))
   (define ed (make-empty-editor-panel 'editor))
-  (define l0 (make-layout #:root (leaf 'editor)
+  (define l0 (make-layout #:root (make-leaf 'editor)
                           #:panels (hash 'editor ed)
                           #:focus 'editor))
   (attach! (attach! l0 'editor 'left ft) 'editor 'down st))

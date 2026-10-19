@@ -4,11 +4,11 @@
 ;;; 文件树和资源管理面板共用一个 sidebar panel：views = (filetree resources)。
 
 (require rackunit
-         "../model/config.rkt"
-         "../model/layout.rkt"
-         "../model/panel.rkt"
-         "../projection/geometry.rkt"
-         "../../core/view/base/rect.rkt"
+         "../api/config.rkt"
+         "../api/layout.rkt"
+         "../api/panel.rkt"
+         "../api/geometry.rkt"
+         "../api/base.rkt"
          (prefix-in c: "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))
@@ -42,7 +42,7 @@
                           #:active 'status-view
                           #:fixed-h 1))
 
-(define l0 (make-layout #:root (leaf 'editor)
+(define l0 (make-layout #:root (make-leaf 'editor)
                         #:panels (hash 'editor editor)
                         #:focus 'editor))
 (define l (attach! (attach! l0 'editor 'left sidebar) 'editor 'down state))

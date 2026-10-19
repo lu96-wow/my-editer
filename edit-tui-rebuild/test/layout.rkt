@@ -2,9 +2,9 @@
 
 ;;; layout 状态 / split tree / hide / show / remove / split 测试。
 (require rackunit
-         "../model/layout.rkt"
-         "../model/panel.rkt"
-         "../../core/view/base/rect.rkt")
+         "../api/layout.rkt"
+         "../api/panel.rkt"
+         "../api/base.rkt")
 
 (define area (rect 0 0 80 24))
 
@@ -48,7 +48,7 @@
                        #:fixed-h 1))
 (define ed (make-empty-editor-panel 'editor))
 
-(define l0 (make-layout #:root (leaf 'editor)
+(define l0 (make-layout #:root (make-leaf 'editor)
                        #:panels (hash 'editor ed)
                        #:focus 'editor))
 (define l1 (attach! l0 'editor 'left ft))
@@ -148,7 +148,7 @@
 (check-equal? (layout-visible-panel-ids l-removed) '(editor editor2 state))
 
 ;; 删掉根 panel → 空布局
-(define l-single (make-layout #:root (leaf 'only)
+(define l-single (make-layout #:root (make-leaf 'only)
                             #:panels (hash 'only (make-empty-editor-panel 'only))
                             #:focus 'only))
 (define l-none (remove! l-single 'only))

@@ -18,6 +18,18 @@ panel 资源：
   borders / face / weight
 ```
 
+## API 边界约束
+
+- 非实现层（`main.rkt` / `demo/` / `test/` / 未来 `app/`）只能 require：
+  - `main.rkt`
+  - `api/*`
+  - 外部 `core/*`
+- 不得直接 require `model/*`、`projection/*`、`command/*`；
+- `api/*` 可以 require 实现模块；
+- 实现模块之间可以互相 require；
+- 如果 API 不够，先改 API，不要在下游绕过 API 直接调实现；
+- `test/api-boundary.rkt` 机器检查这条约束。
+
 ## 关键约定
 
 - `rect` 不进树，由 `layout-solve` 计算；
@@ -41,8 +53,18 @@ panel 资源：
 
 | 文件 | 内容 |
 |---|---|
-| `model/panel.rkt` | panel 资源：views / active / fixed / hidden / restore / borders |
-| `model/config.rkt` | panel kind 规则：splittable / hideable / deletable / focusable / min-max |
+| `main.rkt` | 公共入口，只再导出 `api/main.rkt` |
+| `api/base.rkt` | 几何值：rect |
+| `api/panel.rkt` | panel 资源 API |
+| `api/config.rkt` | config 规则 API |
+| `api/layout.rkt` | layout 状态 / solve / 接缝 API |
+| `api/focus.rkt` | 焦点导航 API |
+| `api/geometry.rkt` | 渲染 / 命中投影 API |
+| `api/command.rkt` | 命令表 / stack API |
+| `api/main.rkt` | 统一 API 面 |
+| `model/panel.rkt` | panel 资源实现 |
+| `model/config.rkt` | config 规则实现 |
+| `command/table.rkt` | 命令表实现 |
 | `model/layout.rkt` | split tree、layout-solve、split / attach / remove / clear / hide / show / seam resize / focus fallback |
 | `projection/geometry.rkt` | layout-solve → 渲染 core panel / 命中 core panel |
 | `projection/focus.rkt` | 焦点导航：方向邻居 / 鼠标命中 / focusable 过滤 |
@@ -52,8 +74,19 @@ panel 资源：
 | `test/geometry.rkt` | rect / 渲染投影 / 命中投影测试 |
 | `test/focus.rkt` | 方向焦点 / 鼠标命中 / focusable 过滤测试 |
 | `test/switch.rkt` | 同一 panel 区域多 view 的顺序切换测试 |
+| `test/command-table.rkt` | 命令表 / 键序列 / 合并 / stack 遮蔽测试 |
+| `test/api.rkt` | 只 require `main.rkt` 的统一 API 冒烟测试 |
+| `test/api-boundary.rkt` | 检查非实现层没有越过 API 直接 require 实现模块 |
 
 ## API
+
+公共入口：
+
+```racket
+(require "edit-tui-rebuild/main.rkt")
+```
+
+实现模块仍在 `model/` / `projection/` / `command/`；对外只从 `api/*` 导出功能面。
 
 ### config
 
@@ -173,6 +206,42 @@ empty-layout
 (layout->render-panels l area)  ; view = active
 (layout->hit-panels l area)     ; view = panel-id
 ```
+
+## 命令表
+
+两层：
+
+```text
+command-table        一张表：key-sequence -> command
+command-table-stack  (listof command-table)：动态遮蔽
+```
+
+```racket
+(keys [key ... value] ...)          ; 构造一张表
+(command-table-add t seq value)
+(command-table-from-bindings binds)
+(command-table-bindings t)
+(command-table-merge t ...)         ; 多张合成一张，左边优先
+(command-table-lookup t seq)        ; 'command / 'prefix / 'unbound
+
+command-table-stack-empty
+(command-table-stack-from-tables ts)
+(command-table-stack-push stack t)
+(command-table-stack-pop stack)
+(command-table-stack-remove stack t)
+(command-table-stack-lookup stack seq)
+```
+
+查找规则：
+
+- stack 顶层先查；
+- 顶层返回 `command` / `prefix` 就停止；
+- 只有 `unbound` 才落到下一层；
+- 所以弹窗可以 `push` 一张临时表，关闭时 `pop` / `remove`。
+
+绑定对象按约定是 **当前焦点 buffer**；命令表本身不存 buffer，宿主为焦点 buffer 选择对应的 stack。
+
+后续“资源打开时匹配”会在这层之上加表选择 / 安装规则，不改表实现。
 
 ## 测试
 
