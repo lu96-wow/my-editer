@@ -17,12 +17,13 @@
          "../../core/view/base/rect.rkt"
          "../../core/view/panel.rkt")
 
-(define (layout->render-panels layout area)
+(define (layout->render-panels layout area
+                                #:view-object [view-object (λ (v) v)])
   (define solution (l:layout-solve layout area))
   (for/list ([id (in-list (l:layout-visible-panel-ids layout))])
     (define panel (l:layout-panel layout id))
     (define r (hash-ref (l:layout-solution-panel-rects solution) id))
-    (make-panel (p:panel-view panel)
+    (make-panel (view-object (p:panel-view panel))
                 r
                 (p:panel-borders panel)
                 #:face (p:panel-face panel)

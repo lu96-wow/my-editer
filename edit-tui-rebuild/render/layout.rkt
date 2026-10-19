@@ -22,23 +22,25 @@
 ;; → (values cache' bytes)
 ;; cache = #f 表示冷启动；非 #f 时做增量。
 ;; 把 panels 的尺寸落进 core view 的 viewport。
-(define (layout-sync! layout area)
-  (define panels (layout->render-panels layout area))
+(define (layout-sync! layout area
+                      #:view-object [view-object (λ (v) v)])
+  (define panels (layout->render-panels layout area #:view-object view-object))
   (panels-sync! panels)
   panels)
 
 (define (render-layout layout area
                        #:focus-panel [focus-panel #f]
                        #:cache [cache #f]
-                       #:sync? [sync? #t])
+                       #:sync? [sync? #t]
+                       #:view-object [view-object (λ (v) v)])
   (define panels (if sync?
-                     (layout-sync! layout area)
-                     (layout->render-panels layout area)))
+                     (layout-sync! layout area #:view-object view-object)
+                     (layout->render-panels layout area #:view-object view-object)))
   (define focus-view
     (and focus-panel
          (let ([p (layout-panel layout focus-panel)])
            (and p
-                (let ([v (panel-view p)])
+                (let ([v (view-object (panel-view p))])
                   (and (view? v) v))))))
   (define-values (cache* rows sels)
     (render-display-patch panels focus-view

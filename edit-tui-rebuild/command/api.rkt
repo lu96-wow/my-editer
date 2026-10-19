@@ -2,7 +2,8 @@
 
 ;;; edit-tui-rebuild/command/api.rkt —— 命令表 API
 
-(require "table.rkt")
+(require "table.rkt"
+         "key.rkt")
 
 (provide
  ;; 单表
@@ -27,4 +28,8 @@
  command-table-stack-lookup
 
  ;; 构造 DSL
- keys)
+ keys
+
+ ;; key token
+ mods-order normalize-mods
+ key key? key-name key-mods key->string char->key-name)

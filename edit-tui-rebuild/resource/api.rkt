@@ -30,6 +30,7 @@
  resource-dirty?
  resource-writable?
  resource-view-ids
+ resource-of-view
  resource-command-stack
  resource-set-command-stack
 

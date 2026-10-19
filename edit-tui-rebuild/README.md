@@ -21,6 +21,20 @@ edit-tui-rebuild/
   base/
     api.rkt                几何值：rect
 
+  app/
+    event.rkt              key / mouse / resize / paste / internal
+    state.rkt              app-state
+    action.rkt             view-action / quit-action
+    step.rkt               event -> (values state actions)
+    api.rkt                app API
+
+  runtime/
+    engine.rkt             core buffer / view 唯一拥有者
+    actions.rkt            action -> engine / IO
+    render.rkt             state + cache -> bytes
+    loop.rkt               render / read-event / step / run-actions
+    api.rkt                runtime API
+
   panel/
     model.rkt              panel 资源
     api.rkt                panel API
@@ -337,6 +351,71 @@ require 即安装，换主题 = 换 require：
 ```racket
 (require "edit-tui-rebuild/config/theme/dark.rkt")
 ```
+
+### app / 事件循环
+
+```racket
+(key-event token)
+(mouse-event token row col)
+(resize-event rows cols)
+(paste-event text)
+(internal-event kind data)
+(quit-event)
+
+(make-app-state #:layout #:resources #:focus-resource
+                #:overlays #:pending #:area #:quit? #:message)
+
+(view-action kind view-id data)
+(quit-action)
+
+(step state event)  ; -> (values state' actions)
+```
+
+命令值约定：
+
+```text
+command-table 叶子是 (state -> (values state' actions))
+```
+
+按键序列 / 动态遮蔽沿用：
+
+```text
+overlay tables ++ focused resource command-stack
+```
+
+### runtime
+
+```racket
+(make-engine)
+(engine-create-buffer! engine did name text)
+(engine-create-view! engine vid did)
+(engine-view-object engine vid)
+(engine-view-text engine vid)
+(engine-doc-text engine did)
+(engine-doc-version engine did)
+(engine-apply-view-action! engine action)
+
+(run-actions state engine actions)  ; -> state'
+
+(render-frame state engine cache)   ; -> (values cache' bytes)
+
+(run-loop state engine
+          #:read-event ...
+          #:write-bytes ...)
+```
+
+`run-loop`：
+
+```text
+render
+read-event
+step
+run-actions
+quit? -> exit
+```
+
+没有 hook / settle / 通用 effect。action 是数据，runtime 同步解释。  
+view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 
 ### 资源管理
 

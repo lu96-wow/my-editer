@@ -53,6 +53,7 @@
          resource-dirty?
          resource-writable?
          resource-view-ids
+         resource-of-view
          resource-command-stack
          resource-set-command-stack
 
@@ -172,6 +173,11 @@
 (define (resource-view-ids store id)
   (define r (resource-ref store id))
   (if r (resource-views r) '()))
+
+(define (resource-of-view store vid)
+  (for/first ([id (in-list (resource-store-order store))]
+              #:when (memv vid (resource-view-ids store id)))
+    id))
 
 (define (resource-command-stack store id)
   (define r (resource-ref store id))
@@ -295,8 +301,14 @@
      (case (pending-kind p)
        [(quit) (values (store-event s1 'quit '())
                        (list (action 'quit '())))]
-       [(close) (values (store-event s1 'closed (list (car (pending-ids p))))
-                        (list (action 'close-resource (list (car (pending-ids p))))))]
+       [(close)
+        (define id (car (pending-ids p)))
+        (define r (resource-ref store id))
+        (values (store-event s1 'closed (list id))
+                (list (action 'close-resource
+                              (list id
+                                    (and r (resource-doc-id r))
+                                    (if r (resource-views r) '())))))]
        [else (values s1 '())])]))
 
 (define (advance-pending store)
@@ -344,7 +356,8 @@
     [else
      (define s1 (store-remove store id))
      (values (store-event s1 'closed (list id))
-             (list (action 'close-resource (list id))))]))
+             (list (action 'close-resource
+                           (list id (resource-doc-id r) (resource-views r)))))] ))
 
 (define (resource-request-quit store)
   (define ids (dirty-ids store))

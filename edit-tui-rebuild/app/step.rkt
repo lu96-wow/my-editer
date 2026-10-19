@@ -1,0 +1,106 @@
+#lang racket
+
+;;; edit-tui-rebuild/app/step.rkt —— event -> (values state actions)（纯）
+
+(require "../base/api.rkt"
+         "../command/api.rkt"
+         "../config/api.rkt"
+         "../layout/api.rkt"
+         "../panel/api.rkt"
+         "../resource/api.rkt"
+         "../focus/api.rkt"
+         "event.rkt"
+         "state.rkt"
+         "action.rkt")
+
+(provide step)
+
+(define (notice state text)
+  (struct-copy app-state state [message text]))
+
+(define (clear-pending state)
+  (struct-copy app-state state [pending '()]))
+
+(define (focus-panel state)
+  (layout-focus (app-state-layout state)))
+
+(define (focus-view state)
+  (define p (layout-panel (app-state-layout state) (focus-panel state)))
+  (and p (panel-view p)))
+
+(define (focus-resource* state)
+  (define vid (focus-view state))
+  (and vid (resource-of-view (app-state-resources state) vid)))
+
+(define (command-stack state)
+  (define rs (app-state-focus-resource state))
+  (define base-stack
+    (if rs
+        (or (resource-command-stack (app-state-resources state) rs)
+            command-table-stack-empty)
+        command-table-stack-empty))
+  (command-table-stack-from-tables
+   (append (app-state-overlays state)
+           (command-table-stack-tables base-stack))))
+
+(define (run-command-value state value)
+  (if (procedure? value)
+      (value state)
+      (values (notice state (format "not a command: ~a" value)) '())))
+
+(define (dispatch-key state ev)
+  (define tok (key-event-token ev))
+  (define seq (append (app-state-pending state) (list tok)))
+  (define stack (command-stack state))
+  (let-values ([(status value) (command-table-stack-lookup stack seq)])
+    (case status
+      [(command)
+       (define s1 (clear-pending state))
+       (run-command-value s1 value)]
+      [(prefix)
+       (values (struct-copy app-state state [pending seq]) '())]
+      [else
+       (values (notice (clear-pending state)
+                       (format "unbound: ~a"
+                               (string-join (map key->string seq) " ")))
+               '())])))
+
+(define (dispatch-mouse state ev)
+  (define row (mouse-event-row ev))
+  (define col (mouse-event-col ev))
+  (define id (layout-focus-panel-at (app-state-layout state)
+                                    (app-state-area state)
+                                    default-config
+                                    row col))
+  (cond
+    [(not id) (values state '())]
+    [else
+     (define layout* (layout-set-focus (app-state-layout state) id))
+     (define s1 (struct-copy app-state state [layout layout*]))
+     (values (struct-copy app-state s1 [focus-resource (focus-resource* s1)])
+             '())]))
+
+(define (dispatch-paste state ev)
+  (define vid (focus-view state))
+  (cond
+    [(not vid) (values (notice state "paste: no view") '())]
+    [else
+     (values state (list (view-action 'insert vid (paste-event-text ev))))]))
+
+(define (dispatch-resize state ev)
+  (values (struct-copy app-state state
+                       [area (rect 0 0 (resize-event-cols ev) (resize-event-rows ev))])
+          '()))
+
+(define (step state ev)
+  (case (event-kind ev)
+    [(key) (dispatch-key state ev)]
+    [(mouse) (dispatch-mouse state ev)]
+    [(paste) (dispatch-paste state ev)]
+    [(resize) (dispatch-resize state ev)]
+    [(quit) (values (struct-copy app-state state [quit? #t]) '())]
+    [(internal)
+     (case (internal-event-kind ev)
+       [(quit) (values (struct-copy app-state state [quit? #t]) '())]
+       [else (values state '())])]
+    [else (values state '())]))

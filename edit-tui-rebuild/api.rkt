@@ -6,6 +6,7 @@
 
 (require "base/api.rkt"
          "face/api.rkt"
+         "app/api.rkt"
          "panel/api.rkt"
          "config/api.rkt"
          "layout/api.rkt"
@@ -13,10 +14,12 @@
          "projection/api.rkt"
          "render/api.rkt"
          "command/api.rkt"
-         "resource/api.rkt")
+         "resource/api.rkt"
+         "runtime/api.rkt")
 
 (provide (all-from-out "base/api.rkt"
                        "face/api.rkt"
+                       "app/api.rkt"
                        "panel/api.rkt"
                        "config/api.rkt"
                        "layout/api.rkt"
@@ -24,4 +27,5 @@
                        "projection/api.rkt"
                        "render/api.rkt"
                        "command/api.rkt"
-                       "resource/api.rkt"))
+                       "resource/api.rkt"
+                       "runtime/api.rkt"))
