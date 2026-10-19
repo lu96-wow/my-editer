@@ -8,13 +8,20 @@
 ;;;             「文档算一次，然后 map 到该 buffer 的所有 view」。
 ;;;
 ;;; 操作是函数，组合用 compose，集合用 map；没有命令名注册表。
+;;;
+;;; 三个面各归各：
+;;;   buffer 面：文本 / 历史 —— buffer-edit! / buffer-set-* / buffer-undo! …
+;;;   view   面：选区 / 视口 —— view-*!
+;;;   panel  面：几何 / 边框 / view 槽 —— editor/panel-ops.rkt（panel-with-* / panel-set-point!）。
+;;; 空面板（panel.view = #f）没有 view 目标：panel-set-point! 在 panel-ops 里返回 #f 不动，
+;;; 渲染 / sync / 命中 / 导航照常。
 
 (require "state.rkt" "state-data.rkt" "history.rkt" "query.rkt"
          "../text/document.rkt" "../text/command.rkt" "../text/rebase.rkt"
          "../text/base/point.rkt" "../text/base/selection.rkt"
          "../text/base/range.rkt" "../text/base/change.rkt"
          "../text/base/track.rkt" "../text/base/line.rkt" "../text/base/width.rkt"
-         "../view/base/viewport.rkt" "../view/panel.rkt")
+         "../view/base/viewport.rkt")
 
 (provide
  ;; ---------- 纯：编辑算子 ----------
@@ -55,7 +62,6 @@
  ;; ---------- 提交：选区 / 定位 ----------
  view-set-selections!             ; view sels [#:ensure?] → void
  view-set-point!                  ; view point → void
- panel-set-point!                 ; panel 屏幕格 (row,col) → view 主光标；→ 落点?（鼠标点哪落哪）
  view-select-all!                 ; view → void
  view-add-selection!              ; view selection [#:ensure?] → void
  view-remove-selection!           ; view selection [#:ensure?] → void
@@ -301,12 +307,6 @@
   (when ensure? (view-ensure! v)))
 
 (define (view-set-point! v p) (view-set-selections! v (selections-one (caret p))))
-
-;; panel 的屏幕格 (row,col) → 把该 panel 的 view 主光标落到对应文档位置。
-;; 内容外 / 不可见 / 空面板 → #f（不动）。鼠标“点哪落哪”一步到位。
-(define (panel-set-point! p row col)
-  (define-values (l c) (panel-screen-position->point p row col))
-  (and l (begin (view-set-point! (panel-view p) (point l c)) #t)))
 
 (define (view-select-all! v)
   (define t (document-text (view-document v)))

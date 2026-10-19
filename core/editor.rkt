@@ -20,6 +20,7 @@
 
 (require "editor/state.rkt"
          "editor/ops.rkt"
+         "editor/panel-ops.rkt"
          "editor/query.rkt"
          "editor/attributes.rkt"
          "editor/render.rkt"
@@ -120,6 +121,9 @@
  panel-neighbor                   ; 同层方向导航：panels from dir → 该方向最近的 panel | #f
  panel-depth-neighbor             ; 跨层前后：panels from 'front/'back → 按距离最近的 panel | #f
  panel-screen->content panel-content->screen  ; 屏幕 ↔ 内容内坐标（纯几何）
+ ;; panel 面操作（editor/panel-ops.rkt）
+ panel-with-view panel-with-rect panel-shift panel-resize  ; panel 值更新（纯；view 槽可 #f）
+ panel-with-borders panel-with-deep panel-with-face panel-with-weight
  buffer-add-panel!
  panel-sync! panels-sync!
  ;; 定位（单焦点模型）

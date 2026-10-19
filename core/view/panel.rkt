@@ -16,6 +16,11 @@
 ;;;
 ;;; 身份不在这里（view 可替换，不能拿 view 当身份）：命中 / 布局树在 core 外，
 ;;; 宿主自己用 id / owner 记「这是哪块面板」。render-display 只吃值。
+;;;
+;;; 本模块只留 panel 值本身 / 内容区 / 命中 / 导航 / 几何坐标（都纯）。
+;;; panel 面的操作（改 rect / view 槽 / 边框 / deep / face / weight、屏幕格落点）
+;;; 在 editor/panel-ops.rkt；尺寸写回在 editor/sync.rkt。
+;;; panel 的 view 槽可以是 #f；空面板只是没有内容，几何 / 命中 / 边框 / 导航照常。
 
 (require "base/rect.rkt")
 

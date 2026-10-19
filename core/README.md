@@ -4,16 +4,17 @@
 
 ## 设计决策
 
-1. **无 did/vid、无中央 `editor`**：`buffer` / `view` / `panel` 对象本身就是身份；宿主直接持有对象，core 不集中管理多个文档。
+1. **无 did/vid、无中央 `editor`**：`buffer` / `view` 对象本身就是身份；`panel` 是无身份的值（见 6）。宿主直接持有对象，core 不集中管理多个文档。
 2. **操作 = 纯函数 + `compose`/`map`**；状态对象（buffer / view / document / history）可以不纯（functional core / imperative shell）。
 3. **多 view 共享一份 document + history**：`buffer` 持 `history`（含当前 document）与 `views`；`view` 指回 `buffer`。
-4. **显示单位是 `panel`**：`panel = (view rect borders deep face)`。几何（位置 + 大小 + 四条边 + 深度 + 边框 face）在 panel 上，渲染只吃 `(listof panel)`。
+4. **显示单位是 `panel`**：`panel = (view rect borders deep face weight)`。几何（位置 + 大小 + 四条边 + 深度 + 边框 face / 权重）在 panel 上，渲染只吃 `(listof panel)`。
 5. **尺寸真相在 `panel.rect`**：view 的 viewport 尺寸是派生量，只能由 `editor/sync.rkt` 的 `panels-sync!` 从 `panel-content` 写进去。换 view 后再 sync。
 6. **panel 无身份**：view 可替换，不能拿 view 当身份。命中 / 布局树 / 增删去重由宿主自己记 id。
 7. **focus 在宿主**：core 不存 focus；渲染时作为参数传入（`#f | view | (listof view)`）。绘制支持多焦点；取焦点光标位置按单焦点模型。
 8. **history 是纯文档版本栈**：不含 who / selections，撤销不回发起视图。
 9. **合并完全显式**：编辑本身不含合并策略；一组操作合成一步用事务（程序）或会话（交互）。
 10. **写回只有一条路径**：`buffer` / `view` 的裸 setter 不外露，改状态一律走提交壳。
+11. **三个面分别有操作词汇**：buffer 面 = `buffer-*`（文本 / 历史）；view 面 = `view-*`（选区 / 视口）；panel 面 = `editor/panel-ops.rkt` 的 `panel-with-*` / `panel-shift` / `panel-resize`（值变换，因为 panel 无身份、不可变）+ `panel-set-point!`。空面板的 view 槽是 `#f`：几何 / 命中 / 导航 / 边框照常，内容 / 光标路径跳过。
 
 ## 分层
 
@@ -23,7 +24,8 @@
 | 文档 | `text/document.rkt`、`text/command.rkt`、`text/rebase.rkt`、`text/slots*.rkt` | 文本编辑纯；端口 / 槽可含盒；`document` 带渲染 revision |
 | 历史 | `editor/history.rkt` | 纯文档版本栈（record / merge / set-current） |
 | 对象 | `editor/state-data.rkt`、`editor/state.rkt` | buffer / view 可变数据；生命周期与访问器（写只经壳） |
-| 提交 | `editor/ops.rkt` | 纯算子构造 + 提交壳 + 显式事务（undo-scope） |
+| 操作 / 提交 | `editor/ops.rkt` | 纯算子构造 + buffer / view 提交壳 + 显式事务 |
+| panel 操作 | `editor/panel-ops.rkt` | panel 值变换（纯）+ `panel-set-point!`；view 槽可 `#f` |
 | 读 | `editor/query.rkt` | 按对象读 |
 | 写回 | `editor/attributes.rkt` | 端口 / 槽写回（就地改盒，不进 history） |
 | 面板 | `view/panel.rkt` | `panel` 值 + `panel-content` + `panel-at`/`panel-at-all`（命中/命中栈）+ `panel-move`（六向：4 同层 + 2 跨层）+ 屏幕↔内容坐标（都纯） |
@@ -49,15 +51,17 @@
 ;;           焦点框：焦点 panel 给个大 weight 即可（同层压邻居，仍让位于高 deep 浮窗）。
 ```
 
-宿主操作：
+宿主操作（panel 面）：
 
 | 想干什么 | 怎么做 |
 |---|---|
-| 移动 / 改大小 | 造新 panel（同 view，新 rect），调 `panels-sync!` |
+| 移动 | `(panel-shift p dx dy)` → 新 panel；调 `panels-sync!` |
+| 改大小 | `(panel-resize p w h)` → 新 panel；调 `panels-sync!` |
+| 改外框（一次） | `(panel-with-rect p rect)` → 新 panel；调 `panels-sync!` |
 | 加 / 删 | 往 `panels` 列表里加 / 去掉 |
-| 换 view | 造新 panel（新 view），调 `panels-sync!` |
-| 空面板（占位槽） | `(empty-panel rect borders …)`（view = #f）：命中/导航/边框照常，**内容透明**（不产出内容 pane） |
-| 改边框 / 深度 / face | 造新 panel |
+| 换 view | `(panel-with-view p v)`（`v` 可为 `#f`）→ 新 panel；调 `panels-sync!` |
+| 空面板（占位槽） | `(empty-panel rect borders …)` 或 `(panel-with-view p #f)`：命中/导航/边框照常，**内容透明**（不产出内容 pane），光标 / sync 跳过 |
+| 改边框 / 深度 / face / 权重 | `panel-with-borders` / `panel-with-deep` / `panel-with-face` / `panel-with-weight` → 新 panel |
 | 焦点框抬边框 | 焦点 panel 的 `#:weight` 调大（同 deep 时边框 face 赢）；`deep` 不变，命中 / 导航不受影响 |
 | 分屏 / 切分 / 拖分隔条 | **在 core 外**：算 rect → 产出 `(listof panel)`（core 只吃结果） |
 | 命中（鼠标/拖拽） | `(panel-at panels row col)` → 最上 panel \| #f；栈用 `(panel-at-all panels row col)` → 上→下全部（首个 = `panel-at`） |
@@ -99,3 +103,4 @@ screen-patch(old, new) → piece（render / selection）
 - 文本提交返回 `#f | (listof change)`（`#f` = 拒绝，`'()` = 无变更）；`buffer-edit!` 每次调用 = 一个新撤销步。
 - 合成一步：程序用 `buffer-with-undo-step`，交互用 `session-edit!`（见 `temp/README.md` 与 `temp/COVERAGE.md`）。
 - 视图尺寸只经 `panels-sync!`（不要直接 `view-resize!`，那是内部写口）。
+- panel 没有 `panel-*!`：位置 / 大小 / view / 边框 / 深度 / face / 权重都走 `editor/panel-ops.rkt` 的 `panel-with-*`（纯），宿主替换自己的 panel 列表项；面板的增删 / 去重 / 身份仍由宿主记。
