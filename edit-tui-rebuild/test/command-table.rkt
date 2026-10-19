@@ -2,7 +2,7 @@
 
 ;;; 命令表 / 表 stack / 键序列 / 动态遮蔽测试。
 (require rackunit
-         "../api/command.rkt")
+         "../main.rkt")
 
 (define (lookup table seq)
   (let-values ([(st v) (command-table-lookup table seq)])

@@ -4,11 +4,7 @@
 ;;; 文件树和资源管理面板共用一个 sidebar panel：views = (filetree resources)。
 
 (require rackunit
-         "../api/config.rkt"
-         "../api/layout.rkt"
-         "../api/panel.rkt"
-         "../api/geometry.rkt"
-         "../api/base.rkt"
+         "../main.rkt"
          (prefix-in c: "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))

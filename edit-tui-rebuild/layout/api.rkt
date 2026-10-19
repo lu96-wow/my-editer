@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/layout.rkt —— split tree / layout-solve / 接缝 API
+;;; edit-tui-rebuild/layout/api.rkt —— split tree / layout-solve / 接缝 API
 
-(require "../model/layout.rkt")
+(require "model.rkt")
 
 (provide
  ;; 节点 / layout 状态

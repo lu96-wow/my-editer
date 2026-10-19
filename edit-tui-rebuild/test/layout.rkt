@@ -2,9 +2,7 @@
 
 ;;; layout 状态 / split tree / hide / show / remove / split 测试。
 (require rackunit
-         "../api/layout.rkt"
-         "../api/panel.rkt"
-         "../api/base.rkt")
+         "../main.rkt")
 
 (define area (rect 0 0 80 24))
 

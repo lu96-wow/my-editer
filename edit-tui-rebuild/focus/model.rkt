@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/projection/focus.rkt —— 焦点导航（纯）
+;;; edit-tui-rebuild/focus/model.rkt —— 焦点导航（纯）
 ;;;
 ;;; 规则：
 ;;;   · 只在 visible + focusable 的 panel 里走；
@@ -13,10 +13,10 @@
          layout-focus-panel-at
          layout-focus-neighbor)
 
-(require (prefix-in l: "../model/layout.rkt")
-         (prefix-in p: "../model/panel.rkt")
-         "../model/config.rkt"
-         "geometry.rkt"
+(require (prefix-in l: "../layout/model.rkt")
+         (prefix-in p: "../panel/model.rkt")
+         "../config/model.rkt"
+         "../projection/geometry.rkt"
          "../../core/view/panel.rkt")
 
 (define (layout-panel-focusable? layout config id)

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/model/config.rkt —— 布局规则（静态配置）
+;;; edit-tui-rebuild/config/model.rkt —— 布局规则（静态配置）
 ;;;
 ;;; config 只回答：
 ;;;   这个 panel kind 能不能 split / hide / delete / focus？

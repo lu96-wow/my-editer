@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/base.rkt —— 几何值 API
+;;; edit-tui-rebuild/base/api.rkt —— 几何值 API
 
 (require "../../core/view/base/rect.rkt")
 

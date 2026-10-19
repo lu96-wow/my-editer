@@ -2,10 +2,7 @@
 
 ;;; config 规则 / min-max / focus fallback 测试。
 (require rackunit
-         "../api/config.rkt"
-         "../api/layout.rkt"
-         "../api/panel.rkt"
-         "../api/base.rkt")
+         "../main.rkt")
 
 (define area (rect 0 0 80 24))
 

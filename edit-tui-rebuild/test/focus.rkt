@@ -2,11 +2,7 @@
 
 ;;; 焦点导航测试：方向 / 鼠标 / focusable 过滤 / hidden。
 (require rackunit
-         "../api/config.rkt"
-         "../api/layout.rkt"
-         "../api/panel.rkt"
-         "../api/focus.rkt"
-         "../api/base.rkt"
+         "../main.rkt"
          (prefix-in c: "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))

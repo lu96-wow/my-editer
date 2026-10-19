@@ -1,10 +1,10 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/panel.rkt —— panel 资源 API
+;;; edit-tui-rebuild/panel/api.rkt —— panel 资源 API
 ;;;
 ;;; 只导出功能面；不导出内部构造细节之外的布局函数。
 
-(require "../model/panel.rkt")
+(require "model.rkt")
 
 (provide
  ;; 类型判断 / 读

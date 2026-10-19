@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/command.rkt —— 命令表 API
+;;; edit-tui-rebuild/command/api.rkt —— 命令表 API
 
-(require "../command/table.rkt")
+(require "table.rkt")
 
 (provide
  ;; 单表

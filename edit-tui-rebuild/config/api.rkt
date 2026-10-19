@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/config.rkt —— 布局规则 API
+;;; edit-tui-rebuild/config/api.rkt —— 布局规则 API
 
-(require "../model/config.rkt")
+(require "model.rkt")
 
 (provide
  ;; 类型 / 字段

@@ -2,10 +2,7 @@
 
 ;;; geometry 测试：layout-solve → core panel 列表。
 (require rackunit
-         "../api/layout.rkt"
-         "../api/panel.rkt"
-         "../api/geometry.rkt"
-         "../api/base.rkt"
+         "../main.rkt"
          (prefix-in core- "../../core/view/panel.rkt"))
 
 (define area (rect 0 0 80 24))

@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit-tui-rebuild/api/focus.rkt —— 焦点导航 API
+;;; edit-tui-rebuild/focus/api.rkt —— 焦点导航 API
 
-(require "../projection/focus.rkt")
+(require "model.rkt")
 
 (provide layout-panel-focusable?
          layout-focusable-panels

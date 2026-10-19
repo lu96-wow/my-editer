@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/model/layout.rkt —— split tree + panel 状态 + layout-solve
+;;; edit-tui-rebuild/layout/model.rkt —— split tree + panel 状态 + layout-solve
 ;;;
 ;;; 状态：
 ;;;   layout = root + panels + focus + next-split-id
@@ -9,7 +9,7 @@
 ;;; split 关系只存结构 / 比例；rect 不进树，由 layout-solve 算。
 ;;; panel 资源负责 view / 固定尺寸 / 隐藏 / 恢复信息。
 ;;;
-;;; 渲染列表 `(listof core panel)` 是 layout-solve 的投影，见 projection/geometry.rkt。
+;;; 渲染列表 `(listof core panel)` 是 layout-solve 的投影，见 ../projection/geometry.rkt。
 ;;;
 ;;; 固定尺寸：
 ;;;   fixed-w / fixed-h 是 panel 资源上的实际值（#f = flex）。
@@ -25,8 +25,8 @@
 ;;;   remove 从树里摘掉 leaf，父 split 塌缩到兄弟。
 ;;;   编辑区最后一个 panel 的“关掉”应使用 clear 而不是 remove。
 
-(require "panel.rkt"
-         "config.rkt"
+(require "../panel/model.rkt"
+         "../config/model.rkt"
          "../../core/view/base/rect.rkt")
 
 (provide

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/model/panel.rkt —— panel 资源
+;;; edit-tui-rebuild/panel/model.rkt —— panel 资源
 ;;;
 ;;; panel 资源 = 一块面板的内容 + 固定尺寸策略 + 隐藏恢复信息。
 ;;; 它不存布局位置：rect 由 layout-solve 计算。
