@@ -29,7 +29,7 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("base" "panel" "config" "layout" "focus" "command" "projection" "resource"))
+  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -72,7 +72,7 @@
        (not (core-path? str))
        (or
         ;; 新结构：领域目录下的非 api 实现文件
-        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|resource)/[^/]+\\.rkt$" str)
+        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource)/[^/]+\\.rkt$" str)
         ;; 兼容旧结构
         (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
 
@@ -83,6 +83,8 @@
 (check-true (impl-require? "../projection/geometry.rkt"))
 (check-true (impl-require? "../command/table.rkt"))
 (check-true (impl-require? "../resource/model.rkt"))
+(check-true (impl-require? "../face/model.rkt"))
+(check-true (impl-require? "../render/core.rkt"))
 (check-false (impl-require? "../layout/api.rkt"))
 (check-false (impl-require? "../panel/api.rkt"))
 (check-false (impl-require? "../main.rkt"))

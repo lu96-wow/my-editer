@@ -5,6 +5,8 @@
 ```text
 布局模型
 命令表
+face / 渲染
+资源管理
 API 层 / 边界约束
 ```
 
@@ -26,6 +28,16 @@ edit-tui-rebuild/
   config/
     model.rkt              panel kind 规则
     api.rkt                config API
+
+  face/
+    model.rkt              face 值 / 分层合成
+    api.rkt                face API
+
+  render/
+    theme.rkt              style / theme / 默认主题
+    core.rkt               core piece -> tui bytes
+    layout.rkt             layout -> panels -> bytes
+    api.rkt                render API
 
   layout/
     model.rkt              split tree / panel 状态 / layout-solve / 接缝
@@ -252,6 +264,47 @@ empty-layout
 ```racket
 (layout->render-panels l area)  ; view = active
 (layout->hit-panels l area)     ; view = panel-id
+```
+
+### face
+
+```racket
+face?
+face-fg face-bg face-attrs
+face-empty
+face-set-fg face-set-bg face-set-attrs
+face-add-attr face-remove-attr face-has-attr?
+compose-face
+compose-layers
+```
+
+### render
+
+```racket
+rgb?
+style?
+define-theme!
+default-theme
+install-default-theme!
+
+render-piece
+render-pieces
+render-clear
+face-fragment
+
+(layout-sync! layout area)  ; panels + panels-sync!（尺寸写回 core view）
+(render-layout layout area #:focus-panel #:cache #:sync?)
+```
+
+`render-layout` 默认 `#:sync? #t`，先把 panel 内容尺寸写回 view，再渲染。
+
+`render-layout`：
+
+```text
+layout -> core panels
+       -> render-display-patch
+       -> render-pieces
+       -> (values cache' bytes)
 ```
 
 ### 资源管理

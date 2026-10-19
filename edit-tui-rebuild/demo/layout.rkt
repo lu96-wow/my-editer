@@ -4,23 +4,22 @@
 ;;;   filetree | editor(empty)
 ;;;            | state
 ;;;
-;;; 演示：layout 状态 + panel 资源 + layout-solve + 投影。
+;;; 演示：layout 状态 + panel 资源 + layout-solve + 渲染 API。
 
 (require (only-in "../../core/editor.rkt"
-                  make-buffer buffer-add-view!
-                  panels-sync! render-display screen->string)
+                  make-buffer buffer-add-view!)
          "../main.rkt")
 
 (define W 80)
 (define H 24)
 (define sidebar-w 30)
 
-;; ---------- core view ----------
+;; ---------- core view（初始尺寸故意很小，渲染前由 layout-sync! 修正） ----------
 (define ft-buffer (make-buffer "workspace\n  src\n  main.rkt"))
-(define ft-view (buffer-add-view! ft-buffer 29 H))
+(define ft-view (buffer-add-view! ft-buffer 1 1))
 
 (define state-buffer (make-buffer "state focus=editor docs=1 pending=- msg=ready"))
-(define state-view (buffer-add-view! state-buffer (- W sidebar-w) 1))
+(define state-view (buffer-add-view! state-buffer 1 1))
 
 ;; ---------- panel 资源 ----------
 (define ft-panel
@@ -47,6 +46,6 @@
 (unless (and ok1 ok2) (error 'demo "layout attach failed"))
 
 ;; ---------- 渲染 ----------
-(define panels (layout->render-panels l2 (rect 0 0 W H)))
-(panels-sync! panels)
-(displayln (screen->string (render-display panels #f W H)))
+(define-values (_cache bytes)
+  (render-layout l2 (rect 0 0 W H) #:focus-panel 'editor))
+(displayln (bytes->string/utf-8 bytes))
