@@ -5,9 +5,8 @@
          (only-in "../../core/editor.rkt"
                   make-buffer buffer-add-view!
                   view-width view-height)
+         "../config/theme/default.rkt"
          "../main.rkt")
-
-(install-default-theme!)
 
 (define area (rect 0 0 80 24))
 

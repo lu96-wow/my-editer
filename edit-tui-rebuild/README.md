@@ -28,6 +28,8 @@ edit-tui-rebuild/
   config/
     model.rkt              panel kind 规则
     api.rkt                config API
+    theme/
+      default.rkt          默认主题（require 即安装）
 
   face/
     model.rkt              face 值 / 分层合成
@@ -284,8 +286,6 @@ compose-layers
 rgb?
 style?
 define-theme!
-default-theme
-install-default-theme!
 
 render-piece
 render-pieces
@@ -305,6 +305,20 @@ layout -> core panels
        -> render-display-patch
        -> render-pieces
        -> (values cache' bytes)
+```
+
+### theme 配置
+
+主题不放 API，放在 `config/theme/`：
+
+```racket
+(require "edit-tui-rebuild/config/theme/default.rkt")
+```
+
+require 即安装，换主题 = 换 require：
+
+```racket
+(require "edit-tui-rebuild/config/theme/dark.rkt")
 ```
 
 ### 资源管理
