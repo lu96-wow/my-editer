@@ -10,7 +10,8 @@
          "layout/api.rkt"
          "focus/api.rkt"
          "projection/api.rkt"
-         "command/api.rkt")
+         "command/api.rkt"
+         "resource/api.rkt")
 
 (provide (all-from-out "base/api.rkt"
                        "panel/api.rkt"
@@ -18,4 +19,5 @@
                        "layout/api.rkt"
                        "focus/api.rkt"
                        "projection/api.rkt"
-                       "command/api.rkt"))
+                       "command/api.rkt"
+                       "resource/api.rkt"))

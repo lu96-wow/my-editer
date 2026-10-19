@@ -2,18 +2,20 @@
 
 ;;; API 边界约束：
 ;;;
-;;; 除实现层（model / projection / command）和 api 层本身外，
-;;; 其它代码（main / demo / test / 未来 app）不得直接 require 实现模块。
+;;; 非实现层（main.rkt / api.rkt / demo / test / 未来 app）
+;;; 不得直接 require 领域实现文件。
 ;;;
 ;;; 允许：
-;;;   require main.rkt
-;;;   require api/*
-;;;   require ../core/*（外部 core）
+;;;   main.rkt
+;;;   */api.rkt
+;;;   外部 core/*
 ;;;
 ;;; 不允许：
-;;;   require ../model/*
-;;;   require ../projection/*
-;;;   require ../command/*
+;;;   layout/model.rkt
+;;;   panel/model.rkt
+;;;   command/table.rkt
+;;;   projection/geometry.rkt
+;;;   ... 任何非 api.rkt 的领域实现文件
 
 (require rackunit
          racket/file
@@ -25,10 +27,12 @@
 (define test-dir (path-only script))
 (define root (simplify-path (build-path test-dir 'up)))
 
-(define impl-dirs '("model" "projection" "command"))
+;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
+(define feature-dirs
+  '("base" "panel" "config" "layout" "focus" "command" "projection" "resource"))
 
-(define (impl-dir? rel)
-  (for/or ([d (in-list impl-dirs)])
+(define (feature-dir? rel)
+  (for/or ([d (in-list feature-dirs)])
     (regexp-match? (regexp (format "^~a/" (regexp-quote d))) rel)))
 
 (define (all-strings x)
@@ -56,16 +60,32 @@
             (reverse acc)
             (loop (cons x acc)))))))
 
-(define (impl-require? str)
-  (regexp-match? #rx"(^|/)(model|projection|command)/" str))
+(define (api-path? str)
+  (or (regexp-match? #rx"(^|/)api\\.rkt$" str)
+      (regexp-match? #rx"(^|/)main\\.rkt$" str)))
 
-;; 自检：匹配器本身不能把 api / core 误判成实现层。
-(check-true (impl-require? "model/layout.rkt"))
-(check-true (impl-require? "../model/layout.rkt"))
-(check-true (impl-require? "../projection/focus.rkt"))
+(define (core-path? str)
+  (regexp-match? #rx"(^|/)core/" str))
+
+(define (impl-require? str)
+  (and (not (api-path? str))
+       (not (core-path? str))
+       (or
+        ;; 新结构：领域目录下的非 api 实现文件
+        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|resource)/[^/]+\\.rkt$" str)
+        ;; 兼容旧结构
+        (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
+
+;; 自检
+(check-true (impl-require? "layout/model.rkt"))
+(check-true (impl-require? "../layout/model.rkt"))
+(check-true (impl-require? "../panel/model.rkt"))
+(check-true (impl-require? "../projection/geometry.rkt"))
 (check-true (impl-require? "../command/table.rkt"))
-(check-false (impl-require? "../api/layout.rkt"))
-(check-false (impl-require? "../api/command.rkt"))
+(check-true (impl-require? "../resource/model.rkt"))
+(check-false (impl-require? "../layout/api.rkt"))
+(check-false (impl-require? "../panel/api.rkt"))
+(check-false (impl-require? "../main.rkt"))
 (check-false (impl-require? "../../core/view/panel.rkt"))
 
 (define (rkt-files dir)
@@ -82,8 +102,7 @@
 (define violations
   (for*/list ([f (in-list all-rkt)]
               [rel (in-value (path->string (find-relative-path root f)))]
-              #:unless (impl-dir? rel)
-              #:unless (regexp-match? #rx"^api/" rel)
+              #:unless (feature-dir? rel)
               [form (in-list (read-forms f))]
               [str (in-list (require-strings form))]
               #:when (impl-require? str))
