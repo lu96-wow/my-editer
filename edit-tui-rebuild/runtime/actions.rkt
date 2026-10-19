@@ -72,7 +72,7 @@
     [(view-action? action)
      (engine-apply-view-action! engine action)
      (values state '())]
-    [(quit-action?)
+    [(quit-action? action)
      (values (struct-copy app-state state [quit? #t]) '())]
     [else
      (values (notice state (format "unknown action: ~a" action)) '())]))

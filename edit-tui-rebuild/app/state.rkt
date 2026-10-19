@@ -14,6 +14,8 @@
    overlays        ; (listof command-table)，顶层在前
    pending         ; (listof key-token)
    area            ; rect
+   next-panel-id
+   drag            ; layout drag | #f
    quit?
    message)
   #:transparent)
@@ -25,6 +27,9 @@
          #:overlays [overlays '()]
          #:pending [pending '()]
          #:area [area #f]
+         #:next-panel-id [next-panel-id 100]
+         #:drag [drag #f]
          #:quit? [quit? #f]
          #:message [message ""])
-  (app-state layout resources focus-resource overlays pending area quit? message))
+  (app-state layout resources focus-resource overlays pending area
+             next-panel-id drag quit? message))

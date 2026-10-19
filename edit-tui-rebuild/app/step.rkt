@@ -65,20 +65,47 @@
                                (string-join (map key->string seq) " ")))
                '())])))
 
+(define (set-focus-panel state id)
+  (define layout* (layout-set-focus (app-state-layout state) id))
+  (define s1 (struct-copy app-state state [layout layout*]))
+  (struct-copy app-state s1 [focus-resource (focus-resource* s1)]))
+
 (define (dispatch-mouse state ev)
   (define row (mouse-event-row ev))
   (define col (mouse-event-col ev))
-  (define id (layout-focus-panel-at (app-state-layout state)
-                                    (app-state-area state)
-                                    default-config
-                                    row col))
-  (cond
-    [(not id) (values state '())]
+  (define tok (mouse-event-token ev))
+  (define area (app-state-area state))
+  (define layout (app-state-layout state))
+  (case tok
+    [(press)
+     (define seam (layout-seam-at layout area row col))
+     (cond
+       [seam
+        (define d (layout-seam-drag-start layout area row col #:config default-config))
+        (values (struct-copy app-state state [drag d]) '())]
+       [else
+        (define id (layout-focus-panel-at layout area default-config row col))
+        (if id
+            (values (set-focus-panel state id) '())
+            (values state '()))])]
+    [(move)
+     (define d (app-state-drag state))
+     (cond
+       [(not d) (values state '())]
+       [else
+        (define-values (layout* ok?)
+          (layout-seam-drag-move layout area d row col #:config default-config))
+        (values (if ok?
+                    (struct-copy app-state state [layout layout*])
+                    state)
+                '())])]
+    [(release)
+     (values (struct-copy app-state state [drag #f]) '())]
     [else
-     (define layout* (layout-set-focus (app-state-layout state) id))
-     (define s1 (struct-copy app-state state [layout layout*]))
-     (values (struct-copy app-state s1 [focus-resource (focus-resource* s1)])
-             '())]))
+     (define id (layout-focus-panel-at layout area default-config row col))
+     (if id
+         (values (set-focus-panel state id) '())
+         (values state '()))]))
 
 (define (dispatch-paste state ev)
   (define vid (focus-view state))

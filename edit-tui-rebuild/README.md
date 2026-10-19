@@ -554,4 +554,16 @@ bash edit-tui-rebuild/test/run.sh
 ```sh
 racket edit-tui-rebuild/demo/layout.rkt
 racket edit-tui-rebuild/demo/three-panels.rkt
+racket edit-tui-rebuild/demo/interactive.rkt
+```
+
+交互 demo：
+
+```text
+C-w ←→↑↓   拆分当前 editor
+C-b        显隐 filetree
+M-←→↑↓     焦点移动
+C-q        退出
+鼠标拖接缝  resize
+鼠标点面板  聚焦
 ```

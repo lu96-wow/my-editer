@@ -239,11 +239,12 @@
      (values f (- E* f))]))
 
 (define (make-seam-rect axis left-r right-r)
+  ;; 接缝覆盖两侧边界格，方便鼠标在任一侧边框上拖动。
   (case axis
-    [(lr) (rect (rect-x right-r) (rect-y right-r)
-                1 (rect-h right-r))]
-    [(tb) (rect (rect-x right-r) (rect-y right-r)
-                (rect-w right-r) 1)]
+    [(lr) (rect (max 0 (sub1 (rect-x right-r))) (rect-y right-r)
+                2 (rect-h right-r))]
+    [(tb) (rect (rect-x right-r) (max 0 (sub1 (rect-y right-r)))
+                (rect-w right-r) 2)]
     [else (error 'make-seam-rect "axis 要是 'lr 或 'tb：~a" axis)]))
 
 (define (layout-solve l area)
