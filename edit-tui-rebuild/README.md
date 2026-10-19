@@ -29,7 +29,8 @@ edit-tui-rebuild/
     model.rkt              panel kind 规则
     api.rkt                config API
     theme/
-      default.rkt          默认主题（require 即安装）
+      default.rkt          默认主题：base/frame/chrome/overlay 小表
+                           + 顶层 append 成扁平表并安装
 
   face/
     model.rkt              face 值 / 分层合成
@@ -313,6 +314,22 @@ layout -> core panels
 
 ```racket
 (require "edit-tui-rebuild/config/theme/default.rkt")
+```
+
+配置层是小表：
+
+```racket
+base-theme
+frame-theme
+chrome-theme
+overlay-theme
+```
+
+安装层 append 成扁平表：
+
+```racket
+default-theme
+(define-theme! default-theme)
 ```
 
 require 即安装，换主题 = 换 require：
