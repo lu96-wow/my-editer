@@ -42,6 +42,8 @@
  layout-focus layout-set-focus
  layout-update-panel
  layout-visible-panel-ids
+ layout-panel-views layout-panel-active
+ layout-set-active layout-cycle-active
 
  ;; ---------- layout pass ----------
  (struct-out pass)
@@ -122,6 +124,44 @@
 
 (define (layout-set-focus l id)
   (struct-copy layout l [focus id]))
+
+;;; ════════════════ panel 内的 view 顺序切换 ════════════════
+
+(define (layout-panel-views l id)
+  (define p (layout-panel l id))
+  (if p (panel-views p) '()))
+
+(define (layout-panel-active l id)
+  (define p (layout-panel l id))
+  (and p (panel-active p)))
+
+;; → (values layout' ok?)
+(define (layout-set-active l id view-id)
+  (define p (layout-panel l id))
+  (cond
+    [(not p) (values l #f)]
+    [(not (memq view-id (panel-views p))) (values l #f)]
+    [else
+     (layout-update-panel l id (λ (p) (panel-set-active p view-id)))]))
+
+;; 顺序切换：step = 1 下一个，-1 上一个。
+;; → (values layout' ok?)
+(define (layout-cycle-active l id [step 1])
+  (define p (layout-panel l id))
+  (cond
+    [(not p) (values l #f)]
+    [(null? (panel-views p)) (values l #f)]
+    [else
+     (define views (panel-views p))
+     (define n (length views))
+     (define cur (panel-active p))
+     (define idx (or (for/first ([v (in-list views)] [i (in-naturals)]
+                                 #:when (eq? v cur))
+                       i)
+                     0))
+     (define next (list-ref views (modulo (+ idx step) n)))
+     (layout-update-panel l id (λ (p) (panel-set-active p next)))]))
+
 
 ;;; ════════════════ 可见性 / 固定 ════════════════
 

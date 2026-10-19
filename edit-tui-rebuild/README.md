@@ -33,7 +33,9 @@ panel 资源：
 - 固定轴阻止接缝拖动；
 - min / max 不进状态，由 `config` 提供，在接缝拖动 / 启动校验里使用；
 - 删除 / 隐藏焦点 panel 时，焦点按“兄弟子树 → 逐层向上 → 第一个可聚焦 panel”回退；
-- 不可聚焦的 panel 会被回退跳过。
+- 不可聚焦的 panel 会被回退跳过；
+- 一个 panel 槽可以挂多个 view（`views` + `active`），顺序切换用 `layout-cycle-active`；
+  文件树 / 资源列表共用区域就是同一个 panel 的两个 view。
 
 ## 文件
 
@@ -43,10 +45,13 @@ panel 资源：
 | `model/config.rkt` | panel kind 规则：splittable / hideable / deletable / focusable / min-max |
 | `model/layout.rkt` | split tree、layout-pass、split / attach / remove / clear / hide / show / seam resize / focus fallback |
 | `projection/geometry.rkt` | layout-pass → 渲染 core panel / 命中 core panel |
+| `projection/focus.rkt` | 焦点导航：方向邻居 / 鼠标命中 / focusable 过滤 |
 | `demo/layout.rkt` | 新布局渲染 80x24 三块 panel 的 demo |
 | `demo/three-panels.rkt` | 直接用 core panel 写出的三块 panel 对照 demo |
 | `test/layout.rkt` | 结构 / 固定尺寸 / 隐藏恢复 / 删除 / split 测试 |
 | `test/geometry.rkt` | rect / 渲染投影 / 命中投影测试 |
+| `test/focus.rkt` | 方向焦点 / 鼠标命中 / focusable 过滤测试 |
+| `test/switch.rkt` | 同一 panel 区域多 view 的顺序切换测试 |
 
 ## 按 panel 的入口
 
@@ -77,6 +82,10 @@ default-config
 (layout-focus l)
 (layout-set-focus l id)
 (layout-update-panel l id f)
+(layout-panel-views l id)
+(layout-panel-active l id)
+(layout-set-active l id view-id)
+(layout-cycle-active l id [step])   ; 1 = 下一个，-1 = 上一个
 
 ;; 结构
 (layout-attach l target-id dir panel #:ratio)
@@ -89,8 +98,13 @@ default-config
 (layout-hide l area id #:config)
 (layout-show l area id)
 
-;; 焦点回退 / 校验
+;; 焦点回退 / 导航 / 校验
 (layout-focus-fallback l config id)
+(layout-focusable? l config id)
+(layout-focus-panels l area config)
+(layout-focus-at l area config row col)
+(layout-neighbor l area config from-id dir)
+(layout-focus-move l area config from-id dir)
 (layout-validate l area config)
 (layout-valid? l area config)
 
