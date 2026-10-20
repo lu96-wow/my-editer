@@ -271,6 +271,32 @@ app/api.rkt               event / state / action / placement / step
 runtime/api.rkt           actions / render / sync / tui-adapter / loop
 ```
 
+### core 能力面对应关系
+
+core 不整包导出——按能力拆开，而且各自的形式不同：
+
+```text
+能力                                         导出位置                  形式
+--------------------------------------------------------------------------------
+纯值：rect / point / range / selection /       base/api.rkt            直接 re-export
+      selections / 显示列                                               （只 require core 值模块）
+buffer / view：读 + 写 UI view + 编辑 action   engine/api.rkt          包装（engine-* +
+                                                                        view-action），不导 core 构造器
+渲染：layout -> panels -> bytes                render/api.rkt          包装（render-layout /
+                                                                        layout-sync! / render-pieces）
+layout -> core panel / 命中投影                projection/api.rkt      包装（layout->render-panels /
+                                                                        layout->hit-panels / layout-content-hit）
+布局几何（rect / panel）                       layout/api.rkt         骨架自己的面
+                                              panel/api.rkt           （内部用 core 值）
+```
+
+- 插件只看到 `skeleton.rkt`（含 base / engine / projection，**不含** render）；
+- 编辑能力以 `view-action` 词汇暴露（`engine/action.rkt`），插件发 action，
+  只有 `runtime/actions.rkt` 解释成 core 调用；
+- 直接 require core 的只有骨架内部：`base/api`、`engine/store`、
+  `layout/{tree,solve,ops}`、`projection/{borders,geometry}`、
+  `render/{core,layout}`、`focus/model`。插件 / app / runtime 都不 require core。
+
 ## 布局模型
 
 ```text
