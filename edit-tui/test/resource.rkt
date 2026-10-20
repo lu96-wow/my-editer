@@ -193,4 +193,28 @@
 (check-true (for/or ([e (in-list evs)]) (eq? (resource-event-kind e) 'saved)))
 (check-equal? (resource-events _s) '())
 
+;;; ---------- 显示路径：根内相对，根外绝对 ----------
+(define display-root
+  (build-path (find-system-path 'temp-dir) "edit-tui-display-root"))
+(define display-store (resource-set-root resource-store-empty display-root))
+(check-equal? (resource-root display-store)
+              (resource-normalize-path display-root))
+(check-equal? (resource-display-path display-store display-root) ".")
+(check-equal? (resource-display-path display-store
+                                     (build-path display-root "a" "b.txt"))
+              "a/b.txt")
+(check-equal? (resource-display-path display-store
+                                     (build-path (find-system-path 'temp-dir)
+                                                 "edit-tui-outside.txt"))
+              (resource-normalize-path
+               (build-path (find-system-path 'temp-dir)
+                           "edit-tui-outside.txt")))
+;; 前缀相同但不是根内（root-other 不是 root 的子目录）
+(check-equal? (resource-display-path display-store
+                                     (build-path (find-system-path 'temp-dir)
+                                                 "edit-tui-display-root-other.txt"))
+              (resource-normalize-path
+               (build-path (find-system-path 'temp-dir)
+                           "edit-tui-display-root-other.txt")))
+
 (displayln "edit-tui-rebuild/test/resource.rkt: ok")

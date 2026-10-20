@@ -61,6 +61,9 @@
          resource-set-command-stack
          resource-normalize-path
          resource-find-by-path
+         resource-root
+         resource-set-root
+         resource-display-path
 
          resource-events
          resource-drain-events)
@@ -75,9 +78,10 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (resources order focus pending prompt events
+  (root resources order focus pending prompt events
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
+;; root      : string（启动根路径；规范化绝对路径，"" = 未设置）
 ;; resources : id -> resource
 ;; order     : (listof resource-id)
 ;; focus     : resource-id | #f
@@ -101,7 +105,7 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store (hash) '() #f #f #f '() 1 1 1))
+  (resource-store "" (hash) '() #f #f #f '() 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
@@ -311,9 +315,11 @@
 ;; choices 用规范 symbol；输入栏显示成 y/n/all/nall（见 chrome/input.rkt）。
 (define (confirm-prompt store id)
   (define r (resource-ref store id))
-  (define target (or (and r (resource-file-path r))
-                     (and r (resource-name r))
-                     "*scratch*"))
+  (define path (and r (resource-file-path r)))
+  (define target (cond
+                   [path (resource-display-path store path)]
+                   [r (resource-name r)]
+                   [else "*scratch*"]))
   (define p (prompt (next-prompt-id store) 'confirm id
                     (format "Save ~a?" target)
                     #f '(save skip save-all skip-all)))
@@ -484,6 +490,36 @@
 ;; 路径规范化只做一次（filetree 的 expanded / opened 集合也用它当 key）。
 (define (resource-normalize-path p)
   (path->string (simplify-path (path->complete-path p))))
+
+(define (resource-root store)
+  (resource-store-root store))
+
+(define (resource-set-root store root)
+  (struct-copy resource-store store
+               [root (if (or (not root) (equal? root ""))
+                         ""
+                         (resource-normalize-path root))]))
+
+;; 只用于显示：根内 -> 相对路径；根外 -> 绝对路径。
+;; 路径数据本身仍然用绝对路径。
+(define (resource-display-path store p)
+  (define path* (resource-normalize-path p))
+  (define root (resource-root store))
+  (cond
+    [(or (not root) (string=? root "")) path*]
+    [else
+     (define root* (resource-normalize-path root))
+     (cond
+       [(equal? root* path*) "."]
+       [else
+        (define rel (find-relative-path (string->path root*)
+                                        (string->path path*)))
+        (define rel-str (path->string rel))
+        ;; find-relative-path 对根外路径也返回 ../...；这里按显示规则回退到绝对路径。
+        (if (or (absolute-path? rel)
+                (regexp-match? #rx"^\\.\\.[/\\\\]" rel-str))
+            path*
+            rel-str)])]))
 
 ;; 按路径找已打开的 resource（规范化后比较）。
 (define (resource-find-by-path store path)

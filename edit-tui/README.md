@@ -628,11 +628,14 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 ;;   set-cursor  : 程序化设光标（cursor-dirty? = #t，下一次 sync 推给 view）
 ;;   sync-cursor : sync 从 view 读回镜像（cursor-dirty? = #f）
 
-(filetree-lines root expanded opened dir-lister)   ; 纯行投影
+(filetree-lines root expanded opened dir-lister
+                #:display-path display-path)        ; 纯行投影
 (filetree-line-at rows line)
 (dir-entries path)                                 ; 唯一 IO 点
 
-;; 路径规范化 / 查找在 resource 层（filetree 只是使用者）
+;; 根路径 / 路径显示都在 resource 层（filetree 只是使用者）
+(resource-root store)
+(resource-display-path store path)  ; 根内相对；根外绝对
 (resource-normalize-path path)
 (resource-find-by-path store path)
 
@@ -868,6 +871,11 @@ resource-set-command-stack
 resource-normalize-path
 resource-find-by-path
 
+;; 启动根路径由 resource 管理；数据仍用绝对路径
+resource-root
+resource-set-root
+resource-display-path      ; 根内 -> 相对路径；根外 -> 绝对路径（只用于显示）
+
 resource-mark-edited
 resource-sync-version      ; engine 文档版本变了才记 dirty
 resource-save
@@ -930,6 +938,9 @@ C-q -> resource-request-quit
 
 `test/quit-save.rkt` 覆盖 dirty -> confirm -> save-as -> 写文件 -> quit，
 以及 skip / cancel / 无效回答。
+
+路径显示只走 `resource-display-path`：启动根内的文件显示相对路径，
+根外显示绝对路径；resource / filetree / 保存仍然全部使用绝对路径。
 
 `resource-open` 返回 action 数据：
 

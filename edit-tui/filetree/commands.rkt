@@ -92,8 +92,8 @@
              (filetree-toggle-expand (empty-filetree) root*)
              view))
   (struct-copy app-state state
+               [resources (resource-set-root (app-state-resources state) root*)]
                [store (hash-set (app-state-store state) 'filetree f)]
-               [root root*]
                [panel-stacks (hash-set (app-state-panel-stacks state)
                                        panel-id
                                        panel-stack)]))

@@ -16,14 +16,15 @@
 
 ;; entry-lister : string -> (listof (cons ('dir|'file) path))
 ;; opened       : hash path -> #t
-(define (filetree-lines root expanded opened entry-lister)
+(define (filetree-lines root expanded opened entry-lister
+                        #:display-path [display-path (λ (p) p)])
   (cond
     [(or (not root) (string=? root "")) '()]
     [else
      (define root-norm (resource-normalize-path root))
      (define (walk path depth kind)
        (define pn (resource-normalize-path path))
-       (define label (if (zero? depth) root-norm (entry-name path)))
+       (define label (if (zero? depth) (display-path root-norm) (entry-name path)))
        (define face
          (cond [(zero? depth) 'filetree-root]
                [(eq? kind 'dir) 'filetree-dir]

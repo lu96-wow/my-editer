@@ -41,7 +41,6 @@
    drag            ; layout drag | #f
    placement       ; view-id | #f
    store           ; 面板 UI 状态：'filetree -> filetree、'input -> input-state ...
-   root            ; 工作区根目录
    panel-stacks    ; panel-id -> command-table-stack
    quit?
    flash)   ; 一次性状态栏文本；下一次 step 入口清空
@@ -60,12 +59,11 @@
          #:drag [drag #f]
          #:placement [placement #f]
          #:store [store (hash)]
-         #:root [root ""]
          #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
          #:flash [flash ""])
   (app-state layout layout-config keymap resources focus-resource overlays pending area
-             next-panel-id drag placement store root panel-stacks
+             next-panel-id drag placement store panel-stacks
              quit? flash))
 
 ;;; ════════════════ 查询 ════════════════

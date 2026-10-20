@@ -18,7 +18,6 @@
 (void (engine-create-view! engine 10 10))
 
 (define state0 (make-app-state #:area (rect 0 0 40 10)
-                               #:root (path->string root)
                                #:keymap default-keymap))
 (define state1 (filetree-install-state state0 10 root
                                        #:panel-stack filetree-panel-stack))
@@ -28,8 +27,10 @@
 (define rows (filetree-rows f))
 (check-true (> (length rows) 0))
 (check-equal? (filetree-line-kind (car rows)) 'root)
-(check-true (string-contains? (filetree-line-text (car rows))
-                              (path->string (simplify-path (path->complete-path root)))))
+;; 根路径由 resource 管理；显示时根内路径用相对路径（根本身 = "."）
+(check-equal? (resource-root (app-state-resources state2))
+              (resource-normalize-path root))
+(check-equal? (filetree-line-text (car rows)) ".")
 
 (define (find-row pred)
   (for/first ([l (in-list rows)] [i (in-naturals)] #:when (pred l)) i))
@@ -84,7 +85,6 @@
 (display-to-file "x" (build-path root2 "a.txt") #:exists 'truncate)
 (define c0 (filetree-install-state
             (make-app-state #:area (rect 0 0 40 10)
-                            #:root (path->string root2)
                             #:keymap default-keymap)
             10 root2
             #:panel-stack filetree-panel-stack))

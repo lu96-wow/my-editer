@@ -32,6 +32,9 @@
  resource-set-command-stack
  resource-normalize-path
  resource-find-by-path
+ resource-root
+ resource-set-root
+ resource-display-path
 
  ;; open / edit / save
  resource-open
