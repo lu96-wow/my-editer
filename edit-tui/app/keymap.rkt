@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/command/keymap.rkt —— 配置好的键位集合（纯值）
+;;; edit-tui-rebuild/app/keymap.rkt —— 配置好的键位集合（纯值）
 ;;;
 ;;; keymap 是「一组已经选好的命令表 / stack」，由 config 构造、app-state 持有：
 ;;;
@@ -11,7 +11,7 @@
 ;;;
 ;;; 这里只定义形状和查询，不含任何具体键位或命令。
 
-(require "table.rkt")
+(require "../skeleton.rkt")
 
 (provide (struct-out keymap)
          empty-keymap)

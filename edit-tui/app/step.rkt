@@ -11,6 +11,7 @@
 
 (require "../skeleton.rkt"
          "../chrome/api.rkt"
+         "keymap.rkt"
          "../edit/api.rkt"
          "event.rkt"
          "placement.rkt"

@@ -58,7 +58,7 @@
 ;;; ════════════════ 骨架 ════════════════
 (define skeleton-files
   '("base/api.rkt"
-    "command/key.rkt" "command/table.rkt" "command/keymap.rkt" "command/api.rkt"
+    "command/key.rkt" "command/table.rkt" "command/api.rkt"
     "layout/config.rkt"
     "face/model.rkt" "face/api.rkt"
     "panel/model.rkt" "panel/api.rkt"
@@ -154,8 +154,9 @@
 (check-false (requires-any? "filetree/model.rkt" upper-layer?))
 
 ;;; ════════════════ app 基础 / 编排 ════════════════
-(for ([m (in-list '("app/state.rkt" "app/event.rkt" "app/action.rkt"
-                    "app/commands.rkt" "app/placement.rkt" "app/step.rkt"))])
+(for ([m (in-list '("app/state.rkt" "app/keymap.rkt" "app/event.rkt"
+                    "app/action.rkt" "app/commands.rkt" "app/placement.rkt"
+                    "app/step.rkt"))])
   (check-false (requires-any? m skeleton-impl?) m)
   (check-false (requires-any? m core-require?) m)
   (check-false (requires-any? m #rx"(^|/)runtime/") m)

@@ -3,8 +3,7 @@
 ;;; edit-tui-rebuild/command/api.rkt —— 命令表 API
 
 (require "table.rkt"
-         "key.rkt"
-         "keymap.rkt")
+         "key.rkt")
 
 (provide
  ;; 单表
@@ -29,9 +28,6 @@
  command-table-stack-remove
  command-table-stack-lookup
 
- ;; 配置好的键位集合
- (struct-out keymap)
- empty-keymap
 
  ;; 构造 DSL
  keys

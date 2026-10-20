@@ -14,7 +14,8 @@
 ;;;   之后 clear-placement 把临时表从 overlays 里移除，普通键位恢复。
 
 (require "../skeleton.rkt"
-         "state.rkt")
+         "state.rkt"
+         "keymap.rkt")
 
 (provide start-placement
          place-into-panel

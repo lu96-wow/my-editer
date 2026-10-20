@@ -9,6 +9,7 @@
 
 (require "event.rkt"
          "state.rkt"
+         "keymap.rkt"
          "action.rkt"
          "commands.rkt"
          "placement.rkt"
@@ -16,6 +17,7 @@
 
 (provide (all-from-out "event.rkt"
                        "state.rkt"
+                       "keymap.rkt"
                        "action.rkt"
                        "commands.rkt"
                        "placement.rkt"

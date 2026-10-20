@@ -19,6 +19,7 @@
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
+         "../app/keymap.rkt"
          "slice.rkt"
          "model.rkt"
          "lines.rkt")

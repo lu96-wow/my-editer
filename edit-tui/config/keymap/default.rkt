@@ -15,6 +15,7 @@
 ;;; 或者复制本文件改绑定。
 
 (require "../../command/api.rkt"
+         "../../app/keymap.rkt"
          "../../edit/api.rkt"
          "../../filetree/api.rkt"
          "../../chrome/api.rkt"
