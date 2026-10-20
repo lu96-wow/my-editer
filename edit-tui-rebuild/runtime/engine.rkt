@@ -5,7 +5,8 @@
 ;;; 纯 State 只存 id；engine 存真正可变句柄。
 ;;; 命令 / step 不碰 engine，只产生 action；runtime 解释 action 时写 engine。
 
-(require "../../core/editor.rkt"
+(require racket/match
+         "../../core/editor.rkt"
          "../app/action.rkt")
 
 (provide (struct-out engine)
@@ -18,10 +19,13 @@
          engine-set-view-lines!
          engine-apply-view-action!)
 
-(struct engine (docs views) #:mutable)
+(struct engine (docs views ui) #:mutable)
+;; ui : vid -> (cons lines faces)：上次写进 core view 的内容。
+;; 用来做「写回幂等」——内容没变就不重建 document（否则每帧都换 document、
+;; 让 render cache 失效，filetree 上千行时一帧几十毫秒）。
 
 (define (make-engine)
-  (engine (hash) (hash)))
+  (engine (hash) (hash) (hash)))
 
 (define (engine-doc-buffer e did)
   (hash-ref (engine-docs e) did #f))
@@ -45,7 +49,8 @@
   (define v (engine-view-object e vid))
   (when v
     (buffer-close-view! (view-buffer v) v)
-    (set-engine-views! e (hash-remove (engine-views e) vid)))
+    (set-engine-views! e (hash-remove (engine-views e) vid))
+    (set-engine-ui! e (hash-remove (engine-ui e) vid)))
   (void))
 
 (define (engine-remove-doc! e did)
@@ -80,32 +85,80 @@
   (define v (engine-view-object e vid))
   (and v (view-point-column v)))
 
+
 ;; 整篇写一个 UI view：文本 + 每行 face + 光标行。
 (define (engine-set-view-lines! e vid lines faces line #:column [column 0])
   (define v (engine-view-object e vid))
   (cond
     [(not v) (void)]
     [else
-     (define b (view-buffer v))
-     (define text (string-join lines "\n"))
-     (buffer-set-document! b text)
-     (buffer-face-all! b #f)
-     (for ([i (in-naturals)] [face (in-list faces)])
-       (when face (buffer-face-line! b i face)))
+     (define prev (hash-ref (engine-ui e) vid #f))
+     (define content-changed?
+       (or (not prev)
+           (not (equal? (car prev) lines))
+           (not (equal? (cdr prev) faces))))
+     (when content-changed?
+       (define b (view-buffer v))
+       (buffer-set-document! b (string-join lines "\n"))
+       (buffer-face-all! b #f)
+       (for ([i (in-naturals)] [face (in-list faces)])
+         (when face (buffer-face-line! b i face)))
+       (set-engine-ui! e (hash-set (engine-ui e) vid (cons lines faces))))
+     ;; 光标只在真的变了时才写（避免每帧重设 selections / ensure）
      (define n (max 1 (length lines)))
      (define l (max 0 (min line (sub1 n))))
-     (view-set-selections! v (selections-one (caret (point l column))))
-     (view-ensure! v)]))
+     (define c (max 0 column))
+     (unless (and (= (view-point-line v) l)
+                  (= (view-point-column v) c))
+       (view-set-selections! v (selections-one (caret (point l c))))
+       (view-ensure! v))]))
 
-(define (apply-nav! v dir)
+(define (nav-fn dir)
   (case dir
-    [(left) (view-left! v)]
-    [(right) (view-right! v)]
-    [(up) (view-up! v)]
-    [(down) (view-down! v)]
-    [(home) (view-home! v)]
-    [(end) (view-end! v)]
-    [else (error 'engine-apply-view-action! "未知方向：~a" dir)]))
+    [(left) view-left!]
+    [(right) view-right!]
+    [(up) view-up!]
+    [(down) view-down!]
+    [(home) view-home!]
+    [(end) view-end!]
+    [else #f]))
+
+;; nav data: dir | (list dir extend?)
+(define (apply-nav! v data)
+  (match data
+    [(list dir extend?)
+     (define f (nav-fn dir))
+     (unless f (error 'engine-apply-view-action! "未知方向：~a" dir))
+     (f v extend?)]
+    [dir
+     (define f (nav-fn dir))
+     (unless f (error 'engine-apply-view-action! "未知方向：~a" dir))
+     (f v)]))
+
+;; 翻页：按当前 viewport 高度滚一屏。
+(define (page-lines v)
+  (max 1 (sub1 (view-height v))))
+
+(define (apply-scroll! v which)
+  (case which
+    [(page-up)   (view-scroll! v (- (page-lines v)))]
+    [(page-down) (view-scroll! v (page-lines v))]
+    [else (view-scroll! v which)]))
+
+;; 删到行尾（vim 的 C-k）。已在行尾时删掉换行，拼下一行。
+(define (kill-line! v)
+  (define b (view-buffer v))
+  (define l (view-point-line v))
+  (define c (view-point-column v))
+  (define cur (buffer-line b l))
+  (define len (and cur (string-length cur)))
+  (cond
+    [(not len) (void)]
+    [(< c len)
+     (buffer-replace-range! b (range (point l c) (point l len)) "")]
+    [(buffer-line b (add1 l))
+     (buffer-replace-range! b (range (point l c) (point (add1 l) 0)) "")]
+    [else (void)]))
 
 (define (engine-apply-view-action! e action)
   (define vid (view-action-view-id action))
@@ -113,13 +166,28 @@
   (unless v (error 'engine-apply-view-action! "view 不存在：~a" vid))
   (case (view-action-kind action)
     [(insert)
-     (buffer-edit! (view-buffer v) v (op-type (view-action-data action)))]
+     ;; action 里是原始 UTF-8 bytes；document 是字符串，这里解一次
+     (buffer-edit! (view-buffer v) v
+                   (op-type (bytes->string/utf-8 (view-action-data action))))]
+    [(paste)
+     (buffer-edit! (view-buffer v) v
+                   (op-paste (bytes->string/utf-8 (view-action-data action))))]
+    [(backspace)
+     (buffer-edit! (view-buffer v) v (op-backspace))]
+    [(delete)
+     (buffer-edit! (view-buffer v) v (op-delete))]
+    [(kill-line)
+     (kill-line! v)]
     [(nav)
      (apply-nav! v (view-action-data action))]
+    [(point)
+     (match-define (list r c) (view-action-data action))
+     (define-values (line col) (view-screen-position->point v r c))
+     (when line (view-set-point! v (point line col)))]
     [(select)
      (view-set-selections! v (view-action-data action))]
     [(scroll)
-     (view-scroll! v (view-action-data action))]
+     (apply-scroll! v (view-action-data action))]
     [(ensure)
      (view-ensure! v)]
     [(undo) (buffer-undo! (view-buffer v))]

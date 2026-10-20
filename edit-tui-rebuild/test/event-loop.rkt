@@ -9,7 +9,7 @@
 
 ;;; ---------- 命令 ----------
 (define (cmd-insert state)
-  (values state (list (view-action 'insert 1 "A"))))
+  (values state (list (view-action 'insert 1 #"A"))))
 
 (define (cmd-seq state)
   (values (struct-copy app-state state [message "seq"]) '()))
@@ -67,14 +67,14 @@
 (check-equal? (app-state-message state5) "seq")
 (check-equal? (app-state-pending state5) '())
 
-;;; ---------- unbound ----------
-(define-values (state6 acts6) (step state5 (key-event (key 'z))))
+;;; ---------- unbound（不可打印 / 带修饰的键不走自插入兜底） ----------
+(define-values (state6 acts6) (step state5 (key-event (key 'z 'ctrl))))
 (check-equal? acts6 '())
 (check-true (string-contains? (app-state-message state6) "unbound"))
 (check-equal? (app-state-pending state6) '())
 
 ;;; ---------- paste ----------
-(define-values (state7 acts7) (step state6 (paste-event "!")))
+(define-values (state7 acts7) (step state6 (paste-event #"!")))
 (check-equal? (map view-action? acts7) '(#t))
 (define state8 (run-actions state7 engine acts7))
 (check-equal? (engine-view-text engine vid) "A!hello")
@@ -102,5 +102,11 @@
 (check-true (app-state-quit? final))
 (check-true (> (bytes-length (get-output-bytes out)) 0))
 (check-equal? (engine-view-text engine vid) "A!Ahello")
+
+;;; ---------- 可打印字符兜底自插入（大写保留） ----------
+(define-values (stateA actsA) (step final (key-event (key 'Q))))
+(check-equal? (map view-action-kind actsA) '(insert))
+(define finalA (run-actions stateA engine actsA))
+(check-equal? (engine-view-text engine vid) "A!AQhello")
 
 (displayln "edit-tui-rebuild/test/event-loop.rkt: ok")

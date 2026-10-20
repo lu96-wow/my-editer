@@ -30,7 +30,8 @@
  ;; 构造 DSL
  keys
 
- ;; key token
+ ;; key token = 标签 + 原始字节
+ (struct-out key-token)
  mods-order normalize-mods
- key key? key-name key-mods key->string char->key-name
- key-deliverable?)
+ key key? key-tag key-bytes key=? key->string key-text
+ raw->key)

@@ -5,12 +5,17 @@
 ;;; 流程：
 ;;;   filetree Enter on file
 ;;;     -> start-placement view-id
-;;;     -> push placement-table
-;;;   user click target panel / 切换焦点后 Enter
-;;;     -> place-into-panel
-;;;   Esc -> placement-cancel
+;;;        + 焦点不在 editor 时自动落到第一个 editor
+;;;        + push placement-table（临时表，完毕 pop/remove）
+;;;   placement-table:
+;;;     ↑←→↓  在 editor 之间改焦点（跳过 filetree / status）
+;;;     Enter 放入当前焦点 editor
+;;;     Esc   取消
+;;;   之后 clear-placement 把临时表从 overlays 里摘掉，普通键位恢复。
 
 (require "../command/api.rkt"
+         "../config/api.rkt"
+         "../focus/api.rkt"
          "../layout/api.rkt"
          "../panel/api.rkt"
          "../resource/api.rkt"
@@ -45,11 +50,57 @@
                [placement #f]
                [overlays (remove-placement-table (app-state-overlays state))]))
 
+(define (panel-at state id)
+  (and id (layout-panel (app-state-layout state) id)))
+
+(define (editor-panel? state id)
+  (define p (panel-at state id))
+  (and p (eq? (panel-kind p) 'editor)))
+
+(define (first-editor-panel state)
+  (define layout (app-state-layout state))
+  (and layout
+       (for/first ([id (in-list (layout-visible-panel-ids layout))]
+                   #:when (editor-panel? state id))
+         id)))
+
+;; placement 期间方向键只跳到 editor：filetree / status 不是合法目标。
+(define (next-editor-in-direction state from dir)
+  (let loop ([at from] [seen '()])
+    (define next
+      (layout-focus-neighbor (app-state-layout state) (app-state-area state)
+                             default-config at dir))
+    (cond
+      [(not next) #f]
+      [(memq next seen) #f]
+      [(editor-panel? state next) next]
+      [else (loop next (cons next seen))])))
+
+(define (placement-focus-command dir)
+  (λ (state)
+    (define from (layout-focus (app-state-layout state)))
+    (define to (next-editor-in-direction state from dir))
+    (cond
+      [to (values (set-focus-panel state to) '())]
+      [else (values (struct-copy app-state state
+                                 [message (format "place: no editor to the ~a" dir)])
+                    '())])))
+
 (define (start-placement state vid)
   (unless vid (error 'start-placement "view-id 不能是 #f"))
-  (struct-copy app-state state
-               [placement vid]
-               [overlays (cons placement-table (app-state-overlays state))]))
+  (define s1
+    (struct-copy app-state state
+                 [placement vid]
+                 [overlays (cons placement-table (app-state-overlays state))]))
+  ;; 焦点不在 editor 上时先落一个：Enter 立刻可放入，方向键可换目标。
+  ;; （headless 测试可能没有 layout，此时只装表。）
+  (define layout (app-state-layout s1))
+  (cond
+    [(not layout) s1]
+    [(editor-panel? s1 (layout-focus layout)) s1]
+    [else
+     (define target (first-editor-panel s1))
+     (if target (set-focus-panel s1 target) s1)]))
 
 (define (placement-active? state)
   (and (app-state-placement state) #t))
@@ -81,5 +132,9 @@
 
 (define placement-table
   (keys
-   [(key 'enter) placement-commit]
-   [(key 'escape) placement-cancel]))
+   [(key 'enter)  placement-commit]
+   [(key 'escape) placement-cancel]
+   [(key 'left)   (placement-focus-command 'left)]
+   [(key 'right)  (placement-focus-command 'right)]
+   [(key 'up)     (placement-focus-command 'up)]
+   [(key 'down)   (placement-focus-command 'down)]))

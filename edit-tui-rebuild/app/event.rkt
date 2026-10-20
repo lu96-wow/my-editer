@@ -11,9 +11,11 @@
          event? event-kind)
 
 (struct key-event      (token)        #:transparent)
+;; token = (key-token tag bytes)：终端标签 + 原始字节，不解码 char / symbol
 (struct mouse-event    (token row col)#:transparent)
 (struct resize-event   (rows cols)    #:transparent)
-(struct paste-event    (text)         #:transparent)
+(struct paste-event    (bytes)        #:transparent)
+;; 原始粘贴字节；解码在写进 buffer 时做一次
 (struct internal-event (kind data)    #:transparent)
 (struct quit-event     ()             #:transparent)
 

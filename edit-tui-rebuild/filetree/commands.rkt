@@ -9,7 +9,8 @@
 ;;;
 ;;; 目标 panel 由用户选：
 ;;;   鼠标点 editor panel
-;;;   或 M-方向切换焦点后 Enter
+;;;   或 C-x 方向切换焦点后 Enter
+;;; 新文档的 per-doc 键表来自 app-state-editor-tables（通常是编辑操作表）。
 
 (require racket/path
          "../app/state.rkt"
@@ -27,7 +28,8 @@
          filetree-panel-stack
          filetree-install-state
          filetree-nav-command
-         filetree-enter-command)
+         filetree-enter-command
+         filetree-refresh-command)
 
 (define (notice state text)
   (struct-copy app-state state [message text]))
@@ -108,9 +110,11 @@
   (cond
     [r (open-existing state r)]
     [else
+     ;; 新文档带 app 的默认 editor 键表（overlays 里的全局键对任何面板都生效，
+     ;; 不用再重复放进 per-doc 表）。
      (values state
              (list (open-file-action (filetree-normalize-path path)
-                                     (app-state-overlays state))))]))
+                                     (app-state-editor-tables state))))]))
 
 (define (filetree-enter-command state)
   (define l (current-line state))
@@ -123,13 +127,19 @@
              '())]
     [else (open-file state (filetree-line-path l))]))
 
+;;; 行投影按「root + expanded + opened」缓存；外部文件变化不会自动反映。
+;;; C-r 丢掉缓存，下一帧重新扫一次目录。
+(define (filetree-refresh-command state)
+  (values (set-ft-state state (filetree-invalidate (ft-state state))) '()))
+
 (define filetree-command-table
   (keys
    [(key 'up)    (filetree-nav-command 'up)]
    [(key 'down)  (filetree-nav-command 'down)]
    [(key 'home)  (filetree-nav-command 'home)]
    [(key 'end)   (filetree-nav-command 'end)]
-   [(key 'enter) filetree-enter-command]))
+   [(key 'enter) filetree-enter-command]
+   [(key 'r 'ctrl) filetree-refresh-command]))
 
 (define filetree-panel-stack
   (command-table-stack-push command-table-stack-empty filetree-command-table))

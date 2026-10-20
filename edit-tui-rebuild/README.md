@@ -28,6 +28,11 @@ edit-tui-rebuild/
     step.rkt               event -> (values state actions)
     api.rkt                app API
 
+  edit/
+    model.rkt              自插入判读（纯）：键 -> 可打印字符
+    commands.rkt           编辑操作表：插入/删除/导航/翻页/撤销
+    api.rkt                edit API
+
   runtime/
     engine.rkt             core buffer / view 唯一拥有者
     actions.rkt            action -> engine / IO
@@ -66,7 +71,7 @@ edit-tui-rebuild/
 
   command/
     table.rkt              命令表 / stack
-    key.rkt                键 token / key-deliverable?（终端可达性）
+    key.rkt                键 token = 标签 + 原始字节（绑定 / 事件同一表示）
     api.rkt                command API
 
   chrome/
@@ -293,9 +298,28 @@ empty-layout
 ### 投影
 
 ```racket
-(layout->render-panels l area)  ; view = active
-(layout->hit-panels l area)     ; view = panel-id
+(layout->render-panels l area)                     ; view = active
+(layout->render-panels l area #:focus-panel 'editor) ; + 焦点框（见下）
+(layout->hit-panels l area)                        ; view = panel-id
 ```
+
+#### 焦点窗高亮
+
+焦点框不改布局、不改内容、也不进命中投影，做法是利用 core 的边框合成：
+
+- 在焦点 panel 的边框格上再叠一个**空 core panel**（`view = #f`），
+  `face = 'focused-border`，`weight` 比所有 panel 大；
+- core 对同一格按 `weight` 取边框 face（`core/view/border.rkt`：
+  “weight 大的边框格赢，焦点框抬边框用”），于是焦点框的 face 赢；
+- 边框格位置要算对：
+  - 自己画的边 → 就在 rect 边上；
+  - 被邻居共享的边（共享边框时这条边是邻居画的）→ 缝在 rect 外一格，框外扩 1；
+  - 谁都没画的边（屏幕外沿 / 没边框）→ 不画，避免盖内容；
+- 焦点框只出现在 `layout->render-panels`，`layout->hit-panels` 不含它；
+  隐藏的焦点 panel 不出框。
+
+`weight` / `face` 都从 layout 的焦点 + panel 模型推出来，
+渲染层只认 core panel；换颜色 = 换主题里的 `focused-border`。
 
 ### face
 
@@ -366,20 +390,65 @@ require 即安装，换主题 = 换 require：
 (require "edit-tui-rebuild/config/theme/dark.rkt")
 ```
 
+### 输入：标签 + 字节
+
+输入的中间状态不转成 char / symbol，token 就是终端给的那一份：
+
+```racket
+(struct key-token (tag bytes))
+```
+
+- `tag`：`'key`（单字节）| `'ctrl` | `'alt` | `'utf8` | `'mod-seq`（CSI 带修饰）
+  | 命名键 `'up 'down 'left 'right 'home 'end 'insert 'del 'pageup 'pagedown 'backtab`
+- `bytes`：原始字节
+
+runtime 用 `tui:read-event/raw` 取 `(values type data mods)`，适配层直接
+`(key-token type data)` 往下传；mouse / paste / resize 也保留原始载荷
+（paste 是 bytes，写 buffer 时才解一次 UTF-8）。
+
+绑定和事件是同一种表示，`key` 把可读写法编码成 ANSI 字节：
+
+```text
+(key 'a 'ctrl)      -> ('ctrl    . #"\x01")
+(key 'A)            -> ('key     . #"A")
+(key 'left)         -> ('left    . #"\e[D")
+(key 'left 'shift)  -> ('mod-seq . #"\e[1;2D")
+(key #\中)          -> ('utf8    . "中" 的 UTF-8)
+```
+
+命名键的多种终端写法（CSI `ESC[A` / SS3 `ESC OA` / 老式 `ESC[1~`）由
+`raw->key` 按 tag 归一成一种规范字节，表里每个绑定只存一条。
+
+终端不能区分的组合自然共用 token，所以不存在「死绑定」：
+
+```text
+C-i = Tab        C-m = Enter      C-[ = Escape
+C-h = Backspace  C-j = Enter（LF 归一成 CR）
+```
+
+想真正区分它们得开 kitty keyboard protocol / xterm modifyOtherKeys。
+
 ### app / 事件循环
 
 ```racket
 (key-event token)
 (mouse-event token row col)
 (resize-event rows cols)
-(paste-event text)
+(paste-event bytes)
 (internal-event kind data)
 (quit-event)
 
 (make-app-state #:layout #:resources #:focus-resource
-                #:overlays #:pending #:area #:quit? #:message)
+                #:overlays #:editor-tables
+                #:pending #:area #:quit? #:message)
 
+;; 编辑 / 导航 / 鼠标落点都是 view-action，runtime 解释成 core 调用
 (view-action kind view-id data)
+;;;   kind : insert | paste | backspace | delete | kill-line
+;;        | nav | point | select | scroll | ensure | undo | redo
+;;   insert/paste data = 原始 UTF-8 bytes（engine 写 buffer 时解码一次）
+;;   nav   data = dir | (list dir extend?)
+;;   point data = (list row col)   ; 内容区相对坐标（0 基）
 (quit-action)
 
 (step state event)  ; -> (values state' actions)
@@ -435,9 +504,10 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 
 ```racket
 (empty-filetree)
-(make-filetree #:view #:line #:expanded #:rows)
+(make-filetree #:view #:line #:cursor-dirty? #:expanded #:rows)
 (filetree-toggle-expand f path)
 (filetree-set-view / set-line / set-rows)
+(filetree-sync-line f line)      ; sync 从 view 读回镜像（不要求下推）
 
 (filetree-lines root expanded opened dir-lister)
 (filetree-line-at rows line)
@@ -446,12 +516,17 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 (filetree-normalize-path path)
 
 (sync-filetree! state engine)  ; -> state'
+;;   rows 按 (root, expanded, opened) 缓存
+;;   光标归 core view（它就是普通 buffer）：
+;;     键盘移动 -> state 改 cursor 并置 cursor-dirty?，sync 推给 view；
+;;     鼠标点击 -> 普通 point action 改 view，sync 直接读回来当镜像。
 
 (filetree-command-table)
 (filetree-panel-stack)
 (filetree-install-state state view root #:panel-id)
 (filetree-nav-command kind)
 (filetree-enter-command state)
+;; 没有文件树专用的点击/光标逻辑：走通用 point action
 ```
 
 行为：
@@ -461,10 +536,14 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
   - 已打开且已挂 panel：聚焦已有 panel；
   - 已打开但 detached：进入 placement；
   - 未打开：read-file -> resource-open -> placement；
-- placement：
-  - 鼠标点 editor panel；
-  - 或 C-x 方向切换焦点后 Enter；
-  - Esc 取消。
+- placement（临时表，完毕自动解除）：
+  - 开始时就压入 `placement-table`，焦点不在 editor 上会自动落到第一个 editor；
+  - ↑←→↓ 在 editor 之间改焦点（跳过 filetree / status）；
+  - Enter 放入当前焦点 editor；鼠标点目标 editor 也可；
+  - Esc 取消；
+  - 放入 / 取消后 `clear-placement` 把临时表从 overlays 摘掉，普通键位恢复。
+- 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行光标到哪行
+  （滚动、行尾、空白处的行为与编辑器完全一致），state 里的 cursor 只是镜像。
 
 ### 状态栏 / 输入栏
 
@@ -633,6 +712,27 @@ command-table-stack-empty
 - 只有 `unbound` 才落到下一层；
 - 弹窗可以 `push` 临时表，关闭时 `pop` / `remove`。
 
+## 性能
+
+每帧固定成本只和「可见格数」有关，和文档 / 目录行数无关：
+
+- **行投影有缓存**：filetree 按 `(root, expanded 集合, opened 集合)` 缓存 rows。
+  三者不变就不重扫目录（`dir-entries` 每个 entry 要 3 次 stat，3000 行 ≈ 30ms）。
+  外部文件变了用 `C-r` 手动刷新。
+- **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
+  `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
+  core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
+- **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
+  自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
+  没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。
+
+参考数字（80×24、filetree 3000 行、内容不变的一帧）：
+
+```text
+旧：每帧 filetree-lines（重扫目录）≈ 42ms + engine-set-view-lines!（重建 document）≈ 32ms
+新：每帧 sync + render ≈ 0.5ms
+```
+
 ## 测试
 
 ```sh
@@ -656,27 +756,52 @@ C-w ←→↑↓   拆分当前 editor
 C-b        显隐 filetree
 C-x ←→↑↓   焦点移动
 C-s        保存当前 resource（无 path -> Save as 输入栏）
-C-e        插入 x（制造 dirty）
 C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
 鼠标点面板  聚焦
+鼠标点 buffer 内容区 -> 主光标落到点击处（filetree 也一样，它就是普通 buffer）
+
+焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
 ```
 
-> 为什么不用 C-i：传统 ANSI 终端里 Ctrl-I 和 Tab 是同一个字节 0x09，
-> tui 会先按字节分类（`classify-byte`）再归一成命名键，所以 C-i 永远到不了
-> 命令表。同理不可达的还有 C-h（backspace）、C-j / C-m（enter）、
-> C-[（escape）、C-?（backspace）、C-space / C-@（NUL）、
-> C-\ C-] C-^ C-_（裸控制字符）。`key-deliverable?` 可用来检查一个
-> ctrl 组合是否收得到；真要区分这些键需要 kitty keyboard protocol 或
-> xterm modifyOtherKeys。
+编辑（`edit/commands.rkt`，作为 editor 文档的 per-doc 键表）：
+
+```text
+直接打字                插入（任意可打印字符，含大写 / 中文）
+Enter / Tab             换行 / 插入两个空格
+Backspace / Delete / C-d 删前 / 删后一个字符
+←→↑↓ Home End           导航
+Shift+方向 / Shift+Home End  扩展选区
+C-a / C-e               行首 / 行尾（C-f / C-b 逐字符）
+PageUp / PageDown       翻页
+C-k                     删到行尾
+C-z / C-y               撤销 / 重做
+```
+
+表里匹配不到的键由 `edit-self-insert` 兜底：可打印字符 -> 插入焦点
+editor view；非 editor 面板 / 有前缀未完成 / placement 中则回 `unbound`。
+所以命令表不必把 Unicode 全集写进去。
+
+> 关于 C-i：终端里 Ctrl-I 和 Tab 是同一个字节 0x09，所以它们本来就是
+> **同一个 token**（`(key 'i 'ctrl)` ≡ `(key 'tab)`），绑 Tab 就能收到 C-i。
+> C-h / C-m / C-j / C-[ 同理（见上一节「输入：标签 + 字节」）。
+> 想真正区分这些键需要 kitty keyboard protocol / xterm modifyOtherKeys。
 
 文件树：
 
 ```text
 C-x ← 聚焦 filetree
+鼠标点行       选中该行
 ↑↓ / Home End  选行
-Enter          展开目录 / 打开文件
-之后 C-x → 切到 editor，Enter 放入
-或直接点击目标 editor panel
-Esc            取消 placement
+Enter          展开目录 / 打开文件（文件 -> 进入 placement）
+C-r            重扫目录（行投影有缓存，外部文件变化不会自动反映）
+```
+
+placement（打开文件后自动进入）：
+
+```text
+↑←→↓  在 editor 之间改焦点（跳过 filetree / status）
+Enter 放入当前焦点 editor
+鼠标点 editor 放入
+Esc   取消
 ```

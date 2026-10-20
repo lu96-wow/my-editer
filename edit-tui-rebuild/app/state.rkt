@@ -20,6 +20,7 @@
    store           ; 面板 UI 状态：'filetree -> filetree ...
    root            ; 工作区根目录
    panel-stacks    ; panel-id -> command-table-stack
+   editor-tables   ; 新开 editor 文档默认键表（per-doc 表为空时用）
    quit?
    message)
   #:transparent)
@@ -37,8 +38,9 @@
          #:store [store (hash)]
          #:root [root ""]
          #:panel-stacks [panel-stacks (hash)]
+         #:editor-tables [editor-tables '()]
          #:quit? [quit? #f]
          #:message [message ""])
   (app-state layout resources focus-resource overlays pending area
              next-panel-id drag placement store root panel-stacks
-             quit? message))
+             editor-tables quit? message))

@@ -31,24 +31,39 @@
         (hash-set h (filetree-normalize-path p) #t)
         h)))
 
+;;; 行投影的输入：root + 展开集合 + 已打开集合。
+;;; 三者都没变就复用上一帧的 rows —— 否则每帧都要重扫目录（每个 entry 若干次
+;;; stat）、重建行、重建 document，行数一多就是几十毫秒一帧。
+(define (projection-key state f)
+  (list (app-state-root state)
+        (sort (hash-keys (filetree-expanded f)) string<?)
+        (sort (hash-keys (opened-paths state)) string<?)))
+
 (define (sync-filetree! state engine)
   (define f (filetree-state state))
   (cond
     [(or (not f) (not (filetree-view f))) state]
     [else
+     (define key (projection-key state f))
+     (define cached? (equal? key (filetree-projection f)))
      (define rows
-       (filetree-lines (app-state-root state)
-                       (filetree-expanded f)
-                       (opened-paths state)
-                       dir-entries))
-     (define n (length rows))
-     (define cursor
-       (cond [(zero? n) 0]
-             [else (max 0 (min (filetree-cursor f) (sub1 n)))]))
-     (define f* (filetree-set-rows (filetree-set-line f cursor) rows))
-     (define state* (set-filetree-state state f*))
-     (engine-set-view-lines! engine (filetree-view f*)
+       (if cached?
+           (filetree-rows f)
+           (filetree-lines (app-state-root state)
+                           (filetree-expanded f)
+                           (opened-paths state)
+                           dir-entries)))
+     (define f0 (if cached? f (filetree-set-projection f key rows)))
+     (define vid (filetree-view f0))
+     ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准
+     (define line
+       (if (filetree-cursor-dirty? f0)
+           (filetree-cursor f0)
+           (or (engine-view-point-line engine vid) 0)))
+     (engine-set-view-lines! engine vid
                              (map filetree-line-text rows)
                              (map filetree-line-face rows)
-                             cursor)
-     state*]))
+                             line)
+     ;; 写回镜像（engine 会 clamp；点击/滚动后以 view 为准）
+     (define cursor (or (engine-view-point-line engine vid) line))
+     (set-filetree-state state (filetree-sync-line f0 cursor))]))

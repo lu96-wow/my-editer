@@ -10,13 +10,28 @@
 ;;;   C-b           显示 / 隐藏 filetree
 ;;;   C-x ←→↑↓      焦点在 panel 间移动
 ;;;   C-s           保存当前 resource（无 path -> 输入栏 Save as）
-;;;   C-e           插入 x（制造 dirty）
-;;;                 （不要用 C-i：终端里它就是 tab，收不到 ctrl 位）
 ;;;   C-q           退出（dirty -> 输入栏确认）
+;;;
+;;; 编辑（edit/commands.rkt 的编辑操作表）：
+;;;   直接打字      插入（任意可打印字符，含大写 / 中文）
+;;;   Enter         换行
+;;;   Tab           插入两个空格
+;;;   Backspace     删前一个字符      Delete / C-d  删后一个字符
+;;;   ←→↑↓ / Home / End  移动             Shift+方向  扩展选区
+;;;   C-a / C-e     行首 / 行尾
+;;;   PageUp/Down   翻页              C-k  删到行尾
+;;;   C-z / C-y     撤销 / 重做
+;;;   （C-i 与 Tab 是同一个字节，所以绑 Tab 就能收到 C-i）
 ;;;
 ;;; 鼠标：
 ;;;   拖 panel 接缝  resize
-;;;   点 panel      聚焦
+;;;   点 panel      聚焦（焦点窗口边框用 focused-border 高亮）
+;;;   点 buffer 内容 把主光标放到点击处（filetree 也只是普通 buffer）
+;;;
+;;; 文件树 / placement：
+;;;   filetree 上 Enter：展开目录 / 打开文件（已打开则聚焦 / 进入 placement）
+;;;   placement 中：↑←→↓ 在 editor 间改焦点，Enter 放入，Esc 取消，
+;;;     鼠标点目标 editor 也可（放完临时表自动解除）
 
 (require "../config/theme/default.rkt"
          "../main.rkt")
@@ -91,13 +106,6 @@
        (resource-save (app-state-resources state) rid))
      (values (struct-copy app-state state [resources store*]) actions)]))
 
-(define (insert-x-command state)
-  (define rid (app-state-focus-resource state))
-  (define vid (and rid (first (resource-view-ids (app-state-resources state) rid))))
-  (if vid
-      (values state (list (view-action 'insert vid "x")))
-      (values (notice state "insert: no focused resource") '())))
-
 (define (quit-command state)
   (define-values (store* actions)
     (resource-request-quit (app-state-resources state)))
@@ -115,7 +123,6 @@
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
    [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
    [(key 's 'ctrl)              save-command]
-   [(key 'e 'ctrl)              insert-x-command]
    [(key 'q 'ctrl)              quit-command]))
 
 ;;; ---------- resources / engine ----------
@@ -126,26 +133,20 @@
   (resource-open resource-store-empty
                  #:name "editor"
                  #:text "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n"
-                 #:tables (list command-table*)))
-
-(define-values (store2 a2)
-  (resource-open store1
-                 #:name "filetree"
-                 #:text "workspace\n  src\n  main.rkt"))
-
-(define-values (store3 a3)
-  (resource-open store2
-                 #:name "state"
-                 #:text "state focus=editor msg=ready"))
+                 ;; per-document 键表：编辑操作
+                 #:tables (list edit-command-table)))
 
 (define state0
-  (make-app-state #:resources store3
+  (make-app-state #:resources store1
                   #:focus-resource 1
+                  ;; 全局键（overlays 对所有面板生效）
                   #:overlays (list command-table*)
+                  ;; 新开文档默认带编辑表（filetree 打开文件时用）
+                  #:editor-tables (list edit-command-table)
                   #:area (rect 0 0 80 24)
                   #:next-panel-id 100))
 
-(define state1 (run-actions state0 engine (append a1 a2 a3)))
+(define state1 (run-actions state0 engine a1))
 
 ;;; filetree 自己的 core view：doc=10, view=10
 (void (engine-create-buffer! engine 10 "*filetree*" ""))

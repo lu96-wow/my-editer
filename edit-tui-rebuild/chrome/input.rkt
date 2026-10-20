@@ -135,16 +135,12 @@
        [else (void)])
      state1]))
 
+;; 输入栏和 edit 共用 key-text：'key / 'utf8 的 token -> 文本，其它 -> #f
 (define (printable-char tok)
-  (and (key? tok)
-       (not (memq 'ctrl (key-mods tok)))
-       (not (memq 'alt (key-mods tok)))
-       (let ([n (key-name tok)])
-         (cond
-           [(eq? n 'space) " "]
-           [(and (symbol? n) (= 1 (string-length (symbol->string n))))
-            (symbol->string n)]
-           [else #f]))))
+  (and (key? tok) (key-text tok)))
+
+(define (tok=? a b)
+  (and (key? a) (key=? a b)))
 
 (define (input-handle-key state ev)
   (define s (input-state* state))
@@ -152,13 +148,12 @@
     [(not (and s (input-state-active? s))) #f]
     [else
      (define tok (key-event-token ev))
-     (define name (and (key? tok) (key-name tok)))
      (cond
-       [(and (key? tok) (memq 'ctrl (key-mods tok)) (eq? name 'g))
+       [(tok=? tok (key 'g 'ctrl))
         (input-cancel state)]
-       [(eq? name 'escape)
+       [(tok=? tok (key 'escape))
         (input-cancel state)]
-       [(eq? name 'enter)
+       [(tok=? tok (key 'enter))
         (define prompt (resource-prompt (app-state-resources state)))
         (cond
           [(not prompt) (values (input-close state) '())]
@@ -172,7 +167,7 @@
                               (prompt-id prompt) value))
            (define state1 (struct-copy app-state state [resources store*]))
            (values (input-close state1) actions)])]
-       [(eq? name 'backspace)
+       [(tok=? tok (key 'backspace))
         (define text (input-state-text s))
         (define text* (if (zero? (string-length text))
                           text

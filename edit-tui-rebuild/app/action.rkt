@@ -10,7 +10,16 @@
          (struct-out quit-action))
 
 (struct view-action (kind view-id data) #:transparent)
-;; kind : 'insert | 'nav | 'select | 'scroll | 'ensure | 'undo | 'redo
+;; kind : 'insert | 'paste | 'backspace | 'delete | 'kill-line
+;;      | 'nav | 'point | 'select | 'scroll | 'ensure | 'undo | 'redo
+;;
+;; data :
+;;   insert/paste      文本
+;;   nav               dir | (list dir extend?)
+;;   point             (list row col)（相对内容区，0 基）
+;;   select            core selections 值
+;;   scroll            number | 'page-up | 'page-down
+;;   其余              #f
 
 ;; 文件树打开文件：runtime 读盘 -> resource-open -> 进入 placement。
 (struct open-file-action (path tables) #:transparent)

@@ -53,8 +53,10 @@
            (struct-copy app-state state [area (rect 0 0 cols rows)])
            state))
      (define (read-app-event)
+       ;; 字节级读入：tag + 原始 bytes，适配层不解码 char / symbol
        (let loop ()
-         (define e (tui-event->app (tui:read-event)))
+         (define-values (type data mods) (tui:read-event/raw))
+         (define e (tui-event->app type data mods))
          (if e e (loop))))
      (run-loop state* engine
                #:read-event read-app-event

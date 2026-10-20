@@ -29,7 +29,7 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource" "filetree" "chrome" "app" "runtime"))
+  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource" "filetree" "chrome" "app" "runtime" "edit"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])

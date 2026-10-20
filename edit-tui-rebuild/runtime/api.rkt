@@ -6,10 +6,12 @@
          "actions.rkt"
          "render.rkt"
          "sync.rkt"
+         "tui-adapter.rkt"
          "loop.rkt")
 
 (provide (all-from-out "engine.rkt"
                        "actions.rkt"
                        "render.rkt"
                        "sync.rkt"
+                       "tui-adapter.rkt"
                        "loop.rkt"))

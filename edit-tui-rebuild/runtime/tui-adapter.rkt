@@ -1,44 +1,41 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/tui-adapter.rkt —— tui event -> app event
+;;; edit-tui-rebuild/runtime/tui-adapter.rkt —— tui raw 事件 -> app 事件
+;;;
+;;; 用 tui 的字节级接口 read-event/raw（返回值 (values type data mods)）：
+;;;   type : 'key 'ctrl 'alt 'utf8 'mod-seq 'up 'down … 'mouse 'paste 'resize
+;;;   data : 原始字节（mouse / resize 是结构化值）
+;;;
+;;; 键事件原样变成 (key-token tag bytes)，不在这一层解码 char / symbol。
+;;; mods 不单独保存：tag + bytes 已经表达了它（'ctrl 隐含 ctrl，
+;;; 'mod-seq 的修饰位在 CSI 参数里）。
 
-(require tui
+(require racket/match
+         (prefix-in tui: tui)
          (prefix-in a: "../app/event.rkt")
          "../command/api.rkt")
 
 (provide tui-event->app)
 
-(define (mods->symbols m)
-  (for/list ([s (in-list '(ctrl alt shift))]
-             [on? (in-list (list (mods-ctrl? m)
-                                 (mods-alt? m)
-                                 (mods-shift? m)))]
-             #:when on?)
-    s))
+;; 鼠标：raw data = (action button x y mods) | (scroll dir x y mods)
+(define (raw-mouse->app data)
+  (match data
+    [(list 'press _b x y _m)
+     (a:mouse-event 'press (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'release _b x y _m)
+     (a:mouse-event 'release (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'move _b x y _m)
+     (a:mouse-event 'move (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'scroll _btn dir x y _m)
+     (a:mouse-event (if (eq? dir 'up) 'scroll-up 'scroll-down)
+                    (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [_ #f]))
 
-(define (event->key ev)
-  (apply key (key-event-key ev) (mods->symbols (key-event-mods ev))))
-
-(define (event->mouse-token ev)
-  (case (mouse-event-action ev)
-    [(press) 'press]
-    [(release) 'release]
-    [(move) 'move]
-    [(scroll) (if (eq? (mouse-event-button ev) 'up)
-                  'scroll-up
-                  'scroll-down)]
-    [else 'move]))
-
-(define (tui-event->app ev)
-  (cond
-    [(key-event? ev)
-     (a:key-event (event->key ev))]
-    [(mouse-event? ev)
-     (a:mouse-event (event->mouse-token ev)
-                    (max 0 (sub1 (mouse-event-y ev)))
-                    (max 0 (sub1 (mouse-event-x ev))))]
-    [(resize-event? ev)
-     (a:resize-event (resize-event-rows ev) (resize-event-cols ev))]
-    [(paste-event? ev)
-     (a:paste-event (paste-event-text ev))]
-    [else #f]))
+;; raw (type data mods) -> app event
+(define (tui-event->app type data _mods)
+  (case type
+    [(null) #f]
+    [(resize) (a:resize-event (car data) (cdr data))]
+    [(paste) (a:paste-event data)]                 ; 原始字节
+    [(mouse) (raw-mouse->app data)]
+    [else (a:key-event (raw->key type data))]))

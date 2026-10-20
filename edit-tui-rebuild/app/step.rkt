@@ -7,9 +7,11 @@
          "../config/api.rkt"
          "../layout/api.rkt"
          "../panel/api.rkt"
+         "../projection/api.rkt"
          "../resource/api.rkt"
          "../focus/api.rkt"
          "../chrome/input.rkt"
+         "../edit/api.rkt"
          "event.rkt"
          "placement.rkt"
          "state.rkt"
@@ -66,15 +68,33 @@
       [(prefix)
        (values (struct-copy app-state state [pending seq]) '())]
       [else
-       (values (notice (clear-pending state)
-                       (format "unbound: ~a"
-                               (string-join (map key->string seq) " ")))
-               '())])))
+       ;; 表里没有：可打印字符 -> 自插入到焦点 editor（兜底）
+       (define s1 (clear-pending state))
+       (define-values (s2 actions)
+         (if (null? (app-state-pending state))
+             (edit-self-insert s1 tok)
+             (values #f '())))
+       (cond
+         [s2 (values s2 actions)]
+         [else
+          (values (notice s1
+                          (format "unbound: ~a"
+                                  (string-join (map key->string seq) " ")))
+                  '())])])))
 
 (define (set-focus-panel state id)
   (define layout* (layout-set-focus (app-state-layout state) id))
   (define s1 (struct-copy app-state state [layout layout*]))
   (struct-copy app-state s1 [focus-resource (focus-resource* s1)]))
+
+;; 点击落在 panel 内容区 -> 把该 view 的主光标设到点击处（内容区相对坐标）。
+;;; 所有面板一视同仁：文件树也只是普通 buffer，光标归 view 所有。
+(define (mouse-point-actions state pid row col)
+  (define p (layout-panel (app-state-layout state) pid))
+  (define vid (and p (panel-view p)))
+  (if vid
+      (list (view-action 'point vid (list row col)))
+      '()))
 
 (define (dispatch-mouse state ev)
   (define row (mouse-event-row ev))
@@ -98,10 +118,19 @@
            (define d (layout-seam-drag-start layout area row col #:config default-config))
            (values (struct-copy app-state state [drag d]) '())]
           [else
-           (define id (layout-focus-panel-at layout area default-config row col))
-           (if id
-               (values (set-focus-panel state id) '())
-               (values state '()))])])]
+           ;; 先看是否点在某个 panel 的内容区（去掉边框）：
+           ;; editor -> 聚焦 + 光标落点；其它 panel -> 只聚焦。
+           (define-values (cid c-row c-col)
+             (layout-content-hit-at layout area row col))
+           (cond
+             [cid
+              (define s1 (set-focus-panel state cid))
+              (values s1 (mouse-point-actions s1 cid c-row c-col))]
+             [else
+              (define id (layout-focus-panel-at layout area default-config row col))
+              (if id
+                  (values (set-focus-panel state id) '())
+                  (values state '()))])])])]
     [(move)
      (define d (app-state-drag state))
      (cond
@@ -122,11 +151,13 @@
          (values state '()))]))
 
 (define (dispatch-paste state ev)
-  (define vid (focus-view state))
+  ;; 只有焦点在 editor 上才允许粘贴（不往 filetree / status 里灌文本）。
+  ;; action 里传原始字节，engine 写 buffer 时解码。
+  (define vid (focus-editor-view state))
   (cond
-    [(not vid) (values (notice state "paste: no view") '())]
+    [(not vid) (values (notice state "paste: 焦点不是 editor") '())]
     [else
-     (values state (list (view-action 'insert vid (paste-event-text ev))))]))
+     (values state (list (view-action 'paste vid (paste-event-bytes ev))))]))
 
 (define (dispatch-resize state ev)
   (values (struct-copy app-state state
