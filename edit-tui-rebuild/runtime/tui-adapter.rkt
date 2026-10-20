@@ -38,4 +38,4 @@
     [(resize) (a:resize-event (car data) (cdr data))]
     [(paste) (a:paste-event data)]                 ; 原始字节
     [(mouse) (raw-mouse->app data)]
-    [else (a:key-event (raw->key type data))]))
+    [else (a:key-event (raw-key-token type data))]))

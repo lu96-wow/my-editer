@@ -1,11 +1,33 @@
 #lang racket
 
-;;; edit-tui-rebuild/app/state.rkt —— 根 State（纯）
+;;; edit-tui-rebuild/app/state.rkt —— 根 State（纯） + 焦点相关的状态迁移
+;;;
+;;; State 只存 id / 纯值，不碰 engine、不碰 IO。
+;;;
+;;; 焦点有两层：
+;;;   layout.focus   : 焦点 panel-id（布局层，layout/api）
+;;;   focus-resource : 焦点 panel 的活动 view 所属 resource（派生量，缓存在 Root）
+;;;
+;;; 「改焦点」必须走 app-state-set-focus-panel：它会同步刷新 focus-resource。
+;;; 直接改 layout 会让 focus-resource 过期，所以这里把两者绑在一个操作里。
 
-(require "../resource/api.rkt")
+(require "../layout/api.rkt"
+         "../panel/api.rkt"
+         "../resource/api.rkt")
 
 (provide (struct-out app-state)
-         make-app-state)
+         make-app-state
+
+         ;; 查询
+         app-state-panel
+         app-state-focus-panel-id
+         app-state-focus-panel-resource
+         app-state-focus-view-id
+
+         ;; 纯迁移
+         app-state-with-message
+         app-state-set-focus-panel
+         app-state-refresh-focus-resource)
 
 (struct app-state
   (layout
@@ -17,7 +39,7 @@
    next-panel-id
    drag            ; layout drag | #f
    placement       ; view-id | #f
-   store           ; 面板 UI 状态：'filetree -> filetree ...
+   store           ; 面板 UI 状态：'filetree -> filetree、'input -> input-state ...
    root            ; 工作区根目录
    panel-stacks    ; panel-id -> command-table-stack
    editor-tables   ; 新开 editor 文档默认键表（per-doc 表为空时用）
@@ -44,3 +66,41 @@
   (app-state layout resources focus-resource overlays pending area
              next-panel-id drag placement store root panel-stacks
              editor-tables quit? message))
+
+;;; ════════════════ 查询 ════════════════
+
+(define (app-state-panel state id)
+  (define layout (app-state-layout state))
+  (and layout id (layout-panel layout id)))
+
+(define (app-state-focus-panel-id state)
+  (define layout (app-state-layout state))
+  (and layout (layout-focus layout)))
+
+(define (app-state-focus-panel-resource state)
+  (app-state-panel state (app-state-focus-panel-id state)))
+
+(define (app-state-focus-view-id state)
+  (define p (app-state-focus-panel-resource state))
+  (and p (panel-view p)))
+
+;; 焦点 view 所属的 resource（内部用）
+(define (focus-resource-of-view state vid)
+  (and vid (resource-of-view (app-state-resources state) vid)))
+
+;;; ════════════════ 纯迁移 ════════════════
+
+(define (app-state-with-message state text)
+  (struct-copy app-state state [message text]))
+
+;; 焦点 panel 没变，只按当前 view 重算 focus-resource（换 view / 隐藏恢复后用）。
+(define (app-state-refresh-focus-resource state)
+  (struct-copy app-state state
+               [focus-resource
+                (focus-resource-of-view state (app-state-focus-view-id state))]))
+
+;; 改焦点 panel：layout.focus 与 focus-resource 一起更新。
+(define (app-state-set-focus-panel state pid)
+  (define layout* (layout-set-focus (app-state-layout state) pid))
+  (app-state-refresh-focus-resource
+   (struct-copy app-state state [layout layout*])))

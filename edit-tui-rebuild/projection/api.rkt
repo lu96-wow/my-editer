@@ -6,4 +6,4 @@
 
 (provide layout->render-panels
          layout->hit-panels
-         layout-content-hit-at)
+         layout-content-hit)

@@ -39,69 +39,53 @@
 
 (provide demo-state demo-engine)
 
-(define (notice state text)
-  (struct-copy app-state state [message text]))
-
-(define (focus-resource-of state id)
-  (define p (layout-panel (app-state-layout state) id))
-  (define vid (and p (panel-view p)))
-  (and vid (resource-of-view (app-state-resources state) vid)))
-
-(define (set-focus-panel state id)
-  (define layout* (layout-set-focus (app-state-layout state) id))
-  (define s1 (struct-copy app-state state [layout layout*]))
-  (struct-copy app-state s1 [focus-resource (focus-resource-of s1 id)]))
-
-(define (sync-focus-resource state)
-  (struct-copy app-state state
-               [focus-resource
-                (focus-resource-of state (layout-focus (app-state-layout state)))]))
-
 ;;; ---------- commands ----------
 
 (define (split-command dir)
   (λ (state)
-    (define l (app-state-layout state))
-    (define pid (layout-focus l))
+    (define layout (app-state-layout state))
+    (define pid (app-state-focus-panel-id state))
     (define nid (app-state-next-panel-id state))
-    (define-values (l* ok?)
-      (layout-split l pid dir nid #:config default-config))
+    (define-values (layout* ok?)
+      (layout-split layout pid dir nid #:config default-config))
     (if ok?
-        (values (struct-copy app-state state
-                             [layout l*]
-                             [next-panel-id (add1 nid)])
+        (values (app-state-refresh-focus-resource
+                 (struct-copy app-state state
+                              [layout layout*]
+                              [next-panel-id (add1 nid)]))
                 '())
-        (values (notice state "split failed") '()))))
+        (values (app-state-with-message state "split failed") '()))))
 
 (define (toggle-filetree-command)
   (λ (state)
-    (define l (app-state-layout state))
+    (define layout (app-state-layout state))
     (define area (app-state-area state))
-    (define visible? (layout-panel-visible? l 'filetree))
-    (define-values (l* ok?)
+    (define visible? (layout-panel-visible? layout 'filetree))
+    (define-values (layout* ok?)
       (if visible?
-          (layout-panel-hide l area 'filetree #:config default-config)
-          (layout-panel-show l area 'filetree)))
+          (layout-panel-hide layout area 'filetree #:config default-config)
+          (layout-panel-show layout area 'filetree)))
     (if ok?
-        (values (sync-focus-resource
-                 (struct-copy app-state state [layout l*]))
+        ;; 隐藏可能导致焦点回退：按新 layout 的焦点重算 focus-resource
+        (values (app-state-refresh-focus-resource
+                 (struct-copy app-state state [layout layout*]))
                 '())
-        (values (notice state "toggle filetree failed") '()))))
+        (values (app-state-with-message state "toggle filetree failed") '()))))
 
 (define (focus-command dir)
   (λ (state)
-    (define l (app-state-layout state))
-    (define from (layout-focus l))
-    (define to (layout-focus-neighbor l (app-state-area state)
-                                      default-config from dir))
+    (define layout (app-state-layout state))
+    (define to (layout-focus-neighbor layout (app-state-area state)
+                                      default-config
+                                      (app-state-focus-panel-id state) dir))
     (if to
-        (values (set-focus-panel state to) '())
-        (values (notice state "no focus neighbor") '()))))
+        (values (app-state-set-focus-panel state to) '())
+        (values (app-state-with-message state "no focus neighbor") '()))))
 
 (define (save-command state)
   (define rid (app-state-focus-resource state))
   (cond
-    [(not rid) (values (notice state "save: no resource") '())]
+    [(not rid) (values (app-state-with-message state "save: no resource") '())]
     [else
      (define-values (store* actions)
        (resource-save (app-state-resources state) rid))
@@ -112,7 +96,7 @@
     (resource-request-quit (app-state-resources state)))
   (values (struct-copy app-state state [resources store*]) actions))
 
-(define command-table*
+(define global-command-table
   (keys
    [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
    [(key 'w 'ctrl) (key 'right) (split-command 'right)]
@@ -141,7 +125,7 @@
   (make-app-state #:resources store1
                   #:focus-resource 1
                   ;; 全局键（overlays 对所有面板生效）
-                  #:overlays (list command-table*)
+                  #:overlays (list global-command-table)
                   ;; 新开文档默认带编辑表（filetree 打开文件时用）
                   #:editor-tables (list edit-command-table)
                   #:area (rect 0 0 80 24)

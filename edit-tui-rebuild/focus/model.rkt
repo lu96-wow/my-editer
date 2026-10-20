@@ -13,7 +13,8 @@
          layout-focus-panel-at
          layout-focus-neighbor)
 
-(require (prefix-in l: "../layout/model.rkt")
+(require (prefix-in l: "../layout/tree.rkt")
+         (prefix-in l: "../layout/solve.rkt")
          (prefix-in p: "../panel/model.rkt")
          "../config/model.rkt"
          "../projection/geometry.rkt"

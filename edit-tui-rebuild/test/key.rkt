@@ -43,7 +43,7 @@
 (check-equal? (key 'A 'shift) (key 'A))         ; shift 对字符键无编码意义
 
 ;;; ---------- raw -> token：命名键写法归一 ----------
-(define (raw tag bs) (raw->key tag bs))
+(define (raw tag bs) (raw-key-token tag bs))
 (check-equal? (raw 'up #"\eOA") (key 'up))      ; SS3 应用光标模式
 (check-equal? (raw 'up #"\e[A") (key 'up))      ; CSI
 (check-equal? (raw 'home #"\e[1~") (key 'home)) ; 老式 Home

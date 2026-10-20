@@ -3,8 +3,8 @@
 ;;; edit-tui-rebuild/filetree/lines.rkt —— 纯投影：path/expanded -> 行
 
 (require racket/path
-         "model.rkt"
-         "scan.rkt")
+         "../resource/api.rkt"
+         "model.rkt")
 
 (provide filetree-lines
          filetree-line-at)
@@ -20,9 +20,9 @@
   (cond
     [(or (not root) (string=? root "")) '()]
     [else
-     (define root-norm (filetree-normalize-path root))
+     (define root-norm (resource-normalize-path root))
      (define (walk path depth kind)
-       (define pn (filetree-normalize-path path))
+       (define pn (resource-normalize-path path))
        (define label (if (zero? depth) root-norm (entry-name path)))
        (define face
          (cond [(zero? depth) 'filetree-root]

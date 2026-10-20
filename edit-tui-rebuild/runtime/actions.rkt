@@ -19,19 +19,16 @@
 
 (provide run-actions)
 
-(define (notice state text)
-  (struct-copy app-state state [message text]))
-
 (define (write-file! state engine rid path)
   (define store (app-state-resources state))
   (define r (resource-ref store rid))
   (cond
-    [(not r) (values (notice state "save: resource missing") '())]
+    [(not r) (values (app-state-with-message state "save: resource missing") '())]
     [else
      (define did (resource-doc-id r))
      (define text (engine-doc-text engine did))
      (cond
-       [(not text) (values (notice state "save: no text") '())]
+       [(not text) (values (app-state-with-message state "save: no text") '())]
        [else
         (define ok?
           (with-handlers ([exn:fail? (λ (_) #f)])
@@ -39,14 +36,14 @@
             #t))
         (cond
           [(not ok?)
-           (values (notice state (format "save failed: ~a" path)) '())]
+           (values (app-state-with-message state (format "save failed: ~a" path)) '())]
           [else
            (define version (engine-doc-version engine did))
            (define-values (store* more)
              (resource-save-done store rid version))
            (values (struct-copy app-state state [resources store*]) more)])])]))
 
-(define (run-one state engine action)
+(define (run-action state engine action)
   (cond
     [(resource-action? action)
      (case (resource-action-kind action)
@@ -72,7 +69,7 @@
         (values state '())]
        [(quit)
         (values (struct-copy app-state state [quit? #t]) '())]
-       [else (values (notice state (format "unknown resource action: ~a" action)) '())])]
+       [else (values (app-state-with-message state (format "unknown resource action: ~a" action)) '())])]
     [(open-file-action? action)
      (define path (open-file-action-path action))
      (define tables (open-file-action-tables action))
@@ -80,7 +77,7 @@
        (with-handlers ([exn:fail? (λ (_) #f)])
          (file->string path)))
      (cond
-       [(not text) (values (notice state (format "open failed: ~a" path)) '())]
+       [(not text) (values (app-state-with-message state (format "open failed: ~a" path)) '())]
        [else
         (define name
           (let ([n (file-name-from-path path)])
@@ -102,7 +99,7 @@
             a))
         (cond
           [(or (not buffer-action) (not view-action*))
-           (values (notice state "open: malformed resource actions") '())]
+           (values (app-state-with-message state "open: malformed resource actions") '())]
           [else
            (define did (car (resource-action-data buffer-action)))
            (define vid (car (resource-action-data view-action*)))
@@ -115,12 +112,12 @@
     [(quit-action? action)
      (values (struct-copy app-state state [quit? #t]) '())]
     [else
-     (values (notice state (format "unknown action: ~a" action)) '())]))
+     (values (app-state-with-message state (format "unknown action: ~a" action)) '())]))
 
 (define (run-actions state engine actions)
   (let loop ([state state] [pending actions])
     (cond
       [(null? pending) state]
       [else
-       (define-values (s1 more) (run-one state engine (car pending)))
+       (define-values (s1 more) (run-action state engine (car pending)))
        (loop s1 (append more (cdr pending)))])))

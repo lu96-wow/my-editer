@@ -11,47 +11,41 @@
 (require "../app/state.rkt"
          "../resource/api.rkt"
          "../runtime/engine.rkt"
+         "store.rkt"
          "model.rkt"
          "lines.rkt"
          "scan.rkt")
 
 (provide sync-filetree!)
 
-(define (filetree-state state)
-  (hash-ref (app-state-store state) 'filetree #f))
-
-(define (set-filetree-state state f)
-  (struct-copy app-state state
-               [store (hash-set (app-state-store state) 'filetree f)]))
-
-(define (opened-paths state)
+(define (opened-path-set state)
   (for/fold ([h (hash)]) ([r (in-list (resource-list (app-state-resources state)))])
     (define p (resource-path (app-state-resources state) (resource-id r)))
     (if p
-        (hash-set h (filetree-normalize-path p) #t)
+        (hash-set h (resource-normalize-path p) #t)
         h)))
 
 ;;; 行投影的输入：root + 展开集合 + 已打开集合。
 ;;; 三者都没变就复用上一帧的 rows —— 否则每帧都要重扫目录（每个 entry 若干次
 ;;; stat）、重建行、重建 document，行数一多就是几十毫秒一帧。
-(define (projection-key state f)
+(define (filetree-projection-key state f)
   (list (app-state-root state)
         (sort (hash-keys (filetree-expanded f)) string<?)
-        (sort (hash-keys (opened-paths state)) string<?)))
+        (sort (hash-keys (opened-path-set state)) string<?)))
 
 (define (sync-filetree! state engine)
-  (define f (filetree-state state))
+  (define f (filetree-of state))
   (cond
     [(or (not f) (not (filetree-view f))) state]
     [else
-     (define key (projection-key state f))
+     (define key (filetree-projection-key state f))
      (define cached? (equal? key (filetree-projection f)))
      (define rows
        (if cached?
            (filetree-rows f)
            (filetree-lines (app-state-root state)
                            (filetree-expanded f)
-                           (opened-paths state)
+                           (opened-path-set state)
                            dir-entries)))
      (define f0 (if cached? f (filetree-set-projection f key rows)))
      (define vid (filetree-view f0))
@@ -69,4 +63,4 @@
                              #:column col)
      ;; 写回镜像（engine 会 clamp；点击/滚动后以 view 为准）
      (define cursor (or (engine-view-point-line engine vid) line))
-     (set-filetree-state state (filetree-sync-line f0 cursor))]))
+     (filetree-put state (filetree-sync-cursor f0 cursor))]))

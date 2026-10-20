@@ -9,10 +9,9 @@
          filetree-expanded?
          filetree-toggle-expand
          filetree-set-view
-         filetree-set-line
-         filetree-set-rows
+         filetree-set-cursor
          filetree-set-projection
-         filetree-sync-line
+         filetree-sync-cursor
          filetree-invalidate)
 
 (struct filetree-line (path kind depth text face) #:transparent)
@@ -61,15 +60,12 @@
   (struct-copy filetree f [view vid]))
 
 ;; 键盘移动：改 cursor，并要求下一次 sync 把它推给 view。
-(define (filetree-set-line f line)
+(define (filetree-set-cursor f line)
   (struct-copy filetree f [cursor line] [cursor-dirty? #t]))
 
 ;; sync 读回（view 是真相）：只更新镜像，不要求下推。
-(define (filetree-sync-line f line)
+(define (filetree-sync-cursor f line)
   (struct-copy filetree f [cursor line] [cursor-dirty? #f]))
-
-(define (filetree-set-rows f rows)
-  (struct-copy filetree f [rows rows]))
 
 ;;; 行投影 + 它的输入一起更新（用于跨帧复用）。
 (define (filetree-set-projection f projection rows)

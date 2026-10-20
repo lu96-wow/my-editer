@@ -40,7 +40,7 @@
   (define f (hash-ref (app-state-store state) 'filetree))
   (struct-copy app-state state
                [store (hash-set (app-state-store state) 'filetree
-                                (filetree-set-line f line))]))
+                                (filetree-set-cursor f line))]))
 
 (define state3 (set-cursor state2 sub-i))
 (define-values (state4 a4) (filetree-enter-command state3))

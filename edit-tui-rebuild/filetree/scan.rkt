@@ -2,15 +2,11 @@
 
 ;;; edit-tui-rebuild/filetree/scan.rkt —— 读目录（唯一 IO 点）
 
-(provide dir-entries
-         filetree-normalize-path)
+(provide dir-entries)
 
 (require racket/path
          racket/list
          racket/string)
-
-(define (filetree-normalize-path p)
-  (path->string (simplify-path (path->complete-path p))))
 
 (define (entry-kind path)
   (cond

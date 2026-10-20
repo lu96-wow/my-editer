@@ -34,4 +34,4 @@
  (struct-out key-token)
  mods-order normalize-mods
  key key? key-tag key-bytes key=? key->string key-text
- raw->key)
+ raw-key-token)

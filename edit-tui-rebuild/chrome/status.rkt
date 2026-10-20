@@ -14,13 +14,10 @@
 (require racket/string
          "../app/state.rkt"
          "../command/api.rkt"
-         "../layout/api.rkt"
-         "../panel/api.rkt"
          "../resource/api.rkt"
          "../runtime/engine.rkt")
 
 (provide status-install-state
-         status-line
          sync-status!)
 
 (define (status-view state)
@@ -30,11 +27,6 @@
   (struct-copy app-state state
                [store (hash-set (app-state-store state) 'status-view view)]))
 
-(define (focus-view state)
-  (define p (layout-panel (app-state-layout state)
-                          (layout-focus (app-state-layout state))))
-  (and p (panel-view p)))
-
 (define (status-resource-name state)
   (define rid (app-state-focus-resource state))
   (define r (and rid (resource-ref (app-state-resources state) rid)))
@@ -42,7 +34,7 @@
              (resource-name r))))
 
 (define (status-line state engine)
-  (define vid (focus-view state))
+  (define vid (app-state-focus-view-id state))
   (define line (and vid (engine-view-point-line engine vid)))
   (define col (and vid (engine-view-point-column engine vid)))
   (define rid (app-state-focus-resource state))

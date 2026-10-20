@@ -78,7 +78,7 @@
 (check-equal? (map view-action-kind a11) '(point))
 ;; 内容区坐标（投影去掉边框后的相对坐标，和 content-hit 一致）
 (define-values (hit-id hit-row hit-col)
-  (layout-content-hit-at (app-state-layout demo-state)
+  (layout-content-hit (app-state-layout demo-state)
                          (app-state-area demo-state)
                          (+ (rect-y r) 2) (+ (rect-x r) 2)))
 (check-equal? hit-id 'editor)

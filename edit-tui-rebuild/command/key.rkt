@@ -15,7 +15,7 @@
 ;;; 于是「事件 → 命中」是一次字节比较；插入时把 bytes 原样交给 buffer
 ;;; 解码一次（document 是字符串，这一次解码省不掉）。
 ;;;
-;;; 命名键有不止一种终端写法（CSI / SS3 / 老式 ~）。raw->key 按 tag
+;;; 命名键有不止一种终端写法（CSI / SS3 / 老式 ~）。raw-key-token 按 tag
 ;;; 归一成一种规范字节，所以一张表里每个绑定只存一条。
 ;;;
 ;;; 终端不能区分的组合会共用 token（这就是事实，不是 bug）：
@@ -26,7 +26,7 @@
 (provide (struct-out key-token)
          key key? key-tag key-bytes key=?
          key->string key-text
-         raw->key
+         raw-key-token
          normalize-mods
          mods-order)
 
@@ -62,7 +62,7 @@
     (pagedown tilde 6)
     (backtab  final 90))) ; Z
 
-;; tui raw 事件类型里的命名键（raw->key 用）
+;; tui raw 事件类型里的命名键（raw-key-token 用）
 (define raw-named-tags
   '(up down left right home end insert del pageup pagedown backtab))
 
@@ -212,7 +212,7 @@
 ;;; 其余原样保留字节。
 
 ;;; 热路径缓存：单字节键和命名键的 token 在建表时全部建好，
-;;; 打字时 raw->key 只查表 / 查向量，不分配。
+;;; 打字时 raw-key-token 只查表 / 查向量，不分配。
 (define byte-tokens
   (for/vector ([b (in-range 128)])
     (key-token (ctrl-tag b) (bytes (canonical-byte b)))))
@@ -222,7 +222,7 @@
     (define info (assq tag named-keys))
     (values tag (key-token tag (named-canonical (cadr info) (caddr info))))))
 
-(define (raw->key tag data)
+(define (raw-key-token tag data)
   (cond
     [(raw-named? tag) (hash-ref named-tokens tag)]
     [(eq? tag 'key)

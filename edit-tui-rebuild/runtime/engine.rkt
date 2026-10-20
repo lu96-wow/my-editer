@@ -11,7 +11,7 @@
 
 (provide (struct-out engine)
          make-engine
-         engine-doc-buffer engine-view-object
+         engine-view-object
          engine-create-buffer! engine-create-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version

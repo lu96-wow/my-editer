@@ -23,53 +23,35 @@
 (require "../app/state.rkt"
          "../app/action.rkt"
          "../command/api.rkt"
-         "../layout/api.rkt"
          "../panel/api.rkt"
          "model.rkt")
 
 (provide navigation-command-table
          edit-command-table
          edit-self-insert
-         focus-editor-view
-         focus-panel-view
-         insert-command
-         nav-command
-         edit-action-command
-         scroll-command)
+         focus-editor-view)
 
-(define (notice state text)
-  (struct-copy app-state state [message text]))
-
-;; 焦点 panel 的 active view（任何 kind）；没有 view 时 #f。
-(define (focus-panel-view state)
-  (define layout (app-state-layout state))
-  (define pid (and layout (layout-focus layout)))
-  (define p (and pid layout (layout-panel layout pid)))
-  (and p (panel-view p)))
-
-;; 焦点 panel 是 editor -> 活动 view id；否则 #f（插入类命令用）。
+;; 焦点 panel 是 editor -> 活动 view id；否则 #f（插入类命令只认 editor）。
 (define (focus-editor-view state)
-  (define layout (app-state-layout state))
-  (define pid (and layout (layout-focus layout)))
-  (define p (and pid layout (layout-panel layout pid)))
+  (define p (app-state-focus-panel-resource state))
   (and p
        (eq? (panel-kind p) 'editor)
-       (panel-view p)))
+       (app-state-focus-view-id state)))
 
 ;; ---------- 命令构造 ----------
 
 ;; 通用 view 命令（导航 / 翻页）
 (define (emit-view state kind data)
-  (define vid (focus-panel-view state))
+  (define vid (app-state-focus-view-id state))
   (cond
-    [(not vid) (values (notice state "edit: 焦点 panel 没有 view") '())]
+    [(not vid) (values (app-state-with-message state "edit: 焦点 panel 没有 view") '())]
     [else (values state (list (view-action kind vid data)))]))
 
 ;; 只作用于 editor 的命令（插入 / 删除 / 历史）
 (define (emit-editor state kind data)
   (define vid (focus-editor-view state))
   (cond
-    [(not vid) (values (notice state "edit: 焦点不是 editor") '())]
+    [(not vid) (values (app-state-with-message state "edit: 焦点不是 editor") '())]
     [else (values state (list (view-action kind vid data)))]))
 
 ;; text : string（方便写键表）；action 里放 UTF-8 bytes，engine 解码一次。

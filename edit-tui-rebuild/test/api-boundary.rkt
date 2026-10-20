@@ -11,7 +11,7 @@
 ;;;   外部 core/*
 ;;;
 ;;; 不允许：
-;;;   layout/model.rkt
+;;;   layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
 ;;;   panel/model.rkt
 ;;;   command/table.rkt
 ;;;   projection/geometry.rkt
@@ -77,8 +77,10 @@
         (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
 
 ;; 自检
-(check-true (impl-require? "layout/model.rkt"))
-(check-true (impl-require? "../layout/model.rkt"))
+(check-true (impl-require? "layout/tree.rkt"))
+(check-true (impl-require? "../layout/solve.rkt"))
+(check-true (impl-require? "../layout/ops.rkt"))
+(check-true (impl-require? "../filetree/store.rkt"))
 (check-true (impl-require? "../panel/model.rkt"))
 (check-true (impl-require? "../projection/geometry.rkt"))
 (check-true (impl-require? "../command/table.rkt"))

@@ -11,7 +11,6 @@
  resource-ref
  resource-list
  resource-focus
- resource-set-focus
  resource-pending
  resource-events
  resource-drain-events
@@ -22,8 +21,6 @@
  resource-name
  resource-doc-id
  resource-views
- resource-file-path
- resource-binding-stack
  resource-version
  resource-saved-version
  resource-path
@@ -33,6 +30,8 @@
  resource-of-view
  resource-command-stack
  resource-set-command-stack
+ resource-normalize-path
+ resource-find-by-path
 
  ;; open / edit / save
  resource-open

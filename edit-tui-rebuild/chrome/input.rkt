@@ -16,17 +16,11 @@
          "../app/event.rkt"
          "../command/api.rkt"
          "../layout/api.rkt"
-         "../panel/api.rkt"
          "../resource/api.rkt"
          "../runtime/engine.rkt")
 
-(provide (struct-out input-state)
-         input-install-state
-         input-state*
+(provide input-install-state
          input-active?
-         input-open
-         input-close
-         input-cancel
          input-sync!
          input-handle-key)
 
@@ -45,11 +39,6 @@
   (define s (input-state* state))
   (and s (input-state-active? s)))
 
-(define (focus-resource-of state pid)
-  (define p (layout-panel (app-state-layout state) pid))
-  (define vid (and p (panel-view p)))
-  (and vid (resource-of-view (app-state-resources state) vid)))
-
 (define (input-install-state state panel-id status-view input-view)
   (set-input-state state
                    (input-state panel-id status-view input-view #f "" #f)))
@@ -60,7 +49,7 @@
     [(not s) state]
     [else
      (define prev (or (input-state-prev-focus s)
-                      (layout-focus (app-state-layout state))))
+                      (app-state-focus-panel-id state)))
      (define-values (layout* ok?)
        (layout-panel-set-active-view (app-state-layout state)
                                      (input-state-panel-id s)
@@ -69,14 +58,12 @@
                              [active? #t]
                              [text ""]
                              [prev-focus prev]))
-     (define state1 (set-input-state (struct-copy app-state state
-                                                  [layout (if ok? layout* (app-state-layout state))])
-                                     s1))
-     (define state2 (struct-copy app-state state1
-                                 [focus-resource #f]))
-     (struct-copy app-state state2
-                  [layout (layout-set-focus (app-state-layout state2)
-                                            (input-state-panel-id s))])]))
+     (define state1 (set-input-state
+                     (struct-copy app-state state
+                                  [layout (if ok? layout* (app-state-layout state))])
+                     s1))
+     ;; 输入栏是在 status panel 里换 view：焦点 resource 变 #f
+     (app-state-set-focus-panel state1 (input-state-panel-id s))]))
 
 (define (input-close state)
   (define s (input-state* state))
@@ -92,15 +79,12 @@
                              [active? #f]
                              [text ""]
                              [prev-focus #f]))
-     (define state1 (set-input-state (struct-copy app-state state
-                                                  [layout (if ok? layout* (app-state-layout state))])
-                                     s1))
+     (define state1 (set-input-state
+                     (struct-copy app-state state
+                                  [layout (if ok? layout* (app-state-layout state))])
+                     s1))
      (cond
-       [prev
-        (define layout** (layout-set-focus (app-state-layout state1) prev))
-        (define state2 (struct-copy app-state state1 [layout layout**]))
-        (struct-copy app-state state2
-                     [focus-resource (focus-resource-of state2 prev)])]
+       [prev (app-state-set-focus-panel state1 prev)]
        [else state1])]))
 
 (define (input-cancel state)
@@ -136,7 +120,7 @@
      state1]))
 
 ;; 输入栏和 edit 共用 key-text：'key / 'utf8 的 token -> 文本，其它 -> #f
-(define (printable-char tok)
+(define (input-typed-text tok)
   (and (key? tok) (key-text tok)))
 
 (define (tok=? a b)
@@ -176,7 +160,7 @@
                                  (struct-copy input-state s [text text*]))
                 '())]
        [else
-        (define ch (printable-char tok))
+        (define ch (input-typed-text tok))
         (cond
           [(not ch) (values state '())]
           [else

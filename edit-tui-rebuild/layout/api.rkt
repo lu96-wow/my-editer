@@ -1,8 +1,12 @@
 #lang racket
 
-;;; edit-tui-rebuild/layout/api.rkt —— split tree / layout-solve / 接缝 API
+;;; edit-tui-rebuild/layout/api.rkt —— 布局 API
+;;;
+;;; 聚合三层实现：tree（结构+查询）/ solve（rect+seam）/ ops（结构编辑+拖动）。
 
-(require "model.rkt")
+(require "tree.rkt"
+         "solve.rkt"
+         "ops.rkt")
 
 (provide
  ;; 节点 / layout 状态
@@ -17,6 +21,7 @@
 
  ;; panel 资源
  layout-panel-add layout-panel-add-view layout-panel layout-panel-resources layout-panel-ids
+ layout-panel-for-view
  layout-visible-panel-ids layout-panel-update
  layout-panel-visible? layout-panel-fixed-size layout-subtree-visible?
 

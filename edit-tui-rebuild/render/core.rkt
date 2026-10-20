@@ -13,10 +13,8 @@
          "../face/api.rkt"
          "../../core/editor.rkt")
 
-(provide render-piece
-         render-pieces
-         render-clear
-         face-fragment)
+(provide render-pieces
+         render-clear)
 
 (define (fragment . parts)
   (apply bytes-append (filter values parts)))

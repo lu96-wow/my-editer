@@ -22,7 +22,8 @@
 ;;;   resource-cancel
 ;;; 与本模块交互。
 
-(require "../command/table.rkt")
+(require racket/path
+         "../command/table.rkt")
 
 (provide (struct-out resource)
          (struct-out resource-store)
@@ -35,7 +36,6 @@
          resource-ref
          resource-list
          resource-focus
-         resource-set-focus
 
          resource-open
          resource-save
@@ -57,6 +57,8 @@
          resource-of-view
          resource-command-stack
          resource-set-command-stack
+         resource-normalize-path
+         resource-find-by-path
 
          resource-events
          resource-drain-events)
@@ -156,9 +158,6 @@
     (store-get store id)))
 
 (define (resource-focus store) (resource-store-focus store))
-
-(define (resource-set-focus store id)
-  (struct-copy resource-store store [focus id]))
 
 (define (resource-path store id)
   (define r (resource-ref store id))
@@ -419,3 +418,18 @@
            (save-current-for-pending s1)]
           [else (values store '())])]
        [else (values store '())])]))
+
+;;; ════════════════ 路径 ════════════════
+
+;; 路径规范化只做一次（filetree 的 expanded / opened 集合也用它当 key）。
+(define (resource-normalize-path p)
+  (path->string (simplify-path (path->complete-path p))))
+
+;; 按路径找已打开的 resource（规范化后比较）。
+(define (resource-find-by-path store path)
+  (define pn (resource-normalize-path path))
+  (for/first ([r (in-list (resource-list store))]
+              #:when
+              (let ([p (resource-path store (resource-id r))])
+                (and p (equal? pn (resource-normalize-path p)))))
+    r))
