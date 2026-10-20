@@ -4,6 +4,7 @@
 (require rackunit
          racket/file
          racket/path
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 (define root (make-temporary-file "edit-tui-filetree-~a" 'directory))
@@ -18,8 +19,9 @@
 
 (define state0 (make-app-state #:area (rect 0 0 40 10)
                                #:root (path->string root)
-                               #:editor-tables (list edit-command-table)))
-(define state1 (filetree-install-state state0 10 root))
+                               #:keymap default-keymap))
+(define state1 (filetree-install-state state0 10 root
+                                       #:panel-stack filetree-panel-stack))
 (define state2 (sync-filetree! state1 engine))
 
 (define f (hash-ref (app-state-store state2) 'filetree))
@@ -81,8 +83,11 @@
 (define root2 (make-temporary-file "edit-tui-cache-~a" 'directory))
 (display-to-file "x" (build-path root2 "a.txt") #:exists 'truncate)
 (define c0 (filetree-install-state
-            (make-app-state #:area (rect 0 0 40 10) #:root (path->string root2))
-            10 root2))
+            (make-app-state #:area (rect 0 0 40 10)
+                            #:root (path->string root2)
+                            #:keymap default-keymap)
+            10 root2
+            #:panel-stack filetree-panel-stack))
 (define c1 (sync-filetree! c0 engine))
 (define n1 (length (rows-of c1)))
 (check-true (> n1 1))

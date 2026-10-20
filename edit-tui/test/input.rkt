@@ -5,6 +5,7 @@
 
 (require rackunit
          racket/file
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 ;;; ════════════════ 最小 app：editor + status/input ════════════════
@@ -15,7 +16,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text text
-                   #:tables (list edit-command-table)))
+                   #:tables (keymap-editor-tables default-keymap)))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   ;; status / input 的 view
@@ -40,7 +41,7 @@
   (define state (make-app-state #:layout layout
                                 #:resources store
                                 #:focus-resource rid
-                                #:editor-tables (list edit-command-table)
+                                #:keymap default-keymap
                                 #:area (rect 0 0 60 8)))
   (define s1 (status-install-state state 20))
   (define s2 (input-install-state s1 'status 20 21))

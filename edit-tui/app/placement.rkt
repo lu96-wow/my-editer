@@ -6,8 +6,8 @@
 ;;;   文件树 Enter on file
 ;;;     -> start-placement view-id
 ;;;        + 焦点若不在 editor，自动落到第一个 editor
-;;;        + 压入 placement-table（临时 keymap，结束时摘掉）
-;;;   placement-table:
+;;;        + 压入 keymap 的 placement-table（临时层，结束时摘掉）
+;;;   placement-table（config/keymap）:
 ;;;     ↑←→↓  在 editor 之间改焦点（跳过 sidebar / status）
 ;;;     Enter 放入当前焦点 editor
 ;;;     Esc   取消
@@ -16,20 +16,23 @@
 (require "../skeleton.rkt"
          "state.rkt")
 
-(provide placement-table
-         start-placement
+(provide start-placement
          place-into-panel
          placement-commit
          placement-cancel
+         placement-focus-command
          placement-active?)
 
 ;;; ════════════════ 临时 keymap ════════════════
 
 (define (clear-placement state)
+  (define table (keymap-placement-table (app-state-keymap state)))
   (struct-copy app-state state
                [placement #f]
-               [overlays (command-table-stack-remove (app-state-overlays state)
-                                                     placement-table)]))
+               [overlays (if table
+                             (command-table-stack-remove
+                              (app-state-overlays state) table)
+                             (app-state-overlays state))]))
 
 (define (placement-active? state)
   (and (app-state-placement state) #t))
@@ -74,11 +77,14 @@
 
 (define (start-placement state vid)
   (unless vid (error 'start-placement "view-id 不能是 #f"))
+  (define table (keymap-placement-table (app-state-keymap state)))
   (define s1
     (struct-copy app-state state
                  [placement vid]
-                 [overlays (command-table-stack-push (app-state-overlays state)
-                                                     placement-table)]))
+                 [overlays (if table
+                               (command-table-stack-push
+                                (app-state-overlays state) table)
+                               (app-state-overlays state))]))
   ;; 焦点不在 editor 上时先落一个：Enter 立刻可放入，方向键可换目标。
   ;; （headless 测试可能没有 layout，此时只装表。）
   (define layout (app-state-layout s1))
@@ -113,14 +119,3 @@
 (define (placement-cancel state)
   (define s (clear-placement state))
   (values (struct-copy app-state s [message "placement cancelled"]) '()))
-
-;;; ════════════════ 临时表 ════════════════
-
-(define placement-table
-  (keys
-   [(key 'enter)  placement-commit]
-   [(key 'escape) placement-cancel]
-   [(key 'left)   (placement-focus-command 'left)]
-   [(key 'right)  (placement-focus-command 'right)]
-   [(key 'up)     (placement-focus-command 'up)]
-   [(key 'down)   (placement-focus-command 'down)]))

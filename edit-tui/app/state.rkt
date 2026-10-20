@@ -30,6 +30,7 @@
 (struct app-state
   (layout
    layout-config   ; 具体 kind 规则；宿主选择（默认 empty = 通用 rule）
+   keymap          ; 键位集合；宿主选择（默认 empty = 无绑定）
    resources
    focus-resource
    overlays        ; command-table-stack，顶层在前
@@ -41,7 +42,6 @@
    store           ; 面板 UI 状态：'filetree -> filetree、'input -> input-state ...
    root            ; 工作区根目录
    panel-stacks    ; panel-id -> command-table-stack
-   editor-tables   ; 新开 editor 文档默认键表（per-doc 表为空时用）
    quit?
    message)
   #:transparent)
@@ -49,6 +49,7 @@
 (define (make-app-state
          #:layout [layout #f]
          #:layout-config [layout-config empty-layout-config]
+         #:keymap [keymap empty-keymap]
          #:resources [resources resource-store-empty]
          #:focus-resource [focus-resource #f]
          #:overlays [overlays command-table-stack-empty]
@@ -60,12 +61,11 @@
          #:store [store (hash)]
          #:root [root ""]
          #:panel-stacks [panel-stacks (hash)]
-         #:editor-tables [editor-tables '()]
          #:quit? [quit? #f]
          #:message [message ""])
-  (app-state layout layout-config resources focus-resource overlays pending area
+  (app-state layout layout-config keymap resources focus-resource overlays pending area
              next-panel-id drag placement store root panel-stacks
-             editor-tables quit? message))
+             quit? message))
 
 ;;; ════════════════ 查询 ════════════════
 

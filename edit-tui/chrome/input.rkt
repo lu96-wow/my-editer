@@ -13,7 +13,7 @@
 ;;;   2. 插件请求：(input-start state (input-request ...))，
 ;;;      on-done 回调拿到 (input-result id status value)
 ;;;
-;;; 按键走命令表：输入激活时 app/step 只用 input-command-stack（独占），
+;;; 按键走命令表：输入激活时 app/step 只用 keymap 的 input-stack（独占），
 ;;; **不叠 overlays** —— stack 查找 unbound 会落到下一张表，叠 overlay 会让
 ;;; C-q 之类的全局键穿透输入栏。可打印字符不在表里，由 input-self-insert 兜底。
 ;;;
@@ -35,8 +35,14 @@
          input-active?
          input-reconcile
          input-sync!
-         input-command-table
-         input-command-stack
+         input-cancel-current
+         input-submit
+         input-home
+         input-end
+         input-backspace
+         input-delete
+         input-left
+         input-right
          input-self-insert
          input-handle-paste
          input-start
@@ -441,29 +447,6 @@
 (define (input-right state)
   (define cursor (input-state-cursor (input-state* state)))
   (values (set-cursor state (min (line-end-cursor state) (add1 cursor))) '()))
-
-(define input-command-table
-  (keys
-   [(key 'g 'ctrl)  input-cancel-current]
-   [(key 'escape)   input-cancel-current]
-   [(key 'enter)    input-submit]
-   ;; 输入栏专属：head / tail（C-h 是独立 token，不是 Backspace）
-   [(key 'h 'ctrl)  input-home]
-   [(key 't 'ctrl)  input-end]
-   [(key 'backspace) input-backspace]
-   [(key 'delete)    input-delete]
-   [(key 'left)      input-left]
-   [(key 'b 'ctrl)   input-left]
-   [(key 'right)     input-right]
-   [(key 'f 'ctrl)   input-right]
-   [(key 'home)      input-home]
-   [(key 'a 'ctrl)   input-home]
-   [(key 'end)       input-end]
-   [(key 'e 'ctrl)   input-end]))
-
-;; 输入态独占这一张表（没有 overlay 层可穿透）。
-(define input-command-stack
-  (command-table-stack-from-tables (list input-command-table)))
 
 ;; 表未命中：可打印字符插入；控制键吞掉（不冒泡成 "unbound"）。
 (define (input-self-insert state tok)

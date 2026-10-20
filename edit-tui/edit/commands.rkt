@@ -1,31 +1,24 @@
 #lang racket
 
-;;; edit-tui-rebuild/edit/commands.rkt —— 编辑 / 导航操作表
+;;; edit-tui-rebuild/edit/commands.rkt —— 编辑 / 导航命令
 ;;;
+;;; 这里只定义命令，不定义键位；键位表在 config/keymap/。
 ;;; 命令全部是 (state -> (values state actions))：
 ;;;   插入 / 删除 / 导航 / 翻页 / 撤销 -> view-action（runtime 解释）
 ;;;   不直接碰 engine。
 ;;;
-;;; 两张表：
-;;;   navigation-command-table  纯导航：方向 / Home / End / 翻页
-;;;                             -> 焦点 panel 的 active view（任何面板都行，
-;;;                                文件树也只是普通 buffer）
-;;;   edit-command-table        = 导航表 + 插入 / 删除 / 撤销
-;;;                             插入类只认 editor panel
-;;;
 ;;; 可打印字符不占表项：命令表匹配不到时，app/step 调 edit-self-insert
-;;; 兜底（见 model.rkt）。这样任意语言 / 任意字符都能输入，不用把
+;;; 兜底（见 insert.rkt）。这样任意语言 / 任意字符都能输入，不用把
 ;;; Unicode 塞进表里。
-;;;
-;;; 绑定的 token 是 (tag . bytes)：终端不能区分的组合自然共用一个 token
-;;; （C-i = Tab、C-m = Enter、C-[ = Escape …），不会出现“死绑定”。
 
 (require "../skeleton.rkt"
          "../app/state.rkt"
          "insert.rkt")
 
-(provide navigation-command-table
-         edit-command-table
+(provide nav-command
+         scroll-command
+         insert-command
+         edit-action-command
          edit-self-insert
          focus-editor-view)
 
@@ -78,42 +71,3 @@
   (cond
     [(not vid) (values #f '())]
     [else (values state (list (view-action 'insert vid bytes)))]))
-
-;; ---------- 导航表 ----------
-
-;; shift+方向 / shift+Home/End -> 扩展选区
-(define (nav-binding dir)
-  (list (list (list (key dir)) (nav-command dir))
-        (list (list (key dir 'shift)) (nav-command dir #:extend? #t))))
-
-(define navigation-command-table
-  (command-table-from-bindings
-   (append
-    (append* (for/list ([d (in-list '(left right up down home end))])
-               (nav-binding d)))
-    ;; C-a / C-e 行首行尾，C-f / C-b 逐字符
-    (list (list (list (key 'a 'ctrl)) (nav-command 'home))
-          (list (list (key 'e 'ctrl)) (nav-command 'end))
-          (list (list (key 'f 'ctrl)) (nav-command 'right))
-          (list (list (key 'b 'ctrl)) (nav-command 'left)))
-    ;; 翻页
-    (list (list (list (key 'pageup))   (scroll-command 'page-up))
-          (list (list (key 'pagedown)) (scroll-command 'page-down))))))
-
-;; ---------- 编辑表 = 导航 + 编辑 ----------
-
-(define edit-command-table
-  (command-table-merge
-   navigation-command-table
-   (command-table-from-bindings
-    (list
-     ;; 插入 / 删除
-     (list (list (key 'enter))     (insert-command "\n"))
-     (list (list (key 'tab))       (insert-command "  "))
-     (list (list (key 'backspace)) (edit-action-command 'backspace))
-     (list (list (key 'delete))    (edit-action-command 'delete))
-     (list (list (key 'd 'ctrl))   (edit-action-command 'delete))
-     (list (list (key 'k 'ctrl))   (edit-action-command 'kill-line))
-     ;; 历史
-     (list (list (key 'z 'ctrl)) (edit-action-command 'undo))
-     (list (list (key 'y 'ctrl)) (edit-action-command 'redo))))))

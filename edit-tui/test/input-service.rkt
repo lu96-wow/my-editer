@@ -3,6 +3,7 @@
 ;;; 输入栏服务：插件请求 / 打断 / 挤占 / 结果回调。
 (require rackunit
          (only-in "../../core/editor.rkt" view-buffer buffer-readonly-at? buffer-string)
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 ;;; ════════════════ 最小 app：editor + status/input ════════════════
@@ -13,7 +14,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text "hello"
-                   #:tables (list edit-command-table)))
+                   #:tables (keymap-editor-tables default-keymap)))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   (void (engine-create-buffer! engine 20 "*status*" ""))
@@ -36,7 +37,7 @@
   (define state (make-app-state #:layout layout
                                 #:resources store
                                 #:focus-resource rid
-                                #:editor-tables (list edit-command-table)
+                                #:keymap default-keymap
                                 #:area (rect 0 0 60 8)))
   (define s1 (status-install-state state 20))
   (define s2 (input-install-state s1 'status 20 21))

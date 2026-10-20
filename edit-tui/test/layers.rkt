@@ -58,7 +58,7 @@
 ;;; ════════════════ 骨架 ════════════════
 (define skeleton-files
   '("base/api.rkt"
-    "command/key.rkt" "command/table.rkt" "command/api.rkt"
+    "command/key.rkt" "command/table.rkt" "command/keymap.rkt" "command/api.rkt"
     "layout/config.rkt"
     "face/model.rkt" "face/api.rkt"
     "panel/model.rkt" "panel/api.rkt"
@@ -86,8 +86,8 @@
 (check-false (requires-any? "skeleton.rkt" upper-layer?) "skeleton.rkt")
 (check-false (requires-any? "skeleton.rkt" core-require?) "skeleton.rkt")
 
-;; 骨架不认识具体布局配置（配置是宿主的，不是 layout 的）
-(check-false (requires-any? "skeleton.rkt" #rx"(^|/)config/layout/") "skeleton.rkt")
+;; 骨架不认识任何具体配置（配置是宿主的，不是 layout / command 的）
+(check-false (requires-any? "skeleton.rkt" #rx"(^|/)config/") "skeleton.rkt")
 (check-false (requires-any? "layout/config.rkt" #rx"(^|/)config/layout/")
               "layout/config.rkt")
 
@@ -106,6 +106,15 @@
               "config/layout/default.rkt")
 (check-false (requires-any? "config/layout/default.rkt" #rx"(^|/)runtime/")
               "config/layout/default.rkt")
+
+;; keymap 配置允许 require 插件 / app 命令 API，但必须纯组合：
+;; 不 require step / main / runtime（否则会出现配置 <- 编排的反向依赖）。
+(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)app/step\\.rkt$")
+              "config/keymap/default.rkt")
+(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)main\\.rkt$")
+              "config/keymap/default.rkt")
+(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)runtime/")
+              "config/keymap/default.rkt")
 
 ;; 旧位置不再存在（config 只放纯数据）
 (check-false (file-exists? (build-path root "config/api.rkt")))
@@ -146,7 +155,7 @@
 
 ;;; ════════════════ app 基础 / 编排 ════════════════
 (for ([m (in-list '("app/state.rkt" "app/event.rkt" "app/action.rkt"
-                    "app/placement.rkt" "app/step.rkt"))])
+                    "app/commands.rkt" "app/placement.rkt" "app/step.rkt"))])
   (check-false (requires-any? m skeleton-impl?) m)
   (check-false (requires-any? m core-require?) m)
   (check-false (requires-any? m #rx"(^|/)runtime/") m)

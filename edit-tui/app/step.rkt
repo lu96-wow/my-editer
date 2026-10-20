@@ -25,13 +25,14 @@
   (struct-copy app-state state [pending '()]))
 
 ;; 两模式：
-;;   叠加：非输入态 = overlays over (per-doc / panel base)
-;;   替换：输入态直接返回 input-command-stack（模态独占，不拼 overlays）
+;;   叠加：非输入态 = 动态 overlays over keymap overlays over (per-doc / panel base)
+;;   替换：输入态直接返回 keymap 的 input-stack（模态独占，不拼 overlays）
 ;; stack 查找 unbound 会继续查下一张表；如果输入态也叠加 overlay，
 ;; C-q / C-w 这类未绑定键就会穿透到全局命令。
 (define (current-command-stack state)
+  (define km (app-state-keymap state))
   (cond
-    [(input-active? state) input-command-stack]
+    [(input-active? state) (keymap-input-stack km)]
     [else
      (define rid (app-state-focus-resource state))
      (define base
@@ -42,7 +43,9 @@
           (hash-ref (app-state-panel-stacks state)
                     (app-state-focus-panel-id state)
                     command-table-stack-empty)]))
-     (command-table-stack-over (app-state-overlays state) base)]))
+     (command-table-stack-over
+      (app-state-overlays state)
+      (command-table-stack-over (keymap-overlays km) base))]))
 
 (define (run-command state value)
   (if (procedure? value)
@@ -178,7 +181,7 @@
 
 (define (step-dispatch state ev)
   (cond
-    ;; 键盘不在这里分流：输入态由 current-command-stack 选 input-command-stack。
+    ;; 键盘不在这里分流：输入态由 current-command-stack 选 keymap 的 input-stack。
     ;; 粘贴不是键序列，仍直接交给输入栏。
     [(and (paste-event? ev) (input-active? state))
      (input-handle-paste state ev)]

@@ -39,84 +39,12 @@
 ;;;   placement 中：↑←→↓ 在 editor 间改焦点，Enter 放入，Esc 取消，
 ;;;     鼠标点目标 editor 也可（放完临时表自动解除）
 
-(require "../config/layout/default.rkt"
+(require "../config/keymap/default.rkt"
+         "../config/layout/default.rkt"
          "../config/theme/default.rkt"
          "../main.rkt")
 
 (provide demo-state demo-engine)
-
-;;; ---------- commands ----------
-
-(define (split-command dir)
-  (λ (state)
-    (define layout (app-state-layout state))
-    (define pid (app-state-focus-panel-id state))
-    (define nid (app-state-next-panel-id state))
-    (define-values (layout* ok?)
-      (layout-split layout pid dir nid
-                    #:config (app-state-layout-config state)))
-    (if ok?
-        (values (app-state-refresh-focus-resource
-                 (struct-copy app-state state
-                              [layout layout*]
-                              [next-panel-id (add1 nid)]))
-                '())
-        (values (app-state-with-message state "split failed") '()))))
-
-(define (toggle-filetree-command)
-  (λ (state)
-    (define layout (app-state-layout state))
-    (define area (app-state-area state))
-    (define visible? (layout-panel-visible? layout 'filetree))
-    (define-values (layout* ok?)
-      (if visible?
-          (layout-panel-hide layout area 'filetree
-                             #:config (app-state-layout-config state))
-          (layout-panel-show layout area 'filetree)))
-    (if ok?
-        ;; 隐藏可能导致焦点回退：按新 layout 的焦点重算 focus-resource
-        (values (app-state-refresh-focus-resource
-                 (struct-copy app-state state [layout layout*]))
-                '())
-        (values (app-state-with-message state "toggle filetree failed") '()))))
-
-(define (focus-command dir)
-  (λ (state)
-    (define layout (app-state-layout state))
-    (define to (layout-focus-neighbor layout (app-state-area state)
-                                      (app-state-layout-config state)
-                                      (app-state-focus-panel-id state) dir))
-    (if to
-        (values (app-state-set-focus-panel state to) '())
-        (values (app-state-with-message state "no focus neighbor") '()))))
-
-(define (save-command state)
-  (define rid (app-state-focus-resource state))
-  (cond
-    [(not rid) (values (app-state-with-message state "save: no resource") '())]
-    [else
-     (define-values (store* actions)
-       (resource-save (app-state-resources state) rid))
-     (values (struct-copy app-state state [resources store*]) actions)]))
-
-(define (quit-command state)
-  (define-values (store* actions)
-    (resource-request-quit (app-state-resources state)))
-  (values (struct-copy app-state state [resources store*]) actions))
-
-(define global-command-table
-  (keys
-   [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
-   [(key 'w 'ctrl) (key 'right) (split-command 'right)]
-   [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
-   [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
-   [(key 'b 'ctrl)              (toggle-filetree-command)]
-   [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
-   [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
-   [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
-   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
-   [(key 's 'ctrl)              save-command]
-   [(key 'q 'ctrl)              quit-command]))
 
 ;;; ---------- resources / engine ----------
 
@@ -126,19 +54,16 @@
   (resource-open resource-store-empty
                  #:name "editor"
                  #:text "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n"
-                 ;; per-document 键表：编辑操作
-                 #:tables (list edit-command-table)))
+                 ;; per-document 键表：来自 config/keymap
+                 #:tables (keymap-editor-tables default-keymap)))
 
 (define state0
   (make-app-state #:resources store1
                   #:focus-resource 1
                   ;; 具体布局规则：宿主选择，layout 骨架不认识它
                   #:layout-config default-config
-                  ;; 全局键（overlays 对所有面板生效）
-                  #:overlays (command-table-stack-from-tables
-                              (list global-command-table))
-                  ;; 新开文档默认带编辑表（filetree 打开文件时用）
-                  #:editor-tables (list edit-command-table)
+                  ;; 键位集合：全局 / 编辑 / 输入 / placement
+                  #:keymap default-keymap
                   #:area (rect 0 0 80 24)
                   #:next-panel-id 100))
 
@@ -153,7 +78,8 @@
 (void (engine-create-view! engine 21 21))
 
 (define state2
-  (filetree-install-state state1 10 (current-directory)))
+  (filetree-install-state state1 10 (current-directory)
+                          #:panel-stack filetree-panel-stack))
 (define state3 (status-install-state state2 20))
 (define state4 (input-install-state state3 'status 20 21))
 

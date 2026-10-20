@@ -3,6 +3,7 @@
 ;;; 编辑操作表 / 自插入 / 鼠标落点测试。
 
 (require rackunit
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 (define area (rect 0 0 20 6))
@@ -13,7 +14,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text text
-                   #:tables (list edit-command-table)))
+                   #:tables (keymap-editor-tables default-keymap)))
   (define editor-panel
     (make-panel 'editor 'editor #:views '(1) #:active 1))
   (define layout
@@ -24,7 +25,7 @@
     (make-app-state #:layout layout
                     #:resources store
                     #:focus-resource 1
-                    #:editor-tables (list edit-command-table)
+                    #:keymap default-keymap
                     #:area area))
   (define s0 (run-actions state engine actions))
   (let-values ([(cache bytes) (render-frame s0 engine #f)])   ; 首帧落 viewport 尺寸

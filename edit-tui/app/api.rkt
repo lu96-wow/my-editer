@@ -10,11 +10,13 @@
 (require "event.rkt"
          "state.rkt"
          "action.rkt"
+         "commands.rkt"
          "placement.rkt"
          "step.rkt")
 
 (provide (all-from-out "event.rkt"
                        "state.rkt"
                        "action.rkt"
+                       "commands.rkt"
                        "placement.rkt"
                        "step.rkt"))

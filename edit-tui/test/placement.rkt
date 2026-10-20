@@ -2,6 +2,7 @@
 
 ;;; placement 交互：临时表（方向键改焦点）压栈 / 解除。
 (require rackunit
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 (define area (rect 0 0 60 20))
@@ -26,6 +27,7 @@
 
 (define state
   (make-app-state #:layout (layout-set-focus l2 'filetree)
+                  #:keymap default-keymap
                   #:area area))
 
 (define (focus state) (layout-focus (app-state-layout state)))

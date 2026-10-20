@@ -6,6 +6,7 @@
 (require rackunit
          racket/file
          (only-in "../../core/editor.rkt" view-buffer buffer-readonly-at?)
+         "../config/keymap/default.rkt"
          "../main.rkt")
 
 ;;; ════════════════ 最小 app：editor + status/input + 全局表 ════════════════
@@ -25,7 +26,7 @@
                    #:name "main"
                    #:path path
                    #:text text
-                   #:tables (list edit-command-table)))
+                   #:tables (keymap-editor-tables default-keymap)))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   (void (engine-create-buffer! engine 20 "*status*" ""))
@@ -50,7 +51,7 @@
                                 #:focus-resource rid
                                 #:overlays (command-table-stack-from-tables
                                             (list global-command-table))
-                                #:editor-tables (list edit-command-table)
+                                #:keymap default-keymap
                                 #:area (rect 0 0 60 8)))
   (define s1 (status-install-state state 20))
   (define s2 (input-install-state s1 'status 20 21))

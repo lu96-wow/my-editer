@@ -87,7 +87,7 @@ core (buffer / view / rect / text / render)
 
 插件：
   edit/      insert.rkt  自插入判读
-             commands.rkt navigation-command-table / edit-command-table
+             commands.rkt 编辑 / 导航命令（不含键位）
   chrome/    status.rkt  状态栏投影
              input.rkt   输入栏（单行编辑 + prompt + readonly 前缀）
   filetree/  model.rkt   行结构 / 展开集合 / 投影缓存键
@@ -114,9 +114,11 @@ edit-tui-rebuild/
 
   command/  table.rkt      命令表 / 栈 / keys DSL
             key.rkt        键 token = 标签 + 原始字节
+            keymap.rkt     配置好的键位集合（keymap 值）
             api.rkt
 
   config/   layout/default.rkt  布局配置（纯数据；require 选择）
+            keymap/default.rkt  键位表（唯一来源；require 选择）
             theme/default.rkt   主题（require 即安装）
 
   face/ model.rkt          face 值 / 分层合成
@@ -148,12 +150,13 @@ edit-tui-rebuild/
           api.rkt
 
   edit/  insert.rkt        自插入判读
-         commands.rkt      导航表 + 编辑表
+         commands.rkt      编辑 / 导航命令（不含键位）
          api.rkt
 
   app/ event.rkt           key / mouse / resize / paste / internal
        state.rkt           app-state + 查询 / 焦点迁移 / 消息
        action.rkt          open-file-action / quit-action（view-action 在骨架）
+       commands.rkt        split / toggle-filetree / focus / save / quit
        placement.rkt       放置交互（临时 keymap）
        step.rkt            event -> (values state actions)
        api.rkt
@@ -260,14 +263,14 @@ skeleton.rkt          骨架：base / panel / layout / focus / face /
                             - layout/api.rkt             配置模型 / split tree / solve / ops / seam / drag
                             - resource/api.rkt           store / resource / save / prompt / 路径
                             - focus/api.rkt              焦点导航
-                            - command/api.rkt            command-table / keys / key token
+                            - command/api.rkt            command-table / keymap / keys / key token
                             - engine/api.rkt             buffer/view 持有 + view action 词汇
                             - projection/api.rkt         layout->render-panels / hit / content-hit
 render/api.rkt            render-layout / layout-sync!
-edit/api.rkt              navigation-command-table / edit-command-table / self-insert
+edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
-filetree/api.rkt          model / lines / scan / commands / panel
-app/api.rkt               event / state / action / placement / step
+filetree/api.rkt          model / lines / scan / commands / install
+app/api.rkt               event / state / action / commands / placement / step
 runtime/api.rkt           actions / render / sync / tui-adapter / loop
 ```
 
@@ -386,7 +389,7 @@ empty-layout-config     ; 没有任何 per-kind 规则
 default-config    ; editor / sidebar / status 的 split / hide / min / max
 ```
 
-- `config/` 只放纯配置，没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
+- `config/` 只放配置（布局 / 键位 / 主题），没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
 - `main.rkt` 不聚合纯配置（和主题一样由宿主直接 require）；
 - `skeleton.rkt` 和 `layout/ops.rkt` 都不认识 `config/layout/`；
 - layout 结构操作把 config 当**必填参数**：
@@ -395,6 +398,30 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 - app 把配置放进 state：`(app-state-layout-config state)`；
   demo / 宿主构造 state 时传 `#:layout-config default-config`；
 - 换一套规则 = 换一个 config 值（或换 require 的配置模块），layout 骨架不动。
+
+### keymap 配置
+
+所有 `key-sequence -> command` 绑定都在 `config/keymap/default.rkt`：
+
+```racket
+(require "edit-tui-rebuild/config/keymap/default.rkt")
+default-keymap
+```
+
+`keymap` 是 `command/keymap.rkt` 的纯值，字段：
+
+```text
+overlays         全局表 stack（C-w split / C-b filetree / C-x focus / C-s / C-q）
+editor-tables    新文档的 per-doc 表（导航 + 插入 / 删除 / 历史）
+input-stack      输入栏独占 stack（Esc/C-g Enter C-h/C-t …）
+placement-table  placement 临时表（Enter/Esc/方向）
+```
+
+- 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
+- `app-state` 持有 keymap：`(app-state-keymap state)`；
+- `app/step` 从这里取 overlays / input-stack；placement 取临时表；
+- filetree 安装通过 `#:panel-stack` 接收 `filetree-panel-stack`；
+- 换键位 = 换 `config/keymap/` 的模块，插件与 step 不动。
 
 ### layout 状态
 
@@ -546,8 +573,9 @@ layout -> core panels
 
 ### theme 配置
 
-主题和布局配置都放在 `config/`，都是纯配置、直接 require；区别是主题
-require 即全局安装，布局配置是值（传给 layout API / 放进 app-state）。
+布局 / 主题是纯数据，键位是绑定配置（含命令闭包）。它们都放在 `config/`、
+直接 require；区别是主题 require 即全局安装，布局配置和 keymap 都是值
+（分别放进 app-state 的 `#:layout-config` / `#:keymap`）。
 
 主题放在 `config/theme/`：
 
@@ -629,9 +657,8 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (internal-event kind data)
 (quit-event)
 
-(make-app-state #:layout #:layout-config #:resources #:focus-resource
-                #:overlays #:editor-tables
-                #:pending #:area #:quit? #:message)
+(make-app-state #:layout #:layout-config #:keymap #:resources #:focus-resource
+                #:overlays #:pending #:area #:quit? #:message)
 
 ;; 编辑 / 导航 / 鼠标落点都是 view-action，runtime 解释成 core 调用
 (view-action kind view-id data)
@@ -715,8 +742,8 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 ;;     键盘移动 -> state 改 cursor 并置 cursor-dirty?，sync 推给 view；
 ;;     鼠标点击 -> 普通 point action 改 view，sync 直接读回来当镜像。
 
-(filetree-command-table)   ; 通用导航表 + Enter / C-r
-(filetree-install-state state view root #:panel-id)
+;; 键位表在 config/keymap：filetree-command-table / filetree-panel-stack
+(filetree-install-state state view root #:panel-id #:panel-stack)
 (filetree-enter-command state)
 (filetree-refresh-command state)   ; C-r：丢弃行投影缓存
 ;; 没有文件树专用的点击/光标逻辑：走通用 point action
@@ -730,13 +757,13 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
   - 已打开但 detached：进入 placement；
   - 未打开：read-file -> resource-open -> placement；
 - placement（临时表，完毕自动解除）：
-  - 开始时就压入 `placement-table`，焦点不在 editor 上会自动落到第一个 editor；
+  - 开始时就压入 keymap 的 `placement-table`，焦点不在 editor 上会自动落到第一个 editor；
   - ↑←→↓ 在 editor 之间改焦点（跳过 filetree / status）；
   - Enter 放入当前焦点 editor；鼠标点目标 editor 也可；
   - Esc 取消；
   - 放入 / 取消后 `clear-placement` 把临时表从 overlays 摘掉，普通键位恢复。
 - 光标就是 core view 的 point：方向键四个方向 / Home / End / PageUp/Down 都用
-  和 editor 同一张导航表（`navigation-command-table`），**不限制在行首**，
+  和 editor 同一张导航表（config/keymap 的 `navigation-command-table`），**不限制在行首**，
   列可以自由移动（长路径会横向滚动）；state 里的 cursor 只是 point line 的镜像。
 - 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行、哪列，光标就到哪
   （滚动、行尾、空白处的行为与编辑器完全一致）。
@@ -752,9 +779,8 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 (input-reconcile state)         ; -> (values state' actions)  prompt/request <-> 输入栏
 (input-sync! state engine)      ; 只把文本 / 光标投影到 core view
 
-;; 输入态命令表（step 在输入激活时独占使用，不与 overlays 合并）
-(input-command-table)           ; 单键绑定：Esc/C-g Enter C-h/C-t 编辑/移动
-(input-command-stack)           ; 只含 input-command-table 的 stack
+;; 输入态键位在 config/keymap：input-command-table / input-command-stack
+;; step 输入激活时独占使用 keymap 的 input-stack，不与 overlays 合并
 (input-self-insert state token) ; 表未命中：可打印 -> 插入，其余吞掉
 (input-handle-paste state event)
 
@@ -867,7 +893,7 @@ resources      resource prompt（系统 prompt 的唯一真相）
 
 规范（输入是抢占式的）：
 
-- 输入激活时，**key** 走 `input-command-stack`（独占，见下），**paste** 直接
+- 输入激活时，**key** 走 keymap 的 `input-command-stack`（独占，见下），**paste** 直接
   交给输入栏；**其他事件**（mouse / resize / quit / internal）先
   `input-interrupt` 取消本次输入，再照常处理该事件；
 - 新的插件请求挤占旧插件请求：旧请求 on-done 收到 `'preempted`；
@@ -875,7 +901,7 @@ resources      resource prompt（系统 prompt 的唯一真相）
 - 关闭 / 取消 / 挤占都会回调 on-done，插件不需要轮询。
 
 输入栏的键和其他面板一样走命令表，但**独占**：`current-command-stack` 在
-`input-active?` 时直接返回 `input-command-stack`，不拼 `overlays`。原因是
+`input-active?` 时直接返回 keymap 的 `input-command-stack`，不拼 `overlays`。原因是
 `command-table-stack-lookup` 遇到 unbound 会继续查下一张表——如果叠了
 overlay，输入栏里未绑定的 `C-q` / `C-w` 就会穿透成全局命令。可打印字符
 不建表项，由 `input-self-insert` 兜底（和 editor 的 `edit-self-insert` 对称）。
@@ -1071,7 +1097,7 @@ command-table-stack-empty
 叠加（additive）  command-table-stack-over / push
                   例：overlays、placement 临时表；未绑定键继续往下查
 替换（modal）      直接持有另一张 stack
-                  例：输入栏 input-command-stack；未绑定键不穿透
+                  例：输入栏 keymap 的 input-command-stack；未绑定键不穿透
 ```
 
 `app-state` 里三种来源统一成 stack：
@@ -1085,7 +1111,7 @@ resource        per-doc command-table-stack（编辑器）
 `app/step.rkt` 的 `current-command-stack`：
 
 ```text
-输入激活  -> input-command-stack              ; 替换
+输入激活  -> keymap 的 input-command-stack    ; 替换
 否则      -> (stack-over overlays base-stack) ; 叠加
 ```
 
@@ -1118,9 +1144,9 @@ bash edit-tui-rebuild/test/run.sh
 
 - `test/api-boundary.rkt`：API 边界（非实现层只能 require main / api / core）
 - `test/layers.rkt`：依赖方向（分层约束的可执行版本）
-- 其余按领域：layout / focus / geometry / render / key / edit / filetree /
-  chrome / input-service（请求 / 打断 / 挤占 / 回调）/ resource / placement /
-  event-loop / theme / face / config
+- 其余按领域：layout / focus / geometry / render / key / keymap / edit /
+  filetree / chrome / input-service（请求 / 打断 / 挤占 / 回调）/ resource /
+  placement / event-loop / theme / face / config
 
 功能测试也统一只 require `../main.rkt`（外部 core 访问器除外）。
 
@@ -1147,8 +1173,9 @@ C-q        退出（dirty -> 确认输入栏）
 焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
 ```
 
-编辑（`edit/commands.rkt`：`navigation-command-table` + 插入 / 删除 / 历史；
-导航表被 editor 和 filetree 共用，因为文件树也只是普通 buffer）：
+编辑（命令在 `edit/commands.rkt`；键位在 `config/keymap/default.rkt`：
+`navigation-command-table` + 插入 / 删除 / 历史；导航表被 editor 和 filetree 共用，
+因为文件树也只是普通 buffer）：
 
 ```text
 直接打字                插入（任意可打印字符，含大写 / 中文）

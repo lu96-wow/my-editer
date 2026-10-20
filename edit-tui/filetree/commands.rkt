@@ -2,9 +2,9 @@
 
 ;;; edit-tui-rebuild/filetree/commands.rkt —— 文件树命令 + 安装
 ;;;
-;;; 导航（←→↑↓ / Home / End / PageUp / PageDown / Shift 扩选）来自
-;;; edit 的 navigation-command-table —— 文件树就是普通 buffer，
-;;; 光标归 core view，这里的命令不碰光标。
+;;; 导航（←→↑↓ / Home / End / PageUp / PageDown / Shift 扩选）由 config/keymap
+;;; 复用 edit 的导航表 —— 文件树就是普通 buffer，光标归 core view，
+;;; 这里的命令不碰光标。
 ;;;
 ;;; Enter:
 ;;;   root / dir -> 展开 / 折叠
@@ -12,20 +12,18 @@
 ;;;                 未打开：open-file-action（runtime 读盘 + resource-open）
 ;;;
 ;;; 打开后的目标 panel 由 placement 交互选（↑←→↓ 换 editor / Enter 放入 / Esc 取消）。
-;;; 新文档的 per-doc 键表来自 app-state-editor-tables（通常是编辑操作表）。
+;;; 新文档的 per-doc 键表来自 keymap 的 editor-tables（通常是编辑操作表）。
 
 (require (only-in racket/list first)
          "../skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
-         "../edit/api.rkt"
          "slice.rkt"
          "model.rkt"
          "lines.rkt")
 
-(provide filetree-command-table
-         filetree-install-state
+(provide filetree-install-state
          filetree-enter-command
          filetree-refresh-command)
 
@@ -58,8 +56,9 @@
     [r (filetree-open-existing state r)]
     [else
      (values state
-             (list (open-file-action (resource-normalize-path path)
-                                     (app-state-editor-tables state))))]))
+             (list (open-file-action
+                    (resource-normalize-path path)
+                    (keymap-editor-tables (app-state-keymap state)))))]))
 
 ;;; ════════════════ 命令 ════════════════
 
@@ -79,19 +78,14 @@
 (define (filetree-refresh-command state)
   (values (filetree-put state (filetree-invalidate (filetree-of state))) '()))
 
-;;; ════════════════ 键表 / 安装 ════════════════
+;;; ════════════════ 安装 ════════════════
+;;;
+;;; 键位表不在这里：调用方从 config/keymap 取 filetree stack，通过
+;;; #:panel-stack 传进来。插件不依赖 config。
 
-(define filetree-command-table
-  (command-table-merge
-   navigation-command-table
-   (keys
-    [(key 'enter)   filetree-enter-command]
-    [(key 'r 'ctrl) filetree-refresh-command])))
-
-(define filetree-panel-stack
-  (command-table-stack-push command-table-stack-empty filetree-command-table))
-
-(define (filetree-install-state state view root #:panel-id [panel-id 'filetree])
+(define (filetree-install-state state view root
+                                #:panel-id [panel-id 'filetree]
+                                #:panel-stack panel-stack)
   (define root* (resource-normalize-path root))
   (define f (filetree-set-view
              (filetree-toggle-expand (empty-filetree) root*)
@@ -101,4 +95,4 @@
                [root root*]
                [panel-stacks (hash-set (app-state-panel-stacks state)
                                        panel-id
-                                       filetree-panel-stack)]))
+                                       panel-stack)]))
