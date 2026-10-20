@@ -52,7 +52,7 @@
 (define-values (s2b a2b) (press s2 (key 'left)))
 (check-equal? a2b '())
 (check-equal? (focus s2b) 'editor2)
-(check-true (string-contains? (app-state-message s2b) "no editor"))
+(check-true (string-contains? (app-state-flash s2b) "no editor"))
 
 ;;; ---------- Enter 放入 + 解除临时表 ----------
 (define-values (s3 a3) (press s2b (key 'enter)))
@@ -60,7 +60,7 @@
 (check-false (app-state-placement s3))
 (check-not-false (memv 99 (layout-panel-view-ids (app-state-layout s3) 'editor2)))
 (check-false (memq placement-table (overlay-tables s3)))
-(check-equal? (app-state-message s3) "view placed")
+(check-equal? (app-state-flash s3) "view placed")
 
 ;;; ---------- 解除后方向键不再改焦点（普通键位恢复） ----------
 (define-values (s3b a3b) (press s3 (key 'down)))

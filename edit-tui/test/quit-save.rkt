@@ -112,7 +112,7 @@
 (check-equal? dActions '())
 (check-true (input-active? d4))
 (check-false (app-state-quit? d4))
-(check-true (string-contains? (app-state-message d4) "answer:"))
+(check-true (string-contains? (app-state-flash d4) "answer:"))
 (check-not-false (prompt-of d4))
 
 ;;; ════════════════ save：confirm -> save-path -> write -> quit ════════════════

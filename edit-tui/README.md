@@ -536,7 +536,11 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (quit-event)
 
 (make-app-state #:layout #:layout-config #:keymap #:resources #:focus-resource
-                #:overlays #:pending #:area #:quit? #:message)
+                #:overlays #:pending #:area #:quit? #:flash)
+
+;; flash：一次性状态栏文本，下一次 step 入口自动清空
+(app-state-with-flash state text)
+(app-state-flash state)
 
 ;; 编辑 / 导航 / 鼠标落点都是 view-action，boot 解释成 core 调用
 (view-action kind view-id data)
@@ -693,7 +697,7 @@ focus resource path/name
 line:col
 dirty *
 pending keys
-message
+flash（一次性；下一次 step 入口清空）
 ```
 
 输入栏（单行编辑，文本 / 光标归 State，每帧投影到 view；按键走命令表）：
@@ -742,7 +746,7 @@ resources      resource prompt（系统 prompt 的唯一真相）
   prompt 变化 / 消失           -> close 或重开
   input-start，无 prompt       -> open-request-input
   input-start，旧 plugin       -> finish 旧 'preempted'，open 新
-  input-start，prompt 存在     -> message "input busy"，不打开
+  input-start，prompt 存在     -> flash "input busy"，不打开
 打断 / 结束：
   Enter                        -> submit（非法则保持打开）
   Esc / C-g                    -> resource-cancel 或 finish 'cancelled'

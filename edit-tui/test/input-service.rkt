@@ -116,7 +116,7 @@
 (define c3 (type c2 ce0 "maybe"))
 (define-values (c4 _a4) (press/actions c3 ce0 (key 'enter)))
 (check-true (input-active? c4))
-(check-true (string-contains? (app-state-message c4) "answer:"))
+(check-true (string-contains? (app-state-flash c4) "answer:"))
 ;; 合法答案（大小写不敏感）
 (define c5 (press c4 ce0 (key 'escape)))
 (define c6 (start c5 ce0 (req 'ok2 "Continue? " 'confirm '(yes no) "")))

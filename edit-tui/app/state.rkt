@@ -24,7 +24,7 @@
          app-state-focus-view-id
 
          ;; 纯迁移
-         app-state-with-message
+         app-state-with-flash
          app-state-set-focus-panel
          app-state-refresh-focus-resource)
 
@@ -44,7 +44,7 @@
    root            ; 工作区根目录
    panel-stacks    ; panel-id -> command-table-stack
    quit?
-   message)
+   flash)   ; 一次性状态栏文本；下一次 step 入口清空
   #:transparent)
 
 (define (make-app-state
@@ -63,10 +63,10 @@
          #:root [root ""]
          #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
-         #:message [message ""])
+         #:flash [flash ""])
   (app-state layout layout-config keymap resources focus-resource overlays pending area
              next-panel-id drag placement store root panel-stacks
-             quit? message))
+             quit? flash))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -91,8 +91,10 @@
 
 ;;; ════════════════ 纯迁移 ════════════════
 
-(define (app-state-with-message state text)
-  (struct-copy app-state state [message text]))
+;; 一次性状态栏文本：只存在到下一次 step。
+;; 需要跨事件保留的信息不要放这里，放各自的状态字段。
+(define (app-state-with-flash state text)
+  (struct-copy app-state state [flash text]))
 
 ;; 焦点 panel 没变，只按当前 view 重算 focus-resource（换 view / 隐藏恢复后用）。
 (define (app-state-refresh-focus-resource state)

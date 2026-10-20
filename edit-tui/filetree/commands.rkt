@@ -43,9 +43,9 @@
   (define pid (and vid (layout-panel-for-view (app-state-layout state) vid)))
   (cond
     [(not vid)
-     (values (app-state-with-message state "filetree: resource has no view") '())]
+     (values (app-state-with-flash state "filetree: resource has no view") '())]
     [pid
-     (values (app-state-with-message
+     (values (app-state-with-flash
               (app-state-set-focus-panel state pid) "file opened")
              '())]
     [else (values (start-placement state vid) '())]))
@@ -66,7 +66,7 @@
 (define (filetree-enter-command state)
   (define line (filetree-current-line state))
   (cond
-    [(not line) (values (app-state-with-message state "filetree: no line") '())]
+    [(not line) (values (app-state-with-flash state "filetree: no line") '())]
     [(memq (filetree-line-kind line) '(root dir))
      (define f (filetree-of state))
      (values (filetree-put state

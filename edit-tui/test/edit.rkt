@@ -168,7 +168,7 @@
 (define-values (x2 xActions) (step x1 (key-event (key 'a))))
 (check-equal? xActions '())
 (check-equal? (engine-view-text xe 1) "keep")
-(check-true (string-contains? (app-state-message x2) "unbound"))
+(check-true (string-contains? (app-state-flash x2) "unbound"))
 
 ;; C-i 到不了“Ctrl+I”这个身份，但它就是 Tab：编辑表里的 Tab 绑定会被触发。
 (check-equal? (key 'i 'ctrl) (key 'tab))

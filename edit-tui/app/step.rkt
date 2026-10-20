@@ -25,6 +25,12 @@
 (define (clear-pending state)
   (struct-copy app-state state [pending '()]))
 
+;; flash 只存在到下一次 step；命令 / action 在本次 step 里重新设置。
+(define (clear-flash state)
+  (if (string=? (app-state-flash state) "")
+      state
+      (struct-copy app-state state [flash ""])))
+
 ;; 两模式：
 ;;   叠加：非输入态 = 动态 overlays over keymap overlays over (per-doc / panel base)
 ;;   替换：输入态直接返回 keymap 的 input-stack（模态独占，不拼 overlays）
@@ -51,7 +57,7 @@
 (define (run-command state value)
   (if (procedure? value)
       (value state)
-      (values (app-state-with-message state (format "not a command: ~a" value))
+      (values (app-state-with-flash state (format "not a command: ~a" value))
               '())))
 
 ;;; ════════════════ 键盘 ════════════════
@@ -78,7 +84,7 @@
        (cond
          [s2 (values s2 actions)]
          [else
-          (values (app-state-with-message
+          (values (app-state-with-flash
                    s1
                    (format "unbound: ~a" (string-join (map key->string seq) " ")))
                   '())])])))
@@ -152,7 +158,7 @@
   ;; 只有焦点在 editor 上才允许粘贴；action 里传原始字节，engine 写 buffer 时解码。
   (define vid (focus-editor-view state))
   (cond
-    [(not vid) (values (app-state-with-message state "paste: 焦点不是 editor") '())]
+    [(not vid) (values (app-state-with-flash state "paste: 焦点不是 editor") '())]
     [else
      (values state (list (view-action 'paste vid (paste-event-bytes ev))))]))
 
@@ -166,7 +172,8 @@
 ;;   - key / paste 交给输入栏；
 ;;   - 其他事件先取消本次输入，再处理该事件。
 (define (step state ev)
-  (define-values (s0 a0) (input-reconcile state))
+  (define state0 (clear-flash state))
+  (define-values (s0 a0) (input-reconcile state0))
   (cond
     [(and (input-active? s0)
           (not (key-event? ev))

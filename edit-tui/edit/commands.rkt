@@ -35,14 +35,14 @@
 (define (emit-view state kind data)
   (define vid (app-state-focus-view-id state))
   (cond
-    [(not vid) (values (app-state-with-message state "edit: 焦点 panel 没有 view") '())]
+    [(not vid) (values (app-state-with-flash state "edit: 焦点 panel 没有 view") '())]
     [else (values state (list (view-action kind vid data)))]))
 
 ;; 只作用于 editor 的命令（插入 / 删除 / 历史）
 (define (emit-editor state kind data)
   (define vid (focus-editor-view state))
   (cond
-    [(not vid) (values (app-state-with-message state "edit: 焦点不是 editor") '())]
+    [(not vid) (values (app-state-with-flash state "edit: 焦点不是 editor") '())]
     [else (values state (list (view-action kind vid data)))]))
 
 ;; text : string（方便写键表）；action 里放 UTF-8 bytes，engine 解码一次。

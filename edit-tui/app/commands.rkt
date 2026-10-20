@@ -28,7 +28,7 @@
                               [layout layout*]
                               [next-panel-id (add1 nid)]))
                 '())
-        (values (app-state-with-message state "split failed") '()))))
+        (values (app-state-with-flash state "split failed") '()))))
 
 (define (toggle-filetree-command state)
   (define layout (app-state-layout state))
@@ -44,7 +44,7 @@
       (values (app-state-refresh-focus-resource
                (struct-copy app-state state [layout layout*]))
               '())
-      (values (app-state-with-message state "toggle filetree failed") '())))
+      (values (app-state-with-flash state "toggle filetree failed") '())))
 
 (define (focus-command dir)
   (λ (state)
@@ -54,12 +54,12 @@
                                       (app-state-focus-panel-id state) dir))
     (if to
         (values (app-state-set-focus-panel state to) '())
-        (values (app-state-with-message state "no focus neighbor") '()))))
+        (values (app-state-with-flash state "no focus neighbor") '()))))
 
 (define (save-command state)
   (define rid (app-state-focus-resource state))
   (cond
-    [(not rid) (values (app-state-with-message state "save: no resource") '())]
+    [(not rid) (values (app-state-with-flash state "save: no resource") '())]
     [else
      (define-values (store* actions)
        (resource-save (app-state-resources state) rid))

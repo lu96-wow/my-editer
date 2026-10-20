@@ -7,7 +7,7 @@
 ;;;   cursor line:col
 ;;;   dirty
 ;;;   pending keys
-;;;   message
+;;;   flash（一次性；下一次 step 入口清空）
 ;;;
 ;;; 写入普通 core view，不另开渲染通道。
 
@@ -48,7 +48,7 @@
                   (and line col (format "~a:~a" (add1 line) (add1 col)))
                   (and dirty? "*")
                   pending
-                  (let ([m (app-state-message state)])
+                  (let ([m (app-state-flash state)])
                     (and (positive? (string-length m)) m)))))
   (string-join parts "  "))
 

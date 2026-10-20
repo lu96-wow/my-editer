@@ -69,7 +69,7 @@
     (define to (next-editor-in-direction state from dir))
     (cond
       [to (values (app-state-set-focus-panel state to) '())]
-      [else (values (app-state-with-message
+      [else (values (app-state-with-flash
                      state
                      (format "place: no editor to the ~a" dir))
                     '())])))
@@ -101,22 +101,22 @@
   (define p (app-state-panel state pid))
   (cond
     [(not vid) (values state '())]
-    [(not p) (values (app-state-with-message state "place: no target panel") '())]
+    [(not p) (values (app-state-with-flash state "place: no target panel") '())]
     [(not (eq? (panel-kind p) 'editor))
-     (values (app-state-with-message state "place: target is not an editor panel") '())]
+     (values (app-state-with-flash state "place: target is not an editor panel") '())]
     [else
      (define-values (layout* ok?)
        (layout-panel-add-view (app-state-layout state) pid vid))
      (if (not ok?)
-         (values (app-state-with-message state "place: target panel missing") '())
+         (values (app-state-with-flash state "place: target panel missing") '())
          (let* ([s1 (struct-copy app-state state [layout layout*])]
                 [s2 (app-state-set-focus-panel s1 pid)]
                 [s3 (clear-placement s2)])
-           (values (struct-copy app-state s3 [message "view placed"]) '())))]))
+           (values (struct-copy app-state s3 [flash "view placed"]) '())))]))
 
 (define (placement-commit state)
   (place-into-panel state (app-state-focus-panel-id state)))
 
 (define (placement-cancel state)
   (define s (clear-placement state))
-  (values (struct-copy app-state s [message "placement cancelled"]) '()))
+  (values (struct-copy app-state s [flash "placement cancelled"]) '()))

@@ -144,7 +144,7 @@
 (define-values (s15 a15) (press/actions s14 e0 (key 'enter)))
 (check-equal? a15 '())
 (check-true (input-active? s15))
-(check-true (string-contains? (app-state-message s15) "path required"))
+(check-true (string-contains? (app-state-flash s15) "path required"))
 (check-not-false (resource-prompt (app-state-resources s15)))
 
 ;;; ════════════════ 写文件 ════════════════

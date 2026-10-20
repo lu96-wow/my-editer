@@ -12,7 +12,7 @@
   (values state (list (view-action 'insert 1 #"A"))))
 
 (define (cmd-seq state)
-  (values (struct-copy app-state state [message "seq"]) '()))
+  (values (struct-copy app-state state [flash "seq"]) '()))
 
 (define (cmd-quit state)
   (values state (list (quit-action))))
@@ -64,14 +64,19 @@
 (check-equal? acts4 '())
 (check-equal? (app-state-pending state4) (list (key 'x)))
 (define-values (state5 acts5) (step state4 (key-event (key 's))))
-(check-equal? (app-state-message state5) "seq")
+(check-equal? (app-state-flash state5) "seq")
 (check-equal? (app-state-pending state5) '())
 
 ;;; ---------- unbound（不可打印 / 带修饰的键不走自插入兜底） ----------
 (define-values (state6 acts6) (step state5 (key-event (key 'z 'ctrl))))
 (check-equal? acts6 '())
-(check-true (string-contains? (app-state-message state6) "unbound"))
+(check-true (string-contains? (app-state-flash state6) "unbound"))
 (check-equal? (app-state-pending state6) '())
+
+;;; ---------- flash 只存在到下一次 step ----------
+(define-values (state6b _acts6b) (step state6 (key-event (key 'x))))
+(check-equal? (app-state-flash state6b) "")
+(check-equal? (app-state-pending state6b) (list (key 'x)))
 
 ;;; ---------- paste ----------
 (define-values (state7 acts7) (step state6 (paste-event #"!")))

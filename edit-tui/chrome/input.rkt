@@ -212,7 +212,7 @@
   (define s (input-state* state))
   (cond
     [prompt
-     (values (app-state-with-message state "input busy: system prompt") '())]
+     (values (app-state-with-flash state "input busy: system prompt") '())]
     [(and s (input-state-active? s) (eq? (input-state-source s) 'plugin))
      (define old (input-state-request s))
      (define-values (s1 actions)
@@ -395,7 +395,7 @@
                              (input-state-text s)))
      (cond
        [(not ok?)
-        (values (app-state-with-message state (prompt-invalid-message prompt)) '())]
+        (values (app-state-with-flash state (prompt-invalid-message prompt)) '())]
        [else
         (values (input-close (struct-copy app-state state [resources store*])) actions)])]
     [(and s (eq? (input-state-source s) 'plugin))
@@ -408,7 +408,7 @@
           [(memq v (input-request-choices req))
            (finish-request state (input-result (input-request-id req) 'submitted v))]
           [else
-           (values (app-state-with-message state (request-invalid-message req)) '())])]
+           (values (app-state-with-flash state (request-invalid-message req)) '())])]
        [else
         (finish-request state (input-result (input-request-id req) 'submitted raw))])]
     [else (values (input-close state) '())]))
