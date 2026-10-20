@@ -149,7 +149,7 @@ edit/api.rkt              nav / scroll / insert / edit-action commands / self-in
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
 app/api.rkt               event / state / keymap / action / commands / placement / step
-boot/api.rkt              actions / frame / sync / tui-adapter / loop
+boot/api.rkt              plugin / host / start / actions / frame / sync / tui-adapter / loop
 ```
 
 ### core 能力面对应关系
@@ -565,6 +565,18 @@ overlay tables ++ focused resource command-stack
 ### boot
 
 ```racket
+;; 最小插件值：install / sync / teardown；列表顺序 = 安装顺序
+(make-plugin #:id #:install #:sync #:teardown)
+
+;; 启动上下文
+(make-host #:engine #:layout-config #:keymap #:plugins
+           #:first-view-id #:first-panel-id)
+(host-alloc-view-id! host)
+(host-alloc-panel-id! host)
+(start-app host state)        ; install 所有插件
+(host-sync-hooks host)        ; 按插件顺序收集 sync
+(host-teardown host state engine) ; 逆序 teardown
+
 (make-engine)
 (engine-create-buffer! engine did name text)
 (engine-create-view! engine vid did)
@@ -580,7 +592,8 @@ overlay tables ++ focused resource command-stack
 
 (run-loop state engine
           #:read-event ...
-          #:write-bytes ...)
+          #:write-bytes ...
+          #:sync-hooks ...)   ; 默认 default-sync-hooks
 ```
 
 `run-loop`：
@@ -595,6 +608,10 @@ quit? -> exit
 
 没有 hook / settle / 通用 effect。action 是数据，boot 同步解释。  
 view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
+
+插件不是框架：一个 `plugin` 值 + host 里的字面量列表就够了。
+`boot/start` 只做 install / sync hooks / teardown 三件事，没有 registry /
+discovery / 依赖解析。
 
 ### 文件树
 

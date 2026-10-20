@@ -19,7 +19,8 @@
          "../chrome/status.rkt"
          "../chrome/input.rkt")
 
-(provide sync-ui!)
+(provide sync-ui!
+         default-sync-hooks)
 
 ;; 布局几何 -> core panel -> panels-sync!（写 active view 的 viewport 尺寸）
 (define (sync-panel-sizes! state engine)
@@ -30,12 +31,16 @@
                   #:focus-panel (layout-focus layout)
                   #:view-object (λ (vid) (engine-view-object engine vid)))))
 
-(define (sync-ui! state engine)
+;; 默认插件 sync 顺序；宿主可以传 #:hooks 覆盖。
+(define default-sync-hooks
+  (list sync-filetree! input-sync! sync-status!))
+
+(define (sync-ui! state engine #:hooks [hooks default-sync-hooks])
   ;; 输入栏开关是状态迁移：先做（可能挤占插件请求并产生 action），
   ;; 尺寸也要在写内容之前同步对。
   (define-values (s0 actions) (input-reconcile state))
   (define s0* (run-actions s0 engine actions))
   (sync-panel-sizes! s0* engine)
-  (define s1 (sync-filetree! s0* engine))
-  (define s2 (input-sync! s1 engine))
-  (sync-status! s2 engine))
+  (for/fold ([state s0*])
+            ([hook (in-list hooks)])
+    (hook state engine)))
