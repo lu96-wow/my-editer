@@ -29,7 +29,7 @@
   (resource-open resource-store-empty
                  #:name "main"
                  #:text "hello"
-                 #:tables (list table)))
+                 #:key-table table))
 (define rid 1)
 (define vid 1)
 

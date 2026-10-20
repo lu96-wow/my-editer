@@ -12,7 +12,7 @@
 ;;;                 未打开：open-file-action（runtime 读盘 + resource-open）
 ;;;
 ;;; 打开后的目标 panel 由 placement 交互选（↑←→↓ 换 editor / Enter 放入 / Esc 取消）。
-;;; 新文档的 per-doc 键表来自 keymap 的 editor-tables（通常是编辑操作表）。
+;;; 新文档的 per-doc 键表在 resource-open 时按 path/text 匹配。
 
 (require (only-in racket/list first)
          "../core/skeleton.rkt"
@@ -57,9 +57,7 @@
     [r (filetree-open-existing state r)]
     [else
      (values state
-             (list (open-file-action
-                    (resource-normalize-path path)
-                    (keymap-editor-tables (app-state-keymap state)))))]))
+             (list (open-file-action (resource-normalize-path path))))]))
 
 ;;; ════════════════ 命令 ════════════════
 

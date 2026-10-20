@@ -95,7 +95,8 @@ edit-tui-rebuild/
 
   config/                  纯配置 / 绑定
     layout/default.rkt
-    keymap/default.rkt
+    keymap/default.rkt   全局 / 输入 / placement 表
+    keymap/buffer.rkt    buffer 创建时匹配 per-doc 键表
     theme/default.rkt
 
   edit/  chrome/  filetree/   插件（暂时留在根目录）
@@ -286,18 +287,33 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 default-keymap
 ```
 
-`keymap` 是 `app/keymap.rkt` 的纯值（不在骨架），字段：
+per-document 键表在 **buffer 创建时**匹配：
+
+```racket
+(require "edit-tui-rebuild/config/keymap/buffer.rkt")
+(buffer-key-table path text)   ; -> command-table
+```
+
+`resource-open` 的 `#:key-table` 是**必填**参数（没有可选默认表）：
+
+```racket
+(resource-open store ... #:key-table (buffer-key-table path text))
+```
+
+表存进 resource，`app/step` 通过 `resource-command-stack` 查表。
+
+`keymap` 是 `app/keymap.rkt` 的纯值（不在骨架），只保留应用级槽位：
 
 ```text
 overlays         全局表 stack（C-w split / C-b filetree / C-x focus / C-s / C-q）
-editor-tables    新文档的 per-doc 表（导航 + 插入 / 删除 / 历史）
 input-stack      输入栏独占 stack（Esc/C-g Enter C-h/C-t …）
 placement-table  placement 临时表（Enter/Esc/方向）
 ```
 
 - 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
-- `app-state` 持有 keymap：`(app-state-keymap state)`；
+- `app-state` 持有全局 keymap：`(app-state-keymap state)`；
 - `app/step` 从这里取 overlays / input-stack；placement 取临时表；
+- 编辑 / 文档键表不再在 app-state，而是在 resource 上；
 - filetree 安装通过 `#:panel-stack` 接收 `filetree-panel-stack`；
 - 换键位 = 换 `config/keymap/` 的模块，插件与 step 不动。
 
@@ -850,7 +866,8 @@ prompt 存在 <=> 输入栏 active
 
 ```racket
 resource-store-empty
-resource-open
+(resource-open store ... #:key-table key-table ...)  ; key-table 必填，buffer 创建时匹配
+
 resource-ref
 resource-list
 resource-focus

@@ -210,7 +210,7 @@
                        #:name [name #f]
                        #:path [path #f]
                        #:text [text ""]
-                       #:tables [tables '()]
+                       #:key-table key-table
                        #:version [version 0]
                        #:doc-id [doc-id #f]
                        #:focus? [focus? #t])
@@ -220,8 +220,7 @@
   ;; path 统一存 string（path? -> path->string），供 status / 提示直接显示
   (define path* (and path (if (path? path) (path->string path) path)))
   (define name* (or name path* "*scratch*"))
-  (define base (apply command-table-merge tables))
-  (define stack (command-table-stack-push command-table-stack-empty base))
+  (define stack (command-table-stack-from-tables (list key-table)))
   (define r (resource rid name* did (list vid) path* stack version version))
   (define s1 (store-put store r))
   (define s2 (struct-copy resource-store s1

@@ -134,6 +134,5 @@
 (define default-keymap
   (keymap
    (command-table-stack-from-tables (list global-command-table))
-   (list edit-command-table)
    input-command-stack
    placement-table))

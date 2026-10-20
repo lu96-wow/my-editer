@@ -5,6 +5,7 @@
 
 (require rackunit
          racket/file
+         "../config/keymap/buffer.rkt"
          "../config/keymap/default.rkt"
          "../main.rkt")
 
@@ -16,7 +17,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text text
-                   #:tables (keymap-editor-tables default-keymap)))
+                   #:key-table (buffer-key-table #f text)))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   ;; status / input 的 view

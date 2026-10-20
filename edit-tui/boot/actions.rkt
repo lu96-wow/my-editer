@@ -14,7 +14,8 @@
          "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
-         "../app/placement.rkt")
+         "../app/placement.rkt"
+         "../config/keymap/buffer.rkt")
 
 (provide run-actions)
 
@@ -86,7 +87,6 @@
        [else (values (app-state-with-flash state (format "unknown resource action: ~a" action)) '())])]
     [(open-file-action? action)
      (define path (open-file-action-path action))
-     (define tables (open-file-action-tables action))
      (define text
        (with-handlers ([exn:fail? (λ (_) #f)])
          (file->string path)))
@@ -101,7 +101,7 @@
                          #:name name
                          #:path path
                          #:text text
-                         #:tables tables
+                         #:key-table (buffer-key-table path text)
                          #:focus? #f))
         (define buffer-action
           (for/first ([a (in-list actions)]

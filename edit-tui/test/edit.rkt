@@ -3,6 +3,7 @@
 ;;; 编辑操作表 / 自插入 / 鼠标落点测试。
 
 (require rackunit
+         "../config/keymap/buffer.rkt"
          "../config/keymap/default.rkt"
          "../main.rkt")
 
@@ -14,7 +15,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text text
-                   #:tables (keymap-editor-tables default-keymap)))
+                   #:key-table (buffer-key-table #f text)))
   (define editor-panel
     (make-panel 'editor 'editor #:views '(1) #:active 1))
   (define layout

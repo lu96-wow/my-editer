@@ -6,6 +6,7 @@
 (require rackunit
          racket/file
          (only-in "../../core/editor.rkt" view-buffer buffer-readonly-at?)
+         "../config/keymap/buffer.rkt"
          "../config/keymap/default.rkt"
          "../main.rkt")
 
@@ -26,7 +27,7 @@
                    #:name "main"
                    #:path path
                    #:text text
-                   #:tables (keymap-editor-tables default-keymap)))
+                   #:key-table (buffer-key-table #f text)))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   (void (engine-create-buffer! engine 20 "*status*" ""))

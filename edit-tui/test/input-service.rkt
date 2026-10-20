@@ -3,6 +3,7 @@
 ;;; 输入栏服务：插件请求 / 打断 / 挤占 / 结果回调。
 (require rackunit
          (only-in "../../core/editor.rkt" view-buffer buffer-readonly-at? buffer-string)
+         "../config/keymap/buffer.rkt"
          "../config/keymap/default.rkt"
          "../main.rkt")
 
@@ -14,7 +15,7 @@
     (resource-open resource-store-empty
                    #:name "main"
                    #:text "hello"
-                   #:tables (keymap-editor-tables default-keymap)))
+                   #:key-table (buffer-key-table #f "hello")))
   (define rid (resource-id (car (resource-list store))))
   (void (run-actions (make-app-state) engine actions))
   (void (engine-create-buffer! engine 20 "*status*" ""))

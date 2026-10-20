@@ -13,6 +13,6 @@
          (struct-out quit-action))
 
 ;; 文件树打开文件：runtime 读盘 -> resource-open -> 进入 placement。
-(struct open-file-action (path tables) #:transparent)
+(struct open-file-action (path) #:transparent)
 
 (struct quit-action () #:transparent)

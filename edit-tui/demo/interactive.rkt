@@ -39,7 +39,8 @@
 ;;;   placement 中：↑←→↓ 在 editor 间改焦点，Enter 放入，Esc 取消，
 ;;;     鼠标点目标 editor 也可（放完临时表自动解除）
 
-(require "../config/keymap/default.rkt"
+(require "../config/keymap/buffer.rkt"
+         "../config/keymap/default.rkt"
          "../config/layout/default.rkt"
          "../config/theme/default.rkt"
          "../main.rkt")
@@ -50,12 +51,15 @@
 
 (define engine (make-engine))
 
+(define demo-text
+  "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n")
+
 (define-values (store1 a1)
   (resource-open resource-store-empty
                  #:name "editor"
-                 #:text "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n"
-                 ;; per-document 键表：来自 config/keymap
-                 #:tables (keymap-editor-tables default-keymap)))
+                 #:text demo-text
+                 ;; buffer 创建时按 path/text 匹配键表
+                 #:key-table (buffer-key-table #f demo-text)))
 
 (define state0
   (make-app-state #:resources store1

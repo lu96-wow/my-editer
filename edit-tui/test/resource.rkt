@@ -2,16 +2,18 @@
 
 ;;; 资源管理：打开 / 命令绑定 / dirty / 保存 / 退出 / 关闭 / prompt。
 (require rackunit
+         "../config/keymap/buffer.rkt"
          "../main.rkt")
 
 (define (open! store #:name [name #f] #:path [path #f] #:text [text ""]
-                     #:tables [tables '()] #:version [version 0])
+                     #:key-table [key-table (buffer-key-table path text)]
+                     #:version [version 0])
   (let-values ([(s as)
                 (if name
                     (resource-open store #:name name #:path path #:text text
-                                   #:tables tables #:version version)
+                                   #:key-table key-table #:version version)
                     (resource-open store #:path path #:text text
-                                   #:tables tables #:version version))])
+                                   #:key-table key-table #:version version))])
     (values s as)))
 
 (define (prompt-of s)
@@ -35,7 +37,7 @@
 ;; 打开时就绑定命令表
 (define base (keys ['a 'cmd-a] ['x 's 'cmd-xs]))
 (define-values (s2 as2) (open! resource-store-empty #:name "main.rkt" #:path "main.rkt"
-                               #:text "code" #:tables (list base) #:version 'v1))
+                               #:text "code" #:key-table base #:version 'v1))
 (check-equal? (map resource-action-kind as2) '(create-buffer create-view))
 (check-true (resource-writable? s2 1))
 (check-equal? (resource-path s2 1) "main.rkt")
@@ -45,6 +47,19 @@
 (let-values ([(st v) (command-table-stack-lookup (resource-command-stack s2 1) '(x s))])
   (check-equal? st 'command)
   (check-equal? v 'cmd-xs))
+
+;; 两个 buffer 可以有不同键表（buffer-local）
+(define other (keys ['b 'cmd-b]))
+(define-values (s2b _as2b)
+  (open! s2 #:name "other.txt" #:path "other.txt" #:text "x"
+         #:key-table other #:version 'v2))
+(let-values ([(st v) (command-table-stack-lookup (resource-command-stack s2b 2) '(b))])
+  (check-equal? st 'command)
+  (check-equal? v 'cmd-b))
+(let-values ([(st _v) (command-table-stack-lookup (resource-command-stack s2b 2) '(a))])
+  (check-equal? st 'unbound))
+(let-values ([(st _v) (command-table-stack-lookup (resource-command-stack s2b 1) '(a))])
+  (check-equal? st 'command))
 
 ;;; ---------- dirty ----------
 (define s3 (resource-mark-edited s2 1 'v2))
@@ -119,9 +134,12 @@
 ;; 两个 dirty 资源：y -> 存第一个；all -> 存剩下全部
 (define-values (two0 two0as)
   (resource-open resource-store-empty #:name "a" #:path "a.txt"
-                 #:text "A" #:version 'va))
+                 #:text "A" #:key-table (buffer-key-table "a.txt" "A")
+                 #:version 'va))
 (define-values (two1 two1as)
-  (resource-open two0 #:name "b" #:path "b.txt" #:text "B" #:version 'vb))
+  (resource-open two0 #:name "b" #:path "b.txt" #:text "B"
+                 #:key-table (buffer-key-table "b.txt" "B")
+                 #:version 'vb))
 (void two0as) (void two1as)
 (define two2 (resource-mark-edited (resource-mark-edited two1 1 'va2) 2 'vb2))
 (define-values (tq tq0) (resource-request-quit two2))
