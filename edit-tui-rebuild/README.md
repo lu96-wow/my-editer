@@ -265,7 +265,7 @@ skeleton.rkt          骨架：base / panel / config / layout / focus / face /
                             - projection/api.rkt         layout->render-panels / hit / content-hit
 render/api.rkt            render-layout / layout-sync!
 edit/api.rkt              navigation-command-table / edit-command-table / self-insert
-chrome/api.rkt            status / input
+chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / panel
 app/api.rkt               event / state / action / placement / step
 runtime/api.rkt           actions / render / sync / tui-adapter / loop
@@ -721,10 +721,15 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 
 (input-install-state state panel-id status-view input-view)
 (input-active? state)
-(input-reconcile state)         ; 纯：有 prompt <=> 输入栏打开（step 入口/出口调用）
+(input-reconcile state)         ; -> (values state' actions)  prompt/request <-> 输入栏
 (input-sync! state engine)      ; 只把文本 / 光标投影到 core view
 (input-handle-key state event)  ; -> (values state' actions) | #f
 (input-handle-paste state event)
+
+;; 插件请求输入（服务 API）
+(struct input-request (id label kind choices default on-done))
+(input-start state request)     ; -> (values state' actions)
+(struct input-result (id status value))   ; status = submitted / cancelled / preempted
 ```
 
 状态栏：
@@ -764,6 +769,35 @@ Esc / C-g           取消（resource-cancel）
 - 前缀按 view 宽度裁剪：路径太长时中间省略（保留 `Save `、路径尾部和
   `(y/n/all/nall)`），给输入留几个字符；完整路径仍可从 `prompt-label` 拿到；
 - 提交成功才 `input-close`（恢复打开前的焦点）。
+
+### 输入来源与抢占规范
+
+输入栏是**服务插件**（chrome）：插件通过 `chrome/api.rkt` 的 `input-start`
+发起请求，不需要自己画面板；它依赖 `app/state` 和 resource prompt，所以不做进
+骨架（否则骨架要依赖 app）。
+
+```text
+两种来源：
+  resource prompt（骨架资源管理产生）   save-path / confirm
+  插件请求 input-request                id / label / kind / choices / default
+                                        on-done : state input-result -> values
+
+结果：
+  submitted   Enter 提交（text -> string，confirm -> symbol）
+  cancelled   Esc / C-g，或被其他事件打断
+  preempted   被新的插件请求 / 系统 prompt 挤占
+```
+
+规范（输入是抢占式的）：
+
+- 输入激活时，**key / paste** 交给输入栏；**其他事件**（mouse / resize /
+  quit / internal）先 `input-interrupt` 取消本次输入，再照常处理该事件；
+- 新的插件请求挤占旧插件请求：旧请求 on-done 收到 `'preempted`；
+- 系统 prompt 优先：出现时挤占插件请求（`'preempted`），并从空文本开始；
+- 关闭 / 取消 / 挤占都会回调 on-done，插件不需要轮询。
+
+`app/step.rkt` 在入口 / 出口做 reconcile + 抢占，`runtime/sync.rkt` 在每帧同步前
+也 reconcile 一次（挤占回调可能产生 action，先跑掉再写 view）。
 
 同步顺序（`runtime/sync.rkt`）：
 
@@ -972,7 +1006,8 @@ bash edit-tui-rebuild/test/run.sh
 - `test/api-boundary.rkt`：API 边界（非实现层只能 require main / api / core）
 - `test/layers.rkt`：依赖方向（分层约束的可执行版本）
 - 其余按领域：layout / focus / geometry / render / key / edit / filetree /
-  chrome / resource / placement / event-loop / theme / face / config
+  chrome / input-service（请求 / 打断 / 挤占 / 回调）/ resource / placement /
+  event-loop / theme / face / config
 
 功能测试也统一只 require `../main.rkt`（外部 core 访问器除外）。
 

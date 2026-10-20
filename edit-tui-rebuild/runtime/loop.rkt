@@ -36,11 +36,14 @@
     (define ev (read-event))
     (define cache** (if (resize-event? ev) #f cache*))
     (define-values (state1 actions) (step state* ev))
-    ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），这里再对一次
-    (define state2 (input-reconcile (run-actions state1 engine actions)))
-    (if (app-state-quit? state2)
-        state2
-        (loop state2 cache**))))
+    ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），
+    ;; 这里再 reconcile 一次；被挤占的插件请求会在这里回调 on-done。
+    (define state2 (run-actions state1 engine actions))
+    (define-values (state3 more) (input-reconcile state2))
+    (define state4 (run-actions state3 engine more))
+    (if (app-state-quit? state4)
+        state4
+        (loop state4 cache**))))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
 (define (run-app state engine)

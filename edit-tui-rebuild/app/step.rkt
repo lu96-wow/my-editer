@@ -149,12 +149,24 @@
                        [area (rect 0 0 (resize-event-cols ev) (resize-event-rows ev))])
           '()))
 
-;; 入口 / 出口都维护「prompt <-> 输入栏打开」这个不变量：
-;; 这样 step 单独使用（不跑 sync / render）时，Enter 也能提交。
+;; 入口 / 出口都维护「prompt / request <-> 输入栏」这个不变量，
+;; 并在输入激活时做抢占：
+;;   - key / paste 交给输入栏；
+;;   - 其他事件先取消本次输入，再处理该事件。
 (define (step state ev)
-  (define s1 (input-reconcile state))
-  (define-values (s2 actions) (step-dispatch s1 ev))
-  (values (input-reconcile s2) actions))
+  (define-values (s0 a0) (input-reconcile state))
+  (cond
+    [(and (input-active? s0)
+          (not (key-event? ev))
+          (not (paste-event? ev)))
+     (define-values (s1 a1) (input-interrupt s0 'cancelled))
+     (define-values (s2 a2) (step-dispatch s1 ev))
+     (define-values (s3 a3) (input-reconcile s2))
+     (values s3 (append a0 a1 a2 a3))]
+    [else
+     (define-values (s1 a1) (step-dispatch s0 ev))
+     (define-values (s2 a2) (input-reconcile s1))
+     (values s2 (append a0 a1 a2))]))
 
 (define (step-dispatch state ev)
   (cond

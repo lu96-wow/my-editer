@@ -1,21 +1,23 @@
 #lang racket
 
-;;; edit-tui-rebuild/chrome/input.rkt —— 输入栏（单行编辑 + prompt）
+;;; edit-tui-rebuild/chrome/input.rkt —— 输入栏（服务插件）
 ;;;
 ;;; 输入栏是普通 core view：一行 = prompt 前缀 + 输入文本 + 光标。
-;;; 文本 / 光标归 State（input-state），每帧投影到 view。
+;;; 文本 / 光标归 State（input-state），每帧投影到 view；前缀 readonly。
 ;;;
-;;; 交互：
-;;;   可打印键 / paste       在光标处插入
-;;;   Backspace / Delete     删光标前 / 后
-;;;   ← → Home End C-a C-e   移动光标
-;;;   Enter                  提交（confirm 校验选项；save-path 拒绝空路径）
-;;;   Esc / C-g              取消（resource-cancel）
+;;; 两种输入来源：
+;;;   1. resource prompt（骨架资源管理产生）：save-path / confirm
+;;;   2. 插件请求：(input-start state (input-request ...))，
+;;;      on-done 回调拿到 (input-result id status value)
 ;;;
-;; prompt 来自 resource manager；文本 -> 值的转换 / 校验在
-;;; resource-submit-text（按 prompt kind 分派），输入栏不判断 kind。
+;;; 打断 / 挤占规范（输入栏是抢占式的）：
+;;;   - 输入激活时，**非 key / paste 事件**（mouse / resize / quit / internal）
+;;;     先取消本次输入，再处理该事件；
+;;;   - 新的插件请求挤占旧插件请求：旧请求 on-done status = 'preempted；
+;;;   - 系统 prompt 优先：出现时挤占插件请求（'preempted）；
+;;;   - Esc / C-g：插件请求 on-done 'cancelled；系统 prompt 走 resource-cancel。
 ;;;
-;;; 输入模式激活时 step 直接接管按键 / 粘贴，不查普通命令表。
+;;; 关闭 / 取消 / 挤占都会回调 on-done（插件请求），宿主不需要轮询。
 
 (require racket/string
          "../skeleton.rkt"
@@ -27,19 +29,41 @@
          input-reconcile
          input-sync!
          input-handle-key
-         input-handle-paste)
+         input-handle-paste
+         input-start
+         input-interrupt
+         (struct-out input-request)
+         (struct-out input-result))
+
+;;; ════════════════ 值 ════════════════
+
+(struct input-request
+  (id        ; 任意 equal? 值，回调里带回来
+   label     ; prompt 前缀
+   kind      ; 'text | 'confirm
+   choices   ; (listof symbol)，confirm 用
+   default   ; 默认文本
+   on-done)  ; (state input-result -> (values state actions))
+  #:transparent)
+
+(struct input-result (id status value) #:transparent)
+;; status : 'submitted | 'cancelled | 'preempted
+;; value  : string（text 提交）| symbol（confirm 提交）| #f
 
 (struct input-state
   (panel-id     ; 输入栏所在的 panel（status panel）
    status-view  ; 平时显示的 view
    input-view   ; 输入时显示的 view
    active?
-   text         ; 已输入文本（不含 prompt 前缀）
+   source       ; 'resource | 'plugin | #f
+   request      ; input-request | #f（source = 'plugin）
+   prompt-id    ; resource prompt id | #f（source = 'resource）
+   text         ; 已输入文本（不含前缀）
    cursor       ; 文本内光标（0..string-length）
    prev-focus)  ; 打开输入栏前的焦点 panel，关闭时恢复
   #:transparent)
 
-;;; ════════════════ store 存取 ════════════════
+;;; ════════════════ store 存取 / 查询 ════════════════
 
 (define (input-state* state)
   (hash-ref (app-state-store state) 'input #f))
@@ -54,14 +78,13 @@
 
 (define (input-install-state state panel-id status-view input-view)
   (set-input-state state
-                   (input-state panel-id status-view input-view #f "" 0 #f)))
+                   (input-state panel-id status-view input-view
+                                #f #f #f #f "" 0 #f)))
 
-;;; ════════════════ 打开 / 关闭 ════════════════
+;;; ════════════════ 前缀显示 ════════════════
 
-;; 输入栏显示的前缀：label（confirm 再补上可选项提示）。
-;;
-;; confirm 的 choices 是规范 symbol（save/skip/save-all/skip-all），
-;; 显示成 y/n/all/nall；resource-submit-text 两种写法都接受。
+;; 资源 confirm 的规范 choices 是 save/skip/save-all/skip-all，显示成 y/n/all/nall；
+;; 插件请求的 confirm choices 就按 symbol 原样显示。
 (define (choice-key c)
   (case c
     [(save) "y"]
@@ -70,7 +93,6 @@
     [(skip-all) "nall"]
     [else (symbol->string c)]))
 
-;; 按显示宽度取前 n 列 / 后 n 列（prompt 太长时中间省略）
 (define (take-width s budget)
   (let loop ([cs (string->list s)] [w 0] [acc '()])
     (cond
@@ -87,7 +109,7 @@
 (define (take-tail-width s budget)
   (string-reverse* (take-width (string-reverse* s) budget)))
 
-;; 提示前缀必须能看见：太长就中间省略（保留 "Save " 和路径尾部）。
+;; 提示前缀必须能看见：太长就中间省略（保留开头和尾部）。
 (define (fit-label label budget)
   (cond
     [(<= (string-display-width label) budget) label]
@@ -101,10 +123,8 @@
                     ell
                     (take-tail-width label tail-budget))]))
 
-;; label + 可选项提示；按 view 宽度裁剪 label，并给输入留几个字符。
-(define (prompt-prefix prompt width)
-  (define label (prompt-label prompt))
-  (define choices (prompt-choices prompt))
+;; label + 可选值提示；按 view 宽度裁剪 label，并给输入留几个字符。
+(define (prefix-from label choices width)
   (define hint (if (and choices (pair? choices))
                    (string-append " ("
                                   (string-join (map choice-key choices) "/")
@@ -114,6 +134,17 @@
   (define budget (max 0 (- width (string-display-width hint) reserve)))
   (string-append (fit-label label budget) hint))
 
+(define (prompt-prefix prompt width)
+  (prefix-from (prompt-label prompt) (prompt-choices prompt) width))
+
+(define (request-prefix req width)
+  (prefix-from (input-request-label req)
+               (and (eq? (input-request-kind req) 'confirm)
+                    (input-request-choices req))
+               width))
+
+;;; ════════════════ 打开 / 关闭（view 切换 + 焦点） ════════════════
+
 (define (switch-active-view state view-id)
   (define-values (layout* ok?)
     (layout-panel-set-active-view (app-state-layout state)
@@ -121,21 +152,32 @@
                                   view-id))
   (if ok? (struct-copy app-state state [layout layout*]) state))
 
-(define (input-open state)
+;; 公共打开：source/request/prompt-id + 初始文本
+(define (input-open state source request prompt-id text)
   (define s (input-state* state))
   (cond
     [(not s) state]
     [else
      (define prev (or (input-state-prev-focus s)
                       (app-state-focus-panel-id state)))
+     (define cursor (string-length text))
      (define s1 (struct-copy input-state s
                              [active? #t]
-                             [text ""]
-                             [cursor 0]
+                             [source source]
+                             [request request]
+                             [prompt-id prompt-id]
+                             [text text]
+                             [cursor cursor]
                              [prev-focus prev]))
      (define state1 (set-input-state (switch-active-view state (input-state-input-view s)) s1))
      ;; 输入栏是在 status panel 里换 view：焦点 resource 变 #f
      (app-state-set-focus-panel state1 (input-state-panel-id s))]))
+
+(define (open-resource-input state prompt)
+  (input-open state 'resource #f (prompt-id prompt) ""))
+
+(define (open-request-input state req)
+  (input-open state 'plugin req #f (input-request-default req)))
 
 (define (input-close state)
   (define s (input-state* state))
@@ -145,6 +187,9 @@
      (define prev (input-state-prev-focus s))
      (define s1 (struct-copy input-state s
                              [active? #f]
+                             [source #f]
+                             [request #f]
+                             [prompt-id #f]
                              [text ""]
                              [cursor 0]
                              [prev-focus #f]))
@@ -153,51 +198,107 @@
        [prev (app-state-set-focus-panel state1 prev)]
        [else state1])]))
 
-(define (input-cancel state)
-  (define prompt (resource-prompt (app-state-resources state)))
-  (define store*
-    (if prompt
-        (resource-cancel (app-state-resources state) (prompt-id prompt))
-        (app-state-resources state)))
-  (values (input-close (struct-copy app-state state [resources store*])) '()))
+;;; ════════════════ 插件请求 / 打断 ════════════════
 
-;; 状态不变量：有 prompt <=> 输入栏打开。
-;; 这是纯状态迁移（不碰 engine），由 step 在入口 / 出口调用，
-;; 所以「不调 sync / 不渲染」的宿主也不会丢 Enter。
+;; 结束插件请求：先关闭输入栏，再把 input-result 交给 on-done。
+;; → (values state' actions)
+(define (finish-request state result)
+  (define s (input-state* state))
+  (define req (and s (input-state-request s)))
+  (define closed (input-close state))
+  (cond
+    [(not req) (values closed '())]
+    [else ((input-request-on-done req) closed result)]))
+
+;; 插件发起输入（抢占式）：系统 prompt 优先；旧插件请求会被挤占。
+(define (input-start state req)
+  (define prompt (resource-prompt (app-state-resources state)))
+  (define s (input-state* state))
+  (cond
+    [prompt
+     (values (app-state-with-message state "input busy: system prompt") '())]
+    [(and s (input-state-active? s) (eq? (input-state-source s) 'plugin))
+     (define old (input-state-request s))
+     (define-values (s1 actions)
+       (finish-request state (input-result (input-request-id old) 'preempted #f)))
+     (values (open-request-input s1 req) actions)]
+    [else (values (open-request-input state req) '())]))
+
+;; 当前输入被其他事件 / 新输入打断
+(define (input-interrupt state status)
+  (define s (input-state* state))
+  (cond
+    [(not (and s (input-state-active? s))) (values state '())]
+    [(eq? (input-state-source s) 'resource)
+     (define prompt (resource-prompt (app-state-resources state)))
+     (define store*
+       (if prompt
+           (resource-cancel (app-state-resources state) (prompt-id prompt))
+           (app-state-resources state)))
+     (values (input-close (struct-copy app-state state [resources store*])) '())]
+    [else
+     (define req (input-state-request s))
+     (finish-request state (input-result (input-request-id req) status #f))]))
+
+;;; ════════════════ 状态不变量：prompt / request <-> 输入栏 ════════════════
+;;;
+;;; 返回 (values state actions)：挤占插件请求时 on-done 可能产生 action。
 (define (input-reconcile state)
   (define prompt (resource-prompt (app-state-resources state)))
   (define s (input-state* state))
   (cond
-    [(not s) state]
-    [(and prompt (not (input-state-active? s))) (input-open state)]
-    [(and (not prompt) (input-state-active? s)) (input-close state)]
-    [else state]))
+    [(not s) (values state '())]
+    [else
+     (define active? (input-state-active? s))
+     (define source (input-state-source s))
+     (cond
+       ;; 系统 prompt 优先
+       [prompt
+        (cond
+          [(and active? (eq? source 'plugin))
+           ;; 插件输入被系统 prompt 挤占
+           (define req (input-state-request s))
+           (define-values (s1 actions)
+             (finish-request state (input-result (input-request-id req) 'preempted #f)))
+           (values (open-resource-input s1 prompt) actions)]
+          [(and active? (eq? source 'resource)
+                (equal? (input-state-prompt-id s) (prompt-id prompt)))
+           (values state '())]
+          [else
+           (define base (if active? (input-close state) state))
+           (values (open-resource-input base prompt) '())])]
+       [else
+        (cond
+          [(and active? (eq? source 'resource)) (values (input-close state) '())]
+          [(and active? (eq? source 'plugin)) (values state '())]
+          [else (values state '())])])]))
 
 ;;; ════════════════ 同步到 core view ════════════════
 
 (define (input-sync! state engine)
-  (define state1 (input-reconcile state))
-  (define prompt (resource-prompt (app-state-resources state1)))
-  (define s1 (input-state* state1))
+  (define s (input-state* state))
   (cond
-    [(and s1 (input-state-active? s1))
-     (define width (or (engine-view-width engine (input-state-input-view s1)) 80))
-     (define prefix (if prompt (prompt-prefix prompt width) ""))
-     (define text (string-append prefix (input-state-text s1)))
-     (engine-set-view-lines! engine (input-state-input-view s1)
+    [(not (and s (input-state-active? s))) state]
+    [else
+     (define prompt (and (eq? (input-state-source s) 'resource)
+                         (resource-prompt (app-state-resources state))))
+     (define req (and (eq? (input-state-source s) 'plugin)
+                      (input-state-request s)))
+     (define width (or (engine-view-width engine (input-state-input-view s)) 80))
+     (define prefix (cond [prompt (prompt-prefix prompt width)]
+                          [req (request-prefix req width)]
+                          [else ""]))
+     (define text (string-append prefix (input-state-text s)))
+     (engine-set-view-lines! engine (input-state-input-view s)
                              (list text) (list 'input) 0
                              #:column (+ (string-length prefix)
-                                         (input-state-cursor s1))
-                             ;; prompt 前缀只读 + 单独 face；编辑只作用于后面
+                                         (input-state-cursor s))
+                             ;; 前缀只读 + 单独 face；编辑只作用于后面
                              #:readonly-prefix (string-length prefix)
-                             #:prefix-face 'input-prompt)]
-    [else (void)])
-  state1)
+                             #:prefix-face 'input-prompt)
+     state]))
 
 ;;; ════════════════ 单行编辑 ════════════════
-
-(define (clamp-cursor text i)
-  (max 0 (min i (string-length text))))
 
 (define (text-insert text i s)
   (values (string-append (substring text 0 i) s (substring text i))
@@ -229,7 +330,7 @@
 (define (tok=? a b)
   (and (key? a) (key=? a b)))
 
-;;; ════════════════ Enter：提交到 resource API ════════════════
+;;; ════════════════ Enter：提交 ════════════════
 
 (define (prompt-invalid-message prompt)
   (case (prompt-kind prompt)
@@ -239,12 +340,15 @@
     [(save-path) "path required"]
     [else "invalid input"]))
 
+(define (request-invalid-message req)
+  (format "answer: ~a"
+          (string-join (map choice-key (input-request-choices req)) " / ")))
+
 (define (input-submit state)
   (define prompt (resource-prompt (app-state-resources state)))
+  (define s (input-state* state))
   (cond
-    [(not prompt) (values (input-close state) '())]
-    [else
-     (define s (input-state* state))
+    [prompt
      (define-values (store* actions ok?)
        (resource-submit-text (app-state-resources state)
                              (prompt-id prompt)
@@ -253,9 +357,37 @@
        [(not ok?)
         (values (app-state-with-message state (prompt-invalid-message prompt)) '())]
        [else
-        (values (input-close (struct-copy app-state state [resources store*])) actions)])]))
+        (values (input-close (struct-copy app-state state [resources store*])) actions)])]
+    [(and s (eq? (input-state-source s) 'plugin))
+     (define req (input-state-request s))
+     (define raw (input-state-text s))
+     (case (input-request-kind req)
+       [(confirm)
+        (define v (string->symbol (string-downcase (string-trim raw))))
+        (cond
+          [(memq v (input-request-choices req))
+           (finish-request state (input-result (input-request-id req) 'submitted v))]
+          [else
+           (values (app-state-with-message state (request-invalid-message req)) '())])]
+       [else
+        (finish-request state (input-result (input-request-id req) 'submitted raw))])]
+    [else (values (input-close state) '())]))
 
 ;;; ════════════════ 按键 / 粘贴 ════════════════
+
+(define (input-cancel-current state)
+  (define s (input-state* state))
+  (cond
+    [(eq? (input-state-source s) 'resource)
+     (define prompt (resource-prompt (app-state-resources state)))
+     (define store*
+       (if prompt
+           (resource-cancel (app-state-resources state) (prompt-id prompt))
+           (app-state-resources state)))
+     (values (input-close (struct-copy app-state state [resources store*])) '())]
+    [else
+     (define req (input-state-request s))
+     (finish-request state (input-result (input-request-id req) 'cancelled #f))]))
 
 (define (input-handle-key state ev)
   (define s (input-state* state))
@@ -267,7 +399,7 @@
      (define cursor (input-state-cursor s))
      (cond
        [(or (tok=? tok (key 'g 'ctrl)) (tok=? tok (key 'escape)))
-        (input-cancel state)]
+        (input-cancel-current state)]
        [(tok=? tok (key 'enter))
         (input-submit state)]
        [(tok=? tok (key 'backspace))
