@@ -114,7 +114,6 @@ edit-tui-rebuild/
 
   command/  table.rkt      命令表 / 栈 / keys DSL
             key.rkt        键 token = 标签 + 原始字节
-            keymap.rkt     配置好的键位集合（keymap 值）
             api.rkt
 
   config/   layout/default.rkt  布局配置（纯数据；require 选择）
@@ -155,6 +154,7 @@ edit-tui-rebuild/
 
   app/ event.rkt           key / mouse / resize / paste / internal
        state.rkt           app-state + 查询 / 焦点迁移 / 消息
+       keymap.rkt          配置好的键位集合（app 值，不在骨架）
        action.rkt          open-file-action / quit-action（view-action 在骨架）
        commands.rkt        split / toggle-filetree / focus / save / quit
        placement.rkt       放置交互（临时 keymap）
@@ -408,7 +408,7 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 default-keymap
 ```
 
-`keymap` 是 `command/keymap.rkt` 的纯值，字段：
+`keymap` 是 `app/keymap.rkt` 的纯值（不在骨架），字段：
 
 ```text
 overlays         全局表 stack（C-w split / C-b filetree / C-x focus / C-s / C-q）
