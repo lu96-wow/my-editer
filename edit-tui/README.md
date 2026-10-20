@@ -850,7 +850,7 @@ resources      resource prompt（系统 prompt 的唯一真相）
 - 系统 prompt 优先：出现时挤占插件请求（`'preempted`），并从空文本开始；
 - 关闭 / 取消 / 挤占都会回调 on-done，插件不需要轮询。
 
-输入栏的键和其他面板一样走命令表，但**独占**：`command-stack-for-focus` 在
+输入栏的键和其他面板一样走命令表，但**独占**：`current-command-stack` 在
 `input-active?` 时直接返回 `input-command-stack`，不拼 `overlays`。原因是
 `command-table-stack-lookup` 遇到 unbound 会继续查下一张表——如果叠了
 overlay，输入栏里未绑定的 `C-q` / `C-w` 就会穿透成全局命令。可打印字符
@@ -1025,8 +1025,10 @@ command-table-stack  (listof command-table)：动态遮蔽
 (command-table-lookup t seq)        ; 'command / 'prefix / 'unbound
 
 command-table-stack-empty
-(command-table-stack-from-tables ts)
-(command-table-stack-push stack t)
+(command-table-stack-from-tables ts)   ; 第一个 = top
+(command-table-stack-tables stack)
+(command-table-stack-over top bottom)  ; 两层叠加：top 优先
+(command-table-stack-push stack t)     ; 单表压顶
 (command-table-stack-pop stack)
 (command-table-stack-remove stack t)
 (command-table-stack-lookup stack seq)
@@ -1038,6 +1040,30 @@ command-table-stack-empty
 - 顶层返回 `command` / `prefix` 就停止；
 - 只有 `unbound` 才落到下一层；
 - 弹窗可以 `push` 临时表，关闭时 `pop` / `remove`。
+
+切换命令有两种方式，对应两个原语：
+
+```text
+叠加（additive）  command-table-stack-over / push
+                  例：overlays、placement 临时表；未绑定键继续往下查
+替换（modal）      直接持有另一张 stack
+                  例：输入栏 input-command-stack；未绑定键不穿透
+```
+
+`app-state` 里三种来源统一成 stack：
+
+```text
+overlays        command-table-stack（全局表，顶层在前）
+panel-stacks    panel-id -> command-table-stack（filetree 等）
+resource        per-doc command-table-stack（编辑器）
+```
+
+`app/step.rkt` 的 `current-command-stack`：
+
+```text
+输入激活  -> input-command-stack              ; 替换
+否则      -> (stack-over overlays base-stack) ; 叠加
+```
 
 ## 性能
 

@@ -31,7 +31,7 @@
   (layout
    resources
    focus-resource
-   overlays        ; (listof command-table)，顶层在前
+   overlays        ; command-table-stack，顶层在前
    pending         ; (listof key-token)
    area            ; rect
    next-panel-id
@@ -49,7 +49,7 @@
          #:layout [layout #f]
          #:resources [resources resource-store-empty]
          #:focus-resource [focus-resource #f]
-         #:overlays [overlays '()]
+         #:overlays [overlays command-table-stack-empty]
          #:pending [pending '()]
          #:area [area #f]
          #:next-panel-id [next-panel-id 100]

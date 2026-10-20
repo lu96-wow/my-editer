@@ -24,10 +24,12 @@
 (define (clear-pending state)
   (struct-copy app-state state [pending '()]))
 
-;; 输入态是模态：独占 input 表，**不拼 overlays**。
-;; stack 查找 unbound 会继续查下一张表；如果叠了 overlay，输入栏里未绑定的
-;; C-q / C-w 就会穿透到全局键。非输入态才按 overlay > per-doc / panel 组合。
-(define (command-stack-for-focus state)
+;; 两模式：
+;;   叠加：非输入态 = overlays over (per-doc / panel base)
+;;   替换：输入态直接返回 input-command-stack（模态独占，不拼 overlays）
+;; stack 查找 unbound 会继续查下一张表；如果输入态也叠加 overlay，
+;; C-q / C-w 这类未绑定键就会穿透到全局命令。
+(define (current-command-stack state)
   (cond
     [(input-active? state) input-command-stack]
     [else
@@ -40,9 +42,7 @@
           (hash-ref (app-state-panel-stacks state)
                     (app-state-focus-panel-id state)
                     command-table-stack-empty)]))
-     (command-table-stack-from-tables
-      (append (app-state-overlays state)
-              (command-table-stack-tables base)))]))
+     (command-table-stack-over (app-state-overlays state) base)]))
 
 (define (run-command state value)
   (if (procedure? value)
@@ -56,7 +56,7 @@
   (define tok (key-event-token ev))
   (define pending (app-state-pending state))
   (define seq (append pending (list tok)))
-  (let-values ([(status value) (command-table-stack-lookup (command-stack-for-focus state) seq)])
+  (let-values ([(status value) (command-table-stack-lookup (current-command-stack state) seq)])
     (case status
       [(command)
        (run-command (clear-pending state) value)]
@@ -177,7 +177,7 @@
 
 (define (step-dispatch state ev)
   (cond
-    ;; 键盘不在这里分流：输入态由 command-stack-for-focus 选 input-command-stack。
+    ;; 键盘不在这里分流：输入态由 current-command-stack 选 input-command-stack。
     ;; 粘贴不是键序列，仍直接交给输入栏。
     [(and (paste-event? ev) (input-active? state))
      (input-handle-paste state ev)]

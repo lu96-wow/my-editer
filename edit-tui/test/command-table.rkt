@@ -78,6 +78,16 @@
 (check-equal? (stack-lookup command-table-stack-empty '(a)) (cons 'unbound #f))
 (check-equal? (command-table-stack-tables command-table-stack-empty) '())
 
+;; stack 叠加：top 优先，top unbound 才落到底
+(define over
+  (command-table-stack-over
+   (command-table-stack-from-tables (list popup))
+   stack0))
+(check-equal? (command-table-stack-tables over) (list popup base))
+(check-equal? (stack-lookup over '(a)) (cons 'command 'cmd-a))
+(check-equal? (stack-lookup over '(b)) (cons 'command 'popup-b))
+(check-equal? (stack-lookup over '(x)) (cons 'prefix #f))
+
 ;;; ---------- 合并 + stack ----------
 (define merged-stack
   (command-table-stack-from-tables (list (command-table-merge t1 t2))))

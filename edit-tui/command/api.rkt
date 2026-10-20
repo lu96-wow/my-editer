@@ -22,6 +22,7 @@
  command-table-stack-empty
  command-table-stack-from-tables
  command-table-stack-tables
+ command-table-stack-over
  command-table-stack-push
  command-table-stack-pop
  command-table-stack-remove

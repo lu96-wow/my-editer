@@ -130,7 +130,8 @@
   (make-app-state #:resources store1
                   #:focus-resource 1
                   ;; 全局键（overlays 对所有面板生效）
-                  #:overlays (list global-command-table)
+                  #:overlays (command-table-stack-from-tables
+                              (list global-command-table))
                   ;; 新开文档默认带编辑表（filetree 打开文件时用）
                   #:editor-tables (list edit-command-table)
                   #:area (rect 0 0 80 24)

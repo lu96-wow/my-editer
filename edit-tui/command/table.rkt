@@ -15,13 +15,15 @@
 ;;;   (key 'x 'ctrl) (key 's 'ctrl)
 ;;; 本模块不关心 token 具体长什么样。
 ;;;
-;;; 合并：
-;;;   command-table-merge 把多张表合成一张。
-;;;   左边的表优先（同一条序列，左边的值胜出）。
+;;; 合并 / 叠加：
+;;;   command-table-merge       把多张表合成一张；左边的表优先。
+;;;   command-table-stack-over  把两层 stack 叠加；top 优先。
 ;;;
 ;;; 动态：
 ;;;   stack-push / stack-pop / stack-remove 只改 list，纯值。
 ;;;   弹窗可以 push 一张临时表，关闭时 pop / remove。
+;;;   模态（输入栏）则直接换用另一张 stack —— 独占而不是叠加。
+;;;   原因：lookup 对 unbound 会继续往下查，叠加会让全局键穿透。
 ;;;
 ;;; 表只负责匹配，不负责“命令是什么”。命令值可以是过程 / 结构 / id。
 
@@ -39,6 +41,7 @@
          command-table-stack-empty
          command-table-stack-from-tables
          command-table-stack-tables
+         command-table-stack-over
          command-table-stack-push
          command-table-stack-pop
          command-table-stack-remove
@@ -143,6 +146,17 @@
     (unless (command-table? t)
       (error 'command-table-stack-from-tables "元素要是 command-table：~a" t)))
   (command-table-stack tables))
+
+;; 叠两层 stack：top 的表全在 bottom 之上（等价于 append 两边的 tables）。
+;; 加法遮蔽用这个；替换整栈（模态）直接持有另一张 stack，不要调用它。
+(define (command-table-stack-over top bottom)
+  (unless (command-table-stack? top)
+    (error 'command-table-stack-over "top 要是 command-table-stack：~a" top))
+  (unless (command-table-stack? bottom)
+    (error 'command-table-stack-over "bottom 要是 command-table-stack：~a" bottom))
+  (command-table-stack-from-tables
+   (append (command-table-stack-tables top)
+           (command-table-stack-tables bottom))))
 
 (define (command-table-stack-push stack table)
   (unless (command-table? table)

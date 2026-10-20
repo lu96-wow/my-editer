@@ -25,13 +25,11 @@
 
 ;;; ════════════════ 临时 keymap ════════════════
 
-(define (remove-placement-table overlays)
-  (for/list ([t (in-list overlays)] #:unless (eq? t placement-table)) t))
-
 (define (clear-placement state)
   (struct-copy app-state state
                [placement #f]
-               [overlays (remove-placement-table (app-state-overlays state))]))
+               [overlays (command-table-stack-remove (app-state-overlays state)
+                                                     placement-table)]))
 
 (define (placement-active? state)
   (and (app-state-placement state) #t))
@@ -79,7 +77,8 @@
   (define s1
     (struct-copy app-state state
                  [placement vid]
-                 [overlays (cons placement-table (app-state-overlays state))]))
+                 [overlays (command-table-stack-push (app-state-overlays state)
+                                                     placement-table)]))
   ;; 焦点不在 editor 上时先落一个：Enter 立刻可放入，方向键可换目标。
   ;; （headless 测试可能没有 layout，此时只装表。）
   (define layout (app-state-layout s1))

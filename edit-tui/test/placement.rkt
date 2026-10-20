@@ -29,15 +29,17 @@
                   #:area area))
 
 (define (focus state) (layout-focus (app-state-layout state)))
+(define (overlay-tables state)
+  (command-table-stack-tables (app-state-overlays state)))
 (define (press state tok)
   (step state (key-event tok)))
 
 ;;; ---------- 开始 placement：自动聚焦 editor + 压临时表 ----------
 (define s1 (start-placement state 99))
 (check-equal? (focus s1) 'editor1)
-(check-not-false (memq placement-table (app-state-overlays s1)))
-(check-equal? (length (app-state-overlays s1))
-              (add1 (length (app-state-overlays state))))
+(check-not-false (memq placement-table (overlay-tables s1)))
+(check-equal? (length (overlay-tables s1))
+              (add1 (length (overlay-tables state))))
 
 ;;; ---------- 方向键改焦点（跳过非 editor） ----------
 (define-values (s2 a2) (press s1 (key 'down)))
@@ -55,7 +57,7 @@
 (check-equal? a3 '())
 (check-false (app-state-placement s3))
 (check-not-false (memv 99 (layout-panel-view-ids (app-state-layout s3) 'editor2)))
-(check-false (memq placement-table (app-state-overlays s3)))
+(check-false (memq placement-table (overlay-tables s3)))
 (check-equal? (app-state-message s3) "view placed")
 
 ;;; ---------- 解除后方向键不再改焦点（普通键位恢复） ----------
@@ -65,11 +67,11 @@
 
 ;;; ---------- Esc 取消也会解除临时表 ----------
 (define s4 (start-placement state 100))
-(check-not-false (memq placement-table (app-state-overlays s4)))
+(check-not-false (memq placement-table (overlay-tables s4)))
 (define-values (s5 a5) (press s4 (key 'escape)))
 (check-equal? a5 '())
 (check-false (app-state-placement s5))
-(check-false (memq placement-table (app-state-overlays s5)))
+(check-false (memq placement-table (overlay-tables s5)))
 
 ;;; ---------- 焦点本来就在 editor：不抢焦点 ----------
 (define s6 (start-placement (struct-copy app-state state
