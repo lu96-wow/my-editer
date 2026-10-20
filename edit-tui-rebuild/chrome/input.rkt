@@ -1,0 +1,191 @@
+#lang racket
+
+;;; edit-tui-rebuild/chrome/input.rkt —— 输入栏
+;;;
+;;; 输入栏是普通 core view：
+;;;   prompt label + input text
+;;;
+;;; prompt 数据来自 resource manager；输入栏只显示并提交：
+;;;   Enter -> resource-submit
+;;;   Esc   -> resource-cancel
+;;;
+;;; 输入模式下 step 直接接管按键，不查普通命令表。
+
+(require racket/string
+         "../app/state.rkt"
+         "../app/event.rkt"
+         "../command/api.rkt"
+         "../layout/api.rkt"
+         "../panel/api.rkt"
+         "../resource/api.rkt"
+         "../runtime/engine.rkt")
+
+(provide (struct-out input-state)
+         input-install-state
+         input-state*
+         input-active?
+         input-open
+         input-close
+         input-cancel
+         input-sync!
+         input-handle-key)
+
+(struct input-state
+  (panel-id status-view input-view active? text prev-focus)
+  #:transparent)
+
+(define (input-state* state)
+  (hash-ref (app-state-store state) 'input #f))
+
+(define (set-input-state state s)
+  (struct-copy app-state state
+               [store (hash-set (app-state-store state) 'input s)]))
+
+(define (input-active? state)
+  (define s (input-state* state))
+  (and s (input-state-active? s)))
+
+(define (focus-resource-of state pid)
+  (define p (layout-panel (app-state-layout state) pid))
+  (define vid (and p (panel-view p)))
+  (and vid (resource-of-view (app-state-resources state) vid)))
+
+(define (input-install-state state panel-id status-view input-view)
+  (set-input-state state
+                   (input-state panel-id status-view input-view #f "" #f)))
+
+(define (input-open state)
+  (define s (input-state* state))
+  (cond
+    [(not s) state]
+    [else
+     (define prev (or (input-state-prev-focus s)
+                      (layout-focus (app-state-layout state))))
+     (define-values (layout* ok?)
+       (layout-panel-set-active-view (app-state-layout state)
+                                     (input-state-panel-id s)
+                                     (input-state-input-view s)))
+     (define s1 (struct-copy input-state s
+                             [active? #t]
+                             [text ""]
+                             [prev-focus prev]))
+     (define state1 (set-input-state (struct-copy app-state state
+                                                  [layout (if ok? layout* (app-state-layout state))])
+                                     s1))
+     (define state2 (struct-copy app-state state1
+                                 [focus-resource #f]))
+     (struct-copy app-state state2
+                  [layout (layout-set-focus (app-state-layout state2)
+                                            (input-state-panel-id s))])]))
+
+(define (input-close state)
+  (define s (input-state* state))
+  (cond
+    [(not s) state]
+    [else
+     (define-values (layout* ok?)
+       (layout-panel-set-active-view (app-state-layout state)
+                                     (input-state-panel-id s)
+                                     (input-state-status-view s)))
+     (define prev (input-state-prev-focus s))
+     (define s1 (struct-copy input-state s
+                             [active? #f]
+                             [text ""]
+                             [prev-focus #f]))
+     (define state1 (set-input-state (struct-copy app-state state
+                                                  [layout (if ok? layout* (app-state-layout state))])
+                                     s1))
+     (cond
+       [prev
+        (define layout** (layout-set-focus (app-state-layout state1) prev))
+        (define state2 (struct-copy app-state state1 [layout layout**]))
+        (struct-copy app-state state2
+                     [focus-resource (focus-resource-of state2 prev)])]
+       [else state1])]))
+
+(define (input-cancel state)
+  (define prompt (resource-prompt (app-state-resources state)))
+  (define store*
+    (if prompt
+        (resource-cancel (app-state-resources state) (prompt-id prompt))
+        (app-state-resources state)))
+  (values (input-close (struct-copy app-state state [resources store*])) '()))
+
+(define (prompt-text prompt text)
+  (string-append (prompt-label prompt) text))
+
+(define (input-sync! state engine)
+  (define prompt (resource-prompt (app-state-resources state)))
+  (define s (input-state* state))
+  (cond
+    [(not s) state]
+    [else
+     (define state1
+       (cond
+         [(and prompt (not (input-state-active? s))) (input-open state)]
+         [(and (not prompt) (input-state-active? s)) (input-close state)]
+         [else state]))
+     (define s1 (input-state* state1))
+     (cond
+       [s1
+        (define text (if prompt (prompt-text prompt (input-state-text s1)) ""))
+        (engine-set-view-lines! engine (input-state-input-view s1)
+                                 (list text) (list 'input) 0
+                                 #:column (string-length text))]
+       [else (void)])
+     state1]))
+
+(define (printable-char tok)
+  (and (key? tok)
+       (not (memq 'ctrl (key-mods tok)))
+       (not (memq 'alt (key-mods tok)))
+       (let ([n (key-name tok)])
+         (cond
+           [(eq? n 'space) " "]
+           [(and (symbol? n) (= 1 (string-length (symbol->string n))))
+            (symbol->string n)]
+           [else #f]))))
+
+(define (input-handle-key state ev)
+  (define s (input-state* state))
+  (cond
+    [(not (and s (input-state-active? s))) #f]
+    [else
+     (define tok (key-event-token ev))
+     (define name (and (key? tok) (key-name tok)))
+     (cond
+       [(and (key? tok) (memq 'ctrl (key-mods tok)) (eq? name 'g))
+        (input-cancel state)]
+       [(eq? name 'escape)
+        (input-cancel state)]
+       [(eq? name 'enter)
+        (define prompt (resource-prompt (app-state-resources state)))
+        (cond
+          [(not prompt) (values (input-close state) '())]
+          [else
+           (define value
+             (if (eq? (prompt-kind prompt) 'confirm)
+                 (string->symbol (string-trim (input-state-text s)))
+                 (input-state-text s)))
+           (define-values (store* actions)
+             (resource-submit (app-state-resources state)
+                              (prompt-id prompt) value))
+           (define state1 (struct-copy app-state state [resources store*]))
+           (values (input-close state1) actions)])]
+       [(eq? name 'backspace)
+        (define text (input-state-text s))
+        (define text* (if (zero? (string-length text))
+                          text
+                          (substring text 0 (sub1 (string-length text)))))
+        (values (set-input-state state
+                                 (struct-copy input-state s [text text*]))
+                '())]
+       [else
+        (define ch (printable-char tok))
+        (cond
+          [(not ch) (values state '())]
+          [else
+           (values (set-input-state state
+                                    (struct-copy input-state s
+                                                 [text (string-append (input-state-text s) ch)]))
+                   '())])])]))

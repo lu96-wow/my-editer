@@ -1,0 +1,3 @@
+hello, layout demo.
+
+C-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.

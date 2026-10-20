@@ -29,7 +29,7 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource" "app" "runtime"))
+  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource" "filetree" "chrome" "app" "runtime"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -72,7 +72,7 @@
        (not (core-path? str))
        (or
         ;; 新结构：领域目录下的非 api 实现文件
-        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|app|runtime)/[^/]+\\.rkt$" str)
+        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|filetree|chrome|app|runtime)/[^/]+\\.rkt$" str)
         ;; 兼容旧结构
         (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
 

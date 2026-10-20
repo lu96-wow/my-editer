@@ -5,9 +5,11 @@
 (require "engine.rkt"
          "actions.rkt"
          "render.rkt"
+         "sync.rkt"
          "loop.rkt")
 
 (provide (all-from-out "engine.rkt"
                        "actions.rkt"
                        "render.rkt"
+                       "sync.rkt"
                        "loop.rkt"))

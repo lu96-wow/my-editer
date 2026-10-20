@@ -37,6 +37,7 @@
  ;; open / edit / save
  resource-open
  resource-mark-edited
+ resource-reset-version
  resource-save
  resource-save-as
  resource-save-done

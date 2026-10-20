@@ -75,3 +75,30 @@
                     (rect 0 23 80 1)))
 
 (displayln "edit-tui-rebuild/test/geometry.rkt: ok")
+
+;;; ---------- 共享边框：相邻 panel 不画双线 ----------
+(define pa (make-panel 'a 'editor #:views '() #:borders '(up down left right)))
+(define pb (make-panel 'b 'editor #:views '() #:borders '(up down left right)))
+(define l-ab (make-layout #:root (make-leaf 'a)
+                          #:panels (hash 'a pa)))
+(define-values (l-ab* ok-ab?) (layout-panel-attach l-ab 'a 'right pb #:ratio 1/2))
+(check-true ok-ab?)
+(define ps-ab (layout->render-panels l-ab* (rect 0 0 20 5)))
+;; 用 rect 区分左右
+(define left-p (for/first ([p (in-list ps-ab)] #:when (= 0 (rect-x (core-panel-rect p)))) p))
+(define right-p (for/first ([p (in-list ps-ab)] #:when (> (rect-x (core-panel-rect p)) 0)) p))
+(check-not-false (memq 'right (core-panel-borders left-p)))
+(check-false (memq 'left (core-panel-borders right-p)))
+
+;; 垂直：上边保留 down，下边去掉 up
+(define pc (make-panel 'c 'editor #:views '() #:borders '(up down left right)))
+(define pd (make-panel 'd 'editor #:views '() #:borders '(up down left right)))
+(define l-cd (make-layout #:root (make-leaf 'c)
+                          #:panels (hash 'c pc)))
+(define-values (l-cd* ok-cd?) (layout-panel-attach l-cd 'c 'down pd #:ratio 1/2))
+(check-true ok-cd?)
+(define ps-cd (layout->render-panels l-cd* (rect 0 0 20 5)))
+(define top-p (for/first ([p (in-list ps-cd)] #:when (= 0 (rect-y (core-panel-rect p)))) p))
+(define bottom-p (for/first ([p (in-list ps-cd)] #:when (> (rect-y (core-panel-rect p)) 0)) p))
+(check-not-false (memq 'down (core-panel-borders top-p)))
+(check-false (memq 'up (core-panel-borders bottom-p)))

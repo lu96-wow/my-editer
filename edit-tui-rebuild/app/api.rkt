@@ -5,9 +5,11 @@
 (require "event.rkt"
          "state.rkt"
          "action.rkt"
+         "placement.rkt"
          "step.rkt")
 
 (provide (all-from-out "event.rkt"
                        "state.rkt"
                        "action.rkt"
+                       "placement.rkt"
                        "step.rkt"))

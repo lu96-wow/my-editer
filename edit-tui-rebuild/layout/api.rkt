@@ -16,7 +16,7 @@
  layout-focus layout-set-focus
 
  ;; panel 资源
- layout-panel-add layout-panel layout-panel-resources layout-panel-ids
+ layout-panel-add layout-panel-add-view layout-panel layout-panel-resources layout-panel-ids
  layout-visible-panel-ids layout-panel-update
  layout-panel-visible? layout-panel-fixed-size layout-subtree-visible?
 

@@ -9,7 +9,9 @@
          "../panel/api.rkt"
          "../resource/api.rkt"
          "../focus/api.rkt"
+         "../chrome/input.rkt"
          "event.rkt"
+         "placement.rkt"
          "state.rkt"
          "action.rkt")
 
@@ -35,10 +37,14 @@
 (define (command-stack state)
   (define rs (app-state-focus-resource state))
   (define base-stack
-    (if rs
-        (or (resource-command-stack (app-state-resources state) rs)
-            command-table-stack-empty)
-        command-table-stack-empty))
+    (cond
+      [rs
+       (or (resource-command-stack (app-state-resources state) rs)
+           command-table-stack-empty)]
+      [else
+       (hash-ref (app-state-panel-stacks state)
+                 (focus-panel state)
+                 command-table-stack-empty)]))
   (command-table-stack-from-tables
    (append (app-state-overlays state)
            (command-table-stack-tables base-stack))))
@@ -78,16 +84,24 @@
   (define layout (app-state-layout state))
   (case tok
     [(press)
-     (define seam (layout-seam-at layout area row col))
+     (define placement-id (app-state-placement state))
+     (define hit-id (layout-panel-id-at layout area row col))
      (cond
-       [seam
-        (define d (layout-seam-drag-start layout area row col #:config default-config))
-        (values (struct-copy app-state state [drag d]) '())]
+       [(and placement-id
+             hit-id
+             (eq? (panel-kind (layout-panel layout hit-id)) 'editor))
+        (place-into-panel state hit-id)]
        [else
-        (define id (layout-focus-panel-at layout area default-config row col))
-        (if id
-            (values (set-focus-panel state id) '())
-            (values state '()))])]
+        (define seam (layout-seam-at layout area row col))
+        (cond
+          [seam
+           (define d (layout-seam-drag-start layout area row col #:config default-config))
+           (values (struct-copy app-state state [drag d]) '())]
+          [else
+           (define id (layout-focus-panel-at layout area default-config row col))
+           (if id
+               (values (set-focus-panel state id) '())
+               (values state '()))])])]
     [(move)
      (define d (app-state-drag state))
      (cond
@@ -120,7 +134,11 @@
           '()))
 
 (define (step state ev)
-  (case (event-kind ev)
+  (cond
+    [(and (key-event? ev) (input-active? state))
+     (input-handle-key state ev)]
+    [else
+     (case (event-kind ev)
     [(key) (dispatch-key state ev)]
     [(mouse) (dispatch-mouse state ev)]
     [(paste) (dispatch-paste state ev)]
@@ -130,4 +148,4 @@
      (case (internal-event-kind ev)
        [(quit) (values (struct-copy app-state state [quit? #t]) '())]
        [else (values state '())])]
-    [else (values state '())]))
+    [else (values state '())])]))

@@ -66,7 +66,21 @@ edit-tui-rebuild/
 
   command/
     table.rkt              命令表 / stack
+    key.rkt                键 token
     api.rkt                command API
+
+  chrome/
+    status.rkt             状态栏投影 / 同步
+    input.rkt              输入栏：prompt / 文本 / submit / cancel
+    api.rkt                chrome API
+
+  filetree/
+    model.rkt              文件树状态 / 行结构
+    scan.rkt               读目录（唯一 IO）
+    lines.rkt              纯行投影
+    panel.rkt              每帧同步到 core view
+    commands.rkt           导航 / 展开 / 打开文件
+    api.rkt                filetree API
 
   projection/
     geometry.rkt           layout -> core panel 投影
@@ -417,6 +431,84 @@ quit? -> exit
 没有 hook / settle / 通用 effect。action 是数据，runtime 同步解释。  
 view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 
+### 文件树
+
+```racket
+(empty-filetree)
+(make-filetree #:view #:line #:expanded #:rows)
+(filetree-toggle-expand f path)
+(filetree-set-view / set-line / set-rows)
+
+(filetree-lines root expanded opened dir-lister)
+(filetree-line-at rows line)
+
+(dir-entries path)
+(filetree-normalize-path path)
+
+(sync-filetree! state engine)  ; -> state'
+
+(filetree-command-table)
+(filetree-panel-stack)
+(filetree-install-state state view root #:panel-id)
+(filetree-nav-command kind)
+(filetree-enter-command state)
+```
+
+行为：
+
+- root / dir：Enter 展开 / 折叠；
+- file：Enter 打开；
+  - 已打开且已挂 panel：聚焦已有 panel；
+  - 已打开但 detached：进入 placement；
+  - 未打开：read-file -> resource-open -> placement；
+- placement：
+  - 鼠标点 editor panel；
+  - 或 C-x 方向切换焦点后 Enter；
+  - Esc 取消。
+
+### 状态栏 / 输入栏
+
+```racket
+(status-install-state state view-id)
+(status-line state engine)
+(sync-status! state engine)
+
+(input-install-state state panel-id status-view input-view)
+(input-state* state)
+(input-active? state)
+(input-open state)
+(input-close state)
+(input-sync! state engine)
+(input-handle-key state event)  ; -> (values state' actions) | #f
+```
+
+状态栏：
+
+```text
+focus resource path/name
+line:col
+dirty *
+pending keys
+message
+```
+
+输入栏：
+
+- prompt 来自 `resource-prompt`；
+- `Enter` -> `resource-submit`；
+- `Esc` / `C-g` -> `resource-cancel`；
+- 普通字符 / Backspace 修改输入文本；
+- confirm prompt 会把文本转成 symbol（save / skip / save-all / skip-all / cancel）。
+
+输入栏和状态栏共用同一个 panel 的 views：
+
+```racket
+(make-panel 'status 'status
+            #:views '(status-view input-view)
+            #:active status-view
+            #:fixed-h 1)
+```
+
 ### 资源管理
 
 ```racket
@@ -562,8 +654,21 @@ racket edit-tui-rebuild/demo/interactive.rkt
 ```text
 C-w ←→↑↓   拆分当前 editor
 C-b        显隐 filetree
-M-←→↑↓     焦点移动
-C-q        退出
+C-x ←→↑↓   焦点移动
+C-s        保存当前 resource（无 path -> Save as 输入栏）
+C-i        插入 x（制造 dirty）
+C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
 鼠标点面板  聚焦
+```
+
+文件树：
+
+```text
+C-x ← 聚焦 filetree
+↑↓ / Home End  选行
+Enter          展开目录 / 打开文件
+之后 C-x → 切到 editor，Enter 放入
+或直接点击目标 editor panel
+Esc            取消 placement
 ```

@@ -8,6 +8,12 @@
 (define (visible-ids s)
   (layout-visible-panel-ids (app-state-layout s)))
 
+;;; ---------- filetree 已安装并有内容 ----------
+(define synced (sync-ui! demo-state demo-engine))
+(define ft (hash-ref (app-state-store synced) 'filetree))
+(check-true (> (length (filetree-rows ft)) 0))
+(check-true (> (string-length (engine-view-text demo-engine 10)) 0))
+
 ;;; ---------- split ----------
 (define-values (s1 a1) (step demo-state (key-event (key 'w 'ctrl))))
 (check-equal? a1 '())

@@ -8,8 +8,10 @@
 ;;; 键：
 ;;;   C-w ←→↑↓      拆分当前 editor（空 panel）
 ;;;   C-b           显示 / 隐藏 filetree
-;;;   M-←→↑↓        焦点在 panel 间移动
-;;;   C-q           退出
+;;;   C-x ←→↑↓      焦点在 panel 间移动
+;;;   C-s           保存当前 resource（无 path -> 输入栏 Save as）
+;;;   C-i           插入 x（制造 dirty）
+;;;   C-q           退出（dirty -> 输入栏确认）
 ;;;
 ;;; 鼠标：
 ;;;   拖 panel 接缝  resize
@@ -79,8 +81,26 @@
         (values (set-focus-panel state to) '())
         (values (notice state "no focus neighbor") '()))))
 
+(define (save-command state)
+  (define rid (app-state-focus-resource state))
+  (cond
+    [(not rid) (values (notice state "save: no resource") '())]
+    [else
+     (define-values (store* actions)
+       (resource-save (app-state-resources state) rid))
+     (values (struct-copy app-state state [resources store*]) actions)]))
+
+(define (insert-x-command state)
+  (define rid (app-state-focus-resource state))
+  (define vid (and rid (first (resource-view-ids (app-state-resources state) rid))))
+  (if vid
+      (values state (list (view-action 'insert vid "x")))
+      (values (notice state "insert: no focused resource") '())))
+
 (define (quit-command state)
-  (values state (list (quit-action))))
+  (define-values (store* actions)
+    (resource-request-quit (app-state-resources state)))
+  (values (struct-copy app-state state [resources store*]) actions))
 
 (define command-table*
   (keys
@@ -89,10 +109,12 @@
    [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
    [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
    [(key 'b 'ctrl)              (toggle-filetree-command)]
-   [(key 'left 'alt)            (focus-command 'left)]
-   [(key 'right 'alt)           (focus-command 'right)]
-   [(key 'up 'alt)              (focus-command 'up)]
-   [(key 'down 'alt)            (focus-command 'down)]
+   [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
+   [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
+   [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
+   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
+   [(key 's 'ctrl)              save-command]
+   [(key 'i 'ctrl)              insert-x-command]
    [(key 'q 'ctrl)              quit-command]))
 
 ;;; ---------- resources / engine ----------
@@ -102,7 +124,7 @@
 (define-values (store1 a1)
   (resource-open resource-store-empty
                  #:name "editor"
-                 #:text "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, M-arrows focus, C-q quit.\n"
+                 #:text "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n"
                  #:tables (list command-table*)))
 
 (define-values (store2 a2)
@@ -124,7 +146,20 @@
 
 (define state1 (run-actions state0 engine (append a1 a2 a3)))
 
-;;; view ids: editor=1, filetree=2, state=3
+;;; filetree 自己的 core view：doc=10, view=10
+(void (engine-create-buffer! engine 10 "*filetree*" ""))
+(void (engine-create-view! engine 10 10))
+(void (engine-create-buffer! engine 20 "*status*" ""))
+(void (engine-create-view! engine 20 20))
+(void (engine-create-buffer! engine 21 "*input*" ""))
+(void (engine-create-view! engine 21 21))
+
+(define state2
+  (filetree-install-state state1 10 (current-directory)))
+(define state3 (status-install-state state2 20))
+(define state4 (input-install-state state3 'status 20 21))
+
+;;; view ids: editor=1, state=3, filetree=10
 
 ;;; ---------- layout ----------
 
@@ -136,25 +171,25 @@
 
 (define filetree-panel
   (make-panel 'filetree 'sidebar
-              #:views '(2)
-              #:active 2
+              #:views '(10)
+              #:active 10
               #:borders '(right)))
 
-(define state-panel
-  (make-panel 'state 'status
-              #:views '(3)
-              #:active 3
+(define status-panel
+  (make-panel 'status 'status
+              #:views '(20 21)
+              #:active 20
               #:fixed-h 1))
 
 (define l0 (make-layout #:root (make-leaf 'editor)
                         #:panels (hash 'editor editor-panel)
                         #:focus 'editor))
 (define-values (l1 ok1?) (layout-panel-attach l0 'editor 'left filetree-panel #:ratio 3/8))
-(define-values (l2 ok2?) (layout-panel-attach l1 'editor 'down state-panel))
+(define-values (l2 ok2?) (layout-panel-attach l1 'editor 'down status-panel))
 (unless (and ok1? ok2?) (error 'demo "layout attach failed"))
 
 (define demo-state
-  (struct-copy app-state state1 [layout l2]))
+  (struct-copy app-state state4 [layout l2]))
 
 (define demo-engine engine)
 

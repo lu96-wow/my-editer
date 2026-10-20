@@ -16,6 +16,10 @@
    area            ; rect
    next-panel-id
    drag            ; layout drag | #f
+   placement       ; view-id | #f
+   store           ; 面板 UI 状态：'filetree -> filetree ...
+   root            ; 工作区根目录
+   panel-stacks    ; panel-id -> command-table-stack
    quit?
    message)
   #:transparent)
@@ -29,7 +33,12 @@
          #:area [area #f]
          #:next-panel-id [next-panel-id 100]
          #:drag [drag #f]
+         #:placement [placement #f]
+         #:store [store (hash)]
+         #:root [root ""]
+         #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
          #:message [message ""])
   (app-state layout resources focus-resource overlays pending area
-             next-panel-id drag quit? message))
+             next-panel-id drag placement store root panel-stacks
+             quit? message))

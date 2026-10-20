@@ -14,6 +14,8 @@
          engine-create-buffer! engine-create-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version
+         engine-view-point-line engine-view-point-column
+         engine-set-view-lines!
          engine-apply-view-action!)
 
 (struct engine (docs views) #:mutable)
@@ -69,6 +71,31 @@
 (define (engine-doc-version e did)
   (define b (engine-doc-buffer e did))
   (and b (buffer-version b)))
+
+(define (engine-view-point-line e vid)
+  (define v (engine-view-object e vid))
+  (and v (view-point-line v)))
+
+(define (engine-view-point-column e vid)
+  (define v (engine-view-object e vid))
+  (and v (view-point-column v)))
+
+;; 整篇写一个 UI view：文本 + 每行 face + 光标行。
+(define (engine-set-view-lines! e vid lines faces line #:column [column 0])
+  (define v (engine-view-object e vid))
+  (cond
+    [(not v) (void)]
+    [else
+     (define b (view-buffer v))
+     (define text (string-join lines "\n"))
+     (buffer-set-document! b text)
+     (buffer-face-all! b #f)
+     (for ([i (in-naturals)] [face (in-list faces)])
+       (when face (buffer-face-line! b i face)))
+     (define n (max 1 (length lines)))
+     (define l (max 0 (min line (sub1 n))))
+     (view-set-selections! v (selections-one (caret (point l column))))
+     (view-ensure! v)]))
 
 (define (apply-nav! v dir)
   (case dir

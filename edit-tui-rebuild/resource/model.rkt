@@ -42,6 +42,7 @@
          resource-save-as
          resource-save-done
          resource-mark-edited
+         resource-reset-version
 
          resource-request-close
          resource-request-quit
@@ -233,6 +234,16 @@
     [(not r) store]
     [else (store-event (store-put store (struct-copy resource r [version version]))
                        'edited (list id))]))
+
+;; 打开完成后把 resource version / saved-version 对齐 engine 当前 token。
+(define (resource-reset-version store id version)
+  (define r (resource-ref store id))
+  (cond
+    [(not r) store]
+    [else (store-put store
+                     (struct-copy resource r
+                                  [version version]
+                                  [saved-version version]))]))
 
 ;;; ════════════════ 保存 ════════════════
 

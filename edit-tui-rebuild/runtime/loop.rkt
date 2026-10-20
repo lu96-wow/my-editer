@@ -18,6 +18,7 @@
          "../base/api.rkt"
          "actions.rkt"
          "render.rkt"
+         "sync.rkt"
          "tui-adapter.rkt")
 
 (provide run-loop
@@ -27,12 +28,13 @@
                   #:read-event [read-event (λ () (error 'run-loop "no read-event"))]
                   #:write-bytes [write-bytes (λ (b) (void))])
   (let loop ([state state] [cache #f])
-    (define-values (cache* bytes) (render-frame state engine cache))
+    (define state* (sync-ui! state engine))
+    (define-values (cache* bytes) (render-frame state* engine cache))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
     (define ev (read-event))
     (define cache** (if (resize-event? ev) #f cache*))
-    (define-values (state1 actions) (step state ev))
+    (define-values (state1 actions) (step state* ev))
     (define state2 (run-actions state1 engine actions))
     (if (app-state-quit? state2)
         state2

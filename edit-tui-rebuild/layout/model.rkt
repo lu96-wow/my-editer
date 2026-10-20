@@ -38,7 +38,7 @@
  layout-empty? make-layout empty-layout make-leaf
 
  ;; ---------- panel 资源 ----------
- layout-panel-add layout-panel layout-panel-resources layout-panel-ids
+ layout-panel-add layout-panel-add-view layout-panel layout-panel-resources layout-panel-ids
  layout-focus layout-set-focus
  layout-panel-update
  layout-visible-panel-ids
@@ -116,6 +116,14 @@
     (error 'layout-panel-add "panel id 已存在：~a" (panel-id p)))
   (struct-copy layout l
                [panel-map (hash-set (layout-panel-map l) (panel-id p) p)]))
+
+(define (layout-panel-add-view l id vid)
+  (layout-panel-update l id
+    (λ (p)
+      (define views (if (memv vid (panel-views p))
+                        (panel-views p)
+                        (append (panel-views p) (list vid))))
+      (panel-set-views p views vid))))
 
 (define (layout-panel-update l id f)
   (define p (layout-panel l id))
