@@ -1,138 +1,196 @@
 #lang racket
 
-;;; edit-tui/test/resource.rkt —— 打开 / 关闭文件 + document 类型携带命令
-;;;
-;;; 运行：racket edit-tui/test/resource.rkt
-
+;;; 资源管理：打开 / 命令绑定 / dirty / 保存 / 退出 / 关闭 / prompt。
 (require rackunit
-         racket/file
-         racket/async-channel
-         "../command/key.rkt"
-         (prefix-in app: "../base/event.rkt")
-         "../base/id.rkt"
-         "../base/keymap.rkt"
-         "../base/transition.rkt"
-         "../model/state.rkt"
-         "../model/workspace.rkt"
-         "../model/layout.rkt"
-         "../model/chrome.rkt"
-         "../model/input.rkt"
-         "../effects/engine.rkt"
-         "../env/doc-type.rkt"
-         "../env/command.rkt"
-         "../env/environment.rkt"
-         "../chrome/slot.rkt"
-         "../bootstrap/commands/table.rkt"
-         "../bootstrap/defaults.rkt"
-         "../plugins/builtin.rkt"
-         "../dispatch/context.rkt"
-         "../runtime/run.rkt")
+         "../main.rkt")
 
-;;; ════════════════ 文件 / document 类型 ════════════════
+(define (open! store #:name [name #f] #:path [path #f] #:text [text ""]
+                     #:tables [tables '()] #:version [version 0])
+  (let-values ([(s as)
+                (if name
+                    (resource-open store #:name name #:path path #:text text
+                                   #:tables tables #:version version)
+                    (resource-open store #:path path #:text text
+                                   #:tables tables #:version version))])
+    (values s as)))
 
-(define tmp (make-temporary-file "rebuild-open-~a.rkt"))
-(display-to-file "file text\n" tmp #:exists 'truncate)
-(define path (path->string tmp))
+(define (prompt-of s)
+  (resource-prompt s))
 
-(define rkt-keys (keys [(key 'z) 'note-z]))
-(define rkt-type
-  (make-doc-type 'rkt
-                 #:extensions '("rkt")
-                 #:mode 'text
-                 #:keymaps (list rkt-keys)))
+;;; ---------- 打开 ----------
+(define s0 resource-store-empty)
+(define-values (s1 as1) (open! s0 #:name "scratch" #:text "hello"))
+(check-equal? (map resource-action-kind as1) '(create-buffer create-view))
+(check-equal? (resource-action-data (car as1)) '(1 "scratch" "hello"))
+(check-equal? (resource-action-data (cadr as1)) '(1 1))
+(check-equal? (resource-focus s1) 1)
+(check-equal? (map resource-id (resource-list s1)) '(1))
+(check-equal? (resource-view-ids s1 1) '(1))
+(check-false (resource-path s1 1))
+(check-false (resource-writable? s1 1))
+(check-false (resource-dirty? s1 1))
+(check-equal? (resource-version (resource-ref s1 1)) 0)
+(check-equal? (resource-saved-version (resource-ref s1 1)) 0)
 
-(define env
-  (environment-merge
-   default-env
-   (make-environment
-    #:doc-types (hash 'rkt rkt-type)
-    #:commands (hash 'note-z
-                     (cmd (λ (ctx)
-                            (transition-pure
-                             (state-chrome* (ctx-state ctx)
-                                            (λ (c) (chrome-set-message c "z!"))))))))))
+;; 打开时就绑定命令表
+(define base (keys ['a 'cmd-a] ['x 's 'cmd-xs]))
+(define-values (s2 as2) (open! resource-store-empty #:name "main.rkt" #:path "main.rkt"
+                               #:text "code" #:tables (list base) #:version 'v1))
+(check-equal? (map resource-action-kind as2) '(create-buffer create-view))
+(check-true (resource-writable? s2 1))
+(check-equal? (resource-path s2 1) "main.rkt")
+(let-values ([(st v) (command-table-stack-lookup (resource-command-stack s2 1) '(a))])
+  (check-equal? st 'command)
+  (check-equal? v 'cmd-a))
+(let-values ([(st v) (command-table-stack-lookup (resource-command-stack s2 1) '(x s))])
+  (check-equal? st 'command)
+  (check-equal? v 'cmd-xs))
 
-;;; ════════════════ 初始资源 ════════════════
+;;; ---------- dirty ----------
+(define s3 (resource-mark-edited s2 1 'v2))
+(check-true (resource-dirty? s3 1))
+(check-equal? (resource-version (resource-ref s3 1)) 'v2)
+(check-equal? (resource-saved-version (resource-ref s3 1)) 'v1)
 
-(define did (doc-id 1))
-(define vid (view-id 1))
-(define rid (region-id 1))
-(define engine (make-engine))
-(void (engine-create-doc! engine did "main.rkt" "initial\n"))
-(void (engine-create-view! engine vid did))
+;;; ---------- 有 path 保存 ----------
+(define-values (s4 as4) (resource-save s3 1))
+(check-equal? (map resource-action-kind as4) '(write-file))
+(check-equal? (resource-action-data (car as4)) '(1 "main.rkt"))
+(define-values (s5 as5) (resource-save-done s4 1 'v2))
+(check-false (resource-dirty? s5 1))
+(check-equal? (resource-saved-version (resource-ref s5 1)) 'v2)
 
-(define crid (region-id 2))
-(define ws0
-  (let* ([ws (workspace-empty)]
-         [ws (workspace-add-doc ws did (make-doc-meta "main.rkt"))]
-         [ws (workspace-add-view ws vid (view-meta did (hash)))]
-         [ws (workspace-add-region ws rid
-                                   (region rid (list (view-member vid)) vid 'editor))])
-    ws))
-(define s-base (make-state #:workspace ws0
-                           #:ids (make-id-counter 2 2 3 1)))
-(define s-chrome (install-chrome! engine s-base crid))
-(define lay (make-split 'tb
-                        (list (make-leaf rid (flex 1))
-                              (make-leaf crid (fixed 1) #:borders '()))
-                        (flex 1)))
-(define s0
-  (state-set-focus
-   (state-set-workspace s-chrome
-                        (struct-copy workspace (state-workspace s-chrome) [layout lay]))
-   vid))
+;;; ---------- 无 path 保存：先要路径 ----------
+(define-values (s6 as6) (resource-save s1 1))
+(check-equal? as6 '())
+(define p6 (prompt-of s6))
+(check-not-false p6)
+(check-equal? (prompt-kind p6) 'save-path)
+(check-equal? (prompt-resource-id p6) 1)
+(define-values (s7 as7) (resource-submit s6 (prompt-id p6) "new.txt"))
+(check-equal? (map resource-action-kind as7) '(write-file))
+(check-equal? (resource-action-data (car as7)) '(1 "new.txt"))
+(check-equal? (resource-path s7 1) "new.txt")
+(check-true (resource-writable? s7 1))
+(define-values (s8 as8) (resource-save-done s7 1 0))
+(check-false (resource-dirty? s8 1))
 
-(define inbox (make-async-channel))
-(define (feed s . evs)
-  (transition-state (process-events env engine inbox s evs)))
-(define (plain c) (app:key-event (key c)))
-(define (ctrl c)  (app:key-event (key c 'ctrl)))
-(define (ev) (make-engine-view engine))
+;;; ---------- quit: clean ----------
+(define-values (sq asq) (resource-request-quit s2))
+(check-equal? (map resource-action-kind asq) '(quit))
+(check-equal? (resource-action-data (car asq)) '())
 
-;;; ════════════════ C-x C-f 打开文件 ════════════════
+;;; ---------- quit: dirty, skip ----------
+(define-values (sq2 asq2) (resource-request-quit s3))
+(check-equal? asq2 '())
+(check-equal? (prompt-kind (prompt-of sq2)) 'confirm)
+(define-values (sq3 asq3) (resource-submit sq2 (prompt-id (prompt-of sq2)) 'skip))
+(check-equal? (map resource-action-kind asq3) '(quit))
 
-(define s1 (feed s0 (ctrl 'x)))
-(define s2 (feed s1 (ctrl 'f)))
-(check-equal? (region-active (workspace-region (state-workspace s2) crid))
-              (chrome-input-view s2))
-(check-equal? (engine-view-view-text (ev) (chrome-input-view s2)) "Open file: ")
+;;; ---------- quit: dirty pathless, save -> save-path -> save-done -> quit ----------
+(define s9 (resource-mark-edited s1 1 'v2))
+(define-values (sq4 asq4) (resource-request-quit s9))
+(check-equal? asq4 '())
+(check-equal? (prompt-kind (prompt-of sq4)) 'confirm)
+(define-values (sq5 asq5) (resource-submit sq4 (prompt-id (prompt-of sq4)) 'save))
+(check-equal? asq5 '())                         ; 还没 path，先出 save-path
+(check-equal? (prompt-kind (prompt-of sq5)) 'save-path)
+(define-values (sq6 asq6) (resource-submit sq5 (prompt-id (prompt-of sq5)) "scratch.txt"))
+(check-equal? (map resource-action-kind asq6) '(write-file))
+(define-values (sq7 asq7) (resource-save-done sq6 1 'v2))
+(check-equal? (map resource-action-kind asq7) '(quit))
+(check-false (resource-pending sq7))
 
-;; 输入路径
-(define s3
-  (for/fold ([s s2]) ([c (in-string path)])
-    (feed s (plain c))))
-(check-equal? (engine-view-view-text (ev) (chrome-input-view s3))
-              (string-append "Open file: " path))
+;;; ---------- close: clean ----------
+(define-values (sc asc) (resource-request-close s2 1))
+(check-equal? (map resource-action-kind asc) '(close-resource))
+(check-equal? (resource-list sc) '())
+(check-false (resource-focus sc))
 
-;; Enter -> read-file -> open-doc -> mount
-(define s4 (feed s3 (app:key-event (key 'enter))))
-(check-equal? (hash-count (workspace-docs (state-workspace s4))) 4)
-(check-equal? (hash-count (workspace-views (state-workspace s4))) 4)
-(check-equal? (state-focus s4) (view-id 4))
-(check-equal? (engine-view-doc-text (ev) (doc-id 4)) "file text\n")
+;;; ---------- close: dirty, cancel ----------
+(define-values (sc2 asc2) (resource-request-close s3 1))
+(check-equal? asc2 '())
+(check-equal? (prompt-kind (prompt-of sc2)) 'confirm)
+(define sc3 (resource-cancel sc2 (prompt-id (prompt-of sc2))))
+(check-equal? (map resource-id (resource-list sc3)) '(1))
+(check-false (resource-pending sc3))
 
-;; 打开的 document 携带 doc-type 的 mode + keymaps
-(define dm (workspace-doc (state-workspace s4) (doc-id 4)))
-(check-equal? (doc-meta-path dm) path)
-(check-equal? (doc-meta-mode dm) 'text)
-(check-equal? (length (doc-meta-keymap-layers dm)) 1)
-(check-equal? (doc-meta-keymap-layers dm) (list rkt-keys))
+;;; ---------- 确认提示：带路径 + y/n/all/nall ----------
+;; 两个 dirty 资源：y -> 存第一个；all -> 存剩下全部
+(define-values (two0 two0as)
+  (resource-open resource-store-empty #:name "a" #:path "a.txt"
+                 #:text "A" #:version 'va))
+(define-values (two1 two1as)
+  (resource-open two0 #:name "b" #:path "b.txt" #:text "B" #:version 'vb))
+(void two0as) (void two1as)
+(define two2 (resource-mark-edited (resource-mark-edited two1 1 'va2) 2 'vb2))
+(define-values (tq tq0) (resource-request-quit two2))
+(check-equal? tq0 '())
+(check-equal? (prompt-kind (prompt-of tq)) 'confirm)
+;; 提示里有文件路径
+(check-true (string-contains? (prompt-label (prompt-of tq)) "a.txt"))
+(define tpid1 (prompt-id (prompt-of tq)))
+;; y -> 保存第一个；然后出现第二个 confirm，提示换成 b.txt
+(define-values (tq1 tqa1 tqok1?) (resource-submit-text tq tpid1 "y"))
+(check-true tqok1?)
+(check-equal? (map resource-action-kind tqa1) '(write-file))
+(check-equal? (resource-action-data (car tqa1)) '(1 "a.txt"))
+(define-values (tq2 tqa2) (resource-save-done tq1 1 'va2))
+(check-equal? tqa2 '())
+(check-equal? (prompt-kind (prompt-of tq2)) 'confirm)
+(check-true (string-contains? (prompt-label (prompt-of tq2)) "b.txt"))
+;; ALL（大写）-> 保存剩下全部，然后 quit
+(define tpid2 (prompt-id (prompt-of tq2)))
+(define-values (tq3 tqa3 tqok2?) (resource-submit-text tq2 tpid2 "ALL"))
+(check-true tqok2?)
+(check-equal? (map resource-action-kind tqa3) '(write-file))
+(check-equal? (resource-action-data (car tqa3)) '(2 "b.txt"))
+(define-values (tq4 tqa4) (resource-save-done tq3 2 'vb2))
+(check-equal? (map resource-action-kind tqa4) '(quit))
 
-;; per-doc keymap 立即生效：z -> note-z
-(define s5 (feed s4 (plain 'z)))
-(check-equal? (chrome-message (state-chrome s5)) "z!")
+;; NALL -> 跳过全部，直接 quit
+(define-values (nq nq0) (resource-request-quit two2))
+(define npid (prompt-id (prompt-of nq)))
+(define-values (nq1 nqa1 nqok?) (resource-submit-text nq npid "nall"))
+(check-true nqok?)
+(check-equal? (map resource-action-kind nqa1) '(quit))
 
-;;; ════════════════ C-x C-k 关闭文件 ════════════════
+;; 非法答案仍然拒绝
+(define-values (bq bqa bok?) (resource-submit-text nq npid "maybe"))
+(check-false bok?)
 
-(define s6 (feed s5 (ctrl 'x)))
-(define s7 (feed s6 (ctrl 'k)))
-(check-equal? (hash-count (workspace-docs (state-workspace s7))) 3)
-(check-equal? (hash-count (workspace-views (state-workspace s7))) 3)
-(check-equal? (state-focus s7) vid)
-(check-false (workspace-doc (state-workspace s7) (doc-id 4)))
-(check-false (engine-view-doc-text (ev) (doc-id 4)))
-(check-equal? (engine-view-doc-text (ev) did) "initial\n")
+;;; ---------- 输入栏文本提交（Enter 接的 API） ----------
+;; save-path：空白 -> 不合法；合法 -> 去空白后写文件
+(define st1 (resource-mark-edited s1 1 'v2))        ; pathless + dirty
+(define-values (sp1 asp1) (resource-save st1 1))
+(check-equal? asp1 '())
+(check-equal? (prompt-kind (prompt-of sp1)) 'save-path)
+(define spid (prompt-id (prompt-of sp1)))
+(define-values (sp2 asp2 ok1?) (resource-submit-text sp1 spid "   "))
+(check-false ok1?)
+(check-equal? asp2 '())
+(check-equal? sp2 sp1)
+(define-values (sp3 asp3 ok2?) (resource-submit-text sp1 spid "  scratch2.txt  "))
+(check-true ok2?)
+(check-equal? (map resource-action-kind asp3) '(write-file))
+(check-equal? (resource-path sp3 1) "scratch2.txt")
 
-(delete-file tmp)
+;; confirm：非法值 -> ok? #f、prompt 不变；合法值 -> 继续
+(define-values (cq0 acq0) (resource-request-quit st1))
+(check-equal? acq0 '())
+(check-equal? (prompt-kind (prompt-of cq0)) 'confirm)
+(define cpid (prompt-id (prompt-of cq0)))
+(define-values (cq1 acq1 ok3?) (resource-submit-text cq0 cpid "bogus"))
+(check-false ok3?)
+(check-equal? acq1 '())
+(check-equal? cq1 cq0)
+(define-values (cq2 acq2 ok4?) (resource-submit-text cq0 cpid " skip "))
+(check-true ok4?)
+(check-equal? (map resource-action-kind acq2) '(quit))
 
-(displayln "edit-tui resource: ok")
+;;; ---------- 事件 ----------
+(define-values (_s evs) (resource-drain-events s5))
+(check-true (for/or ([e (in-list evs)]) (eq? (resource-event-kind e) 'saved)))
+(check-equal? (resource-events _s) '())
+
+(displayln "edit-tui-rebuild/test/resource.rkt: ok")

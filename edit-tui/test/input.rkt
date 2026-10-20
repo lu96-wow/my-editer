@@ -87,8 +87,16 @@
 (define s2 (type s1 e0 "abc"))
 (check-equal? (view-line e0 21) (string-append prefix "abc"))
 
+;; 输入栏专属：C-h -> head，C-t -> tail（C-h 在输入栏不是 Backspace）
+(define s2h (press s2 e0 (key 'h 'ctrl)))
+(check-equal? (view-line e0 21) (string-append prefix "abc"))
+(check-equal? (engine-view-point-column e0 21) 0)
+(define s2t (press s2h e0 (key 't 'ctrl)))
+(check-equal? (engine-view-point-column e0 21)
+              (string-length (string-append prefix "abc")))
+
 ;; ← ← 后插入 X -> aXbc
-(define s3 (press s2 e0 (key 'left)))
+(define s3 (press s2t e0 (key 'left)))
 (define s4 (press s3 e0 (key 'left)))
 (define s5 (type s4 e0 "X"))
 (check-equal? (view-line e0 21) (string-append prefix "aXbc"))

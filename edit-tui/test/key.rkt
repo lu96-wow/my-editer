@@ -35,8 +35,11 @@
 
 ;;; ---------- 终端不能区分的组合 = 同一个 token ----------
 (check-equal? (key 'i 'ctrl) (key 'tab))        ; C-i 就是 Tab
-(check-equal? (key 'h 'ctrl) (key 'backspace))  ; C-h 就是 Backspace
 (check-equal? (key 'm 'ctrl) (key 'enter))      ; C-m 就是 Enter
+;; C-h（字节 8）保留成独立 token，不再归一成 Backspace(127)：
+;; 输入栏用它做 head；Backspace 绑定用 127。
+(check-equal? (key 'h 'ctrl) (key-token 'key #"\x08"))
+(check-not-equal? (key 'h 'ctrl) (key 'backspace))
 (check-equal? (key 'j 'ctrl) (key 'enter))      ; LF 归一成 CR
 (check-true (equal? (key 'j 'ctrl) (key-token 'key #"\r")))
 (check-equal? (key 'space 'ctrl) (key-token 'key #"\x00"))  ; C-Space = NUL
@@ -51,8 +54,9 @@
 (check-equal? (raw 'end #"\e[4~") (key 'end))
 (check-equal? (raw 'insert #"\e[2~") (key 'insert))
 (check-equal? (raw 'pageup #"\e[5~") (key 'pageup))
-;; 普通字节原样保留（含 canonical 归一：BS -> DEL、LF -> CR）
-(check-equal? (raw 'key #"\x08") (key 'backspace))
+;; 普通字节原样保留（canonical 只把 LF 归一成 CR）
+(check-equal? (raw 'key #"\x08") (key 'h 'ctrl))
+(check-equal? (raw 'key #"\x7f") (key 'backspace))
 (check-equal? (raw 'key #"\x0a") (key 'enter))
 (check-equal? (raw 'key #"\x09") (key 'tab))
 (check-equal? (raw 'key #"\x1b") (key 'escape))

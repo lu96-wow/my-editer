@@ -1,36 +1,41 @@
 #lang racket
 
-;;; runtime/tui-adapter.rkt —— racket-tui 事件 → 应用事件（唯一 tui 解码点）
-;;; layer  : runtime
-;;; effect : 无（纯适配：tui 事件 -> 应用事件）
-
-;;; 只做两件事：
-;;;   · 终端事件 → base/event.rkt 的值；
-;;;   · 鼠标 1-based 坐标 → 0-based 屏幕格。
+;;; edit-tui-rebuild/runtime/tui-adapter.rkt —— tui raw 事件 -> app 事件
 ;;;
-;;; 键 / 鼠标 token 复用 edit-tui/command 的纯 token 结构。
+;;; 用 tui 的字节级接口 read-event/raw（返回值 (values type data mods)）：
+;;;   type : 'key 'ctrl 'alt 'utf8 'mod-seq 'up 'down … 'mouse 'paste 'resize
+;;;   data : 原始字节（mouse / resize 是结构化值）
+;;;
+;;; 键事件原样变成 (key-token tag bytes)，不在这一层解码 char / symbol。
+;;; mods 不单独保存：tag + bytes 已经表达了它（'ctrl 隐含 ctrl，
+;;; 'mod-seq 的修饰位在 CSI 参数里）。
+
+(require racket/match
+         (prefix-in tui: tui)
+         (prefix-in a: "../app/event.rkt")
+         "../skeleton.rkt")
 
 (provide tui-event->app)
 
-(require tui
-         (prefix-in app: "../base/event.rkt")
-         "../command/tui.rkt")
+;; 鼠标：raw data = (action button x y mods) | (scroll dir x y mods)
+(define (raw-mouse->app data)
+  (match data
+    [(list 'press _b x y _m)
+     (a:mouse-event 'press (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'release _b x y _m)
+     (a:mouse-event 'release (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'move _b x y _m)
+     (a:mouse-event 'move (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [(list 'scroll _btn dir x y _m)
+     (a:mouse-event (if (eq? dir 'up) 'scroll-up 'scroll-down)
+                    (max 0 (sub1 y)) (max 0 (sub1 x)))]
+    [_ #f]))
 
-(define (tui-event->app ev)
-  (cond
-    [(key-event? ev)
-     (define tok (event->key ev))
-     (and tok (app:key-event tok))]
-
-    [(mouse-event? ev)
-     (define tok (event->mouse ev))
-     (define-values (row col) (mouse-position ev))
-     (and tok (app:mouse-event tok row col))]
-
-    [(resize-event? ev)
-     (app:resize-event (resize-event-rows ev) (resize-event-cols ev))]
-
-    [(paste-event? ev)
-     (app:paste-event (paste-event-text ev))]
-
-    [else #f]))
+;; raw (type data mods) -> app event
+(define (tui-event->app type data _mods)
+  (case type
+    [(null) #f]
+    [(resize) (a:resize-event (car data) (cdr data))]
+    [(paste) (a:paste-event data)]                 ; 原始字节
+    [(mouse) (raw-mouse->app data)]
+    [else (a:key-event (raw-key-token type data))]))

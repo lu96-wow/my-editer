@@ -18,7 +18,7 @@
 ;;; Unicode 塞进表里。
 ;;;
 ;;; 绑定的 token 是 (tag . bytes)：终端不能区分的组合自然共用一个 token
-;;; （C-i = Tab、C-m = Enter、C-h = Backspace …），不会出现“死绑定”。
+;;; （C-i = Tab、C-m = Enter、C-[ = Escape …），不会出现“死绑定”。
 
 (require "../skeleton.rkt"
          "../app/state.rkt"

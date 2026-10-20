@@ -24,7 +24,7 @@
 ;;;   （C-i 与 Tab 是同一个字节，所以绑 Tab 就能收到 C-i）
 ;;;
 ;;; 输入栏（Save as / 退出确认）：
-;;;   ←→ Home End / Backspace / Delete 编辑，粘贴可用；prompt 前缀只读；
+;;;   ←→ Home End / Backspace / Delete 编辑，C-h / C-t 行首 / 行尾；粘贴可用；
 ;;;   Enter 提交，Esc / C-g 取消；
 ;;;   confirm 提示里有文件路径，可输 y / n / all / nall。
 ;;;

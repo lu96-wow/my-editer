@@ -1,738 +1,1087 @@
-# edit-tui
+# edit-tui-rebuild
 
-重建中的编辑器骨架。
+重建中的编辑器基础设施：纯 State + action，布局 / 编辑 / 文件树 / 渲染都在
+`*/api.rkt` 之后，core 只做 buffer / view / 几何 / 渲染。
 
-- **现在的分层 / 副作用白名单 / 扩展点**：[`ARCHITECTURE.md`](ARCHITECTURE.md)
-- **插件怎么写（高亮 / 补全 / 文档 三个例子 + 与上一代的取舍）**：[`PLUGINS.md`](PLUGINS.md)
-- **特殊约束 / 依赖配合表**（改 hook、effect、decor、worker 前先看）：
-  [`CONSTRAINTS.md`](CONSTRAINTS.md)
-- **约定 / 不变量**（信号点、什么算编辑、所有显示都是 document、浮层规则）：
-  [`ARCHITECTURE.md` §8](ARCHITECTURE.md)
-- 为什么这样设计（旧实现的审计与目标模型）：[`DESIGN.md`](DESIGN.md)
-- **rebuild 做了什么 / 全函数归纳 / 可变与不可变状态 / 扩展点收敛方案**：
-  [`ANALYSIS.md`](ANALYSIS.md)（全量顶层定义索引见 [`FUNCTION-INDEX.md`](FUNCTION-INDEX.md)）
-- **step2 已落地：统一贡献清单 + 装配期校验**：[`STEP2.md`](STEP2.md)
+## 约束
 
-所有分层规则由 `test/layers.rkt` 机器检查；`test/run.sh` 会先 `raco make` 再跑。
-
-## 进度
-
-| 块 | 内容 | 状态 |
-|---|---|---|
-| 1 | `base/` 词汇 + `model/` 状态切片 + 纯测试 | ✅ |
-| 2 | `env/` 注册表（role / mode / scope / command） | ✅ |
-| 3 | `dispatch/` 规则管线 + 键盘/鼠标统一 | ✅ |
-| 4 | `effects/` engine 适配 + 文件 IO（spawn/timer 留给 runtime） | ✅ |
-| 5 | `projection/` geometry / render / status | ✅ |
-| 6 | `bootstrap/` + runtime | ✅ |
-
-## 目录
-
-```
-base/          纯词汇（0 依赖）
-  id.rkt          带 kind 的稳定 id + 纯分配器
-  event.rkt       应用事件 ADT（不依赖 tui）
-  effect.rkt      效果 ADT（引擎写 / IO / 调度）
-  transition.rkt  State + 有序 effects + 组合子
-  keymap.rkt      通用 token -> 值 的前缀表
-  status-part.rkt 状态栏段（render 由使用方提供）
-  signal.rkt      信号（point + args）与 FIFO 队列
-model/         纯状态（只依赖 base）
-  state.rkt       根 State：window / workspace / input / chrome / runtime / ids / confirm / store
-  workspace.rkt   doc / view / region / layout / focus / overlay / root / placement / panel-index
-  layout.rkt      region 布局树（纯几何）
-  input.rkt       pending / modes / gesture / input-session（tag/data/cancel）
-  chrome.rkt      message / log
-  workspace.rkt   里含 float（浮层 = 不在 layout 里的 region：id / region / view / anchor）
-  save.rkt        保存确认队列（框架级）
-  face-layer.rkt  face 分层合成（逐分量合并；层序 = env.face-layers）
-  face-decor.rkt  增量 face 装饰协议 + dirty / refresh-layer / stateful-advance
-  service.rkt     插件异步查询的通用 cache / pending / jobs
-  interaction.rkt 进行中的交互栈（input / placement / confirm）
-env/           纯策略（只依赖 base + model）
-  environment.rkt role/mode/scope/command/keymap/rules/status/doc-type/
-                  input-command/panel-sync/hook/decor/interaction/service/continuation
-  role.rkt        区域角色 -> splittable? / close-policy / focusable? / target?
-  mode.rkt        document 模式 -> keymaps / fallback
-  scope.rkt       scope 谓词
-  command.rkt     命令值（复用旧 command 结构）
-  rule.rkt        scope + keymap 的规则
-  doc-type.rkt    路径 -> mode + per-document keymaps
-  input-command.rkt 输入栏字符串匹配
-  hook.rkt        钩子（point / when / priority / proc；独立模块）
-  panel-spec.rkt  面板描述符（name / role / mode / sync / install / hint / owner / key / placement）
-  service.rkt     worker service 声明（kind / description / pure?）
-  extension.rkt   统一 contribution（owner / kind / payload）+ 装配期校验
-  plugin.rkt      插件描述符 + 纯装配（plugins-env / plugins-apply）
-  defaults.rkt    内置 role / mode
-effects/       边界（core 只在这里被拥有）
-  engine.rkt      core buffer/view 的唯一可变拥有者
-  paint.rkt       每文档 face-paint slot：decor 状态 / 静态层 / 脏行写回
-  panel.rkt       面板↔引擎适配：create-view / region-install / install / uninstall / sync-buffer
-  interpreter.rkt effect -> transition（文件 IO / 文档开关 / 保存 / 退出）
-projection/    纯投影
-  geometry.rkt    layout -> region-panel / cut / window-area / region-neighbor
-  status.rkt      状态栏文本投影 + 默认段
-  render.rkt      state + engine -> panels / bytes
-dispatch/      纯派发
-  context.rkt     命令看到的 ctx
-  rules.rkt       规则层序（input modes > per-doc > env.rules > mode > global）
-  hooks.rkt       排空信号 -> 跑 hook（纯）
-  pipeline.rkt    event -> transition
-chrome/        框架 chrome
-  slot.rkt        安装 status/input 槽（两个 core view）
-  input.rkt       输入栏 API（input-show #:tag/#:data/#:cancel / input-finish …）
-bootstrap/     装配
-  panel.rkt       panel-spec -> panel-install!（唯一缝）
-  plugin.rkt      plugin-uninstall!（env 撤销 + store 清理 + panel 卸载）
-  commands/
-    util.rkt        message / notice / real-view? / fallback-attached-view
-    edit.rkt        导航 / 插入 / 删除 / undo / redo / quit
-    view.rkt        split / close-view / new-document / detach / attach / cycle
-    region.rkt      close-region（按 role 的 close-policy）
-    focus.rkt       focus 方向移动 + 鼠标落点/拖选
-    document.rkt    open / save / save-as / 保存确认 / 关闭 / 退出
-    placement.rkt   把 detached view 放进 panel
-    cancel.rkt      当前交互取消（input / placement / nothing）
-    table.rkt       框架命令表
-    layout.rkt      toggle-region!（显隐 / 尺寸记忆 / 焦点回退）
-  defaults.rkt    core-env（只有框架）
-plugins/       内置插件（每个一个目录）
-  builtin.rkt     default-plugins / default-env / editor-plugins / editor-env
-  filetree/
-    model.rkt       store['filetree]（view / expanded；显隐尺寸在 layout leaf）
-    scan.rkt        读目录（唯一 IO）
-    lines.rkt       纯投影：条��� -> 行
-    panel.rkt       写 *filetree* buffer
-    commands.rkt    Enter / C-b / C-n f / C-d …
-    plugin.rkt      panel-spec + mode + commands + 规则 + install
-  worker.rkt      后台 worker 的入口（独立 place；按 kind 分派纯计算；高亮已不走这里）
-  highlight/
-    lex.rkt         纯词法：行 + 跨行状态 -> 行 face 向量
-    depth.rkt       括号栈：行 + 栈 -> 背景向量
-    syntax-decor.rkt  语法高亮 face-decor（层 'syntax-fg；只对 .rkt 生效）
-    depth-decor.rkt   括号深度 face-decor（层 'depth-bg）
-    word-color-decor.rkt 同词同色 face-decor（层 'word-color）
-    words-decor.rkt   光标当前词 face-decor（层 'words）
-    kind.rkt        Racket 文件判断（doc-meta）
-    plugin.rkt      语法高亮插件（贡献 decor）
-    depth-plugin.rkt 括号底色插件（贡献 decor）
-    word-color-plugin.rkt 同词同色插件
-    words-plugin.rkt 当前词高亮插件
-  completion/
-    plugin.rkt      输入后自动补全：本地词 + require 导出（worker）+ 模块路径
-  docs/
-    plugin.rkt      C-c h / M-d 文档面板：光标前词 + 本地定义 + xref/bluebox（worker）
-  lang/
-    context.rkt     当前文档的 require 上下文（补全 / 文档共用，纯查询）
-    word.rkt        光标前词（补全前缀 / 文档查询共用的唯一词定义）
-    source.rkt      require / 定义 / provide 启发式解析（含 define/contract、struct 访问器）
-    pool.rkt        require spec -> 绑定名（打开文档优先，磁盘模块兜底）
-    module-index.rkt 已安装模块路径索引（worker）
-    local-docs.rkt  当前文档顶层定义摘要（纯）
-    docs.rkt        xref + blueboxes (+ HTML) 文档查询（worker）
-    doc-html.rkt    HTML 文档页 -> markdown（worker）
-  resource/
-    model.rkt       store['resources]（collapsed / view）
-    lines.rkt       纯投影：doc/view -> 行
-    panel.rkt       写 *resources* buffer
-    commands.rkt    tab / v / n / r / d / c
-    plugin.rkt      panel-spec + mode + commands + install
-runtime/       壳
-  tui-adapter.rkt 终端事件 -> base/event
-  worker.rkt      后台 worker（独立 place；一个 worker 一条队列）
-  run.rkt         run-app：事件循环 / effect 解释 / 渲染 / inbox
-demo/           可交互 demo
-main.rkt        公共面
+```text
+1. State 是纯值：不存 engine 句柄、不存 IO 结果，只存 id / 数据 / 纯迁移结果。
+2. 所有副作用都经 action：step 产出 action，runtime 解释；命令只返回
+   (values state actions)。
+3. core buffer / view 只有一个拥有者：engine/store.rkt（骨架层）。
+4. 跨领域只经 */api.rkt；领域实现文件是私有的。上层可以 require 下层 api，
+   下层永远不 require 上层。
+5. 渲染是纯投影：state/layout -> core panel -> bytes；渲染不改 view 尺寸以外的状态。
+6. 键位用 (tag . bytes)，不用 M- 前缀（窗口管理器会吞）；终端不能区分的组合
+   共用 token（C-i = Tab）。
+7. 主题是 require 安装的；颜色 / 样式只在 config/theme/ 里。
 ```
 
-核心约定：
+## 分层
 
-- State 只存 **id + 元数据**，不存 core 的 buffer / view 句柄；
-- 命令返回 `(transition state effects)`，效果按顺序解释；
-- 切焦点不自动清 pending；输入状态独立；
-- 区域几何在 layout leaf，成员/active 在 region，避免两处真相；
-- role/mode/scope/command/plugin 都在 Environment 值里，注册是 `environment-add-*`，不是模块级 `set!`；
-- 命令 id 作为 keymap 叶子，dispatch 再用 env 查命令实现；
-- 层序：input modes > per-doc > env.rules > mode > global（`dispatch/rules.rkt`）；
-- 状态栏是 `status-part` 列表：`default-status-parts` 只有 focus 行列 + path，
-  `full-status-parts` 再加 pending/message；
-  - path 在 `workspace.root` 下时显示**相对路径**，否则绝对路径；
-- 打开文件时按路径匹配 `env.doc-types`，把 mode + keymaps 写进 `doc-meta.keymap-layers`；
-- 输入栏是 *input* document：prompt 前缀写进 buffer 且 readonly，提交时读完整字符串，
-  交给 `environment.input-commands` 匹配；
-- `focus` 是 `view-id | region-id | #f`：有文档时是 view，空窗口（刚拆出来 / 关光 view 的 panel）
-  时是 region-id，什么都没有时是 #f；状态栏对后两种退回“第一个 editor view”投影位置；
-- `internal?` 文档（状态栏 / 输入栏 / 插件面板）不参与保存确认、不进资源列表、不能当 placement 目标；
-- 文档版本用 core 的 opaque token：`buffer-version` / `buffer-version=?`；
-- 渲染分工：Runtime 先 `engine-sync-views!` 落 viewport，再 `render-frame` 得到 bytes，最后自己 `put-bytes`；
-- `spawn` / `timer` 的回投事件在“下一个终端事件”到达时排空。
+```text
+层           目录                                         纯?        可以 require
+------------------------------------------------------------------------------
+骨架-值      base  command  face  panel  config          纯         core 的纯值
+骨架-布局    layout(tree/solve/ops)                       纯         骨架-值
+骨架-资源    resource                                    纯         骨架-值
+骨架-引擎    engine(action/model)                         有 core 句柄  core
+                                           （engine 是 core buffer/view 的唯一拥有者，
+                                             但对插件只暴露查询 + 写 UI view 的入口）
+骨架-投影    projection  render                          纯         布局 / 值 / core render
+骨架入口     skeleton.rkt                            纯聚合     上面所有骨架 api.rkt
+------------------------------------------------------------------------------
+插件         edit  chrome  filetree                      纯         skeleton.rkt + app/state
+App 基础     app/state  app/event  app/action             纯         skeleton.rkt
+App 交互     app/placement                              纯         skeleton.rkt + app/state
+App 编排     app/step                                   纯         skeleton + 插件 api + app 基础
+Runtime      runtime(actions/render/sync/tui/loop)        有副作用    全部 + tui
+入口         main.rkt                                  纯聚合     skeleton + 插件 + app + runtime
+```
+
+依赖方向（单向）：
+
+```text
+core (buffer / view / rect / text / render)
+        ↑
+骨架：base / command / config / panel / face
+        ├─ layout ──→ projection ──→ render
+        ├─ resource
+        └─ engine (core buffer/view 的唯一拥有者)
+                ↑
+          skeleton.rkt          ← 插件唯一能 require 的骨架入口
+        ┌───────┴────────┐
+      edit      chrome   filetree   ← 插件：只组合骨架 + app/state
+        └───────┬────────┘
+             app/step ──→ runtime ──→ tui
+```
+
+规则：
+
+- **插件只 require `skeleton.rkt`**，不直接 require core、runtime、骨架实现模块
+  （`layout/tree.rkt`、`engine/store.rkt` … 都不行）；
+- 插件之间只经对方 `api.rkt`（filetree 只用 `edit/api.rkt` 的导航表）；
+- 插件可以 require `app/state.rkt` / `app/event.rkt` / `app/action.rkt`
+  （根 State 与 action 词汇）来做纯状态迁移；
+- `engine` 不认识 app：`view-action` 词汇在 `engine/action.rkt`（骨架），
+  `app/action.rkt` 只是再导出它并补 `open-file` / `quit`；
+- `app/step.rkt` 是唯一编排插件的地方，且只 require 插件 `api.rkt`；
+- `runtime` 是唯一有副作用的层。
+
+## 逻辑拆分
+
+```text
+骨架：
+  layout/    tree.rkt   结构 + panel 资源 + 可见性 + 固定尺寸查询（不求解）
+             solve.rkt  layout-solve：rect / split / seam（纯几何）
+             ops.rkt    结构编辑：split / attach / remove / hide / drag / 校验
+  resource/  model.rkt  资源状态 + 保存/退出/prompt 状态机 + 路径规范化/查找
+  engine/    action.rkt 骨架的 view 操作 action（insert / nav / select / …）
+             store.rkt  core buffer/view 的持有 + 写 UI view + 唯一查询入口
+  projection/borders.rkt  共享边框 + 焦点框
+             geometry.rkt layout -> core panel（渲染 / 命中 / 内容命中）
+  render/    core.rkt    core piece -> tui bytes
+             layout.rkt  layout -> panels -> bytes
+  skeleton.rkt  骨架入口（插件只 require 这个）（插件只 require 这个）
+
+插件：
+  edit/      insert.rkt  自插入判读
+             commands.rkt navigation-command-table / edit-command-table
+  chrome/    status.rkt  状态栏投影
+             input.rkt   输入栏（单行编辑 + prompt + readonly 前缀）
+  filetree/  model.rkt   行结构 / 展开集合 / 投影缓存键
+             lines.rkt   纯行投影
+             scan.rkt    唯一 IO 点：读目录
+             slice.rkt   app-state.store['filetree'] 切片存取
+             sync.rkt    每帧同步到 core view
+             commands.rkt Enter / C-r / 安装
+
+App：
+  event/action/state/placement/step：事件、动作、状态、放置交互、编排
+```
+
+## 项目结构
+
+```text
+edit-tui-rebuild/
+  main.rkt                 唯一聚合入口（skeleton + 插件 + app + runtime 的 api.rkt）
+                           —— 没有顶层 api.rkt；api 不是一层
+
+  skeleton.rkt         骨架 API（布局 / 资源 / 焦点 / face / 命令 / 投影 / engine）
+
+  base/api.rkt             基础值：rect / point / range / selection / 显示列
+
+  command/  table.rkt      命令表 / 栈 / keys DSL
+            key.rkt        键 token = 标签 + 原始字节
+            api.rkt
+
+  config/   model.rkt      panel kind 规则
+            theme/default.rkt  主题（require 即安装）
+            api.rkt
+
+  face/ model.rkt          face 值 / 分层合成
+        api.rkt
+
+  panel/ model.rkt         panel 资源
+         api.rkt
+
+  layout/ tree.rkt         split tree + panel 资源 + 可见性
+          solve.rkt        layout-solve（rect / seam）
+          ops.rkt          split / attach / remove / hide / show / drag / validate
+          api.rkt
+
+  resource/ model.rkt      resource / save / quit / prompt / 路径
+            api.rkt
+
+  engine/ action.rkt       骨架的 view 操作 action
+          store.rkt        core buffer/view 的持有 + 写 UI view
+          api.rkt
+
+  projection/ borders.rkt  共享边框 + 焦点框
+              geometry.rkt layout -> core panel（渲染 / 命中 / 内容命中）
+              api.rkt
+
+  render/ theme.rkt        style / theme
+          core.rkt         core piece -> tui bytes
+          layout.rkt       layout -> panels -> bytes
+          api.rkt
+
+  edit/  insert.rkt        自插入判读
+         commands.rkt      导航表 + 编辑表
+         api.rkt
+
+  app/ event.rkt           key / mouse / resize / paste / internal
+       state.rkt           app-state + 查询 / 焦点迁移 / 消息
+       action.rkt          open-file-action / quit-action（view-action 在骨架）
+       placement.rkt       放置交互（临时 keymap）
+       step.rkt            event -> (values state actions)
+       api.rkt
+
+  chrome/ status.rkt       状态栏投影
+          input.rkt        输入栏
+          api.rkt
+
+  filetree/ model.rkt      文件树状态 / 行结构
+            lines.rkt      纯行投影
+            scan.rkt       读目录（唯一 IO）
+            store.rkt      store 切片存取
+            panel.rkt      同步到 core view
+            commands.rkt   Enter / C-r / 安装
+            api.rkt
+
+  focus/ model.rkt         焦点导航（基于命中投影）
+         api.rkt
+
+  runtime/ actions.rkt     action 解释（唯一副作用入口）
+           frame.rkt       state + cache -> bytes（每帧渲染入口）
+           sync.rkt        UI panel 同步
+           tui-adapter.rkt tui raw 事件 -> app 事件
+           loop.rkt        render / read-event / step / run-actions
+           api.rkt
+
+  demo/  test/
+```
+
+## API 边界
+
+**允许**（非实现层只能 require）：
+
+```text
+main.rkt
+*/api.rkt              （含 skeleton.rkt —— 插件的唯一骨架入口）
+外部 core/*（只读、纯）
+```
+
+**不允许**：
+
+```text
+core 的实现模块（插件里）
+layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
+panel/model.rkt  command/table.rkt  projection/geometry.rkt
+engine/store.rkt  engine/action.rkt
+... 任何非 api.rkt 的领域实现文件
+```
+
+领域内部文件之间可以互相 require（`tree` ← `solve` ← `ops`，
+`model` ← `lines` ← `panel` …），但这属于实现细节，不对外。
+
+API 不够时：先补对应领域的 `api.rkt`，不要在下游绕过 API 直接调实现。
+
+### API 文件放哪
+
+`api` **不是一层**，只是每个领域的「对外面」。
+
+- 每个领域自己带 `api.rkt`（和实现放在一起）：谁提供能力，谁维护面；
+- 不建顶层 `api/` 镜像树：两棵树要同步、重命名要改两处，还会让插件
+  看到所有领域的面，层级就糊了；
+- 顶层只有 `main.rkt` 一个聚合入口（宿主 / demo / test 用）；
+- 插件之间只经对方 `api.rkt`；插件不 require `main.rkt`（会成环）；
+- `app/api.rkt` 是「整个 app 域」的面对（包含编排 `step`），所以插件不用它，
+  插件只用 `app/state.rkt` / `app/event.rkt` / `app/action.rkt` 这些 app 基础值。
+
+约束是可执行的：
+
+- `test/api-boundary.rkt` 扫描所有非骨架 / 插件目录下的 `.rkt`，越界 require 直接失败；
+- `test/layers.rkt` 读各模块的 require，检查：
+  - 骨架不认识 app / 插件 / runtime；
+  - 插件只 require `skeleton.rkt`，不摸 core / runtime / 骨架实现；
+  - 插件之间只经对方 `api.rkt`；
+  - `app/step` 只编排插件 `api.rkt`；`app/state` 只依赖骨架；
+  - `engine` 不 require app。
+
+## 命名约定
+
+```text
+xxx!             修改参数 / 产生副作用（engine-*、sync-*!、run-actions）
+xxx?             谓词（layout? panel? key? resource-dirty?）
+xxx->xxx         纯转换（layout->render-panels、key->string、raw-key-token）
+make-xxx         构造值（make-panel、make-layout、make-engine）
+app-state-*      State 查询 / 纯迁移（app-state-set-focus-panel、
+                 app-state-with-message、app-state-refresh-focus-resource）
+layout-*         布局几何 / 查询（layout-panel、layout-solve、layout-seam-at）
+panel-*          panel 资源（panel-view、panel-kind、panel-fixed-h）
+filetree-*       文件树（filetree-lines、filetree-current-line）
+engine-*         core buffer / view 的唯一入口（engine-view-object、
+                 engine-set-view-lines!、engine-apply-view-action!）
+input-* / status-*  chrome 的输入栏 / 状态栏
+render-*         渲染投影（render-frame、render-layout、render-pieces）
+dispatch-*       step 内部按事件类型分流
+```
+
+## API 面（概要）
+
+```text
+main.rkt                  唯一聚合入口：skeleton + render + 插件 + app + runtime
+                          （没有顶层 api.rkt）
+skeleton.rkt          骨架：base / panel / config / layout / focus / face /
+                          resource / command / projection / engine
+                            - base/api.rkt               rect / point / range / selection / 显示列
+                            - layout/api.rkt             split tree / solve / ops / seam / drag
+                            - resource/api.rkt           store / resource / save / prompt / 路径
+                            - focus/api.rkt              焦点导航
+                            - command/api.rkt            command-table / keys / key token
+                            - engine/api.rkt             buffer/view 持有 + view action 词汇
+                            - projection/api.rkt         layout->render-panels / hit / content-hit
+render/api.rkt            render-layout / layout-sync!
+edit/api.rkt              navigation-command-table / edit-command-table / self-insert
+chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
+filetree/api.rkt          model / lines / scan / commands / panel
+app/api.rkt               event / state / action / placement / step
+runtime/api.rkt           actions / render / sync / tui-adapter / loop
+```
+
+### core 能力面对应关系
+
+core 不整包导出——按能力拆开，而且各自的形式不同：
+
+```text
+能力                                         导出位置                  形式
+--------------------------------------------------------------------------------
+纯值：rect / point / range / selection /       base/api.rkt            直接 re-export
+      selections / 显示列                                               （只 require core 值模块）
+buffer / view：读 + 写 UI view + 编辑 action   engine/api.rkt          包装（engine-* +
+                                                                        view-action），不导 core 构造器
+渲染：layout -> panels -> bytes                render/api.rkt          包装（render-layout /
+                                                                        layout-sync! / render-pieces）
+layout -> core panel / 命中投影                projection/api.rkt      包装（layout->render-panels /
+                                                                        layout->hit-panels / layout-content-hit）
+布局几何（rect / panel）                       layout/api.rkt         骨架自己的面
+                                              panel/api.rkt           （内部用 core 值）
+```
+
+- 插件只看到 `skeleton.rkt`（含 base / engine / projection，**不含** render）；
+- 编辑能力以 `view-action` 词汇暴露（`engine/action.rkt`），插件发 action，
+  只有 `runtime/actions.rkt` 解释成 core 调用；
+- 直接 require core 的只有骨架内部：`base/api`、`engine/store`、
+  `layout/{tree,solve,ops}`、`projection/{borders,geometry}`、
+  `render/{core,layout}`、`focus/model`。插件 / app / runtime 都不 require core。
+
+## 布局模型
+
+```text
+layout = split tree + panel 资源
+
+node  = leaf(panel-id)
+      | split(id, axis, left, right, ratio)
+
+panel = id / kind / views / active
+        fixed-w / fixed-h
+        hidden? / restore
+        borders / face / weight
+```
+
+关键约定：
+
+- `rect` 不进树，由 `layout-solve` 计算；
+- 渲染列表 `(listof core panel)` 是投影，不是结构真相；
+- 只有 `kind = 'editor` 的 panel 默认能 split（由 config 决定）；
+- split 新 panel 是空 panel，不抢焦点；
+- 固定尺寸是 `fixed-w` / `fixed-h` 实际值，`#f` = flex；
+- 隐藏 leaf 仍在树里，兄弟吸收父 rect；
+- 显示按隐藏时记录的 `rect / parent-rect` 比例恢复；
+- 删除 leaf 时父 split 塌缩到兄弟；
+- 最后一个 editor 用 `layout-panel-clear-content` 保留 slot；
+- 接缝属于 split 节点；拖动改 ratio，再重新 `layout-solve`；
+- 固定轴阻止接缝拖动；
+- min / max 不进状态，由 config 在 API 边界使用；
+- 焦点回退顺序：兄弟子树 → 逐层向上 → 第一个可聚焦 panel；
+- 一个 panel 槽可挂多个 view，顺序切换用 `layout-panel-cycle-active-view`。
+
+## 统一 API
+
+```racket
+(require "edit-tui-rebuild/main.rkt")
+```
+
+### base
+
+```racket
+rect rect?
+rect-x rect-y rect-w rect-h
+rect-right rect-bottom
+rect-inset rect-inset-sides
+rect-contains?
+```
+
+### panel
+
+```racket
+(make-panel id kind #:views #:active #:fixed-w #:fixed-h
+            #:hidden? #:restore #:borders #:face #:weight)
+(make-empty-editor-panel id)
+(panel-view p)
+(panel-visible? p)
+(panel-set-views p views [active])
+(panel-set-active p view-id)
+(panel-set-fixed p axis value)
+(panel-set-hidden p hidden? [restore])
+(panel-set-restore p restore)
+```
+
+### config
+
+```racket
+(make-panel-rule #:splittable? #:hideable? #:deletable? #:focusable?
+                 #:min-w #:max-w #:min-h #:max-h)
+(make-layout-config #:rules #:default)
+default-config
+(config-panel-rule config kind)
+(config-panel-splittable? config kind)
+(config-panel-hideable? config kind)
+(config-panel-deletable? config kind)
+(config-panel-focusable? config kind)
+(panel-rule-min-size rule axis)
+(panel-rule-max-size rule axis)
+```
+
+### layout 状态
+
+```racket
+(make-layout #:root #:panels #:focus #:next-split-id)
+empty-layout
+(make-leaf panel-id)
+
+(layout-panel-add l p)
+(layout-panel l id)
+(layout-panel-resources l)
+(layout-panel-ids l)
+(layout-visible-panel-ids l)
+(layout-panel-update l id f)
+(layout-panel-visible? l id)
+(layout-panel-fixed-size l id axis)
+(layout-subtree-visible? l node)
+
+(layout-focus l)
+(layout-set-focus l id)
+```
+
+### panel 内 view 切换
+
+```racket
+(layout-panel-view-ids l id)
+(layout-panel-active-view l id)
+(layout-panel-set-active-view l id view-id)
+(layout-panel-cycle-active-view l id [step])  ; 1 下一个，-1 上一个
+```
+
+### 结构操作
+
+```racket
+(layout-split l target-id dir new-panel-id #:ratio #:config)
+(layout-panel-attach l target-id dir panel #:ratio)
+(layout-panel-remove l id #:config)
+(layout-panel-clear-content l id)
+(layout-panel-set-fixed l id axis value)
+(layout-split-set-ratio l split-id ratio)
+```
+
+### 隐藏 / 显示
+
+```racket
+(layout-panel-hide l area id #:config)
+(layout-panel-show l area id)
+(layout-focus-fallback l config id)
+```
+
+### layout-solve / 接缝 / 拖动
+
+```racket
+(layout-solve l area)                  ; -> layout-solution
+(layout-solution-panel-rects s)        ; panel-id -> rect
+(layout-solution-split-rects s)        ; split-id -> rect
+(layout-solution-seams s)              ; (listof seam)
+(layout-panel-rects l area)            ; panel-id -> rect
+(layout-split-rects l area)            ; split-id -> rect
+(layout-seams l area)                  ; (listof seam)
+(layout-seam-at l area row col)        ; seam | #f
+(layout-panel-id-at l area row col)    ; panel-id | #f
+
+(layout-seam-resize l area split-id delta #:config)
+(layout-seam-drag-start l area row col #:config)   ; -> drag | #f
+(layout-seam-drag-move l area drag row col #:config)
+```
+
+### 焦点导航
+
+```racket
+(layout-panel-focusable? l config id)
+(layout-focusable-panels l area config)       ; view = panel-id
+(layout-focus-panel-at l area config row col) ; panel-id | #f
+(layout-focus-neighbor l area config from-id dir)
+```
+
+### 校验
+
+```racket
+(layout-validate l area config)  ; (listof violations)
+(layout-valid? l area config)
+```
+
+### 投影
+
+```racket
+(layout->render-panels l area)                     ; view = active
+(layout->render-panels l area #:focus-panel 'editor) ; + 焦点框（见下）
+(layout->hit-panels l area)                        ; view = panel-id
+```
+
+#### 焦点窗高亮
+
+焦点框不改布局、不改内容、也不进命中投影，做法是利用 core 的边框合成：
+
+- 在焦点 panel 的边框格上再叠一个**空 core panel**（`view = #f`），
+  `face = 'focused-border`，`weight` 比所有 panel 大；
+- core 对同一格按 `weight` 取边框 face（`core/view/border.rkt`：
+  “weight 大的边框格赢，焦点框抬边框用”），于是焦点框的 face 赢；
+- 边框格位置要算对：
+  - 自己画的边 → 就在 rect 边上；
+  - 被邻居共享的边（共享边框时这条边是邻居画的）→ 缝在 rect 外一格，框外扩 1；
+  - 谁都没画的边（屏幕外沿 / 没边框）→ 不画，避免盖内容；
+- 焦点框只出现在 `layout->render-panels`，`layout->hit-panels` 不含它；
+  隐藏的焦点 panel 不出框。
+
+`weight` / `face` 都从 layout 的焦点 + panel 模型推出来，
+渲染层只认 core panel；换颜色 = 换主题里的 `focused-border`。
+
+### face
+
+```racket
+face?
+face-fg face-bg face-attrs
+face-empty
+face-set-fg face-set-bg face-set-attrs
+face-add-attr face-remove-attr face-has-attr?
+compose-face
+compose-layers
+```
+
+### render
+
+```racket
+rgb?
+style?
+define-theme!
+
+render-piece
+render-pieces
+render-clear
+face-fragment
+
+(layout-sync! layout area)  ; panels + panels-sync!（尺寸写回 core view）
+(render-layout layout area #:focus-panel #:cache #:sync?)
+```
+
+`render-layout` 默认 `#:sync? #t`，先把 panel 内容尺寸写回 view，再渲染。
+
+`render-layout`：
+
+```text
+layout -> core panels
+       -> render-display-patch
+       -> render-pieces
+       -> (values cache' bytes)
+```
+
+### theme 配置
+
+主题不放 API，放在 `config/theme/`：
+
+```racket
+(require "edit-tui-rebuild/config/theme/default.rkt")
+```
+
+配置层是小表：
+
+```racket
+base-theme
+frame-theme
+chrome-theme
+overlay-theme
+```
+
+安装层 append 成扁平表：
+
+```racket
+default-theme
+(define-theme! default-theme)
+```
+
+require 即安装，换主题 = 换 require：
+
+```racket
+(require "edit-tui-rebuild/config/theme/dark.rkt")
+```
+
+### 输入：标签 + 字节
+
+输入的中间状态不转成 char / symbol，token 就是终端给的那一份：
+
+```racket
+(struct key-token (tag bytes))
+```
+
+- `tag`：`'key`（单字节）| `'ctrl` | `'alt` | `'utf8` | `'mod-seq`（CSI 带修饰）
+  | 命名键 `'up 'down 'left 'right 'home 'end 'insert 'del 'pageup 'pagedown 'backtab`
+- `bytes`：原始字节
+
+runtime 用 `tui:read-event/raw` 取 `(values type data mods)`，适配层直接
+`(key-token type data)` 往下传；mouse / paste / resize 也保留原始载荷
+（paste 是 bytes，写 buffer 时才解一次 UTF-8）。
+
+绑定和事件是同一种表示，`key` 把可读写法编码成 ANSI 字节：
+
+```text
+(key 'a 'ctrl)      -> ('ctrl    . #"\x01")
+(key 'A)            -> ('key     . #"A")
+(key 'left)         -> ('left    . #"\e[D")
+(key 'left 'shift)  -> ('mod-seq . #"\e[1;2D")
+(key #\中)          -> ('utf8    . "中" 的 UTF-8)
+```
+
+命名键的多种终端写法（CSI `ESC[A` / SS3 `ESC OA` / 老式 `ESC[1~`）由
+`raw-key-token` 按 tag 归一成一种规范字节，表里每个绑定只存一条。
+
+终端不能区分的组合自然共用 token，所以不存在「死绑定」：
+
+```text
+C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR）
+```
+
+**C-h 例外**：字节 8 传统上等同 Backspace，但多数终端的 Backspace 键发
+127（DEL）。这里不把 8 归一成 127，`C-h` 保留成独立 token（`(key 'h 'ctrl)`），
+输入栏用它做 head；Backspace 绑定用 127。若你的终端 Backspace 发 8，它会被
+当成 C-h，把终端改成发 DEL 即可。
+
+想真正区分 C-i / C-m / C-[ / C-j 得开 kitty keyboard protocol 或 modifyOtherKeys。
+
+### app / 事件循环
+
+```racket
+(key-event token)
+(mouse-event token row col)
+(resize-event rows cols)
+(paste-event bytes)
+(internal-event kind data)
+(quit-event)
+
+(make-app-state #:layout #:resources #:focus-resource
+                #:overlays #:editor-tables
+                #:pending #:area #:quit? #:message)
+
+;; 编辑 / 导航 / 鼠标落点都是 view-action，runtime 解释成 core 调用
+(view-action kind view-id data)
+;;;   kind : insert | paste | backspace | delete | kill-line
+;;        | nav | point | select | scroll | ensure | undo | redo
+;;   insert/paste data = 原始 UTF-8 bytes（engine 写 buffer 时解码一次）
+;;   nav   data = dir | (list dir extend?)
+;;   point data = (list row col)   ; 内容区相对坐标（0 基）
+(quit-action)
+
+(step state event)  ; -> (values state' actions)
+```
+
+命令值约定：
+
+```text
+command-table 叶子是 (state -> (values state' actions))
+```
+
+按键序列 / 动态遮蔽沿用：
+
+```text
+overlay tables ++ focused resource command-stack
+```
+
+### runtime
+
+```racket
+(make-engine)
+(engine-create-buffer! engine did name text)
+(engine-create-view! engine vid did)
+(engine-view-object engine vid)
+(engine-view-text engine vid)
+(engine-doc-text engine did)
+(engine-doc-version engine did)
+(engine-apply-view-action! engine action)   ; view-action 在 engine/action.rkt
+
+(run-actions state engine actions)  ; -> state'
+
+(render-frame state engine cache)   ; -> (values cache' bytes)
+
+(run-loop state engine
+          #:read-event ...
+          #:write-bytes ...)
+```
+
+`run-loop`：
+
+```text
+render
+read-event
+step
+run-actions
+quit? -> exit
+```
+
+没有 hook / settle / 通用 effect。action 是数据，runtime 同步解释。  
+view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
+
+### 文件树
+
+```racket
+(empty-filetree)
+(make-filetree #:view #:line #:cursor-dirty? #:expanded #:rows)
+(filetree-toggle-expand f path)
+(filetree-set-view / set-cursor / sync-cursor)
+;;   set-cursor  : 程序化设光标（cursor-dirty? = #t，下一次 sync 推给 view）
+;;   sync-cursor : sync 从 view 读回镜像（cursor-dirty? = #f）
+
+(filetree-lines root expanded opened dir-lister)   ; 纯行投影
+(filetree-line-at rows line)
+(dir-entries path)                                 ; 唯一 IO 点
+
+;; 路径规范化 / 查找在 resource 层（filetree 只是使用者）
+(resource-normalize-path path)
+(resource-find-by-path store path)
+
+(sync-filetree! state engine)  ; -> state'
+;;   rows 按 (root, expanded, opened) 缓存
+;;   光标归 core view（它就是普通 buffer）：
+;;     键盘移动 -> state 改 cursor 并置 cursor-dirty?，sync 推给 view；
+;;     鼠标点击 -> 普通 point action 改 view，sync 直接读回来当镜像。
+
+(filetree-command-table)   ; 通用导航表 + Enter / C-r
+(filetree-install-state state view root #:panel-id)
+(filetree-enter-command state)
+(filetree-refresh-command state)   ; C-r：丢弃行投影缓存
+;; 没有文件树专用的点击/光标逻辑：走通用 point action
+```
+
+行为：
+
+- root / dir：Enter 展开 / 折叠；
+- file：Enter 打开；
+  - 已打开且已挂 panel：聚焦已有 panel；
+  - 已打开但 detached：进入 placement；
+  - 未打开：read-file -> resource-open -> placement；
+- placement（临时表，完毕自动解除）：
+  - 开始时就压入 `placement-table`，焦点不在 editor 上会自动落到第一个 editor；
+  - ↑←→↓ 在 editor 之间改焦点（跳过 filetree / status）；
+  - Enter 放入当前焦点 editor；鼠标点目标 editor 也可；
+  - Esc 取消；
+  - 放入 / 取消后 `clear-placement` 把临时表从 overlays 摘掉，普通键位恢复。
+- 光标就是 core view 的 point：方向键四个方向 / Home / End / PageUp/Down 都用
+  和 editor 同一张导航表（`navigation-command-table`），**不限制在行首**，
+  列可以自由移动（长路径会横向滚动）；state 里的 cursor 只是 point line 的镜像。
+- 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行、哪列，光标就到哪
+  （滚动、行尾、空白处的行为与编辑器完全一致）。
+
+### 状态栏 / 输入栏
+
+```racket
+(status-install-state state view-id)
+(sync-status! state engine)
+
+(input-install-state state panel-id status-view input-view)
+(input-active? state)
+(input-reconcile state)         ; -> (values state' actions)  prompt/request <-> 输入栏
+(input-sync! state engine)      ; 只把文本 / 光标投影到 core view
+(input-handle-key state event)  ; -> (values state' actions) | #f
+(input-handle-paste state event)
+
+;; 插件请求输入（服务 API）
+(struct input-request (id label kind choices default on-done))
+(input-start state request)     ; -> (values state' actions)
+(struct input-result (id status value))   ; status = submitted / cancelled / preempted
+```
+
+状态栏：
+
+```text
+focus resource path/name
+line:col
+dirty *
+pending keys
+message
+```
+
+输入栏（单行编辑，文本 / 光标归 State，每帧投影到 view）：
+
+```text
+可打印键 / 粘贴     在光标处插入（粘贴只取单行可打印内容）
+Backspace / Delete  删光标前 / 后
+← → Home End        移动光标（C-b/C-f 逐字符，C-a/C-e 行首/行尾）
+C-h / C-t           跳到整行行首 / 行尾（只有输入栏有）
+Enter               提交
+Esc / C-g           取消（resource-cancel）
+```
+
+- prompt 来自 `resource-prompt`，前缀 = label；confirm 还会显示可选值，
+  并且 **label 里有文件路径**（没有 path 时用 resource name）：
+  `Save /home/me/a.txt? (y/n/all/nall) `；
+- confirm 的可选值：`y`（保存）/ `n`（跳过）/ `all`（剩下都保存）/
+  `nall`（剩下都跳过）；Esc 取消。大小写不敏感，也接受旧写法
+  `save/skip/save-all/skip-all/cancel`；
+- Enter -> **`resource-submit-text`**：文本 -> 值的转换和校验都在 resource 层，
+  按 prompt kind 分派（输入栏本身不判断 kind）；
+  - confirm：接受 y/n/all/nall（映射到 save/skip/save-all/skip-all），
+    必须是 prompt 支持的答案；
+  - save-path：trim 后不能为空；
+  - 不合法时返回 `ok? = #f`，prompt 保持打开，状态栏提示可选值 / `path required`；
+- 提示前缀**完整**写进 core buffer（不裁剪、不省略），并标成 **readonly**
+  （`#:readonly-prefix`，face `input-prompt`）——buffer 本身就是输出，
+  不需要额外的格式化/裁剪层；
+- 窗口装不下时靠光标滚动查看：←/→ 可以走进前缀，Home 到整行行首（看到
+  `Save ...`），End 到行尾（看到可选值）；前缀里 Backspace/Delete 不生效，
+  在里面输入会落到可编辑文本的起点；
+- 提交成功才 `input-close`（恢复打开前的焦点）。
+
+### 输入来源与抢占规范
+
+输入栏是**服务插件**（chrome）：插件通过 `chrome/api.rkt` 的 `input-start`
+发起请求，不需要自己画面板；它依赖 `app/state` 和 resource prompt，所以不做进
+骨架（否则骨架要依赖 app）。
+
+```text
+两种来源：
+  resource prompt（骨架资源管理产生）   save-path / confirm
+  插件请求 input-request                id / label / kind / choices / default
+                                        on-done : state input-result -> values
+
+结果：
+  submitted   Enter 提交（text -> string，confirm -> symbol）
+  cancelled   Esc / C-g，或被其他事件打断
+  preempted   被新的插件请求 / 系统 prompt 挤占
+```
+
+规范（输入是抢占式的）：
+
+- 输入激活时，**key / paste** 交给输入栏；**其他事件**（mouse / resize /
+  quit / internal）先 `input-interrupt` 取消本次输入，再照常处理该事件；
+- 新的插件请求挤占旧插件请求：旧请求 on-done 收到 `'preempted`；
+- 系统 prompt 优先：出现时挤占插件请求（`'preempted`），并从空文本开始；
+- 关闭 / 取消 / 挤占都会回调 on-done，插件不需要轮询。
+
+`app/step.rkt` 在入口 / 出口做 reconcile + 抢占，`runtime/sync.rkt` 在每帧同步前
+也 reconcile 一次（挤占回调可能产生 action，先跑掉再写 view）。
+
+同步顺序（`runtime/sync.rkt`）：
+
+```text
+input-reconcile    先落实 prompt <-> 输入栏 view
+sync-panel-sizes!  再按布局把 active view 的 viewport 尺寸写好
+sync-filetree! / input-sync! / sync-status!   最后才写内容
+```
+
+尺寸必须先于内容：否则输入栏还在 1x1 viewport 时就把光标设到行尾，
+横向滚动会把整行推到左边，提示就"看不见"了。
+
+打开 / 关闭输入栏是 **状态迁移**，不是渲染副作用：
+
+```text
+prompt 存在 <=> 输入栏 active
+```
+
+`step` 在入口和出口都会 `input-reconcile`（纯），`run-loop` 在 `run-actions`
+之后再 reconcile 一次（action 也可能产生新 prompt，比如写完文件继续下一个确认）。
+所以只驱动 `step`、不跑 `sync` / `render` 的测试里，Enter 一样能提交；
+`input-sync!` 只负责把文本 / 光标投影到 view。
+
+输入栏和状态栏共用同一个 panel 的 views：
+
+```racket
+(make-panel 'status 'status
+            #:views '(status-view input-view)
+            #:active status-view
+            #:fixed-h 1)
+```
+
+### 资源管理
+
+```racket
+resource-store-empty
+resource-open
+resource-ref
+resource-list
+resource-focus
+resource-pending
+
+resource-id
+resource-name
+resource-doc-id
+resource-views
+resource-version
+resource-saved-version
+resource-path
+resource-dirty?
+resource-writable?
+resource-view-ids
+resource-command-stack
+resource-set-command-stack
+resource-normalize-path
+resource-find-by-path
+
+resource-mark-edited
+resource-sync-version      ; engine 文档版本变了才记 dirty
+resource-save
+resource-save-as
+resource-save-done
+
+resource-request-close
+resource-request-quit
+resource-prompt
+resource-submit
+resource-submit-text
+resource-cancel
+
+resource-action?
+resource-action-kind
+resource-action-data
+resource-event?
+resource-event-kind
+resource-event-data
+
+prompt?
+prompt-id
+prompt-kind
+prompt-resource-id
+prompt-label
+prompt-value
+prompt-choices
+pending?
+pending-kind
+pending-ids
+pending-index
+pending-mode
+```
+
+规则：
+
+```text
+path 有值   -> 能落文件
+path = #f   -> 不能落文件，保存前先要路径
+dirty       -> version != saved-version
+```
+
+dirty 的同步：runtime 每解释完一个 `view-action` 就调用
+`resource-sync-version`（只有 engine 里的文档版本真的变了才记 edited），
+所以插入 / 删除会让 `dirty?` 变真，导航 / 滚动不会。
+
+退出 / 关闭保存流程：
+
+```text
+C-q -> resource-request-quit
+  dirty 列表为空        -> quit-action（直接退出）
+  否则逐项 confirm      -> y / n / all / nall（Esc 取消）
+    y    = 保存当前（无 path 先 Save as）
+    n    = 跳过当前
+    all  = 当前 + 剩下都保存
+    nall = 剩下都跳过
+    有 path 直接 write-file；无 path 先出 save-path prompt
+  全部处理完            -> quit-action
+```
+
+`test/quit-save.rkt` 覆盖 dirty -> confirm -> save-as -> 写文件 -> quit，
+以及 skip / cancel / 无效回答。
+
+`resource-open` 返回 action 数据：
+
+```text
+create-buffer / create-view
+```
+
+保存返回：
+
+```text
+write-file
+```
+
+关闭 / 退出完成后返回：
+
+```text
+close-resource / quit
+```
+
+输入面板只调用：
+
+```text
+resource-prompt
+resource-submit-text   ; 文本 -> 值（内部再走 resource-submit）
+resource-cancel
+```
+
+### 命令表
+
+两层：
+
+```text
+command-table        一张表：key-sequence -> command
+command-table-stack  (listof command-table)：动态遮蔽
+```
+
+```racket
+(keys [key ... value] ...)
+(command-table-add t seq value)
+(command-table-from-bindings binds)
+(command-table-bindings t)
+(command-table-merge t ...)         ; 多张合成一张，左边优先
+(command-table-lookup t seq)        ; 'command / 'prefix / 'unbound
+
+command-table-stack-empty
+(command-table-stack-from-tables ts)
+(command-table-stack-push stack t)
+(command-table-stack-pop stack)
+(command-table-stack-remove stack t)
+(command-table-stack-lookup stack seq)
+```
+
+规则：
+
+- stack 顶层先查；
+- 顶层返回 `command` / `prefix` 就停止；
+- 只有 `unbound` 才落到下一层；
+- 弹窗可以 `push` 临时表，关闭时 `pop` / `remove`。
+
+## 性能
+
+每帧固定成本只和「可见格数」有关，和文档 / 目录行数无关：
+
+- **行投影有缓存**：filetree 按 `(root, expanded 集合, opened 集合)` 缓存 rows。
+  三者不变就不重扫目录（`dir-entries` 每个 entry 要 3 次 stat，3000 行 ≈ 30ms）。
+  外部文件变了用 `C-r` 手动刷新。
+- **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
+  `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
+  core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
+- **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
+  自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
+  没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。
+
+参考数字（80×24、filetree 3000 行、内容不变的一帧）：
+
+```text
+旧：每帧 filetree-lines（重扫目录）≈ 42ms + engine-set-view-lines!（重建 document）≈ 32ms
+新：每帧 sync + render ≈ 0.5ms
+```
 
 ## 测试
 
-```
-racket edit-tui/test/base-model.rkt
-racket edit-tui/test/env.rkt
-racket edit-tui/test/dispatch.rkt
-racket edit-tui/test/effects.rkt
-racket edit-tui/test/projection.rkt
-racket edit-tui/test/runtime.rkt
-racket edit-tui/test/save.rkt
-racket edit-tui/test/views.rkt
-racket edit-tui/test/resource-panel.rkt
-racket edit-tui/test/filetree.rkt
-racket edit-tui/test/seam.rkt
-racket edit-tui/test/panel.rkt
-racket edit-tui/test/plugin.rkt
-racket edit-tui/test/plugin-detach.rkt
-racket edit-tui/test/plugin-uninstall.rkt
-racket edit-tui/test/toggle-region.rkt
-racket edit-tui/test/service.rkt
-racket edit-tui/test/input-session.rkt
-racket edit-tui/test/interaction.rkt
-racket edit-tui/test/cancel.rkt
-racket edit-tui/test/extension.rkt
-racket edit-tui/test/layers.rkt
-racket edit-tui/test/sidebar.rkt
-racket edit-tui/test/split.rkt
-racket edit-tui/test/hooks.rkt
-racket edit-tui/test/plugins.rkt
-racket edit-tui/test/face-layer.rkt
-racket edit-tui/test/worker.rkt
-racket edit-tui/test/float.rkt
-edit-tui/test/run.sh
+```sh
+bash edit-tui-rebuild/test/run.sh
 ```
 
+- `test/api-boundary.rkt`：API 边界（非实现层只能 require main / api / core）
+- `test/layers.rkt`：依赖方向（分层约束的可执行版本）
+- 其余按领域：layout / focus / geometry / render / key / edit / filetree /
+  chrome / input-service（请求 / 打断 / 挤占 / 回调）/ resource / placement /
+  event-loop / theme / face / config
 
-## 通用输入栏 API
+功能测试也统一只 require `../main.rkt`（外部 core 访问器除外）。
 
-```racket
-(require "edit-tui/chrome/input.rkt")
+## demo
+
+```sh
+racket edit-tui-rebuild/demo/layout.rkt
+racket edit-tui-rebuild/demo/three-panels.rkt
+racket edit-tui-rebuild/demo/interactive.rkt
 ```
 
-| API | 作用 |
-|---|---|
-| `input-show ctx prompt` | 切到 input 栏，写只读 prompt 前缀（ctx 含 env/state/engine） |
-| `input-active? state` | 当前是否在 input 栏 |
-| `input-read-text state ev` | 完整 buffer 字符串（prompt + 输入） |
-| `input-value state ev` | 只取用户输入（自动跳过只读前缀） |
-| `input-cancel ctx` | 找当前 input owner 的 cancel，清外部状态后结束 |
-| `input-finish state` | 切回 status，恢复进入前焦点 |
-| `input-write-prompt state prompt` | 只改 prompt（不切焦点） |
-| `input-show-state state prompt` | 低层显示（用于已经 finish 旧 input 的内部流程） |
+交互 demo：
 
-提交匹配：
+```text
+C-w ←→↑↓   拆分当前 editor
+C-b        显隐 filetree
+C-x ←→↑↓   焦点移动
+C-s        保存当前 resource（无 path -> Save as 输入栏）
+C-q        退出（dirty -> 确认输入栏）
+鼠标拖接缝  resize
+鼠标点面板  聚焦
+鼠标点 buffer 内容区 -> 主光标落到点击处（filetree 也一样，它就是普通 buffer）
 
-```racket
-(environment-add-input-command
- env
- (make-input-command
-  'my-input
-  (input-command-prefix "My prompt: ")
-  (λ (ctx value) ...)
-  #:cancel (λ (state) state)))   ; 被新 input 替换时清理外部状态
+焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
 ```
 
-输入是 document，没有额外的 prompt 状态机。
+编辑（`edit/commands.rkt`：`navigation-command-table` + 插入 / 删除 / 历史；
+导航表被 editor 和 filetree 共用，因为文件树也只是普通 buffer）：
 
-**占用规则：新的 input 替换旧的 input。**
-如果当前已经在 input 栏，再调用 `input-show`：
-
-- 用当前 buffer 字符串匹配 `input-command`；
-- 调它的 `#:cancel` 清理外部 pending 状态（例如 save-confirm 的 `resources.confirm`）；
-- 结束旧 input；
-- 写入新 prompt，重新聚焦 input；
-- 焦点栈保持平衡（旧 input 先 pop，新 input 再 push）。
-
-低层 `chrome-input-show` 不做替换清理；其他逻辑应调用 `chrome/input.rkt` 的 `input-show`。
-
-## 公共面
-
-```racket
-(require "edit-tui/main.rkt")
+```text
+直接打字                插入（任意可打印字符，含大写 / 中文）
+Enter / Tab             换行 / 插入两个空格
+Backspace / Delete / C-d 删前 / 删后一个字符
+←→↑↓ Home End           导航
+Shift+方向 / Shift+Home End  扩展选区
+C-a / C-e               行首 / 行尾（C-f / C-b 逐字符）
+PageUp / PageDown       滚一屏（光标跟着走一屏）
+C-k                     删到行尾
+C-z / C-y               撤销 / 重做
 ```
 
-聚合了 base / model / env / dispatch / effects / projection / bootstrap / runtime 的公共导出。
-需要键/鼠标 token 时再 require `edit-tui/command/key.rkt` / `mouse.rkt`。
+表里匹配不到的键由 `edit-self-insert` 兜底：可打印字符 -> 插入焦点
+editor view；非 editor 面板 / 有前缀未完成 / placement 中则回 `unbound`。
+所以命令表不必把 Unicode 全集写进去。
 
-## 交互 demo
+> 关于 C-i：终端里 Ctrl-I 和 Tab 是同一个字节 0x09，所以它们本来就是
+> **同一个 token**（`(key 'i 'ctrl)` ≡ `(key 'tab)`），绑 Tab 就能收到 C-i。
+> C-m / C-j / C-[ 同理；C-h 是例外（见上一节「输入：标签 + 字节」）。
+> 想真正区分这些键需要 kitty keyboard protocol / xterm modifyOtherKeys。
 
-```bash
-racket edit-tui/demo/basic.rkt
-racket edit-tui/demo/state.rkt   # 底部一行直接显示底层 State
-racket edit-tui/demo/save.rkt    # status/input 共享槽 + 保存确认
-racket edit-tui/demo/resource.rkt # 资源列表面板 + placement
-racket edit-tui/demo/filetree.rkt [root] # 文件树面板
-racket edit-tui/demo/plugin.rkt   # 最小插件（命令 + 键 + store + 状态栏段）
-racket edit-tui/demo/sidebar.rkt  # 文件树 + 资源列表共用一个面板位置（Tab 切换）
-racket edit-tui/demo/lab.rkt      # 语法高亮 + 自动补全 + C-c h 文档面板
+文件树（普通 buffer：光标有行列，可自由移动）：
+
+```text
+C-x ← 聚焦 filetree
+鼠标点行       光标落到点击处（行 + 列）
+←→↑↓           自由移动（长行会横向滚动）
+Home / End     行首 / 行尾        Shift+方向  扩展选区
+PageUp/Down    滚一屏（光标跟着走）
+Enter          展开目录 / 打开文件（文件 -> 进入 placement）
+C-r            重扫目录（行投影有缓存，外部文件变化不会自动反映）
 ```
 
-`state.rkt` 的底栏内容：
+placement（打开文件后自动进入）：
 
+```text
+↑←→↓  在 editor 之间改焦点（跳过 filetree / status）
+Enter 放入当前焦点 editor
+鼠标点 editor 放入
+Esc   取消
 ```
-state focus=view:1 pos=1:2 docs=1 views=1 regions=3 pending=- msg=ready
-```
-
-操作时可以直接观察 focus / 光标 / docs / views / regions / pending / message 的变化。
-
-默认键位：
-
-| 键 | 作用 |
-|---|---|
-| `←→↑↓` / `Home` / `End` | 移动 |
-| `Enter` / `Backspace` / `Delete` | 编辑 |
-| `C-z` / `C-y` | undo / redo |
-| `C-b` | 显示 / 隐藏文件树面板 |
-| `C-w ←→↑↓` | 左 / 右 / 上 / 下拆出一个**空窗口**（焦点移到空窗口，之后 `C-n` / 打开文件装进去） |
-| `C-w C-w` | 关闭当前 view |
-| `M-w` | 关闭当前 region / panel（按 role 的 close-policy） |
-| `C-n` | 新建 document/view（空 editor region 也能接） |
-| `C-x C-f` | 打开文件（input document 输入路径） |
-| `C-x C-s` | 保存当前 document；无 path 时进入 `Save as:` 输入 |
-| `C-x C-k` | 关闭当前 document 的所有 view + document |
-| `C-x C-d` | 把当前 view 从 panel 摘出来（保留 view / engine view / document） |
-| `C-x C-a` | 把第一个 detached view 挂回当前 region（buffer-list 前的临时入口） |
-| `Tab` / `C-x C-o` | 在同一 region 的多个成员之间切换 active / focus（共用面板位置） |
-| `C-x C-p` | 提交 resource placement 到当前/点击的 panel |
-| `C-g` / `Esc` | 取消当前交互：input / placement；没有则提示 |
-| `C-x C-g` | 取消 placement |
-| `M-方向` | region 间焦点移动 |
-| 左键点击 | 聚焦 view 并把光标落到点击位置 |
-| 左键拖动 | 从按下位置开始拖选 |
-| 输入词字符 | 输入第一个词字符就自动弹出补全：光标前的词 -> 候选浮层，包含关键字 / 顶层定义 / 本地标识符 / require 导入名；`↑↓` 选，`Enter`/`Tab` 接受，`Esc` 取消。选中项会联动 docs 面板（`editor-env`） |
-| `C-c h` | 文档面板开关：按**光标前的词**查文档；status 下方固定 8 行，打开时会把焦点 view 夹回窗口，**手动关闭**（`editor-env`） |
-| `C-q` | 退出；有 dirty document 时进入保存确认 |
-| `y` / `n` / `yall` / `nall` + Enter | 保存确认：当前保存 / 跳过 / 保存剩余 / 跳过剩余 |
-
-## 切分 = 拆出一个空窗口
-
-`C-w ←→↑↓` **不复制 document**，也不给同一 document 再加 view，而是：
-
-```
-源 region（成员 / active / 焦点内容都不动）
-   ├── 原 region        members = (view ...)   保持原样
-   └── 新 region        members = '()          空窗口，role / 边框跟随源 region
-```
-
-- 焦点移到新 region（`focus = region-id`）——所以 `C-n` / `C-x C-f` / 文件树 Enter
-  会直接装进这个空窗口（`target-region-for-new-view*` 认 region-id）；
-- 空窗口也能再拆（`C-w →` 在空窗口上继续拆）；
-- 焦点可以在「有文档的 view」和「空 region」之间用 `M-方向` 来回移动；
-- 空窗口按 region-id 视为可聚焦（鼠标点它 / `M-方向` 落上去），渲染成带**聚焦边框**的空面板；
-- role 不可切分（`'filetree` / `'resource` 这类面板）时拒绝：`split: region not splittable`。
-
-同一 region 里放多个 view 的能力仍然在（`C-n` 会把新 view 挂进当前 region，
-placement 也会把 detached view 放进去），用 `Tab` / `C-x C-o` 切换。
-
-`test/split.rkt` 守着这些约定。
-
-## 边界决定：最后一个 editor region
-
-采用 **保留空 region，只清 view**：
-
-- `C-w C-w` close-view：移除当前 view；region 留在布局里；
-- `M-w` close-region + role `'editor keep-last`：
-  - 同 role 还有别的 region → 删除当前 region；
-  - 已经是最后一个 editor region → 关闭其中所有 view，但**保留空 region 占位**。
-
-原因：
-
-1. 不引入“空布局 / 没有任何 panel”的特殊状态；
-2. split / open 始终有一个 editor region 可以当锚点；
-3. 与 role 的 `keep-last` 语义一致，不需要在 split 时额外补 panel。
-
-代价：最后一个 view 关掉后 `focus = #f`，region 是空占位；`C-n` 会优先找空 editor region 装新 document/view，所以空占位不是死状态。
-
-
-## view 资源生命周期
-
-区分四件事：
-
-| 操作 | 结果 |
-|---|---|
-| `C-w C-w` close view | 销毁 view（engine view + view-meta）；document 保留 |
-| `C-x C-d` detach view | 从 region 成员表移除；view / engine view / document 全部保留 |
-| `M-w` close region/panel | 把 region 内 view 全部 detach，再删除/保留 region；**不销毁 view** |
-| `C-x C-k` close document | 销毁该 document 的所有 view + document |
-
-- `workspace.views` 是 view 资源表；detached view 仍在这里；
-- `workspace-detached-views` 可列出没有挂到 region 的 view；
-- `workspace-attach-view` 强制 view 单成员：挂到目标 region 前先从旧 region 移除；
-- 关闭 panel 现在不会销毁 view，所以之后可以从资源列表重新挂回；
-- 目前还没有正式 buffer-list 面板，`C-x C-a` 只是“挂回第一个 detached view”的临时入口。
-
-## 状态面板移动
-
-以下 mode 都绑了 `nav-keys` + `pointer-keys`：
-
-- `status`
-- `state`
-- `input`
-- `resources`
-
-状态栏/输入栏的共享槽 role `'slot` 现在是 focusable，所以：
-
-- 鼠标点击状态栏会聚焦并落点；
-- 方向键 / Home / End 可在状态栏里移动；
-- 焦点在 chrome 上时，状态栏位置/路径仍报告第一个 editor view，避免自指。
-
-## 保存确认 / status+input 共享槽
-
-`demo/save.rkt` 演示：
-
-- status 与 input 都是真正的 core view（buffer 支撑），放在同一个 region；
-- 平时 active = status；prompt/保存确认时 active = input；
-- 输入结束切回 status，并恢复进入前的焦点；
-- `C-q` / `C-x C-k` 遇到 dirty document 时触发全局保存确认：
-  - `y` 保存当前；
-  - `n` 跳过当前；
-  - `yall` 保存剩余全部；
-  - `nall` 跳过剩余全部；
-  - 非法答案 / 保存失败会重新显示当前确认 prompt；
-  - 无 path 的 doc：`y` 进入 `Save as:` 输入；`yall` 会停在该 doc 提示先用 `y` Save as。
-  - 输入在 input buffer 里，Enter 提交。
-- status/input 的 buffer 文档 mode 是 `'status` / `'input`（state demo 可用 `'state`），
-  不参与保存确认。
-
-实现位置：
-
-- `model/save.rkt`：`save-confirm` 队列 / 当前 index / 完成后 action（`state.confirm`）；
-- `chrome/slot.rkt`：安装共享槽、input show/finish、status buffer 同步；
-- `bootstrap/commands/document.rkt`：`request-quit` / `request-close-file` / input-submit / save-confirm 流程；
-- `bootstrap/commands/document.rkt`：`default-input-commands`；`bootstrap/defaults.rkt`：`input-keys`。
-
-
-## 面板装配原语（`effects/panel.rkt`）
-
-一个 buffer 支撑的面板在四处留痕：
-
-| 位置 | 内容 | 谁负责 |
-|---|---|---|
-| `engine` | document + view（唯一可变边界） | `panel-create-view!` |
-| `workspace` | `doc-meta` / `view-meta` / `region` | `panel-create-view!` + `panel-region-install!` |
-| `layout` | 引用 `region-id` 的叶子 | 调用方（装配顺序 / 尺寸是策略） |
-| 插件切片 | 自己的 view-id / 展开集合 / 宽度 … | 插件自己（`state.store['resources]` / `store['filetree]`） |
-
-```racket
-;; 建 doc + view（不建 region）
-(define-values (state' vid) (panel-create-view! engine state #:name "*x*" #:mode 'x))
-;; 建 region（role 决定 splittable? / close-policy / focusable?）
-(panel-region-install! state' rid #:role 'tool #:members (list (view-member vid)) #:active vid)
-;; 单 view 面板 = 上面两个
-(define-values (state'' vid) (panel-install! engine state rid #:name … #:mode … #:role …))
-;; 卸载：engine 对象 + workspace view/doc + region + layout 叶子（可重复调用）
-(panel-uninstall! engine state'' rid)
-;; 每帧同步：文本变了才重写 buffer，face 每帧重写，光标夹在文本内
-(panel-sync-buffer! engine state vid #:texts texts #:faces faces)
-```
-
-`panel-uninstall!` 是 `panel-install!` 的严格反操作：`test/panel.rkt` 断言 docs /
-views / regions / layout / engine 全部回到安装前（这也是“面板可拆”的基线）。
-
-### 每帧同步注册表
-
-`run-frame` 不再认识具体面板，只遍历 `environment.panel-syncs`：
-
-```racket
-(struct environment (… panel-syncs))   ; (listof (state engine -> any))
-(environment-add-panel-sync env f)     ; 追加（执行顺序 = 注册顺序）
-```
-
-默认 env 注册了 `sync-resource-panel!` 与 `sync-filetree-panel!`；面板没安装时它们
-`view = #f`，直接 no-op。所以“拔掉一个面板”在 runtime 层是零成本。
-
-### 可拆现状（暂定）
-
-已经解耦（逐项落地）：
-
-| 原来 | 现在 |
-|---|---|
-| 面板装配代码各写一份 | `effects/panel.rkt`（install / uninstall / sync-buffer） |
-| `run-frame` 里三行硬调 sync | `environment.panel-syncs`（`panel-spec` 自动挂上） |
-| `state.resources.confirm`（框架级） | `state.confirm`（`model/save.rkt`） |
-| `state.resources.collapsed` / `.view` | `state.store['resources]` |
-| `state.resources.pending`（跨面板） | `workspace.placement`（文件树也发起它） |
-| `state.filetree` 整个切片 | `state.store['filetree]` |
-| `state.filetree.root` | `workspace.root`（状态栏按它投影相对路径） |
-| 3 处 `'(status state input resources filetree)` | `doc-meta.internal?`（创建方声明）+ `role.target?` |
-| `default-command-table` 末尾 fold 插件表 | 插件自己贡献 `#:commands` |
-| `default-env` 里塞插件 mode / 键 / input-commands | `core-env` + `plugins-env` + 内置插件 |
-
-于是根 State 只剩框架切片：
-
-```racket
-(struct state (window workspace input chrome runtime ids confirm store))
-```
-
-`test/plugin-detach.rkt` 守着这条线：`core-env` 里没有任何插件痕迹，只用它也能
-编辑 / 切分 / 关闭 / 保存确认 / 退出。
-
-仍写死（暂定）：
-
-| 位置 | 内容 | 备注 |
-|---|---|---|
-| `plugin.rkt` | 没有 `plugin-disable` / `reload` | `environment` 是无来源的纯值，反查需要记 provenance |
-| `effects/interpreter.rkt` | effect 解释是封闭 `cond` | 插件只能用内置 effect + `emit-effect` |
-| `panel-spec` | 只有 sync，没有 install | 安装需要 region-id + 布局位置，由宿主决定 |
-
-## 插件（`env/plugin.rkt`）
-
-插件是一份**数据**，不是 require 顺序：
-
-```racket
-(struct plugin (id env status-parts panels state-init))
-(struct panel-spec (id name role mode sync))
-
-(make-plugin
- 'demo
- #:env          (make-environment #:commands … #:rules (list (make-rule 'always keys)))
- #:status-parts (list (make-status-part 'demo render))
- #:panels       (list (make-panel-spec 'main #:role 'tool #:mode 'demo #:sync sync-demo!))
- #:state-init   (λ (s) (plugin-state-set s 'demo 0)))
-```
-
-| 字段 | 作用 | 语义 |
-|---|---|---|
-| `id` | `state.store` 的键 | 插件命名空间 |
-| `env` | roles / modes / scopes / commands / keymaps / rules / doc-types / input-commands | **覆盖**（`environment-merge`，后者优先） |
-| `status-parts` | 状态栏段 | **追加**（放在现有段之前） |
-| `panels` | 自带面板 | 每个 `panel-spec.sync` 自动追加到 `env.panel-syncs` |
-| `state-init` | `state -> state` | 初始化自己的 store 槽 |
-
-面板的安装由宿主做（需要 region-id 与布局位置）：
-
-```racket
-(panel-spec-install! engine state rid (filetree-panel-spec))  ; → (values state' vid)
-(install-filetree-panel! engine state rid root)               ; 便捷版：顺便设 workspace.root
-(panel-uninstall! engine state rid)                           ; 反操作（可重复调用）
-```
-
-### 全局键用规则，不要覆盖 `keymaps['global]`
-
-`environment-merge` 对 keymaps 也是按名字覆盖，插件写 `'global` 会把框架的全局键表
-整个换掉。插件应该贡献规则：
-
-```racket
-#:rules (list (make-rule 'always (keys [(key 'b 'ctrl) 'toggle-filetree])))
-```
-
-规则层在 mode 之上、`global` 之下（见 `dispatch/rules.rkt`），所以既不丢框架键，
-也不影响别的 mode。`test/plugin-detach.rkt` 第 3 条断言 `C-x C-f` 仍是 `open-file`。
-
-### 为什么 `status-parts` 不放在 `env` 里
-
-`environment-merge` 是覆盖语义（a 的 status 被 b 整体替换）。插件通常想
-“再加一段”而不是“换掉整条状态栏”，所以把加法语义提到 `plugin` 字段上，避免歧义。
-两个语义都有测试（`test/plugin.rkt` 第 2、5 条）。
-
-### 纯装配
-
-```racket
-(define-values (env' state') (plugins-apply env state (list p1 p2)))
-(plugins-env core-env (default-plugins))   ; 只要 env
-```
-
-`plugins-apply` 是纯函数：merge env → 追加状态栏段 → 挂面板 sync → 跑 `state-init`。
-副作用（建 engine 对象 / 装面板）不在这里，由 `effects/panel.rkt` 的装配动作做，
-插件只声明参数。
-
-### 插件现在能做什么（不改框架任何文件）
-
-- 新命令 + 新键位（`env.commands` + `env.rules` / `env.keymaps`）
-- 新 document mode / 按扩展名匹配（`env.modes` + `env.doc-types`）
-- 新条件层（`env.rules` + `env.scopes`）
-- 状态栏段（`status-parts`）
-- 输入栏提交逻辑（`env.input-commands`）
-- 内部事件处理（`job-done` / `tick` 也是信号，挂在 `env.hooks` 上）
-- 自己的状态（`state.store` + `plugin-state*`）
-
-内置插件就是这么写的：
-
-- `plugins/filetree/plugin.rkt`：`panel-spec` + mode `'filetree` + `filetree-command-table`
-  + `filetree-input-commands` + `C-b` 规则；
-- `plugins/resource/plugin.rkt`：`panel-spec` + mode `'resources` + `resource-command-table`。
-
-`demo/plugin.rkt` 是最小的“没有面板”的插件：命令 `demo-hi` + 键 `h` + store 槽 +
-状态栏段 `hi×N`，框架侧零改动。
-
-### 还没做（暂定）
-
-- **enable / disable / reload**：`environment` 是无来源的纯值，反查“哪条贡献来自哪个插件”
-  需要额外记 provenance；目前只支持“启动时装配一次”。
-- **插件自定义 effect**：`effects/interpreter.rkt` 的 `cond` 是封闭的；插件只能用内置 effect +
-  `emit-effect`。
-- **`panel-spec` 不含 install**：安装需要 region-id 与布局位置（宿主的策略），
-  所以只有 `panel-spec-install!` 这个薄封装，没有自动布局。
-
-## 共用面板位置（Tab 切换）
-
-一个 region 可以有多个成员，`active` 决定显示谁——chrome 槽早就是这么做的
-（status / input）。同一套机制可以用来把**文件树和资源列表放进同一个面板位置**：
-
-```racket
-(define sidebar-rid (region-id 1))
-
-;; 两次 install 传同一个 region-id
-(install-filetree-panel! engine state sidebar-rid root)   ; role = 'filetree（第一次决定）
-(install-resource-panel! engine state sidebar-rid)        ; 追加成员，active = 资源列表
-```
-
-- `panel-region-add!` 是这一步的原语：region 不存在就建，存在就**追加成员**并设为 active；
-  role 由第一次安装决定（同一块位置只有一个 role）；
-- 布局里只放一个叶子：`(make-leaf sidebar-rid (fixed 30) #:borders '(right))`；
-- **Tab**（全局 `switch-member`，也绑在 `C-x C-o`）把 active 挪到下一个成员并聚焦它：
-
-| 情况 | 行为 |
-|---|---|
-| 焦点在 sidebar（2 个成员） | 切到另一个面板，焦点跟着走 |
-| region 只有一个成员（普通 editor） | 提示 `switch: single member` |
-| `role.switchable? = #f`（`'slot`） | 提示 `this panel is not switchable` —— 状态栏/输入栏由框架切，不能靠 Tab 手切 |
-| 输入栏占用 | 提示 `switch: input active` |
-
-- 被挡住的面板**不重建 buffer**（`panel-visible?` 闸门）：文件树在后台时不再扫盘；
-- `C-b`（文件树的显隐）作用在 region 上，所以隐藏的是整个 sidebar。
-
-`demo/sidebar.rkt` 是完整例子，`test/sidebar.rkt` 覆盖上面四条规则。
-
-## 提示消息与未绑定键
-
-### 未绑定键：丢掉前缀，不卡住
-
-前缀 + 未绑定键（例如 `C-x p`）以前会保留 `pending`，于是后续每个键都被当成
-`C-x ...` 的延续，整个编辑器“卡住”。现在的规则：
-
-| 情况 | 行为 |
-|---|---|
-| `C-x`（前缀） | `pending = [C-x]`，状态栏显示 `C-x` |
-| `C-x p`（未绑定） | **清空 pending**，状态栏显示 `unbound: C-x p`，**不插入** `p` |
-| 单个未绑定键 + `mode.fallback = 'insert'` | 插入字符（行为不变） |
-| 单个未绑定键 + 其它 | `unbound: <key>` |
-
-- 报告的是**完整尝试序列**（`C-x p`），不是最后那个键；
-- 带前缀时绝不插入字符 —— 否则 `C-x p` 会在文档里留下一个 `p`；
-- 前缀编辑（`C-d` 退格 / `C-g` 取消）仍是独立的最高优先层，不受影响。
-
-### 提示消息只活到下一次动作
-
-`chrome.message` 会**在每一次“用户动作”开始时清空**：
-
-| 事件 | 是否清消息 |
-|---|---|
-| 按键 / 粘贴 | 清 |
-| 鼠标按下 / 抬起 | 清 |
-| 鼠标移动 / 滚轮 / resize / 内部事件 / tick | 不清（拖动时消息不闪） |
-
-所以 `unbound: …`、`cancelled: …`（取消删除文件）、`switch: single member` 这类提示
-在状态栏只停留到你下一次按键 / 点击，不会一直占着状态栏。命令自己要显示的信息
-（`saved: …`、`view placed`）在同一个 transition 里重新写入，照常可见。
-
-没有 pending 时状态栏才显示消息；有 pending 时显示键序列（`C-x`）—— 两者不抢位置。
-
-## 资源列表面板
-
-`demo/resource.rkt`：
-
-- `*resources*` 也是 core buffer view，挂在 role `'resource` 的 panel；
-- document 行绿色，view 行蓝色：两种资源用颜色区分；
-- view 行缩进在 document 下（不显示折叠符号，Tab/Enter 折叠展开）：
-  - `←→↑↓ Home End` 可在面板内移动光标；鼠标点击也会聚焦并落点；
-  - `region:X`
-  - `*` = active
-  - `[focus]`
-  - `[placing]`
-- `Enter`：
-  - document 行 → 折叠/展开；
-  - view 行 → attached 则设为 active + focus；detached 则进入 placement（带选择）；
-- `←→↑↓ Home End` 在资源面板内自由移动；
-- `Tab` 也折叠/展开 document；
-- `v` 给选中 doc 新建 detached view；
-- `n` 新建 scratch doc + detached view；
-- `r` 选中 view 进入 placement；
-- 然后鼠标或 `M-方向` 把焦点移到目标 panel：
-  - 鼠标左键直接点到目标 panel 会提交；
-  - 或按 `C-x C-p` 提交到当前焦点 panel；
-- 提交会替换目标 panel 的 active view；旧 view 只 **detach**，不销毁；
-- `d` detach 选中 view；`c` 销毁选中 view；`Esc` / `C-x C-g` 取消 placement。
-- placement 时点击目标 panel 会直接替换该 panel 的 active view；旧 view 被 detach 保留。
-
-API：
-
-```racket
-(install-resource-panel! engine state region-id)
-(sync-resource-panel! state engine)
-(resource-lines state)
-(resource-line-at state line)
-```
-
-`sync-resource-panel!` 由 runtime 每帧调用；资源面板不参与保存确认。
-
-
-## 文件树面板
-
-`demo/filetree.rkt [root]`：
-
-- 布局是左侧文件树 + 右侧 editor/status：
-  - 文件树占满左侧高度；
-  - 文件树上/下/左边框关闭，只保留右侧分隔边；
-  - 初始 editor panel 是空占位，打开文件后进入 placement，点击右侧 editor 或 `C-x C-p` 放入。
-- `*filetree*` 是 core buffer view；
-- 第一行固定是根目录完整路径；
-- 目录/文件按 **2 空格/层** 缩进；
-- 颜色：
-  - 根目录青色；
-  - 目录蓝色；
-  - 文件灰色；
-  - 已打开的 document 绿色。
-- `C-b` 显示 / 隐藏文件树面板：
-  - 隐藏时记录当前 region 在父轴上的内容尺寸（宽度/高度）；
-  - 显示时用该尺寸作为 fixed 恢复，挤出隐藏时让出的空间；
-  - 尺寸为 0 / 未记录时使用最小值 20。
-- `Enter`：
-  - root/dir → 展开/折叠
-  - file → 打开：
-    - 已有 attached view → 直接聚焦已有 view；
-    - 只有 detached view → 进入 placement，用户自己选 panel；
-    - 尚未打开 → 进入 placement；没有 editor panel 时自动创建并放入。
-- `C-n f` 创建文件；
-- `C-n C-n f` 创建文件夹；
-- `C-d` 删除文件：先进入 input 栏确认 `y/n`（只删文件，不删目录）；
-- 方向键 / Home / End / 鼠标点击都可用。
-
-API：
-
-```racket
-(install-filetree-panel! engine state region-id root)
-(sync-filetree-panel! state engine)
-(filetree-panel-view state)
-(filetree-lines state)
-(filetree-line-at state line)
-```
-
-文件树/资源面板自身 document 不参与保存确认。
-
-## 文件树键
-
-| 键 | 作用 |
-|---|---|
-| `Enter` | 目录折叠/展开；文件打开 |
-| `C-n f` | 创建文件 |
-| `C-n C-n f` | 创建文件夹 |
-| `C-d` | 删除文件（y/n 确认） |
-| `←→↑↓ Home End` | 在文件树内移动 |
-| `C-x C-p` | placement 提交到当前/点击 panel |
-
-
-## 拖动 panel 接缝
-
-鼠标拖动相邻 panel 的共享接缝可以 resize：
-
-- `geometry-solve` 产出 `cut`（axis / offset / path / 两侧 rect 格数）；
-- press 命中 cut → `gesture 'seam`；
-- move → `tree-resize-seam` 按格数增量改两侧 dim：
-  - flex + flex：总权重不变，按新格数比例重分；
-  - fixed + fixed：直接改固定值；
-  - fixed + flex：固定侧改，flex 侧吸收；
-- release → 清 gesture。
-
-接缝是 layout chrome，不进命令表，也不受文档类型影响。

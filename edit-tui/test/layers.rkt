@@ -1,259 +1,151 @@
 #lang racket
 
-;;; edit-tui/test/layers.rkt —— 架构约束的机器检查
+;;; 分层约束的可执行版本：
 ;;;
-;;; 这不是行为测试，而是把“分层”从口头约定变成断言。四条规则：
+;;;   骨架（skeleton）  ← 插件（edit / chrome / filetree） ← app 编排 ← runtime
 ;;;
-;;;   1. 每个模块开头必须声明 `;;; layer  :` 与 `;;; effect :`
-;;;      —— 副作用无法悄悄混进来；
-;;;   2. `(require ...)` 的边必须符合层序 DAG
-;;;      —— base < model < env < effects < projection < dispatch < chrome <
-;;;         bootstrap < plugins < runtime；
-;;;   3. 允许 require `core/...` 的模块是白名单
-;;;      —— core 只出现在引擎 / 投影 / 面板装配 / 命令原语处；
-;;;   4. 允许做文件系统 IO 的模块是白名单
-;;;      —— 插件投影分成 scan（IO）与 lines（纯）。
-;;;
-;;; 违反时直接 check-* 失败并打印文件名，方便定位。
-;;; 跨模块的隐式配合见 ../CONSTRAINTS.md。
-;;;
-;;; 运行：racket edit-tui/test/layers.rkt
-
+;;; 规则：
+;;;   - 骨架不认识 app / 插件 / runtime；
+;;;   - 插件只 require skeleton.rkt（不直接拿骨架实现模块 / core），
+;;;     插件之间只经对方 api.rkt；可以 require app/state 等 app 基础；
+;;;   - app/state、app/event、app/action 只 require 骨架；
+;;;   - app/step 只 require 骨架 + app 基础 + 插件 api.rkt；
+;;;   - runtime 可以 require 一切（它是唯一副作用层）。
 (require rackunit
-         racket/list
+         racket/file
          racket/path
          racket/string)
 
-;;; ════════════════ 工程根 / 文件枚举 ════════════════
+(define test-dir (path->complete-path (find-system-path 'run-file)))
+(define root (simplify-path (build-path (path-only test-dir) 'up)))
 
-;; 本文件在 <root>/test/layers.rkt。
-;; 用模块自身的路径定位（不依赖 cwd，也不依赖“是脚本还是被 require”）。
-(define module-path
-  (resolved-module-path-name
-   (module-path-index-resolve
-    (variable-reference->module-path-index (#%variable-reference)))))
-(define test-dir (path-only (path->complete-path module-path)))
-(define root (simplify-path (build-path test-dir "..")))
-(define (rel p) (path->string (find-relative-path root p)))
+(define (read-forms rel)
+  (define text (regexp-replace #rx"^#lang[^\n]*\n"
+                               (file->string (build-path root rel))
+                               ""))
+  (with-input-from-string text
+    (λ ()
+      (let loop ([acc '()])
+        (define x (read))
+        (if (eof-object? x) (reverse acc) (loop (cons x acc)))))))
 
-(define (rkt-files dir)
-  (for/list ([p (in-directory dir)]
-             #:when (and (file-exists? p)
-                         (equal? (path-get-extension p) #".rkt")
-                         (not (member "compiled" (map path->string (explode-path p))))))
-    p))
+(define (all-strings x)
+  (cond
+    [(string? x) (list x)]
+    [(symbol? x) (list (symbol->string x))]
+    [(list? x) (append* (for/list ([e (in-list x)]) (all-strings e)))]
+    [else '()]))
 
-(define impl-files
-  (append (rkt-files (build-path root "base"))
-          (rkt-files (build-path root "command"))
-          (rkt-files (build-path root "core-render"))
-          (rkt-files (build-path root "theme"))
-          (rkt-files (build-path root "model"))
-          (rkt-files (build-path root "env"))
-          (rkt-files (build-path root "effects"))
-          (rkt-files (build-path root "projection"))
-          (rkt-files (build-path root "dispatch"))
-          (rkt-files (build-path root "chrome"))
-          (rkt-files (build-path root "bootstrap"))
-          (rkt-files (build-path root "plugins"))
-          (rkt-files (build-path root "runtime"))
-          (list (build-path root "main.rkt"))))
+;; 模块的 require 目标（路径字符串 + 裸模块名）
+(define (requires rel)
+  (append*
+   (for/list ([f (in-list (read-forms rel))]
+              #:when (and (list? f) (eq? (car f) 'require)))
+     (append* (for/list ([spec (in-list (cdr f))]) (all-strings spec))))))
 
-;;; ════════════════ 极简 require 解析 ════════════════
+(define (requires-any? rel pattern)
+  (for/or ([r (in-list (requires rel))]) (regexp-match? pattern r)))
 
-;; 只处理“(require ...)”形式：跳过字符串与 ; 注释，数括号。
-;; 返回形式里出现的字符串字面量（模块路径）列表。
-(define (require-strings src)
-  (define n (string-length src))
-  (define out '())
-  (define (skip-string i)                      ; i 指向开引号，返回结束位置
-    (let loop ([i (add1 i)])
-      (cond [(>= i n) i]
-            [(char=? (string-ref src i) #\") (add1 i)]
-            [(char=? (string-ref src i) #\\) (loop (+ i 2))]
-            [else (loop (add1 i))])))
-  (define (skip-comment i)                     ; 到行尾
-    (let loop ([i i])
-      (cond [(>= i n) i]
-            [(char=? (string-ref src i) #\newline) i]
-            [else (loop (add1 i))])))
-  (define (word-at i w)
-    (and (<= (+ i (string-length w)) n)
-         (string=? (substring src i (+ i (string-length w))) w)))
-  (let loop ([i 0] [depth 0] [collect? #f])
-    (cond
-      [(>= i n) (reverse out)]
-      [(char=? (string-ref src i) #\")
-       (define end (skip-string i))
-       (define s (substring src (add1 i) (sub1 end)))
-       (when (and collect? (> depth 0) (string-suffix? s ".rkt"))
-         (set! out (cons s out)))
-       (loop end depth collect?)]
-      [(char=? (string-ref src i) #\;) (loop (skip-comment i) depth collect?)]
-      [(and (= depth 0)
-            (char=? (string-ref src i) #\()
-            (let ([j (let skip ([j (add1 i)])
-                       (if (and (< j n) (char-whitespace? (string-ref src j)))
-                           (skip (add1 j)) j))])
-              (word-at j "require")))
-       (loop (+ i 8) 1 #t)]
-      [(char=? (string-ref src i) #\() (loop (add1 i) (add1 depth) collect?)]
-      [(char=? (string-ref src i) #\))
-       (loop (add1 i) (sub1 depth) (if (zero? (sub1 depth)) #f collect?))]
-      [else (loop (add1 i) depth collect?)])))
+;; 骨架实现文件（插件不许直接拿）
+(define skeleton-impl?
+  #rx"(^|/)(base|command|config|face|panel|layout|focus|projection|render|resource|engine)/[^/]+\\.rkt$")
+;; 插件的实现文件（跨插件只许 api.rkt）
+(define plugin-impl?
+  #rx"(^|/)(edit|chrome|filetree)/[^/]+\\.rkt$")
+(define upper-layer? #rx"(^|/)(app|chrome|filetree|edit|runtime)/")
+(define core-require? #rx"(^|/)core/")
 
-;;; ════════════════ 1. 头部声明 ════════════════
+;;; ════════════════ 骨架 ════════════════
+(define skeleton-files
+  '("base/api.rkt"
+    "command/key.rkt" "command/table.rkt" "command/api.rkt"
+    "config/model.rkt" "config/api.rkt"
+    "face/model.rkt" "face/api.rkt"
+    "panel/model.rkt" "panel/api.rkt"
+    "layout/tree.rkt" "layout/solve.rkt" "layout/ops.rkt" "layout/api.rkt"
+    "focus/model.rkt" "focus/api.rkt"
+    "projection/borders.rkt" "projection/geometry.rkt" "projection/api.rkt"
+    "render/theme.rkt" "render/core.rkt" "render/layout.rkt" "render/api.rkt"
+    "resource/model.rkt" "resource/api.rkt"
+    "engine/action.rkt" "engine/store.rkt" "engine/api.rkt"))
 
-(for ([p (in-list impl-files)])
-  (define src (file->string p))
-  (define head (string-join (take (string-split src "\n")
-                                  (min 40 (length (string-split src "\n"))))
-                            "\n"))
-  (check-true (regexp-match? #rx";;; layer  : " head)
-              (format "缺少 `;;; layer  :` 声明：~a" (rel p)))
-  (check-true (regexp-match? #rx";;; effect : " head)
-              (format "缺少 `;;; effect :` 声明：~a" (rel p))))
+(for ([m (in-list skeleton-files)])
+  (check-false (requires-any? m upper-layer?) m)
+  (check-false (requires-any? m #rx"(^|/)skeleton/") m))
 
-;;; ════════════════ 2. 层序 DAG ════════════════
+;; 骨架内部顺序
+(check-false (requires-any? "layout/tree.rkt" #rx"(^|/)(solve|ops)\\.rkt$"))
+(check-false (requires-any? "layout/solve.rkt" #rx"(^|/)ops\\.rkt$"))
+(check-true (requires-any? "layout/solve.rkt" #rx"(^|/)tree\\.rkt$"))
+(check-true (requires-any? "layout/ops.rkt" #rx"(^|/)(tree|solve)\\.rkt$"))
+(check-true (requires-any? "projection/geometry.rkt" #rx"(^|/)borders\\.rkt$"))
+; engine 不认识 app（action 词汇也在骨架里）
+(check-false (requires-any? "engine/store.rkt" #rx"(^|/)app/"))
 
-;; layer -> 允许它 require 的 layer 集合（含自己）
-(define layers
-  (hash "base"        '(base)
-        "command"     '(base command)
-        "core-render" '(base core-render)
-        "theme"       '(theme)
-        "model"       '(base command model)
-        "env"         '(base command model env)
-        "effects"     '(base command model effects)
-        "projection"  '(base command core-render model effects projection)
-        "dispatch"    '(base command model env effects projection dispatch)
-        "chrome"      '(base command model env effects projection dispatch chrome)
-        "bootstrap"   '(base command model env effects projection dispatch chrome bootstrap)
-        "plugins"     '(base command model env effects projection dispatch chrome bootstrap plugins)
-        "runtime"     '(base command model env effects projection dispatch chrome bootstrap plugins runtime)
-        ;; 公共面：把各层再导出，等价于“最上层”
-        "main"        '(base command core-render model env effects projection dispatch chrome bootstrap plugins runtime)))
+;; 骨架入口本身只聚合骨架 api
+(check-false (requires-any? "skeleton.rkt" upper-layer?) "skeleton.rkt")
+(check-false (requires-any? "skeleton.rkt" core-require?) "skeleton.rkt")
 
-(define (layer-of path)
-  ;; main.rkt 是公共面：只 require/provide，不参与层序（但没有副作用）。
-  (if (regexp-match? #rx"/" path)
-      (car (string-split path "/"))
-      "main"))
+;;; ════════════════ 插件（edit / chrome / filetree） ════════════════
+(define plugin-files
+  '("edit/insert.rkt" "edit/commands.rkt" "edit/api.rkt"
+    "chrome/status.rkt" "chrome/input.rkt" "chrome/api.rkt"
+    "filetree/model.rkt" "filetree/lines.rkt" "filetree/scan.rkt"
+    "filetree/slice.rkt" "filetree/sync.rkt" "filetree/commands.rkt"
+    "filetree/api.rkt"))
 
-(define external-prefixes
-  ;; core 引擎 / tui 只从本层之外看；core 另有白名单。
-  '("racket/place" "racket/async-channel"          ; 跨进程基元（runtime 白名单另有检查）
-    "../../../core/" "../../core/"))
+(for ([m (in-list plugin-files)])
+  ;; 不许摸 core / runtime / 骨架实现
+  (check-false (requires-any? m core-require?) m)
+  (check-false (requires-any? m #rx"(^|/)runtime/") m)
+  (check-false (requires-any? m skeleton-impl?) m)
+  ;; 骨架只经 skeleton.rkt
+  (for ([r (in-list (requires m))]
+        #:when (regexp-match? #rx"(^|/)skeleton\\.rkt$" r))
+    (check-true (regexp-match? #rx"skeleton\\.rkt$" r) (format "~a -> ~a" m r)))
+  ;; 跨插件只经对方 api.rkt
+  (for ([r (in-list (requires m))]
+        #:when (regexp-match? plugin-impl? r))
+    (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
 
-(define (external? s) (for/or ([p (in-list external-prefixes)]) (string-prefix? s p)))
+;; 插件组合骨架：至少用到 skeleton.rkt（api.rkt / 纯 model 例外）
+(for ([m (in-list '("edit/commands.rkt" "chrome/status.rkt" "chrome/input.rkt"
+                    "filetree/sync.rkt" "filetree/commands.rkt"))])
+  (check-true (for/or ([r (in-list (requires m))])
+                (regexp-match? #rx"skeleton\\.rkt$" r))
+              m))
 
-(for ([p (in-list impl-files)])
-  (define here (rel p))
-  (define l (layer-of here))
-  (check-true (hash-has-key? layers l) (format "未知层：~a" here))
-  (for ([s (in-list (require-strings (file->string p)))])
-    (unless (external? s)
-      (define target (rel (simplify-path (build-path (path-only p) s))))
-      (define tl (layer-of target))
-      (check-true (and (hash-has-key? layers tl)
-                       (memq (string->symbol tl) (hash-ref layers l))
-                       #t)
-                  (format "层序违规：~a (~a) -> ~a (~a)" here l target tl)))))
+;; 纯投影 / 状态不碰 IO
+(check-false (requires-any? "filetree/lines.rkt" #rx"(^|/)scan\\.rkt$"))
+(check-false (requires-any? "filetree/model.rkt" upper-layer?))
 
-;;; ════════════════ 3. core 白名单 ════════════════
+;;; ════════════════ app 基础 / 编排 ════════════════
+(for ([m (in-list '("app/state.rkt" "app/event.rkt" "app/action.rkt"
+                    "app/placement.rkt" "app/step.rkt"))])
+  (check-false (requires-any? m skeleton-impl?) m)
+  (check-false (requires-any? m core-require?) m)
+  (check-false (requires-any? m #rx"(^|/)runtime/") m)
+  (for ([r (in-list (requires m))]
+        #:when (regexp-match? plugin-impl? r))
+    (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
 
-;; core 对象/值只应出现在：引擎（唯一拥有者）、投影（构造 rect/panel/patch）、
-;; 面板装配（创建/销毁/写 buffer）、命令（effect 里的 op/point/selection 值）。
-(define core-allowed
-  '("effects/engine.rkt"
-    "effects/paint.rkt"         ; document slot + face port 的写回
-    "effects/interpreter.rkt"      ; set-faces / replace-range 是 core 端口的写回
-    "model/face-decor.rkt"         ; 纯 core track / change 词汇（不碰 buffer/view）
-    "core-render/render.rkt"       ; core piece -> tui 序列（纯渲染后端）
-    "projection/geometry.rkt"
-    "projection/float.rkt"
-    "projection/render.rkt"
-    "effects/panel.rkt"
-    "bootstrap/commands/table.rkt"
-    "bootstrap/commands/focus.rkt"
-    "plugins/completion/plugin.rkt"   ; replace-range / select 需要 core 的 point/range/selection 值
-    "runtime/run.rkt"))
+;; app/state 只依赖骨架（+ 自己）
+(check-false (requires-any? "app/state.rkt" #rx"(^|/)(chrome|edit|filetree)/"))
+(check-false (requires-any? "app/state.rkt" #rx"(^|/)step\\.rkt$"))
 
-(for ([p (in-list impl-files)])
-  (define here (rel p))
-  (define touches-core?
-    (for/or ([s (in-list (require-strings (file->string p)))])
-      (regexp-match? #rx"core/" s)))
-  (when touches-core?
-    (check-not-false (member here core-allowed)
-                (format "core 依赖不在白名单：~a" here))))
+;;; ════════════════ 入口 ════════════════
+;; 顶层 api 只聚合 api.rkt（允许 */api.rkt，不许实现文件）
+(define (impl-require? rel)
+  (for/or ([r (in-list (requires rel))])
+    (and (or (regexp-match? skeleton-impl? r)
+             (regexp-match? plugin-impl? r))
+         (not (regexp-match? #rx"api\\.rkt$" r)))))
 
-;;; ════════════════ 4. 文件系统 IO 白名单 ════════════════
+;; main 是唯一聚合入口（没有顶层 api.rkt）
+(check-false (impl-require? "main.rkt") "main.rkt")
+(check-false (file-exists? (build-path root "api.rkt")) "顶层不应再有 api.rkt")
 
-(define io-rx
-  ;; 只看“真的调用了”的形式：(函数名 + 空白)，并先去掉注释行 —— 免得
-  ;; effect 结构名（make-directory-effect）或注释里的说明被误判。
-  #rx"\\(\\s*(file->string|string->file|with-output-to-file|call-with-output-file|directory-list|file-exists\\?|directory-exists\\?|delete-file|make-directory|copy-file|rename-file-or-directory)\\s")
+; 骨架 demo 也只走 main API
+(check-false (requires-any? "demo/layout.rkt" core-require?) "demo/layout.rkt")
 
-(define (code-only src)
-  (string-join (for/list ([l (in-list (string-split src "\n"))]
-                          #:unless (regexp-match? #rx"^\\s*;" l))
-                 l)
-               "\n"))
-
-(define io-allowed
-  '("effects/interpreter.rkt"        ; 文件读写是 effect 的语义
-    "plugins/filetree/scan.rkt"      ; 读目录（面板观察者）
-    "plugins/filetree/commands.rkt"  ; 建/删文件前的存在性检查
-    "plugins/lang/module-index.rkt"  ; 只在 worker 里构建模块路径索引
-    "plugins/lang/docs.rkt"          ; 只在 worker 里查 xref / blueboxes
-    "plugins/lang/doc-html.rkt"))    ; 只在 worker 里读 HTML 文档页
-
-(for ([p (in-list impl-files)])
-  (define here (rel p))
-  (define src (file->string p))
-  (when (regexp-match? io-rx (code-only src))
-    (check-not-false (member here io-allowed)
-                (format "文件系统 IO 不在白名单：~a" here))))
-
-;;; ════════════════ 5. 终端 / 线程只在壳里 ════════════════
-
-(define tui-allowed '("runtime/run.rkt" "command/tui.rkt" "core-render/render.rkt" "theme/theme.rkt"))
-;; 线程 / place / inbox 只在壳里（worker 也是壳的一部分）
-(define thread-allowed '("runtime/run.rkt" "runtime/worker.rkt"))
-
-(for ([p (in-list impl-files)])
-  (define here (rel p))
-  (define src (file->string p))
-  (when (regexp-match? #rx"\\(require tui\\)|\\bput-bytes\\b|\\bread-event\\b|\\bwith-tui\\b" src)
-    (check-not-false (member here tui-allowed)
-                (format "终端 IO 不在 runtime：~a" here)))
-  (when (regexp-match? #rx"async-channel|\\bthread\\b" src)
-    (check-not-false (member here thread-allowed)
-                (format "线程 / inbox 不在 runtime：~a" here))))
-
-;;; ════════════════ 6. 约定：信号点词表与“上色不发 after-edit” ════════════════
-
-(require "../base/signal.rkt")
-
-;; 标准信号点是**数据**（不是散落在代码里的 symbol）：四个点都在，
-;; 且 known-signal-point? 认得它们；加新点必须同时改这份词表。
-(check-equal? (sort (map symbol->string standard-signal-points) string<?)
-              '("after-edit" "after-nav" "document-opened" "focus-changed"
-                "job-done" "tick"))
-(for ([p (in-list standard-signal-points)])
-  (check-true (known-signal-point? p)))
-(check-false (known-signal-point? 'after-faces))
-
-;;; ════════════════ 7. 结构快照（防止层被悄悄合并） ════════════════
-
-;; 顶层目录 = 层；少一个/多一个都值得停下来看一眼。
-(define impl-dirs
-  (sort (remove-duplicates
-         (for/list ([p (in-list impl-files)]
-                    #:when (regexp-match? #rx"/" (rel p)))
-           (layer-of (rel p))))
-        string<?))
-(check-equal? impl-dirs
-              '("base" "bootstrap" "chrome" "command" "core-render" "dispatch"
-                "effects" "env" "model" "plugins" "projection" "runtime" "theme"))
+(displayln "edit-tui-rebuild/test/layers.rkt: ok")
