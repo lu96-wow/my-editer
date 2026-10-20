@@ -160,4 +160,17 @@
 (check-false (resource-dirty? (app-state-resources s18) r0))
 (delete-file path)
 
+;;; ════════════════ 打开输入时清空 pending ════════════════
+
+;; 模拟先按了 C-w 还没按方向键（pending），随后 prompt 打开；
+;; 第一键应按单键查 input 表，而不是拼成 (C-w key)。
+(define-values (p0 pe0 pr0) (make-app "hello"))
+(define p1 (struct-copy app-state p0 [pending (list (key 'w 'ctrl))]))
+(define-values (pstore _pa) (resource-save (app-state-resources p1) pr0))
+(define p2 (sync! (struct-copy app-state p1 [resources pstore]) pe0))
+(check-true (input-active? p2))
+(check-equal? (app-state-pending p2) '())
+(define p3 (press p2 pe0 (key 'x)))
+(check-equal? (view-line pe0 21) (string-append prefix "x"))
+
 (displayln "edit-tui-rebuild/test/input.rkt: ok")

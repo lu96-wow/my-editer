@@ -120,11 +120,15 @@
 (define s-end* (sync-ui! (run-actions s-end demo-engine a-end) demo-engine))
 (check-equal? (engine-view-point-column demo-engine 10) row-len)
 
-;; 点最后一行以下：view-screen-position->point 返回 #f，光标不动（和编辑器一致）
-(define-values (s-blank a-blank)
-  (click s-click (+ (rect-y ft-rect) (rect-h ft-rect) -2) (+ (rect-x ft-rect) 2)))
-(check-equal? (map view-action-kind a-blank) '(point))
-(check-equal? (filetree-cursor (hash-ref (app-state-store s-blank) 'filetree)) 2)
+;; 点最后一行以下：view-screen-position->point 返回 #f，光标不动（和编辑器一致）。
+;; 用「行数」定位空白行；目录条目多到占满面板时没有空白行，跳过。
+(define ft-row-count
+  (length (filetree-rows (hash-ref (app-state-store s-click) 'filetree))))
+(when (< ft-row-count (rect-h ft-rect))
+  (define-values (s-blank a-blank)
+    (click s-click (+ (rect-y ft-rect) ft-row-count) (+ (rect-x ft-rect) 2)))
+  (check-equal? (map view-action-kind a-blank) '(point))
+  (check-equal? (filetree-cursor (hash-ref (app-state-store s-blank) 'filetree)) 2))
 
 ;; 点击后键盘继续动：点到的行成为新起点（导航也是普通 view-action）
 (define-values (s-down a-down) (step s-click (key-event (key 'down))))

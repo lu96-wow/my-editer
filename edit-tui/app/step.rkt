@@ -24,20 +24,25 @@
 (define (clear-pending state)
   (struct-copy app-state state [pending '()]))
 
-;; overlay 表在最上层；下面按「焦点 resource 的 per-doc 表 / 焦点 panel 的表」二选一。
+;; 输入态是模态：独占 input 表，**不拼 overlays**。
+;; stack 查找 unbound 会继续查下一张表；如果叠了 overlay，输入栏里未绑定的
+;; C-q / C-w 就会穿透到全局键。非输入态才按 overlay > per-doc / panel 组合。
 (define (command-stack-for-focus state)
-  (define rid (app-state-focus-resource state))
-  (define base
-    (cond
-      [rid (or (resource-command-stack (app-state-resources state) rid)
-               command-table-stack-empty)]
-      [else
-       (hash-ref (app-state-panel-stacks state)
-                 (app-state-focus-panel-id state)
-                 command-table-stack-empty)]))
-  (command-table-stack-from-tables
-   (append (app-state-overlays state)
-           (command-table-stack-tables base))))
+  (cond
+    [(input-active? state) input-command-stack]
+    [else
+     (define rid (app-state-focus-resource state))
+     (define base
+       (cond
+         [rid (or (resource-command-stack (app-state-resources state) rid)
+                  command-table-stack-empty)]
+         [else
+          (hash-ref (app-state-panel-stacks state)
+                    (app-state-focus-panel-id state)
+                    command-table-stack-empty)]))
+     (command-table-stack-from-tables
+      (append (app-state-overlays state)
+              (command-table-stack-tables base)))]))
 
 (define (run-command state value)
   (if (procedure? value)
@@ -58,12 +63,14 @@
       [(prefix)
        (values (struct-copy app-state state [pending seq]) '())]
       [else
-       ;; 表里没有：可打印字符 -> 自插入到焦点 editor（兜底）；有前缀则中断前缀
+       ;; 表里没有：输入态 -> input-self-insert（总是吞下），否则可打印字符
+       ;; 自插入到焦点 editor；有前缀则中断前缀。
        (define s1 (clear-pending state))
        (define-values (s2 actions)
-         (if (null? pending)
-             (edit-self-insert s1 tok)
-             (values #f '())))
+         (cond
+           [(input-active? s1) (input-self-insert s1 tok)]
+           [(null? pending) (edit-self-insert s1 tok)]
+           [else (values #f '())]))
        (cond
          [s2 (values s2 actions)]
          [else
@@ -170,8 +177,8 @@
 
 (define (step-dispatch state ev)
   (cond
-    [(and (key-event? ev) (input-active? state))
-     (input-handle-key state ev)]
+    ;; 键盘不在这里分流：输入态由 command-stack-for-focus 选 input-command-stack。
+    ;; 粘贴不是键序列，仍直接交给输入栏。
     [(and (paste-event? ev) (input-active? state))
      (input-handle-paste state ev)]
     [else

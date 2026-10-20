@@ -727,7 +727,11 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 (input-active? state)
 (input-reconcile state)         ; -> (values state' actions)  prompt/request <-> 输入栏
 (input-sync! state engine)      ; 只把文本 / 光标投影到 core view
-(input-handle-key state event)  ; -> (values state' actions) | #f
+
+;; 输入态命令表（step 在输入激活时独占使用，不与 overlays 合并）
+(input-command-table)           ; 单键绑定：Esc/C-g Enter C-h/C-t 编辑/移动
+(input-command-stack)           ; 只含 input-command-table 的 stack
+(input-self-insert state token) ; 表未命中：可打印 -> 插入，其余吞掉
 (input-handle-paste state event)
 
 ;; 插件请求输入（服务 API）
@@ -746,7 +750,7 @@ pending keys
 message
 ```
 
-输入栏（单行编辑，文本 / 光标归 State，每帧投影到 view）：
+输入栏（单行编辑，文本 / 光标归 State，每帧投影到 view；按键走命令表）：
 
 ```text
 可打印键 / 粘贴     在光标处插入（粘贴只取单行可打印内容）
@@ -755,6 +759,48 @@ Backspace / Delete  删光标前 / 后
 C-h / C-t           跳到整行行首 / 行尾（只有输入栏有）
 Enter               提交
 Esc / C-g           取消（resource-cancel）
+```
+
+输入栏状态（`app-state.store['input]`）：
+
+```text
+input-state
+  panel-id    status panel（输入栏 view 挂在这里）
+  status-view / input-view   两个 core view id
+  active?     是否打开
+  source      'resource | 'plugin | #f
+  request     input-request | #f（source = 'plugin）
+  prompt-id   resource prompt id | #f（source = 'resource）
+  text        前缀之后的文本
+  cursor      整行绝对位置（0 .. 前缀长 + 文本长）
+  prev-focus  打开前的焦点 panel
+```
+
+和命令表 / 调度相关的 app-state 字段：
+
+```text
+pending        已按下的半截键序列；input-open 清空
+overlays       全局表；输入态不参与组合
+panel-stacks   非 resource 面板的表（filetree）
+store['input'] 上面那个 input-state
+resources      resource prompt（系统 prompt 的唯一真相）
+```
+
+状态迁移由 `input-reconcile` 保证：`prompt 存在 <=> source = 'resource`；
+插件请求 `source = 'plugin`；两者都没有则 `active? = #f`。
+
+```text
+打开 / 切换：
+  prompt 出现，无输入          -> open-resource-input
+  prompt 出现，plugin 输入中   -> finish 'preempted'，open-resource-input
+  prompt 变化 / 消失           -> close 或重开
+  input-start，无 prompt       -> open-request-input
+  input-start，旧 plugin       -> finish 旧 'preempted'，open 新
+  input-start，prompt 存在     -> message "input busy"，不打开
+打断 / 结束：
+  Enter                        -> submit（非法则保持打开）
+  Esc / C-g                    -> resource-cancel 或 finish 'cancelled'
+  mouse / resize / quit / internal -> input-interrupt 'cancelled'，再处理事件
 ```
 
 - prompt 来自 `resource-prompt`，前缀 = label；confirm 还会显示可选值，
@@ -797,11 +843,21 @@ Esc / C-g           取消（resource-cancel）
 
 规范（输入是抢占式的）：
 
-- 输入激活时，**key / paste** 交给输入栏；**其他事件**（mouse / resize /
-  quit / internal）先 `input-interrupt` 取消本次输入，再照常处理该事件；
+- 输入激活时，**key** 走 `input-command-stack`（独占，见下），**paste** 直接
+  交给输入栏；**其他事件**（mouse / resize / quit / internal）先
+  `input-interrupt` 取消本次输入，再照常处理该事件；
 - 新的插件请求挤占旧插件请求：旧请求 on-done 收到 `'preempted`；
 - 系统 prompt 优先：出现时挤占插件请求（`'preempted`），并从空文本开始；
 - 关闭 / 取消 / 挤占都会回调 on-done，插件不需要轮询。
+
+输入栏的键和其他面板一样走命令表，但**独占**：`command-stack-for-focus` 在
+`input-active?` 时直接返回 `input-command-stack`，不拼 `overlays`。原因是
+`command-table-stack-lookup` 遇到 unbound 会继续查下一张表——如果叠了
+overlay，输入栏里未绑定的 `C-q` / `C-w` 就会穿透成全局命令。可打印字符
+不建表项，由 `input-self-insert` 兜底（和 editor 的 `edit-self-insert` 对称）。
+
+打开输入栏时 `input-open` 会清空 `pending`，避免半截序列（如先按了 `C-w`）
+把输入栏的第一键拼成 `(C-w key)` 去查表。
 
 `app/step.rkt` 在入口 / 出口做 reconcile + 抢占，`runtime/sync.rkt` 在每帧同步前
 也 reconcile 一次（挤占回调可能产生 action，先跑掉再写 view）。

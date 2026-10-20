@@ -13,6 +13,10 @@
 ;;;   2. 插件请求：(input-start state (input-request ...))，
 ;;;      on-done 回调拿到 (input-result id status value)
 ;;;
+;;; 按键走命令表：输入激活时 app/step 只用 input-command-stack（独占），
+;;; **不叠 overlays** —— stack 查找 unbound 会落到下一张表，叠 overlay 会让
+;;; C-q 之类的全局键穿透输入栏。可打印字符不在表里，由 input-self-insert 兜底。
+;;;
 ;;; 打断 / 挤占规范（输入栏是抢占式的）：
 ;;;   - 输入激活时，**非 key / paste 事件**（mouse / resize / quit / internal）
 ;;;     先取消本次输入，再处理该事件；
@@ -31,7 +35,9 @@
          input-active?
          input-reconcile
          input-sync!
-         input-handle-key
+         input-command-table
+         input-command-stack
+         input-self-insert
          input-handle-paste
          input-start
          input-interrupt
@@ -62,7 +68,7 @@
    request      ; input-request | #f（source = 'plugin）
    prompt-id    ; resource prompt id | #f（source = 'resource）
    text         ; 已输入文本（不含前缀）
-   cursor       ; 文本内光标（0..string-length）
+   cursor       ; 整行绝对光标（0 .. 前缀长 + 文本长）
    prev-focus)  ; 打开输入栏前的焦点 panel，关闭时恢复
   #:transparent)
 
@@ -149,8 +155,10 @@
                              [cursor cursor]
                              [prev-focus prev]))
      (define state1 (set-input-state (switch-active-view state (input-state-input-view s)) s1))
+     ;; 输入是模态：清掉半截键序列，否则第一键会按 (pending ++ tok) 去查表。
+     (define state2 (struct-copy app-state state1 [pending '()]))
      ;; 输入栏是在 status panel 里换 view：焦点 resource 变 #f
-     (app-state-set-focus-panel state1 (input-state-panel-id s))]))
+     (app-state-set-focus-panel state2 (input-state-panel-id s))]))
 
 (define (open-resource-input state prompt)
   (input-open state 'resource #f (prompt-id prompt)
@@ -304,9 +312,6 @@
 (define (input-typed-text tok)
   (and (key? tok) (key-text tok)))
 
-(define (tok=? a b)
-  (and (key? a) (key=? a b)))
-
 (define (prefix-length state)
   (string-length (current-prefix state)))
 
@@ -418,40 +423,54 @@
      (define req (input-state-request s))
      (finish-request state (input-result (input-request-id req) 'cancelled #f))]))
 
-(define (input-handle-key state ev)
-  (define s (input-state* state))
+;;; ════════════════ 命令（输入态独占表） ════════════════
+;;;
+;;; 这里只放“按键 -> 已有 input-* 函数”的包装；真正编辑逻辑仍在上面。
+;;; 可打印字符不建表项：任意 Unicode 都走 input-self-insert 兜底。
+
+(define (input-home state)
+  (values (set-cursor state 0) '()))
+
+(define (input-end state)
+  (values (set-cursor state (line-end-cursor state)) '()))
+
+(define (input-left state)
+  (define cursor (input-state-cursor (input-state* state)))
+  (values (set-cursor state (max 0 (sub1 cursor))) '()))
+
+(define (input-right state)
+  (define cursor (input-state-cursor (input-state* state)))
+  (values (set-cursor state (min (line-end-cursor state) (add1 cursor))) '()))
+
+(define input-command-table
+  (keys
+   [(key 'g 'ctrl)  input-cancel-current]
+   [(key 'escape)   input-cancel-current]
+   [(key 'enter)    input-submit]
+   ;; 输入栏专属：head / tail（C-h 是独立 token，不是 Backspace）
+   [(key 'h 'ctrl)  input-home]
+   [(key 't 'ctrl)  input-end]
+   [(key 'backspace) input-backspace]
+   [(key 'delete)    input-delete]
+   [(key 'left)      input-left]
+   [(key 'b 'ctrl)   input-left]
+   [(key 'right)     input-right]
+   [(key 'f 'ctrl)   input-right]
+   [(key 'home)      input-home]
+   [(key 'a 'ctrl)   input-home]
+   [(key 'end)       input-end]
+   [(key 'e 'ctrl)   input-end]))
+
+;; 输入态独占这一张表（没有 overlay 层可穿透）。
+(define input-command-stack
+  (command-table-stack-from-tables (list input-command-table)))
+
+;; 表未命中：可打印字符插入；控制键吞掉（不冒泡成 "unbound"）。
+(define (input-self-insert state tok)
+  (define typed (input-typed-text tok))
   (cond
-    [(not (and s (input-state-active? s))) #f]
-    [else
-     (define tok (key-event-token ev))
-     (define cursor (input-state-cursor s))
-     (cond
-       [(or (tok=? tok (key 'g 'ctrl)) (tok=? tok (key 'escape)))
-        (input-cancel-current state)]
-       [(tok=? tok (key 'enter))
-        (input-submit state)]
-       ;; 输入栏专属：head / tail（C-h 在这里是独立 token，不是 Backspace）
-       [(tok=? tok (key 'h 'ctrl))
-        (values (set-cursor state 0) '())]
-       [(tok=? tok (key 't 'ctrl))
-        (values (set-cursor state (line-end-cursor state)) '())]
-       [(tok=? tok (key 'backspace))
-        (input-backspace state)]
-       [(tok=? tok (key 'delete))
-        (input-delete state)]
-       [(or (tok=? tok (key 'left)) (tok=? tok (key 'b 'ctrl)))
-        (values (set-cursor state (max 0 (sub1 cursor))) '())]
-       [(or (tok=? tok (key 'right)) (tok=? tok (key 'f 'ctrl)))
-        (values (set-cursor state (min (line-end-cursor state) (add1 cursor))) '())]
-       [(or (tok=? tok (key 'home)) (tok=? tok (key 'a 'ctrl)))
-        (values (set-cursor state 0) '())]
-       [(or (tok=? tok (key 'end)) (tok=? tok (key 'e 'ctrl)))
-        (values (set-cursor state (line-end-cursor state)) '())]
-       [else
-        (define typed (input-typed-text tok))
-        (cond
-          [(not typed) (values state '())]
-          [else (input-insert state typed)])])]))
+    [typed (input-insert state typed)]
+    [else (values state '())]))
 
 ;; 粘贴：只取单行可打印内容，插到光标处（光标在前缀里则落到文本起点）
 (define (input-handle-paste state ev)
