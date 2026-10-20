@@ -30,8 +30,10 @@
 (define (status-resource-name state)
   (define rid (app-state-focus-resource state))
   (define r (and rid (resource-ref (app-state-resources state) rid)))
-  (and r (or (resource-path (app-state-resources state) rid)
-             (resource-name r))))
+  (and r
+       (let ([p (or (resource-path (app-state-resources state) rid)
+                    (resource-name r))])
+         (if (path? p) (path->string p) p))))
 
 (define (status-line state engine)
   (define vid (app-state-focus-view-id state))

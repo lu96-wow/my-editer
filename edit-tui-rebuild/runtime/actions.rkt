@@ -43,6 +43,21 @@
              (resource-save-done store rid version))
            (values (struct-copy app-state state [resources store*]) more)])])]))
 
+;; 文档类 view-action 之后把 resource.version 对齐 engine 里的文档版本。
+;; 导航 / 滚动 / 光标不动文档，版本相同 -> 不产生 dirty。
+(define (note-view-edit state engine vid)
+  (define store (app-state-resources state))
+  (define rid (resource-of-view store vid))
+  (define r (and rid (resource-ref store rid)))
+  (cond
+    [(not r) state]
+    [else
+     (define version (engine-doc-version engine (resource-doc-id r)))
+     (if (and version (not (equal? (resource-version r) version)))
+         (struct-copy app-state state
+                      [resources (resource-sync-version store rid version)])
+         state)]))
+
 (define (run-action state engine action)
   (cond
     [(resource-action? action)
@@ -108,7 +123,7 @@
            (values (run-actions s2 engine actions) '())])])]
     [(view-action? action)
      (engine-apply-view-action! engine action)
-     (values state '())]
+     (values (note-view-edit state engine (view-action-view-id action)) '())]
     [(quit-action? action)
      (values (struct-copy app-state state [quit? #t]) '())]
     [else

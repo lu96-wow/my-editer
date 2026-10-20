@@ -16,6 +16,7 @@
          "../app/step.rkt"
          "../app/event.rkt"
          "../base/api.rkt"
+         "../chrome/api.rkt"
          "actions.rkt"
          "render.rkt"
          "sync.rkt"
@@ -35,7 +36,8 @@
     (define ev (read-event))
     (define cache** (if (resize-event? ev) #f cache*))
     (define-values (state1 actions) (step state* ev))
-    (define state2 (run-actions state1 engine actions))
+    ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），这里再对一次
+    (define state2 (input-reconcile (run-actions state1 engine actions)))
     (if (app-state-quit? state2)
         state2
         (loop state2 cache**))))

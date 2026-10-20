@@ -650,8 +650,10 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 
 (input-install-state state panel-id status-view input-view)
 (input-active? state)
-(input-sync! state engine)
+(input-reconcile state)         ; 纯：有 prompt <=> 输入栏打开（step 入口/出口调用）
+(input-sync! state engine)      ; 只把文本 / 光标投影到 core view
 (input-handle-key state event)  ; -> (values state' actions) | #f
+(input-handle-paste state event)
 ```
 
 状态栏：
@@ -664,13 +666,55 @@ pending keys
 message
 ```
 
-输入栏：
+输入栏（单行编辑，文本 / 光标归 State，每帧投影到 view）：
 
-- prompt 来自 `resource-prompt`；
-- `Enter` -> `resource-submit`；
-- `Esc` / `C-g` -> `resource-cancel`；
-- 普通字符 / Backspace 修改输入文本；
-- confirm prompt 会把文本转成 symbol（save / skip / save-all / skip-all / cancel）。
+```text
+可打印键 / 粘贴     在光标处插入（粘贴只取单行可打印内容）
+Backspace / Delete  删光标前 / 后
+← → Home End        移动光标（C-b/C-f/C-a/C-e 同义）
+Enter               提交
+Esc / C-g           取消（resource-cancel）
+```
+
+- prompt 来自 `resource-prompt`，前缀 = label；confirm 还会显示可选值，
+  并且 **label 里有文件路径**（没有 path 时用 resource name）：
+  `Save /home/me/a.txt? (y/n/all/nall) `；
+- confirm 的可选值：`y`（保存）/ `n`（跳过）/ `all`（剩下都保存）/
+  `nall`（剩下都跳过）；Esc 取消。大小写不敏感，也接受旧写法
+  `save/skip/save-all/skip-all/cancel`；
+- Enter -> **`resource-submit-text`**：文本 -> 值的转换和校验都在 resource 层，
+  按 prompt kind 分派（输入栏本身不判断 kind）；
+  - confirm：接受 y/n/all/nall（映射到 save/skip/save-all/skip-all），
+    必须是 prompt 支持的答案；
+  - save-path：trim 后不能为空；
+  - 不合法时返回 `ok? = #f`，prompt 保持打开，状态栏提示可选值 / `path required`；
+- prompt 前缀在 core buffer 里标成 **readonly**（`#:readonly-prefix`），
+  face 用 `input-prompt`：用户只能编辑前缀之后的部分；
+- 前缀按 view 宽度裁剪：路径太长时中间省略（保留 `Save `、路径尾部和
+  `(y/n/all/nall)`），给输入留几个字符；完整路径仍可从 `prompt-label` 拿到；
+- 提交成功才 `input-close`（恢复打开前的焦点）。
+
+同步顺序（`runtime/sync.rkt`）：
+
+```text
+input-reconcile    先落实 prompt <-> 输入栏 view
+sync-panel-sizes!  再按布局把 active view 的 viewport 尺寸写好
+sync-filetree! / input-sync! / sync-status!   最后才写内容
+```
+
+尺寸必须先于内容：否则输入栏还在 1x1 viewport 时就把光标设到行尾，
+横向滚动会把整行推到左边，提示就"看不见"了。
+
+打开 / 关闭输入栏是 **状态迁移**，不是渲染副作用：
+
+```text
+prompt 存在 <=> 输入栏 active
+```
+
+`step` 在入口和出口都会 `input-reconcile`（纯），`run-loop` 在 `run-actions`
+之后再 reconcile 一次（action 也可能产生新 prompt，比如写完文件继续下一个确认）。
+所以只驱动 `step`、不跑 `sync` / `render` 的测试里，Enter 一样能提交；
+`input-sync!` 只负责把文本 / 光标投影到 view。
 
 输入栏和状态栏共用同一个 panel 的 views：
 
@@ -689,15 +733,12 @@ resource-open
 resource-ref
 resource-list
 resource-focus
-resource-set-focus
 resource-pending
 
 resource-id
 resource-name
 resource-doc-id
 resource-views
-resource-file-path
-resource-binding-stack
 resource-version
 resource-saved-version
 resource-path
@@ -706,8 +747,11 @@ resource-writable?
 resource-view-ids
 resource-command-stack
 resource-set-command-stack
+resource-normalize-path
+resource-find-by-path
 
 resource-mark-edited
+resource-sync-version      ; engine 文档版本变了才记 dirty
 resource-save
 resource-save-as
 resource-save-done
@@ -716,6 +760,7 @@ resource-request-close
 resource-request-quit
 resource-prompt
 resource-submit
+resource-submit-text
 resource-cancel
 
 resource-action?
@@ -747,6 +792,27 @@ path = #f   -> 不能落文件，保存前先要路径
 dirty       -> version != saved-version
 ```
 
+dirty 的同步：runtime 每解释完一个 `view-action` 就调用
+`resource-sync-version`（只有 engine 里的文档版本真的变了才记 edited），
+所以插入 / 删除会让 `dirty?` 变真，导航 / 滚动不会。
+
+退出 / 关闭保存流程：
+
+```text
+C-q -> resource-request-quit
+  dirty 列表为空        -> quit-action（直接退出）
+  否则逐项 confirm      -> y / n / all / nall（Esc 取消）
+    y    = 保存当前（无 path 先 Save as）
+    n    = 跳过当前
+    all  = 当前 + 剩下都保存
+    nall = 剩下都跳过
+    有 path 直接 write-file；无 path 先出 save-path prompt
+  全部处理完            -> quit-action
+```
+
+`test/quit-save.rkt` 覆盖 dirty -> confirm -> save-as -> 写文件 -> quit，
+以及 skip / cancel / 无效回答。
+
 `resource-open` 返回 action 数据：
 
 ```text
@@ -769,7 +835,7 @@ close-resource / quit
 
 ```text
 resource-prompt
-resource-submit
+resource-submit-text   ; 文本 -> 值（内部再走 resource-submit）
 resource-cancel
 ```
 

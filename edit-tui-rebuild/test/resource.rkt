@@ -115,6 +115,79 @@
 (check-equal? (map resource-id (resource-list sc3)) '(1))
 (check-false (resource-pending sc3))
 
+;;; ---------- 确认提示：带路径 + y/n/all/nall ----------
+;; 两个 dirty 资源：y -> 存第一个；all -> 存剩下全部
+(define-values (two0 two0as)
+  (resource-open resource-store-empty #:name "a" #:path "a.txt"
+                 #:text "A" #:version 'va))
+(define-values (two1 two1as)
+  (resource-open two0 #:name "b" #:path "b.txt" #:text "B" #:version 'vb))
+(void two0as) (void two1as)
+(define two2 (resource-mark-edited (resource-mark-edited two1 1 'va2) 2 'vb2))
+(define-values (tq tq0) (resource-request-quit two2))
+(check-equal? tq0 '())
+(check-equal? (prompt-kind (prompt-of tq)) 'confirm)
+;; 提示里有文件路径
+(check-true (string-contains? (prompt-label (prompt-of tq)) "a.txt"))
+(define tpid1 (prompt-id (prompt-of tq)))
+;; y -> 保存第一个；然后出现第二个 confirm，提示换成 b.txt
+(define-values (tq1 tqa1 tqok1?) (resource-submit-text tq tpid1 "y"))
+(check-true tqok1?)
+(check-equal? (map resource-action-kind tqa1) '(write-file))
+(check-equal? (resource-action-data (car tqa1)) '(1 "a.txt"))
+(define-values (tq2 tqa2) (resource-save-done tq1 1 'va2))
+(check-equal? tqa2 '())
+(check-equal? (prompt-kind (prompt-of tq2)) 'confirm)
+(check-true (string-contains? (prompt-label (prompt-of tq2)) "b.txt"))
+;; ALL（大写）-> 保存剩下全部，然后 quit
+(define tpid2 (prompt-id (prompt-of tq2)))
+(define-values (tq3 tqa3 tqok2?) (resource-submit-text tq2 tpid2 "ALL"))
+(check-true tqok2?)
+(check-equal? (map resource-action-kind tqa3) '(write-file))
+(check-equal? (resource-action-data (car tqa3)) '(2 "b.txt"))
+(define-values (tq4 tqa4) (resource-save-done tq3 2 'vb2))
+(check-equal? (map resource-action-kind tqa4) '(quit))
+
+;; NALL -> 跳过全部，直接 quit
+(define-values (nq nq0) (resource-request-quit two2))
+(define npid (prompt-id (prompt-of nq)))
+(define-values (nq1 nqa1 nqok?) (resource-submit-text nq npid "nall"))
+(check-true nqok?)
+(check-equal? (map resource-action-kind nqa1) '(quit))
+
+;; 非法答案仍然拒绝
+(define-values (bq bqa bok?) (resource-submit-text nq npid "maybe"))
+(check-false bok?)
+
+;;; ---------- 输入栏文本提交（Enter 接的 API） ----------
+;; save-path：空白 -> 不合法；合法 -> 去空白后写文件
+(define st1 (resource-mark-edited s1 1 'v2))        ; pathless + dirty
+(define-values (sp1 asp1) (resource-save st1 1))
+(check-equal? asp1 '())
+(check-equal? (prompt-kind (prompt-of sp1)) 'save-path)
+(define spid (prompt-id (prompt-of sp1)))
+(define-values (sp2 asp2 ok1?) (resource-submit-text sp1 spid "   "))
+(check-false ok1?)
+(check-equal? asp2 '())
+(check-equal? sp2 sp1)
+(define-values (sp3 asp3 ok2?) (resource-submit-text sp1 spid "  scratch2.txt  "))
+(check-true ok2?)
+(check-equal? (map resource-action-kind asp3) '(write-file))
+(check-equal? (resource-path sp3 1) "scratch2.txt")
+
+;; confirm：非法值 -> ok? #f、prompt 不变；合法值 -> 继续
+(define-values (cq0 acq0) (resource-request-quit st1))
+(check-equal? acq0 '())
+(check-equal? (prompt-kind (prompt-of cq0)) 'confirm)
+(define cpid (prompt-id (prompt-of cq0)))
+(define-values (cq1 acq1 ok3?) (resource-submit-text cq0 cpid "bogus"))
+(check-false ok3?)
+(check-equal? acq1 '())
+(check-equal? cq1 cq0)
+(define-values (cq2 acq2 ok4?) (resource-submit-text cq0 cpid " skip "))
+(check-true ok4?)
+(check-equal? (map resource-action-kind acq2) '(quit))
+
 ;;; ---------- 事件 ----------
 (define-values (_s evs) (resource-drain-events s5))
 (check-true (for/or ([e (in-list evs)]) (eq? (resource-event-kind e) 'saved)))

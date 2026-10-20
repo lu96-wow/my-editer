@@ -36,6 +36,7 @@
  ;; open / edit / save
  resource-open
  resource-mark-edited
+ resource-sync-version
  resource-reset-version
  resource-save
  resource-save-as
@@ -46,6 +47,7 @@
  resource-request-quit
  resource-prompt
  resource-submit
+ resource-submit-text
  resource-cancel
 
  ;; action / event

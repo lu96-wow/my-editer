@@ -156,10 +156,19 @@
                        [area (rect 0 0 (resize-event-cols ev) (resize-event-rows ev))])
           '()))
 
+;; 入口 / 出口都维护「prompt <-> 输入栏打开」这个不变量：
+;; 这样 step 单独使用（不跑 sync / render）时，Enter 也能提交。
 (define (step state ev)
+  (define s1 (input-reconcile state))
+  (define-values (s2 actions) (step-dispatch s1 ev))
+  (values (input-reconcile s2) actions))
+
+(define (step-dispatch state ev)
   (cond
     [(and (key-event? ev) (input-active? state))
      (input-handle-key state ev)]
+    [(and (paste-event? ev) (input-active? state))
+     (input-handle-paste state ev)]
     [else
      (case (event-kind ev)
        [(key) (dispatch-key state ev)]

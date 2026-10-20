@@ -42,12 +42,14 @@
          resource-save-as
          resource-save-done
          resource-mark-edited
+         resource-sync-version
          resource-reset-version
 
          resource-request-close
          resource-request-quit
          resource-prompt
          resource-submit
+         resource-submit-text
          resource-cancel
 
          resource-path
@@ -211,10 +213,12 @@
   (define rid (resource-store-next-resource-id store))
   (define vid (resource-store-next-view-id store))
   (define did (or doc-id rid))
-  (define name* (or name path "*scratch*"))
+  ;; path 统一存 string（path? -> path->string），供 status / 提示直接显示
+  (define path* (and path (if (path? path) (path->string path) path)))
+  (define name* (or name path* "*scratch*"))
   (define base (apply command-table-merge tables))
   (define stack (command-table-stack-push command-table-stack-empty base))
-  (define r (resource rid name* did (list vid) path stack version version))
+  (define r (resource rid name* did (list vid) path* stack version version))
   (define s1 (store-put store r))
   (define s2 (struct-copy resource-store s1
                           [focus (if focus? rid (resource-store-focus s1))]
@@ -233,6 +237,15 @@
     [(not r) store]
     [else (store-event (store-put store (struct-copy resource r [version version]))
                        'edited (list id))]))
+
+;; engine 里的文档版本变了才记一次 edited（导航 / 滚动等不产生 dirty）。
+;; runtime 每解释完一个 view-action 调它。
+(define (resource-sync-version store id version)
+  (define r (resource-ref store id))
+  (cond
+    [(not r) store]
+    [(equal? (resource-version r) version) store]
+    [else (resource-mark-edited store id version)]))
 
 ;; 打开完成后把 resource version / saved-version 对齐 engine 当前 token。
 (define (resource-reset-version store id version)
@@ -294,13 +307,17 @@
        (let ([ids (pending-ids p)] [i (pending-index p)])
          (and (< i (length ids)) (list-ref ids i)))))
 
+;; 确认保存的提示：有 path 就显示 path（用户要知道写哪个文件），否则显示 name。
+;; choices 用规范 symbol；输入栏显示成 y/n/all/nall（见 chrome/input.rkt）。
 (define (confirm-prompt store id)
+  (define r (resource-ref store id))
+  (define target (or (and r (resource-file-path r))
+                     (and r (resource-name r))
+                     "*scratch*"))
   (define p (prompt (next-prompt-id store) 'confirm id
-                    (format "Save ~a?" (resource-name* (resource-ref store id)))
-                    #f '(save skip save-all skip-all cancel)))
+                    (format "Save ~a?" target)
+                    #f '(save skip save-all skip-all)))
   (bump-prompt-id (store-set-prompt store p)))
-
-(define (resource-name* r) (resource-name r))
 
 (define (finish-pending store)
   (define p (resource-store-pending store))
@@ -380,6 +397,9 @@
      (values (confirm-prompt (store-set-pending store p) (car ids)) '())]))
 
 ;;; ════════════════ 输入面板交互 ════════════════
+;;;
+;;; 输入栏只负责「文本 + 光标」；文本 -> prompt 语义的转换 / 校验在
+;;; resource-submit-text 里（按 prompt kind 分派），chrome 不再判断 kind。
 
 (define (resource-prompt store)
   (resource-store-prompt store))
@@ -392,6 +412,46 @@
      (store-event
       (store-clear-pending (store-clear-prompt store))
       'cancelled '())]))
+
+;; 输入栏按 Enter：文本 -> 对应 prompt 的值 + 校验。
+;; → (values store' actions ok?)
+;;   ok? = #f 表示输入不合法，store 不变、prompt 保持打开。
+
+;; confirm 接受 y/n/all/nall（大小写不敏感），也接受原来的
+;; save / skip / save-all / skip-all / cancel 写法。
+(define (confirm-answer text)
+  (case (string-downcase text)
+    [("y" "yes" "save") 'save]
+    [("n" "no" "skip") 'skip]
+    [("all" "save-all") 'save-all]
+    [("nall" "skip-all") 'skip-all]
+    [("cancel") 'cancel]
+    [else #f]))
+
+(define (resource-submit-text store pid text)
+  (define p (resource-store-prompt store))
+  (cond
+    [(or (not p) (not (equal? (prompt-id p) pid)))
+     (values store '() #f)]
+    [else
+     (define trimmed (string-trim text))
+     (case (prompt-kind p)
+       [(confirm)
+        (define v (confirm-answer trimmed))
+        (cond
+          [(and v (or (eq? v 'cancel) (memq v (prompt-choices p))))
+           (let-values ([(s a) (resource-submit store pid v)])
+             (values s a #t))]
+          [else (values store '() #f)])]
+       [(save-path)
+        (cond
+          [(zero? (string-length trimmed)) (values store '() #f)]
+          [else
+           (let-values ([(s a) (resource-submit store pid trimmed)])
+             (values s a #t))])]
+       [else
+        (let-values ([(s a) (resource-submit store pid text)])
+          (values s a #t))])]))
 
 (define (resource-submit store pid value)
   (define p (resource-store-prompt store))

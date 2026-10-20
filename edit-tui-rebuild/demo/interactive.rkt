@@ -23,6 +23,11 @@
 ;;;   C-z / C-y     撤销 / 重做
 ;;;   （C-i 与 Tab 是同一个字节，所以绑 Tab 就能收到 C-i）
 ;;;
+;;; 输入栏（Save as / 退出确认）：
+;;;   ←→ Home End / Backspace / Delete 编辑，粘贴可用；prompt 前缀只读；
+;;;   Enter 提交，Esc / C-g 取消；
+;;;   confirm 提示里有文件路径，可输 y / n / all / nall。
+;;;
 ;;; 鼠标：
 ;;;   拖 panel 接缝  resize
 ;;;   点 panel      聚焦（焦点窗口边框用 focused-border 高亮）
@@ -181,4 +186,5 @@
 (define demo-engine engine)
 
 (module+ main
-  (run-app demo-state demo-engine))
+  ;; void：racket 会打印 module+ main 的返回值，别把整棵 state 吐到终端
+  (void (run-app demo-state demo-engine)))

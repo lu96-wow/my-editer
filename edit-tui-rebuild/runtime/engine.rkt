@@ -16,6 +16,7 @@
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version
          engine-view-point-line engine-view-point-column
+         engine-view-width
          engine-set-view-lines!
          engine-apply-view-action!)
 
@@ -85,25 +86,40 @@
   (define v (engine-view-object e vid))
   (and v (view-point-column v)))
 
+;; 输入栏按宽度裁剪 prompt 前缀用
+(define (engine-view-width e vid)
+  (define v (engine-view-object e vid))
+  (and v (view-width v)))
 
-;; 整篇写一个 UI view：文本 + 每行 face + 光标行。
-(define (engine-set-view-lines! e vid lines faces line #:column [column 0])
+
+;;; 整篇写一个 UI view：文本 + 每行 face + 光标行。
+;;;
+;;; #:readonly-prefix n  首行前 n 个字符标成 readonly（输入栏 prompt 前缀）
+;;; #:prefix-face face   这 n 个字符用不同 face（只在前缀非空时生效）
+(define (engine-set-view-lines! e vid lines faces line
+                                #:column [column 0]
+                                #:readonly-prefix [readonly-prefix 0]
+                                #:prefix-face [prefix-face #f])
   (define v (engine-view-object e vid))
   (cond
     [(not v) (void)]
     [else
      (define prev (hash-ref (engine-ui e) vid #f))
-     (define content-changed?
-       (or (not prev)
-           (not (equal? (car prev) lines))
-           (not (equal? (cdr prev) faces))))
+     (define cache (list lines faces readonly-prefix prefix-face))
+     (define content-changed? (or (not prev) (not (equal? prev cache))))
      (when content-changed?
        (define b (view-buffer v))
        (buffer-set-document! b (string-join lines "\n"))
        (buffer-face-all! b #f)
        (for ([i (in-naturals)] [face (in-list faces)])
          (when face (buffer-face-line! b i face)))
-       (set-engine-ui! e (hash-set (engine-ui e) vid (cons lines faces))))
+       ;; prompt 前缀：只读 + 单独 face（光标 / 编辑只作用于后面可输部分）
+       (when (and (pair? lines) (positive? readonly-prefix))
+         (define n (min readonly-prefix (string-length (car lines))))
+         (define r (range (point 0 0) (point 0 n)))
+         (buffer-readonly-range! b r #t)
+         (when prefix-face (buffer-face-range! b r prefix-face)))
+       (set-engine-ui! e (hash-set (engine-ui e) vid cache)))
      ;; 光标只在真的变了时才写（避免每帧重设 selections / ensure）
      (define n (max 1 (length lines)))
      (define l (max 0 (min line (sub1 n))))

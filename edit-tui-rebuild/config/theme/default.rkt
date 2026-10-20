@@ -45,6 +45,8 @@
    (list 'status-dirty      (style (rgb 230 160 90) #f '(bold)))
    (list 'message           (style (rgb 230 160 90) #f '()))
    (list 'input             (style #f #f '()))
+   ;; 输入栏 prompt 前缀（buffer 里同时标 readonly）
+   (list 'input-prompt      (style (rgb 140 160 190) #f '()))
    (list 'resource-document (style (rgb 200 200 200) #f '()))
    (list 'resource-view     (style (rgb 140 160 190) #f '()))
    (list 'resource-focus    (style (rgb 120 210 130) #f '(bold)))
