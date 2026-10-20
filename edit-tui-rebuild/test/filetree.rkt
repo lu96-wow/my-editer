@@ -98,5 +98,14 @@
 (check-equal? (length (rows-of c4)) (add1 n1))
 (delete-directory/files root2)
 
+;; 光标在 view 上：导航表覆盖四个方向 + Home/End（普通 buffer 语义）
+(for ([k (in-list (list (key 'left) (key 'right) (key 'up) (key 'down)
+                        (key 'home) (key 'end)))])
+  (define-values (status _v) (command-table-lookup filetree-command-table (list k)))
+  (check-equal? status 'command (key->string k)))
+;; Enter / C-r 仍然是文件树自己的
+(define-values (enter-status _v) (command-table-lookup filetree-command-table (list (key 'enter))))
+(check-equal? enter-status 'command)
+
 (delete-directory/files root)
 (displayln "edit-tui-rebuild/test/filetree.rkt: ok")

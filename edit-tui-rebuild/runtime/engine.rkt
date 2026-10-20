@@ -139,10 +139,11 @@
 (define (page-lines v)
   (max 1 (sub1 (view-height v))))
 
+;; 整屏：光标跟着走一屏（像 vim / less），不是只滚视口
 (define (apply-scroll! v which)
   (case which
-    [(page-up)   (view-scroll! v (- (page-lines v)))]
-    [(page-down) (view-scroll! v (page-lines v))]
+    [(page-up)   (for ([i (in-range (page-lines v))]) (view-up! v))]
+    [(page-down) (for ([i (in-range (page-lines v))]) (view-down! v))]
     [else (view-scroll! v which)]))
 
 ;; 删到行尾（vim 的 C-k）。已在行尾时删掉换行，拼下一行。

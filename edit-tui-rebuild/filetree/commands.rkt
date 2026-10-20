@@ -17,6 +17,7 @@
          "../app/action.rkt"
          "../app/placement.rkt"
          "../command/api.rkt"
+         "../edit/api.rkt"
          "../layout/api.rkt"
          "../panel/api.rkt"
          "../resource/api.rkt"
@@ -27,7 +28,6 @@
 (provide filetree-command-table
          filetree-panel-stack
          filetree-install-state
-         filetree-nav-command
          filetree-enter-command
          filetree-refresh-command)
 
@@ -49,26 +49,6 @@
 
 (define (current-line state)
   (filetree-line-at (ft-rows state) (ft-cursor state)))
-
-(define (set-cursor state n)
-  (set-ft-state state (filetree-set-line (ft-state state) n)))
-
-(define (clamp n len)
-  (cond [(zero? len) 0]
-        [else (max 0 (min n (sub1 len)))]))
-
-(define (filetree-nav-command kind)
-  (λ (state)
-    (define len (length (ft-rows state)))
-    (define cur (ft-cursor state))
-    (define next
-      (case kind
-        [(up) (max 0 (sub1 cur))]
-        [(down) (min (max 0 (sub1 len)) (add1 cur))]
-        [(home) 0]
-        [(end) (max 0 (sub1 len))]
-        [else cur]))
-    (values (set-cursor state (clamp next len)) '())))
 
 (define (find-resource-by-path state path)
   (define pn (filetree-normalize-path path))
@@ -132,14 +112,14 @@
 (define (filetree-refresh-command state)
   (values (set-ft-state state (filetree-invalidate (ft-state state))) '()))
 
+;;; 光标就是 core view 的 point：方向 / Home / End / 翻页用通用导航表，
+;;; 只有 Enter（展开 / 打开）和 C-r（刷新）是文件树自己的。
 (define filetree-command-table
-  (keys
-   [(key 'up)    (filetree-nav-command 'up)]
-   [(key 'down)  (filetree-nav-command 'down)]
-   [(key 'home)  (filetree-nav-command 'home)]
-   [(key 'end)   (filetree-nav-command 'end)]
-   [(key 'enter) filetree-enter-command]
-   [(key 'r 'ctrl) filetree-refresh-command]))
+  (command-table-merge
+   navigation-command-table
+   (keys
+    [(key 'enter)   filetree-enter-command]
+    [(key 'r 'ctrl) filetree-refresh-command])))
 
 (define filetree-panel-stack
   (command-table-stack-push command-table-stack-empty filetree-command-table))

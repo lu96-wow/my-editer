@@ -55,15 +55,18 @@
                            dir-entries)))
      (define f0 (if cached? f (filetree-set-projection f key rows)))
      (define vid (filetree-view f0))
-     ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准
-     (define line
+     ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准。
+     ;; 列不限制在行首：普通 buffer 怎么动，文件树就怎么动（越界由 core clamp）。
+     (define-values (line col)
        (if (filetree-cursor-dirty? f0)
-           (filetree-cursor f0)
-           (or (engine-view-point-line engine vid) 0)))
+           (values (filetree-cursor f0) 0)
+           (values (or (engine-view-point-line engine vid) 0)
+                   (or (engine-view-point-column engine vid) 0))))
      (engine-set-view-lines! engine vid
                              (map filetree-line-text rows)
                              (map filetree-line-face rows)
-                             line)
+                             line
+                             #:column col)
      ;; 写回镜像（engine 会 clamp；点击/滚动后以 view 为准）
      (define cursor (or (engine-view-point-line engine vid) line))
      (set-filetree-state state (filetree-sync-line f0 cursor))]))

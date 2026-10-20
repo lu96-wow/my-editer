@@ -521,10 +521,9 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
 ;;     键盘移动 -> state 改 cursor 并置 cursor-dirty?，sync 推给 view；
 ;;     鼠标点击 -> 普通 point action 改 view，sync 直接读回来当镜像。
 
-(filetree-command-table)
+(filetree-command-table)   ; 通用导航表 + Enter / C-r
 (filetree-panel-stack)
 (filetree-install-state state view root #:panel-id)
-(filetree-nav-command kind)
 (filetree-enter-command state)
 ;; 没有文件树专用的点击/光标逻辑：走通用 point action
 ```
@@ -542,8 +541,11 @@ view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
   - Enter 放入当前焦点 editor；鼠标点目标 editor 也可；
   - Esc 取消；
   - 放入 / 取消后 `clear-placement` 把临时表从 overlays 摘掉，普通键位恢复。
-- 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行光标到哪行
-  （滚动、行尾、空白处的行为与编辑器完全一致），state 里的 cursor 只是镜像。
+- 光标就是 core view 的 point：方向键四个方向 / Home / End / PageUp/Down 都用
+  和 editor 同一张导航表（`navigation-command-table`），**不限制在行首**，
+  列可以自由移动（长路径会横向滚动）；state 里的 cursor 只是 point line 的镜像。
+- 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行、哪列，光标就到哪
+  （滚动、行尾、空白处的行为与编辑器完全一致）。
 
 ### 状态栏 / 输入栏
 
@@ -764,7 +766,8 @@ C-q        退出（dirty -> 确认输入栏）
 焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
 ```
 
-编辑（`edit/commands.rkt`，作为 editor 文档的 per-doc 键表）：
+编辑（`edit/commands.rkt`：`navigation-command-table` + 插入 / 删除 / 历史；
+导航表被 editor 和 filetree 共用，因为文件树也只是普通 buffer）：
 
 ```text
 直接打字                插入（任意可打印字符，含大写 / 中文）
@@ -773,7 +776,7 @@ Backspace / Delete / C-d 删前 / 删后一个字符
 ←→↑↓ Home End           导航
 Shift+方向 / Shift+Home End  扩展选区
 C-a / C-e               行首 / 行尾（C-f / C-b 逐字符）
-PageUp / PageDown       翻页
+PageUp / PageDown       滚一屏（光标跟着走一屏）
 C-k                     删到行尾
 C-z / C-y               撤销 / 重做
 ```
@@ -787,12 +790,14 @@ editor view；非 editor 面板 / 有前缀未完成 / placement 中则回 `unbo
 > C-h / C-m / C-j / C-[ 同理（见上一节「输入：标签 + 字节」）。
 > 想真正区分这些键需要 kitty keyboard protocol / xterm modifyOtherKeys。
 
-文件树：
+文件树（普通 buffer：光标有行列，可自由移动）：
 
 ```text
 C-x ← 聚焦 filetree
-鼠标点行       选中该行
-↑↓ / Home End  选行
+鼠标点行       光标落到点击处（行 + 列）
+←→↑↓           自由移动（长行会横向滚动）
+Home / End     行首 / 行尾        Shift+方向  扩展选区
+PageUp/Down    滚一屏（光标跟着走）
 Enter          展开目录 / 打开文件（文件 -> 进入 placement）
 C-r            重扫目录（行投影有缓存，外部文件变化不会自动反映）
 ```

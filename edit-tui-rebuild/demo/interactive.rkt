@@ -29,7 +29,8 @@
 ;;;   点 buffer 内容 把主光标放到点击处（filetree 也只是普通 buffer）
 ;;;
 ;;; 文件树 / placement：
-;;;   filetree 上 Enter：展开目录 / 打开文件（已打开则聚焦 / 进入 placement）
+;;;   filetree 就是普通 buffer：←→↑↓ / Home End 自由移动光标（列不钉死在行首），
+;;;   PageUp/Down 滚一屏；Enter 展开目录 / 打开文件（已打开则聚焦 / 进入 placement）
 ;;;   placement 中：↑←→↓ 在 editor 间改焦点，Enter 放入，Esc 取消，
 ;;;     鼠标点目标 editor 也可（放完临时表自动解除）
 

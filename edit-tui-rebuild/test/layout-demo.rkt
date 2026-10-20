@@ -102,15 +102,33 @@
 (check-equal? (map view-action-kind a-click) '(point))
 (check-equal? (filetree-cursor (hash-ref (app-state-store s-click) 'filetree)) 2)
 
+;; 列不限制在行首：点在第 2 列就停在第 2 列
+(check-equal? (engine-view-point-column demo-engine 10) 2)
+(define-values (s-right a-right) (step s-click (key-event (key 'right))))
+(check-equal? (map view-action-kind a-right) '(nav))
+(define s-right* (sync-ui! (run-actions s-right demo-engine a-right) demo-engine))
+(check-equal? (engine-view-point-column demo-engine 10) 3)
+(check-equal? (filetree-cursor (hash-ref (app-state-store s-right*) 'filetree)) 2)
+
+;; Home / End 就是普通 buffer 的行首 / 行尾
+(define-values (s-home a-home) (step s-right* (key-event (key 'home))))
+(define s-home* (sync-ui! (run-actions s-home demo-engine a-home) demo-engine))
+(check-equal? (engine-view-point-column demo-engine 10) 0)
+(define row-len (string-length (filetree-line-text
+                                (list-ref (filetree-rows (hash-ref (app-state-store s-home*) 'filetree)) 2))))
+(define-values (s-end a-end) (step s-home* (key-event (key 'end))))
+(define s-end* (sync-ui! (run-actions s-end demo-engine a-end) demo-engine))
+(check-equal? (engine-view-point-column demo-engine 10) row-len)
+
 ;; 点最后一行以下：view-screen-position->point 返回 #f，光标不动（和编辑器一致）
 (define-values (s-blank a-blank)
   (click s-click (+ (rect-y ft-rect) (rect-h ft-rect) -2) (+ (rect-x ft-rect) 2)))
 (check-equal? (map view-action-kind a-blank) '(point))
 (check-equal? (filetree-cursor (hash-ref (app-state-store s-blank) 'filetree)) 2)
 
-;; 点击后键盘继续动：点到的行成为新起点（dirty? 路径推回 view）
+;; 点击后键盘继续动：点到的行成为新起点（导航也是普通 view-action）
 (define-values (s-down a-down) (step s-click (key-event (key 'down))))
-(check-equal? (map view-action-kind a-down) '())
+(check-equal? (map view-action-kind a-down) '(nav))
 (define s-down* (sync-ui! (run-actions s-down demo-engine a-down) demo-engine))
 (check-equal? (filetree-cursor (hash-ref (app-state-store s-down*) 'filetree)) 3)
 

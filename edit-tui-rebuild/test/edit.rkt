@@ -115,6 +115,17 @@
 (check-equal? (map view-action-kind kActions) '(kill-line))
 (check-equal? (engine-view-text ke 1) "a")
 
+;;; ---------- PageUp / PageDown：滚一屏，光标跟着走 ----------
+(define-values (pg0 pge)
+  (make-state (string-join (for/list ([i (in-range 20)]) (format "line-~a" i)) "\n")))
+;; viewport 高 6 -> 一屏 5 行
+(define pg1 (press pg0 pge (key 'pagedown)))
+(check-equal? (engine-view-point-line pge 1) 5)
+(define pg2 (press pg1 pge (key 'pagedown)))
+(check-equal? (engine-view-point-line pge 1) 10)
+(define pg3 (press pg2 pge (key 'pageup)))
+(check-equal? (engine-view-point-line pge 1) 5)
+
 ;;; ---------- 撤销 / 重做 ----------
 (define k3 (press k2 ke (key 'z 'ctrl)))
 (check-equal? (engine-view-text ke 1) "abcd")
