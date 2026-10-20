@@ -32,4 +32,5 @@
 
  ;; key token
  mods-order normalize-mods
- key key? key-name key-mods key->string char->key-name)
+ key key? key-name key-mods key->string char->key-name
+ key-deliverable?)

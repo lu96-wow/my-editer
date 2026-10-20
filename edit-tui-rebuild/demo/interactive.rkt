@@ -10,7 +10,8 @@
 ;;;   C-b           显示 / 隐藏 filetree
 ;;;   C-x ←→↑↓      焦点在 panel 间移动
 ;;;   C-s           保存当前 resource（无 path -> 输入栏 Save as）
-;;;   C-i           插入 x（制造 dirty）
+;;;   C-e           插入 x（制造 dirty）
+;;;                 （不要用 C-i：终端里它就是 tab，收不到 ctrl 位）
 ;;;   C-q           退出（dirty -> 输入栏确认）
 ;;;
 ;;; 鼠标：
@@ -114,7 +115,7 @@
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
    [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
    [(key 's 'ctrl)              save-command]
-   [(key 'i 'ctrl)              insert-x-command]
+   [(key 'e 'ctrl)              insert-x-command]
    [(key 'q 'ctrl)              quit-command]))
 
 ;;; ---------- resources / engine ----------

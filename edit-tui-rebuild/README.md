@@ -66,7 +66,7 @@ edit-tui-rebuild/
 
   command/
     table.rkt              命令表 / stack
-    key.rkt                键 token
+    key.rkt                键 token / key-deliverable?（终端可达性）
     api.rkt                command API
 
   chrome/
@@ -656,11 +656,19 @@ C-w ←→↑↓   拆分当前 editor
 C-b        显隐 filetree
 C-x ←→↑↓   焦点移动
 C-s        保存当前 resource（无 path -> Save as 输入栏）
-C-i        插入 x（制造 dirty）
+C-e        插入 x（制造 dirty）
 C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
 鼠标点面板  聚焦
 ```
+
+> 为什么不用 C-i：传统 ANSI 终端里 Ctrl-I 和 Tab 是同一个字节 0x09，
+> tui 会先按字节分类（`classify-byte`）再归一成命名键，所以 C-i 永远到不了
+> 命令表。同理不可达的还有 C-h（backspace）、C-j / C-m（enter）、
+> C-[（escape）、C-?（backspace）、C-space / C-@（NUL）、
+> C-\ C-] C-^ C-_（裸控制字符）。`key-deliverable?` 可用来检查一个
+> ctrl 组合是否收得到；真要区分这些键需要 kitty keyboard protocol 或
+> xterm modifyOtherKeys。
 
 文件树：
 
