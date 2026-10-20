@@ -2,36 +2,27 @@
 
 ;;; edit-tui-rebuild/api.rkt —— 统一 API 面
 ;;;
-;;; 只聚合各领域 api.rkt，不 require 实现模块。
+;;; 只聚合：
+;;;   skeleton/api.rkt   骨架（布局 / 资源 / 焦点 / face / 命令 / 投影 / engine）
+;;;   render/api.rkt     渲染入口（runtime 侧的渲染实现）
+;;;   各插件 api.rkt     edit / chrome / filetree
+;;;   app/api.rkt        事件 / 状态 / action / placement / step
+;;;   runtime/api.rkt    engine / actions / render / sync / tui adapter / loop
+;;;
+;;; 不 require 任何实现模块。
 
-(require "base/api.rkt"
-         "face/api.rkt"
+(require "skeleton/api.rkt"
+         "render/api.rkt"
          "app/api.rkt"
          "edit/api.rkt"
-         "filetree/api.rkt"
          "chrome/api.rkt"
-         "panel/api.rkt"
-         "config/api.rkt"
-         "layout/api.rkt"
-         "focus/api.rkt"
-         "projection/api.rkt"
-         "render/api.rkt"
-         "command/api.rkt"
-         "resource/api.rkt"
+         "filetree/api.rkt"
          "runtime/api.rkt")
 
-(provide (all-from-out "base/api.rkt"
-                       "face/api.rkt"
+(provide (all-from-out "skeleton/api.rkt"
+                       "render/api.rkt"
                        "app/api.rkt"
                        "edit/api.rkt"
-                       "filetree/api.rkt"
                        "chrome/api.rkt"
-                       "panel/api.rkt"
-                       "config/api.rkt"
-                       "layout/api.rkt"
-                       "focus/api.rkt"
-                       "projection/api.rkt"
-                       "render/api.rkt"
-                       "command/api.rkt"
-                       "resource/api.rkt"
+                       "filetree/api.rkt"
                        "runtime/api.rkt"))

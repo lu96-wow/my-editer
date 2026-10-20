@@ -8,9 +8,8 @@
 ;;;   rows / cursor 写回 app-state.store['filetree]
 ;;;   同时把文本 / face / 光标写进 core view
 
-(require "../app/state.rkt"
-         "../resource/api.rkt"
-         "../runtime/engine.rkt"
+(require "../skeleton/api.rkt"
+         "../app/state.rkt"
          "store.rkt"
          "model.rkt"
          "lines.rkt"

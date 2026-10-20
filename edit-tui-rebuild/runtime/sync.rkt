@@ -11,10 +11,9 @@
 ;;;
 ;;; 编辑器的 buffer 内容由命令 / action 写，不需要这里同步。
 
-(require "../app/state.rkt"
-         "../layout/api.rkt"
+(require "../skeleton/api.rkt"
+         "../app/state.rkt"
          "../render/layout.rkt"
-         "engine.rkt"
          "../filetree/panel.rkt"
          "../chrome/status.rkt"
          "../chrome/input.rkt")

@@ -9,15 +9,8 @@
 ;;;
 ;;; 不碰 engine、不碰 IO；action 由 runtime 解释。
 
-(require "../base/api.rkt"
-         "../command/api.rkt"
-         "../config/api.rkt"
-         "../focus/api.rkt"
-         "../layout/api.rkt"
-         "../panel/api.rkt"
-         "../projection/api.rkt"
-         "../resource/api.rkt"
-         "../chrome/input.rkt"
+(require "../skeleton/api.rkt"
+         "../chrome/api.rkt"
          "../edit/api.rkt"
          "event.rkt"
          "placement.rkt"

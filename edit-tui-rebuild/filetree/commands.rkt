@@ -14,14 +14,12 @@
 ;;; 打开后的目标 panel 由 placement 交互选（↑←→↓ 换 editor / Enter 放入 / Esc 取消）。
 ;;; 新文档的 per-doc 键表来自 app-state-editor-tables（通常是编辑操作表）。
 
-(require racket/list
+(require (only-in racket/list first)
+         "../skeleton/api.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
-         "../command/api.rkt"
          "../edit/api.rkt"
-         "../layout/api.rkt"
-         "../resource/api.rkt"
          "store.rkt"
          "model.rkt"
          "lines.rkt")

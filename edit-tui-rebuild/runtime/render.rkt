@@ -4,10 +4,9 @@
 ;;;
 ;;; view resolver：State 里存 view-id，engine 里存 core view。
 
-(require "../app/state.rkt"
-         "../layout/api.rkt"
-         "../render/layout.rkt"
-         "engine.rkt")
+(require "../skeleton/api.rkt"
+         "../app/state.rkt"
+         "../render/layout.rkt")
 
 (provide render-frame)
 

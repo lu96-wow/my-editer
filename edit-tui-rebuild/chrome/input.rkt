@@ -18,14 +18,9 @@
 ;;; 输入模式激活时 step 直接接管按键 / 粘贴，不查普通命令表。
 
 (require racket/string
-         (only-in "../../core/text/base/width.rkt"
-                  string-display-width char-display-width)
+         "../skeleton/api.rkt"
          "../app/state.rkt"
-         "../app/event.rkt"
-         "../command/api.rkt"
-         "../layout/api.rkt"
-         "../resource/api.rkt"
-         "../runtime/engine.rkt")
+         "../app/event.rkt")
 
 (provide input-install-state
          input-active?

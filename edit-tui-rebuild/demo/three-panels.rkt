@@ -4,6 +4,7 @@
 ;;;   左侧 filetree | 右侧上 editor（空 panel）
 ;;;                 | 右侧下 state
 ;;;
+;;; core 层 demo：只用 core（不经过 rebuild 骨架）。
 ;;; 布局只是一份 (listof core panel)。panel 资源单独保留；
 ;;; 隐藏 = 从渲染列表里拿掉，不删除 panel 本身。
 

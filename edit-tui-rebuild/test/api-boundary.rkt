@@ -12,6 +12,7 @@
 ;;;
 ;;; 不允许：
 ;;;   layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
+;;;   engine/model.rkt  engine/action.rkt
 ;;;   panel/model.rkt
 ;;;   command/table.rkt
 ;;;   projection/geometry.rkt
@@ -29,7 +30,9 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("base" "panel" "config" "layout" "focus" "command" "projection" "face" "render" "resource" "filetree" "chrome" "app" "runtime" "edit"))
+  '("base" "panel" "config" "layout" "focus" "command" "projection" "face"
+    "render" "resource" "filetree" "chrome" "app" "runtime" "edit"
+    "engine" "skeleton"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -72,7 +75,7 @@
        (not (core-path? str))
        (or
         ;; 新结构：领域目录下的非 api 实现文件
-        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|filetree|chrome|app|runtime)/[^/]+\\.rkt$" str)
+        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|filetree|chrome|app|runtime|engine)/[^/]+\\.rkt$" str)
         ;; 兼容旧结构
         (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
 

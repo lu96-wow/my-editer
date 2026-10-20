@@ -4,35 +4,35 @@
 ;;;   filetree | editor(empty)
 ;;;            | state
 ;;;
-;;; 演示：layout 状态 + panel 资源 + layout-solve + 渲染 API。
+;;; 演示：engine（buffer/view）+ panel 资源 + layout-solve + 渲染 API。
+;;; 只 require main.rkt —— 不直接碰 core。
 
-(require (only-in "../../core/editor.rkt"
-                  make-buffer buffer-add-view!)
-         "../main.rkt")
+(require "../main.rkt")
 
 (define W 80)
 (define H 24)
 (define sidebar-w 30)
 
-;; ---------- core view（初始尺寸故意很小，渲染前由 layout-sync! 修正） ----------
-(define ft-buffer (make-buffer "workspace\n  src\n  main.rkt"))
-(define ft-view (buffer-add-view! ft-buffer 1 1))
+;; ---------- skeleton engine：buffer / view ----------
+(define engine (make-engine))
+(void (engine-create-buffer! engine 1 "*filetree*" "workspace\n  src\n  main.rkt"))
+(void (engine-create-view! engine 1 1))
+(void (engine-create-buffer! engine 2 "*state*"
+                              "state focus=editor docs=1 pending=- msg=ready"))
+(void (engine-create-view! engine 2 2))
 
-(define state-buffer (make-buffer "state focus=editor docs=1 pending=- msg=ready"))
-(define state-view (buffer-add-view! state-buffer 1 1))
-
-;; ---------- panel 资源 ----------
+;; ---------- panel 资源（view 以 id 引用） ----------
 (define ft-panel
   (make-panel 'filetree 'sidebar
-              #:views (list ft-view)
-              #:active ft-view
+              #:views '(1)
+              #:active 1
               #:fixed-w sidebar-w
               #:borders '(right)))
 
 (define state-panel
   (make-panel 'state 'status
-              #:views (list state-view)
-              #:active state-view
+              #:views '(2)
+              #:active 2
               #:fixed-h 1))
 
 (define editor-panel (make-empty-editor-panel 'editor))
@@ -47,5 +47,7 @@
 
 ;; ---------- 渲染 ----------
 (define-values (_cache bytes)
-  (render-layout l2 (rect 0 0 W H) #:focus-panel 'editor))
+  (render-layout l2 (rect 0 0 W H)
+                 #:focus-panel 'editor
+                 #:view-object (λ (vid) (engine-view-object engine vid))))
 (displayln (bytes->string/utf-8 bytes))

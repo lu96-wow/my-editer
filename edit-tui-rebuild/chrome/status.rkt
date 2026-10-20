@@ -12,10 +12,8 @@
 ;;; 写入普通 core view，不另开渲染通道。
 
 (require racket/string
-         "../app/state.rkt"
-         "../command/api.rkt"
-         "../resource/api.rkt"
-         "../runtime/engine.rkt")
+         "../skeleton/api.rkt"
+         "../app/state.rkt")
 
 (provide status-install-state
          sync-status!)

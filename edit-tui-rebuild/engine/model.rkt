@@ -1,13 +1,16 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/engine.rkt —— core buffer / view 的唯一拥有者
+;;; edit-tui-rebuild/engine/model.rkt —— core buffer / view 的唯一拥有者（骨架层）
 ;;;
 ;;; 纯 State 只存 id；engine 存真正可变句柄。
 ;;; 命令 / step 不碰 engine，只产生 action；runtime 解释 action 时写 engine。
+;;;
+;;; 这是「骨架」的一部分（不依赖 app / runtime）；runtime 用它的可变句柄，
+;;; 插件通过 skeleton/api 拿到只读查询 + 写 UI view 的入口。
 
 (require racket/match
          "../../core/editor.rkt"
-         "../app/action.rkt")
+         "action.rkt")
 
 (provide (struct-out engine)
          make-engine

@@ -11,11 +11,10 @@
 
 (require racket/file
          racket/path
+         "../skeleton/api.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
-         "../app/placement.rkt"
-         "../resource/api.rkt"
-         "engine.rkt")
+         "../app/placement.rkt")
 
 (provide run-actions)
 
