@@ -16,7 +16,7 @@
 ;; data :
 ;;   insert/paste      原始 UTF-8 bytes（engine 写 buffer 时解码一次）
 ;;   nav               dir | (list dir extend?)
-;;   point             (list row col)（相对内容区，0 基）
+;;   point             (list row col)（相对内容区，0 基；越界夹到最近有效位置）
 ;;   select            core selections 值
 ;;   scroll            number | 'page-up | 'page-down
 ;;   其余              #f

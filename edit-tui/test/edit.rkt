@@ -155,6 +155,18 @@
 (define-values (_b1 bActions) (step bordered (mouse-event 'press 0 0)))
 (check-equal? bActions '())
 
+;;; ---------- 文档下方空白：落到最近有效行，列夹到行尾 ----------
+(define-values (z0 ze) (make-state "ab\ncd"))
+(define-values (z1 zActions) (step z0 (mouse-event 'press 5 1)))
+(check-equal? (map view-action-kind zActions) '(point))
+(define z2 (run-actions z1 ze zActions))
+(check-equal? (engine-view-point-line ze 1) 1)
+(check-equal? (engine-view-point-column ze 1) 1)
+(define-values (z3 z3Actions) (step z0 (mouse-event 'press 5 9)))
+(define z4 (run-actions z3 ze z3Actions))
+(check-equal? (engine-view-point-line ze 1) 1)
+(check-equal? (engine-view-point-column ze 1) 2)
+
 ;;; ---------- 焦点不在 editor：可打印字符不会插入 ----------
 (define-values (x0 xe) (make-state "keep"))
 (void (engine-create-buffer! xe 2 "*status*" "status"))

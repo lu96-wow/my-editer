@@ -174,6 +174,26 @@
      (buffer-replace-range! b (range (point l c) (point (add1 l) 0)) "")]
     [else (void)]))
 
+;; 鼠标点落在文档空白处：view-screen-position->point 返回 #f，
+;; 这时取最近的有效位置（点击在可见区上方 -> 起点，否则 -> 可见区末尾）。
+(define (view-point-at-or-nearest v row col)
+  (define-values (line c) (view-screen-position->point v row col))
+  (cond
+    [line (point line c)]
+    [else
+     ;; 行越界：先夹到最近的有效行（上方 -> 可见区起点，否则 -> 可见区末行），
+     ;; 再用该行的屏幕位置重新映射列，列仍由 viewport 夹到行尾。
+     (define r (view-visible-range v))
+     (define target (if (< row 0) (range-start r) (range-end r)))
+     (define target-line (point-line target))
+     (define-values (sr _sc)
+       (view-point->screen-position v (point target-line 0)))
+     (cond
+       [(not sr) target]
+       [else
+        (define-values (l c*) (view-screen-position->point v sr col))
+        (if l (point l c*) target)])]))
+
 (define (engine-apply-view-action! e action)
   (define vid (view-action-view-id action))
   (define v (engine-view-object e vid))
@@ -196,8 +216,7 @@
      (apply-nav! v (view-action-data action))]
     [(point)
      (match-define (list r c) (view-action-data action))
-     (define-values (line col) (view-screen-position->point v r c))
-     (when line (view-set-point! v (point line col)))]
+     (view-set-point! v (view-point-at-or-nearest v r c))]
     [(select)
      (view-set-selections! v (view-action-data action))]
     [(scroll)

@@ -120,7 +120,13 @@
 (define s-end* (sync-ui! (run-actions s-end demo-engine a-end) demo-engine))
 (check-equal? (engine-view-point-column demo-engine 10) row-len)
 
-;; 点最后一行以下：view-screen-position->point 返回 #f，光标不动（和编辑器一致）。
+;; 点击后键盘继续动：点到的行成为新起点（导航也是普通 view-action）
+(define-values (s-down a-down) (step s-click (key-event (key 'down))))
+(check-equal? (map view-action-kind a-down) '(nav))
+(define s-down* (sync-ui! (run-actions s-down demo-engine a-down) demo-engine))
+(check-equal? (filetree-cursor (hash-ref (app-state-store s-down*) 'filetree)) 3)
+
+;; 点最后一行以下：落到最近有效行（最后一行），列按点击列。
 ;; 用「行数」定位空白行；目录条目多到占满面板时没有空白行，跳过。
 (define ft-row-count
   (length (filetree-rows (hash-ref (app-state-store s-click) 'filetree))))
@@ -128,12 +134,9 @@
   (define-values (s-blank a-blank)
     (click s-click (+ (rect-y ft-rect) ft-row-count) (+ (rect-x ft-rect) 2)))
   (check-equal? (map view-action-kind a-blank) '(point))
-  (check-equal? (filetree-cursor (hash-ref (app-state-store s-blank) 'filetree)) 2))
-
-;; 点击后键盘继续动：点到的行成为新起点（导航也是普通 view-action）
-(define-values (s-down a-down) (step s-click (key-event (key 'down))))
-(check-equal? (map view-action-kind a-down) '(nav))
-(define s-down* (sync-ui! (run-actions s-down demo-engine a-down) demo-engine))
-(check-equal? (filetree-cursor (hash-ref (app-state-store s-down*) 'filetree)) 3)
+  (check-equal? (filetree-cursor (hash-ref (app-state-store s-blank) 'filetree))
+                (sub1 ft-row-count))
+  (check-equal? (engine-view-point-line demo-engine 10) (sub1 ft-row-count))
+  (check-equal? (engine-view-point-column demo-engine 10) 2))
 
 (displayln "edit-tui-rebuild/test/layout-demo.rkt: ok")
