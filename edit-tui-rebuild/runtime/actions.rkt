@@ -11,7 +11,7 @@
 
 (require racket/file
          racket/path
-         "../skeleton/api.rkt"
+         "../skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt")

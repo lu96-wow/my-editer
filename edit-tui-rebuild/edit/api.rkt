@@ -2,8 +2,8 @@
 
 ;;; edit-tui-rebuild/edit/api.rkt —— 编辑操作 API
 
-(require "model.rkt"
+(require "insert.rkt"
          "commands.rkt")
 
-(provide (all-from-out "model.rkt"
+(provide (all-from-out "insert.rkt"
                        "commands.rkt"))

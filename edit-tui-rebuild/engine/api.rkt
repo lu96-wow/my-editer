@@ -6,7 +6,7 @@
 ;;; 插件通过这里写 UI view / 查询光标；runtime 解释 action 时写 engine。
 
 (require "action.rkt"
-         "model.rkt")
+         "store.rkt")
 
 (provide (all-from-out "action.rkt"
-                       "model.rkt"))
+                       "store.rkt"))

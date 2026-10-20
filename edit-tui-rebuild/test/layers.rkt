@@ -6,7 +6,7 @@
 ;;;
 ;;; 规则：
 ;;;   - 骨架不认识 app / 插件 / runtime；
-;;;   - 插件只 require skeleton/api.rkt（不直接拿骨架实现模块 / core），
+;;;   - 插件只 require skeleton.rkt（不直接拿骨架实现模块 / core），
 ;;;     插件之间只经对方 api.rkt；可以 require app/state 等 app 基础；
 ;;;   - app/state、app/event、app/action 只 require 骨架；
 ;;;   - app/step 只 require 骨架 + app 基础 + 插件 api.rkt；
@@ -67,7 +67,7 @@
     "projection/borders.rkt" "projection/geometry.rkt" "projection/api.rkt"
     "render/theme.rkt" "render/core.rkt" "render/layout.rkt" "render/api.rkt"
     "resource/model.rkt" "resource/api.rkt"
-    "engine/action.rkt" "engine/model.rkt" "engine/api.rkt"))
+    "engine/action.rkt" "engine/store.rkt" "engine/api.rkt"))
 
 (for ([m (in-list skeleton-files)])
   (check-false (requires-any? m upper-layer?) m)
@@ -80,18 +80,18 @@
 (check-true (requires-any? "layout/ops.rkt" #rx"(^|/)(tree|solve)\\.rkt$"))
 (check-true (requires-any? "projection/geometry.rkt" #rx"(^|/)borders\\.rkt$"))
 ; engine 不认识 app（action 词汇也在骨架里）
-(check-false (requires-any? "engine/model.rkt" #rx"(^|/)app/"))
+(check-false (requires-any? "engine/store.rkt" #rx"(^|/)app/"))
 
 ;; 骨架入口本身只聚合骨架 api
-(check-false (requires-any? "skeleton/api.rkt" upper-layer?) "skeleton/api.rkt")
-(check-false (requires-any? "skeleton/api.rkt" core-require?) "skeleton/api.rkt")
+(check-false (requires-any? "skeleton.rkt" upper-layer?) "skeleton.rkt")
+(check-false (requires-any? "skeleton.rkt" core-require?) "skeleton.rkt")
 
 ;;; ════════════════ 插件（edit / chrome / filetree） ════════════════
 (define plugin-files
-  '("edit/model.rkt" "edit/commands.rkt" "edit/api.rkt"
+  '("edit/insert.rkt" "edit/commands.rkt" "edit/api.rkt"
     "chrome/status.rkt" "chrome/input.rkt" "chrome/api.rkt"
     "filetree/model.rkt" "filetree/lines.rkt" "filetree/scan.rkt"
-    "filetree/store.rkt" "filetree/panel.rkt" "filetree/commands.rkt"
+    "filetree/slice.rkt" "filetree/sync.rkt" "filetree/commands.rkt"
     "filetree/api.rkt"))
 
 (for ([m (in-list plugin-files)])
@@ -99,20 +99,20 @@
   (check-false (requires-any? m core-require?) m)
   (check-false (requires-any? m #rx"(^|/)runtime/") m)
   (check-false (requires-any? m skeleton-impl?) m)
-  ;; 骨架只经 skeleton/api.rkt
+  ;; 骨架只经 skeleton.rkt
   (for ([r (in-list (requires m))]
-        #:when (regexp-match? #rx"(^|/)skeleton/" r))
-    (check-true (regexp-match? #rx"skeleton/api\\.rkt$" r) (format "~a -> ~a" m r)))
+        #:when (regexp-match? #rx"(^|/)skeleton\\.rkt$" r))
+    (check-true (regexp-match? #rx"skeleton\\.rkt$" r) (format "~a -> ~a" m r)))
   ;; 跨插件只经对方 api.rkt
   (for ([r (in-list (requires m))]
         #:when (regexp-match? plugin-impl? r))
     (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
 
-;; 插件组合骨架：至少用到 skeleton/api（api.rkt / 纯 model 例外）
+;; 插件组合骨架：至少用到 skeleton.rkt（api.rkt / 纯 model 例外）
 (for ([m (in-list '("edit/commands.rkt" "chrome/status.rkt" "chrome/input.rkt"
-                    "filetree/panel.rkt" "filetree/commands.rkt"))])
+                    "filetree/sync.rkt" "filetree/commands.rkt"))])
   (check-true (for/or ([r (in-list (requires m))])
-                (regexp-match? #rx"skeleton/api\\.rkt$" r))
+                (regexp-match? #rx"skeleton\\.rkt$" r))
               m))
 
 ;; 纯投影 / 状态不碰 IO
@@ -141,8 +141,9 @@
              (regexp-match? plugin-impl? r))
          (not (regexp-match? #rx"api\\.rkt$" r)))))
 
-(check-false (impl-require? "api.rkt") "api.rkt")
+;; main 是唯一聚合入口（没有顶层 api.rkt）
 (check-false (impl-require? "main.rkt") "main.rkt")
+(check-false (file-exists? (build-path root "api.rkt")) "顶层不应再有 api.rkt")
 
 ; 骨架 demo 也只走 main API
 (check-false (requires-any? "demo/layout.rkt" core-require?) "demo/layout.rkt")

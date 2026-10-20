@@ -6,10 +6,10 @@
          "lines.rkt"
          "scan.rkt"
          "commands.rkt"
-         "panel.rkt")
+         "sync.rkt")
 
 (provide (all-from-out "model.rkt"
                        "lines.rkt"
                        "scan.rkt"
                        "commands.rkt"
-                       "panel.rkt"))
+                       "sync.rkt"))

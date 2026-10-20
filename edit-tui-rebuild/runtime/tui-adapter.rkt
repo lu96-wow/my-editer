@@ -13,7 +13,7 @@
 (require racket/match
          (prefix-in tui: tui)
          (prefix-in a: "../app/event.rkt")
-         "../skeleton/api.rkt")
+         "../skeleton.rkt")
 
 (provide tui-event->app)
 

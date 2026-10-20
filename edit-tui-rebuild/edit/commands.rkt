@@ -20,9 +20,9 @@
 ;;; 绑定的 token 是 (tag . bytes)：终端不能区分的组合自然共用一个 token
 ;;; （C-i = Tab、C-m = Enter、C-h = Backspace …），不会出现“死绑定”。
 
-(require "../skeleton/api.rkt"
+(require "../skeleton.rkt"
          "../app/state.rkt"
-         "model.rkt")
+         "insert.rkt")
 
 (provide navigation-command-table
          edit-command-table

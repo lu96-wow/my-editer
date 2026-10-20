@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/filetree/panel.rkt —— 文件树面板同步
+;;; edit-tui-rebuild/filetree/sync.rkt —— 文件树同步
 ;;;
 ;;; 每帧：
 ;;;   resource paths -> opened 集合
@@ -8,9 +8,9 @@
 ;;;   rows / cursor 写回 app-state.store['filetree]
 ;;;   同时把文本 / face / 光标写进 core view
 
-(require "../skeleton/api.rkt"
+(require "../skeleton.rkt"
          "../app/state.rkt"
-         "store.rkt"
+         "slice.rkt"
          "model.rkt"
          "lines.rkt"
          "scan.rkt")

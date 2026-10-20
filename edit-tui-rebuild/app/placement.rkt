@@ -13,7 +13,7 @@
 ;;;     Esc   取消
 ;;;   之后 clear-placement 把临时表从 overlays 里移除，普通键位恢复。
 
-(require "../skeleton/api.rkt"
+(require "../skeleton.rkt"
          "state.rkt")
 
 (provide placement-table

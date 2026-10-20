@@ -18,7 +18,7 @@
 ;;; 输入模式激活时 step 直接接管按键 / 粘贴，不查普通命令表。
 
 (require racket/string
-         "../skeleton/api.rkt"
+         "../skeleton.rkt"
          "../app/state.rkt"
          "../app/event.rkt")
 

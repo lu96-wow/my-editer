@@ -1,9 +1,9 @@
 #lang racket
 
-;;; edit-tui-rebuild/filetree/store.rkt —— app-state.store['filetree] 的存取
+;;; edit-tui-rebuild/filetree/slice.rkt —— app-state.store['filetree'] 的切片存取
 ;;;
 ;;; Root State 的 store 是一个 hash：每个面板域把自己的纯状态放在自己的 key 下。
-;;; 这个模块只给 filetree 内部（commands / panel）用，不导出到 API。
+;;; 这个模块只给 filetree 内部（commands / sync）用，不导出到 API。
 ;;;
 ;;; 命名：
 ;;;   (filetree-of state)     读：没有时给 empty-filetree

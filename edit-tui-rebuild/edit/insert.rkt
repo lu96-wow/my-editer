@@ -1,13 +1,13 @@
 #lang racket
 
-;;; edit-tui-rebuild/edit/model.rkt —— 编辑意图（纯）
+;;; edit-tui-rebuild/edit/insert.rkt —— 自插入判读（纯）
 ;;;
 ;;; 只做「这个键该当成什么编辑动作」的判读，不碰 State / engine。
 ;;;
 ;;; 命名键（enter / tab / backspace / arrows …）由命令表显式绑定；
 ;;; 这里只补「任意可打印字符」这一条表里写不下的兜底。
 
-(require "../skeleton/api.rkt")
+(require "../skeleton.rkt")
 
 (provide self-insert-text
          self-insert-char

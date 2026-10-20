@@ -11,7 +11,7 @@
 ;;; 「改焦点」必须走 app-state-set-focus-panel：它会同步刷新 focus-resource。
 ;;; 直接改 layout 会让 focus-resource 过期，所以这里把两者绑在一个操作里。
 
-(require "../skeleton/api.rkt")
+(require "../skeleton.rkt")
 
 (provide (struct-out app-state)
          make-app-state

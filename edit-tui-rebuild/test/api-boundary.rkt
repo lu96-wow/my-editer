@@ -2,7 +2,7 @@
 
 ;;; API 边界约束：
 ;;;
-;;; 非实现层（main.rkt / api.rkt / demo / test / 未来 app）
+;;; 非实现层（main.rkt / */api.rkt / demo / test）
 ;;; 不得直接 require 领域实现文件。
 ;;;
 ;;; 允许：
@@ -12,7 +12,7 @@
 ;;;
 ;;; 不允许：
 ;;;   layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
-;;;   engine/model.rkt  engine/action.rkt
+;;;   engine/store.rkt  engine/action.rkt
 ;;;   panel/model.rkt
 ;;;   command/table.rkt
 ;;;   projection/geometry.rkt
@@ -32,7 +32,7 @@
 (define feature-dirs
   '("base" "panel" "config" "layout" "focus" "command" "projection" "face"
     "render" "resource" "filetree" "chrome" "app" "runtime" "edit"
-    "engine" "skeleton"))
+    "engine"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -83,7 +83,7 @@
 (check-true (impl-require? "layout/tree.rkt"))
 (check-true (impl-require? "../layout/solve.rkt"))
 (check-true (impl-require? "../layout/ops.rkt"))
-(check-true (impl-require? "../filetree/store.rkt"))
+(check-true (impl-require? "../filetree/slice.rkt"))
 (check-true (impl-require? "../panel/model.rkt"))
 (check-true (impl-require? "../projection/geometry.rkt"))
 (check-true (impl-require? "../command/table.rkt"))

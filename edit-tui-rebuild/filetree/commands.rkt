@@ -15,12 +15,12 @@
 ;;; 新文档的 per-doc 键表来自 app-state-editor-tables（通常是编辑操作表）。
 
 (require (only-in racket/list first)
-         "../skeleton/api.rkt"
+         "../skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
          "../edit/api.rkt"
-         "store.rkt"
+         "slice.rkt"
          "model.rkt"
          "lines.rkt")
 

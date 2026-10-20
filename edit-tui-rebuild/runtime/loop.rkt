@@ -12,13 +12,13 @@
 ;;; IO 可注入，方便 headless 测试 / 换终端。
 
 (require (prefix-in tui: tui)
-         "../skeleton/api.rkt"
+         "../skeleton.rkt"
          "../app/state.rkt"
          "../app/step.rkt"
          "../app/event.rkt"
          "../chrome/api.rkt"
          "actions.rkt"
-         "render.rkt"
+         "frame.rkt"
          "sync.rkt"
          "tui-adapter.rkt")
 
