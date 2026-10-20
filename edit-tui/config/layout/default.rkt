@@ -12,7 +12,7 @@
 ;;;
 ;;; 换一套规则（例如 IDE 风格全是可拆 panel）时，复制本文件改 hash 即可。
 
-(require "../../layout/api.rkt")
+(require "../../core/layout/api.rkt")
 
 (provide default-config)
 

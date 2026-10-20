@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/actions.rkt —— action 解释（唯一副作用入口）
+;;; edit-tui-rebuild/boot/actions.rkt —— action 解释（唯一副作用入口）
 ;;;
 ;;; 第一版同步执行：
 ;;;   resource-action -> engine / 文件 IO
@@ -11,7 +11,7 @@
 
 (require racket/file
          racket/path
-         "../skeleton.rkt"
+         "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt")

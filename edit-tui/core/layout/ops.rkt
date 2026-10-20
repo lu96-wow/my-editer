@@ -10,7 +10,7 @@
 ;;; 具体配置由宿主选择（config/layout/default.rkt）并传进来。
 
 (require racket/list
-         "../../core/view/base/rect.rkt"
+         "../../../core/view/base/rect.rkt"
          "config.rkt"
          "../panel/model.rkt"
          "tree.rkt"

@@ -1,10 +1,10 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/frame.rkt —— state + cache -> bytes（每帧渲染入口）
+;;; edit-tui-rebuild/boot/frame.rkt —— state + cache -> bytes（每帧渲染入口）
 ;;;
 ;;; view resolver：State 里存 view-id，engine 里存 core view。
 
-(require "../skeleton.rkt"
+(require "../core/skeleton.rkt"
          "../app/state.rkt"
          "../render/layout.rkt")
 

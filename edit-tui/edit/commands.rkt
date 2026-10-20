@@ -11,7 +11,7 @@
 ;;; 兜底（见 insert.rkt）。这样任意语言 / 任意字符都能输入，不用把
 ;;; Unicode 塞进表里。
 
-(require "../skeleton.rkt"
+(require "../core/skeleton.rkt"
          "../app/state.rkt"
          "insert.rkt")
 

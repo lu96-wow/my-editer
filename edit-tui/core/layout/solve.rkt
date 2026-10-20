@@ -8,7 +8,7 @@
 ;;; 固定尺寸策略：固定轴先取，剩余给 flex；两边都固定时第二个吸收余量。
 ;;; 隐藏 leaf 直接跳过，兄弟吸收父 rect。
 
-(require "../../core/view/base/rect.rkt"
+(require "../../../core/view/base/rect.rkt"
          "tree.rkt")
 
 (provide

@@ -17,8 +17,8 @@
 (require (prefix-in l: "../layout/tree.rkt")
          (prefix-in l: "../layout/solve.rkt")
          (prefix-in p: "../panel/model.rkt")
-         "../../core/view/base/rect.rkt"
-         "../../core/view/panel.rkt")
+         "../../../core/view/base/rect.rkt"
+         "../../../core/view/panel.rkt")
 
 (provide effective-borders
          make-focus-frame)

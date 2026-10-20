@@ -7,7 +7,7 @@
 
 ```text
 1. State 是纯值：不存 engine 句柄、不存 IO 结果，只存 id / 数据 / 纯迁移结果。
-2. 所有副作用都经 action：step 产出 action，runtime 解释；命令只返回
+2. 所有副作用都经 action：step 产出 action，boot 解释；命令只返回
    (values state actions)。
 3. core buffer / view 只有一个拥有者：engine/store.rkt（骨架层）。
 4. 跨领域只经 */api.rkt；领域实现文件是私有的。上层可以 require 下层 api，
@@ -21,168 +21,87 @@
 ## 分层
 
 ```text
-层           目录                                         纯?        可以 require
+层           目录                                          纯?         可以 require
 ------------------------------------------------------------------------------
-骨架-值      base  command  face  panel                 纯         core 的纯值
-骨架-布局    layout(config/tree/solve/ops)                纯         骨架-值
-骨架-资源    resource                                    纯         骨架-值
-骨架-引擎    engine(action/model)                         有 core 句柄  core
-                                           （engine 是 core buffer/view 的唯一拥有者，
-                                             但对插件只暴露查询 + 写 UI view 的入口）
-骨架-投影    projection  render                          纯         布局 / 值 / core render
-骨架入口     skeleton.rkt                            纯聚合     上面所有骨架 api.rkt
+骨架-值      core/base  core/command  core/face  core/panel  纯       repo core 的纯值
+骨架-布局    core/layout(config/tree/solve/ops)              纯       骨架-值
+骨架-资源    core/resource                                 纯       骨架-值
+骨架-引擎    core/engine(action/store)                      有句柄   repo core
+骨架-投影    core/projection  render                        纯       布局 / 值 / core render
+骨架入口     core/skeleton.rkt                              纯聚合   上面所有 core api.rkt
 ------------------------------------------------------------------------------
-插件         edit  chrome  filetree                      纯         skeleton.rkt + app/state
-App 基础     app/state  app/event  app/action             纯         skeleton.rkt
-App 交互     app/placement                              纯         skeleton.rkt + app/state
-App 编排     app/step                                   纯         skeleton + 插件 api + app 基础
-Runtime      runtime(actions/render/sync/tui/loop)        有副作用    全部 + tui
-入口         main.rkt                                  纯聚合     skeleton + 插件 + app + runtime
+插件         edit  chrome  filetree                          纯       core/skeleton.rkt + app/state
+App 基础     app/state app/keymap app/event app/action        纯       core/skeleton.rkt
+App 交互     app/placement                                  纯       core/skeleton + app/state
+App 编排     app/step                                        纯       core/skeleton + 插件 api + app 基础
+Boot         boot(actions/frame/sync/tui-adapter/loop)      有副作用  全部 + tui
+入口         main.rkt                                        纯聚合   core/skeleton + 插件 + app + boot
 ```
 
 依赖方向（单向）：
 
 ```text
-core (buffer / view / rect / text / render)
+repo core (buffer / view / rect / text / render)
         ↑
-骨架：base / command / panel / face
+edit-tui/core: base / command / panel / face
         ├─ layout（config 模型 + tree/solve/ops）──→ projection ──→ render
         ├─ resource
-        └─ engine (core buffer/view 的唯一拥有者)
+        └─ engine（core buffer/view 的唯一拥有者）
                 ↑
-          skeleton.rkt          ← 插件唯一能 require 的骨架入口
+      core/skeleton.rkt      ← 插件唯一能 require 的骨架入口
         ┌───────┴────────┐
       edit      chrome   filetree   ← 插件：只组合骨架 + app/state
         └───────┬────────┘
-             app/step ──→ runtime ──→ tui
+             app/step ──→ boot ──→ tui
 ```
 
 规则：
 
-- **插件只 require `skeleton.rkt`**，不直接 require core、runtime、骨架实现模块
-  （`layout/tree.rkt`、`engine/store.rkt` … 都不行）；
-- 插件之间只经对方 `api.rkt`（filetree 只用 `edit/api.rkt` 的导航表）；
-- 插件可以 require `app/state.rkt` / `app/event.rkt` / `app/action.rkt`
-  （根 State 与 action 词汇）来做纯状态迁移；
-- `engine` 不认识 app：`view-action` 词汇在 `engine/action.rkt`（骨架），
-  `app/action.rkt` 只是再导出它并补 `open-file` / `quit`；
+- **插件只 require `core/skeleton.rkt`**，不直接 require `core` 实现模块、`boot` 或渲染；
+- 插件之间只经对方 `api.rkt`；
+- 插件可以 require `app/state.rkt` / `app/keymap.rkt` / `app/event.rkt` /
+  `app/action.rkt` 这些 app 基础值；
+- `core/engine` 不认识 app：`view-action` 词汇在 `core/engine/action.rkt`；
 - `app/step.rkt` 是唯一编排插件的地方，且只 require 插件 `api.rkt`；
-- `runtime` 是唯一有副作用的层。
-
-## 逻辑拆分
-
-```text
-骨架：
-  layout/    tree.rkt   结构 + panel 资源 + 可见性 + 固定尺寸查询（不求解）
-             solve.rkt  layout-solve：rect / split / seam（纯几何）
-             ops.rkt    结构编辑：split / attach / remove / hide / drag / 校验
-  resource/  model.rkt  资源状态 + 保存/退出/prompt 状态机 + 路径规范化/查找
-  engine/    action.rkt 骨架的 view 操作 action（insert / nav / select / …）
-             store.rkt  core buffer/view 的持有 + 写 UI view + 唯一查询入口
-  projection/borders.rkt  共享边框 + 焦点框
-             geometry.rkt layout -> core panel（渲染 / 命中 / 内容命中）
-  render/    core.rkt    core piece -> tui bytes
-             layout.rkt  layout -> panels -> bytes
-  skeleton.rkt  骨架入口（插件只 require 这个）（插件只 require 这个）
-
-插件：
-  edit/      insert.rkt  自插入判读
-             commands.rkt 编辑 / 导航命令（不含键位）
-  chrome/    status.rkt  状态栏投影
-             input.rkt   输入栏（单行编辑 + prompt + readonly 前缀）
-  filetree/  model.rkt   行结构 / 展开集合 / 投影缓存键
-             lines.rkt   纯行投影
-             scan.rkt    唯一 IO 点：读目录
-             slice.rkt   app-state.store['filetree'] 切片存取
-             sync.rkt    每帧同步到 core view
-             commands.rkt Enter / C-r / 安装
-
-App：
-  event/action/state/placement/step：事件、动作、状态、放置交互、编排
-```
+- `boot` 是唯一有副作用的启动 / 运行时层。
 
 ## 项目结构
 
+当前只做了第一步拆分：**core / boot 是明确分类的；插件、config、app、render、
+demo 先留在根目录**，等 boot 和插件插入方式定下来再继续迁移。
+
 ```text
 edit-tui-rebuild/
-  main.rkt                 唯一聚合入口（skeleton + 插件 + app + runtime 的 api.rkt）
-                           —— 没有顶层 api.rkt；api 不是一层
+  main.rkt                 唯一聚合入口：core/skeleton + render + 插件 + app + boot
 
-  skeleton.rkt         骨架 API（布局 / 资源 / 焦点 / face / 命令 / 投影 / engine）
+  core/                    核心数据表示 / 实现
+    skeleton.rkt           骨架入口（插件只 require 这个）
+    base/api.rkt           rect / point / range / selection / 显示列
+    command/               table / key / api
+    layout/                config / tree / solve / ops / api
+    focus/                 model / api
+    face/                  model / api
+    resource/              model / api
+    projection/            borders / geometry / api
+    engine/                action / store / api
 
-  base/api.rkt             基础值：rect / point / range / selection / 显示列
+  boot/                    启动 / 运行时流程
+    actions.rkt            action 解释（唯一副作用入口）
+    frame.rkt              state + cache -> bytes
+    sync.rkt               UI panel 同步
+    tui-adapter.rkt        tui raw 事件 -> app 事件
+    loop.rkt               render / read-event / step / run-actions
+    api.rkt
 
-  command/  table.rkt      命令表 / 栈 / keys DSL
-            key.rkt        键 token = 标签 + 原始字节
-            api.rkt
+  config/                  纯配置 / 绑定
+    layout/default.rkt
+    keymap/default.rkt
+    theme/default.rkt
 
-  config/   layout/default.rkt  布局配置（纯数据；require 选择）
-            keymap/default.rkt  键位表（唯一来源；require 选择）
-            theme/default.rkt   主题（require 即安装）
+  edit/  chrome/  filetree/   插件（暂时留在根目录）
 
-  face/ model.rkt          face 值 / 分层合成
-        api.rkt
-
-  panel/ model.rkt         panel 资源
-         api.rkt
-
-  layout/ config.rkt       布局配置模型（类型 / 构造 / 查询 / 通用 rule）
-          tree.rkt         split tree + panel 资源 + 可见性
-          solve.rkt        layout-solve（rect / seam）
-          ops.rkt          split / attach / remove / hide / show / drag / validate
-          api.rkt
-
-  resource/ model.rkt      resource / save / quit / prompt / 路径
-            api.rkt
-
-  engine/ action.rkt       骨架的 view 操作 action
-          store.rkt        core buffer/view 的持有 + 写 UI view
-          api.rkt
-
-  projection/ borders.rkt  共享边框 + 焦点框
-              geometry.rkt layout -> core panel（渲染 / 命中 / 内容命中）
-              api.rkt
-
-  render/ theme.rkt        style / theme
-          core.rkt         core piece -> tui bytes
-          layout.rkt       layout -> panels -> bytes
-          api.rkt
-
-  edit/  insert.rkt        自插入判读
-         commands.rkt      编辑 / 导航命令（不含键位）
-         api.rkt
-
-  app/ event.rkt           key / mouse / resize / paste / internal
-       state.rkt           app-state + 查询 / 焦点迁移 / 消息
-       keymap.rkt          配置好的键位集合（app 值，不在骨架）
-       action.rkt          open-file-action / quit-action（view-action 在骨架）
-       commands.rkt        split / toggle-filetree / focus / save / quit
-       placement.rkt       放置交互（临时 keymap）
-       step.rkt            event -> (values state actions)
-       api.rkt
-
-  chrome/ status.rkt       状态栏投影
-          input.rkt        输入栏
-          api.rkt
-
-  filetree/ model.rkt      文件树状态 / 行结构
-            lines.rkt      纯行投影
-            scan.rkt       读目录（唯一 IO）
-            store.rkt      store 切片存取
-            panel.rkt      同步到 core view
-            commands.rkt   Enter / C-r / 安装
-            api.rkt
-
-  focus/ model.rkt         焦点导航（基于命中投影）
-         api.rkt
-
-  runtime/ actions.rkt     action 解释（唯一副作用入口）
-           frame.rkt       state + cache -> bytes（每帧渲染入口）
-           sync.rkt        UI panel 同步
-           tui-adapter.rkt tui raw 事件 -> app 事件
-           loop.rkt        render / read-event / step / run-actions
-           api.rkt
-
+  app/                     应用状态 / 命令 / 编排（暂时留在根目录）
+  render/                  输出渲染（暂时留在根目录）
   demo/  test/
 ```
 
@@ -192,86 +111,45 @@ edit-tui-rebuild/
 
 ```text
 main.rkt
-*/api.rkt              （含 skeleton.rkt —— 插件的唯一骨架入口）
-外部 core/*（只读、纯）
+*/api.rkt
+config/*（配置 / 键位绑定）
+core/skeleton.rkt（骨架公共入口）
+外部 repo/core/*（只读、纯）
 ```
 
 **不允许**：
 
 ```text
-core 的实现模块（插件里）
-layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
-panel/model.rkt  command/table.rkt  projection/geometry.rkt
-engine/store.rkt  engine/action.rkt
-... 任何非 api.rkt 的领域实现文件
+core 的实现模块（插件 / app 里）
+core/layout/tree.rkt  core/layout/solve.rkt  core/layout/ops.rkt
+core/panel/model.rkt  core/command/table.rkt  core/projection/geometry.rkt
+core/engine/store.rkt  core/engine/action.rkt
+boot/*.rkt  app/*.rkt  edit/*.rkt  chrome/*.rkt  filetree/*.rkt
+... 任何非 api.rkt 的实现文件
 ```
 
-领域内部文件之间可以互相 require（`tree` ← `solve` ← `ops`，
-`model` ← `lines` ← `panel` …），但这属于实现细节，不对外。
-
-API 不够时：先补对应领域的 `api.rkt`，不要在下游绕过 API 直接调实现。
-
-### API 文件放哪
-
-`api` **不是一层**，只是每个领域的「对外面」。
-
-- 每个领域自己带 `api.rkt`（和实现放在一起）：谁提供能力，谁维护面；
-- 不建顶层 `api/` 镜像树：两棵树要同步、重命名要改两处，还会让插件
-  看到所有领域的面，层级就糊了；
-- 顶层只有 `main.rkt` 一个聚合入口（宿主 / demo / test 用）；
-- 插件之间只经对方 `api.rkt`；插件不 require `main.rkt`（会成环）；
-- `app/api.rkt` 是「整个 app 域」的面对（包含编排 `step`），所以插件不用它，
-  插件只用 `app/state.rkt` / `app/event.rkt` / `app/action.rkt` 这些 app 基础值。
-
-约束是可执行的：
-
-- `test/api-boundary.rkt` 扫描所有非骨架 / 插件目录下的 `.rkt`，越界 require 直接失败；
-- `test/layers.rkt` 读各模块的 require，检查：
-  - 骨架不认识 app / 插件 / runtime；
-  - 插件只 require `skeleton.rkt`，不摸 core / runtime / 骨架实现；
-  - 插件之间只经对方 `api.rkt`；
-  - `app/step` 只编排插件 `api.rkt`；`app/state` 只依赖骨架；
-  - `engine` 不 require app。
-
-## 命名约定
-
-```text
-xxx!             修改参数 / 产生副作用（engine-*、sync-*!、run-actions）
-xxx?             谓词（layout? panel? key? resource-dirty?）
-xxx->xxx         纯转换（layout->render-panels、key->string、raw-key-token）
-make-xxx         构造值（make-panel、make-layout、make-engine）
-app-state-*      State 查询 / 纯迁移（app-state-set-focus-panel、
-                 app-state-with-message、app-state-refresh-focus-resource）
-layout-*         布局几何 / 查询（layout-panel、layout-solve、layout-seam-at）
-panel-*          panel 资源（panel-view、panel-kind、panel-fixed-h）
-filetree-*       文件树（filetree-lines、filetree-current-line）
-engine-*         core buffer / view 的唯一入口（engine-view-object、
-                 engine-set-view-lines!、engine-apply-view-action!）
-input-* / status-*  chrome 的输入栏 / 状态栏
-render-*         渲染投影（render-frame、render-layout、render-pieces）
-dispatch-*       step 内部按事件类型分流
-```
+`boot` 是唯一允许 require 所有层的副作用 / 启动层。
 
 ## API 面（概要）
 
 ```text
-main.rkt                  唯一聚合入口：skeleton + render + 插件 + app + runtime
+main.rkt                  唯一聚合入口：core/skeleton + render + 插件 + app + boot
                           （没有顶层 api.rkt；纯配置不聚合，直接 require）
-skeleton.rkt          骨架：base / panel / layout / focus / face /
+core/skeleton.rkt     骨架：base / panel / layout / focus / face /
                           resource / command / projection / engine
-                            - base/api.rkt               rect / point / range / selection / 显示列
-                            - layout/api.rkt             配置模型 / split tree / solve / ops / seam / drag
-                            - resource/api.rkt           store / resource / save / prompt / 路径
-                            - focus/api.rkt              焦点导航
-                            - command/api.rkt            command-table / keymap / keys / key token
-                            - engine/api.rkt             buffer/view 持有 + view action 词汇
-                            - projection/api.rkt         layout->render-panels / hit / content-hit
+                            - core/base/api.rkt          rect / point / range / selection / 显示列
+                            - core/layout/api.rkt        配置模型 / split tree / solve / ops / seam / drag
+                            - core/resource/api.rkt      store / resource / save / prompt / 路径
+                            - core/focus/api.rkt         焦点导航
+                            - core/command/api.rkt       command-table / keys / key token
+                            - core/engine/api.rkt        buffer/view 持有 + view action 词汇
+                            - core/projection/api.rkt    layout->render-panels / hit / content-hit
 render/api.rkt            render-layout / layout-sync!
 edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
-app/api.rkt               event / state / action / commands / placement / step
-runtime/api.rkt           actions / render / sync / tui-adapter / loop
+app/api.rkt               event / state / keymap / action / commands / placement / step
+boot/api.rkt              actions / frame / sync / tui-adapter / loop
 ```
 
 ### core 能力面对应关系
@@ -281,24 +159,24 @@ core 不整包导出——按能力拆开，而且各自的形式不同：
 ```text
 能力                                         导出位置                  形式
 --------------------------------------------------------------------------------
-纯值：rect / point / range / selection /       base/api.rkt            直接 re-export
-      selections / 显示列                                               （只 require core 值模块）
-buffer / view：读 + 写 UI view + 编辑 action   engine/api.rkt          包装（engine-* +
+纯值：rect / point / range / selection /       core/base/api.rkt       直接 re-export
+      selections / 显示列                                               （只 require repo core 值模块）
+buffer / view：读 + 写 UI view + 编辑 action   core/engine/api.rkt     包装（engine-* +
                                                                         view-action），不导 core 构造器
 渲染：layout -> panels -> bytes                render/api.rkt          包装（render-layout /
                                                                         layout-sync! / render-pieces）
-layout -> core panel / 命中投影                projection/api.rkt      包装（layout->render-panels /
+layout -> core panel / 命中投影                core/projection/api.rkt 包装（layout->render-panels /
                                                                         layout->hit-panels / layout-content-hit）
-布局几何（rect / panel）                       layout/api.rkt         骨架自己的面
-                                              panel/api.rkt           （内部用 core 值）
+布局几何（rect / panel）                       core/layout/api.rkt     骨架自己的面
+                                              core/panel/api.rkt      （内部用 core 值）
 ```
 
-- 插件只看到 `skeleton.rkt`（含 base / engine / projection，**不含** render）；
-- 编辑能力以 `view-action` 词汇暴露（`engine/action.rkt`），插件发 action，
-  只有 `runtime/actions.rkt` 解释成 core 调用；
-- 直接 require core 的只有骨架内部：`base/api`、`engine/store`、
-  `layout/{tree,solve,ops}`、`projection/{borders,geometry}`、
-  `render/{core,layout}`、`focus/model`。插件 / app / runtime 都不 require core。
+- 插件只看到 `core/skeleton.rkt`（含 base / engine / projection，**不含** render）；
+- 编辑能力以 `view-action` 词汇暴露（`core/engine/action.rkt`），插件发 action，
+  只有 `boot/actions.rkt` 解释成 core 调用；
+- 直接 require repo core 的只有骨架内部：`core/base/api`、`core/engine/store`、
+  `core/layout/{tree,solve,ops}`、`core/projection/{borders,geometry}`、
+  `render/{core,layout}`、`core/focus/model`。插件 / app / boot 都不直接摸 repo core。
 
 ## 布局模型
 
@@ -364,7 +242,7 @@ rect-contains?
 
 ### config
 
-`layout/config.rkt` 是**布局配置模型**（骨架的一部分）：只有规则的数据形状、
+`core/layout/config.rkt` 是**布局配置模型**（骨架的一部分）：只有规则的数据形状、
 构造 / 查询、通用 default rule，不知道 `editor` / `sidebar` / `status` 这些具体 kind。
 
 ```racket
@@ -391,7 +269,7 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 
 - `config/` 只放配置（布局 / 键位 / 主题），没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
 - `main.rkt` 不聚合纯配置（和主题一样由宿主直接 require）；
-- `skeleton.rkt` 和 `layout/ops.rkt` 都不认识 `config/layout/`；
+- `core/skeleton.rkt` 和 `core/layout/ops.rkt` 都不认识 `config/layout/`；
 - layout 结构操作把 config 当**必填参数**：
   `layout-split` / `layout-panel-remove` / `layout-panel-hide` /
   `layout-seam-resize` / `layout-seam-drag-*`；
@@ -617,7 +495,7 @@ require 即安装，换主题 = 换 require：
   | 命名键 `'up 'down 'left 'right 'home 'end 'insert 'del 'pageup 'pagedown 'backtab`
 - `bytes`：原始字节
 
-runtime 用 `tui:read-event/raw` 取 `(values type data mods)`，适配层直接
+boot 用 `tui:read-event/raw` 取 `(values type data mods)`，适配层直接
 `(key-token type data)` 往下传；mouse / paste / resize 也保留原始载荷
 （paste 是 bytes，写 buffer 时才解一次 UTF-8）。
 
@@ -660,7 +538,7 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (make-app-state #:layout #:layout-config #:keymap #:resources #:focus-resource
                 #:overlays #:pending #:area #:quit? #:message)
 
-;; 编辑 / 导航 / 鼠标落点都是 view-action，runtime 解释成 core 调用
+;; 编辑 / 导航 / 鼠标落点都是 view-action，boot 解释成 core 调用
 (view-action kind view-id data)
 ;;;   kind : insert | paste | backspace | delete | kill-line
 ;;        | nav | point | select | scroll | ensure | undo | redo
@@ -684,7 +562,7 @@ command-table 叶子是 (state -> (values state' actions))
 overlay tables ++ focused resource command-stack
 ```
 
-### runtime
+### boot
 
 ```racket
 (make-engine)
@@ -694,7 +572,7 @@ overlay tables ++ focused resource command-stack
 (engine-view-text engine vid)
 (engine-doc-text engine did)
 (engine-doc-version engine did)
-(engine-apply-view-action! engine action)   ; view-action 在 engine/action.rkt
+(engine-apply-view-action! engine action)   ; view-action 在 core/engine/action.rkt
 
 (run-actions state engine actions)  ; -> state'
 
@@ -715,8 +593,8 @@ run-actions
 quit? -> exit
 ```
 
-没有 hook / settle / 通用 effect。action 是数据，runtime 同步解释。  
-view-id -> core view 在 runtime engine 里解析；State 不存 core 句柄。
+没有 hook / settle / 通用 effect。action 是数据，boot 同步解释。  
+view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 
 ### 文件树
 
@@ -909,10 +787,10 @@ overlay，输入栏里未绑定的 `C-q` / `C-w` 就会穿透成全局命令。�
 打开输入栏时 `input-open` 会清空 `pending`，避免半截序列（如先按了 `C-w`）
 把输入栏的第一键拼成 `(C-w key)` 去查表。
 
-`app/step.rkt` 在入口 / 出口做 reconcile + 抢占，`runtime/sync.rkt` 在每帧同步前
+`app/step.rkt` 在入口 / 出口做 reconcile + 抢占，`boot/sync.rkt` 在每帧同步前
 也 reconcile 一次（挤占回调可能产生 action，先跑掉再写 view）。
 
-同步顺序（`runtime/sync.rkt`）：
+同步顺序（`boot/sync.rkt`）：
 
 ```text
 input-reconcile    先落实 prompt <-> 输入栏 view
@@ -1010,7 +888,7 @@ path = #f   -> 不能落文件，保存前先要路径
 dirty       -> version != saved-version
 ```
 
-dirty 的同步：runtime 每解释完一个 `view-action` 就调用
+dirty 的同步：boot 每解释完一个 `view-action` 就调用
 `resource-sync-version`（只有 engine 里的文档版本真的变了才记 edited），
 所以插入 / 删除会让 `dirty?` 变真，导航 / 滚动不会。
 

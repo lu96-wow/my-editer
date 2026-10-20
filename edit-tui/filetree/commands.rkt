@@ -15,7 +15,7 @@
 ;;; 新文档的 per-doc 键表来自 keymap 的 editor-tables（通常是编辑操作表）。
 
 (require (only-in racket/list first)
-         "../skeleton.rkt"
+         "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"

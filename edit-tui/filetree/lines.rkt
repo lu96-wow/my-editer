@@ -3,7 +3,7 @@
 ;;; edit-tui-rebuild/filetree/lines.rkt —— 纯投影：path/expanded -> 行
 
 (require racket/path
-         "../skeleton.rkt"
+         "../core/skeleton.rkt"
          "model.rkt")
 
 (provide filetree-lines

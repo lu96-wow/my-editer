@@ -9,7 +9,7 @@
 ;;;
 ;;; 不碰 engine、不碰 IO；action 由 runtime 解释。
 
-(require "../skeleton.rkt"
+(require "../core/skeleton.rkt"
          "../chrome/api.rkt"
          "keymap.rkt"
          "../edit/api.rkt"

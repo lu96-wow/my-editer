@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/skeleton.rkt —— 骨架入口（插件只 require 这个）
+;;; edit-tui-rebuild/core/skeleton.rkt —— 骨架入口（插件只 require 这个）
 ;;;
 ;;; 骨架 = 编辑器基础设施，不含任何具体插件：
 ;;;   base     几何 / 文本值（core 词汇的再导出）

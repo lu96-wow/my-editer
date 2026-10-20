@@ -6,7 +6,7 @@
 ;;; (engine/action.rkt)；这里只补 application 级的 open-file / quit。
 ;;; action 不是通用 effect 系统：runtime 直接按 kind 解释。
 
-(require "../skeleton.rkt")
+(require "../core/skeleton.rkt")
 
 (provide (struct-out view-action)
          (struct-out open-file-action)

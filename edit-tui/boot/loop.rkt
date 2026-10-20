@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/loop.rkt —— 最小事件循环
+;;; edit-tui-rebuild/boot/loop.rkt —— 最小事件循环
 ;;;
 ;;; 主循环：
 ;;;   render
@@ -12,7 +12,7 @@
 ;;; IO 可注入，方便 headless 测试 / 换终端。
 
 (require (prefix-in tui: tui)
-         "../skeleton.rkt"
+         "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/step.rkt"
          "../app/event.rkt"

@@ -14,7 +14,7 @@
 ;;; 选择键位 = require 本模块，把 default-keymap 放进 app-state；
 ;;; 或者复制本文件改绑定。
 
-(require "../../command/api.rkt"
+(require "../../core/command/api.rkt"
          "../../app/keymap.rkt"
          "../../edit/api.rkt"
          "../../filetree/api.rkt"

@@ -27,7 +27,7 @@
 ;;; 关闭 / 取消 / 挤占都会回调 on-done（插件请求），宿主不需要轮询。
 
 (require racket/string
-         "../skeleton.rkt"
+         "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/event.rkt")
 

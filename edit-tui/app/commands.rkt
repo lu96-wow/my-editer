@@ -5,7 +5,7 @@
 ;;; 只定义命令，不定义键位；键位在 config/keymap/。
 ;;; 所有命令都是 (state -> (values state actions))，不碰 engine / IO。
 
-(require "../skeleton.rkt"
+(require "../core/skeleton.rkt"
          "state.rkt")
 
 (provide split-command

@@ -9,15 +9,17 @@
 ;;;   main.rkt
 ;;;   */api.rkt
 ;;;   config/*（配置 / 键位绑定；不是领域实现）
-;;;   外部 core/*
+;;;   core/skeleton.rkt（骨架公共入口）
+;;;   外部 repo/core/*
 ;;;
 ;;; 不允许：
-;;;   layout/tree.rkt  layout/solve.rkt  layout/ops.rkt
-;;;   engine/store.rkt  engine/action.rkt
-;;;   panel/model.rkt
-;;;   command/table.rkt
-;;;   projection/geometry.rkt
-;;;   ... 任何非 api.rkt 的领域实现文件
+;;;   core/layout/tree.rkt  core/layout/solve.rkt  core/layout/ops.rkt
+;;;   core/engine/store.rkt  core/engine/action.rkt
+;;;   core/panel/model.rkt
+;;;   core/command/table.rkt
+;;;   core/projection/geometry.rkt
+;;;   app/*.rkt  boot/*.rkt  edit/*.rkt  chrome/*.rkt  filetree/*.rkt ...
+;;;   ... 任何非 api.rkt 的实现文件
 
 (require rackunit
          racket/file
@@ -31,9 +33,7 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("base" "panel" "config" "layout" "focus" "command" "projection" "face"
-    "render" "resource" "filetree" "chrome" "app" "runtime" "edit"
-    "engine"))
+  '("core" "boot" "config" "render" "filetree" "chrome" "app" "edit"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -68,36 +68,45 @@
   (or (regexp-match? #rx"(^|/)api\\.rkt$" str)
       (regexp-match? #rx"(^|/)main\\.rkt$" str)))
 
-(define (core-path? str)
-  (regexp-match? #rx"(^|/)core/" str))
+(define (external-core? str)
+  (regexp-match? #rx"(^|/)\\.\\./\\.\\./core/" str))
+
+(define (local-core-impl? str)
+  (regexp-match?
+   #rx"(^|/)core/(base|panel|layout|focus|face|resource|command|projection|engine)/[^/]+\\.rkt$"
+   str))
 
 (define (config-path? str)
   (regexp-match? #rx"(^|/)config/" str))
 
+(define (domain-impl? str)
+  (regexp-match? #rx"(^|/)(edit|chrome|filetree|app|boot|render)/[^/]+\\.rkt$" str))
+
 (define (impl-require? str)
   (and (not (api-path? str))
-       (not (core-path? str))
+       (not (external-core? str))
        (not (config-path? str))
-       (or
-        ;; 新结构：领域目录下的非 api 实现文件
-        (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|filetree|chrome|app|runtime|engine)/[^/]+\\.rkt$" str)
-        ;; 兼容旧结构
-        (regexp-match? #rx"(^|/)(model|projection|command)/" str))))
+       (or (local-core-impl? str)
+           (domain-impl? str))))
 
 ;; 自检
-(check-true (impl-require? "layout/tree.rkt"))
-(check-true (impl-require? "../layout/solve.rkt"))
-(check-true (impl-require? "../layout/ops.rkt"))
+(check-true (impl-require? "core/layout/tree.rkt"))
+(check-true (impl-require? "../core/layout/solve.rkt"))
+(check-true (impl-require? "../core/layout/ops.rkt"))
 (check-true (impl-require? "../filetree/slice.rkt"))
-(check-true (impl-require? "../panel/model.rkt"))
-(check-true (impl-require? "../projection/geometry.rkt"))
-(check-true (impl-require? "../command/table.rkt"))
-(check-true (impl-require? "../resource/model.rkt"))
-(check-true (impl-require? "../face/model.rkt"))
+(check-true (impl-require? "../core/panel/model.rkt"))
+(check-true (impl-require? "../core/projection/geometry.rkt"))
+(check-true (impl-require? "../core/command/table.rkt"))
+(check-true (impl-require? "../core/resource/model.rkt"))
+(check-true (impl-require? "../core/face/model.rkt"))
 (check-true (impl-require? "../render/core.rkt"))
-(check-false (impl-require? "../layout/api.rkt"))
-(check-false (impl-require? "../panel/api.rkt"))
+(check-true (impl-require? "../boot/loop.rkt"))
+(check-true (impl-require? "../app/state.rkt"))
+(check-false (impl-require? "../core/layout/api.rkt"))
+(check-false (impl-require? "../core/panel/api.rkt"))
 (check-false (impl-require? "../main.rkt"))
+(check-false (impl-require? "core/skeleton.rkt"))
+(check-false (impl-require? "../core/skeleton.rkt"))
 (check-false (impl-require? "../../core/view/panel.rkt"))
 (check-false (impl-require? "../config/layout/default.rkt"))
 

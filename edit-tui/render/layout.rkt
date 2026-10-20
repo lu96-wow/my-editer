@@ -10,10 +10,10 @@
 (require racket/bytes
          (only-in "../../core/editor.rkt" view? panels-sync!)
          "../../core/editor/render.rkt"
-         "../base/api.rkt"
-         "../layout/api.rkt"
-         "../panel/api.rkt"
-         "../projection/api.rkt"
+         "../core/base/api.rkt"
+         "../core/layout/api.rkt"
+         "../core/panel/api.rkt"
+         "../core/projection/api.rkt"
          "core.rkt")
 
 (provide render-layout

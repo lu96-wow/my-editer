@@ -10,7 +10,7 @@
 ;;; 何时渲染、是否增量、何时输出由上层决定。
 
 (require tui
-         "../face/api.rkt"
+         "../core/face/api.rkt"
          "../../core/editor.rkt")
 
 (provide render-pieces

@@ -7,7 +7,7 @@
 ;;; 命名键（enter / tab / backspace / arrows …）由命令表显式绑定；
 ;;; 这里只补「任意可打印字符」这一条表里写不下的兜底。
 
-(require "../skeleton.rkt")
+(require "../core/skeleton.rkt")
 
 (provide self-insert-text
          self-insert-char

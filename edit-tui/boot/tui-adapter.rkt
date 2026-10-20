@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/tui-adapter.rkt —— tui raw 事件 -> app 事件
+;;; edit-tui-rebuild/boot/tui-adapter.rkt —— tui raw 事件 -> app 事件
 ;;;
 ;;; 用 tui 的字节级接口 read-event/raw（返回值 (values type data mods)）：
 ;;;   type : 'key 'ctrl 'alt 'utf8 'mod-seq 'up 'down … 'mouse 'paste 'resize
@@ -13,7 +13,7 @@
 (require racket/match
          (prefix-in tui: tui)
          (prefix-in a: "../app/event.rkt")
-         "../skeleton.rkt")
+         "../core/skeleton.rkt")
 
 (provide tui-event->app)
 

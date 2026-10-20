@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/runtime/sync.rkt —— 每帧 UI panel 同步
+;;; edit-tui-rebuild/boot/sync.rkt —— 每帧 UI panel 同步
 ;;;
 ;;; 顺序有讲究：
 ;;;   1. input-reconcile   落实「prompt / request <-> 输入栏 view」不变量，
@@ -11,7 +11,7 @@
 ;;;
 ;;; 编辑器的 buffer 内容由命令 / action 写，不需要这里同步。
 
-(require "../skeleton.rkt"
+(require "../core/skeleton.rkt"
          "../app/state.rkt"
          "../render/layout.rkt"
          "actions.rkt"

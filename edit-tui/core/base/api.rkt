@@ -10,11 +10,11 @@
 ;;; 只做「值 + 纯函数」；buffer / view 的操作在 engine/api。
 
 ; 只拿 core 的值模块，不把 editor 实现拉进来
-(require "../../core/view/base/rect.rkt"
-         "../../core/text/base/point.rkt"
-         "../../core/text/base/range.rkt"
-         "../../core/text/base/selection.rkt"
-         "../../core/text/base/width.rkt")
+(require "../../../core/view/base/rect.rkt"
+         "../../../core/text/base/point.rkt"
+         "../../../core/text/base/range.rkt"
+         "../../../core/text/base/selection.rkt"
+         "../../../core/text/base/width.rkt")
 
 (provide (struct-out rect)
          rect-right rect-bottom

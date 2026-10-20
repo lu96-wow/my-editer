@@ -6,10 +6,10 @@
 ;;; 命令 / step 不碰 engine，只产生 action；runtime 解释 action 时写 engine。
 ;;;
 ;;; 这是「骨架」的一部分（不依赖 app / runtime）；runtime 用它的可变句柄，
-;;; 插件通过 skeleton.rkt 拿到只读查询 + 写 UI view 的入口。
+;;; 插件通过 core/skeleton.rkt 拿到只读查询 + 写 UI view 的入口。
 
 (require racket/match
-         "../../core/editor.rkt"
+         "../../../core/editor.rkt"
          "action.rkt")
 
 (provide (struct-out engine)

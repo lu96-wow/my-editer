@@ -11,7 +11,7 @@
 ;;;
 ;;; 这里只定义形状和查询，不含任何具体键位或命令。
 
-(require "../skeleton.rkt")
+(require "../core/skeleton.rkt")
 
 (provide (struct-out keymap)
          empty-keymap)

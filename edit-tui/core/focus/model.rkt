@@ -18,7 +18,7 @@
          (prefix-in p: "../panel/model.rkt")
          "../layout/config.rkt"
          "../projection/geometry.rkt"
-         "../../core/view/panel.rkt")
+         "../../../core/view/panel.rkt")
 
 (define (layout-panel-focusable? layout config id)
   (define p (l:layout-panel layout id))
