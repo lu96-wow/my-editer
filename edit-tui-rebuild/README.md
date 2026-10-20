@@ -764,10 +764,12 @@ Esc / C-g           取消（resource-cancel）
     必须是 prompt 支持的答案；
   - save-path：trim 后不能为空；
   - 不合法时返回 `ok? = #f`，prompt 保持打开，状态栏提示可选值 / `path required`；
-- prompt 前缀在 core buffer 里标成 **readonly**（`#:readonly-prefix`），
-  face 用 `input-prompt`：用户只能编辑前缀之后的部分；
-- 前缀按 view 宽度裁剪：路径太长时中间省略（保留 `Save `、路径尾部和
-  `(y/n/all/nall)`），给输入留几个字符；完整路径仍可从 `prompt-label` 拿到；
+- 提示前缀**完整**写进 core buffer（不裁剪、不省略），并标成 **readonly**
+  （`#:readonly-prefix`，face `input-prompt`）——buffer 本身就是输出，
+  不需要额外的格式化/裁剪层；
+- 窗口装不下时靠光标滚动查看：←/→ 可以走进前缀，Home 到整行行首（看到
+  `Save ...`），End 到行尾（看到可选值）；前缀里 Backspace/Delete 不生效，
+  在里面输入会落到可编辑文本的起点；
 - 提交成功才 `input-close`（恢复打开前的焦点）。
 
 ### 输入来源与抢占规范

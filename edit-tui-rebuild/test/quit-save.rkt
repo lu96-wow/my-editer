@@ -159,20 +159,23 @@
 (define p1 (press p0 pe0 (key 'x)))            ; dirty
 (define p2 (press p1 pe0 (key 'q 'ctrl)))      ; confirm
 (check-true (input-active? p2))
-;; confirm 提示可见（渲染出来，不是只在 buffer 文本里）
-(let-values ([(cache bytes) (render-frame p2 pe0 #f)])
-  (void cache)
-  (define rt (bytes->string/utf-8 bytes))
-  (check-true (string-contains? rt "Save "))
-  (check-true (string-contains? rt "y/n/all/nall")))
+;; 提示完整写在 buffer 里（不裁剪）；窗口窄时靠光标滚动查看
 (define label (prompt-label (prompt-of p2)))
 (check-true (string-contains? label target))
-;; 提示太长时中间省略：开头 "Save "、路径尾部、可选值都要能看见
 (define line (engine-view-text pe0 21))
-(check-true (string-prefix? line "Save "))
-(check-true (string-contains? line "y/n/all/nall"))
-(check-true (string-contains? line ".txt?"))
-;; prompt 前缀在 buffer 里是 readonly（输入只作用于后面）
+(check-true (string-prefix? line (string-append "Save " target "? (y/n/all/nall) ")))
+(check-false (string-contains? line "…"))
+;; 行首渲染能看到 "Save "，行尾能看到可选值
+(define p2h (press p2 pe0 (key 'home)))
+(let-values ([(cache bytes) (render-frame p2h pe0 #f)])
+  (void cache)
+  ;; 行首有光标 overlay，抓可见的提示内容即可
+  (check-true (string-contains? (bytes->string/utf-8 bytes) "ave ")))
+(define p2e (press p2h pe0 (key 'end)))
+(let-values ([(cache bytes) (render-frame p2e pe0 #f)])
+  (void cache)
+  (check-true (string-contains? (bytes->string/utf-8 bytes) "y/n/all/nall")))
+;; prompt 前缀在 buffer 里是 readonly（光标可进去看，编辑碰不到）
 (define in-view (engine-view-object pe0 21))
 (define in-buffer (view-buffer in-view))
 (define prefix-len (string-length line))
@@ -180,7 +183,7 @@
 (check-true (buffer-readonly-at? in-buffer 0 (sub1 prefix-len)))
 (check-false (buffer-readonly-at? in-buffer 0 prefix-len))
 ;; y -> 直接写 target 并退出
-(define p3 (type p2 pe0 "y"))
+(define p3 (type p2e pe0 "y"))
 (define-values (p4 pActions) (press/actions p3 pe0 (key 'enter)))
 (check-equal? (map resource-action-kind pActions) '(write-file))
 (check-true (app-state-quit? p4))

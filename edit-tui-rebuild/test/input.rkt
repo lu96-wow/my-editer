@@ -104,9 +104,15 @@
 ;; Delete 删光标处（行尾 -> 不变）
 (define s10 (press s9 e0 (key 'delete)))
 (check-equal? (view-line e0 21) (string-append prefix "!aXb"))
-;; Home 后 Delete 删第一个字符
+;; Home 到整行行首（前缀里，光标可见 prompt）；Delete 不碰前缀
 (define s11 (press s10 e0 (key 'home)))
-(define s12 (press s11 e0 (key 'delete)))
+(check-equal? (engine-view-point-column e0 21) 0)
+(define s11b (press s11 e0 (key 'delete)))
+(check-equal? (view-line e0 21) (string-append prefix "!aXb"))
+;; → 走到文本起点，再 Delete 删第一个字符
+(define s11c (for/fold ([s s11b]) ([i (in-range (string-length prefix))])
+               (press s e0 (key 'right))))
+(define s12 (press s11c e0 (key 'delete)))
 (check-equal? (view-line e0 21) (string-append prefix "aXb"))
 
 ;;; ════════════════ 粘贴：只取单行可打印内容 ════════════════

@@ -19,7 +19,6 @@
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version
          engine-view-point-line engine-view-point-column
-         engine-view-width
          engine-set-view-lines!
          engine-apply-view-action!)
 
@@ -88,11 +87,6 @@
 (define (engine-view-point-column e vid)
   (define v (engine-view-object e vid))
   (and v (view-point-column v)))
-
-;; 输入栏按宽度裁剪 prompt 前缀用
-(define (engine-view-width e vid)
-  (define v (engine-view-object e vid))
-  (and v (view-width v)))
 
 
 ;;; 整篇写一个 UI view：文本 + 每行 face + 光标行。

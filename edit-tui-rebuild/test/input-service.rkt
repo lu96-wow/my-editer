@@ -177,4 +177,34 @@
 (check-false (resource-prompt (app-state-resources q5)))
 (check-false (app-state-quit? q5))
 
+;;; ════════════════ 长提示：不裁剪，光标可以走进前缀 ════════════════
+(define-values (l0 le0 _lr) (make-app))
+(define long-label (string-append "Very long prompt: " (make-string 70 #\a) ": "))
+(define l1 (start l0 le0 (req 'long long-label 'text '() "tail")))
+(define l2 (sync! l1 le0))
+(define full (string-append long-label "tail"))
+(define line (view-line le0))
+(check-equal? line full)                       ; 提示完整写在 buffer 里
+(check-false (string-contains? line "…"))
+;; 前缀 readonly
+(define l-buffer (view-buffer (engine-view-object le0 21)))
+(check-true (buffer-readonly-at? l-buffer 0 0))
+(check-true (buffer-readonly-at? l-buffer 0 (sub1 (string-length long-label))))
+(check-false (buffer-readonly-at? l-buffer 0 (string-length long-label)))
+;; 打开时在行尾；Home 到行首（前缀里），Right 逐步进入前缀
+(check-equal? (engine-view-point-column le0 21) (string-length full))
+(define l3 (press l2 le0 (key 'home)))
+(check-equal? (engine-view-point-column le0 21) 0)
+(define l4 (press l3 le0 (key 'right)))
+(check-equal? (engine-view-point-column le0 21) 1)
+;; 光标在前缀里插入：落到文本起点，前缀不变
+(define l5 (type l4 le0 "Z"))
+(check-equal? (view-line le0) (string-append long-label "Ztail"))
+;; 前缀里 Backspace / Delete 不碰前缀
+(define l6 (press l5 le0 (key 'home)))
+(define l7 (press l6 le0 (key 'backspace)))
+(check-equal? (view-line le0) (string-append long-label "Ztail"))
+(define l8 (press l7 le0 (key 'delete)))
+(check-equal? (view-line le0) (string-append long-label "Ztail"))
+
 (displayln "edit-tui-rebuild/test/input-service.rkt: ok")
