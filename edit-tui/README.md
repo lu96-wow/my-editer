@@ -565,8 +565,8 @@ overlay tables ++ focused resource command-stack
 ### boot
 
 ```racket
-;; 最小插件值：install / sync / teardown；列表顺序 = 安装顺序
-(make-plugin #:id #:install #:sync #:teardown)
+;; 最小插件值：install / teardown；列表顺序 = 安装顺序
+(make-plugin #:id #:install #:teardown)
 
 ;; 启动上下文
 (make-host #:engine #:layout-config #:keymap #:plugins
@@ -574,7 +574,6 @@ overlay tables ++ focused resource command-stack
 (host-alloc-view-id! host)
 (host-alloc-panel-id! host)
 (start-app host state)        ; install 所有插件
-(host-sync-hooks host)        ; 按插件顺序收集 sync
 (host-teardown host state engine) ; 逆序 teardown
 
 (make-engine)
@@ -592,8 +591,7 @@ overlay tables ++ focused resource command-stack
 
 (run-loop state engine
           #:read-event ...
-          #:write-bytes ...
-          #:sync-hooks ...)   ; 默认 default-sync-hooks
+          #:write-bytes ...)
 ```
 
 `run-loop`：
@@ -610,8 +608,11 @@ quit? -> exit
 view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 
 插件不是框架：一个 `plugin` 值 + host 里的字面量列表就够了。
-`boot/start` 只做 install / sync hooks / teardown 三件事，没有 registry /
-discovery / 依赖解析。
+`boot/start` 只做 install / teardown；每帧的 sync / analysis / projection
+由 boot 显式写死，不做插件回调。没有 registry / discovery / 依赖解析。
+
+未来的语法高亮、bracket 深度、补全、异步任务会作为**显式的派生/投影阶段**
+插入循环，而不是通过 `sync` hook 或回调挂进去。
 
 ### 文件树
 

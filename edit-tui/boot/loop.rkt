@@ -27,10 +27,9 @@
 
 (define (run-loop state engine
                   #:read-event [read-event (λ () (error 'run-loop "no read-event"))]
-                  #:write-bytes [write-bytes (λ (b) (void))]
-                  #:sync-hooks [sync-hooks default-sync-hooks])
+                  #:write-bytes [write-bytes (λ (b) (void))])
   (let loop ([state state] [cache #f])
-    (define state* (sync-ui! state engine #:hooks sync-hooks))
+    (define state* (sync-ui! state engine))
     (define-values (cache* bytes) (render-frame state* engine cache))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
@@ -47,8 +46,7 @@
         (loop state4 cache**))))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
-(define (run-app state engine
-                 #:sync-hooks [sync-hooks default-sync-hooks])
+(define (run-app state engine)
   (tui:with-tui
    (λ ()
      (tui:cursor-hide)
@@ -67,5 +65,4 @@
          (if e e (loop))))
      (run-loop state* engine
                #:read-event read-app-event
-               #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
-               #:sync-hooks sync-hooks))))
+               #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))))))
