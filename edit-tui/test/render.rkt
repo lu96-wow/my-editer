@@ -10,6 +10,7 @@
                   [panel-weight c:panel-weight]
                   [panel-empty? c:panel-empty?])
          (only-in "../../core/view/border.rkt" panels->border-runs)
+         "../config/layout/default.rkt"
          "../config/theme/default.rkt"
          "../main.rkt")
 
@@ -82,7 +83,7 @@
 
 ;; 隐藏的 panel 不给焦点框（sidebar 可隐藏；editor 默认不可隐藏）
 (define l-hidden
-  (let-values ([(l* ok?) (layout-panel-hide l2 area 'filetree)])
+  (let-values ([(l* ok?) (layout-panel-hide l2 area 'filetree #:config default-config)])
     (check-true ok?)
     l*))
 (check-equal? (length (layout->render-panels l-hidden area #:focus-panel 'filetree))

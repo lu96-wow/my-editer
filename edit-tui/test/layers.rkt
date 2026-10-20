@@ -59,7 +59,7 @@
 (define skeleton-files
   '("base/api.rkt"
     "command/key.rkt" "command/table.rkt" "command/api.rkt"
-    "config/model.rkt" "config/api.rkt"
+    "layout/config.rkt"
     "face/model.rkt" "face/api.rkt"
     "panel/model.rkt" "panel/api.rkt"
     "layout/tree.rkt" "layout/solve.rkt" "layout/ops.rkt" "layout/api.rkt"
@@ -85,6 +85,31 @@
 ;; 骨架入口本身只聚合骨架 api
 (check-false (requires-any? "skeleton.rkt" upper-layer?) "skeleton.rkt")
 (check-false (requires-any? "skeleton.rkt" core-require?) "skeleton.rkt")
+
+;; 骨架不认识具体布局配置（配置是宿主的，不是 layout 的）
+(check-false (requires-any? "skeleton.rkt" #rx"(^|/)config/layout/") "skeleton.rkt")
+(check-false (requires-any? "layout/config.rkt" #rx"(^|/)config/layout/")
+              "layout/config.rkt")
+
+;; 配置模型在 layout 内部：ops / api / focus 都用它，但不反向依赖 config/
+(check-true (requires-any? "layout/api.rkt" #rx"(^|/)config\\.rkt$")
+            "layout/api.rkt")
+(check-true (requires-any? "layout/ops.rkt" #rx"(^|/)config\\.rkt$")
+            "layout/ops.rkt")
+(check-true (requires-any? "focus/model.rkt" #rx"(^|/)layout/config\\.rkt$")
+            "focus/model.rkt")
+
+;; 纯配置只依赖 layout API，不依赖 app / plugin / runtime
+(check-true (requires-any? "config/layout/default.rkt" #rx"(^|/)layout/api\\.rkt$")
+            "config/layout/default.rkt")
+(check-false (requires-any? "config/layout/default.rkt" upper-layer?)
+              "config/layout/default.rkt")
+(check-false (requires-any? "config/layout/default.rkt" #rx"(^|/)runtime/")
+              "config/layout/default.rkt")
+
+;; 旧位置不再存在（config 只放纯数据）
+(check-false (file-exists? (build-path root "config/api.rkt")))
+(check-false (file-exists? (build-path root "config/model.rkt")))
 
 ;;; ════════════════ 插件（edit / chrome / filetree） ════════════════
 (define plugin-files

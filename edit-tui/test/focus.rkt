@@ -2,6 +2,7 @@
 
 ;;; 焦点导航测试：方向 / 鼠标 / focusable 过滤 / hidden。
 (require rackunit
+         "../config/layout/default.rkt"
          "../main.rkt"
          (prefix-in c: "../../core/view/panel.rkt"))
 
@@ -74,7 +75,7 @@
 (check-false (layout-focus-panel-at l area default-config 100 100))
 
 ;;; ---------- hidden panel 不参与 ----------
-(define-values (l-hidden ok-hidden?) (layout-panel-hide l area 'filetree))
+(define-values (l-hidden ok-hidden?) (layout-panel-hide l area 'filetree #:config default-config))
 (check-true ok-hidden?)
 (check-false (layout-panel-focusable? l-hidden default-config 'filetree))
 (check-false (layout-focus-neighbor l-hidden area default-config 'editor 'left))

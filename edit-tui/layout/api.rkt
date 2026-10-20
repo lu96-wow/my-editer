@@ -2,13 +2,17 @@
 
 ;;; edit-tui-rebuild/layout/api.rkt —— 布局 API
 ;;;
-;;; 聚合三层实现：tree（结构+查询）/ solve（rect+seam）/ ops（结构编辑+拖动）。
+;;; 聚合实现：config（规则模型）/ tree（结构+查询）/ solve（rect+seam）/
+;;; ops（结构编辑+拖动）。
 
-(require "tree.rkt"
+(require "config.rkt"
+         "tree.rkt"
          "solve.rkt"
          "ops.rkt")
 
 (provide
+ (all-from-out "config.rkt")
+
  ;; 节点 / layout 状态
  make-leaf
  leaf? leaf-panel-id

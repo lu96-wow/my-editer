@@ -2,6 +2,7 @@
 
 ;;; geometry 测试：layout-solve → core panel 列表。
 (require rackunit
+         "../config/layout/default.rkt"
          "../main.rkt"
          (prefix-in core- "../../core/view/panel.rkt"))
 
@@ -13,7 +14,7 @@
   l*)
 
 (define (hide! l area id)
-  (define-values (l* ok?) (layout-panel-hide l area id))
+  (define-values (l* ok?) (layout-panel-hide l area id #:config default-config))
   (check-true ok?)
   l*)
 

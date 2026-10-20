@@ -52,7 +52,7 @@
   (define layout (app-state-layout state))
   (let loop ([at from] [seen '()])
     (define next (layout-focus-neighbor layout (app-state-area state)
-                                        default-config at dir))
+                                        (app-state-layout-config state) at dir))
     (cond
       [(not next) #f]
       [(memq next seen) #f]

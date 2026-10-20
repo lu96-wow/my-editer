@@ -23,8 +23,8 @@
 ```text
 层           目录                                         纯?        可以 require
 ------------------------------------------------------------------------------
-骨架-值      base  command  face  panel  config          纯         core 的纯值
-骨架-布局    layout(tree/solve/ops)                       纯         骨架-值
+骨架-值      base  command  face  panel                 纯         core 的纯值
+骨架-布局    layout(config/tree/solve/ops)                纯         骨架-值
 骨架-资源    resource                                    纯         骨架-值
 骨架-引擎    engine(action/model)                         有 core 句柄  core
                                            （engine 是 core buffer/view 的唯一拥有者，
@@ -45,8 +45,8 @@ Runtime      runtime(actions/render/sync/tui/loop)        有副作用    全部
 ```text
 core (buffer / view / rect / text / render)
         ↑
-骨架：base / command / config / panel / face
-        ├─ layout ──→ projection ──→ render
+骨架：base / command / panel / face
+        ├─ layout（config 模型 + tree/solve/ops）──→ projection ──→ render
         ├─ resource
         └─ engine (core buffer/view 的唯一拥有者)
                 ↑
@@ -116,9 +116,8 @@ edit-tui-rebuild/
             key.rkt        键 token = 标签 + 原始字节
             api.rkt
 
-  config/   model.rkt      panel kind 规则
-            theme/default.rkt  主题（require 即安装）
-            api.rkt
+  config/   layout/default.rkt  布局配置（纯数据；require 选择）
+            theme/default.rkt   主题（require 即安装）
 
   face/ model.rkt          face 值 / 分层合成
         api.rkt
@@ -126,7 +125,8 @@ edit-tui-rebuild/
   panel/ model.rkt         panel 资源
          api.rkt
 
-  layout/ tree.rkt         split tree + panel 资源 + 可见性
+  layout/ config.rkt       布局配置模型（类型 / 构造 / 查询 / 通用 rule）
+          tree.rkt         split tree + panel 资源 + 可见性
           solve.rkt        layout-solve（rect / seam）
           ops.rkt          split / attach / remove / hide / show / drag / validate
           api.rkt
@@ -253,11 +253,11 @@ dispatch-*       step 内部按事件类型分流
 
 ```text
 main.rkt                  唯一聚合入口：skeleton + render + 插件 + app + runtime
-                          （没有顶层 api.rkt）
-skeleton.rkt          骨架：base / panel / config / layout / focus / face /
+                          （没有顶层 api.rkt；纯配置不聚合，直接 require）
+skeleton.rkt          骨架：base / panel / layout / focus / face /
                           resource / command / projection / engine
                             - base/api.rkt               rect / point / range / selection / 显示列
-                            - layout/api.rkt             split tree / solve / ops / seam / drag
+                            - layout/api.rkt             配置模型 / split tree / solve / ops / seam / drag
                             - resource/api.rkt           store / resource / save / prompt / 路径
                             - focus/api.rkt              焦点导航
                             - command/api.rkt            command-table / keys / key token
@@ -361,11 +361,15 @@ rect-contains?
 
 ### config
 
+`layout/config.rkt` 是**布局配置模型**（骨架的一部分）：只有规则的数据形状、
+构造 / 查询、通用 default rule，不知道 `editor` / `sidebar` / `status` 这些具体 kind。
+
 ```racket
 (make-panel-rule #:splittable? #:hideable? #:deletable? #:focusable?
                  #:min-w #:max-w #:min-h #:max-h)
 (make-layout-config #:rules #:default)
-default-config
+default-panel-rule      ; 未知 kind 的通用 rule
+empty-layout-config     ; 没有任何 per-kind 规则
 (config-panel-rule config kind)
 (config-panel-splittable? config kind)
 (config-panel-hideable? config kind)
@@ -374,6 +378,23 @@ default-config
 (panel-rule-min-size rule axis)
 (panel-rule-max-size rule axis)
 ```
+
+具体 app 的 kind 规则是 **configuration**（纯数据），在 `config/layout/`：
+
+```racket
+(require "edit-tui-rebuild/config/layout/default.rkt")
+default-config    ; editor / sidebar / status 的 split / hide / min / max
+```
+
+- `config/` 只放纯配置，没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
+- `main.rkt` 不聚合纯配置（和主题一样由宿主直接 require）；
+- `skeleton.rkt` 和 `layout/ops.rkt` 都不认识 `config/layout/`；
+- layout 结构操作把 config 当**必填参数**：
+  `layout-split` / `layout-panel-remove` / `layout-panel-hide` /
+  `layout-seam-resize` / `layout-seam-drag-*`；
+- app 把配置放进 state：`(app-state-layout-config state)`；
+  demo / 宿主构造 state 时传 `#:layout-config default-config`；
+- 换一套规则 = 换一个 config 值（或换 require 的配置模块），layout 骨架不动。
 
 ### layout 状态
 
@@ -408,9 +429,9 @@ empty-layout
 ### 结构操作
 
 ```racket
-(layout-split l target-id dir new-panel-id #:ratio #:config)
+(layout-split l target-id dir new-panel-id #:ratio #:config config)
 (layout-panel-attach l target-id dir panel #:ratio)
-(layout-panel-remove l id #:config)
+(layout-panel-remove l id #:config config)
 (layout-panel-clear-content l id)
 (layout-panel-set-fixed l id axis value)
 (layout-split-set-ratio l split-id ratio)
@@ -419,7 +440,7 @@ empty-layout
 ### 隐藏 / 显示
 
 ```racket
-(layout-panel-hide l area id #:config)
+(layout-panel-hide l area id #:config config)
 (layout-panel-show l area id)
 (layout-focus-fallback l config id)
 ```
@@ -437,9 +458,9 @@ empty-layout
 (layout-seam-at l area row col)        ; seam | #f
 (layout-panel-id-at l area row col)    ; panel-id | #f
 
-(layout-seam-resize l area split-id delta #:config)
-(layout-seam-drag-start l area row col #:config)   ; -> drag | #f
-(layout-seam-drag-move l area drag row col #:config)
+(layout-seam-resize l area split-id delta #:config config)
+(layout-seam-drag-start l area row col #:config config)   ; -> drag | #f
+(layout-seam-drag-move l area drag row col #:config config)
 ```
 
 ### 焦点导航
@@ -525,7 +546,10 @@ layout -> core panels
 
 ### theme 配置
 
-主题不放 API，放在 `config/theme/`：
+主题和布局配置都放在 `config/`，都是纯配置、直接 require；区别是主题
+require 即全局安装，布局配置是值（传给 layout API / 放进 app-state）。
+
+主题放在 `config/theme/`：
 
 ```racket
 (require "edit-tui-rebuild/config/theme/default.rkt")
@@ -605,7 +629,7 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (internal-event kind data)
 (quit-event)
 
-(make-app-state #:layout #:resources #:focus-resource
+(make-app-state #:layout #:layout-config #:resources #:focus-resource
                 #:overlays #:editor-tables
                 #:pending #:area #:quit? #:message)
 

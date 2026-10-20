@@ -16,7 +16,7 @@
 (require (prefix-in l: "../layout/tree.rkt")
          (prefix-in l: "../layout/solve.rkt")
          (prefix-in p: "../panel/model.rkt")
-         "../config/model.rkt"
+         "../layout/config.rkt"
          "../projection/geometry.rkt"
          "../../core/view/panel.rkt")
 

@@ -5,10 +5,13 @@
 ;;; 建 split、attach / remove / hide / show、改比例、拖 seam、校验。
 ;;; rect 换算走 solve.rkt；树结构走 tree.rkt。
 ;;; 修改布局不碰 view / engine —— 那些由调用方（app / runtime）处理。
+;;;
+;;; config 是**必填参数**：这一层不知道任何具体 kind 规则。
+;;; 具体配置由宿主选择（config/layout/default.rkt）并传进来。
 
 (require racket/list
          "../../core/view/base/rect.rkt"
-         "../config/model.rkt"
+         "config.rkt"
          "../panel/model.rkt"
          "tree.rkt"
          "solve.rkt")
@@ -204,7 +207,7 @@
 
 (define (layout-split l target-id dir new-panel-id
                       #:ratio [ratio 1/2]
-                      #:config [config default-config])
+                      #:config config)
   (define target (layout-panel l target-id))
   (cond
     [(not target) (values l #f)]
@@ -227,7 +230,7 @@
 
 ;;; ════════════════ 删除 / 清空 ════════════════
 
-(define (layout-panel-remove l id #:config [config default-config])
+(define (layout-panel-remove l id #:config config)
   (define p (layout-panel l id))
   (cond
     [(not p) (values l #f)]
@@ -328,7 +331,7 @@
           changed?))
 
 ;; delta 是沿 split 轴的格数；只有两边都 flex 时才能拖。
-(define (layout-seam-resize l area sid delta #:config [config default-config])
+(define (layout-seam-resize l area sid delta #:config config)
   (define s (find-split (layout-root l) sid))
   (cond
     [(not s) (values l #f)]
@@ -363,7 +366,7 @@
 ;; move 用“从起点到当前的绝对 delta”，所以重复 move 不会累积错。
 (struct drag (split-id axis start-row start-col start-ratio) #:transparent)
 
-(define (layout-seam-drag-start l area row col #:config [config default-config])
+(define (layout-seam-drag-start l area row col #:config config)
   (define s* (layout-seam-at l area row col))
   (cond
     [(not s*) #f]
@@ -380,7 +383,7 @@
              (seam-bounds l config s (axis-extent r (split-axis s)))
              (drag (split-id s) (split-axis s) row col (split-ratio s)))])]))
 
-(define (layout-seam-drag-move l area d row col #:config [config default-config])
+(define (layout-seam-drag-move l area d row col #:config config)
   (define s (find-split (layout-root l) (drag-split-id d)))
   (cond
     [(not s) (values l #f)]
@@ -423,7 +426,7 @@
 (define (axis-size r axis)
   (axis-extent r axis))
 
-(define (layout-panel-hide l area id #:config [config default-config])
+(define (layout-panel-hide l area id #:config config)
   (define p (layout-panel l id))
   (cond
     [(or (not p) (panel-hidden? p)) (values l #f)]

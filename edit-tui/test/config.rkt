@@ -2,6 +2,7 @@
 
 ;;; config 规则 / min-max / focus fallback 测试。
 (require rackunit
+         "../config/layout/default.rkt"
          "../main.rkt")
 
 (define area (rect 0 0 80 24))
@@ -25,7 +26,13 @@
                           #:focus 'editor))
   (attach! (attach! l0 'editor 'left ft) 'editor 'down st))
 
-;;; ---------- 默认规则 ----------
+;;; ---------- 骨架默认：没有 per-kind 规则 ----------
+(check-false (config-panel-splittable? empty-layout-config 'editor))
+(check-false (config-panel-hideable? empty-layout-config 'editor))
+(check-true (config-panel-deletable? empty-layout-config 'editor))
+(check-true (config-panel-focusable? empty-layout-config 'editor))
+
+;;; ---------- 具体配置：default-config ----------
 (check-true (config-panel-splittable? default-config 'editor))
 (check-false (config-panel-splittable? default-config 'sidebar))
 (check-false (config-panel-splittable? default-config 'status))
@@ -41,13 +48,13 @@
 ;;; ---------- 操作受规则限制 ----------
 (define l (base-layout))
 
-(define-values (_split-no ok-split-no?) (layout-split l 'filetree 'right 'nope))
+(define-values (_split-no ok-split-no?) (layout-split l 'filetree 'right 'nope #:config default-config))
 (check-false ok-split-no?)
 
-(define-values (_hide-no ok-hide-no?) (layout-panel-hide l area 'state))
+(define-values (_hide-no ok-hide-no?) (layout-panel-hide l area 'state #:config default-config))
 (check-false ok-hide-no?)                                  ; status 不可隐
 
-(define-values (_remove-no ok-remove-no?) (layout-panel-remove l 'state))
+(define-values (_remove-no ok-remove-no?) (layout-panel-remove l 'state #:config default-config))
 (check-false ok-remove-no?)                                ; status 不可删
 
 ;;; ---------- min / max 接缝夹取 ----------

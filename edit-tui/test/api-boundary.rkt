@@ -8,6 +8,7 @@
 ;;; 允许：
 ;;;   main.rkt
 ;;;   */api.rkt
+;;;   config/*（纯配置数据，没有实现）
 ;;;   外部 core/*
 ;;;
 ;;; 不允许：
@@ -70,9 +71,13 @@
 (define (core-path? str)
   (regexp-match? #rx"(^|/)core/" str))
 
+(define (config-path? str)
+  (regexp-match? #rx"(^|/)config/" str))
+
 (define (impl-require? str)
   (and (not (api-path? str))
        (not (core-path? str))
+       (not (config-path? str))
        (or
         ;; 新结构：领域目录下的非 api 实现文件
         (regexp-match? #rx"(^|/)(base|panel|config|layout|focus|command|projection|face|render|resource|filetree|chrome|app|runtime|engine)/[^/]+\\.rkt$" str)
@@ -94,6 +99,7 @@
 (check-false (impl-require? "../panel/api.rkt"))
 (check-false (impl-require? "../main.rkt"))
 (check-false (impl-require? "../../core/view/panel.rkt"))
+(check-false (impl-require? "../config/layout/default.rkt"))
 
 (define (rkt-files dir)
   (append*

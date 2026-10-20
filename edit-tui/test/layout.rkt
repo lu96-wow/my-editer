@@ -2,6 +2,7 @@
 
 ;;; layout 状态 / split tree / hide / show / remove / split 测试。
 (require rackunit
+         "../config/layout/default.rkt"
          "../main.rkt")
 
 (define area (rect 0 0 80 24))
@@ -12,12 +13,12 @@
   l*)
 
 (define (split! l target dir id)
-  (define-values (l* ok?) (layout-split l target dir id))
+  (define-values (l* ok?) (layout-split l target dir id #:config default-config))
   (check-true ok?)
   l*)
 
 (define (hide! l area id)
-  (define-values (l* ok?) (layout-panel-hide l area id))
+  (define-values (l* ok?) (layout-panel-hide l area id #:config default-config))
   (check-true ok?)
   l*)
 
@@ -32,7 +33,7 @@
   l*)
 
 (define (remove! l id)
-  (define-values (l* ok?) (layout-panel-remove l id))
+  (define-values (l* ok?) (layout-panel-remove l id #:config default-config))
   (check-true ok?)
   l*)
 
@@ -71,12 +72,12 @@
 (check-equal? (seam-axis inner-seam) 'tb)
 
 ;;; ---------- 固定尺寸阻止拖接缝 ----------
-(define-values (_l1 no-resize?) (layout-seam-resize l2 area (seam-split-id root-seam) 5))
+(define-values (_l1 no-resize?) (layout-seam-resize l2 area (seam-split-id root-seam) 5 #:config default-config))
 (check-false no-resize?)                                  ; filetree fixed-w = 30
-(define-values (_l2 no-resize-inner?) (layout-seam-resize l2 area (seam-split-id inner-seam) 2))
+(define-values (_l2 no-resize-inner?) (layout-seam-resize l2 area (seam-split-id inner-seam) 2 #:config default-config))
 (check-false no-resize-inner?)                            ; state fixed-h = 1
-(check-false (layout-seam-drag-start l2 area 0 30))            ; filetree fixed-w
-(check-false (layout-seam-drag-start l2 area 23 40))           ; state fixed-h
+(check-false (layout-seam-drag-start l2 area 0 30 #:config default-config))            ; filetree fixed-w
+(check-false (layout-seam-drag-start l2 area 23 40 #:config default-config))           ; state fixed-h
 
 ;;; ---------- flex 接缝拖动 ----------
 (define-values (l-flex ok-flex?) (layout-panel-set-fixed l2 'filetree 'w #f))
@@ -87,14 +88,14 @@
 (define rects-ratio (layout-panel-rects l-ratio area))
 (check-equal? (hash-ref rects-ratio 'filetree) (rect 0 0 30 24))
 
-(define d (layout-seam-drag-start l-ratio area 0 30))
+(define d (layout-seam-drag-start l-ratio area 0 30 #:config default-config))
 (check-not-false d)
-(define-values (l-dragged ok-drag?) (layout-seam-drag-move l-ratio area d 0 35))
+(define-values (l-dragged ok-drag?) (layout-seam-drag-move l-ratio area d 0 35 #:config default-config))
 (check-true ok-drag?)
 (define rects-dragged (layout-panel-rects l-dragged area))
 (check-equal? (hash-ref rects-dragged 'filetree) (rect 0 0 35 24))
 
-(define-values (l-resized ok-resize?) (layout-seam-resize l-ratio area (seam-split-id seam-flex) 5))
+(define-values (l-resized ok-resize?) (layout-seam-resize l-ratio area (seam-split-id seam-flex) 5 #:config default-config))
 (check-true ok-resize?)
 (define rects-resized (layout-panel-rects l-resized area))
 (check-equal? (hash-ref rects-resized 'filetree) (rect 0 0 35 24))
@@ -121,7 +122,7 @@
 (check-equal? (hash-ref rects-shown 'state) (rect 70 29 90 1))
 
 ;;; ---------- split：只有 editor 能拆，新 panel 空且不抢焦点 ----------
-(define-values (l-split ok-split?) (layout-split l-shown 'editor 'right 'editor2))
+(define-values (l-split ok-split?) (layout-split l-shown 'editor 'right 'editor2 #:config default-config))
 (check-true ok-split?)
 (check-equal? (layout-focus l-split) 'editor)
 (define ed2 (layout-panel l-split 'editor2))
@@ -131,7 +132,7 @@
 (check-true (layout-panel-visible? l-split 'editor2))
 (check-equal? (layout-visible-panel-ids l-split) '(filetree editor editor2 state))
 
-(define-values (_l-no-split no-split?) (layout-split l-split 'filetree 'right 'nope))
+(define-values (_l-no-split no-split?) (layout-split l-split 'filetree 'right 'nope #:config default-config))
 (check-false no-split?)
 
 ;;; ---------- clear：保留 slot，清内容 ----------

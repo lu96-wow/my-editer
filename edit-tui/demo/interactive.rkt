@@ -39,7 +39,8 @@
 ;;;   placement 中：↑←→↓ 在 editor 间改焦点，Enter 放入，Esc 取消，
 ;;;     鼠标点目标 editor 也可（放完临时表自动解除）
 
-(require "../config/theme/default.rkt"
+(require "../config/layout/default.rkt"
+         "../config/theme/default.rkt"
          "../main.rkt")
 
 (provide demo-state demo-engine)
@@ -52,7 +53,8 @@
     (define pid (app-state-focus-panel-id state))
     (define nid (app-state-next-panel-id state))
     (define-values (layout* ok?)
-      (layout-split layout pid dir nid #:config default-config))
+      (layout-split layout pid dir nid
+                    #:config (app-state-layout-config state)))
     (if ok?
         (values (app-state-refresh-focus-resource
                  (struct-copy app-state state
@@ -68,7 +70,8 @@
     (define visible? (layout-panel-visible? layout 'filetree))
     (define-values (layout* ok?)
       (if visible?
-          (layout-panel-hide layout area 'filetree #:config default-config)
+          (layout-panel-hide layout area 'filetree
+                             #:config (app-state-layout-config state))
           (layout-panel-show layout area 'filetree)))
     (if ok?
         ;; 隐藏可能导致焦点回退：按新 layout 的焦点重算 focus-resource
@@ -81,7 +84,7 @@
   (λ (state)
     (define layout (app-state-layout state))
     (define to (layout-focus-neighbor layout (app-state-area state)
-                                      default-config
+                                      (app-state-layout-config state)
                                       (app-state-focus-panel-id state) dir))
     (if to
         (values (app-state-set-focus-panel state to) '())
@@ -129,6 +132,8 @@
 (define state0
   (make-app-state #:resources store1
                   #:focus-resource 1
+                  ;; 具体布局规则：宿主选择，layout 骨架不认识它
+                  #:layout-config default-config
                   ;; 全局键（overlays 对所有面板生效）
                   #:overlays (command-table-stack-from-tables
                               (list global-command-table))

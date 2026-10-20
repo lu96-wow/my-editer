@@ -5,8 +5,7 @@
 ;;; 骨架 = 编辑器基础设施，不含任何具体插件：
 ;;;   base     几何 / 文本值（core 词汇的再导出）
 ;;;   panel    面板资源
-;;;   config   面板规则
-;;;   layout   split tree / solve / 结构编辑
+;;;   layout   配置模型 / split tree / solve / 结构编辑
 ;;;   focus    焦点导航
 ;;;   face     face 值
 ;;;   resource 资源 / 保存 / 退出 / prompt
@@ -19,7 +18,6 @@
 
 (require "base/api.rkt"
          "panel/api.rkt"
-         "config/api.rkt"
          "layout/api.rkt"
          "focus/api.rkt"
          "face/api.rkt"
@@ -30,7 +28,6 @@
 
 (provide (all-from-out "base/api.rkt"
                        "panel/api.rkt"
-                       "config/api.rkt"
                        "layout/api.rkt"
                        "focus/api.rkt"
                        "face/api.rkt"

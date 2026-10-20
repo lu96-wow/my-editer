@@ -1,8 +1,9 @@
 #lang racket
 
-;;; 统一 API 面冒烟测试：只 require edit-tui-rebuild/main.rkt。
+;;; 统一 API 面冒烟测试：main.rkt + 纯配置 config/layout/default.rkt。
 
 (require rackunit
+         "../config/layout/default.rkt"
          "../main.rkt")
 
 (define area (rect 0 0 80 24))
@@ -52,7 +53,7 @@
 (check-equal? (layout-focus-panel-at l area default-config 0 0) 'filetree)
 
 ;; 隐藏 / 显示
-(define-values (l-hidden ok-hide?) (layout-panel-hide l area 'filetree))
+(define-values (l-hidden ok-hide?) (layout-panel-hide l area 'filetree #:config default-config))
 (check-true ok-hide?)
 (check-equal? (layout-panel-rects l-hidden area)
               (layout-solution-panel-rects (layout-solve l-hidden area)))

@@ -95,6 +95,7 @@
   (define col (mouse-event-col ev))
   (define area (app-state-area state))
   (define layout (app-state-layout state))
+  (define config (app-state-layout-config state))
   (case (mouse-event-token ev)
     [(press)
      (define placement-id (app-state-placement state))
@@ -109,7 +110,7 @@
         (define seam (layout-seam-at layout area row col))
         (cond
           [seam
-           (define d (layout-seam-drag-start layout area row col #:config default-config))
+           (define d (layout-seam-drag-start layout area row col #:config config))
            (values (struct-copy app-state state [drag d]) '())]
           [else
            ;; 内容区（去掉边框）：聚焦 + 光标落点；边框 / 角上只改焦点。
@@ -120,7 +121,7 @@
               (define s1 (app-state-set-focus-panel state cid))
               (values s1 (content-point-actions s1 cid c-row c-col))]
              [else
-              (define id (layout-focus-panel-at layout area default-config row col))
+              (define id (layout-focus-panel-at layout area config row col))
               (if id
                   (values (app-state-set-focus-panel state id) '())
                   (values state '()))])])])]
@@ -130,13 +131,13 @@
        [(not d) (values state '())]
        [else
         (define-values (layout* ok?)
-          (layout-seam-drag-move layout area d row col #:config default-config))
+          (layout-seam-drag-move layout area d row col #:config config))
         (values (if ok? (struct-copy app-state state [layout layout*]) state)
                 '())])]
     [(release)
      (values (struct-copy app-state state [drag #f]) '())]
     [else
-     (define id (layout-focus-panel-at layout area default-config row col))
+     (define id (layout-focus-panel-at layout area config row col))
      (if id
          (values (app-state-set-focus-panel state id) '())
          (values state '()))]))

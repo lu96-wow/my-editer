@@ -1,10 +1,13 @@
 #lang racket
 
-;;; edit-tui-rebuild/config/model.rkt —— 布局规则（静态配置）
+;;; edit-tui-rebuild/layout/config.rkt —— 布局配置模型（骨架）
 ;;;
-;;; config 只回答：
-;;;   这个 panel kind 能不能 split / hide / delete / focus？
-;;;   最小 / 最大宽高是多少？
+;;; 这里只定义“规则的数据形状”和通用行为：
+;;;   panel-rule / layout-config 类型
+;;;   make-* / 查询 / 通用 default-panel-rule
+;;;
+;;; 具体 panel kind（editor / sidebar / status …）的规则属于 configuration，
+;;; 放在 config/layout/；本文件不 require 它，也不知道任何 kind。
 ;;;
 ;;; min / max 不进入布局状态；启动校验与运行时 API 从这里取限制。
 ;;; 未知 kind 用 default-rule。
@@ -14,7 +17,7 @@
          make-panel-rule
          make-layout-config
          default-panel-rule
-         default-config
+         empty-layout-config
          config-panel-rule
          config-panel-splittable?
          config-panel-hideable?
@@ -69,31 +72,10 @@
     (error 'make-layout-config "default 要是 panel-rule：~a" default))
   (layout-config rules default))
 
-(define default-config
-  (make-layout-config
-   #:rules
-   (hash
-    'editor
-    (make-panel-rule #:splittable? #t
-                     #:hideable? #f
-                     #:deletable? #t
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f)
-    'sidebar
-    (make-panel-rule #:splittable? #f
-                     #:hideable? #t
-                     #:deletable? #t
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f)
-    'status
-    (make-panel-rule #:splittable? #f
-                     #:hideable? #f
-                     #:deletable? #f
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f))))
+;; 没有任何 per-kind 规则：所有 kind 都落到 default-panel-rule。
+;; app/state 用它当默认值；宿主选择具体布局时传入 config/layout/ 里的 config。
+(define empty-layout-config
+  (make-layout-config))
 
 (define (config-panel-rule config kind)
   (or (hash-ref (layout-config-rules config) kind #f)
