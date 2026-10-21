@@ -17,7 +17,7 @@
                    #:key-table (buffer-key-table path text)))
   (define s1 (run-actions (struct-copy app-state state [resources store])
                           engine actions))
-  (define rid (resource-focus store))
+  (define rid (resource-id (car (resource-list store))))
   (define vid (first (resource-view-ids store rid)))
   (define-values (layout* ok?) (layout-panel-add-view (app-state-layout s1) 'editor vid))
   (unless ok? (error 'open-editor-into-demo "editor panel missing"))

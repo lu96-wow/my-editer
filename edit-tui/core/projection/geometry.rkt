@@ -69,7 +69,8 @@
    content-id    ; 内容区包含指针的 panel-id | #f
    content-row   ; 相对内容区 0 基行：内容区外为 #f
    content-col   ; 相对内容区 0 基列：内容区外为 #f
-   seam)         ; 指针下的 seam | #f
+   seam           ; 指针下的 seam | #f
+   solution)      ; 同一帧的 layout-solution（给 seam drag 复用）
   #:transparent)
 
 (define (panel-hit-id solution row col)
@@ -107,7 +108,8 @@
        cid crow ccol
        (for/first ([s (in-list (l:layout-solution-seams solution))]
                    #:when (rect-contains? (l:seam-rect s) col row))
-         s)))
+         s)
+       solution))
 
 ;;; ---------- 内容区命中（兼容旧 API） ----------
 ;;;

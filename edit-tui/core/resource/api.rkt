@@ -10,7 +10,6 @@
  resource-store-empty
  resource-ref
  resource-list
- resource-focus
  resource-pending
 
  ;; resource

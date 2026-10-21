@@ -366,8 +366,12 @@
 ;; move 用“从起点到当前的绝对 delta”，所以重复 move 不会累积错。
 (struct drag (split-id axis start-row start-col start-ratio) #:transparent)
 
-(define (layout-seam-drag-start l area row col #:config config)
-  (define s* (layout-seam-at l area row col))
+;; seam / solution 可由 layout-hit 传入，避免 press 路径重复 solve。
+(define (layout-seam-drag-start l area row col
+                                #:config config
+                                #:seam [seam #f]
+                                #:solution [solution #f])
+  (define s* (or seam (layout-seam-at l area row col)))
   (cond
     [(not s*) #f]
     [else
@@ -378,7 +382,9 @@
             (node-fixed-size l (split-right s) (split-axis s)))
         #f]
        [else
-        (define r (hash-ref (layout-split-rects l area) (split-id s) #f))
+        (define solution* (or solution (layout-solve l area)))
+        (define r (hash-ref (layout-solution-split-rects solution*)
+                            (split-id s) #f))
         (and r
              (seam-bounds l config s (axis-extent r (split-axis s)))
              (drag (split-id s) (split-axis s) row col (split-ratio s)))])]))

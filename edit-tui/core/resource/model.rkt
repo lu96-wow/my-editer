@@ -34,7 +34,6 @@
          resource-store-empty
          resource-ref
          resource-list
-         resource-focus
 
          resource-open
          resource-save
@@ -74,13 +73,12 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (root resources order focus pending prompt view-index
+  (root resources order pending prompt view-index
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
 ;; root       : string（启动根路径；规范化绝对路径，"" = 未设置）
 ;; resources  : id -> resource
 ;; order      : (listof resource-id)
-;; focus      : resource-id | #f
 ;; pending    : pending | #f
 ;; prompt     : prompt | #f
 ;; view-index : view-id -> resource-id（resource-of-view 的 O(1) 索引）
@@ -99,7 +97,7 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store "" (hash) '() #f #f #f (hash) 1 1 1))
+  (resource-store "" (hash) '() #f #f (hash) 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
@@ -145,10 +143,7 @@
                [view-index (if old
                                (index-remove-views (resource-store-view-index r)
                                                    id (resource-views old))
-                               (resource-store-view-index r))]
-               [focus (and (resource-store-focus r)
-                           (not (equal? (resource-store-focus r) id))
-                           (resource-store-focus r))]))
+                               (resource-store-view-index r))]))
 
 (define (store-set-prompt r p)
   (struct-copy resource-store r [prompt p]))
@@ -178,8 +173,6 @@
 (define (resource-list store)
   (for/list ([id (in-list (resource-store-order store))])
     (store-get store id)))
-
-(define (resource-focus store) (resource-store-focus store))
 
 (define (resource-path store id)
   (define r (resource-ref store id))
@@ -221,8 +214,7 @@
                        #:text [text ""]
                        #:key-table key-table
                        #:version [version 0]
-                       #:doc-id [doc-id #f]
-                       #:focus? [focus? #t])
+                       #:doc-id [doc-id #f])
   (define rid (resource-store-next-resource-id store))
   (define vid (resource-store-next-view-id store))
   (define did (or doc-id rid))
@@ -233,7 +225,6 @@
   (define r (resource rid name* did (list vid) path* stack version version))
   (define s1 (store-put store r))
   (define s2 (struct-copy resource-store s1
-                          [focus (if focus? rid (resource-store-focus s1))]
                           [next-resource-id (add1 rid)]
                           [next-view-id (add1 vid)]))
   (values s2

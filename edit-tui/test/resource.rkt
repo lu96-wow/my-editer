@@ -25,7 +25,6 @@
 (check-equal? (map resource-action-kind as1) '(create-buffer create-view))
 (check-equal? (resource-action-data (car as1)) '(1 "scratch" "hello"))
 (check-equal? (resource-action-data (cadr as1)) '(1 1))
-(check-equal? (resource-focus s1) 1)
 (check-equal? (map resource-id (resource-list s1)) '(1))
 (check-equal? (resource-view-ids s1 1) '(1))
 (check-equal? (resource-of-view s1 1) 1)
@@ -124,7 +123,6 @@
 (define-values (sc asc) (resource-request-close s2 1))
 (check-equal? (map resource-action-kind asc) '(close-resource))
 (check-equal? (resource-list sc) '())
-(check-false (resource-focus sc))
 (check-false (resource-of-view sc 1))
 
 ;;; ---------- close: dirty, cancel ----------

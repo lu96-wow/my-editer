@@ -420,7 +420,8 @@ empty-layout
 (layout-panel-id-at l area row col)    ; panel-id | #f
 
 (layout-seam-resize l area split-id delta #:config config)
-(layout-seam-drag-start l area row col #:config config)   ; -> drag | #f
+(layout-seam-drag-start l area row col #:config config   ; -> drag | #f
+                        #:seam seam #:solution solution)  ; 可选：复用 layout-hit
 (layout-seam-drag-move l area drag row col #:config config)
 ```
 
@@ -913,7 +914,6 @@ resource-store-empty
 
 resource-ref
 resource-list
-resource-focus
 resource-pending
 
 resource-id

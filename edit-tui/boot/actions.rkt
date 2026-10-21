@@ -136,8 +136,7 @@
                          #:name name
                          #:path path
                          #:text text
-                         #:key-table (buffer-key-table path text)
-                         #:focus? #f))
+                         #:key-table (buffer-key-table path text)))
         (define buffer-action
           (for/first ([a (in-list actions)]
                       #:when (eq? (resource-action-kind a) 'create-buffer))

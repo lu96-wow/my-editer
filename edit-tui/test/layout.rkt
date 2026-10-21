@@ -90,6 +90,16 @@
 
 (define d (layout-seam-drag-start l-ratio area 0 30 #:config default-config))
 (check-not-false d)
+
+;; layout-hit 的 seam / solution 可直接复用，结果与默认路径一致。
+(define seam-hit (layout-hit l-ratio area 0 30))
+(define d-reuse
+  (layout-seam-drag-start l-ratio area 0 30
+                          #:config default-config
+                          #:seam (hit-seam seam-hit)
+                          #:solution (hit-solution seam-hit)))
+(check-not-false d-reuse)
+(check-equal? (drag-split-id d-reuse) (drag-split-id d))
 (define-values (l-dragged ok-drag?) (layout-seam-drag-move l-ratio area d 0 35 #:config default-config))
 (check-true ok-drag?)
 (define rects-dragged (layout-panel-rects l-dragged area))

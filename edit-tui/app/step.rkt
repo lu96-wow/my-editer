@@ -123,7 +123,10 @@
         (define seam (hit-seam h))
         (cond
           [seam
-           (define d (layout-seam-drag-start layout area row col #:config config))
+           (define d (layout-seam-drag-start layout area row col
+                                            #:config config
+                                            #:seam seam
+                                            #:solution (hit-solution h)))
            (values (struct-copy app-state state [drag d]) '())]
           [else
            ;; 内容区（去掉边框）：聚焦 + 光标落点；边框 / 角上只改焦点。
