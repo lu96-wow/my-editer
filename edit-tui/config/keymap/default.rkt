@@ -43,11 +43,10 @@
    (append
     (append* (for/list ([d (in-list '(left right up down home end))])
                (nav-binding d)))
-    ;; C-a / C-e 行首行尾，C-f / C-b 逐字符
+    ;; C-a / C-e 行首行尾，C-f 逐字符
     (list (list (list (key 'a 'ctrl)) (nav-command 'home))
           (list (list (key 'e 'ctrl)) (nav-command 'end))
-          (list (list (key 'f 'ctrl)) (nav-command 'right))
-          (list (list (key 'b 'ctrl)) (nav-command 'left)))
+          (list (list (key 'f 'ctrl)) (nav-command 'right)))
     ;; 翻页
     (list (list (list (key 'pageup))   (scroll-command 'page-up))
           (list (list (key 'pagedown)) (scroll-command 'page-down))))))

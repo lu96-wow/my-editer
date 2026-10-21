@@ -31,3 +31,14 @@
                                   (list (key 'q 'ctrl))))
 
 (displayln "edit-tui-rebuild/test/keymap.rkt: ok")
+
+;; 局部键表优先于全局键表：local C-q 覆盖 global C-q
+(define local-table
+  (keys [(key 'q 'ctrl)
+         (λ (state) (values (app-state-with-flash state "local") '()))]))
+(define-values (s0 _a0)
+  (resource-open resource-store-empty #:name "local" #:text "" #:key-table local-table))
+(define st0 (make-app-state #:resources s0 #:focus-resource 1 #:keymap default-keymap))
+(define-values (st1 _acts) (step st0 (key-event (key 'q 'ctrl))))
+(check-equal? (app-state-flash st1) "local")
+(check-false (app-state-quit? st1))

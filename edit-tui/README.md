@@ -310,6 +310,17 @@ input-stack      输入栏独占 stack（Esc/C-g Enter C-h/C-t …）
 placement-table  placement 临时表（Enter/Esc/方向）
 ```
 
+非输入态查表顺序：
+
+```text
+动态 overlays（placement 等模态）
+  > 焦点 resource / panel 的局部表
+    > keymap.overlays 全局表
+```
+
+**局部优先**：同一按键同时出现在局部表和全局表时，局部表胜出。
+输入态仍然直接替换成 input-stack，不与全局/局部表合并。
+
 - 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
 - `app-state` 持有全局 keymap：`(app-state-keymap state)`；
 - `app/step` 从这里取 overlays / input-stack；placement 取临时表；
@@ -724,7 +735,7 @@ flash（一次性；下一次 step 入口清空）
 ```text
 可打印键 / 粘贴     在光标处插入（粘贴只取单行可打印内容）
 Backspace / Delete  删光标前 / 后
-← → Home End        移动光标（C-b/C-f 逐字符，C-a/C-e 行首/行尾）
+← → Home End        移动光标（C-f 逐字符，C-a/C-e 行首/行尾）
 C-h / C-t           跳到整行行首 / 行尾（只有输入栏有）
 Enter               提交
 Esc / C-g           取消（resource-cancel）
@@ -1111,7 +1122,7 @@ Enter / Tab             换行 / 插入两个空格
 Backspace / Delete / C-d 删前 / 删后一个字符
 ←→↑↓ Home End           导航
 Shift+方向 / Shift+Home End  扩展选区
-C-a / C-e               行首 / 行尾（C-f / C-b 逐字符）
+C-a / C-e               行首 / 行尾（C-f 逐字符）
 PageUp / PageDown       滚一屏（光标跟着走一屏）
 C-k                     删到行尾
 C-z / C-y               撤销 / 重做

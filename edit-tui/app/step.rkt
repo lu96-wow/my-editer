@@ -32,7 +32,8 @@
       (struct-copy app-state state [flash ""])))
 
 ;; 两模式：
-;;   叠加：非输入态 = 动态 overlays over keymap overlays over (per-doc / panel base)
+;;   叠加：非输入态 = 动态 overlays over (per-doc / panel base) over keymap overlays
+;;         局部键表优先于全局键表；placement 等动态模态仍在最上层。
 ;;   替换：输入态直接返回 keymap 的 input-stack（模态独占，不拼 overlays）
 ;; stack 查找 unbound 会继续查下一张表；如果输入态也叠加 overlay，
 ;; C-q / C-w 这类未绑定键就会穿透到全局命令。
@@ -52,7 +53,7 @@
                     command-table-stack-empty)]))
      (command-table-stack-over
       (app-state-overlays state)
-      (command-table-stack-over (keymap-overlays km) base))]))
+      (command-table-stack-over base (keymap-overlays km)))]))
 
 (define (run-command state value)
   (if (procedure? value)
