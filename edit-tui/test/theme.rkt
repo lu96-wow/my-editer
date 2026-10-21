@@ -9,11 +9,17 @@
 (check-true (list? base-theme))
 (check-true (list? frame-theme))
 (check-true (list? chrome-theme))
+(check-true (list? syntax-theme))
+(check-true (list? word-color-theme))
+(check-true (list? bracket-theme))
 (check-true (list? overlay-theme))
 (check-equal? (length default-theme)
               (+ (length base-theme)
                  (length frame-theme)
                  (length chrome-theme)
+                 (length syntax-theme)
+                 (length word-color-theme)
+                 (length bracket-theme)
                  (length overlay-theme)))
 
 ;; 扁平表元素都是 (name style)
@@ -24,7 +30,10 @@
                    (style? (cadr e)))))
 
 ;; filetree 使用的 face 必须真的安装到 tui 样式表。
-(for ([name (in-list '(filetree-root filetree-dir filetree-open filetree-file))])
+(for ([name (in-list '(filetree-root filetree-dir filetree-open filetree-file
+                        syntax-keyword-def syntax-string syntax-comment
+                        word-color-0 word-color-11
+                        bracket-depth-0 bracket-depth-7))])
   (check-true (> (bytes-length (style->bytes name)) 0) (symbol->string name)))
 
 (displayln "edit-tui-rebuild/test/theme.rkt: ok")

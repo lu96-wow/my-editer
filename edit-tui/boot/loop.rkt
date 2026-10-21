@@ -65,8 +65,11 @@
       (cached-layout-solution layout-cache layout area))
     (define-values (state* panels)
       (sync-ui/panels! state engine #:solution solution))
+    ;; 本帧所有派生阶段都已读取过 pending-doc-changes（color 等）；
+    ;; 清掉，避免生产路径里无限累积。demo 的自定义循环由 prepare-demo! 自己消费。
+    (define state** (app-state-clear-doc-changes state*))
     (define-values (cache* bytes)
-      (render-frame state* engine cache #:solution solution #:panels panels))
+      (render-frame state** engine cache #:solution solution #:panels panels))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
     (define ev (read-event))
@@ -75,12 +78,12 @@
       [(job-result-event? ev)
        (when job-runtime
          (forget-dispatched-job! job-runtime (job-result-event-id ev)))
-       (loop (app-state-finish-job state*
+       (loop (app-state-finish-job state**
                                    (job-result-event-id ev)
                                    (job-result-event-result ev))
              cache** layout-cache*)]
       [else
-       (define-values (state1 actions) (step state* ev #:solution solution))
+       (define-values (state1 actions) (step state** ev #:solution solution))
        ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），
        ;; 这里再 reconcile 一次；被挤占的插件请求会在这里回调 on-done。
        (define state2 (run-actions state1 engine actions))

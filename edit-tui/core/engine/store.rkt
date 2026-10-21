@@ -21,18 +21,22 @@
          engine-view-text engine-doc-text engine-doc-version
          engine-view-point-line engine-view-point-column
          engine-view-cursor-screen-position
+         engine-view-face-at
          engine-set-view-content!
+         engine-set-view-faces!
          engine-set-view-cursor!
          engine-set-view-lines!
          engine-apply-view-action!)
 
-(struct engine (docs views ui) #:mutable)
-;; ui : vid -> (cons lines faces)：上次写进 core view 的内容。
-;; 用来做「写回幂等」——内容没变就不重建 document（否则每帧都换 document、
-;; 让 render cache 失效，filetree 上千行时一帧几十毫秒）。
+(struct engine (docs views ui face-ui) #:mutable)
+;; ui      : vid -> (cons lines faces)：上次写进 core view 的内容。
+;; face-ui : vid -> (cons key line-faces)：上次写进 editor view 的逐字符 face。
+;;
+;; 两者都是「写回幂等」缓存——内容 / face 没变就不碰 document（否则每帧都换
+;; document revision、让 render cache 失效，filetree 上千行时一帧几十毫秒）。
 
 (define (make-engine)
-  (engine (hash) (hash) (hash)))
+  (engine (hash) (hash) (hash) (hash)))
 
 (define (engine-doc-buffer e did)
   (hash-ref (engine-docs e) did #f))
@@ -57,7 +61,8 @@
   (when v
     (buffer-close-view! (view-buffer v) v)
     (set-engine-views! e (hash-remove (engine-views e) vid))
-    (set-engine-ui! e (hash-remove (engine-ui e) vid)))
+    (set-engine-ui! e (hash-remove (engine-ui e) vid))
+    (set-engine-face-ui! e (hash-remove (engine-face-ui e) vid)))
   (void))
 
 (define (engine-remove-doc! e did)
@@ -99,6 +104,11 @@
        (let-values ([(row col) (view-cursor-screen-position v)])
          (and row (cons row col)))))
 
+;; 供测试 / 诊断：view 某格的 face。
+(define (engine-view-face-at e vid line col)
+  (define v (engine-view-object e vid))
+  (and v (view-face-at v line col)))
+
 
 ;;; 整篇写一个 UI view 的内容（文本 + 每行 face），不碰光标。
 ;;; 返回 #t 表示内容真的变了。
@@ -130,8 +140,64 @@
          (define r (range (point 0 0) (point 0 n)))
          (buffer-readonly-range! b r #t)
          (when prefix-face (buffer-face-range! b r prefix-face)))
-       (set-engine-ui! e (hash-set (engine-ui e) vid cache)))
+       (set-engine-ui! e (hash-set (engine-ui e) vid cache))
+       ;; 内容重写会清空 face 轨；旧的逐字符 face 缓存必须一起失效。
+       (set-engine-face-ui! e (hash-remove (engine-face-ui e) vid)))
      content-changed?]))
+
+;;; ---------- 逐字符 face（编辑器语法高亮 / 括号背景） ----------
+
+;; 一行 face 向量 -> 非 #f 的连续 range。
+;; 调用方先用 buffer-face-all! #f 清空整轨，所以只产生“有 face”的 run。
+(define (line-face-runs line-no line vec)
+  (define n (min (string-length line) (vector-length vec)))
+  (let loop ([i 0] [acc '()])
+    (cond
+      [(>= i n) (reverse acc)]
+      [else
+       (define f (vector-ref vec i))
+       (cond
+         [(not f) (loop (add1 i) acc)]
+         [else
+          (define j (let next ([j (add1 i)])
+                      (if (and (< j n) (equal? (vector-ref vec j) f))
+                          (next (add1 j))
+                          j)))
+          (loop j (cons (list (range (point line-no i) (point line-no j)) f)
+                        acc))])])))
+
+;; 写一个 view 的逐字符 face，不动文本 / 光标 / 历史。
+;; line-faces : (listof (vectorof (or/c #f symbol? face?)))，与文本行对齐。
+;; #:key      : 写回幂等键；同 key 的重复帧不会碰 document revision。
+;; → 是否真的写了。
+(define (engine-set-view-faces! e vid line-faces #:key [key #f])
+  (define v (engine-view-object e vid))
+  (cond
+    [(not v) #f]
+    [else
+     (define prev (hash-ref (engine-face-ui e) vid #f))
+     (define changed?
+       (or (not prev)
+           (if key
+               (not (equal? (car prev) key))
+               (not (equal? (cdr prev) line-faces)))))
+     (when changed?
+       (define b (view-buffer v))
+       (define text-lines (string-split (view-string v) "\n" #:trim? #f))
+       (buffer-face-all! b #f)
+       (define runs
+         (append*
+          (for/list ([line (in-list text-lines)]
+                     [i (in-naturals)]
+                     [faces (in-list line-faces)])
+            (if (vector? faces)
+                (line-face-runs i line faces)
+                '()))))
+       (when (pair? runs) (buffer-face-range-batch! b runs))
+       (set-engine-face-ui! e
+                            (hash-set (engine-face-ui e) vid
+                                      (cons key line-faces))))
+     changed?]))
 
 ;; 光标单独写：内容同步不应该每帧把用户移动过的光标按回去。
 (define (engine-set-view-cursor! e vid line #:column [column 0])

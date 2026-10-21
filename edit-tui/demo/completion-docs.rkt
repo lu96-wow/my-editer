@@ -261,10 +261,17 @@
         prefix))
 
 (define (set-completion-index state c index)
-  (define c* (struct-copy completion-state c [index index]))
-  (define state* (store-set state 'demo/completion c*))
-  (define name (list-ref (completion-state-candidates c*) index))
-  (request-docs! state* (completion-state-source-info c*) name))
+  (define cands (completion-state-candidates c))
+  (cond
+    [(or (null? cands)
+         (not (exact-nonnegative-integer? index))
+         (>= index (length cands)))
+     state]
+    [else
+     (define c* (struct-copy completion-state c [index index]))
+     (define state* (store-set state 'demo/completion c*))
+     (define name (list-ref cands index))
+     (request-docs! state* (completion-state-source-info c*) name)]))
 
 (define (demo-complete-start state)
   (define info (store-ref state 'demo/source #f))
@@ -381,27 +388,34 @@
 
 (define (demo-complete-next state)
   (define c (current-completion state))
+  (define n (and c (length (completion-state-candidates c))))
   (cond
-    [(not c) (values state '())]
+    [(or (not c) (zero? n)) (values state '())]
     [else
-     (define n (length (completion-state-candidates c)))
      (values (set-completion-index state c (modulo (add1 (completion-state-index c)) n)) '())]))
 
 (define (demo-complete-prev state)
   (define c (current-completion state))
+  (define n (and c (length (completion-state-candidates c))))
   (cond
-    [(not c) (values state '())]
+    [(or (not c) (zero? n)) (values state '())]
     [else
-     (define n (length (completion-state-candidates c)))
      (values (set-completion-index state c (modulo (sub1 (completion-state-index c)) n)) '())]))
 
 (define (demo-complete-accept state)
   (define c (current-completion state))
+  (define cands (and c (completion-state-candidates c)))
   (cond
     [(not c) (values state '())]
+    ;; 本地还没有候选时菜单可能是"loading"；此时 Enter 不能 list-ref。
+    [(null? cands)
+     (values (app-state-with-flash
+              (auto-dismiss! (close-completion state))
+              "completion: no candidates")
+             '())]
     [else
-     (define cand (list-ref (completion-state-candidates c)
-                            (completion-state-index c)))
+     (define idx (min (completion-state-index c) (sub1 (length cands))))
+     (define cand (list-ref cands idx))
      (define ins (completion-insert-text cand (completion-state-prefix c)))
      (define state1 (auto-suppress-next! (close-completion state)))
      (values state1
@@ -798,22 +812,21 @@
               result
               (completion-state-candidates c)))
         (cond
-          [(and (null? cands) (null? (completion-state-candidates c)))
+          [(null? cands)
+           ;; 异步结果为空时不要留下一个空菜单：用户下一次 Enter / Tab 会踩空。
            (app-state-with-flash (auto-dismiss! (close-completion state0))
                                  "completion: no candidates")]
           [else
            (define idx (min (completion-state-index c)
-                            (sub1 (max 1 (length cands)))))
+                            (sub1 (length cands))))
            (define c1 (struct-copy completion-state c
                                    [candidates cands]
                                    [index idx]
                                    [status 'ready]))
            (define state1 (store-set state0 'demo/completion c1))
-           (if (null? cands)
-               state1
-               (request-docs! state1
-                              (completion-state-source-info c1)
-                              (list-ref cands idx)))])])]
+           (request-docs! state1
+                          (completion-state-source-info c1)
+                          (list-ref cands idx))])])]
     [(docs)
      (define dr (store-ref state0 'demo/docs-request #f))
      (cond

@@ -114,6 +114,7 @@ edit-tui/
     theme/default.rkt
 
   edit/  chrome/  filetree/  resources/   插件（暂时留在根目录）
+    color.rkt            编辑器着色同步（role -> 逐字符 face）
 
   app/                     应用状态 / 命令 / 编排（暂时留在根目录）
   render/                  输出渲染（暂时留在根目录）
@@ -160,7 +161,7 @@ core/skeleton.rkt     骨架：base / panel / layout / focus / face /
                             - core/engine/api.rkt        buffer/view 持有 + view action 词汇
                             - core/projection/api.rkt    layout->render-panels / hit / content-hit
 render/api.rkt            render-layout / layout-sync!
-edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert
+edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert / color sync
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
 resources/api.rkt         model / lines / sync / commands / install
@@ -529,6 +530,9 @@ layout -> core panels
 base-theme
 frame-theme
 chrome-theme
+syntax-theme
+word-color-theme
+bracket-theme
 overlay-theme
 ```
 
@@ -694,6 +698,8 @@ overlay tables ++ focused resource command-stack
 
 ;; 普通投影 view：内容 / 光标分开写
 (engine-set-view-content! engine vid lines faces) ; -> changed?
+(engine-set-view-faces! engine vid line-faces #:key key) ; 逐字符 face，不动文本 / 光标
+(engine-view-face-at engine vid line col)
 (engine-set-view-cursor! engine vid line #:column col)
 (engine-set-view-lines! engine vid lines faces line ...) ; 兼容：内容 + 光标
 
@@ -734,8 +740,10 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 `boot/start` 只做 install / teardown；每帧的 sync / analysis / projection
 由 boot 显式写死，不做插件回调。没有 registry / discovery / 依赖解析。
 
-未来的语法高亮、bracket 深度、补全、异步任务会作为**显式的派生/投影阶段**
-插入循环，而不是通过 `sync` hook 或回调挂进去。
+语法高亮 / 同词着色 / 括号深度已经作为显式阶段接在 `sync-ui/panels!` 里：
+`edit/color.rkt` 读 `pending-doc-changes`，维护 `color-state`，只把变化的
+逐字符 face 写进 editor view；不消费 changes。补全、异步任务等以后也按同样方式
+插入显式阶段，而不是通过 `sync` hook 或回调挂进去。
 
 ### 文件树
 
@@ -1195,6 +1203,9 @@ resource        per-doc command-table-stack（编辑器）
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
   `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
   core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
+- **编辑器 face 写回幂等**：`engine-set-view-faces!` 用 `(doc-id, version)` 作为缓存键；
+  颜色 state 没变就不碰 document revision。`color-edit` 只重扫 change 波及的行，
+  undo/redo（没有 change）通过版本失配回退全量重建。
 - **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
   自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
   没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。

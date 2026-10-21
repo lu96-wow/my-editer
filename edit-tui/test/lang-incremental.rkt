@@ -41,6 +41,16 @@
 (check-eq? (list-ref (color-word-roles c1) 2)
            (list-ref (color-word-roles c2) 2))
 
+;; 括号状态跨行传播：去掉第一行的左括号后，第二行必须从 depth 0 重扫。
+(define br-text1 "(a\n[b]\n)")
+(define br1 (color-open br-text1))
+(check-equal? (vector-ref (list-ref (color-bracket-roles br1) 1) 0)
+              'bracket-depth-1)
+(define br-text2 "a\n[b]\n)")
+(define br2 (color-edit br1 br-text2 (list (line-edit 0 1 0 1))))
+(check-equal? (vector-ref (list-ref (color-bracket-roles br2) 1) 0)
+              'bracket-depth-0)
+
 ;;; ════════════════ 解析增量 ════════════════
 
 (define a-text1

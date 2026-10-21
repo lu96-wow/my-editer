@@ -76,6 +76,29 @@
 (check-equal? (vector-ref (car wc) 1) (vector-ref (car wc) 5))
 (check-false (vector-ref (car wc) 0)) ; '(' 不是词
 
+;;; ════════════════ 括号深度 ════════════════
+
+(define bd (bracket-depth-text "(a [b] c)\n\"(x)\" ; (y)\n(f"))
+(check-equal? (vector-ref (list-ref bd 0) 0) 'bracket-depth-0) ; 外层左括号
+(check-equal? (vector-ref (list-ref bd 0) 1) 'bracket-depth-0) ; 外层内容
+(check-equal? (vector-ref (list-ref bd 0) 3) 'bracket-depth-1) ; 内层左括号
+(check-equal? (vector-ref (list-ref bd 0) 4) 'bracket-depth-1) ; 内层内容
+(check-equal? (vector-ref (list-ref bd 0) 5) 'bracket-depth-1) ; 内层右括号
+(check-equal? (vector-ref (list-ref bd 0) 8) 'bracket-depth-0) ; 外层右括号
+;; 字符串 / 注释里的括号不改变栈，也没有背景。
+(check-false (vector-ref (list-ref bd 1) 0))
+(check-false (vector-ref (list-ref bd 1) 8))
+;; 下一行仍从外层深度重新开始。
+(check-equal? (vector-ref (list-ref bd 2) 0) 'bracket-depth-0)
+(check-equal? (vector-ref (list-ref bd 2) 1) 'bracket-depth-0)
+
+;; 跨行括号栈
+(define bd-cross (bracket-depth-text "(\n[x]\n)"))
+(check-equal? (vector-ref (list-ref bd-cross 0) 0) 'bracket-depth-0)
+(check-equal? (vector-ref (list-ref bd-cross 1) 0) 'bracket-depth-1)
+(check-equal? (vector-ref (list-ref bd-cross 1) 1) 'bracket-depth-1)
+(check-equal? (vector-ref (list-ref bd-cross 2) 0) 'bracket-depth-0)
+
 ;;; ════════════════ 源码 / 补全 ════════════════
 
 (define src

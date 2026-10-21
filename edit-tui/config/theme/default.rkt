@@ -13,6 +13,9 @@
 (provide base-theme
          frame-theme
          chrome-theme
+         syntax-theme
+         word-color-theme
+         bracket-theme
          overlay-theme
          default-theme)
 
@@ -64,6 +67,35 @@
    (list 'docs-dim   (style (rgb 140 150 165) #f '()))
    (list 'docs-body  (style (rgb 200 200 200) #f '()))))
 
+;; 语法高亮：role 名由 lang/racket/color 产出。
+(define syntax-theme
+  (list
+   (list 'syntax-keyword-def     (style (rgb 120 180 240) #f '()))
+   (list 'syntax-keyword-control (style (rgb 230 150 180) #f '()))
+   (list 'syntax-keyword-macro   (style (rgb 190 150 240) #f '()))
+   (list 'syntax-keyword-binding (style (rgb 235 190 110) #f '()))
+   (list 'syntax-keyword-module  (style (rgb 120 200 200) #f '()))
+   (list 'syntax-string          (style (rgb 190 220 140) #f '()))
+   (list 'syntax-comment         (style (rgb 120 120 130) #f '(italic)))
+   (list 'syntax-number          (style (rgb 200 170 240) #f '()))))
+
+;; 同词着色：12 色粉彩，同词同色。
+(define word-color-theme
+  (for/list ([i (in-range 12)]
+             [c (in-list '((230 194 158) (216 204 152) (184 210 160) (162 212 172)
+                           (152 214 202) (142 206 226) (150 196 236) (166 182 236)
+                           (196 172 234) (206 172 226) (188 178 214) (178 198 214)))])
+    (list (string->symbol (format "word-color-~a" i))
+          (style (apply rgb c) #f '()))))
+
+;; 括号深度背景：8 层循环使用，颜色来自 edit4 的低饱和底色。
+(define bracket-theme
+  (for/list ([i (in-range 8)]
+             [c (in-list '((36 40 58) (28 47 49) (48 46 30) (30 49 40)
+                           (42 34 58) (34 44 58) (38 48 34) (44 38 54)))])
+    (list (string->symbol (format "bracket-depth-~a" i))
+          (style #f (apply rgb c) '()))))
+
 ;; overlay（光标 / 选区）
 (define overlay-theme
   (list
@@ -72,6 +104,8 @@
 
 ;; 安装层：扁平表
 (define default-theme
-  (append base-theme frame-theme chrome-theme overlay-theme))
+  (append base-theme frame-theme chrome-theme
+          syntax-theme word-color-theme bracket-theme
+          overlay-theme))
 
 (define-theme! default-theme)

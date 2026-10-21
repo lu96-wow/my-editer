@@ -7,9 +7,10 @@
 ;;;   lang/<other>/   以后新增语言时照这个形状放自己的实现
 ;;;
 ;;; 编辑器侧只 require 本文件；不要把 Racket 细节散到 app / boot / plugin。
-;;; 四个基础能力：
+;;; 基础能力：
 ;;;   highlight    语法高亮（关键字 / 字符串 / 注释 / 数字）
 ;;;   word-color   同词着色
+;;;   bracket      括号嵌套深度
 ;;;   docs         标识符文档 / 本地定义
 ;;;   completion   补全候选 / require 模块路径
 ;;;
@@ -21,6 +22,7 @@
          "base/keywords.rkt"
          "color/highlight.rkt"
          "color/word-color.rkt"
+         "color/bracket.rkt"
          "color/color.rkt"
          "parse/source.rkt"
          "parse/analysis.rkt"
@@ -37,6 +39,7 @@
                        "base/keywords.rkt"
                        "color/highlight.rkt"
                        "color/word-color.rkt"
+                       "color/bracket.rkt"
                        "color/color.rkt"
                        "parse/source.rkt"
                        "parse/analysis.rkt"

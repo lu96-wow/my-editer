@@ -14,7 +14,8 @@ lang/
     color/               着色
       highlight.rkt      语法高亮 role
       word-color.rkt     同词色 role
-      color.rkt          行级增量缓存（语法 + 同词色）
+      bracket.rkt        括号深度 role
+      color.rkt          行级增量缓存（语法 + 同词色 + 括号）
     parse/               解析 / 模块接口 / 跨 buffer
       source.rkt         #lang / require / define / provide / reader
       analysis.rkt       form-entry / 局部绑定 / 增量 analysis
@@ -39,6 +40,7 @@ lang/python/
   lex.rkt
   highlight.rkt
   word-color.rkt
+  bracket.rkt
   completion.rkt
   docs.rkt
 ```
@@ -46,7 +48,7 @@ lang/python/
 `api.rkt` 是该语言唯一对外面；编辑器侧不要直接 require 语言内部实现。
 语言层不 require `app` / `boot` / `edit-tui/core`，保持纯、可单独测试。
 
-## Racket 四个基础能力
+## Racket 基础能力
 
 ```racket
 (require "edit-tui/lang/racket/api.rkt")
@@ -60,6 +62,11 @@ lang/python/
 (color-edit state text edits)
 (color-syntax-roles state)
 (color-word-roles state)
+(color-bracket-roles state)
+
+;; 括号深度：每行一个 role 向量
+(bracket-depth-text text)
+(bracket-depth-role level)
 
 ;; 2. 同词着色
 (word-color-text text)         ; -> (listof (vectorof symbol|#f))
@@ -97,8 +104,8 @@ lang/python/
 
 ## 增量策略
 
-- **着色**：按行缓存词法状态 / 语法 role / 同词 role，`color-edit` 只重扫脏行；
-  跨行块注释 / 字符串状态变化时向后推进到收敛。
+- **着色**：按行缓存词法状态 / 括号栈 / 语法 role / 同词 role / 括号 role，
+  `color-edit` 只重扫脏行；跨行块注释、字符串或括号状态变化时向后推进到收敛。
 - **解析**：按顶层 `form-entry` 缓存。`analysis-edit` 只重读受脏行影响的
   form；尾部遇到未变化的旧 form 就收敛，剩余 entry 只平移行号。
 - **workspace**：`workspace-apply-changes` 更新单个文档的 analysis；依赖它的
@@ -110,5 +117,6 @@ lang/python/
 - 真正值得借的是“绝对 span / token tree / position journal / 异步结果版本”；
 - 这里着色做得更细（行级 change），语义解析则用顶层 form 作为增量单位。
 
-编辑器接入方式后续再做：语言层只产出 role / 候选 / 文档数据，不决定 face、菜单、
-弹窗或异步 worker。
+语言层只产出 role / 候选 / 文档数据，不决定 face、菜单、弹窗或异步 worker。
+编辑器侧的显式着色阶段在 `edit/color.rkt`：把 role 映射成逐字符 face，并用
+`pending-doc-changes` 做增量更新。

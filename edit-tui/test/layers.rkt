@@ -80,6 +80,7 @@
     "lang/racket/base/keywords.rkt"
     "lang/racket/color/highlight.rkt"
     "lang/racket/color/word-color.rkt"
+    "lang/racket/color/bracket.rkt"
     "lang/racket/color/color.rkt"
     "lang/racket/parse/source.rkt"
     "lang/racket/parse/analysis.rkt"
@@ -164,7 +165,7 @@
 
 ;;; ════════════════ 插件（edit / chrome / filetree / resources） ════════════════
 (define plugin-files
-  '("edit/insert.rkt" "edit/commands.rkt" "edit/api.rkt"
+  '("edit/insert.rkt" "edit/commands.rkt" "edit/color.rkt" "edit/api.rkt"
     "chrome/status.rkt" "chrome/input.rkt" "chrome/api.rkt"
     "filetree/model.rkt" "filetree/lines.rkt" "filetree/scan.rkt"
     "filetree/slice.rkt" "filetree/sync.rkt" "filetree/commands.rkt"
