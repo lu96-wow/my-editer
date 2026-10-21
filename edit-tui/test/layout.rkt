@@ -113,6 +113,9 @@
 (check-equal? (hash-ref rects-resized 'state) (rect 35 23 45 1))
 
 ;;; ---------- 隐藏：兄弟吸收 ----------
+;; 焦点不变时保留同一个 layout 对象（布局求解缓存可命中）。
+(check-eq? (layout-set-focus l-resized (layout-focus l-resized)) l-resized)
+
 (define l-focus (layout-set-focus l-resized 'filetree))
 (define l-hidden (hide! l-focus area 'filetree))
 (check-false (layout-panel-visible? l-hidden 'filetree))

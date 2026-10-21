@@ -24,10 +24,12 @@
 ;; 把 panels 的尺寸落进 core view 的 viewport。
 (define (layout-sync! layout area
                       #:view-object [view-object (λ (v) v)]
-                      #:focus-panel [focus-panel #f])
+                      #:focus-panel [focus-panel #f]
+                      #:solution [solution #f])
   (define panels (layout->render-panels layout area
                                         #:view-object view-object
-                                        #:focus-panel focus-panel))
+                                        #:focus-panel focus-panel
+                                        #:solution solution))
   (panels-sync! panels)
   panels)
 
@@ -35,12 +37,15 @@
                        #:focus-panel [focus-panel #f]
                        #:cache [cache #f]
                        #:sync? [sync? #t]
-                       #:view-object [view-object (λ (v) v)])
+                       #:view-object [view-object (λ (v) v)]
+                       #:solution [solution #f])
   (define panels
     (if sync?
-        (layout-sync! layout area #:view-object view-object #:focus-panel focus-panel)
+        (layout-sync! layout area #:view-object view-object
+                      #:focus-panel focus-panel #:solution solution)
         (layout->render-panels layout area #:view-object view-object
-                               #:focus-panel focus-panel)))
+                               #:focus-panel focus-panel
+                               #:solution solution)))
   (define focus-view
     (and focus-panel
          (let ([p (layout-panel layout focus-panel)])

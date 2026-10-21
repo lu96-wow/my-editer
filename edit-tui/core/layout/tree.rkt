@@ -109,7 +109,10 @@
              #t)]))
 
 (define (layout-set-focus l id)
-  (struct-copy layout l [focus id]))
+  ;; 焦点没变时保留同一个 layout 对象，布局求解缓存可以继续命中。
+  (if (equal? (layout-focus l) id)
+      l
+      (struct-copy layout l [focus id])))
 
 ;;; ════════════════ panel 内的 view 顺序切换 ════════════════
 

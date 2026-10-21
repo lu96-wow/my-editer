@@ -8,5 +8,4 @@
          face-empty
          face-set-fg face-set-bg face-set-attrs
          face-add-attr face-remove-attr face-has-attr?
-         compose-face
-         compose-layers)
+         compose-face)

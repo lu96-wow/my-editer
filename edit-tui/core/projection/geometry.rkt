@@ -26,28 +26,29 @@
 (define (layout->render-panels layout area
                                 #:view-object [view-object (λ (v) v)]
                                 #:focus-panel [focus-panel #f]
-                                #:focus-face [focus-face 'focused-border])
-  (define solution (l:layout-solve layout area))
+                                #:focus-face [focus-face 'focused-border]
+                                #:solution [solution #f])
+  (define solution* (or solution (l:layout-solve layout area)))
   (define borders (effective-borders layout))
   (define panels
     (for/list ([id (in-list (l:layout-visible-panel-ids layout))])
       (define panel (l:layout-panel layout id))
-      (define r (hash-ref (l:layout-solution-panel-rects solution) id))
+      (define r (hash-ref (l:layout-solution-panel-rects solution*) id))
       (make-panel (view-object (p:panel-view panel))
                   r
                   (hash-ref borders id '())
                   #:face (p:panel-face panel)
                   #:weight (p:panel-weight panel))))
   ;; 焦点框放最后：同 weight 时列表靠后也赢（这里 weight 已经更大）
-  (define frame (make-focus-frame layout solution borders panels focus-panel focus-face))
+  (define frame (make-focus-frame layout solution* borders panels focus-panel focus-face))
   (if frame (append panels (list frame)) panels))
 
-(define (layout->hit-panels layout area)
-  (define solution (l:layout-solve layout area))
+(define (layout->hit-panels layout area #:solution [solution #f])
+  (define solution* (or solution (l:layout-solve layout area)))
   (define borders (effective-borders layout))
   (for/list ([id (in-list (l:layout-visible-panel-ids layout))])
     (define panel (l:layout-panel layout id))
-    (define r (hash-ref (l:layout-solution-panel-rects solution) id))
+    (define r (hash-ref (l:layout-solution-panel-rects solution*) id))
     (make-panel id
                 r
                 (hash-ref borders id '())
@@ -98,24 +99,24 @@
           (values id (- row (rect-y content)) (- col (rect-x content)))]
          [else (loop (cdr ids))])])))
 
-(define (layout-hit layout area row col)
-  (define solution (l:layout-solve layout area))
+(define (layout-hit layout area row col #:solution [solution #f])
+  (define solution* (or solution (l:layout-solve layout area)))
   (define borders (effective-borders layout))
   (define-values (cid crow ccol)
-    (content-hit-values solution borders
+    (content-hit-values solution* borders
                         (l:layout-visible-panel-ids layout) row col))
-  (hit (panel-hit-id solution row col)
+  (hit (panel-hit-id solution* row col)
        cid crow ccol
-       (for/first ([s (in-list (l:layout-solution-seams solution))]
+       (for/first ([s (in-list (l:layout-solution-seams solution*))]
                    #:when (rect-contains? (l:seam-rect s) col row))
          s)
-       solution))
+       solution*))
 
 ;;; ---------- 内容区命中（兼容旧 API） ----------
 ;;;
 ;;; → (values panel-id row col) | (values #f #f #f)
 ;;; row / col 是相对内容区的 0 基坐标（已去掉边框），可直接喂给
 ;;; core 的 view-screen-position->point。点在边框 / 接缝上返回 #f。
-(define (layout-content-hit layout area row col)
-  (define h (layout-hit layout area row col))
+(define (layout-content-hit layout area row col #:solution [solution #f])
+  (define h (layout-hit layout area row col #:solution solution))
   (values (hit-content-id h) (hit-content-row h) (hit-content-col h)))

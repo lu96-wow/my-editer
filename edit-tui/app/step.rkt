@@ -101,7 +101,7 @@
       (list (view-action 'point vid (list row col)))
       '()))
 
-(define (dispatch-mouse state ev)
+(define (dispatch-mouse state ev #:solution [solution #f])
   (define row (mouse-event-row ev))
   (define col (mouse-event-col ev))
   (define area (app-state-area state))
@@ -110,7 +110,7 @@
   (case (mouse-event-token ev)
     [(press)
      ;; 一次 layout-hit 同时得到 panel / seam / 内容区，避免重复 solve。
-     (define h (layout-hit layout area row col))
+     (define h (layout-hit layout area row col #:solution solution))
      (define hit-id (hit-panel-id h))
      (define placement-id (app-state-placement state))
      (cond
@@ -157,7 +157,7 @@
      (values (struct-copy app-state state [drag #f]) '())]
     [(scroll-up scroll-down)
      ;; 滚轮滚指针下的 panel；不改焦点，不移动光标。
-     (define id (hit-panel-id (layout-hit layout area row col)))
+     (define id (hit-panel-id (layout-hit layout area row col #:solution solution)))
      (define p (and id (app-state-panel state id)))
      (define vid (and p (panel-view p)))
      (cond
@@ -166,7 +166,9 @@
         (define delta (if (eq? (mouse-event-token ev) 'scroll-up) -3 3))
         (values state (list (view-action 'scroll vid delta)))])]
     [else
-     (define id (layout-focus-panel-at layout area config row col))
+     (define h (layout-hit layout area row col #:solution solution))
+     (define hit-id (hit-panel-id h))
+     (define id (and hit-id (layout-panel-focusable? layout config hit-id) hit-id))
      (if id
          (values (app-state-set-focus-panel state id) '())
          (values state '()))]))
@@ -190,7 +192,7 @@
 ;; 并在输入激活时做抢占：
 ;;   - key / paste 交给输入栏；
 ;;   - 其他事件先取消本次输入，再处理该事件。
-(define (step state ev)
+(define (step state ev #:solution [solution #f])
   (define state0 (clear-flash state))
   ;; pending 只对连续按键有意义；mouse / paste / resize / quit 等事件
   ;; 打断半截序列，否则下一次按键会拼上旧前缀。
@@ -201,15 +203,15 @@
           (not (key-event? ev))
           (not (paste-event? ev)))
      (define-values (s1 a1) (input-interrupt s0 'cancelled))
-     (define-values (s2 a2) (step-dispatch s1 ev))
+     (define-values (s2 a2) (step-dispatch s1 ev #:solution solution))
      (define-values (s3 a3) (input-reconcile s2))
      (values s3 (append a0 a1 a2 a3))]
     [else
-     (define-values (s1 a1) (step-dispatch s0 ev))
+     (define-values (s1 a1) (step-dispatch s0 ev #:solution solution))
      (define-values (s2 a2) (input-reconcile s1))
      (values s2 (append a0 a1 a2))]))
 
-(define (step-dispatch state ev)
+(define (step-dispatch state ev #:solution [solution #f])
   (cond
     ;; 键盘不在这里分流：输入态由 current-command-stack 选 keymap 的 input-stack。
     ;; 粘贴不是键序列，仍直接交给输入栏。
@@ -218,7 +220,7 @@
     [else
      (case (event-kind ev)
        [(key) (dispatch-key state ev)]
-       [(mouse) (dispatch-mouse state ev)]
+       [(mouse) (dispatch-mouse state ev #:solution solution)]
        [(paste) (dispatch-paste state ev)]
        [(resize) (dispatch-resize state ev)]
        [(quit) (values (struct-copy app-state state [quit? #t]) '())]

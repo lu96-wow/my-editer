@@ -11,11 +11,12 @@
 (provide render-frame)
 
 ;; → (values cache' bytes)
-(define (render-frame state engine cache)
+(define (render-frame state engine cache #:solution [solution #f])
   (define layout (app-state-layout state))
   (define area (app-state-area state))
   (define focus (layout-focus layout))
   (render-layout layout area
                  #:focus-panel focus
                  #:cache cache
-                 #:view-object (λ (vid) (engine-view-object engine vid))))
+                 #:view-object (λ (vid) (engine-view-object engine vid))
+                 #:solution solution))
