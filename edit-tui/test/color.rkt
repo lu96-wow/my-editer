@@ -75,6 +75,22 @@
 (check-true (string-prefix? (symbol->string (face-fg f-x)) "word-color-"))
 (check-eq? (face-bg f-x) 'bracket-depth-0)
 
+;; 光标正在 token 内：暂时抑制 word-color；移开后恢复。
+(define cursor-in-x
+  (run-actions state1 engine
+               (list (view-action 'select vid
+                                  (selections-one (caret (point 0 8)))))))
+(define cursor-in-x* (sync-editor-colors! cursor-in-x engine))
+(check-false (face-fg (engine-view-face-at engine vid 0 8)))
+(define cursor-away
+  (run-actions cursor-in-x* engine
+               (list (view-action 'select vid
+                                  (selections-one (caret (point 0 0)))))))
+(define cursor-away* (sync-editor-colors! cursor-away engine))
+(check-true (string-prefix? (symbol->string (face-fg (engine-view-face-at engine vid 0 8)))
+                            "word-color-"))
+(set! state1 cursor-away*)
+
 ;; 边界：有 path 的 text mode 即使内容像 Racket，也不写着色 face。
 (define text-mode* (buffer-mode-for-creation "b.txt" "(define x 1)"))
 (define-values (text-store text-actions)

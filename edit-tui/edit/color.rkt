@@ -76,7 +76,9 @@
 
 ;; 固定层序：括号底色 -> 同词前景 -> 语法前景。
 ;; syntax 只覆盖 fg / attrs，不冲掉括号 bg。
-(define (combine-line-role-layers syntax-roles word-roles bracket-roles)
+(define (combine-line-role-layers syntax-roles word-roles bracket-roles
+                                  [suppress-word-start #f]
+                                  [suppress-word-end #f])
   (define n (vector-length syntax-roles))
   (define out (make-vector n #f))
   (for ([i (in-range n)])
@@ -85,7 +87,12 @@
                     (< i (vector-length bracket-roles))
                     (vector-ref bracket-roles i)))
     (when br (set! f (compose-face f (role->face-layer br))))
+    (define suppress-word?
+      (and suppress-word-start suppress-word-end
+           (>= i suppress-word-start)
+           (< i suppress-word-end)))
     (define wr (and word-roles
+                    (not suppress-word?)
                     (< i (vector-length word-roles))
                     (vector-ref word-roles i)))
     (when wr (set! f (compose-face f (role->face-layer wr))))
@@ -241,6 +248,114 @@
              state*
              #f)]))
 
+;;; ════════════════ 光标 token 的 word-color 抑制 ════════════════
+
+(define active-word-store-key 'edit/color/active-word)
+
+;; 光标所在 symbol token 的 [start,end)。
+;; word role 只出现在 symbol 上；相邻 token 之间有 delimiter(#f) 隔开。
+(define (active-word-range color-state line col)
+  (define role-vectors (color-state-word-roles color-state))
+  (cond
+    [(or (not (exact-nonnegative-integer? line))
+         (>= line (vector-length role-vectors)))
+     #f]
+    [else
+     (define roles (vector-ref role-vectors line))
+     (define n (vector-length roles))
+     (define idx
+       (cond
+         [(and (< col n) (vector-ref roles col)) col]
+         [(and (> col 0) (<= col n) (vector-ref roles (sub1 col))) (sub1 col)]
+         [else #f]))
+     (cond
+       [(not idx) #f]
+       [else
+        (define role (vector-ref roles idx))
+        (define start
+          (let loop ([i idx])
+            (if (and (> i 0) (equal? (vector-ref roles (sub1 i)) role))
+                (loop (sub1 i))
+                i)))
+        (define end
+          (let loop ([i (add1 idx)])
+            (if (and (< i n) (equal? (vector-ref roles i) role))
+                (loop (add1 i))
+                i)))
+        (cons start end)])]))
+
+(define (color-state-line-face color-state line suppress-range)
+  (define syntax (color-state-syntax-roles color-state))
+  (define word (color-state-word-roles color-state))
+  (define bracket (color-state-bracket-roles color-state))
+  (combine-line-role-layers (vector-ref syntax line)
+                            (vector-ref word line)
+                            (vector-ref bracket line)
+                            (and suppress-range (car suppress-range))
+                            (and suppress-range (cdr suppress-range))))
+
+(define (resource-for-doc store did)
+  (for/first ([r (in-list (resource-list store))]
+              #:when (equal? (resource-doc-id r) did))
+    r))
+
+(define (apply-word-policy-line! engine cache store did version line
+                                 suppress-range)
+  (define entry (hash-ref cache did #f))
+  (when (and entry (color-cache-entry-current? entry version))
+    (define r (resource-for-doc store did))
+    (when r
+      (define face (color-state-line-face
+                    (color-cache-entry-color-state entry)
+                    line suppress-range))
+      (for ([vid (in-list (resource-views r))])
+        (engine-set-view-face-lines! engine vid
+                                    (list (cons line face))
+                                    #:base-version version
+                                    #:key (list did version 'racket))))))
+
+;; current : (list did version line start end) | #f
+;; 光标进入 symbol token 时抑制该 token 的 word-color；离开后恢复整行。
+(define (apply-active-word-policy! state engine cache)
+  (define store (app-state-resources state))
+  (define prev (hash-ref (app-state-store state) active-word-store-key #f))
+  (define focus-vid (app-state-focus-view-id state))
+  (define focus-rid (and focus-vid (resource-of-view store focus-vid)))
+  (define focus-resource (and focus-rid (resource-ref store focus-rid)))
+  (define focus-did (and focus-resource (resource-doc-id focus-resource)))
+  (define current
+    (cond
+      [(or (not focus-vid) (not focus-did)) #f]
+      [else
+       (define version (engine-doc-version engine focus-did))
+       (define entry (hash-ref cache focus-did #f))
+       (cond
+         [(not (and entry (color-cache-entry-current? entry version))) #f]
+         [else
+          (define line (or (engine-view-point-line engine focus-vid) 0))
+          (define col (or (engine-view-point-column engine focus-vid) 0))
+          (define range (active-word-range
+                         (color-cache-entry-color-state entry) line col))
+          (and range (list focus-did version line (car range) (cdr range)))])]))
+  (cond
+    [(equal? prev current) state]
+    [else
+     ;; 旧 token 在另一行 / 另一个文档时，先恢复那一行。
+     (when (and prev
+                (or (not current)
+                    (not (equal? (car prev) (car current)))
+                    (not (= (caddr prev) (caddr current)))))
+       (apply-word-policy-line! engine cache store
+                                (car prev) (cadr prev) (caddr prev) #f))
+     ;; 当前 token：整行重算，只抑制这个 token 的 word role。
+     (when current
+       (apply-word-policy-line! engine cache store
+                                (car current) (cadr current) (caddr current)
+                                (cons (cadddr current) (car (cddddr current)))))
+     (struct-copy app-state state
+                  [store (hash-set (app-state-store state)
+                                   active-word-store-key current)])]))
+
 ;;; ════════════════ 主线程 sync 阶段 ════════════════
 
 (define (apply-current-face-track! engine did doc-version views entry)
@@ -312,11 +427,13 @@
             (values cache st)])])))
 
   ;; result inbox 是一次性投递箱：本帧所有当前 resource 都已检查过，清空。
-  (struct-copy app-state state*
-               [store (hash-set (hash-set (app-state-store state*)
-                                          color-cache-store-key new-cache)
-                                color-result-inbox-key
-                                (hash))]))
+  (define state0
+    (struct-copy app-state state*
+                 [store (hash-set (hash-set (app-state-store state*)
+                                            color-cache-store-key new-cache)
+                                  color-result-inbox-key
+                                  (hash))]))
+  (apply-active-word-policy! state0 engine new-cache))
 
 ;;; ════════════════ 后台 job / result 接线 ════════════════
 
