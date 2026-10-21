@@ -71,8 +71,47 @@
 
 ;;; ════════════════ key ════════════════
 
-(check-equal? (source-snapshot-key (source-store-ref-by-path s6 p))
+(check-equal? (source-snapshot-cache-key (source-store-ref-by-path s6 p))
               (list (source-id 'buffer 'buf2) 'b2))
-(check-equal? (source-snapshot-path-key (source-store-ref-by-path s6 p)) p)
+
+;;; ════════════════ 边界：同一 buffer 改 path（save-as） ════════════════
+
+(define p2 (source-normalize-path "/tmp/edit-tui-source-b.rkt"))
+(define m0 (source-store-set-disk source-store-empty p "old-disk" #:version 'od))
+(define m1 (source-store-set-buffer m0 'buf p "buffer" #:version 'v1))
+(define m2 (source-store-set-buffer m1 'buf p2 "buffer" #:version 'v1))
+;; 旧 path 回退到旧 disk；新 path 指向 buffer。
+(check-equal? (source-snapshot-authority (source-store-ref-by-path m2 p)) 'disk)
+(check-equal? (source-snapshot-text (source-store-ref-by-path m2 p)) "old-disk")
+(check-equal? (source-snapshot-authority (source-store-ref-by-path m2 p2)) 'buffer)
+(check-equal? (source-snapshot-text (source-store-ref-by-path m2 p2)) "buffer")
+
+;;; ════════════════ 边界：disk 必须有 path ════════════════
+
+(check-exn exn:fail? (lambda () (disk-source #f "x")))
+(check-exn exn:fail? (lambda () (source-store-set-disk source-store-empty #f "x")))
+;; remove-disk 对 #f path 是 no-op，而不是返回 #f
+(define m3 (source-store-remove-disk m2 #f))
+(check-true (source-store? m3))
+
+;;; ════════════════ 边界：无 path buffer / virtual 进入 authoritative ════════════════
+
+(define m4 (source-store-set-buffer m3 'scratch #f "scratch" #:version 's1))
+(define auth2 (source-store-authoritative-snapshots m4))
+(check-true (for/or ([snap (in-list auth2)])
+              (equal? (source-snapshot-id snap) (source-id 'buffer 'scratch))))
+(check-false (source-store-ref-by-path m4 #f))
+
+;; 无 path buffer 用 remove-buffer 移除。
+(define m5 (source-store-remove-buffer m4 'scratch))
+(check-false (source-store-ref m5 (source-id 'buffer 'scratch)))
+
+
+;;; ════════════════ 边界：同一 path 两个 buffer ════════════════
+
+(define n0 (source-store-set-buffer source-store-empty 'b1 p "one" #:version 'n1))
+(define n1 (source-store-set-buffer n0 'b2 p "two" #:version 'n2))
+(check-equal? (source-snapshot-text (source-store-ref-by-path n1 p)) "two")
+(check-false (source-store-ref n1 (source-id 'buffer 'b1)))
 
 (displayln "edit-tui-rebuild/test/source.rkt: ok")
