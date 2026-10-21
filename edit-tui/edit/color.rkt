@@ -207,18 +207,26 @@
      (define old-track (if (vector? old-track0)
                            old-track0
                            (list->vector old-track0)))
-     (define face-track
+     (define line-count (vector-length (color-state-syntax-roles color-state)))
+     (define-values (face-track update)
        (cond
-         [(eq? dirty 'all) (color-state->face-track color-state)]
-         [(null? dirty) old-track]
+         [(eq? dirty 'all)
+          (values (color-state->face-track color-state) 'all)]
+         [(null? dirty)
+          (values old-track '())]
+         ;; 边界：旧 face-track / dirty 行必须落在新 color-state 行数内。
+         ;; 行数变化但缓存轨没同步扩张时，直接全量重建，不能让 vector-set! 越界。
+         [(or (not (= (vector-length old-track) line-count))
+              (for/or ([ln (in-list dirty)]) (>= ln line-count)))
+          (values (color-state->face-track color-state) 'all)]
          [else
           (define track (vector-copy old-track))
           (for ([entry (in-list (color-state->dirty-face-lines color-state dirty))])
             (vector-set! track (car entry) (cdr entry)))
-          track]))
+          (values track dirty)]))
      (values (color-cache-entry doc-version color-state face-track #f #f)
              state
-             dirty)]
+             update)]
 
     ;; 首次打开 / undo-redo / 批量修改 / 上次失败后版本变化：后台全量。
     [else
