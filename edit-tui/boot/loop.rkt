@@ -71,6 +71,10 @@
     ;; 本帧所有派生阶段都已读取过 pending-doc-changes（color 等）；
     ;; 清掉，避免生产路径里无限累积。demo 的自定义循环由 prepare-demo! 自己消费。
     (define state** (app-state-clear-doc-changes state*))
+    ;; sync 可能刚提交 filetree / color job；必须在阻塞读事件前派发，
+    ;; 否则要等下一个键盘事件才会唤醒 worker。
+    (when job-runtime
+      (dispatch-jobs! job-runtime (app-state-jobs state**)))
     (define-values (cache* bytes)
       (render-frame state** engine cache #:solution solution #:panels panels))
     (unless (zero? (bytes-length bytes))

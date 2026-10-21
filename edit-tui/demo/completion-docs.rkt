@@ -939,6 +939,8 @@
             (sync-ui/panels! state engine #:async-filetree? #t))
           (define-values (state2 overlays)
             (prepare-demo! state1 engine #:timer-runtime timer-runtime))
+          ;; sync / prepare 可能刚提交新 job；读事件前再派发一次。
+          (dispatch-jobs! runtime (app-state-jobs state2))
           (define-values (cache* bytes)
             (render-frame state2 engine cache #:panels panels #:overlays overlays))
           (unless (zero? (bytes-length bytes))
