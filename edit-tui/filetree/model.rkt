@@ -15,6 +15,9 @@
          filetree-toggle-hidden
          filetree-set-hidden-filter
          filetree-set-sync
+         filetree-set-scan-pending
+         filetree-set-scan-result
+         filetree-clear-scan-pending
          filetree-invalidate)
 
 (struct filetree-line (path kind depth text face) #:transparent)
@@ -35,7 +38,8 @@
    opened      ; path -> #t：resource 打开路径集合的缓存
    opened-revision ; opened 对应的 resource-opened-revision
    show-hidden?    ; 是否显示以 . 开头的条目
-   hidden-entry?)  ; path -> boolean | #f：额外的隐藏过滤规则（#f = 用默认规则）
+   hidden-entry?   ; path -> boolean | #f：额外的隐藏过滤规则（#f = 用默认规则）
+   pending-projection) ; 正在后台扫描的 projection-key | #f
   #:transparent)
 
 ;; 文件树就是一个普通 buffer：光标（point）归 core view 所有。
@@ -44,7 +48,7 @@
 ;;   - 鼠标点击 -> view 的 point 已经动了，sync 直接读回来（dirty? = #f）。
 
 (define (empty-filetree)
-  (filetree #f 0 #t (hash) '() #f #f (hash) 0 #f #f))
+  (filetree #f 0 #t (hash) '() #f #f (hash) 0 #f #f #f))
 
 (define (make-filetree #:view [view #f]
                        #:line [line 0]
@@ -56,9 +60,11 @@
                        #:opened [opened (hash)]
                        #:opened-revision [opened-revision 0]
                        #:show-hidden? [show-hidden? #f]
-                       #:hidden-entry? [hidden-entry? #f])
+                       #:hidden-entry? [hidden-entry? #f]
+                       #:pending-projection [pending-projection #f])
   (filetree view line cursor-dirty? expanded rows projection sync-key
-            opened opened-revision show-hidden? hidden-entry?))
+            opened opened-revision show-hidden? hidden-entry?
+            pending-projection))
 
 (define (filetree-expanded? f path)
   (hash-has-key? (filetree-expanded f) path))
@@ -109,6 +115,21 @@
                [sync-key sync-key]
                [cursor cursor]
                [cursor-dirty? #f]))
+
+;; 后台扫描：投影 key 在飞时不再重复提交。
+(define (filetree-set-scan-pending f projection-key)
+  (struct-copy filetree f [pending-projection projection-key]))
+
+;; 后台结果被接受：装行并让 sync-key 失效，下一帧写 view。
+(define (filetree-set-scan-result f projection rows)
+  (struct-copy filetree f
+               [projection projection]
+               [rows rows]
+               [pending-projection #f]
+               [sync-key #f]))
+
+(define (filetree-clear-scan-pending f)
+  (struct-copy filetree f [pending-projection #f]))
 
 ;; 丢弃投影缓存：下一次 sync 重新扫目录（C-r 手动刷新用）。
 (define (filetree-invalidate f)

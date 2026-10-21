@@ -20,6 +20,7 @@
 (provide (struct-out color-state)
          color-open
          color-edit
+         color-edit*
          color-syntax-roles
          color-word-roles
          color-bracket-roles
@@ -87,8 +88,14 @@
 
 ;; cache 必须对应旧文本；text 是新文本；edits 是旧→新行区间。
 (define (color-edit cache text edits)
+  (let-values ([(state _dirty) (color-edit* cache text edits)])
+    state))
+
+;; 返回 (values color-state' dirty-lines)。
+;; dirty-lines : (listof line-no) | 'all
+(define (color-edit* cache text edits)
   (if (null? edits)
-      cache
+      (values cache '())
       (let* ([lines (text-lines text)]
              [n (length lines)]
              [old-states (color-state-lex-out-states cache)]
@@ -120,16 +127,17 @@
                 (not (= (vector-length syntax0) n))
                 (not (= (vector-length word0) n))
                 (not (= (vector-length bracket0) n)))
-            (color-open text)
+            (values (color-open text) 'all)
             (let ([dirty (edits->dirty-lines edits n)])
               (if (null? dirty)
-                  (color-state states0 bracket-states0 syntax0 word0 bracket0)
+                  (values (color-state states0 bracket-states0 syntax0 word0 bracket0) '())
                   (color-edit-dirty lines n
                                     states0 bracket-states0
                                     syntax0 word0 bracket0
                                     dirty)))))))
 
 ;; 从脏行开始带状态重扫；两个出状态都收敛后停止。
+;; 返回 (values color-state' touched-lines)。
 (define (color-edit-dirty lines n
                           states0 bracket-states0
                           syntax0 word0 bracket0
@@ -149,10 +157,12 @@
              [incoming-bracket (if (and (> start 0)
                                         (< (sub1 start) (vector-length bracket-states*)))
                                   (vector-ref bracket-states* (sub1 start))
-                                  '())])
+                                  '())]
+             [touched '()])
     (cond
       [(>= ln n)
-       (color-state states* bracket-states* syntax* word* bracket*)]
+       (values (color-state states* bracket-states* syntax* word* bracket*)
+               (reverse touched))]
       [else
        (define line (list-ref lines ln))
        (define-values (state* tokens) (tokenize-line incoming line))
@@ -173,5 +183,6 @@
          (not (and (equal? state* old-state)
                    (equal? bracket-state* old-bracket-state))))
        (if (and (>= ln last-dirty) (not changed?))
-           (color-state states* bracket-states* syntax* word* bracket*)
-           (loop (add1 ln) state* bracket-state*))])))
+           (values (color-state states* bracket-states* syntax* word* bracket*)
+                   (reverse (cons ln touched)))
+           (loop (add1 ln) state* bracket-state* (cons ln touched)))])))

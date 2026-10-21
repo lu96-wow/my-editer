@@ -2,6 +2,7 @@
 
 ;;; 文件树：行投影 / 展开 / 打开文件 -> placement。
 (require rackunit
+         racket/async-channel
          racket/file
          racket/path
          "../config/keymap/default.rkt"
@@ -125,6 +126,29 @@
 (check-true (for/or ([l (in-list (rows-of c6))])
               (string=? (path->string (file-name-from-path (filetree-line-path l)))
                         ".dot.txt")))
+
+;; 异步扫描：sync 只提交 job；结果回来前保留旧 rows，结果校验后下一帧写入。
+(define async0 (filetree-install-state
+                (make-app-state #:area (rect 0 0 40 10)
+                                #:keymap default-keymap)
+                10 root2
+                #:panel-stack filetree-panel-stack))
+(define async1 (sync-filetree! async0 engine #:async? #t))
+(define scan-jobs (job-pending (app-state-jobs async1)))
+(check-true (pair? scan-jobs))
+(check-equal? (rows-of async1) '())
+(define rt (start-job-runtime filetree-services #:workers 1))
+(dispatch-jobs! rt (app-state-jobs async1))
+(define scan-ev (async-channel-get (job-runtime-event-channel rt)))
+(stop-job-runtime rt)
+(define async2
+  (handle-filetree-job-result
+   (app-state-finish-job async1
+                         (job-result-event-id scan-ev)
+                         (job-result-event-result scan-ev))
+   scan-ev))
+(define async3 (sync-filetree! async2 engine #:async? #t))
+(check-true (> (length (rows-of async3)) 1))
 (delete-directory/files root2)
 
 ;; 光标在 view 上：导航表覆盖四个方向 + Home/End（普通 buffer 语义）

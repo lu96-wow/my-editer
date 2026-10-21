@@ -656,24 +656,37 @@
 
 (define (collect-workspace state engine)
   (define resources (resource-list (app-state-resources state)))
-  ;; workspace 跨帧保留：文本/版本没变时 workspace-set-source 复用 analysis。
-  (define-values (_ss ws)
-    (for/fold ([ss source-store-empty]
-               [ws (store-ref state 'demo/workspace workspace-empty)])
+  (define old-store (store-ref state 'demo/source-store source-store-empty))
+  (define old-workspace (store-ref state 'demo/workspace workspace-empty))
+  (define old-versions (store-ref state 'demo/source-versions (hash)))
+  ;; 只重新读取 version 变化的 buffer；其它 source / workspace 跨帧复用。
+  (define-values (source-store* workspace* versions*)
+    (for/fold ([ss old-store]
+               [ws old-workspace]
+               [versions (hash)])
               ([r (in-list resources)])
       (define did (resource-doc-id r))
       (define path (resource-path (app-state-resources state) (resource-id r)))
-      (define text (and did (engine-doc-text engine did)))
+      (define version (and did (engine-doc-version engine did)))
+      (define version-key (list path version))
       (cond
-        [(not text) (values ss ws)]
+        [(not did) (values ss ws versions)]
+        [(equal? (hash-ref old-versions did #f) version-key)
+         (values ss ws (hash-set versions did version-key))]
         [else
-         (define version (engine-doc-version engine did))
-         (define ss* (source-store-set-buffer ss did path text #:version version))
-         (define snap (source-store-ref ss* (source-id 'buffer did)))
-         (values ss* (workspace-set-source ws snap))])))
-  ws)
+         (define text (engine-doc-text engine did))
+         (cond
+           [(not text) (values ss ws versions)]
+           [else
+            (define ss* (source-store-set-buffer ss did path text #:version version))
+            (define snap (source-store-ref ss* (source-id 'buffer did)))
+            (values ss*
+                    (workspace-set-source ws snap)
+                    (hash-set versions did version-key))])])))
+  (values source-store* workspace* versions*))
 
 ;; 当前焦点的 editor source；焦点在 docs 时返回 #f。
+;; 文本按 (doc-id, version) 复用，光标移动不重新复制整篇文本。
 (define (editor-source-for state engine ws)
   (define fp (app-state-focus-panel-resource state))
   (define vid (and fp
@@ -682,18 +695,30 @@
   (define rid (app-state-focus-resource state))
   (define r (and rid (resource-ref (app-state-resources state) rid)))
   (define did (and r (resource-doc-id r)))
+  (define cached (store-ref state 'demo/source #f))
   (cond
-    [(or (not vid) (not did)) #f]
+    [(or (not vid) (not did)) (values #f state)]
     [else
-     (demo-source did vid
-                  (source-id 'buffer did)
-                  (and r (resource-path (app-state-resources state) rid))
-                  (and r (resource-mode r))
-                  (engine-doc-text engine did)
-                  (engine-doc-version engine did)
-                  (or (engine-view-point-line engine vid) 0)
-                  (or (engine-view-point-column engine vid) 0)
-                  ws)]))
+     (define version (engine-doc-version engine did))
+     (define text
+       (or (and cached
+                (equal? did (demo-source-doc-id cached))
+                (equal? version (demo-source-version cached))
+                (demo-source-text cached))
+           (engine-doc-text engine did)))
+     (cond
+       [(not text) (values #f state)]
+       [else
+        (values (demo-source did vid
+                             (source-id 'buffer did)
+                             (and r (resource-path (app-state-resources state) rid))
+                             (and r (resource-mode r))
+                             text
+                             version
+                             (or (engine-view-point-line engine vid) 0)
+                             (or (engine-view-point-column engine vid) 0)
+                             ws)
+                state)])]))
 
 (define (sync-docs-view! state engine)
   (define d (store-ref state 'demo/docs empty-docs))
@@ -785,11 +810,17 @@
     [else (app-state-clear-key-owner state)]))
 
 (define (prepare-demo! state engine #:timer-runtime [timer-runtime #f])
-  (define ws (collect-workspace state engine))
-  (define focus-info (editor-source-for state engine ws))
+  (define-values (source-store* workspace* versions*)
+    (collect-workspace state engine))
+  (define state0
+    (store-set (store-set (store-set state
+                                    'demo/source-store source-store*)
+                          'demo/workspace workspace*)
+               'demo/source-versions versions*))
+  (define-values (focus-info state1a)
+    (editor-source-for state0 engine workspace*))
   (define state1
-    (store-set (store-set state 'demo/source focus-info)
-               'demo/workspace ws))
+    (store-set state1a 'demo/source focus-info))
   ;; change 只在这里消费一次；自动补全的触发/refine 都在这一层做。
   (define-values (changes state2) (app-state-take-doc-changes state1))
   (define state3 (process-doc-changes! state2 focus-info changes timer-runtime))
@@ -820,10 +851,12 @@
 ;; job result -> state。只接受仍匹配当前 request-id 的结果。
 (define (handle-job-result state ev)
   (define state0
-    (handle-color-job-result
-     (app-state-finish-job state
-                           (job-result-event-id ev)
-                           (job-result-event-result ev))
+    (handle-filetree-job-result
+     (handle-color-job-result
+      (app-state-finish-job state
+                            (job-result-event-id ev)
+                            (job-result-event-result ev))
+      ev)
      ev))
   (case (job-result-event-kind ev)
     [(completion)
@@ -893,7 +926,7 @@
                    (async-channel-put event-channel (read-app-event))
                    (loop)))))
      (define runtime
-       (start-job-runtime demo-services
+       (start-job-runtime (append demo-services filetree-services)
                           #:event-channel event-channel
                           #:workers 2))
      (define timer-runtime (start-timer-runtime #:event-channel event-channel))
@@ -902,7 +935,8 @@
       (λ ()
         (let loop ([state state0] [cache #f])
           (dispatch-jobs! runtime (app-state-jobs state))
-          (define-values (state1 panels) (sync-ui/panels! state engine))
+          (define-values (state1 panels)
+            (sync-ui/panels! state engine #:async-filetree? #t))
           (define-values (state2 overlays)
             (prepare-demo! state1 engine #:timer-runtime timer-runtime))
           (define-values (cache* bytes)

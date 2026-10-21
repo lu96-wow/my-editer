@@ -19,6 +19,7 @@
          "../app/event.rkt"
          "../chrome/api.rkt"
          "../edit/api.rkt"
+         "../filetree/api.rkt"
          "actions.rkt"
          "frame.rkt"
          "jobs.rkt"
@@ -65,7 +66,8 @@
     (define-values (layout-cache* solution)
       (cached-layout-solution layout-cache layout area))
     (define-values (state* panels)
-      (sync-ui/panels! state engine #:solution solution))
+      (sync-ui/panels! state engine #:solution solution
+                       #:async-filetree? #t))
     ;; 本帧所有派生阶段都已读取过 pending-doc-changes（color 等）；
     ;; 清掉，避免生产路径里无限累积。demo 的自定义循环由 prepare-demo! 自己消费。
     (define state** (app-state-clear-doc-changes state*))
@@ -80,10 +82,12 @@
        (when job-runtime
          (forget-dispatched-job! job-runtime (job-result-event-id ev)))
        (define state***
-         (handle-color-job-result
-          (app-state-finish-job state**
-                                (job-result-event-id ev)
-                                (job-result-event-result ev))
+         (handle-filetree-job-result
+          (handle-color-job-result
+           (app-state-finish-job state**
+                                 (job-result-event-id ev)
+                                 (job-result-event-result ev))
+           ev)
           ev))
        (loop state*** cache** layout-cache*)]
       [else
@@ -97,11 +101,12 @@
            state4
            (loop state4 cache** layout-cache*))])))
 
-;; 边界：run-app 总是注册 color-open service；外部 services 可以是 list 或 registry。
-(define (merge-color-services services)
+;; 边界：run-app 总是注册内置后台 service；外部 services 可以是 list 或 registry。
+(define (merge-runtime-services services)
+  (define built-in (append color-services filetree-services))
   (if (service-registry? services)
-      (service-registry-merge services (make-service-registry color-services))
-      (append services color-services)))
+      (service-registry-merge services (make-service-registry built-in))
+      (append services built-in)))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
 ;; 传 #:host 时先 install 所有插件，退出时逆序 teardown。
@@ -135,7 +140,7 @@
                      (async-channel-put event-channel (read-app-event))
                      (loop)))))
        (define runtime
-         (start-job-runtime (merge-color-services services)
+         (start-job-runtime (merge-runtime-services services)
                             #:event-channel event-channel
                             #:workers job-workers))
        (dynamic-wind

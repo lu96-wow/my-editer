@@ -37,11 +37,13 @@
 
 ;; 显式顺序：输入状态机 -> 尺寸 -> 各面板内容 -> 编辑器着色。
 ;; 将来补全等阶段也在这里显式插入，不做插件 sync callback。
-(define (sync-ui/panels! state engine #:solution [solution #f])
+(define (sync-ui/panels! state engine
+                         #:solution [solution #f]
+                         #:async-filetree? [async-filetree? #f])
   (define-values (s0 actions) (input-reconcile state))
   (define s0* (run-actions s0 engine actions))
   (define panels (sync-panel-sizes! s0* engine #:solution solution))
-  (define s1 (sync-filetree! s0* engine))
+  (define s1 (sync-filetree! s0* engine #:async? async-filetree?))
   (define s1* (sync-resource-panel! s1 engine))
   ;; 使用 pending-doc-changes 更新颜色缓存；不消费，completion 等阶段仍可读取。
   (define s2 (sync-editor-colors! s1* engine))
@@ -49,7 +51,11 @@
   (define s4 (sync-status! s3 engine))
   (values s4 panels))
 
-(define (sync-ui! state engine #:solution [solution #f])
+(define (sync-ui! state engine
+                  #:solution [solution #f]
+                  #:async-filetree? [async-filetree? #f])
   (let-values ([(state* _panels)
-                (sync-ui/panels! state engine #:solution solution)])
+                (sync-ui/panels! state engine
+                                 #:solution solution
+                                 #:async-filetree? async-filetree?)])
     state*))

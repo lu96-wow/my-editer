@@ -1202,7 +1202,8 @@ resource        per-doc command-table-stack（编辑器）
 每帧固定成本只和「可见格数」有关，和文档 / 目录行数无关：
 
 - **行投影有缓存**：filetree 按 `(root, expanded 集合, opened 集合)` 缓存 rows。
-  三者不变就不重扫目录（`dir-entries` 每个 entry 要 3 次 stat，3000 行 ≈ 30ms）。
+  三者不变就不重扫目录。production loop 里目录扫描走 `filetree-scan` 后台 job：
+  旧 rows 继续显示，结果按 projection-key 校验；过期结果只清 pending。
   外部文件变了用 `C-r` 手动刷新。
 - **opened 集合有版本**：resource store 的 `opened-revision` 只在 resource 成员 / path
   变化时 +1；filetree 版本没变就复用缓存的 opened 集合，不扫 resource-list。
@@ -1216,10 +1217,11 @@ resource        per-doc command-table-stack（编辑器）
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
   `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
   core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
-- **编辑器 face 写回幂等**：`engine-set-view-face-track!` 用 `(doc-id, version)`
-  作为缓存 / CAS 键；颜色 state 没变就不碰 document revision。普通编辑 `color-edit`
-  只重扫 change 波及的行；首次打开 / undo / 批量修改走后台 `color-open` job，
-  结果按版本校验，过期结果不会覆盖新文档。
+- **编辑器 face 局部写回**：`color-edit*` 返回脏行，`engine-set-view-face-lines!`
+  只清 / 重写这些行的 face；不再每键重写整条 face track。首次打开 / undo / 批量修改
+  仍走后台 `color-open` job，结果按版本校验，过期结果不会覆盖新文档。
+- **workspace source 增量**：只对 version 变化的 buffer 重新取文本 / 更新 source；
+  焦点 source 的文本也按 `(doc-id, version)` 复用，移动光标不复制整篇文本。
 - **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
   自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
   没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。

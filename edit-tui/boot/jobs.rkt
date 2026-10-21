@@ -38,13 +38,14 @@
   (define registry (if (service-registry? services)
                        services
                        (make-service-registry services)))
-  (define request-channel (make-channel))
+  ;; 请求队列也用 async-channel：dispatch-jobs! 只投递，不等待 worker。
+  (define request-channel (make-async-channel))
   (define threads
     (for/list ([_ (in-range (max 1 workers))])
       (thread
        (lambda ()
          (let loop ()
-           (define j (channel-get request-channel))
+           (define j (async-channel-get request-channel))
            (define result
              (with-handlers ([exn:fail? (lambda (e) (job-error (exn-message e)))])
                (run-service registry j)))
@@ -70,7 +71,7 @@
   (for ([j (in-list (job-pending ledger))])
     (unless (hash-has-key? (job-runtime-dispatched runtime) (job-id j))
       (hash-set! (job-runtime-dispatched runtime) (job-id j) #t)
-      (channel-put (job-runtime-request-channel runtime) j)))
+      (async-channel-put (job-runtime-request-channel runtime) j)))
   (void))
 
 ;; run-loop 收到结果后清掉 dispatched 记录，避免长会话里账本无限增长。

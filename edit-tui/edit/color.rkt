@@ -97,10 +97,24 @@
   out)
 
 (define (color-state->face-track color-state)
-  (for/list ([syntax (in-list (color-syntax-roles color-state))]
-             [word (in-list (color-word-roles color-state))]
-             [bracket (in-list (color-bracket-roles color-state))])
-    (combine-line-role-layers syntax word bracket)))
+  (define syntax (color-state-syntax-roles color-state))
+  (define word (color-state-word-roles color-state))
+  (define bracket (color-state-bracket-roles color-state))
+  (list->vector
+   (for/list ([i (in-range (vector-length syntax))])
+     (combine-line-role-layers (vector-ref syntax i)
+                               (vector-ref word i)
+                               (vector-ref bracket i)))))
+
+;; 只为脏行生成 face；用于主线程增量写回。
+(define (color-state->dirty-face-lines color-state dirty-lines)
+  (define syntax (color-state-syntax-roles color-state))
+  (define word (color-state-word-roles color-state))
+  (define bracket (color-state-bracket-roles color-state))
+  (for/list ([ln (in-list dirty-lines)])
+    (cons ln (combine-line-role-layers (vector-ref syntax ln)
+                                       (vector-ref word ln)
+                                       (vector-ref bracket ln)))))
 
 ;;; ════════════════ 编辑变更 -> 语言层 line-edit ════════════════
 
@@ -159,38 +173,52 @@
 
     [else entry]))
 
-;; 返回 (values entry' state')；state' 只在提交 job 时变化。
+;; 返回 (values entry' state' update)。
+;; update : #f | 'all | (listof line-no)
+;;   #f      = 没有新的局部结果，按普通 ready 处理
+;;   'all    = 全量重建，整轨写回
+;;   list    = 只重写这些行
 (define (advance-color-cache-entry state old did doc-version text doc-changes)
   (cond
     ;; 该版本后台失败：保持现状，等文本版本变化后再试。
     [(color-cache-entry-failed? old doc-version)
-     (values old state)]
+     (values old state #f)]
 
     ;; 已是当前版本且没有 outstanding job。
     [(and (color-cache-entry-current? old doc-version)
           (not (color-cache-entry-pending? old)))
-     (values old state)]
+     (values old state #f)]
 
     ;; 一次只允许一个全量 job；等它回来后再决定是否重发。
     [(color-cache-entry-pending? old)
-     (values old state)]
+     (values old state #f)]
 
     ;; 有旧 state，且只有一个 change 正好到当前版本：主线程增量。
     [(and old
           (color-cache-entry-color-state old)
           (= (length doc-changes) 1)
           (equal? (doc-change-version (car doc-changes)) doc-version))
-     (define color-state
-       (color-edit (color-cache-entry-color-state old)
-                   text
-                   (changes->line-edits
-                    (doc-change-changes (car doc-changes)))))
-     (values (color-cache-entry doc-version
-                                color-state
-                                (color-state->face-track color-state)
-                                #f
-                                #f)
-             state)]
+     (define-values (color-state dirty)
+       (color-edit* (color-cache-entry-color-state old)
+                    text
+                    (changes->line-edits
+                     (doc-change-changes (car doc-changes)))))
+     (define old-track0 (color-cache-entry-face-track old))
+     (define old-track (if (vector? old-track0)
+                           old-track0
+                           (list->vector old-track0)))
+     (define face-track
+       (cond
+         [(eq? dirty 'all) (color-state->face-track color-state)]
+         [(null? dirty) old-track]
+         [else
+          (define track (vector-copy old-track))
+          (for ([entry (in-list (color-state->dirty-face-lines color-state dirty))])
+            (vector-set! track (car entry) (cdr entry)))
+          track]))
+     (values (color-cache-entry doc-version color-state face-track #f #f)
+             state
+             dirty)]
 
     ;; 首次打开 / undo-redo / 批量修改 / 上次失败后版本变化：后台全量。
     [else
@@ -202,7 +230,8 @@
      (values (struct-copy color-cache-entry base
                           [pending-version doc-version]
                           [failed-version #f])
-             state*)]))
+             state*
+             #f)]))
 
 ;;; ════════════════ 主线程 sync 阶段 ════════════════
 
@@ -213,6 +242,14 @@
                                    (color-cache-entry-face-track entry)
                                    #:base-version doc-version
                                    #:key (list did doc-version 'racket)))))
+
+(define (apply-dirty-face-lines! engine did doc-version views entry dirty)
+  (define face-lines
+    (color-state->dirty-face-lines (color-cache-entry-color-state entry) dirty))
+  (for ([vid (in-list views)])
+    (engine-set-view-face-lines! engine vid face-lines
+                                #:base-version doc-version
+                                #:key (list did doc-version 'racket))))
 
 (define (clear-unsupported-face-track! engine did doc-version views)
   (for ([vid (in-list views)])
@@ -250,10 +287,15 @@
             (define pending-result (hash-ref result-inbox did #f))
             (define entry0
               (accept-color-job-result old-entry pending-result doc-version))
-            (define-values (entry st*)
+            (define-values (entry st* update)
               (advance-color-cache-entry st entry0 did doc-version text
                                          (pending-changes-for-doc pending-changes did)))
-            (apply-current-face-track! engine did doc-version views entry)
+            (cond
+              [(list? update)
+               (apply-dirty-face-lines! engine did doc-version views entry update)]
+              [(color-cache-entry-current? entry doc-version)
+               (apply-current-face-track! engine did doc-version views entry)]
+              [else (void)])
             (values (hash-set cache did entry) st*)]
 
            ;; 边界：mode 不支持着色时，清掉 save-as / rebind 前的旧 face。

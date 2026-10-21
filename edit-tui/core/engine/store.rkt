@@ -24,6 +24,7 @@
          engine-view-face-at
          engine-set-view-content!
          engine-set-view-face-track!
+         engine-set-view-face-lines!
          engine-set-view-cursor!
          engine-set-view-lines!
          engine-apply-view-action!)
@@ -190,12 +191,13 @@
      (when changed?
        (define b (view-buffer v))
        (define text-lines (string-split (view-string v) "\n" #:trim? #f))
+       (define track (if (vector? face-track) (vector->list face-track) face-track))
        (buffer-face-all! b #f)
        (define runs
          (append*
           (for/list ([line (in-list text-lines)]
                      [i (in-naturals)]
-                     [faces (in-list face-track)])
+                     [faces (in-list track)])
             (if (vector? faces)
                 (face-line->runs i line faces)
                 '()))))
@@ -205,6 +207,48 @@
         (hash-set (engine-face-track-cache e) vid
                   (cons key face-track))))
      changed?]))
+
+;; 只重写若干行的 face：清掉这些行的旧 face，再写新 run。
+;; face-lines : (listof (cons line-no (vectorof (or/c #f face?))))
+;; 用于增量着色；不动其他行，也不清整条 face track。
+(define (engine-set-view-face-lines! e vid face-lines
+                                     #:key [key #f]
+                                     #:base-version [base-version #f])
+  (define v (engine-view-object e vid))
+  (define current-version (and v (buffer-version (view-buffer v))))
+  (cond
+    [(not v) #f]
+    [(and base-version (not (equal? base-version current-version))) #f]
+    [else
+     (define b (view-buffer v))
+     (define text-lines (string-split (view-string v) "\n" #:trim? #f))
+     (define n (length text-lines))
+     (define fills
+       (append*
+        (for/list ([entry (in-list face-lines)])
+          (define line-no (car entry))
+          (define vec (cdr entry))
+          (cond
+            [(or (not (exact-nonnegative-integer? line-no))
+                 (>= line-no n)
+                 (not (vector? vec)))
+             '()]
+            [else
+             (define line (list-ref text-lines line-no))
+             (define len (string-length line))
+             (define clear
+               (if (positive? len)
+                   (list (list (range (point line-no 0)
+                                      (point line-no len))
+                               #f))
+                   '()))
+             (append clear (face-line->runs line-no line vec))]))))
+     (when (pair? fills) (buffer-face-range-batch! b fills))
+     ;; key 相同就表示这份 face track 已经是最新；cdr 不保留整轨，
+     ;; 避免为了局部更新再复制整份大对象。
+     (set-engine-face-track-cache!
+      e (hash-set (engine-face-track-cache e) vid (cons key #f)))
+     (pair? fills)]))
 
 ;; 光标单独写：内容同步不应该每帧把用户移动过的光标按回去。
 (define (engine-set-view-cursor! e vid line #:column [column 0])
