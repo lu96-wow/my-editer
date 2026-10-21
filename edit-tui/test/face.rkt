@@ -47,4 +47,23 @@
                                             'zz (list (list 0 0 0 1 (face #f 'bg '()))))))
 (check-equal? (car fills2) (list 0 0 0 1 (face 'red 'bg '())))
 
+;; 跨行 fill：中间行按 line-length 展开，不再使用 +inf.0
+(define cross
+  (compose-layers '(fg)
+                  (hash 'fg (list (list 0 1 2 3 (face 'red #f '()))))
+                  #:line-length (λ (_line) 5)))
+(check-equal? cross
+              (list (list 0 1 0 5 (face 'red #f '()))
+                    (list 1 0 1 5 (face 'red #f '()))
+                    (list 2 0 2 3 (face 'red #f '()))))
+
+;; 不传 line-length 时用 c1 作为有限上界（至少不会死循环）
+(define cross-fallback
+  (compose-layers '(fg)
+                  (hash 'fg (list (list 0 1 2 3 (face 'red #f '()))))))
+(check-equal? cross-fallback
+              (list (list 0 1 0 3 (face 'red #f '()))
+                    (list 1 0 1 3 (face 'red #f '()))
+                    (list 2 0 2 3 (face 'red #f '()))))
+
 (displayln "edit-tui-rebuild/test/face.rkt: ok")

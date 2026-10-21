@@ -477,7 +477,7 @@ face-empty
 face-set-fg face-set-bg face-set-attrs
 face-add-attr face-remove-attr face-has-attr?
 compose-face
-compose-layers
+compose-layers               ; 可选 #:line-length：跨行 fill 的中间行宽度
 ```
 
 ### render

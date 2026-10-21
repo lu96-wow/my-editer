@@ -69,8 +69,12 @@
 ;; layers : (hash/c symbol (listof fill))
 ;; fill   : (list l0 c0 l1 c1 face)   ; 行/列半开
 ;;
+;; line-length : line -> nat | #f。跨行 fill 的中间行需要知道行宽；
+;;               #f 时退回用 c1 作为上界（有限，不会再出现 +inf.0 死循环）。
+;;
 ;; 返回合成后的 fills（按行、列升序，相邻同 face 合并）。
-(define (compose-layers order layers)
+(define (compose-layers order layers
+                        #:line-length [line-length #f])
   (define effective-order
     (append order
             (sort (for/list ([k (in-hash-keys layers)] #:unless (memq k order)) k)
@@ -81,7 +85,11 @@
       (match-define (list l0 c0 l1 c1 v) f)
       (for ([l (in-range l0 (add1 l1))])
         (define a (if (= l l0) c0 0))
-        (define b (if (= l l1) c1 +inf.0))
+        (define b
+          (cond
+            [(= l l1) c1]
+            [line-length (line-length l)]
+            [else c1]))
         (for ([c (in-range a b)])
           (define k (cons l c))
           (hash-set! cells k (compose-face (hash-ref cells k #f) v))))))
