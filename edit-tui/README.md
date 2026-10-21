@@ -18,6 +18,20 @@
 7. 主题是 require 安装的；颜色 / 样式只在 config/theme/ 里。
 ```
 
+## 边界入口（不要绕过）
+
+```text
+view -> resource      resource-of-view           O(1) 索引 + 存在性检查
+focus -> resource     app-state-focus-resource   现算，不缓存
+鼠标命中              layout-hit                 一次 solve 得到 panel / seam / content
+保存起点              start-save                 有 path -> write-file；无 path -> save-path
+关闭 / 退出确认       begin-pending              设置 pending + 开第一项 confirm
+prompt id 匹配        active-prompt?             submit / cancel 的唯一入口
+close-resource action close-resource-action      action 数据的唯一构造点
+```
+
+这些函数是边界：其余代码只调用它们，不重复判断 `#f` / 过期 id / 索引维护。
+
 ## 分层
 
 ```text
@@ -167,7 +181,8 @@ buffer / view：读 + 写 UI view + 编辑 action   core/engine/api.rkt     包�
 渲染：layout -> panels -> bytes                render/api.rkt          包装（render-layout /
                                                                         layout-sync! / render-pieces）
 layout -> core panel / 命中投影                core/projection/api.rkt 包装（layout->render-panels /
-                                                                        layout->hit-panels / layout-content-hit）
+                                                                        layout->hit-panels / layout-hit /
+                                                                        layout-content-hit）
 布局几何（rect / panel）                       core/layout/api.rkt     骨架自己的面
                                               core/panel/api.rkt      （内部用 core 值）
 ```
@@ -431,6 +446,7 @@ empty-layout
 (layout->render-panels l area)                     ; view = active
 (layout->render-panels l area #:focus-panel 'editor) ; + 焦点框（见下）
 (layout->hit-panels l area)                        ; view = panel-id
+(layout-hit l area row col)                        ; 一次 solve：panel-id / content / seam
 ```
 
 #### 焦点窗高亮

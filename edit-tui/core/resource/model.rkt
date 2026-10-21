@@ -196,6 +196,7 @@
   (define r (resource-ref store id))
   (if r (resource-views r) '()))
 
+;;; view -> resource 的唯一查询边界：O(1) 索引 + 存在性检查。
 (define (resource-of-view store vid)
   (define id (hash-ref (resource-store-view-index store) vid #f))
   (and id (hash-has-key? (resource-store-resources store) id) id))
@@ -268,8 +269,9 @@
 
 ;;; ════════════════ 保存 ════════════════
 
-;; → (values store' (listof resource-action))
-(define (resource-save store id)
+;;; 保存的唯一入口：有 path 直接 write-file；没有 path 开 save-path prompt。
+;;; resource-save / save-current-for-pending / resource-save-as 都走这里。
+(define (start-save store id)
   (define r (resource-ref store id))
   (cond
     [(not r) (values store '())]
@@ -281,6 +283,10 @@
                        "Save as: " "" '()))
      (values (bump-prompt-id (store-set-prompt store p)) '())]))
 
+;; → (values store' (listof resource-action))
+(define (resource-save store id)
+  (start-save store id))
+
 (define (resource-save-as store id path)
   (define r (resource-ref store id))
   (cond
@@ -288,7 +294,7 @@
     [else
      (define path* (resource-normalize-path path))
      (define s1 (store-put store (struct-copy resource r [file-path path*])))
-     (resource-save s1 id)]))
+     (start-save s1 id)]))
 
 ;; 保存成功后：更新 saved-version；若在 pending 流程里，继续下一项。
 (define (resource-save-done store id version)
@@ -330,6 +336,13 @@
                     #f '(save skip save-all skip-all)))
   (bump-prompt-id (store-set-prompt store p)))
 
+;; close-resource action 的唯一构造点。
+(define (close-resource-action id r)
+  (action 'close-resource
+          (list id
+                (and r (resource-doc-id r))
+                (if r (resource-views r) '()))))
+
 (define (finish-pending store)
   (define p (resource-store-pending store))
   (cond
@@ -341,12 +354,7 @@
                        (list (action 'quit '())))]
        [(close)
         (define id (car (pending-ids p)))
-        (define r (resource-ref store id))
-        (values s1
-                (list (action 'close-resource
-                              (list id
-                                    (and r (resource-doc-id r))
-                                    (if r (resource-views r) '())))))]
+        (values s1 (list (close-resource-action id (resource-ref store id))))]
        [else (values s1 '())])]))
 
 (define (advance-pending store)
@@ -372,17 +380,13 @@
   (define id (and p (pending-current-id p)))
   (cond
     [(not id) (values store '())]
-    [else
-     (define r (resource-ref store id))
-     (cond
-       [(not r) (advance-pending store)]
-       [(resource-file-path r)
-        (values (store-clear-prompt store)
-                (list (action 'write-file (list id (resource-file-path r)))))]
-       [else
-        (define pr (prompt (next-prompt-id store) 'save-path id
-                           "Save as: " "" '()))
-        (values (bump-prompt-id (store-set-prompt store pr)) '())])]))
+    [(not (resource-ref store id)) (advance-pending store)]
+    [else (start-save store id)]))
+
+;;; 关闭 / 退出确认的唯一入口：设置 pending，再开第一项 confirm。
+(define (begin-pending store kind ids)
+  (define p (pending kind ids 0 'ask))
+  (values (confirm-prompt (store-set-pending store p) (car ids)) '()))
 
 ;; 关闭 resource（不是关闭 panel）：resource store / engine view / document
 ;; 都由后续 close-resource action 删除。面板关闭见 app/close-panel-command。
@@ -391,13 +395,10 @@
   (cond
     [(not r) (values store '())]
     [(resource-dirty? store id)
-     (define p (pending 'close (list id) 0 'ask))
-     (values (confirm-prompt (store-set-pending store p) id) '())]
+     (begin-pending store 'close (list id))]
     [else
      (define s1 (store-remove store id))
-     (values s1
-             (list (action 'close-resource
-                           (list id (resource-doc-id r) (resource-views r)))))] ))
+     (values s1 (list (close-resource-action id r)))]))
 
 (define (resource-request-quit store)
   (define ids (dirty-ids store))
@@ -405,9 +406,7 @@
     [(null? ids)
      (values store
              (list (action 'quit '())))]
-    [else
-     (define p (pending 'quit ids 0 'ask))
-     (values (confirm-prompt (store-set-pending store p) (car ids)) '())]))
+    [else (begin-pending store 'quit ids)]))
 
 ;;; ════════════════ 输入面板交互 ════════════════
 ;;;
@@ -417,10 +416,14 @@
 (define (resource-prompt store)
   (resource-store-prompt store))
 
-(define (resource-cancel store pid)
+;;; prompt-id 匹配的唯一入口：所有 submit / cancel 都先过这里。
+(define (active-prompt? store pid)
   (define p (resource-store-prompt store))
+  (and p (equal? (prompt-id p) pid) p))
+
+(define (resource-cancel store pid)
   (cond
-    [(or (not p) (not (equal? (prompt-id p) pid))) store]
+    [(not (active-prompt? store pid)) store]
     [else
      (store-clear-pending (store-clear-prompt store))]))
 
@@ -440,10 +443,9 @@
     [else #f]))
 
 (define (resource-submit-text store pid text)
-  (define p (resource-store-prompt store))
+  (define p (active-prompt? store pid))
   (cond
-    [(or (not p) (not (equal? (prompt-id p) pid)))
-     (values store '() #f)]
+    [(not p) (values store '() #f)]
     [else
      (define trimmed (string-trim text))
      (case (prompt-kind p)
@@ -465,10 +467,9 @@
           (values s a #t))])]))
 
 (define (resource-submit store pid value)
-  (define p (resource-store-prompt store))
+  (define p (active-prompt? store pid))
   (cond
-    [(or (not p) (not (equal? (prompt-id p) pid)))
-     (values store '())]
+    [(not p) (values store '())]
     [else
      (case (prompt-kind p)
        [(save-path)

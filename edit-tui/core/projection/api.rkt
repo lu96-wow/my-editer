@@ -6,4 +6,6 @@
 
 (provide layout->render-panels
          layout->hit-panels
+         layout-hit
+         (struct-out hit)
          layout-content-hit)

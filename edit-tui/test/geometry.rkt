@@ -67,6 +67,24 @@
 (check-equal? (hash-ref rs 'editor) (rect 30 0 50 23))
 (check-equal? (hash-ref rs 'state) (rect 30 23 50 1))
 
+;;; ---------- 鼠标命中：一次 solve 同时给 panel / seam / content ----------
+(define hit-ft (layout-hit l2 area 0 0))
+(check-equal? (hit-panel-id hit-ft) 'filetree)
+(check-equal? (hit-content-id hit-ft) 'filetree)
+(check-equal? (hit-content-row hit-ft) 0)
+(check-equal? (hit-content-col hit-ft) 0)
+(check-false (hit-seam hit-ft))
+
+;; 列 29/30 是共享边框接缝
+(define hit-edge (layout-hit l2 area 0 30))
+(check-equal? (hit-panel-id hit-edge) 'editor)
+(check-not-false (hit-seam hit-edge))
+
+;; 兼容 API 与 layout-hit 的结果一致
+(define-values (cid crow ccol) (layout-content-hit l2 area 0 0))
+(check-equal? (list cid crow ccol)
+              (list (hit-content-id hit-ft) (hit-content-row hit-ft) (hit-content-col hit-ft)))
+
 ;;; ---------- 隐藏：filetree 不产出 panel，editor/state 扩宽 ----------
 (define l-hidden (hide! l2 area 'filetree))
 (define ps-hidden (layout->render-panels l-hidden area))

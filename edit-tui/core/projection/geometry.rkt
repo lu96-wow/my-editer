@@ -19,6 +19,8 @@
 
 (provide layout->render-panels
          layout->hit-panels
+         layout-hit
+         (struct-out hit)
          layout-content-hit)
 
 (define (layout->render-panels layout area
@@ -52,15 +54,31 @@
                 #:face (p:panel-face panel)
                 #:weight (p:panel-weight panel))))
 
-;;; ---------- 内容区命中（鼠标点 buffer） ----------
+;;; ---------- 鼠标命中：一次 solve 得到 panel / seam / 内容区 ----------
 ;;;
-;;; → (values panel-id row col) | (values #f #f #f)
-;;; row / col 是相对内容区的 0 基坐标（已去掉边框），可直接喂给
-;;; core 的 view-screen-position->point。点在边框 / 接缝上返回 #f。
-(define (layout-content-hit layout area row col)
-  (define solution (l:layout-solve layout area))
-  (define borders (effective-borders layout))
-  (let loop ([ids (l:layout-visible-panel-ids layout)])
+;;; 鼠标 press / scroll 需要同时判断：
+;;;   1. 指针在哪个 panel 的 rect 里；
+;;;   2. 是否在 seam 上；
+;;;   3. 是否在某个 panel 的 content 区，及相对内容区坐标。
+;;;
+;;; 这三件事都依赖 layout-solve。这里统一成一次 layout-hit，
+;;; 避免调用方分别调用 layout-panel-id-at / layout-seam-at /
+;;; layout-content-hit 时重复 solve。
+(struct hit
+  (panel-id      ; 包含指针的 panel-id | #f
+   content-id    ; 内容区包含指针的 panel-id | #f
+   content-row   ; 相对内容区 0 基行：内容区外为 #f
+   content-col   ; 相对内容区 0 基列：内容区外为 #f
+   seam)         ; 指针下的 seam | #f
+  #:transparent)
+
+(define (panel-hit-id solution row col)
+  (for/first ([(id r) (in-hash (l:layout-solution-panel-rects solution))]
+              #:when (rect-contains? r col row))
+    id))
+
+(define (content-hit-values solution borders order row col)
+  (let loop ([ids order])
     (cond
       [(null? ids) (values #f #f #f)]
       [else
@@ -78,3 +96,24 @@
          [(and content (rect-contains? content col row))
           (values id (- row (rect-y content)) (- col (rect-x content)))]
          [else (loop (cdr ids))])])))
+
+(define (layout-hit layout area row col)
+  (define solution (l:layout-solve layout area))
+  (define borders (effective-borders layout))
+  (define-values (cid crow ccol)
+    (content-hit-values solution borders
+                        (l:layout-visible-panel-ids layout) row col))
+  (hit (panel-hit-id solution row col)
+       cid crow ccol
+       (for/first ([s (in-list (l:layout-solution-seams solution))]
+                   #:when (rect-contains? (l:seam-rect s) col row))
+         s)))
+
+;;; ---------- 内容区命中（兼容旧 API） ----------
+;;;
+;;; → (values panel-id row col) | (values #f #f #f)
+;;; row / col 是相对内容区的 0 基坐标（已去掉边框），可直接喂给
+;;; core 的 view-screen-position->point。点在边框 / 接缝上返回 #f。
+(define (layout-content-hit layout area row col)
+  (define h (layout-hit layout area row col))
+  (values (hit-content-id h) (hit-content-row h) (hit-content-col h)))

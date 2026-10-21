@@ -109,8 +109,10 @@
   (define config (app-state-layout-config state))
   (case (mouse-event-token ev)
     [(press)
+     ;; 一次 layout-hit 同时得到 panel / seam / 内容区，避免重复 solve。
+     (define h (layout-hit layout area row col))
+     (define hit-id (hit-panel-id h))
      (define placement-id (app-state-placement state))
-     (define hit-id (layout-panel-id-at layout area row col))
      (cond
        ;; placement 中点到 editor：直接放入
        [(and placement-id
@@ -118,21 +120,24 @@
              (eq? (panel-kind (layout-panel layout hit-id)) 'editor))
         (place-into-panel state hit-id)]
        [else
-        (define seam (layout-seam-at layout area row col))
+        (define seam (hit-seam h))
         (cond
           [seam
            (define d (layout-seam-drag-start layout area row col #:config config))
            (values (struct-copy app-state state [drag d]) '())]
           [else
            ;; 内容区（去掉边框）：聚焦 + 光标落点；边框 / 角上只改焦点。
-           (define-values (cid c-row c-col)
-             (layout-content-hit layout area row col))
+           (define cid (hit-content-id h))
            (cond
              [cid
               (define s1 (app-state-set-focus-panel state cid))
-              (values s1 (content-point-actions s1 cid c-row c-col))]
+              (values s1 (content-point-actions s1 cid
+                                               (hit-content-row h)
+                                               (hit-content-col h)))]
              [else
-              (define id (layout-focus-panel-at layout area config row col))
+              (define id (and hit-id
+                              (layout-panel-focusable? layout config hit-id)
+                              hit-id))
               (if id
                   (values (app-state-set-focus-panel state id) '())
                   (values state '()))])])])]
@@ -149,7 +154,7 @@
      (values (struct-copy app-state state [drag #f]) '())]
     [(scroll-up scroll-down)
      ;; 滚轮滚指针下的 panel；不改焦点，不移动光标。
-     (define id (layout-panel-id-at layout area row col))
+     (define id (hit-panel-id (layout-hit layout area row col)))
      (define p (and id (app-state-panel state id)))
      (define vid (and p (panel-view p)))
      (cond

@@ -25,8 +25,7 @@
   (struct-copy app-state state
                [store (hash-set (app-state-store state) 'status-view view)]))
 
-(define (status-resource-name state)
-  (define rid (app-state-focus-resource state))
+(define (status-resource-name state rid)
   (define store (app-state-resources state))
   (define r (and rid (resource-ref store rid)))
   (and r
@@ -46,7 +45,7 @@
       (and (pair? p) (string-join (map key->string p) " "))))
   (define parts
     (filter values
-            (list (status-resource-name state)
+            (list (status-resource-name state rid)
                   (and line col (format "~a:~a" (add1 line) (add1 col)))
                   (and dirty? "*")
                   pending
