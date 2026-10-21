@@ -10,6 +10,7 @@
          filetree-toggle-expand
          filetree-set-view
          filetree-set-cursor
+         filetree-set-opened
          filetree-set-sync
          filetree-invalidate)
 
@@ -27,7 +28,9 @@
    expanded    ; path -> #t
    rows        ; (listof filetree-line)
    projection  ; (list root expanded opened)：rows 对应的输入
-   sync-key)   ; (list view projection-key line col)：上一帧已写进 view 的完整输入
+   sync-key    ; (list view projection-key line col)：上一帧已写进 view 的完整输入
+   opened      ; path -> #t：resource 打开路径集合的缓存
+   opened-revision) ; opened 对应的 resource-opened-revision
   #:transparent)
 
 ;; 文件树就是一个普通 buffer：光标（point）归 core view 所有。
@@ -36,7 +39,7 @@
 ;;   - 鼠标点击 -> view 的 point 已经动了，sync 直接读回来（dirty? = #f）。
 
 (define (empty-filetree)
-  (filetree #f 0 #t (hash) '() #f #f))
+  (filetree #f 0 #t (hash) '() #f #f (hash) 0))
 
 (define (make-filetree #:view [view #f]
                        #:line [line 0]
@@ -44,8 +47,11 @@
                        #:expanded [expanded (hash)]
                        #:rows [rows '()]
                        #:projection [projection #f]
-                       #:sync-key [sync-key #f])
-  (filetree view line cursor-dirty? expanded rows projection sync-key))
+                       #:sync-key [sync-key #f]
+                       #:opened [opened (hash)]
+                       #:opened-revision [opened-revision 0])
+  (filetree view line cursor-dirty? expanded rows projection sync-key
+            opened opened-revision))
 
 (define (filetree-expanded? f path)
   (hash-has-key? (filetree-expanded f) path))
@@ -63,6 +69,12 @@
 ;; 键盘移动：改 cursor，并要求下一次 sync 把它推给 view。
 (define (filetree-set-cursor f line)
   (struct-copy filetree f [cursor line] [cursor-dirty? #t]))
+
+;;; opened 集合缓存：resource 打开路径版本没变就复用。
+(define (filetree-set-opened f opened opened-revision)
+  (struct-copy filetree f
+               [opened opened]
+               [opened-revision opened-revision]))
 
 ;;; sync 完成：记录“这一帧到底把什么写进了 view”。
 ;;; projection / rows 可能来自缓存；sync-key 用完成后的实际光标。

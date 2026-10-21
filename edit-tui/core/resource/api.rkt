@@ -32,6 +32,7 @@
  resource-root
  resource-set-root
  resource-display-path
+ resource-opened-revision
 
  ;; open / edit / save
  resource-open

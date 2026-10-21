@@ -47,24 +47,36 @@
      (define store (app-state-resources state))
      (define root (resource-root store))
      (define expanded (filetree-expanded f))
-     (define opened (opened-path-set state))
+     ;; opened 集合由 resource 版本决定：版本没变就不扫 resource-list。
+     (define opened-revision (resource-opened-revision store))
+     (define opened-changed?
+       (not (equal? opened-revision (filetree-opened-revision f))))
+     (define opened
+       (if opened-changed?
+           (opened-path-set state)
+           (filetree-opened f)))
+     (define f0
+       (if opened-changed?
+           (filetree-set-opened f opened opened-revision)
+           f))
      (define projection-key (filetree-projection-key root expanded opened))
-     (define vid (filetree-view f))
+     (define vid (filetree-view f0))
      ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准。
      ;; 列不限制在行首：普通 buffer 怎么动，文件树就怎么动（越界由 core clamp）。
      (define-values (line col)
-       (if (filetree-cursor-dirty? f)
-           (values (filetree-cursor f) 0)
+       (if (filetree-cursor-dirty? f0)
+           (values (filetree-cursor f0) 0)
            (values (or (engine-view-point-line engine vid) 0)
                    (or (engine-view-point-column engine vid) 0))))
      (define sync-input (filetree-sync-input vid projection-key line col))
      (cond
-       [(equal? sync-input (filetree-sync-key f)) state]
+       [(equal? sync-input (filetree-sync-key f0))
+        (if opened-changed? (filetree-put state f0) state)]
        [else
-        (define cached? (equal? projection-key (filetree-projection f)))
+        (define cached? (equal? projection-key (filetree-projection f0)))
         (define rows
           (if cached?
-              (filetree-rows f)
+              (filetree-rows f0)
               (filetree-lines root expanded opened dir-entries)))
         (engine-set-view-lines! engine vid
                                 (map filetree-line-text rows)
@@ -77,4 +89,4 @@
         (define actual-col (or (engine-view-point-column engine vid) col))
         (define actual-key (filetree-sync-input vid projection-key actual-line actual-col))
         (filetree-put state
-                      (filetree-set-sync f projection-key rows actual-key actual-line))])]))
+                      (filetree-set-sync f0 projection-key rows actual-key actual-line))])]))

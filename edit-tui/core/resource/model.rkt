@@ -61,7 +61,8 @@
          resource-find-by-path
          resource-root
          resource-set-root
-         resource-display-path)
+         resource-display-path
+         resource-opened-revision)
 
 ;;; ════════════════ 数据 ════════════════
 
@@ -73,15 +74,16 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (root resources order pending prompt view-index
+  (root resources order pending prompt view-index opened-revision
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
-;; root       : string（启动根路径；规范化绝对路径，"" = 未设置）
-;; resources  : id -> resource
-;; order      : (listof resource-id)
-;; pending    : pending | #f
-;; prompt     : prompt | #f
-;; view-index : view-id -> resource-id（resource-of-view 的 O(1) 索引）
+;; root            : string（启动根路径；规范化绝对路径，"" = 未设置）
+;; resources       : id -> resource
+;; order           : (listof resource-id)
+;; pending         : pending | #f
+;; prompt          : prompt | #f
+;; view-index      : view-id -> resource-id（resource-of-view 的 O(1) 索引）
+;; opened-revision : 打开路径集合的版本；成员 / path 变化才 +1
 
 (struct resource-action (kind data) #:transparent)
 ;; kind : 'create-buffer | 'create-view | 'write-file
@@ -97,7 +99,7 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store "" (hash) '() #f #f (hash) 1 1 1))
+  (resource-store "" (hash) '() #f #f (hash) 0 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
@@ -126,12 +128,19 @@
          (resource-store-view-index r))
      id
      (resource-views res)))
+  ;; 只有“打开路径集合”可能变化时才推进版本；版本更新 / 命令表更新不推进。
+  (define path-changed?
+    (not (equal? (and old (resource-file-path old))
+                 (resource-file-path res))))
   (struct-copy resource-store r
                [resources (hash-set (resource-store-resources r) id res)]
                [order (if (memv id (resource-store-order r))
                           (resource-store-order r)
                           (append (resource-store-order r) (list id)))]
-               [view-index idx]))
+               [view-index idx]
+               [opened-revision (if path-changed?
+                                    (add1 (resource-store-opened-revision r))
+                                    (resource-store-opened-revision r))]))
 
 (define (store-remove r id)
   (define old (store-get r id))
@@ -143,7 +152,10 @@
                [view-index (if old
                                (index-remove-views (resource-store-view-index r)
                                                    id (resource-views old))
-                               (resource-store-view-index r))]))
+                               (resource-store-view-index r))]
+               [opened-revision (if (and old (resource-file-path old))
+                                    (add1 (resource-store-opened-revision r))
+                                    (resource-store-opened-revision r))]))
 
 (define (store-set-prompt r p)
   (struct-copy resource-store r [prompt p]))
@@ -490,6 +502,10 @@
 
 (define (resource-root store)
   (resource-store-root store))
+
+;; 打开路径集合（有 path 的 resource）的版本。filetree 用它决定是否重算 opened 集合。
+(define (resource-opened-revision store)
+  (resource-store-opened-revision store))
 
 (define (resource-set-root store root)
   (struct-copy resource-store store

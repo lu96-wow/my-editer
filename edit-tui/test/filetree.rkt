@@ -70,6 +70,13 @@
 (check-not-false (app-state-placement state8))
 (check-equal? (length (resource-list (app-state-resources state8))) 1)
 (check-true (string-contains? (engine-doc-text engine 1) "hello"))
+;; 打开路径会进入 filetree 的 opened 缓存。
+(define state8b (sync-filetree! state8 engine))
+(define f8 (hash-ref (app-state-store state8b) 'filetree))
+(define opened-path (resource-path (app-state-resources state8b) 1))
+(check-true (hash-has-key? (filetree-opened f8) opened-path))
+(check-equal? (filetree-opened-revision f8)
+              (resource-opened-revision (app-state-resources state8b)))
 ;; 新文档拿到 app 的默认 editor 键表（编辑操作表）：
 ;; resource-open 会把 tables 合并成一张，所以查 binding 而不是比 eq?。
 (define opened-stack (resource-command-stack (app-state-resources state8) 1))

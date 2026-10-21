@@ -935,6 +935,7 @@ resource-find-by-path
 resource-root
 resource-set-root
 resource-display-path      ; 根内 -> 相对路径；根外 -> 绝对路径（只用于显示）
+resource-opened-revision   ; 打开路径集合的版本；成员 / path 变化才 +1
 
 resource-mark-edited
 resource-sync-version      ; engine 文档版本变了才记 dirty
@@ -1091,6 +1092,8 @@ resource        per-doc command-table-stack（编辑器）
 - **行投影有缓存**：filetree 按 `(root, expanded 集合, opened 集合)` 缓存 rows。
   三者不变就不重扫目录（`dir-entries` 每个 entry 要 3 次 stat，3000 行 ≈ 30ms）。
   外部文件变了用 `C-r` 手动刷新。
+- **opened 集合有版本**：resource store 的 `opened-revision` 只在 resource 成员 / path
+  变化时 +1；filetree 版本没变就复用缓存的 opened 集合，不扫 resource-list。
 - **filetree sync 有完整 key**：`(view, projection-key, line, col)` 与上一帧相同就直接
   返回原 state，不 map rows、不调用 `engine-set-view-lines!`。
 - **布局求解有缓存**：`boot/loop` 以 `(layout-solve-key, area)` 为键复用

@@ -34,6 +34,8 @@
 (check-false (resource-dirty? s1 1))
 (check-equal? (resource-version (resource-ref s1 1)) 0)
 (check-equal? (resource-saved-version (resource-ref s1 1)) 0)
+;; 无 path 的 resource 不进 opened 集合，也不推进 opened 版本。
+(check-equal? (resource-opened-revision s1) 0)
 
 ;; 打开时就绑定命令表
 (define base (keys ['a 'cmd-a] ['x 's 'cmd-xs]))
@@ -42,6 +44,14 @@
 (check-equal? (map resource-action-kind as2) '(create-buffer create-view))
 (check-true (resource-writable? s2 1))
 (check-equal? (resource-path s2 1) (resource-normalize-path "main.rkt"))
+(define rev2 (resource-opened-revision s2))
+(check-true (> rev2 0))
+;; 版本 / 命令表更新不改变 opened 集合的版本。
+(define s2-same (resource-set-command-stack s2 1 (resource-command-stack s2 1)))
+(check-equal? (resource-opened-revision s2-same) rev2)
+;; path 变化（Save as）才推进版本。
+(define-values (s2-renamed _) (resource-save-as s2 1 "renamed.rkt"))
+(check-true (> (resource-opened-revision s2-renamed) rev2))
 (let-values ([(st v) (command-table-stack-lookup (resource-command-stack s2 1) '(a))])
   (check-equal? st 'command)
   (check-equal? v 'cmd-a))
