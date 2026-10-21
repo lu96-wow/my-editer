@@ -710,6 +710,7 @@ overlay tables ++ focused resource command-stack
 (app-state-submit-job state kind payload tag)
 (app-state-finish-job state id result)
 (start-job-runtime services #:event-channel ch #:workers n)
+;; run-app 自动追加 color-services（后台 color-open）
 (dispatch-jobs! runtime (app-state-jobs state))
 (job-result-event id kind result tag)       ; worker -> event channel
 (job-runtime-event-channel runtime)
@@ -742,7 +743,9 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 
 语法高亮 / 同词着色 / 括号深度已经作为显式阶段接在 `sync-ui/panels!` 里：
 `edit/color.rkt` 读 `pending-doc-changes`，维护 `color-state`，只把变化的
-逐字符 face 写进 editor view；不消费 changes。补全、异步任务等以后也按同样方式
+逐字符 face 写进 editor view；不消费 changes。普通编辑走主线程 `color-edit`
+增量；首次打开 / undo / 批量修改提交 `color-open` job，由 worker 全量计算，
+主线程在下一帧用 `(doc-id, version)` 校验后写 face。补全等以后也按同样方式
 插入显式阶段，而不是通过 `sync` hook 或回调挂进去。
 
 ### 文件树
@@ -1203,9 +1206,10 @@ resource        per-doc command-table-stack（编辑器）
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
   `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
   core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
-- **编辑器 face 写回幂等**：`engine-set-view-faces!` 用 `(doc-id, version)` 作为缓存键；
-  颜色 state 没变就不碰 document revision。`color-edit` 只重扫 change 波及的行，
-  undo/redo（没有 change）通过版本失配回退全量重建。
+- **编辑器 face 写回幂等**：`engine-set-view-faces!` 用 `(doc-id, version, pending)`
+  作为缓存键；颜色 state 没变就不碰 document revision。普通编辑 `color-edit`
+  只重扫 change 波及的行；首次打开 / undo / 批量修改走后台 `color-open` job，
+  结果按版本校验，过期结果不会覆盖新文档。
 - **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
   自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
   没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。

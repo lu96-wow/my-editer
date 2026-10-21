@@ -118,5 +118,6 @@ lang/python/
 - 这里着色做得更细（行级 change），语义解析则用顶层 form 作为增量单位。
 
 语言层只产出 role / 候选 / 文档数据，不决定 face、菜单、弹窗或异步 worker。
-编辑器侧的显式着色阶段在 `edit/color.rkt`：把 role 映射成逐字符 face，并用
-`pending-doc-changes` 做增量更新。
+编辑器侧的显式着色阶段在 `edit/color.rkt`：把 role 映射成逐字符 face，
+普通编辑用 `pending-doc-changes` + `color-edit` 增量；首次打开 / undo / 批量修改
+提交后台 `color-open` job，结果按 `(doc-id, version)` 校验后再写回。

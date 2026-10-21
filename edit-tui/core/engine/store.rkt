@@ -169,11 +169,17 @@
 ;; 写一个 view 的逐字符 face，不动文本 / 光标 / 历史。
 ;; line-faces : (listof (vectorof (or/c #f symbol? face?)))，与文本行对齐。
 ;; #:key      : 写回幂等键；同 key 的重复帧不会碰 document revision。
+;; #:base-version : face track 对应的 document version；不匹配时拒绝写。
 ;; → 是否真的写了。
-(define (engine-set-view-faces! e vid line-faces #:key [key #f])
+(define (engine-set-view-faces! e vid line-faces
+                                #:key [key #f]
+                                #:base-version [base-version #f])
   (define v (engine-view-object e vid))
   (cond
     [(not v) #f]
+    [(and base-version
+          (not (equal? base-version (buffer-version (view-buffer v)))))
+     #f]
     [else
      (define prev (hash-ref (engine-face-ui e) vid #f))
      (define changed?

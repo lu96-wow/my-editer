@@ -789,14 +789,18 @@
   (docs-state-for info name))
 
 (define demo-services
-  (list (service 'completion completion-service)
-        (service 'docs docs-service)))
+  (append (list (service 'completion completion-service)
+                (service 'docs docs-service))
+          color-services))
 
 ;; job result -> state。只接受仍匹配当前 request-id 的结果。
 (define (handle-job-result state ev)
-  (define state0 (app-state-finish-job state
-                                       (job-result-event-id ev)
-                                       (job-result-event-result ev)))
+  (define state0
+    (handle-color-job-result
+     (app-state-finish-job state
+                           (job-result-event-id ev)
+                           (job-result-event-result ev))
+     ev))
   (case (job-result-event-kind ev)
     [(completion)
      (define c (current-completion state0))

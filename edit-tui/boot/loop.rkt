@@ -18,6 +18,7 @@
          "../app/step.rkt"
          "../app/event.rkt"
          "../chrome/api.rkt"
+         "../edit/color.rkt"
          "actions.rkt"
          "frame.rkt"
          "jobs.rkt"
@@ -78,10 +79,13 @@
       [(job-result-event? ev)
        (when job-runtime
          (forget-dispatched-job! job-runtime (job-result-event-id ev)))
-       (loop (app-state-finish-job state**
-                                   (job-result-event-id ev)
-                                   (job-result-event-result ev))
-             cache** layout-cache*)]
+       (define state***
+         (handle-color-job-result
+          (app-state-finish-job state**
+                                (job-result-event-id ev)
+                                (job-result-event-result ev))
+          ev))
+       (loop state*** cache** layout-cache*)]
       [else
        (define-values (state1 actions) (step state** ev #:solution solution))
        ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），
@@ -92,6 +96,12 @@
        (if (app-state-quit? state4)
            state4
            (loop state4 cache** layout-cache*))])))
+
+;; run-app 总是能处理 color-open；外部 services 可以是 list 或 registry。
+(define (append-color-services services)
+  (if (service-registry? services)
+      (service-registry-merge services (make-service-registry color-services))
+      (append services color-services)))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
 ;; 传 #:host 时先 install 所有插件，退出时逆序 teardown。
@@ -125,7 +135,7 @@
                      (async-channel-put event-channel (read-app-event))
                      (loop)))))
        (define runtime
-         (start-job-runtime services
+         (start-job-runtime (append-color-services services)
                             #:event-channel event-channel
                             #:workers job-workers))
        (dynamic-wind
