@@ -72,11 +72,14 @@
   (for ([(cell es) (in-hash raw)])
     (define maxd (panel-deep (panel-at panels (car cell) (cdr cell))))
     (define layer (filter (λ (e) (= (panel-deep (cadr e)) maxd)) es))
-    (define hs (for/or ([e (in-list layer)]) (caddr e)))
-    (define vs (for/or ([e (in-list layer)]) (cadddr e)))
-    (define best (for/fold ([b #f]) ([e (in-list layer)])
-                   (if (or (not b) (higher-face? e b)) e b)))
-    (hash-set! info cell (list (panel-face (cadr best)) maxd hs vs)))
+    ;; 高 deep 的 panel 可能只是“盖住”了这一格，但自己在这一格没有边；
+    ;; 此时低层边已被遮住，正确结果是这一格不画边，而不是把 #f 当成 panel。
+    (unless (null? layer)
+      (define hs (for/or ([e (in-list layer)]) (caddr e)))
+      (define vs (for/or ([e (in-list layer)]) (cadddr e)))
+      (define best (for/fold ([b #f]) ([e (in-list layer)])
+                     (if (or (not b) (higher-face? e b)) e b)))
+      (hash-set! info cell (list (panel-face (cadr best)) maxd hs vs))))
   ;; 字形：同向延续出的臂
   (define (at r c) (hash-ref info (cons r c) #f))
   (define (h? r c) (and (at r c) (caddr (at r c))))

@@ -3,7 +3,10 @@
 ;;; edit-tui-rebuild/app/step.rkt —— event -> (values state actions)（纯）
 ;;;
 ;;; 这里只做三件事：
-;;;   1. 选命令表（overlays > 焦点 resource 的 per-doc 表 > 焦点 panel 的表）
+;;;   1. 选命令表：
+;;;        输入态       -> input-stack（独占）
+;;;        非输入态     -> key-owner-stack > layout stack
+;;;        layout stack -> overlays > 焦点 resource/panel 表 > keymap overlays
 ;;;   2. 按键 / 鼠标 / 粘贴 -> 命令或 action
 ;;;   3. 需要改焦点、改消息时走 app/state.rkt 的状态迁移
 ;;;
@@ -37,34 +40,42 @@
       state
       (struct-copy app-state state [flash ""])))
 
-;; 两模式：
-;;   叠加：非输入态 = 动态 overlays over (per-doc / panel base) over keymap overlays
-;;         局部键表优先于全局键表；placement 等动态模态仍在最上层。
-;;   替换：输入态直接返回 keymap 的 input-stack（模态独占，不拼 overlays）
-;; stack 查找 unbound 会继续查下一张表；如果输入态也叠加 overlay，
-;; C-q / C-w 这类未绑定键就会穿透到全局命令。
+;; 非输入态的 layout stack：
+;;   overlays > (per-doc / panel base) > keymap overlays
+;; stack 查找 unbound 会继续查下一张表；局部表优先于全局表。
+(define (layout-command-stack state)
+  (define km (app-state-keymap state))
+  (define rid (app-state-focus-resource state))
+  (define base
+    (cond
+      [rid (or (resource-command-stack (app-state-resources state) rid)
+               command-table-stack-empty)]
+      [else
+       ;; 同一 panel 可以挂多个 tab：先按 active view-id 找局部表，
+       ;; 再回退到 panel-id（filetree 等单 tab 面板）。
+       (define vid (app-state-focus-view-id state))
+       (or (and vid
+                (hash-ref (app-state-panel-stacks state) vid #f))
+           (hash-ref (app-state-panel-stacks state)
+                     (app-state-focus-panel-id state)
+                     command-table-stack-empty))]))
+  (command-table-stack-over
+   (app-state-overlays state)
+   (command-table-stack-over base (keymap-overlays km))))
+
+;; 非输入态 = key-owner-stack 顶层 + layout stack。
+;; key-owner-stack 是显式的模式层（如 completion menu），由 app-state 的 owner 管理；
+;; 它消失后自然回落到 layout stack，未绑定的键仍然可以继续往下查。
 (define (current-command-stack state)
   (define km (app-state-keymap state))
   (cond
     [(input-active? state) (keymap-input-stack km)]
     [else
-     (define rid (app-state-focus-resource state))
-     (define base
-       (cond
-         [rid (or (resource-command-stack (app-state-resources state) rid)
-                  command-table-stack-empty)]
-         [else
-          ;; 同一 panel 可以挂多个 tab：先按 active view-id 找局部表，
-          ;; 再回退到 panel-id（filetree 等单 tab 面板）。
-          (define vid (app-state-focus-view-id state))
-          (or (and vid
-                   (hash-ref (app-state-panel-stacks state) vid #f))
-              (hash-ref (app-state-panel-stacks state)
-                        (app-state-focus-panel-id state)
-                        command-table-stack-empty))]))
-     (command-table-stack-over
-      (app-state-overlays state)
-      (command-table-stack-over base (keymap-overlays km)))]))
+     (define layout-stack (layout-command-stack state))
+     (define owner-stack (app-state-key-owner-stack state))
+     (if owner-stack
+         (command-table-stack-over owner-stack layout-stack)
+         layout-stack)]))
 
 (define (run-command state value)
   (if (procedure? value)

@@ -599,7 +599,12 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 
 (make-app-state #:layout #:layout-config #:keymap #:resources
                 #:overlays #:pending #:area #:quit? #:flash
-                #:drag #:select-drag #:pending-doc-changes)
+                #:drag #:select-drag #:pending-doc-changes
+                #:key-owner #:key-owner-stack)
+
+;; 显式键盘 owner：owner-stack 顶层 + layout stack，未绑定键仍可回落。
+(app-state-set-key-owner state 'completion-menu stack)
+(app-state-clear-key-owner state)
 
 ;; 鼠标拖动中的状态都是纯值：
 ;;   drag        layout seam drag | #f
@@ -686,6 +691,12 @@ overlay tables ++ focused resource command-stack
 (engine-view-text engine vid)
 (engine-doc-text engine did)
 (engine-doc-version engine did)
+
+;; 普通投影 view：内容 / 光标分开写
+(engine-set-view-content! engine vid lines faces) ; -> changed?
+(engine-set-view-cursor! engine vid line #:column col)
+(engine-set-view-lines! engine vid lines faces line ...) ; 兼容：内容 + 光标
+
 (engine-apply-view-action! engine action)   ; -> #f | '() | (listof change)
 
 (run-actions state engine actions)  ; -> state'
@@ -1207,6 +1218,29 @@ bash edit-tui/test/run.sh
 racket edit-tui/demo/layout.rkt
 racket edit-tui/demo/three-panels.rkt
 racket edit-tui/demo/interactive.rkt
+racket edit-tui/demo/completion-docs.rkt
+```
+
+### completion + docs demo
+
+```sh
+racket edit-tui/demo/completion-docs.rkt
+```
+
+布局：`editor` / `docs` / `status`，`docs` 是编辑区与状态栏之间的独立可显隐面板。
+补全弹窗按整个编辑区的包围盒定位，不进入 layout 树；不覆盖光标行，
+宽度/高度按候选与可用空间计算；选中候选只用 face，不加 `>` 前缀。
+选择候选会更新 docs。
+
+```text
+C-o       光标处补全（库函数 + 本文件/工作区本地词）
+Up/Down   菜单：移动候选；docs：移动 docs 光标
+Tab       下一个候选
+Enter     接受
+Esc/C-g   关闭
+M-d       光标处标识符文档
+C-x d     显 / 隐 docs 面板
+C-x o     补全菜单 <-> docs 焦点切换；切到 docs 时补全不关闭
 ```
 
 交互 demo 启动时 editor 为空，不预打开任何 buffer；先在 filetree 里 Enter 打开文件。

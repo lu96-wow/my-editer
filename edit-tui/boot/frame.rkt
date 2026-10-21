@@ -13,7 +13,8 @@
 ;; → (values cache' bytes)
 (define (render-frame state engine cache
                       #:solution [solution #f]
-                      #:panels [panels #f])
+                      #:panels [panels #f]
+                      #:overlays [overlays (list)])
   (define layout (app-state-layout state))
   (define area (app-state-area state))
   (define focus (layout-focus layout))
@@ -22,4 +23,5 @@
                  #:cache cache
                  #:view-object (λ (vid) (engine-view-object engine vid))
                  #:solution solution
-                 #:panels panels))
+                 #:panels panels
+                 #:overlays overlays))

@@ -4,9 +4,11 @@
 ;;;
 ;;; State 只存 id / 纯值，不碰 engine、不碰 IO。
 ;;;
-;;; 焦点有两层：
+;;; 焦点 / 键盘归属：
 ;;;   layout.focus    : 焦点 panel-id（布局层，layout/api）
 ;;;   focus-resource  : 焦点 panel 的活动 view 所属 resource（派生量，不存 State）
+;;;   key-owner       : 当前键盘模式标签（'layout | 'completion-menu | ...）
+;;;   key-owner-stack : 该模式的顶层命令表；#f = 回落到 layout stack
 ;;;
 ;;; focus-resource 每次从 layout / panel.active / resources 现算，
 ;;; 因此不存在「直接改 layout 后缓存过期」的问题。
@@ -25,6 +27,10 @@
          app-state-note-doc-change
          app-state-clear-doc-changes
          app-state-take-doc-changes
+
+         ;; 键盘 owner
+         app-state-set-key-owner
+         app-state-clear-key-owner
 
          ;; 查询
          app-state-panel
@@ -60,7 +66,9 @@
    panel-stacks    ; panel-id -> command-table-stack
    quit?
    flash           ; 一次性状态栏文本；下一次 step 入口清空
-   pending-doc-changes) ; (listof doc-change)，按发生顺序
+   pending-doc-changes ; (listof doc-change)，按发生顺序
+   key-owner       ; symbol：'layout | 'completion-menu | ...
+   key-owner-stack) ; command-table-stack | #f：owner 的顶层键盘表
   #:transparent)
 
 ;; 一次提交（一次 buffer-edit! / replace-range! / undo/redo）产生的 change。
@@ -83,10 +91,12 @@
          #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
          #:flash [flash ""]
-         #:pending-doc-changes [pending-doc-changes '()])
+         #:pending-doc-changes [pending-doc-changes '()]
+         #:key-owner [key-owner 'layout]
+         #:key-owner-stack [key-owner-stack #f])
   (app-state layout layout-config keymap resources overlays pending area
              next-panel-id drag select-drag placement store panel-stacks
-             quit? flash pending-doc-changes))
+             quit? flash pending-doc-changes key-owner key-owner-stack))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -130,6 +140,22 @@
 (define (app-state-take-doc-changes state)
   (values (app-state-pending-doc-changes state)
           (app-state-clear-doc-changes state)))
+
+;;; ════════════════ 键盘 owner ════════════════
+
+(define (app-state-set-key-owner state owner stack)
+  (unless (symbol? owner)
+    (raise-argument-error 'app-state-set-key-owner "symbol?" owner))
+  (unless (or (not stack) (command-table-stack? stack))
+    (raise-argument-error 'app-state-set-key-owner
+                          "(or/c #f command-table-stack?)" stack))
+  (struct-copy app-state state [key-owner owner] [key-owner-stack stack]))
+
+(define (app-state-clear-key-owner state)
+  (if (and (eq? (app-state-key-owner state) 'layout)
+           (not (app-state-key-owner-stack state)))
+      state
+      (struct-copy app-state state [key-owner 'layout] [key-owner-stack #f])))
 
 ;;; ════════════════ 纯迁移 ════════════════
 

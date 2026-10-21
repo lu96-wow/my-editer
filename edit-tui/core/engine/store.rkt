@@ -9,6 +9,7 @@
 ;;; 插件通过 core/skeleton.rkt 拿到只读查询 + 写 UI view 的入口。
 
 (require racket/match
+         racket/string
          "../../../core/editor.rkt"
          "action.rkt")
 
@@ -19,6 +20,9 @@
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version
          engine-view-point-line engine-view-point-column
+         engine-view-cursor-screen-position
+         engine-set-view-content!
+         engine-set-view-cursor!
          engine-set-view-lines!
          engine-apply-view-action!)
 
@@ -88,18 +92,25 @@
   (define v (engine-view-object e vid))
   (and v (view-point-column v)))
 
+;; 光标在当前 view 内的屏幕位置 (row col)；不可见 / 无 view -> #f。
+(define (engine-view-cursor-screen-position e vid)
+  (define v (engine-view-object e vid))
+  (and v
+       (let-values ([(row col) (view-cursor-screen-position v)])
+         (and row (cons row col)))))
 
-;;; 整篇写一个 UI view：文本 + 每行 face + 光标行。
+
+;;; 整篇写一个 UI view 的内容（文本 + 每行 face），不碰光标。
+;;; 返回 #t 表示内容真的变了。
 ;;;
 ;;; #:readonly-prefix n  首行前 n 个字符标成 readonly（输入栏 prompt 前缀）
 ;;; #:prefix-face face   这 n 个字符用不同 face（只在前缀非空时生效）
-(define (engine-set-view-lines! e vid lines faces line
-                                #:column [column 0]
-                                #:readonly-prefix [readonly-prefix 0]
-                                #:prefix-face [prefix-face #f])
+(define (engine-set-view-content! e vid lines faces
+                                  #:readonly-prefix [readonly-prefix 0]
+                                  #:prefix-face [prefix-face #f])
   (define v (engine-view-object e vid))
   (cond
-    [(not v) (void)]
+    [(not v) #f]
     [else
      (define prev (hash-ref (engine-ui e) vid #f))
      (define cache (list lines faces readonly-prefix prefix-face))
@@ -120,14 +131,32 @@
          (buffer-readonly-range! b r #t)
          (when prefix-face (buffer-face-range! b r prefix-face)))
        (set-engine-ui! e (hash-set (engine-ui e) vid cache)))
-     ;; 光标只在真的变了时才写（避免每帧重设 selections / ensure）
-     (define n (max 1 (length lines)))
+     content-changed?]))
+
+;; 光标单独写：内容同步不应该每帧把用户移动过的光标按回去。
+(define (engine-set-view-cursor! e vid line #:column [column 0])
+  (define v (engine-view-object e vid))
+  (cond
+    [(not v) (void)]
+    [else
+     (define text (view-string v))
+     (define n (max 1 (length (string-split text "\n" #:trim? #f))))
      (define l (max 0 (min line (sub1 n))))
      (define c (max 0 column))
      (unless (and (= (view-point-line v) l)
                   (= (view-point-column v) c))
        (view-set-selections! v (selections-one (caret (point l c))))
        (view-ensure! v))]))
+
+;; 兼容旧调用：内容 + 光标一次写完。
+(define (engine-set-view-lines! e vid lines faces line
+                                #:column [column 0]
+                                #:readonly-prefix [readonly-prefix 0]
+                                #:prefix-face [prefix-face #f])
+  (engine-set-view-content! e vid lines faces
+                            #:readonly-prefix readonly-prefix
+                            #:prefix-face prefix-face)
+  (engine-set-view-cursor! e vid line #:column column))
 
 (define (nav-fn dir)
   (case dir

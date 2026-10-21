@@ -55,7 +55,14 @@
    (list 'resource-document (style (rgb 200 200 200) #f '()))
    (list 'resource-view     (style (rgb 140 160 190) #f '()))
    (list 'resource-focus    (style (rgb 120 210 130) #f '(bold)))
-   (list 'resource-pending  (style (rgb 230 160 90) #f '(bold)))))
+   (list 'resource-pending  (style (rgb 230 160 90) #f '(bold)))
+   ;; completion popup
+   (list 'completion          (style (rgb 200 200 200) #f '()))
+   (list 'completion-selected (style (rgb 10 10 10) (rgb 120 180 240) '(bold)))
+   ;; docs panel
+   (list 'docs-title (style (rgb 120 210 130) #f '(bold)))
+   (list 'docs-dim   (style (rgb 140 150 165) #f '()))
+   (list 'docs-body  (style (rgb 200 200 200) #f '()))))
 
 ;; overlay（光标 / 选区）
 (define overlay-theme
