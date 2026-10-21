@@ -32,6 +32,10 @@
          app-state-set-key-owner
          app-state-clear-key-owner
 
+         ;; 异步 job 账本
+         app-state-submit-job
+         app-state-finish-job
+
          ;; 查询
          app-state-panel
          app-state-focus-panel-id
@@ -68,7 +72,8 @@
    flash           ; 一次性状态栏文本；下一次 step 入口清空
    pending-doc-changes ; (listof doc-change)，按发生顺序
    key-owner       ; symbol：'layout | 'completion-menu | ...
-   key-owner-stack) ; command-table-stack | #f：owner 的顶层键盘表
+   key-owner-stack ; command-table-stack | #f：owner 的顶层键盘表
+   jobs)           ; job-ledger：异步请求的纯账本
   #:transparent)
 
 ;; 一次提交（一次 buffer-edit! / replace-range! / undo/redo）产生的 change。
@@ -93,10 +98,11 @@
          #:flash [flash ""]
          #:pending-doc-changes [pending-doc-changes '()]
          #:key-owner [key-owner 'layout]
-         #:key-owner-stack [key-owner-stack #f])
+         #:key-owner-stack [key-owner-stack #f]
+         #:jobs [jobs empty-job-ledger])
   (app-state layout layout-config keymap resources overlays pending area
              next-panel-id drag select-drag placement store panel-stacks
-             quit? flash pending-doc-changes key-owner key-owner-stack))
+             quit? flash pending-doc-changes key-owner key-owner-stack jobs))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -140,6 +146,19 @@
 (define (app-state-take-doc-changes state)
   (values (app-state-pending-doc-changes state)
           (app-state-clear-doc-changes state)))
+
+;;; ════════════════ 异步 job ════════════════
+
+(define (app-state-submit-job state kind payload [tag #f])
+  (define-values (ledger j)
+    (job-submit (app-state-jobs state) kind payload tag))
+  (values (struct-copy app-state state [jobs ledger]) j))
+
+(define (app-state-finish-job state id result)
+  (define ledger (job-finish (app-state-jobs state) id result))
+  (if (eq? ledger (app-state-jobs state))
+      state
+      (struct-copy app-state state [jobs ledger])))
 
 ;;; ════════════════ 键盘 owner ════════════════
 

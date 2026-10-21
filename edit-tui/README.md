@@ -699,6 +699,15 @@ overlay tables ++ focused resource command-stack
 
 (engine-apply-view-action! engine action)   ; -> #f | '() | (listof change)
 
+;; 异步 job（纯账本 + worker runtime）
+(job-submit ledger kind payload tag)        ; -> (values ledger' job)
+(app-state-submit-job state kind payload tag)
+(app-state-finish-job state id result)
+(start-job-runtime services #:event-channel ch #:workers n)
+(dispatch-jobs! runtime (app-state-jobs state))
+(job-result-event id kind result tag)       ; worker -> event channel
+(job-runtime-event-channel runtime)
+
 (run-actions state engine actions)  ; -> state'
 
 (render-frame state engine cache)   ; -> (values cache' bytes)
@@ -1233,11 +1242,12 @@ racket edit-tui/demo/completion-docs.rkt
 选择候选会更新 docs。
 
 ```text
-C-o       光标处补全（库函数 + 本文件/工作区本地词）
+自动补全  输入 symbol 后 debounce（约 180ms）自动打开
+C-o       手动打开补全（库函数 + 本文件/工作区本地词）
 Up/Down   菜单：移动候选；docs：移动 docs 光标
 Tab       下一个候选
-Enter     接受
-Esc/C-g   关闭
+Enter     接受；接受产生的这次编辑不会立刻再次自动补全
+Esc/C-g   关闭；关闭后直到下一次编辑前不自动重开
 M-d       光标处标识符文档
 C-x d     显 / 隐 docs 面板
 C-x o     补全菜单 <-> docs 焦点切换；切到 docs 时补全不关闭

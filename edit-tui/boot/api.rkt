@@ -5,6 +5,8 @@
 ;;; engine 的 API 在骨架面（core/skeleton.rkt），这里只导出 runtime 自己的东西。
 
 (require "actions.rkt"
+         "jobs.rkt"
+         "timers.rkt"
          "plugin.rkt"
          "host.rkt"
          "start.rkt"
@@ -14,6 +16,8 @@
          "loop.rkt")
 
 (provide (all-from-out "actions.rkt"
+                       "jobs.rkt"
+                       "timers.rkt"
                        "plugin.rkt"
                        "host.rkt"
                        "start.rkt"

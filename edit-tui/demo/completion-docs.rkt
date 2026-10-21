@@ -20,6 +20,8 @@
 ;;;   racket edit-tui/demo/completion-docs.rkt
 
 (require (except-in racket/list range)
+         racket/async-channel
+         racket/match
          racket/string
          racket/path
          (prefix-in tui: tui)
@@ -31,21 +33,34 @@
          "../source/api.rkt"
          "completion-popup.rkt")
 
-(provide demo-state demo-engine prepare-demo!)
+(provide demo-state demo-engine prepare-demo!
+         completion-service docs-service handle-job-result
+         demo-services
+         handle-auto-timer!)
 
 ;;; ════════════════ 数据 ════════════════
 
 (struct demo-source
-  (doc-id view-id source-id path text line col workspace)
+  (doc-id view-id source-id path text version line col workspace)
   #:transparent)
 
 (struct completion-state
-  (target-vid prefix candidates index source-info)
+  (target-vid prefix candidates index source-info request-id status)
   #:transparent)
 
 (struct docs-state
   (lines faces)
   #:transparent)
+
+(struct docs-request
+  (id tag)
+  #:transparent)
+
+(struct auto-state
+  (timer-id dismissed? suppress-next?)
+  #:transparent)
+
+(define empty-auto (auto-state #f #f #f))
 
 (define (store-ref state key default)
   (hash-ref (app-state-store state) key default))
@@ -57,6 +72,12 @@
 (define empty-docs
   (docs-state (list "No docs yet — open completion or press M-d")
               (list 'docs-dim)))
+
+(define (auto-state-of state)
+  (store-ref state 'demo/auto empty-auto))
+
+(define (auto-state-put state a)
+  (store-set state 'demo/auto a))
 
 ;;; ════════════════ id / view ════════════════
 
@@ -136,11 +157,76 @@
   (define lines (doc-lines name local-doc maybe-doc))
   (docs-state lines (doc-faces lines local-doc maybe-doc)))
 
+;; 本地预览是同步的（只查 workspace 里的定义），库文档由 docs-service 异步补。
+(define (local-docs-state-for info name)
+  (define ws (demo-source-workspace info))
+  (define sid (demo-source-source-id info))
+  (define local-doc (docs-local ws sid name))
+  (define lines (doc-lines name local-doc #f))
+  (docs-state lines (doc-faces lines local-doc #f)))
+
+(define (make-docs-request-tag info name)
+  (list 'docs (demo-source-source-id info) (demo-source-version info) name))
+
+;; 设置本地预览，同时提交异步 docs job。
+(define (request-docs! state info name)
+  (define tag (make-docs-request-tag info name))
+  (define state1 (store-set state 'demo/docs (local-docs-state-for info name)))
+  (define-values (state2 job)
+    (app-state-submit-job state1 'docs (list 'docs info name) tag))
+  (store-set state2 'demo/docs-request (docs-request (job-id job) tag)))
+
 (define (update-docs-for-name state name)
   (define info (store-ref state 'demo/source #f))
   (if (not info)
       state
-      (store-set state 'demo/docs (docs-state-for info name))))
+      (request-docs! state info name)))
+
+;;; ════════════════ 自动补全状态 ════════════════
+
+(define (auto-clear-timer! state)
+  (define a (auto-state-of state))
+  (if (not (auto-state-timer-id a))
+      state
+      (auto-state-put state (struct-copy auto-state a [timer-id #f]))))
+
+(define (auto-dismiss! state)
+  (auto-state-put state
+                  (struct-copy auto-state (auto-state-of state)
+                               [timer-id #f]
+                               [dismissed? #t])))
+
+(define (auto-suppress-next! state)
+  (auto-state-put state
+                  (struct-copy auto-state (auto-state-of state)
+                               [timer-id #f]
+                               [suppress-next? #t])))
+
+(define (auto-schedule! state timer-runtime delay-ms)
+  (cond
+    [(not timer-runtime) state]
+    [else
+     (define id (schedule-timer! timer-runtime delay-ms))
+     (auto-state-put state
+                     (struct-copy auto-state (auto-state-of state)
+                                  [timer-id id]))]))
+
+;; 自动补全只在前缀是 symbol token 时触发；string/comment 里不弹。
+(define (auto-context-prefix info)
+  (define text (demo-source-text info))
+  (define line (demo-source-line info))
+  (define col (demo-source-col info))
+  (define prefix (completion-prefix text line col))
+  (cond
+    [(zero? (string-length prefix)) #f]
+    [else
+     (define lines (string-split text "\n" #:trim? #f))
+     (cond
+       [(>= line (length lines)) #f]
+       [else
+        (define tokens (list-ref (tokenize text) line))
+        (define t (line-token-at tokens col))
+        (and t (eq? (token-kind t) 'symbol) prefix)])]))
 
 ;;; ════════════════ completion ════════════════
 
@@ -154,20 +240,31 @@
     [else (app-state-clear-key-owner
            (store-set state 'demo/completion #f))]))
 
+(define (completion-context-for info)
+  (make-completion-context (demo-source-path info)
+                           (demo-source-text info)
+                           #:workspace (demo-source-workspace info)
+                           #:id (demo-source-source-id info)))
+
 (define (completion-candidates-for info prefix)
-  (define ctx
-    (make-completion-context (demo-source-path info)
-                             (demo-source-text info)
-                             #:workspace (demo-source-workspace info)
-                             #:id (demo-source-source-id info)))
+  (define ctx (completion-context-for info))
   (and ctx (completion-candidates ctx prefix)))
+
+(define (completion-local-candidates-for info prefix)
+  (define ctx (completion-context-for info))
+  (and ctx (completion-candidates/local ctx prefix)))
+
+(define (completion-request-tag info prefix)
+  (list 'completion
+        (demo-source-source-id info)
+        (demo-source-version info)
+        prefix))
 
 (define (set-completion-index state c index)
   (define c* (struct-copy completion-state c [index index]))
   (define state* (store-set state 'demo/completion c*))
   (define name (list-ref (completion-state-candidates c*) index))
-  (store-set state* 'demo/docs
-             (docs-state-for (completion-state-source-info c*) name)))
+  (request-docs! state* (completion-state-source-info c*) name))
 
 (define (demo-complete-start state)
   (define info (store-ref state 'demo/source #f))
@@ -183,22 +280,104 @@
        [(zero? (string-length prefix))
         (values (app-state-with-flash state "completion: no prefix") '())]
        [else
-        (define cands0 (with-handlers ([exn:fail? (lambda (_) '())])
-                         (completion-candidates-for info prefix)))
-        (define cands (take cands0 (min 50 (length cands0))))
+        ;; 本地候选同步开菜单； require exports / docs 走后台。
+        (define local0 (with-handlers ([exn:fail? (lambda (_) '())])
+                         (completion-local-candidates-for info prefix)))
+        (define local (take local0 (min 50 (length local0))))
+        (define tag (completion-request-tag info prefix))
+        (define c0 (completion-state (demo-source-view-id info)
+                                     prefix local 0 info #f
+                                     (if (null? local) 'loading 'local)))
+        (define state1 (store-set state 'demo/completion c0))
+        (define state2
+          (app-state-set-key-owner
+           state1 'completion-menu
+           completion-command-stack))
+        (define state3
+          (if (null? local)
+              state2
+              (request-docs! state2 info (car local))))
+        (define-values (state4 job)
+          (app-state-submit-job state3 'completion
+                                (list 'completion info prefix) tag))
+        (define c1 (struct-copy completion-state c0 [request-id (job-id job)]))
+        (values (store-set state4 'demo/completion c1) '())])]))
+
+;; 菜单已经打开时，change 触发的是 refine，而不是重新打开。
+(define (auto-refine-completion! state info prefix)
+  (define c (current-completion state))
+  (define local0 (with-handlers ([exn:fail? (lambda (_) '())])
+                   (completion-local-candidates-for info prefix)))
+  (define local (take local0 (min 50 (length local0))))
+  (define c1 (struct-copy completion-state c
+                          [prefix prefix]
+                          [candidates local]
+                          [index 0]
+                          [status (if (null? local) 'loading 'local)]
+                          [request-id #f]))
+  (define state1 (auto-clear-timer! (store-set state 'demo/completion c1)))
+  (define state2 (if (null? local)
+                     state1
+                     (request-docs! state1 info (car local))))
+  (define-values (state3 job)
+    (app-state-submit-job state2 'completion
+                          (list 'completion info prefix)
+                          (completion-request-tag info prefix)))
+  (define c2 (struct-copy completion-state c1 [request-id (job-id job)]))
+  (store-set state3 'demo/completion c2))
+
+(define (relevant-change? focus-info changes)
+  (and focus-info
+       (for/or ([dc (in-list changes)])
+         (equal? (doc-change-doc-id dc) (demo-source-doc-id focus-info)))))
+
+;; 消费 pending-doc-changes：schedule / refine / suppress。
+(define (process-doc-changes! state focus-info changes timer-runtime)
+  (cond
+    [(not (relevant-change? focus-info changes)) state]
+    [else
+     (define a (auto-state-of state))
+     (cond
+       [(auto-state-suppress-next? a)
+        (auto-state-put state (struct-copy auto-state a [suppress-next? #f]))]
+       [else
+        (define a1 (struct-copy auto-state a
+                                [timer-id #f]
+                                [dismissed? #f]))
+        (define state1 (auto-state-put state a1))
         (cond
-          [(null? cands)
-           (values (app-state-with-flash state "completion: no candidates") '())]
+          [(input-active? state1) state1]
+          [(app-state-placement state1) state1]
           [else
-           (define c (completion-state (demo-source-view-id info)
-                                       prefix cands 0
-                                       info))
-           (define state1 (store-set state 'demo/completion c))
-           (define state2
-             (app-state-set-key-owner
-              state1 'completion-menu
-              completion-command-stack))
-           (values (set-completion-index state2 c 0) '())])])]))
+           (define c (current-completion state1))
+           (define prefix (auto-context-prefix focus-info))
+           (cond
+             [(not prefix)
+              (if c (close-completion state1) state1)]
+             [(not c)
+              (auto-schedule! state1 timer-runtime 180)]
+             [else (auto-refine-completion! state1 focus-info prefix)])])])]))
+
+(define (handle-auto-timer! state timer-id)
+  (define a (auto-state-of state))
+  (cond
+    [(not (equal? timer-id (auto-state-timer-id a))) state]
+    [else
+     (define state1 (auto-clear-timer! state))
+     (define info (store-ref state1 'demo/source #f))
+     (define fp (app-state-focus-panel-resource state1))
+     (cond
+       [(or (not info)
+            (not fp)
+            (not (eq? (panel-kind fp) 'editor))
+            (input-active? state1)
+            (app-state-placement state1)
+            (current-completion state1))
+        state1]
+       [(auto-context-prefix info)
+        (define-values (state2 _actions) (demo-complete-start state1))
+        state2]
+       [else state1])]))
 
 (define (demo-complete-next state)
   (define c (current-completion state))
@@ -224,7 +403,7 @@
      (define cand (list-ref (completion-state-candidates c)
                             (completion-state-index c)))
      (define ins (completion-insert-text cand (completion-state-prefix c)))
-     (define state1 (close-completion state))
+     (define state1 (auto-suppress-next! (close-completion state)))
      (values state1
              (if (zero? (string-length ins))
                  '()
@@ -233,7 +412,10 @@
                                     (string->bytes/utf-8 ins)))))]))
 
 (define (demo-complete-cancel state)
-  (values (close-completion state) '()))
+  (values (if (current-completion state)
+              (auto-dismiss! (close-completion state))
+              state)
+          '()))
 
 ;;; ════════════════ docs 命令 ════════════════
 
@@ -470,6 +652,7 @@
                   (source-id 'buffer did)
                   (and r (resource-path (app-state-resources state) rid))
                   (engine-doc-text engine did)
+                  (engine-doc-version engine did)
                   (or (engine-view-point-line engine vid) 0)
                   (or (engine-view-point-column engine vid) 0)
                   ws)]))
@@ -563,20 +746,86 @@
       completion-command-stack)]
     [else (app-state-clear-key-owner state)]))
 
-(define (prepare-demo! state engine)
+(define (prepare-demo! state engine #:timer-runtime [timer-runtime #f])
   (define ws (collect-workspace state engine))
   (define focus-info (editor-source-for state engine ws))
-  ;; docs 获得焦点时，completion 仍使用打开时的 source，不因为当前焦点是 docs 而关闭。
-  (define c (current-completion state))
   (define state1
     (store-set (store-set state 'demo/source focus-info)
                'demo/workspace ws))
-  (define state2 (sync-docs-view! state1 engine))
-  (define state3 (sync-completion-key-owner state2))
+  ;; change 只在这里消费一次；自动补全的触发/refine 都在这一层做。
+  (define-values (changes state2) (app-state-take-doc-changes state1))
+  (define state3 (process-doc-changes! state2 focus-info changes timer-runtime))
+  ;; docs 获得焦点时，completion 仍使用打开时的 source，不因为当前焦点是 docs 而关闭。
+  (define c (current-completion state3))
+  (define state4 (sync-docs-view! state3 engine))
+  (define state5 (sync-completion-key-owner state4))
   (cond
-    [(not c) (values state3 '())]
-    [(not (completion-state-source-info c)) (values (close-completion state3) '())]
-    [else (values state3 (sync-completion! state3 engine c))]))
+    [(not c) (values state5 '())]
+    [(not (completion-state-source-info c)) (values (close-completion state5) '())]
+    [else (values state5 (sync-completion! state5 engine c))]))
+
+;;; ════════════════ 后台 services ════════════════
+
+(define (completion-service payload)
+  (match-define (list 'completion info prefix) payload)
+  (completion-candidates-for info prefix))
+
+(define (docs-service payload)
+  (match-define (list 'docs info name) payload)
+  (docs-state-for info name))
+
+(define demo-services
+  (list (service 'completion completion-service)
+        (service 'docs docs-service)))
+
+;; job result -> state。只接受仍匹配当前 request-id 的结果。
+(define (handle-job-result state ev)
+  (define state0 (app-state-finish-job state
+                                       (job-result-event-id ev)
+                                       (job-result-event-result ev)))
+  (case (job-result-event-kind ev)
+    [(completion)
+     (define c (current-completion state0))
+     (cond
+       [(not c) state0]
+       [(not (equal? (completion-state-request-id c)
+                     (job-result-event-id ev)))
+        state0]
+       [else
+        (define result (job-result-event-result ev))
+        (define cands
+          (if (and (list? result) (andmap string? result))
+              result
+              (completion-state-candidates c)))
+        (cond
+          [(and (null? cands) (null? (completion-state-candidates c)))
+           (app-state-with-flash (auto-dismiss! (close-completion state0))
+                                 "completion: no candidates")]
+          [else
+           (define idx (min (completion-state-index c)
+                            (sub1 (max 1 (length cands)))))
+           (define c1 (struct-copy completion-state c
+                                   [candidates cands]
+                                   [index idx]
+                                   [status 'ready]))
+           (define state1 (store-set state0 'demo/completion c1))
+           (if (null? cands)
+               state1
+               (request-docs! state1
+                              (completion-state-source-info c1)
+                              (list-ref cands idx)))])])]
+    [(docs)
+     (define dr (store-ref state0 'demo/docs-request #f))
+     (cond
+       [(and dr (equal? (docs-request-id dr) (job-result-event-id ev)))
+        (define result (job-result-event-result ev))
+        (cond
+          [(docs-state? result)
+           (store-set (store-set state0 'demo/docs result)
+                      'demo/docs-request #f)]
+          [else (store-set state0 'demo/docs-request #f)])]
+       [else state0])]
+    [else state0]))
 
 ;;; ════════════════ 事件循环 ════════════════
 
@@ -596,23 +845,49 @@
          (define-values (type data mods) (tui:read-event/raw))
          (define e (tui-event->app type data mods))
          (if e e (loop))))
-     (let loop ([state state0] [cache #f])
-       (define-values (state1 panels) (sync-ui/panels! state engine))
-       (define-values (state2 overlays) (prepare-demo! state1 engine))
-       (define-values (cache* bytes)
-         (render-frame state2 engine cache #:panels panels #:overlays overlays))
-       (unless (zero? (bytes-length bytes))
-         (tui:put-bytes bytes)
-         (tui:flush!))
-       (define ev (read-app-event))
-       (define cache** (if (resize-event? ev) #f cache*))
-       (define-values (state3 actions) (step state2 ev))
-       (define state4 (run-actions state3 engine actions))
-       (define-values (state5 more) (input-reconcile state4))
-       (define state6 (run-actions state5 engine more))
-       (if (app-state-quit? state6)
-           state6
-           (loop state6 cache**))))))
+     (define event-channel (make-async-channel))
+     (define input-thread
+       (thread (λ ()
+                 (let loop ()
+                   (async-channel-put event-channel (read-app-event))
+                   (loop)))))
+     (define runtime
+       (start-job-runtime demo-services
+                          #:event-channel event-channel
+                          #:workers 2))
+     (define timer-runtime (start-timer-runtime #:event-channel event-channel))
+     (dynamic-wind
+      void
+      (λ ()
+        (let loop ([state state0] [cache #f])
+          (dispatch-jobs! runtime (app-state-jobs state))
+          (define-values (state1 panels) (sync-ui/panels! state engine))
+          (define-values (state2 overlays)
+            (prepare-demo! state1 engine #:timer-runtime timer-runtime))
+          (define-values (cache* bytes)
+            (render-frame state2 engine cache #:panels panels #:overlays overlays))
+          (unless (zero? (bytes-length bytes))
+            (tui:put-bytes bytes)
+            (tui:flush!))
+          (define ev (async-channel-get event-channel))
+          (define cache** (if (resize-event? ev) #f cache*))
+          (cond
+            [(job-result-event? ev)
+             (loop (handle-job-result state2 ev) cache**)]
+            [(timer-event? ev)
+             (loop (handle-auto-timer! state2 (timer-event-id ev)) cache**)]
+            [else
+             (define-values (state3 actions) (step state2 ev))
+             (define state4 (run-actions state3 engine actions))
+             (define-values (state5 more) (input-reconcile state4))
+             (define state6 (run-actions state5 engine more))
+             (if (app-state-quit? state6)
+                 state6
+                 (loop state6 cache**))])))
+      (λ ()
+        (kill-thread input-thread)
+        (stop-job-runtime runtime)
+        (stop-timer-runtime timer-runtime))))))
 
 (module+ main
   (void (run-demo demo-state engine)))

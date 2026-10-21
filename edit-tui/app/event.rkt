@@ -7,6 +7,8 @@
          (struct-out resize-event)
          (struct-out paste-event)
          (struct-out internal-event)
+         (struct-out job-result-event)
+         (struct-out timer-event)
          (struct-out quit-event)
          event? event-kind)
 
@@ -17,11 +19,14 @@
 (struct paste-event    (bytes)        #:transparent)
 ;; 原始粘贴字节；解码在写进 buffer 时做一次
 (struct internal-event (kind data)    #:transparent)
+(struct job-result-event (id kind result tag) #:transparent)
+(struct timer-event    (id)           #:transparent)
 (struct quit-event     ()             #:transparent)
 
 (define (event? x)
   (or (key-event? x) (mouse-event? x) (resize-event? x)
-      (paste-event? x) (internal-event? x) (quit-event? x)))
+      (paste-event? x) (internal-event? x) (job-result-event? x)
+      (timer-event? x) (quit-event? x)))
 
 (define (event-kind x)
   (cond [(key-event? x)      'key]
@@ -29,5 +34,7 @@
         [(resize-event? x)   'resize]
         [(paste-event? x)    'paste]
         [(internal-event? x) 'internal]
+        [(job-result-event? x) 'job-result]
+        [(timer-event? x)    'timer]
         [(quit-event? x)     'quit]
         [else                'unknown]))

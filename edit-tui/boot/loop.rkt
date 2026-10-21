@@ -12,6 +12,7 @@
 ;;; IO 可注入，方便 headless 测试 / 换终端。
 
 (require (prefix-in tui: tui)
+         racket/async-channel
          "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/step.rkt"
@@ -19,6 +20,7 @@
          "../chrome/api.rkt"
          "actions.rkt"
          "frame.rkt"
+         "jobs.rkt"
          "start.rkt"
          "sync.rkt"
          "tui-adapter.rkt")
@@ -49,8 +51,12 @@
 
 (define (run-loop state engine
                   #:read-event [read-event (λ () (error 'run-loop "no read-event"))]
-                  #:write-bytes [write-bytes (λ (b) (void))])
+                  #:write-bytes [write-bytes (λ (b) (void))]
+                  #:job-runtime [job-runtime #f])
   (let loop ([state state] [cache #f] [layout-cache #f])
+    ;; 先派发上一轮 step/actions 产生的 job；结果会回到 read-event 的事件源。
+    (when job-runtime
+      (dispatch-jobs! job-runtime (app-state-jobs state)))
     ;; solve 放在 sync 之前：sync 里的 input reconcile 只改焦点 / active view，
     ;; 不改几何；真正的结构变化会在下一帧因 layout-solve-key 变化而重新 solve。
     (define layout (app-state-layout state))
@@ -65,19 +71,32 @@
       (write-bytes bytes))
     (define ev (read-event))
     (define cache** (if (resize-event? ev) #f cache*))
-    (define-values (state1 actions) (step state* ev #:solution solution))
-    ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），
-    ;; 这里再 reconcile 一次；被挤占的插件请求会在这里回调 on-done。
-    (define state2 (run-actions state1 engine actions))
-    (define-values (state3 more) (input-reconcile state2))
-    (define state4 (run-actions state3 engine more))
-    (if (app-state-quit? state4)
-        state4
-        (loop state4 cache** layout-cache*))))
+    (cond
+      [(job-result-event? ev)
+       (when job-runtime
+         (forget-dispatched-job! job-runtime (job-result-event-id ev)))
+       (loop (app-state-finish-job state*
+                                   (job-result-event-id ev)
+                                   (job-result-event-result ev))
+             cache** layout-cache*)]
+      [else
+       (define-values (state1 actions) (step state* ev #:solution solution))
+       ;; action 也可能产生新 prompt（例如写文件后继续下一个确认），
+       ;; 这里再 reconcile 一次；被挤占的插件请求会在这里回调 on-done。
+       (define state2 (run-actions state1 engine actions))
+       (define-values (state3 more) (input-reconcile state2))
+       (define state4 (run-actions state3 engine more))
+       (if (app-state-quit? state4)
+           state4
+           (loop state4 cache** layout-cache*))])))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
 ;; 传 #:host 时先 install 所有插件，退出时逆序 teardown。
-(define (run-app state engine #:host [host #f])
+;; terminal reader thread 与 job worker 共享同一个 event channel，run-loop 只读它。
+(define (run-app state engine
+                 #:host [host #f]
+                 #:services [services '()]
+                 #:job-workers [job-workers 2])
   (define state0 (if host (start-app host state) state))
   (define result
     (tui:with-tui
@@ -96,7 +115,24 @@
            (define-values (type data mods) (tui:read-event/raw))
            (define e (tui-event->app type data mods))
            (if e e (loop))))
-       (run-loop state* engine
-                 #:read-event read-app-event
-                 #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))))))
+       (define event-channel (make-async-channel))
+       (define input-thread
+         (thread (λ ()
+                   (let loop ()
+                     (async-channel-put event-channel (read-app-event))
+                     (loop)))))
+       (define runtime
+         (start-job-runtime services
+                            #:event-channel event-channel
+                            #:workers job-workers))
+       (dynamic-wind
+        void
+        (λ ()
+          (run-loop state* engine
+                    #:read-event (λ () (async-channel-get event-channel))
+                    #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
+                    #:job-runtime runtime))
+        (λ ()
+          (kill-thread input-thread)
+          (stop-job-runtime runtime))))))
   (if host (host-teardown host result engine) result))

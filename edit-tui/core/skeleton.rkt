@@ -17,6 +17,7 @@
 ;;; 插件之间只经对方 api.rkt；runtime 才解释 action / 做 IO / 渲染。
 
 (require "base/api.rkt"
+         "job/api.rkt"
          "panel/api.rkt"
          "layout/api.rkt"
          "focus/api.rkt"
@@ -27,6 +28,7 @@
          "engine/api.rkt")
 
 (provide (all-from-out "base/api.rkt"
+                       "job/api.rkt"
                        "panel/api.rkt"
                        "layout/api.rkt"
                        "focus/api.rkt"

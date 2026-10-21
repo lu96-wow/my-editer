@@ -103,6 +103,7 @@
     "core/command/key.rkt" "core/command/table.rkt" "core/command/api.rkt"
     "core/layout/config.rkt"
     "core/face/model.rkt" "core/face/api.rkt"
+    "core/job/model.rkt" "core/job/api.rkt"
     "core/panel/model.rkt" "core/panel/api.rkt"
     "core/layout/tree.rkt" "core/layout/solve.rkt" "core/layout/ops.rkt" "core/layout/api.rkt"
     "core/focus/model.rkt" "core/focus/api.rkt"
