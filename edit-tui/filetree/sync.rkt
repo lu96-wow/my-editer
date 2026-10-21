@@ -47,8 +47,7 @@
            (filetree-lines root
                            (filetree-expanded f)
                            (opened-path-set state)
-                           dir-entries
-                           #:display-path (λ (p) (resource-display-path store p)))))
+                           dir-entries)))
      (define f0 (if cached? f (filetree-set-projection f key rows)))
      (define vid (filetree-view f0))
      ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准。

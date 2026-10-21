@@ -88,9 +88,9 @@
 (define s6 (press s5 e0 (key 'delete)))
 (check-equal? (engine-view-text e0 1) "Hi\n")
 
-;; C-d 删后一个字符（新状态，避免落在最后空行行尾）
+;; Delete 删后一个字符（新状态，避免落在最后空行行尾）
 (define-values (d0 de) (make-state "Hi"))
-(define d1 (press d0 de (key 'd 'ctrl)))
+(define d1 (press d0 de (key 'delete)))
 (check-equal? (engine-view-text de 1) "i")
 
 ;;; ---------- 导航：C-a / C-e ----------

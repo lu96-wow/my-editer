@@ -27,10 +27,11 @@
 (define rows (filetree-rows f))
 (check-true (> (length rows) 0))
 (check-equal? (filetree-line-kind (car rows)) 'root)
-;; 根路径由 resource 管理；显示时根内路径用相对路径（根本身 = "."）
+;; 文件树根显示绝对路径，不走 resource-display-path 的相对路径显示
 (check-equal? (resource-root (app-state-resources state2))
               (resource-normalize-path root))
-(check-equal? (filetree-line-text (car rows)) ".")
+(check-equal? (filetree-line-text (car rows))
+              (resource-normalize-path root))
 
 (define (find-row pred)
   (for/first ([l (in-list rows)] [i (in-naturals)] #:when (pred l)) i))

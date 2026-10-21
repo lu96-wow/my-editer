@@ -16,7 +16,8 @@
 ;;;   直接打字      插入（任意可打印字符，含大写 / 中文）
 ;;;   Enter         换行
 ;;;   Tab           插入两个空格
-;;;   Backspace     删前一个字符      Delete / C-d  删后一个字符
+;;;   Backspace     删前一个字符      Delete  删后一个字符
+;;;   C-d           删除当前 editor 窗口；最后一个 editor 只清 view
 ;;;   ←→↑↓ / Home / End  移动             Shift+方向  扩展选区
 ;;;   C-a / C-e     行首 / 行尾
 ;;;   PageUp/Down   翻页              C-k  删到行尾

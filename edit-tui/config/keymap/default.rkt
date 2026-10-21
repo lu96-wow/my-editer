@@ -70,7 +70,6 @@
      (list (list (key 'tab))       (insert-command "  "))
      (list (list (key 'backspace)) (edit-action-command 'backspace))
      (list (list (key 'delete))    (edit-action-command 'delete))
-     (list (list (key 'd 'ctrl))   (edit-action-command 'delete))
      (list (list (key 'k 'ctrl))   (edit-action-command 'kill-line))
      ;; 历史
      (list (list (key 'z 'ctrl)) (edit-action-command 'undo))
@@ -90,7 +89,8 @@
    [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
    [(key 'w 'ctrl) (key 'right) (split-command 'right)]
    [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
-   [(key 'w 'ctrl) (key 'down)  (split-command 'down)]))
+   [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
+   [(key 'd 'ctrl)              close-editor-panel-command]))
 
 ;;; ════════════════ filetree ════════════════
 

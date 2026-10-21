@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/app/commands.rkt —— 应用级命令（split / focus / save / quit）
+;;; edit-tui-rebuild/app/commands.rkt —— 应用级命令（layout / focus / save / quit）
 ;;;
 ;;; 只定义命令，不定义键位；键位在 config/keymap/。
 ;;; 所有命令都是 (state -> (values state actions))，不碰 engine / IO。
@@ -9,6 +9,7 @@
          "state.rkt")
 
 (provide split-command
+         close-editor-panel-command
          toggle-filetree-command
          focus-command
          save-command
@@ -29,6 +30,36 @@
                               [next-panel-id (add1 nid)]))
                 '())
         (values (app-state-with-flash state "split failed") '()))))
+
+;; C-d：只处理 editor panel，不关闭 resource / buffer。
+;; 还有其他 editor -> 删除当前 panel；
+;; 已是最后一个 editor -> 只清空它的 views，保留 slot。
+(define (other-editor-panel? layout pid)
+  (for/or ([id (in-list (layout-visible-panel-ids layout))])
+    (and (not (equal? id pid))
+         (eq? (panel-kind (layout-panel layout id)) 'editor)
+         id)))
+
+(define (close-editor-panel-command state)
+  (define pid (app-state-focus-panel-id state))
+  (define p (app-state-panel state pid))
+  (define layout (app-state-layout state))
+  (cond
+    [(not p)
+     (values (app-state-with-flash state "close: no focused panel") '())]
+    [(not (eq? (panel-kind p) 'editor))
+     (values (app-state-with-flash state "close: focus is not an editor panel") '())]
+    [else
+     (define-values (layout* ok?)
+       (if (other-editor-panel? layout pid)
+           (layout-panel-remove layout pid
+                                #:config (app-state-layout-config state))
+           (layout-panel-clear-content layout pid)))
+     (if ok?
+         (values (app-state-refresh-focus-resource
+                  (struct-copy app-state state [layout layout*]))
+                 '())
+         (values (app-state-with-flash state "close editor panel failed") '()))]))
 
 (define (toggle-filetree-command state)
   (define layout (app-state-layout state))

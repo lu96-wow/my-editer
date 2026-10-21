@@ -141,4 +141,18 @@
   (check-equal? (engine-view-point-line demo-engine 10) (sub1 ft-row-count))
   (check-equal? (engine-view-point-column demo-engine 10) 2))
 
+;;; ---------- C-d：最后一个 editor 只清 view；多个 editor 时删 panel ----------
+(define-values (s-cd a-cd) (step ed-state (key-event (key 'd 'ctrl))))
+(check-equal? a-cd '())
+(check-not-false (layout-panel (app-state-layout s-cd) 'editor))
+(check-false (panel-view (layout-panel (app-state-layout s-cd) 'editor)))
+(check-false (app-state-focus-resource s-cd))
+(check-not-false (resource-ref (app-state-resources s-cd) 1))
+
+(define-values (s-split _a-split) (step ed-state (key-event (key 'w 'ctrl))))
+(define-values (s-split2 _a-split2) (step s-split (key-event (key 'right))))
+(define-values (s-cd2 _a-cd2) (step s-split2 (key-event (key 'd 'ctrl))))
+(check-false (layout-panel (app-state-layout s-cd2) 'editor))
+(check-not-false (layout-panel (app-state-layout s-cd2) 100))
+
 (displayln "edit-tui-rebuild/test/layout-demo.rkt: ok")

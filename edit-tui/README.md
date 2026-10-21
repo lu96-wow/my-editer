@@ -317,7 +317,7 @@ placement-table  placement 临时表（Enter/Esc/方向）
 ```text
 cursor-command-table    方向 / Home / End / 翻页 / C-a / C-e / C-f
 focus-command-table     C-x 方向
-layout-command-table    C-w 方向
+layout-command-table    C-w 方向 / C-d 删除/清空当前 editor
 global-command-table    cursor + focus + layout
 app-command-table       filetree 显隐 / save / quit
 edit-command-table      cursor + 插入 / 删除 / 历史（buffer 局部）
@@ -669,14 +669,13 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 ;;   set-cursor  : 程序化设光标（cursor-dirty? = #t，下一次 sync 推给 view）
 ;;   sync-cursor : sync 从 view 读回镜像（cursor-dirty? = #f）
 
-(filetree-lines root expanded opened dir-lister
-                #:display-path display-path)        ; 纯行投影
+(filetree-lines root expanded opened dir-lister)  ; 纯行投影；根显示绝对路径
 (filetree-line-at rows line)
 (dir-entries path)                                 ; 唯一 IO 点
 
 ;; 根路径 / 路径显示都在 resource 层（filetree 只是使用者）
 (resource-root store)
-(resource-display-path store path)  ; 根内相对；根外绝对
+(resource-display-path store path)  ; 状态栏 / 保存提示用；根内相对
 (resource-normalize-path path)
 (resource-find-by-path store path)
 
@@ -981,8 +980,9 @@ C-q -> resource-request-quit
 `test/quit-save.rkt` 覆盖 dirty -> confirm -> save-as -> 写文件 -> quit，
 以及 skip / cancel / 无效回答。
 
-路径显示只走 `resource-display-path`：启动根内的文件显示相对路径，
-根外显示绝对路径；resource / filetree / 保存仍然全部使用绝对路径。
+文件树根直接显示 `resource-root` 的规范化绝对路径，不使用
+`resource-display-path`。状态栏 / 保存提示仍然走 `resource-display-path`
+（根内相对、根外绝对）；resource / filetree / 保存的数据仍然全部使用绝对路径。
 
 `resource-open` 返回 action 数据：
 
@@ -1115,6 +1115,7 @@ racket edit-tui-rebuild/demo/interactive.rkt
 
 ```text
 C-w ←→↑↓   拆分当前 editor
+C-d        删除当前 editor 窗口；最后一个只清 view
 C-b        显隐 filetree
 C-x ←→↑↓   焦点移动
 C-s        保存当前 resource（无 path -> Save as 输入栏）
@@ -1133,7 +1134,7 @@ C-q        退出（dirty -> 确认输入栏）
 ```text
 直接打字                插入（任意可打印字符，含大写 / 中文）
 Enter / Tab             换行 / 插入两个空格
-Backspace / Delete / C-d 删前 / 删后一个字符
+Backspace / Delete 删前 / 删后一个字符
 ←→↑↓ Home End           导航
 Shift+方向 / Shift+Home End  扩展选区
 C-a / C-e               行首 / 行尾（C-f 逐字符）
