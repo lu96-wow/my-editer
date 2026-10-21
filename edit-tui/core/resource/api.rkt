@@ -27,6 +27,8 @@
  resource-of-view
  resource-command-stack
  resource-set-command-stack
+ resource-mode
+ resource-rebind-mode
  resource-normalize-path
  resource-find-by-path
  resource-root

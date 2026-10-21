@@ -110,7 +110,8 @@ edit-tui/
   config/                  纯配置 / 绑定
     layout/default.rkt
     keymap/default.rkt   全局 / 输入 / placement 表
-    keymap/buffer.rkt    buffer 创建时匹配 per-doc 键表
+    keymap/buffer.rkt   兼容入口：从 buffer-mode 取键表
+    mode.rkt             buffer 创建 / rebind 时选择 mode（键表 + 解析环境 + feature）
     theme/default.rkt
 
   edit/  chrome/  filetree/  resources/   插件（暂时留在根目录）
@@ -165,7 +166,7 @@ edit/api.rkt              nav / scroll / insert / edit-action commands / self-in
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
 resources/api.rkt         model / lines / sync / commands / install
-app/api.rkt               event / state / keymap / action / commands / placement / step
+app/api.rkt               event / state / keymap / buffer-mode / action / commands / placement / step
 boot/api.rkt              plugin / host / start / actions / frame / sync / tui-adapter / loop
 ```
 
@@ -286,7 +287,7 @@ empty-layout-config     ; 没有任何 per-kind 规则
 default-config    ; editor / sidebar / status 的 split / hide / min / max
 ```
 
-- `config/` 只放配置（布局 / 键位 / 主题），没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
+- `config/` 只放配置（布局 / 键位 / 主题 / buffer mode），没有 `api.rkt` / `model.rkt`；选择配置 = require 那个模块；
 - `main.rkt` 不聚合纯配置（和主题一样由宿主直接 require）；
 - `core/skeleton.rkt` 和 `core/layout/ops.rkt` 都不认识 `config/layout/`；
 - layout 结构操作把 config 当**必填参数**：
@@ -305,20 +306,25 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 default-keymap
 ```
 
-per-document 键表在 **buffer 创建时**匹配：
+buffer 创建时一次性选择 `buffer-mode`，它同时绑定解析环境、键表和插件能力：
 
 ```racket
-(require "edit-tui/config/keymap/buffer.rkt")
-(buffer-key-table path text)   ; -> command-table
+(require "edit-tui/config/mode.rkt")
+(define mode (buffer-mode-for-creation path text))
+
+(resource-open store ...
+               #:key-table (buffer-mode-key-table mode)
+               #:mode mode)
 ```
 
-`resource-open` 的 `#:key-table` 是**必填**参数（没有可选默认表）：
+- `.rkt/.rktl/.rktd/.scrbl` -> `racket-mode`
+- 无 path 且首行 `#lang racket` -> `racket-mode`
+- 其他 -> `text-mode`
+- 有 path 的 `.txt` 按路径优先，不因内容像 Racket 而变成 Racket mode
 
-```racket
-(resource-open store ... #:key-table (buffer-key-table path text))
-```
-
-表存进 resource，`app/step` 通过 `resource-command-stack` 查表。
+mode 存进 resource；插件读 `resource-mode`，不再自己判断扩展名。`app/step`
+仍通过 `resource-command-stack` 查已绑定的键表。save-as 成功后 boot 会按新 path
+重新计算 mode / key table。
 
 `keymap` 是 `app/keymap.rkt` 的纯值（不在骨架），只保留应用级槽位：
 
@@ -1012,7 +1018,7 @@ prompt 存在 <=> 输入栏 active
 
 ```racket
 resource-store-empty
-(resource-open store ... #:key-table key-table ...)  ; key-table 必填，buffer 创建时匹配
+(resource-open store ... #:key-table key-table #:mode mode ...)  ; 创建时绑定键表 + 解析环境
 
 resource-ref
 resource-list
@@ -1030,6 +1036,8 @@ resource-writable?
 resource-view-ids
 resource-command-stack
 resource-set-command-stack
+resource-mode
+resource-rebind-mode
 resource-normalize-path
 resource-find-by-path
 

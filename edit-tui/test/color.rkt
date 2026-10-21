@@ -6,7 +6,8 @@
 (require rackunit
          racket/async-channel
          racket/string
-         "../main.rkt")
+         "../main.rkt"
+         "../config/mode.rkt")
 
 (define (drain-color state)
   (define rt (start-job-runtime color-services #:workers 1))
@@ -32,12 +33,14 @@
 
 (define engine (make-engine))
 (define text "(define x 1)\n")
+(define mode (buffer-mode-for-creation "/tmp/edit-tui-color-test.rkt" text))
 (define-values (store actions)
   (resource-open resource-store-empty
                  #:name "a.rkt"
                  #:path "/tmp/edit-tui-color-test.rkt"
                  #:text text
-                 #:key-table (keys)))
+                 #:key-table (buffer-mode-key-table mode)
+                 #:mode mode))
 (define did 1)
 (define vid 1)
 
@@ -71,6 +74,21 @@
 (check-true (face? f-x))
 (check-true (string-prefix? (symbol->string (face-fg f-x)) "word-color-"))
 (check-eq? (face-bg f-x) 'bracket-depth-0)
+
+;; 边界：有 path 的 text mode 即使内容像 Racket，也不写着色 face。
+(define text-mode* (buffer-mode-for-creation "b.txt" "(define x 1)"))
+(define-values (text-store text-actions)
+  (resource-open (app-state-resources state1)
+                 #:name "b.txt"
+                 #:path "/tmp/edit-tui-color-test.txt"
+                 #:text "(define x 1)"
+                 #:key-table (buffer-mode-key-table text-mode*)
+                 #:mode text-mode*))
+(define text-state
+  (run-actions (struct-copy app-state state1 [resources text-store])
+               engine text-actions))
+(define text-state* (sync-editor-colors! text-state engine))
+(check-false (engine-view-face-at engine 2 0 1))
 
 ;; 普通编辑：主线程增量，不产生 color job。
 (define state2

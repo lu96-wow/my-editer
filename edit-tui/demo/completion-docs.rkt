@@ -28,6 +28,7 @@
          "../config/keymap/default.rkt"
          "../config/layout/default.rkt"
          "../config/theme/default.rkt"
+         "../config/mode.rkt"
          "../main.rkt"
          "../lang/racket/api.rkt"
          "../source/api.rkt"
@@ -41,7 +42,7 @@
 ;;; ════════════════ 数据 ════════════════
 
 (struct demo-source
-  (doc-id view-id source-id path text version line col workspace)
+  (doc-id view-id source-id path mode text version line col workspace)
   #:transparent)
 
 (struct completion-state
@@ -135,46 +136,58 @@
       [else 'docs-body])))
 
 (define (docs-state-for info name)
-  (define ws (demo-source-workspace info))
-  (define sid (demo-source-source-id info))
-  (define local-doc (docs-local ws sid name))
-  (define ctx
-    (make-completion-context (demo-source-path info)
-                             (demo-source-text info)
-                             #:workspace ws
-                             #:id sid))
-  (define binding
-    (and ctx
-         (with-handlers ([exn:fail? (lambda (_) #f)])
-           (spec-binding-of name
-                            (completion-context-specs ctx)
-                            (completion-context-base-dir ctx)
-                            (completion-context-open ctx)))))
-  (define maybe-doc
-    (and binding
-         (with-handlers ([exn:fail? (lambda (_) #f)])
-           (docs-for name #:modules (list (car binding))))))
-  (define lines (doc-lines name local-doc maybe-doc))
-  (docs-state lines (doc-faces lines local-doc maybe-doc)))
+  (cond
+    [(not (buffer-mode-supports? (demo-source-mode info) 'docs))
+     empty-docs]
+    [else
+     (define ws (demo-source-workspace info))
+     (define sid (demo-source-source-id info))
+     (define local-doc (docs-local ws sid name))
+     (define ctx
+       (make-completion-context (demo-source-path info)
+                                (demo-source-text info)
+                                #:workspace ws
+                                #:id sid))
+     (define binding
+       (and ctx
+            (with-handlers ([exn:fail? (lambda (_) #f)])
+              (spec-binding-of name
+                               (completion-context-specs ctx)
+                               (completion-context-base-dir ctx)
+                               (completion-context-open ctx)))))
+     (define maybe-doc
+       (and binding
+            (with-handlers ([exn:fail? (lambda (_) #f)])
+              (docs-for name #:modules (list (car binding))))))
+     (define lines (doc-lines name local-doc maybe-doc))
+     (docs-state lines (doc-faces lines local-doc maybe-doc))]))
 
 ;; 本地预览是同步的（只查 workspace 里的定义），库文档由 docs-service 异步补。
 (define (local-docs-state-for info name)
-  (define ws (demo-source-workspace info))
-  (define sid (demo-source-source-id info))
-  (define local-doc (docs-local ws sid name))
-  (define lines (doc-lines name local-doc #f))
-  (docs-state lines (doc-faces lines local-doc #f)))
+  (cond
+    [(not (buffer-mode-supports? (demo-source-mode info) 'docs))
+     empty-docs]
+    [else
+     (define ws (demo-source-workspace info))
+     (define sid (demo-source-source-id info))
+     (define local-doc (docs-local ws sid name))
+     (define lines (doc-lines name local-doc #f))
+     (docs-state lines (doc-faces lines local-doc #f))]))
 
 (define (make-docs-request-tag info name)
   (list 'docs (demo-source-source-id info) (demo-source-version info) name))
 
 ;; 设置本地预览，同时提交异步 docs job。
 (define (request-docs! state info name)
-  (define tag (make-docs-request-tag info name))
-  (define state1 (store-set state 'demo/docs (local-docs-state-for info name)))
-  (define-values (state2 job)
-    (app-state-submit-job state1 'docs (list 'docs info name) tag))
-  (store-set state2 'demo/docs-request (docs-request (job-id job) tag)))
+  (cond
+    [(not (buffer-mode-supports? (demo-source-mode info) 'docs))
+     (store-set state 'demo/docs empty-docs)]
+    [else
+     (define tag (make-docs-request-tag info name))
+     (define state1 (store-set state 'demo/docs (local-docs-state-for info name)))
+     (define-values (state2 job)
+       (app-state-submit-job state1 'docs (list 'docs info name) tag))
+     (store-set state2 'demo/docs-request (docs-request (job-id job) tag))]))
 
 (define (update-docs-for-name state name)
   (define info (store-ref state 'demo/source #f))
@@ -218,6 +231,7 @@
   (define col (demo-source-col info))
   (define prefix (completion-prefix text line col))
   (cond
+    [(not (buffer-mode-supports? (demo-source-mode info) 'completion)) #f]
     [(zero? (string-length prefix)) #f]
     [else
      (define lines (string-split text "\n" #:trim? #f))
@@ -241,10 +255,11 @@
            (store-set state 'demo/completion #f))]))
 
 (define (completion-context-for info)
-  (make-completion-context (demo-source-path info)
-                           (demo-source-text info)
-                           #:workspace (demo-source-workspace info)
-                           #:id (demo-source-source-id info)))
+  (and (buffer-mode-supports? (demo-source-mode info) 'completion)
+       (make-completion-context (demo-source-path info)
+                                (demo-source-text info)
+                                #:workspace (demo-source-workspace info)
+                                #:id (demo-source-source-id info))))
 
 (define (completion-candidates-for info prefix)
   (define ctx (completion-context-for info))
@@ -279,6 +294,8 @@
     [(current-completion state) (values state '())]
     [(not info)
      (values (app-state-with-flash state "completion: no editor source") '())]
+    [(not (buffer-mode-supports? (demo-source-mode info) 'completion))
+     (values (app-state-with-flash state "completion: not supported in this buffer") '())]
     [else
      (define prefix (completion-prefix (demo-source-text info)
                                        (demo-source-line info)
@@ -437,6 +454,8 @@
   (define info (store-ref state 'demo/source #f))
   (cond
     [(not info) (values (app-state-with-flash state "docs: no editor source") '())]
+    [(not (buffer-mode-supports? (demo-source-mode info) 'docs))
+     (values (app-state-with-flash state "docs: not supported in this buffer") '())]
     [else
      (define name (identifier-at (demo-source-text info)
                                  (demo-source-line info)
@@ -560,11 +579,13 @@
                   #:area (rect 0 0 80 24)
                   #:next-panel-id 100))
 
+(define demo-mode (buffer-mode-for-creation "demo.rkt" editor-text))
 (define-values (store1 open-actions)
   (resource-open (app-state-resources state0)
                  #:name "demo.rkt"
                  #:text editor-text
-                 #:key-table edit-command-table))
+                 #:key-table (buffer-mode-key-table demo-mode)
+                 #:mode demo-mode))
 (define state1
   (run-actions (struct-copy app-state state0 [resources store1])
                engine open-actions))
@@ -665,6 +686,7 @@
      (demo-source did vid
                   (source-id 'buffer did)
                   (and r (resource-path (app-state-resources state) rid))
+                  (and r (resource-mode r))
                   (engine-doc-text engine did)
                   (engine-doc-version engine did)
                   (or (engine-view-point-line engine vid) 0)

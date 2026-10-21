@@ -15,7 +15,8 @@
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
-         "../config/keymap/buffer.rkt")
+         "../app/buffer-mode.rkt"
+         "../config/mode.rkt")
 
 (provide run-actions)
 
@@ -64,7 +65,12 @@
            (define version (engine-doc-version engine did))
            (define-values (store* more)
              (resource-save-done store rid version))
-           (values (struct-copy app-state state [resources store*]) more)])])]))
+           ;; 边界：save-as 改扩展名后按新 path 重新绑定 mode / key table。
+           (define mode (buffer-mode-for-creation path text))
+           (define store**
+             (resource-rebind-mode store* rid mode
+                                   #:key-table (buffer-mode-key-table mode)))
+           (values (struct-copy app-state state [resources store**]) more)])])]))
 
 ;; view 所属的文档 id；UI 面板（filetree / status / input）没有 resource -> #f。
 (define (view-doc-id state vid)
@@ -138,12 +144,15 @@
         (define name
           (let ([n (file-name-from-path path)])
             (if n (path->string n) path)))
+        ;; 边界：打开文件时一次性绑定 buffer mode 与快捷键。
+        (define mode (buffer-mode-for-creation path text))
         (define-values (store* actions)
           (resource-open (app-state-resources state)
                          #:name name
                          #:path path
                          #:text text
-                         #:key-table (buffer-key-table path text)))
+                         #:key-table (buffer-mode-key-table mode)
+                         #:mode mode))
         (define buffer-action
           (for/first ([a (in-list actions)]
                       #:when (eq? (resource-action-kind a) 'create-buffer))

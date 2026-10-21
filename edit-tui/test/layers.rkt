@@ -158,6 +158,10 @@
               "config/keymap/default.rkt")
 (check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)boot/")
               "config/keymap/default.rkt")
+(check-false (requires-any? "config/mode.rkt" #rx"(^|/)boot/")
+              "config/mode.rkt")
+(check-false (requires-any? "config/mode.rkt" #rx"(^|/)main\\.rkt$")
+              "config/mode.rkt")
 
 ;; 旧位置不再存在（config 只放纯数据）
 (check-false (file-exists? (build-path root "config/api.rkt")))

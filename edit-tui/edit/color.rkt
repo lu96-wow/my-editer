@@ -21,6 +21,7 @@
          "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/event.rkt"
+         "../app/buffer-mode.rkt"
          "../lang/racket/api.rkt")
 
 (provide sync-editor-colors!
@@ -62,11 +63,6 @@
   (color-cache-entry #f #f '() #f #f))
 
 ;;; ════════════════ 纯映射：role -> face track ════════════════
-
-(define (racket-doc? path text)
-  (if path
-      (racket-file? path)
-      (racket-text? text)))
 
 (define (bracket-role? role)
   (and role
@@ -218,12 +214,12 @@
                                    #:base-version doc-version
                                    #:key (list did doc-version 'racket)))))
 
-(define (clear-non-racket-face-track! engine did doc-version views)
+(define (clear-unsupported-face-track! engine did doc-version views)
   (for ([vid (in-list views)])
     (engine-set-view-face-track! engine vid
                                  '()
                                  #:base-version doc-version
-                                 #:key (list did doc-version 'not-racket))))
+                                 #:key (list did doc-version 'unsupported-mode))))
 
 (define (sync-editor-colors! state engine)
   (define resource-store (app-state-resources state))
@@ -237,7 +233,7 @@
     (for/fold ([cache (hash)] [st state])
               ([resource (in-list (resource-list resource-store))])
       (define did (resource-doc-id resource))
-      (define path (resource-path resource-store (resource-id resource)))
+      (define mode (resource-mode resource))
       (define text (and did (engine-doc-text engine did)))
       (cond
         ;; 边界：resource 尚未在 engine 落地 / 没有文本。
@@ -248,7 +244,8 @@
          (define views (resource-views resource))
 
          (cond
-           [(racket-doc? path text)
+           [(buffer-mode-supports-any? mode
+                                      '(syntax word-color brackets))
             (define old-entry (hash-ref old-cache did #f))
             (define pending-result (hash-ref result-inbox did #f))
             (define entry0
@@ -259,9 +256,9 @@
             (apply-current-face-track! engine did doc-version views entry)
             (values (hash-set cache did entry) st*)]
 
-           ;; 边界：非 Racket 文档要清掉 save-as / 改扩展名前的旧 face。
+           ;; 边界：mode 不支持着色时，清掉 save-as / rebind 前的旧 face。
            [else
-            (clear-non-racket-face-track! engine did doc-version views)
+            (clear-unsupported-face-track! engine did doc-version views)
             (values cache st)])])))
 
   ;; result inbox 是一次性投递箱：本帧所有当前 resource 都已检查过，清空。

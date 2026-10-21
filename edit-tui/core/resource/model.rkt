@@ -36,6 +36,7 @@
          resource-list
 
          resource-open
+         resource-rebind-mode
          resource-save
          resource-save-as
          resource-save-done
@@ -68,10 +69,11 @@
 ;;; ════════════════ 数据 ════════════════
 
 (struct resource
-  (id name doc-id views file-path binding-stack version saved-version)
+  (id name doc-id views file-path binding-stack mode version saved-version)
   #:transparent)
 ;; views : (listof view-id)
 ;; path  : string | #f
+;; mode  : opaque buffer-mode | #f（创建时绑定；core 不解释）
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
@@ -221,6 +223,17 @@
     [else
      (store-put store (struct-copy resource r [binding-stack stack]))]))
 
+;; 创建 / save-as 边界用：一次性更换 mode 和对应的 key table。
+(define (resource-rebind-mode store id mode #:key-table key-table)
+  (define r (resource-ref store id))
+  (cond
+    [(not r) store]
+    [else
+     (define stack (command-table-stack-from-tables (list key-table)))
+     (store-put store (struct-copy resource r
+                                   [mode mode]
+                                   [binding-stack stack]))]))
+
 ;;; ════════════════ 打开 ════════════════
 
 ;; → (values store' (listof resource-action))
@@ -229,6 +242,7 @@
                        #:path [path #f]
                        #:text [text ""]
                        #:key-table key-table
+                       #:mode [mode #f]
                        #:version [version 0]
                        #:doc-id [doc-id #f])
   (define rid (resource-store-next-resource-id store))
@@ -238,7 +252,7 @@
   (define path* (and path (resource-normalize-path path)))
   (define name* (or name path* "*scratch*"))
   (define stack (command-table-stack-from-tables (list key-table)))
-  (define r (resource rid name* did (list vid) path* stack version version))
+  (define r (resource rid name* did (list vid) path* stack mode version version))
   (define s1 (store-put store r))
   (define s2 (struct-copy resource-store s1
                           [next-resource-id (add1 rid)]
