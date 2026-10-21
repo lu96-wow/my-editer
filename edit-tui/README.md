@@ -1092,6 +1092,8 @@ resource        per-doc command-table-stack（编辑器）
   外部文件变了用 `C-r` 手动刷新。
 - **布局求解有缓存**：`boot/loop` 以 `(layout 对象, area)` 为键复用
   `layout-solution`；只有布局函数产生新 layout 对象或窗口 resize 才重新 solve。
+- **布局投影每帧只做一次**：`sync-ui/panels!` 生成 panels 并写回 viewport 尺寸，
+  `render-frame` 直接复用同一份 panels，不再重复 `layout->render-panels` / `panels-sync!`。
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
   `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
   core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
