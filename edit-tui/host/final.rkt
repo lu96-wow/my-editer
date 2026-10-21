@@ -80,7 +80,7 @@
   (make-panel 'docs 'docs
               #:views (list docs-vid)
               #:active docs-vid
-              #:fixed-h 8
+              #:fixed-h 1
               #:borders '(up down left right)))
 
 (define status-panel
@@ -94,14 +94,14 @@
                #:panels (hash 'editor empty-editor-panel)
                #:focus 'editor))
 
-;; 先挂 sidebar，再在右侧 editor 子树下挂 docs / status：
-;; sidebar 因此横跨 editor + docs + status 的完整高度。
+;; 先挂 sidebar，再挂 status，最后把 docs 插到 editor 和 status 之间。
+;; 顺序很重要：docs / status 都固定一行时，后挂的固定 panel 不能吃掉剩余高度。
 (define-values (layout1 sidebar-ok?)
   (layout-panel-attach layout0 'editor 'left sidebar-panel #:ratio 3/8))
-(define-values (layout2 docs-ok?)
-  (layout-panel-attach layout1 'editor 'down docs-panel))
-(define-values (layout3 status-ok?)
-  (layout-panel-attach layout2 'docs 'down status-panel))
+(define-values (layout2 status-ok?)
+  (layout-panel-attach layout1 'editor 'down status-panel))
+(define-values (layout3 docs-ok?)
+  (layout-panel-attach layout2 'editor 'down docs-panel))
 
 (unless (and docs-ok? status-ok? sidebar-ok?)
   (error 'final "layout attach failed"))

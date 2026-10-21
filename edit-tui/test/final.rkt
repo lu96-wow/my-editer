@@ -35,10 +35,16 @@
 (define ft-rect (hash-ref rects 'filetree))
 (check-equal? (rect-h ft-rect) (rect-h area))
 (check-equal? (rect-bottom ft-rect) (rect-bottom area))
+(check-equal? (rect-h (hash-ref rects 'docs)) 1)
+(check-equal? (rect-h (hash-ref rects 'status)) 1)
 
 ;; docs 面板四向边框。
 (check-equal? (panel-borders (layout-panel (app-state-layout state) 'docs))
               '(up down left right))
+
+;; docs / status 初始都只占一行。
+(check-equal? (layout-panel-fixed-size (app-state-layout state) 'docs 'tb) 1)
+(check-equal? (layout-panel-fixed-size (app-state-layout state) 'status 'tb) 1)
 
 ;; status panel 同时挂 status / input。
 (define status (layout-panel (app-state-layout state) 'status))
