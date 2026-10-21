@@ -67,6 +67,13 @@
 (for ([vid (in-list '(10 11 21))])
   (check-not-false (engine-view-object engine vid)))
 
+;; Tab 是 sidebar 局部绑定：只在 filetree / resources 内轮换。
+(define sidebar-focused (app-state-set-focus-panel state 'filetree))
+(define-values (tab1 _a1) (step sidebar-focused (key-event (key 'tab))))
+(check-equal? (layout-panel-active-view (app-state-layout tab1) 'filetree) 11)
+(define-values (tab2 _a2) (step tab1 (key-event (key 'tab))))
+(check-equal? (layout-panel-active-view (app-state-layout tab2) 'filetree) 10)
+
 ;; 同步 + 渲染一帧不崩；docs 初始 state 只有一行。
 (define-values (s1 panels) (sync-ui/panels! state engine))
 (define-values (s2 overlays) (prepare-demo! s1 engine))

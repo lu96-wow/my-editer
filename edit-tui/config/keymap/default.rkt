@@ -103,6 +103,8 @@
   (command-table-merge
    navigation-command-table
    (keys
+    ;; 局部 Tab：只在 sidebar 的 filetree view 里切 tab。
+    [(key 'tab)     cycle-sidebar-view-command]
     [(key 'enter)   filetree-enter-command]
     [(key 'r 'ctrl) filetree-refresh-command]
     [(key 'h 'ctrl) filetree-toggle-hidden-command])))
@@ -116,6 +118,8 @@
   (command-table-merge
    navigation-command-table
    (keys
+    ;; 局部 Tab：只在 sidebar 的 resources view 里切 tab。
+    [(key 'tab)     cycle-sidebar-view-command]
     [(key 'enter)   resource-panel-enter-command]
     [(key 'r 'ctrl) resource-panel-refresh-command])))
 
