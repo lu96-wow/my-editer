@@ -34,14 +34,14 @@
 (require racket/list
          racket/path
          racket/string
-         "lex.rkt"
-         "keywords.rkt"
-         "analysis.rkt"
-         "source.rkt"
-         "pool.rkt"
+         "../base/lex.rkt"
+         "../base/keywords.rkt"
+         "../parse/analysis.rkt"
+         "../parse/source.rkt"
+         "../parse/pool.rkt"
          "module-index.rkt"
-         "workspace.rkt"
-         "racket.rkt")
+         "../parse/workspace.rkt"
+         "../base/racket.rkt")
 
 ;;; ════════════════ 上下文 ════════════════
 

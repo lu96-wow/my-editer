@@ -24,8 +24,8 @@
 
 (require racket/list
          racket/string
-         "edit.rkt"
-         "lex.rkt"
+         "../base/edit.rkt"
+         "../base/lex.rkt"
          "highlight.rkt"
          "word-color.rkt")
 

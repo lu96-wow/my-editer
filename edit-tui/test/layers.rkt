@@ -74,22 +74,22 @@
 ;;; 只允许纯 Racket / 本地 lang 模块；不许 require app / boot / 编辑器实现。
 (define lang-files
   '("lang/racket/api.rkt"
-    "lang/racket/racket.rkt"
-    "lang/racket/edit.rkt"
-    "lang/racket/lex.rkt"
-    "lang/racket/keywords.rkt"
-    "lang/racket/highlight.rkt"
-    "lang/racket/word-color.rkt"
-    "lang/racket/color.rkt"
-    "lang/racket/source.rkt"
-    "lang/racket/analysis.rkt"
-    "lang/racket/workspace.rkt"
-    "lang/racket/pool.rkt"
-    "lang/racket/module-index.rkt"
-    "lang/racket/completion.rkt"
-    "lang/racket/docs.rkt"
-    "lang/racket/local-docs.rkt"
-    "lang/racket/doc-html.rkt"))
+    "lang/racket/base/racket.rkt"
+    "lang/racket/base/edit.rkt"
+    "lang/racket/base/lex.rkt"
+    "lang/racket/base/keywords.rkt"
+    "lang/racket/color/highlight.rkt"
+    "lang/racket/color/word-color.rkt"
+    "lang/racket/color/color.rkt"
+    "lang/racket/parse/source.rkt"
+    "lang/racket/parse/analysis.rkt"
+    "lang/racket/parse/pool.rkt"
+    "lang/racket/parse/local-docs.rkt"
+    "lang/racket/parse/workspace.rkt"
+    "lang/racket/completion/module-index.rkt"
+    "lang/racket/completion/completion.rkt"
+    "lang/racket/docs/docs.rkt"
+    "lang/racket/docs/doc-html.rkt"))
 
 (for ([m (in-list lang-files)])
   (check-false (requires-any? m upper-layer?) m)

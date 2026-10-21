@@ -13,7 +13,7 @@
          word-color-text)
 
 (require racket/string
-         "lex.rkt")
+         "../base/lex.rkt")
 
 (define word-color-count 12)
 

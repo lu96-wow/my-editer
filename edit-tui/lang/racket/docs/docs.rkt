@@ -20,7 +20,7 @@
          (only-in scribble/xref xref-binding->definition-tag xref-tag->path+anchor)
          (only-in scribble/blueboxes make-blueboxes-cache fetch-blueboxes-strs)
          "doc-html.rkt"
-         "workspace.rkt")
+         "../parse/workspace.rkt")
 
 ;; name      : string        查的名字
 ;; signature : string / #f   bluebox 全部字符串（类别 + 签名 / 契约），已对齐

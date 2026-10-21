@@ -16,8 +16,8 @@
          lexical-role)
 
 (require racket/string
-         "lex.rkt"
-         "keywords.rkt")
+         "../base/lex.rkt"
+         "../base/keywords.rkt")
 
 (define (keyword-role word)
   (define cat (keyword-category word))

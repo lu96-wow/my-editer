@@ -5,21 +5,28 @@
 ```text
 lang/
   racket/
-    api.rkt          唯一对外面
-    edit.rkt         语言层 line-edit（旧/新行区间）
-    lex.rkt          词法 token（跨行注释 / 字符串）
-    highlight.rkt    语法高亮角色
-    color.rkt        增量着色缓存（语法 + 同词色）
-    word-color.rkt   同词着色角色
-    source.rkt       #lang / require / define / provide 扫描
-    analysis.rkt     Racket 绑定形式 -> 局部名字（lambda / let / for / match …）
-    workspace.rkt    跨 buffer 的解析缓存 + require 依赖
-    pool.rkt         require spec -> 绑定名 / 模块导出
-    module-index.rkt 已安装模块路径
-    completion.rkt   补全候选
-    docs.rkt         标准库文档（xref / blueboxes）
-    local-docs.rkt   当前缓冲区里的本地定义
-    doc-html.rkt     HTML 文档正文兜底
+    api.rkt              唯一对外面（只聚合）
+    base/                语言基础值 / 词法
+      racket.rkt         racket-file? / racket-text?
+      edit.rkt           line-edit
+      lex.rkt            token / 跨行词法状态
+      keywords.rkt       关键字分组
+    color/               着色
+      highlight.rkt      语法高亮 role
+      word-color.rkt     同词色 role
+      color.rkt          行级增量缓存（语法 + 同词色）
+    parse/               解析 / 模块接口 / 跨 buffer
+      source.rkt         #lang / require / define / provide / reader
+      analysis.rkt       form-entry / 局部绑定 / 增量 analysis
+      pool.rkt           require spec -> 导出名 / binding
+      local-docs.rkt     本地定义摘要
+      workspace.rkt      跨 buffer analysis 缓存 / 依赖
+    completion/          补全
+      module-index.rkt   已安装模块路径
+      completion.rkt     候选 / 前缀 / module path
+    docs/                文档
+      docs.rkt           标准库文档（xref / blueboxes）
+      doc-html.rkt       HTML 正文兜底
 ```
 
 ## 多语言约定

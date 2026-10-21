@@ -43,7 +43,7 @@
 (require racket/list
          racket/path
          racket/string
-         "../../source/api.rkt"
+         "../../../source/api.rkt"
          "analysis.rkt"
          "local-docs.rkt"
          "pool.rkt"

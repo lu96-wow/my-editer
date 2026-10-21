@@ -21,7 +21,7 @@
 
 (require racket/list
          racket/string
-         "edit.rkt"
+         "../base/edit.rkt"
          "source.rkt")
 
 (struct form-entry
