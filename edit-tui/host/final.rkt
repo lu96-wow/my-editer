@@ -43,12 +43,29 @@
 (create-plain-view! resources-vid "*resources*")
 (create-plain-view! input-vid "*input*")
 
+;;; ════════════════ 布局配置：docs 可拖动，但初始高度 1 行 ════════════════
+
+(define final-layout-config
+  (make-layout-config
+   #:rules
+   (hash
+    'editor (config-panel-rule default-config 'editor)
+    'sidebar (config-panel-rule default-config 'sidebar)
+    'status (config-panel-rule default-config 'status)
+    'docs (make-panel-rule #:splittable? #f
+                           #:hideable? #t
+                           #:deletable? #f
+                           #:focusable? #t
+                           #:min-w 1 #:max-w #f
+                           #:min-h 1 #:max-h #f))))
+
 ;;; ════════════════ 初始 state：空资源 + 已有 docs/status/completion view ════════════════
 
 (define base-state
   (struct-copy app-state demo-state
                [resources resource-store-empty]
                [layout #f]
+               [layout-config final-layout-config]
                [store (hash-set (app-state-store demo-state)
                                 'demo/docs
                                 empty-docs)]))
@@ -80,7 +97,6 @@
   (make-panel 'docs 'docs
               #:views (list docs-vid)
               #:active docs-vid
-              #:fixed-h 1
               #:borders '(up down left right)))
 
 (define status-panel
@@ -100,8 +116,15 @@
   (layout-panel-attach layout0 'editor 'left sidebar-panel #:ratio 3/8))
 (define-values (layout2 status-ok?)
   (layout-panel-attach layout1 'editor 'down status-panel))
+;; docs 不固定，seam 才能拖动；初始 ratio 取 1 行。
+(define area0 (app-state-area base-state))
+(define docs-ratio
+  (let ([h (and area0 (rect-h area0))])
+    (if (and h (> h 2))
+        (/ (- h 2) (sub1 h))
+        1/2)))
 (define-values (layout3 docs-ok?)
-  (layout-panel-attach layout2 'editor 'down docs-panel))
+  (layout-panel-attach layout2 'editor 'down docs-panel #:ratio docs-ratio))
 
 (unless (and docs-ok? status-ok? sidebar-ok?)
   (error 'final "layout attach failed"))

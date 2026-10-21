@@ -38,12 +38,24 @@
 (check-equal? (rect-h (hash-ref rects 'docs)) 1)
 (check-equal? (rect-h (hash-ref rects 'status)) 1)
 
+;; docs 上边缘可拖：拖高后 docs 变成 3 行。
+(define layout (app-state-layout state))
+(define config (app-state-layout-config state))
+(define seam (layout-seam-at layout area 21 40))
+(check-not-false seam)
+(define drag (layout-seam-drag-start layout area 21 40
+                                     #:config config #:seam seam))
+(check-not-false drag)
+(define-values (layout-drag _drag-ok?)
+  (layout-seam-drag-move layout area drag 19 40 #:config config))
+(check-equal? (rect-h (hash-ref (layout-panel-rects layout-drag area) 'docs)) 3)
+
 ;; docs 面板四向边框。
 (check-equal? (panel-borders (layout-panel (app-state-layout state) 'docs))
               '(up down left right))
 
-;; docs / status 初始都只占一行。
-(check-equal? (layout-panel-fixed-size (app-state-layout state) 'docs 'tb) 1)
+;; docs 初始 1 行，但本身是 flex，seam 可拖动；status 固定 1 行。
+(check-false (layout-panel-fixed-size (app-state-layout state) 'docs 'tb))
 (check-equal? (layout-panel-fixed-size (app-state-layout state) 'status 'tb) 1)
 
 ;; status panel 同时挂 status / input。
