@@ -24,6 +24,7 @@
 (define p2
   (make-plugin
    #:id 'two
+   #:services (list (service 'demo (lambda (x) x)))
    #:install
    (λ (host state)
      (set-box! order (cons 'two (unbox order)))
@@ -41,6 +42,7 @@
 (check-true (hash-ref (app-state-store s1) 'one #f))
 (check-equal? (unbox allocated) 10)
 (check-equal? (host-alloc-view-id! host) 11)
+(check-equal? (map service-name (host-services host)) '(demo))
 
 ;; teardown 逆序
 (define s2 (host-teardown host s1 engine))

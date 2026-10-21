@@ -119,6 +119,7 @@ edit-tui/
 
   app/                     应用状态 / 命令 / 编排（暂时留在根目录）
   render/                  输出渲染（暂时留在根目录）
+  host/                    最终编辑器装配（workspace / run entry）
   demo/  test/
 ```
 
@@ -683,8 +684,8 @@ overlay tables ++ focused resource command-stack
 ### boot
 
 ```racket
-;; 最小插件值：install / teardown；列表顺序 = 安装顺序
-(make-plugin #:id #:install #:teardown)
+;; 最小插件值：install / teardown / services；列表顺序 = 安装顺序
+(make-plugin #:id #:install #:teardown #:services)
 
 ;; 启动上下文
 (make-host #:engine #:layout-config #:keymap #:plugins
@@ -692,6 +693,7 @@ overlay tables ++ focused resource command-stack
 (host-alloc-view-id! host)
 (host-alloc-panel-id! host)
 (start-app host state)        ; install 所有插件
+(host-services host)          ; 汇总插件 services（交给 run-app）
 (host-teardown host state engine) ; 逆序 teardown
 
 (make-engine)
@@ -1243,6 +1245,25 @@ bash edit-tui/test/run.sh
   placement / event-loop / theme / face / config
 
 功能测试也统一只 require `../main.rkt`（外部 core 访问器除外）。
+
+## 最终编辑器
+
+第一版装配入口：
+
+```sh
+racket edit-tui/host/final.rkt
+```
+
+组合：
+
+```text
+filetree / resources 共用 sidebar
+editor + docs + status/input
+completion / docs / color 复用 completion-docs 运行时
+```
+
+后续会把 completion / docs 从 demo 抽成正式插件，`host/final.rkt` 只保留
+workspace 装配和插件列表。
 
 ## demo
 

@@ -37,7 +37,8 @@
 (provide demo-state demo-engine prepare-demo!
          completion-service docs-service handle-job-result
          demo-services
-         handle-auto-timer!)
+         handle-auto-timer!
+         run-demo)
 
 ;;; ════════════════ 数据 ════════════════
 
