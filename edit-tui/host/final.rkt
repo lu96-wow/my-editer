@@ -57,7 +57,7 @@
                            #:deletable? #f
                            #:focusable? #t
                            #:min-w 1 #:max-w #f
-                           #:min-h 1 #:max-h #f))))
+                           #:min-h 3 #:max-h #f))))
 
 ;;; ════════════════ 初始 state：空资源 + 已有 docs/status/completion view ════════════════
 
@@ -116,12 +116,16 @@
   (layout-panel-attach layout0 'editor 'left sidebar-panel #:ratio 3/8))
 (define-values (layout2 status-ok?)
   (layout-panel-attach layout1 'editor 'down status-panel))
-;; docs 不固定，seam 才能拖动；初始 ratio 取 1 行。
+;; docs 不固定，seam 才能拖动；初始高度 3 行。
+(define docs-initial-lines 3)
 (define area0 (app-state-area base-state))
 (define docs-ratio
-  (let ([h (and area0 (rect-h area0))])
-    (if (and h (> h 2))
-        (/ (- h 2) (sub1 h))
+  (let* ([h (and area0 (rect-h area0))]
+         [available (and h (sub1 h))] ; status 固定占 1 行
+         [editor-lines (and available
+                            (max 1 (- available docs-initial-lines)))])
+    (if (and available (> available docs-initial-lines))
+        (/ editor-lines available)
         1/2)))
 (define-values (layout3 docs-ok?)
   (layout-panel-attach layout2 'editor 'down docs-panel #:ratio docs-ratio))
