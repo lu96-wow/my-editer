@@ -222,8 +222,18 @@
      (apply-nav! v (view-action-data action))
      '()]
     [(point)
-     (match-define (list r c) (view-action-data action))
-     (view-set-point! v (view-point-at-or-nearest v r c))
+     ;; data = (list row col) | (list row col extend?)
+     ;; extend? = #t：鼠标拖选，保留 anchor，只把 head 移到新位置。
+     (match-define (list r c extend?)
+       (match (view-action-data action)
+         [(list r c) (list r c #f)]
+         [(list r c e) (list r c e)]))
+     (define p (view-point-at-or-nearest v r c))
+     (if extend?
+         (view-set-selections! v
+                               (selections-one
+                                (selection (selection-anchor (view-primary v)) p)))
+         (view-set-point! v p))
      '()]
     [(select)
      (view-set-selections! v (view-action-data action))

@@ -6,7 +6,7 @@
 ;;;   layout->render-panels  渲染用：view = panel-content.active（+ 焦点框，见 borders.rkt）
 ;;;   layout->hit-panels     命中 / 方向导航用：view = app panel-id（不含焦点框）
 ;;;
-;;; 另外提供鼠标内容区命中（去掉边框的相对坐标）。
+;;; 另外提供鼠标内容区命中（去掉边框的相对坐标）和单个 panel 的内容区 rect。
 ;;; 几何、固定尺寸、隐藏、兄弟吸收在 layout/solve.rkt / layout/ops.rkt。
 
 (require racket/list
@@ -21,7 +21,8 @@
          layout->hit-panels
          layout-hit
          (struct-out hit)
-         layout-content-hit)
+         layout-content-hit
+         layout-content-rect)
 
 (define (layout->render-panels layout area
                                 #:view-object [view-object (λ (v) v)]
@@ -79,21 +80,24 @@
               #:when (rect-contains? r col row))
     id))
 
+;; 单个 panel 的内容区（去掉实际生效的边框；共享边由邻居画，所以用 effective-borders）。
+(define (panel-content-rect solution borders id)
+  (define r (hash-ref (l:layout-solution-panel-rects solution) id #f))
+  (define bs (hash-ref borders id '()))
+  (and r
+       (rect-inset-sides r
+                         (if (memq 'up bs) 1 0)
+                         (if (memq 'right bs) 1 0)
+                         (if (memq 'down bs) 1 0)
+                         (if (memq 'left bs) 1 0))))
+
 (define (content-hit-values solution borders order row col)
   (let loop ([ids order])
     (cond
       [(null? ids) (values #f #f #f)]
       [else
        (define id (car ids))
-       (define r (hash-ref (l:layout-solution-panel-rects solution) id #f))
-       (define bs (hash-ref borders id '()))
-       (define content
-         (and r
-              (rect-inset-sides r
-                                (if (memq 'up bs) 1 0)
-                                (if (memq 'right bs) 1 0)
-                                (if (memq 'down bs) 1 0)
-                                (if (memq 'left bs) 1 0))))
+       (define content (panel-content-rect solution borders id))
        (cond
          [(and content (rect-contains? content col row))
           (values id (- row (rect-y content)) (- col (rect-x content)))]
@@ -111,6 +115,15 @@
                    #:when (rect-contains? (l:seam-rect s) col row))
          s)
        solution*))
+
+;;; ---------- 单个 panel 的内容区 rect ----------
+;;;
+;;; 拖动选区时指针会离开内容区（甚至离开 panel），这时也要能算出**相对于该
+;;; panel 内容区**的坐标（可以为负 / 超出），再交给 engine 的 point 夹到最近
+;;; 有效位置。不要用 layout-hit：它只回答「指针下面是谁」。
+(define (layout-content-rect layout area panel-id #:solution [solution #f])
+  (define solution* (or solution (l:layout-solve layout area)))
+  (panel-content-rect solution* (effective-borders layout) panel-id))
 
 ;;; ---------- 内容区命中（兼容旧 API） ----------
 ;;;

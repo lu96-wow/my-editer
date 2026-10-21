@@ -8,4 +8,5 @@
          layout->hit-panels
          layout-hit
          (struct-out hit)
-         layout-content-hit)
+         layout-content-hit
+         layout-content-rect)

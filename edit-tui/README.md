@@ -183,7 +183,8 @@ buffer / view：读 + 写 UI view + 编辑 action   core/engine/api.rkt     包�
                                                                         layout-sync! / render-pieces）
 layout -> core panel / 命中投影                core/projection/api.rkt 包装（layout->render-panels /
                                                                         layout->hit-panels / layout-hit /
-                                                                        layout-content-hit）
+                                                                        layout-content-hit /
+                                                                        layout-content-rect）
 布局几何（rect / panel）                       core/layout/api.rkt     骨架自己的面
                                               core/panel/api.rkt      （内部用 core 值）
 ```
@@ -451,6 +452,7 @@ empty-layout
 (layout->render-panels l area #:focus-panel 'editor) ; + 焦点框（见下）
 (layout->hit-panels l area)                        ; view = panel-id
 (layout-hit l area row col)                        ; 一次 solve：panel-id / content / seam
+(layout-content-rect l area panel-id)               ; 该 panel 的内容区 rect（拖选换算用）
 ```
 
 #### 焦点窗高亮
@@ -597,7 +599,13 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 
 (make-app-state #:layout #:layout-config #:keymap #:resources
                 #:overlays #:pending #:area #:quit? #:flash
-                #:pending-doc-changes)
+                #:drag #:select-drag #:pending-doc-changes)
+
+;; 鼠标拖动中的状态都是纯值：
+;;   drag        layout seam drag | #f
+;;   select-drag (select-drag panel-id view-id) | #f
+;;               press 内容区时记下，move 只对同一个 view 扩展选区，
+;;               release / 非鼠标事件清除（选区本身留在 view 里）
 
 ;; 焦点 resource 是派生查询：layout.focus -> panel.active -> resource-of-view
 (app-state-focus-resource state)
@@ -612,7 +620,8 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 ;;        | nav | point | select | scroll | ensure | undo | redo
 ;;   insert/paste data = 原始 UTF-8 bytes（engine 写 buffer 时解码一次）
 ;;   nav   data = dir | (list dir extend?)
-;;   point data = (list row col)   ; 内容区相对坐标（0 基）
+;;   point data = (list row col) | (list row col extend?)
+;;                 ; 内容区相对坐标（0 基）；extend? = #t 只移 head，保留 anchor（鼠标拖选）
 (quit-action)
 
 (step state event)  ; -> (values state' actions)
@@ -761,6 +770,9 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
   列可以自由移动（长路径会横向滚动）；state 里的 cursor 只是 point line 的镜像。
 - 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行、哪列，光标就到哪
   （滚动、行尾、空白处的行为与编辑器完全一致）。
+- 鼠标拖动也一视同仁：press 落 caret 并记下 `select-drag`（panel + view），
+  move 对同一个 view 发 `(point row col #t)` 扩展选区，release 结束；
+  选择始终留在按下的 panel 里，指针移到别的 panel 也不换目标。
 
 ### 资源管理面板
 
@@ -1183,7 +1195,8 @@ bash edit-tui/test/run.sh
 - `test/api-boundary.rkt`：API 边界（非实现层只能 require main / api / core）
 - `test/layers.rkt`：依赖方向（分层约束的可执行版本）
 - 其余按领域：layout / focus / geometry / render / key / keymap / edit /
-  filetree / chrome / input-service（请求 / 打断 / 挤占 / 回调）/ resource /
+  mouse-select（点 / 拖选 / 越界夹边）/ filetree / chrome /
+  input-service（请求 / 打断 / 挤占 / 回调）/ resource /
   placement / event-loop / theme / face / config
 
 功能测试也统一只 require `../main.rkt`（外部 core 访问器除外）。
@@ -1210,6 +1223,8 @@ C-q        退出（dirty -> 确认输入栏）
 鼠标点面板  聚焦
 鼠标滚轮    滚动指针下的 panel（不改焦点 / 光标）
 鼠标点 buffer 内容区 -> 主光标落到点击处（filetree 也一样，它就是普通 buffer）
+鼠标在内容区拖动 -> 扩展选区：press 落 caret，move 只移 head（anchor 留在 view 里），
+                    release 结束；指针拖出面板时夹到最近有效行 / 列，上下越界每次 move 滚一行
 
 焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
 ```

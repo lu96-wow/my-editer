@@ -25,6 +25,12 @@
 (define (clear-pending state)
   (struct-copy app-state state [pending '()]))
 
+;; 拖选是鼠标手势：非鼠标事件打断它（选区留在 view 里，不会丢）。
+(define (clear-select-drag state)
+  (if (app-state-select-drag state)
+      (struct-copy app-state state [select-drag #f])
+      state))
+
 ;; flash 只存在到下一次 step；命令 / action 在本次 step 里重新设置。
 (define (clear-flash state)
   (if (string=? (app-state-flash state) "")
@@ -99,12 +105,34 @@
 
 ;; 点击内容区 -> 把该 panel 的 active view 光标设到点击处。
 ;; 所有面板一视同仁：文件树也只是普通 buffer，光标归 view 所有。
-(define (content-point-actions state pid row col)
+;; press 同时记下 select-drag：之后 move 在同一个 view 里扩展选区，
+;; release 结束（选区留在 view 里，不需要额外 action）。
+(define (content-point-actions state pid row col extend?)
   (define p (app-state-panel state pid))
   (define vid (and p (panel-view p)))
   (if vid
-      (list (view-action 'point vid (list row col)))
+      (list (view-action 'point vid (list row col extend?)))
       '()))
+
+;; 拖动选区：把指针坐标换算成「被拖 panel 内容区」的相对坐标。
+;; 指针跑出内容区时坐标可能为负 / 超出；engine 的 point 会夹到最近有效行/列。
+;; 上下越界时先滚一行，让选区能继续延伸到屏幕外（每次 move 滚一行）。
+(define (drag-select-actions state sd row col)
+  (define vid (select-drag-view-id sd))
+  (define content (layout-content-rect (app-state-layout state)
+                                       (app-state-area state)
+                                       (select-drag-panel-id sd)))
+  (cond
+    [(or (not vid) (not content)) '()]
+    [else
+     (define r (- row (rect-y content)))
+     (define c (- col (rect-x content)))
+     (define scrolls
+       (cond
+         [(< r 0) (list (view-action 'scroll vid -1))]
+         [(>= r (rect-h content)) (list (view-action 'scroll vid 1))]
+         [else '()]))
+     (append scrolls (list (view-action 'point vid (list r c #t))))]))
 
 (define (dispatch-mouse state ev #:solution [solution #f])
   (define row (mouse-event-row ev))
@@ -118,12 +146,14 @@
      (define h (layout-hit layout area row col #:solution solution))
      (define hit-id (hit-panel-id h))
      (define placement-id (app-state-placement state))
+     ;; 新的一次 press 结束上一次拖选（半截拖选不延续）。
+     (define state* (struct-copy app-state state [select-drag #f]))
      (cond
        ;; placement 中点到 editor：直接放入
        [(and placement-id
              hit-id
              (eq? (panel-kind (layout-panel layout hit-id)) 'editor))
-        (place-into-panel state hit-id)]
+        (place-into-panel state* hit-id)]
        [else
         (define seam (hit-seam h))
         (cond
@@ -132,34 +162,45 @@
                                             #:config config
                                             #:seam seam
                                             #:solution (hit-solution h)))
-           (values (struct-copy app-state state [drag d]) '())]
+           (values (struct-copy app-state state* [drag d]) '())]
           [else
-           ;; 内容区（去掉边框）：聚焦 + 光标落点；边框 / 角上只改焦点。
+           ;; 内容区（去掉边框）：聚焦 + 光标落点 + 开始拖选；边框 / 角上只改焦点。
            (define cid (hit-content-id h))
            (cond
              [cid
-              (define s1 (app-state-set-focus-panel state cid))
-              (values s1 (content-point-actions s1 cid
-                                               (hit-content-row h)
-                                               (hit-content-col h)))]
+              (define s1 (app-state-set-focus-panel state* cid))
+              (define vid (app-state-focus-view-id s1))
+              (cond
+                [(not vid) (values s1 '())]
+                [else
+                 (values (struct-copy app-state s1
+                                      [select-drag (select-drag cid vid)])
+                         (content-point-actions s1 cid
+                                                (hit-content-row h)
+                                                (hit-content-col h)
+                                                #f))])]
              [else
               (define id (and hit-id
                               (layout-panel-focusable? layout config hit-id)
                               hit-id))
               (if id
-                  (values (app-state-set-focus-panel state id) '())
-                  (values state '()))])])])]
+                  (values (app-state-set-focus-panel state* id) '())
+                  (values state* '()))])])])]
     [(move)
      (define d (app-state-drag state))
+     (define sd (app-state-select-drag state))
      (cond
-       [(not d) (values state '())]
-       [else
+       [d
         (define-values (layout* ok?)
           (layout-seam-drag-move layout area d row col #:config config))
         (values (if ok? (struct-copy app-state state [layout layout*]) state)
-                '())])]
+                '())]
+       ;; 拖选：选择留在按下的 panel 里，指针移到别的 panel 也不换目标。
+       [sd (values state (drag-select-actions state sd row col))]
+       [else (values state '())])]
     [(release)
-     (values (struct-copy app-state state [drag #f]) '())]
+     ;; 松手结束拖动：接缝 drag 与选区 drag 都清；选区本身留在 view 里。
+     (values (struct-copy app-state state [drag #f] [select-drag #f]) '())]
     [(scroll-up scroll-down)
      ;; 滚轮滚指针下的 panel；不改焦点，不移动光标。
      (define id (hit-panel-id (layout-hit layout area row col #:solution solution)))
@@ -202,7 +243,9 @@
   ;; pending 只对连续按键有意义；mouse / paste / resize / quit 等事件
   ;; 打断半截序列，否则下一次按键会拼上旧前缀。
   (define state0* (if (key-event? ev) state0 (clear-pending state0)))
-  (define-values (s0 a0) (input-reconcile state0*))
+  ;; 鼠标事件保留拖选状态（move 继续扩展）；其他事件结束拖选。
+  (define state0** (if (mouse-event? ev) state0* (clear-select-drag state0*)))
+  (define-values (s0 a0) (input-reconcile state0**))
   (cond
     [(and (input-active? s0)
           (not (key-event? ev))

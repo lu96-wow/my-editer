@@ -17,6 +17,9 @@
 (provide (struct-out app-state)
          make-app-state
 
+         ;; 鼠标拖选：正在拖的 panel / view（anchor 由 view 的 selection 持有）
+         (struct-out select-drag)
+
          ;; 文档变更（engine -> boot/analysis 的纯数据通道）
          (struct-out doc-change)
          app-state-note-doc-change
@@ -34,6 +37,13 @@
          app-state-with-flash
          app-state-set-focus-panel)
 
+;; 鼠标拖动选区（纯值）。
+;;   panel-id : 按下时的 panel（拖动期间选择始终留在这个 panel）
+;;   view-id  : 该 panel 的 active view
+;; anchor 不在这里：按下时 point action 已经把 caret 写进 view，
+;; 后续 extend 只移动 head，anchor 自然留在 view 的 selection 里。
+(struct select-drag (panel-id view-id) #:transparent)
+
 (struct app-state
   (layout
    layout-config   ; 具体 kind 规则；宿主选择（默认 empty = 通用 rule）
@@ -44,6 +54,7 @@
    area            ; rect
    next-panel-id
    drag            ; layout drag | #f
+   select-drag     ; select-drag | #f
    placement       ; view-id | #f
    store           ; 面板 UI 状态：'filetree -> filetree、'input -> input-state ...
    panel-stacks    ; panel-id -> command-table-stack
@@ -66,6 +77,7 @@
          #:area [area #f]
          #:next-panel-id [next-panel-id 100]
          #:drag [drag #f]
+         #:select-drag [select-drag #f]
          #:placement [placement #f]
          #:store [store (hash)]
          #:panel-stacks [panel-stacks (hash)]
@@ -73,7 +85,7 @@
          #:flash [flash ""]
          #:pending-doc-changes [pending-doc-changes '()])
   (app-state layout layout-config keymap resources overlays pending area
-             next-panel-id drag placement store panel-stacks
+             next-panel-id drag select-drag placement store panel-stacks
              quit? flash pending-doc-changes))
 
 ;;; ════════════════ 查询 ════════════════

@@ -137,7 +137,7 @@
 (define-values (c0 ce) (make-state "ab\ncd"))
 (define-values (c1 cActions) (step c0 (mouse-event 'press 1 1)))
 (check-equal? (map view-action-kind cActions) '(point))
-(check-equal? (view-action-data (car cActions)) '(1 1))
+(check-equal? (view-action-data (car cActions)) '(1 1 #f))
 (define c2 (run-actions c1 ce cActions))
 (define c3 (press c2 ce (key '!)))
 (check-equal? (engine-view-text ce 1) "ab\nc!d")

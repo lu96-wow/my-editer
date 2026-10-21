@@ -84,7 +84,7 @@
                          (app-state-area ed-state)
                          (+ (rect-y r) 2) (+ (rect-x r) 2)))
 (check-equal? hit-id 'editor)
-(check-equal? (view-action-data (car a11)) (list hit-row hit-col))
+(check-equal? (view-action-data (car a11)) (list hit-row hit-col #f))
 
 ;; ---------- 文件树就是普通 buffer：点哪行，光标（view point）就到哪行 ----------
 (define synced2 (sync-ui! demo-state demo-engine))
