@@ -206,11 +206,6 @@
 (check-true ok4?)
 (check-equal? (map resource-action-kind acq2) '(quit))
 
-;;; ---------- 事件 ----------
-(define-values (_s evs) (resource-drain-events s5))
-(check-true (for/or ([e (in-list evs)]) (eq? (resource-event-kind e) 'saved)))
-(check-equal? (resource-events _s) '())
-
 ;;; ---------- 显示路径：根内相对，根外绝对 ----------
 (define display-root
   (build-path (find-system-path 'temp-dir) "edit-tui-display-root"))

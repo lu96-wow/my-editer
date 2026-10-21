@@ -317,7 +317,7 @@ placement-table  placement 临时表（Enter/Esc/方向）
 ```text
 cursor-command-table    方向 / Home / End / 翻页 / C-a / C-e / C-f
 focus-command-table     C-x 方向
-layout-command-table    C-w 方向 / C-d 删除/清空当前 editor
+layout-command-table    C-w 方向 / C-d close-panel（删除/清空当前 editor panel）
 global-command-table    cursor + focus + layout
 app-command-table       filetree 显隐 / save / quit
 edit-command-table      cursor + 插入 / 删除 / 历史（buffer 局部）
@@ -923,7 +923,7 @@ resource-save
 resource-save-as
 resource-save-done
 
-resource-request-close
+resource-request-close  ; 关闭 resource：删 store + engine view/doc；不是 panel
 resource-request-quit
 resource-prompt
 resource-submit
@@ -933,9 +933,6 @@ resource-cancel
 resource-action?
 resource-action-kind
 resource-action-data
-resource-event?
-resource-event-kind
-resource-event-data
 
 prompt?
 prompt-id
@@ -1115,7 +1112,7 @@ racket edit-tui-rebuild/demo/interactive.rkt
 
 ```text
 C-w ←→↑↓   拆分当前 editor
-C-d        删除当前 editor 窗口；最后一个只清 view
+C-d        close-panel：删除当前 editor panel；最后一个只清 view
 C-b        显隐 filetree
 C-x ←→↑↓   焦点移动
 C-s        保存当前 resource（无 path -> Save as 输入栏）

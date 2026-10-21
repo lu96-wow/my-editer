@@ -9,7 +9,7 @@
          "state.rkt")
 
 (provide split-command
-         close-editor-panel-command
+         close-panel-command
          toggle-filetree-command
          focus-command
          save-command
@@ -31,7 +31,7 @@
                 '())
         (values (app-state-with-flash state "split failed") '()))))
 
-;; C-d：只处理 editor panel，不关闭 resource / buffer。
+;; close-panel：只处理 editor panel，不关闭 resource / buffer / view。
 ;; 还有其他 editor -> 删除当前 panel；
 ;; 已是最后一个 editor -> 只清空它的 views，保留 slot。
 (define (other-editor-panel? layout pid)
@@ -40,7 +40,7 @@
          (eq? (panel-kind (layout-panel layout id)) 'editor)
          id)))
 
-(define (close-editor-panel-command state)
+(define (close-panel-command state)
   (define pid (app-state-focus-panel-id state))
   (define p (app-state-panel state pid))
   (define layout (app-state-layout state))

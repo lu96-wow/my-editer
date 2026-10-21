@@ -28,7 +28,6 @@
 (provide (struct-out resource)
          (struct-out resource-store)
          (struct-out resource-action)
-         (struct-out resource-event)
          (struct-out prompt)
          (struct-out pending)
 
@@ -63,10 +62,7 @@
          resource-find-by-path
          resource-root
          resource-set-root
-         resource-display-path
-
-         resource-events
-         resource-drain-events)
+         resource-display-path)
 
 ;;; ════════════════ 数据 ════════════════
 
@@ -78,7 +74,7 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (root resources order focus pending prompt events
+  (root resources order focus pending prompt
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
 ;; root      : string（启动根路径；规范化绝对路径，"" = 未设置）
@@ -87,13 +83,10 @@
 ;; focus     : resource-id | #f
 ;; pending   : pending | #f
 ;; prompt    : prompt | #f
-;; events    : (listof resource-event)
 
 (struct resource-action (kind data) #:transparent)
 ;; kind : 'create-buffer | 'create-view | 'write-file
 ;;      | 'close-resource | 'quit
-
-(struct resource-event (kind data) #:transparent)
 
 (struct prompt (id kind resource-id label value choices) #:transparent)
 ;; kind : 'save-path | 'confirm
@@ -105,7 +98,7 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store "" (hash) '() #f #f #f '() 1 1 1))
+  (resource-store "" (hash) '() #f #f #f 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
@@ -128,11 +121,6 @@
                [focus (and (resource-store-focus r)
                            (not (equal? (resource-store-focus r) id))
                            (resource-store-focus r))]))
-
-(define (store-event r kind data)
-  (struct-copy resource-store r
-               [events (append (resource-store-events r)
-                               (list (resource-event kind data)))]))
 
 (define (store-set-prompt r p)
   (struct-copy resource-store r [prompt p]))
@@ -196,13 +184,6 @@
     [else
      (store-put store (struct-copy resource r [binding-stack stack]))]))
 
-(define (resource-events store)
-  (resource-store-events store))
-
-(define (resource-drain-events store)
-  (values (struct-copy resource-store store [events '()])
-          (resource-store-events store)))
-
 ;;; ════════════════ 打开 ════════════════
 
 ;; → (values store' (listof resource-action))
@@ -227,8 +208,7 @@
                           [focus (if focus? rid (resource-store-focus s1))]
                           [next-resource-id (add1 rid)]
                           [next-view-id (add1 vid)]))
-  (define s3 (store-event s2 'opened (list rid)))
-  (values s3
+  (values s2
           (list (action 'create-buffer (list did name* text))
                 (action 'create-view (list vid did)))))
 
@@ -238,8 +218,7 @@
   (define r (resource-ref store id))
   (cond
     [(not r) store]
-    [else (store-event (store-put store (struct-copy resource r [version version]))
-                       'edited (list id))]))
+    [else (store-put store (struct-copy resource r [version version]))]))
 
 ;; engine 里的文档版本变了才记一次 edited（导航 / 滚动等不产生 dirty）。
 ;; runtime 每解释完一个 view-action 调它。
@@ -291,12 +270,11 @@
     [else
      (define s1 (store-put store
                            (struct-copy resource r [saved-version version])))
-     (define s2 (store-event s1 'saved (list id)))
-     (define p (resource-store-pending s2))
+     (define p (resource-store-pending s1))
      (cond
        [(and p (equal? (pending-current-id p) id))
-        (advance-pending s2)]
-       [else (values s2 '())])]))
+        (advance-pending s1)]
+       [else (values s1 '())])]))
 
 ;;; ════════════════ 关闭 / 退出 ════════════════
 
@@ -331,12 +309,12 @@
     [else
      (define s1 (store-clear-pending (store-clear-prompt store)))
      (case (pending-kind p)
-       [(quit) (values (store-event s1 'quit '())
+       [(quit) (values s1
                        (list (action 'quit '())))]
        [(close)
         (define id (car (pending-ids p)))
         (define r (resource-ref store id))
-        (values (store-event s1 'closed (list id))
+        (values s1
                 (list (action 'close-resource
                               (list id
                                     (and r (resource-doc-id r))
@@ -378,6 +356,8 @@
                            "Save as: " "" '()))
         (values (bump-prompt-id (store-set-prompt store pr)) '())])]))
 
+;; 关闭 resource（不是关闭 panel）：resource store / engine view / document
+;; 都由后续 close-resource action 删除。面板关闭见 app/close-panel-command。
 (define (resource-request-close store id)
   (define r (resource-ref store id))
   (cond
@@ -387,7 +367,7 @@
      (values (confirm-prompt (store-set-pending store p) id) '())]
     [else
      (define s1 (store-remove store id))
-     (values (store-event s1 'closed (list id))
+     (values s1
              (list (action 'close-resource
                            (list id (resource-doc-id r) (resource-views r)))))] ))
 
@@ -395,7 +375,7 @@
   (define ids (dirty-ids store))
   (cond
     [(null? ids)
-     (values (store-event store 'quit '())
+     (values store
              (list (action 'quit '())))]
     [else
      (define p (pending 'quit ids 0 'ask))
@@ -414,9 +394,7 @@
   (cond
     [(or (not p) (not (equal? (prompt-id p) pid))) store]
     [else
-     (store-event
-      (store-clear-pending (store-clear-prompt store))
-      'cancelled '())]))
+     (store-clear-pending (store-clear-prompt store))]))
 
 ;; 输入栏按 Enter：文本 -> 对应 prompt 的值 + 校验。
 ;; → (values store' actions ok?)

@@ -3,6 +3,7 @@
 # 测试是脚本；以「退出码非 0」或「输出含 FAILURE/ERROR」判定失败。
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
+raco make /home/lu96/Desktop/work/edit/edit-tui/main.rkt
 fail=0
 while IFS= read -r f; do
   out="$(racket "$f" 2>&1)"

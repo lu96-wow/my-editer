@@ -12,8 +12,6 @@
  resource-list
  resource-focus
  resource-pending
- resource-events
- resource-drain-events
 
  ;; resource
  resource?
@@ -53,13 +51,10 @@
  resource-submit-text
  resource-cancel
 
- ;; action / event
+ ;; action
  resource-action?
  resource-action-kind
  resource-action-data
- resource-event?
- resource-event-kind
- resource-event-data
 
  ;; prompt / pending
  prompt?
