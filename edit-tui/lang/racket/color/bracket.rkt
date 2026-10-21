@@ -16,7 +16,7 @@
 
 (provide bracket-color-count
          bracket-depth-role
-         bracket-line
+         bracket-scan-line
          bracket-depth-text)
 
 (require racket/string
@@ -52,7 +52,7 @@
       (vector-set! vec i role))))
 
 ;; token 流 + 行文本 + 入栈 -> (values 出栈 行 role 向量)
-(define (bracket-line tokens line stack)
+(define (bracket-scan-line tokens line stack)
   (define n (string-length line))
   (define roles (make-vector n #f))
   (define (code-level st) (sub1 (length st)))
@@ -106,5 +106,5 @@
       [(null? lines) (reverse acc)]
       [else
        (define-values (stack* roles)
-         (bracket-line (car tokens) (car lines) stack))
+         (bracket-scan-line (car tokens) (car lines) stack))
        (loop (cdr lines) (cdr tokens) stack* (cons roles acc))])))

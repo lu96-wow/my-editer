@@ -15,7 +15,7 @@
          "../app/state.rkt"
          "../render/layout.rkt"
          "actions.rkt"
-         "../edit/color.rkt"
+         "../edit/api.rkt"
          "../filetree/sync.rkt"
          "../resources/sync.rkt"
          "../chrome/status.rkt"

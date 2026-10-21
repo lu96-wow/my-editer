@@ -18,7 +18,7 @@
          "../app/step.rkt"
          "../app/event.rkt"
          "../chrome/api.rkt"
-         "../edit/color.rkt"
+         "../edit/api.rkt"
          "actions.rkt"
          "frame.rkt"
          "jobs.rkt"
@@ -97,8 +97,8 @@
            state4
            (loop state4 cache** layout-cache*))])))
 
-;; run-app 总是能处理 color-open；外部 services 可以是 list 或 registry。
-(define (append-color-services services)
+;; 边界：run-app 总是注册 color-open service；外部 services 可以是 list 或 registry。
+(define (merge-color-services services)
   (if (service-registry? services)
       (service-registry-merge services (make-service-registry color-services))
       (append services color-services)))
@@ -135,7 +135,7 @@
                      (async-channel-put event-channel (read-app-event))
                      (loop)))))
        (define runtime
-         (start-job-runtime (append-color-services services)
+         (start-job-runtime (merge-color-services services)
                             #:event-channel event-channel
                             #:workers job-workers))
        (dynamic-wind

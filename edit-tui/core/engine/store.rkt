@@ -23,14 +23,14 @@
          engine-view-cursor-screen-position
          engine-view-face-at
          engine-set-view-content!
-         engine-set-view-faces!
+         engine-set-view-face-track!
          engine-set-view-cursor!
          engine-set-view-lines!
          engine-apply-view-action!)
 
-(struct engine (docs views ui face-ui) #:mutable)
+(struct engine (docs views ui face-track-cache) #:mutable)
 ;; ui      : vid -> (cons lines faces)：上次写进 core view 的内容。
-;; face-ui : vid -> (cons key line-faces)：上次写进 editor view 的逐字符 face。
+;; face-track-cache : vid -> (cons key face-track)：上次写进 editor view 的逐字符 face。
 ;;
 ;; 两者都是「写回幂等」缓存——内容 / face 没变就不碰 document（否则每帧都换
 ;; document revision、让 render cache 失效，filetree 上千行时一帧几十毫秒）。
@@ -62,7 +62,7 @@
     (buffer-close-view! (view-buffer v) v)
     (set-engine-views! e (hash-remove (engine-views e) vid))
     (set-engine-ui! e (hash-remove (engine-ui e) vid))
-    (set-engine-face-ui! e (hash-remove (engine-face-ui e) vid)))
+    (set-engine-face-track-cache! e (hash-remove (engine-face-track-cache e) vid)))
   (void))
 
 (define (engine-remove-doc! e did)
@@ -142,14 +142,14 @@
          (when prefix-face (buffer-face-range! b r prefix-face)))
        (set-engine-ui! e (hash-set (engine-ui e) vid cache))
        ;; 内容重写会清空 face 轨；旧的逐字符 face 缓存必须一起失效。
-       (set-engine-face-ui! e (hash-remove (engine-face-ui e) vid)))
+       (set-engine-face-track-cache! e (hash-remove (engine-face-track-cache e) vid)))
      content-changed?]))
 
 ;;; ---------- 逐字符 face（编辑器语法高亮 / 括号背景） ----------
 
 ;; 一行 face 向量 -> 非 #f 的连续 range。
 ;; 调用方先用 buffer-face-all! #f 清空整轨，所以只产生“有 face”的 run。
-(define (line-face-runs line-no line vec)
+(define (face-line->runs line-no line vec)
   (define n (min (string-length line) (vector-length vec)))
   (let loop ([i 0] [acc '()])
     (cond
@@ -166,27 +166,27 @@
           (loop j (cons (list (range (point line-no i) (point line-no j)) f)
                         acc))])])))
 
-;; 写一个 view 的逐字符 face，不动文本 / 光标 / 历史。
-;; line-faces : (listof (vectorof (or/c #f symbol? face?)))，与文本行对齐。
+;; 写一个 view 的逐字符 attribute / face track，不动文本 / 光标 / 历史。
+;; face-track : (listof (vectorof (or/c #f symbol? face?)))，与文本行对齐。
 ;; #:key      : 写回幂等键；同 key 的重复帧不会碰 document revision。
-;; #:base-version : face track 对应的 document version；不匹配时拒绝写。
+;; #:base-version : face track 对应的 document version；不匹配时拒绝写（CAS）。
 ;; → 是否真的写了。
-(define (engine-set-view-faces! e vid line-faces
-                                #:key [key #f]
-                                #:base-version [base-version #f])
+(define (engine-set-view-face-track! e vid face-track
+                                     #:key [key #f]
+                                     #:base-version [base-version #f])
   (define v (engine-view-object e vid))
+  (define current-version (and v (buffer-version (view-buffer v))))
   (cond
     [(not v) #f]
-    [(and base-version
-          (not (equal? base-version (buffer-version (view-buffer v)))))
-     #f]
+    ;; 后台结果可能晚于文本编辑；版本不同就整轨拒绝，绝不把旧 face 贴到新文本。
+    [(and base-version (not (equal? base-version current-version))) #f]
     [else
-     (define prev (hash-ref (engine-face-ui e) vid #f))
+     (define prev (hash-ref (engine-face-track-cache e) vid #f))
      (define changed?
        (or (not prev)
            (if key
                (not (equal? (car prev) key))
-               (not (equal? (cdr prev) line-faces)))))
+               (not (equal? (cdr prev) face-track)))))
      (when changed?
        (define b (view-buffer v))
        (define text-lines (string-split (view-string v) "\n" #:trim? #f))
@@ -195,14 +195,15 @@
          (append*
           (for/list ([line (in-list text-lines)]
                      [i (in-naturals)]
-                     [faces (in-list line-faces)])
+                     [faces (in-list face-track)])
             (if (vector? faces)
-                (line-face-runs i line faces)
+                (face-line->runs i line faces)
                 '()))))
        (when (pair? runs) (buffer-face-range-batch! b runs))
-       (set-engine-face-ui! e
-                            (hash-set (engine-face-ui e) vid
-                                      (cons key line-faces))))
+       (set-engine-face-track-cache!
+        e
+        (hash-set (engine-face-track-cache e) vid
+                  (cons key face-track))))
      changed?]))
 
 ;; 光标单独写：内容同步不应该每帧把用户移动过的光标按回去。

@@ -3,11 +3,11 @@
 ;;; edit-tui/lang/racket/color/color.rkt —— 增量语法高亮 + 同词着色 + 括号深度（纯）
 ;;;
 ;;; 缓存单位是“行”：
-;;;   lex-states     : 每行的出状态（块注释深度 / 是否在字符串里）
-;;;   bracket-states : 每行的出括号栈
-;;;   syntax         : 每行的语法 role 向量
-;;;   word           : 每行的同词 role 向量
-;;;   bracket        : 每行的括号深度 role 向量
+;;;   lex-out-states     : 每行的出状态（块注释深度 / 是否在字符串里）
+;;;   bracket-out-states : 每行的出括号栈
+;;;   syntax-roles       : 每行的语法 role 向量
+;;;   word-roles         : 每行的同词 role 向量
+;;;   bracket-roles      : 每行的括号深度 role 向量
 ;;;
 ;;; color-edit 只做：
 ;;;   1. 按 line-edit 的 old 区间 splice 五组行缓存；
@@ -34,11 +34,11 @@
          "bracket.rkt")
 
 (struct color-state
-  (lex-states     ; vector line -> lex state
-   bracket-states ; vector line -> 括号栈
-   syntax         ; vector line -> (vector role|#f)
-   word           ; vector line -> (vector role|#f)
-   bracket)       ; vector line -> (vector role|#f)
+  (lex-out-states     ; vector line -> 行尾词法状态
+   bracket-out-states ; vector line -> 行尾括号栈
+   syntax-roles       ; vector line -> (vector role|#f)
+   word-roles         ; vector line -> (vector role|#f)
+   bracket-roles)     ; vector line -> (vector role|#f)
   #:transparent)
 
 (define (text-lines text)
@@ -65,7 +65,7 @@
        (define line (car lines))
        (define-values (state* tokens) (tokenize-line state line))
        (define-values (bracket* bracket-vec)
-         (bracket-line tokens line bracket))
+         (bracket-scan-line tokens line bracket))
        (loop (cdr lines) state* bracket*
              (cons state* states)
              (cons bracket* bracket-states)
@@ -74,16 +74,16 @@
              (cons bracket-vec bracket-roles))])))
 
 (define (color-line-count cache)
-  (vector-length (color-state-syntax cache)))
+  (vector-length (color-state-syntax-roles cache)))
 
 (define (color-syntax-roles cache)
-  (vector->list (color-state-syntax cache)))
+  (vector->list (color-state-syntax-roles cache)))
 
 (define (color-word-roles cache)
-  (vector->list (color-state-word cache)))
+  (vector->list (color-state-word-roles cache)))
 
 (define (color-bracket-roles cache)
-  (vector->list (color-state-bracket cache)))
+  (vector->list (color-state-bracket-roles cache)))
 
 ;; cache 必须对应旧文本；text 是新文本；edits 是旧→新行区间。
 (define (color-edit cache text edits)
@@ -92,11 +92,11 @@
     [else
      (define lines (text-lines text))
      (define n (length lines))
-     (define old-states (color-state-lex-states cache))
-     (define old-bracket-states (color-state-bracket-states cache))
-     (define old-syntax (color-state-syntax cache))
-     (define old-word (color-state-word cache))
-     (define old-bracket (color-state-bracket cache))
+     (define old-states (color-state-lex-out-states cache))
+     (define old-bracket-states (color-state-bracket-out-states cache))
+     (define old-syntax (color-state-syntax-roles cache))
+     (define old-word (color-state-word-roles cache))
+     (define old-bracket (color-state-bracket-roles cache))
      (define-values (states0 bracket-states0 syntax0 word0 bracket0)
        (for/fold ([st old-states]
                   [bst old-bracket-states]
@@ -137,7 +137,7 @@
               (let ([line (list-ref lines ln)])
                 (define-values (state* tokens) (tokenize-line incoming line))
                 (define-values (bracket-state* bracket-vec)
-                  (bracket-line tokens line incoming-bracket))
+                  (bracket-scan-line tokens line incoming-bracket))
                 (define old-state (if (< ln (vector-length states0))
                                       (vector-ref states0 ln)
                                       #f))

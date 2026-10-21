@@ -111,9 +111,29 @@
 (check-equal? (job-pending (app-state-jobs s11)) '())
 (check-true (string-contains? (engine-view-text engine vid) "ABC"))
 
+;; 后台 job 失败：当前版本标记为 failed，不反复重试；文本版本变化后再试。
+(define f1 (run-actions s11 engine
+                        (list (view-action 'insert vid #"A")
+                              (view-action 'insert vid #"B"))))
+(define f2 (sync-editor-colors! f1 engine))
+(define failed-job (car (job-pending (app-state-jobs f2))))
+(define fail-ev (job-result-event (job-id failed-job) 'color-open
+                                 (job-error "boom") (job-tag failed-job)))
+(define f3
+  (handle-color-job-result
+   (app-state-finish-job f2 (job-id failed-job) (job-error "boom"))
+   fail-ev))
+(define f4 (sync-editor-colors! f3 engine))
+(check-equal? (job-pending (app-state-jobs f4)) '())
+(define f5 (run-actions f4 engine (list (view-action 'insert vid #"C"))))
+(define f6 (sync-editor-colors! f5 engine))
+(check-true (pair? (job-pending (app-state-jobs f6))))
+(define f7 (sync-editor-colors! (drain-color f6) engine))
+(check-equal? (job-pending (app-state-jobs f7)) '())
+
 ;; 相同 key 的重复同步不应不断写 document revision。
 (define rev (engine-doc-version engine did))
-(define _state12 (sync-editor-colors! (app-state-clear-doc-changes s11) engine))
+(define _state12 (sync-editor-colors! (app-state-clear-doc-changes f7) engine))
 (check-eq? (engine-doc-version engine did) rev)
 
 (displayln "edit-tui-rebuild/test/color.rkt: ok")

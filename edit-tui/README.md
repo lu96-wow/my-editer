@@ -698,7 +698,7 @@ overlay tables ++ focused resource command-stack
 
 ;; 普通投影 view：内容 / 光标分开写
 (engine-set-view-content! engine vid lines faces) ; -> changed?
-(engine-set-view-faces! engine vid line-faces #:key key) ; 逐字符 face，不动文本 / 光标
+(engine-set-view-face-track! engine vid face-track #:base-version v #:key key) ; 逐字符 face，不动文本 / 光标
 (engine-view-face-at engine vid line col)
 (engine-set-view-cursor! engine vid line #:column col)
 (engine-set-view-lines! engine vid lines faces line ...) ; 兼容：内容 + 光标
@@ -1206,8 +1206,8 @@ resource        per-doc command-table-stack（编辑器）
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的
   `(lines faces)`；内容没变就不重建 document、不推历史、不动 selections。
   core 的 render cache 以 document 版本为键 —— 不换 document 就命中增量渲染。
-- **编辑器 face 写回幂等**：`engine-set-view-faces!` 用 `(doc-id, version, pending)`
-  作为缓存键；颜色 state 没变就不碰 document revision。普通编辑 `color-edit`
+- **编辑器 face 写回幂等**：`engine-set-view-face-track!` 用 `(doc-id, version)`
+  作为缓存 / CAS 键；颜色 state 没变就不碰 document revision。普通编辑 `color-edit`
   只重扫 change 波及的行；首次打开 / undo / 批量修改走后台 `color-open` job，
   结果按版本校验，过期结果不会覆盖新文档。
 - **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
