@@ -116,6 +116,13 @@
 ;; 焦点不变时保留同一个 layout 对象（布局求解缓存可命中）。
 (check-eq? (layout-set-focus l-resized (layout-focus l-resized)) l-resized)
 
+;; layout-solve-key 只包含 root + panel-map；focus 变化不改变 solve key。
+(define solve-key0 (layout-solve-key l-resized))
+(define l-focus-only (layout-set-focus l-resized 'filetree))
+(define solve-key1 (layout-solve-key l-focus-only))
+(check-eq? (car solve-key0) (car solve-key1))
+(check-eq? (cdr solve-key0) (cdr solve-key1))
+
 (define l-focus (layout-set-focus l-resized 'filetree))
 (define l-hidden (hide! l-focus area 'filetree))
 (check-false (layout-panel-visible? l-hidden 'filetree))

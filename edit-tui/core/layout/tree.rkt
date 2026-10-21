@@ -29,6 +29,7 @@
  layout-panel-add-view
  layout-panel-update
  layout-set-focus
+ layout-solve-key
  layout-panel-view-ids
  layout-panel-active-view
  layout-panel-set-active-view
@@ -113,6 +114,11 @@
   (if (equal? (layout-focus l) id)
       l
       (struct-copy layout l [focus id])))
+
+;; layout-solve 只依赖结构（root + panel-map）和 area，不依赖 focus / next-split-id。
+;; key 的两个字段用 eq? 比较：focus 变化时 key 不变。
+(define (layout-solve-key l)
+  (and l (cons (layout-root l) (layout-panel-map l))))
 
 ;;; ════════════════ panel 内的 view 顺序切换 ════════════════
 

@@ -10,8 +10,7 @@
          filetree-toggle-expand
          filetree-set-view
          filetree-set-cursor
-         filetree-set-projection
-         filetree-sync-cursor
+         filetree-set-sync
          filetree-invalidate)
 
 (struct filetree-line (path kind depth text face) #:transparent)
@@ -27,7 +26,8 @@
    cursor-dirty? ; cursor 是否要由 state 推给 view（键盘移动）；#f 时以 view 为准
    expanded    ; path -> #t
    rows        ; (listof filetree-line)
-   projection) ; (list root expanded opened)：rows 对应的输入
+   projection  ; (list root expanded opened)：rows 对应的输入
+   sync-key)   ; (list view projection-key line col)：上一帧已写进 view 的完整输入
   #:transparent)
 
 ;; 文件树就是一个普通 buffer：光标（point）归 core view 所有。
@@ -36,15 +36,16 @@
 ;;   - 鼠标点击 -> view 的 point 已经动了，sync 直接读回来（dirty? = #f）。
 
 (define (empty-filetree)
-  (filetree #f 0 #t (hash) '() #f))
+  (filetree #f 0 #t (hash) '() #f #f))
 
 (define (make-filetree #:view [view #f]
                        #:line [line 0]
                        #:cursor-dirty? [cursor-dirty? #t]
                        #:expanded [expanded (hash)]
                        #:rows [rows '()]
-                       #:projection [projection #f])
-  (filetree view line cursor-dirty? expanded rows projection))
+                       #:projection [projection #f]
+                       #:sync-key [sync-key #f])
+  (filetree view line cursor-dirty? expanded rows projection sync-key))
 
 (define (filetree-expanded? f path)
   (hash-has-key? (filetree-expanded f) path))
@@ -63,14 +64,16 @@
 (define (filetree-set-cursor f line)
   (struct-copy filetree f [cursor line] [cursor-dirty? #t]))
 
-;; sync 读回（view 是真相）：只更新镜像，不要求下推。
-(define (filetree-sync-cursor f line)
-  (struct-copy filetree f [cursor line] [cursor-dirty? #f]))
-
-;;; 行投影 + 它的输入一起更新（用于跨帧复用）。
-(define (filetree-set-projection f projection rows)
-  (struct-copy filetree f [projection projection] [rows rows]))
+;;; sync 完成：记录“这一帧到底把什么写进了 view”。
+;;; projection / rows 可能来自缓存；sync-key 用完成后的实际光标。
+(define (filetree-set-sync f projection rows sync-key cursor)
+  (struct-copy filetree f
+               [projection projection]
+               [rows rows]
+               [sync-key sync-key]
+               [cursor cursor]
+               [cursor-dirty? #f]))
 
 ;; 丢弃投影缓存：下一次 sync 重新扫目录（C-r 手动刷新用）。
 (define (filetree-invalidate f)
-  (struct-copy filetree f [projection #f]))
+  (struct-copy filetree f [projection #f] [sync-key #f]))

@@ -376,6 +376,7 @@ empty-layout
 
 (layout-focus l)
 (layout-set-focus l id)   ; id 可以为 #f：焦点置空
+(layout-solve-key l)      ; (root . panel-map)：只描述 solve 依赖的结构
 ```
 
 ### panel 内 view 切换
@@ -1090,8 +1091,11 @@ resource        per-doc command-table-stack（编辑器）
 - **行投影有缓存**：filetree 按 `(root, expanded 集合, opened 集合)` 缓存 rows。
   三者不变就不重扫目录（`dir-entries` 每个 entry 要 3 次 stat，3000 行 ≈ 30ms）。
   外部文件变了用 `C-r` 手动刷新。
-- **布局求解有缓存**：`boot/loop` 以 `(layout 对象, area)` 为键复用
-  `layout-solution`；只有布局函数产生新 layout 对象或窗口 resize 才重新 solve。
+- **filetree sync 有完整 key**：`(view, projection-key, line, col)` 与上一帧相同就直接
+  返回原 state，不 map rows、不调用 `engine-set-view-lines!`。
+- **布局求解有缓存**：`boot/loop` 以 `(layout-solve-key, area)` 为键复用
+  `layout-solution`；key 只含 root + panel-map，焦点 / active view 变化不会让 solve 失效。
+  只有结构变化或窗口 resize 才重新 solve。
 - **布局投影每帧只做一次**：`sync-ui/panels!` 生成 panels 并写回 viewport 尺寸，
   `render-frame` 直接复用同一份 panels，不再重复 `layout->render-panels` / `panels-sync!`。
 - **UI 写回幂等**：`engine-set-view-lines!` 记住上次写进 view 的

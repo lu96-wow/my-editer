@@ -22,6 +22,7 @@
 
  ;; 焦点
  layout-focus layout-set-focus
+ layout-solve-key
 
  ;; panel 资源
  layout-panel-add layout-panel-add-view layout-panel layout-panel-resources layout-panel-ids

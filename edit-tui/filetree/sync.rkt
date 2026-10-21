@@ -33,6 +33,12 @@
         (sort (hash-keys expanded) string<?)
         (sort (hash-keys opened) string<?)))
 
+;;; sync 的完整输入：view + rows 投影输入 + 期望光标。
+;;; 这个 key 与 filetree.sync-key 相同，说明上一帧已经把同样内容写进 view，
+;;; 本帧可以整段跳过（不 map rows、不碰 engine）。
+(define (filetree-sync-input vid projection-key line col)
+  (list vid projection-key line col))
+
 (define (sync-filetree! state engine)
   (define f (filetree-of state))
   (cond
@@ -42,26 +48,33 @@
      (define root (resource-root store))
      (define expanded (filetree-expanded f))
      (define opened (opened-path-set state))
-     (define key (filetree-projection-key root expanded opened))
-     (define cached? (equal? key (filetree-projection f)))
-     (define rows
-       (if cached?
-           (filetree-rows f)
-           (filetree-lines root expanded opened dir-entries)))
-     (define f0 (if cached? f (filetree-set-projection f key rows)))
-     (define vid (filetree-view f0))
+     (define projection-key (filetree-projection-key root expanded opened))
+     (define vid (filetree-view f))
      ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准。
      ;; 列不限制在行首：普通 buffer 怎么动，文件树就怎么动（越界由 core clamp）。
      (define-values (line col)
-       (if (filetree-cursor-dirty? f0)
-           (values (filetree-cursor f0) 0)
+       (if (filetree-cursor-dirty? f)
+           (values (filetree-cursor f) 0)
            (values (or (engine-view-point-line engine vid) 0)
                    (or (engine-view-point-column engine vid) 0))))
-     (engine-set-view-lines! engine vid
-                             (map filetree-line-text rows)
-                             (map filetree-line-face rows)
-                             line
-                             #:column col)
-     ;; 写回镜像（engine 会 clamp；点击/滚动后以 view 为准）
-     (define cursor (or (engine-view-point-line engine vid) line))
-     (filetree-put state (filetree-sync-cursor f0 cursor))]))
+     (define sync-input (filetree-sync-input vid projection-key line col))
+     (cond
+       [(equal? sync-input (filetree-sync-key f)) state]
+       [else
+        (define cached? (equal? projection-key (filetree-projection f)))
+        (define rows
+          (if cached?
+              (filetree-rows f)
+              (filetree-lines root expanded opened dir-entries)))
+        (engine-set-view-lines! engine vid
+                                (map filetree-line-text rows)
+                                (map filetree-line-face rows)
+                                line
+                                #:column col)
+        ;; 写回镜像（engine 会 clamp/scroll）；sync-key 用实际光标，
+        ;; 下一帧从 view 读回同一个 key 就可以跳过。
+        (define actual-line (or (engine-view-point-line engine vid) line))
+        (define actual-col (or (engine-view-point-column engine vid) col))
+        (define actual-key (filetree-sync-input vid projection-key actual-line actual-col))
+        (filetree-put state
+                      (filetree-set-sync f projection-key rows actual-key actual-line))])]))

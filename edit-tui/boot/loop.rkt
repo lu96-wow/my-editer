@@ -26,27 +26,33 @@
 (provide run-loop
          run-app)
 
-;; 布局值不可变：同一 layout 对象 + 同一 area 的 solve 结果可以跨帧复用。
-;; 布局相关函数会用 struct-copy 产生新 layout 对象，因此 eq? 就是失效条件。
-(struct layout-cache (layout area solution) #:transparent)
+;; layout-solve 只依赖结构 key（root + panel-map）和 area。
+;; key 的两个字段用 eq? 比较：焦点 / active view 变化不会让 solve 失效。
+(struct layout-cache (key area solution) #:transparent)
+
+(define (layout-key=? a b)
+  (and a b
+       (eq? (car a) (car b))
+       (eq? (cdr a) (cdr b))))
 
 (define (cached-layout-solution cache layout area)
+  (define key (layout-solve-key layout))
   (cond
-    [(or (not layout) (not area)) (values #f #f)]
+    [(or (not key) (not area)) (values #f #f)]
     [(and cache
-          (eq? (layout-cache-layout cache) layout)
+          (layout-key=? (layout-cache-key cache) key)
           (equal? (layout-cache-area cache) area))
      (values cache (layout-cache-solution cache))]
     [else
      (define solution (layout-solve layout area))
-     (values (layout-cache layout area solution) solution)]))
+     (values (layout-cache key area solution) solution)]))
 
 (define (run-loop state engine
                   #:read-event [read-event (λ () (error 'run-loop "no read-event"))]
                   #:write-bytes [write-bytes (λ (b) (void))])
   (let loop ([state state] [cache #f] [layout-cache #f])
     ;; solve 放在 sync 之前：sync 里的 input reconcile 只改焦点 / active view，
-    ;; 不改几何；真正的结构变化会在下一帧因 layout 对象变化而重新 solve。
+    ;; 不改几何；真正的结构变化会在下一帧因 layout-solve-key 变化而重新 solve。
     (define layout (app-state-layout state))
     (define area (app-state-area state))
     (define-values (layout-cache* solution)

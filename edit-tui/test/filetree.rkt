@@ -92,10 +92,13 @@
 (define c1 (sync-filetree! c0 engine))
 (define n1 (length (rows-of c1)))
 (check-true (> n1 1))
+;; 输入完全没变：sync 整段跳过，返回同一个 state 对象。
+(check-eq? c1 (sync-filetree! c1 engine))
 
 ;; 磁盘上新加文件：投影输入没变 -> 不重扫，看不到
 (display-to-file "y" (build-path root2 "b.txt") #:exists 'truncate)
 (define c2 (sync-filetree! c1 engine))
+(check-eq? c1 c2)
 (check-equal? (length (rows-of c2)) n1)
 
 ;; C-r 丢弃缓存 -> 下一次 sync 重新扫
