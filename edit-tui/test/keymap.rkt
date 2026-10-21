@@ -8,7 +8,7 @@
 
 (check-true (keymap? default-keymap))
 (check-equal? (command-table-stack-tables (keymap-overlays default-keymap))
-              (list global-command-table))
+              (list app-command-table global-command-table))
 ;; buffer 创建时按 path/text 匹配键表
 (check-equal? (buffer-key-table "a.rkt" "") edit-command-table)
 (check-equal? (buffer-key-table #f "#lang racket\n") edit-command-table)
@@ -26,9 +26,16 @@
 (check-true (command-table-exact? input-command-table (list (key 'escape))))
 (check-true (command-table-exact? placement-table (list (key 'escape))))
 
-;; 全局键在 keymap 的 overlays 里，而不是散落在 demo
+;; 全局基础表：光标 / 焦点 / 布局
+(check-true (command-table-exact? global-command-table (list (key 'left))))
 (check-true (command-table-exact? global-command-table
-                                  (list (key 'q 'ctrl))))
+                                  (list (key 'x 'ctrl) (key 'left))))
+(check-true (command-table-exact? global-command-table
+                                  (list (key 'w 'ctrl) (key 'left))))
+
+;; 应用命令单独一张表
+(check-true (command-table-exact? app-command-table (list (key 'q 'ctrl))))
+(check-false (command-table-exact? global-command-table (list (key 'q 'ctrl))))
 
 (displayln "edit-tui-rebuild/test/keymap.rkt: ok")
 

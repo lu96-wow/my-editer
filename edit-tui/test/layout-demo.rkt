@@ -3,7 +3,8 @@
 ;;; 布局交互 demo 的 headless 验证：拆分 / 显隐 / 拖缝。
 (require rackunit
          "../main.rkt"
-         "../demo/interactive.rkt")
+         "../demo/interactive.rkt"
+         "demo-editor.rkt")
 
 (define (visible-ids s)
   (layout-visible-panel-ids (app-state-layout s)))
@@ -60,26 +61,27 @@
 (check-equal? (cdr (assoc 'filetree widths)) 35)
 
 ;;; ---------- demo 的编辑器：打字 -> 自插入 ----------
-(define-values (s9 a9) (step demo-state (key-event (key 'x))))
+(define ed-state (open-editor-into-demo demo-state demo-engine "hello"))
+(define-values (s9 a9) (step ed-state (key-event (key 'x))))
 (check-equal? (map view-action-kind a9) '(insert))
 (check-equal? (view-action-view-id (car a9)) 1)
 (check-equal? (view-action-data (car a9)) #"x")
 ;; 大写保留
-(define-values (_s10 a10) (step demo-state (key-event (key 'X))))
+(define-values (_s10 a10) (step ed-state (key-event (key 'X))))
 (check-equal? (view-action-data (car a10)) #"X")
 
 ;;; ---------- demo 的编辑器：点击 buffer -> 光标落点 ----------
-(define r (hash-ref (layout-panel-rects (app-state-layout demo-state)
-                                        (app-state-area demo-state))
+(define r (hash-ref (layout-panel-rects (app-state-layout ed-state)
+                                        (app-state-area ed-state))
                     'editor))
 (check-true (rect-contains? r (+ (rect-x r) 2) (+ (rect-y r) 2)))
 (define-values (_s11 a11)
-  (step demo-state (mouse-event 'press (+ (rect-y r) 2) (+ (rect-x r) 2))))
+  (step ed-state (mouse-event 'press (+ (rect-y r) 2) (+ (rect-x r) 2))))
 (check-equal? (map view-action-kind a11) '(point))
 ;; 内容区坐标（投影去掉边框后的相对坐标，和 content-hit 一致）
 (define-values (hit-id hit-row hit-col)
-  (layout-content-hit (app-state-layout demo-state)
-                         (app-state-area demo-state)
+  (layout-content-hit (app-state-layout ed-state)
+                         (app-state-area ed-state)
                          (+ (rect-y r) 2) (+ (rect-x r) 2)))
 (check-equal? hit-id 'editor)
 (check-equal? (view-action-data (car a11)) (list hit-row hit-col))

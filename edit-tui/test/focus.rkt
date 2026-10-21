@@ -87,3 +87,10 @@
 (check-equal? (map (λ (p) (c:panel-view p)) fps) '(filetree editor state))
 
 (displayln "edit-tui-rebuild/test/focus.rkt: ok")
+
+;;; ---------- 焦点可以置空 ----------
+(define l-no-focus (layout-set-focus l #f))
+(check-false (layout-focus l-no-focus))
+(define s-no-focus (app-state-set-focus-panel (make-app-state #:layout l) #f))
+(check-false (app-state-focus-panel-id s-no-focus))
+(check-false (app-state-focus-resource s-no-focus))

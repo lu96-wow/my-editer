@@ -4,9 +4,12 @@
 (require rackunit
          racket/file
          "../main.rkt"
-         "../demo/interactive.rkt")
+         "../demo/interactive.rkt"
+         "demo-editor.rkt")
 
-(define s0 (sync-ui! demo-state demo-engine))
+(define s0
+  (sync-ui! (open-editor-into-demo demo-state demo-engine "hello")
+            demo-engine))
 
 ;; 状态栏已有内容
 (check-true (> (string-length (engine-view-text demo-engine 20)) 0))

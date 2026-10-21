@@ -62,9 +62,9 @@
 (check-false (memq placement-table (overlay-tables s3)))
 (check-equal? (app-state-flash s3) "view placed")
 
-;;; ---------- 解除后方向键不再改焦点（普通键位恢复） ----------
+;;; ---------- 解除后方向键恢复为普通光标导航，不改焦点 ----------
 (define-values (s3b a3b) (press s3 (key 'down)))
-(check-equal? a3b '())
+(check-equal? (map view-action-kind a3b) '(nav))
 (check-equal? (focus s3b) 'editor2)
 
 ;;; ---------- Esc 取消也会解除临时表 ----------

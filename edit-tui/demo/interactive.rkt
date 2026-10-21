@@ -51,19 +51,10 @@
 
 (define engine (make-engine))
 
-(define demo-text
-  "hello, layout demo.\n\nC-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.\n")
-
-(define-values (store1 a1)
-  (resource-open resource-store-empty
-                 #:name "editor"
-                 #:text demo-text
-                 ;; buffer 创建时按 path/text 匹配键表
-                 #:key-table (buffer-key-table #f demo-text)))
-
 (define state0
-  (make-app-state #:resources store1
-                  #:focus-resource 1
+  (make-app-state #:resources resource-store-empty
+                  ;; 启动不预打开任何 buffer：焦点 resource 为空
+                  #:focus-resource #f
                   ;; 具体布局规则：宿主选择，layout 骨架不认识它
                   #:layout-config default-config
                   ;; 键位集合：全局 / 编辑 / 输入 / placement
@@ -71,7 +62,7 @@
                   #:area (rect 0 0 80 24)
                   #:next-panel-id 100))
 
-(define state1 (run-actions state0 engine a1))
+(define state1 state0)
 
 ;;; filetree 自己的 core view：doc=10, view=10
 (void (engine-create-buffer! engine 10 "*filetree*" ""))
@@ -87,14 +78,12 @@
 (define state3 (status-install-state state2 20))
 (define state4 (input-install-state state3 'status 20 21))
 
-;;; view ids: editor=1, state=3, filetree=10
+;;; view ids: filetree=10, status=20, input=21；editor 启动时为空
 
 ;;; ---------- layout ----------
 
 (define editor-panel
   (make-panel 'editor 'editor
-              #:views '(1)
-              #:active 1
               #:borders '(up down left right)))
 
 (define filetree-panel

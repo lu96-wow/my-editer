@@ -305,9 +305,23 @@ per-document 键表在 **buffer 创建时**匹配：
 `keymap` 是 `app/keymap.rkt` 的纯值（不在骨架），只保留应用级槽位：
 
 ```text
-overlays         全局表 stack（C-w split / C-b filetree / C-x focus / C-s / C-q）
+overlays         全局 fallback stack：
+                   app-command-table    C-b filetree / C-s save / C-q quit
+                   global-command-table 光标移动 + C-x focus + C-w split
 input-stack      输入栏独占 stack（Esc/C-g Enter C-h/C-t …）
 placement-table  placement 临时表（Enter/Esc/方向）
+```
+
+表按类别拆再组合：
+
+```text
+cursor-command-table    方向 / Home / End / 翻页 / C-a / C-e / C-f
+focus-command-table     C-x 方向
+layout-command-table    C-w 方向
+global-command-table    cursor + focus + layout
+app-command-table       filetree 显隐 / save / quit
+edit-command-table      cursor + 插入 / 删除 / 历史（buffer 局部）
+filetree-command-table  cursor + Enter / C-r
 ```
 
 非输入态查表顺序：
@@ -346,7 +360,7 @@ empty-layout
 (layout-subtree-visible? l node)
 
 (layout-focus l)
-(layout-set-focus l id)
+(layout-set-focus l id)   ; id 可以为 #f：焦点置空
 ```
 
 ### panel 内 view 切换
@@ -1097,7 +1111,7 @@ racket edit-tui-rebuild/demo/three-panels.rkt
 racket edit-tui-rebuild/demo/interactive.rkt
 ```
 
-交互 demo：
+交互 demo 启动时 editor 为空，不预打开任何 buffer；先在 filetree 里 Enter 打开文件。
 
 ```text
 C-w ←→↑↓   拆分当前 editor

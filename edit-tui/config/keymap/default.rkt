@@ -3,9 +3,12 @@
 ;;; edit-tui-rebuild/config/keymap/default.rkt —— 默认键位表（唯一来源）
 ;;;
 ;;; 所有 key-sequence -> command 的绑定都在这里：
-;;;   global      应用级：split / filetree / focus / save / quit
-;;;   navigation  方向 / Home / End / 翻页（editor 和 filetree 共用）
-;;;   edit        导航 + 插入 / 删除 / 历史
+;;;   cursor      光标移动：方向 / Home / End / 翻页
+;;;   focus       焦点移动：C-x 方向
+;;;   layout      布局拆分：C-w 方向
+;;;   global      cursor + focus + layout（基础操作）
+;;;   app         应用命令：filetree 显隐 / save / quit
+;;;   edit        导航 + 插入 / 删除 / 历史（buffer 本地）
 ;;;   filetree    navigation + Enter / C-r
 ;;;   input       Esc/C-g Enter C-h/C-t 编辑/移动
 ;;;   placement   Enter/Esc/方向
@@ -23,8 +26,12 @@
          "../../app/placement.rkt")
 
 (provide default-keymap
+         cursor-command-table
+         navigation-command-table   ; cursor 的兼容别名
+         focus-command-table
+         layout-command-table
          global-command-table
-         navigation-command-table
+         app-command-table
          edit-command-table
          filetree-command-table
          filetree-panel-stack
@@ -38,7 +45,7 @@
   (list (list (list (key dir)) (nav-command dir))
         (list (list (key dir 'shift)) (nav-command dir #:extend? #t))))
 
-(define navigation-command-table
+(define cursor-command-table
   (command-table-from-bindings
    (append
     (append* (for/list ([d (in-list '(left right up down home end))])
@@ -50,6 +57,8 @@
     ;; 翻页
     (list (list (list (key 'pageup))   (scroll-command 'page-up))
           (list (list (key 'pagedown)) (scroll-command 'page-down))))))
+
+(define navigation-command-table cursor-command-table)
 
 (define edit-command-table
   (command-table-merge
@@ -66,6 +75,22 @@
      ;; 历史
      (list (list (key 'z 'ctrl)) (edit-action-command 'undo))
      (list (list (key 'y 'ctrl)) (edit-action-command 'redo))))))
+
+;;; ════════════════ focus / layout ════════════════
+
+(define focus-command-table
+  (keys
+   [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
+   [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
+   [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
+   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]))
+
+(define layout-command-table
+  (keys
+   [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
+   [(key 'w 'ctrl) (key 'right) (split-command 'right)]
+   [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
+   [(key 'w 'ctrl) (key 'down)  (split-command 'down)]))
 
 ;;; ════════════════ filetree ════════════════
 
@@ -114,24 +139,25 @@
    [(key 'up)     (placement-focus-command 'up)]
    [(key 'down)   (placement-focus-command 'down)]))
 
-;;; ════════════════ global / default keymap ════════════════
+;;; ════════════════ global / app / default keymap ════════════════
 
+;; 全局基础操作：光标移动 + 焦点移动 + 布局拆分
 (define global-command-table
+  (command-table-merge
+   cursor-command-table
+   focus-command-table
+   layout-command-table))
+
+;; 应用命令：不属于基础编辑操作，单独一张表，仍是全局 fallback
+(define app-command-table
   (keys
-   [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
-   [(key 'w 'ctrl) (key 'right) (split-command 'right)]
-   [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
-   [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
-   [(key 'b 'ctrl)              toggle-filetree-command]
-   [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
-   [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
-   [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
-   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
-   [(key 's 'ctrl)              save-command]
-   [(key 'q 'ctrl)              quit-command]))
+   [(key 'b 'ctrl) toggle-filetree-command]
+   [(key 's 'ctrl) save-command]
+   [(key 'q 'ctrl) quit-command]))
 
 (define default-keymap
   (keymap
-   (command-table-stack-from-tables (list global-command-table))
+   (command-table-stack-from-tables
+    (list app-command-table global-command-table))
    input-command-stack
    placement-table))
