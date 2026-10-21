@@ -6,8 +6,10 @@
 lang/
   racket/
     api.rkt          唯一对外面
+    edit.rkt         语言层 line-edit（旧/新行区间）
     lex.rkt          词法 token（跨行注释 / 字符串）
     highlight.rkt    语法高亮角色
+    color.rkt        增量着色缓存（语法 + 同词色）
     word-color.rkt   同词着色角色
     source.rkt       #lang / require / define / provide 扫描
     analysis.rkt     Racket 绑定形式 -> 局部名字（lambda / let / for / match …）
@@ -46,6 +48,12 @@ lang/python/
 (highlight-text text)          ; -> (listof (vectorof symbol|#f))
 (highlight-role text line col)
 
+;; 增量：line-edit + color-state
+(color-open text)
+(color-edit state text edits)
+(color-syntax-roles state)
+(color-word-roles state)
+
 ;; 2. 同词着色
 (word-color-text text)         ; -> (listof (vectorof symbol|#f))
 (word-color-index "foo")       ; 稳定整数
@@ -79,6 +87,21 @@ lang/python/
 (workspace-local-def ws doc-id name)    ; 先当前，再依赖，再其它打开 buffer
 (docs-local ws doc-id name)
 ```
+
+## 增量策略
+
+- **着色**：按行缓存词法状态 / 语法 role / 同词 role，`color-edit` 只重扫脏行；
+  跨行块注释 / 字符串状态变化时向后推进到收敛。
+- **解析**：按顶层 `form-entry` 缓存。`analysis-edit` 只重读受脏行影响的
+  form；尾部遇到未变化的旧 form 就收敛，剩余 entry 只平移行号。
+- **workspace**：`workspace-apply-changes` 更新单个文档的 analysis；依赖它的
+  buffer 不重新 parse，导出查询读取新的接口结果。
+
+参考 `racket-langserver` 的取舍：
+
+- 它的 lexer 不是逐字符增量的，而是 `LexerSnapshot` + lazy cache + 编辑后失效；
+- 真正值得借的是“绝对 span / token tree / position journal / 异步结果版本”；
+- 这里着色做得更细（行级 change），语义解析则用顶层 form 作为增量单位。
 
 编辑器接入方式后续再做：语言层只产出 role / 候选 / 文档数据，不决定 face、菜单、
 弹窗或异步 worker。

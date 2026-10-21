@@ -56,6 +56,18 @@
 ;; 外部 core（repo/core）也不许插件直接摸；本地 core 只许 skeleton.rkt
 (define external-core? #rx"(^|/)\\.\\./\\.\\./core/")
 
+;;; ════════════════ 解析来源层（source/） ════════════════
+;;;
+;;; source/ 是纯来源模型 / 索引：不读磁盘、不 require app / boot / core。
+(define source-files
+  '("source/model.rkt" "source/store.rkt" "source/api.rkt"))
+
+(for ([m (in-list source-files)])
+  (check-false (requires-any? m upper-layer?) m)
+  (check-false (requires-any? m external-core?) m)
+  (check-false (requires-any? m skeleton-impl?) m)
+  (check-false (requires-any? m #rx"(^|/)(edit|chrome|filetree|resources)/") m))
+
 ;;; ════════════════ 共享语言层（lang/） ════════════════
 ;;;
 ;;; lang/ 不是插件，也不是 core：它是语言能力库。
@@ -63,10 +75,12 @@
 (define lang-files
   '("lang/racket/api.rkt"
     "lang/racket/racket.rkt"
+    "lang/racket/edit.rkt"
     "lang/racket/lex.rkt"
     "lang/racket/keywords.rkt"
     "lang/racket/highlight.rkt"
     "lang/racket/word-color.rkt"
+    "lang/racket/color.rkt"
     "lang/racket/source.rkt"
     "lang/racket/analysis.rkt"
     "lang/racket/workspace.rkt"

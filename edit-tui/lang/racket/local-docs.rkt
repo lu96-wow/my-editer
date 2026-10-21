@@ -6,7 +6,7 @@
 ;;; 这里只扫**当前缓冲区文本**的顶层定义，给某个名字一行源码摘要。
 ;;; 缓存不在这里（按文档版本）——本文件保持纯函数，便于测试。
 
-(provide local-defs local-def)
+(provide local-defs local-def local-defs-of-forms local-def-of-forms)
 
 (require racket/list racket/string
          "source.rkt")
@@ -45,12 +45,19 @@
         (if (symbol? t) (list (cons t snip)) '())]
        [else '()])]))
 
+;; 已读好的 forms → (hash 名 -> 摘要)。workspace 的增量 analysis 直接复用。
+(define (local-defs-of-forms forms)
+  (define snippets (append* (for/list ([f (in-list forms)]) (def-snippets f))))
+  (for/hash ([p (in-list snippets)]) (values (car p) (cdr p))))
+
 ;; 源码文本 → (hash 名 -> 摘要)。
 (define (local-defs text)
   (define-values (_lang forms) (module-context text))
-  (define snippets (append* (for/list ([f (in-list forms)]) (def-snippets f))))
-  (for/hash ([p (in-list snippets)]) (values (car p) (cdr p))))
+  (local-defs-of-forms forms))
 
 ;; 直接按名字取（找不到 → #f）。
 (define (local-def text name)
   (hash-ref (local-defs text) name #f))
+
+(define (local-def-of-forms forms name)
+  (hash-ref (local-defs-of-forms forms) name #f))

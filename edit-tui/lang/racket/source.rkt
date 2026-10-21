@@ -14,8 +14,9 @@
 
 (provide require-context? lang-context?
          requires-max-forms requires-max-chars
+         module-lang reader-body+offset
          module-context requires-context requires-of-forms require-specs-of-forms
-         definitions-of-forms provides-of-forms)
+         definitions-of-forms provides-of-forms provides-of-forms*)
 
 (require racket/list racket/path racket/string)
 
@@ -78,15 +79,26 @@
   (define m (regexp-match #px"^#lang\\s+(\\S+)" (substring text (skip-leading-trivia text))))
   (and m (string->symbol (cadr m))))
 
-;; 剥掉开头的 reader 指令（`#lang` / `#reader` 行）：先跳过空白 / 注释 / shebang，
-;; 若随后是 `#lang` / `#reader` 就整行拿掉；否则从第一个有效字符起返回。
-(define (strip-reader-lines text)
-  (define rest (substring text (skip-leading-trivia text)))
+(define (module-lang text) (directive-lang text))
+
+;; 返回 (values body body-start-offset)：
+;;   body        = 去掉开头 trivia + #lang/#reader 行后的文本
+;;   body-offset = body 在原 text 中的字符偏移（增量读 form 时用来算绝对位置）
+(define (reader-body+offset text)
+  (define trivia (skip-leading-trivia text))
+  (define rest (substring text trivia))
   (cond
     [(regexp-match? #rx"^#(lang|reader)" rest)
      (define nl (line-end rest 0))
-     (if (< nl (string-length rest)) (substring rest (add1 nl)) "")]
-    [else rest]))
+     (define end (if (< nl (string-length rest)) (add1 nl) (string-length rest)))
+     (values (substring text (+ trivia end)) (+ trivia end))]
+    [else (values rest trivia)]))
+
+;; 剥掉开头的 reader 指令（`#lang` / `#reader` 行）：先跳过空白 / 注释 / shebang，
+;; 若随后是 `#lang` / `#reader` 就整行拿掉；否则从第一个有效字符起返回。
+(define (strip-reader-lines text)
+  (define-values (body _offset) (reader-body+offset text))
+  body)
 
 ;; 顶层表单列表；读到一半出错就停（返回已读到的）。
 ;; #:max-forms / #:max-chars 可选上界：`require` 按惯例都在文件头部，
@@ -299,11 +311,9 @@
        [else '()])]
     [else '()]))
 
-;; 一个源码文本导出的名字。对任意编辑中的文本是全函数（读不下去就停在能读处）。
-;; #:module-exports 用于 all-from-out；默认不解析外部模块。
-(define (provides-of-forms text
-                           #:module-exports [module-exports (lambda (_spec) '())])
-  (define-values (_lang forms) (module-context text))
+;; 已经读好的 forms -> 导出名（不重新解析文本）。
+(define (provides-of-forms* forms
+                            #:module-exports [module-exports (lambda (_spec) '())])
   (define defined (definitions-of-forms forms))
   (define fields (struct-fields forms))
   (distinct-strings
@@ -311,6 +321,13 @@
                        #:when (and (pair? f) (eq? (car f) 'provide)))
               (append* (for/list ([s (in-list (list-elems (cdr f)))])
                          (provide-names s defined fields module-exports)))))))
+
+;; 一个源码文本导出的名字。对任意编辑中的文本是全函数（读不下去就停在能读处）。
+;; #:module-exports 用于 all-from-out；默认不解析外部模块。
+(define (provides-of-forms text
+                           #:module-exports [module-exports (lambda (_spec) '())])
+  (define-values (_lang forms) (module-context text))
+  (provides-of-forms* forms #:module-exports module-exports))
 
 ;;; ================= require 补全的上下文判定 =================
 

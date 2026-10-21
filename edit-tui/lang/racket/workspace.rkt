@@ -22,6 +22,10 @@
          (struct-out workspace)
          workspace-empty
          workspace-set-doc
+         workspace-apply-changes
+         workspace-set-source
+         workspace-apply-source-changes
+         workspace-remove-source
          workspace-remove-doc
          workspace-doc
          workspace-doc-by-path
@@ -39,6 +43,7 @@
 (require racket/list
          racket/path
          racket/string
+         "../../source/api.rkt"
          "analysis.rkt"
          "local-docs.rkt"
          "pool.rkt"
@@ -108,6 +113,45 @@
                                 analysis))
   (workspace (hash-set (workspace-docs ws) id entry)))
 
+;; 增量更新：analysis-edit 只重读受影响的顶层 form；依赖查询按新接口即时解析。
+(define (workspace-apply-changes ws id path text
+                                 #:version [version #f]
+                                 #:edits edits)
+  (define old (hash-ref (workspace-docs ws) id #f))
+  (define path* (workspace-normalize-path path))
+  (cond
+    [(or (not old)
+         (not (equal? (document-entry-path old) path*)))
+     (workspace-set-doc ws id path text #:version version)]
+    [(null? edits) ws]
+    [else
+     (define analysis (analysis-edit (document-entry-analysis old) path* text edits))
+     (define entry (document-entry id path* text
+                                   (or version text)
+                                   analysis))
+     (workspace (hash-set (workspace-docs ws) id entry))]))
+
+;;; ════════════════ source snapshot 入口 ════════════════
+
+;; workspace 只消费 source snapshot，不关心它来自 buffer 还是 disk。
+(define (workspace-set-source ws snapshot)
+  (workspace-set-doc ws
+                     (source-snapshot-id snapshot)
+                     (source-snapshot-path snapshot)
+                     (source-snapshot-text snapshot)
+                     #:version (source-snapshot-version snapshot)))
+
+(define (workspace-apply-source-changes ws snapshot edits)
+  (workspace-apply-changes ws
+                           (source-snapshot-id snapshot)
+                           (source-snapshot-path snapshot)
+                           (source-snapshot-text snapshot)
+                           #:version (source-snapshot-version snapshot)
+                           #:edits edits))
+
+(define (workspace-remove-source ws id)
+  (workspace-remove-doc ws id))
+
 (define (workspace-remove-doc ws id)
   (workspace (hash-remove (workspace-docs ws) id)))
 
@@ -147,8 +191,8 @@
         (define resolver
           (λ (spec) (resolve-spec-exports ws e spec stack*)))
         (with-handlers ([exn:fail? (lambda (_) '())])
-          (provides-of-forms (document-entry-text e)
-                             #:module-exports resolver))])]))
+          (provides-of-forms* (module-analysis-forms (document-entry-analysis e))
+                              #:module-exports resolver))])]))
 
 ;; spec -> (listof string)。优先使用 workspace 里的打开文档；否则退回磁盘模块。
 (define (resolve-spec-exports ws e spec stack)
@@ -244,7 +288,7 @@
   (define ordered
     (append (if e (list e) '()) required others))
   (for/or ([d (in-list ordered)])
-    (define snippet (local-def (document-entry-text d) sym))
+    (define snippet (local-def-of-forms (module-analysis-forms (document-entry-analysis d)) sym))
     (and snippet (cons (document-entry-id d) snippet))))
 
 (define (workspace-local-defs ws id)

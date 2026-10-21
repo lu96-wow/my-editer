@@ -16,10 +16,12 @@
 ;;; 本模块不 require app / boot / core，保持纯语言层。
 
 (require "racket.rkt"
+         "edit.rkt"
          "lex.rkt"
          "keywords.rkt"
          "highlight.rkt"
          "word-color.rkt"
+         "color.rkt"
          "source.rkt"
          "analysis.rkt"
          "workspace.rkt"
@@ -30,10 +32,12 @@
          "completion.rkt")
 
 (provide (all-from-out "racket.rkt"
+                       "edit.rkt"
                        "lex.rkt"
                        "keywords.rkt"
                        "highlight.rkt"
                        "word-color.rkt"
+                       "color.rkt"
                        "source.rkt"
                        "analysis.rkt"
                        "workspace.rkt"
