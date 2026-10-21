@@ -21,6 +21,7 @@
          "../../app/keymap.rkt"
          "../../edit/api.rkt"
          "../../filetree/api.rkt"
+         "../../resources/api.rkt"
          "../../chrome/api.rkt"
          "../../app/commands.rkt"
          "../../app/placement.rkt")
@@ -35,6 +36,8 @@
          edit-command-table
          filetree-command-table
          filetree-panel-stack
+         resource-panel-command-table
+         resource-panel-stack
          input-command-table
          input-command-stack
          placement-table)
@@ -82,7 +85,9 @@
    [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
    [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
-   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]))
+   [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
+   ;; 同一个 sidebar panel 里切 filetree / resource tab
+   [(key 'x 'ctrl) (key 'b)     cycle-sidebar-view-command]))
 
 (define layout-command-table
   (keys
@@ -104,6 +109,18 @@
 
 (define filetree-panel-stack
   (command-table-stack-from-tables (list filetree-command-table)))
+
+;;; ════════════════ resource panel ════════════════
+
+(define resource-panel-command-table
+  (command-table-merge
+   navigation-command-table
+   (keys
+    [(key 'enter)   resource-panel-enter-command]
+    [(key 'r 'ctrl) resource-panel-refresh-command])))
+
+(define resource-panel-stack
+  (command-table-stack-from-tables (list resource-panel-command-table)))
 
 ;;; ════════════════ input ════════════════
 

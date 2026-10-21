@@ -19,6 +19,7 @@
          "edit/api.rkt"
          "chrome/api.rkt"
          "filetree/api.rkt"
+         "resources/api.rkt"
          "app/api.rkt"
          "boot/api.rkt")
 
@@ -27,5 +28,6 @@
                        "edit/api.rkt"
                        "chrome/api.rkt"
                        "filetree/api.rkt"
+                       "resources/api.rkt"
                        "app/api.rkt"
                        "boot/api.rkt"))

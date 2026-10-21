@@ -62,6 +62,7 @@
          resource-root
          resource-set-root
          resource-display-path
+         resource-revision
          resource-opened-revision)
 
 ;;; ════════════════ 数据 ════════════════
@@ -74,7 +75,7 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (root resources order pending prompt view-index opened-revision
+  (root resources order pending prompt view-index revision opened-revision
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
 ;; root            : string（启动根路径；规范化绝对路径，"" = 未设置）
@@ -83,6 +84,7 @@
 ;; pending         : pending | #f
 ;; prompt          : prompt | #f
 ;; view-index      : view-id -> resource-id（resource-of-view 的 O(1) 索引）
+;; revision        : 任意 resource 数据变化 +1（resource 面板缓存用）
 ;; opened-revision : 打开路径集合的版本；成员 / path 变化才 +1
 
 (struct resource-action (kind data) #:transparent)
@@ -99,7 +101,7 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store "" (hash) '() #f #f (hash) 0 1 1 1))
+  (resource-store "" (hash) '() #f #f (hash) 0 0 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
@@ -138,6 +140,7 @@
                           (resource-store-order r)
                           (append (resource-store-order r) (list id)))]
                [view-index idx]
+               [revision (add1 (resource-store-revision r))]
                [opened-revision (if path-changed?
                                     (add1 (resource-store-opened-revision r))
                                     (resource-store-opened-revision r))]))
@@ -153,6 +156,7 @@
                                (index-remove-views (resource-store-view-index r)
                                                    id (resource-views old))
                                (resource-store-view-index r))]
+               [revision (add1 (resource-store-revision r))]
                [opened-revision (if (and old (resource-file-path old))
                                     (add1 (resource-store-opened-revision r))
                                     (resource-store-opened-revision r))]))
@@ -502,6 +506,10 @@
 
 (define (resource-root store)
   (resource-store-root store))
+
+;; 任意 resource 数据变化的版本；resource 面板用它决定是否重算 rows。
+(define (resource-revision store)
+  (resource-store-revision store))
 
 ;; 打开路径集合（有 path 的 resource）的版本。filetree 用它决定是否重算 opened 集合。
 (define (resource-opened-revision store)

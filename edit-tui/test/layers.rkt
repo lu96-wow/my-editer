@@ -51,8 +51,8 @@
   #rx"(^|/)core/(base|command|face|panel|layout|focus|projection|resource|engine)/[^/]+\\.rkt$")
 ;; 插件的实现文件（跨插件只许 api.rkt）
 (define plugin-impl?
-  #rx"(^|/)(edit|chrome|filetree)/[^/]+\\.rkt$")
-(define upper-layer? #rx"(^|/)(app|chrome|filetree|edit|boot)/")
+  #rx"(^|/)(edit|chrome|filetree|resources)/[^/]+\\.rkt$")
+(define upper-layer? #rx"(^|/)(app|chrome|filetree|resources|edit|boot)/")
 ;; 外部 core（repo/core）也不许插件直接摸；本地 core 只许 skeleton.rkt
 (define external-core? #rx"(^|/)\\.\\./\\.\\./core/")
 
@@ -120,13 +120,15 @@
 (check-false (file-exists? (build-path root "config/api.rkt")))
 (check-false (file-exists? (build-path root "config/model.rkt")))
 
-;;; ════════════════ 插件（edit / chrome / filetree） ════════════════
+;;; ════════════════ 插件（edit / chrome / filetree / resources） ════════════════
 (define plugin-files
   '("edit/insert.rkt" "edit/commands.rkt" "edit/api.rkt"
     "chrome/status.rkt" "chrome/input.rkt" "chrome/api.rkt"
     "filetree/model.rkt" "filetree/lines.rkt" "filetree/scan.rkt"
     "filetree/slice.rkt" "filetree/sync.rkt" "filetree/commands.rkt"
-    "filetree/api.rkt"))
+    "filetree/api.rkt"
+    "resources/model.rkt" "resources/slice.rkt" "resources/lines.rkt"
+    "resources/sync.rkt" "resources/commands.rkt" "resources/api.rkt"))
 
 (for ([m (in-list plugin-files)])
   ;; 不许摸外部 core / boot / 骨架实现；本地 core 只经 core/skeleton.rkt
@@ -144,7 +146,8 @@
 
 ;; 插件组合骨架：至少用到 core/skeleton.rkt（api.rkt / 纯 model 例外）
 (for ([m (in-list '("edit/commands.rkt" "chrome/status.rkt" "chrome/input.rkt"
-                    "filetree/sync.rkt" "filetree/commands.rkt"))])
+                    "filetree/sync.rkt" "filetree/commands.rkt"
+                    "resources/sync.rkt" "resources/commands.rkt"))])
   (check-true (for/or ([r (in-list (requires m))])
                 (regexp-match? #rx"core/skeleton\\.rkt$" r))
               m))
@@ -165,7 +168,7 @@
     (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
 
 ;; app/state 只依赖骨架（+ 自己）
-(check-false (requires-any? "app/state.rkt" #rx"(^|/)(chrome|edit|filetree)/"))
+(check-false (requires-any? "app/state.rkt" #rx"(^|/)(chrome|edit|filetree|resources)/"))
 (check-false (requires-any? "app/state.rkt" #rx"(^|/)step\\.rkt$"))
 
 ;;; ════════════════ 入口 ════════════════

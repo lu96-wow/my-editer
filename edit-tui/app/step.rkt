@@ -48,9 +48,14 @@
          [rid (or (resource-command-stack (app-state-resources state) rid)
                   command-table-stack-empty)]
          [else
-          (hash-ref (app-state-panel-stacks state)
-                    (app-state-focus-panel-id state)
-                    command-table-stack-empty)]))
+          ;; 同一 panel 可以挂多个 tab：先按 active view-id 找局部表，
+          ;; 再回退到 panel-id（filetree 等单 tab 面板）。
+          (define vid (app-state-focus-view-id state))
+          (or (and vid
+                   (hash-ref (app-state-panel-stacks state) vid #f))
+              (hash-ref (app-state-panel-stacks state)
+                        (app-state-focus-panel-id state)
+                        command-table-stack-empty))]))
      (command-table-stack-over
       (app-state-overlays state)
       (command-table-stack-over base (keymap-overlays km)))]))

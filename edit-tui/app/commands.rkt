@@ -11,6 +11,7 @@
 (provide split-command
          close-panel-command
          toggle-filetree-command
+         cycle-sidebar-view-command
          focus-command
          save-command
          quit-command)
@@ -70,6 +71,37 @@
   (if ok?
       (values (struct-copy app-state state [layout layout*]) '())
       (values (app-state-with-flash state "toggle filetree failed") '())))
+
+;; 文件树 / 资源面板共用同一个 sidebar panel，按 views 顺序切 tab。
+(define (sidebar-panel-id state)
+  (define layout (app-state-layout state))
+  (define focus-id (app-state-focus-panel-id state))
+  (define focus-panel (app-state-panel state focus-id))
+  (cond
+    [(and focus-panel (eq? (panel-kind focus-panel) 'sidebar)) focus-id]
+    [layout
+     (for/first ([id (in-list (layout-visible-panel-ids layout))]
+                 #:when (eq? (panel-kind (layout-panel layout id)) 'sidebar))
+       id)]
+    [else #f]))
+
+(define (cycle-sidebar-view-command state)
+  (define layout (app-state-layout state))
+  (define pid (sidebar-panel-id state))
+  (cond
+    [(not pid)
+     (values (app-state-with-flash state "sidebar: no panel") '())]
+    [else
+     (define views (layout-panel-view-ids layout pid))
+     (cond
+       [(< (length views) 2)
+        (values (app-state-with-flash state "sidebar: only one view") '())]
+       [else
+        (define-values (layout* ok?)
+          (layout-panel-cycle-active-view layout pid))
+        (if ok?
+            (values (struct-copy app-state state [layout layout*]) '())
+            (values (app-state-with-flash state "sidebar: switch failed") '()))])]))
 
 (define (focus-command dir)
   (λ (state)

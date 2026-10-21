@@ -7,8 +7,9 @@
 ;;;
 ;;; 键：
 ;;;   C-w ←→↑↓      拆分当前 editor（空 panel）
-;;;   C-b           显示 / 隐藏 filetree
+;;;   C-b           显示 / 隐藏 sidebar（filetree / resources）
 ;;;   C-x ←→↑↓      焦点在 panel 间移动
+;;;   C-x b         切换 sidebar tab（filetree / resources）
 ;;;   C-s           保存当前 resource（无 path -> 输入栏 Save as）
 ;;;   C-q           退出（dirty -> 输入栏确认）
 ;;;
@@ -36,6 +37,7 @@
 ;;;   点 buffer 内容 把主光标放到点击处（filetree 也只是普通 buffer）
 ;;;
 ;;; 文件树 / placement：
+;;;   sidebar 里 filetree / resources 共用位置，C-x b 切 tab；
 ;;;   filetree 就是普通 buffer：←→↑↓ / Home End 自由移动光标（列不钉死在行首），
 ;;;   PageUp/Down 滚一屏；Enter 展开目录 / 打开文件（已打开则聚焦 / 进入 placement）；
 ;;;   C-h 显 / 隐 . 开头条目（默认隐藏）
@@ -66,9 +68,11 @@
 
 (define state1 state0)
 
-;;; filetree 自己的 core view：doc=10, view=10
+;;; filetree / resources 自己的 core view：filetree=10, resources=11
 (void (engine-create-buffer! engine 10 "*filetree*" ""))
 (void (engine-create-view! engine 10 10))
+(void (engine-create-buffer! engine 11 "*resources*" ""))
+(void (engine-create-view! engine 11 11))
 (void (engine-create-buffer! engine 20 "*status*" ""))
 (void (engine-create-view! engine 20 20))
 (void (engine-create-buffer! engine 21 "*input*" ""))
@@ -79,8 +83,10 @@
                           #:panel-stack filetree-panel-stack))
 (define state3 (status-install-state state2 20))
 (define state4 (input-install-state state3 'status 20 21))
+(define state5 (resource-panel-install-state state4 11
+                                             #:panel-stack resource-panel-stack))
 
-;;; view ids: filetree=10, status=20, input=21；editor 启动时为空
+;;; view ids: filetree=10, resources=11, status=20, input=21；editor 启动时为空
 
 ;;; ---------- layout ----------
 
@@ -90,7 +96,7 @@
 
 (define filetree-panel
   (make-panel 'filetree 'sidebar
-              #:views '(10)
+              #:views '(10 11)
               #:active 10
               #:borders '(right)))
 
@@ -108,7 +114,7 @@
 (unless (and ok1? ok2?) (error 'demo "layout attach failed"))
 
 (define demo-state
-  (struct-copy app-state state4 [layout l2]))
+  (struct-copy app-state state5 [layout l2]))
 
 (define demo-engine engine)
 

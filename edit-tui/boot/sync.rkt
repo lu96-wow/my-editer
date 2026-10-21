@@ -16,6 +16,7 @@
          "../render/layout.rkt"
          "actions.rkt"
          "../filetree/sync.rkt"
+         "../resources/sync.rkt"
          "../chrome/status.rkt"
          "../chrome/input.rkt")
 
@@ -41,7 +42,8 @@
   (define s0* (run-actions s0 engine actions))
   (define panels (sync-panel-sizes! s0* engine #:solution solution))
   (define s1 (sync-filetree! s0* engine))
-  (define s2 (input-sync! s1 engine))
+  (define s1* (sync-resource-panel! s1 engine))
+  (define s2 (input-sync! s1* engine))
   (define s3 (sync-status! s2 engine))
   (values s3 panels))
 

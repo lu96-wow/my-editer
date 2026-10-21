@@ -105,6 +105,7 @@
   (struct-copy app-state state
                [resources (resource-set-root (app-state-resources state) root*)]
                [store (hash-set (app-state-store state) 'filetree f)]
-               [panel-stacks (hash-set (app-state-panel-stacks state)
-                                       panel-id
-                                       panel-stack)]))
+               [panel-stacks
+                (hash-set (hash-set (app-state-panel-stacks state)
+                                    panel-id panel-stack)
+                          view panel-stack)]))

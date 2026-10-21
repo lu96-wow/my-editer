@@ -33,7 +33,7 @@
 
 ;; 这些目录内部是实现 + api 共存；不扫描它们的内部 require。
 (define feature-dirs
-  '("core" "boot" "config" "render" "filetree" "chrome" "app" "edit"))
+  '("core" "boot" "config" "render" "filetree" "resources" "chrome" "app" "edit"))
 
 (define (feature-dir? rel)
   (for/or ([d (in-list feature-dirs)])
@@ -80,7 +80,7 @@
   (regexp-match? #rx"(^|/)config/" str))
 
 (define (domain-impl? str)
-  (regexp-match? #rx"(^|/)(edit|chrome|filetree|app|boot|render)/[^/]+\\.rkt$" str))
+  (regexp-match? #rx"(^|/)(edit|chrome|filetree|resources|app|boot|render)/[^/]+\\.rkt$" str))
 
 (define (impl-require? str)
   (and (not (api-path? str))

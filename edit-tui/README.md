@@ -44,7 +44,7 @@ close-resource action close-resource-action      action 数据的唯一构造点
 骨架-投影    core/projection  render                        纯       布局 / 值 / core render
 骨架入口     core/skeleton.rkt                              纯聚合   上面所有 core api.rkt
 ------------------------------------------------------------------------------
-插件         edit  chrome  filetree                          纯       core/skeleton.rkt + app/state
+插件         edit  chrome  filetree  resources             纯       core/skeleton.rkt + app/state
 App 基础     app/state app/keymap app/event app/action        纯       core/skeleton.rkt
 App 交互     app/placement                                  纯       core/skeleton + app/state
 App 编排     app/step                                        纯       core/skeleton + 插件 api + app 基础
@@ -64,7 +64,7 @@ edit-tui/core: base / command / panel / face
                 ↑
       core/skeleton.rkt      ← 插件唯一能 require 的骨架入口
         ┌───────┴────────┐
-      edit      chrome   filetree   ← 插件：只组合骨架 + app/state
+      edit      chrome   filetree   resources   ← 插件：只组合骨架 + app/state
         └───────┬────────┘
              app/step ──→ boot ──→ tui
 ```
@@ -113,7 +113,7 @@ edit-tui/
     keymap/buffer.rkt    buffer 创建时匹配 per-doc 键表
     theme/default.rkt
 
-  edit/  chrome/  filetree/   插件（暂时留在根目录）
+  edit/  chrome/  filetree/  resources/   插件（暂时留在根目录）
 
   app/                     应用状态 / 命令 / 编排（暂时留在根目录）
   render/                  输出渲染（暂时留在根目录）
@@ -163,6 +163,7 @@ render/api.rkt            render-layout / layout-sync!
 edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
+resources/api.rkt         model / lines / sync / commands / install
 app/api.rkt               event / state / keymap / action / commands / placement / step
 boot/api.rkt              plugin / host / start / actions / frame / sync / tui-adapter / loop
 ```
@@ -322,7 +323,7 @@ per-document 键表在 **buffer 创建时**匹配：
 ```text
 overlays         全局 fallback stack：
                    app-command-table    C-b filetree / C-s save / C-q quit
-                   global-command-table 光标移动 + C-x focus + C-w split
+                   global-command-table 光标移动 + C-x focus / sidebar tab + C-w split
 input-stack      输入栏独占 stack（Esc/C-g Enter C-h/C-t …）
 placement-table  placement 临时表（Enter/Esc/方向）
 ```
@@ -331,12 +332,13 @@ placement-table  placement 临时表（Enter/Esc/方向）
 
 ```text
 cursor-command-table    方向 / Home / End / 翻页 / C-a / C-e / C-f
-focus-command-table     C-x 方向
+focus-command-table     C-x 方向 / C-x b 切换 sidebar tab
 layout-command-table    C-w 方向 / C-d close-panel（删除/清空当前 editor panel）
 global-command-table    cursor + focus + layout
 app-command-table       filetree 显隐 / save / quit
 edit-command-table      cursor + 插入 / 删除 / 历史（buffer 局部）
-filetree-command-table  cursor + Enter / C-r
+filetree-command-table  cursor + Enter / C-r / C-h
+resource-panel-command-table  cursor + Enter / C-r
 ```
 
 非输入态查表顺序：
@@ -732,6 +734,34 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
   列可以自由移动（长路径会横向滚动）；state 里的 cursor 只是 point line 的镜像。
 - 鼠标点 filetree 行：就是普通 buffer 的 point action —— 点哪行、哪列，光标就到哪
   （滚动、行尾、空白处的行为与编辑器完全一致）。
+
+### 资源管理面板
+
+和 filetree 共用同一个 sidebar panel，通过 `C-x b` 切换 tab；view-id 不同，但 position 相同。
+
+```racket
+;; 键位表在 config/keymap：resource-panel-command-table / resource-panel-stack
+(resource-panel-install-state state view #:panel-stack panel-stack)
+(sync-resource-panel! state engine)
+(resource-panel-enter-command state)   ; Enter
+(resource-panel-refresh-command state) ; C-r
+```
+
+行投影：
+
+```text
+buffer 行
+  view 行
+  view 行
+buffer 行
+  view 行
+```
+
+- buffer / view 的 face 分开：`resource-document` / `resource-view`；
+- dirty 的 buffer 用 `resource-pending`，并显示 `*`；
+- Enter buffer 行 -> 该 resource 的第一个 view；
+- Enter view 行 -> 该 view；
+- 已挂 panel -> 聚焦 panel 并切 active view；detached -> placement。
 
 ### 状态栏 / 输入栏
 
@@ -1144,8 +1174,9 @@ racket edit-tui/demo/interactive.rkt
 ```text
 C-w ←→↑↓   拆分当前 editor
 C-d        close-panel：删除当前 editor panel；最后一个只清 view
-C-b        显隐 filetree
+C-b        显隐 sidebar（filetree / resources）
 C-x ←→↑↓   焦点移动
+C-x b      切换 sidebar tab（filetree / resources）
 C-s        保存当前 resource（无 path -> Save as 输入栏）
 C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
