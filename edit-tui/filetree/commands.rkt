@@ -26,7 +26,8 @@
 
 (provide filetree-install-state
          filetree-enter-command
-         filetree-refresh-command)
+         filetree-refresh-command
+         filetree-toggle-hidden-command)
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -72,10 +73,16 @@
              '())]
     [else (filetree-open-file state (filetree-line-path line))]))
 
-;; 行投影按 (root, expanded, opened) 缓存；外部文件变化不会自动反映。
+;; 行投影按 (root, expanded, opened, show-hidden?) 缓存；外部文件变化不会自动反映。
 ;; C-r 丢掉缓存，下一次 sync 重新扫一次目录。
 (define (filetree-refresh-command state)
   (values (filetree-put state (filetree-invalidate (filetree-of state))) '()))
+
+;; C-h：显 / 隐 . 开头条目。
+(define (filetree-toggle-hidden-command state)
+  (values (filetree-put state
+                        (filetree-toggle-hidden (filetree-of state)))
+          '()))
 
 ;;; ════════════════ 安装 ════════════════
 ;;;
@@ -84,10 +91,16 @@
 
 (define (filetree-install-state state view root
                                 #:panel-id [panel-id 'filetree]
-                                #:panel-stack panel-stack)
+                                #:panel-stack panel-stack
+                                #:show-hidden? [show-hidden? #f]
+                                #:hidden-entry? [hidden-entry? #f])
   (define root* (resource-normalize-path root))
   (define f (filetree-set-view
-             (filetree-toggle-expand (empty-filetree) root*)
+             (filetree-toggle-expand
+              (filetree-set-hidden-filter
+               (filetree-set-show-hidden (empty-filetree) show-hidden?)
+               hidden-entry?)
+              root*)
              view))
   (struct-copy app-state state
                [resources (resource-set-root (app-state-resources state) root*)]

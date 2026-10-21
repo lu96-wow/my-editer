@@ -7,16 +7,26 @@
          "model.rkt")
 
 (provide filetree-lines
-         filetree-line-at)
+         filetree-line-at
+         default-hidden-entry?)
 
 (define (indent depth) (make-string (* 2 depth) #\space))
 
 (define (entry-name path)
   (path->string (file-name-from-path path)))
 
+;; 默认隐藏规则：文件名以 . 开头。
+(define (default-hidden-entry? path)
+  (define name (entry-name path))
+  (and (positive? (string-length name))
+       (char=? #\. (string-ref name 0))))
+
 ;; entry-lister : string -> (listof (cons ('dir|'file) path))
 ;; opened       : hash path -> #t
-(define (filetree-lines root expanded opened entry-lister)
+;; hidden-entry? : path -> boolean；可组合的额外过滤规则。
+(define (filetree-lines root expanded opened entry-lister
+                        #:show-hidden? [show-hidden? #f]
+                        #:hidden-entry? [hidden-entry? default-hidden-entry?])
   (cond
     [(or (not root) (string=? root "")) '()]
     [else
@@ -36,7 +46,9 @@
                         face))
        (define children
          (if (and (eq? kind 'dir) (hash-has-key? expanded pn))
-             (append* (for/list ([e (in-list (entry-lister pn))])
+             (append* (for/list ([e (in-list (entry-lister pn))]
+                                 #:unless (and (not show-hidden?)
+                                               (hidden-entry? (cdr e))))
                         (walk (cdr e) (add1 depth) (car e))))
              '()))
        (cons line children))

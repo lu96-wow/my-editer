@@ -28,10 +28,11 @@
 ;;; 三者都没变就复用上一帧的 rows —— 否则每帧都要重扫目录（每个 entry 若干次
 ;;; stat）、重建行、重建 document，行数一多就是几十毫秒一帧。
 ;;; opened-path-set 只算一次，key 和 rows 共用。
-(define (filetree-projection-key root expanded opened)
+(define (filetree-projection-key root expanded opened show-hidden?)
   (list root
         (sort (hash-keys expanded) string<?)
-        (sort (hash-keys opened) string<?)))
+        (sort (hash-keys opened) string<?)
+        show-hidden?))
 
 ;;; sync 的完整输入：view + rows 投影输入 + 期望光标。
 ;;; 这个 key 与 filetree.sync-key 相同，说明上一帧已经把同样内容写进 view，
@@ -59,7 +60,9 @@
        (if opened-changed?
            (filetree-set-opened f opened opened-revision)
            f))
-     (define projection-key (filetree-projection-key root expanded opened))
+     (define projection-key
+       (filetree-projection-key root expanded opened
+                                (filetree-show-hidden? f0)))
      (define vid (filetree-view f0))
      ;; 键盘移动（cursor-dirty? = #t）用 state 的 cursor；否则以 view 的光标为准。
      ;; 列不限制在行首：普通 buffer 怎么动，文件树就怎么动（越界由 core clamp）。
@@ -77,7 +80,10 @@
         (define rows
           (if cached?
               (filetree-rows f0)
-              (filetree-lines root expanded opened dir-entries)))
+              (filetree-lines root expanded opened dir-entries
+                              #:show-hidden? (filetree-show-hidden? f0)
+                              #:hidden-entry? (or (filetree-hidden-entry? f0)
+                                                  default-hidden-entry?))))
         (engine-set-view-lines! engine vid
                                 (map filetree-line-text rows)
                                 (map filetree-line-face rows)

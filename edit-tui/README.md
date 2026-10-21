@@ -700,15 +700,17 @@ view-id -> core view 在 core engine 里解析；State 不存 core 句柄。
 (resource-find-by-path store path)
 
 (sync-filetree! state engine)  ; -> state'
-;;   rows 按 (root, expanded, opened) 缓存
+;;   rows 按 (root, expanded, opened, show-hidden?) 缓存
 ;;   光标归 core view（它就是普通 buffer）：
 ;;     键盘移动 -> state 改 cursor 并置 cursor-dirty?，sync 推给 view；
 ;;     鼠标点击 -> 普通 point action 改 view，sync 直接读回来当镜像。
 
 ;; 键位表在 config/keymap：filetree-command-table / filetree-panel-stack
-(filetree-install-state state view root #:panel-id #:panel-stack)
+(filetree-install-state state view root #:panel-id #:panel-stack
+                        #:show-hidden? #:hidden-entry?)
 (filetree-enter-command state)
-(filetree-refresh-command state)   ; C-r：丢弃行投影缓存
+(filetree-refresh-command state)        ; C-r：丢弃行投影缓存
+(filetree-toggle-hidden-command state)  ; C-h：显 / 隐 . 开头条目
 ;; 没有文件树专用的点击/光标逻辑：走通用 point action
 ```
 
@@ -1189,6 +1191,8 @@ Home / End     行首 / 行尾        Shift+方向  扩展选区
 PageUp/Down    滚一屏（光标跟着走）
 Enter          展开目录 / 打开文件（文件 -> 进入 placement）
 C-r            重扫目录（行投影有缓存，外部文件变化不会自动反映）
+C-h            显 / 隐以 . 开头的条目（默认隐藏；过滤规则可经 #:hidden-entry? 扩展，
+               它负责“算 hidden”，show-hidden? 负责“是否显示 hidden”）
 ```
 
 placement（打开文件后自动进入）：

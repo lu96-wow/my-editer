@@ -11,6 +11,9 @@
          filetree-set-view
          filetree-set-cursor
          filetree-set-opened
+         filetree-set-show-hidden
+         filetree-toggle-hidden
+         filetree-set-hidden-filter
          filetree-set-sync
          filetree-invalidate)
 
@@ -30,7 +33,9 @@
    projection  ; (list root expanded opened)：rows 对应的输入
    sync-key    ; (list view projection-key line col)：上一帧已写进 view 的完整输入
    opened      ; path -> #t：resource 打开路径集合的缓存
-   opened-revision) ; opened 对应的 resource-opened-revision
+   opened-revision ; opened 对应的 resource-opened-revision
+   show-hidden?    ; 是否显示以 . 开头的条目
+   hidden-entry?)  ; path -> boolean | #f：额外的隐藏过滤规则（#f = 用默认规则）
   #:transparent)
 
 ;; 文件树就是一个普通 buffer：光标（point）归 core view 所有。
@@ -39,7 +44,7 @@
 ;;   - 鼠标点击 -> view 的 point 已经动了，sync 直接读回来（dirty? = #f）。
 
 (define (empty-filetree)
-  (filetree #f 0 #t (hash) '() #f #f (hash) 0))
+  (filetree #f 0 #t (hash) '() #f #f (hash) 0 #f #f))
 
 (define (make-filetree #:view [view #f]
                        #:line [line 0]
@@ -49,9 +54,11 @@
                        #:projection [projection #f]
                        #:sync-key [sync-key #f]
                        #:opened [opened (hash)]
-                       #:opened-revision [opened-revision 0])
+                       #:opened-revision [opened-revision 0]
+                       #:show-hidden? [show-hidden? #f]
+                       #:hidden-entry? [hidden-entry? #f])
   (filetree view line cursor-dirty? expanded rows projection sync-key
-            opened opened-revision))
+            opened opened-revision show-hidden? hidden-entry?))
 
 (define (filetree-expanded? f path)
   (hash-has-key? (filetree-expanded f) path))
@@ -75,6 +82,23 @@
   (struct-copy filetree f
                [opened opened]
                [opened-revision opened-revision]))
+
+;;; 显 / 隐 . 开头条目；状态变化会让 rows / sync-key 失效。
+(define (filetree-set-show-hidden f show?)
+  (struct-copy filetree f
+               [show-hidden? (and show? #t)]
+               [projection #f]
+               [sync-key #f]))
+
+(define (filetree-toggle-hidden f)
+  (filetree-set-show-hidden f (not (filetree-show-hidden? f))))
+
+;;; 额外的隐藏过滤规则。传 #f 恢复默认规则。
+(define (filetree-set-hidden-filter f hidden-entry?)
+  (struct-copy filetree f
+               [hidden-entry? hidden-entry?]
+               [projection #f]
+               [sync-key #f]))
 
 ;;; sync 完成：记录“这一帧到底把什么写进了 view”。
 ;;; projection / rows 可能来自缓存；sync-key 用完成后的实际光标。

@@ -99,7 +99,8 @@
    navigation-command-table
    (keys
     [(key 'enter)   filetree-enter-command]
-    [(key 'r 'ctrl) filetree-refresh-command])))
+    [(key 'r 'ctrl) filetree-refresh-command]
+    [(key 'h 'ctrl) filetree-toggle-hidden-command])))
 
 (define filetree-panel-stack
   (command-table-stack-from-tables (list filetree-command-table)))

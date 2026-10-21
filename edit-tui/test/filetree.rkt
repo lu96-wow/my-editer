@@ -91,6 +91,7 @@
 ;;; ---------- 行投影缓存：同一投影不重扫，C-r 强制刷新 ----------
 (define root2 (make-temporary-file "edit-tui-cache-~a" 'directory))
 (display-to-file "x" (build-path root2 "a.txt") #:exists 'truncate)
+(display-to-file "dot" (build-path root2 ".dot.txt") #:exists 'truncate)
 (define c0 (filetree-install-state
             (make-app-state #:area (rect 0 0 40 10)
                             #:keymap default-keymap)
@@ -99,6 +100,10 @@
 (define c1 (sync-filetree! c0 engine))
 (define n1 (length (rows-of c1)))
 (check-true (> n1 1))
+;; 默认隐藏 . 开头条目
+(check-false (for/or ([l (in-list (rows-of c1))])
+              (string=? (path->string (file-name-from-path (filetree-line-path l)))
+                        ".dot.txt")))
 ;; 输入完全没变：sync 整段跳过，返回同一个 state 对象。
 (check-eq? c1 (sync-filetree! c1 engine))
 
@@ -112,6 +117,14 @@
 (define-values (c3 _a) (filetree-refresh-command c2))
 (define c4 (sync-filetree! c3 engine))
 (check-equal? (length (rows-of c4)) (add1 n1))
+
+;; C-h：显示 . 开头条目
+(define-values (c5 _a5) (filetree-toggle-hidden-command c4))
+(define c6 (sync-filetree! c5 engine))
+(check-equal? (length (rows-of c6)) (add1 (length (rows-of c4))))
+(check-true (for/or ([l (in-list (rows-of c6))])
+              (string=? (path->string (file-name-from-path (filetree-line-path l)))
+                        ".dot.txt")))
 (delete-directory/files root2)
 
 ;; 光标在 view 上：导航表覆盖四个方向 + Home/End（普通 buffer 语义）
@@ -119,9 +132,11 @@
                         (key 'home) (key 'end)))])
   (define-values (status _v) (command-table-lookup filetree-command-table (list k)))
   (check-equal? status 'command (key->string k)))
-;; Enter / C-r 仍然是文件树自己的
+;; Enter / C-r / C-h 仍然是文件树自己的
 (define-values (enter-status _v) (command-table-lookup filetree-command-table (list (key 'enter))))
 (check-equal? enter-status 'command)
+(define-values (hidden-status _hidden-v) (command-table-lookup filetree-command-table (list (key 'h 'ctrl))))
+(check-equal? hidden-status 'command)
 
 (delete-directory/files root)
 (displayln "edit-tui-rebuild/test/filetree.rkt: ok")
