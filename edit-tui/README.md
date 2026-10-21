@@ -1262,6 +1262,10 @@ editor + docs + status/input
 completion / docs / color 复用 completion-docs 运行时
 ```
 
+启动时 editor 是空 panel，不打开默认 buffer；从 filetree Enter 打开文件。
+filetree / resources 的 sidebar 横跨 editor + docs + status 的完整高度。
+docs 面板四向边框，初始 view state 只有一行提示；面板本身仍保留固定高度（当前 8 行）。
+
 后续会把 completion / docs 从 demo 抽成正式插件，`host/final.rkt` 只保留
 workspace 装配和插件列表。
 

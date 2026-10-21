@@ -35,6 +35,7 @@
          "completion-popup.rkt")
 
 (provide demo-state demo-engine prepare-demo!
+         empty-docs
          completion-service docs-service handle-job-result
          demo-services
          handle-auto-timer!

@@ -3,11 +3,11 @@
 ;;; edit-tui-rebuild/host/final.rkt —— 最终编辑器装配（第一版）
 ;;;
 ;;; 组成：
-;;;   editor / docs / status（来自 completion-docs）
+;;;   editor / docs / status（复用 completion-docs 运行时）
 ;;;   + filetree / resources 共用 sidebar
 ;;;   + input 接在 status panel
 ;;;
-;;; 这一版直接复用 demo/completion-docs 的 completion/docs/color 运行时；
+;;; 启动不打开默认 buffer：layout 的 editor 是空 panel，用户从 filetree 打开文件。
 ;;; 后续会把 completion/docs 抽成正式插件，再把这里改成纯 install 列表。
 
 (require racket/path
@@ -25,7 +25,15 @@
 
 (define filetree-vid 10)
 (define resources-vid 11)
+
+;; completion-docs demo 固定使用这些 id。
+(define status-vid 20)
+(define docs-vid 30)
 (define input-vid 21)
+
+;; 边界：最终编辑器启动不保留 demo 的默认 editor buffer。
+(engine-remove-view! final-engine 1)
+(engine-remove-doc! final-engine 1)
 
 (define (create-plain-view! vid name)
   (void (engine-create-buffer! final-engine vid name ""))
@@ -35,10 +43,18 @@
 (create-plain-view! resources-vid "*resources*")
 (create-plain-view! input-vid "*input*")
 
-;;; ════════════════ 安装：filetree / resources / input ════════════════
+;;; ════════════════ 初始 state：空资源 + 已有 docs/status/completion view ════════════════
+
+(define base-state
+  (struct-copy app-state demo-state
+               [resources resource-store-empty]
+               [layout #f]
+               [store (hash-set (app-state-store demo-state)
+                                'demo/docs
+                                empty-docs)]))
 
 (define state1
-  (filetree-install-state demo-state
+  (filetree-install-state base-state
                           filetree-vid
                           (path->complete-path (current-directory))
                           #:panel-stack filetree-panel-stack))
@@ -46,9 +62,13 @@
   (resource-panel-install-state state1 resources-vid
                                 #:panel-stack resource-panel-stack))
 (define state3
-  (input-install-state state2 'status 20 input-vid))
+  (input-install-state state2 'status status-vid input-vid))
 
-;;; ════════════════ 布局：sidebar + status/input ════════════════
+;;; ════════════════ 布局：空 editor + docs + status/input + sidebar ════════════════
+
+(define empty-editor-panel
+  (make-panel 'editor 'editor
+              #:borders '(up down left right)))
 
 (define sidebar-panel
   (make-panel 'filetree 'sidebar
@@ -56,22 +76,38 @@
               #:active filetree-vid
               #:borders '(right)))
 
-(define layout0 (app-state-layout state3))
+(define docs-panel
+  (make-panel 'docs 'docs
+              #:views (list docs-vid)
+              #:active docs-vid
+              #:fixed-h 8
+              #:borders '(up down left right)))
 
-;; status panel 同时挂 status / input，两边切换沿用已有规则。
-(define-values (layout1 _status-ok?)
-  (layout-panel-update layout0 'status
-                       (λ (p)
-                         (panel-set-views p (list 20 input-vid) 20))))
+(define status-panel
+  (make-panel 'status 'status
+              #:views (list status-vid input-vid)
+              #:active status-vid
+              #:fixed-h 1))
 
-(define-values (layout2 sidebar-ok?)
-  (layout-panel-attach layout1 'editor 'left sidebar-panel #:ratio 3/8))
+(define layout0
+  (make-layout #:root (make-leaf 'editor)
+               #:panels (hash 'editor empty-editor-panel)
+               #:focus 'editor))
 
-(unless sidebar-ok?
-  (error 'final "attach sidebar failed"))
+;; 先挂 sidebar，再在右侧 editor 子树下挂 docs / status：
+;; sidebar 因此横跨 editor + docs + status 的完整高度。
+(define-values (layout1 sidebar-ok?)
+  (layout-panel-attach layout0 'editor 'left sidebar-panel #:ratio 3/8))
+(define-values (layout2 docs-ok?)
+  (layout-panel-attach layout1 'editor 'down docs-panel))
+(define-values (layout3 status-ok?)
+  (layout-panel-attach layout2 'docs 'down status-panel))
+
+(unless (and docs-ok? status-ok? sidebar-ok?)
+  (error 'final "layout attach failed"))
 
 (define final-state
-  (struct-copy app-state state3 [layout layout2]))
+  (struct-copy app-state state3 [layout layout3]))
 
 ;;; ════════════════ 入口 ════════════════
 
