@@ -13,6 +13,7 @@
 (require "../../../core/view/base/rect.rkt"
          "../../../core/text/base/point.rkt"
          "../../../core/text/base/range.rkt"
+         "../../../core/text/base/change.rkt"
          "../../../core/text/base/selection.rkt"
          "../../../core/text/base/width.rkt")
 
@@ -25,6 +26,11 @@
          point<? point=? point<=?
          range range? range-of range-start range-end
          range-normalize range-empty?
+
+         ;; 一次编辑的区间描述（core 的 change 纯值）
+         change change? change-kind change-before change-after change-empty?
+         change-post-range change-map-point
+         changes-map-point changes-map-point-literal
          caret caret?
          selection selection? selection-point selection-range
          selection-empty? selection-anchor selection-head

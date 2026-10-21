@@ -56,6 +56,33 @@
 ;; 外部 core（repo/core）也不许插件直接摸；本地 core 只许 skeleton.rkt
 (define external-core? #rx"(^|/)\\.\\./\\.\\./core/")
 
+;;; ════════════════ 共享语言层（lang/） ════════════════
+;;;
+;;; lang/ 不是插件，也不是 core：它是语言能力库。
+;;; 只允许纯 Racket / 本地 lang 模块；不许 require app / boot / 编辑器实现。
+(define lang-files
+  '("lang/racket/api.rkt"
+    "lang/racket/racket.rkt"
+    "lang/racket/lex.rkt"
+    "lang/racket/keywords.rkt"
+    "lang/racket/highlight.rkt"
+    "lang/racket/word-color.rkt"
+    "lang/racket/source.rkt"
+    "lang/racket/analysis.rkt"
+    "lang/racket/workspace.rkt"
+    "lang/racket/pool.rkt"
+    "lang/racket/module-index.rkt"
+    "lang/racket/completion.rkt"
+    "lang/racket/docs.rkt"
+    "lang/racket/local-docs.rkt"
+    "lang/racket/doc-html.rkt"))
+
+(for ([m (in-list lang-files)])
+  (check-false (requires-any? m upper-layer?) m)
+  (check-false (requires-any? m external-core?) m)
+  (check-false (requires-any? m skeleton-impl?) m)
+  (check-false (requires-any? m #rx"(^|/)(edit|chrome|filetree|resources)/") m))
+
 ;;; ════════════════ 骨架 ════════════════
 (define skeleton-files
   '("core/base/api.rkt"

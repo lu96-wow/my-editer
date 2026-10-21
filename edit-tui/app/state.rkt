@@ -17,6 +17,12 @@
 (provide (struct-out app-state)
          make-app-state
 
+         ;; 文档变更（engine -> boot/analysis 的纯数据通道）
+         (struct-out doc-change)
+         app-state-note-doc-change
+         app-state-clear-doc-changes
+         app-state-take-doc-changes
+
          ;; 查询
          app-state-panel
          app-state-focus-panel-id
@@ -42,8 +48,13 @@
    store           ; 面板 UI 状态：'filetree -> filetree、'input -> input-state ...
    panel-stacks    ; panel-id -> command-table-stack
    quit?
-   flash)   ; 一次性状态栏文本；下一次 step 入口清空
+   flash           ; 一次性状态栏文本；下一次 step 入口清空
+   pending-doc-changes) ; (listof doc-change)，按发生顺序
   #:transparent)
+
+;; 一次提交（一次 buffer-edit! / replace-range! / undo/redo）产生的 change。
+;; changes 是 core 的纯值列表；version 是提交完成后的 engine 文档版本。
+(struct doc-change (doc-id version changes) #:transparent)
 
 (define (make-app-state
          #:layout [layout #f]
@@ -59,10 +70,11 @@
          #:store [store (hash)]
          #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
-         #:flash [flash ""])
+         #:flash [flash ""]
+         #:pending-doc-changes [pending-doc-changes '()])
   (app-state layout layout-config keymap resources overlays pending area
              next-panel-id drag placement store panel-stacks
-             quit? flash))
+             quit? flash pending-doc-changes))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -85,6 +97,27 @@
 (define (app-state-focus-resource state)
   (define vid (app-state-focus-view-id state))
   (and vid (resource-of-view (app-state-resources state) vid)))
+
+;;; ════════════════ 文档变更队列 ════════════════
+
+;; changes = #f | '() | (listof change)；只有非空列表才入队。
+(define (app-state-note-doc-change state did version changes)
+  (cond
+    [(not (pair? changes)) state]
+    [else
+     (struct-copy app-state state
+                  [pending-doc-changes
+                   (append (app-state-pending-doc-changes state)
+                           (list (doc-change did version changes)))])]))
+
+(define (app-state-clear-doc-changes state)
+  (if (null? (app-state-pending-doc-changes state))
+      state
+      (struct-copy app-state state [pending-doc-changes '()])))
+
+(define (app-state-take-doc-changes state)
+  (values (app-state-pending-doc-changes state)
+          (app-state-clear-doc-changes state)))
 
 ;;; ════════════════ 纯迁移 ════════════════
 

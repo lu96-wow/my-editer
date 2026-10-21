@@ -170,12 +170,12 @@
   (define cur (buffer-line b l))
   (define len (and cur (string-length cur)))
   (cond
-    [(not len) (void)]
+    [(not len) '()]
     [(< c len)
      (buffer-replace-range! b (range (point l c) (point l len)) "")]
     [(buffer-line b (add1 l))
      (buffer-replace-range! b (range (point l c) (point (add1 l) 0)) "")]
-    [else (void)]))
+    [else '()]))
 
 ;; 鼠标点落在文档空白处：view-screen-position->point 返回 #f，
 ;; 这时取最近的有效位置（点击在可见区上方 -> 起点，否则 -> 可见区末尾）。
@@ -197,36 +197,45 @@
         (define-values (l c*) (view-screen-position->point v sr col))
         (if l (point l c*) target)])]))
 
+;; → #f | '() | (listof change)
+;;   #f      = 被拒绝（只读等）
+;;   '()     = 成功但无文本变化
+;;   changes = 本次提交的精确变更（当前坐标由 change.after 表示）
 (define (engine-apply-view-action! e action)
   (define vid (view-action-view-id action))
   (define v (engine-view-object e vid))
   (unless v (error 'engine-apply-view-action! "view 不存在：~a" vid))
+  (define b (view-buffer v))
   (case (view-action-kind action)
     [(insert)
      ;; action 里是原始 UTF-8 bytes；document 是字符串，这里解一次
-     (buffer-edit! (view-buffer v) v
-                   (op-type (bytes->string/utf-8 (view-action-data action))))]
+     (buffer-edit! b v (op-type (bytes->string/utf-8 (view-action-data action))))]
     [(paste)
-     (buffer-edit! (view-buffer v) v
-                   (op-paste (bytes->string/utf-8 (view-action-data action))))]
+     (buffer-edit! b v (op-paste (bytes->string/utf-8 (view-action-data action))))]
     [(backspace)
-     (buffer-edit! (view-buffer v) v (op-backspace))]
+     (buffer-edit! b v (op-backspace))]
     [(delete)
-     (buffer-edit! (view-buffer v) v (op-delete))]
+     (buffer-edit! b v (op-delete))]
     [(kill-line)
      (kill-line! v)]
     [(nav)
-     (apply-nav! v (view-action-data action))]
+     (apply-nav! v (view-action-data action))
+     '()]
     [(point)
      (match-define (list r c) (view-action-data action))
-     (view-set-point! v (view-point-at-or-nearest v r c))]
+     (view-set-point! v (view-point-at-or-nearest v r c))
+     '()]
     [(select)
-     (view-set-selections! v (view-action-data action))]
+     (view-set-selections! v (view-action-data action))
+     '()]
     [(scroll)
-     (apply-scroll! v (view-action-data action))]
+     (apply-scroll! v (view-action-data action))
+     '()]
     [(ensure)
-     (view-ensure! v)]
-    [(undo) (buffer-undo! (view-buffer v))]
-    [(redo) (buffer-redo! (view-buffer v))]
-    [else (error 'engine-apply-view-action! "未知 view action：~a" action)])
-  (void))
+     (view-ensure! v)
+     '()]
+    ;; undo/redo 恢复的是旧 document：face / document slot / 分析缓存随 document
+    ;; 一起回来，不是一次新的文本提交，因此不产生 change，也不触发解析。
+    [(undo) (buffer-undo! b) '()]
+    [(redo) (buffer-redo! b) '()]
+    [else (error 'engine-apply-view-action! "未知 view action：~a" action)]))

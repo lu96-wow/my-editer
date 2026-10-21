@@ -66,6 +66,13 @@
              (resource-save-done store rid version))
            (values (struct-copy app-state state [resources store*]) more)])])]))
 
+;; view 所属的文档 id；UI 面板（filetree / status / input）没有 resource -> #f。
+(define (view-doc-id state vid)
+  (define store (app-state-resources state))
+  (define rid (resource-of-view store vid))
+  (define r (and rid (resource-ref store rid)))
+  (and r (resource-doc-id r)))
+
 ;; 文档类 view-action 之后把 resource.version 对齐 engine 里的文档版本。
 ;; 导航 / 滚动 / 光标不动文档，版本相同 -> 不产生 dirty。
 (define (note-view-edit state engine vid)
@@ -155,8 +162,17 @@
            (define s2 (start-placement s1 vid))
            (values (run-actions s2 engine actions) '())])])]
     [(view-action? action)
-     (engine-apply-view-action! engine action)
-     (values (note-view-edit state engine (view-action-view-id action)) '())]
+     (define vid (view-action-view-id action))
+     (define changes (engine-apply-view-action! engine action))
+     (define state1 (note-view-edit state engine vid))
+     (define did (view-doc-id state1 vid))
+     (values
+      (if did
+          (app-state-note-doc-change state1 did
+                                     (engine-doc-version engine did)
+                                     changes)
+          state1)
+      '())]
     [(quit-action? action)
      (values (struct-copy app-state state [quit? #t]) '())]
     [else

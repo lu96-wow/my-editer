@@ -596,7 +596,8 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (quit-event)
 
 (make-app-state #:layout #:layout-config #:keymap #:resources
-                #:overlays #:pending #:area #:quit? #:flash)
+                #:overlays #:pending #:area #:quit? #:flash
+                #:pending-doc-changes)
 
 ;; 焦点 resource 是派生查询：layout.focus -> panel.active -> resource-of-view
 (app-state-focus-resource state)
@@ -615,7 +616,33 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (quit-action)
 
 (step state event)  ; -> (values state' actions)
+
+;; 文档变更：engine 返回 change，boot/actions 记到 app-state
+(engine-apply-view-action! engine action)
+;; → #f | '() | (listof change)
+;;   #f      = 拒绝（只读）
+;;   '()     = 成功但无文本变化（含 undo/redo）
+;;   changes = 精确变更（change.after 是当前坐标）
+
+(change? ch)
+(change-before ch) (change-after ch)
+(change-kind ch) (change-post-range ch)
+
+(struct doc-change (doc-id version changes))
+(app-state-pending-doc-changes state) ; (listof doc-change)，按发生顺序
+(app-state-note-doc-change state did version changes)
+(app-state-take-doc-changes state)    ; -> (values changes state')
 ```
+
+说明：
+
+- `insert / paste / backspace / delete` 返回 core 的精确 `change`；
+- `kill-line` 也返回 `buffer-replace-range!` 的 `change`；
+- `nav / point / select / scroll / ensure` 返回 `'()`；
+- `undo / redo` 不产生 change：它们恢复的是旧 document，face / document slot /
+  分析缓存随 document 一起回来，不是一次新的文本提交，因此不触发解析。
+- UI 面板（filetree / status / input）没有 resource，产生的 change 不入队；
+  只有编辑器 resource 的文档变更会进入 `pending-doc-changes`。
 
 命令值约定：
 
@@ -650,7 +677,7 @@ overlay tables ++ focused resource command-stack
 (engine-view-text engine vid)
 (engine-doc-text engine did)
 (engine-doc-version engine did)
-(engine-apply-view-action! engine action)   ; view-action 在 core/engine/action.rkt
+(engine-apply-view-action! engine action)   ; -> #f | '() | (listof change)
 
 (run-actions state engine actions)  ; -> state'
 
