@@ -51,6 +51,13 @@
 (check-equal? (vector-ref (list-ref (color-bracket-roles br2) 1) 0)
               'bracket-depth-0)
 
+;; 边界：change 行区间与缓存行数失配时退回全量，不能 vector-set! 越界。
+(define malformed (color-edit (color-open "a")
+                              "a\nb"
+                              (list (line-edit 1 1 1 1))))
+(check-equal? (color-line-count malformed) 2)
+(check-equal? (length (color-bracket-roles malformed)) 2)
+
 ;;; ════════════════ 解析增量 ════════════════
 
 (define a-text1

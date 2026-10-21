@@ -87,72 +87,91 @@
 
 ;; cache 必须对应旧文本；text 是新文本；edits 是旧→新行区间。
 (define (color-edit cache text edits)
-  (cond
-    [(null? edits) cache]
-    [else
-     (define lines (text-lines text))
-     (define n (length lines))
-     (define old-states (color-state-lex-out-states cache))
-     (define old-bracket-states (color-state-bracket-out-states cache))
-     (define old-syntax (color-state-syntax-roles cache))
-     (define old-word (color-state-word-roles cache))
-     (define old-bracket (color-state-bracket-roles cache))
-     (define-values (states0 bracket-states0 syntax0 word0 bracket0)
-       (for/fold ([st old-states]
-                  [bst old-bracket-states]
-                  [syn old-syntax]
-                  [wd old-word]
-                  [br old-bracket])
-                 ([sp (in-list (edit-spans edits))])
-         (define old-start (car sp))
-         (define old-end (cadr sp))
-         (define new-count (max 0 (- (cadddr sp) (caddr sp))))
-         (values (splice-vector-preserve st old-start old-end new-count)
-                 (splice-vector-preserve bst old-start old-end new-count)
-                 (splice-vector-preserve syn old-start old-end new-count)
-                 (splice-vector-preserve wd old-start old-end new-count)
-                 (splice-vector-preserve br old-start old-end new-count))))
-     (define dirty (edits->dirty-lines edits n))
-     (cond
-       [(null? dirty) (color-state states0 bracket-states0 syntax0 word0 bracket0)]
-       [else
-        (define start (car dirty))
-        (define last-dirty (car (reverse dirty)))
-        (define states* (vector-copy states0))
-        (define bracket-states* (vector-copy bracket-states0))
-        (define syntax* (vector-copy syntax0))
-        (define word* (vector-copy word0))
-        (define bracket* (vector-copy bracket0))
-        (let loop ([ln start]
-                   [incoming (if (and (> start 0)
-                                      (< (sub1 start) (vector-length states*)))
-                                 (vector-ref states* (sub1 start))
-                                 empty-lex-state)]
-                   [incoming-bracket (if (and (> start 0)
-                                              (< (sub1 start) (vector-length bracket-states*)))
-                                         (vector-ref bracket-states* (sub1 start))
-                                         '())])
-          (if (>= ln n)
-              (color-state states* bracket-states* syntax* word* bracket*)
-              (let ([line (list-ref lines ln)])
-                (define-values (state* tokens) (tokenize-line incoming line))
-                (define-values (bracket-state* bracket-vec)
-                  (bracket-scan-line tokens line incoming-bracket))
-                (define old-state (if (< ln (vector-length states0))
-                                      (vector-ref states0 ln)
-                                      #f))
-                (define old-bracket-state
-                  (if (< ln (vector-length bracket-states0))
-                      (vector-ref bracket-states0 ln)
-                      #f))
-                (vector-set! states* ln state*)
-                (vector-set! bracket-states* ln bracket-state*)
-                (vector-set! syntax* ln (highlight-line tokens line))
-                (vector-set! word* ln (word-color-line tokens line))
-                (vector-set! bracket* ln bracket-vec)
-                (define changed?
-                  (not (and (equal? state* old-state)
-                            (equal? bracket-state* old-bracket-state))))
-                (if (and (>= ln last-dirty) (not changed?))
-                    (color-state states* bracket-states* syntax* word* bracket*)
-                    (loop (add1 ln) state* bracket-state*)))))])]))
+  (if (null? edits)
+      cache
+      (let* ([lines (text-lines text)]
+             [n (length lines)]
+             [old-states (color-state-lex-out-states cache)]
+             [old-bracket-states (color-state-bracket-out-states cache)]
+             [old-syntax (color-state-syntax-roles cache)]
+             [old-word (color-state-word-roles cache)]
+             [old-bracket (color-state-bracket-roles cache)])
+        (define-values (states0 bracket-states0 syntax0 word0 bracket0)
+          (for/fold ([st old-states]
+                     [bst old-bracket-states]
+                     [syn old-syntax]
+                     [wd old-word]
+                     [br old-bracket])
+                    ([sp (in-list (edit-spans edits))])
+            (define old-start (car sp))
+            (define old-end (cadr sp))
+            (define new-count (max 0 (- (cadddr sp) (caddr sp))))
+            (values (splice-vector-preserve st old-start old-end new-count)
+                    (splice-vector-preserve bst old-start old-end new-count)
+                    (splice-vector-preserve syn old-start old-end new-count)
+                    (splice-vector-preserve wd old-start old-end new-count)
+                    (splice-vector-preserve br old-start old-end new-count))))
+
+        ;; 边界：splice 后所有缓存向量都必须和新文本行数一致。
+        ;; change 行区间失配（旧缓存 / 多 change / 跨行替换）时不能继续
+        ;; vector-set!，直接退回全量，避免越界。
+        (if (or (not (= (vector-length states0) n))
+                (not (= (vector-length bracket-states0) n))
+                (not (= (vector-length syntax0) n))
+                (not (= (vector-length word0) n))
+                (not (= (vector-length bracket0) n)))
+            (color-open text)
+            (let ([dirty (edits->dirty-lines edits n)])
+              (if (null? dirty)
+                  (color-state states0 bracket-states0 syntax0 word0 bracket0)
+                  (color-edit-dirty lines n
+                                    states0 bracket-states0
+                                    syntax0 word0 bracket0
+                                    dirty)))))))
+
+;; 从脏行开始带状态重扫；两个出状态都收敛后停止。
+(define (color-edit-dirty lines n
+                          states0 bracket-states0
+                          syntax0 word0 bracket0
+                          dirty)
+  (define start (car dirty))
+  (define last-dirty (car (reverse dirty)))
+  (define states* (vector-copy states0))
+  (define bracket-states* (vector-copy bracket-states0))
+  (define syntax* (vector-copy syntax0))
+  (define word* (vector-copy word0))
+  (define bracket* (vector-copy bracket0))
+  (let loop ([ln start]
+             [incoming (if (and (> start 0)
+                                (< (sub1 start) (vector-length states*)))
+                           (vector-ref states* (sub1 start))
+                           empty-lex-state)]
+             [incoming-bracket (if (and (> start 0)
+                                        (< (sub1 start) (vector-length bracket-states*)))
+                                  (vector-ref bracket-states* (sub1 start))
+                                  '())])
+    (cond
+      [(>= ln n)
+       (color-state states* bracket-states* syntax* word* bracket*)]
+      [else
+       (define line (list-ref lines ln))
+       (define-values (state* tokens) (tokenize-line incoming line))
+       (define-values (bracket-state* bracket-vec)
+         (bracket-scan-line tokens line incoming-bracket))
+       (define old-state (if (< ln (vector-length states0))
+                             (vector-ref states0 ln)
+                             #f))
+       (define old-bracket-state (if (< ln (vector-length bracket-states0))
+                                     (vector-ref bracket-states0 ln)
+                                     #f))
+       (vector-set! states* ln state*)
+       (vector-set! bracket-states* ln bracket-state*)
+       (vector-set! syntax* ln (highlight-line tokens line))
+       (vector-set! word* ln (word-color-line tokens line))
+       (vector-set! bracket* ln bracket-vec)
+       (define changed?
+         (not (and (equal? state* old-state)
+                   (equal? bracket-state* old-bracket-state))))
+       (if (and (>= ln last-dirty) (not changed?))
+           (color-state states* bracket-states* syntax* word* bracket*)
+           (loop (add1 ln) state* bracket-state*))])))
