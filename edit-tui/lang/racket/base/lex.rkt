@@ -20,7 +20,8 @@
          tokenize-line
          tokenize
          line-token-at
-         identifier-at)
+         identifier-at
+         symbols-in-text)
 
 (struct token (kind start end) #:transparent)
 ;; kind  : 'comment | 'string | 'char | 'number | 'symbol
@@ -215,6 +216,18 @@
                               (and (= col (token-end t))
                                    (eq? (token-kind t) 'symbol)))))
     t))
+
+;;; ════════════════ 文本中的 symbol 词 ════════════════
+
+;; 只取 symbol token，跳过注释 / 字符串 / 数字；用于“本地词”候选。
+(define (symbols-in-text text)
+  (define lines (string-split text "\n" #:trim? #f))
+  (define token-lines (tokenize text))
+  (append*
+   (for/list ([line (in-list lines)] [tokens (in-list token-lines)])
+     (for/list ([t (in-list tokens)]
+                #:when (eq? (token-kind t) 'symbol))
+       (substring line (token-start t) (token-end t))))))
 
 ;;; ════════════════ 光标处标识符 ════════════════
 

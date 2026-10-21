@@ -178,7 +178,8 @@
 (define ws-b2 (workspace-set-doc ws-b 'a "/tmp/a.rkt" a2-text))
 (check-equal? (workspace-export-names ws-b2 'a) '("baz"))
 (check-not-false (member "baz" (workspace-local-pool ws-b2 'b)))
-(check-false (member "foo" (workspace-local-pool ws-b2 'b)))
+;; b 的文本里仍出现过 foo：作为“本地词”保留，但已不是导入导出。
+(check-not-false (member "foo" (workspace-local-pool ws-b2 'b)))
 (check-false (docs-local ws-b2 'b "foo"))
 
 ;; completion 也走 workspace：b 中 foo 的候选来自 a 的 provide。

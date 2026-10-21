@@ -44,6 +44,7 @@
          racket/path
          racket/string
          "../../../source/api.rkt"
+         "../base/lex.rkt"
          "analysis.rkt"
          "local-docs.rkt"
          "pool.rkt"
@@ -265,7 +266,9 @@
      (define from-current
        (append (module-analysis-bindings a)
                (for/list ([s (in-list (module-analysis-definitions a))])
-                 (symbol->string s))))
+                 (symbol->string s))
+               ;; “本地词”：当前 buffer 里出现过的 symbol，跳过注释/字符串。
+               (symbols-in-text (document-entry-text e))))
      (define from-imports
        (append* (for/list ([d (in-list (workspace-imported-local-docs ws id))])
                   (workspace-export-names ws (document-entry-id d)))))

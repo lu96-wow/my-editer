@@ -116,7 +116,8 @@
                            (line-edit 2 3 2 3))))
 (check-equal? (workspace-export-names ws2 'a) '("baz"))
 (check-not-false (member "baz" (workspace-local-pool ws2 'b)))
-(check-false (member "foo" (workspace-local-pool ws2 'b)))
+;; b 的文本里仍出现过 foo：作为“本地词”保留，但已不是导入导出。
+(check-not-false (member "foo" (workspace-local-pool ws2 'b)))
 (check-false (docs-local ws2 'b "foo"))
 (check-not-false (docs-local ws2 'b "baz"))
 
@@ -133,5 +134,25 @@
    ws-source src-a2
    (list (line-edit 1 2 1 2) (line-edit 2 3 2 3))))
 (check-equal? (workspace-export-names ws-source2 (source-snapshot-id src-a2)) '("baz"))
+
+
+;;; ════════════════ 本地词池（当前 buffer 的 symbol token） ════════════════
+
+(define word-text
+  (string-append "#lang racket\n"
+                 "(define x 1)\n"
+                 "(foo-bar x)\n"
+                 ";; comment-word\n"
+                 "\"string-word\"\n"))
+(define ws-word
+  (workspace-set-doc workspace-empty 'w "/tmp/w.rkt" word-text))
+(define ctx-word
+  (make-completion-context "/tmp/w.rkt" word-text
+                           #:workspace ws-word #:id 'w))
+(check-not-false (member "foo-bar" (completion-candidates/local ctx-word "foo")))
+(check-not-false (member "x" (completion-candidates/local ctx-word "")))
+;; 注释 / 字符串里的词不进入本地词池。
+(check-false (member "comment-word" (completion-candidates/local ctx-word "com")))
+(check-false (member "string-word" (completion-candidates/local ctx-word "str")))
 
 (displayln "edit-tui-rebuild/test/lang-incremental.rkt: ok")

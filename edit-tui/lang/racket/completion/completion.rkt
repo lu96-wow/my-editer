@@ -156,20 +156,14 @@
 
 ;; 本地词池：按行扫描 token，避免整篇重复切分。
 (define (local-words text)
-  (define lines (string-split text "\n" #:trim? #f))
-  (define token-lines (tokenize text))
-  (append*
-   (for/list ([line (in-list lines)] [tokens (in-list token-lines)])
-     (for/list ([t (in-list tokens)]
-                #:when (eq? (token-kind t) 'symbol))
-       (substring line (token-start t) (token-end t))))))
+  (symbols-in-text text))
 
 (define (completion-local-pool ctx)
   (define ws (completion-context-workspace ctx))
   (define id (completion-context-id ctx))
   (cond
-    ;; 有 workspace：只取“按 Racket 绑定形式解析出的本地名 + 直接 require 的
-    ;; 本地 buffer 导出”。不再扫所有词，避免把注释/字符串/无关标识符塞进候选。
+    ;; 有 workspace：绑定/定义 + 当前 buffer 的 symbol 词 + 直接 require 的本地
+    ;; buffer 导出。注释 / 字符串里的词不会进来。
     [(and ws id)
      (distinct-strings
       (append (workspace-local-pool ws id)
@@ -210,8 +204,9 @@
 
 (define (completion-filter pool prefix)
   (define plen (string-length prefix))
+  ;; 和 prefix 完全相同的候选没有补全意义（接受也是 no-op），排除。
   (for/list ([x (in-list pool)]
-             #:when (and (>= (string-length x) plen)
+             #:when (and (> (string-length x) plen)
                          (string=? prefix (substring x 0 plen))))
     x))
 
