@@ -46,7 +46,6 @@
 (define state
   (make-app-state #:layout layout
                   #:resources store
-                  #:focus-resource rid
                   #:area area))
 
 (define state1 (run-actions state engine actions))
@@ -63,6 +62,10 @@
 (define-values (state4 acts4) (step state3 (key-event (key 'x))))
 (check-equal? acts4 '())
 (check-equal? (app-state-pending state4) (list (key 'x)))
+
+;; 非 key 事件打断半截键序列
+(define-values (state4b _acts4b) (step state4 (mouse-event 'press 0 0)))
+(check-equal? (app-state-pending state4b) '())
 (define-values (state5 acts5) (step state4 (key-event (key 's))))
 (check-equal? (app-state-flash state5) "seq")
 (check-equal? (app-state-pending state5) '())
@@ -88,6 +91,12 @@
 (define-values (state9 acts9) (step state8 (resize-event 10 40)))
 (check-equal? acts9 '())
 (check-equal? (app-state-area state9) (rect 0 0 40 10))
+
+;;; ---------- mouse wheel -> scroll action ----------
+(define-values (_stateScroll actsScroll)
+  (step state9 (mouse-event 'scroll-down 0 0)))
+(check-equal? (map view-action-kind actsScroll) '(scroll))
+(check-equal? (view-action-data (car actsScroll)) 3)
 
 ;;; ---------- render ----------
 (define-values (_cache bytes) (render-frame state8 engine #f))

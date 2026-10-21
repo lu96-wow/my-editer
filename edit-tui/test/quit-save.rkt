@@ -49,7 +49,6 @@
   (check-true ok?)
   (define state (make-app-state #:layout layout
                                 #:resources store
-                                #:focus-resource rid
                                 #:overlays (command-table-stack-from-tables
                                             (list global-command-table))
                                 #:keymap default-keymap
@@ -133,7 +132,8 @@
 (check-true (file-exists? path))
 (check-true (app-state-quit? e6))
 (check-false (resource-dirty? (app-state-resources e6) cr0))
-(check-equal? (resource-path (app-state-resources e6) cr0) path)
+(check-equal? (resource-path (app-state-resources e6) cr0)
+              (resource-normalize-path path))
 (delete-file path)
 
 ;;; ---------- step-only：不调 sync / render 也能按 Enter 提交 ----------

@@ -19,6 +19,29 @@
 
 (provide run-actions)
 
+;; 从 layout 的 panel 里摘掉一个 view：保留 panel，active 落到下一个 view 或 #f。
+(define (panel-without-view p vid)
+  (define views (for/list ([v (in-list (panel-views p))]
+                           #:unless (equal? v vid))
+                 v))
+  (define active
+    (cond
+      [(not (equal? (panel-active p) vid)) (panel-active p)]
+      [(pair? views) (car views)]
+      [else #f]))
+  (panel-set-views p views active))
+
+(define (detach-view-from-layout layout vid)
+  (cond
+    [(not layout) layout]
+    [else
+     (for/fold ([l layout]) ([pid (in-list (layout-panel-ids layout))])
+       (define p (layout-panel l pid))
+       (if (and p (memv vid (panel-views p)))
+           (let-values ([(l* _ok?) (layout-panel-update l pid (λ (p) (panel-without-view p vid)))])
+             l*)
+           l))]))
+
 (define (write-file! state engine rid path)
   (define store (app-state-resources state))
   (define r (resource-ref store rid))
@@ -66,7 +89,14 @@
         (match-define (list did name text) (resource-action-data action))
         (engine-create-buffer! engine did name text)
         (define version (engine-doc-version engine did))
-        (define store* (resource-reset-version (app-state-resources state) did version))
+        (define store (app-state-resources state))
+        ;; action 里是 doc-id；resource-reset-version 要的是 resource-id。
+        ;; 默认二者相同，但 #:doc-id 可以显式不同。
+        (define rid
+          (for/first ([r (in-list (resource-list store))]
+                      #:when (equal? (resource-doc-id r) did))
+            (resource-id r)))
+        (define store* (if rid (resource-reset-version store rid version) store))
         (values (struct-copy app-state state [resources store*]) '())]
        [(create-view)
         (match-define (list vid did) (resource-action-data action))
@@ -77,11 +107,16 @@
         (write-file! state engine rid path)]
        [(close-resource)
         (match-define (list _rid did vids) (resource-action-data action))
+        ;; resource 关闭是资源级操作：先把 view 从 layout 摘掉，
+        ;; 再删 engine 句柄；panel 本身保留（panel 关闭走 close-panel）。
+        (define layout* (for/fold ([l (app-state-layout state)]) ([vid (in-list vids)])
+                          (detach-view-from-layout l vid)))
+        (define state* (struct-copy app-state state [layout layout*]))
         (for ([vid (in-list vids)])
           (engine-remove-view! engine vid))
         (when did
           (engine-remove-doc! engine did))
-        (values state '())]
+        (values state* '())]
        [(quit)
         (values (struct-copy app-state state [quit? #t]) '())]
        [else (values (app-state-with-flash state (format "unknown resource action: ~a" action)) '())])]

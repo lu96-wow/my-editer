@@ -37,7 +37,6 @@
   (check-true ok?)
   (define state (make-app-state #:layout layout
                                 #:resources store
-                                #:focus-resource rid
                                 #:keymap default-keymap
                                 #:area (rect 0 0 60 8)))
   (define s1 (status-install-state state 20))

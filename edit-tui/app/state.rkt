@@ -5,11 +5,11 @@
 ;;; State 只存 id / 纯值，不碰 engine、不碰 IO。
 ;;;
 ;;; 焦点有两层：
-;;;   layout.focus   : 焦点 panel-id（布局层，layout/api）
-;;;   focus-resource : 焦点 panel 的活动 view 所属 resource（派生量，缓存在 Root）
+;;;   layout.focus    : 焦点 panel-id（布局层，layout/api）
+;;;   focus-resource  : 焦点 panel 的活动 view 所属 resource（派生量，不存 State）
 ;;;
-;;; 「改焦点」必须走 app-state-set-focus-panel：它会同步刷新 focus-resource。
-;;; 直接改 layout 会让 focus-resource 过期，所以这里把两者绑在一个操作里。
+;;; focus-resource 每次从 layout / panel.active / resources 现算，
+;;; 因此不存在「直接改 layout 后缓存过期」的问题。
 
 (require "../core/skeleton.rkt"
          "keymap.rkt")
@@ -22,18 +22,17 @@
          app-state-focus-panel-id
          app-state-focus-panel-resource
          app-state-focus-view-id
+         app-state-focus-resource
 
          ;; 纯迁移
          app-state-with-flash
-         app-state-set-focus-panel
-         app-state-refresh-focus-resource)
+         app-state-set-focus-panel)
 
 (struct app-state
   (layout
    layout-config   ; 具体 kind 规则；宿主选择（默认 empty = 通用 rule）
    keymap          ; 键位集合；宿主选择（默认 empty = 无绑定）
    resources
-   focus-resource
    overlays        ; command-table-stack，顶层在前
    pending         ; (listof key-token)
    area            ; rect
@@ -51,7 +50,6 @@
          #:layout-config [layout-config empty-layout-config]
          #:keymap [keymap empty-keymap]
          #:resources [resources resource-store-empty]
-         #:focus-resource [focus-resource #f]
          #:overlays [overlays command-table-stack-empty]
          #:pending [pending '()]
          #:area [area #f]
@@ -62,7 +60,7 @@
          #:panel-stacks [panel-stacks (hash)]
          #:quit? [quit? #f]
          #:flash [flash ""])
-  (app-state layout layout-config keymap resources focus-resource overlays pending area
+  (app-state layout layout-config keymap resources overlays pending area
              next-panel-id drag placement store panel-stacks
              quit? flash))
 
@@ -83,8 +81,9 @@
   (define p (app-state-focus-panel-resource state))
   (and p (panel-view p)))
 
-;; 焦点 view 所属的 resource（内部用）
-(define (focus-resource-of-view state vid)
+;; 焦点 view 所属的 resource。派生查询，不缓存。
+(define (app-state-focus-resource state)
+  (define vid (app-state-focus-view-id state))
   (and vid (resource-of-view (app-state-resources state) vid)))
 
 ;;; ════════════════ 纯迁移 ════════════════
@@ -94,14 +93,7 @@
 (define (app-state-with-flash state text)
   (struct-copy app-state state [flash text]))
 
-;; 焦点 panel 没变，只按当前 view 重算 focus-resource（换 view / 隐藏恢复后用）。
-(define (app-state-refresh-focus-resource state)
-  (struct-copy app-state state
-               [focus-resource
-                (focus-resource-of-view state (app-state-focus-view-id state))]))
-
-;; 改焦点 panel：layout.focus 与 focus-resource 一起更新。
+;; 改焦点 panel。focus-resource 是派生量，不需要同步。
 (define (app-state-set-focus-panel state pid)
-  (define layout* (layout-set-focus (app-state-layout state) pid))
-  (app-state-refresh-focus-resource
-   (struct-copy app-state state [layout layout*])))
+  (struct-copy app-state state
+               [layout (layout-set-focus (app-state-layout state) pid)]))

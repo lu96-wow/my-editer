@@ -74,15 +74,16 @@
 ;; version / saved-version : any/c（通常是 engine 的 opaque version token）
 
 (struct resource-store
-  (root resources order focus pending prompt
+  (root resources order focus pending prompt view-index
    next-resource-id next-view-id next-prompt-id)
   #:transparent)
-;; root      : string（启动根路径；规范化绝对路径，"" = 未设置）
-;; resources : id -> resource
-;; order     : (listof resource-id)
-;; focus     : resource-id | #f
-;; pending   : pending | #f
-;; prompt    : prompt | #f
+;; root       : string（启动根路径；规范化绝对路径，"" = 未设置）
+;; resources  : id -> resource
+;; order      : (listof resource-id)
+;; focus      : resource-id | #f
+;; pending    : pending | #f
+;; prompt     : prompt | #f
+;; view-index : view-id -> resource-id（resource-of-view 的 O(1) 索引）
 
 (struct resource-action (kind data) #:transparent)
 ;; kind : 'create-buffer | 'create-view | 'write-file
@@ -98,26 +99,53 @@
 ;; mode : 'ask | 'save-all
 
 (define resource-store-empty
-  (resource-store "" (hash) '() #f #f #f 1 1 1))
+  (resource-store "" (hash) '() #f #f #f (hash) 1 1 1))
 
 ;;; ════════════════ 内部 store 操作 ════════════════
 
 (define (store-get r id) (hash-ref (resource-store-resources r) id #f))
 
+;;; view-index 的增量维护。
+;;; 一个 view 只属于一个 resource；更新 resource 时先摘掉它旧的 view，
+;;; 再写入新的 view。这样 resource-of-view 不需要扫描 resources。
+(define (index-remove-views idx id vids)
+  (for/fold ([idx idx]) ([vid (in-list vids)])
+    (if (equal? (hash-ref idx vid #f) id)
+        (hash-remove idx vid)
+        idx)))
+
+(define (index-add-views idx id vids)
+  (for/fold ([idx idx]) ([vid (in-list vids)])
+    (hash-set idx vid id)))
+
 (define (store-put r res)
+  (define id (resource-id res))
+  (define old (store-get r id))
+  (define idx
+    (index-add-views
+     (if old
+         (index-remove-views (resource-store-view-index r) id (resource-views old))
+         (resource-store-view-index r))
+     id
+     (resource-views res)))
   (struct-copy resource-store r
-               [resources (hash-set (resource-store-resources r)
-                                    (resource-id res) res)]
-               [order (if (memv (resource-id res) (resource-store-order r))
+               [resources (hash-set (resource-store-resources r) id res)]
+               [order (if (memv id (resource-store-order r))
                           (resource-store-order r)
-                          (append (resource-store-order r) (list (resource-id res))))]))
+                          (append (resource-store-order r) (list id)))]
+               [view-index idx]))
 
 (define (store-remove r id)
+  (define old (store-get r id))
   (struct-copy resource-store r
                [resources (hash-remove (resource-store-resources r) id)]
                [order (for/list ([x (in-list (resource-store-order r))]
                                  #:unless (equal? x id))
                         x)]
+               [view-index (if old
+                               (index-remove-views (resource-store-view-index r)
+                                                   id (resource-views old))
+                               (resource-store-view-index r))]
                [focus (and (resource-store-focus r)
                            (not (equal? (resource-store-focus r) id))
                            (resource-store-focus r))]))
@@ -159,7 +187,7 @@
 
 (define (resource-dirty? store id)
   (define r (resource-ref store id))
-  (and r (not (equal? (resource-version r) (resource-saved-version r)))))
+  (and r (not (eq? (resource-version r) (resource-saved-version r)))))
 
 (define (resource-writable? store id)
   (and (resource-path store id) #t))
@@ -169,9 +197,8 @@
   (if r (resource-views r) '()))
 
 (define (resource-of-view store vid)
-  (for/first ([id (in-list (resource-store-order store))]
-              #:when (memv vid (resource-view-ids store id)))
-    id))
+  (define id (hash-ref (resource-store-view-index store) vid #f))
+  (and id (hash-has-key? (resource-store-resources store) id) id))
 
 (define (resource-command-stack store id)
   (define r (resource-ref store id))
@@ -198,8 +225,8 @@
   (define rid (resource-store-next-resource-id store))
   (define vid (resource-store-next-view-id store))
   (define did (or doc-id rid))
-  ;; path 统一存 string（path? -> path->string），供 status / 提示直接显示
-  (define path* (and path (if (path? path) (path->string path) path)))
+  ;; path 统一存规范化绝对路径，供 status / 提示 / 写文件直接使用
+  (define path* (and path (resource-normalize-path path)))
   (define name* (or name path* "*scratch*"))
   (define stack (command-table-stack-from-tables (list key-table)))
   (define r (resource rid name* did (list vid) path* stack version version))
@@ -226,7 +253,7 @@
   (define r (resource-ref store id))
   (cond
     [(not r) store]
-    [(equal? (resource-version r) version) store]
+    [(eq? (resource-version r) version) store]
     [else (resource-mark-edited store id version)]))
 
 ;; 打开完成后把 resource version / saved-version 对齐 engine 当前 token。
@@ -259,7 +286,8 @@
   (cond
     [(not r) (values store '())]
     [else
-     (define s1 (store-put store (struct-copy resource r [file-path path])))
+     (define path* (resource-normalize-path path))
+     (define s1 (store-put store (struct-copy resource r [file-path path*])))
      (resource-save s1 id)]))
 
 ;; 保存成功后：更新 saved-version；若在 pending 流程里，继续下一项。

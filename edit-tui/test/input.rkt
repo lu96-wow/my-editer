@@ -41,7 +41,6 @@
       l1))
   (define state (make-app-state #:layout layout
                                 #:resources store
-                                #:focus-resource rid
                                 #:keymap default-keymap
                                 #:area (rect 0 0 60 8)))
   (define s1 (status-install-state state 20))
@@ -158,7 +157,8 @@
 (define s18 (run-actions s17 e0 a17))
 (check-true (file-exists? path))
 (check-false (input-active? (sync! s18 e0)))
-(check-equal? (resource-path (app-state-resources s18) r0) path)
+(check-equal? (resource-path (app-state-resources s18) r0)
+              (resource-normalize-path path))
 (check-false (resource-dirty? (app-state-resources s18) r0))
 (delete-file path)
 

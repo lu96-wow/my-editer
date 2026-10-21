@@ -106,6 +106,9 @@
      (define content-changed? (or (not prev) (not (equal? prev cache))))
      (when content-changed?
        (define b (view-buffer v))
+       ;; UI view（filetree / status / input）不是用户可撤销的文档；
+       ;; 整篇重写时不记历史，避免每帧/每键积累无用的 document 版本。
+       (buffer-reset-history! b #f)
        (buffer-set-document! b (string-join lines "\n"))
        (buffer-face-all! b #f)
        (for ([i (in-naturals)] [face (in-list faces)])

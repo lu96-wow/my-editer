@@ -24,10 +24,9 @@
       (layout-split layout pid dir nid
                     #:config (app-state-layout-config state)))
     (if ok?
-        (values (app-state-refresh-focus-resource
-                 (struct-copy app-state state
-                              [layout layout*]
-                              [next-panel-id (add1 nid)]))
+        (values (struct-copy app-state state
+                             [layout layout*]
+                             [next-panel-id (add1 nid)])
                 '())
         (values (app-state-with-flash state "split failed") '()))))
 
@@ -56,9 +55,7 @@
                                 #:config (app-state-layout-config state))
            (layout-panel-clear-content layout pid)))
      (if ok?
-         (values (app-state-refresh-focus-resource
-                  (struct-copy app-state state [layout layout*]))
-                 '())
+         (values (struct-copy app-state state [layout layout*]) '())
          (values (app-state-with-flash state "close editor panel failed") '()))]))
 
 (define (toggle-filetree-command state)
@@ -71,10 +68,7 @@
                            #:config (app-state-layout-config state))
         (layout-panel-show layout area 'filetree)))
   (if ok?
-      ;; 隐藏可能导致焦点回退：按新 layout 的焦点重算 focus-resource
-      (values (app-state-refresh-focus-resource
-               (struct-copy app-state state [layout layout*]))
-              '())
+      (values (struct-copy app-state state [layout layout*]) '())
       (values (app-state-with-flash state "toggle filetree failed") '())))
 
 (define (focus-command dir)

@@ -45,7 +45,14 @@
          (λ (state) (values (app-state-with-flash state "local") '()))]))
 (define-values (s0 _a0)
   (resource-open resource-store-empty #:name "local" #:text "" #:key-table local-table))
-(define st0 (make-app-state #:resources s0 #:focus-resource 1 #:keymap default-keymap))
+(define view-id (car (resource-view-ids s0 1)))
+(define editor-panel
+  (make-panel 'editor 'editor #:views (list view-id) #:active view-id))
+(define layout
+  (make-layout #:root (make-leaf 'editor)
+               #:panels (hash 'editor editor-panel)
+               #:focus 'editor))
+(define st0 (make-app-state #:layout layout #:resources s0 #:keymap default-keymap))
 (define-values (st1 _acts) (step st0 (key-event (key 'q 'ctrl))))
 (check-equal? (app-state-flash st1) "local")
 (check-false (app-state-quit? st1))

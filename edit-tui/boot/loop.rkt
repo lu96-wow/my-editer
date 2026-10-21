@@ -19,6 +19,7 @@
          "../chrome/api.rkt"
          "actions.rkt"
          "frame.rkt"
+         "start.rkt"
          "sync.rkt"
          "tui-adapter.rkt")
 
@@ -46,23 +47,27 @@
         (loop state4 cache**))))
 
 ;; 终端入口：当前 demo / 测试用 run-loop 注入事件；真实终端用 run-app。
-(define (run-app state engine)
-  (tui:with-tui
-   (λ ()
-     (tui:cursor-hide)
-     (tui:enable-mouse!)
-     (tui:enable-bracketed-paste!)
-     (define-values (rows cols) (tui:get-window-size))
-     (define state*
-       (if (and rows cols (positive? rows) (positive? cols))
-           (struct-copy app-state state [area (rect 0 0 cols rows)])
-           state))
-     (define (read-app-event)
-       ;; 字节级读入：tag + 原始 bytes，适配层不解码 char / symbol
-       (let loop ()
-         (define-values (type data mods) (tui:read-event/raw))
-         (define e (tui-event->app type data mods))
-         (if e e (loop))))
-     (run-loop state* engine
-               #:read-event read-app-event
-               #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))))))
+;; 传 #:host 时先 install 所有插件，退出时逆序 teardown。
+(define (run-app state engine #:host [host #f])
+  (define state0 (if host (start-app host state) state))
+  (define result
+    (tui:with-tui
+     (λ ()
+       (tui:cursor-hide)
+       (tui:enable-mouse!)
+       (tui:enable-bracketed-paste!)
+       (define-values (rows cols) (tui:get-window-size))
+       (define state*
+         (if (and rows cols (positive? rows) (positive? cols))
+             (struct-copy app-state state0 [area (rect 0 0 cols rows)])
+             state0))
+       (define (read-app-event)
+         ;; 字节级读入：tag + 原始 bytes，适配层不解码 char / symbol
+         (let loop ()
+           (define-values (type data mods) (tui:read-event/raw))
+           (define e (tui-event->app type data mods))
+           (if e e (loop))))
+       (run-loop state* engine
+                 #:read-event read-app-event
+                 #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))))))
+  (if host (host-teardown host result engine) result))

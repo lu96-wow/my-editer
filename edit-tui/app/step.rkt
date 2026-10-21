@@ -147,6 +147,16 @@
                 '())])]
     [(release)
      (values (struct-copy app-state state [drag #f]) '())]
+    [(scroll-up scroll-down)
+     ;; 滚轮滚指针下的 panel；不改焦点，不移动光标。
+     (define id (layout-panel-id-at layout area row col))
+     (define p (and id (app-state-panel state id)))
+     (define vid (and p (panel-view p)))
+     (cond
+       [(not vid) (values state '())]
+       [else
+        (define delta (if (eq? (mouse-event-token ev) 'scroll-up) -3 3))
+        (values state (list (view-action 'scroll vid delta)))])]
     [else
      (define id (layout-focus-panel-at layout area config row col))
      (if id
@@ -174,7 +184,10 @@
 ;;   - 其他事件先取消本次输入，再处理该事件。
 (define (step state ev)
   (define state0 (clear-flash state))
-  (define-values (s0 a0) (input-reconcile state0))
+  ;; pending 只对连续按键有意义；mouse / paste / resize / quit 等事件
+  ;; 打断半截序列，否则下一次按键会拼上旧前缀。
+  (define state0* (if (key-event? ev) state0 (clear-pending state0)))
+  (define-values (s0 a0) (input-reconcile state0*))
   (cond
     [(and (input-active? s0)
           (not (key-event? ev))

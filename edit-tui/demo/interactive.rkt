@@ -32,6 +32,7 @@
 ;;; 鼠标：
 ;;;   拖 panel 接缝  resize
 ;;;   点 panel      聚焦（焦点窗口边框用 focused-border 高亮）
+;;;   滚轮          滚动指针下的 panel
 ;;;   点 buffer 内容 把主光标放到点击处（filetree 也只是普通 buffer）
 ;;;
 ;;; 文件树 / placement：
@@ -54,8 +55,7 @@
 
 (define state0
   (make-app-state #:resources resource-store-empty
-                  ;; 启动不预打开任何 buffer：焦点 resource 为空
-                  #:focus-resource #f
+                  ;; 启动不预打开任何 buffer：没有 layout 时焦点 resource 自然为空
                   ;; 具体布局规则：宿主选择，layout 骨架不认识它
                   #:layout-config default-config
                   ;; 键位集合：全局 / 编辑 / 输入 / placement

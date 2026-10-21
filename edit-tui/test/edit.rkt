@@ -25,7 +25,6 @@
   (define state
     (make-app-state #:layout layout
                     #:resources store
-                    #:focus-resource 1
                     #:keymap default-keymap
                     #:area area))
   (define s0 (run-actions state engine actions))
@@ -177,7 +176,10 @@
 (define-values (xl ok?) (layout-panel-attach (app-state-layout x0)
                                             'editor 'down status-panel))
 (check-true ok?)
+(check-equal? (app-state-focus-resource x0) 1)
 (define x1 (struct-copy app-state x0 [layout (layout-set-focus xl 'status)]))
+;; focus-resource 是派生查询：直接改 layout 后仍然正确。
+(check-false (app-state-focus-resource x1))
 (define-values (x2 xActions) (step x1 (key-event (key 'a))))
 (check-equal? xActions '())
 (check-equal? (engine-view-text xe 1) "keep")

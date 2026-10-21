@@ -41,6 +41,11 @@
 (define chrome-theme
   (list
    (list 'status-bar        (style (rgb 225 225 225) (rgb 40 44 52) '()))
+   ;; filetree：根 / 目录 / 已打开文件 / 普通文件
+   (list 'filetree-root     (style (rgb 200 200 200) #f '(bold)))
+   (list 'filetree-dir      (style (rgb 120 180 240) #f '(bold)))
+   (list 'filetree-open     (style (rgb 120 210 130) #f '()))
+   (list 'filetree-file     (style (rgb 200 200 200) #f '()))
    (list 'status-mode       (style (rgb 120 210 130) #f '(bold)))
    (list 'status-dirty      (style (rgb 230 160 90) #f '(bold)))
    (list 'message           (style (rgb 230 160 90) #f '()))

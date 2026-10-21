@@ -48,7 +48,8 @@
 (check-equal? (map resource-action-kind actions4) '(write-file))
 (define s5 (run-actions s4 demo-engine actions4))
 (check-true (file-exists? path))
-(check-equal? (resource-path (app-state-resources s5) rid) path)
+(check-equal? (resource-path (app-state-resources s5) rid)
+              (resource-normalize-path path))
 (check-false (resource-dirty? (app-state-resources s5) rid))
 (check-false (input-active? s5))
 

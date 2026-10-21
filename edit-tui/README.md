@@ -1,4 +1,4 @@
-# edit-tui-rebuild
+# edit-tui
 
 重建中的编辑器基础设施：纯 State + action，布局 / 编辑 / 文件树 / 渲染都在
 `*/api.rkt` 之后，core 只做 buffer / view / 几何 / 渲染。
@@ -71,7 +71,7 @@ edit-tui/core: base / command / panel / face
 demo 先留在根目录**，等 boot 和插件插入方式定下来再继续迁移。
 
 ```text
-edit-tui-rebuild/
+edit-tui/
   main.rkt                 唯一聚合入口：core/skeleton + render + 插件 + app + boot
 
   core/                    核心数据表示 / 实现
@@ -213,7 +213,7 @@ panel = id / kind / views / active
 ## 统一 API
 
 ```racket
-(require "edit-tui-rebuild/main.rkt")
+(require "edit-tui/main.rkt")
 ```
 
 ### base
@@ -264,7 +264,7 @@ empty-layout-config     ; 没有任何 per-kind 规则
 具体 app 的 kind 规则是 **configuration**（纯数据），在 `config/layout/`：
 
 ```racket
-(require "edit-tui-rebuild/config/layout/default.rkt")
+(require "edit-tui/config/layout/default.rkt")
 default-config    ; editor / sidebar / status 的 split / hide / min / max
 ```
 
@@ -283,14 +283,14 @@ default-config    ; editor / sidebar / status 的 split / hide / min / max
 所有 `key-sequence -> command` 绑定都在 `config/keymap/default.rkt`：
 
 ```racket
-(require "edit-tui-rebuild/config/keymap/default.rkt")
+(require "edit-tui/config/keymap/default.rkt")
 default-keymap
 ```
 
 per-document 键表在 **buffer 创建时**匹配：
 
 ```racket
-(require "edit-tui-rebuild/config/keymap/buffer.rkt")
+(require "edit-tui/config/keymap/buffer.rkt")
 (buffer-key-table path text)   ; -> command-table
 ```
 
@@ -499,7 +499,7 @@ layout -> core panels
 主题放在 `config/theme/`：
 
 ```racket
-(require "edit-tui-rebuild/config/theme/default.rkt")
+(require "edit-tui/config/theme/default.rkt")
 ```
 
 配置层是小表：
@@ -521,7 +521,7 @@ default-theme
 require 即安装，换主题 = 换 require：
 
 ```racket
-(require "edit-tui-rebuild/config/theme/dark.rkt")
+(require "edit-tui/config/theme/dark.rkt")
 ```
 
 ### 输入：标签 + 字节
@@ -576,8 +576,11 @@ C-i = Tab        C-m = Enter      C-[ = Escape     C-j = Enter（LF 归一成 CR
 (internal-event kind data)
 (quit-event)
 
-(make-app-state #:layout #:layout-config #:keymap #:resources #:focus-resource
+(make-app-state #:layout #:layout-config #:keymap #:resources
                 #:overlays #:pending #:area #:quit? #:flash)
+
+;; 焦点 resource 是派生查询：layout.focus -> panel.active -> resource-of-view
+(app-state-focus-resource state)
 
 ;; flash：一次性状态栏文本，下一次 step 入口自动清空
 (app-state-with-flash state text)
@@ -1089,7 +1092,7 @@ resource        per-doc command-table-stack（编辑器）
 ## 测试
 
 ```sh
-bash edit-tui-rebuild/test/run.sh
+bash edit-tui/test/run.sh
 ```
 
 - `test/api-boundary.rkt`：API 边界（非实现层只能 require main / api / core）
@@ -1103,9 +1106,9 @@ bash edit-tui-rebuild/test/run.sh
 ## demo
 
 ```sh
-racket edit-tui-rebuild/demo/layout.rkt
-racket edit-tui-rebuild/demo/three-panels.rkt
-racket edit-tui-rebuild/demo/interactive.rkt
+racket edit-tui/demo/layout.rkt
+racket edit-tui/demo/three-panels.rkt
+racket edit-tui/demo/interactive.rkt
 ```
 
 交互 demo 启动时 editor 为空，不预打开任何 buffer；先在 filetree 里 Enter 打开文件。
@@ -1119,6 +1122,7 @@ C-s        保存当前 resource（无 path -> Save as 输入栏）
 C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
 鼠标点面板  聚焦
+鼠标滚轮    滚动指针下的 panel（不改焦点 / 光标）
 鼠标点 buffer 内容区 -> 主光标落到点击处（filetree 也一样，它就是普通 buffer）
 
 焦点窗口的边框用主题里的 `focused-border` 高亮（`config/theme/default.rkt` 换颜色）。
