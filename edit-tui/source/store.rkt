@@ -25,6 +25,7 @@
          source-store-set-buffer
          source-store-set-disk
          source-store-set-virtual
+         source-store-update
          source-store-remove-source
          source-store-remove-buffer
          source-store-remove-disk
@@ -126,6 +127,24 @@
 
 (define (source-store-set-virtual store id text #:version [version #f])
   (source-store-put-snapshot store (virtual-source id text #:version version)))
+
+;; 手动更新已有 source 的 text/version：保持 id / path / authority 不变。
+;; 典型用途：
+;;   · buffer 编辑后更新 buffer snapshot；
+;;   · 手动 refresh disk source（buffer 打开时只更新 by-id 的备用 disk）；
+;;   · virtual source 内容变化。
+;; 不存在的 source 视为调用错误，不静默新增。
+(define (source-store-update store id text #:version [version #f])
+  (define old (source-store-ref store id))
+  (unless old
+    (raise-argument-error 'source-store-update "existing source-id" id))
+  (source-store-put-snapshot
+   store
+   (source-snapshot id
+                    (source-snapshot-path old)
+                    (source-snapshot-authority old)
+                    (or version text)
+                    text)))
 
 ;; 移除一个 source；如果它是 path 的当前权威，尝试回退到 disk。
 (define (source-store-remove-source store id)

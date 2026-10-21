@@ -72,6 +72,9 @@ by-path 的权威快照
 (source-store-set-disk store path text #:version v)
 (source-store-set-virtual store id text #:version v)
 
+;; 手动更新已有 source：保持 id/path/authority，只换 text/version
+(source-store-update store source-id text #:version v)
+
 (source-store-remove-source store source-id)
 (source-store-remove-buffer store buffer-id)
 (source-store-remove-disk store path)
@@ -96,6 +99,9 @@ by-path 的权威快照
 | buffer / virtual 无 path | 只按 id 存在，不进入 by-path |
 | 同一文件不同 symlink / 大小写路径 | 目前按不同 path 处理，后续可由 path resolver 统一 |
 | dirty buffer 关闭 | source 层只移除来源；保存/确认由 editor 负责 |
+| 手动更新 buffer | `source-store-update` 保持 identity/path/authority |
+| 手动 refresh disk | `source-store-update` 更新备用 disk；buffer 仍优先 |
+| 更新不存在的 source | 参数错误，不静默新增 |
 
 ## 分工
 

@@ -114,4 +114,31 @@
 (check-equal? (source-snapshot-text (source-store-ref-by-path n1 p)) "two")
 (check-false (source-store-ref n1 (source-id 'buffer 'b1)))
 
+
+;;; ════════════════ 显式更新（手动） ════════════════
+
+;; buffer 更新：identity / path / authority 不变，text/version 变。
+(define u0 (source-store-set-buffer source-store-empty 'ub p "v1" #:version 'u1))
+(define u1 (source-store-update u0 (source-id 'buffer 'ub) "v2" #:version 'u2))
+(define u1-snap (source-store-ref u1 (source-id 'buffer 'ub)))
+(check-equal? (source-snapshot-text u1-snap) "v2")
+(check-equal? (source-snapshot-version u1-snap) 'u2)
+(check-equal? (source-snapshot-path u1-snap) p)
+(check-equal? (source-snapshot-authority u1-snap) 'buffer)
+
+;; disk 更新：buffer 打开时只更新 by-id 的备用 disk，by-path 仍是 buffer。
+(define u2 (source-store-set-disk u1 p "disk-old" #:version 'd1))
+(define u3 (source-store-update u2 (source-id 'disk p) "disk-new" #:version 'd2))
+(check-equal? (source-snapshot-text (source-store-ref-by-path u3 p)) "v2")
+(check-equal? (source-snapshot-text (source-store-ref u3 (source-id 'disk p)))
+              "disk-new")
+
+;; virtual 更新
+(define u4 (source-store-set-virtual u3 'uv "a" #:version 'vv1))
+(define u5 (source-store-update u4 (source-id 'virtual 'uv) "b" #:version 'vv2))
+(check-equal? (source-snapshot-text (source-store-ref u5 (source-id 'virtual 'uv))) "b")
+
+;; 不存在的 source 是调用错误
+(check-exn exn:fail? (lambda () (source-store-update u5 (source-id 'buffer 'missing) "x")))
+
 (displayln "edit-tui-rebuild/test/source.rkt: ok")
