@@ -193,4 +193,28 @@
 (check-true (file-exists? target))
 (delete-file target)
 
+;;; ---------- C-s 也要确认：save-confirm -> y 才写 ----------
+(define cs-target (path->string (make-temporary-file "edit-tui-csave-~a.txt")))
+(delete-file cs-target)
+(define-values (cs0 cse0 _csr0) (make-app "hello" #:path cs-target))
+(define cs1 (press cs0 cse0 (key 'x)))          ; dirty
+(define cs2 (press cs1 cse0 (key 's 'ctrl)))    ; C-s -> save-confirm
+(check-true (input-active? cs2))
+(check-equal? (prompt-kind (prompt-of cs2)) 'save-confirm)
+(check-true (string-contains? (prompt-label (prompt-of cs2)) cs-target))
+;; n -> 不写文件
+(define cs3 (type cs2 cse0 "n"))
+(define-values (cs4 csActions) (press/actions cs3 cse0 (key 'enter)))
+(check-equal? csActions '())
+(check-false (prompt-of cs4))
+(check-false (file-exists? cs-target))
+;; y -> 写文件
+(define cs5 (press cs4 cse0 (key 's 'ctrl)))
+(define cs6 (type cs5 cse0 "y"))
+(define-values (cs7 csActions2) (press/actions cs6 cse0 (key 'enter)))
+(check-equal? (map resource-action-kind csActions2) '(write-file))
+(check-false (prompt-of cs7))
+(check-true (file-exists? cs-target))
+(delete-file cs-target)
+
 (displayln "edit-tui-rebuild/test/quit-save.rkt: ok")

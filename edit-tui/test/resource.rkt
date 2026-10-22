@@ -78,12 +78,23 @@
 (check-equal? (resource-version (resource-ref s3 1)) 'v2)
 (check-equal? (resource-saved-version (resource-ref s3 1)) 'v1)
 
-;;; ---------- 有 path 保存 ----------
+;;; ---------- 有 path 保存：先 save-confirm ----------
 (define-values (s4 as4) (resource-save s3 1))
-(check-equal? (map resource-action-kind as4) '(write-file))
-(check-equal? (resource-action-data (car as4))
+(check-equal? as4 '())
+(define p4 (prompt-of s4))
+(check-not-false p4)
+(check-equal? (prompt-kind p4) 'save-confirm)
+(check-equal? (prompt-resource-id p4) 1)
+;; skip：不写文件，清 prompt
+(define-values (s4-skip as4-skip) (resource-submit s4 (prompt-id p4) 'skip))
+(check-equal? as4-skip '())
+(check-false (prompt-of s4-skip))
+;; save：确认后才 write-file
+(define-values (s4b as4b) (resource-submit s4 (prompt-id p4) 'save))
+(check-equal? (map resource-action-kind as4b) '(write-file))
+(check-equal? (resource-action-data (car as4b))
               (list 1 (resource-normalize-path "main.rkt")))
-(define-values (s5 as5) (resource-save-done s4 1 'v2))
+(define-values (s5 as5) (resource-save-done s4b 1 'v2))
 (check-false (resource-dirty? s5 1))
 (check-equal? (resource-saved-version (resource-ref s5 1)) 'v2)
 

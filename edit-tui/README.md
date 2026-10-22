@@ -1319,7 +1319,7 @@ C-d        close-panel：删除当前 editor panel；最后一个只清 view
 C-b        显隐 sidebar（filetree / resources）
 C-x ←→↑↓   焦点移动
 C-x b      切换 sidebar tab（filetree / resources）
-C-s        保存当前 resource（无 path -> Save as 输入栏）
+C-s        保存当前 resource：有 path 先 save-confirm（y/n）；无 path -> Save as 输入栏
 C-q        退出（dirty -> 确认输入栏）
 鼠标拖接缝  resize
 鼠标点面板  聚焦

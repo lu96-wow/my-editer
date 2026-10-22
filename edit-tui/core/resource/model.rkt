@@ -94,7 +94,7 @@
 ;;      | 'close-resource | 'quit
 
 (struct prompt (id kind resource-id label value choices) #:transparent)
-;; kind : 'save-path | 'confirm
+;; kind : 'save-path | 'confirm | 'save-confirm
 ;; choices : (listof symbol)
 
 (struct pending (kind ids index mode) #:transparent)
@@ -304,9 +304,19 @@
                        "Save as: " "" '()))
      (values (bump-prompt-id (store-set-prompt store p)) '())]))
 
-;; → (values store' (listof resource-action))
+;; C-s：有 path 时先确认，再写；没有 path 仍然走 Save as 输入。
+;; 退出/关闭 pending 的保存流程仍用 start-save，避免重复确认。
 (define (resource-save store id)
-  (start-save store id))
+  (define r (resource-ref store id))
+  (cond
+    [(not r) (values store '())]
+    [(not (resource-file-path r)) (start-save store id)]
+    [else
+     (define target (resource-display-path store (resource-file-path r)))
+     (define p (prompt (next-prompt-id store) 'save-confirm id
+                       (format "Save ~a?" target)
+                       #f '(save skip)))
+     (values (bump-prompt-id (store-set-prompt store p)) '())]))
 
 (define (resource-save-as store id path)
   (define r (resource-ref store id))
@@ -470,7 +480,7 @@
     [else
      (define trimmed (string-trim text))
      (case (prompt-kind p)
-       [(confirm)
+       [(confirm save-confirm)
         (define v (confirm-answer trimmed))
         (cond
           [(and v (or (eq? v 'cancel) (memq v (prompt-choices p))))
@@ -496,6 +506,12 @@
        [(save-path)
         (define id (prompt-resource-id p))
         (resource-save-as store id value)]
+       [(save-confirm)
+        (define id (prompt-resource-id p))
+        (case value
+          [(skip) (values (store-clear-prompt store) '())]
+          [(save) (start-save (store-clear-prompt store) id)]
+          [else (values store '())])]
        [(confirm)
         (define id (prompt-resource-id p))
         (case value

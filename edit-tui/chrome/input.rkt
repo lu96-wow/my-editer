@@ -374,7 +374,7 @@
 
 (define (prompt-invalid-message prompt)
   (case (prompt-kind prompt)
-    [(confirm)
+    [(confirm save-confirm)
      (format "answer: ~a" (string-join (map choice-key (prompt-choices prompt))
                                        " / "))]
     [(save-path) "path required"]
