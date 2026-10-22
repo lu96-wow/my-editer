@@ -40,6 +40,13 @@
 (check-equal? (engine-view-text pair-engine pair-vid) "()")
 (check-equal? (engine-view-point-column pair-engine pair-vid) 1)
 
+;; 光标在空括号中间按 Backspace：两个括号一起删。
+(define-values (del-state del-actions)
+  (step pair-state** (key-event (key 'backspace))))
+(define _del-state* (run-actions del-state pair-engine del-actions))
+(check-equal? (engine-view-text pair-engine pair-vid) "")
+(check-equal? (engine-view-point-column pair-engine pair-vid) 0)
+
 ;; text mode 不配对，仍然是普通自插入。
 (define-values (_txt-engine txt-vid txt-state)
   (make-editor "" "/tmp/edit-tui-pair-test.txt"))

@@ -8,12 +8,15 @@
 
 (require "../core/skeleton.rkt"
          "../app/state.rkt"
+         "../app/action.rkt"
          "../edit/api.rkt")
 
 (provide auto-pair-command
          auto-pair-paren-command
          auto-pair-bracket-command
-         auto-pair-brace-command)
+         auto-pair-brace-command
+         pair-backspace-command
+         bracket-close-char)
 
 (define (auto-pair-command open close)
   (λ (state)
@@ -31,3 +34,17 @@
 (define auto-pair-paren-command (auto-pair-command "(" ")"))
 (define auto-pair-bracket-command (auto-pair-command "[" "]"))
 (define auto-pair-brace-command (auto-pair-command "{" "}"))
+
+;; Backspace 需要看 view 里的左右字符，交给 boot 解释。
+(define (pair-backspace-command state)
+  (define vid (focus-editor-view state))
+  (cond
+    [(not vid) (values (app-state-with-flash state "pair: 焦点不是 editor") '())]
+    [else (values state (list (pair-backspace-action vid)))]))
+
+(define (bracket-close-char ch)
+  (case ch
+    [(#\() #\)]
+    [(#\[) #\]]
+    [(#\{) #\}]
+    [else #f]))

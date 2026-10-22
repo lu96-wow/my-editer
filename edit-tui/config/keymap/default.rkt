@@ -87,6 +87,7 @@
    ;; 第一张表优先：覆盖 edit-command-table 的 Enter。
    (keys
     [(key 'enter) newline-indent-command]
+    [(key 'backspace) pair-backspace-command]
     [(key #\()    auto-pair-paren-command]
     [(key #\[)    auto-pair-bracket-command]
     [(key #\{)    auto-pair-brace-command])

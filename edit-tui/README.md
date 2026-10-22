@@ -368,7 +368,8 @@ resource-panel-command-table  cursor + Enter / C-r
 - 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
 - `app-state` 持有全局 keymap：`(app-state-keymap state)`；
 - `app/step` 从这里取 overlays / input-stack；placement 取临时表；
-- Racket 局部键表额外覆盖 Enter / `(` / `[` / `{`：Enter 走换行缩进，开括号自动配对；
+- Racket 局部键表额外覆盖 Enter / Backspace / `(` / `[` / `{`：
+  Enter 走换行缩进，开括号自动配对，Backspace 在空括号中间删除整对；
 - 编辑 / 文档键表不再在 app-state，而是在 resource 上；
 - filetree 安装通过 `#:panel-stack` 接收 `filetree-panel-stack`；
 - 换键位 = 换 `config/keymap/` 的模块，插件与 step 不动。
@@ -1306,6 +1307,7 @@ Esc/C-g   关闭；关闭后直到下一次编辑前不自动重开
 M-d       光标处标识符文档
 C-x d     显 / 隐 docs 面板
 C-x o     补全菜单 <-> docs 焦点切换；切到 docs 时补全不关闭
+          补全目标文档的光标若被鼠标/导航移动，补全自动关闭（输入触发 refine 不关）
 ```
 
 交互 demo 启动时 editor 为空，不预打开任何 buffer；先在 filetree 里 Enter 打开文件。

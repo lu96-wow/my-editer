@@ -39,6 +39,15 @@
 (check-true (string-contains? (bytes->string/utf-8 bytes2) "twice"))
 (check-false (string-contains? (engine-view-text engine 40) ">"))
 
+;; 小终端 / overlay 压住低层边框时也不能崩（border 合成的回归）。
+(define small-state (struct-copy app-state s5 [area (rect 0 0 40 10)]))
+(define-values (ss1 sps) (sync-ui/panels! small-state engine))
+(define-values (ss2 sovs) (prepare-demo! ss1 engine))
+(check-true (pair? sovs))
+(define-values (_sc _sb)
+  (render-frame ss2 engine #f #:panels sps #:overlays sovs))
+(check-true #t)
+
 ;; 焦点转移：docs 隐藏时，C-x o 从补全菜单进入 docs，补全不关闭。
 (define-values (h1 h1a) (step s5 (key-event (key 'x 'ctrl))))
 (define-values (h2 h2a) (step h1 (key-event (key 'd))))
@@ -127,14 +136,5 @@
 (define-values (s11 _a11) (step s10 (key-event (key 'd))))
 (check-true (layout-panel-visible? (app-state-layout s11) 'docs))
 
-
-;; 小终端 / overlay 压住低层边框时也不能崩（border 合成的回归）。
-(define small-state (struct-copy app-state s5 [area (rect 0 0 40 10)]))
-(define-values (ss1 sps) (sync-ui/panels! small-state engine))
-(define-values (ss2 sovs) (prepare-demo! ss1 engine))
-(check-true (pair? sovs))
-(define-values (_sc _sb)
-  (render-frame ss2 engine #f #:panels sps #:overlays sovs))
-(check-true #t)
 
 (displayln "edit-tui-rebuild/test/demo-completion-docs.rkt: ok")

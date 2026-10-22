@@ -48,7 +48,8 @@
   #:transparent)
 
 (struct completion-state
-  (target-vid prefix candidates index source-info request-id status)
+  (target-vid prefix candidates index source-info request-id status
+   target-version anchor-line anchor-col)
   #:transparent)
 
 (struct docs-state
@@ -313,7 +314,10 @@
         (define tag (completion-request-tag info prefix))
         (define c0 (completion-state (demo-source-view-id info)
                                      prefix local 0 info #f
-                                     (if (null? local) 'loading 'local)))
+                                     (if (null? local) 'loading 'local)
+                                     (demo-source-version info)
+                                     (demo-source-line info)
+                                     (demo-source-col info)))
         (define state1 (store-set state 'demo/completion c0))
         (define state2
           (app-state-set-key-owner
@@ -339,8 +343,12 @@
                           [prefix prefix]
                           [candidates local]
                           [index 0]
+                          [source-info info]
                           [status (if (null? local) 'loading 'local)]
-                          [request-id #f]))
+                          [request-id #f]
+                          [target-version (demo-source-version info)]
+                          [anchor-line (demo-source-line info)]
+                          [anchor-col (demo-source-col info)]))
   (define state1 (auto-clear-timer! (store-set state 'demo/completion c1)))
   (define state2 (if (null? local)
                      state1
@@ -799,6 +807,31 @@
   (define pid (and layout (layout-panel-for-view layout (completion-state-target-vid c))))
   (and pid (equal? pid (app-state-focus-panel-id state))))
 
+;; 补全打开后，目标是某个 view。若该 view 的文档版本没变、但光标移走了，
+;; 说明是鼠标/其他导航，不是补全自己的输入；关闭并 dismiss。
+;; 文本变化由 process-doc-changes -> auto-refine 更新 anchor，所以不会误关。
+(define (sync-completion-cursor! state engine)
+  (define c (current-completion state))
+  (cond
+    [(not c) state]
+    [else
+     (define info (completion-state-source-info c))
+     (define did (and info (demo-source-doc-id info)))
+     (define vid (completion-state-target-vid c))
+     (define version (and did (engine-doc-version engine did)))
+     (define line (and vid (engine-view-point-line engine vid)))
+     (define col (and vid (engine-view-point-column engine vid)))
+     (cond
+       [(or (not version) (not line) (not col))
+        (auto-dismiss! (close-completion state))]
+       [(not (equal? version (completion-state-target-version c)))
+        (auto-dismiss! (close-completion state))]
+       [(and (= line (completion-state-anchor-line c))
+             (= col (completion-state-anchor-col c)))
+        state]
+       [else
+        (auto-dismiss! (close-completion state))])]))
+
 (define (sync-completion-key-owner state)
   (define c (current-completion state))
   (cond
@@ -824,9 +857,10 @@
   ;; change 只在这里消费一次；自动补全的触发/refine 都在这一层做。
   (define-values (changes state2) (app-state-take-doc-changes state1))
   (define state3 (process-doc-changes! state2 focus-info changes timer-runtime))
+  (define state3a (sync-completion-cursor! state3 engine))
   ;; docs 获得焦点时，completion 仍使用打开时的 source，不因为当前焦点是 docs 而关闭。
-  (define c (current-completion state3))
-  (define state4 (sync-docs-view! state3 engine))
+  (define c (current-completion state3a))
+  (define state4 (sync-docs-view! state3a engine))
   (define state5 (sync-completion-key-owner state4))
   (cond
     [(not c) (values state5 '())]

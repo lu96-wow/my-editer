@@ -11,6 +11,7 @@
 (provide (struct-out view-action)
          (struct-out open-file-action)
          (struct-out newline-indent-action)
+         (struct-out pair-backspace-action)
          (struct-out quit-action))
 
 ;; 文件树打开文件：runtime 读盘 -> resource-open -> 进入 placement。
@@ -18,5 +19,8 @@
 
 ;; 换行缩进需要读 engine 文本；命令只带 view-id，boot 解释时计算。
 (struct newline-indent-action (view-id) #:transparent)
+
+;; 空括号删除需要看光标左右字符；命令只带 view-id。
+(struct pair-backspace-action (view-id) #:transparent)
 
 (struct quit-action () #:transparent)

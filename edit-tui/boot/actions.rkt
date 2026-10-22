@@ -11,13 +11,15 @@
 
 (require racket/file
          racket/path
+         racket/string
          "../core/skeleton.rkt"
          "../app/state.rkt"
          "../app/action.rkt"
          "../app/placement.rkt"
          "../app/buffer-mode.rkt"
          "../config/mode.rkt"
-         "../indent/api.rkt")
+         "../indent/api.rkt"
+         "../pair/api.rkt")
 
 (provide run-actions)
 
@@ -190,6 +192,24 @@
         (values state
                 (list (view-action 'insert vid
                                    (string->bytes/utf-8 insert-text))))])]
+    [(pair-backspace-action? action)
+     (define vid (pair-backspace-action-view-id action))
+     (define text (engine-view-text engine vid))
+     (define line (or (engine-view-point-line engine vid) 0))
+     (define col (or (engine-view-point-column engine vid) 0))
+     (define lines (and text (string-split text "\n" #:trim? #f)))
+     (define line-text (and lines (< line (length lines)) (list-ref lines line)))
+     (define open (and line-text (> col 0) (<= col (string-length line-text))
+                       (string-ref line-text (sub1 col))))
+     (define close (and line-text (< col (string-length line-text))
+                        (string-ref line-text col)))
+     (cond
+       ;; 光标正好在两个空括号之间：backspace 删左括号，delete 删右括号。
+       [(and open close (eqv? (bracket-close-char open) close))
+        (values state (list (view-action 'backspace vid #f)
+                            (view-action 'delete vid #f)))]
+       [else
+        (values state (list (view-action 'backspace vid #f)))])]
     [(view-action? action)
      (define vid (view-action-view-id action))
      (define changes (engine-apply-view-action! engine action))
