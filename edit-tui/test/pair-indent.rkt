@@ -47,6 +47,18 @@
 (check-equal? (engine-view-text pair-engine pair-vid) "")
 (check-equal? (engine-view-point-column pair-engine pair-vid) 0)
 
+;; 四类配对符号：插入成对，空对 Backspace 一起删。
+(for ([ch (in-list (list #\( #\[ #\{ #\"))]
+      [expected (in-list (list "()" "[]" "{}" "\"\""))])
+  (define-values (e v st) (make-editor "" "/tmp/edit-tui-pair-all.rkt"))
+  (define-values (st* acts) (step st (key-event (key ch))))
+  (define st** (run-actions st* e acts))
+  (check-equal? (engine-view-text e v) expected)
+  (check-equal? (engine-view-point-column e v) 1)
+  (define-values (dst dacts) (step st** (key-event (key 'backspace))))
+  (define _dst* (run-actions dst e dacts))
+  (check-equal? (engine-view-text e v) ""))
+
 ;; text mode 不配对，仍然是普通自插入。
 (define-values (_txt-engine txt-vid txt-state)
   (make-editor "" "/tmp/edit-tui-pair-test.txt"))

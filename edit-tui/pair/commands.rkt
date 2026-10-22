@@ -15,8 +15,9 @@
          auto-pair-paren-command
          auto-pair-bracket-command
          auto-pair-brace-command
+         auto-pair-quote-command
          pair-backspace-command
-         bracket-close-char)
+         pair-close-char)
 
 (define (auto-pair-command open close)
   (λ (state)
@@ -34,6 +35,7 @@
 (define auto-pair-paren-command (auto-pair-command "(" ")"))
 (define auto-pair-bracket-command (auto-pair-command "[" "]"))
 (define auto-pair-brace-command (auto-pair-command "{" "}"))
+(define auto-pair-quote-command (auto-pair-command "\"" "\""))
 
 ;; Backspace 需要看 view 里的左右字符，交给 boot 解释。
 (define (pair-backspace-command state)
@@ -42,9 +44,11 @@
     [(not vid) (values (app-state-with-flash state "pair: 焦点不是 editor") '())]
     [else (values state (list (pair-backspace-action vid)))]))
 
-(define (bracket-close-char ch)
+;; 开符号 -> 配对的闭符号。引号是同一个字符。
+(define (pair-close-char ch)
   (case ch
     [(#\() #\)]
     [(#\[) #\]]
     [(#\{) #\}]
+    [(#\") #\"]
     [else #f]))

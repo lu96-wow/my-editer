@@ -90,7 +90,8 @@
     [(key 'backspace) pair-backspace-command]
     [(key #\()    auto-pair-paren-command]
     [(key #\[)    auto-pair-bracket-command]
-    [(key #\{)    auto-pair-brace-command])
+    [(key #\{)    auto-pair-brace-command]
+    [(key #\")    auto-pair-quote-command])
    edit-command-table))
 
 ;;; ════════════════ focus / layout ════════════════

@@ -205,7 +205,7 @@
                         (string-ref line-text col)))
      (cond
        ;; 光标正好在两个空括号之间：backspace 删左括号，delete 删右括号。
-       [(and open close (eqv? (bracket-close-char open) close))
+       [(and open close (eqv? (pair-close-char open) close))
         (values state (list (view-action 'backspace vid #f)
                             (view-action 'delete vid #f)))]
        [else

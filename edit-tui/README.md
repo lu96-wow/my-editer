@@ -368,8 +368,9 @@ resource-panel-command-table  cursor + Enter / C-r
 - 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
 - `app-state` 持有全局 keymap：`(app-state-keymap state)`；
 - `app/step` 从这里取 overlays / input-stack；placement 取临时表；
-- Racket 局部键表额外覆盖 Enter / Backspace / `(` / `[` / `{`：
-  Enter 走换行缩进，开括号自动配对，Backspace 在空括号中间删除整对；
+- Racket 局部键表额外覆盖 Enter / Backspace / `(` / `[` / `{` / `"`：
+  Enter 走换行缩进，开符号自动配对（`()` `[]` `{}` `""`），
+  Backspace 在空配对中间删除整对；
 - 编辑 / 文档键表不再在 app-state，而是在 resource 上；
 - filetree 安装通过 `#:panel-stack` 接收 `filetree-panel-stack`；
 - 换键位 = 换 `config/keymap/` 的模块，插件与 step 不动。
