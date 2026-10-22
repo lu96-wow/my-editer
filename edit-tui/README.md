@@ -1229,6 +1229,8 @@ resource        per-doc command-table-stack（编辑器）
   仍走后台 `color-open` job，结果按版本校验，过期结果不会覆盖新文档。
 - **workspace source 增量**：只对 version 变化的 buffer 重新取文本 / 更新 source；
   焦点 source 的文本也按 `(doc-id, version)` 复用，移动光标不复制整篇文本。
+- **连续输入 idle 化**：普通输入帧不重算 workspace / 不 refine completion；
+  每个 change 只重置 idle timer，停键后才更新 workspace、refine 补全并提交后台 job。
 - **按键路径不绕圈**：token 就是 `(tag . bytes)`，事件原样往下传；
   自插入的 bytes 直接进 `insert` action，只在写 buffer 时解一次 UTF-8。
   没有 char / symbol 互转，也不把整张表展开成 Unicode 绑定。
@@ -1299,7 +1301,8 @@ racket edit-tui/demo/completion-docs.rkt
 选择候选会更新 docs。
 
 ```text
-自动补全  输入 symbol 后 debounce（约 180ms）自动打开
+自动补全  输入 symbol 后 debounce（约 180ms）自动打开；
+          菜单已打开时也只在停键后 refine，不每键提交 completion/docs job
 C-o       手动打开补全（库函数 + 本文件/工作区本地词）
 Up/Down   菜单：移动候选；docs：移动 docs 光标
 Tab       下一个候选

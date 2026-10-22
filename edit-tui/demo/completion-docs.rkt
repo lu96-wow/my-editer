@@ -222,9 +222,13 @@
   (cond
     [(not timer-runtime) state]
     [else
+     (define a (auto-state-of state))
+     ;; 连续输入：取消旧 idle timer，只保留最后一次。
+     (when (auto-state-timer-id a)
+       (cancel-timer! timer-runtime (auto-state-timer-id a)))
      (define id (schedule-timer! timer-runtime delay-ms))
      (auto-state-put state
-                     (struct-copy auto-state (auto-state-of state)
+                     (struct-copy auto-state a
                                   [timer-id id]))]))
 
 ;; 自动补全只在前缀是 symbol token 时触发；string/comment 里不弹。
@@ -366,6 +370,21 @@
          (equal? (doc-change-doc-id dc) (demo-source-doc-id focus-info)))))
 
 ;; 消费 pending-doc-changes：schedule / refine / suppress。
+;; 文本变了但 refine 延后到 idle：先把 completion 的 anchor 跟到当前版本/光标，
+;; 否则 sync-completion-cursor! 会把输入造成的版本变化误判成“光标移动”而关闭。
+(define (touch-completion-anchor state info)
+  (define c (current-completion state))
+  (cond
+    [(not c) state]
+    [else
+     (define c*
+       (struct-copy completion-state c
+                    [source-info info]
+                    [target-version (demo-source-version info)]
+                    [anchor-line (demo-source-line info)]
+                    [anchor-col (demo-source-col info)]))
+     (store-set state 'demo/completion c*)]))
+
 (define (process-doc-changes! state focus-info changes timer-runtime)
   (cond
     [(not (relevant-change? focus-info changes)) state]
@@ -388,9 +407,10 @@
            (cond
              [(not prefix)
               (if c (close-completion state1) state1)]
-             [(not c)
-              (auto-schedule! state1 timer-runtime 180)]
-             [else (auto-refine-completion! state1 focus-info prefix)])])])]))
+             ;; 菜单已打开也不每键 refine：先跟 anchor，再统一等停键 idle。
+             [else
+              (auto-schedule! (touch-completion-anchor state1 focus-info)
+                              timer-runtime 180)])])])]))
 
 (define (handle-auto-timer! state timer-id)
   (define a (auto-state-of state))
@@ -398,20 +418,30 @@
     [(not (equal? timer-id (auto-state-timer-id a))) state]
     [else
      (define state1 (auto-clear-timer! state))
-     (define info (store-ref state1 'demo/source #f))
-     (define fp (app-state-focus-panel-resource state1))
+     ;; 停键 idle：现在才更新 workspace / analysis。
+     (define stateW (refresh-workspace! state1 engine))
+     (define workspace (store-ref stateW 'demo/workspace workspace-empty))
+     (define info0 (store-ref stateW 'demo/source #f))
+     (define info (and info0 (struct-copy demo-source info0 [workspace workspace])))
+     (define stateW2 (if info (store-set stateW 'demo/source info) stateW))
+     (define fp (app-state-focus-panel-resource stateW2))
+     (define c (current-completion stateW2))
      (cond
        [(or (not info)
             (not fp)
             (not (eq? (panel-kind fp) 'editor))
-            (input-active? state1)
-            (app-state-placement state1)
-            (current-completion state1))
-        state1]
+            (input-active? stateW2)
+            (app-state-placement stateW2))
+        stateW2]
+       [c
+        (define prefix (auto-context-prefix info))
+        (cond
+          [(not prefix) (auto-dismiss! (close-completion stateW2))]
+          [else (auto-refine-completion! stateW2 info prefix)])]
        [(auto-context-prefix info)
-        (define-values (state2 _actions) (demo-complete-start state1))
+        (define-values (state2 _actions) (demo-complete-start stateW2))
         state2]
-       [else state1])]))
+       [else stateW2])]))
 
 (define (demo-complete-next state)
   (define c (current-completion state))
@@ -693,6 +723,22 @@
                     (hash-set versions did version-key))])])))
   (values source-store* workspace* versions*))
 
+(define (workspace-opened-revision state)
+  (resource-opened-revision (app-state-resources state)))
+
+;; idle 时真正更新 workspace；prepare 的即时帧只做必要工作。
+(define (refresh-workspace! state engine)
+  (define-values (source-store* workspace* versions*)
+    (collect-workspace state engine))
+  (define state*
+    (store-set (store-set (store-set state
+                                    'demo/source-store source-store*)
+                          'demo/workspace workspace*)
+               'demo/source-versions versions*))
+  (store-set (store-set state* 'demo/workspace-ready? #t)
+             'demo/workspace-opened-revision
+             (workspace-opened-revision state)))
+
 ;; 当前焦点的 editor source；焦点在 docs 时返回 #f。
 ;; 文本按 (doc-id, version) 复用，光标移动不重新复制整篇文本。
 (define (editor-source-for state engine ws)
@@ -843,13 +889,16 @@
     [else (app-state-clear-key-owner state)]))
 
 (define (prepare-demo! state engine #:timer-runtime [timer-runtime #f])
-  (define-values (source-store* workspace* versions*)
-    (collect-workspace state engine))
+  ;; 即时帧不重算 workspace：首次 prepare、打开 resource 变化时才刷新；
+  ;; 普通输入等 handle-auto-timer! 的 idle。
+  (define opened-rev (workspace-opened-revision state))
+  (define cached-opened-rev (store-ref state 'demo/workspace-opened-revision #f))
+  (define ready? (store-ref state 'demo/workspace-ready? #f))
   (define state0
-    (store-set (store-set (store-set state
-                                    'demo/source-store source-store*)
-                          'demo/workspace workspace*)
-               'demo/source-versions versions*))
+    (if (or (not ready?) (not (equal? opened-rev cached-opened-rev)))
+        (refresh-workspace! state engine)
+        state))
+  (define workspace* (store-ref state0 'demo/workspace workspace-empty))
   (define-values (focus-info state1a)
     (editor-source-for state0 engine workspace*))
   (define state1
