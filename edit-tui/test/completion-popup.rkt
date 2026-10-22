@@ -23,7 +23,8 @@
 (define p2 (popup-geometry area editor 20 18 6 12))
 (check-not-false p2)
 (define r2 (popup-layout-rect p2))
-(check-true (<= (rect-bottom r2) 18))
+;; 上方展开：弹窗底边贴着光标行（rect 左闭右开，不覆盖光标行）。
+(check-equal? (rect-bottom r2) 18)
 
 ;; 宽度受编辑区限制，而不是固定值。
 (define p3 (popup-geometry area editor 20 5 2 100))
