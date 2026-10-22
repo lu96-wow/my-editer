@@ -46,8 +46,6 @@
   (match current-cursor [(cursor (list fst-child _ ...) _ _ _) #t] [_ #f]))
 (define (cursor-can-go-up? current-cursor)
   (match current-cursor [(cursor _ _ parent _) #:when parent #t] [_ #f]))
-(define (cursor-can-go-left? current-cursor)
-  (match current-cursor [(cursor _ (list left-sibling _ ...) _ _) #t] [_ #f]))
 (define (cursor-can-go-right? current-cursor)
   (match current-cursor [(cursor _ _ _ (list right-sibling _ ...)) #t] [_ #f]))
 
@@ -67,11 +65,6 @@
     [(predicate? (cursor-selected-node cursor)) cursor]
     [(cursor-can-go-up? cursor) (cursor-go-up-until-true (cursor-go-up cursor) predicate?)]
     [else #f]))
-(define (cursor-go-left current-cursor)
-  (match current-cursor
-    [(cursor selected-node (list fst-left-sibling others ...) parent rights)
-     (cursor fst-left-sibling others parent (cons selected-node rights))]
-    [_ (error "Cursor can't move left!")]))
 (define (cursor-go-right current-cursor)
   (match current-cursor
     [(cursor selected-node lefts parent (list fst-right-sibling others ...))

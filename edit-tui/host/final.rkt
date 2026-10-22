@@ -13,7 +13,6 @@
 (require racket/path
          "../config/keymap/default.rkt"
          "../config/layout/default.rkt"
-         "../config/theme/default.rkt"
          "../main.rkt"
          "../demo/completion-docs.rkt")
 

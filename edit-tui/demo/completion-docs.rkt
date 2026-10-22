@@ -23,7 +23,6 @@
          racket/async-channel
          racket/match
          racket/string
-         racket/path
          (prefix-in tui: tui)
          "../config/keymap/default.rkt"
          "../config/layout/default.rkt"
@@ -36,7 +35,7 @@
 
 (provide demo-state demo-engine prepare-demo!
          empty-docs
-         completion-service docs-service handle-job-result
+         handle-job-result
          demo-services
          handle-auto-timer!
          run-demo)
@@ -48,7 +47,7 @@
   #:transparent)
 
 (struct completion-state
-  (target-vid prefix candidates index source-info request-id status
+  (target-vid prefix candidates index source-info request-id
    target-version anchor-line anchor-col)
   #:transparent)
 
@@ -57,14 +56,14 @@
   #:transparent)
 
 (struct docs-request
-  (id tag)
+  (id)
   #:transparent)
 
 (struct auto-state
-  (timer-id dismissed? suppress-next?)
+  (timer-id suppress-next?)
   #:transparent)
 
-(define empty-auto (auto-state #f #f #f))
+(define empty-auto (auto-state #f #f))
 
 (define (store-ref state key default)
   (hash-ref (app-state-store state) key default))
@@ -86,7 +85,6 @@
 ;;; ════════════════ id / view ════════════════
 
 (define editor-vid 1)
-(define editor-did 1)
 (define status-vid 20)
 (define docs-vid 30)
 (define completion-vid 40)
@@ -177,20 +175,16 @@
      (define lines (doc-lines name local-doc #f))
      (docs-state lines (doc-faces lines local-doc #f))]))
 
-(define (make-docs-request-tag info name)
-  (list 'docs (demo-source-source-id info) (demo-source-version info) name))
-
 ;; 设置本地预览，同时提交异步 docs job。
 (define (request-docs! state info name)
   (cond
     [(not (buffer-mode-supports? (demo-source-mode info) 'docs))
      (store-set state 'demo/docs empty-docs)]
     [else
-     (define tag (make-docs-request-tag info name))
      (define state1 (store-set state 'demo/docs (local-docs-state-for info name)))
      (define-values (state2 job)
-       (app-state-submit-job state1 'docs (list 'docs info name) tag))
-     (store-set state2 'demo/docs-request (docs-request (job-id job) tag))]))
+       (app-state-submit-job state1 'docs (list 'docs info name)))
+     (store-set state2 'demo/docs-request (docs-request (job-id job)))]))
 
 (define (update-docs-for-name state name)
   (define info (store-ref state 'demo/source #f))
@@ -207,10 +201,7 @@
       (auto-state-put state (struct-copy auto-state a [timer-id #f]))))
 
 (define (auto-dismiss! state)
-  (auto-state-put state
-                  (struct-copy auto-state (auto-state-of state)
-                               [timer-id #f]
-                               [dismissed? #t])))
+  (auto-clear-timer! state))
 
 (define (auto-suppress-next! state)
   (auto-state-put state
@@ -318,7 +309,6 @@
         (define tag (completion-request-tag info prefix))
         (define c0 (completion-state (demo-source-view-id info)
                                      prefix local 0 info #f
-                                     (if (null? local) 'loading 'local)
                                      (demo-source-version info)
                                      (demo-source-line info)
                                      (demo-source-col info)))
@@ -348,7 +338,6 @@
                           [candidates local]
                           [index 0]
                           [source-info info]
-                          [status (if (null? local) 'loading 'local)]
                           [request-id #f]
                           [target-version (demo-source-version info)]
                           [anchor-line (demo-source-line info)]
@@ -394,9 +383,7 @@
        [(auto-state-suppress-next? a)
         (auto-state-put state (struct-copy auto-state a [suppress-next? #f]))]
        [else
-        (define a1 (struct-copy auto-state a
-                                [timer-id #f]
-                                [dismissed? #f]))
+        (define a1 (struct-copy auto-state a [timer-id #f]))
         (define state1 (auto-state-put state a1))
         (cond
           [(input-active? state1) state1]
@@ -965,8 +952,7 @@
                             (sub1 (length cands))))
            (define c1 (struct-copy completion-state c
                                    [candidates cands]
-                                   [index idx]
-                                   [status 'ready]))
+                                   [index idx]))
            (define state1 (store-set state0 'demo/completion c1))
            (request-docs! state1
                           (completion-state-source-info c1)

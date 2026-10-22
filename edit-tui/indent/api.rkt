@@ -6,8 +6,7 @@
 ;;; newline-indent-insert-text，再生成普通 insert view-action。
 ;;; 语言算法在 lang/racket/base/indent.rkt，保持纯函数。
 
-(require "../core/skeleton.rkt"
-         "../app/state.rkt"
+(require "../app/state.rkt"
          "../app/action.rkt"
          "../app/buffer-mode.rkt"
          "../edit/api.rkt"
