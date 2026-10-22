@@ -10,8 +10,8 @@
 (check-equal? (command-table-stack-tables (keymap-overlays default-keymap))
               (list app-command-table global-command-table))
 ;; buffer 创建时按 path/text 匹配键表
-(check-equal? (buffer-key-table "a.rkt" "") edit-command-table)
-(check-equal? (buffer-key-table #f "#lang racket\n") edit-command-table)
+(check-equal? (buffer-key-table "a.rkt" "") racket-edit-command-table)
+(check-equal? (buffer-key-table #f "#lang racket\n") racket-edit-command-table)
 (check-equal? (buffer-key-table #f "hello") edit-command-table)
 
 (check-equal? (keymap-input-stack default-keymap)
@@ -22,6 +22,8 @@
 ;; navigation / edit / filetree / input / placement 的关键绑定都在
 (check-true (command-table-exact? navigation-command-table (list (key 'left))))
 (check-true (command-table-exact? edit-command-table (list (key 'enter))))
+(check-true (command-table-exact? racket-edit-command-table (list (key 'enter))))
+(check-true (command-table-exact? racket-edit-command-table (list (key #\())))
 (check-true (command-table-exact? filetree-command-table (list (key 'enter))))
 (check-true (command-table-exact? input-command-table (list (key 'escape))))
 (check-true (command-table-exact? placement-table (list (key 'escape))))

@@ -215,4 +215,14 @@
          (completion-at "/tmp/b.rkt" b-complete 2 18
                         #:workspace ws-b #:id 'b)))
 
+;; 编辑中的残缺顶层 form 不能让分析器崩（只收集能收集的部分）。
+(for ([t (in-list '("(define)"
+                    "(match)"
+                    "(struct)"
+                    "(let)"
+                    "(define-values)"
+                    "(match x)"
+                    "(provide except-out)"))])
+  (check-not-false (analyze-source #f t)))
+
 (displayln "edit-tui-rebuild/test/lang.rkt: ok")

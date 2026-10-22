@@ -10,9 +10,13 @@
 
 (provide (struct-out view-action)
          (struct-out open-file-action)
+         (struct-out newline-indent-action)
          (struct-out quit-action))
 
 ;; 文件树打开文件：runtime 读盘 -> resource-open -> 进入 placement。
 (struct open-file-action (path) #:transparent)
+
+;; 换行缩进需要读 engine 文本；命令只带 view-id，boot 解释时计算。
+(struct newline-indent-action (view-id) #:transparent)
 
 (struct quit-action () #:transparent)

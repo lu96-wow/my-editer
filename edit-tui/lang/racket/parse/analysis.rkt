@@ -142,6 +142,13 @@
        [(pair? c) (let-binding-names (car c))]
        [else '()]))))
 
+;; 代码正在输入时，顶层 form 可能只有 `(define)` / `(match)` 这种残缺形状。
+;; 分析器只做“能收集多少算多少”，不能为了 cddr 越界把整个 buffer 打崩。
+(define (safe-cadr x) (and (pair? x) (pair? (cdr x)) (cadr x)))
+(define (safe-caddr x) (and (pair? x) (pair? (cdr x)) (pair? (cddr x)) (caddr x)))
+(define (safe-cddr x) (if (and (pair? x) (pair? (cdr x))) (cddr x) '()))
+(define (safe-cdddr x) (if (and (pair? x) (pair? (cdr x)) (pair? (cddr x))) (cdddr x) '()))
+
 (define (walk form)
   (cond
     [(not (pair? form)) '()]
@@ -152,23 +159,23 @@
 
        ;; ---------- 定义 ----------
        [(define define-syntax define-syntax-rule)
-        (define target (and (pair? (cdr form)) (cadr form)))
+        (define target (and (pair? (cdr form)) (safe-cadr form)))
         (append (define-target-names target)
-                (walk-body (cddr form)))]
+                (walk-body (safe-cddr form)))]
 
        [(define-values)
-        (define target (and (pair? (cdr form)) (cadr form)))
+        (define target (and (pair? (cdr form)) (safe-cadr form)))
         (append (param-names target)
-                (walk-body (cddr form)))]
+                (walk-body (safe-cddr form)))]
 
        [(define/contract define/match)
-        (define target (and (pair? (cdr form)) (cadr form)))
+        (define target (and (pair? (cdr form)) (safe-cadr form)))
         (append (define-target-names target)
-                (walk-body (cddr form)))]
+                (walk-body (safe-cddr form)))]
 
        [(struct struct* define-struct)
-        (define t (and (pair? (cdr form)) (cadr form)))
-        (define fields (and (pair? (cddr form)) (caddr form)))
+        (define t (and (pair? (cdr form)) (safe-cadr form)))
+        (define fields (and (pair? (safe-cddr form)) (safe-caddr form)))
         (append
          (if (symbol? t) (list t) '())
          (if (symbol? t)
@@ -179,12 +186,12 @@
                         #:when (symbol? f))
                (string->symbol (format "~a-~a" t f)))
              '())
-         (walk-body (cdddr form)))]
+         (walk-body (safe-cdddr form)))]
 
        ;; ---------- 函数 / 绑定 ----------
        [(lambda λ)
-        (define params (and (pair? (cdr form)) (cadr form)))
-        (append (param-names params) (walk-body (cddr form)))]
+        (define params (and (pair? (cdr form)) (safe-cadr form)))
+        (append (param-names params) (walk-body (safe-cddr form)))]
 
        [(case-lambda)
         (append*
@@ -195,27 +202,27 @@
              [else (walk clause)])))]
 
        [(let let* letrec let-values let*-values letrec-values)
-        (define bindings (and (pair? (cdr form)) (cadr form)))
+        (define bindings (and (pair? (cdr form)) (safe-cadr form)))
         (append
          (if (pair? bindings)
              (append* (for/list ([b (in-list bindings)]) (let-binding-names b)))
              '())
          (walk-all (if (pair? bindings) bindings '()))
-         (walk-body (cddr form)))]
+         (walk-body (safe-cddr form)))]
 
        [(let-syntax letrec-syntax)
-        (define bindings (and (pair? (cdr form)) (cadr form)))
+        (define bindings (and (pair? (cdr form)) (safe-cadr form)))
         (append
          (if (pair? bindings)
              (append* (for/list ([b (in-list bindings)]) (let-binding-names b)))
              '())
          (walk-all (if (pair? bindings) bindings '()))
-         (walk-body (cddr form)))]
+         (walk-body (safe-cddr form)))]
 
        [(letrec-syntaxes+values)
         ;; (letrec-syntaxes+values ([(id transformer) ...] [(id val) ...]) body ...)
-        (define syntax-bindings (and (pair? (cdr form)) (cadr form)))
-        (define value-bindings (and (pair? (cddr form)) (caddr form)))
+        (define syntax-bindings (and (pair? (cdr form)) (safe-cadr form)))
+        (define value-bindings (and (pair? (safe-cddr form)) (safe-caddr form)))
         (append
          (if (pair? syntax-bindings)
              (append* (for/list ([b (in-list syntax-bindings)]) (let-binding-names b)))
@@ -223,16 +230,16 @@
          (if (pair? value-bindings)
              (append* (for/list ([b (in-list value-bindings)]) (let-binding-names b)))
              '())
-         (walk-body (cdddr form)))]
+         (walk-body (safe-cdddr form)))]
 
        [(shared)
-        (define bindings (and (pair? (cdr form)) (cadr form)))
+        (define bindings (and (pair? (cdr form)) (safe-cadr form)))
         (append
          (if (pair? bindings)
              (append* (for/list ([b (in-list bindings)]) (let-binding-names b)))
              '())
          (walk-all (if (pair? bindings) bindings '()))
-         (walk-body (cddr form)))]
+         (walk-body (safe-cddr form)))]
 
        ;; ---------- for ----------
        [else
@@ -240,11 +247,11 @@
           [(for-form? head)
            (define fold? (memq head '(for/fold for*/fold for/foldr for*/foldr
                                              for/fold/derived for*/fold/derived)))
-           (define accs (and fold? (pair? (cdr form)) (cadr form)))
+           (define accs (and fold? (pair? (cdr form)) (safe-cadr form)))
            (define clauses (if fold?
-                               (and (pair? (cddr form)) (caddr form))
-                               (and (pair? (cdr form)) (cadr form))))
-           (define body (if fold? (cdddr form) (cddr form)))
+                               (and (pair? (safe-cddr form)) (safe-caddr form))
+                               (and (pair? (cdr form)) (safe-cadr form))))
+           (define body (if fold? (safe-cdddr form) (safe-cddr form)))
            (append
             (if fold? (for-clause-names accs) '())
             (walk-all (if fold? accs '()))
@@ -254,9 +261,9 @@
 
           ;; ---------- match / syntax ----------
           [(memq head '(match match*))
-           (define clauses (cddr form))
+           (define clauses (safe-cddr form))
            (append
-            (walk-all (list (cadr form)))
+            (walk-all (list (safe-cadr form)))
             (append*
              (for/list ([clause (in-list clauses)])
                (cond
@@ -275,34 +282,34 @@
                 [else '()])))]
 
           [(memq head '(match-let match-let* match-letrec))
-           (define bindings (and (pair? (cdr form)) (cadr form)))
+           (define bindings (and (pair? (cdr form)) (safe-cadr form)))
            (append
             (if (pair? bindings)
                 (append* (for/list ([b (in-list bindings)])
                            (if (pair? b) (pattern-names (car b)) '())))
                 '())
             (walk-all (if (pair? bindings) bindings '()))
-            (walk-body (cddr form)))]
+            (walk-body (safe-cddr form)))]
 
           [(eq? head 'match-define)
-           (define pat (and (pair? (cdr form)) (cadr form)))
-           (append (pattern-names pat) (walk-body (cddr form)))]
+           (define pat (and (pair? (cdr form)) (safe-cadr form)))
+           (append (pattern-names pat) (walk-body (safe-cddr form)))]
 
           [(eq? head 'with-syntax)
-           (define bindings (and (pair? (cdr form)) (cadr form)))
+           (define bindings (and (pair? (cdr form)) (safe-cadr form)))
            (append
             (if (pair? bindings)
                 (append* (for/list ([b (in-list bindings)])
                            (if (pair? b) (pattern-names (car b)) '())))
                 '())
             (walk-all (if (pair? bindings) bindings '()))
-            (walk-body (cddr form)))]
+            (walk-body (safe-cddr form)))]
 
           [(eq? head 'syntax-case)
-           (define literals (and (pair? (cddr form)) (caddr form)))
+           (define literals (and (pair? (safe-cddr form)) (safe-caddr form)))
            (define lits (if (list? literals) (filter symbol? literals) '()))
            (append*
-            (for/list ([clause (in-list (cdddr form))])
+            (for/list ([clause (in-list (safe-cdddr form))])
               (cond
                 [(pair? clause)
                  (append (pattern-names (car clause) lits)
@@ -310,10 +317,10 @@
                 [else '()])))]
 
           [(eq? head 'syntax-rules)
-           (define literals (and (pair? (cdr form)) (cadr form)))
+           (define literals (and (pair? (cdr form)) (safe-cadr form)))
            (define lits (if (list? literals) (filter symbol? literals) '()))
            (append*
-            (for/list ([clause (in-list (cddr form))])
+            (for/list ([clause (in-list (safe-cddr form))])
               (cond
                 [(pair? clause)
                  (append (pattern-names (car clause) lits)
@@ -322,7 +329,7 @@
 
           [(eq? head 'module)
            ;; (module name lang body ...)
-           (walk-body (if (>= (length form) 4) (cdddr form) '()))]
+           (walk-body (if (>= (length form) 4) (safe-cdddr form) '()))]
 
           [(memq head '(begin begin0))
            (walk-body (cdr form))]

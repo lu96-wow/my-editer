@@ -258,7 +258,7 @@
   (for ([f (in-list forms)])
     (when (and (pair? f) (memq (car f) '(struct struct* define-struct)))
       (define t (and (pair? (cdr f)) (cadr f)))
-      (define fs (and (pair? (cddr f)) (cadr (cdr f))))
+      (define fs (and (pair? (cdr f)) (pair? (cddr f)) (caddr f)))
       (when (and (symbol? t) (pair? fs))
         (hash-set! h t (filter symbol? fs)))))
   h)
@@ -320,7 +320,9 @@
    (append* (for/list ([f (in-list forms)]
                        #:when (and (pair? f) (eq? (car f) 'provide)))
               (append* (for/list ([s (in-list (list-elems (cdr f)))])
-                         (provide-names s defined fields module-exports)))))))
+                         ;; 半成品 provide 不把整个分析打崩。
+                         (with-handlers ([exn:fail? (lambda (_) '())])
+                           (provide-names s defined fields module-exports))))))))
 
 ;; 一个源码文本导出的名字。对任意编辑中的文本是全函数（读不下去就停在能读处）。
 ;; #:module-exports 用于 all-from-out；默认不解析外部模块。

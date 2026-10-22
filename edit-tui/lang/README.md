@@ -11,6 +11,7 @@ lang/
       edit.rkt           line-edit
       lex.rkt            token / 跨行词法状态
       keywords.rkt       关键字分组
+      indent.rkt         Racket 新行缩进
     color/               着色
       highlight.rkt      语法高亮 role
       word-color.rkt     同词色 role

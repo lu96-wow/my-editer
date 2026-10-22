@@ -19,14 +19,14 @@
          racket-buffer-key-table
          text-buffer-key-table)
 
-(define racket-buffer-key-table edit-command-table)
+(define racket-buffer-key-table racket-edit-command-table)
 (define text-buffer-key-table edit-command-table)
 
 (define racket-mode
   (buffer-mode 'racket
                'racket
                racket-buffer-key-table
-               '(syntax word-color brackets completion docs)))
+               '(syntax word-color brackets completion docs auto-pair indent)))
 
 (define text-mode
   (buffer-mode 'text

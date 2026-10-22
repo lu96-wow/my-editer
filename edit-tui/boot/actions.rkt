@@ -16,7 +16,8 @@
          "../app/action.rkt"
          "../app/placement.rkt"
          "../app/buffer-mode.rkt"
-         "../config/mode.rkt")
+         "../config/mode.rkt"
+         "../indent/api.rkt")
 
 (provide run-actions)
 
@@ -170,6 +171,25 @@
            (define s1 (struct-copy app-state state [resources store*]))
            (define s2 (start-placement s1 vid))
            (values (run-actions s2 engine actions) '())])])]
+    [(newline-indent-action? action)
+     (define vid (newline-indent-action-view-id action))
+     (define store (app-state-resources state))
+     (define rid (resource-of-view store vid))
+     (define r (and rid (resource-ref store rid)))
+     (define did (and r (resource-doc-id r)))
+     (define text (and did (engine-doc-text engine did)))
+     (cond
+       [(not text)
+        ;; 没有文档文本时退回普通换行。
+        (values state (list (view-action 'insert vid #"\n")))]
+       [else
+        (define line (or (engine-view-point-line engine vid) 0))
+        (define col (or (engine-view-point-column engine vid) 0))
+        (define insert-text
+          (newline-indent-insert-text (and r (resource-mode r)) text line col))
+        (values state
+                (list (view-action 'insert vid
+                                   (string->bytes/utf-8 insert-text))))])]
     [(view-action? action)
      (define vid (view-action-view-id action))
      (define changes (engine-apply-view-action! engine action))

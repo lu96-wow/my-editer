@@ -22,6 +22,8 @@
          "../../edit/api.rkt"
          "../../filetree/api.rkt"
          "../../resources/api.rkt"
+         "../../pair/api.rkt"
+         "../../indent/api.rkt"
          "../../chrome/api.rkt"
          "../../app/commands.rkt"
          "../../app/placement.rkt")
@@ -34,6 +36,7 @@
          global-command-table
          app-command-table
          edit-command-table
+         racket-edit-command-table
          filetree-command-table
          filetree-panel-stack
          resource-panel-command-table
@@ -77,6 +80,17 @@
      ;; 历史
      (list (list (key 'z 'ctrl)) (edit-action-command 'undo))
      (list (list (key 'y 'ctrl)) (edit-action-command 'redo))))))
+
+;; Racket buffer 的局部覆盖：自动配对 + 换行缩进。
+(define racket-edit-command-table
+  (command-table-merge
+   ;; 第一张表优先：覆盖 edit-command-table 的 Enter。
+   (keys
+    [(key 'enter) newline-indent-command]
+    [(key #\()    auto-pair-paren-command]
+    [(key #\[)    auto-pair-bracket-command]
+    [(key #\{)    auto-pair-brace-command])
+   edit-command-table))
 
 ;;; ════════════════ focus / layout ════════════════
 

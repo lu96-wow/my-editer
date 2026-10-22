@@ -116,6 +116,8 @@ edit-tui/
 
   edit/  chrome/  filetree/  resources/   插件（暂时留在根目录）
     color.rkt            编辑器着色同步（role -> 逐字符 face）
+  pair/                    括号自动配对插件
+  indent/                  换行缩进插件（Racket 缩进算法在 lang/racket/base/indent.rkt）
 
   app/                     应用状态 / 命令 / 编排（暂时留在根目录）
   render/                  输出渲染（暂时留在根目录）
@@ -164,6 +166,8 @@ core/skeleton.rkt     骨架：base / panel / layout / focus / face /
                             - core/projection/api.rkt    layout->render-panels / hit / content-hit
 render/api.rkt            render-layout / layout-sync!
 edit/api.rkt              nav / scroll / insert / edit-action commands / self-insert / color sync
+pair/api.rkt              括号自动配对命令
+indent/api.rkt            Racket 换行缩进命令
 chrome/api.rkt            status / input（含 input-start / input-result 服务 API）
 filetree/api.rkt          model / lines / scan / commands / install
 resources/api.rkt         model / lines / sync / commands / install
@@ -364,6 +368,7 @@ resource-panel-command-table  cursor + Enter / C-r
 - 命令实现仍在 edit / chrome / filetree / app；config 只做绑定；
 - `app-state` 持有全局 keymap：`(app-state-keymap state)`；
 - `app/step` 从这里取 overlays / input-stack；placement 取临时表；
+- Racket 局部键表额外覆盖 Enter / `(` / `[` / `{`：Enter 走换行缩进，开括号自动配对；
 - 编辑 / 文档键表不再在 app-state，而是在 resource 上；
 - filetree 安装通过 `#:panel-stack` 接收 `filetree-panel-stack`；
 - 换键位 = 换 `config/keymap/` 的模块，插件与 step 不动。
