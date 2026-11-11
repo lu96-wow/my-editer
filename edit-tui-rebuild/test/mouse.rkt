@@ -4,7 +4,9 @@
 
 (require rackunit
          "../editor/host-api.rkt"
+         "../core/api.rkt"
          "../core/layout/api.rkt"
+         "../core/projection/api.rkt"
          "../host/final.rkt")
 
 (define-values (ed state) (make-demo-editor))
@@ -62,5 +64,23 @@
 (check-equal? (engine-view-point-column (editor-engine ed)
                                         (editor-focus-view-id s-click))
               1)
+
+;; 拖选：press 落 caret，move 扩展 head，release 结束。
+(define content (layout-content-rect (editor-state-layout s-click)
+                                    (editor-state-area s-click)
+                                    'editor))
+(define cr (+ (rect-y content) 0))
+(define cc (+ (rect-x content) 2))
+(define-values (s-drag-down _ad)
+  (editor-mouse! ed s-click 'press cr cc))
+(check-not-false (editor-state-select-drag s-drag-down))
+(define-values (s-drag-move _am)
+  (editor-mouse! ed s-drag-down 'move cr (+ cc 3)))
+(define-values (s-drag-up _au)
+  (editor-mouse! ed s-drag-move 'release cr (+ cc 3)))
+(check-false (editor-state-select-drag s-drag-up))
+(check-equal? (view-copy-text (engine-view-object (editor-engine ed)
+                                                  (editor-focus-view-id s-drag-up)))
+              "ang")
 
 (displayln "edit-tui-rebuild/test/mouse.rkt: ok")

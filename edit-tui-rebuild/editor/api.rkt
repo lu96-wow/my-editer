@@ -29,7 +29,8 @@
          "placement.rkt"
          "open.rkt"
          "input.rkt"
-         "prompt.rkt")
+         "prompt.rkt"
+         "close.rkt")
 
 (provide
  ;; core 值词汇：插件只拿构造器 / 查询 / 纯变换，不拿 buffer 编辑壳。
@@ -95,7 +96,10 @@
 
  ;; 输入栏 / save / quit prompt
  (all-from-out "input.rkt")
- (all-from-out "prompt.rkt"))
+ (all-from-out "prompt.rkt")
+
+ ;; tab / close buffer
+ (all-from-out "close.rkt"))
 
 ;;; ════════════════ 操作面包装 ════════════════
 

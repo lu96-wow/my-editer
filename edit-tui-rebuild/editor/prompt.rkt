@@ -20,7 +20,8 @@
          "engine/api.rkt"
          "action.rkt"
          "layout.rkt"
-         "input.rkt")
+         "input.rkt"
+         "close.rkt")
 
 (provide editor-save-command
          editor-request-quit
@@ -142,6 +143,8 @@
              '())]
     [(list 'quit-save ids mode rid)
      (continue-quit ed (editor-input-close state) ids mode)]
+    [(list 'close-save rid)
+     (editor-close-resource! ed (editor-input-close state) rid)]
     [else (values (editor-input-close state) '())]))
 
 (define (submit-save-path ed state context text)
@@ -149,9 +152,9 @@
     [(string=? (string-trim text) "")
      (values (editor-state-with-flash state "path required") '())]
     [else
-     (define rid (if (eq? (car context) 'save)
-                     (cadr context)
-                     (cadddr context)))
+     (define rid (case (car context)
+                   [(save close-save) (cadr context)]
+                   [else (cadddr context)]))
      (define r (editor-state-resource-for-doc state rid))
      (cond
        [(not r) (values (editor-input-close state) '())]
@@ -179,6 +182,24 @@
         (if ok?
             (values (editor-input-close state*) '())
             (values state* '()))])]))
+
+(define (submit-close-confirm ed state context text)
+  (define v (string-downcase (string-trim text)))
+  (cond
+    [(not (member v '("y" "n")))
+     (values (editor-state-with-flash state "answer: y / n") '())]
+    [else
+     (define rid (cadr context))
+     (define r (editor-state-resource-for-doc state rid))
+     (cond
+       [(not r) (values (editor-input-close state) '())]
+       [(string=? v "n") (editor-close-resource! ed (editor-input-close state) rid)]
+       [(resource-path r)
+        (define-values (state* ok?) (write-resource! ed state r (resource-path r)))
+        (if ok?
+            (editor-close-resource! ed (editor-input-close state*) rid)
+            (values state* '()))]
+       [else (values (open-save-path state (list 'close-save rid)) '())])]))
 
 (define (submit-quit-confirm ed state context text)
   (define v (string-downcase (string-trim text)))
@@ -216,6 +237,7 @@
     [(save-path) (submit-save-path ed state context text)]
     [(save-confirm) (submit-save-confirm ed state context text)]
     [(quit-confirm) (submit-quit-confirm ed state context text)]
+    [(close-confirm) (submit-close-confirm ed state context text)]
     [else (values state '())]))
 
 ;;; ════════════════ command table ════════════════

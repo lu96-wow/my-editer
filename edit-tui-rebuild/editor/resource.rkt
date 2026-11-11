@@ -20,6 +20,8 @@
          resources-find-doc
          resources-find-view
          resources-set-views
+         resources-add-view
+         resources-remove
          resources-set-saved-version
          resources-set-path
          resources-opened-paths
@@ -64,6 +66,18 @@
   (for/first ([r (in-list (resources-items rs))]
               #:when (memv vid (resource-views r)))
     r))
+
+(define (resources-add-view rs id vid)
+  (define r (resources-find-doc rs id))
+  (if (or (not r) (memv vid (resource-views r)))
+      rs
+      (resources-set-views rs id (append (resource-views r) (list vid)))))
+
+(define (resources-remove rs id)
+  (resources
+   (for/list ([r (in-list (resources-items rs))]
+              #:unless (equal? (resource-id r) id))
+     r)))
 
 (define (resources-set-views rs id views)
   (resources

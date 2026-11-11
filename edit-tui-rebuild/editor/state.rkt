@@ -12,6 +12,7 @@
          "resource.rkt")
 
 (provide (struct-out editor-state)
+         (struct-out select-drag)
          make-editor-state
          editor-state-plugin-state
          editor-state-set-plugin-state
@@ -23,6 +24,9 @@
          editor-state-resource-for-doc
          editor-state-doc-mode
          editor-state-opened-paths)
+
+;; 鼠标文本拖选：选择留在按下的 panel / view 里。
+(struct select-drag (panel-id view-id) #:transparent)
 
 (struct editor-state
   (plugin-states   ; hash: plugin-id -> opaque pure value
@@ -36,7 +40,8 @@
    next-panel-id   ; 新 split 使用的 panel id
    resources       ; resources：已打开文档
    placement       ; view-id | #f：等待放入 editor panel
-   input)          ; input-state | #f：单行输入栏
+   input           ; input-state | #f：单行输入栏
+   select-drag)    ; select-drag | #f：鼠标文本拖选
   #:transparent)
 
 (define (make-editor-state
@@ -51,10 +56,11 @@
          #:next-panel-id [next-panel-id 100]
          #:resources [resources empty-resources]
          #:placement [placement #f]
-         #:input [input #f])
+         #:input [input #f]
+         #:select-drag [select-drag #f])
   (editor-state plugin-states pending quit? flash area
                 layout drag next-view-id next-panel-id
-                resources placement input))
+                resources placement input select-drag))
 
 (define (editor-state-plugin-state state owner)
   (hash-ref (editor-state-plugin-states state) owner #f))

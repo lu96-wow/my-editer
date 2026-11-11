@@ -45,6 +45,8 @@
 ;;; close：删掉 split 出来的 panel / view，回到单 editor。
 (define-values (s-close _a3) (editor-close! ed s-split))
 (check-equal? (length (editor-visible-editor-panels s-close)) 1)
-(check-false (engine-view-object (editor-engine ed) 10))
+;; 关闭 panel 不再删 view；view / resource 保留，之后可以再 placement。
+(check-not-false (engine-view-object (editor-engine ed) 10))
+(check-not-false (editor-state-resource-for-view s-close 10))
 
 (displayln "edit-tui-rebuild/test/host.rkt: ok")

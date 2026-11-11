@@ -22,6 +22,7 @@
          "engine/api.rkt"
          "context.rkt"
          "state.rkt"
+         "resource.rkt"
          "hooks.rkt"
          "action.rkt"
          "ops/surface.rkt")
@@ -227,11 +228,19 @@
            (define-values (l3 added?)
              (layout-panel-add-view l2 new-pid new-vid))
            (define l4 (layout-set-focus l3 new-pid))
+           ;; split 出来的 view 也属于同一个 resource。
+           (define src-r (editor-state-resource-for-view state1 src-vid))
+           (define resources*
+             (if src-r
+                 (resources-add-view (editor-state-resources state1)
+                                     (resource-id src-r) new-vid)
+                 (editor-state-resources state1)))
            (define state2
              (struct-copy editor-state state1
                           [layout l4]
                           [next-panel-id (add1 new-pid)]
-                          [next-view-id (add1 new-vid)]))
+                          [next-view-id (add1 new-vid)]
+                          [resources resources*]))
            (define ctx2
              (struct-copy layout-context ctx1
                           [state state2]
@@ -267,8 +276,7 @@
         (cond
           [(not ok?) (flash state1 "close failed")]
           [else
-           (define vid (p:panel-active p))
-           (when vid (engine-remove-view! engine vid))
+           ;; 关闭 panel 只从布局摘掉；view / resource 仍然存在，可再 placement。
            (define state2 (struct-copy editor-state state1 [layout l2]))
            (define ctx2
              (struct-copy layout-context ctx1 [state state2] [result l2]))
@@ -303,6 +311,26 @@
   (define p (and l pid (layout-panel l pid)))
   (and p (p:panel-active p)))
 
+;; 拖选：选择留在按下的 panel 里，指针移到别的 panel 也不换目标。
+(define (drag-select! ed state sd row col)
+  (define l (editor-state-layout state))
+  (define area (editor-state-area state))
+  (define content (and l area (layout-content-rect l area (select-drag-panel-id sd))))
+  (cond
+    [(not content) (values state '())]
+    [else
+     (define r (- row (rect-y content)))
+     (define c (- col (rect-x content)))
+     (define h (rect-h content))
+     (define vid (select-drag-view-id sd))
+     (define-values (s1 a1)
+       (cond
+         [(< r 0) (surface-scroll! ed state vid -1)]
+         [(>= r h) (surface-scroll! ed state vid 1)]
+         [else (values state '())]))
+     (define-values (s2 a2) (surface-set-point! ed s1 vid r c #t))
+     (values s2 (append a1 a2))]))
+
 (define (editor-mouse! ed state token row col)
   (define l (editor-state-layout state))
   (define area (editor-state-area state))
@@ -313,40 +341,47 @@
        [(press)
         (define h (layout-hit l area row col))
         (define seam (hit-seam h))
+        (define state0 (struct-copy editor-state state [select-drag #f]))
         (cond
           [seam
            (define d (layout-seam-drag-start l area row col
                                              #:config editor-layout-config
                                              #:seam seam
                                              #:solution (hit-solution h)))
-           (values (struct-copy editor-state state [drag d]) '())]
+           (values (struct-copy editor-state state0 [drag d]) '())]
           [else
-           (define state1 (focus-hit state h))
+           (define state1 (focus-hit state0 h))
            (define cid (hit-content-id h))
            (define cpanel (and cid l (layout-panel l cid)))
            (define vid (and cid (panel-active-view state1 cid)))
            (cond
              [(and vid cpanel (memq (p:panel-kind cpanel) '(editor sidebar)))
-              (surface-set-point! ed state1 vid
-                                  (hit-content-row h)
-                                  (hit-content-col h))]
+              (define-values (s2 a2)
+                (surface-set-point! ed state1 vid
+                                    (hit-content-row h)
+                                    (hit-content-col h)))
+              (values (struct-copy editor-state s2
+                                   [select-drag (select-drag cid vid)])
+                      a2)]
              [else (values state1 '())])])]
 
        [(move)
         (define d (editor-state-drag state))
+        (define sd (editor-state-select-drag state))
         (cond
-          [(not d) (values state '())]
-          [else
+          [d
            (define-values (l* ok?)
              (layout-seam-drag-move l area d row col
                                     #:config editor-layout-config))
            (values (if ok?
                        (struct-copy editor-state state [layout l*])
                        state)
-                   '())])]
+                   '())]
+          [sd (drag-select! ed state sd row col)]
+          [else (values state '())])]
 
        [(release)
-        (values (struct-copy editor-state state [drag #f]) '())]
+        (values (struct-copy editor-state state [drag #f] [select-drag #f]) '())]
 
        [(scroll-up scroll-down)
         (define h (layout-hit l area row col))

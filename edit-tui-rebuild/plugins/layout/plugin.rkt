@@ -24,6 +24,15 @@
 (define (cycle-sidebar-command ed state)
   (editor-cycle-sidebar-view! ed state))
 
+(define (next-tab-command ed state)
+  (editor-cycle-editor-view! ed state 1))
+
+(define (prev-tab-command ed state)
+  (editor-cycle-editor-view! ed state -1))
+
+(define (close-buffer-command ed state)
+  (editor-close-buffer-command ed state))
+
 (define layout-command-table
   (keys
    [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
@@ -35,7 +44,10 @@
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
    [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
    [(key 'd 'ctrl)              close-command]
-   [(key 'x 'ctrl) (key 'b)     cycle-sidebar-command]))
+   [(key 'x 'ctrl) (key 'b)     cycle-sidebar-command]
+   [(key 'x 'ctrl) (key 'n)     next-tab-command]
+   [(key 'x 'ctrl) (key 'p)     prev-tab-command]
+   [(key 'x 'ctrl) (key 'k)     close-buffer-command]))
 
 (define layout-plugin
   (make-plugin

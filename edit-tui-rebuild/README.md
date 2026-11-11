@@ -37,7 +37,6 @@
 
 还没有：
 
-- 多 tab editor / close buffer
 - completion / docs
 - 异步 job / timer / 多进程
 - 插件 services
@@ -308,6 +307,8 @@ C-d            关闭当前 editor panel（最后一个不允许）
 C-s            保存 / save-as / 确认
 C-q            退出（dirty -> 确认 / save-as）
 C-x b          切换 sidebar tab（filetree / resources）
+C-x n / C-x p  下一个 / 上一个 editor tab
+C-x k          关闭当前 buffer（dirty -> 确认）
 C-x ←          聚焦 sidebar
 Enter          文件树：打开文件；编辑器：换行
 C-r            文件树刷新
@@ -347,6 +348,7 @@ racket edit-tui-rebuild/test/filetree-expand.rkt
 racket edit-tui-rebuild/test/placement.rkt
 racket edit-tui-rebuild/test/resources-panel.rkt
 racket edit-tui-rebuild/test/save-quit.rkt
+racket edit-tui-rebuild/test/tabs.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/layers.rkt
@@ -377,6 +379,9 @@ racket edit-tui-rebuild/test/layers.rkt
 - pair / indent 按 buffer mode 生效（.rkt / #lang racket）；
 - resources 面板（buffer / view 行、dirty、Enter 聚焦）；
 - C-s / C-q 的 save-path / save-confirm / quit-confirm 输入栏；
+- 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
+- editor tab 切换 / close buffer；
+- 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
 - root 也可以 Enter 展开 / 折叠；
@@ -389,10 +394,8 @@ racket edit-tui-rebuild/test/layers.rkt
 
 - filetree 异步目录扫描（当前在 sync 阶段同步扫描）；
 - 可组合的 `hidden-entry?` 过滤规则；
-- close buffer / 关闭确认；
 - word-color 光标 token 抑制；
-- color 的增量 `color-edit*`（当前按版本整篇 `color-open`）；
-- 鼠标文本拖选（当前只有点击落点 / seam 拖拽）。
+- color 的增量 `color-edit*`（当前按版本整篇 `color-open`）。
 
 ---
 
@@ -409,8 +412,8 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. 多 tab editor / close buffer / 关闭确认。
-2. 异步目录扫描 / 文件系统变化刷新。
-3. 给 `'changes` 增加增量 color-edit，替换当前整篇 color-open。
-4. 固定尺寸 / hide-show / 布局恢复。
+1. 异步目录扫描 / 文件系统变化刷新。
+2. 给 `'changes` 增加增量 color-edit，替换当前整篇 color-open。
+3. 固定尺寸 / hide-show / 布局恢复。
+4. word-color 光标 token 抑制。
 5. 加 job / timer 服务，迁 completion / docs。

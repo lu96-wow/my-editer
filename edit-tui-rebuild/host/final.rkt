@@ -288,12 +288,16 @@
 ;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
 (define (handle-editor-event ed state0 ev)
   ;; 输入栏是抢占式的：非 key / paste 事件先取消本次输入，再处理事件。
-  (define state
+  (define state1
     (if (and (editor-input-active? state0)
              (not (key-event? ev))
              (not (paste-event? ev)))
         (editor-input-close state0)
         state0))
+  (define state
+    (if (mouse-event? ev)
+        state1
+        (struct-copy editor-state state1 [select-drag #f])))
   (define command-tables (editor-command-tables ed))
   (cond
     [(resize-event? ev)
