@@ -11,12 +11,10 @@
 (void (engine-create-buffer! engine 1 "test" ""))
 (void (engine-create-view! engine 1 1))
 
-(define (handle-timer ed state ev)
-  (define ps (editor-state-plugin-state state 'timer-test))
-  (editor-state-set-plugin-state
-   (editor-state-with-flash state "timer fired")
-   'timer-test
-   (add1 ps)))
+(define (handle-timer ed state ps ev)
+  (values (editor-state-with-flash state "timer fired")
+          (add1 ps)
+          '()))
 
 (define plugin
   (make-plugin #:id 'timer-test #:state 0 #:handle-timer handle-timer))
@@ -35,7 +33,8 @@
 (check-true (timer-event? ev))
 (check-equal? (timer-event-id ev) id)
 
-(define state* (run-plugin-timer-handlers ed state ev))
+(define-values (state* actions*) (run-plugin-timer-handlers ed state ev))
+(check-equal? actions* '())
 (check-equal? (editor-state-plugin-state state* 'timer-test) 1)
 (check-equal? (editor-state-flash state*) "timer fired")
 

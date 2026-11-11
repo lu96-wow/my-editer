@@ -18,6 +18,7 @@
 
 (define-values (ed state) (make-demo-editor))
 (define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(define (ft-ps st) (editor-state-plugin-state st 'filetree))
 
 ;; 第一帧渲染触发 filetree sync。
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
@@ -39,12 +40,12 @@
 (check-true (guarded-command? enter-cmd))
 
 ;; editor 聚焦时 guard 为 false：不抢 Enter。
-(check-false ((guarded-command-when-fn enter-cmd) ed s1))
+(check-false ((guarded-command-when-fn enter-cmd) ed s1 (ft-ps s1)))
 
 ;; 焦点移到 sidebar 后 guard 为 true。
 (define-values (s2 _a2) (editor-focus! ed s1 'left))
 (check-equal? (editor-focus-panel-kind s2) 'sidebar)
-(check-true ((guarded-command-when-fn enter-cmd) ed s2))
+(check-true ((guarded-command-when-fn enter-cmd) ed s2 (ft-ps s2)))
 
 ;; 把 filetree 光标移到第一个文件行。
 (define fstate (editor-state-plugin-state s2 'filetree))
@@ -60,7 +61,7 @@
 (engine-set-view-cursor! (editor-engine ed) 3 file-line #:column 0)
 
 ;; 执行插件命令 -> open-file-action。
-(define-values (s3 actions3) ((guarded-command-run enter-cmd) ed s2))
+(define-values (s3 _ps3 actions3) ((guarded-command-run enter-cmd) ed s2 (ft-ps s2)))
 (define open-action
   (for/first ([a (in-list actions3)] #:when (open-file-action? a)) a))
 (check-not-false open-action)

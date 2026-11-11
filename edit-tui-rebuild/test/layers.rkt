@@ -1,7 +1,7 @@
 #lang racket
 
 ;;; 新架构的边界检查：
-;;;   - 插件只 require editor/api.rkt，不摸 engine / raw / host
+;;;   - 插件只 require editor/api.rkt（和 feature api），不摸 engine / raw / host
 ;;;   - raw 是唯一 require engine/api 的操作模块
 ;;;   - 插件面不导出 engine 生命周期 / engine-apply-view-action!
 
@@ -32,7 +32,7 @@
     "plugins/docs/plugin.rkt"))
 
 (for ([f (in-list plugin-files)])
-  ;; 插件只能经 editor/api.rkt 接触 editor。
+  ;; 插件只能经 editor/api.rkt 接触 editor；feature api 是唯一额外入口。
   (check-true (regexp-match? #rx"editor/api\\.rkt" (src f)) f)
   (check-false (requires-any? f #rx"\\.\\./editor/(engine|ops|host-api|context|hooks|state)") f)
   ;; 允许纯语言库 / face；不允许旧 edit-tui 的 editor / boot / host。
@@ -59,6 +59,18 @@
 (check-false (regexp-match? #rx"render-display-patch" api-src) "editor/api.rkt")
 (check-false (regexp-match? #rx"panels-sync!" api-src) "editor/api.rkt")
 
+;; 插件面不导出 plugin-state 写入口 / state constructor / resource 变更入口。
+(check-false (regexp-match? #rx"editor-state-set-plugin-state" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"editor-state-plugin-states" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"make-editor-state" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"resources-(add|remove|set-)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"make-resource" api-src)
+             "editor/api.rkt")
+
 ;; host-api 才导出渲染 / 尺寸同步。
 (check-true (requires-any? "editor/host-api.rkt" #rx"panels-sync!")
             "editor/host-api.rkt")
@@ -75,7 +87,8 @@
 (for ([f (in-list plugin-files)])
   (check-false
    (requires-any? f #rx"\\.\\./editor/(open|prompt|input|close|timer|job|layout|resource|mode|overlay|engine|ops|host-api|context|hooks|state)")
-   f))
+   f)
+  (check-false (requires-any? f #rx"editor-state-set-plugin-state") f))
 
 ;; editor 不能 require host / plugins。
 (define editor-files
@@ -101,7 +114,8 @@
 (check-true (requires-any? "editor/plugin-runtime.rkt" #rx"contributions\\.rkt")
             "editor/plugin-runtime.rkt")
 
-;; features 只经 editor/api.rkt；不 require host / plugins / editor 实现。
+;; features 是 app/chrome 内部层：可以用 editor/api.rkt + editor/state.rkt，
+;; 但不 require host / plugins / engine 实现。
 (define (features-rkt-files dir)
   (append*
    (for/list ([p (in-directory dir)]
@@ -109,7 +123,7 @@
      (list (path->string (find-relative-path root p))))))
 (for ([f (in-list (features-rkt-files (build-path root "features")))])
   (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
-  )
+  (check-false (requires-any? f #rx"editor/(engine|ops|host-api)") f))
 
 ;; 具体 app 布局装配不在 editor/layout.rkt。
 (check-false (requires-any? "editor/layout.rkt" #rx"make-editor-layout")

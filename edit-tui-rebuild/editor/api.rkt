@@ -5,14 +5,15 @@
 ;;; 只导出：
 ;;;   · 操作面（surface）：insert! / delete! / move! / ...
 ;;;   · 扩展点构造器：make-hook / plugin
-;;;   · 纯 State 和插件状态 accessor
-;;;   · 只读查询 + UI view 写回
+;;;   · 只读 State 查询 + UI view 写回
 ;;;   · core 的值词汇（point / range / selection / change / rect / face）
 ;;;
 ;;; 不导出：
 ;;;   · engine 的创建 / 删除
 ;;;   · engine 的原始 action 解释入口
 ;;;   · raw 操作（只有 editor/ops 内部能用）
+;;;   · plugin-state 写入口（由 plugin runtime 按 owner 写回）
+;;;   · resource 变更入口（由 host 的 open / save / close 写回）
 ;;;   · host / runtime / IO
 
 (require "../core/api.rkt"
@@ -47,9 +48,27 @@
  panel panel? make-panel empty-panel panel-empty? borders-all borders-none
  buffer? view?
 
- ;; State / 插件 / hook
- (all-from-out "state.rkt")
- (all-from-out "resource.rkt")
+ ;; State 只读查询：插件拿不到 constructor / plugin-states / 写入口。
+ editor-state-with-flash
+ editor-state-resource-for-view
+ editor-state-resource-for-doc
+ editor-state-doc-mode
+ editor-state-opened-paths
+ editor-state-resources
+ editor-state-layout
+ editor-state-layout-config
+ editor-state-area
+ editor-state-input
+ editor-state-placement
+ editor-state-async?
+
+ ;; resource 只读查询：变更入口只在 host-api。
+ resource? resource-id resource-doc-id resource-path resource-name
+ resource-views resource-mode resource-saved-version
+ resources? resources-list resources-find-path
+ resources-find-doc resources-find-view resources-opened-paths
+ resource-dirty? resource-normalize-path
+
  (all-from-out "mode.rkt")
  (all-from-out "context.rkt")
  (all-from-out "hooks.rkt")
@@ -95,8 +114,12 @@
  ;; layout 操作面 + 查询 + 扩展点
  (all-from-out "layout.rkt")
 
- ;; async job / timer state
- (all-from-out "job.rkt")
+ ;; async job：插件只提交 job、读结果；账本写回只在 host runtime。
+ job-result-event? job-result-event-id job-result-event-kind
+ job-result-event-result job-result-event-tag
+ editor-state-submit-job
+
+ ;; timer
  (all-from-out "timer.rkt")
  (all-from-out "overlay.rkt"))
 

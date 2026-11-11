@@ -6,7 +6,7 @@
 ;;;   id       插件命名空间（plugin-states 的 key）
 ;;;   state    插件自己的初始纯状态
 ;;;   hooks    注册到扩展点的 handler 列表
-;;;   commands 可选：宿主安装的命令表片段（第一阶段先留 #f）
+;;;   commands 可选：宿主安装的命令表片段；命令只拿自己的 plugin-state
 ;;;
 ;;; 插件只 require editor/api.rkt；不直接 require engine / hooks 实现。
 ;;; 这里为了让插件定义 hook，允许 require editor/hooks.rkt 的公开构造器。
@@ -20,6 +20,7 @@
          make-plugin
          (struct-out guarded-command)
          make-guarded-command
+         (struct-out owned-command-table)
          plugins->hooks
          plugins->states
          plugins->command-table
@@ -32,8 +33,14 @@
 
 ;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
 ;; 这样插件可以贡献 Enter / C-r，而不抢 editor 的 Enter。
+;; when-fn / run 都拿 (ed state ps)，ps 只属于命令的 owner。
 (struct guarded-command
   (when-fn run)
+  #:transparent)
+
+;; 带 owner 的命令表。host 查表时一起拿到 owner，执行后再按 owner 写 ps。
+(struct owned-command-table
+  (owner table)
   #:transparent)
 
 (define (make-guarded-command #:when when-fn #:run run)
@@ -76,13 +83,14 @@
 
 ;; 汇总插件命令表；先安装的插件优先。
 (define (plugins->command-table plugins)
-  (apply command-table-merge (plugins->command-tables plugins)))
+  (apply command-table-merge (map owned-command-table-table
+                                  (plugins->command-tables plugins))))
 
 ;; host 用列表逐张查，guarded-command 不成立时继续下一张。
 (define (plugins->command-tables plugins)
   (for/list ([p (in-list plugins)]
              #:when (command-table? (plugin-commands p)))
-    (plugin-commands p)))
+    (owned-command-table (plugin-id p) (plugin-commands p))))
 
 ;; 把插件字段翻译成统一 contribution registry。
 (define (plugins->contributions plugins)

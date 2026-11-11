@@ -70,7 +70,7 @@
 
 (define tev (async-channel-get ch))
 (check-true (timer-event? tev))
-(define t3 (run-plugin-timer-handlers ed2 t2 tev))
+(define-values (t3 _timer-actions) (run-plugin-timer-handlers ed2 t2 tev))
 (define ct3 (editor-state-plugin-state t3 'completion))
 (check-true (completion-state-open? ct3))
 (check-true (and (pair? (completion-state-candidates ct3))

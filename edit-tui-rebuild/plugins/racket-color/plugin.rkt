@@ -198,10 +198,9 @@
 
 ;;; ════════════════ sync ════════════════
 
-(define (sync-colors ed state)
+(define (sync-colors ed state ps)
   (define engine (editor-engine ed))
-  (define old-cache
-    (or (editor-state-plugin-state state 'racket-color) empty-color-cache))
+  (define old-cache (if (hash? ps) ps empty-color-cache))
   (define (sync-doc cache did)
     (define text (engine-doc-text engine did))
     (define version (engine-doc-version engine did))
@@ -223,7 +222,7 @@
   (define new-cache
     (for/fold ([cache (hash)]) ([did (in-list (engine-doc-ids engine))])
       (sync-doc cache did)))
-  (editor-state-set-plugin-state state 'racket-color new-cache))
+  (values state new-cache))
 
 (define racket-color-plugin
   (make-plugin

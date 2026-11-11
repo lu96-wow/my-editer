@@ -31,6 +31,7 @@
          "open.rkt"
          "prompt.rkt"
          "close.rkt"
+         "docs.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "jobs.rkt"
@@ -133,6 +134,9 @@
       [(close-buffer-action? a)
        (define-values (s* more) (editor-close-buffer-command ed s))
        (if (null? more) s* (run-actions ed s* more))]
+      [(show-docs-action? a)
+       (define-values (s* more) (editor-show-docs! ed s (show-docs-action-name a)))
+       (if (null? more) s* (run-actions ed s* more))]
       [else s])))
 
 ;;; ════════════════ 命令 ════════════════
@@ -146,12 +150,23 @@
 (define (flash state text)
   (values (editor-state-with-flash state text) '()))
 
-(define (run-command ed state vid value)
+(define (plugin-ps state owner)
+  (and owner (editor-state-plugin-state state owner)))
+
+(define (write-command-ps state owner ps)
+  (if owner (editor-state-set-plugin-state state owner ps) state))
+
+(define (run-command ed state vid owner value)
+  (define ps (plugin-ps state owner))
   (cond
-    ;; 插件 commands 是普通过程：(ed state -> values state actions)
-    [(procedure? value) (value ed state)]
+    ;; 插件 commands 是普通过程：(ed state ps -> values state' ps' actions)
+    [(procedure? value)
+     (define-values (state* ps* actions*) (value ed state ps))
+     (values (write-command-ps state* owner ps*) actions*)]
     [(guarded-command? value)
-     ((guarded-command-run value) ed state)]
+     (define-values (state* ps* actions*)
+       ((guarded-command-run value) ed state ps))
+     (values (write-command-ps state* owner ps*) actions*)]
     [(insert-command? value)
      (cond
        [(not vid) (flash state "insert: no focused editor view")]
@@ -200,27 +215,31 @@
 (define (lookup-command tables seq ed state)
   (let loop ([ts tables])
     (cond
-      [(null? ts) (values 'unbound #f)]
+      [(null? ts) (values 'unbound #f #f)]
       [else
-       (define-values (status value) (command-table-lookup (car ts) seq))
+       (define entry (car ts))
+       (define owner (owned-command-table-owner entry))
+       (define-values (status value)
+         (command-table-lookup (owned-command-table-table entry) seq))
        (case status
          [(command)
           (cond
             [(and (guarded-command? value)
-                  (not ((guarded-command-when-fn value) ed state)))
+                  (not ((guarded-command-when-fn value)
+                        ed state (plugin-ps state owner))))
              (loop (cdr ts))]
-            [else (values 'command value)])]
-         [(prefix) (values 'prefix #f)]
+            [else (values 'command value owner)])]
+         [(prefix) (values 'prefix #f #f)]
          [else (loop (cdr ts))])])))
 
 (define (step ed state tok tables)
   (define s0 (editor-state-clear-flash state))
   (define pending (editor-state-pending s0))
   (define seq (append pending (list tok)))
-  (let-values ([(status value) (lookup-command tables seq ed s0)])
+  (let-values ([(status value owner) (lookup-command tables seq ed s0)])
     (case status
       [(command)
-       (run-command ed (editor-state-clear-pending s0) (need-view s0) value)]
+       (run-command ed (editor-state-clear-pending s0) (need-view s0) owner value)]
       [(prefix)
        (values (editor-state-with-pending s0 seq) '())]
       [else
@@ -321,7 +340,7 @@
 (define (editor-command-tables ed)
   ;; 插件表按安装顺序先查；guarded-command 不成立时继续 host 默认表。
   (append (plugins->command-tables (editor-plugins ed))
-          (list default-command-table)))
+          (list (owned-command-table #f default-command-table))))
 
 ;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
 (define (handle-editor-event ed state0 ev)
@@ -396,8 +415,9 @@
 (define (handle-job-result ed state ev)
   (define id (job-result-event-id ev))
   (define s1 (editor-state-finish-job state id (job-result-event-result ev)))
-  (define s2 (run-plugin-job-handlers ed s1 ev))
-  (editor-state-forget-job s2 id))
+  (define-values (s2 actions) (run-plugin-job-handlers ed s1 ev))
+  (define s3 (run-actions ed s2 actions))
+  (editor-state-forget-job s3 id))
 
 (define (run-editor ed state
                     #:read-event [read-event read-app-event]
@@ -417,7 +437,8 @@
       [(job-result-event? ev)
        (loop (handle-job-result ed s1 ev) cache*)]
       [(timer-event? ev)
-       (loop (run-plugin-timer-handlers ed s1 ev) cache*)]
+       (define-values (s2 actions) (run-plugin-timer-handlers ed s1 ev))
+       (loop (run-actions ed s2 actions) cache*)]
       [else
        (define s2 (handle-editor-event ed s1 ev))
        (if (editor-state-quit? s2)

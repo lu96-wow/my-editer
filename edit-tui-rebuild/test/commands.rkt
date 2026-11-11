@@ -21,7 +21,7 @@
 (check-eq? status 'command)
 (check-true (procedure? split-cmd))
 
-(define-values (s-split _a1) (split-cmd ed state))
+(define-values (s-split _ps-split _a1) (split-cmd ed state #t))
 (check-equal? (length (editor-visible-editor-panels s-split)) 2)
 
 ;;; 2. 自定义插件命令：C-t 插入 "!"
@@ -32,8 +32,10 @@
 (void (engine-create-view! engine 2 2))
 
 (define insert-bang-command
-  (λ (ed state)
-    (editor-insert! ed state (editor-focus-view-id state) "!")))
+  (λ (ed state ps)
+    (define-values (state* actions)
+      (editor-insert! ed state (editor-focus-view-id state) "!"))
+    (values state* ps actions)))
 
 (define custom-plugin
   (make-plugin
@@ -55,7 +57,7 @@
 (define-values (status2 cmd2)
   (command-table-lookup custom-table (list (key 't 'ctrl))))
 (check-eq? status2 'command)
-(define-values (custom-state* _a2) (cmd2 custom-ed custom-state))
+(define-values (custom-state* _ps2 _a2) (cmd2 custom-ed custom-state #t))
 (check-equal? (engine-view-text engine 1) "!")
 
 (displayln "edit-tui-rebuild/test/commands.rkt: ok")

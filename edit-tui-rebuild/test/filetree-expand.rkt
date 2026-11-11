@@ -43,8 +43,15 @@
 (define enter (cmd (list (key 'enter))))
 (define toggle-hidden (cmd (list (key 'h 'ctrl))))
 
+(define (ps-of st)
+  (editor-state-plugin-state st 'filetree))
+
 (define (rows-of st)
-  (filetree-state-rows (editor-state-plugin-state st 'filetree)))
+  (filetree-state-rows (ps-of st)))
+
+(define (run-cmd ed st c)
+  (define-values (s ps actions) ((guarded-command-run c) ed st (ps-of st)))
+  (values (editor-state-set-plugin-state s 'filetree ps) actions))
 
 (define (line-of st path)
   (for/first ([row (in-list (rows-of st))] [i (in-naturals)]
@@ -70,15 +77,15 @@
 ;; 焦点移到 sidebar
 (define-values (s2 _a2) (editor-focus! ed s1 'left))
 (check-equal? (editor-focus-panel-kind s2) 'sidebar)
-(check-true ((guarded-command-when-fn enter) ed s2))
+(check-true ((guarded-command-when-fn enter) ed s2 (ps-of s2)))
 
 ;; root 也可以展开 / 折叠：折叠后只剩 root 行。
 (engine-set-view-cursor! engine 3 0 #:column 0)
-(define-values (s-root _ar) ((guarded-command-run enter) ed s2))
+(define-values (s-root _ar) (run-cmd ed s2 enter))
 (define s-root-sync (run-plugin-syncs ed s-root))
 (check-false (string-contains? (engine-view-text engine 3) "a.txt"))
 (engine-set-view-cursor! engine 3 0 #:column 0)
-(define-values (s-root2 _ar2) ((guarded-command-run enter) ed s-root-sync))
+(define-values (s-root2 _ar2) (run-cmd ed s-root-sync enter))
 (define s-root2-sync (run-plugin-syncs ed s-root2))
 (check-true (string-contains? (engine-view-text engine 3) "a.txt"))
 
@@ -86,7 +93,7 @@
 (define dir-line (line-of s-root2-sync (build-path root "dir")))
 (check-not-false dir-line)
 (engine-set-view-cursor! engine 3 dir-line #:column 0)
-(define-values (s3 _a3) ((guarded-command-run enter) ed s-root2-sync))
+(define-values (s3 _a3) (run-cmd ed s-root2-sync enter))
 (define s4 (run-plugin-syncs ed s3))
 (check-true (string-contains? (engine-view-text engine 3) "b.txt"))
 ;; 子文件再缩进两格。
@@ -96,12 +103,12 @@
 (define dir-line2 (line-of s4 (build-path root "dir")))
 (check-not-false dir-line2)
 (engine-set-view-cursor! engine 3 dir-line2 #:column 0)
-(define-values (s5 _a5) ((guarded-command-run enter) ed s4))
+(define-values (s5 _a5) (run-cmd ed s4 enter))
 (define s6 (run-plugin-syncs ed s5))
 (check-false (string-contains? (engine-view-text engine 3) "b.txt"))
 
 ;; 显示 .hidden
-(define-values (s7 _a7) ((guarded-command-run toggle-hidden) ed s6))
+(define-values (s7 _a7) (run-cmd ed s6 toggle-hidden))
 (define s8 (run-plugin-syncs ed s7))
 (check-true (string-contains? (engine-view-text engine 3) ".hidden"))
 

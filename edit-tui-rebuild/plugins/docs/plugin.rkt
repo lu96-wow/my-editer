@@ -35,44 +35,42 @@
              (string-split (string-trim (doc->text d)) "\n"))
        '())))
 
-(define (handle-docs-job ed state ev)
+(define (handle-docs-job ed state ps ev)
   (cond
-    [(not (eq? (job-result-event-kind ev) 'docs)) state]
+    [(not (eq? (job-result-event-kind ev) 'docs)) (values state ps '())]
+    [(not (docs-state? ps)) (values state ps '())]
     [else
-     (define st (docs-state-of state))
      (define result (job-result-event-result ev))
      (cond
-       [(not st) state]
-       [(not (equal? (docs-state-request-id st) (job-result-event-id ev))) state]
+       [(not (equal? (docs-state-request-id ps) (job-result-event-id ev)))
+        (values state ps '())]
        [(job-error? result)
-        (editor-state-set-plugin-state
-         state 'docs (struct-copy docs-state st [request-id #f]))]
+        (values state (struct-copy docs-state ps [request-id #f]) '())]
        [(and (list? result) (andmap string? result))
-        (editor-state-set-plugin-state
-         state 'docs
-         (struct-copy docs-state st
-                      [lines result]
-                      [faces (docs-faces result)]
-                      [request-id #f]))]
+        (values state
+                (struct-copy docs-state ps
+                             [lines result]
+                             [faces (docs-faces result)]
+                             [request-id #f])
+                '())]
        [else
-        (editor-state-set-plugin-state
-         state 'docs (struct-copy docs-state st [request-id #f]))])]))
+        (values state (struct-copy docs-state ps [request-id #f]) '())])]))
 
-(define (sync-docs! ed state)
-  (define st (docs-state-of state))
+(define (sync-docs! ed state ps)
   (cond
-    [(not st) state]
+    [(not (docs-state? ps)) (values state ps)]
     [else
      (engine-set-view-content! (editor-engine ed)
-                              (docs-state-view st)
-                              (docs-state-lines st)
-                              (docs-state-faces st))
-     state]))
+                              (docs-state-view ps)
+                              (docs-state-lines ps)
+                              (docs-state-faces ps))
+     (values state ps)]))
 
-(define (toggle-command ed state)
-  (editor-toggle-panel! ed state 'docs))
+(define (toggle-command ed state ps)
+  (define-values (state* actions) (editor-toggle-panel! ed state 'docs))
+  (values state* ps actions))
 
-(define (show-identifier-command ed state)
+(define (show-identifier-command ed state ps)
   (define engine (editor-engine ed))
   (define vid (editor-focus-view-id state))
   (define text (and vid (engine-view-text engine vid)))
@@ -80,8 +78,8 @@
   (define col (and vid (engine-view-point-column engine vid)))
   (define name (and text line col (identifier-at text line col)))
   (cond
-    [name (values (docs-show-name! ed state name) '())]
-    [else (values (editor-state-with-flash state "docs: no identifier") '())]))
+    [name (docs-show-name! ed state ps name)]
+    [else (values (editor-state-with-flash state "docs: no identifier") ps '())]))
 
 (define (make-docs-plugin #:view vid #:panel-id [panel-id 'docs])
   (make-plugin

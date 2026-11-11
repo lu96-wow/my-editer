@@ -9,7 +9,8 @@
 (require racket/string
          "../../core/command/api.rkt"
          "../../core/layout/api.rkt"
-         "../../editor/api.rkt")
+         "../../editor/api.rkt"
+         "../../editor/state.rkt")
 
 (provide (struct-out input-state)
          make-input-state

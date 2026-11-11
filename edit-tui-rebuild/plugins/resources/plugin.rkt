@@ -46,41 +46,38 @@
                    (format "  view ~a" vid)
                    'resource-view))))))
 
-(define (sync-resources ed state)
-  (define st (editor-state-plugin-state state 'resources))
+(define (sync-resources ed state ps)
   (cond
-    [(not (resources-panel-state? st)) state]
+    [(not (resources-panel-state? ps)) (values state ps)]
     [else
      (define engine (editor-engine ed))
      (define rows (resource-rows state engine))
      (engine-set-view-content! engine
-                              (resources-panel-state-view st)
+                              (resources-panel-state-view ps)
                               (map row-text rows)
                               (map row-face rows))
-     (editor-state-set-plugin-state
-      state 'resources
-      (struct-copy resources-panel-state st [rows rows]))]))
+     (values state (struct-copy resources-panel-state ps [rows rows]))]))
 
 (define (resources-focused? state vid)
   (eq? (editor-focus-view-id state) vid))
 
-(define (current-row ed state vid)
-  (define st (editor-state-plugin-state state 'resources))
-  (define rows (and (resources-panel-state? st)
-                    (resources-panel-state-rows st)))
+(define (current-row ed ps vid)
+  (define rows (and (resources-panel-state? ps)
+                    (resources-panel-state-rows ps)))
   (define line (engine-view-point-line (editor-engine ed) vid))
   (and rows line (< line (length rows)) (list-ref rows line)))
 
-(define (enter-command ed state vid)
-  (define row (current-row ed state vid))
+(define (enter-command ed state ps vid)
+  (define row (current-row ed ps vid))
   (cond
-    [(not row) (values (editor-state-with-flash state "resources: no line") '())]
+    [(not row)
+     (values (editor-state-with-flash state "resources: no line") ps '())]
     [(eq? (row-kind row) 'view)
      (define-values (s1 a1 attached?)
        (editor-focus-view-if-attached! ed state (row-view-id row)))
      (if attached?
-         (values s1 a1)
-         (values (editor-placement-start state (row-view-id row)) '()))]
+         (values s1 ps a1)
+         (values (editor-placement-start state (row-view-id row)) ps '()))]
     [else
      (define r (editor-state-resource-for-doc state (row-resource-id row)))
      (define views (and r (resource-views r)))
@@ -89,15 +86,16 @@
         (define-values (s1 a1 attached?)
           (editor-focus-view-if-attached! ed state (car views)))
         (if attached?
-            (values s1 a1)
-            (values (editor-placement-start state (car views)) '()))]
-       [else (values (editor-state-with-flash state "resources: no view") '())])]))
+            (values s1 ps a1)
+            (values (editor-placement-start state (car views)) ps '()))]
+       [else
+        (values (editor-state-with-flash state "resources: no view") ps '())])]))
 
-(define (refresh-command ed state)
-  (values (editor-state-with-flash state "resources refreshed") '()))
+(define (refresh-command ed state ps)
+  (values (editor-state-with-flash state "resources refreshed") ps '()))
 
-(define (close-buffer-command ed state)
-  (values state (list (close-buffer-action))))
+(define (close-buffer-command ed state ps)
+  (values state ps (list (close-buffer-action))))
 
 (define (make-resources-plugin #:view vid)
   (make-plugin
@@ -107,10 +105,10 @@
    (keys
     [(key 'enter)
      (make-guarded-command
-      #:when (λ (ed state) (resources-focused? state vid))
-      #:run (λ (ed state) (enter-command ed state vid)))]
+      #:when (λ (ed state ps) (resources-focused? state vid))
+      #:run (λ (ed state ps) (enter-command ed state ps vid)))]
     [(key 'r 'ctrl)
      (make-guarded-command
-      #:when (λ (ed state) (resources-focused? state vid))
+      #:when (λ (ed state ps) (resources-focused? state vid))
       #:run refresh-command)])
    #:sync sync-resources))

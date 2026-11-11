@@ -49,7 +49,8 @@
   (command-table-lookup table (list (key 'enter))))
 (check-eq? status 'command)
 (check-true (guarded-command? enter-cmd))
-(check-true ((guarded-command-when-fn enter-cmd) ed s5))
+(check-true ((guarded-command-when-fn enter-cmd) ed s5
+                                                (editor-state-plugin-state s5 'resources)))
 
 (define lines (string-split (engine-view-text (editor-engine ed) 4) "\n" #:trim? #f))
 (define view-line
@@ -58,7 +59,9 @@
     i))
 (check-not-false view-line)
 (engine-set-view-cursor! (editor-engine ed) 4 view-line #:column 0)
-(define-values (s6 _a6) ((guarded-command-run enter-cmd) ed s5))
+(define-values (s6 _ps6 _a6)
+  ((guarded-command-run enter-cmd) ed s5
+   (editor-state-plugin-state s5 'resources)))
 (check-equal? (editor-focus-panel-kind s6) 'editor)
 (check-equal? (editor-focus-view-id s6) vid)
 

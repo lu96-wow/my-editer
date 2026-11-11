@@ -3,6 +3,8 @@
 ;;; edit-tui-rebuild/editor/host-api.rkt —— 宿主装配面
 ;;;
 ;;; 只有 host 能 require 这个文件。它比 editor/api.rkt 多出：
+;;;   · state / resource 的完整内部面（constructor、plugin-state 写回、resource 变更）
+;;;   · job 账本 / job-result-event constructor
 ;;;   · engine 生命周期（创建 / 删除 buffer view）
 ;;;   · engine 原始 action（宿主调试 / 迁移期用；插件不要用）
 ;;;
@@ -11,10 +13,20 @@
 (require "api.rkt"
          "../core/api.rkt"
          "engine/api.rkt"
+         "state.rkt"
+         "resource.rkt"
+         "job.rkt"
          "plugin.rkt"
          "plugin-runtime.rkt")
 
 (provide (all-from-out "api.rkt")
+         ;; State / resource 的完整内部面：constructor、plugin-states、写入口。
+         (all-from-out "state.rkt")
+         (all-from-out "resource.rkt")
+
+         ;; job 账本 / job-result-event constructor：host runtime 使用。
+         (all-from-out "job.rkt")
+
          ;; host 编排 / 插件聚合
          (all-from-out "plugin.rkt")
          (all-from-out "plugin-runtime.rkt")

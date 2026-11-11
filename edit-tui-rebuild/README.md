@@ -86,8 +86,7 @@ edit-tui-rebuild/
     hooks.rkt          typed hook 扩展点 / 有序 pipeline
     contributions.rkt  非 hook contribution registry
     plugin.rkt         插件描述 / 字段 -> contribution
-    plugin-runtime.rkt contribution registry 执行器
-    plugin.rkt         插件值
+    plugin-runtime.rkt contribution registry 执行器（按 owner 写 plugin-state）
     state.rkt          纯 editor state + plugin-states + layout
     context.rkt        editor = engine + hook registry + plugins
     api.rkt            插件唯一能 require 的 editor 面
@@ -100,19 +99,30 @@ edit-tui-rebuild/
     racket-color/plugin.rkt
     layout/plugin.rkt
     filetree/plugin.rkt
+    resources/plugin.rkt
     completion/plugin.rkt
+    docs/api.rkt
     docs/plugin.rkt
 
+  features/
+    input/             单行输入栏
+    placement/         打开文件后的目标 editor 选择
+
   host/
-    final.rkt          单 editor + status + 键盘循环
+    final.rkt          可运行 TUI / 事件循环
+    docs.rkt           completion -> docs 的跨插件 action 解释
     event.rkt          tui raw -> host 事件
     keymap.rkt         命令值 + 默认键位
+    jobs.rkt           worker runtime
+    timers.rkt         timer runtime
 
   test/
     hooks.rkt
     ops.rkt
     plugins.rkt
+    ownership.rkt      插件状态 owner 写回
     host.rkt
+    layers.rkt
     run.sh
 ```
 
@@ -230,11 +240,13 @@ priority 小者先；同 priority 按注册顺序。
  #:commands (keys [(key 'w 'ctrl) (key 'right) split-right-command]))
 ```
 
-命令值是普通过程：
+命令值是普通过程，只拿到自己的 plugin-state：
 
 ```racket
-(lambda (ed state) -> (values state' actions))
+(lambda (ed state ps) -> (values state' ps' actions))
 ```
+
+host 按 `owned-command-table` 的 owner 写回 `ps'`；插件不能写别的 owner。
 
 host 启动时按 contribution registry / command table 查找：
 
@@ -249,7 +261,7 @@ host 启动时按 contribution registry / command table 查找：
 
 ```racket
 (make-guarded-command
- #:when (λ (ed state) (eq? (editor-focus-view-id state) filetree-vid))
+ #:when (λ (ed state ps) (eq? (editor-focus-view-id state) filetree-vid))
  #:run enter-command)
 ```
 
@@ -262,7 +274,7 @@ guard 不成立时，host 继续查下一张表，所以 filetree 的 Enter 不�
 插件可以实现：
 
 ```racket
-#:sync (lambda (ed state) state')
+#:sync (lambda (ed state ps) -> (values state' ps'))
 ```
 
 host 在每帧按插件安装顺序执行：
@@ -281,14 +293,19 @@ sync 顺序 = 插件安装顺序。`filetree` 放在 `racket-color` 前面，保
 
 ## 插件状态
 
-插件状态是纯值，按 plugin id 分命名空间存在 `editor-state.plugin-states`：
+插件状态是纯值，按 plugin id 分命名空间存在 `editor-state.plugin-states`。
+插件回调只拿自己的 `ps`，返回自己的 `ps'`：
 
 ```racket
-(editor-state-plugin-state state 'pair)
-(editor-state-set-plugin-state state 'pair new-value)
+hook        (ctx ps)          -> (values ctx' ps' actions allow?)
+sync        (ed state ps)     -> (values state' ps')
+timer/job   (ed state ps ev)  -> (values state' ps' actions)
+command     (ed state ps)     -> (values state' ps' actions)
 ```
 
-hook 返回新状态后，pipeline 自动写回。
+`editor/plugin-runtime.rkt` 根据 contribution owner 写回；`editor/api.rkt`
+不导出 `editor-state-set-plugin-state`，也不导出 resource 变更函数。
+跨插件请求走 action（例如 completion 发 `show-docs-action`，docs owner 更新自己）。
 
 插件初始状态来自：
 
@@ -384,6 +401,7 @@ racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/layers.rkt
+racket edit-tui-rebuild/test/ownership.rkt
 ```
 
 ---
@@ -395,8 +413,8 @@ racket edit-tui-rebuild/test/layers.rkt
 1c. 插件 API 不导出 host 编排函数；host-api 才导出 plugin runner / open / prompt。
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
-4. 插件只 require `editor/api.rkt`。
-5. 插件状态是纯值，按 plugin id 命名空间存在 editor state。
+4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt`；不 require editor 内部 / host。
+5. 插件状态是纯值，按 plugin id 命名空间存在 editor state；只有 plugin runtime 按 owner 写回。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
@@ -455,8 +473,9 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
-2. completion 接 workspace / analysis，补全跨 buffer 候选。
-3. docs 接 workspace 本地定义与 C-x o 焦点切换。
-4. 文件系统变化自动刷新。
-5. 固定尺寸 / hide-show 的剩余布局细节。
+1. command 纳入统一 contribution registry（owner / scope / guard）。
+2. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
+3. completion 接 workspace / analysis，补全跨 buffer 候选。
+4. docs 接 workspace 本地定义与 C-x o 焦点切换。
+5. 文件系统变化自动刷新。
+6. 固定尺寸 / hide-show 的剩余布局细节。

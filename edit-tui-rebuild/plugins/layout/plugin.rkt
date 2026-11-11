@@ -12,26 +12,30 @@
 
 (provide layout-plugin)
 
+;; 插件命令只写自己的 ps；布局操作返回的 state / actions 原样交给 host。
+(define (with-ps command)
+  (λ (ed state ps)
+    (define-values (state* actions) (command ed state))
+    (values state* ps actions)))
+
 (define (split-command dir)
-  (λ (ed state) (editor-split! ed state dir)))
+  (with-ps (λ (ed state) (editor-split! ed state dir))))
 
 (define (focus-command dir)
-  (λ (ed state) (editor-focus! ed state dir)))
+  (with-ps (λ (ed state) (editor-focus! ed state dir))))
 
-(define (close-command ed state)
-  (editor-close! ed state))
+(define close-command (with-ps editor-close!))
+(define cycle-sidebar-command (with-ps editor-cycle-sidebar-view!))
 
-(define (cycle-sidebar-command ed state)
-  (editor-cycle-sidebar-view! ed state))
+(define (next-tab-command ed state ps)
+  (define-values (state* actions) (editor-cycle-editor-view! ed state 1))
+  (values state* ps actions))
 
-(define (next-tab-command ed state)
-  (editor-cycle-editor-view! ed state 1))
+(define (prev-tab-command ed state ps)
+  (define-values (state* actions) (editor-cycle-editor-view! ed state -1))
+  (values state* ps actions))
 
-(define (prev-tab-command ed state)
-  (editor-cycle-editor-view! ed state -1))
-
-(define (toggle-sidebar-command ed state)
-  (editor-toggle-sidebar! ed state))
+(define toggle-sidebar-command (with-ps editor-toggle-sidebar!))
 
 (define layout-command-table
   (keys

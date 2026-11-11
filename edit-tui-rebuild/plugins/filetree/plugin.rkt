@@ -12,6 +12,7 @@
 ;;;
 ;;; 插件状态是纯值：root / view / expanded / show-hidden? / rows / pending-cursor。
 ;;; 目录扫描在 sync 阶段做；C-r / 展开 / 隐藏只把 rows 置空，下一次 sync 重扫。
+;;; 回调用当前 ps 读写自己的状态；跨插件 / host 请求用 action。
 
 (require racket/file
          (only-in racket/list append*)
@@ -101,35 +102,31 @@
              (define-values (root expanded show-hidden?) (apply values payload))
              (scan-tree root expanded show-hidden? hidden-entry?))))
 
-(define (handle-filetree-job ed state ev)
+(define (handle-filetree-job ed state ps ev)
   (cond
-    [(not (eq? (job-result-event-kind ev) 'filetree-scan)) state]
+    [(not (eq? (job-result-event-kind ev) 'filetree-scan)) (values state ps '())]
+    [(not (filetree-state? ps)) (values state ps '())]
     [else
-     (define st (editor-state-plugin-state state 'filetree))
+     (define tag (job-result-event-tag ev))
+     (define result (job-result-event-result ev))
+     (define current-tag (projection-tag ps))
      (cond
-       [(not (filetree-state? st)) state]
+       [(job-error? result)
+        (values (editor-state-with-flash state "filetree scan failed")
+                (struct-copy filetree-state ps [pending #f] [stale? #f])
+                '())]
+       [(equal? tag current-tag)
+        (values state
+                (struct-copy filetree-state ps
+                             [rows result]
+                             [pending #f]
+                             [stale? #f])
+                '())]
        [else
-        (define tag (job-result-event-tag ev))
-        (define result (job-result-event-result ev))
-        (define current-tag (projection-tag st))
-        (cond
-          [(job-error? result)
-           (editor-state-set-plugin-state
-            (editor-state-with-flash state "filetree scan failed")
-            'filetree
-            (struct-copy filetree-state st [pending #f] [stale? #f]))]
-          [(equal? tag current-tag)
-           (editor-state-set-plugin-state
-            state 'filetree
-            (struct-copy filetree-state st
-                         [rows result]
-                         [pending #f]
-                         [stale? #f]))]
-          [else
-           ;; 扫描期间投影又变了：丢掉旧结果，下一帧重新提交。
-           (editor-state-set-plugin-state
-            state 'filetree
-            (struct-copy filetree-state st [pending #f]))])])]))
+        ;; 扫描期间投影又变了：丢掉旧结果，下一帧重新提交。
+        (values state
+                (struct-copy filetree-state ps [pending #f])
+                '())])]))
 
 (define (write-filetree! ed state st rows)
   (define engine (editor-engine ed))
@@ -150,91 +147,91 @@
        [else (struct-copy filetree-state st [rows rows])])]))
 
 (define (make-sync-filetree hidden-entry?)
-  (λ (ed state)
-  (define st (editor-state-plugin-state state 'filetree))
-  (cond
-    [(not (filetree-state? st)) state]
-    [else
-     (define root (filetree-state-root st))
-     (define expanded (filetree-state-expanded st))
-     (define show-hidden? (filetree-state-show-hidden? st))
-     (define tag (projection-tag st))
-     (cond
-       [(not (editor-state-async? state))
-        (define rows
-          (if (filetree-state-stale? st)
-              (scan-tree root expanded show-hidden? hidden-entry?)
-              (filetree-state-rows st)))
-        (define st* (write-filetree! ed state st rows))
-        (editor-state-set-plugin-state
-         state 'filetree
-         (struct-copy filetree-state st* [stale? #f] [pending #f]))]
-       [else
-        (define-values (base-state st1)
-          (cond
-            [(and (filetree-state-stale? st)
-                  (not (filetree-state-pending st)))
-             (define-values (state* _job)
-               (editor-state-submit-job state 'filetree-scan tag tag))
-             (values state* (struct-copy filetree-state st [pending tag]))]
-            [else (values state st)]))
-        (define st2 (write-filetree! ed base-state st1 (filetree-state-rows st1)))
-        (editor-state-set-plugin-state base-state 'filetree st2)])])))
+  (λ (ed state ps)
+    (cond
+      [(not (filetree-state? ps)) (values state ps)]
+      [else
+       (define root (filetree-state-root ps))
+       (define expanded (filetree-state-expanded ps))
+       (define show-hidden? (filetree-state-show-hidden? ps))
+       (define tag (projection-tag ps))
+       (cond
+         [(not (editor-state-async? state))
+          (define rows
+            (if (filetree-state-stale? ps)
+                (scan-tree root expanded show-hidden? hidden-entry?)
+                (filetree-state-rows ps)))
+          (define ps* (write-filetree! ed state ps rows))
+          (values state
+                  (struct-copy filetree-state ps* [stale? #f] [pending #f]))]
+         [else
+          (define scan?
+            (and (filetree-state-stale? ps)
+                 (not (filetree-state-pending ps))))
+          (define base-state
+            (if scan?
+                (let-values ([(state* _job)
+                              (editor-state-submit-job state 'filetree-scan tag tag)])
+                  state*)
+                state))
+          (define ps1
+            (if scan?
+                (struct-copy filetree-state ps [pending tag])
+                ps))
+          (values base-state
+                  (write-filetree! ed base-state ps1
+                                   (filetree-state-rows ps1)))])])))
 
 (define (filetree-focused? state vid)
   (eq? (editor-focus-view-id state) vid))
 
-(define (current-row ed state vid)
-  (define st (editor-state-plugin-state state 'filetree))
-  (define rows (and (filetree-state? st) (filetree-state-rows st)))
+(define (current-row ed state ps vid)
+  (define rows (and (filetree-state? ps) (filetree-state-rows ps)))
   (define line (engine-view-point-line (editor-engine ed) vid))
   (and rows line (< line (length rows)) (list-ref rows line)))
 
-(define (refresh-state state st path)
-  (editor-state-set-plugin-state
-   state 'filetree
-   (struct-copy filetree-state st
-                [stale? #t]
-                [pending-cursor path])))
+(define (refresh-state st path)
+  (struct-copy filetree-state st
+               [stale? #t]
+               [pending-cursor path]))
 
-(define (enter-command ed state vid)
-  (define row (current-row ed state vid))
+(define (enter-command ed state ps vid)
+  (define row (current-row ed state ps vid))
   (cond
-    [(not row) (values state '())]
+    [(not row) (values state ps '())]
     [(eq? (row-kind row) 'file)
-     (values state (list (open-file-action (row-path row))))]
+     (values state ps (list (open-file-action (row-path row))))]
     [(memq (row-kind row) '(root dir))
-     (define st (editor-state-plugin-state state 'filetree))
-     (define path (row-path row))
-     (define expanded
-       (if (hash-ref (filetree-state-expanded st) path #f)
-           (hash-remove (filetree-state-expanded st) path)
-           (hash-set (filetree-state-expanded st) path #t)))
-     (define st* (struct-copy filetree-state st [expanded expanded]))
-     (values (refresh-state state st* path) '())]
-    [else (values state '())]))
+     (cond
+       [(not (filetree-state? ps)) (values state ps '())]
+       [else
+        (define path (row-path row))
+        (define expanded
+          (if (hash-ref (filetree-state-expanded ps) path #f)
+              (hash-remove (filetree-state-expanded ps) path)
+              (hash-set (filetree-state-expanded ps) path #t)))
+        (values state
+                (refresh-state (struct-copy filetree-state ps [expanded expanded]) path)
+                '())])]
+    [else (values state ps '())]))
 
-(define (refresh-command ed state vid)
-  (define st (editor-state-plugin-state state 'filetree))
-  (define row (current-row ed state vid))
+(define (refresh-command ed state ps vid)
+  (define row (current-row ed state ps vid))
   (cond
-    [(not (filetree-state? st)) (values state '())]
+    [(not (filetree-state? ps)) (values state ps '())]
     [else
-     (values (editor-state-with-flash
-              (refresh-state state st (and row (row-path row)))
-              "filetree refreshed")
+     (values (editor-state-with-flash state "filetree refreshed")
+             (refresh-state ps (and row (row-path row)))
              '())]))
 
-(define (toggle-hidden-command ed state vid)
-  (define st (editor-state-plugin-state state 'filetree))
-  (define row (current-row ed state vid))
+(define (toggle-hidden-command ed state ps vid)
+  (define row (current-row ed state ps vid))
   (cond
-    [(not (filetree-state? st)) (values state '())]
+    [(not (filetree-state? ps)) (values state ps '())]
     [else
-     (define st* (struct-copy filetree-state st
-                              [show-hidden? (not (filetree-state-show-hidden? st))]))
-     (values (refresh-state state st* (and row (row-path row)))
-             '())]))
+     (define ps* (struct-copy filetree-state ps
+                              [show-hidden? (not (filetree-state-show-hidden? ps))]))
+     (values state (refresh-state ps* (and row (row-path row))) '())]))
 
 (define (make-filetree-plugin #:view vid #:root root
                               #:hidden-entry? [hidden-entry? default-hidden-entry?])
@@ -246,16 +243,16 @@
    (keys
     [(key 'enter)
      (make-guarded-command
-      #:when (λ (ed state) (filetree-focused? state vid))
-      #:run (λ (ed state) (enter-command ed state vid)))]
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (enter-command ed state ps vid)))]
     [(key 'r 'ctrl)
      (make-guarded-command
-      #:when (λ (ed state) (filetree-focused? state vid))
-      #:run (λ (ed state) (refresh-command ed state vid)))]
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (refresh-command ed state ps vid)))]
     [(key 'h 'ctrl)
      (make-guarded-command
-      #:when (λ (ed state) (filetree-focused? state vid))
-      #:run (λ (ed state) (toggle-hidden-command ed state vid)))])
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (toggle-hidden-command ed state ps vid)))])
    #:sync (make-sync-filetree hidden-entry?)
    #:services (list (make-filetree-scan-service hidden-entry?))
    #:handle-job handle-filetree-job))

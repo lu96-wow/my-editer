@@ -17,7 +17,8 @@
          "../../core/focus/api.rkt"
          "../../core/projection/api.rkt"
          (prefix-in p: "../../core/panel/api.rkt")
-         "../../editor/api.rkt")
+         "../../editor/api.rkt"
+         "../../editor/state.rkt")
 
 (provide editor-placement-active?
          editor-placement-view-id

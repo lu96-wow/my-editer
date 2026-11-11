@@ -17,9 +17,8 @@
    #:state 0
    #:services (list (service kind (λ (payload) payload)))
    #:handle-job
-   (λ (ed state ev)
-     (define ps (editor-state-plugin-state state id))
-     (editor-state-set-plugin-state state id (add1 ps)))))
+   (λ (ed state ps ev)
+     (values state (add1 ps) '()))))
 
 (define pa (make-job-plugin 'a 'job-a))
 (define pb (make-job-plugin 'b 'job-b))
@@ -29,7 +28,8 @@
 (define state (make-editor-state #:plugin-states (plugins->states (list pa pb))))
 
 (define ev (job-result-event 1 'job-a 'ok #f))
-(define s1 (run-plugin-job-handlers ed state ev))
+(define-values (s1 actions) (run-plugin-job-handlers ed state ev))
+(check-equal? actions '())
 (check-equal? (editor-state-plugin-state s1 'a) 1)
 (check-equal? (editor-state-plugin-state s1 'b) 0)
 
