@@ -9,8 +9,7 @@
 (require racket/string
          "../../core/command/api.rkt"
          "../../core/layout/api.rkt"
-         "../../editor/api.rkt"
-         "../../editor/state.rkt")
+         "../../editor/api.rkt")
 
 (provide (struct-out input-state)
          make-input-state
@@ -54,7 +53,7 @@
   (editor-state-input state))
 
 (define (set-input-state state s)
-  (struct-copy editor-state state [input s]))
+  (editor-state-with-input state s))
 
 (define (editor-input-active? state)
   (define s (input-state-of state))
@@ -78,7 +77,7 @@
     (layout-panel-set-active-view (editor-state-layout state)
                                   (input-state-panel-id s)
                                   view-id))
-  (if ok? (struct-copy editor-state state [layout l]) state))
+  (if ok? (editor-state-with-layout state l) state))
 
 (define (editor-input-open state kind prompt context)
   (define s (input-state-of state))
@@ -96,10 +95,10 @@
                              [prev-focus prev]
                              [context context]))
      (define state1 (set-input-state (switch-view state (input-state-input-view s*)) s*))
-     (struct-copy editor-state
-                  (struct-copy editor-state state1 [pending '()])
-                  [layout (layout-set-focus (editor-state-layout state1)
-                                            (input-state-panel-id s*))])]))
+     (editor-state-with-layout
+      (editor-state-with-pending state1 '())
+      (layout-set-focus (editor-state-layout state1)
+                        (input-state-panel-id s*)))]))
 
 (define (editor-input-close state)
   (define s (input-state-of state))
@@ -117,8 +116,9 @@
                              [context #f]))
      (define state1 (set-input-state (switch-view state (input-state-status-view s*)) s*))
      (cond
-       [prev (struct-copy editor-state state1
-                          [layout (layout-set-focus (editor-state-layout state1) prev)])]
+       [prev (editor-state-with-layout
+              state1
+              (layout-set-focus (editor-state-layout state1) prev))]
        [else state1])]))
 
 (define (editor-input-cancel state)

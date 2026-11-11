@@ -18,7 +18,7 @@
   p)
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(define s0 (editor-state-with-area state (rect 0 0 60 15)))
 (define-values (s1 _a1) (editor-split! ed s0 'right))
 (check-equal? (length (editor-visible-editor-panels s1)) 2)
 

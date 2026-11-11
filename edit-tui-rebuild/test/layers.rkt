@@ -122,8 +122,8 @@
 (check-true (requires-any? "editor/plugin-runtime.rkt" #rx"contributions\\.rkt")
             "editor/plugin-runtime.rkt")
 
-;; features 是 app/chrome 内部层：可以用 editor/api.rkt + editor/state.rkt，
-;; 但不 require host / plugins / engine 实现。
+;; features 是 app/chrome 内部层：只经 editor/api.rkt，不 require
+;; editor/state.rkt / host / plugins / engine 实现。
 (define (features-rkt-files dir)
   (append*
    (for/list ([p (in-directory dir)]
@@ -131,7 +131,7 @@
      (list (path->string (find-relative-path root p))))))
 (for ([f (in-list (features-rkt-files (build-path root "features")))])
   (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
-  (check-false (requires-any? f #rx"editor/(engine|ops|host-api)") f))
+  (check-false (requires-any? f #rx"editor/(engine|ops|host-api|state)") f))
 
 ;; 具体 app 布局装配不在 editor/layout.rkt。
 (check-false (requires-any? "editor/layout.rkt" #rx"make-editor-layout")

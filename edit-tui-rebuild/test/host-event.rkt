@@ -13,7 +13,7 @@
          "../host/event.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(define s0 (editor-state-with-area state (rect 0 0 60 15)))
 
 ;; 先渲染一帧，同步 viewport / filetree 内容。
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))

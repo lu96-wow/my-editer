@@ -46,11 +46,11 @@
                  (detach-view-from-layout l vid)))
      (engine-remove-doc! (editor-engine ed) (resource-doc-id r))
      (define state*
-       (struct-copy editor-state state
-                    [layout l]
-                    [resources (resources-remove (editor-state-resources state) rid)]
-                    [flash (format "closed: ~a"
-                                   (or (resource-path r) (resource-name r)))]))
+       (editor-state-with-flash
+        (editor-state-with-resources
+         (editor-state-with-layout state l)
+         (resources-remove (editor-state-resources state) rid))
+        (format "closed: ~a" (or (resource-path r) (resource-name r)))))
      (values state* '())]))
 
 ;; 关闭当前 focus resource：dirty -> close-confirm；clean -> 直接关闭。

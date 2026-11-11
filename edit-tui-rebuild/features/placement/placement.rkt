@@ -17,8 +17,7 @@
          "../../core/focus/api.rkt"
          "../../core/projection/api.rkt"
          (prefix-in p: "../../core/panel/api.rkt")
-         "../../editor/api.rkt"
-         "../../editor/state.rkt")
+         "../../editor/api.rkt")
 
 (provide editor-placement-active?
          editor-placement-view-id
@@ -45,23 +44,22 @@
   (cond
     [(not pid) state]
     [else
-     (struct-copy editor-state state
-                  [layout (layout-set-focus (editor-state-layout state) pid)])]))
+     (editor-state-with-layout
+      state (layout-set-focus (editor-state-layout state) pid))]))
 
 ;; 开始 placement：view-id 已经在 engine 里，但还没挂到 panel。
 (define (editor-placement-start state vid)
   (define state1
-    (struct-copy editor-state state
-                 [placement vid]
-                 [pending '()]))
+    (editor-state-with-pending
+     (editor-state-with-placement state vid) '()))
   (if (eq? (editor-focus-panel-kind state1) 'editor)
       state1
       (focus-first-editor state1)))
 
 (define (editor-placement-cancel ed state)
-  (values (struct-copy editor-state state
-                       [placement #f]
-                       [flash "placement cancelled"])
+  (values (editor-state-with-flash
+           (editor-state-with-placement state #f)
+           "placement cancelled")
           '()))
 
 ;; 把 view 加入目标 panel，并让该 view 成为 active。
@@ -73,10 +71,10 @@
      (values (editor-state-with-flash state "place: target panel missing") #f)]
     [else
      (define l** (layout-set-focus l* pid))
-     (values (struct-copy editor-state state
-                          [layout l**]
-                          [placement #f]
-                          [flash "view placed"])
+     (values (editor-state-with-flash
+              (editor-state-with-placement
+               (editor-state-with-layout state l**) #f)
+              "view placed")
              #t)]))
 
 (define (target-editor-panel state)
@@ -111,8 +109,9 @@
   (define from (editor-focus-panel-id state))
   (define to (next-editor-in-direction state from dir))
   (cond
-    [to (values (struct-copy editor-state state
-                             [layout (layout-set-focus (editor-state-layout state) to)])
+    [to (values (editor-state-with-layout
+                 state
+                 (layout-set-focus (editor-state-layout state) to))
                 '())]
     [else (values (editor-state-with-flash state (format "place: no editor to the ~a" dir))
                   '())]))

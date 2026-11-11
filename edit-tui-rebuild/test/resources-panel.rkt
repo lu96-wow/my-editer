@@ -18,7 +18,7 @@
 (display-to-file "#lang racket\n(define x 1)\n" file #:exists 'replace)
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(define s0 (editor-state-with-area state (rect 0 0 60 15)))
 
 ;; 打开文件并提交 placement。
 (define-values (s1 _a1) (editor-open-file! ed s0 file))

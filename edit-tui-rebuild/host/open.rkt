@@ -35,7 +35,7 @@
      (define-values (l* ok?)
        (layout-panel-set-active-view l pid vid))
      (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (struct-copy editor-state state [layout l**]) '())]
+     (values (editor-state-with-layout state l**) '())]
     [else
      (values (editor-placement-start state vid) '())]))
 
@@ -48,7 +48,7 @@
     [pid
      (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
      (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (struct-copy editor-state state [layout l**]) '())]
+     (values (editor-state-with-layout state l**) '())]
     [else (values (editor-placement-start state vid) '())]))
 
 (define (editor-open-file! ed state path)
@@ -75,7 +75,8 @@
         (define version (engine-doc-version engine id))
         (define r (make-resource id id path* name (list id) mode version))
         (define state*
-          (struct-copy editor-state state
-                       [resources (resources-add (editor-state-resources state) r)]
-                       [next-view-id (add1 id)]))
+          (editor-state-with-next-view-id
+           (editor-state-with-resources
+            state (resources-add (editor-state-resources state) r))
+           (add1 id)))
         (values (editor-placement-start state* id) '())])]))

@@ -19,19 +19,19 @@
 (define (editor-state-submit-job state kind payload [tag #f])
   (define-values (ledger j)
     (job-submit (editor-state-jobs state) kind payload tag))
-  (values (struct-copy editor-state state [jobs ledger]) j))
+  (values (editor-state-with-jobs state ledger) j))
 
 (define (editor-state-finish-job state id result)
   (define ledger (job-finish (editor-state-jobs state) id result))
   (if (eq? ledger (editor-state-jobs state))
       state
-      (struct-copy editor-state state [jobs ledger])))
+      (editor-state-with-jobs state ledger)))
 
 (define (editor-state-forget-job state id)
   (define ledger (job-forget (editor-state-jobs state) id))
   (if (eq? ledger (editor-state-jobs state))
       state
-      (struct-copy editor-state state [jobs ledger])))
+      (editor-state-with-jobs state ledger)))
 
 (define (editor-state-pending-jobs state)
   (job-pending (editor-state-jobs state)))

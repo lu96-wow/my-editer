@@ -68,7 +68,7 @@
         (define version (engine-doc-version engine (resource-doc-id r)))
         (define rs** (resources-set-saved-version rs* (resource-id r) version))
         (values (editor-state-with-flash
-                 (struct-copy editor-state state [resources rs**])
+                 (editor-state-with-resources state rs**)
                  (format "saved: ~a" path*))
                 #t)])]))
 

@@ -80,7 +80,7 @@
     [else
      (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
      (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (struct-copy editor-state state [layout l**]) '() #t)]))
+     (values (editor-state-with-layout state l**) '() #t)]))
 
 (define (editor-focus-view ed state)
   (define vid (editor-focus-view-id state))
@@ -181,11 +181,13 @@
                                      (resource-id src-r) new-vid)
                  (editor-state-resources state1)))
            (define state2
-             (struct-copy editor-state state1
-                          [layout l4]
-                          [next-panel-id (add1 new-pid)]
-                          [next-view-id (add1 new-vid)]
-                          [resources resources*]))
+             (editor-state-with-next-panel-id
+              (editor-state-with-next-view-id
+               (editor-state-with-resources
+                (editor-state-with-layout state1 l4)
+                resources*)
+               (add1 new-vid))
+              (add1 new-pid)))
            (define ctx2
              (struct-copy layout-context ctx1
                           [state state2]
@@ -222,7 +224,7 @@
           [(not ok?) (flash state1 "close failed")]
           [else
            ;; 关闭 panel 只从布局摘掉；view / resource 仍然存在，可再 placement。
-           (define state2 (struct-copy editor-state state1 [layout l2]))
+           (define state2 (editor-state-with-layout state1 l2))
            (define ctx2
              (struct-copy layout-context ctx1 [state state2] [result l2]))
            (define-values (_ctx3 state3 actions3)
@@ -248,7 +250,7 @@
   (define p (and l id (layout-panel l id)))
   (cond
     [(and p (layout-panel-focusable? l (editor-state-layout-config state) id))
-     (struct-copy editor-state state [layout (layout-set-focus l id)])]
+     (editor-state-with-layout state (layout-set-focus l id))]
     [else state]))
 
 (define (panel-active-view state pid)
@@ -286,14 +288,14 @@
        [(press)
         (define h (layout-hit l area row col))
         (define seam (hit-seam h))
-        (define state0 (struct-copy editor-state state [select-drag #f]))
+        (define state0 (editor-state-with-select-drag state #f))
         (cond
           [seam
            (define d (layout-seam-drag-start l area row col
                                              #:config (editor-state-layout-config state)
                                              #:seam seam
                                              #:solution (hit-solution h)))
-           (values (struct-copy editor-state state0 [drag d]) '())]
+           (values (editor-state-with-drag state0 d) '())]
           [else
            (define state1 (focus-hit state0 h))
            (define cid (hit-content-id h))
@@ -305,8 +307,8 @@
                 (surface-set-point! ed state1 vid
                                     (hit-content-row h)
                                     (hit-content-col h)))
-              (values (struct-copy editor-state s2
-                                   [select-drag (select-drag cid vid)])
+              (values (editor-state-with-select-drag
+                       s2 (select-drag cid vid))
                       a2)]
              [else (values state1 '())])])]
 
@@ -319,14 +321,14 @@
              (layout-seam-drag-move l area d row col
                                     #:config (editor-state-layout-config state)))
            (values (if ok?
-                       (struct-copy editor-state state [layout l*])
+                       (editor-state-with-layout state l*)
                        state)
                    '())]
           [sd (drag-select! ed state sd row col)]
           [else (values state '())])]
 
        [(release)
-        (values (struct-copy editor-state state [drag #f] [select-drag #f]) '())]
+        (values (editor-state-with-select-drag (editor-state-with-drag state #f) #f) '())]
 
        [(scroll-up scroll-down)
         (define h (layout-hit l area row col))
@@ -361,7 +363,7 @@
     [else
      (define-values (l* ok?) (layout-panel-cycle-active-view l pid))
      (cond
-       [ok? (values (struct-copy editor-state state [layout l*]) '())]
+       [ok? (values (editor-state-with-layout state l*) '())]
        [else (flash state "sidebar: only one view")])]))
 
 ;; 通用 panel 显隐（docs 等）。
@@ -377,7 +379,7 @@
            (layout-panel-hide l area pid #:config (editor-state-layout-config state))
            (layout-panel-show l area pid)))
      (if ok?
-         (values (struct-copy editor-state state [layout l*]) '())
+         (values (editor-state-with-layout state l*) '())
          (flash state "panel toggle failed"))]))
 
 (define (editor-cycle-editor-view! ed state [step 1])
@@ -390,7 +392,7 @@
      (define-values (l* ok?)
        (layout-panel-cycle-active-view l (p:panel-id p) step))
      (if ok?
-         (values (struct-copy editor-state state [layout l*]) '())
+         (values (editor-state-with-layout state l*) '())
          (flash state "tab: panel has no views"))]))
 
 (define (editor-toggle-sidebar! ed state)
@@ -407,7 +409,7 @@
            (layout-panel-hide l area pid #:config (editor-state-layout-config state))
            (layout-panel-show l area pid)))
      (if ok?
-         (values (struct-copy editor-state state [layout l*]) '())
+         (values (editor-state-with-layout state l*) '())
          (flash state "sidebar toggle failed"))]))
 
 (define (editor-focus! ed state dir)
@@ -431,7 +433,7 @@
           [else
            (define l1 (editor-state-layout state1))
            (define l2 (layout-set-focus l1 to))
-           (define state2 (struct-copy editor-state state1 [layout l2]))
+           (define state2 (editor-state-with-layout state1 l2))
            (define ctx2
              (struct-copy layout-context ctx1 [state state2] [result l2]))
            (define-values (_ctx3 state3 actions3)

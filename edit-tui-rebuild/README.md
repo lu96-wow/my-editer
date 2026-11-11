@@ -87,7 +87,7 @@ edit-tui-rebuild/
     contributions.rkt  非 hook contribution registry
     plugin.rkt         插件描述 / 字段 -> contribution
     plugin-runtime.rkt contribution registry 执行器 + command registry -> table
-    state.rkt          纯 editor state + plugin-states + layout
+    state.rkt          纯值：editor-core（文档/布局/插件状态）+ editor-session
     context.rkt        editor = engine + hook registry + plugins
     api.rkt            插件唯一能 require 的 editor 面
     host-api.rkt       宿主装配面（额外暴露 engine 生命周期 / 渲染）
@@ -121,6 +121,7 @@ edit-tui-rebuild/
     ops.rkt
     plugins.rkt
     ownership.rkt      插件状态 owner 写回
+    state-split.rkt    core / session 更新互不污染
     host.rkt
     layers.rkt
     run.sh
@@ -303,7 +304,7 @@ sync 顺序 = 插件安装顺序。`filetree` 放在 `racket-color` 前面，保
 
 ## 插件状态
 
-插件状态是纯值，按 plugin id 分命名空间存在 `editor-state.plugin-states`。
+插件状态是纯值，按 plugin id 分命名空间存在 `editor-core.plugin-states`。
 插件回调只拿自己的 `ps`，返回自己的 `ps'`：
 
 ```racket
@@ -424,7 +425,8 @@ racket edit-tui-rebuild/test/ownership.rkt
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
 4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt`；不 require editor 内部 / host。
-5. 插件状态是纯值，按 plugin id 命名空间存在 editor state；只有 plugin runtime 按 owner 写回。
+5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
+5b. editor-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
@@ -483,7 +485,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
+1. 把 editor-session 整体移出 editor-state，host 用 app-state 包住 editor + session。
 2. completion 接 workspace / analysis，补全跨 buffer 候选。
 3. docs 接 workspace 本地定义与 C-x o 焦点切换。
 4. 文件系统变化自动刷新。

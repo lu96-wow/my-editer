@@ -8,7 +8,7 @@
          "../host/final.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(define s0 (editor-state-with-area state (rect 0 0 60 15)))
 (check-true (layout-panel-visible? (editor-state-layout s0) 'filetree))
 
 (define-values (s1 _a1) (editor-toggle-sidebar! ed s0))

@@ -10,7 +10,7 @@
          "../host/final.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s (struct-copy editor-state state [area (rect 0 0 40 10)]))
+(define s (editor-state-with-area state (rect 0 0 40 10)))
 
 (define-values (s-split _a1) (editor-split! ed s 'right))
 

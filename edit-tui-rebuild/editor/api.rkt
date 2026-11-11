@@ -50,6 +50,10 @@
 
  ;; State 只读查询：插件拿不到 constructor / plugin-states / 写入口。
  editor-state-with-flash
+ editor-state-with-layout
+ editor-state-with-pending
+ editor-state-with-input
+ editor-state-with-placement
  editor-state-resource-for-view
  editor-state-resource-for-doc
  editor-state-doc-mode

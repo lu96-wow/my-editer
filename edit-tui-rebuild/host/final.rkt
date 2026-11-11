@@ -125,7 +125,7 @@
 (define (run-actions ed state actions)
   (for/fold ([s state]) ([a (in-list actions)])
     (cond
-      [(quit-action? a) (struct-copy editor-state s [quit? #t])]
+      [(quit-action? a) (editor-state-with-quit s #t)]
       [(flash-action? a) (editor-state-with-flash s (flash-action-message a))]
       [(open-file-action? a)
        (define-values (s* more)
@@ -373,13 +373,12 @@
   (define state
     (if (mouse-event? ev)
         state1
-        (struct-copy editor-state state1 [select-drag #f])))
+        (editor-state-with-select-drag state1 #f)))
   (define command-tables (editor-command-tables ed))
   (cond
     [(resize-event? ev)
-     (struct-copy editor-state state
-                  [area (rect 0 0 (resize-event-cols ev)
-                              (resize-event-rows ev))])]
+     (editor-state-with-area
+      state (rect 0 0 (resize-event-cols ev) (resize-event-rows ev)))]
     [(paste-event? ev)
      (cond
        [(editor-input-active? state)
@@ -419,7 +418,7 @@
                          (mouse-event-col ev)))
         (run-actions ed s2 actions)])]
     [(quit-event? ev)
-     (struct-copy editor-state state [quit? #t])]
+     (editor-state-with-quit state #t)]
     [(key-event? ev)
      (define tables
        (cond
@@ -495,7 +494,7 @@
       void
       (λ ()
         (run-editor ed
-                    (struct-copy editor-state state [area area] [async? #t])
+                    (editor-state-with-async (editor-state-with-area state area) #t)
                     #:read-event (λ () (async-channel-get event-channel))
                     #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
                     #:job-runtime runtime))
