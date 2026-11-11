@@ -6,7 +6,8 @@
 ;;;   id       插件命名空间（plugin-states 的 key）
 ;;;   state    插件自己的初始纯状态
 ;;;   hooks    注册到扩展点的 handler 列表
-;;;   commands 可选：宿主安装的命令表片段；命令只拿自己的 plugin-state
+;;;   commands 可选：key-sequence -> command 的命令表；命令只拿自己的 plugin-state
+;;;   command-scope 命令作用域（默认 'global；输入栏 / placement 以后可独立）
 ;;;
 ;;; 插件只 require editor/api.rkt；不直接 require engine / hooks 实现。
 ;;; 这里为了让插件定义 hook，允许 require editor/hooks.rkt 的公开构造器。
@@ -20,15 +21,14 @@
          make-plugin
          (struct-out guarded-command)
          make-guarded-command
-         (struct-out owned-command-table)
+         (struct-out command-binding)
          plugins->hooks
          plugins->states
-         plugins->command-table
-         plugins->command-tables
          plugins->contributions)
 
 (struct plugin
-  (id state hooks commands sync services handle-job handle-timer overlays)
+  (id state hooks commands command-scope
+      sync services handle-job handle-timer overlays)
   #:transparent)
 
 ;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
@@ -38,9 +38,10 @@
   (when-fn run)
   #:transparent)
 
-;; 带 owner 的命令表。host 查表时一起拿到 owner，执行后再按 owner 写 ps。
-(struct owned-command-table
-  (owner table)
+;; 一条命令绑定。contribution registry 存 (owner, binding)；
+;; host 再从这些 binding 建 command-table（leaf 是 ordered owner/command 列表）。
+(struct command-binding
+  (keys value)
   #:transparent)
 
 (define (make-guarded-command #:when when-fn #:run run)
@@ -50,6 +51,7 @@
                      #:state [state #f]
                      #:hooks [hooks '()]
                      #:commands [commands #f]
+                     #:command-scope [command-scope 'global]
                      #:sync [sync #f]
                      #:services [services '()]
                      #:handle-job [handle-job #f]
@@ -57,6 +59,8 @@
                      #:overlays [overlays #f])
   (unless (symbol? id)
     (raise-argument-error 'make-plugin "symbol?" id))
+  (unless (symbol? command-scope)
+    (raise-argument-error 'make-plugin "symbol?" command-scope))
   (when (and sync (not (procedure? sync)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" sync))
   (when (and handle-job (not (procedure? handle-job)))
@@ -70,7 +74,8 @@
     (unless (eq? (hook-owner h) id)
       (error 'make-plugin "hook owner ~a 必须等于 plugin id ~a"
              (hook-owner h) id)))
-  (plugin id state hooks commands sync services handle-job handle-timer overlays))
+  (plugin id state hooks commands command-scope
+          sync services handle-job handle-timer overlays))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
 (define (plugins->hooks plugins)
@@ -80,17 +85,6 @@
 (define (plugins->states plugins)
   (for/fold ([h (hash)]) ([p (in-list plugins)])
     (hash-set h (plugin-id p) (plugin-state p))))
-
-;; 汇总插件命令表；先安装的插件优先。
-(define (plugins->command-table plugins)
-  (apply command-table-merge (map owned-command-table-table
-                                  (plugins->command-tables plugins))))
-
-;; host 用列表逐张查，guarded-command 不成立时继续下一张。
-(define (plugins->command-tables plugins)
-  (for/list ([p (in-list plugins)]
-             #:when (command-table? (plugin-commands p)))
-    (owned-command-table (plugin-id p) (plugin-commands p))))
 
 ;; 把插件字段翻译成统一 contribution registry。
 (define (plugins->contributions plugins)
@@ -106,6 +100,11 @@
           '())
       (if (plugin-handle-timer p)
           (list (contribution point/timer #f id 0 0 (plugin-handle-timer p)))
+          '())
+      (if (command-table? (plugin-commands p))
+          (for/list ([b (in-list (command-table-bindings (plugin-commands p)))])
+            (contribution point/command (plugin-command-scope p) id 0 0
+                          (command-binding (car b) (cadr b))))
           '())
       (append*
        (for/list ([svc (in-list (plugin-services p))])

@@ -156,13 +156,28 @@
 (define (write-command-ps state owner ps)
   (if owner (editor-state-set-plugin-state state owner ps) state))
 
+;; host 自己维护的命令表也用统一 leaf 形状：((owner . command) ...)。
+;; owner #f 表示 host 命令；插件命令的 owner 来自 command contribution。
+(define (tag-host-command-table table)
+  (command-table-from-bindings
+   (for/list ([b (in-list (command-table-bindings table))])
+     (list (car b) (list (cons #f (cadr b)))))))
+
+(define default-command-table* (tag-host-command-table default-command-table))
+(define input-command-table* (tag-host-command-table editor-input-command-table))
+(define placement-command-table* (tag-host-command-table placement-command-table))
+
 (define (run-command ed state vid owner value)
   (define ps (plugin-ps state owner))
   (cond
     ;; 插件 commands 是普通过程：(ed state ps -> values state' ps' actions)
+    ;; host 旧命令（input / placement）仍是 (ed state)；它们 owner = #f。
     [(procedure? value)
-     (define-values (state* ps* actions*) (value ed state ps))
-     (values (write-command-ps state* owner ps*) actions*)]
+     (cond
+       [owner
+        (define-values (state* ps* actions*) (value ed state ps))
+        (values (write-command-ps state* owner ps*) actions*)]
+       [else (value ed state)])]
     [(guarded-command? value)
      (define-values (state* ps* actions*)
        ((guarded-command-run value) ed state ps))
@@ -212,23 +227,27 @@
 
 ;;; ════════════════ 键盘 step ════════════════
 
+(define (command-entry-allowed? entry ed state)
+  (define owner (car entry))
+  (define value (cdr entry))
+  (or (not (guarded-command? value))
+      ((guarded-command-when-fn value) ed state (plugin-ps state owner))))
+
 (define (lookup-command tables seq ed state)
   (let loop ([ts tables])
     (cond
       [(null? ts) (values 'unbound #f #f)]
       [else
-       (define entry (car ts))
-       (define owner (owned-command-table-owner entry))
-       (define-values (status value)
-         (command-table-lookup (owned-command-table-table entry) seq))
+       (define-values (status entries) (command-table-lookup (car ts) seq))
        (case status
          [(command)
-          (cond
-            [(and (guarded-command? value)
-                  (not ((guarded-command-when-fn value)
-                        ed state (plugin-ps state owner))))
-             (loop (cdr ts))]
-            [else (values 'command value owner)])]
+          (define hit
+            (for/first ([e (in-list entries)]
+                        #:when (command-entry-allowed? e ed state))
+              e))
+          (if hit
+              (values 'command (cdr hit) (car hit))
+              (loop (cdr ts)))]
          [(prefix) (values 'prefix #f #f)]
          [else (loop (cdr ts))])])))
 
@@ -338,9 +357,9 @@
     (if e e (loop))))
 
 (define (editor-command-tables ed)
-  ;; 插件表按安装顺序先查；guarded-command 不成立时继续 host 默认表。
-  (append (plugins->command-tables (editor-plugins ed))
-          (list (owned-command-table #f default-command-table))))
+  ;; 插件命令来自 contribution registry；guard 不成立时继续 host 默认表。
+  (list (editor-command-table ed 'global)
+        default-command-table*))
 
 ;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
 (define (handle-editor-event ed state0 ev)
@@ -404,8 +423,8 @@
     [(key-event? ev)
      (define tables
        (cond
-         [(editor-input-active? state) (list editor-input-command-table)]
-         [(editor-placement-active? state) (list placement-command-table)]
+         [(editor-input-active? state) (list input-command-table*)]
+         [(editor-placement-active? state) (list placement-command-table*)]
          [else command-tables]))
      (define-values (s2 actions)
        (step ed state (key-event-token ev) tables))

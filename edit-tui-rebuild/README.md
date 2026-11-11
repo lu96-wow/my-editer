@@ -86,7 +86,7 @@ edit-tui-rebuild/
     hooks.rkt          typed hook 扩展点 / 有序 pipeline
     contributions.rkt  非 hook contribution registry
     plugin.rkt         插件描述 / 字段 -> contribution
-    plugin-runtime.rkt contribution registry 执行器（按 owner 写 plugin-state）
+    plugin-runtime.rkt contribution registry 执行器 + command registry -> table
     state.rkt          纯 editor state + plugin-states + layout
     context.rkt        editor = engine + hook registry + plugins
     api.rkt            插件唯一能 require 的 editor 面
@@ -225,7 +225,7 @@ hook 签名：
 priority 小者先；同 priority 按注册顺序。
 ```
 
-没有 registry、没有 discovery、没有依赖解析。
+hook 没有 plugin discovery / 依赖解析；非 hook 面统一走 contribution registry。
 
 ---
 
@@ -246,16 +246,26 @@ priority 小者先；同 priority 按注册顺序。
 (lambda (ed state ps) -> (values state' ps' actions))
 ```
 
-host 按 `owned-command-table` 的 owner 写回 `ps'`；插件不能写别的 owner。
-
-host 启动时按 contribution registry / command table 查找：
+插件 `#:commands` 里的每条 key binding 在构建 editor 时变成一条
+`command/<scope>` contribution；默认 scope 是 `'global`：
 
 ```text
-插件 command-table（安装顺序）
+command/<scope> -> ordered (owner, command-binding)
+```
+
+host 从 registry 建纯 `command-table`，leaf 保存 ordered `(owner . command)`
+列表；执行后按 owner 写回 `ps'`，插件不能写别的 owner。
+
+查找顺序：
+
+```text
+command/global 贡献（priority / 注册顺序）
   > host default-command-table
 ```
 
-`plugins/layout` 已经用这个机制贡献了 `C-w` / `C-x` / `C-d`，host 不再知道 split/focus 的实现。
+同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
+`plugins/layout` 已经用这个机制贡献了 `C-w` / `C-x` / `C-d`，
+host 不再知道 split/focus 的实现。
 
 如果插件命令只想在某个焦点下生效，用 `guarded-command`：
 
@@ -473,9 +483,8 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. command 纳入统一 contribution registry（owner / scope / guard）。
-2. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
-3. completion 接 workspace / analysis，补全跨 buffer 候选。
-4. docs 接 workspace 本地定义与 C-x o 焦点切换。
-5. 文件系统变化自动刷新。
-6. 固定尺寸 / hide-show 的剩余布局细节。
+1. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
+2. completion 接 workspace / analysis，补全跨 buffer 候选。
+3. docs 接 workspace 本地定义与 C-x o 焦点切换。
+4. 文件系统变化自动刷新。
+5. 固定尺寸 / hide-show 的剩余布局细节。

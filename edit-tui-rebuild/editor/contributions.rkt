@@ -5,9 +5,10 @@
 ;;; hook 有 typed context / phase；这里统一管理：
 ;;;   frame/sync       (ed state -> state')
 ;;;   frame/overlay    (ed state -> (listof editor-overlay))
-;;;   timer            (ed state timer-event -> state')
+;;;   timer            (ed state ps timer-event -> state' ps' actions)
 ;;;   job-service      kind -> handler payload -> result
-;;;   job-result       kind -> (ed state job-result-event -> state')
+;;;   job-result       kind -> (ed state ps job-result-event -> state' ps' actions)
+;;;   command          scope -> command-binding（host 建 key -> ordered command 表）
 ;;;
 ;;; 每条 contribution 都带 owner；job-service 同名冲突直接报错。
 
@@ -25,17 +26,19 @@
          point/frame-overlay
          point/timer
          point/job-service
-         point/job-result)
+         point/job-result
+         point/command)
 
 (define point/frame-sync 'frame/sync)
 (define point/frame-overlay 'frame/overlay)
 (define point/timer 'timer)
 (define point/job-service 'job-service)
 (define point/job-result 'job-result)
+(define point/command 'command)
 
 (struct contribution
   (point
-   key            ; job kind / #f
+   key            ; job kind / command scope / #f
    owner
    priority
    order

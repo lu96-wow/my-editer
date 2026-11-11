@@ -81,6 +81,14 @@
 (check-false (requires-any? "host/final.rkt" #rx"editor/(engine/store|ops/raw)")
              "host/final.rkt")
 
+;; command 从 contribution registry 来；host 不再拼插件 command-table。
+(check-false (requires-any? "host/final.rkt" #rx"plugins->command-table")
+             "host/final.rkt")
+(check-false (requires-any? "host/final.rkt" #rx"owned-command-table")
+             "host/final.rkt")
+(check-true (requires-any? "editor/plugin.rkt" #rx"point/command")
+            "editor/plugin.rkt")
+
 ;;; ════════════════ 更细的边界 ════════════════
 
 ;; 插件不能直接摸 editor 内部模块（api.rkt 例外）。
