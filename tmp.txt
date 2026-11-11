@@ -1,3 +1,10 @@
-hello, layout demo.
+core 
+纯数据 编辑 /显示数据
 
-C-w arrows split, C-b toggle filetree, C-x arrows focus, C-q quit.
+->
+editor
+use core tui -> editor operation操作面api
+操作面api分两种 携带插入点 (list lambda) 和裸的api
+操作面定义传入参数并用map 依次调用(map 参数 (list lambda))
+插件内部用裸api避免循环插件调用
+多进程需要考虑一下，但是我的想法大致模型和项目架构就是这样
