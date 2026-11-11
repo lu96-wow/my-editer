@@ -42,6 +42,7 @@
          editor-close!
          editor-focus!
          editor-cycle-sidebar-view!
+         editor-toggle-sidebar!
          editor-mouse!)
 
 ;;; ════════════════ 配置 ════════════════
@@ -403,7 +404,7 @@
   (define fp (and focus (layout-panel l focus)))
   (cond
     [(and fp (eq? (p:panel-kind fp) 'sidebar)) focus]
-    [l (for/first ([pid (in-list (layout-visible-panel-ids l))]
+    [l (for/first ([pid (in-list (layout-panel-ids l))]
                    #:when (eq? (p:panel-kind (layout-panel l pid)) 'sidebar))
          pid)]
     [else #f]))
@@ -418,6 +419,23 @@
      (cond
        [ok? (values (struct-copy editor-state state [layout l*]) '())]
        [else (flash state "sidebar: only one view")])]))
+
+(define (editor-toggle-sidebar! ed state)
+  (define l (editor-state-layout state))
+  (define area (editor-state-area state))
+  (define pid (sidebar-panel-id state))
+  (cond
+    [(or (not l) (not area) (not pid))
+     (flash state "sidebar: no panel")]
+    [else
+     (define visible? (layout-panel-visible? l pid))
+     (define-values (l* ok?)
+       (if visible?
+           (layout-panel-hide l area pid #:config editor-layout-config)
+           (layout-panel-show l area pid)))
+     (if ok?
+         (values (struct-copy editor-state state [layout l*]) '())
+         (flash state "sidebar toggle failed"))]))
 
 (define (editor-focus! ed state dir)
   (define l (editor-state-layout state))

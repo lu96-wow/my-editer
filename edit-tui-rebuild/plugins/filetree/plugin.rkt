@@ -44,19 +44,22 @@
   (and (positive? (string-length s))
        (char=? (string-ref s 0) #\.)))
 
-(define (list-entries dir show-hidden?)
+(define (default-hidden-entry? path)
+  (hidden-name? (path->string (file-name-from-path path))))
+
+(define (list-entries dir show-hidden? hidden-entry?)
   (with-handlers ([exn:fail? (λ (_) '())])
     (sort (filter (λ (p)
                     (or show-hidden?
-                        (not (hidden-name? (path->string p)))))
+                        (not (hidden-entry? p))))
                   (directory-list dir))
           string<?
           #:key path->string)))
 
-(define (scan-tree root expanded show-hidden?)
+(define (scan-tree root expanded show-hidden? hidden-entry?)
   (define (children dir depth)
     (append*
-     (for/list ([p (in-list (list-entries dir show-hidden?))])
+     (for/list ([p (in-list (list-entries dir show-hidden? hidden-entry?))])
        (define full (build-path dir p))
        (define name (path->string p))
        (define label (string-append (make-string (* 2 depth) #\space) name))
@@ -92,9 +95,11 @@
         (filetree-state-expanded st)
         (filetree-state-show-hidden? st)))
 
-(define (filetree-scan-service payload)
-  (define-values (root expanded show-hidden?) (apply values payload))
-  (scan-tree root expanded show-hidden?))
+(define (make-filetree-scan-service hidden-entry?)
+  (service 'filetree-scan
+           (λ (payload)
+             (define-values (root expanded show-hidden?) (apply values payload))
+             (scan-tree root expanded show-hidden? hidden-entry?))))
 
 (define (handle-filetree-job ed state ev)
   (cond
@@ -144,7 +149,8 @@
         (struct-copy filetree-state st [rows rows] [pending-cursor #f])]
        [else (struct-copy filetree-state st [rows rows])])]))
 
-(define (sync-filetree ed state)
+(define (make-sync-filetree hidden-entry?)
+  (λ (ed state)
   (define st (editor-state-plugin-state state 'filetree))
   (cond
     [(not (filetree-state? st)) state]
@@ -157,7 +163,7 @@
        [(not (editor-state-async? state))
         (define rows
           (if (filetree-state-stale? st)
-              (scan-tree root expanded show-hidden?)
+              (scan-tree root expanded show-hidden? hidden-entry?)
               (filetree-state-rows st)))
         (define st* (write-filetree! ed state st rows))
         (editor-state-set-plugin-state
@@ -173,7 +179,7 @@
              (values state* (struct-copy filetree-state st [pending tag]))]
             [else (values state st)]))
         (define st2 (write-filetree! ed base-state st1 (filetree-state-rows st1)))
-        (editor-state-set-plugin-state base-state 'filetree st2)])]))
+        (editor-state-set-plugin-state base-state 'filetree st2)])])))
 
 (define (filetree-focused? state vid)
   (eq? (editor-focus-view-id state) vid))
@@ -230,7 +236,8 @@
      (values (refresh-state state st* (and row (row-path row)))
              '())]))
 
-(define (make-filetree-plugin #:view vid #:root root)
+(define (make-filetree-plugin #:view vid #:root root
+                              #:hidden-entry? [hidden-entry? default-hidden-entry?])
   (define root* (simplify-path (path->complete-path root)))
   (make-plugin
    #:id 'filetree
@@ -249,6 +256,6 @@
      (make-guarded-command
       #:when (λ (ed state) (filetree-focused? state vid))
       #:run (λ (ed state) (toggle-hidden-command ed state vid)))])
-   #:sync sync-filetree
-   #:services (list (service 'filetree-scan filetree-scan-service))
+   #:sync (make-sync-filetree hidden-entry?)
+   #:services (list (make-filetree-scan-service hidden-entry?))
    #:handle-job handle-filetree-job))

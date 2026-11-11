@@ -308,6 +308,7 @@ C-x ←→↑↓       焦点在 editor panel 间移动
 C-d            关闭当前 editor panel（最后一个不允许）
 C-s            保存 / save-as / 确认
 C-q            退出（dirty -> 确认 / save-as）
+C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
@@ -353,6 +354,7 @@ racket edit-tui-rebuild/test/save-quit.rkt
 racket edit-tui-rebuild/test/tabs.rkt
 racket edit-tui-rebuild/test/color-incremental.rkt
 racket edit-tui-rebuild/test/job-async.rkt
+racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/layers.rkt
@@ -387,6 +389,8 @@ racket edit-tui-rebuild/test/layers.rkt
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - filetree 异步目录扫描：sync 提交 job，worker 返回后按 projection tag 校验；
+- C-b 显 / 隐 sidebar；
+- filetree 支持自定义 `hidden-entry?` 过滤规则；
 - 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
@@ -398,7 +402,6 @@ racket edit-tui-rebuild/test/layers.rkt
 
 还没有恢复的旧行为：
 
-- 可组合的 `hidden-entry?` 过滤规则；
 - word-color 光标 token 抑制。
 
 ---
@@ -416,7 +419,7 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. 文件系统变化自动刷新 / 可组合 hidden-entry?。
-2. 固定尺寸 / hide-show / 布局恢复。
+1. 文件系统变化自动刷新。
+2. timer 服务，迁 completion / docs。
 3. word-color 光标 token 抑制。
-4. timer 服务，迁 completion / docs。
+4. 固定尺寸 / hide-show / 布局恢复。

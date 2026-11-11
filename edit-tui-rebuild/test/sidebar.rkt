@@ -1,0 +1,22 @@
+#lang racket
+
+;;; C-b：sidebar 显 / 隐。
+
+(require rackunit
+         "../editor/host-api.rkt"
+         "../core/layout/api.rkt"
+         "../host/final.rkt")
+
+(define-values (ed state) (make-demo-editor))
+(define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))
+(check-true (layout-panel-visible? (editor-state-layout s0) 'filetree))
+
+(define-values (s1 _a1) (editor-toggle-sidebar! ed s0))
+(check-false (layout-panel-visible? (editor-state-layout s1) 'filetree))
+(check-equal? (editor-focus-panel-kind s1) 'editor)
+
+(define-values (s2 _a2) (editor-toggle-sidebar! ed s1))
+(check-true (layout-panel-visible? (editor-state-layout s2) 'filetree))
+(check-equal? (editor-focus-panel-kind s2) 'editor)
+
+(displayln "edit-tui-rebuild/test/sidebar.rkt: ok")

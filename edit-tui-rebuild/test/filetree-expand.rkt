@@ -104,4 +104,30 @@
 (define s8 (run-plugin-syncs ed s7))
 (check-true (string-contains? (engine-view-text engine 3) ".hidden"))
 
+;; 自定义 hidden-entry? 过滤规则。
+(define root2 (make-temporary-directory))
+(display-to-file "a" (build-path root2 "a.txt") #:exists 'replace)
+(display-to-file "b" (build-path root2 "b.rkt") #:exists 'replace)
+(define engine2 (make-engine))
+(void (engine-create-buffer! engine2 1 "test" ""))
+(void (engine-create-view! engine2 1 1))
+(void (engine-create-buffer! engine2 3 "*filetree*" ""))
+(void (engine-create-view! engine2 3 3))
+(define plugin2
+  (make-filetree-plugin #:view 3 #:root root2
+                        #:hidden-entry?
+                        (λ (p) (string-suffix? (path->string p) ".txt"))))
+(define ed2 (make-editor #:engine engine2
+                         #:registry (make-hook-registry '())
+                         #:plugins (list plugin2)))
+(define layout2 (make-editor-layout #:editor-view 1 #:sidebar-view 3))
+(define state2 (make-editor-state #:plugin-states (plugins->states (list plugin2))
+                                  #:area (rect 0 0 60 15)
+                                  #:layout layout2))
+(define s2b (run-plugin-syncs ed2 state2))
+(define text2 (engine-view-text engine2 3))
+(check-false (string-contains? text2 "a.txt"))
+(check-true (string-contains? text2 "b.rkt"))
+(delete-directory/files root2)
+
 (displayln "edit-tui-rebuild/test/filetree-expand.rkt: ok")
