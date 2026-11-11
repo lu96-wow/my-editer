@@ -32,7 +32,8 @@
          "input.rkt"
          "prompt.rkt"
          "close.rkt"
-         "job.rkt")
+         "job.rkt"
+         "timer.rkt")
 
 (provide
  ;; job / service 纯值
@@ -106,8 +107,9 @@
  ;; tab / close buffer
  (all-from-out "close.rkt")
 
- ;; async job state
- (all-from-out "job.rkt"))
+ ;; async job / timer state
+ (all-from-out "job.rkt")
+ (all-from-out "timer.rkt"))
 
 ;;; ════════════════ 操作面包装 ════════════════
 

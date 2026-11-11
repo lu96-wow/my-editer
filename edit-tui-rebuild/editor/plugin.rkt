@@ -26,10 +26,11 @@
          plugins->command-tables
          plugins->services
          run-plugin-job-handlers
+         run-plugin-timer-handlers
          run-plugin-syncs)
 
 (struct plugin
-  (id state hooks commands sync services handle-job)
+  (id state hooks commands sync services handle-job handle-timer)
   #:transparent)
 
 ;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
@@ -47,14 +48,17 @@
                      #:commands [commands #f]
                      #:sync [sync #f]
                      #:services [services '()]
-                     #:handle-job [handle-job #f])
+                     #:handle-job [handle-job #f]
+                     #:handle-timer [handle-timer #f])
   (unless (symbol? id)
     (raise-argument-error 'make-plugin "symbol?" id))
   (when (and sync (not (procedure? sync)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" sync))
   (when (and handle-job (not (procedure? handle-job)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-job))
-  (plugin id state hooks commands sync services handle-job))
+  (when (and handle-timer (not (procedure? handle-timer)))
+    (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-timer))
+  (plugin id state hooks commands sync services handle-job handle-timer))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
 (define (plugins->hooks plugins)
@@ -83,6 +87,11 @@
 (define (run-plugin-job-handlers ed state ev)
   (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
     (define f (plugin-handle-job p))
+    (if f (f ed s ev) s)))
+
+(define (run-plugin-timer-handlers ed state ev)
+  (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
+    (define f (plugin-handle-timer p))
     (if f (f ed s ev) s)))
 
 ;; 每帧同步阶段：按插件安装顺序显式执行。

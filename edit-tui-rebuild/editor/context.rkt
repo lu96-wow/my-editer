@@ -14,10 +14,13 @@
 (struct editor
   (engine
    registry
-   plugins)
+   plugins
+   timer-runtime)
+  #:mutable
   #:transparent)
 
 (define (make-editor #:engine engine
                      #:registry registry
-                     #:plugins [plugins '()])
-  (editor engine registry plugins))
+                     #:plugins [plugins '()]
+                     #:timer-runtime [timer-runtime #f])
+  (editor engine registry plugins timer-runtime))

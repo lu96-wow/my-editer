@@ -381,6 +381,8 @@
     (cond
       [(job-result-event? ev)
        (loop (handle-job-result ed s1 ev) cache*)]
+      [(timer-event? ev)
+       (loop (run-plugin-timer-handlers ed s1 ev) cache*)]
       [else
        (define s2 (handle-editor-event ed s1 ev))
        (if (editor-state-quit? s2)
@@ -411,6 +413,9 @@
        (start-job-runtime (plugins->services (editor-plugins ed))
                           #:event-channel event-channel
                           #:workers 2))
+     (define timer-runtime
+       (start-timer-runtime #:event-channel event-channel))
+     (editor-set-timer-runtime! ed timer-runtime)
      (dynamic-wind
       void
       (λ ()
@@ -421,7 +426,8 @@
                     #:job-runtime runtime))
       (λ ()
         (kill-thread input-thread)
-        (stop-job-runtime runtime))))))
+        (stop-job-runtime runtime)
+        (stop-timer-runtime timer-runtime))))))
 
 (module+ main
   (void (run-demo-editor)))

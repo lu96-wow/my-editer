@@ -20,6 +20,7 @@
 - `editor/placement.rkt`：打开文件后的目标 editor 选择。
 - `editor/input.rkt` / `editor/prompt.rkt`：输入栏 + save / quit prompt。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
+- `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/hooks.rkt`：显式扩展点 + 有序 pipeline。
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
@@ -39,7 +40,7 @@
 还没有：
 
 - completion / docs
-- timer / 多进程
+- 多进程
 - 插件 services
 - 完整的 keymap 配置 / 插件命令贡献
 
@@ -72,6 +73,7 @@ edit-tui-rebuild/
     input.rkt          单行输入栏
     prompt.rkt         save-path / save-confirm / quit-confirm
     job.rkt            job-result-event / job 账本 State
+    timer.rkt          timer-event / schedule / cancel / editor timer runtime
     hooks.rkt          扩展点 / 有序 pipeline
     plugin.rkt         插件值
     state.rkt          纯 editor state + plugin-states + layout
@@ -355,6 +357,7 @@ racket edit-tui-rebuild/test/tabs.rkt
 racket edit-tui-rebuild/test/color-incremental.rkt
 racket edit-tui-rebuild/test/job-async.rkt
 racket edit-tui-rebuild/test/color-word.rkt
+racket edit-tui-rebuild/test/timer.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
@@ -393,6 +396,7 @@ racket edit-tui-rebuild/test/layers.rkt
 - filetree 异步目录扫描：sync 提交 job，worker 返回后按 projection tag 校验；
 - C-b 显 / 隐 sidebar；
 - filetree 支持自定义 `hidden-entry?` 过滤规则；
+- timer runtime + 插件 `#:handle-timer`；
 - 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
@@ -420,6 +424,6 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. 文件系统变化自动刷新。
-2. timer 服务，迁 completion / docs。
+1. completion / docs 最小接入。
+2. 文件系统变化自动刷新。
 3. 固定尺寸 / hide-show / 布局恢复。
