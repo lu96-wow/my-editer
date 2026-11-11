@@ -22,9 +22,12 @@
          "../plugins/layout/plugin.rkt"
          "../plugins/filetree/plugin.rkt"
          "../plugins/resources/plugin.rkt"
+         "../plugins/completion/plugin.rkt"
+         "../plugins/docs/plugin.rkt"
          "event.rkt"
          "keymap.rkt"
          "jobs.rkt"
+         (only-in "../../core/editor.rkt" make-panel)
          "../../edit-tui/render/core.rkt"
          "../../edit-tui/config/theme/default.rkt")
 
@@ -43,6 +46,8 @@
 (define filetree-vid 3)
 (define resources-vid 4)
 (define input-vid 5)
+(define completion-vid 6)
+(define docs-vid 7)
 
 (define initial-text
   (string-append "#lang racket\n"
@@ -62,6 +67,10 @@
   (void (engine-create-view! engine resources-vid resources-vid))
   (void (engine-create-buffer! engine input-vid "*input*" ""))
   (void (engine-create-view! engine input-vid input-vid))
+  (void (engine-create-buffer! engine completion-vid "*completion*" ""))
+  (void (engine-create-view! engine completion-vid completion-vid))
+  (void (engine-create-buffer! engine docs-vid "*docs*" ""))
+  (void (engine-create-view! engine docs-vid docs-vid))
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
@@ -72,7 +81,9 @@
                          #:root (current-directory))
                         (make-resources-plugin #:view resources-vid)
                         racket-color-plugin
-                        layout-plugin))
+                        layout-plugin
+                        (make-completion-plugin #:view completion-vid)
+                        (make-docs-plugin #:view docs-vid #:panel-id 'docs)))
   (define registry (make-hook-registry (plugins->hooks plugins)))
   (define ed (make-editor #:engine engine
                           #:registry registry
@@ -80,7 +91,8 @@
 
   (define layout (make-editor-layout #:editor-view editor-vid
                                      #:status-views (list status-vid input-vid)
-                                     #:sidebar-views (list filetree-vid resources-vid)))
+                                     #:sidebar-views (list filetree-vid resources-vid)
+                                     #:docs-view docs-vid))
   ;; 初始 scratch resource：没有 path，但 mode 按 "scratch.rkt" 选 Racket。
   (define scratch-mode (doc-mode-for "scratch.rkt" initial-text))
   (define scratch
@@ -267,9 +279,21 @@
   (void (sync-status! state (editor-engine ed)))
   (void (editor-input-sync! ed state))
   (define state* (run-plugin-syncs ed state))
+  (define engine (editor-engine ed))
+  (define overlay-panels
+    (for/list ([ov (in-list (run-plugin-overlays ed state*))])
+      (make-panel (engine-view-object engine (editor-overlay-view-id ov))
+                  (editor-overlay-rect ov)
+                  (editor-overlay-borders ov)
+                  #:face (editor-overlay-face ov)
+                  #:weight (editor-overlay-weight ov)
+                  #:deep (editor-overlay-deep ov))))
+  (unless (null? overlay-panels)
+    (panels-sync! overlay-panels))
+  (define all-panels (append panels overlay-panels))
   (define focus-view (editor-focus-view ed state*))
   (define-values (cache* rows* sels*)
-    (render-display-patch panels focus-view cols rows cache))
+    (render-display-patch all-panels focus-view cols rows cache))
   (define out
     (bytes-append (if cache (bytes) (render-clear))
                   (render-pieces (append rows* sels*))))

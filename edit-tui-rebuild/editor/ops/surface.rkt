@@ -65,7 +65,7 @@
      (values state '())]
     [else
      (define version (engine-doc-version engine did))
-     (define ctx (make-change-context engine state did base-version version changes))
+     (define ctx (make-change-context ed engine state did base-version version changes))
      (define-values (_ctx state* actions)
        (run-after (editor-registry ed) 'changes ctx state))
      (values state* actions)]))
@@ -77,7 +77,7 @@
 (define (surface-insert! ed state vid text)
   (define engine (editor-engine ed))
   (define ctx0
-    (make-edit-context engine state vid 'insert
+    (make-edit-context ed engine state vid 'insert
                        #:point (current-point engine vid)
                        #:text text))
   (define-values (ctx1 state1 actions1 allow?)
@@ -117,7 +117,7 @@
 (define (surface-delete! ed state vid kind)
   (define engine (editor-engine ed))
   (define ctx0
-    (make-edit-context engine state vid kind
+    (make-edit-context ed engine state vid kind
                        #:point (current-point engine vid)
                        #:count 1))
   (define-values (ctx1 state1 actions1 allow?)

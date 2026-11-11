@@ -37,12 +37,14 @@
          editor-focus-panel-kind
          editor-focus-view-id
          editor-focus-view
+         editor-focus-content-rect
          editor-visible-editor-panels
          editor-split!
          editor-close!
          editor-focus!
          editor-cycle-sidebar-view!
          editor-toggle-sidebar!
+         editor-toggle-panel!
          editor-mouse!)
 
 ;;; ════════════════ 配置 ════════════════
@@ -71,7 +73,14 @@
                      #:deletable? #f
                      #:focusable? #t
                      #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f))))
+                     #:min-h 1 #:max-h #f)
+    'docs
+    (make-panel-rule #:splittable? #f
+                     #:hideable? #t
+                     #:deletable? #f
+                     #:focusable? #t
+                     #:min-w 1 #:max-w #f
+                     #:min-h 3 #:max-h #f))))
 
 ;;; ════════════════ 初始布局 ════════════════
 
@@ -86,7 +95,10 @@
                             #:sidebar-views [sidebar-views
                                             (if sidebar-vid (list sidebar-vid) '())]
                             #:sidebar-panel-id [sidebar-pid 'filetree]
-                            #:sidebar-w [sidebar-w 24])
+                            #:sidebar-w [sidebar-w 24]
+                            #:docs-view [docs-vid #f]
+                            #:docs-panel-id [docs-pid 'docs]
+                            #:docs-ratio [docs-ratio 20/23])
   (define editor-panel
     (p:make-panel editor-pid 'editor
                   #:views (list editor-vid)
@@ -113,19 +125,33 @@
        (unless ok?
          (error 'make-editor-layout "sidebar attach failed"))
        l*]))
+  (define l2
+    (cond
+      [(null? status-views) l1]
+      [else
+       (define status-panel
+         (p:make-panel status-pid 'status
+                       #:views status-views
+                       #:active (car status-views)
+                       #:fixed-h 1))
+       (define-values (l* ok?)
+         (layout-panel-attach l1 editor-pid 'down status-panel))
+       (unless ok?
+         (error 'make-editor-layout "status attach failed"))
+       l*]))
   (cond
-    [(null? status-views) l1]
+    [(not docs-vid) l2]
     [else
-     (define status-panel
-       (p:make-panel status-pid 'status
-                     #:views status-views
-                     #:active (car status-views)
-                     #:fixed-h 1))
-     (define-values (l2 ok?)
-       (layout-panel-attach l1 editor-pid 'down status-panel))
+     (define docs-panel
+       (p:make-panel docs-pid 'docs
+                     #:views (list docs-vid)
+                     #:active docs-vid
+                     #:borders '(up down left right)))
+     (define-values (l* ok?)
+       (layout-panel-attach l2 editor-pid 'down docs-panel #:ratio docs-ratio))
      (unless ok?
-       (error 'make-editor-layout "status attach failed"))
-     l2]))
+       (error 'make-editor-layout "docs attach failed"))
+     l*]))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -148,6 +174,13 @@
 (define (editor-focus-view ed state)
   (define vid (editor-focus-view-id state))
   (and vid (engine-view-object (editor-engine ed) vid)))
+
+;; focus panel 的内容区 rect（给 completion popup 定位）。
+(define (editor-focus-content-rect state)
+  (define l (editor-state-layout state))
+  (define area (editor-state-area state))
+  (define pid (editor-focus-panel-id state))
+  (and l area pid (layout-content-rect l area pid)))
 
 ;; 可见 editor panel（按树序）。
 (define (editor-visible-editor-panels state)
@@ -419,6 +452,22 @@
      (cond
        [ok? (values (struct-copy editor-state state [layout l*]) '())]
        [else (flash state "sidebar: only one view")])]))
+
+;; 通用 panel 显隐（docs 等）。
+(define (editor-toggle-panel! ed state pid)
+  (define l (editor-state-layout state))
+  (define area (editor-state-area state))
+  (cond
+    [(or (not l) (not area) (not pid)) (flash state "panel: no target")]
+    [else
+     (define visible? (layout-panel-visible? l pid))
+     (define-values (l* ok?)
+       (if visible?
+           (layout-panel-hide l area pid #:config editor-layout-config)
+           (layout-panel-show l area pid)))
+     (if ok?
+         (values (struct-copy editor-state state [layout l*]) '())
+         (flash state "panel toggle failed"))]))
 
 (define (editor-toggle-sidebar! ed state)
   (define l (editor-state-layout state))

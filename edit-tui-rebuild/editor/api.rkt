@@ -33,7 +33,8 @@
          "prompt.rkt"
          "close.rkt"
          "job.rkt"
-         "timer.rkt")
+         "timer.rkt"
+         "overlay.rkt")
 
 (provide
  ;; job / service 纯值
@@ -109,7 +110,8 @@
 
  ;; async job / timer state
  (all-from-out "job.rkt")
- (all-from-out "timer.rkt"))
+ (all-from-out "timer.rkt")
+ (all-from-out "overlay.rkt"))
 
 ;;; ════════════════ 操作面包装 ════════════════
 

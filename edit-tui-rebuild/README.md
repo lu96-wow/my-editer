@@ -3,7 +3,7 @@
 这是按“core 纯数据 → editor 操作面 + 扩展点 → plugins → host”模型重建的第一阶段。
 
 目标不是复制旧 `edit-tui`，而是先立住 **操作面 / 裸 API / 扩展点 / 插件状态** 这四条边界，
-再把 resources、completion、docs 逐步接进来。
+继续把 workspace / analysis / 多进程等能力接进来。
 
 ---
 
@@ -21,6 +21,9 @@
 - `editor/input.rkt` / `editor/prompt.rkt`：输入栏 + save / quit prompt。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
+- `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
+- `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受。
+- `plugins/docs/`：docs 面板 / 本地预览 / 异步库文档 / C-x d。
 - `editor/hooks.rkt`：显式扩展点 + 有序 pipeline。
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
@@ -39,7 +42,9 @@
 
 还没有：
 
-- completion / docs
+- completion 的 workspace / analysis 完整候选
+- docs 的跨 buffer workspace 本地定义
+- C-x o completion/docs 焦点切换
 - 多进程
 - 插件 services
 - 完整的 keymap 配置 / 插件命令贡献
@@ -74,6 +79,7 @@ edit-tui-rebuild/
     prompt.rkt         save-path / save-confirm / quit-confirm
     job.rkt            job-result-event / job 账本 State
     timer.rkt          timer-event / schedule / cancel / editor timer runtime
+    overlay.rkt        插件浮层描述
     hooks.rkt          扩展点 / 有序 pipeline
     plugin.rkt         插件值
     state.rkt          纯 editor state + plugin-states + layout
@@ -88,6 +94,8 @@ edit-tui-rebuild/
     racket-color/plugin.rkt
     layout/plugin.rkt
     filetree/plugin.rkt
+    completion/plugin.rkt
+    docs/plugin.rkt
 
   host/
     final.rkt          单 editor + status + 键盘循环
@@ -310,6 +318,13 @@ C-x ←→↑↓       焦点在 editor panel 间移动
 C-d            关闭当前 editor panel（最后一个不允许）
 C-s            保存 / save-as / 确认
 C-q            退出（dirty -> 确认 / save-as）
+C-o            手动打开补全
+Up / Down      移动候选
+Tab            下一个候选
+Enter          接受候选（菜单关闭时仍是普通换行）
+Esc / C-g      关闭补全
+M-d            查看光标处标识符文档
+C-x d          显 / 隐 docs panel
 C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
@@ -358,6 +373,7 @@ racket edit-tui-rebuild/test/color-incremental.rkt
 racket edit-tui-rebuild/test/job-async.rkt
 racket edit-tui-rebuild/test/color-word.rkt
 racket edit-tui-rebuild/test/timer.rkt
+racket edit-tui-rebuild/test/completion-docs.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
@@ -397,6 +413,8 @@ racket edit-tui-rebuild/test/layers.rkt
 - C-b 显 / 隐 sidebar；
 - filetree 支持自定义 `hidden-entry?` 过滤规则；
 - timer runtime + 插件 `#:handle-timer`；
+- completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
+- docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
@@ -424,6 +442,7 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. completion / docs 最小接入。
-2. 文件系统变化自动刷新。
-3. 固定尺寸 / hide-show / 布局恢复。
+1. completion 接 workspace / analysis，补全跨 buffer 候选。
+2. docs 接 workspace 本地定义与 C-x o 焦点切换。
+3. 文件系统变化自动刷新。
+4. 固定尺寸 / hide-show 的剩余布局细节。

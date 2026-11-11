@@ -44,7 +44,8 @@
 ;; caret-delta : 提交后光标相对移动量（负 = 左移）
 ;; result  : after 阶段的 changes；before 为 #f
 (struct edit-context
-  (engine
+  (editor
+   engine
    state
    view-id
    kind
@@ -56,19 +57,20 @@
    delete-plan)   ; #f | (listof 'backspace|'delete)，before hook 可覆盖删除序列
   #:transparent)
 
-(define (make-edit-context engine state view-id kind
+(define (make-edit-context editor engine state view-id kind
                            #:point point
                            #:text [text #f]
                            #:count [count 1]
                            #:caret-delta [caret-delta 0]
                            #:result [result #f]
                            #:delete-plan [delete-plan #f])
-  (edit-context engine state view-id kind point text count caret-delta result delete-plan))
+  (edit-context editor engine state view-id kind point text count caret-delta result delete-plan))
 
 ;; 一次 surface 操作产生的 change 批次；用于着色 / workspace / completion 等派生。
 ;; operation 固定为 'changes。
 (struct change-context
-  (engine
+  (editor
+   engine
    state
    doc-id
    base-version   ; 本次操作前的 document version
@@ -76,8 +78,8 @@
    changes)
   #:transparent)
 
-(define (make-change-context engine state doc-id base-version version changes)
-  (change-context engine state doc-id base-version version changes))
+(define (make-change-context editor engine state doc-id base-version version changes)
+  (change-context editor engine state doc-id base-version version changes))
 
 ;;; ════════════════ hook 定义 ════════════════
 
