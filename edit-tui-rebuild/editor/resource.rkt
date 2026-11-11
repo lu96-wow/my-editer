@@ -1,0 +1,99 @@
+#lang racket
+
+;;; edit-tui-rebuild/editor/resource.rkt —— 已打开文档的纯状态
+;;;
+;;; resource 记录“一个已打开文档”的身份 / 路径 / view / mode / 保存基线。
+;;; 它不持有 engine 句柄；doc-id / view-id 仍是 id。
+;;;
+;;; 当前只做打开 / 去重 / mode / opened 集合；保存 / dirty UI 后续再补。
+
+(require racket/path
+         racket/string)
+
+(provide (struct-out resource)
+         (struct-out resources)
+         empty-resources
+         make-resource
+         resources-add
+         resources-list
+         resources-find-path
+         resources-find-doc
+         resources-find-view
+         resources-set-views
+         resources-set-saved-version
+         resources-set-path
+         resources-opened-paths
+         resource-normalize-path
+         resource-dirty?)
+
+(struct resource
+  (id            ; resource id（当前 = doc-id）
+   doc-id
+   path          ; normalized absolute path string | #f
+   name
+   views         ; (listof view-id)
+   mode          ; 'racket | 'text
+   saved-version)
+  #:transparent)
+
+(struct resources (items) #:transparent)
+
+(define empty-resources (resources '()))
+
+(define (make-resource id doc-id path name views mode saved-version)
+  (resource id doc-id path name views mode saved-version))
+
+(define (resources-add rs r)
+  (resources (cons r (resources-items rs))))
+
+(define (resources-list rs)
+  (reverse (resources-items rs)))
+
+(define (resources-find-path rs path)
+  (and path
+       (for/first ([r (in-list (resources-items rs))]
+                   #:when (equal? (resource-path r) path))
+         r)))
+
+(define (resources-find-doc rs did)
+  (for/first ([r (in-list (resources-items rs))]
+              #:when (equal? (resource-doc-id r) did))
+    r))
+
+(define (resources-find-view rs vid)
+  (for/first ([r (in-list (resources-items rs))]
+              #:when (memv vid (resource-views r)))
+    r))
+
+(define (resources-set-views rs id views)
+  (resources
+   (for/list ([r (in-list (resources-items rs))])
+     (if (equal? (resource-id r) id)
+         (struct-copy resource r [views views])
+         r))))
+
+(define (resources-set-path rs id path name mode)
+  (resources
+   (for/list ([r (in-list (resources-items rs))])
+     (if (equal? (resource-id r) id)
+         (struct-copy resource r [path path] [name name] [mode mode])
+         r))))
+
+(define (resources-set-saved-version rs id version)
+  (resources
+   (for/list ([r (in-list (resources-items rs))])
+     (if (equal? (resource-id r) id)
+         (struct-copy resource r [saved-version version])
+         r))))
+
+(define (resources-opened-paths rs)
+  (for/fold ([h (hash)]) ([r (in-list (resources-items rs))])
+    (if (resource-path r)
+        (hash-set h (resource-path r) #t)
+        h)))
+
+(define (resource-normalize-path p)
+  (path->string (simplify-path (path->complete-path p))))
+
+(define (resource-dirty? r version)
+  (and version (not (eq? version (resource-saved-version r)))))

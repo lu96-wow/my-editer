@@ -14,6 +14,7 @@
          (struct-out undo-command)
          (struct-out redo-command)
          (struct-out kill-line-command)
+         (struct-out save-command)
          (struct-out quit-command)
          default-command-table)
 
@@ -24,6 +25,7 @@
 (struct undo-command () #:transparent)
 (struct redo-command () #:transparent)
 (struct kill-line-command () #:transparent)
+(struct save-command () #:transparent)
 (struct quit-command () #:transparent)
 
 (define (nav dir) (move-command dir #f))
@@ -55,4 +57,5 @@
    [(key 'pagedown)  (scroll-command 'page-down)]
    [(key 'z 'ctrl)   (undo-command)]
    [(key 'y 'ctrl)   (redo-command)]
+   [(key 's 'ctrl)   (save-command)]
    [(key 'q 'ctrl)   (quit-command)]))

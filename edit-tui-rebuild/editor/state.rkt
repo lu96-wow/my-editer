@@ -8,7 +8,8 @@
 ;;;
 ;;; area / pending / flash 是宿主也要用的公共状态。
 
-(require "../core/api.rkt")
+(require "../core/api.rkt"
+         "resource.rkt")
 
 (provide (struct-out editor-state)
          make-editor-state
@@ -17,7 +18,11 @@
          editor-state-with-flash
          editor-state-clear-flash
          editor-state-with-pending
-         editor-state-clear-pending)
+         editor-state-clear-pending
+         editor-state-resource-for-view
+         editor-state-resource-for-doc
+         editor-state-doc-mode
+         editor-state-opened-paths)
 
 (struct editor-state
   (plugin-states   ; hash: plugin-id -> opaque pure value
@@ -28,7 +33,10 @@
    layout          ; layout | #f（core/layout 的纯值）
    drag            ; layout seam drag | #f
    next-view-id    ; 新 split 使用的 view id
-   next-panel-id)  ; 新 split 使用的 panel id
+   next-panel-id   ; 新 split 使用的 panel id
+   resources       ; resources：已打开文档
+   placement       ; view-id | #f：等待放入 editor panel
+   input)          ; input-state | #f：单行输入栏
   #:transparent)
 
 (define (make-editor-state
@@ -40,9 +48,13 @@
          #:layout [layout #f]
          #:drag [drag #f]
          #:next-view-id [next-view-id 10]
-         #:next-panel-id [next-panel-id 100])
+         #:next-panel-id [next-panel-id 100]
+         #:resources [resources empty-resources]
+         #:placement [placement #f]
+         #:input [input #f])
   (editor-state plugin-states pending quit? flash area
-                layout drag next-view-id next-panel-id))
+                layout drag next-view-id next-panel-id
+                resources placement input))
 
 (define (editor-state-plugin-state state owner)
   (hash-ref (editor-state-plugin-states state) owner #f))
@@ -67,3 +79,18 @@
   (if (null? (editor-state-pending state))
       state
       (struct-copy editor-state state [pending '()])))
+
+;;; ════════════════ resource 查询 ════════════════
+
+(define (editor-state-resource-for-view state vid)
+  (and vid (resources-find-view (editor-state-resources state) vid)))
+
+(define (editor-state-resource-for-doc state did)
+  (and did (resources-find-doc (editor-state-resources state) did)))
+
+(define (editor-state-doc-mode state did)
+  (define r (editor-state-resource-for-doc state did))
+  (and r (resource-mode r)))
+
+(define (editor-state-opened-paths state)
+  (resources-opened-paths (editor-state-resources state)))

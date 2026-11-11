@@ -33,12 +33,14 @@
          editor-layout-panels
          editor-focus-panel-id
          editor-focus-panel
+         editor-focus-panel-kind
          editor-focus-view-id
          editor-focus-view
          editor-visible-editor-panels
          editor-split!
          editor-close!
          editor-focus!
+         editor-cycle-sidebar-view!
          editor-mouse!)
 
 ;;; ════════════════ 配置 ════════════════
@@ -60,6 +62,13 @@
                      #:deletable? #f
                      #:focusable? #f
                      #:min-w 1 #:max-w #f
+                     #:min-h 1 #:max-h #f)
+    'sidebar
+    (make-panel-rule #:splittable? #f
+                     #:hideable? #t
+                     #:deletable? #f
+                     #:focusable? #t
+                     #:min-w 1 #:max-w #f
                      #:min-h 1 #:max-h #f))))
 
 ;;; ════════════════ 初始布局 ════════════════
@@ -68,7 +77,14 @@
 (define (make-editor-layout #:editor-view editor-vid
                             #:editor-panel-id [editor-pid 'editor]
                             #:status-view [status-vid #f]
-                            #:status-panel-id [status-pid 'status])
+                            #:status-views [status-views
+                                           (if status-vid (list status-vid) '())]
+                            #:status-panel-id [status-pid 'status]
+                            #:sidebar-view [sidebar-vid #f]
+                            #:sidebar-views [sidebar-views
+                                            (if sidebar-vid (list sidebar-vid) '())]
+                            #:sidebar-panel-id [sidebar-pid 'filetree]
+                            #:sidebar-w [sidebar-w 24])
   (define editor-panel
     (p:make-panel editor-pid 'editor
                   #:views (list editor-vid)
@@ -78,19 +94,36 @@
     (make-layout #:root (make-leaf editor-pid)
                  #:panels (hash editor-pid editor-panel)
                  #:focus editor-pid))
+  ;; 先挂 sidebar 到 editor 左边，再挂 status 到 editor 下面：
+  ;; sidebar 会横跨 editor + status 的完整高度。
+  (define l1
+    (cond
+      [(null? sidebar-views) l0]
+      [else
+       (define sidebar-panel
+         (p:make-panel sidebar-pid 'sidebar
+                       #:views sidebar-views
+                       #:active (car sidebar-views)
+                       #:fixed-w sidebar-w
+                       #:borders '(right)))
+       (define-values (l* ok?)
+         (layout-panel-attach l0 editor-pid 'left sidebar-panel))
+       (unless ok?
+         (error 'make-editor-layout "sidebar attach failed"))
+       l*]))
   (cond
-    [(not status-vid) l0]
+    [(null? status-views) l1]
     [else
      (define status-panel
        (p:make-panel status-pid 'status
-                     #:views (list status-vid)
-                     #:active status-vid
+                     #:views status-views
+                     #:active (car status-views)
                      #:fixed-h 1))
-     (define-values (l1 ok?)
-       (layout-panel-attach l0 editor-pid 'down status-panel))
+     (define-values (l2 ok?)
+       (layout-panel-attach l1 editor-pid 'down status-panel))
      (unless ok?
        (error 'make-editor-layout "status attach failed"))
-     l1]))
+     l2]))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -101,6 +134,10 @@
 (define (editor-focus-panel state)
   (define l (editor-state-layout state))
   (and l (layout-panel l (layout-focus l))))
+
+(define (editor-focus-panel-kind state)
+  (define p (editor-focus-panel state))
+  (and p (p:panel-kind p)))
 
 (define (editor-focus-view-id state)
   (define p (editor-focus-panel state))
@@ -289,7 +326,7 @@
            (define cpanel (and cid l (layout-panel l cid)))
            (define vid (and cid (panel-active-view state1 cid)))
            (cond
-             [(and vid cpanel (eq? (p:panel-kind cpanel) 'editor))
+             [(and vid cpanel (memq (p:panel-kind cpanel) '(editor sidebar)))
               (surface-set-point! ed state1 vid
                                   (hit-content-row h)
                                   (hit-content-col h))]
@@ -323,6 +360,29 @@
        [else (values state '())])]))
 
 ;;; ════════════════ focus ════════════════
+
+;; 侧栏 tab：filetree <-> resources。
+(define (sidebar-panel-id state)
+  (define l (editor-state-layout state))
+  (define focus (and l (layout-focus l)))
+  (define fp (and focus (layout-panel l focus)))
+  (cond
+    [(and fp (eq? (p:panel-kind fp) 'sidebar)) focus]
+    [l (for/first ([pid (in-list (layout-visible-panel-ids l))]
+                   #:when (eq? (p:panel-kind (layout-panel l pid)) 'sidebar))
+         pid)]
+    [else #f]))
+
+(define (editor-cycle-sidebar-view! ed state)
+  (define l (editor-state-layout state))
+  (define pid (sidebar-panel-id state))
+  (cond
+    [(not pid) (flash state "sidebar: no panel")]
+    [else
+     (define-values (l* ok?) (layout-panel-cycle-active-view l pid))
+     (cond
+       [ok? (values (struct-copy editor-state state [layout l*]) '())]
+       [else (flash state "sidebar: only one view")])]))
 
 (define (editor-focus! ed state dir)
   (define l (editor-state-layout state))

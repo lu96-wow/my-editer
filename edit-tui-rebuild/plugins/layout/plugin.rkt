@@ -21,6 +21,9 @@
 (define (close-command ed state)
   (editor-close! ed state))
 
+(define (cycle-sidebar-command ed state)
+  (editor-cycle-sidebar-view! ed state))
+
 (define layout-command-table
   (keys
    [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
@@ -31,7 +34,8 @@
    [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]
    [(key 'x 'ctrl) (key 'down)  (focus-command 'down)]
-   [(key 'd 'ctrl)              close-command]))
+   [(key 'd 'ctrl)              close-command]
+   [(key 'x 'ctrl) (key 'b)     cycle-sidebar-command]))
 
 (define layout-plugin
   (make-plugin

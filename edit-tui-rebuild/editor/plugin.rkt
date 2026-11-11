@@ -18,14 +18,26 @@
 
 (provide (struct-out plugin)
          make-plugin
+         (struct-out guarded-command)
+         make-guarded-command
          plugins->hooks
          plugins->states
          plugins->command-table
+         plugins->command-tables
          run-plugin-syncs)
 
 (struct plugin
   (id state hooks commands sync)
   #:transparent)
+
+;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
+;; 这样插件可以贡献 Enter / C-r，而不抢 editor 的 Enter。
+(struct guarded-command
+  (when-fn run)
+  #:transparent)
+
+(define (make-guarded-command #:when when-fn #:run run)
+  (guarded-command when-fn run))
 
 (define (make-plugin #:id id
                      #:state [state #f]
@@ -49,10 +61,13 @@
 
 ;; 汇总插件命令表；先安装的插件优先。
 (define (plugins->command-table plugins)
-  (apply command-table-merge
-         (for/list ([p (in-list plugins)]
-                    #:when (command-table? (plugin-commands p)))
-           (plugin-commands p))))
+  (apply command-table-merge (plugins->command-tables plugins)))
+
+;; host 用列表逐张查，guarded-command 不成立时继续下一张。
+(define (plugins->command-tables plugins)
+  (for/list ([p (in-list plugins)]
+             #:when (command-table? (plugin-commands p)))
+    (plugin-commands p)))
 
 ;; 每帧同步阶段：按插件安装顺序显式执行。
 ;; sync : (editor state -> state')

@@ -1,0 +1,81 @@
+#lang racket
+
+;;; edit-tui-rebuild/editor/open.rkt —— 打开文件 / 去重 / placement
+;;;
+;;; 对齐旧行为：
+;;;   已打开且 view 挂在 panel 上 -> 聚焦已有 panel
+;;;   已打开但 detached          -> placement（不新建 doc）
+;;;   未打开                     -> 读文件 / 新建 doc+view / 加 resource / placement
+;;;
+;;; IO 只在 host 解释 open-file-action 时发生。
+
+(require racket/file
+         racket/path
+         "../core/layout/api.rkt"
+         (prefix-in p: "../core/panel/api.rkt")
+         "engine/api.rkt"
+         "context.rkt"
+         "state.rkt"
+         "resource.rkt"
+         "mode.rkt"
+         "layout.rkt"
+         "placement.rkt")
+
+(provide editor-open-file!
+         editor-focus-view!)
+
+(define (focus-existing-resource state r)
+  (define l (editor-state-layout state))
+  (define vid (and (pair? (resource-views r)) (car (resource-views r))))
+  (define pid (and l vid (layout-panel-for-view l vid)))
+  (cond
+    [(not vid)
+     (values (editor-state-with-flash state "open: resource has no view") '())]
+    [pid
+     (define-values (l* ok?)
+       (layout-panel-set-active-view l pid vid))
+     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
+     (values (struct-copy editor-state state [layout l**]) '())]
+    [else
+     (values (editor-placement-start state vid) '())]))
+
+;; 聚焦一个已经存在的 view：挂在 panel 上就切 active + 聚焦；detached 就 placement。
+(define (editor-focus-view! ed state vid)
+  (define l (editor-state-layout state))
+  (define pid (and l vid (layout-panel-for-view l vid)))
+  (cond
+    [(not vid) (values (editor-state-with-flash state "focus-view: no view") '())]
+    [pid
+     (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
+     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
+     (values (struct-copy editor-state state [layout l**]) '())]
+    [else (values (editor-placement-start state vid) '())]))
+
+(define (editor-open-file! ed state path)
+  (define path* (resource-normalize-path path))
+  (define existing (resources-find-path (editor-state-resources state) path*))
+  (cond
+    [existing (focus-existing-resource state existing)]
+    [else
+     (define text
+       (with-handlers ([exn:fail? (λ (_) #f)])
+         (file->string path*)))
+     (cond
+       [(not text)
+        (values (editor-state-with-flash state (format "open failed: ~a" path*)) '())]
+       [else
+        (define engine (editor-engine ed))
+        (define id (editor-state-next-view-id state))
+        (define mode (doc-mode-for path* text))
+        (define name
+          (let ([n (file-name-from-path path*)])
+            (if n (path->string n) path*)))
+        (void (engine-create-buffer! engine id name text))
+        (void (engine-create-view! engine id id))
+        (define version (engine-doc-version engine id))
+        (define r (make-resource id id path* name (list id) mode version))
+        (define state*
+          (struct-copy editor-state state
+                       [resources (resources-add (editor-state-resources state) r)]
+                       [next-view-id (add1 id)]))
+        (values (editor-placement-start state* id) '())])]))

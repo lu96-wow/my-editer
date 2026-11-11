@@ -19,19 +19,24 @@
 (define (requires-any? rel pattern)
   (regexp-match? pattern (src rel)))
 
+;; 纯语言库 / 纯 face 值可以复用；旧 editor / boot / host 不行。
+
 (define plugin-files
   '("plugins/pair/plugin.rkt"
     "plugins/indent/plugin.rkt"
     "plugins/racket-color/plugin.rkt"
-    "plugins/layout/plugin.rkt"))
+    "plugins/layout/plugin.rkt"
+    "plugins/filetree/plugin.rkt"
+    "plugins/resources/plugin.rkt"))
 
 (for ([f (in-list plugin-files)])
   ;; 插件只能经 editor/api.rkt 接触 editor。
   (check-true (regexp-match? #rx"editor/api\\.rkt" (src f)) f)
   (check-false (requires-any? f #rx"\\.\\./editor/(engine|ops|host-api|context|hooks|state)") f)
-  ;; 允许纯语言库；不允许旧 edit-tui 的 editor / boot / host。
-  (check-false (requires-any? f #rx"\\.\\./\\.\\./edit-tui/(core|app|boot|host|render|edit|filetree|chrome|resources)")
-               f)
+  ;; 允许纯语言库 / face；不允许旧 edit-tui 的 editor / boot / host。
+  (check-false
+   (requires-any? f #rx"\\.\\./\\.\\./edit-tui/(app|boot|host|render|edit|filetree|chrome|resources|core/(base|command|engine|focus|layout|panel|projection|resource))")
+   f)
   (check-false (requires-any? f #rx"/host/") f))
 
 ;; raw 是唯一直接调用 engine 操作面的 ops 模块。

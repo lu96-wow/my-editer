@@ -18,7 +18,11 @@
   (define ed (make-editor #:engine engine
                           #:registry (make-hook-registry (plugins->hooks plugins))
                           #:plugins plugins))
-  (define state (make-editor-state #:plugin-states (plugins->states plugins)))
+  (define r (make-resource 1 1 (resource-normalize-path "test.rkt") "test"
+                           (list 1) 'racket (engine-doc-version engine 1)))
+  (define state (make-editor-state
+                 #:plugin-states (plugins->states plugins)
+                 #:resources (resources-add empty-resources r)))
   (values engine ed state))
 
 ;;; 1. surface 走 hook：pair 自动补全

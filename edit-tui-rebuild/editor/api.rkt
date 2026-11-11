@@ -18,12 +18,18 @@
 (require "../core/api.rkt"
          "engine/api.rkt"
          "state.rkt"
+         "resource.rkt"
+         "mode.rkt"
          "context.rkt"
          "hooks.rkt"
          "plugin.rkt"
          "action.rkt"
          "ops/surface.rkt"
-         "layout.rkt")
+         "layout.rkt"
+         "placement.rkt"
+         "open.rkt"
+         "input.rkt"
+         "prompt.rkt")
 
 (provide
  ;; core 值词汇：插件只拿构造器 / 查询 / 纯变换，不拿 buffer 编辑壳。
@@ -40,6 +46,8 @@
 
  ;; State / 插件 / hook
  (all-from-out "state.rkt")
+ (all-from-out "resource.rkt")
+ (all-from-out "mode.rkt")
  (all-from-out "context.rkt")
  (all-from-out "hooks.rkt")
  (all-from-out "plugin.rkt")
@@ -79,7 +87,15 @@
  editor-ensure!
 
  ;; layout 操作面 + 查询 + 扩展点
- (all-from-out "layout.rkt"))
+ (all-from-out "layout.rkt")
+
+ ;; placement / 打开文件
+ (all-from-out "placement.rkt")
+ (all-from-out "open.rkt")
+
+ ;; 输入栏 / save / quit prompt
+ (all-from-out "input.rkt")
+ (all-from-out "prompt.rkt"))
 
 ;;; ════════════════ 操作面包装 ════════════════
 

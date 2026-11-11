@@ -61,6 +61,6 @@
               0)
 (check-equal? (engine-view-point-column (editor-engine ed)
                                         (editor-focus-view-id s-click))
-              0)
+              1)
 
 (displayln "edit-tui-rebuild/test/mouse.rkt: ok")

@@ -19,6 +19,8 @@
          "../plugins/indent/plugin.rkt"
          "../plugins/racket-color/plugin.rkt"
          "../plugins/layout/plugin.rkt"
+         "../plugins/filetree/plugin.rkt"
+         "../plugins/resources/plugin.rkt"
          "event.rkt"
          "keymap.rkt"
          "../../edit-tui/render/core.rkt"
@@ -28,12 +30,16 @@
          make-demo-editor
          run-demo-editor
          render-frame
-         sync-status!)
+         sync-status!
+         handle-editor-event)
 
 ;;; ════════════════ 初始文档 ════════════════
 
 (define editor-vid 1)
 (define status-vid 2)
+(define filetree-vid 3)
+(define resources-vid 4)
+(define input-vid 5)
 
 (define initial-text
   (string-append "#lang racket\n"
@@ -47,11 +53,21 @@
   (void (engine-create-view! engine editor-vid editor-vid))
   (void (engine-create-buffer! engine status-vid "*status*" ""))
   (void (engine-create-view! engine status-vid status-vid))
+  (void (engine-create-buffer! engine filetree-vid "*filetree*" ""))
+  (void (engine-create-view! engine filetree-vid filetree-vid))
+  (void (engine-create-buffer! engine resources-vid "*resources*" ""))
+  (void (engine-create-view! engine resources-vid resources-vid))
+  (void (engine-create-buffer! engine input-vid "*input*" ""))
+  (void (engine-create-view! engine input-vid input-vid))
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
   (define plugins (list pair-plugin
                         indent-plugin
+                        (make-filetree-plugin
+                         #:view filetree-vid
+                         #:root (current-directory))
+                        (make-resources-plugin #:view resources-vid)
                         racket-color-plugin
                         layout-plugin))
   (define registry (make-hook-registry (plugins->hooks plugins)))
@@ -60,28 +76,46 @@
                           #:plugins plugins))
 
   (define layout (make-editor-layout #:editor-view editor-vid
-                                     #:status-view status-vid))
+                                     #:status-views (list status-vid input-vid)
+                                     #:sidebar-views (list filetree-vid resources-vid)))
+  ;; 初始 scratch resource：没有 path，但 mode 按 "scratch.rkt" 选 Racket。
+  (define scratch-mode (doc-mode-for "scratch.rkt" initial-text))
+  (define scratch
+    (make-resource editor-vid editor-vid #f "scratch.rkt"
+                   (list editor-vid) scratch-mode
+                   (engine-doc-version engine editor-vid)))
   (define state
     (make-editor-state #:plugin-states (plugins->states plugins)
                        #:area (rect 0 0 80 24)
                        #:layout layout
                        #:next-view-id 10
-                       #:next-panel-id 100))
+                       #:next-panel-id 100
+                       #:resources (resources-add empty-resources scratch)
+                       #:input (make-input-state #:panel-id 'status
+                                                 #:status-view status-vid
+                                                 #:input-view input-vid)))
   (values ed state))
 
 ;;; ════════════════ action 解释 ════════════════
 
-(define (run-actions state actions)
+(define (run-actions ed state actions)
   (for/fold ([s state]) ([a (in-list actions)])
     (cond
       [(quit-action? a) (struct-copy editor-state s [quit? #t])]
       [(flash-action? a) (editor-state-with-flash s (flash-action-message a))]
+      [(open-file-action? a)
+       (define-values (s* more)
+         (editor-open-file! ed s (open-file-action-path a)))
+       (if (null? more) s* (run-actions ed s* more))]
       [else s])))
 
 ;;; ════════════════ 命令 ════════════════
 
 (define (need-view state)
   (editor-focus-view-id state))
+
+(define (editor-focused? state)
+  (eq? (editor-focus-panel-kind state) 'editor))
 
 (define (flash state text)
   (values (editor-state-with-flash state text) '()))
@@ -90,14 +124,18 @@
   (cond
     ;; 插件 commands 是普通过程：(ed state -> values state actions)
     [(procedure? value) (value ed state)]
+    [(guarded-command? value)
+     ((guarded-command-run value) ed state)]
     [(insert-command? value)
-     (if vid
-         (editor-insert! ed state vid (insert-command-text value))
-         (flash state "insert: no focused editor view"))]
+     (cond
+       [(not vid) (flash state "insert: no focused editor view")]
+       [(not (editor-focused? state)) (flash state "insert: focus is not editor")]
+       [else (editor-insert! ed state vid (insert-command-text value))])]
     [(delete-command? value)
-     (if vid
-         (editor-delete! ed state vid (delete-command-kind value))
-         (flash state "delete: no focused editor view"))]
+     (cond
+       [(not vid) (flash state "delete: no focused editor view")]
+       [(not (editor-focused? state)) (flash state "delete: focus is not editor")]
+       [else (editor-delete! ed state vid (delete-command-kind value))])]
     [(move-command? value)
      (if vid
          (editor-move! ed state vid
@@ -109,26 +147,51 @@
          (editor-scroll! ed state vid (scroll-command-which value))
          (flash state "scroll: no focused editor view"))]
     [(undo-command? value)
-     (if vid (editor-undo! ed state vid) (flash state "undo: no focused editor view"))]
+     (cond
+       [(or (not vid) (not (editor-focused? state)))
+        (flash state "undo: focus is not editor")]
+       [else (editor-undo! ed state vid)])]
     [(redo-command? value)
-     (if vid (editor-redo! ed state vid) (flash state "redo: no focused editor view"))]
+     (cond
+       [(or (not vid) (not (editor-focused? state)))
+        (flash state "redo: focus is not editor")]
+       [else (editor-redo! ed state vid)])]
     [(kill-line-command? value)
-     (if vid
-         (editor-kill-line! ed state vid)
-         (flash state "kill-line: no focused editor view"))]
+     (cond
+       [(or (not vid) (not (editor-focused? state)))
+        (flash state "kill-line: focus is not editor")]
+       [else (editor-kill-line! ed state vid)])]
+    [(save-command? value)
+     (editor-save-command ed state)]
     [(quit-command? value)
-     (values state (list (quit-action)))]
+     (editor-request-quit ed state)]
     [else
      (values (editor-state-with-flash state (format "not a command: ~a" value))
              '())]))
 
 ;;; ════════════════ 键盘 step ════════════════
 
-(define (step ed state tok table)
+(define (lookup-command tables seq ed state)
+  (let loop ([ts tables])
+    (cond
+      [(null? ts) (values 'unbound #f)]
+      [else
+       (define-values (status value) (command-table-lookup (car ts) seq))
+       (case status
+         [(command)
+          (cond
+            [(and (guarded-command? value)
+                  (not ((guarded-command-when-fn value) ed state)))
+             (loop (cdr ts))]
+            [else (values 'command value)])]
+         [(prefix) (values 'prefix #f)]
+         [else (loop (cdr ts))])])))
+
+(define (step ed state tok tables)
   (define s0 (editor-state-clear-flash state))
   (define pending (editor-state-pending s0))
   (define seq (append pending (list tok)))
-  (let-values ([(status value) (command-table-lookup table seq)])
+  (let-values ([(status value) (lookup-command tables seq ed s0)])
     (case status
       [(command)
        (run-command ed (editor-state-clear-pending s0) (need-view s0) value)]
@@ -139,10 +202,14 @@
        (define text (key-text tok))
        (define vid (need-view s1))
        (cond
-         [(and text (null? pending) vid)
+         [(and text (null? pending) (editor-input-active? s1))
+          (editor-input-self-insert s1 tok)]
+         [(and text (null? pending) vid (editor-focused? s1))
           (editor-insert! ed s1 vid text)]
          [(and text (null? pending) (not vid))
           (values (editor-state-with-flash s1 "insert: no focused editor view") '())]
+         [(and text (null? pending) (not (editor-focused? s1)))
+          (values (editor-state-with-flash s1 "insert: focus is not editor") '())]
          [else
           (values (editor-state-with-flash
                    s1
@@ -157,17 +224,25 @@
   (define line (add1 (or (and vid (engine-view-point-line engine vid)) 0)))
   (define col (add1 (or (and vid (engine-view-point-column engine vid)) 0)))
   (define panes (length (or (editor-visible-editor-panels state) '())))
+  (define r (editor-state-resource-for-view state vid))
+  (define name
+    (if r (or (resource-path r) (resource-name r)) "scratch.rkt"))
+  (define dirty?
+    (and r (resource-dirty? r (engine-doc-version engine (resource-doc-id r)))))
   (define pending (editor-state-pending state))
   (define pending-text
     (and (pair? pending)
          (format " [~a]" (string-join (map key->string pending) " "))))
+  (define placement (and (editor-placement-active? state) "placement"))
   (define flash (editor-state-flash state))
   (string-join
    (filter values
-           (list "scratch.rkt"
+           (list name
+                 (and dirty? "*")
                  (format "~a:~a" line col)
                  (format "panes:~a" panes)
                  "pair+indent"
+                 placement
                  pending-text
                  (and (positive? (string-length flash)) flash)))
    "  "))
@@ -187,6 +262,7 @@
   ;; status 是 host 投影，先写好，避免派生插件在下一帧才发现它的 version 变了。
   (panels-sync! panels)
   (void (sync-status! state (editor-engine ed)))
+  (void (editor-input-sync! ed state))
   (define state* (run-plugin-syncs ed state))
   (define focus-view (editor-focus-view ed state*))
   (define-values (cache* rows* sels*)
@@ -204,46 +280,88 @@
     (define e (tui-event->app type data mods))
     (if e e (loop))))
 
+(define (editor-command-tables ed)
+  ;; 插件表按安装顺序先查；guarded-command 不成立时继续 host 默认表。
+  (append (plugins->command-tables (editor-plugins ed))
+          (list default-command-table)))
+
+;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
+(define (handle-editor-event ed state0 ev)
+  ;; 输入栏是抢占式的：非 key / paste 事件先取消本次输入，再处理事件。
+  (define state
+    (if (and (editor-input-active? state0)
+             (not (key-event? ev))
+             (not (paste-event? ev)))
+        (editor-input-close state0)
+        state0))
+  (define command-tables (editor-command-tables ed))
+  (cond
+    [(resize-event? ev)
+     (struct-copy editor-state state
+                  [area (rect 0 0 (resize-event-cols ev)
+                              (resize-event-rows ev))])]
+    [(paste-event? ev)
+     (cond
+       [(editor-input-active? state)
+        (define-values (s2 actions) (editor-input-paste! state (paste-event-bytes ev)))
+        (run-actions ed s2 actions)]
+       [else
+     (define vid (editor-focus-view-id state))
+     (cond
+       [(not vid) (editor-state-with-flash state "paste: no focused editor view")]
+       [(not (editor-focused? state))
+        (editor-state-with-flash state "paste: focus is not editor")]
+       [else
+        (define-values (s2 actions)
+          (editor-paste! ed state vid (paste-event-bytes ev)))
+        (run-actions ed s2 actions)])])]
+    [(mouse-event? ev)
+     (cond
+       [(editor-placement-active? state)
+        (define-values (s2 actions2 handled?)
+          (editor-placement-mouse! ed state
+                                   (mouse-event-row ev)
+                                   (mouse-event-col ev)))
+        (cond
+          [handled? (run-actions ed s2 actions2)]
+          [else
+           (define-values (s3 actions3)
+             (editor-mouse! ed state
+                            (mouse-event-token ev)
+                            (mouse-event-row ev)
+                            (mouse-event-col ev)))
+           (run-actions ed s3 actions3)])]
+       [else
+        (define-values (s2 actions)
+          (editor-mouse! ed state
+                         (mouse-event-token ev)
+                         (mouse-event-row ev)
+                         (mouse-event-col ev)))
+        (run-actions ed s2 actions)])]
+    [(quit-event? ev)
+     (struct-copy editor-state state [quit? #t])]
+    [(key-event? ev)
+     (define tables
+       (cond
+         [(editor-input-active? state) (list editor-input-command-table)]
+         [(editor-placement-active? state) (list placement-command-table)]
+         [else command-tables]))
+     (define-values (s2 actions)
+       (step ed state (key-event-token ev) tables))
+     (run-actions ed s2 actions)]
+    [else state]))
+
 (define (run-editor ed state #:write-bytes [write-bytes (λ (b) (void))])
-  ;; 插件命令优先于 host 默认表。
-  (define command-table
-    (command-table-merge (plugins->command-table (editor-plugins ed))
-                         default-command-table))
   (let loop ([s state] [cache #f])
     (define-values (s1 cache* bytes)
       (render-frame ed s cache))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
     (define ev (read-app-event))
-    (cond
-      [(resize-event? ev)
-       (define area (rect 0 0 (resize-event-cols ev) (resize-event-rows ev)))
-       (loop (struct-copy editor-state s1 [area area]) #f)]
-      [(paste-event? ev)
-       (define vid (editor-focus-view-id s1))
-       (cond
-         [vid
-          (define-values (s2 actions)
-            (editor-paste! ed s1 vid (paste-event-bytes ev)))
-          (loop (run-actions s2 actions) cache*)]
-         [else (loop (editor-state-with-flash s1 "paste: no focused editor view") cache*)])]
-      [(mouse-event? ev)
-       (define-values (s2 actions)
-         (editor-mouse! ed s1
-                        (mouse-event-token ev)
-                        (mouse-event-row ev)
-                        (mouse-event-col ev)))
-       (loop (run-actions s2 actions) cache*)]
-      [(quit-event? ev)
-       (struct-copy editor-state s1 [quit? #t])]
-      [(key-event? ev)
-       (define-values (s2 actions)
-         (step ed s1 (key-event-token ev) command-table))
-       (define s3 (run-actions s2 actions))
-       (if (editor-state-quit? s3)
-           s3
-           (loop s3 cache*))]
-      [else (loop s1 cache*)])))
+    (define s2 (handle-editor-event ed s1 ev))
+    (if (editor-state-quit? s2)
+        s2
+        (loop s2 (if (resize-event? ev) #f cache*)))))
 
 ;;; ════════════════ 终端入口 ════════════════
 

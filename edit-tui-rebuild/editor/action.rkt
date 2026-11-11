@@ -6,7 +6,9 @@
 ;;; 第一阶段只有 quit / flash 两种；以后 open/save/job 也走这里。
 
 (provide (struct-out quit-action)
-         (struct-out flash-action))
+         (struct-out flash-action)
+         (struct-out open-file-action))
 
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
+(struct open-file-action (path) #:transparent)

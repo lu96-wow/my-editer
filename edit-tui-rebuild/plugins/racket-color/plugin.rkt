@@ -11,12 +11,24 @@
 ;;; syntax > word > bracket），暂不做多 face 合成。等 core/face 搬进新树后再升级。
 
 (require "../../editor/api.rkt"
-         "../../../edit-tui/lang/racket/api.rkt")
+         "../../../edit-tui/lang/racket/api.rkt"
+         "../../../edit-tui/core/face/api.rkt")
 
 (provide racket-color-plugin)
 
 ;; doc-id -> (cons version face-track)
 (define empty-color-cache (hash))
+
+;; 与旧 edit/color.rkt 相同的层序：
+;;   括号背景 -> 同词前景 -> 语法前景
+(define (bracket-role? role)
+  (and role
+       (string-prefix? (symbol->string role) "bracket-depth-")))
+
+(define (role->face-layer role)
+  (if (bracket-role? role)
+      (face #f role '())
+      (face role #f '())))
 
 (define (role-at roles i)
   (and roles
@@ -26,10 +38,14 @@
 (define (line->faces syntax word bracket)
   (define n (vector-length syntax))
   (for/vector ([i (in-range n)])
-    (or (role-at syntax i)
-        (role-at word i)
-        (role-at bracket i)
-        #f)))
+    (define f #f)
+    (define br (role-at bracket i))
+    (when br (set! f (compose-face f (role->face-layer br))))
+    (define wr (role-at word i))
+    (when wr (set! f (compose-face f (role->face-layer wr))))
+    (define sr (role-at syntax i))
+    (when sr (set! f (compose-face f (role->face-layer sr))))
+    f))
 
 (define (color-state->face-track cs)
   (for/list ([syntax (in-vector (color-state-syntax-roles cs))]
@@ -55,14 +71,19 @@
            [(racket-text? text)
             (define cs (color-open text))
             (cons version (color-state->face-track cs))]
-           [else (cons version '())]))
-       (define track (cdr entry))
-       (define key (list did version 'racket-color))
-       (for ([vid (in-list vids)])
-         (engine-set-view-face-track! engine vid track
-                                      #:base-version version
-                                      #:key key))
-       (hash-set cache did entry)]))
+           ;; 非 Racket 文档（status / filetree / 普通文本）不碰 face track，
+           ;; 否则会把 UI 面板自己的 face 清掉。
+           [else #f]))
+       (cond
+         [(not entry) cache]
+         [else
+          (define track (cdr entry))
+          (define key (list did version 'racket-color))
+          (for ([vid (in-list vids)])
+            (engine-set-view-face-track! engine vid track
+                                         #:base-version version
+                                         #:key key))
+          (hash-set cache did entry)])]))
   (define new-cache
     (for/fold ([cache (hash)]) ([did (in-list (engine-doc-ids engine))])
       (sync-doc cache did)))
