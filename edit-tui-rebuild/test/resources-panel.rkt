@@ -9,7 +9,9 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../features/placement/api.rkt"
+         "../host/open.rkt")
 
 (define root (make-temporary-directory))
 (define file (build-path root "one.rkt"))

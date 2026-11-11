@@ -5,6 +5,7 @@
 (require rackunit
          racket/string
          "../editor/host-api.rkt"
+         "../host/layout.rkt"
          "../plugins/racket-color/plugin.rkt"
          "../../edit-tui/core/face/api.rkt")
 

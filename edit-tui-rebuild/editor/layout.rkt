@@ -29,129 +29,29 @@
 
 (provide (struct-out layout-context)
          make-layout-context
-         editor-layout-config
-         make-editor-layout
          editor-layout-panels
          editor-focus-panel-id
          editor-focus-panel
          editor-focus-panel-kind
          editor-focus-view-id
          editor-focus-view
+         editor-focus-view-if-attached!
          editor-focus-content-rect
          editor-visible-editor-panels
          editor-split!
          editor-close!
          editor-focus!
          editor-cycle-sidebar-view!
+         editor-cycle-editor-view!
          editor-toggle-sidebar!
          editor-toggle-panel!
          editor-mouse!)
 
 ;;; ════════════════ 配置 ════════════════
 
-(define editor-layout-config
-  (make-layout-config
-   #:rules
-   (hash
-    'editor
-    (make-panel-rule #:splittable? #t
-                     #:hideable? #f
-                     #:deletable? #t
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f)
-    'status
-    (make-panel-rule #:splittable? #f
-                     #:hideable? #f
-                     #:deletable? #f
-                     #:focusable? #f
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f)
-    'sidebar
-    (make-panel-rule #:splittable? #f
-                     #:hideable? #t
-                     #:deletable? #f
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 1 #:max-h #f)
-    'docs
-    (make-panel-rule #:splittable? #f
-                     #:hideable? #t
-                     #:deletable? #f
-                     #:focusable? #t
-                     #:min-w 1 #:max-w #f
-                     #:min-h 3 #:max-h #f))))
 
 ;;; ════════════════ 初始布局 ════════════════
 
-;; editor 叶子 + 可选 status 固定在底部 1 行。
-(define (make-editor-layout #:editor-view editor-vid
-                            #:editor-panel-id [editor-pid 'editor]
-                            #:status-view [status-vid #f]
-                            #:status-views [status-views
-                                           (if status-vid (list status-vid) '())]
-                            #:status-panel-id [status-pid 'status]
-                            #:sidebar-view [sidebar-vid #f]
-                            #:sidebar-views [sidebar-views
-                                            (if sidebar-vid (list sidebar-vid) '())]
-                            #:sidebar-panel-id [sidebar-pid 'filetree]
-                            #:sidebar-w [sidebar-w 24]
-                            #:docs-view [docs-vid #f]
-                            #:docs-panel-id [docs-pid 'docs]
-                            #:docs-ratio [docs-ratio 20/23])
-  (define editor-panel
-    (p:make-panel editor-pid 'editor
-                  #:views (list editor-vid)
-                  #:active editor-vid
-                  #:borders '(up down left right)))
-  (define l0
-    (make-layout #:root (make-leaf editor-pid)
-                 #:panels (hash editor-pid editor-panel)
-                 #:focus editor-pid))
-  ;; 先挂 sidebar 到 editor 左边，再挂 status 到 editor 下面：
-  ;; sidebar 会横跨 editor + status 的完整高度。
-  (define l1
-    (cond
-      [(null? sidebar-views) l0]
-      [else
-       (define sidebar-panel
-         (p:make-panel sidebar-pid 'sidebar
-                       #:views sidebar-views
-                       #:active (car sidebar-views)
-                       #:fixed-w sidebar-w
-                       #:borders '(right)))
-       (define-values (l* ok?)
-         (layout-panel-attach l0 editor-pid 'left sidebar-panel))
-       (unless ok?
-         (error 'make-editor-layout "sidebar attach failed"))
-       l*]))
-  (define l2
-    (cond
-      [(null? status-views) l1]
-      [else
-       (define status-panel
-         (p:make-panel status-pid 'status
-                       #:views status-views
-                       #:active (car status-views)
-                       #:fixed-h 1))
-       (define-values (l* ok?)
-         (layout-panel-attach l1 editor-pid 'down status-panel))
-       (unless ok?
-         (error 'make-editor-layout "status attach failed"))
-       l*]))
-  (cond
-    [(not docs-vid) l2]
-    [else
-     (define docs-panel
-       (p:make-panel docs-pid 'docs
-                     #:views (list docs-vid)
-                     #:active docs-vid
-                     #:borders '(up down left right)))
-     (define-values (l* ok?)
-       (layout-panel-attach l2 editor-pid 'down docs-panel #:ratio docs-ratio))
-     (unless ok?
-       (error 'make-editor-layout "docs attach failed"))
-     l*]))
 
 ;;; ════════════════ 查询 ════════════════
 
@@ -170,6 +70,17 @@
 (define (editor-focus-view-id state)
   (define p (editor-focus-panel state))
   (and p (p:panel-active p)))
+
+;; focus 一个已经挂在 panel 上的 view；detached -> attached? = #f，由调用方 placement。
+(define (editor-focus-view-if-attached! ed state vid)
+  (define l (editor-state-layout state))
+  (define pid (and l vid (layout-panel-for-view l vid)))
+  (cond
+    [(not pid) (values state '() #f)]
+    [else
+     (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
+     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
+     (values (struct-copy editor-state state [layout l**]) '() #t)]))
 
 (define (editor-focus-view ed state)
   (define vid (editor-focus-view-id state))
@@ -253,7 +164,7 @@
         (define new-pid (editor-state-next-panel-id state1))
         (define new-vid (editor-state-next-view-id state1))
         (define-values (l2 ok?)
-          (layout-split l1 from dir new-pid #:config editor-layout-config))
+          (layout-split l1 from dir new-pid #:config (editor-state-layout-config state)))
         (cond
           [(not ok?) (flash state1 "split failed")]
           [else
@@ -306,7 +217,7 @@
        [else
         (define l1 (editor-state-layout state1))
         (define-values (l2 ok?)
-          (layout-panel-remove l1 from #:config editor-layout-config))
+          (layout-panel-remove l1 from #:config (editor-state-layout-config state)))
         (cond
           [(not ok?) (flash state1 "close failed")]
           [else
@@ -336,7 +247,7 @@
   (define id (hit-panel-id h))
   (define p (and l id (layout-panel l id)))
   (cond
-    [(and p (layout-panel-focusable? l editor-layout-config id))
+    [(and p (layout-panel-focusable? l (editor-state-layout-config state) id))
      (struct-copy editor-state state [layout (layout-set-focus l id)])]
     [else state]))
 
@@ -379,7 +290,7 @@
         (cond
           [seam
            (define d (layout-seam-drag-start l area row col
-                                             #:config editor-layout-config
+                                             #:config (editor-state-layout-config state)
                                              #:seam seam
                                              #:solution (hit-solution h)))
            (values (struct-copy editor-state state0 [drag d]) '())]
@@ -406,7 +317,7 @@
           [d
            (define-values (l* ok?)
              (layout-seam-drag-move l area d row col
-                                    #:config editor-layout-config))
+                                    #:config (editor-state-layout-config state)))
            (values (if ok?
                        (struct-copy editor-state state [layout l*])
                        state)
@@ -463,11 +374,24 @@
      (define visible? (layout-panel-visible? l pid))
      (define-values (l* ok?)
        (if visible?
-           (layout-panel-hide l area pid #:config editor-layout-config)
+           (layout-panel-hide l area pid #:config (editor-state-layout-config state))
            (layout-panel-show l area pid)))
      (if ok?
          (values (struct-copy editor-state state [layout l*]) '())
          (flash state "panel toggle failed"))]))
+
+(define (editor-cycle-editor-view! ed state [step 1])
+  (define p (editor-focus-panel state))
+  (cond
+    [(or (not p) (not (eq? (p:panel-kind p) 'editor)))
+     (flash state "tab: focus is not editor")]
+    [else
+     (define l (editor-state-layout state))
+     (define-values (l* ok?)
+       (layout-panel-cycle-active-view l (p:panel-id p) step))
+     (if ok?
+         (values (struct-copy editor-state state [layout l*]) '())
+         (flash state "tab: panel has no views"))]))
 
 (define (editor-toggle-sidebar! ed state)
   (define l (editor-state-layout state))
@@ -480,7 +404,7 @@
      (define visible? (layout-panel-visible? l pid))
      (define-values (l* ok?)
        (if visible?
-           (layout-panel-hide l area pid #:config editor-layout-config)
+           (layout-panel-hide l area pid #:config (editor-state-layout-config state))
            (layout-panel-show l area pid)))
      (if ok?
          (values (struct-copy editor-state state [layout l*]) '())
@@ -493,7 +417,7 @@
   (cond
     [(or (not l) (not area)) (flash state "focus: no layout / area")]
     [else
-     (define to (layout-focus-neighbor l area editor-layout-config from dir))
+     (define to (layout-focus-neighbor l area (editor-state-layout-config state) from dir))
      (cond
        [(not to) (flash state "no focus neighbor")]
        [else

@@ -1,5 +1,8 @@
 #lang racket
 
+(require "plugin.rkt"
+         "contributions.rkt")
+
 ;;; edit-tui-rebuild/editor/context.rkt —— editor 实例
 ;;;
 ;;; editor = 可变 engine + 不可变 hook registry + 插件列表。
@@ -9,18 +12,23 @@
          make-editor
          editor-engine
          editor-registry
+         editor-contributions
          editor-plugins)
 
 (struct editor
   (engine
    registry
+   contributions
    plugins
-   timer-runtime)
+   timer-service)
   #:mutable
   #:transparent)
 
 (define (make-editor #:engine engine
                      #:registry registry
                      #:plugins [plugins '()]
-                     #:timer-runtime [timer-runtime #f])
-  (editor engine registry plugins timer-runtime))
+                     #:contributions [contributions
+                                     (make-contribution-registry
+                                      (plugins->contributions plugins))]
+                     #:timer-service [timer-service #f])
+  (editor engine registry contributions plugins timer-service))

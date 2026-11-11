@@ -12,7 +12,9 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../plugins/filetree/plugin.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../features/placement/api.rkt"
+         "../host/open.rkt")
 
 (define-values (ed state) (make-demo-editor))
 (define s0 (struct-copy editor-state state [area (rect 0 0 60 15)]))

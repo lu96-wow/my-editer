@@ -10,6 +10,7 @@
 
 (require "../core/api.rkt"
          "../core/job/api.rkt"
+         "../core/layout/config.rkt"
          "resource.rkt")
 
 (provide (struct-out editor-state)
@@ -35,6 +36,7 @@
    quit?
    flash           ; string，一次性；下一次 step 入口清空
    area            ; rect | #f
+   layout-config   ; layout-config：具体 kind 规则（宿主选择）
    layout          ; layout | #f（core/layout 的纯值）
    drag            ; layout seam drag | #f
    next-view-id    ; 新 split 使用的 view id
@@ -53,6 +55,7 @@
          #:quit? [quit? #f]
          #:flash [flash ""]
          #:area [area #f]
+         #:layout-config [layout-config empty-layout-config]
          #:layout [layout #f]
          #:drag [drag #f]
          #:next-view-id [next-view-id 10]
@@ -64,7 +67,7 @@
          #:jobs [jobs empty-job-ledger]
          #:async? [async? #f])
   (editor-state plugin-states pending quit? flash area
-                layout drag next-view-id next-panel-id
+                layout-config layout drag next-view-id next-panel-id
                 resources placement input select-drag jobs async?))
 
 (define (editor-state-plugin-state state owner)

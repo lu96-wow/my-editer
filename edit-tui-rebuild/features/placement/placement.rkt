@@ -12,15 +12,12 @@
 ;;; placement 是 State 上的一个临时模式；host 在 placement 激活时只用
 ;;; placement-command-table，不混入全局插件命令。
 
-(require "../core/command/api.rkt"
-         "../core/layout/api.rkt"
-         "../core/focus/api.rkt"
-         "../core/projection/api.rkt"
-         (prefix-in p: "../core/panel/api.rkt")
-         "engine/api.rkt"
-         "context.rkt"
-         "state.rkt"
-         "layout.rkt")
+(require "../../core/command/api.rkt"
+         "../../core/layout/api.rkt"
+         "../../core/focus/api.rkt"
+         "../../core/projection/api.rkt"
+         (prefix-in p: "../../core/panel/api.rkt")
+         "../../editor/api.rkt")
 
 (provide editor-placement-active?
          editor-placement-view-id
@@ -102,7 +99,7 @@
   (define area (editor-state-area state))
   (let loop ([at from] [seen '()])
     (define next (and l area
-                      (layout-focus-neighbor l area editor-layout-config at dir)))
+                      (layout-focus-neighbor l area (editor-state-layout-config state) at dir)))
     (cond
       [(not next) #f]
       [(memv next seen) #f]

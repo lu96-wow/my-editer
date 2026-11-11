@@ -30,9 +30,6 @@
 (define (prev-tab-command ed state)
   (editor-cycle-editor-view! ed state -1))
 
-(define (close-buffer-command ed state)
-  (editor-close-buffer-command ed state))
-
 (define (toggle-sidebar-command ed state)
   (editor-toggle-sidebar! ed state))
 
@@ -50,7 +47,6 @@
    [(key 'x 'ctrl) (key 'b)     cycle-sidebar-command]
    [(key 'x 'ctrl) (key 'n)     next-tab-command]
    [(key 'x 'ctrl) (key 'p)     prev-tab-command]
-   [(key 'x 'ctrl) (key 'k)     close-buffer-command]
    [(key 'b 'ctrl)              toggle-sidebar-command]))
 
 (define layout-plugin

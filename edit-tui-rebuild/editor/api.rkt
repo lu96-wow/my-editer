@@ -27,11 +27,6 @@
          "action.rkt"
          "ops/surface.rkt"
          "layout.rkt"
-         "placement.rkt"
-         "open.rkt"
-         "input.rkt"
-         "prompt.rkt"
-         "close.rkt"
          "job.rkt"
          "timer.rkt"
          "overlay.rkt")
@@ -58,8 +53,11 @@
  (all-from-out "mode.rkt")
  (all-from-out "context.rkt")
  (all-from-out "hooks.rkt")
- (all-from-out "plugin.rkt")
  (all-from-out "action.rkt")
+
+ ;; 插件构造面：不导出 host 编排函数
+ plugin? make-plugin
+ guarded-command? make-guarded-command
 
  ;; 只读查询
  engine-view-object
@@ -96,17 +94,6 @@
 
  ;; layout 操作面 + 查询 + 扩展点
  (all-from-out "layout.rkt")
-
- ;; placement / 打开文件
- (all-from-out "placement.rkt")
- (all-from-out "open.rkt")
-
- ;; 输入栏 / save / quit prompt
- (all-from-out "input.rkt")
- (all-from-out "prompt.rkt")
-
- ;; tab / close buffer
- (all-from-out "close.rkt")
 
  ;; async job / timer state
  (all-from-out "job.rkt")

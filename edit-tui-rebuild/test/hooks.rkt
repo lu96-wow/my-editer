@@ -109,4 +109,22 @@
 (check-equal? (editor-state-plugin-state state4* 'test) 1)
 (check-equal? (map flash-action-message actions4) '("changes-seen"))
 
+;;; 5. 插入点 / owner 校验
+
+(check-exn exn:fail? (λ () (make-hook #:owner 'test #:id 'bad
+                                       #:operation 'not-a-point
+                                       #:phase 'transform
+                                       #:fn (λ (ctx ps) (values ctx ps '() #t)))))
+(check-exn exn:fail? (λ () (make-hook #:owner 'test #:id 'bad-phase
+                                       #:operation 'insert
+                                       #:phase 'weird
+                                       #:fn (λ (ctx ps) (values ctx ps '() #t)))))
+(check-exn exn:fail? (λ () (make-plugin
+                            #:id 'test
+                            #:hooks (list (make-hook #:owner 'other
+                                                     #:id 'bad-owner
+                                                     #:operation 'insert
+                                                     #:phase 'transform
+                                                     #:fn (λ (ctx ps) (values ctx ps '() #t)))))))
+
 (displayln "edit-tui-rebuild/test/hooks.rkt: ok")

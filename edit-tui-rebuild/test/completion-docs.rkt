@@ -11,7 +11,8 @@
          "../core/layout/api.rkt"
          "../plugins/completion/plugin.rkt"
          "../host/final.rkt"
-         "../host/event.rkt")
+         "../host/event.rkt"
+         "../host/timers.rkt")
 
 ;;; ════════════════ 手动打开 / 接受 / docs ════════════════
 
@@ -61,7 +62,7 @@
 (define-values (t1 _c _b) (render-frame ed2 t0 #f))
 (define ch (make-async-channel))
 (define trt (start-timer-runtime #:event-channel ch))
-(editor-set-timer-runtime! ed2 trt)
+(editor-set-timer-service! ed2 (timer-runtime-service trt))
 (engine-set-view-cursor! (editor-engine ed2) 1 3 #:column 3)
 (define-values (t2 _a) (editor-insert! ed2 t1 1 "m"))
 (define ct2 (editor-state-plugin-state t2 'completion))

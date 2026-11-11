@@ -9,7 +9,8 @@
          racket/string
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../host/layout.rkt")
 
 ;;; 1. layout 插件贡献 split / focus / close 命令
 (define-values (ed state) (make-demo-editor))

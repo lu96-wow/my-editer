@@ -8,7 +8,12 @@
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../features/input/api.rkt"
+         "../features/placement/api.rkt"
+         "../host/close.rkt"
+         "../host/prompt.rkt"
+         "../host/open.rkt")
 
 (define root (make-temporary-directory))
 (define (make-file name text)

@@ -4,7 +4,8 @@
 
 (require rackunit
          racket/async-channel
-         "../editor/host-api.rkt")
+         "../editor/host-api.rkt"
+         "../host/timers.rkt")
 
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))
@@ -26,7 +27,7 @@
 
 (define ch (make-async-channel))
 (define rt (start-timer-runtime #:event-channel ch))
-(editor-set-timer-runtime! ed rt)
+(editor-set-timer-service! ed (timer-runtime-service rt))
 
 (define id (editor-schedule-timer! ed 10))
 (check-true (exact-nonnegative-integer? id))

@@ -17,14 +17,18 @@
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
 - `editor/layout.rkt`：布局操作面（split / close / focus / mouse）+ layout 扩展点。
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
-- `editor/placement.rkt`：打开文件后的目标 editor 选择。
-- `editor/input.rkt` / `editor/prompt.rkt`：输入栏 + save / quit prompt。
+- `features/placement/`：打开文件后的目标 editor 选择。
+- `features/input/`：输入栏状态 / 编辑接口。
+- `host/open.rkt` / `host/prompt.rkt` / `host/close.rkt`：打开 / 保存退出 / 关闭 buffer。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
 - `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受。
 - `plugins/docs/`：docs 面板 / 本地预览 / 异步库文档 / C-x d。
-- `editor/hooks.rkt`：显式扩展点 + 有序 pipeline。
+- `editor/points.rkt`：插入点表（name / kind / phases / context），make-hook 校验 operation/phase。
+- `editor/hooks.rkt`：typed hook 扩展点 + 有序 pipeline。
+- `editor/contributions.rkt`：非 hook 扩展点的统一 registry（sync / overlay / timer / job-service / job-result）。
+- `editor/plugin.rkt`：插件描述 + 字段聚合；`editor/plugin-runtime.rkt`：registry 执行器。
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行缩进（最小版）。
@@ -74,13 +78,15 @@ edit-tui-rebuild/
     layout.rkt         布局操作面：split / close / focus + layout hooks
     resource.rkt       已打开文档：path / view / mode / saved-version
     mode.rkt           .rkt / #lang racket -> racket，否则 text
-    placement.rkt      打开文件后的目标 editor 选择
-    input.rkt          单行输入栏
-    prompt.rkt         save-path / save-confirm / quit-confirm
+
     job.rkt            job-result-event / job 账本 State
     timer.rkt          timer-event / schedule / cancel / editor timer runtime
     overlay.rkt        插件浮层描述
-    hooks.rkt          扩展点 / 有序 pipeline
+    points.rkt         插入点表 / kind / phase / context 校验
+    hooks.rkt          typed hook 扩展点 / 有序 pipeline
+    contributions.rkt  非 hook contribution registry
+    plugin.rkt         插件描述 / 字段 -> contribution
+    plugin-runtime.rkt contribution registry 执行器
     plugin.rkt         插件值
     state.rkt          纯 editor state + plugin-states + layout
     context.rkt        editor = engine + hook registry + plugins
@@ -230,7 +236,7 @@ priority 小者先；同 priority 按注册顺序。
 (lambda (ed state) -> (values state' actions))
 ```
 
-host 启动时按表顺序查找：
+host 启动时按 contribution registry / command table 查找：
 
 ```text
 插件 command-table（安装顺序）
@@ -385,6 +391,8 @@ racket edit-tui-rebuild/test/layers.rkt
 ## 设计规则
 
 1. `core/` 不放 hook、不放插件、不放 IO。
+1b. `editor/layout.rkt` 只做通用布局操作；具体 editor/status/sidebar/docs 装配在 `host/layout.rkt`。
+1c. 插件 API 不导出 host 编排函数；host-api 才导出 plugin runner / open / prompt。
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
 4. 插件只 require `editor/api.rkt`。
@@ -413,6 +421,11 @@ racket edit-tui-rebuild/test/layers.rkt
 - C-b 显 / 隐 sidebar；
 - filetree 支持自定义 `hidden-entry?` 过滤规则；
 - timer runtime + 插件 `#:handle-timer`；
+- 插入点表 + hook owner / phase 校验；
+- 非 hook 扩展面统一 contribution registry；
+- job-result 按 kind 派发；同名 job-service 构建时报错；
+- 通用 layout ops 与 host 布局装配分离；
+- plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
@@ -442,7 +455,8 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. completion 接 workspace / analysis，补全跨 buffer 候选。
-2. docs 接 workspace 本地定义与 C-x o 焦点切换。
-3. 文件系统变化自动刷新。
-4. 固定尺寸 / hide-show 的剩余布局细节。
+1. 拆 editor-state：input / placement / select-drag / async? 等字段下沉到 feature / app state。
+2. completion 接 workspace / analysis，补全跨 buffer 候选。
+3. docs 接 workspace 本地定义与 C-x o 焦点切换。
+4. 文件系统变化自动刷新。
+5. 固定尺寸 / hide-show 的剩余布局细节。

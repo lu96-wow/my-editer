@@ -7,7 +7,9 @@
          racket/path
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../features/placement/api.rkt"
+         "../host/open.rkt")
 
 (define root (make-temporary-directory))
 (define (make-file name text)

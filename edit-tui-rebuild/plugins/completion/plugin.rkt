@@ -16,7 +16,9 @@
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
          "../../../edit-tui/lang/racket/api.rkt"
-         "../docs/api.rkt")
+         "../docs/api.rkt"
+         "../../features/input/api.rkt"
+         "../../features/placement/api.rkt")
 
 (provide make-completion-plugin
          (struct-out completion-state))

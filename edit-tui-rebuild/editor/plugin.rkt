@@ -12,9 +12,9 @@
 ;;; 这里为了让插件定义 hook，允许 require editor/hooks.rkt 的公开构造器。
 
 (require "../core/command/api.rkt"
+         "../core/job/api.rkt"
          "hooks.rkt"
-         "context.rkt"
-         "state.rkt")
+         "contributions.rkt")
 
 (provide (struct-out plugin)
          make-plugin
@@ -24,11 +24,7 @@
          plugins->states
          plugins->command-table
          plugins->command-tables
-         plugins->services
-         run-plugin-job-handlers
-         run-plugin-timer-handlers
-         run-plugin-overlays
-         run-plugin-syncs)
+         plugins->contributions)
 
 (struct plugin
   (id state hooks commands sync services handle-job handle-timer overlays)
@@ -62,6 +58,11 @@
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-timer))
   (when (and overlays (not (procedure? overlays)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" overlays))
+  ;; hook owner 必须等于插件 id，插件不能借别人的 plugin-state 注册 hook。
+  (for ([h (in-list hooks)])
+    (unless (eq? (hook-owner h) id)
+      (error 'make-plugin "hook owner ~a 必须等于 plugin id ~a"
+             (hook-owner h) id)))
   (plugin id state hooks commands sync services handle-job handle-timer overlays))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
@@ -83,30 +84,26 @@
              #:when (command-table? (plugin-commands p)))
     (plugin-commands p)))
 
-;; 插件贡献的 job services。
-(define (plugins->services plugins)
-  (append* (for/list ([p (in-list plugins)]) (plugin-services p))))
-
-;; job 结果交给插件；不匹配的插件原样返回 state。
-(define (run-plugin-job-handlers ed state ev)
-  (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
-    (define f (plugin-handle-job p))
-    (if f (f ed s ev) s)))
-
-(define (run-plugin-timer-handlers ed state ev)
-  (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
-    (define f (plugin-handle-timer p))
-    (if f (f ed s ev) s)))
-
-(define (run-plugin-overlays ed state)
+;; 把插件字段翻译成统一 contribution registry。
+(define (plugins->contributions plugins)
   (append*
-   (for/list ([p (in-list (editor-plugins ed))])
-     (define f (plugin-overlays p))
-     (if f (f ed state) '()))))
-
-;; 每帧同步阶段：按插件安装顺序显式执行。
-;; sync : (editor state -> state')
-(define (run-plugin-syncs ed state)
-  (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
-    (define f (plugin-sync p))
-    (if f (f ed s) s)))
+   (for/list ([p (in-list plugins)])
+     (define id (plugin-id p))
+     (append
+      (if (plugin-sync p)
+          (list (contribution point/frame-sync #f id 0 0 (plugin-sync p)))
+          '())
+      (if (plugin-overlays p)
+          (list (contribution point/frame-overlay #f id 0 0 (plugin-overlays p)))
+          '())
+      (if (plugin-handle-timer p)
+          (list (contribution point/timer #f id 0 0 (plugin-handle-timer p)))
+          '())
+      (append*
+       (for/list ([svc (in-list (plugin-services p))])
+         (define kind (service-name svc))
+         (append
+          (list (contribution point/job-service kind id 0 0 (service-handler svc)))
+          (if (plugin-handle-job p)
+              (list (contribution point/job-result kind id 0 0 (plugin-handle-job p)))
+              '()))))))))

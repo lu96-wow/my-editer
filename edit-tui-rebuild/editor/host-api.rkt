@@ -10,13 +10,15 @@
 
 (require "api.rkt"
          "../core/api.rkt"
-         "engine/api.rkt")
+         "engine/api.rkt"
+         "plugin.rkt"
+         "plugin-runtime.rkt")
 
 (provide (all-from-out "api.rkt")
+         ;; host 编排 / 插件聚合
+         (all-from-out "plugin.rkt")
+         (all-from-out "plugin-runtime.rkt")
 
-         ;; 初始布局装配：只有 host 使用
-         make-editor-layout
-         editor-layout-config
 
          ;; 渲染 / 尺寸同步：只有 host 使用
          panels-sync!

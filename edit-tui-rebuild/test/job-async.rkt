@@ -10,7 +10,8 @@
          "../editor/host-api.rkt"
          "../plugins/filetree/plugin.rkt"
          "../host/jobs.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "../host/layout.rkt")
 
 (define root (make-temporary-directory))
 (display-to-file "a" (build-path root "a.txt") #:exists 'replace)
@@ -38,7 +39,7 @@
 (check-equal? (engine-view-text engine 3) "")
 
 (define event-channel (make-async-channel))
-(define rt (start-job-runtime (plugins->services (editor-plugins ed))
+(define rt (start-job-runtime (editor-services ed)
                               #:event-channel event-channel
                               #:workers 1))
 (dispatch-jobs! rt (editor-state-jobs s1))

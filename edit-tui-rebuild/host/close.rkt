@@ -7,15 +7,14 @@
 
 (require "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "engine/api.rkt"
-         "context.rkt"
-         "state.rkt"
-         "resource.rkt"
-         "layout.rkt"
-         "input.rkt")
+         "../editor/engine/api.rkt"
+         "../editor/context.rkt"
+         "../editor/state.rkt"
+         "../editor/resource.rkt"
+         "../editor/layout.rkt"
+         "../features/input/api.rkt")
 
-(provide editor-cycle-editor-view!
-         editor-close-buffer-command
+(provide editor-close-buffer-command
          editor-close-resource!)
 
 (define (panel-without-view p vid)
@@ -67,17 +66,3 @@
                                 (list 'close (resource-id r)))
              '())]
     [else (editor-close-resource! ed state (resource-id r))]))
-
-;; focus editor panel 内切 tab。
-(define (editor-cycle-editor-view! ed state [step 1])
-  (define p (editor-focus-panel state))
-  (cond
-    [(or (not p) (not (eq? (p:panel-kind p) 'editor)))
-     (values (editor-state-with-flash state "tab: focus is not editor") '())]
-    [else
-     (define l (editor-state-layout state))
-     (define-values (l* ok?)
-       (layout-panel-cycle-active-view l (p:panel-id p) step))
-     (if ok?
-         (values (struct-copy editor-state state [layout l*]) '())
-         (values (editor-state-with-flash state "tab: panel has no views") '()))]))

@@ -11,6 +11,8 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/final.rkt"
+         "../features/input/api.rkt"
+         "../host/prompt.rkt"
          "../host/event.rkt")
 
 (define root (make-temporary-directory))

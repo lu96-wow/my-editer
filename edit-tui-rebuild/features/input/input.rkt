@@ -7,13 +7,9 @@
 ;;; 光标可以走进 prefix 查看，但编辑只作用于 prefix 之后的文本。
 
 (require racket/string
-         "../core/command/api.rkt"
-         "../core/layout/api.rkt"
-         "../core/panel/api.rkt"
-         "engine/api.rkt"
-         "context.rkt"
-         "state.rkt"
-         "layout.rkt")
+         "../../core/command/api.rkt"
+         "../../core/layout/api.rkt"
+         "../../editor/api.rkt")
 
 (provide (struct-out input-state)
          make-input-state

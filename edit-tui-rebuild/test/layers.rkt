@@ -69,4 +69,52 @@
 (check-false (requires-any? "host/final.rkt" #rx"editor/(engine/store|ops/raw)")
              "host/final.rkt")
 
+;;; ════════════════ 更细的边界 ════════════════
+
+;; 插件不能直接摸 editor 内部模块（api.rkt 例外）。
+(for ([f (in-list plugin-files)])
+  (check-false
+   (requires-any? f #rx"\\.\\./editor/(open|prompt|input|close|timer|job|layout|resource|mode|overlay|engine|ops|host-api|context|hooks|state)")
+   f))
+
+;; editor 不能 require host / plugins。
+(define editor-files
+  (for/list ([p (in-directory (build-path root "editor"))]
+             #:when (regexp-match? #rx"\\.rkt$" (path->string p)))
+    (path->string (find-relative-path root p))))
+
+(for ([f (in-list editor-files)])
+  (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
+  ;; editor 不做文件 IO / 不启线程 / 不碰 channel。
+  (check-false (regexp-match? #rx"racket/file|display-to-file|file->string|async-channel|\\(thread\\b"
+                              (src f))
+               f))
+
+;; 插件 API 不导出 host 编排函数。
+(define api-src2 (src "editor/api.rkt"))
+(check-false (regexp-match? #rx"run-plugin-" api-src2) "editor/api.rkt")
+(check-false (regexp-match? #rx"plugins->" api-src2) "editor/api.rkt")
+
+;; plugin.rkt 只做描述 / 聚合；执行器在 plugin-runtime.rkt。
+(check-true (requires-any? "editor/plugin-runtime.rkt" #rx"context\\.rkt")
+            "editor/plugin-runtime.rkt")
+(check-true (requires-any? "editor/plugin-runtime.rkt" #rx"contributions\\.rkt")
+            "editor/plugin-runtime.rkt")
+
+;; features 只经 editor/api.rkt；不 require host / plugins / editor 实现。
+(define (features-rkt-files dir)
+  (append*
+   (for/list ([p (in-directory dir)]
+              #:when (regexp-match? #rx"\\.rkt$" (path->string p)))
+     (list (path->string (find-relative-path root p))))))
+(for ([f (in-list (features-rkt-files (build-path root "features")))])
+  (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
+  )
+
+;; 具体 app 布局装配不在 editor/layout.rkt。
+(check-false (requires-any? "editor/layout.rkt" #rx"make-editor-layout")
+             "editor/layout.rkt")
+(check-false (regexp-match? #rx"'docs" (src "editor/layout.rkt"))
+             "editor/layout.rkt")
+
 (displayln "edit-tui-rebuild/test/layers.rkt: ok")

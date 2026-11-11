@@ -19,6 +19,7 @@
 ;;; 以后加 replace / move / layout 时只加 operation 名字，不引入 registry / discovery。
 
 (require "../core/api.rkt"
+         "points.rkt"
          "state.rkt")
 
 (provide (struct-out edit-context)
@@ -100,10 +101,14 @@
                    #:fn fn)
   (unless (symbol? owner)
     (raise-argument-error 'make-hook "symbol?" owner))
-  (unless (memq phase '(validate transform derive observe))
-    (raise-argument-error 'make-hook
-                          "(or/c 'validate 'transform 'derive 'observe)"
-                          phase))
+  (define spec (point-spec-of operation))
+  (unless spec
+    (error 'make-hook "未知插入点：~a（已知：~a）"
+           operation (string-join (map symbol->string (point-names)) ", ")))
+  (unless (memq phase (point-spec-phases spec))
+    (error 'make-hook "插入点 ~a 不支持 phase ~a（允许：~a）"
+           operation phase
+           (string-join (map symbol->string (point-spec-phases spec)) ", ")))
   (hook owner id operation phase priority fn))
 
 ;;; ════════════════ registry ════════════════

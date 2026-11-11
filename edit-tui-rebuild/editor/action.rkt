@@ -7,8 +7,10 @@
 
 (provide (struct-out quit-action)
          (struct-out flash-action)
-         (struct-out open-file-action))
+         (struct-out open-file-action)
+         (struct-out close-buffer-action))
 
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
 (struct open-file-action (path) #:transparent)
+(struct close-buffer-action () #:transparent)

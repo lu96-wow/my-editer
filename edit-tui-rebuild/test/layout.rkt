@@ -3,7 +3,8 @@
 ;;; layout 扩展点：validate 可以否决 split；observe 可以观察并改 plugin-state。
 
 (require rackunit
-         "../editor/host-api.rkt")
+         "../editor/host-api.rkt"
+         "../host/layout.rkt")
 
 (define (make-test-editor hooks)
   (define engine (make-engine))
@@ -20,6 +21,7 @@
     (make-editor-state #:plugin-states (plugins->states (list p))
                        #:area (rect 0 0 40 10)
                        #:layout layout
+                       #:layout-config rebuild-layout-config
                        #:next-view-id 10
                        #:next-panel-id 100))
   (values engine ed state))

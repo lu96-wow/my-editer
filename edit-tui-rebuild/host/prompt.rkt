@@ -13,14 +13,14 @@
          racket/path
          racket/string
          "../core/command/api.rkt"
-         "context.rkt"
-         "state.rkt"
-         "resource.rkt"
-         "mode.rkt"
-         "engine/api.rkt"
-         "action.rkt"
-         "layout.rkt"
-         "input.rkt"
+         "../editor/context.rkt"
+         "../editor/state.rkt"
+         "../editor/resource.rkt"
+         "../editor/mode.rkt"
+         "../editor/engine/api.rkt"
+         "../editor/action.rkt"
+         "../editor/layout.rkt"
+         "../features/input/api.rkt"
          "close.rkt")
 
 (provide editor-save-command

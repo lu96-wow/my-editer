@@ -13,13 +13,13 @@
          racket/path
          "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "engine/api.rkt"
-         "context.rkt"
-         "state.rkt"
-         "resource.rkt"
-         "mode.rkt"
-         "layout.rkt"
-         "placement.rkt")
+         "../editor/engine/api.rkt"
+         "../editor/context.rkt"
+         "../editor/state.rkt"
+         "../editor/resource.rkt"
+         "../editor/mode.rkt"
+         "../editor/layout.rkt"
+         "../features/placement/api.rkt")
 
 (provide editor-open-file!
          editor-focus-view!)

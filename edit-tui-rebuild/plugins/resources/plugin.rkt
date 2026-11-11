@@ -13,7 +13,8 @@
 
 (require racket/string
          "../../core/command/api.rkt"
-         "../../editor/api.rkt")
+         "../../editor/api.rkt"
+         "../../features/placement/api.rkt")
 
 (provide make-resources-plugin
          (struct-out resources-panel-state))
@@ -75,16 +76,28 @@
   (cond
     [(not row) (values (editor-state-with-flash state "resources: no line") '())]
     [(eq? (row-kind row) 'view)
-     (editor-focus-view! ed state (row-view-id row))]
+     (define-values (s1 a1 attached?)
+       (editor-focus-view-if-attached! ed state (row-view-id row)))
+     (if attached?
+         (values s1 a1)
+         (values (editor-placement-start state (row-view-id row)) '()))]
     [else
      (define r (editor-state-resource-for-doc state (row-resource-id row)))
      (define views (and r (resource-views r)))
      (cond
-       [(pair? views) (editor-focus-view! ed state (car views))]
+       [(pair? views)
+        (define-values (s1 a1 attached?)
+          (editor-focus-view-if-attached! ed state (car views)))
+        (if attached?
+            (values s1 a1)
+            (values (editor-placement-start state (car views)) '()))]
        [else (values (editor-state-with-flash state "resources: no view") '())])]))
 
 (define (refresh-command ed state)
   (values (editor-state-with-flash state "resources refreshed") '()))
+
+(define (close-buffer-command ed state)
+  (values state (list (close-buffer-action))))
 
 (define (make-resources-plugin #:view vid)
   (make-plugin

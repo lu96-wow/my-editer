@@ -26,6 +26,13 @@
          "../plugins/docs/plugin.rkt"
          "event.rkt"
          "keymap.rkt"
+         "layout.rkt"
+         "timers.rkt"
+         "open.rkt"
+         "prompt.rkt"
+         "close.rkt"
+         "../features/input/api.rkt"
+         "../features/placement/api.rkt"
          "jobs.rkt"
          (only-in "../../core/editor.rkt" make-panel)
          "../../edit-tui/render/core.rkt"
@@ -103,6 +110,7 @@
     (make-editor-state #:plugin-states (plugins->states plugins)
                        #:area (rect 0 0 80 24)
                        #:layout layout
+                       #:layout-config rebuild-layout-config
                        #:next-view-id 10
                        #:next-panel-id 100
                        #:resources (resources-add empty-resources scratch)
@@ -121,6 +129,9 @@
       [(open-file-action? a)
        (define-values (s* more)
          (editor-open-file! ed s (open-file-action-path a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(close-buffer-action? a)
+       (define-values (s* more) (editor-close-buffer-command ed s))
        (if (null? more) s* (run-actions ed s* more))]
       [else s])))
 
@@ -434,12 +445,12 @@
                    (async-channel-put event-channel (read-app-event))
                    (loop)))))
      (define runtime
-       (start-job-runtime (plugins->services (editor-plugins ed))
+       (start-job-runtime (editor-services ed)
                           #:event-channel event-channel
                           #:workers 2))
      (define timer-runtime
        (start-timer-runtime #:event-channel event-channel))
-     (editor-set-timer-runtime! ed timer-runtime)
+     (editor-set-timer-service! ed (timer-runtime-service timer-runtime))
      (dynamic-wind
       void
       (λ ()
