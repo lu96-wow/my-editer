@@ -19,13 +19,14 @@
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
 - `editor/placement.rkt`：打开文件后的目标 editor 选择。
 - `editor/input.rkt` / `editor/prompt.rkt`：输入栏 + save / quit prompt。
+- `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/hooks.rkt`：显式扩展点 + 有序 pipeline。
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行缩进（最小版）。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
-- `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h。
+- `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
@@ -38,7 +39,7 @@
 还没有：
 
 - completion / docs
-- 异步 job / timer / 多进程
+- timer / 多进程
 - 插件 services
 - 完整的 keymap 配置 / 插件命令贡献
 
@@ -70,6 +71,7 @@ edit-tui-rebuild/
     placement.rkt      打开文件后的目标 editor 选择
     input.rkt          单行输入栏
     prompt.rkt         save-path / save-confirm / quit-confirm
+    job.rkt            job-result-event / job 账本 State
     hooks.rkt          扩展点 / 有序 pipeline
     plugin.rkt         插件值
     state.rkt          纯 editor state + plugin-states + layout
@@ -350,6 +352,7 @@ racket edit-tui-rebuild/test/resources-panel.rkt
 racket edit-tui-rebuild/test/save-quit.rkt
 racket edit-tui-rebuild/test/tabs.rkt
 racket edit-tui-rebuild/test/color-incremental.rkt
+racket edit-tui-rebuild/test/job-async.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/layers.rkt
@@ -383,6 +386,7 @@ racket edit-tui-rebuild/test/layers.rkt
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
+- filetree 异步目录扫描：sync 提交 job，worker 返回后按 projection tag 校验；
 - 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
@@ -394,7 +398,6 @@ racket edit-tui-rebuild/test/layers.rkt
 
 还没有恢复的旧行为：
 
-- filetree 异步目录扫描（当前在 sync 阶段同步扫描）；
 - 可组合的 `hidden-entry?` 过滤规则；
 - word-color 光标 token 抑制。
 
@@ -413,7 +416,7 @@ racket edit-tui-rebuild/test/layers.rkt
 
 ## 下一步
 
-1. 异步目录扫描 / 文件系统变化刷新。
+1. 文件系统变化自动刷新 / 可组合 hidden-entry?。
 2. 固定尺寸 / hide-show / 布局恢复。
 3. word-color 光标 token 抑制。
-4. 加 job / timer 服务，迁 completion / docs。
+4. timer 服务，迁 completion / docs。

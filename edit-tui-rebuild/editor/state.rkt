@@ -9,6 +9,7 @@
 ;;; area / pending / flash 是宿主也要用的公共状态。
 
 (require "../core/api.rkt"
+         "../core/job/api.rkt"
          "resource.rkt")
 
 (provide (struct-out editor-state)
@@ -41,7 +42,9 @@
    resources       ; resources：已打开文档
    placement       ; view-id | #f：等待放入 editor panel
    input           ; input-state | #f：单行输入栏
-   select-drag)    ; select-drag | #f：鼠标文本拖选
+   select-drag     ; select-drag | #f：鼠标文本拖选
+   jobs            ; job-ledger
+   async?)         ; bool：sync 阶段是否走异步 job
   #:transparent)
 
 (define (make-editor-state
@@ -57,10 +60,12 @@
          #:resources [resources empty-resources]
          #:placement [placement #f]
          #:input [input #f]
-         #:select-drag [select-drag #f])
+         #:select-drag [select-drag #f]
+         #:jobs [jobs empty-job-ledger]
+         #:async? [async? #f])
   (editor-state plugin-states pending quit? flash area
                 layout drag next-view-id next-panel-id
-                resources placement input select-drag))
+                resources placement input select-drag jobs async?))
 
 (define (editor-state-plugin-state state owner)
   (hash-ref (editor-state-plugin-states state) owner #f))

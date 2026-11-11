@@ -28,7 +28,9 @@
    view
    expanded      ; hash path -> #t
    show-hidden?  ; bool
-   rows          ; #f = 需要重扫；否则 (listof row)
+   rows          ; (listof row)
+   stale?        ; #t = 需要重扫
+   pending       ; #f | 正在后台扫描的 projection tag
    pending-cursor) ; #f | path：sync 后把光标放到该 path 的行
   #:transparent)
 
@@ -85,33 +87,93 @@
               #:when (equal? (row-path row) path))
     i))
 
+(define (projection-tag st)
+  (list (filetree-state-root st)
+        (filetree-state-expanded st)
+        (filetree-state-show-hidden? st)))
+
+(define (filetree-scan-service payload)
+  (define-values (root expanded show-hidden?) (apply values payload))
+  (scan-tree root expanded show-hidden?))
+
+(define (handle-filetree-job ed state ev)
+  (cond
+    [(not (eq? (job-result-event-kind ev) 'filetree-scan)) state]
+    [else
+     (define st (editor-state-plugin-state state 'filetree))
+     (cond
+       [(not (filetree-state? st)) state]
+       [else
+        (define tag (job-result-event-tag ev))
+        (define result (job-result-event-result ev))
+        (define current-tag (projection-tag st))
+        (cond
+          [(job-error? result)
+           (editor-state-set-plugin-state
+            (editor-state-with-flash state "filetree scan failed")
+            'filetree
+            (struct-copy filetree-state st [pending #f] [stale? #f]))]
+          [(equal? tag current-tag)
+           (editor-state-set-plugin-state
+            state 'filetree
+            (struct-copy filetree-state st
+                         [rows result]
+                         [pending #f]
+                         [stale? #f]))]
+          [else
+           ;; 扫描期间投影又变了：丢掉旧结果，下一帧重新提交。
+           (editor-state-set-plugin-state
+            state 'filetree
+            (struct-copy filetree-state st [pending #f]))])])]))
+
+(define (write-filetree! ed state st rows)
+  (define engine (editor-engine ed))
+  (define vid (filetree-state-view st))
+  (define opened (editor-state-opened-paths state))
+  (engine-set-view-content! engine vid
+                           (map row-text rows)
+                           (map (λ (row) (row-face row opened)) rows))
+  (define pending (filetree-state-pending-cursor st))
+  (cond
+    [(not pending) (struct-copy filetree-state st [rows rows])]
+    [else
+     (define line (find-line rows pending))
+     (cond
+       [line
+        (engine-set-view-cursor! engine vid line #:column 0)
+        (struct-copy filetree-state st [rows rows] [pending-cursor #f])]
+       [else (struct-copy filetree-state st [rows rows])])]))
+
 (define (sync-filetree ed state)
   (define st (editor-state-plugin-state state 'filetree))
   (cond
     [(not (filetree-state? st)) state]
     [else
      (define root (filetree-state-root st))
-     (define vid (filetree-state-view st))
-     (define rows
-       (or (filetree-state-rows st)
-           (scan-tree root (filetree-state-expanded st)
-                      (filetree-state-show-hidden? st))))
-     (define engine (editor-engine ed))
-     (define opened (editor-state-opened-paths state))
-     (engine-set-view-content! engine vid
-                              (map row-text rows)
-                              (map (λ (row) (row-face row opened)) rows))
-     ;; 重扫后按 path 恢复光标（展开 / 折叠 / 刷新都走这里）。
-     (define pending (filetree-state-pending-cursor st))
-     (when pending
-       (define line (find-line rows pending))
-       (when line
-         (engine-set-view-cursor! engine vid line #:column 0)))
-     (editor-state-set-plugin-state
-      state 'filetree
-      (struct-copy filetree-state st
-                   [rows rows]
-                   [pending-cursor #f]))]))
+     (define expanded (filetree-state-expanded st))
+     (define show-hidden? (filetree-state-show-hidden? st))
+     (define tag (projection-tag st))
+     (cond
+       [(not (editor-state-async? state))
+        (define rows
+          (if (filetree-state-stale? st)
+              (scan-tree root expanded show-hidden?)
+              (filetree-state-rows st)))
+        (define st* (write-filetree! ed state st rows))
+        (editor-state-set-plugin-state
+         state 'filetree
+         (struct-copy filetree-state st* [stale? #f] [pending #f]))]
+       [else
+        (define-values (base-state st1)
+          (cond
+            [(and (filetree-state-stale? st)
+                  (not (filetree-state-pending st)))
+             (define-values (state* _job)
+               (editor-state-submit-job state 'filetree-scan tag tag))
+             (values state* (struct-copy filetree-state st [pending tag]))]
+            [else (values state st)]))
+        (define st2 (write-filetree! ed base-state st1 (filetree-state-rows st1)))
+        (editor-state-set-plugin-state base-state 'filetree st2)])]))
 
 (define (filetree-focused? state vid)
   (eq? (editor-focus-view-id state) vid))
@@ -126,7 +188,7 @@
   (editor-state-set-plugin-state
    state 'filetree
    (struct-copy filetree-state st
-                [rows #f]
+                [stale? #t]
                 [pending-cursor path])))
 
 (define (enter-command ed state vid)
@@ -172,7 +234,7 @@
   (define root* (simplify-path (path->complete-path root)))
   (make-plugin
    #:id 'filetree
-   #:state (filetree-state root* vid (hash root* #t) #f #f #f)
+   #:state (filetree-state root* vid (hash root* #t) #f '() #t #f #f)
    #:commands
    (keys
     [(key 'enter)
@@ -187,4 +249,6 @@
      (make-guarded-command
       #:when (λ (ed state) (filetree-focused? state vid))
       #:run (λ (ed state) (toggle-hidden-command ed state vid)))])
-   #:sync sync-filetree))
+   #:sync sync-filetree
+   #:services (list (service 'filetree-scan filetree-scan-service))
+   #:handle-job handle-filetree-job))

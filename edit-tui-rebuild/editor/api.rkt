@@ -16,6 +16,7 @@
 ;;;   · host / runtime / IO
 
 (require "../core/api.rkt"
+         "../core/job/api.rkt"
          "engine/api.rkt"
          "state.rkt"
          "resource.rkt"
@@ -30,9 +31,13 @@
          "open.rkt"
          "input.rkt"
          "prompt.rkt"
-         "close.rkt")
+         "close.rkt"
+         "job.rkt")
 
 (provide
+ ;; job / service 纯值
+ (all-from-out "../core/job/api.rkt")
+
  ;; core 值词汇：插件只拿构造器 / 查询 / 纯变换，不拿 buffer 编辑壳。
  point point? point-line point-column
  range range? range-start range-end range-normalize range-empty?
@@ -99,7 +104,10 @@
  (all-from-out "prompt.rkt")
 
  ;; tab / close buffer
- (all-from-out "close.rkt"))
+ (all-from-out "close.rkt")
+
+ ;; async job state
+ (all-from-out "job.rkt"))
 
 ;;; ════════════════ 操作面包装 ════════════════
 

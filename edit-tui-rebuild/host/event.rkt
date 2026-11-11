@@ -6,7 +6,8 @@
 
 (require racket/match
          (prefix-in tui: tui)
-         "../core/command/api.rkt")
+         "../core/command/api.rkt"
+         "../editor/job.rkt")
 
 (provide (struct-out key-event)
          (struct-out mouse-event)
@@ -25,7 +26,7 @@
 
 (define (event? x)
   (or (key-event? x) (mouse-event? x) (resize-event? x)
-      (paste-event? x) (quit-event? x)))
+      (paste-event? x) (quit-event? x) (job-result-event? x)))
 
 (define (event-kind x)
   (cond [(key-event? x) 'key]

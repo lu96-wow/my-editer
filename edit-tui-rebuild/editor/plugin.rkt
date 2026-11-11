@@ -24,10 +24,12 @@
          plugins->states
          plugins->command-table
          plugins->command-tables
+         plugins->services
+         run-plugin-job-handlers
          run-plugin-syncs)
 
 (struct plugin
-  (id state hooks commands sync)
+  (id state hooks commands sync services handle-job)
   #:transparent)
 
 ;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
@@ -43,12 +45,16 @@
                      #:state [state #f]
                      #:hooks [hooks '()]
                      #:commands [commands #f]
-                     #:sync [sync #f])
+                     #:sync [sync #f]
+                     #:services [services '()]
+                     #:handle-job [handle-job #f])
   (unless (symbol? id)
     (raise-argument-error 'make-plugin "symbol?" id))
   (when (and sync (not (procedure? sync)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" sync))
-  (plugin id state hooks commands sync))
+  (when (and handle-job (not (procedure? handle-job)))
+    (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-job))
+  (plugin id state hooks commands sync services handle-job))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
 (define (plugins->hooks plugins)
@@ -68,6 +74,16 @@
   (for/list ([p (in-list plugins)]
              #:when (command-table? (plugin-commands p)))
     (plugin-commands p)))
+
+;; 插件贡献的 job services。
+(define (plugins->services plugins)
+  (append* (for/list ([p (in-list plugins)]) (plugin-services p))))
+
+;; job 结果交给插件；不匹配的插件原样返回 state。
+(define (run-plugin-job-handlers ed state ev)
+  (for/fold ([s state]) ([p (in-list (editor-plugins ed))])
+    (define f (plugin-handle-job p))
+    (if f (f ed s ev) s)))
 
 ;; 每帧同步阶段：按插件安装顺序显式执行。
 ;; sync : (editor state -> state')

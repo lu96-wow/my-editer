@@ -12,6 +12,7 @@
 ;;; 但 editor 层的操作面、扩展点、插件状态、布局操作已经统一。
 
 (require racket/string
+         racket/async-channel
          (prefix-in tui: tui)
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
@@ -23,6 +24,7 @@
          "../plugins/resources/plugin.rkt"
          "event.rkt"
          "keymap.rkt"
+         "jobs.rkt"
          "../../edit-tui/render/core.rkt"
          "../../edit-tui/config/theme/default.rkt")
 
@@ -31,7 +33,8 @@
          run-demo-editor
          render-frame
          sync-status!
-         handle-editor-event)
+         handle-editor-event
+         handle-job-result)
 
 ;;; ════════════════ 初始文档 ════════════════
 
@@ -355,17 +358,34 @@
      (run-actions ed s2 actions)]
     [else state]))
 
-(define (run-editor ed state #:write-bytes [write-bytes (λ (b) (void))])
+(define (handle-job-result ed state ev)
+  (define id (job-result-event-id ev))
+  (define s1 (editor-state-finish-job state id (job-result-event-result ev)))
+  (define s2 (run-plugin-job-handlers ed s1 ev))
+  (editor-state-forget-job s2 id))
+
+(define (run-editor ed state
+                    #:read-event [read-event read-app-event]
+                    #:write-bytes [write-bytes (λ (b) (void))]
+                    #:job-runtime [job-runtime #f])
   (let loop ([s state] [cache #f])
+    (when job-runtime
+      (dispatch-jobs! job-runtime (editor-state-jobs s)))
     (define-values (s1 cache* bytes)
       (render-frame ed s cache))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
-    (define ev (read-app-event))
-    (define s2 (handle-editor-event ed s1 ev))
-    (if (editor-state-quit? s2)
-        s2
-        (loop s2 (if (resize-event? ev) #f cache*)))))
+    (when job-runtime
+      (dispatch-jobs! job-runtime (editor-state-jobs s1)))
+    (define ev (read-event))
+    (cond
+      [(job-result-event? ev)
+       (loop (handle-job-result ed s1 ev) cache*)]
+      [else
+       (define s2 (handle-editor-event ed s1 ev))
+       (if (editor-state-quit? s2)
+           s2
+           (loop s2 (if (resize-event? ev) #f cache*)))])))
 
 ;;; ════════════════ 终端入口 ════════════════
 
@@ -381,9 +401,27 @@
        (if (and rows cols (positive? rows) (positive? cols))
            (rect 0 0 cols rows)
            (rect 0 0 80 24)))
-     (run-editor ed
-                 (struct-copy editor-state state [area area])
-                 #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))))))
+     (define event-channel (make-async-channel))
+     (define input-thread
+       (thread (λ ()
+                 (let loop ()
+                   (async-channel-put event-channel (read-app-event))
+                   (loop)))))
+     (define runtime
+       (start-job-runtime (plugins->services (editor-plugins ed))
+                          #:event-channel event-channel
+                          #:workers 2))
+     (dynamic-wind
+      void
+      (λ ()
+        (run-editor ed
+                    (struct-copy editor-state state [area area] [async? #t])
+                    #:read-event (λ () (async-channel-get event-channel))
+                    #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
+                    #:job-runtime runtime))
+      (λ ()
+        (kill-thread input-thread)
+        (stop-job-runtime runtime))))))
 
 (module+ main
   (void (run-demo-editor)))
