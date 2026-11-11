@@ -57,7 +57,7 @@
   (run-after-hooks registry operation ctx state))
 
 ;; 一次操作产生的 change 批次 -> 'changes 扩展点。
-(define (run-change-hooks ed state vid changes)
+(define (run-change-hooks ed state vid base-version changes)
   (define engine (editor-engine ed))
   (define did (engine-view-doc-id engine vid))
   (cond
@@ -65,7 +65,7 @@
      (values state '())]
     [else
      (define version (engine-doc-version engine did))
-     (define ctx (make-change-context engine state did version changes))
+     (define ctx (make-change-context engine state did base-version version changes))
      (define-values (_ctx state* actions)
        (run-after (editor-registry ed) 'changes ctx state))
      (values state* actions)]))
@@ -87,6 +87,8 @@
      (values state1 actions1)]
     [else
      (define text* (or (edit-context-text ctx1) ""))
+     (define did0 (engine-view-doc-id engine vid))
+     (define base-version (and did0 (engine-doc-version engine did0)))
      (define changes
        (with-view-undo-step
         engine vid
@@ -105,7 +107,7 @@
      (define-values (_ctx3 state3 actions3)
        (run-after (editor-registry ed) 'insert ctx2 state1))
      (define-values (state4 actions4)
-       (run-change-hooks ed state3 vid changes))
+       (run-change-hooks ed state3 vid base-version changes))
      (values state4 (append actions1 actions3 actions4))]))
 
 ;;; ════════════════ delete ════════════════
@@ -124,6 +126,8 @@
     [(not allow?)
      (values state1 actions1)]
     [else
+     (define did0 (engine-view-doc-id engine vid))
+     (define base-version (and did0 (engine-doc-version engine did0)))
      (define n (max 0 (edit-context-count ctx1)))
      (define plan
        (or (edit-context-delete-plan ctx1)
@@ -147,7 +151,7 @@
      (define-values (_ctx3 state3 actions3)
        (run-after (editor-registry ed) 'delete ctx2 state1))
      (define-values (state4 actions4)
-       (run-change-hooks ed state3 vid changes))
+       (run-change-hooks ed state3 vid base-version changes))
      (values state4 (append actions1 actions3 actions4))]))
 
 ;;; ════════════════ 其他操作（暂时不带 hook） ════════════════

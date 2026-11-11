@@ -71,12 +71,13 @@
   (engine
    state
    doc-id
-   version
+   base-version   ; 本次操作前的 document version
+   version        ; 操作后的 document version
    changes)
   #:transparent)
 
-(define (make-change-context engine state doc-id version changes)
-  (change-context engine state doc-id version changes))
+(define (make-change-context engine state doc-id base-version version changes)
+  (change-context engine state doc-id base-version version changes))
 
 ;;; ════════════════ hook 定义 ════════════════
 

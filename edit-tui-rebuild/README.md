@@ -349,6 +349,7 @@ racket edit-tui-rebuild/test/placement.rkt
 racket edit-tui-rebuild/test/resources-panel.rkt
 racket edit-tui-rebuild/test/save-quit.rkt
 racket edit-tui-rebuild/test/tabs.rkt
+racket edit-tui-rebuild/test/color-incremental.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/layers.rkt
@@ -381,6 +382,7 @@ racket edit-tui-rebuild/test/layers.rkt
 - C-s / C-q 的 save-path / save-confirm / quit-confirm 输入栏；
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - editor tab 切换 / close buffer；
+- color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - 关闭 panel 只摘 panel，view / resource 保留；
 - 不再使用 `▸/▾` 或目录 `/` 后缀来区分类型；
 - face：`filetree-root` / `filetree-dir` / `filetree-open` / `filetree-file`；
@@ -394,8 +396,7 @@ racket edit-tui-rebuild/test/layers.rkt
 
 - filetree 异步目录扫描（当前在 sync 阶段同步扫描）；
 - 可组合的 `hidden-entry?` 过滤规则；
-- word-color 光标 token 抑制；
-- color 的增量 `color-edit*`（当前按版本整篇 `color-open`）。
+- word-color 光标 token 抑制。
 
 ---
 
@@ -413,7 +414,6 @@ racket edit-tui-rebuild/test/layers.rkt
 ## 下一步
 
 1. 异步目录扫描 / 文件系统变化刷新。
-2. 给 `'changes` 增加增量 color-edit，替换当前整篇 color-open。
-3. 固定尺寸 / hide-show / 布局恢复。
-4. word-color 光标 token 抑制。
-5. 加 job / timer 服务，迁 completion / docs。
+2. 固定尺寸 / hide-show / 布局恢复。
+3. word-color 光标 token 抑制。
+4. 加 job / timer 服务，迁 completion / docs。
