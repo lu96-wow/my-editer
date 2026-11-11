@@ -354,6 +354,7 @@ racket edit-tui-rebuild/test/save-quit.rkt
 racket edit-tui-rebuild/test/tabs.rkt
 racket edit-tui-rebuild/test/color-incremental.rkt
 racket edit-tui-rebuild/test/job-async.rkt
+racket edit-tui-rebuild/test/color-word.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
@@ -388,6 +389,7 @@ racket edit-tui-rebuild/test/layers.rkt
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
+- color 按 resource mode 判断 Racket；word-color 光标 token 抑制；
 - filetree 异步目录扫描：sync 提交 job，worker 返回后按 projection tag 校验；
 - C-b 显 / 隐 sidebar；
 - filetree 支持自定义 `hidden-entry?` 过滤规则；
@@ -402,7 +404,6 @@ racket edit-tui-rebuild/test/layers.rkt
 
 还没有恢复的旧行为：
 
-- word-color 光标 token 抑制。
 
 ---
 
@@ -421,5 +422,4 @@ racket edit-tui-rebuild/test/layers.rkt
 
 1. 文件系统变化自动刷新。
 2. timer 服务，迁 completion / docs。
-3. word-color 光标 token 抑制。
-4. 固定尺寸 / hide-show / 布局恢复。
+3. 固定尺寸 / hide-show / 布局恢复。

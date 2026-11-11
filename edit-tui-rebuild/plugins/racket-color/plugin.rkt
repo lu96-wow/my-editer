@@ -25,6 +25,12 @@
 
 (define empty-color-cache (hash))
 
+;; 优先看 resource mode；没有 resource 的临时测试文档才退回文本判断。
+(define (racket-doc? state did text)
+  (or (eq? (editor-state-doc-mode state did) 'racket)
+      (and (not (editor-state-resource-for-doc state did))
+           (racket-text? text))))
+
 ;;; ════════════════ role -> face ════════════════
 
 (define (bracket-role? role)
@@ -41,32 +47,89 @@
        (< i (vector-length roles))
        (vector-ref roles i)))
 
-(define (line->faces syntax word bracket)
+(define (line->faces syntax word bracket
+                     [suppress-start #f] [suppress-end #f])
   (define n (vector-length syntax))
   (for/vector ([i (in-range n)])
     (define f #f)
     (define br (role-at bracket i))
     (when br (set! f (compose-face f (role->face-layer br))))
-    (define wr (role-at word i))
+    (define suppressed?
+      (and suppress-start suppress-end
+           (>= i suppress-start) (< i suppress-end)))
+    (define wr (and (not suppressed?) (role-at word i)))
     (when wr (set! f (compose-face f (role->face-layer wr))))
     (define sr (role-at syntax i))
     (when sr (set! f (compose-face f (role->face-layer sr))))
     f))
 
-(define (color-state->face-track cs)
+;; suppress = (cons line (cons start end)) | #f
+(define (color-state->face-track cs suppress)
+  (define sl (and suppress (car suppress)))
+  (define sr (and suppress (cdr suppress)))
   (for/list ([syntax (in-vector (color-state-syntax-roles cs))]
              [word (in-vector (color-state-word-roles cs))]
-             [bracket (in-vector (color-state-bracket-roles cs))])
-    (line->faces syntax word bracket)))
+             [bracket (in-vector (color-state-bracket-roles cs))]
+             [ln (in-naturals)])
+    (if (and sl (= ln sl))
+        (line->faces syntax word bracket (car sr) (cdr sr))
+        (line->faces syntax word bracket))))
 
-(define (color-state->dirty-face-lines cs dirty-lines)
+(define (color-state->dirty-face-lines cs dirty-lines suppress)
   (define syntax (color-state-syntax-roles cs))
   (define word (color-state-word-roles cs))
   (define bracket (color-state-bracket-roles cs))
+  (define sl (and suppress (car suppress)))
+  (define sr (and suppress (cdr suppress)))
   (for/list ([ln (in-list dirty-lines)])
-    (cons ln (line->faces (vector-ref syntax ln)
-                          (vector-ref word ln)
-                          (vector-ref bracket ln)))))
+    (cons ln (if (and sl (= ln sl))
+                 (line->faces (vector-ref syntax ln) (vector-ref word ln)
+                              (vector-ref bracket ln) (car sr) (cdr sr))
+                 (line->faces (vector-ref syntax ln) (vector-ref word ln)
+                              (vector-ref bracket ln))))))
+
+;; 光标所在 symbol token 的 [start,end)。
+(define (active-word-range cs line col)
+  (define role-vectors (color-state-word-roles cs))
+  (cond
+    [(or (not (exact-nonnegative-integer? line))
+         (>= line (vector-length role-vectors)))
+     #f]
+    [else
+     (define roles (vector-ref role-vectors line))
+     (define n (vector-length roles))
+     (define idx
+       (cond
+         [(and (< col n) (vector-ref roles col)) col]
+         [(and (> col 0) (<= col n) (vector-ref roles (sub1 col))) (sub1 col)]
+         [else #f]))
+     (cond
+       [(not idx) #f]
+       [else
+        (define role (vector-ref roles idx))
+        (define start
+          (let loop ([i idx])
+            (if (and (> i 0) (equal? (vector-ref roles (sub1 i)) role))
+                (loop (sub1 i))
+                i)))
+        (define end
+          (let loop ([i (add1 idx)])
+            (if (and (< i n) (equal? (vector-ref roles i) role))
+                (loop (add1 i))
+                i)))
+        (cons start end)])]))
+
+;; 焦点 view 是否属于 doc；属于才抑制该行的 word-color。
+(define (focus-suppress engine state did cs)
+  (define vid (editor-focus-view-id state))
+  (define fdid (and vid (engine-view-doc-id engine vid)))
+  (cond
+    [(not (equal? fdid did)) #f]
+    [else
+     (define line (engine-view-point-line engine vid))
+     (define col (engine-view-point-column engine vid))
+     (define range (and line col (active-word-range cs line col)))
+     (and range (cons line range))]))
 
 ;;; ════════════════ changes -> line-edit ════════════════
 
@@ -81,16 +144,20 @@
 
 ;;; ════════════════ 写回 ════════════════
 
-(define (write-full-track! engine did version vids entry)
-  (define key (list did version 'racket-color))
+(define (write-full-track! engine did version vids entry suppress)
+  (define key (list did version 'racket-color suppress))
+  (define track
+    (if suppress
+        (color-state->face-track (color-entry-color-state entry) suppress)
+        (color-entry-face-track entry)))
   (for ([vid (in-list vids)])
-    (engine-set-view-face-track! engine vid (color-entry-face-track entry)
+    (engine-set-view-face-track! engine vid track
                                  #:base-version version
                                  #:key key)))
 
-(define (write-dirty-lines! engine did version vids cs dirty)
-  (define key (list did version 'racket-color))
-  (define lines (color-state->dirty-face-lines cs dirty))
+(define (write-dirty-lines! engine did version vids cs dirty suppress)
+  (define key (list did version 'racket-color suppress))
+  (define lines (color-state->dirty-face-lines cs dirty suppress))
   (for ([vid (in-list vids)])
     (engine-set-view-face-lines! engine vid lines
                                  #:base-version version
@@ -106,7 +173,7 @@
   (define changes (change-context-changes ctx))
   (define text (engine-doc-text engine did))
   (cond
-    [(or (not text) (not (racket-text? text)))
+    [(or (not text) (not (racket-doc? (change-context-state ctx) did text)))
      (values ctx ps '() #t)]
     [else
      (define old (hash-ref ps did #f))
@@ -118,14 +185,15 @@
                        (changes->line-edits changes))]
          [else
           (values (color-open text) 'all)]))
-     (define entry (color-entry version cs (color-state->face-track cs)))
+     (define entry (color-entry version cs (color-state->face-track cs #f)))
+     (define suppress (focus-suppress engine (change-context-state ctx) did cs))
      (define vids (engine-view-ids-for-doc engine did))
      (cond
        [(eq? dirty 'all)
-        (write-full-track! engine did version vids entry)]
+        (write-full-track! engine did version vids entry suppress)]
        [else
         (when (pair? dirty)
-          (write-dirty-lines! engine did version vids cs dirty))])
+          (write-dirty-lines! engine did version vids cs dirty suppress))])
      (values ctx (hash-set ps did entry) '() #t)]))
 
 ;;; ════════════════ sync ════════════════
@@ -139,7 +207,7 @@
     (define version (engine-doc-version engine did))
     (cond
       [(or (not text) (not version)) cache]
-      [(not (racket-text? text)) cache]
+      [(not (racket-doc? state did text)) cache]
       [else
        (define vids (engine-view-ids-for-doc engine did))
        (define cached (hash-ref old-cache did #f))
@@ -147,8 +215,10 @@
          (if (and cached (equal? (color-entry-version cached) version))
              cached
              (let ([cs (color-open text)])
-               (color-entry version cs (color-state->face-track cs)))))
-       (write-full-track! engine did version vids entry)
+               (color-entry version cs (color-state->face-track cs #f)))))
+       (define suppress (focus-suppress engine state did
+                                       (color-entry-color-state entry)))
+       (write-full-track! engine did version vids entry suppress)
        (hash-set cache did entry)]))
   (define new-cache
     (for/fold ([cache (hash)]) ([did (in-list (engine-doc-ids engine))])
