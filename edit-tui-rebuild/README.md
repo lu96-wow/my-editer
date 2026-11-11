@@ -87,7 +87,7 @@ edit-tui-rebuild/
     contributions.rkt  非 hook contribution registry
     plugin.rkt         插件描述 / 字段 -> contribution
     plugin-runtime.rkt contribution registry 执行器 + command registry -> table
-    state.rkt          纯值：editor-core（文档/布局/插件状态）+ editor-session
+    state.rkt          纯值：editor-core + editor-session + app-state
     context.rkt        editor = engine + hook registry + plugins
     api.rkt            插件唯一能 require 的 editor 面
     host-api.rkt       宿主装配面（额外暴露 engine 生命周期 / 渲染）
@@ -165,7 +165,7 @@ edit-tui-rebuild/
 4. raw 操作
 5. derive hooks       （纯派生，不能改文本）
 6. observe hooks      （可以返回 action）
-7. 把 plugin-state 写回 editor-state
+7. 把 plugin-state 写回 editor-core（app-state 里保留 session）
 ```
 
 ### 为什么裸 API 不直接给插件
@@ -411,6 +411,8 @@ racket edit-tui-rebuild/test/completion-docs.rkt
 racket edit-tui-rebuild/test/sidebar.rkt
 racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
+racket edit-tui-rebuild/test/ownership.rkt
+racket edit-tui-rebuild/test/state-split.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 ```
@@ -426,7 +428,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
 4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt`；不 require editor 内部 / host。
 5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
-5b. editor-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
+5b. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
@@ -485,8 +487,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. 把 editor-session 整体移出 editor-state，host 用 app-state 包住 editor + session。
-2. completion 接 workspace / analysis，补全跨 buffer 候选。
-3. docs 接 workspace 本地定义与 C-x o 焦点切换。
-4. 文件系统变化自动刷新。
-5. 固定尺寸 / hide-show 的剩余布局细节。
+1. completion 接 workspace / analysis，补全跨 buffer 候选。
+2. docs 接 workspace 本地定义与 C-x o 焦点切换。
+3. 文件系统变化自动刷新。
+4. 固定尺寸 / hide-show 的剩余布局细节。

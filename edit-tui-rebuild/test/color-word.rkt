@@ -21,7 +21,7 @@
 (define layout (make-editor-layout #:editor-view 1))
 (define r (make-resource 1 1 (resource-normalize-path "test.rkt") "test"
                          (list 1) 'racket (engine-doc-version engine 1)))
-(define state (make-editor-state #:plugin-states (plugins->states (list plugin))
+(define state (make-app-state #:plugin-states (plugins->states (list plugin))
                                  #:area (rect 0 0 40 10)
                                  #:layout layout
                                  #:resources (resources-add empty-resources r)))

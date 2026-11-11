@@ -20,7 +20,7 @@
                           #:plugins plugins))
   (define r (make-resource 1 1 (resource-normalize-path "test.rkt") "test"
                            (list 1) 'racket (engine-doc-version engine 1)))
-  (define state (make-editor-state
+  (define state (make-app-state
                  #:plugin-states (plugins->states plugins)
                  #:resources (resources-add empty-resources r)))
   (values engine ed state))

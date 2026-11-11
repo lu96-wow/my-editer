@@ -1,25 +1,31 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/state.rkt —— editor core + session 分层
+;;; edit-tui-rebuild/editor/state.rkt —— editor core + host app state
 ;;;
 ;;; editor-core    文档 / 布局 / 插件状态：editor 操作面真正拥有的状态。
 ;;; editor-session 输入栏 / placement / 鼠标 / job / quit / flash：host 会话状态。
+;;; app-state      host 顶层状态：editor-core + editor-session。
 ;;;
-;;; 顶层 editor-state 仍是纯值，也仍兼容旧的 accessor；但字段已经按 owner
-;;; 分开。等 host app-state 接好后，editor-session 可以整体移出 editor。
+;;; accessor / update helper 同时接受 app-state 和 editor-core：
+;;;   · 读 core 字段：从 app-state 取 editor，或直接读 core。
+;;;   · 写 core 字段：app-state 保留 session，core 直接返回新 core。
+;;;   · 写 session 字段：必须有 app-state；core 不能承载 host 会话。
 ;;;
-;;; State 不存 engine 句柄、不存 IO 结果、不存 lambda。
+;;; 这样 editor 内部仍只依赖 core；host / feature / command 可以传 app-state，
+;;; 操作面更新 core 时不会碰 session。
 
 (require "../core/api.rkt"
          "../core/job/api.rkt"
          "../core/layout/config.rkt"
          "resource.rkt")
 
-(provide (struct-out editor-state)
-         (struct-out select-drag)
+(provide (struct-out app-state)
          (struct-out editor-core)
          (struct-out editor-session)
-         make-editor-state
+         (struct-out select-drag)
+         make-app-state
+         editor-state-core
+         editor-state-session
 
          ;; core accessor / update
          editor-state-plugin-states
@@ -93,9 +99,10 @@
    async?)         ; bool：sync 阶段是否走异步 job
   #:transparent)
 
-(struct editor-state (core session) #:transparent)
+;; host 顶层状态：editor 只操作 editor，session 只由 host/base feature 改。
+(struct app-state (editor session) #:transparent)
 
-(define (make-editor-state
+(define (make-app-state
          #:plugin-states [plugin-states (hash)]
          #:pending [pending '()]
          #:quit? [quit? #f]
@@ -112,11 +119,45 @@
          #:select-drag [select-drag #f]
          #:jobs [jobs empty-job-ledger]
          #:async? [async? #f])
-  (editor-state
+  (app-state
    (editor-core plugin-states resources layout layout-config area
                 next-view-id next-panel-id)
    (editor-session pending quit? flash drag select-drag placement
                    input jobs async?)))
+
+;;; ════════════════ state dispatch ════════════════
+
+(define (editor-state-core state)
+  (cond
+    [(app-state? state) (app-state-editor state)]
+    [(editor-core? state) state]
+    [else
+     (raise-argument-error 'editor-state-core "app-state? or editor-core?" state)]))
+
+(define (editor-state-session state)
+  (cond
+    [(app-state? state) (app-state-session state)]
+    [(editor-core? state) #f]
+    [else
+     (raise-argument-error 'editor-state-session "app-state? or editor-core?" state)]))
+
+(define empty-session
+  (editor-session '() #f "" #f #f #f #f empty-job-ledger #f))
+
+(define (session-of state)
+  (or (editor-state-session state) empty-session))
+
+(define (state-with-core state core)
+  (cond
+    [(app-state? state) (struct-copy app-state state [editor core])]
+    [else core]))
+
+(define (state-with-session state session)
+  (cond
+    [(app-state? state) (struct-copy app-state state [session session])]
+    [else
+     (error 'editor-state-with-session
+            "session 字段只存在于 app-state，收到：~a" state)]))
 
 ;;; ════════════════ core accessor / update ════════════════
 
@@ -135,41 +176,38 @@
 (define (editor-state-next-panel-id state)
   (editor-core-next-panel-id (editor-state-core state)))
 
-(define (editor-state-with-core state core)
-  (struct-copy editor-state state [core core]))
-
 (define (editor-state-with-plugin-states state plugin-states)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [plugin-states plugin-states])))
 (define (editor-state-with-resources state resources)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [resources resources])))
 (define (editor-state-with-layout state layout)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [layout layout])))
 (define (editor-state-with-layout-config state layout-config)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [layout-config layout-config])))
 (define (editor-state-with-area state area)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [area area])))
 (define (editor-state-with-next-view-id state next-view-id)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [next-view-id next-view-id])))
 (define (editor-state-with-next-panel-id state next-panel-id)
-  (editor-state-with-core
+  (state-with-core
    state
    (struct-copy editor-core (editor-state-core state)
                 [next-panel-id next-panel-id])))
@@ -177,80 +215,53 @@
 ;;; ════════════════ session accessor / update ════════════════
 
 (define (editor-state-pending state)
-  (editor-session-pending (editor-state-session state)))
+  (editor-session-pending (session-of state)))
 (define (editor-state-quit? state)
-  (editor-session-quit? (editor-state-session state)))
+  (editor-session-quit? (session-of state)))
 (define (editor-state-flash state)
-  (editor-session-flash (editor-state-session state)))
+  (editor-session-flash (session-of state)))
 (define (editor-state-drag state)
-  (editor-session-drag (editor-state-session state)))
+  (editor-session-drag (session-of state)))
 (define (editor-state-select-drag state)
-  (editor-session-select-drag (editor-state-session state)))
+  (editor-session-select-drag (session-of state)))
 (define (editor-state-placement state)
-  (editor-session-placement (editor-state-session state)))
+  (editor-session-placement (session-of state)))
 (define (editor-state-input state)
-  (editor-session-input (editor-state-session state)))
+  (editor-session-input (session-of state)))
 (define (editor-state-jobs state)
-  (editor-session-jobs (editor-state-session state)))
+  (editor-session-jobs (session-of state)))
 (define (editor-state-async? state)
-  (editor-session-async? (editor-state-session state)))
+  (editor-session-async? (session-of state)))
 
-(define (editor-state-with-session state session)
-  (struct-copy editor-state state [session session]))
+(define (update-session state f)
+  (state-with-session state (f (session-of state))))
 
 (define (editor-state-with-pending state pending)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [pending pending])))
+  (update-session state (λ (s) (struct-copy editor-session s [pending pending]))))
 (define (editor-state-clear-pending state)
   (if (null? (editor-state-pending state))
       state
       (editor-state-with-pending state '())))
 (define (editor-state-with-quit state quit?)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [quit? quit?])))
+  (update-session state (λ (s) (struct-copy editor-session s [quit? quit?]))))
 (define (editor-state-with-flash state text)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [flash text])))
+  (update-session state (λ (s) (struct-copy editor-session s [flash text]))))
 (define (editor-state-clear-flash state)
   (if (string=? (editor-state-flash state) "")
       state
       (editor-state-with-flash state "")))
 (define (editor-state-with-drag state drag)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [drag drag])))
+  (update-session state (λ (s) (struct-copy editor-session s [drag drag]))))
 (define (editor-state-with-select-drag state select-drag)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [select-drag select-drag])))
+  (update-session state (λ (s) (struct-copy editor-session s [select-drag select-drag]))))
 (define (editor-state-with-placement state placement)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [placement placement])))
+  (update-session state (λ (s) (struct-copy editor-session s [placement placement]))))
 (define (editor-state-with-input state input)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [input input])))
+  (update-session state (λ (s) (struct-copy editor-session s [input input]))))
 (define (editor-state-with-jobs state jobs)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [jobs jobs])))
+  (update-session state (λ (s) (struct-copy editor-session s [jobs jobs]))))
 (define (editor-state-with-async state async?)
-  (editor-state-with-session
-   state
-   (struct-copy editor-session (editor-state-session state)
-                [async? async?])))
+  (update-session state (λ (s) (struct-copy editor-session s [async? async?]))))
 
 ;;; ════════════════ plugin-state ════════════════
 

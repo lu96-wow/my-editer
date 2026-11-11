@@ -41,7 +41,7 @@
 (define ed (make-editor #:engine engine
                         #:registry (make-hook-registry '())
                         #:plugins (list pa pb)))
-(define state (make-editor-state #:plugin-states (plugins->states (list pa pb))))
+(define state (make-app-state #:plugin-states (plugins->states (list pa pb))))
 
 (define s1 (run-plugin-syncs ed state))
 (check-equal? (editor-state-plugin-state s1 'owner-a) 1)
@@ -74,7 +74,7 @@
                          #:registry (make-hook-registry '())
                          #:plugins (list command-plugin)))
 (define state2
-  (make-editor-state #:plugin-states (plugins->states (list command-plugin))))
+  (make-app-state #:plugin-states (plugins->states (list command-plugin))))
 (define s4 (handle-editor-event ed2 state2 (key-event (key 't 'ctrl))))
 (check-equal? (editor-state-plugin-state s4 'owner-command) 1)
 

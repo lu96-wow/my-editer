@@ -21,7 +21,7 @@
 (define ed (make-editor #:engine engine
                         #:registry (make-hook-registry '())
                         #:plugins (list plugin)))
-(define state (make-editor-state #:plugin-states (plugins->states (list plugin))))
+(define state (make-app-state #:plugin-states (plugins->states (list plugin))))
 
 (define ch (make-async-channel))
 (define rt (start-timer-runtime #:event-channel ch))

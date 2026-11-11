@@ -18,7 +18,7 @@
   (define ed (make-editor #:engine engine
                           #:registry (make-hook-registry hooks)
                           #:plugins (list p)))
-  (define state (make-editor-state #:plugin-states (plugins->states (list p))))
+  (define state (make-app-state #:plugin-states (plugins->states (list p))))
   (values engine ed state))
 
 ;;; 1. transform + state threading + after action

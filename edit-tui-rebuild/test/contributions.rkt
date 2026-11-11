@@ -25,7 +25,7 @@
 (define ed (make-editor #:engine engine
                         #:registry (make-hook-registry '())
                         #:plugins (list pa pb)))
-(define state (make-editor-state #:plugin-states (plugins->states (list pa pb))))
+(define state (make-app-state #:plugin-states (plugins->states (list pa pb))))
 
 (define ev (job-result-event 1 'job-a 'ok #f))
 (define-values (s1 actions) (run-plugin-job-handlers ed state ev))

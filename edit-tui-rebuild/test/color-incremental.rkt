@@ -16,7 +16,7 @@
 (define ed (make-editor #:engine engine
                         #:registry (make-hook-registry (plugins->hooks (list plugin)))
                         #:plugins (list plugin)))
-(define state (make-editor-state #:plugin-states (plugins->states (list plugin))))
+(define state (make-app-state #:plugin-states (plugins->states (list plugin))))
 
 (define s1 (run-plugin-syncs ed state))
 (define entry1 (hash-ref (editor-state-plugin-state s1 'racket-color) 1))

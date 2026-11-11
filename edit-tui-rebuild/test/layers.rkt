@@ -64,7 +64,7 @@
              "editor/api.rkt")
 (check-false (regexp-match? #rx"editor-state-plugin-states" api-src)
              "editor/api.rkt")
-(check-false (regexp-match? #rx"make-editor-state" api-src)
+(check-false (regexp-match? #rx"make-app-state" api-src)
              "editor/api.rkt")
 (check-false (regexp-match? #rx"resources-(add|remove|set-)" api-src)
              "editor/api.rkt")

@@ -108,7 +108,7 @@
                    (list editor-vid) scratch-mode
                    (engine-doc-version engine editor-vid)))
   (define state
-    (make-editor-state #:plugin-states (plugins->states plugins)
+    (make-app-state #:plugin-states (plugins->states plugins)
                        #:area (rect 0 0 80 24)
                        #:layout layout
                        #:layout-config rebuild-layout-config

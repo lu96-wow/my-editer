@@ -45,7 +45,7 @@
                #:plugins (list custom-plugin)))
 (define custom-layout (make-editor-layout #:editor-view 1 #:status-view 2))
 (define custom-state
-  (make-editor-state #:plugin-states (plugins->states (list custom-plugin))
+  (make-app-state #:plugin-states (plugins->states (list custom-plugin))
                      #:area (rect 0 0 40 10)
                      #:layout custom-layout))
 
@@ -87,7 +87,7 @@
                #:registry (make-hook-registry '())
                #:plugins (list blocked-plugin fallback-plugin)))
 (define fallback-state
-  (make-editor-state #:plugin-states (plugins->states (list blocked-plugin fallback-plugin))
+  (make-app-state #:plugin-states (plugins->states (list blocked-plugin fallback-plugin))
                      #:area (rect 0 0 40 10)
                      #:layout (make-editor-layout #:editor-view 1)))
 (define fallback-state*

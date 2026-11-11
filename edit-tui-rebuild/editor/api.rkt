@@ -49,6 +49,7 @@
  buffer? view?
 
  ;; State 只读查询：插件拿不到 constructor / plugin-states / 写入口。
+ ;; helper 同时接受 app-state（host / contribution 回调）和 editor-core。
  editor-state-with-flash
  editor-state-with-layout
  editor-state-with-pending

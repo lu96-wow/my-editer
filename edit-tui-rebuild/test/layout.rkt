@@ -18,7 +18,7 @@
                           #:plugins (list p)))
   (define layout (make-editor-layout #:editor-view 1 #:status-view 2))
   (define state
-    (make-editor-state #:plugin-states (plugins->states (list p))
+    (make-app-state #:plugin-states (plugins->states (list p))
                        #:area (rect 0 0 40 10)
                        #:layout layout
                        #:layout-config rebuild-layout-config
