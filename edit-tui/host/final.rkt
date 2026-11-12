@@ -1,144 +1,393 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/final.rkt —— 最终编辑器装配（第一版）
+;;; edit-tui-rebuild/host/final.rkt —— TUI 装配 + 事件循环
 ;;;
-;;; 组成：
-;;;   editor / docs / status（复用 completion-docs 运行时）
-;;;   + filetree / resources 共用 sidebar
-;;;   + input 接在 status panel
+;;; 这里负责：
+;;;   · 创建 engine / 初始 buffer / 初始 layout
+;;;   · 装配 plugins / hook registry / contribution registry
+;;;   · 渲染循环、job / timer runtime、action 解释
 ;;;
-;;; 启动不打开默认 buffer：layout 的 editor 是空 panel，用户从 filetree 打开文件。
-;;; 后续会把 completion/docs 抽成正式插件，再把这里改成纯 install 列表。
+;;; 键盘查找 / pending / command dispatch 在 host/input/；这里只调用 dispatch-key。
 
-(require racket/path
-         "../config/keymap/default.rkt"
-         "../config/layout/default.rkt"
-         "../main.rkt"
-         "../demo/completion-docs.rkt")
+(require racket/string
+         racket/async-channel
+         (prefix-in tui: tui)
+         "../editor/host-api.rkt"
+         (only-in "../core/command/api.rkt" key->string)
+         "../plugins/pair/plugin.rkt"
+         "../plugins/indent/plugin.rkt"
+         "../plugins/racket-color/plugin.rkt"
+         "../plugins/layout/plugin.rkt"
+         "../plugins/filetree/plugin.rkt"
+         "../plugins/resources/plugin.rkt"
+         "../plugins/completion/plugin.rkt"
+         "../plugins/docs/plugin.rkt"
+         "event.rkt"
+         "keymap.rkt"
+         "layout.rkt"
+         "timers.rkt"
+         "open.rkt"
+         "close.rkt"
+         "docs.rkt"
+         "filetree-io.rkt"
+         "input/dispatch.rkt"
+         "../features/input/api.rkt"
+         "../features/placement/api.rkt"
+         "../features/mouse/api.rkt"
+         "jobs.rkt"
+         (only-in "../../core/editor.rkt" make-panel)
+         "../../edit-tui/render/core.rkt"
+         "../../edit-tui/config/theme/default.rkt")
 
-(provide final-state final-engine run-final!)
+(provide run-editor
+         make-editor-app
+         run-demo-editor
+         render-frame
+         sync-status!
+         handle-editor-event
+         handle-job-result)
 
-(define final-engine demo-engine)
+;;; ════════════════ 初始文档 ════════════════
 
-;;; ════════════════ 核心 view：filetree / resources / input ════════════════
+(define editor-vid 1)
+(define status-vid 2)
+(define filetree-vid 3)
+(define resources-vid 4)
+(define input-vid 5)
+(define completion-vid 6)
+(define docs-vid 7)
 
-(define filetree-vid 10)
-(define resources-vid 11)
+;; host 装配知道具体 view id：把 panel/view 映射到命令 scope。
+(define view-scopes
+  (hash filetree-vid 'filetree
+        resources-vid 'resources
+        docs-vid 'docs))
 
-;; completion-docs demo 固定使用这些 id。
-(define status-vid 20)
-(define docs-vid 30)
-(define input-vid 21)
+(define (make-editor-app
+         #:workspace-root [workspace-root (resource-normalize-path (current-directory))]
+         #:initial-text [initial-text ""]
+         #:initial-name [initial-name ""]
+         #:initial-path [initial-path #f]
+         #:initial-resource? [initial-resource? (not (string=? initial-name ""))])
+  (define engine (make-engine))
+  (void (engine-create-buffer! engine editor-vid initial-name initial-text))
+  (void (engine-create-view! engine editor-vid editor-vid))
+  (void (engine-create-buffer! engine status-vid "*status*" ""))
+  (void (engine-create-view! engine status-vid status-vid))
+  (void (engine-create-buffer! engine filetree-vid "*filetree*" ""))
+  (void (engine-create-view! engine filetree-vid filetree-vid))
+  (void (engine-create-buffer! engine resources-vid "*resources*" ""))
+  (void (engine-create-view! engine resources-vid resources-vid))
+  (void (engine-create-buffer! engine input-vid "*input*" ""))
+  (void (engine-create-view! engine input-vid input-vid))
+  (void (engine-create-buffer! engine completion-vid "*completion*" ""))
+  (void (engine-create-view! engine completion-vid completion-vid))
+  (void (engine-create-buffer! engine docs-vid "*docs*" ""))
+  (void (engine-create-view! engine docs-vid docs-vid))
+  ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
+  (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
-;; 边界：最终编辑器启动不保留 demo 的默认 editor buffer。
-(engine-remove-view! final-engine 1)
-(engine-remove-doc! final-engine 1)
+  (define plugins (list pair-plugin
+                        indent-plugin
+                        (make-filetree-plugin
+                         #:view filetree-vid
+                         #:root workspace-root)
+                        (make-resources-plugin #:view resources-vid)
+                        racket-color-plugin
+                        layout-plugin
+                        (make-completion-plugin #:view completion-vid)
+                        (make-docs-plugin #:view docs-vid #:panel-id 'docs)))
+  (define registry (make-hook-registry (plugins->hooks plugins)))
+  (define ed (make-editor #:engine engine
+                          #:registry registry
+                          #:plugins plugins))
 
-(define (create-plain-view! vid name)
-  (void (engine-create-buffer! final-engine vid name ""))
-  (void (engine-create-view! final-engine vid vid)))
+  (define layout (make-editor-layout #:editor-view editor-vid
+                                     #:status-views (list status-vid input-vid)
+                                     #:sidebar-views (list filetree-vid resources-vid)
+                                     #:docs-view docs-vid))
+  ;; 没有 initial-name 时只建一个空 editor buffer，不登记 resource。
+  ;; 打开文件后由 host/open 创建真正的 resource。
+  (define initial-mode (doc-mode-for initial-path initial-text))
+  (define resources*
+    (if initial-resource?
+        (resources-add
+         empty-resources
+         (make-resource editor-vid editor-vid initial-path initial-name
+                        (list editor-vid) initial-mode
+                        (engine-doc-version engine editor-vid)
+                        #:command-stack (mode-command-stack initial-mode)))
+        empty-resources))
+  (define state
+    (make-app-state #:plugin-states (plugins->states plugins)
+                       #:workspace-root workspace-root
+                       #:area (rect 0 0 80 24)
+                       #:layout layout
+                       #:layout-config rebuild-layout-config
+                       #:next-view-id 10
+                       #:next-panel-id 100
+                       #:resources resources*
+                       #:input (make-input-state #:panel-id 'status
+                                                 #:status-view status-vid
+                                                 #:input-view input-vid)))
+  (values ed state))
 
-(create-plain-view! filetree-vid "*filetree*")
-(create-plain-view! resources-vid "*resources*")
-(create-plain-view! input-vid "*input*")
+;;; ════════════════ action 解释 ════════════════
 
-;;; ════════════════ 布局配置：docs 可拖动，但初始高度 1 行 ════════════════
+(define (run-actions ed state actions)
+  (for/fold ([s state]) ([a (in-list actions)])
+    (cond
+      [(quit-action? a) (state-with-quit s #t)]
+      [(flash-action? a) (state-with-flash s (flash-action-message a))]
+      [(open-file-action? a)
+       (define-values (s* more)
+         (editor-open-file! ed s (open-file-action-path a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(close-buffer-action? a)
+       (define-values (s* more) (editor-close-buffer-command ed s))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(show-docs-action? a)
+       (define-values (s* more) (editor-show-docs! ed s (show-docs-action-name a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-create-action? a)
+       (define-values (s* more)
+         (open-filetree-create-prompt! s
+                                       (filetree-create-action-parent a)
+                                       (filetree-create-action-kind a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-delete-action? a)
+       (define-values (s* more)
+         (open-filetree-delete-prompt! s
+                                       (filetree-delete-action-path a)
+                                       (filetree-delete-action-kind a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-rename-action? a)
+       (define-values (s* more)
+         (open-filetree-rename-prompt! s (filetree-rename-action-path a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [else s])))
 
-(define final-layout-config
-  (make-layout-config
-   #:rules
-   (hash
-    'editor (config-panel-rule default-config 'editor)
-    'sidebar (config-panel-rule default-config 'sidebar)
-    'status (config-panel-rule default-config 'status)
-    'docs (make-panel-rule #:splittable? #f
-                           #:hideable? #t
-                           #:deletable? #f
-                           #:focusable? #t
-                           #:min-w 1 #:max-w #f
-                           #:min-h 3 #:max-h #f))))
+;;; ════════════════ 命令 ════════════════
 
-;;; ════════════════ 初始 state：空资源 + 已有 docs/status/completion view ════════════════
+(define (editor-focused? state)
+  (eq? (editor-focus-panel-kind state) 'editor))
 
-(define base-state
-  (struct-copy app-state demo-state
-               [resources resource-store-empty]
-               [layout #f]
-               [layout-config final-layout-config]
-               [store (hash-set (app-state-store demo-state)
-                                'demo/docs
-                                empty-docs)]))
+;;; ════════════════ 渲染 ════════════════
 
-(define state1
-  (filetree-install-state base-state
-                          filetree-vid
-                          (path->complete-path (current-directory))
-                          #:panel-stack filetree-panel-stack))
-(define state2
-  (resource-panel-install-state state1 resources-vid
-                                #:panel-stack resource-panel-stack))
-(define state3
-  (input-install-state state2 'status status-vid input-vid))
+(define (status-line state engine)
+  (define vid (editor-focus-view-id state))
+  (define line (add1 (or (and vid (engine-view-point-line engine vid)) 0)))
+  (define col (add1 (or (and vid (engine-view-point-column engine vid)) 0)))
+  (define panes (length (or (editor-visible-editor-panels state) '())))
+  (define r (state-resource-for-view state vid))
+  (define name
+    (cond
+      [(not r) "[no file]"]
+      [else
+       (define path (resource-path r))
+       (if path
+           (resource-display-path (state-workspace-root state) path)
+           (resource-name r))]))
+  (define dirty?
+    (and r (resource-dirty? r (engine-doc-version engine (resource-doc-id r)))))
+  (define pending (state-pending state))
+  (define pending-text
+    (and (pair? pending)
+         (format " [~a]" (string-join (map key->string pending) " "))))
+  (define placement (and (editor-placement-active? state) "placement"))
+  (define flash (state-flash state))
+  (string-join
+   (filter values
+           (list name
+                 (and dirty? "*")
+                 (format "~a:~a" line col)
+                 (format "panes:~a" panes)
+                 "pair+indent"
+                 placement
+                 pending-text
+                 (and (positive? (string-length flash)) flash)))
+   "  "))
 
-;;; ════════════════ 布局：空 editor + docs + status/input + sidebar ════════════════
+(define (sync-status! state engine)
+  (define text (status-line state engine))
+  (engine-set-view-content! engine status-vid (list text) (list 'status-bar))
+  (engine-set-view-cursor! engine status-vid 0 #:column 0)
+  state)
 
-(define empty-editor-panel
-  (make-panel 'editor 'editor
-              #:borders '(up down left right)))
+(define (render-frame ed state cache)
+  (define area (state-area state))
+  (define rows (rect-h area))
+  (define cols (rect-w area))
+  (define panels (or (editor-layout-panels ed state) '()))
+  ;; 顺序：panel 尺寸 -> status 内容 -> 插件 sync -> 渲染。
+  ;; status 是 host 投影，先写好，避免派生插件在下一帧才发现它的 version 变了。
+  (panels-sync! panels)
+  (void (sync-status! state (editor-engine ed)))
+  (void (editor-input-sync! ed state))
+  (define state* (run-plugin-syncs ed state))
+  (define engine (editor-engine ed))
+  (define overlay-panels
+    (for/list ([ov (in-list (run-plugin-overlays ed state*))])
+      (make-panel (engine-view-object engine (editor-overlay-view-id ov))
+                  (editor-overlay-rect ov)
+                  (editor-overlay-borders ov)
+                  #:face (editor-overlay-face ov)
+                  #:weight (editor-overlay-weight ov)
+                  #:deep (editor-overlay-deep ov))))
+  (unless (null? overlay-panels)
+    (panels-sync! overlay-panels))
+  (define all-panels (append panels overlay-panels))
+  (define focus-view (editor-focus-view ed state*))
+  (define-values (cache* rows* sels*)
+    (render-display-patch all-panels focus-view cols rows cache))
+  (define out
+    (bytes-append (if cache (bytes) (render-clear))
+                  (render-pieces (append rows* sels*))))
+  (values state* cache* out))
 
-(define sidebar-panel
-  (make-panel 'filetree 'sidebar
-              #:views (list filetree-vid resources-vid)
-              #:active filetree-vid
-              #:borders '(right)))
+;;; ════════════════ TUI 入口 ════════════════
 
-(define docs-panel
-  (make-panel 'docs 'docs
-              #:views (list docs-vid)
-              #:active docs-vid
-              #:borders '(up down left right)))
+(define (read-app-event)
+  (let loop ()
+    (define-values (type data mods) (tui:read-event/raw))
+    (define e (tui-event->app type data mods))
+    (if e e (loop))))
 
-(define status-panel
-  (make-panel 'status 'status
-              #:views (list status-vid input-vid)
-              #:active status-vid
-              #:fixed-h 1))
+;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
+(define (handle-editor-event ed state0 ev)
+  ;; 输入栏是抢占式的：非 key / paste 事件先取消本次输入，再处理事件。
+  (define state1
+    (if (and (editor-input-active? state0)
+             (not (key-event? ev))
+             (not (paste-event? ev)))
+        (editor-input-close state0)
+        state0))
+  (define state
+    (if (mouse-event? ev)
+        state1
+        (state-with-select-drag state1 #f)))
+  (cond
+    [(resize-event? ev)
+     (state-with-area
+      state (rect 0 0 (resize-event-cols ev) (resize-event-rows ev)))]
+    [(paste-event? ev)
+     (cond
+       [(editor-input-active? state)
+        (define-values (s2 actions) (editor-input-paste! state (paste-event-bytes ev)))
+        (run-actions ed s2 actions)]
+       [else
+     (define vid (editor-focus-view-id state))
+     (cond
+       [(not vid) (state-with-flash state "paste: no focused editor view")]
+       [(not (editor-focused? state))
+        (state-with-flash state "paste: focus is not editor")]
+       [else
+        (define-values (s2 actions)
+          (editor-paste! ed state vid (paste-event-bytes ev)))
+        (run-actions ed s2 actions)])])]
+    [(mouse-event? ev)
+     (cond
+       [(editor-placement-active? state)
+        (define-values (s2 actions2 handled?)
+          (editor-placement-mouse! ed state
+                                   (mouse-event-row ev)
+                                   (mouse-event-col ev)))
+        (cond
+          [handled? (run-actions ed s2 actions2)]
+          [else
+           (define-values (s3 actions3)
+             (editor-mouse! ed state
+                            (mouse-event-token ev)
+                            (mouse-event-row ev)
+                            (mouse-event-col ev)))
+           (run-actions ed s3 actions3)])]
+       [else
+        (define-values (s2 actions)
+          (editor-mouse! ed state
+                         (mouse-event-token ev)
+                         (mouse-event-row ev)
+                         (mouse-event-col ev)))
+        (run-actions ed s2 actions)])]
+    [(quit-event? ev)
+     (state-with-quit state #t)]
+    [(key-event? ev)
+     (define-values (s2 actions)
+       (dispatch-key ed state (key-event-token ev) view-scopes))
+     (run-actions ed s2 actions)]
+    [else state]))
 
-(define layout0
-  (make-layout #:root (make-leaf 'editor)
-               #:panels (hash 'editor empty-editor-panel)
-               #:focus 'editor))
+(define (handle-job-result ed state ev)
+  (define id (job-result-event-id ev))
+  (define s1 (state-finish-job state id (job-result-event-result ev)))
+  (define-values (s2 actions) (run-plugin-job-handlers ed s1 ev))
+  (define s3 (run-actions ed s2 actions))
+  (state-forget-job s3 id))
 
-;; 先挂 sidebar，再挂 status，最后把 docs 插到 editor 和 status 之间。
-;; 顺序很重要：docs / status 都固定一行时，后挂的固定 panel 不能吃掉剩余高度。
-(define-values (layout1 sidebar-ok?)
-  (layout-panel-attach layout0 'editor 'left sidebar-panel #:ratio 3/8))
-(define-values (layout2 status-ok?)
-  (layout-panel-attach layout1 'editor 'down status-panel))
-;; docs 不固定，seam 才能拖动；初始高度 3 行。
-(define docs-initial-lines 3)
-(define area0 (app-state-area base-state))
-(define docs-ratio
-  (let* ([h (and area0 (rect-h area0))]
-         [available (and h (sub1 h))] ; status 固定占 1 行
-         [editor-lines (and available
-                            (max 1 (- available docs-initial-lines)))])
-    (if (and available (> available docs-initial-lines))
-        (/ editor-lines available)
-        1/2)))
-(define-values (layout3 docs-ok?)
-  (layout-panel-attach layout2 'editor 'down docs-panel #:ratio docs-ratio))
+(define (run-editor ed state
+                    #:read-event [read-event read-app-event]
+                    #:write-bytes [write-bytes (λ (b) (void))]
+                    #:job-runtime [job-runtime #f])
+  (let loop ([s state] [cache #f])
+    (when job-runtime
+      (dispatch-jobs! job-runtime (state-jobs s)))
+    (define-values (s1 cache* bytes)
+      (render-frame ed s cache))
+    (unless (zero? (bytes-length bytes))
+      (write-bytes bytes))
+    (when job-runtime
+      (dispatch-jobs! job-runtime (state-jobs s1)))
+    (define ev (read-event))
+    (cond
+      [(job-result-event? ev)
+       (loop (handle-job-result ed s1 ev) cache*)]
+      [(timer-event? ev)
+       (define-values (s2 actions) (run-plugin-timer-handlers ed s1 ev))
+       (loop (run-actions ed s2 actions) cache*)]
+      [else
+       (define s2 (handle-editor-event ed s1 ev))
+       (if (state-quit? s2)
+           s2
+           (loop s2 (if (resize-event? ev) #f cache*)))])))
 
-(unless (and docs-ok? status-ok? sidebar-ok?)
-  (error 'final "layout attach failed"))
+;;; ════════════════ 终端入口 ════════════════
 
-(define final-state
-  (struct-copy app-state state3 [layout layout3]))
-
-;;; ════════════════ 入口 ════════════════
-
-(define (run-final!)
-  (run-demo final-state final-engine))
+(define (run-demo-editor)
+  (define-values (ed state) (make-editor-app))
+  (tui:with-tui
+   (lambda ()
+     (tui:cursor-hide)
+     (tui:enable-mouse!)
+     (tui:enable-bracketed-paste!)
+     (define-values (rows cols) (tui:get-window-size))
+     (define area
+       (if (and rows cols (positive? rows) (positive? cols))
+           (rect 0 0 cols rows)
+           (rect 0 0 80 24)))
+     (define event-channel (make-async-channel))
+     (define input-thread
+       (thread (λ ()
+                 (let loop ()
+                   (async-channel-put event-channel (read-app-event))
+                   (loop)))))
+     (define runtime
+       (start-job-runtime (editor-services ed)
+                          #:event-channel event-channel
+                          #:workers 2))
+     (define timer-runtime
+       (start-timer-runtime #:event-channel event-channel))
+     (editor-set-timer-service! ed (timer-runtime-service timer-runtime))
+     (dynamic-wind
+      void
+      (λ ()
+        (run-editor ed
+                    (state-with-async (state-with-area state area) #t)
+                    #:read-event (λ () (async-channel-get event-channel))
+                    #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
+                    #:job-runtime runtime))
+      (λ ()
+        (kill-thread input-thread)
+        (stop-job-runtime runtime)
+        (stop-timer-runtime timer-runtime))))))
 
 (module+ main
-  (void (run-final!)))
+  (void (run-demo-editor)))

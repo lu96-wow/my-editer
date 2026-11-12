@@ -1,84 +1,62 @@
 #lang racket
 
-;;; placement 交互：临时表（方向键改焦点）压栈 / 解除。
+;;; placement：方向键换目标 / Enter 提交 / Esc 取消 / 鼠标点 editor 放入。
+
 (require rackunit
-         "../config/keymap/default.rkt"
-         "../main.rkt")
+         racket/file
+         racket/path
+         "../editor/host-api.rkt"
+         "../core/layout/api.rkt"
+         "../host/final.rkt"
+         "fixture.rkt"
+         "../features/placement/api.rkt"
+         "../host/open.rkt")
 
-(define area (rect 0 0 60 20))
+(define root (make-temporary-directory))
+(define (make-file name text)
+  (define p (build-path root name))
+  (display-to-file text p #:exists 'replace)
+  p)
 
-(define filetree-panel
-  (make-panel 'filetree 'sidebar #:views '(10) #:active 10 #:borders '(right)))
-(define editor1-panel
-  (make-panel 'editor1 'editor #:borders '(up down left right)))
-(define editor2-panel
-  (make-panel 'editor2 'editor #:borders '(up down left right)))
+(define-values (ed state) (make-test-editor))
+(define s0 (state-with-area state (rect 0 0 60 15)))
+(define-values (s1 _a1) (editor-split! ed s0 'right))
+(check-equal? (length (editor-visible-editor-panels s1)) 2)
 
-;; filetree | (editor1 / editor2)
-(define l0
-  (make-layout #:root (make-leaf 'editor1)
-               #:panels (hash 'editor1 editor1-panel)
-               #:focus 'editor1))
-(define-values (l1 ok1?)
-  (layout-panel-attach l0 'editor1 'left filetree-panel #:ratio 1/4))
-(define-values (l2 ok2?)
-  (layout-panel-attach l1 'editor1 'down editor2-panel))
-(unless (and ok1? ok2?) (error 'placement-test "layout"))
+;; 打开文件 -> placement；默认焦点保持当前 editor。
+(define f1 (make-file "one.txt" "one"))
+(define-values (s2 _a2) (editor-open-file! ed s1 f1))
+(check-true (editor-placement-active? s2))
+(define vid1 (editor-placement-view-id s2))
 
-(define state
-  (make-app-state #:layout (layout-set-focus l2 'filetree)
-                  #:keymap default-keymap
-                  #:area area))
+;; 方向键换目标 -> commit
+(define-values (s3 _a3) (editor-placement-focus! ed s2 'left))
+(check-equal? (editor-focus-panel-id s3) 'editor)
+(define-values (s4 _a4) (editor-placement-commit ed s3))
+(check-false (editor-placement-active? s4))
+(check-equal? (layout-panel-for-view (state-layout s4) vid1) 'editor)
 
-(define (focus state) (layout-focus (app-state-layout state)))
-(define (overlay-tables state)
-  (command-table-stack-tables (app-state-overlays state)))
-(define (press state tok)
-  (step state (key-event tok)))
+;; Esc 取消：resource 仍存在，但 view 不挂 panel。
+(define f2 (make-file "two.txt" "two"))
+(define-values (s5 _a5) (editor-open-file! ed s4 f2))
+(check-true (editor-placement-active? s5))
+(define vid2 (editor-placement-view-id s5))
+(define-values (s6 _a6) (editor-placement-cancel ed s5))
+(check-false (editor-placement-active? s6))
+(check-false (layout-panel-for-view (state-layout s6) vid2))
+(check-not-false (state-resource-for-view s6 vid2))
 
-;;; ---------- 开始 placement：自动聚焦 editor + 压临时表 ----------
-(define s1 (start-placement state 99))
-(check-equal? (focus s1) 'editor1)
-(check-not-false (memq placement-table (overlay-tables s1)))
-(check-equal? (length (overlay-tables s1))
-              (add1 (length (overlay-tables state))))
+;; 鼠标点 editor panel 放入。
+(define f3 (make-file "three.txt" "three"))
+(define-values (s7 _a7) (editor-open-file! ed s6 f3))
+(define vid3 (editor-placement-view-id s7))
+(define rects (layout-panel-rects (state-layout s7) (state-area s7)))
+(define rr (hash-ref rects 100))
+(define-values (s8 _a8 handled?)
+  (editor-placement-mouse! ed s7 (+ (rect-y rr) 1) (+ (rect-x rr) 1)))
+(check-true handled?)
+(check-false (editor-placement-active? s8))
+(check-equal? (layout-panel-for-view (state-layout s8) vid3) 100)
 
-;;; ---------- 方向键改焦点（跳过非 editor） ----------
-(define-values (s2 a2) (press s1 (key 'down)))
-(check-equal? a2 '())
-(check-equal? (focus s2) 'editor2)
-
-;; 左边是 filetree（sidebar），不是合法目标 -> 焦点不动
-(define-values (s2b a2b) (press s2 (key 'left)))
-(check-equal? a2b '())
-(check-equal? (focus s2b) 'editor2)
-(check-true (string-contains? (app-state-flash s2b) "no editor"))
-
-;;; ---------- Enter 放入 + 解除临时表 ----------
-(define-values (s3 a3) (press s2b (key 'enter)))
-(check-equal? a3 '())
-(check-false (app-state-placement s3))
-(check-not-false (memv 99 (layout-panel-view-ids (app-state-layout s3) 'editor2)))
-(check-false (memq placement-table (overlay-tables s3)))
-(check-equal? (app-state-flash s3) "view placed")
-
-;;; ---------- 解除后方向键恢复为普通光标导航，不改焦点 ----------
-(define-values (s3b a3b) (press s3 (key 'down)))
-(check-equal? (map view-action-kind a3b) '(nav))
-(check-equal? (focus s3b) 'editor2)
-
-;;; ---------- Esc 取消也会解除临时表 ----------
-(define s4 (start-placement state 100))
-(check-not-false (memq placement-table (overlay-tables s4)))
-(define-values (s5 a5) (press s4 (key 'escape)))
-(check-equal? a5 '())
-(check-false (app-state-placement s5))
-(check-false (memq placement-table (overlay-tables s5)))
-
-;;; ---------- 焦点本来就在 editor：不抢焦点 ----------
-(define s6 (start-placement (struct-copy app-state state
-                                         [layout (layout-set-focus l2 'editor2)])
-                            101))
-(check-equal? (focus s6) 'editor2)
-
+(delete-directory/files root)
 (displayln "edit-tui-rebuild/test/placement.rkt: ok")

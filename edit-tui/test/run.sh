@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# 跑 edit-tui-rebuild/test 下所有 *.rkt。
-# 测试是脚本；以「退出码非 0」或「输出含 FAILURE/ERROR」判定失败。
+# edit-tui-rebuild 回归测试。
+# 测试是脚本；以退出码非 0 或输出含 FAILURE/ERROR 判定失败。
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
-raco make "$here/../main.rkt"
+root="$(cd "$here/.." && pwd)"
+raco make "$root/host/final.rkt"
+raco make "$here"/*.rkt
 fail=0
 while IFS= read -r f; do
   out="$(racket "$f" 2>&1)"

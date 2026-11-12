@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/command/key.rkt —— 键 token = 标签 + 原始字节
+;;; edit-tui-rebuild/core/command/key.rkt —— 键 token = 标签 + 原始字节
 ;;;
 ;;; 输入的中间状态不做 char / symbol 解码，token 就是终端给的那一份：
 ;;;

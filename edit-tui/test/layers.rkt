@@ -1,16 +1,10 @@
 #lang racket
 
-;;; 分层约束的可执行版本：
-;;;
-;;;   骨架（core/skeleton.rkt） ← 插件（edit / chrome / filetree） ← app 编排 ← boot
-;;;
-;;; 规则：
-;;;   - 骨架不认识 app / 插件 / boot；
-;;;   - 插件只 require core/skeleton.rkt（不直接拿骨架实现模块），
-;;;     插件之间只经对方 api.rkt；可以 require app/state 等 app 基础；
-;;;   - app 基础只 require 骨架；
-;;;   - app/step 只 require 骨架 + app 基础 + 插件 api.rkt；
-;;;   - boot 可以 require 一切（它是唯一副作用 / 启动层）。
+;;; 新架构的边界检查：
+;;;   - 插件只 require editor/api.rkt（和 feature api），不摸 engine / raw / host
+;;;   - raw 是唯一 require engine/api 的操作模块
+;;;   - 插件面不导出 engine 生命周期 / engine-apply-view-action!
+
 (require rackunit
          racket/file
          racket/path
@@ -19,221 +13,141 @@
 (define test-dir (path->complete-path (find-system-path 'run-file)))
 (define root (simplify-path (build-path (path-only test-dir) 'up)))
 
-(define (read-forms rel)
-  (define text (regexp-replace #rx"^#lang[^\n]*\n"
-                               (file->string (build-path root rel))
-                               ""))
-  (with-input-from-string text
-    (λ ()
-      (let loop ([acc '()])
-        (define x (read))
-        (if (eof-object? x) (reverse acc) (loop (cons x acc)))))))
-
-(define (all-strings x)
-  (cond
-    [(string? x) (list x)]
-    [(symbol? x) (list (symbol->string x))]
-    [(list? x) (append* (for/list ([e (in-list x)]) (all-strings e)))]
-    [else '()]))
-
-;; 模块的 require 目标（路径字符串 + 裸模块名）
-(define (requires rel)
-  (append*
-   (for/list ([f (in-list (read-forms rel))]
-              #:when (and (list? f) (eq? (car f) 'require)))
-     (append* (for/list ([spec (in-list (cdr f))]) (all-strings spec))))))
+(define (src rel)
+  (file->string (build-path root rel)))
 
 (define (requires-any? rel pattern)
-  (for/or ([r (in-list (requires rel))]) (regexp-match? pattern r)))
+  (regexp-match? pattern (src rel)))
 
-;; 骨架实现文件（插件不许直接拿）
-(define skeleton-impl?
-  #rx"(^|/)core/(base|command|face|panel|layout|focus|projection|resource|engine)/[^/]+\\.rkt$")
-;; 插件的实现文件（跨插件只许 api.rkt）
-(define plugin-impl?
-  #rx"(^|/)(edit|chrome|filetree|resources)/[^/]+\\.rkt$")
-(define upper-layer? #rx"(^|/)(app|chrome|filetree|resources|edit|boot)/")
-;; 外部 core（repo/core）也不许插件直接摸；本地 core 只许 skeleton.rkt
-(define external-core? #rx"(^|/)\\.\\./\\.\\./core/")
+;; 纯语言库 / 纯 face 值可以复用；旧 editor / boot / host 不行。
 
-;;; ════════════════ 解析来源层（source/） ════════════════
-;;;
-;;; source/ 是纯来源模型 / 索引：不读磁盘、不 require app / boot / core。
-(define source-files
-  '("source/model.rkt" "source/store.rkt" "source/api.rkt"))
-
-(for ([m (in-list source-files)])
-  (check-false (requires-any? m upper-layer?) m)
-  (check-false (requires-any? m external-core?) m)
-  (check-false (requires-any? m skeleton-impl?) m)
-  (check-false (requires-any? m #rx"(^|/)(edit|chrome|filetree|resources)/") m))
-
-;;; ════════════════ 共享语言层（lang/） ════════════════
-;;;
-;;; lang/ 不是插件，也不是 core：它是语言能力库。
-;;; 只允许纯 Racket / 本地 lang 模块；不许 require app / boot / 编辑器实现。
-(define lang-files
-  '("lang/racket/api.rkt"
-    "lang/racket/base/racket.rkt"
-    "lang/racket/base/edit.rkt"
-    "lang/racket/base/lex.rkt"
-    "lang/racket/base/keywords.rkt"
-    "lang/racket/base/indent.rkt"
-    "lang/racket/color/highlight.rkt"
-    "lang/racket/color/word-color.rkt"
-    "lang/racket/color/bracket.rkt"
-    "lang/racket/color/color.rkt"
-    "lang/racket/parse/source.rkt"
-    "lang/racket/parse/analysis.rkt"
-    "lang/racket/parse/pool.rkt"
-    "lang/racket/parse/local-docs.rkt"
-    "lang/racket/parse/workspace.rkt"
-    "lang/racket/completion/module-index.rkt"
-    "lang/racket/completion/completion.rkt"
-    "lang/racket/docs/docs.rkt"
-    "lang/racket/docs/doc-html.rkt"))
-
-(for ([m (in-list lang-files)])
-  (check-false (requires-any? m upper-layer?) m)
-  (check-false (requires-any? m external-core?) m)
-  (check-false (requires-any? m skeleton-impl?) m)
-  (check-false (requires-any? m #rx"(^|/)(edit|chrome|filetree|resources)/") m))
-
-;;; ════════════════ 骨架 ════════════════
-(define skeleton-files
-  '("core/base/api.rkt"
-    "core/command/key.rkt" "core/command/table.rkt" "core/command/api.rkt"
-    "core/layout/config.rkt"
-    "core/face/model.rkt" "core/face/api.rkt"
-    "core/job/model.rkt" "core/job/api.rkt"
-    "core/panel/model.rkt" "core/panel/api.rkt"
-    "core/layout/tree.rkt" "core/layout/solve.rkt" "core/layout/ops.rkt" "core/layout/api.rkt"
-    "core/focus/model.rkt" "core/focus/api.rkt"
-    "core/projection/borders.rkt" "core/projection/geometry.rkt" "core/projection/api.rkt"
-    "render/theme.rkt" "render/core.rkt" "render/layout.rkt" "render/api.rkt"
-    "core/resource/model.rkt" "core/resource/api.rkt"
-    "core/engine/action.rkt" "core/engine/store.rkt" "core/engine/api.rkt"))
-
-(for ([m (in-list skeleton-files)])
-  (check-false (requires-any? m upper-layer?) m)
-  (check-false (requires-any? m #rx"(^|/)skeleton/") m))
-
-;; 骨架内部顺序
-(check-false (requires-any? "core/layout/tree.rkt" #rx"(^|/)(solve|ops)\\.rkt$"))
-(check-false (requires-any? "core/layout/solve.rkt" #rx"(^|/)ops\\.rkt$"))
-(check-true (requires-any? "core/layout/solve.rkt" #rx"(^|/)tree\\.rkt$"))
-(check-true (requires-any? "core/layout/ops.rkt" #rx"(^|/)(tree|solve)\\.rkt$"))
-(check-true (requires-any? "core/projection/geometry.rkt" #rx"(^|/)borders\\.rkt$"))
-; engine 不认识 app（action 词汇也在骨架里）
-(check-false (requires-any? "core/engine/store.rkt" #rx"(^|/)app/"))
-
-;; 骨架入口本身只聚合骨架 api
-(check-false (requires-any? "core/skeleton.rkt" upper-layer?) "core/skeleton.rkt")
-
-;; 骨架不认识任何具体配置（配置是宿主的，不是 layout / command 的）
-(check-false (requires-any? "core/skeleton.rkt" #rx"(^|/)config/") "core/skeleton.rkt")
-(check-false (requires-any? "core/layout/config.rkt" #rx"(^|/)config/layout/")
-              "core/layout/config.rkt")
-
-;; 配置模型在 layout 内部：ops / api / focus 都用它，但不反向依赖 config/
-(check-true (requires-any? "core/layout/api.rkt" #rx"(^|/)config\\.rkt$")
-            "core/layout/api.rkt")
-(check-true (requires-any? "core/layout/ops.rkt" #rx"(^|/)config\\.rkt$")
-            "core/layout/ops.rkt")
-(check-true (requires-any? "core/focus/model.rkt" #rx"(^|/)layout/config\\.rkt$")
-            "core/focus/model.rkt")
-
-;; 纯配置只依赖 layout API，不依赖 app / plugin / runtime
-(check-true (requires-any? "config/layout/default.rkt" #rx"(^|/)core/layout/api\\.rkt$")
-            "config/layout/default.rkt")
-(check-false (requires-any? "config/layout/default.rkt" upper-layer?)
-              "config/layout/default.rkt")
-(check-false (requires-any? "config/layout/default.rkt" #rx"(^|/)boot/")
-              "config/layout/default.rkt")
-
-;; keymap 配置允许 require 插件 / app 命令 API，但必须纯组合：
-;; 不 require step / main / runtime（否则会出现配置 <- 编排的反向依赖）。
-(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)app/step\\.rkt$")
-              "config/keymap/default.rkt")
-(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)main\\.rkt$")
-              "config/keymap/default.rkt")
-(check-false (requires-any? "config/keymap/default.rkt" #rx"(^|/)boot/")
-              "config/keymap/default.rkt")
-(check-false (requires-any? "config/mode.rkt" #rx"(^|/)boot/")
-              "config/mode.rkt")
-(check-false (requires-any? "config/mode.rkt" #rx"(^|/)main\\.rkt$")
-              "config/mode.rkt")
-
-;; 旧位置不再存在（config 只放纯数据）
-(check-false (file-exists? (build-path root "config/api.rkt")))
-(check-false (file-exists? (build-path root "config/model.rkt")))
-
-;;; ════════════════ 插件（edit / chrome / filetree / resources） ════════════════
 (define plugin-files
-  '("edit/insert.rkt" "edit/commands.rkt" "edit/color.rkt" "edit/api.rkt"
-    "pair/commands.rkt" "pair/api.rkt"
-    "indent/api.rkt"
-    "chrome/status.rkt" "chrome/input.rkt" "chrome/api.rkt"
-    "filetree/model.rkt" "filetree/lines.rkt" "filetree/scan.rkt"
-    "filetree/slice.rkt" "filetree/sync.rkt" "filetree/commands.rkt"
-    "filetree/api.rkt"
-    "resources/model.rkt" "resources/slice.rkt" "resources/lines.rkt"
-    "resources/sync.rkt" "resources/commands.rkt" "resources/api.rkt"))
+  '("plugins/pair/plugin.rkt"
+    "plugins/indent/plugin.rkt"
+    "plugins/racket-color/plugin.rkt"
+    "plugins/layout/plugin.rkt"
+    "plugins/filetree/plugin.rkt"
+    "plugins/resources/plugin.rkt"
+    "plugins/completion/plugin.rkt"
+    "plugins/docs/plugin.rkt"))
 
-(for ([m (in-list plugin-files)])
-  ;; 不许摸外部 core / boot / 骨架实现；本地 core 只经 core/skeleton.rkt
-  (check-false (requires-any? m external-core?) m)
-  (check-false (requires-any? m #rx"(^|/)boot/") m)
-  (check-false (requires-any? m skeleton-impl?) m)
-  ;; 骨架只经 core/skeleton.rkt
-  (for ([r (in-list (requires m))]
-        #:when (regexp-match? #rx"(^|/)core/skeleton\\.rkt$" r))
-    (check-true (regexp-match? #rx"core/skeleton\\.rkt$" r) (format "~a -> ~a" m r)))
-  ;; 跨插件只经对方 api.rkt
-  (for ([r (in-list (requires m))]
-        #:when (regexp-match? plugin-impl? r))
-    (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
+(for ([f (in-list plugin-files)])
+  ;; 插件只能经 editor/api.rkt 接触 editor；feature api 是唯一额外入口。
+  (check-true (regexp-match? #rx"editor/api\\.rkt" (src f)) f)
+  (check-false (requires-any? f #rx"\\.\\./editor/(engine|ops|host-api|context|hooks|state)") f)
+  ;; 允许纯语言库 / face；不允许旧 edit-tui 的 editor / boot / host。
+  (check-false
+   (requires-any? f #rx"\\.\\./\\.\\./edit-tui/(app|boot|host|render|edit|filetree|chrome|resources|core/(base|command|engine|focus|layout|panel|projection|resource))")
+   f)
+  (check-false (requires-any? f #rx"/host/") f))
 
-;; 插件组合骨架：至少用到 core/skeleton.rkt（api.rkt / 纯 model 例外）
-(for ([m (in-list '("edit/commands.rkt" "chrome/status.rkt" "chrome/input.rkt"
-                    "filetree/sync.rkt" "filetree/commands.rkt"
-                    "resources/sync.rkt" "resources/commands.rkt"))])
-  (check-true (for/or ([r (in-list (requires m))])
-                (regexp-match? #rx"core/skeleton\\.rkt$" r))
-              m))
+;; raw 是唯一直接调用 engine 操作面的 ops 模块。
+(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine/api\\.rkt")
+            "editor/ops/raw.rkt")
+(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine-apply-view-action!")
+            "editor/ops/raw.rkt")
 
-;; 纯投影 / 状态不碰 IO
-(check-false (requires-any? "filetree/lines.rkt" #rx"(^|/)scan\\.rkt$"))
-(check-false (requires-any? "filetree/model.rkt" upper-layer?))
+;; surface 不直接 require engine/store；它只经 engine/api 做查询。
+(check-false (requires-any? "editor/ops/surface.rkt" #rx"engine/store\\.rkt")
+             "editor/ops/surface.rkt")
 
-;;; ════════════════ app 基础 / 编排 ════════════════
-(for ([m (in-list '("app/state.rkt" "app/keymap.rkt" "app/event.rkt"
-                    "app/action.rkt" "app/commands.rkt" "app/placement.rkt"
-                    "app/step.rkt"))])
-  (check-false (requires-any? m skeleton-impl?) m)
-  (check-false (requires-any? m external-core?) m)
-  (check-false (requires-any? m #rx"(^|/)boot/") m)
-  (for ([r (in-list (requires m))]
-        #:when (regexp-match? plugin-impl? r))
-    (check-true (regexp-match? #rx"/api\\.rkt$" r) (format "~a -> ~a" m r))))
+;; 插件面不导出 engine 生命周期 / engine-apply-view-action!。
+(define api-src (src "editor/api.rkt"))
+(check-false (regexp-match? #rx"make-engine" api-src) "editor/api.rkt")
+(check-false (regexp-match? #rx"engine-create-" api-src) "editor/api.rkt")
+(check-false (regexp-match? #rx"engine-apply-view-action!" api-src) "editor/api.rkt")
+(check-false (regexp-match? #rx"render-display-patch" api-src) "editor/api.rkt")
+(check-false (regexp-match? #rx"panels-sync!" api-src) "editor/api.rkt")
 
-;; app/state 只依赖骨架（+ 自己）
-(check-false (requires-any? "app/state.rkt" #rx"(^|/)(chrome|edit|filetree|resources)/"))
-(check-false (requires-any? "app/state.rkt" #rx"(^|/)step\\.rkt$"))
+;; 插件面不导出 plugin-state 写入口 / state constructor / resource 变更入口。
+(check-false (regexp-match? #rx"state-set-plugin-state" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"state-plugin-states" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"make-app-state" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"resources-(add|remove|set-)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"make-resource" api-src)
+             "editor/api.rkt")
 
-;;; ════════════════ 入口 ════════════════
-;; 顶层 api 只聚合 api.rkt（允许 */api.rkt，不许实现文件）
-(define (impl-require? rel)
-  (for/or ([r (in-list (requires rel))])
-    (and (or (regexp-match? skeleton-impl? r)
-             (regexp-match? plugin-impl? r))
-         (not (regexp-match? #rx"api\\.rkt$" r)))))
+;; 插件面不整包导出 context / hooks / layout，避免 engine / registry / mouse 泄漏。
+(check-false (regexp-match? #rx"\\(all-from-out \"context\\.rkt\\)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"\\(all-from-out \"hooks\\.rkt\\)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"\\(all-from-out \"layout\\.rkt\\)" api-src)
+             "editor/api.rkt")
 
-;; main 是唯一聚合入口（没有顶层 api.rkt）
-(check-false (impl-require? "main.rkt") "main.rkt")
-(check-false (file-exists? (build-path root "api.rkt")) "顶层不应再有 api.rkt")
+;; host-api 才导出渲染 / 尺寸同步。
+(check-true (requires-any? "editor/host-api.rkt" #rx"panels-sync!")
+            "editor/host-api.rkt")
 
-; 骨架 demo 也只走 main API
-(check-false (requires-any? "demo/layout.rkt" skeleton-impl?) "demo/layout.rkt")
+;; host 走 host-api，不直接 require engine/store / ops/raw。
+(check-true (requires-any? "host/final.rkt" #rx"editor/host-api\\.rkt")
+            "host/final.rkt")
+(check-false (requires-any? "host/final.rkt" #rx"editor/(engine/store|ops/raw)")
+             "host/final.rkt")
+
+;; command 从 contribution registry 来；host 不再拼插件 command-table。
+(check-false (requires-any? "host/final.rkt" #rx"plugins->command-table")
+             "host/final.rkt")
+(check-false (requires-any? "host/final.rkt" #rx"owned-command-table")
+             "host/final.rkt")
+(check-true (requires-any? "editor/plugin.rkt" #rx"point/command")
+            "editor/plugin.rkt")
+
+;;; ════════════════ 更细的边界 ════════════════
+
+;; 插件不能直接摸 editor 内部模块（api.rkt 例外）。
+(for ([f (in-list plugin-files)])
+  (check-false
+   (requires-any? f #rx"\\.\\./editor/(open|prompt|input|close|timer|job|layout|resource|mode|overlay|engine|ops|host-api|context|hooks|state)")
+   f)
+  (check-false (requires-any? f #rx"state-set-plugin-state") f)
+  (check-false (regexp-match? #rx"editor-engine|edit-context-engine|change-context-engine"
+                              (src f))
+               f))
+
+;; editor 不能 require host / plugins。
+(define editor-files
+  (for/list ([p (in-directory (build-path root "editor"))]
+             #:when (regexp-match? #rx"\\.rkt$" (path->string p)))
+    (path->string (find-relative-path root p))))
+
+(for ([f (in-list editor-files)])
+  (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
+  ;; editor 不做文件 IO / 不启线程 / 不碰 channel。
+  (check-false (regexp-match? #rx"racket/file|display-to-file|file->string|async-channel|\\(thread\\b"
+                              (src f))
+               f))
+
+;; 插件 API 不导出 host 编排函数。
+(define api-src2 (src "editor/api.rkt"))
+(check-false (regexp-match? #rx"run-plugin-" api-src2) "editor/api.rkt")
+(check-false (regexp-match? #rx"plugins->" api-src2) "editor/api.rkt")
+
+;; plugin.rkt 只做描述 / 聚合；执行器在 plugin-runtime.rkt。
+(check-true (requires-any? "editor/plugin-runtime.rkt" #rx"context\\.rkt")
+            "editor/plugin-runtime.rkt")
+(check-true (requires-any? "editor/plugin-runtime.rkt" #rx"contributions\\.rkt")
+            "editor/plugin-runtime.rkt")
+
+;; features 是 app/chrome 内部层：只经 editor/api.rkt，不 require
+;; editor/state.rkt / host / plugins / engine 实现。
+(define (features-rkt-files dir)
+  (append*
+   (for/list ([p (in-directory dir)]
+              #:when (regexp-match? #rx"\\.rkt$" (path->string p)))
+     (list (path->string (find-relative-path root p))))))
+(for ([f (in-list (features-rkt-files (build-path root "features")))])
+  (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
+  (check-false (requires-any? f #rx"editor/(engine|ops|host-api|state)") f))
+
+;; 具体 app 布局装配不在 editor/layout.rkt。
+(check-false (requires-any? "editor/layout.rkt" #rx"make-editor-layout")
+             "editor/layout.rkt")
+(check-false (regexp-match? #rx"'docs" (src "editor/layout.rkt"))
+             "editor/layout.rkt")
 
 (displayln "edit-tui-rebuild/test/layers.rkt: ok")

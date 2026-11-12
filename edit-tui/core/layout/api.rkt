@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/layout/api.rkt —— 布局 API
+;;; edit-tui-rebuild/core/layout/api.rkt —— 布局 API
 ;;;
 ;;; 聚合实现：config（规则模型）/ tree（结构+查询）/ solve（rect+seam）/
 ;;; ops（结构编辑+拖动）。
@@ -60,6 +60,7 @@
  seam? seam-split-id seam-axis seam-rect
  layout-seam-resize
  drag? drag-split-id drag-axis drag-start-row drag-start-col drag-start-ratio
+ drag-start-left drag-fixed-side
  layout-seam-drag-start layout-seam-drag-move
 
  ;; 校验
