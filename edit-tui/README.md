@@ -12,7 +12,7 @@
 已经完成：
 
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
-- `editor/engine/`：core buffer / view 的唯一可变拥有者。
+- `editor/engine/`：core buffer / view 的唯一可变拥有者；按 read / user-write / ui-write / lifecycle 拆分能力。
 - `engine-doc-kind`：用户文档 `'user` 与 UI 投影文档 `'ui` 分开；插件默认查询 `editor-user-doc-ids`。
 - 插件 sync / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
@@ -93,9 +93,14 @@ edit-tui/
 
   editor/
     engine/
-      store.rkt        engine 生命周期 / 查询 / 缓存句柄
-      ui-projection.rkt UI view 写回 / face / 文本增量
-      apply.rkt        view-action 解释
+      store.rkt        engine 内部实现：doc / view / cache
+      read.rkt         只读能力：document / view / point / face
+      user-write.rkt   用户文档写能力：view-action 解释
+      ui-write.rkt     UI view 写回 / face / cursor
+      lifecycle.rkt    engine / buffer / view 创建与删除
+      ui-projection.rkt UI 投影内部实现
+      apply.rkt        view-action 内部解释器
+      api.rkt          宿主用的全量兼容聚合面
     ops/raw.rkt        裸操作：不触发 hook
     ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe
     layout.rkt         通用布局操作面：split / close / focus + layout hooks
@@ -500,6 +505,9 @@ racket edit-tui/test/ownership.rkt
 5h. Session 分正交轴：modal = input/placement；pointer = drag/select-drag；
     轴内互斥，轴间独立（find / pending / jobs 可同时存在）。
     input-state 是持久 seed：modal 退出后保留，下一次 open 复用。
+5i. Engine 按能力分模块：read / user-write / ui-write / lifecycle；
+    raw 只用 user-write，surface 只用 read，ui-projection 只用 ui-write，
+    layout / host open / close 只用 read + lifecycle。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

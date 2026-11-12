@@ -16,7 +16,8 @@
          "../core/projection/api.rkt"
          "../core/focus/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "engine/api.rkt"
+         "engine/read.rkt"
+         "engine/lifecycle.rkt"
          "context.rkt"
          "state.rkt"
          "resource.rkt"

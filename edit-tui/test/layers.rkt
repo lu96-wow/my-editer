@@ -2,8 +2,9 @@
 
 ;;; 新架构的边界检查：
 ;;;   - 插件只 require editor/api.rkt（和 feature api），不摸 engine / raw / host
-;;;   - raw 是唯一 require engine/api 的操作模块
-;;;   - 插件面不导出 engine 生命周期 / engine-apply-view-action!
+;;;   - engine 按能力拆分：read / user-write / ui-write / lifecycle
+;;;   - raw 只用 user-write；surface 只用 read；ui-projection 只用 ui-write
+;;;   - 插件面不导出 engine 生命周期 / engine-apply-user-action!
 
 (require rackunit
          racket/file
@@ -41,21 +42,37 @@
    f)
   (check-false (requires-any? f #rx"/host/") f))
 
-;; raw 是唯一直接调用 engine 操作面的 ops 模块。
-(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine/api\\.rkt")
+;; raw 只用用户写能力。
+(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine/user-write\\.rkt")
             "editor/ops/raw.rkt")
-(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine-apply-view-action!")
+(check-true (requires-any? "editor/ops/raw.rkt" #rx"engine-apply-user-action!")
             "editor/ops/raw.rkt")
+(check-false (requires-any? "editor/ops/raw.rkt" #rx"engine/(api|store|read|ui-write|lifecycle)\\.rkt")
+             "editor/ops/raw.rkt")
 
-;; surface 不直接 require engine/store；它只经 engine/api 做查询。
-(check-false (requires-any? "editor/ops/surface.rkt" #rx"engine/store\\.rkt")
+;; surface 只用只读能力；不碰 store / 用户写 / UI 写 / 生命周期。
+(check-true (requires-any? "editor/ops/surface.rkt" #rx"engine/read\\.rkt")
+            "editor/ops/surface.rkt")
+(check-false (requires-any? "editor/ops/surface.rkt" #rx"engine/(api|store|user-write|ui-write|lifecycle)\\.rkt")
              "editor/ops/surface.rkt")
+
+;; layout 只读 + 生命周期。
+(check-true (requires-any? "editor/layout.rkt" #rx"engine/read\\.rkt")
+            "editor/layout.rkt")
+(check-true (requires-any? "editor/layout.rkt" #rx"engine/lifecycle\\.rkt")
+            "editor/layout.rkt")
+(check-false (requires-any? "editor/layout.rkt" #rx"engine/(api|store)\\.rkt")
+             "editor/layout.rkt")
+
+;; host IO 模块不直接拿 engine/api 全量面。
+(for ([f (in-list '("host/open.rkt" "host/close.rkt" "host/prompt.rkt"))])
+  (check-false (requires-any? f #rx"engine/(api|store)\\.rkt") f))
 
 ;; 插件面不导出 engine 生命周期 / engine-apply-view-action!。
 (define api-src (src "editor/api.rkt"))
 (check-false (regexp-match? #rx"make-engine" api-src) "editor/api.rkt")
 (check-false (regexp-match? #rx"engine-create-" api-src) "editor/api.rkt")
-(check-false (regexp-match? #rx"engine-apply-view-action!" api-src) "editor/api.rkt")
+(check-false (regexp-match? #rx"engine-apply-(view|user)-action!" api-src) "editor/api.rkt")
 (check-false (regexp-match? #rx"render-display-patch" api-src) "editor/api.rkt")
 (check-false (regexp-match? #rx"panels-sync!" api-src) "editor/api.rkt")
 

@@ -17,7 +17,7 @@
          "../editor/state.rkt"
          "../editor/resource.rkt"
          "../editor/mode.rkt"
-         "../editor/engine/api.rkt"
+         "../editor/engine/read.rkt"
          "../editor/action.rkt"
          "../editor/layout.rkt"
          "../features/input/api.rkt"

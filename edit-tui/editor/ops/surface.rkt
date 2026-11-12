@@ -12,7 +12,7 @@
 ;;; 插件不直接调用 raw.rkt；它们注册 hook，或者通过 editor/api.rkt 调操作面。
 
 (require "../../core/api.rkt"
-         "../engine/api.rkt"
+         "../engine/read.rkt"
          "../context.rkt"
          "../state.rkt"
          "../hooks.rkt"

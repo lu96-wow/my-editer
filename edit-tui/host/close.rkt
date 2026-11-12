@@ -7,7 +7,8 @@
 
 (require "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "../editor/engine/api.rkt"
+         "../editor/engine/read.rkt"
+         "../editor/engine/lifecycle.rkt"
          "../editor/context.rkt"
          "../editor/state.rkt"
          "../editor/resource.rkt"

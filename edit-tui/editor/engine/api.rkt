@@ -1,16 +1,16 @@
 #lang racket
 
-;;; edit-tui/editor/engine/api.rkt —— core buffer / view 的唯一拥有者
+;;; edit-tui/editor/engine/api.rkt —— 兼容聚合面
 ;;;
-;;; 这是 editor 层的可变内核。只有 editor/ops/raw.rkt 允许直接调用它；
-;;; 插件只能通过 editor/api.rkt 的操作面和查询面访问。
+;;; 宿主需要全量能力时 require 这里；editor 内部模块应 require 更窄的
+;;; read / user-write / ui-write / lifecycle。
 
-(require "action.rkt"
-         "store.rkt"
-         "ui-projection.rkt"
-         "apply.rkt")
+(require "read.rkt"
+         "user-write.rkt"
+         "ui-write.rkt"
+         "lifecycle.rkt")
 
-(provide (all-from-out "action.rkt"
-                       "store.rkt"
-                       "ui-projection.rkt"
-                       "apply.rkt"))
+(provide (all-from-out "read.rkt"
+                       "user-write.rkt"
+                       "ui-write.rkt"
+                       "lifecycle.rkt"))

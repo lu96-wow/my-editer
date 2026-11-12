@@ -11,7 +11,7 @@
 ;;;   (listof change) 精确变更
 
 (require "../../core/api.rkt"
-         "../engine/api.rkt")
+         "../engine/user-write.rkt")
 
 (provide raw-insert!
          raw-paste!
@@ -24,62 +24,59 @@
          raw-set-point!
          raw-set-selections!
          raw-scroll!
-         raw-ensure!
-         raw-set-cursor!)
+         raw-ensure!)
 
 (define (raw-insert! engine vid text)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'insert vid
                                           (string->bytes/utf-8 text))))
 
 (define (raw-paste! engine vid bytes)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'paste vid bytes)))
 
 (define (raw-backspace! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'backspace vid #f)))
 
 (define (raw-delete! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'delete vid #f)))
 
 (define (raw-kill-line! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'kill-line vid #f)))
 
 (define (raw-undo! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'undo vid #f)))
 
 (define (raw-redo! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'redo vid #f)))
 
 ;; dir : 'left | 'right | 'up | 'down | 'home | 'end
 (define (raw-move! engine vid dir [extend? #f])
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'nav vid
                                           (if extend? (list dir #t) dir))))
 
 ;; 内容区相对坐标（0 基）；越界由 engine 夹到最近有效位置。
 (define (raw-set-point! engine vid line col [extend? #f])
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'point vid
                                           (list line col extend?))))
 
 (define (raw-set-selections! engine vid sels)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'select vid sels)))
 
 ;; which : number | 'page-up | 'page-down
 (define (raw-scroll! engine vid which)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'scroll vid which)))
 
 (define (raw-ensure! engine vid)
-  (engine-apply-view-action! engine
+  (engine-apply-user-action! engine
                              (view-action 'ensure vid #f)))
 
-(define (raw-set-cursor! engine vid line col)
-  (engine-set-view-cursor! engine vid line #:column col))
