@@ -283,7 +283,7 @@ editor 的 `resource-stack` 存在 resource 上；同一个 panel 换 active vie
 `(owner . command)`，执行后按 owner 写回 `ps'`。
 
 同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
-`plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`；filetree / resources 命令放在
+`plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`（`C-w d` close panel）；filetree / resources 命令放在
 自己的局部 scope。completion 打开时通过 `#:key-owner` 把 completion scope 叠在
 focus scope 上面。
 
@@ -368,7 +368,9 @@ C-k            删到行尾
 C-z / C-y      撤销 / 重做
 C-w ←→↑↓       拆分当前 editor
 C-x ←→↑↓       焦点在 editor panel 间移动
-C-d            关闭当前 editor panel（最后一个不允许）
+C-w d          关闭当前 editor panel
+C-d            同上（兼容）
+               最后一个 editor 只清空 views，保留 panel slot
 C-s            保存 / save-as / 确认
 C-q            退出（dirty -> 确认 / save-as）
 C-o            手动打开补全

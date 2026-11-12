@@ -202,8 +202,8 @@
     [(not l) (flash state "close: no layout")]
     [(not p) (flash state "close: no focused panel")]
     [(not (eq? (p:panel-kind p) 'editor)) (flash state "close: focus is not editor")]
-    [(<= (length editors) 1) (flash state "close: last editor")]
     [else
+     (define last-editor? (<= (length editors) 1))
      (define ctx0 (make-layout-context engine state 'close #:from-panel from))
      (define-values (ctx1 state1 actions1 allow?)
        (run-before (editor-registry ed) 'layout-close ctx0 state))
@@ -211,8 +211,12 @@
        [(not allow?) (values state1 actions1)]
        [else
         (define l1 (state-layout state1))
+        ;; 还有别的 editor：删掉当前 panel。
+        ;; 最后一个 editor：只清空 views，保留 panel slot；view/resource 仍可再 placement。
         (define-values (l2 ok?)
-          (layout-panel-remove l1 from #:config (state-layout-config state)))
+          (if last-editor?
+              (layout-panel-clear-content l1 from)
+              (layout-panel-remove l1 from #:config (state-layout-config state))))
         (cond
           [(not ok?) (flash state1 "close failed")]
           [else

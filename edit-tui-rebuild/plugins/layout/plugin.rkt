@@ -44,6 +44,7 @@
    [(key 'w 'ctrl) (key 'right) (split-command 'right)]
    [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
    [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
+   [(key 'w 'ctrl) (key 'd)     close-command]
    [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
    [(key 'x 'ctrl) (key 'right) (focus-command 'right)]
    [(key 'x 'ctrl) (key 'up)    (focus-command 'up)]

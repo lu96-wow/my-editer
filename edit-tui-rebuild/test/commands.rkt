@@ -164,4 +164,14 @@
 (check-equal? (state-pending s-back-n) '())
 (check-not-equal? (state-flash s-back-n) "ft-new")
 
+;;; 5. C-w d 关闭当前 editor panel；最后一个只清空 views，保留 slot。
+(define-values (panel-ed panel-state) (make-test-editor))
+(define panel-cw
+  (handle-editor-event panel-ed panel-state (key-event (key 'w 'ctrl))))
+(define panel-closed
+  (handle-editor-event panel-ed panel-cw (key-event (key 'd))))
+(check-equal? (length (editor-visible-editor-panels panel-closed)) 1)
+(check-false (editor-focus-view-id panel-closed))
+(check-not-false (engine-view-object (editor-engine panel-ed) 1))
+
 (displayln "edit-tui-rebuild/test/commands.rkt: ok")

@@ -56,4 +56,13 @@
 (check-not-false (engine-view-object (editor-engine ed) 10))
 (check-not-false (state-resource-for-view s-close 10))
 
+;;; 最后一个 editor：不删 panel，只清空 views / active；buffer / resource 保留。
+(define-values (s-editor _a4) (editor-focus! ed s-close 'right))
+(check-equal? (editor-focus-panel-kind s-editor) 'editor)
+(define-values (s-last _a5) (editor-close! ed s-editor))
+(check-equal? (length (editor-visible-editor-panels s-last)) 1)
+(check-false (editor-focus-view-id s-last))
+(check-not-false (engine-view-object (editor-engine ed) 1))
+(check-not-false (state-resource-for-view s-last 1))
+
 (displayln "edit-tui-rebuild/test/host.rkt: ok")
