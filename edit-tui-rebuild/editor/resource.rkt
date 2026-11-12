@@ -24,6 +24,7 @@
          resources-remove
          resources-set-saved-version
          resources-set-path
+         resources-set-command-stack
          resources-opened-paths
          resource-normalize-path
          resource-display-path
@@ -36,6 +37,7 @@
    name
    views         ; (listof view-id)
    mode          ; 'racket | 'text
+   command-stack ; command-table-stack | #f：该 buffer 的键表
    saved-version)
   #:transparent)
 
@@ -43,8 +45,9 @@
 
 (define empty-resources (resources '()))
 
-(define (make-resource id doc-id path name views mode saved-version)
-  (resource id doc-id path name views mode saved-version))
+(define (make-resource id doc-id path name views mode saved-version
+                       #:command-stack [command-stack #f])
+  (resource id doc-id path name views mode command-stack saved-version))
 
 (define (resources-add rs r)
   (resources (cons r (resources-items rs))))
@@ -85,6 +88,13 @@
    (for/list ([r (in-list (resources-items rs))])
      (if (equal? (resource-id r) id)
          (struct-copy resource r [views views])
+         r))))
+
+(define (resources-set-command-stack rs id command-stack)
+  (resources
+   (for/list ([r (in-list (resources-items rs))])
+     (if (equal? (resource-id r) id)
+         (struct-copy resource r [command-stack command-stack])
          r))))
 
 (define (resources-set-path rs id path name mode)

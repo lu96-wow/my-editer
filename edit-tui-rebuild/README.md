@@ -76,7 +76,7 @@ edit-tui-rebuild/
     ops/raw.rkt        裸操作：不触发 hook
     ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe
     layout.rkt         布局操作面：split / close / focus + layout hooks
-    resource.rkt       已打开文档：path / view / mode / saved-version
+    resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
     mode.rkt           .rkt / #lang racket -> racket，否则 text
 
     job.rkt            job-result-event / job 账本 State
@@ -127,6 +127,8 @@ edit-tui-rebuild/
     resource-path.rkt  workspace root 内相对 / root 外绝对
     ui-incremental.rkt UI view face-only / 文本最小 diff
     panel-resize.rkt   fixed seam 拖动 / hide-show min clamp
+    filetree-io.rkt    C-f 创建 / 删除文件、目录
+    buffer-keymap.rkt  键表跟随 resource / active view
     host.rkt
     layers.rkt
     run.sh
@@ -262,13 +264,15 @@ command/<scope> -> ordered (owner, command-binding)
 host 按当前 focus / key-owner 得到有序 scope，例如：
 
 ```text
-editor:     (completion?) editor global
+editor:     (completion?) mode? editor resource-stack global
 filetree:   filetree global
 resources:  resources global
 ```
 
-每个 scope 先查插件 contribution，再查该 scope 的 host 内置表；unbound 才落到
-下一个 scope。leaf 保存 ordered `(owner . command)`，执行后按 owner 写回 `ps'`。
+editor 的 `resource-stack` 存在 resource 上；同一个 panel 换 active view 时，
+键表跟着对应的 core buffer / resource 走。每个 scope 先查插件 contribution，
+再查该 scope 的 host 内置表；unbound 才落到下一个 scope。leaf 保存 ordered
+`(owner . command)`，执行后按 owner 写回 `ps'`。
 
 同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
 `plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`；filetree / resources 命令放在
@@ -374,6 +378,9 @@ C-x ←          聚焦 sidebar
 Enter          文件树：打开文件；编辑器：换行
 C-r            文件树刷新
 C-h            文件树：显 / 隐 dotfile
+C-f n          文件树：新建文件
+C-f C-f n      文件树：新建目录
+C-f d          文件树：删除文件 / 目录
 鼠标拖接缝     resize
 鼠标点 panel   聚焦 + 光标落点
 鼠标滚轮       滚指针下 panel
@@ -423,6 +430,8 @@ racket edit-tui-rebuild/test/state-split.rkt
 racket edit-tui-rebuild/test/resource-path.rkt
 racket edit-tui-rebuild/test/ui-incremental.rkt
 racket edit-tui-rebuild/test/panel-resize.rkt
+racket edit-tui-rebuild/test/filetree-io.rkt
+racket edit-tui-rebuild/test/buffer-keymap.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 ```
@@ -458,6 +467,8 @@ racket edit-tui-rebuild/test/ownership.rkt
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - UI view 增量：selection 只改 face 行；文本变化做最小区间替换；
 - sidebar fixed 边界可拖；C-b hide/show 恢复尺寸并 clamp 到 min（sidebar min-w 8）；
+- filetree C-f n / C-f C-f n / C-f d：输入名字 / 确认删除，host 执行文件 IO；
+- resource 持有自己的 command-stack：同一 panel 切 active view 会切换键表；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；
@@ -499,8 +510,6 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. resource 自己的 command-stack + mode scope：真正 per-buffer 键位。
-2. filetree `C-f ...` 创建 / 删除文件、目录。
-3. completion 接 workspace / analysis，补全跨 buffer 候选。
-4. docs 接 workspace 本地定义与 C-x o 焦点切换。
-5. 文件系统变化自动刷新。
+1. filetree 拖拽 / 重命名 / 文件系统自动刷新。
+2. completion 接 workspace / analysis，补全跨 buffer 候选。
+3. docs 接 workspace 本地定义与 C-x o 焦点切换。

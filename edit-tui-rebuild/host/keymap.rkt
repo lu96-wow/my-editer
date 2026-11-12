@@ -23,7 +23,8 @@
          (struct-out quit-command)
          navigation-command-table
          editor-base-command-table
-         global-base-command-table)
+         global-base-command-table
+         mode-command-stack)
 
 (struct insert-command (text) #:transparent)
 (struct delete-command (kind) #:transparent)   ; 'backspace | 'delete
@@ -78,3 +79,12 @@
   (keys
    [(key 's 'ctrl)   (save-command)]
    [(key 'q 'ctrl)   (quit-command)]))
+
+;; 每个 opened buffer 的默认键表；现在 racket / text 共用 editor 表。
+;; 以后可以在前面插 mode 专属 overlay，仍是“resource 持有 stack”。
+(define (mode-command-stack mode)
+  (case mode
+    [(racket text) (command-table-stack-from-tables
+                    (list editor-base-command-table))]
+    [else (command-table-stack-from-tables
+           (list editor-base-command-table))]))

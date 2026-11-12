@@ -19,7 +19,8 @@
          "../editor/resource.rkt"
          "../editor/mode.rkt"
          "../editor/layout.rkt"
-         "../features/placement/api.rkt")
+         "../features/placement/api.rkt"
+         "keymap.rkt")
 
 (provide editor-open-file!
          editor-focus-view!)
@@ -73,7 +74,8 @@
         (void (engine-create-buffer! engine id name text))
         (void (engine-create-view! engine id id))
         (define version (engine-doc-version engine id))
-        (define r (make-resource id id path* name (list id) mode version))
+        (define r (make-resource id id path* name (list id) mode version
+                                 #:command-stack (mode-command-stack mode)))
         (define state*
           (editor-state-with-next-view-id
            (editor-state-with-resources

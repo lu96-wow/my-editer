@@ -41,11 +41,52 @@
   (hash-ref tagged-host-tables scope
             (λ () (tag-host-command-table command-table-empty))))
 
+(define (focus-resource state)
+  (and (eq? (editor-focus-panel-kind state) 'editor)
+       (editor-state-resource-for-view state (editor-focus-view-id state))))
+
+(define (panel-tables ed scope)
+  (list (editor-command-table ed scope)
+        (host-table-for-scope scope)))
+
+(define (editor-tables ed resource)
+  (define mode (and resource (resource-mode resource)))
+  (define stack (and resource (resource-command-stack resource)))
+  (append
+   ;; mode-specific plugin 命令优先于通用 editor 命令。
+   (if mode (list (editor-command-table ed mode)) '())
+   (list (editor-command-table ed 'editor))
+   ;; resource 自己的 stack 替换 host editor 表；没有 stack 时用默认 editor 表。
+   (if stack
+       (for/list ([t (in-list (command-table-stack-tables stack))])
+         (tag-host-command-table t))
+       (list (host-table-for-scope 'editor)))))
+
+(define (command-context ed state view-scopes)
+  (define focus (focus-command-scope state view-scopes))
+  (define owner (active-key-owner ed state))
+  (define resource (and (eq? focus 'editor) (focus-resource state)))
+  (list owner focus
+        (and resource (resource-id resource))
+        (and resource (resource-mode resource))))
+
 (define (normal-command-tables ed state view-scopes)
-  (append*
-   (for/list ([scope (in-list (command-scopes ed state view-scopes))])
-     (list (editor-command-table ed scope)
-           (host-table-for-scope scope)))))
+  (define focus (focus-command-scope state view-scopes))
+  (define owner (active-key-owner ed state))
+  (define resource (and (eq? focus 'editor) (focus-resource state)))
+  (define base
+    (if (eq? focus 'editor)
+        (editor-tables ed resource)
+        (panel-tables ed focus)))
+  (append
+   ;; overlay owner（completion）叠在 focus 之上；unbound 仍会落到 focus。
+   (if (and owner (not (memq owner (list focus 'global))))
+       (panel-tables ed owner)
+       '())
+   base
+   (if (eq? focus 'global)
+       '()
+       (panel-tables ed 'global))))
 
 ;;; ════════════════ 命令执行 ════════════════
 
@@ -152,7 +193,7 @@
 
 (define (dispatch-key ed state tok view-scopes)
   (define state0 (editor-state-clear-flash state))
-  (define scopes (command-scopes ed state0 view-scopes))
+  (define scopes (command-context ed state0 view-scopes))
   (define pending0 (editor-state-pending state0))
   (define pending-scope0 (editor-state-pending-scope state0))
   ;; focus / mode 改变的瞬间，前缀不再属于当前 scope：直接丢弃。

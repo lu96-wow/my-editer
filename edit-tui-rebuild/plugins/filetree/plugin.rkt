@@ -8,6 +8,7 @@
 ;;;   · 目录展开 / 折叠
 ;;;   · 隐藏 dotfile 的显示 / 隐藏
 ;;;   · C-r 重扫
+;;;   · C-f n / C-f C-f n / C-f d -> create/delete action（IO 在 host）
 ;;;   · Enter 打开文件 -> open-file-action
 ;;;
 ;;; 插件状态是纯值：root / view / expanded / show-hidden? / rows / pending-cursor。
@@ -233,6 +234,31 @@
                               [show-hidden? (not (filetree-state-show-hidden? ps))]))
      (values state (refresh-state ps* (and row (row-path row))) '())]))
 
+(define (row-parent-directory ps row)
+  (define p (row-path row))
+  (case (row-kind row)
+    [(root dir) p]
+    [(file) (or (path-only p) (filetree-state-root ps))]
+    [else (filetree-state-root ps)]))
+
+(define (create-command ed state ps vid kind)
+  (define row (current-row ed state ps vid))
+  (cond
+    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [else
+     (values state ps
+             (list (filetree-create-action
+                    (row-parent-directory ps row) kind)))]))
+
+(define (delete-command ed state ps vid)
+  (define row (current-row ed state ps vid))
+  (cond
+    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [(memq (row-kind row) '(file dir))
+     (values state ps
+             (list (filetree-delete-action (row-path row) (row-kind row))))]
+    [else (values (editor-state-with-flash state "filetree: cannot delete root") ps '())]))
+
 (define (make-filetree-plugin #:view vid #:root root
                               #:hidden-entry? [hidden-entry? default-hidden-entry?])
   (define root* (simplify-path (path->complete-path root)))
@@ -253,7 +279,19 @@
     [(key 'h 'ctrl)
      (make-guarded-command
       #:when (λ (ed state ps) (filetree-focused? state vid))
-      #:run (λ (ed state ps) (toggle-hidden-command ed state ps vid)))])
+      #:run (λ (ed state ps) (toggle-hidden-command ed state ps vid)))]
+    [(key 'f 'ctrl) (key 'n)
+     (make-guarded-command
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (create-command ed state ps vid 'file)))]
+    [(key 'f 'ctrl) (key 'f 'ctrl) (key 'n)
+     (make-guarded-command
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (create-command ed state ps vid 'dir)))]
+    [(key 'f 'ctrl) (key 'd)
+     (make-guarded-command
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (delete-command ed state ps vid)))])
    #:sync (make-sync-filetree hidden-entry?)
    #:services (list (make-filetree-scan-service hidden-entry?))
    #:handle-job handle-filetree-job))

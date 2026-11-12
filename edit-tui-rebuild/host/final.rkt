@@ -31,6 +31,7 @@
          "open.rkt"
          "close.rkt"
          "docs.rkt"
+         "filetree-io.rkt"
          "input/dispatch.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
@@ -113,7 +114,8 @@
   (define scratch
     (make-resource editor-vid editor-vid #f "scratch.rkt"
                    (list editor-vid) scratch-mode
-                   (engine-doc-version engine editor-vid)))
+                   (engine-doc-version engine editor-vid)
+                   #:command-stack (mode-command-stack scratch-mode)))
   (define state
     (make-app-state #:plugin-states (plugins->states plugins)
                        #:workspace-root workspace-root
@@ -144,6 +146,18 @@
        (if (null? more) s* (run-actions ed s* more))]
       [(show-docs-action? a)
        (define-values (s* more) (editor-show-docs! ed s (show-docs-action-name a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-create-action? a)
+       (define-values (s* more)
+         (open-filetree-create-prompt! s
+                                       (filetree-create-action-parent a)
+                                       (filetree-create-action-kind a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-delete-action? a)
+       (define-values (s* more)
+         (open-filetree-delete-prompt! s
+                                       (filetree-delete-action-path a)
+                                       (filetree-delete-action-kind a)))
        (if (null? more) s* (run-actions ed s* more))]
       [else s])))
 

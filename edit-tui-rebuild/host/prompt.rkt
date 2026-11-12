@@ -21,7 +21,9 @@
          "../editor/action.rkt"
          "../editor/layout.rkt"
          "../features/input/api.rkt"
-         "close.rkt")
+         "close.rkt"
+         "filetree-io.rkt"
+         "keymap.rkt")
 
 (provide editor-save-command
          editor-request-quit
@@ -65,10 +67,12 @@
             (if n (path->string n) path*)))
         (define rs (editor-state-resources state))
         (define rs* (resources-set-path rs (resource-id r) path* name mode))
+        (define rs** (resources-set-command-stack rs* (resource-id r)
+                                                  (mode-command-stack mode)))
         (define version (engine-doc-version engine (resource-doc-id r)))
-        (define rs** (resources-set-saved-version rs* (resource-id r) version))
+        (define rs*** (resources-set-saved-version rs** (resource-id r) version))
         (values (editor-state-with-flash
-                 (editor-state-with-resources state rs**)
+                 (editor-state-with-resources state rs***)
                  (format "saved: ~a" path*))
                 #t)])]))
 
@@ -238,6 +242,10 @@
     [(save-confirm) (submit-save-confirm ed state context text)]
     [(quit-confirm) (submit-quit-confirm ed state context text)]
     [(close-confirm) (submit-close-confirm ed state context text)]
+    [(filetree-create-file filetree-create-dir)
+     (submit-filetree-create! ed state context text)]
+    [(filetree-delete-confirm)
+     (submit-filetree-delete! ed state context text)]
     [else (values state '())]))
 
 ;;; ════════════════ command table ════════════════
