@@ -13,9 +13,12 @@
          engine-doc-version
          engine-view-doc-id
          engine-doc-kind
+         engine-view-kind
          engine-doc-ids
          engine-user-doc-ids
          engine-ui-doc-ids
+         engine-user-view-ids
+         engine-ui-view-ids
          engine-view-ids-for-doc
          engine-view-point-line
          engine-view-point-column

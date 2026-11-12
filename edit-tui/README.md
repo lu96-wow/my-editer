@@ -12,7 +12,7 @@
 已经完成：
 
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
-- `editor/engine/`：core buffer / view 的唯一可变拥有者；按 read / user-write / ui-write / lifecycle 拆分能力。
+- `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui 文档与 view 分开存储；按 read / user-write / ui-write / lifecycle 拆分能力。
 - `engine-doc-kind`：用户文档 `'user` 与 UI 投影文档 `'ui` 分开；插件默认查询 `editor-user-doc-ids`。
 - 插件 sync / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
@@ -93,7 +93,7 @@ edit-tui/
 
   editor/
     engine/
-      store.rkt        engine 内部实现：doc / view / cache
+      store.rkt        engine 内部实现：user/ui doc + view + cache
       read.rkt         只读能力：document / view / point / face
       user-write.rkt   用户文档写能力：view-action 解释
       ui-write.rkt     UI view 写回 / face / cursor
@@ -508,6 +508,8 @@ racket edit-tui/test/ownership.rkt
 5i. Engine 按能力分模块：read / user-write / ui-write / lifecycle；
     raw 只用 user-write，surface 只用 read，ui-projection 只用 ui-write，
     layout / host open / close 只用 read + lifecycle。
+5j. Engine 分开存储 user-docs / user-views 与 ui-docs / ui-views；
+    split view 跟随 source view 的 kind；不为插件增加运行时权限守卫。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

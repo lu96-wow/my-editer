@@ -101,9 +101,12 @@
  editor-doc-version
  editor-view-doc-id
  editor-doc-kind
+ editor-view-kind
  editor-doc-ids
  editor-user-doc-ids
  editor-ui-doc-ids
+ editor-user-view-ids
+ editor-ui-view-ids
  editor-view-ids-for-doc
  editor-view-point-line
  editor-view-point-column
@@ -167,12 +170,18 @@
   (engine-view-doc-id (editor-engine ed) vid))
 (define (editor-doc-kind ed did)
   (engine-doc-kind (editor-engine ed) did))
+(define (editor-view-kind ed vid)
+  (engine-view-kind (editor-engine ed) vid))
 (define (editor-doc-ids ed)
   (engine-doc-ids (editor-engine ed)))
 (define (editor-user-doc-ids ed)
   (engine-user-doc-ids (editor-engine ed)))
 (define (editor-ui-doc-ids ed)
   (engine-ui-doc-ids (editor-engine ed)))
+(define (editor-user-view-ids ed)
+  (engine-user-view-ids (editor-engine ed)))
+(define (editor-ui-view-ids ed)
+  (engine-ui-view-ids (editor-engine ed)))
 (define (editor-view-ids-for-doc ed did)
   (engine-view-ids-for-doc (editor-engine ed) did))
 (define (editor-view-point-line ed vid)
