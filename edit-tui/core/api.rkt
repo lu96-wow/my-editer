@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/core/api.rkt —— 纯数据 / 算法面
+;;; edit-tui/core/api.rkt —— 纯数据 / 算法面
 ;;;
 ;;; 这一层只导出值和纯函数：document / view / panel / rect / screen /
 ;;; change / selection / point / range，以及命令表 / 键 token。

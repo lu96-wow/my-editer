@@ -60,4 +60,4 @@
               8)
 (check-true (layout-valid? shown-small small-area config))
 
-(displayln "edit-tui-rebuild/test/panel-resize.rkt: ok")
+(displayln "edit-tui/test/panel-resize.rkt: ok")

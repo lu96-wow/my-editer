@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/docs/api.rkt —— docs 对其它插件的公开面
+;;; edit-tui/plugins/docs/api.rkt —— docs 对其它插件的公开面
 ;;;
 ;;; docs state 只由 docs owner 更新。调用方传入当前 docs ps，拿回新的 ps；
 ;;; 不传整份 editor-state，也不写别的插件状态。

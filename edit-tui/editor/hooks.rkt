@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/hooks.rkt —— 显式扩展点 / 有序 pipeline
+;;; edit-tui/editor/hooks.rkt —— 显式扩展点 / 有序 pipeline
 ;;;
 ;;; 语义是“有序管道”，不是简单的 map：
 ;;;   hook : edit-context × plugin-state

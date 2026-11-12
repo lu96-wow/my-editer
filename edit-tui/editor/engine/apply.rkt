@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/engine/apply.rkt —— view-action 解释
+;;; edit-tui/editor/engine/apply.rkt —— view-action 解释
 ;;;
 ;;; engine 只认 editor/engine/action.rkt 的 view-action：
 ;;; insert / paste / backspace / delete / kill-line / nav / point / select /

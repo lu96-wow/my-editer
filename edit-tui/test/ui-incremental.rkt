@@ -57,4 +57,4 @@
 (check-equal? (engine-view-text e 1) "")
 (check-false (engine-view-face-at e 1 0 0))
 
-(displayln "edit-tui-rebuild/test/ui-incremental.rkt: ok")
+(displayln "edit-tui/test/ui-incremental.rkt: ok")

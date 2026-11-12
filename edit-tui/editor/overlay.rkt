@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/overlay.rkt —— 插件浮层描述（纯值）
+;;; edit-tui/editor/overlay.rkt —— 插件浮层描述（纯值）
 ;;;
 ;;; 插件不构造 core panel；host 把 overlay 转成 core panel 后交给 renderer。
 

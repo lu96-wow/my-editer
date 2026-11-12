@@ -21,4 +21,4 @@
 (check-true (layout-panel-visible? (state-layout s2) 'filetree))
 (check-equal? (editor-focus-panel-kind s2) 'editor)
 
-(displayln "edit-tui-rebuild/test/sidebar.rkt: ok")
+(displayln "edit-tui/test/sidebar.rkt: ok")

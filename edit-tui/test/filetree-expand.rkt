@@ -138,4 +138,4 @@
 (check-true (string-contains? text2 "b.rkt"))
 (delete-directory/files root2)
 
-(displayln "edit-tui-rebuild/test/filetree-expand.rkt: ok")
+(displayln "edit-tui/test/filetree-expand.rkt: ok")

@@ -65,4 +65,4 @@
 (check-not-false (engine-view-object (editor-engine ed) 1))
 (check-not-false (state-resource-for-view s-last 1))
 
-(displayln "edit-tui-rebuild/test/host.rkt: ok")
+(displayln "edit-tui/test/host.rkt: ok")

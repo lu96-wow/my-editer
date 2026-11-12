@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/event.rkt —— host 事件 + tui raw 适配
+;;; edit-tui/host/event.rkt —— host 事件 + tui raw 适配
 ;;;
 ;;; 事件只属于 host；editor 操作面只接受 state + 参数，不认识终端事件。
 

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/racket-color/plugin.rkt —— Racket 语法着色
+;;; edit-tui/plugins/racket-color/plugin.rkt —— Racket 语法着色
 ;;;
 ;;; 两条路径：
 ;;;   · changes derive：有 change 批次时用 color-edit* 只重扫脏行，写 dirty face lines；

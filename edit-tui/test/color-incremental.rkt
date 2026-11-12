@@ -37,4 +37,4 @@
 (check-equal? (color-entry-version entry3) (engine-doc-version engine 1))
 (check-not-false (engine-view-face-at engine 1 1 1))
 
-(displayln "edit-tui-rebuild/test/color-incremental.rkt: ok")
+(displayln "edit-tui/test/color-incremental.rkt: ok")

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/input/scope.rkt —— focus -> command scope
+;;; edit-tui/host/input/scope.rkt —— focus -> command scope
 ;;;
 ;;; focus view / panel kind -> command scope：
 ;;;   editor panel      -> 'editor（resource command-stack 由 dispatch 插入）

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/timer.rkt —— timer 事件 / editor 侧调度接口
+;;; edit-tui/editor/timer.rkt —— timer 事件 / editor 侧调度接口
 ;;;
 ;;; 线程 / channel / kill 在 host/timers.rkt。
 ;;; editor 只保存一个 timer-service（schedule/cancel 闭包），插件通过

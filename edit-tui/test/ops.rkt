@@ -44,4 +44,4 @@
 (define-values (_state5 _a5) (editor-redo! ed1 state4 1))
 (check-equal? (engine-view-text engine1 1) "(x)")
 
-(displayln "edit-tui-rebuild/test/ops.rkt: ok")
+(displayln "edit-tui/test/ops.rkt: ok")

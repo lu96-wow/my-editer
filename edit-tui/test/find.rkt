@@ -48,4 +48,4 @@
 (check-equal? (find-state-index (state-find s-prev)) 0)
 (check-true (string-contains? (state-flash s-prev) "1/2"))
 
-(displayln "edit-tui-rebuild/test/find.rkt: ok")
+(displayln "edit-tui/test/find.rkt: ok")

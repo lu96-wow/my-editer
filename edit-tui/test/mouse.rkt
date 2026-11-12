@@ -85,4 +85,4 @@
                                                   (editor-focus-view-id s-drag-up)))
               "ang")
 
-(displayln "edit-tui-rebuild/test/mouse.rkt: ok")
+(displayln "edit-tui/test/mouse.rkt: ok")

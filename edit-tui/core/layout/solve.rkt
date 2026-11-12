@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/core/layout/solve.rkt —— layout -> rects / seams（纯几何）
+;;; edit-tui/core/layout/solve.rkt —— layout -> rects / seams（纯几何）
 ;;;
 ;;; 输入 layout 状态 + 可用区域，输出：
 ;;;   panel 的 rect、split 的 rect、可拖动的 seam

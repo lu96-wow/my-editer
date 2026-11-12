@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/projection/borders.rkt —— 共享边框 + 焦点框（纯）
+;;; edit-tui/projection/borders.rkt —— 共享边框 + 焦点框（纯）
 ;;;
 ;;; 1. 共享边框：相邻 panel 不各画一条边，而是共享一列 / 一行：
 ;;;    左 / 上边的 panel 保留 right / down，右 / 下边的 panel 去掉 left / up。

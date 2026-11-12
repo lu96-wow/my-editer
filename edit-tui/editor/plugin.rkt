@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/plugin.rkt —— 最小插件值
+;;; edit-tui/editor/plugin.rkt —— 最小插件值
 ;;;
 ;;; 插件不是 registry / discovery，只是一个普通值：
 ;;;   id       插件命名空间（plugin-states 的 key）

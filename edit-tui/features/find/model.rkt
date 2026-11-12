@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/find/model.rkt —— 当前查找会话（纯值）
+;;; edit-tui/features/find/model.rkt —— 当前查找会话（纯值）
 
 (provide (struct-out find-state)
          empty-find-state

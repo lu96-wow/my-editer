@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/config/layout/rebuild.rkt —— rebuild 各 kind 的布局规则
+;;; edit-tui/config/layout/rebuild.rkt —— rebuild 各 kind 的布局规则
 ;;;
 ;;; 这是 configuration，不是 editor 骨架。宿主选择它，并把值放进
 ;;; editor-state.layout-config；editor 的布局操作只读 state 里的 config。

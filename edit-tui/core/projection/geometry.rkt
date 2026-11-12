@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/projection/geometry.rkt —— layout-solve -> core panel（纯）
+;;; edit-tui/projection/geometry.rkt —— layout-solve -> core panel（纯）
 ;;;
 ;;; 两类投影：
 ;;;   layout->render-panels  渲染用：view = panel-content.active（+ 焦点框，见 borders.rkt）

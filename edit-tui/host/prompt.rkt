@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/prompt.rkt —— save / quit 输入流程
+;;; edit-tui/host/prompt.rkt —— save / quit 输入流程
 ;;;
 ;;; 输入栏本身在 editor/input.rkt；这里定义 prompt 种类：
 ;;;   save-path     无 path 保存

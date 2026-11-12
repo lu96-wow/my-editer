@@ -28,4 +28,4 @@
 
 (delete-directory/files root)
 (delete-directory/files outside)
-(displayln "edit-tui-rebuild/test/resource-path.rkt: ok")
+(displayln "edit-tui/test/resource-path.rkt: ok")

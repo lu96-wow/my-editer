@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/timers.rkt —— timer runtime（host 副作用层）
+;;; edit-tui/host/timers.rkt —— timer runtime（host 副作用层）
 
 (require racket/async-channel
          "../editor/timer.rkt")

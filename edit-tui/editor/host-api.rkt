@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/host-api.rkt —— 宿主装配面
+;;; edit-tui/editor/host-api.rkt —— 宿主装配面
 ;;;
 ;;; 只有 host 能 require 这个文件。它比 editor/api.rkt 多出：
 ;;;   · state / resource 的完整内部面（constructor、plugin-state 写回、resource 变更）

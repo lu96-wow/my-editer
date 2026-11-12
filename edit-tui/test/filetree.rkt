@@ -94,4 +94,4 @@
 (check-equal? (editor-focus-view-id s7) vid)
 (check-equal? (length (resources-list (state-resources s7))) n-before)
 
-(displayln "edit-tui-rebuild/test/filetree.rkt: ok")
+(displayln "edit-tui/test/filetree.rkt: ok")

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/engine/action.rkt —— 骨架层的 view 操作 action
+;;; edit-tui/engine/action.rkt —— 骨架层的 view 操作 action
 ;;;
 ;;; engine 只认这一种 action：对某个 view 做 insert / nav / select / scroll …
 ;;; open-file / quit 这类应用级 action 在 app/action.rkt。

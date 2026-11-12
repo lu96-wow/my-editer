@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/ops/raw.rkt —— 裸操作（不跑扩展点）
+;;; edit-tui/editor/ops/raw.rkt —— 裸操作（不跑扩展点）
 ;;;
 ;;; 只有 editor/ops/surface.rkt 和 editor 内部实现需要调用这里。
 ;;; 裸操作 = “不再触发 hook”，但仍受 core 的只读 / 选区 / 历史语义约束。

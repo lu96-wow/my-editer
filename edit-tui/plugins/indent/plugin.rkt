@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/indent/plugin.rkt —— Enter 换行缩进
+;;; edit-tui/plugins/indent/plugin.rkt —— Enter 换行缩进
 ;;;
 ;;; 对齐旧实现：使用 lang/racket 的 racket-indent-for-newline。
 ;;; 非 Racket 文本只插入普通换行。

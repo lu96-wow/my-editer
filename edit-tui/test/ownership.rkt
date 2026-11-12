@@ -78,4 +78,4 @@
 (define s4 (handle-editor-event ed2 state2 (key-event (key 't 'ctrl))))
 (check-equal? (state-plugin-state s4 'owner-command) 1)
 
-(displayln "edit-tui-rebuild/test/ownership.rkt: ok")
+(displayln "edit-tui/test/ownership.rkt: ok")

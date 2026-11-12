@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/sidebar/sidebar.rkt —— sidebar chrome 操作
+;;; edit-tui/features/sidebar/sidebar.rkt —— sidebar chrome 操作
 ;;;
 ;;; sidebar 是 app/chrome 行为，不是通用 editor layout：
 ;;;   · 同一 sidebar panel 内切 tab

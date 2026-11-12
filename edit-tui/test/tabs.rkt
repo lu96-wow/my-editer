@@ -80,4 +80,4 @@
 (check-true (string-contains? (file->string f3) "!"))
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/tabs.rkt: ok")
+(displayln "edit-tui/test/tabs.rkt: ok")

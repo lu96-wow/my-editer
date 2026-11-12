@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/mode.rkt —— buffer mode（最小版）
+;;; edit-tui/editor/mode.rkt —— buffer mode（最小版）
 ;;;
 ;;; 对齐旧 buffer-mode-for-creation 的语言选择：
 ;;;   .rkt/.rktl/.rktd/.scrbl -> racket

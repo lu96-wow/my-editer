@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/ops/surface.rkt —— 操作面（带扩展点）
+;;; edit-tui/editor/ops/surface.rkt —— 操作面（带扩展点）
 ;;;
 ;;; 只有这里负责：
 ;;;   · 构造 edit-context

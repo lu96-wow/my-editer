@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/layout.rkt —— rebuild 初始布局装配
+;;; edit-tui/host/layout.rkt —— rebuild 初始布局装配
 ;;;
 ;;; 这是 host assembly：知道 editor / status / sidebar / docs 这些具体 kind。
 ;;; editor/layout.rkt 只保留通用布局操作，不再知道这些具体面板。

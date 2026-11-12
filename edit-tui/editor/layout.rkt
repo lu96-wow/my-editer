@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/layout.rkt —— 布局操作面
+;;; edit-tui/editor/layout.rkt —— 布局操作面
 ;;;
 ;;; 布局本身是纯值（core/layout），这里只负责：
 ;;;   · 把 layout 放进 core state

@@ -53,4 +53,4 @@
 (check-true (string-contains? (engine-view-text engine 3) "a.txt"))
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/job-async.rkt: ok")
+(displayln "edit-tui/test/job-async.rkt: ok")

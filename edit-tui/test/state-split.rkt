@@ -56,4 +56,4 @@
 (check-eq? (app-state-session app*) app-session)
 (check-equal? (engine-view-text engine 1) "x")
 
-(displayln "edit-tui-rebuild/test/state-split.rkt: ok")
+(displayln "edit-tui/test/state-split.rkt: ok")

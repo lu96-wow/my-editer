@@ -59,4 +59,4 @@
 (check-equal? (layout-panel-for-view (state-layout s8) vid3) 100)
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/placement.rkt: ok")
+(displayln "edit-tui/test/placement.rkt: ok")

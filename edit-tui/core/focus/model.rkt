@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/focus/model.rkt —— 焦点导航（纯）
+;;; edit-tui/focus/model.rkt —— 焦点导航（纯）
 ;;;
 ;;; 规则：
 ;;;   · 只在 visible + focusable 的 panel 里走；

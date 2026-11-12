@@ -43,4 +43,4 @@
                               #:registry (make-hook-registry '())
                               #:plugins (list p1 p2))))
 
-(displayln "edit-tui-rebuild/test/contributions.rkt: ok")
+(displayln "edit-tui/test/contributions.rkt: ok")

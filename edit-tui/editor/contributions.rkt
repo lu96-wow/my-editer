@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/contributions.rkt —— 非 hook 扩展点的统一注册表
+;;; edit-tui/editor/contributions.rkt —— 非 hook 扩展点的统一注册表
 ;;;
 ;;; hook 有 typed context / phase；这里统一管理：
 ;;;   frame/sync       (ed state -> state')

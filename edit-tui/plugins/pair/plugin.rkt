@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/pair/plugin.rkt —— 括号自动配对
+;;; edit-tui/plugins/pair/plugin.rkt —— 括号自动配对
 ;;;
 ;;; 这是第一个正式使用扩展点的插件：
 ;;;   before-insert  transform：输入开符号时同时插入闭符号，并把光标左移一格

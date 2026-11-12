@@ -81,4 +81,4 @@
 (define s-racket (handle-editor-event ed state3 (key-event (key 'l 'ctrl))))
 (check-equal? (state-flash s-racket) "racket-key")
 
-(displayln "edit-tui-rebuild/test/buffer-keymap.rkt: ok")
+(displayln "edit-tui/test/buffer-keymap.rkt: ok")

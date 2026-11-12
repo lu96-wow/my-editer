@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/mouse/mouse.rkt —— 鼠标会话
+;;; edit-tui/features/mouse/mouse.rkt —— 鼠标会话
 ;;;
 ;;; 鼠标坐标是屏幕绝对坐标（0 基）。
 ;;; press:

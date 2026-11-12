@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/engine/store.rkt —— core buffer / view 的唯一拥有者（骨架层）
+;;; edit-tui/engine/store.rkt —— core buffer / view 的唯一拥有者（骨架层）
 ;;;
 ;;; 纯 State 只存 id；engine 存真正可变句柄。
 ;;; 命令 / step 不碰 engine，只产生 action；runtime 解释 action 时写 engine。

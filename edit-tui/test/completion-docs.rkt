@@ -87,4 +87,4 @@
                  (and (member "mmap" (completion-state-candidates ct3)) #t)))
 (stop-timer-runtime trt)
 
-(displayln "edit-tui-rebuild/test/completion-docs.rkt: ok")
+(displayln "edit-tui/test/completion-docs.rkt: ok")

@@ -81,4 +81,4 @@
 (check-true (string-contains? (engine-view-text (editor-engine ed) 4) "*"))
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/resources-panel.rkt: ok")
+(displayln "edit-tui/test/resources-panel.rkt: ok")

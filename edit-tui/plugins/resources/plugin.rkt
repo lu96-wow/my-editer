@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/resources/plugin.rkt —— 资源管理面板
+;;; edit-tui/plugins/resources/plugin.rkt —— 资源管理面板
 ;;;
 ;;; 行投影与旧 resources 面板一致：
 ;;;   buffer 行（path/name + dirty *）

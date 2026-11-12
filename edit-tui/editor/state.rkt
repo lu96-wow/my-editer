@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/state.rkt —— editor core + host app state
+;;; edit-tui/editor/state.rkt —— editor core + host app state
 ;;;
 ;;; editor-core    文档 / 布局 / 插件状态：editor 操作面真正拥有的状态。
 ;;; editor-session 输入栏 / placement / 鼠标 / job / quit / flash：host 会话状态。

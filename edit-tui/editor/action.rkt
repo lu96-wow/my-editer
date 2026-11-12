@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/action.rkt —— editor 操作产生的 action（纯数据）
+;;; edit-tui/editor/action.rkt —— editor 操作产生的 action（纯数据）
 ;;;
 ;;; action 只描述“宿主还需要做什么”，不在这里解释。
 ;;; action 是跨层 / 跨 owner 的唯一请求方式：host 解释它，owner 更新自己的状态。

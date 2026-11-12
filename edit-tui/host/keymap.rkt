@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/keymap.rkt —— host 内置命令值 + 分 scope 的键表
+;;; edit-tui/host/keymap.rkt —— host 内置命令值 + 分 scope 的键表
 ;;;
 ;;; 这里只定义 host 自己解释的命令值，以及各 scope 的 host 内置表：
 ;;;   navigation  编辑器 / panel 共用的光标移动

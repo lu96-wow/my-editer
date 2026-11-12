@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/input/input.rkt —— 单行输入栏（状态 / 编辑 / 投影）
+;;; edit-tui/features/input/input.rkt —— 单行输入栏（状态 / 编辑 / 投影）
 ;;;
 ;;; 输入栏是 status panel 的第二个 view。
 ;;; prefix 完整写进 buffer，并标记 readonly + input-prompt face；

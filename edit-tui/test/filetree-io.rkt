@@ -126,4 +126,4 @@
 (check-false (string-contains? (engine-view-text engine 3) "new.txt"))
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/filetree-io.rkt: ok")
+(displayln "edit-tui/test/filetree-io.rkt: ok")

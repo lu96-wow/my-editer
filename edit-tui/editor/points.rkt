@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/points.rkt —— 显式插入点表
+;;; edit-tui/editor/points.rkt —— 显式插入点表
 ;;;
 ;;; 只定义 point 名 / 允许的 phase / context 类别；不依赖 hooks / layout / state。
 ;;; make-hook 用它校验 operation / phase；registry 仍由 hooks.rkt 维护。

@@ -150,4 +150,4 @@
 (check-false (regexp-match? #rx"'docs" (src "editor/layout.rkt"))
              "editor/layout.rkt")
 
-(displayln "edit-tui-rebuild/test/layers.rkt: ok")
+(displayln "edit-tui/test/layers.rkt: ok")

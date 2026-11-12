@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/filetree-io.rkt —— filetree 创建 / 删除的 host 侧
+;;; edit-tui/host/filetree-io.rkt —— filetree 创建 / 删除的 host 侧
 ;;;
 ;;; 插件只发 create / delete action；这里负责：
 ;;;   · 打开输入栏（名字 / y-n 确认）

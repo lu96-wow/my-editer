@@ -43,4 +43,4 @@
 (check-true (and f3 (symbol? (face-fg f3))
                  (string-prefix? (symbol->string (face-fg f3)) "word-color-")))
 
-(displayln "edit-tui-rebuild/test/color-word.rkt: ok")
+(displayln "edit-tui/test/color-word.rkt: ok")

@@ -127,4 +127,4 @@
                                                      #:phase 'transform
                                                      #:fn (λ (ctx ps) (values ctx ps '() #t)))))))
 
-(displayln "edit-tui-rebuild/test/hooks.rkt: ok")
+(displayln "edit-tui/test/hooks.rkt: ok")

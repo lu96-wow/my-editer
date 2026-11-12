@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/input/dispatch.rkt —— key token -> command
+;;; edit-tui/host/input/dispatch.rkt —— key token -> command
 ;;;
 ;;; 输入层只做四件事：
 ;;;   1. 根据 focus 选有序 scope；

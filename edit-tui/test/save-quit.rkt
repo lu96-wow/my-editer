@@ -76,4 +76,4 @@
 (check-true (state-quit? s9))
 
 (delete-directory/files root)
-(displayln "edit-tui-rebuild/test/save-quit.rkt: ok")
+(displayln "edit-tui/test/save-quit.rkt: ok")

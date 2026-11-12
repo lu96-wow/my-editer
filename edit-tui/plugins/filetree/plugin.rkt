@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/filetree/plugin.rkt —— 文件树
+;;; edit-tui/plugins/filetree/plugin.rkt —— 文件树
 ;;;
 ;;; 当前能力：
 ;;;   · root / 目录 / 文件 行投影

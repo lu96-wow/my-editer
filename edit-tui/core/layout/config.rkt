@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/core/layout/config.rkt —— 布局配置模型（骨架）
+;;; edit-tui/core/layout/config.rkt —— 布局配置模型（骨架）
 ;;;
 ;;; 这里只定义“规则的数据形状”和通用行为：
 ;;;   panel-rule / layout-config 类型

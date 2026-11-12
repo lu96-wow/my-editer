@@ -2,7 +2,7 @@
 
 (require racket/string)
 
-;;; edit-tui-rebuild/plugins/docs/model.rkt —— docs 面板状态（纯）
+;;; edit-tui/plugins/docs/model.rkt —— docs 面板状态（纯）
 
 (provide (struct-out docs-state)
          empty-docs-state

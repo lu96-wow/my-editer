@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/engine/ui-projection.rkt —— UI view 写回 / 增量投影
+;;; edit-tui/editor/engine/ui-projection.rkt —— UI view 写回 / 增量投影
 ;;;
 ;;; 这里只处理“把宿主 / 插件的 UI 投影写进 core view”：
 ;;;   · 文本 + 整行 face

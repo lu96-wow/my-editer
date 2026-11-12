@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# edit-tui-rebuild 回归测试。
+# edit-tui 回归测试。
 # 测试是脚本；以退出码非 0 或输出含 FAILURE/ERROR 判定失败。
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -15,5 +15,5 @@ while IFS= read -r f; do
     fail=1
   fi
 done < <(find "$here" -name '*.rkt' ! -name 'run.rkt' ! -path '*/compiled/*' | sort)
-if [ "$fail" -eq 0 ]; then echo "edit-tui-rebuild: all clean"; else echo "edit-tui-rebuild: FAILURES above"; fi
+if [ "$fail" -eq 0 ]; then echo "edit-tui: all clean"; else echo "edit-tui: FAILURES above"; fi
 exit "$fail"

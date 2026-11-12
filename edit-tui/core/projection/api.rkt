@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/projection/api.rkt —— 渲染 / 命中投影 API
+;;; edit-tui/projection/api.rkt —— 渲染 / 命中投影 API
 
 (require "geometry.rkt")
 

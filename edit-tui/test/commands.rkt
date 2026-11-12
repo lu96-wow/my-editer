@@ -174,4 +174,4 @@
 (check-false (editor-focus-view-id panel-closed))
 (check-not-false (engine-view-object (editor-engine panel-ed) 1))
 
-(displayln "edit-tui-rebuild/test/commands.rkt: ok")
+(displayln "edit-tui/test/commands.rkt: ok")

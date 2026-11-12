@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/find/find.rkt —— 当前 buffer 查找 / 前后移动
+;;; edit-tui/features/find/find.rkt —— 当前 buffer 查找 / 前后移动
 ;;;
 ;;; C-x f 打开输入栏；提交后在当前 view 内找 query，选中第一个匹配。
 ;;; C-left / C-right 在 matches 中前后移动；越界循环。

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/docs/plugin.rkt —— docs 面板 + 异步文档服务
+;;; edit-tui/plugins/docs/plugin.rkt —— docs 面板 + 异步文档服务
 
 (require racket/match
          racket/string

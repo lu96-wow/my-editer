@@ -1,4 +1,4 @@
-# edit-tui-rebuild
+# edit-tui
 
 这是按“core 纯数据 → editor 操作面 + 扩展点 → plugins → host”模型重建的第一阶段。
 
@@ -62,7 +62,7 @@
 ## 目录
 
 ```text
-edit-tui-rebuild/
+edit-tui/
   core/
     api.rkt            纯值 / 纯算法面（当前复用 repo core）
     command/           key token + command table（纯）
@@ -70,6 +70,13 @@ edit-tui-rebuild/
     panel/             layout panel 资源
     projection/        layout -> core panel / 命中
     focus/             方向焦点导航
+    base/              迁回的 core 值词汇（给旧 render / lang 用）
+    face/              face 值 + 分层合成
+
+  lang/racket/         Racket 语言能力：lex / color / completion / docs / indent
+  source/              源码扫描 / 解析来源
+  render/              core piece -> tui bytes / theme 安装
+  config/theme/        默认主题
 
   editor/
     engine/
@@ -350,7 +357,7 @@ command     (ed state ps)     -> (values state' ps' actions)
 ## 运行
 
 ```sh
-racket edit-tui-rebuild/host/final.rkt
+racket edit-tui/host/final.rkt
 ```
 
 键：
@@ -416,42 +423,42 @@ C-q            退出
 ## 测试
 
 ```sh
-bash edit-tui-rebuild/test/run.sh
+bash edit-tui/test/run.sh
 ```
 
 单独跑：
 
 ```sh
-racket edit-tui-rebuild/test/hooks.rkt
-racket edit-tui-rebuild/test/ops.rkt
-racket edit-tui-rebuild/test/plugins.rkt
-racket edit-tui-rebuild/test/layout.rkt
-racket edit-tui-rebuild/test/mouse.rkt
-racket edit-tui-rebuild/test/commands.rkt
-racket edit-tui-rebuild/test/filetree.rkt
-racket edit-tui-rebuild/test/filetree-expand.rkt
-racket edit-tui-rebuild/test/placement.rkt
-racket edit-tui-rebuild/test/resources-panel.rkt
-racket edit-tui-rebuild/test/save-quit.rkt
-racket edit-tui-rebuild/test/tabs.rkt
-racket edit-tui-rebuild/test/color-incremental.rkt
-racket edit-tui-rebuild/test/job-async.rkt
-racket edit-tui-rebuild/test/color-word.rkt
-racket edit-tui-rebuild/test/timer.rkt
-racket edit-tui-rebuild/test/completion-docs.rkt
-racket edit-tui-rebuild/test/sidebar.rkt
-racket edit-tui-rebuild/test/host.rkt
-racket edit-tui-rebuild/test/host-event.rkt
-racket edit-tui-rebuild/test/ownership.rkt
-racket edit-tui-rebuild/test/state-split.rkt
-racket edit-tui-rebuild/test/resource-path.rkt
-racket edit-tui-rebuild/test/ui-incremental.rkt
-racket edit-tui-rebuild/test/panel-resize.rkt
-racket edit-tui-rebuild/test/filetree-io.rkt
-racket edit-tui-rebuild/test/buffer-keymap.rkt
-racket edit-tui-rebuild/test/find.rkt
-racket edit-tui-rebuild/test/layers.rkt
-racket edit-tui-rebuild/test/ownership.rkt
+racket edit-tui/test/hooks.rkt
+racket edit-tui/test/ops.rkt
+racket edit-tui/test/plugins.rkt
+racket edit-tui/test/layout.rkt
+racket edit-tui/test/mouse.rkt
+racket edit-tui/test/commands.rkt
+racket edit-tui/test/filetree.rkt
+racket edit-tui/test/filetree-expand.rkt
+racket edit-tui/test/placement.rkt
+racket edit-tui/test/resources-panel.rkt
+racket edit-tui/test/save-quit.rkt
+racket edit-tui/test/tabs.rkt
+racket edit-tui/test/color-incremental.rkt
+racket edit-tui/test/job-async.rkt
+racket edit-tui/test/color-word.rkt
+racket edit-tui/test/timer.rkt
+racket edit-tui/test/completion-docs.rkt
+racket edit-tui/test/sidebar.rkt
+racket edit-tui/test/host.rkt
+racket edit-tui/test/host-event.rkt
+racket edit-tui/test/ownership.rkt
+racket edit-tui/test/state-split.rkt
+racket edit-tui/test/resource-path.rkt
+racket edit-tui/test/ui-incremental.rkt
+racket edit-tui/test/panel-resize.rkt
+racket edit-tui/test/filetree-io.rkt
+racket edit-tui/test/buffer-keymap.rkt
+racket edit-tui/test/find.rkt
+racket edit-tui/test/layers.rkt
+racket edit-tui/test/ownership.rkt
 ```
 
 ---
@@ -520,12 +527,16 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 迁移期依赖
 
-为了先验证操作面，当前有两处暂时复用旧 `edit-tui`：
+`edit-tui` 已经替换旧实现，但仍有少量支撑模块来自旧树：
 
-- `editor/engine/` 是从 `edit-tui/core/engine` 复制过来的；
-- `host/final.rkt` 暂时 require `edit-tui/render/core.rkt` 和 `edit-tui/config/theme/default.rkt`。
+- `lang/racket/`：Racket 词法 / 着色 / 补全 / 文档 / 缩进；
+- `source/`：源码扫描；
+- `core/face/`、`core/base/`：face 与旧 render 使用的基础值；
+- `render/`：`core piece -> tui bytes`；
+- `config/theme/`：默认主题。
 
-下一步会把 render 也搬进新树，并让 host 不再依赖旧 `edit-tui`。
+宿主目前只使用 `render/core.rkt` 与 `config/theme/default.rkt`；
+后续可以把这些模块继续收进新树的正式分层，并去掉 `render/layout.rkt` 这类旧装配入口。
 
 ---
 

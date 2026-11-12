@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/completion/plugin.rkt —— 补全菜单（第一阶段）
+;;; edit-tui/plugins/completion/plugin.rkt —— 补全菜单（第一阶段）
 ;;;
 ;;; 流程：
 ;;;   changes -> 取消旧 timer，schedule 180ms

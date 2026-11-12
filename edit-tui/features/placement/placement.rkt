@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/features/placement/placement.rkt —— 把 view 放进目标 editor panel
+;;; edit-tui/features/placement/placement.rkt —— 把 view 放进目标 editor panel
 ;;;
 ;;; 旧行为：
 ;;;   打开新文件 / 已打开但 detached 的 view -> placement

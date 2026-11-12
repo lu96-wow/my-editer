@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/jobs.rkt —— worker runtime
+;;; edit-tui/host/jobs.rkt —— worker runtime
 ;;;
 ;;; 纯账本在 editor-state.jobs；这里负责：
 ;;;   · worker 线程

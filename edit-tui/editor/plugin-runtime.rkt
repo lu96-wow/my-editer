@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/plugin-runtime.rkt —— contribution registry 执行器
+;;; edit-tui/editor/plugin-runtime.rkt —— contribution registry 执行器
 ;;;
 ;;; 只由 host-api 导出；插件 API 不导出这些函数。
 ;;;

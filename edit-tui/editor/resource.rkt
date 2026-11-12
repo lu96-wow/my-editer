@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/resource.rkt —— 已打开文档的纯状态
+;;; edit-tui/editor/resource.rkt —— 已打开文档的纯状态
 ;;;
 ;;; resource 记录“一个已打开文档”的身份 / 路径 / view / mode / 保存基线。
 ;;; 它不持有 engine 句柄；doc-id / view-id 仍是 id。

@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/final.rkt —— TUI 装配 + 事件循环
+;;; edit-tui/host/final.rkt —— TUI 装配 + 事件循环
 ;;;
 ;;; 这里负责：
 ;;;   · 创建 engine / 初始 buffer / 初始 layout

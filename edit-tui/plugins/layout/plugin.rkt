@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/plugins/layout/plugin.rkt —— 布局命令插件
+;;; edit-tui/plugins/layout/plugin.rkt —— 布局命令插件
 ;;;
 ;;; 插件通过 commands 贡献 key -> command。命令是普通过程：
 ;;;   (ed state -> (values state' actions))

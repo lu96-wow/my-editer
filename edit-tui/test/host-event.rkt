@@ -45,4 +45,4 @@
 (define s7 (handle-editor-event ed s6 (key-event (key 'a))))
 (check-not-equal? (engine-view-text (editor-engine ed) editor-vid) text-before)
 
-(displayln "edit-tui-rebuild/test/host-event.rkt: ok")
+(displayln "edit-tui/test/host-event.rkt: ok")

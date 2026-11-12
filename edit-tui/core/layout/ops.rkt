@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/core/layout/ops.rkt —— split tree 的结构编辑 / 焦点回退 / 拖动
+;;; edit-tui/core/layout/ops.rkt —— split tree 的结构编辑 / 焦点回退 / 拖动
 ;;;
 ;;; 建 split、attach / remove / hide / show、改比例、拖 seam、校验。
 ;;; rect 换算走 solve.rkt；树结构走 tree.rkt。

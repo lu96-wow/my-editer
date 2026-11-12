@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/job.rkt —— 异步 job 的 State 层
+;;; edit-tui/editor/job.rkt —— 异步 job 的 State 层
 ;;;
 ;;; 纯账本在 core/job；这里只把它放进 editor-state，并定义 host -> plugin
 ;;; 传递结果的 job-result-event。

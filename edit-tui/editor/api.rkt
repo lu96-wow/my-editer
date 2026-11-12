@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/api.rkt —— 插件唯一能 require 的 editor 面
+;;; edit-tui/editor/api.rkt —— 插件唯一能 require 的 editor 面
 ;;;
 ;;; 只导出：
 ;;;   · 操作面（surface）：insert! / delete! / move! / ...

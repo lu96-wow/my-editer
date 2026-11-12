@@ -67,4 +67,4 @@
 (define-values (_s6* _a7) (editor-insert! ed6 s6 1 "("))
 (check-equal? (engine-view-text e6 1) "(")
 
-(displayln "edit-tui-rebuild/test/plugins.rkt: ok")
+(displayln "edit-tui/test/plugins.rkt: ok")

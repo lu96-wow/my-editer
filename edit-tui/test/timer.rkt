@@ -39,4 +39,4 @@
 (check-equal? (state-flash state*) "timer fired")
 
 (stop-timer-runtime rt)
-(displayln "edit-tui-rebuild/test/timer.rkt: ok")
+(displayln "edit-tui/test/timer.rkt: ok")

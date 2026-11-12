@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/core/command/table.rkt —— 命令表（纯）
+;;; edit-tui/core/command/table.rkt —— 命令表（纯）
 ;;;
 ;;; 两层：
 ;;;

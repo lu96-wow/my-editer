@@ -57,4 +57,4 @@
 (check-equal? (state-plugin-state state2* 'layout-test) 1)
 (check-equal? (map flash-action-message actions2) '("split-observed"))
 
-(displayln "edit-tui-rebuild/test/layout.rkt: ok")
+(displayln "edit-tui/test/layout.rkt: ok")
