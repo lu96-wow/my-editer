@@ -246,6 +246,8 @@
      (submit-filetree-create! ed state context text)]
     [(filetree-delete-confirm)
      (submit-filetree-delete! ed state context text)]
+    [(filetree-rename)
+     (submit-filetree-rename! ed state context text)]
     [else (values state '())]))
 
 ;;; ════════════════ command table ════════════════

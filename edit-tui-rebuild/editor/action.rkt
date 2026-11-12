@@ -11,7 +11,8 @@
          (struct-out close-buffer-action)
          (struct-out show-docs-action)
          (struct-out filetree-create-action)
-         (struct-out filetree-delete-action))
+         (struct-out filetree-delete-action)
+         (struct-out filetree-rename-action))
 
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
@@ -22,3 +23,4 @@
 ;; filetree 只发 action；host 负责 prompt / 文件 IO / 刷新。
 (struct filetree-create-action (parent kind) #:transparent) ; kind = 'file | 'dir
 (struct filetree-delete-action (path kind) #:transparent)   ; kind = 'file | 'dir
+(struct filetree-rename-action (path kind) #:transparent)   ; kind = 'file | 'dir

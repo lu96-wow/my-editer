@@ -54,6 +54,9 @@
     (handle-editor-event ed s (key* c))))
 (define (submit st)
   (handle-editor-event ed st (key-event (key 'enter))))
+(define (backspaces st n)
+  (for/fold ([s st]) ([_ (in-range n)])
+    (handle-editor-event ed s (key-event (key 'backspace)))))
 
 ;; root 行 -> 在 root 下建文件。
 (engine-set-view-cursor! engine 3 0 #:column 0)
@@ -76,23 +79,50 @@
 (define s-dir-created (submit s-dir-typed))
 (check-true (directory-exists? (build-path root "newdir")))
 
-;; C-f d：删除 new.txt。
+;; C-f r：改名 old.txt -> renamed.txt；输入栏预填旧名字。
 (define s-sync3 (run-plugin-syncs ed s-dir-created))
 (define rows (filetree-state-rows (editor-state-plugin-state s-sync3 'filetree)))
-(define file-line
+(define old-line
   (for/first ([row (in-list rows)] [i (in-naturals)]
+              #:when (equal? (car row) (build-path root "old.txt")))
+    i))
+(check-not-false old-line)
+(engine-set-view-cursor! engine 3 old-line #:column 0)
+(define s-ren-cf (handle-editor-event ed s-sync3 (key-event (key 'f 'ctrl))))
+(define s-ren-prompt (handle-editor-event ed s-ren-cf (key-event (key 'r))))
+(check-true (editor-input-active? s-ren-prompt))
+(check-equal? (editor-input-text s-ren-prompt) "old.txt")
+(define s-ren-cleared (backspaces s-ren-prompt (string-length "old.txt")))
+(define s-ren-typed (type-text s-ren-cleared "renamed.txt"))
+(define s-renamed (submit s-ren-typed))
+(check-false (file-exists? (build-path root "old.txt")))
+(check-true (file-exists? (build-path root "renamed.txt")))
+
+;; C-f l：显式刷新，看到外部新建的文件。
+(define s-sync4 (run-plugin-syncs ed s-renamed))
+(check-true (string-contains? (engine-view-text engine 3) "renamed.txt"))
+(display-to-file "external" (build-path root "external.txt") #:exists 'replace)
+(define s-ref-cf (handle-editor-event ed s-sync4 (key-event (key 'f 'ctrl))))
+(define s-ref (handle-editor-event ed s-ref-cf (key-event (key 'l))))
+(define s-sync5 (run-plugin-syncs ed s-ref))
+(check-true (string-contains? (engine-view-text engine 3) "external.txt"))
+
+;; C-f d：删除 new.txt。
+(define rows2 (filetree-state-rows (editor-state-plugin-state s-sync5 'filetree)))
+(define file-line
+  (for/first ([row (in-list rows2)] [i (in-naturals)]
               #:when (equal? (car row) (build-path root "new.txt")))
     i))
 (check-not-false file-line)
 (engine-set-view-cursor! engine 3 file-line #:column 0)
-(define s-del-cf (handle-editor-event ed s-sync3 (key-event (key 'f 'ctrl))))
+(define s-del-cf (handle-editor-event ed s-sync5 (key-event (key 'f 'ctrl))))
 (define s-del-prompt (handle-editor-event ed s-del-cf (key-event (key 'd))))
 (check-true (editor-input-active? s-del-prompt))
 (define s-yes (type-text s-del-prompt "y"))
 (define s-deleted (submit s-yes))
 (check-false (file-exists? (build-path root "new.txt")))
 
-(define s-sync4 (run-plugin-syncs ed s-deleted))
+(define s-sync6 (run-plugin-syncs ed s-deleted))
 (check-false (string-contains? (engine-view-text engine 3) "new.txt"))
 
 (delete-directory/files root)

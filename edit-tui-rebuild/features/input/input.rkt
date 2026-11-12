@@ -79,7 +79,8 @@
                                   view-id))
   (if ok? (editor-state-with-layout state l) state))
 
-(define (editor-input-open state kind prompt context)
+(define (editor-input-open state kind prompt context
+                           #:text [text ""])
   (define s (input-state-of state))
   (cond
     [(not s) state]
@@ -90,8 +91,8 @@
                              [active? #t]
                              [kind kind]
                              [prompt prompt]
-                             [text ""]
-                             [cursor 0]
+                             [text text]
+                             [cursor (string-length text)]
                              [prev-focus prev]
                              [context context]))
      (define state1 (set-input-state (switch-view state (input-state-input-view s*)) s*))

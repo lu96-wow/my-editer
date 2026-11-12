@@ -159,6 +159,10 @@
                                        (filetree-delete-action-path a)
                                        (filetree-delete-action-kind a)))
        (if (null? more) s* (run-actions ed s* more))]
+      [(filetree-rename-action? a)
+       (define-values (s* more)
+         (open-filetree-rename-prompt! s (filetree-rename-action-path a)))
+       (if (null? more) s* (run-actions ed s* more))]
       [else s])))
 
 ;;; ════════════════ 命令 ════════════════

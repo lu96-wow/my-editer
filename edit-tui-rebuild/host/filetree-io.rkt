@@ -15,21 +15,26 @@
          "../editor/host-api.rkt"
          "../features/input/api.rkt"
          "../plugins/filetree/plugin.rkt"
-         "close.rkt")
+         "close.rkt"
+         "keymap.rkt")
 
 (provide open-filetree-create-prompt!
          open-filetree-delete-prompt!
+         open-filetree-rename-prompt!
          submit-filetree-create!
-         submit-filetree-delete!)
+         submit-filetree-delete!
+         submit-filetree-rename!)
 
 ;;; ════════════════ 刷新 ════════════════
 
-(define (invalidate-filetree state)
+(define (invalidate-filetree state [pending-cursor #f])
   (define ps (editor-state-plugin-state state 'filetree))
   (if (filetree-state? ps)
       (editor-state-set-plugin-state
        state 'filetree
-       (struct-copy filetree-state ps [stale? #t]))
+       (struct-copy filetree-state ps
+                    [stale? #t]
+                    [pending-cursor pending-cursor]))
       state))
 
 ;;; ════════════════ prompt ════════════════
@@ -54,6 +59,17 @@
                       'filetree-delete-confirm
                       (format "Delete ~a? (y/n) " (path->string path))
                       (list 'filetree-delete kind path))
+   '()))
+
+(define (open-filetree-rename-prompt! state path)
+  (define name (let ([n (file-name-from-path path)])
+                 (if n (path->string n) (path->string path))))
+  (values
+   (editor-input-open state
+                      'filetree-rename
+                      (format "Rename ~a to: " name)
+                      (list 'filetree-rename path)
+                      #:text name)
    '()))
 
 ;;; ════════════════ create ════════════════
@@ -83,7 +99,7 @@
      (cond
        [(create-target! kind target)
         (values (editor-state-with-flash
-                 (invalidate-filetree (editor-input-close state))
+                 (invalidate-filetree (editor-input-close state) target)
                  (format "created: ~a" (path->string target)))
                 '())]
        [else
@@ -131,6 +147,83 @@
     (define-values (s* more)
       (editor-close-resource! ed s (resource-id r)))
     (values s* (append actions more))))
+
+;;; ════════════════ rename ════════════════
+
+(define (rename-target path name)
+  (build-path (or (path-only path) (current-directory)) name))
+
+(define (rename-resource-entry ed rs kind old-path new-path r)
+  (define p (resource-path r))
+  (cond
+    [(not p) rs]
+    [else
+     (define affected?
+       (case kind
+         [(file) (equal? (resource-normalize-path p)
+                         (resource-normalize-path old-path))]
+         [(dir) (path-within? old-path p)]
+         [else #f]))
+     (cond
+       [(not affected?) rs]
+       [else
+        (define new-p
+          (case kind
+            [(file) new-path]
+            [(dir)
+             (define rel (find-relative-path
+                          (string->path (resource-normalize-path old-path))
+                          (string->path (resource-normalize-path p))))
+             (build-path new-path rel)]
+            [else p]))
+        (define text (engine-doc-text (editor-engine ed) (resource-doc-id r)))
+        (define mode (doc-mode-for new-p text))
+        (define name (let ([n (file-name-from-path new-p)])
+                       (if n (path->string n) (path->string new-p))))
+        (define rs* (resources-set-path rs (resource-id r)
+                                        (path->string new-p) name mode))
+        (resources-set-command-stack rs* (resource-id r)
+                                     (mode-command-stack mode))])]))
+
+(define (rename-resource-paths ed state kind old-path new-path)
+  (define rs
+    (for/fold ([rs (editor-state-resources state)])
+              ([r (in-list (resources-list (editor-state-resources state)))])
+      (rename-resource-entry ed rs kind old-path new-path r)))
+  (editor-state-with-resources state rs))
+
+(define (submit-filetree-rename! ed state context text)
+  (match-define (list 'filetree-rename old-path) context)
+  (define name (string-trim text))
+  (define old-name (let ([n (file-name-from-path old-path)])
+                     (if n (path->string n) "")))
+  (cond
+    [(not (valid-new-name? name))
+     (values (editor-state-with-flash state "filetree: invalid name") '())]
+    [(string=? name old-name)
+     (values (editor-input-close state) '())]
+    [else
+     (define new-path (rename-target old-path name))
+     (define ok?
+       (with-handlers ([exn:fail? (λ (_) #f)])
+         (rename-file-or-directory old-path new-path #f)
+         #t))
+     (cond
+       [(not ok?)
+        (values (editor-state-with-flash
+                 state
+                 (format "rename failed: ~a" (path->string new-path)))
+                '())]
+       [else
+        (define state1 (editor-input-close state))
+        (define state2 (rename-resource-paths ed state1 (if (directory-exists? new-path) 'dir 'file)
+                                             old-path new-path))
+        (values (editor-state-with-flash
+                 (invalidate-filetree state2 new-path)
+                 (format "renamed: ~a -> ~a"
+                         (path->string old-path)
+                         (path->string new-path)))
+                '())])]))
 
 (define (submit-filetree-delete! ed state context text)
   (define answer (string-downcase (string-trim text)))

@@ -380,7 +380,9 @@ C-r            文件树刷新
 C-h            文件树：显 / 隐 dotfile
 C-f n          文件树：新建文件
 C-f C-f n      文件树：新建目录
+C-f r          文件树：重命名
 C-f d          文件树：删除文件 / 目录
+C-f l          文件树：显式刷新（C-r 兼容保留）
 鼠标拖接缝     resize
 鼠标点 panel   聚焦 + 光标落点
 鼠标滚轮       滚指针下 panel
@@ -467,7 +469,8 @@ racket edit-tui-rebuild/test/ownership.rkt
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - UI view 增量：selection 只改 face 行；文本变化做最小区间替换；
 - sidebar fixed 边界可拖；C-b hide/show 恢复尺寸并 clamp 到 min（sidebar min-w 8）；
-- filetree C-f n / C-f C-f n / C-f d：输入名字 / 确认删除，host 执行文件 IO；
+- filetree C-f n / C-f C-f n / C-f d / C-f r：输入名字 / 确认删除 / 重命名，host 执行文件 IO；
+- filetree C-f l 显式刷新；C-r 兼容保留；
 - resource 持有自己的 command-stack：同一 panel 切 active view 会切换键表；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
@@ -510,6 +513,6 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. filetree 拖拽 / 重命名 / 文件系统自动刷新。
+1. filetree 拖拽 / 文件系统自动刷新。
 2. completion 接 workspace / analysis，补全跨 buffer 候选。
 3. docs 接 workspace 本地定义与 C-x o 焦点切换。

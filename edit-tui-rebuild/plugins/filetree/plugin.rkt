@@ -7,8 +7,8 @@
 ;;;   · 用两空格缩进 + face（root / dir / open / file）区分层次和类型
 ;;;   · 目录展开 / 折叠
 ;;;   · 隐藏 dotfile 的显示 / 隐藏
-;;;   · C-r 重扫
-;;;   · C-f n / C-f C-f n / C-f d -> create/delete action（IO 在 host）
+;;;   · C-f n / C-f C-f n / C-f d / C-f r -> create/delete/rename action（IO 在 host）
+;;;   · C-f l / C-r 重扫
 ;;;   · Enter 打开文件 -> open-file-action
 ;;;
 ;;; 插件状态是纯值：root / view / expanded / show-hidden? / rows / pending-cursor。
@@ -259,6 +259,15 @@
              (list (filetree-delete-action (row-path row) (row-kind row))))]
     [else (values (editor-state-with-flash state "filetree: cannot delete root") ps '())]))
 
+(define (rename-command ed state ps vid)
+  (define row (current-row ed state ps vid))
+  (cond
+    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [(memq (row-kind row) '(file dir))
+     (values state ps
+             (list (filetree-rename-action (row-path row) (row-kind row))))]
+    [else (values (editor-state-with-flash state "filetree: cannot rename root") ps '())]))
+
 (define (make-filetree-plugin #:view vid #:root root
                               #:hidden-entry? [hidden-entry? default-hidden-entry?])
   (define root* (simplify-path (path->complete-path root)))
@@ -291,7 +300,15 @@
     [(key 'f 'ctrl) (key 'd)
      (make-guarded-command
       #:when (λ (ed state ps) (filetree-focused? state vid))
-      #:run (λ (ed state ps) (delete-command ed state ps vid)))])
+      #:run (λ (ed state ps) (delete-command ed state ps vid)))]
+    [(key 'f 'ctrl) (key 'r)
+     (make-guarded-command
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (rename-command ed state ps vid)))]
+    [(key 'f 'ctrl) (key 'l)
+     (make-guarded-command
+      #:when (λ (ed state ps) (filetree-focused? state vid))
+      #:run (λ (ed state ps) (refresh-command ed state ps vid)))])
    #:sync (make-sync-filetree hidden-entry?)
    #:services (list (make-filetree-scan-service hidden-entry?))
    #:handle-job handle-filetree-job))
