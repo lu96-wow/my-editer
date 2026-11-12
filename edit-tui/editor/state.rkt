@@ -57,6 +57,7 @@
          state-find
          state-placement
          state-input
+         state-input-seed
          state-jobs
          state-async?
          state-with-pending
@@ -96,17 +97,25 @@
    next-panel-id)  ; 新 split 使用的 panel id
   #:transparent)
 
+;; host 会话按正交轴分组：
+;;   modal   : #f | 'input | modal-placement
+;;   pointer : #f | pointer-drag | pointer-select
+;; input 是 input-state 的持久 seed：modal 退出后仍保留，下一次 open 直接复用。
+;; 每个轴内部互斥；不同轴可以同时存在（例如 find + select-drag）。
+(struct modal-placement (value) #:transparent)
+(struct pointer-drag (value) #:transparent)
+(struct pointer-select (value) #:transparent)
+
 ;; host 会话：输入 / placement / 鼠标 / job / quit / flash。
 (struct editor-session
   (pending         ; (listof key-token)
    pending-scope   ; pending 对应的 scope key
    quit?
    flash           ; string，一次性；下一次 step 入口清空
-   drag            ; layout seam drag | #f
-   select-drag     ; select-drag | #f：鼠标文本拖选
+   modal           ; #f | 'input | modal-placement
+   input           ; input-state | #f：输入栏 seed（不随 modal 退出而丢弃）
+   pointer         ; #f | pointer-drag | pointer-select
    find            ; find-state | #f：当前查找会话
-   placement       ; view-id | #f：等待放入 editor panel
-   input           ; input-state | #f：单行输入栏
    jobs            ; job-ledger
    async?)         ; bool：sync 阶段是否走异步 job
   #:transparent)
@@ -135,11 +144,21 @@
          #:select-drag [select-drag #f]
          #:jobs [jobs empty-job-ledger]
          #:async? [async? #f])
+  (define modal
+    (cond
+      [input 'input]
+      [placement (modal-placement placement)]
+      [else #f]))
+  (define pointer
+    (cond
+      [drag (pointer-drag drag)]
+      [select-drag (pointer-select select-drag)]
+      [else #f]))
   (app-state
    (editor-core plugin-states workspace-root resources layout layout-config view-scopes area
                 next-view-id next-panel-id)
-   (editor-session pending pending-scope quit? flash drag select-drag find placement
-                   input jobs async?)))
+   (editor-session pending pending-scope quit? flash modal input pointer find
+                   jobs async?)))
 
 ;;; ════════════════ state dispatch ════════════════
 
@@ -158,7 +177,7 @@
      (raise-argument-error 'state-session "app-state? or editor-core?" state)]))
 
 (define empty-session
-  (editor-session '() #f #f "" #f #f #f #f #f empty-job-ledger #f))
+  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger #f))
 
 (define (session-of state)
   (or (state-session state) empty-session))
@@ -253,14 +272,21 @@
 (define (state-flash state)
   (editor-session-flash (session-of state)))
 (define (state-drag state)
-  (editor-session-drag (session-of state)))
+  (define p (editor-session-pointer (session-of state)))
+  (and (pointer-drag? p) (pointer-drag-value p)))
 (define (state-select-drag state)
-  (editor-session-select-drag (session-of state)))
+  (define p (editor-session-pointer (session-of state)))
+  (and (pointer-select? p) (pointer-select-value p)))
 (define (state-find state)
   (editor-session-find (session-of state)))
 (define (state-placement state)
-  (editor-session-placement (session-of state)))
+  (define m (editor-session-modal (session-of state)))
+  (and (modal-placement? m) (modal-placement-value m)))
 (define (state-input state)
+  (define s (session-of state))
+  (and (eq? (editor-session-modal s) 'input)
+       (editor-session-input s)))
+(define (state-input-seed state)
   (editor-session-input (session-of state)))
 (define (state-jobs state)
   (editor-session-jobs (session-of state)))
@@ -289,15 +315,51 @@
       state
       (state-with-flash state "")))
 (define (state-with-drag state drag)
-  (update-session state (λ (s) (struct-copy editor-session s [drag drag]))))
+  (update-session
+   state
+   (λ (s)
+     (define p (editor-session-pointer s))
+     (define p*
+       (cond
+         [drag (pointer-drag drag)]
+         [(pointer-drag? p) #f]
+         [else p]))
+     (struct-copy editor-session s [pointer p*]))))
 (define (state-with-select-drag state select-drag)
-  (update-session state (λ (s) (struct-copy editor-session s [select-drag select-drag]))))
+  (update-session
+   state
+   (λ (s)
+     (define p (editor-session-pointer s))
+     (define p*
+       (cond
+         [select-drag (pointer-select select-drag)]
+         [(pointer-select? p) #f]
+         [else p]))
+     (struct-copy editor-session s [pointer p*]))))
 (define (state-with-find state find)
   (update-session state (λ (s) (struct-copy editor-session s [find find]))))
 (define (state-with-placement state placement)
-  (update-session state (λ (s) (struct-copy editor-session s [placement placement]))))
+  (update-session
+   state
+   (λ (s)
+     (define m (editor-session-modal s))
+     (define m*
+       (cond
+         [placement (modal-placement placement)]
+         [(modal-placement? m) #f]
+         [else m]))
+     (struct-copy editor-session s [modal m*]))))
 (define (state-with-input state input)
-  (update-session state (λ (s) (struct-copy editor-session s [input input]))))
+  (update-session
+   state
+   (λ (s)
+     (define m (editor-session-modal s))
+     (define m*
+       (cond
+         [input 'input]
+         [(eq? m 'input) #f]
+         [else m]))
+     (struct-copy editor-session s [modal m*] [input input]))))
 (define (state-with-jobs state jobs)
   (update-session state (λ (s) (struct-copy editor-session s [jobs jobs]))))
 (define (state-with-async state async?)

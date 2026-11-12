@@ -497,6 +497,9 @@ racket edit-tui/test/ownership.rkt
 5e. view-id -> command scope 由插件 `#:view-scopes` 声明，随 editor-core 保存。
 5f. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
 5g. prefix 查找要 guard-aware：没有可执行后继时不遮蔽后面的表。
+5h. Session 分正交轴：modal = input/placement；pointer = drag/select-drag；
+    轴内互斥，轴间独立（find / pending / jobs 可同时存在）。
+    input-state 是持久 seed：modal 退出后保留，下一次 open 复用。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

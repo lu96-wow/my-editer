@@ -72,7 +72,8 @@
   (and s (input-state-prompt s)))
 
 (define (switch-view state view-id)
-  (define s (input-state-of state))
+  ;; 用 seed 而不是 active input：open 时 modal 可能还不是 input。
+  (define s (state-input-seed state))
   (define-values (l ok?)
     (layout-panel-set-active-view (state-layout state)
                                   (input-state-panel-id s)
@@ -81,7 +82,8 @@
 
 (define (editor-input-open state kind prompt context
                            #:text [text ""])
-  (define s (input-state-of state))
+  ;; input-state 是持久 seed：placement 期间 modal 不是 input，但仍要能再次打开。
+  (define s (state-input-seed state))
   (cond
     [(not s) state]
     [else

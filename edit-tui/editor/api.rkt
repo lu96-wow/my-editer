@@ -62,6 +62,7 @@
  state-with-layout
  state-with-pending
  state-with-input
+ state-input-seed
  state-with-placement
  state-resource-for-view
  state-resource-for-doc
