@@ -19,6 +19,9 @@
          (struct-out undo-command)
          (struct-out redo-command)
          (struct-out kill-line-command)
+         (struct-out find-command)
+         (struct-out find-next-command)
+         (struct-out find-prev-command)
          (struct-out save-command)
          (struct-out quit-command)
          navigation-command-table
@@ -33,6 +36,9 @@
 (struct undo-command () #:transparent)
 (struct redo-command () #:transparent)
 (struct kill-line-command () #:transparent)
+(struct find-command () #:transparent)
+(struct find-next-command () #:transparent)
+(struct find-prev-command () #:transparent)
 (struct save-command () #:transparent)
 (struct quit-command () #:transparent)
 
@@ -71,6 +77,9 @@
     [(key 'enter)     (insert-command "\n")]
     [(key 'tab)       (insert-command "  ")]
     [(key 'k 'ctrl)   (kill-line-command)]
+    [(key 'x 'ctrl) (key 'f) (find-command)]
+    [(key 'left 'ctrl)  (find-prev-command)]
+    [(key 'right 'ctrl) (find-next-command)]
     [(key 'z 'ctrl)   (undo-command)]
     [(key 'y 'ctrl)   (redo-command)])))
 

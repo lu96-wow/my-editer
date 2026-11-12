@@ -23,7 +23,8 @@
          "../features/input/api.rkt"
          "close.rkt"
          "filetree-io.rkt"
-         "keymap.rkt")
+         "keymap.rkt"
+         "../features/find/api.rkt")
 
 (provide editor-save-command
          editor-request-quit
@@ -248,6 +249,8 @@
      (submit-filetree-delete! ed state context text)]
     [(filetree-rename)
      (submit-filetree-rename! ed state context text)]
+    [(find)
+     (find-submit! ed state context text)]
     [else (values state '())]))
 
 ;;; ════════════════ command table ════════════════

@@ -112,6 +112,7 @@ edit-tui-rebuild/
     placement/         打开文件后的目标 editor 选择
     mouse/             鼠标 press/move/release、拖选、seam drag
     sidebar/           sidebar tab 切换 / 显隐
+    find/              当前 buffer 查找 / 前后匹配项
 
   host/
     final.rkt          可运行 TUI / 事件循环
@@ -136,6 +137,7 @@ edit-tui-rebuild/
     ui-incremental.rkt UI view face-only / 文本最小 diff
     panel-resize.rkt   fixed seam 拖动 / hide-show min clamp
     filetree-io.rkt    C-f 创建 / 删除文件、目录
+    find.rkt           find 命令 / 前后移动
     buffer-keymap.rkt  键表跟随 resource / active view
     host.rkt
     layers.rkt
@@ -384,6 +386,9 @@ C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
+C-x f          查找当前 buffer
+C-left         上一个匹配项
+C-right        下一个匹配项
 C-x ←          聚焦 sidebar
 Enter          文件树：打开文件；编辑器：换行
 C-r            文件树刷新
@@ -444,6 +449,7 @@ racket edit-tui-rebuild/test/ui-incremental.rkt
 racket edit-tui-rebuild/test/panel-resize.rkt
 racket edit-tui-rebuild/test/filetree-io.rkt
 racket edit-tui-rebuild/test/buffer-keymap.rkt
+racket edit-tui-rebuild/test/find.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 ```
@@ -483,6 +489,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 - filetree C-f n / C-f C-f n / C-f d / C-f r：输入名字 / 确认删除 / 重命名，host 执行文件 IO；
 - filetree C-f l 显式刷新；C-r 兼容保留；
 - resource 持有自己的 command-stack：同一 panel 切 active view 会切换键表；
+- find：C-x f 输入 query，C-left / C-right 前后移动并选中当前匹配；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；

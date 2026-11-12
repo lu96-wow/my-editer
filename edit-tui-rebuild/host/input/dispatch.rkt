@@ -16,6 +16,7 @@
          "../../editor/host-api.rkt"
          "../../features/input/api.rkt"
          "../../features/placement/api.rkt"
+         "../../features/find/api.rkt"
          "../prompt.rkt"
          "../keymap.rkt"
          "scope.rkt")
@@ -154,6 +155,9 @@
        [(or (not vid) (not (editor-focused? state)))
         (flash state "kill-line: focus is not editor")]
        [else (editor-kill-line! ed state vid)])]
+    [(find-command? value) (find-open-prompt! state)]
+    [(find-next-command? value) (find-next! ed state)]
+    [(find-prev-command? value) (find-prev! ed state)]
     [(save-command? value)
      (editor-save-command ed state)]
     [(quit-command? value)

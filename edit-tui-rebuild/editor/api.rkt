@@ -55,8 +55,10 @@
  (struct-out select-drag)
  state-drag
  state-select-drag
+ state-find
  state-with-drag
  state-with-select-drag
+ state-with-find
  state-with-layout
  state-with-pending
  state-with-input

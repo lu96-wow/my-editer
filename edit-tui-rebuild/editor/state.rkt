@@ -52,6 +52,7 @@
          state-flash
          state-drag
          state-select-drag
+         state-find
          state-placement
          state-input
          state-jobs
@@ -64,6 +65,7 @@
          state-clear-flash
          state-with-drag
          state-with-select-drag
+         state-with-find
          state-with-placement
          state-with-input
          state-with-jobs
@@ -99,6 +101,7 @@
    flash           ; string，一次性；下一次 step 入口清空
    drag            ; layout seam drag | #f
    select-drag     ; select-drag | #f：鼠标文本拖选
+   find            ; find-state | #f：当前查找会话
    placement       ; view-id | #f：等待放入 editor panel
    input           ; input-state | #f：单行输入栏
    jobs            ; job-ledger
@@ -119,6 +122,7 @@
          #:layout-config [layout-config empty-layout-config]
          #:layout [layout #f]
          #:drag [drag #f]
+         #:find [find #f]
          #:next-view-id [next-view-id 10]
          #:next-panel-id [next-panel-id 100]
          #:resources [resources empty-resources]
@@ -130,7 +134,7 @@
   (app-state
    (editor-core plugin-states workspace-root resources layout layout-config area
                 next-view-id next-panel-id)
-   (editor-session pending pending-scope quit? flash drag select-drag placement
+   (editor-session pending pending-scope quit? flash drag select-drag find placement
                    input jobs async?)))
 
 ;;; ════════════════ state dispatch ════════════════
@@ -150,7 +154,7 @@
      (raise-argument-error 'state-session "app-state? or editor-core?" state)]))
 
 (define empty-session
-  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger #f))
+  (editor-session '() #f #f "" #f #f #f #f #f empty-job-ledger #f))
 
 (define (session-of state)
   (or (state-session state) empty-session))
@@ -241,6 +245,8 @@
   (editor-session-drag (session-of state)))
 (define (state-select-drag state)
   (editor-session-select-drag (session-of state)))
+(define (state-find state)
+  (editor-session-find (session-of state)))
 (define (state-placement state)
   (editor-session-placement (session-of state)))
 (define (state-input state)
@@ -275,6 +281,8 @@
   (update-session state (λ (s) (struct-copy editor-session s [drag drag]))))
 (define (state-with-select-drag state select-drag)
   (update-session state (λ (s) (struct-copy editor-session s [select-drag select-drag]))))
+(define (state-with-find state find)
+  (update-session state (λ (s) (struct-copy editor-session s [find find]))))
 (define (state-with-placement state placement)
   (update-session state (λ (s) (struct-copy editor-session s [placement placement]))))
 (define (state-with-input state input)
