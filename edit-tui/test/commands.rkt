@@ -127,7 +127,8 @@
 (define scoped-state
   (make-app-state #:plugin-states (plugins->states (list scoped-plugin))
                   #:area (rect 0 0 50 12)
-                  #:layout scoped-layout))
+                  #:layout scoped-layout
+                  #:view-scopes (hash 3 'filetree)))
 
 ;; editor 聚焦：C-f 仍然右移。
 (engine-set-view-cursor! engine3 1 0 #:column 0)

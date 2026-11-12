@@ -84,6 +84,7 @@
   (make-plugin
    #:id 'docs
    #:state (empty-docs-state vid panel-id)
+   #:view-scopes (hash vid 'docs)
    #:sync sync-docs!
    #:services (list (service 'docs docs-service))
    #:handle-job handle-docs-job

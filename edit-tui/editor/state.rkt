@@ -33,6 +33,7 @@
          state-resources
          state-layout
          state-layout-config
+         state-view-scopes
          state-area
          state-next-view-id
          state-next-panel-id
@@ -41,6 +42,7 @@
          state-with-resources
          state-with-layout
          state-with-layout-config
+         state-with-view-scopes
          state-with-area
          state-with-next-view-id
          state-with-next-panel-id
@@ -88,6 +90,7 @@
    resources       ; resources：已打开文档
    layout          ; layout | #f（core/layout 的纯值）
    layout-config   ; layout-config：具体 kind 规则（宿主选择）
+   view-scopes     ; hash view-id/panel-id -> command scope
    area            ; rect | #f
    next-view-id    ; 新 split 使用的 view id
    next-panel-id)  ; 新 split 使用的 panel id
@@ -121,6 +124,7 @@
          #:area [area #f]
          #:layout-config [layout-config empty-layout-config]
          #:layout [layout #f]
+         #:view-scopes [view-scopes (hash)]
          #:drag [drag #f]
          #:find [find #f]
          #:next-view-id [next-view-id 10]
@@ -132,7 +136,7 @@
          #:jobs [jobs empty-job-ledger]
          #:async? [async? #f])
   (app-state
-   (editor-core plugin-states workspace-root resources layout layout-config area
+   (editor-core plugin-states workspace-root resources layout layout-config view-scopes area
                 next-view-id next-panel-id)
    (editor-session pending pending-scope quit? flash drag select-drag find placement
                    input jobs async?)))
@@ -183,6 +187,8 @@
   (editor-core-layout (state-core state)))
 (define (state-layout-config state)
   (editor-core-layout-config (state-core state)))
+(define (state-view-scopes state)
+  (editor-core-view-scopes (state-core state)))
 (define (state-area state)
   (editor-core-area (state-core state)))
 (define (state-next-view-id state)
@@ -215,6 +221,11 @@
    state
    (struct-copy editor-core (state-core state)
                 [layout-config layout-config])))
+(define (state-with-view-scopes state view-scopes)
+  (state-with-core
+   state
+   (struct-copy editor-core (state-core state)
+                [view-scopes view-scopes])))
 (define (state-with-area state area)
   (state-with-core
    state

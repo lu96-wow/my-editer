@@ -40,6 +40,7 @@
                   #:area (rect 0 0 60 15)
                   #:layout layout
                   #:layout-config default-layout-config
+                  #:view-scopes (plugins->view-scopes (list filetree-plugin))
                   #:input (make-input-state #:panel-id 'status
                                             #:status-view 2
                                             #:input-view 5)))

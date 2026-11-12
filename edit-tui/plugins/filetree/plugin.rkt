@@ -535,6 +535,7 @@
    #:id 'filetree
    #:state (filetree-state root* vid (hash root* #t) #f '() #t #f #f #f #f #f '() 0 #f)
    #:command-scope 'filetree
+   #:view-scopes (hash vid 'filetree)
    #:commands
    (keys
     [(key 'enter)

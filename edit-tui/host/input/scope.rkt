@@ -17,11 +17,12 @@
 (provide focus-command-scope
          host-command-table-for-scope)
 
-(define (focus-command-scope state view-scopes)
+(define (focus-command-scope state)
   (define vid (editor-focus-view-id state))
   (define pid (editor-focus-panel-id state))
-  (or (and vid (hash-ref view-scopes vid #f))
-      (and pid (hash-ref view-scopes pid #f))
+  (define scopes (state-view-scopes state))
+  (or (and vid (hash-ref scopes vid #f))
+      (and pid (hash-ref scopes pid #f))
       (and (eq? (editor-focus-panel-kind state) 'editor) 'editor)
       'global))
 

@@ -26,7 +26,6 @@
          input-vid
          completion-vid
          docs-vid
-         view-scopes
          make-editor-app)
 
 ;;; ════════════════ 初始文档 ════════════════
@@ -38,12 +37,6 @@
 (define input-vid 5)
 (define completion-vid 6)
 (define docs-vid 7)
-
-;; host 装配知道具体 view id：把 panel/view 映射到命令 scope。
-(define view-scopes
-  (hash filetree-vid 'filetree
-        resources-vid 'resources
-        docs-vid 'docs))
 
 (define (make-editor-app
          #:workspace-root [workspace-root (resource-normalize-path (current-directory))]
@@ -83,6 +76,7 @@
   (define ed (make-editor #:engine engine
                           #:registry registry
                           #:plugins plugins))
+  (define view-scopes (plugins->view-scopes plugins))
 
   (define layout (make-editor-layout #:editor-view editor-vid
                                      #:status-views (list status-vid input-vid)
@@ -106,6 +100,7 @@
                     #:area (rect 0 0 80 24)
                     #:layout layout
                     #:layout-config default-layout-config
+                    #:view-scopes view-scopes
                     #:next-view-id 10
                     #:next-panel-id 100
                     #:resources resources*

@@ -105,6 +105,7 @@
    #:id 'resources
    #:state (resources-panel-state vid '())
    #:command-scope 'resources
+   #:view-scopes (hash vid 'resources)
    #:commands
    (keys
     [(key 'enter)

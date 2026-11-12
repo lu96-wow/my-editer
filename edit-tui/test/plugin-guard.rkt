@@ -91,7 +91,7 @@
 (define ed4 (editor-for engine4 (list bad-command)))
 (define s4 (state-for (list bad-command)))
 (define-values (s4* actions4)
-  (dispatch-key ed4 s4 (key 't 'ctrl) (hash)))
+  (dispatch-key ed4 s4 (key 't 'ctrl)))
 (check-eq? (state-plugin-state s4* 'bad-command) 'cmd-state)
 (check-true (string-contains? (state-flash s4*) "bad-command"))
 (check-true (string-contains? (state-flash s4*) "command"))

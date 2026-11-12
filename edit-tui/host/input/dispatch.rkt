@@ -63,8 +63,8 @@
          (tag-host-command-table t))
        (list (host-table-for-scope 'editor)))))
 
-(define (command-context ed state view-scopes)
-  (define focus (focus-command-scope state view-scopes))
+(define (command-context ed state)
+  (define focus (focus-command-scope state))
   (define owner (active-key-owner ed state))
   (define resource (and (eq? focus 'editor) (focus-resource state)))
   (list owner focus
@@ -213,9 +213,9 @@
 
 ;;; ════════════════ step ════════════════
 
-(define (dispatch-key ed state tok view-scopes)
+(define (dispatch-key ed state tok)
   (define state0 (state-clear-flash state))
-  (define scopes (command-context ed state0 view-scopes))
+  (define scopes (command-context ed state0))
   (define pending0 (state-pending state0))
   (define pending-scope0 (state-pending-scope state0))
   ;; focus / mode 改变的瞬间，前缀不再属于当前 scope：直接丢弃。

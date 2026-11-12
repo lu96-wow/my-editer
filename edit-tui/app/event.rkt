@@ -14,7 +14,6 @@
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "../features/mouse/api.rkt"
-         "bootstrap.rkt"
          "actions.rkt"
          "frame.rkt")
 
@@ -91,7 +90,7 @@
      (state-with-quit state #t)]
     [(key-event? ev)
      (define-values (s2 actions)
-       (dispatch-key ed state (key-event-token ev) view-scopes))
+       (dispatch-key ed state (key-event-token ev)))
      (run-actions ed s2 actions)]
     [else state]))
 

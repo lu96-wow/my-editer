@@ -26,10 +26,11 @@
          (struct-out plugin-command)
          plugins->hooks
          plugins->states
+         plugins->view-scopes
          plugins->contributions)
 
 (struct plugin
-  (id state hooks commands command-scope
+  (id state hooks commands command-scope view-scopes
       sync services handle-job handle-timer key-owner overlays)
   #:transparent)
 
@@ -83,6 +84,7 @@
                      #:hooks [hooks '()]
                      #:commands [commands #f]
                      #:command-scope [command-scope 'global]
+                     #:view-scopes [view-scopes (hash)]
                      #:sync [sync #f]
                      #:services [services '()]
                      #:handle-job [handle-job #f]
@@ -97,6 +99,8 @@
     (raise-argument-error 'make-plugin
                           "(or/c #f command-table? (listof command-group?))"
                           commands))
+  (unless (hash? view-scopes)
+    (raise-argument-error 'make-plugin "hash?" view-scopes))
   (when (and sync (not (procedure? sync)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" sync))
   (when (and handle-job (not (procedure? handle-job)))
@@ -112,7 +116,7 @@
     (unless (eq? (hook-owner h) id)
       (error 'make-plugin "hook owner ~a 必须等于 plugin id ~a"
              (hook-owner h) id)))
-  (plugin id state hooks commands command-scope
+  (plugin id state hooks commands command-scope view-scopes
           sync services handle-job handle-timer key-owner overlays))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
@@ -123,6 +127,12 @@
 (define (plugins->states plugins)
   (for/fold ([h (hash)]) ([p (in-list plugins)])
     (hash-set h (plugin-id p) (plugin-state p))))
+
+;; 插件声明的 view-id / panel-id -> command scope；host 不再硬编码具体面板常量。
+(define (plugins->view-scopes plugins)
+  (for/fold ([h (hash)]) ([p (in-list plugins)])
+    (for/fold ([h h]) ([(k scope) (in-hash (plugin-view-scopes p))])
+      (hash-set h k scope))))
 
 ;; 把插件字段翻译成统一 contribution registry。
 (define (plugins->contributions plugins)
