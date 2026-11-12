@@ -98,6 +98,36 @@
 (check-equal? (engine-view-text engine2 1) "Y")
 
 
+;;; 3b. 前缀下所有 guard 都失败时，不能挡住 host 的同键精确命令。
+(define engine4 (make-engine))
+(void (engine-create-buffer! engine4 1 "editor" "abc"))
+(void (engine-create-view! engine4 1 1))
+(define blocked-prefix-plugin
+  (make-plugin
+   #:id 'blocked-prefix
+   #:state #t
+   #:command-scope 'editor
+   #:commands
+   (keys
+    [(key 'f 'ctrl) (key 'n)
+     (make-guarded-command
+      #:when (λ (ed state ps) #f)
+      #:run (insert-command "X"))])))
+(define blocked-prefix-ed
+  (make-editor #:engine engine4
+               #:registry (make-hook-registry '())
+               #:plugins (list blocked-prefix-plugin)))
+(define blocked-prefix-state
+  (make-app-state #:plugin-states (plugins->states (list blocked-prefix-plugin))
+                  #:area (rect 0 0 40 10)
+                  #:layout (make-editor-layout #:editor-view 1)))
+(engine-set-view-cursor! engine4 1 0 #:column 0)
+(define blocked-prefix-state*
+  (handle-editor-event blocked-prefix-ed blocked-prefix-state
+                       (key-event (key 'f 'ctrl))))
+(check-equal? (engine-view-point-column engine4 1) 1)
+(check-equal? (state-pending blocked-prefix-state*) '())
+
 ;;; 4. 同一物理 C-f，在 editor / filetree scope 下是不同含义。
 ;;;    editor: C-f = 右移；filetree: C-f 是局部前缀。
 (define engine3 (make-engine))

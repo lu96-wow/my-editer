@@ -193,6 +193,23 @@
       (with-handlers ([exn:fail? (λ (_e) #f)])
         ((guarded-command-when-fn value) ed state (plugin-ps state owner)))))
 
+(define (leaf-allowed? value ed state)
+  (cond
+    [(and (list? value) (andmap pair? value))
+     (for/or ([e (in-list value)])
+       (command-entry-allowed? e ed state))]
+    [else #t]))
+
+;; 前缀只有在“至少一个后续命令当前可执行”时才遮蔽后面的表。
+;; 否则一个所有 guard 都失败的前缀会永久挡住 host 的同键命令。
+(define (prefix-has-allowed? table prefix ed state)
+  (define n (length prefix))
+  (for/or ([b (in-list (command-table-bindings table))])
+    (define seq (car b))
+    (and (>= (length seq) n)
+         (equal? prefix (for/list ([i (in-range n)]) (list-ref seq i)))
+         (leaf-allowed? (cadr b) ed state))))
+
 (define (lookup-command tables seq ed state)
   (let loop ([ts tables])
     (cond
@@ -208,7 +225,10 @@
           (if hit
               (values 'command (cdr hit) (car hit))
               (loop (cdr ts)))]
-         [(prefix) (values 'prefix #f #f)]
+         [(prefix)
+          (if (prefix-has-allowed? (car ts) seq ed state)
+              (values 'prefix #f #f)
+              (loop (cdr ts)))]
          [else (loop (cdr ts))])])))
 
 ;;; ════════════════ step ════════════════
