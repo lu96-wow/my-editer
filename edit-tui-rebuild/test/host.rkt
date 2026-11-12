@@ -4,9 +4,16 @@
 
 (require rackunit
          "../editor/host-api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "fixture.rkt")
 
-(define-values (ed state) (make-demo-editor))
+;; 生产入口默认没有初始 resource；editor 只是一个空 buffer。
+(define-values (empty-ed empty-state) (make-editor-app))
+(check-equal? (resources-list (state-resources empty-state)) '())
+(check-equal? (engine-view-text (editor-engine empty-ed) 1) "")
+(check-equal? (state-resource-for-view empty-state 1) #f)
+
+(define-values (ed state) (make-test-editor))
 (check-true (> (string-length (engine-view-text (editor-engine ed) 1)) 0))
 (check-equal? (engine-view-point-line (editor-engine ed) 1) 0)
 

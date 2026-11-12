@@ -8,6 +8,7 @@
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../features/placement/api.rkt"
          "../host/open.rkt")
 
@@ -17,7 +18,7 @@
   (display-to-file text p #:exists 'replace)
   p)
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 (define-values (s1 _a1) (editor-split! ed s0 'right))
 (check-equal? (length (editor-visible-editor-panels s1)) 2)

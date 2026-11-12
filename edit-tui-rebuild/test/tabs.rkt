@@ -9,6 +9,7 @@
          "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
          "../host/final.rkt"
+         "fixture.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "../host/close.rkt"
@@ -21,13 +22,13 @@
   (display-to-file text p #:exists 'replace)
   p)
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 
 ;; split 出的新 view 也登记到同一个 resource。
 (define-values (s-split _a1) (editor-split! ed s0 'right))
-(define scratch-r (state-resource-for-doc s-split 1))
-(check-equal? (length (resource-views scratch-r)) 2)
+(define editor-r (state-resource-for-doc s-split 1))
+(check-equal? (length (resource-views editor-r)) 2)
 
 ;; 打开文件并放入当前 editor panel -> 同一 panel 有两个 view。
 (define f1 (make-file "one.txt" "one"))

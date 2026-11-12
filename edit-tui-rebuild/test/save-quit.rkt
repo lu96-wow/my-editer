@@ -11,6 +11,7 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../features/input/api.rkt"
          "../host/prompt.rkt"
          "../host/event.rkt")
@@ -18,14 +19,14 @@
 (define root (make-temporary-directory))
 (define target (build-path root "saved.rkt"))
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 
 (define vid (editor-focus-view-id s1))
 (check-not-false vid)
 
-;; C-s：scratch 没有 path -> save-path
+;; C-s：fixture buffer 没有 path -> save-path
 (define s2 (handle-editor-event ed s1 (key-event (key 's 'ctrl))))
 (check-true (editor-input-active? s2))
 (check-eq? (editor-input-kind s2) 'save-path)

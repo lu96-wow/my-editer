@@ -11,12 +11,13 @@
          "../core/layout/api.rkt"
          "../plugins/completion/plugin.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../host/event.rkt"
          "../host/timers.rkt")
 
 ;;; ════════════════ 手动打开 / 接受 / docs ════════════════
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 (engine-set-view-cursor! (editor-engine ed) 1 3 #:column 5)
@@ -66,7 +67,7 @@
 
 ;;; ════════════════ changes -> timer -> 自动打开 ════════════════
 
-(define-values (ed2 state2) (make-demo-editor))
+(define-values (ed2 state2) (make-test-editor))
 (define t0 (state-with-area state2 (rect 0 0 60 15)))
 (define-values (t1 _c _b) (render-frame ed2 t0 #f))
 (define ch (make-async-channel))

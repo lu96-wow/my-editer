@@ -10,9 +10,10 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../host/event.rkt")
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 
 ;; 先渲染一帧，同步 viewport / filetree 内容。

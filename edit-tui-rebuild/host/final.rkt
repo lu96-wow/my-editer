@@ -40,7 +40,7 @@
          "../../edit-tui/config/theme/default.rkt")
 
 (provide run-editor
-         make-demo-editor
+         make-editor-app
          run-demo-editor
          render-frame
          sync-status!
@@ -63,15 +63,14 @@
         resources-vid 'resources
         docs-vid 'docs))
 
-(define initial-text
-  (string-append "#lang racket\n"
-                 "\n"
-                 "(define (main xs)\n"
-                 "  (map add1 xs))\n"))
-
-(define (make-demo-editor)
+(define (make-editor-app
+         #:workspace-root [workspace-root (resource-normalize-path (current-directory))]
+         #:initial-text [initial-text ""]
+         #:initial-name [initial-name ""]
+         #:initial-path [initial-path #f]
+         #:initial-resource? [initial-resource? (not (string=? initial-name ""))])
   (define engine (make-engine))
-  (void (engine-create-buffer! engine editor-vid "scratch.rkt" initial-text))
+  (void (engine-create-buffer! engine editor-vid initial-name initial-text))
   (void (engine-create-view! engine editor-vid editor-vid))
   (void (engine-create-buffer! engine status-vid "*status*" ""))
   (void (engine-create-view! engine status-vid status-vid))
@@ -88,7 +87,6 @@
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
-  (define workspace-root (resource-normalize-path (current-directory)))
   (define plugins (list pair-plugin
                         indent-plugin
                         (make-filetree-plugin
@@ -108,13 +106,18 @@
                                      #:status-views (list status-vid input-vid)
                                      #:sidebar-views (list filetree-vid resources-vid)
                                      #:docs-view docs-vid))
-  ;; 初始 scratch resource：没有 path，但 mode 按 "scratch.rkt" 选 Racket。
-  (define scratch-mode (doc-mode-for "scratch.rkt" initial-text))
-  (define scratch
-    (make-resource editor-vid editor-vid #f "scratch.rkt"
-                   (list editor-vid) scratch-mode
-                   (engine-doc-version engine editor-vid)
-                   #:command-stack (mode-command-stack scratch-mode)))
+  ;; 没有 initial-name 时只建一个空 editor buffer，不登记 resource。
+  ;; 打开文件后由 host/open 创建真正的 resource。
+  (define initial-mode (doc-mode-for initial-path initial-text))
+  (define resources*
+    (if initial-resource?
+        (resources-add
+         empty-resources
+         (make-resource editor-vid editor-vid initial-path initial-name
+                        (list editor-vid) initial-mode
+                        (engine-doc-version engine editor-vid)
+                        #:command-stack (mode-command-stack initial-mode)))
+        empty-resources))
   (define state
     (make-app-state #:plugin-states (plugins->states plugins)
                        #:workspace-root workspace-root
@@ -123,7 +126,7 @@
                        #:layout-config rebuild-layout-config
                        #:next-view-id 10
                        #:next-panel-id 100
-                       #:resources (resources-add empty-resources scratch)
+                       #:resources resources*
                        #:input (make-input-state #:panel-id 'status
                                                  #:status-view status-vid
                                                  #:input-view input-vid)))
@@ -179,7 +182,7 @@
   (define r (state-resource-for-view state vid))
   (define name
     (cond
-      [(not r) "scratch.rkt"]
+      [(not r) "[no file]"]
       [else
        (define path (resource-path r))
        (if path
@@ -349,7 +352,7 @@
 ;;; ════════════════ 终端入口 ════════════════
 
 (define (run-demo-editor)
-  (define-values (ed state) (make-demo-editor))
+  (define-values (ed state) (make-editor-app))
   (tui:with-tui
    (lambda ()
      (tui:cursor-hide)

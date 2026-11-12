@@ -42,6 +42,7 @@
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
 - `host/final.rkt`：sidebar + 多 editor panel + status 的可运行 TUI。
+- 启动时只创建空 editor buffer，不自动创建默认 scratch resource。
 - `test/`：hooks / ops / plugins / layout / mouse / commands / host 回归。
 
 还没有：

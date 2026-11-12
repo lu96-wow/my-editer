@@ -6,9 +6,10 @@
          "../editor/host-api.rkt"
          "../features/sidebar/api.rkt"
          "../core/layout/api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "fixture.rkt")
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-area state (rect 0 0 60 15)))
 (check-true (layout-panel-visible? (state-layout s0) 'filetree))
 

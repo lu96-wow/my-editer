@@ -11,10 +11,11 @@
          "../core/command/api.rkt"
          "../host/event.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../host/layout.rkt")
 
 ;;; 1. layout 插件贡献 split 命令；C-w Right 走 host 事件路径。
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s1 (handle-editor-event ed state (key-event (key 'w 'ctrl))))
 (check-equal? (state-pending s1) (list (key 'w 'ctrl)))
 (define s-split (handle-editor-event ed s1 (key-event (key 'right))))

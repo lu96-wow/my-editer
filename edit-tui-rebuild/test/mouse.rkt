@@ -8,9 +8,10 @@
          "../core/layout/api.rkt"
          "../core/projection/api.rkt"
          "../features/mouse/api.rkt"
-         "../host/final.rkt")
+         "../host/final.rkt"
+         "fixture.rkt")
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s (state-with-area state (rect 0 0 40 10)))
 
 (define-values (s-split _a1) (editor-split! ed s 'right))

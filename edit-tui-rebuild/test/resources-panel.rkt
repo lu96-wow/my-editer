@@ -11,6 +11,7 @@
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
          "../host/final.rkt"
+         "fixture.rkt"
          "../features/placement/api.rkt"
          "../host/open.rkt")
 
@@ -18,7 +19,7 @@
 (define file (build-path root "one.rkt"))
 (display-to-file "#lang racket\n(define x 1)\n" file #:exists 'replace)
 
-(define-values (ed state) (make-demo-editor))
+(define-values (ed state) (make-test-editor))
 (define s0 (state-with-workspace-root
             (state-with-area state (rect 0 0 60 15))
             (resource-normalize-path root)))
@@ -31,7 +32,7 @@
 ;; 第一帧触发 resources sync。
 (define-values (s3 _c3 _b3) (render-frame ed s2 #f))
 (define text1 (engine-view-text (editor-engine ed) 4))
-(check-true (string-contains? text1 "scratch.rkt"))
+(check-true (string-contains? text1 "test.rkt"))
 ;; status bar 也显示 workspace root 内的相对路径。
 (define status-text (engine-view-text (editor-engine ed) 2))
 (check-true (string-contains? status-text "one.rkt"))
