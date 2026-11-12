@@ -303,6 +303,8 @@ editor 的 `resource-stack` 存在 resource 上；同一个 panel 换 active vie
 `(owner . command)`，执行后按 owner 写回 `ps'`。
 
 同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
+前缀只有在“至少一个后续命令当前可执行”时才遮蔽后面的表；否则继续回落，
+避免所有 guard 都失败的前缀永久挡住 host 的同键命令。
 `plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`（`C-w d` close panel）；filetree / resources 命令放在
 自己的局部 scope。completion 打开时通过 `#:key-owner` 把 completion scope 叠在
 focus scope 上面。
@@ -494,6 +496,7 @@ racket edit-tui/test/ownership.rkt
 5d. 插件命令在 command-table 里是显式 `plugin-command`；host 遗留 raw procedure 只属于 input / placement。
 5e. view-id -> command scope 由插件 `#:view-scopes` 声明，随 editor-core 保存。
 5f. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
+5g. prefix 查找要 guard-aware：没有可执行后继时不遮蔽后面的表。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
