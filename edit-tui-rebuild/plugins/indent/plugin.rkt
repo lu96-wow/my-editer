@@ -16,11 +16,11 @@
   (cond
     [(not (equal? text "\n")) (values ctx ps '() #t)]
     [else
-     (define engine (edit-context-engine ctx))
+     (define ed (edit-context-editor ctx))
      (define state (edit-context-state ctx))
      (define vid (edit-context-view-id ctx))
-     (define did (engine-view-doc-id engine vid))
-     (define whole (or (engine-view-text engine vid) ""))
+     (define did (editor-view-doc-id ed vid))
+     (define whole (or (editor-view-text ed vid) ""))
      (cond
        [(not (eq? (editor-state-doc-mode state did) 'racket))
         (values ctx ps '() #t)]

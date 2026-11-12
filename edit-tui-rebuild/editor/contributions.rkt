@@ -14,7 +14,8 @@
 ;;; 每条 contribution 都带 owner；job-service 同名冲突直接报错。
 
 (require racket/list
-         "../core/job/api.rkt")
+         "../core/job/api.rkt"
+         "points.rkt")
 
 (provide (struct-out contribution)
          (struct-out contribution-registry)
@@ -55,9 +56,17 @@
 
 (define empty-contribution-registry (contribution-registry (hash) 0))
 
+(define (check-contribution-point who point)
+  (define spec (point-spec-of point))
+  (unless spec
+    (error who "未知 contribution point：~a" point))
+  (unless (eq? (point-spec-kind spec) 'contribution)
+    (error who "point ~a 不是 contribution point" point)))
+
 (define (add-contribution registry point key owner
                           #:priority [priority 0]
                           #:fn fn)
+  (check-contribution-point 'add-contribution point)
   (unless (symbol? owner)
     (raise-argument-error 'add-contribution "symbol?" owner))
   (define k (list point key))

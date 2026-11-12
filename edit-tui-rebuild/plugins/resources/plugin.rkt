@@ -36,10 +36,10 @@
       (resource-display-path (editor-state-workspace-root state) path)
       (resource-name r)))
 
-(define (resource-rows state engine)
+(define (resource-rows ed state)
   (append*
    (for/list ([r (in-list (resources-list (editor-state-resources state)))])
-     (define version (engine-doc-version engine (resource-doc-id r)))
+     (define version (editor-doc-version ed (resource-doc-id r)))
      (define dirty? (resource-dirty? r version))
      (define label (string-append (resource-label state r)
                                   (if dirty? " *" "")))
@@ -54,9 +54,8 @@
   (cond
     [(not (resources-panel-state? ps)) (values state ps)]
     [else
-     (define engine (editor-engine ed))
-     (define rows (resource-rows state engine))
-     (engine-set-view-content! engine
+     (define rows (resource-rows ed state))
+     (editor-set-view-content! ed
                               (resources-panel-state-view ps)
                               (map row-text rows)
                               (map row-face rows))
@@ -68,7 +67,7 @@
 (define (current-row ed ps vid)
   (define rows (and (resources-panel-state? ps)
                     (resources-panel-state-rows ps)))
-  (define line (engine-view-point-line (editor-engine ed) vid))
+  (define line (editor-view-point-line ed vid))
   (and rows line (< line (length rows)) (list-ref rows line)))
 
 (define (enter-command ed state ps vid)

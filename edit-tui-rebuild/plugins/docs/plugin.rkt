@@ -60,7 +60,7 @@
   (cond
     [(not (docs-state? ps)) (values state ps)]
     [else
-     (engine-set-view-content! (editor-engine ed)
+     (editor-set-view-content! ed
                               (docs-state-view ps)
                               (docs-state-lines ps)
                               (docs-state-faces ps))
@@ -71,11 +71,10 @@
   (values state* ps actions))
 
 (define (show-identifier-command ed state ps)
-  (define engine (editor-engine ed))
   (define vid (editor-focus-view-id state))
-  (define text (and vid (engine-view-text engine vid)))
-  (define line (and vid (engine-view-point-line engine vid)))
-  (define col (and vid (engine-view-point-column engine vid)))
+  (define text (and vid (editor-view-text ed vid)))
+  (define line (and vid (editor-view-point-line ed vid)))
+  (define col (and vid (editor-view-point-column ed vid)))
   (define name (and text line col (identifier-at text line col)))
   (cond
     [name (docs-show-name! ed state ps name)]

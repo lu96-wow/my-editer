@@ -130,10 +130,9 @@
                 '())])]))
 
 (define (write-filetree! ed state st rows)
-  (define engine (editor-engine ed))
   (define vid (filetree-state-view st))
   (define opened (editor-state-opened-paths state))
-  (engine-set-view-content! engine vid
+  (editor-set-view-content! ed vid
                            (map row-text rows)
                            (map (λ (row) (row-face row opened)) rows))
   (define pending (filetree-state-pending-cursor st))
@@ -143,7 +142,7 @@
      (define line (find-line rows pending))
      (cond
        [line
-        (engine-set-view-cursor! engine vid line #:column 0)
+        (editor-set-view-cursor! ed vid line #:column 0)
         (struct-copy filetree-state st [rows rows] [pending-cursor #f])]
        [else (struct-copy filetree-state st [rows rows])])]))
 
@@ -188,7 +187,7 @@
 
 (define (current-row ed state ps vid)
   (define rows (and (filetree-state? ps) (filetree-state-rows ps)))
-  (define line (engine-view-point-line (editor-engine ed) vid))
+  (define line (editor-view-point-line ed vid))
   (and rows line (< line (length rows)) (list-ref rows line)))
 
 (define (refresh-state st path)

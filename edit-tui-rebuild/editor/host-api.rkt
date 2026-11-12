@@ -16,6 +16,10 @@
          "state.rkt"
          "resource.rkt"
          "job.rkt"
+         "context.rkt"
+         "hooks.rkt"
+         "layout.rkt"
+         "timer.rkt"
          "plugin.rkt"
          "plugin-runtime.rkt")
 
@@ -31,19 +35,16 @@
          (all-from-out "plugin.rkt")
          (all-from-out "plugin-runtime.rkt")
 
+         ;; editor 实例 / hook registry / 完整 layout / timer service：host 使用。
+         (all-from-out "context.rkt")
+         (all-from-out "hooks.rkt")
+         (all-from-out "layout.rkt")
+         (all-from-out "timer.rkt")
 
          ;; 渲染 / 尺寸同步：只有 host 使用
          panels-sync!
          render-display-patch
          render-display
 
-         ;; engine 生命周期：只有 host 使用
-         make-engine
-         engine-create-buffer!
-         engine-create-view!
-         engine-create-view-from-view!
-         engine-remove-view!
-         engine-remove-doc!
-
-         ;; 迁移期调试口；插件不要用
-         engine-apply-view-action!)
+         ;; engine 生命周期 / 查询 / raw action：只有 host 使用
+         (all-from-out "engine/api.rkt"))

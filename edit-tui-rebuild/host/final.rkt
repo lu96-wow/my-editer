@@ -1,15 +1,13 @@
 #lang racket
 
-;;; edit-tui-rebuild/host/final.rkt —— 第二阶段可运行 editor
+;;; edit-tui-rebuild/host/final.rkt —— TUI 装配 + 事件循环
 ;;;
-;;; 相比第一阶段，新增：
-;;;   · core/layout + panel + projection + focus
-;;;   · C-w 方向 split、C-x 方向 focus、C-d close panel
-;;;   · 多 editor panel 渲染（每个 panel 一个独立 view）
-;;;   · layout 扩展点：layout-split / layout-close / layout-focus
+;;; 这里负责：
+;;;   · 创建 engine / 初始 buffer / 初始 layout
+;;;   · 装配 plugins / hook registry / contribution registry
+;;;   · 渲染循环、job / timer runtime、action 解释
 ;;;
-;;; 还没有：filetree / resources / completion / docs / 异步 / 多进程。
-;;; 但 editor 层的操作面、扩展点、插件状态、布局操作已经统一。
+;;; 键盘查找 / pending / command dispatch 在 host/input/；这里只调用 dispatch-key。
 
 (require racket/string
          racket/async-channel

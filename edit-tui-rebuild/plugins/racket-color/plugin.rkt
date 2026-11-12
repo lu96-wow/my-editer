@@ -120,14 +120,14 @@
         (cons start end)])]))
 
 ;; 焦点 view 是否属于 doc；属于才抑制该行的 word-color。
-(define (focus-suppress engine state did cs)
+(define (focus-suppress ed state did cs)
   (define vid (editor-focus-view-id state))
-  (define fdid (and vid (engine-view-doc-id engine vid)))
+  (define fdid (and vid (editor-view-doc-id ed vid)))
   (cond
     [(not (equal? fdid did)) #f]
     [else
-     (define line (engine-view-point-line engine vid))
-     (define col (engine-view-point-column engine vid))
+     (define line (editor-view-point-line ed vid))
+     (define col (editor-view-point-column ed vid))
      (define range (and line col (active-word-range cs line col)))
      (and range (cons line range))]))
 
@@ -144,34 +144,34 @@
 
 ;;; ════════════════ 写回 ════════════════
 
-(define (write-full-track! engine did version vids entry suppress)
+(define (write-full-track! ed did version vids entry suppress)
   (define key (list did version 'racket-color suppress))
   (define track
     (if suppress
         (color-state->face-track (color-entry-color-state entry) suppress)
         (color-entry-face-track entry)))
   (for ([vid (in-list vids)])
-    (engine-set-view-face-track! engine vid track
+    (editor-set-view-face-track! ed vid track
                                  #:base-version version
                                  #:key key)))
 
-(define (write-dirty-lines! engine did version vids cs dirty suppress)
+(define (write-dirty-lines! ed did version vids cs dirty suppress)
   (define key (list did version 'racket-color suppress))
   (define lines (color-state->dirty-face-lines cs dirty suppress))
   (for ([vid (in-list vids)])
-    (engine-set-view-face-lines! engine vid lines
+    (editor-set-view-face-lines! ed vid lines
                                  #:base-version version
                                  #:key key)))
 
 ;;; ════════════════ changes hook ════════════════
 
 (define (changes-color ctx ps)
-  (define engine (change-context-engine ctx))
+  (define ed (change-context-editor ctx))
   (define did (change-context-doc-id ctx))
   (define base-version (change-context-base-version ctx))
   (define version (change-context-version ctx))
   (define changes (change-context-changes ctx))
-  (define text (engine-doc-text engine did))
+  (define text (editor-doc-text ed did))
   (cond
     [(or (not text) (not (racket-doc? (change-context-state ctx) did text)))
      (values ctx ps '() #t)]
@@ -186,41 +186,40 @@
          [else
           (values (color-open text) 'all)]))
      (define entry (color-entry version cs (color-state->face-track cs #f)))
-     (define suppress (focus-suppress engine (change-context-state ctx) did cs))
-     (define vids (engine-view-ids-for-doc engine did))
+     (define suppress (focus-suppress ed (change-context-state ctx) did cs))
+     (define vids (editor-view-ids-for-doc ed did))
      (cond
        [(eq? dirty 'all)
-        (write-full-track! engine did version vids entry suppress)]
+        (write-full-track! ed did version vids entry suppress)]
        [else
         (when (pair? dirty)
-          (write-dirty-lines! engine did version vids cs dirty suppress))])
+          (write-dirty-lines! ed did version vids cs dirty suppress))])
      (values ctx (hash-set ps did entry) '() #t)]))
 
 ;;; ════════════════ sync ════════════════
 
 (define (sync-colors ed state ps)
-  (define engine (editor-engine ed))
   (define old-cache (if (hash? ps) ps empty-color-cache))
   (define (sync-doc cache did)
-    (define text (engine-doc-text engine did))
-    (define version (engine-doc-version engine did))
+    (define text (editor-doc-text ed did))
+    (define version (editor-doc-version ed did))
     (cond
       [(or (not text) (not version)) cache]
       [(not (racket-doc? state did text)) cache]
       [else
-       (define vids (engine-view-ids-for-doc engine did))
+       (define vids (editor-view-ids-for-doc ed did))
        (define cached (hash-ref old-cache did #f))
        (define entry
          (if (and cached (equal? (color-entry-version cached) version))
              cached
              (let ([cs (color-open text)])
                (color-entry version cs (color-state->face-track cs #f)))))
-       (define suppress (focus-suppress engine state did
+       (define suppress (focus-suppress ed state did
                                        (color-entry-color-state entry)))
-       (write-full-track! engine did version vids entry suppress)
+       (write-full-track! ed did version vids entry suppress)
        (hash-set cache did entry)]))
   (define new-cache
-    (for/fold ([cache (hash)]) ([did (in-list (engine-doc-ids engine))])
+    (for/fold ([cache (hash)]) ([did (in-list (editor-doc-ids ed))])
       (sync-doc cache did)))
   (values state new-cache))
 

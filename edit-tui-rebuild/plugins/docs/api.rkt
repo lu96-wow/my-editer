@@ -11,10 +11,10 @@
 
 (provide docs-show-name!)
 
-(define (focus-doc-info state engine)
+(define (focus-doc-info ed state)
   (define vid (editor-focus-view-id state))
-  (define did (and vid (engine-view-doc-id engine vid)))
-  (define text (and did (engine-doc-text engine did)))
+  (define did (and vid (editor-view-doc-id ed vid)))
+  (define text (and did (editor-doc-text ed did)))
   (define r (and vid (editor-state-resource-for-view state vid)))
   (values did text (and r (resource-path r))))
 
@@ -36,8 +36,7 @@
   (cond
     [(not (docs-state? ps)) (values state ps '())]
     [else
-     (define engine (editor-engine ed))
-     (define-values (_did text path) (focus-doc-info state engine))
+     (define-values (_did text path) (focus-doc-info ed state))
      (define ps1 (set-docs-lines ps (local-preview-lines text name)))
      (cond
        [(not text) (values state ps1 '())]

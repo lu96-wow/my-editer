@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/close.rkt —— editor tab 切换 / 关闭 buffer
+;;; edit-tui-rebuild/host/close.rkt —— editor tab 切换 / 关闭 buffer
 ;;;
 ;;; 关闭 buffer = 从所有 layout panel 摘掉它的 views，删 engine doc，删 resource。
 ;;; 关闭 panel（C-d）仍然只摘 panel，view / resource 保留，之后可 placement。

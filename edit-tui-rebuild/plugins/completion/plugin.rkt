@@ -46,9 +46,8 @@
 
 ;; → (list vid did) | #f
 (define (current-target ed state)
-  (define engine (editor-engine ed))
   (define vid (editor-focus-view-id state))
-  (define did (and vid (engine-view-doc-id engine vid)))
+  (define did (and vid (editor-view-doc-id ed vid)))
   (and vid did (eq? (editor-state-doc-mode state did) 'racket)
        (list vid did)))
 
@@ -56,15 +55,14 @@
   (define r (and vid (editor-state-resource-for-view state vid)))
   (and r (resource-path r)))
 
-(define (prefix-at engine vid)
-  (define text (engine-view-text engine vid))
-  (define line (engine-view-point-line engine vid))
-  (define col (engine-view-point-column engine vid))
+(define (prefix-at ed vid)
+  (define text (editor-view-text ed vid))
+  (define line (editor-view-point-line ed vid))
+  (define col (editor-view-point-column ed vid))
   (and text line col (completion-prefix text line col)))
 
 (define (all-candidates ed state vid did prefix local-only?)
-  (define engine (editor-engine ed))
-  (define text (engine-doc-text engine did))
+  (define text (editor-doc-text ed did))
   (define path (resource-path-for-state state vid))
   (define ctx (and text (with-handlers ([exn:fail? (λ (_) #f)])
                           (make-completion-context path text))))
@@ -98,8 +96,7 @@
   (cond
     [(not (completion-state? ps)) (values state ps '())]
     [else
-     (define engine (editor-engine ed))
-     (define prefix (prefix-at engine vid))
+     (define prefix (prefix-at ed vid))
      (cond
        [(or (not prefix) (zero? (string-length prefix)))
         (values state (close-completion ps) '())]
@@ -109,21 +106,21 @@
           (struct-copy completion-state ps
                        [target-vid vid]
                        [target-did did]
-                       [target-version (engine-doc-version engine did)]
+                       [target-version (editor-doc-version ed did)]
                        [prefix prefix]
                        [candidates local]
                        [index 0]
                        [open? (pair? local)]
                        [request-id #f]
                        [timer-id #f]
-                       [anchor-line (engine-view-point-line engine vid)]
-                       [anchor-col (engine-view-point-column engine vid)]
+                       [anchor-line (editor-view-point-line ed vid)]
+                       [anchor-col (editor-view-point-column ed vid)]
                        [popup-rect #f]))
         (define-values (state2 job)
           (editor-state-submit-job state 'completion
                                    (list prefix (resource-path-for-state state vid)
-                                         (engine-doc-text engine did))
-                                   (list 'completion (engine-doc-version engine did))))
+                                         (editor-doc-text ed did))
+                                   (list 'completion (editor-doc-version ed did))))
         (values state2
                 (struct-copy completion-state c1 [request-id (job-id job)])
                 (if (pair? local)
@@ -152,7 +149,6 @@
 
 (define (handle-changes ctx ps)
   (define ed (change-context-editor ctx))
-  (define engine (change-context-engine ctx))
   (define state (change-context-state ctx))
   (define did (change-context-doc-id ctx))
   (define version (change-context-version ctx))
@@ -162,7 +158,7 @@
      (values ctx (struct-copy completion-state ps [suppress-next? #f]) '() #t)]
     [else
      (define fvid (editor-focus-view-id state))
-     (define fdid (and fvid (engine-view-doc-id engine fvid)))
+     (define fdid (and fvid (editor-view-doc-id ed fvid)))
      (cond
        [(or (not fvid) (not (equal? did fdid))) (values ctx ps '() #t)]
        [else
@@ -171,17 +167,17 @@
             [(completion-state-open? ps)
              (struct-copy completion-state ps
                           [target-version version]
-                          [anchor-line (engine-view-point-line engine
-                                                              (completion-state-target-vid ps))]
-                          [anchor-col (engine-view-point-column engine
-                                                             (completion-state-target-vid ps))])]
+                          [anchor-line (editor-view-point-line
+                                        ed (completion-state-target-vid ps))]
+                          [anchor-col (editor-view-point-column
+                                       ed (completion-state-target-vid ps))])]
             [else
              (struct-copy completion-state ps
                           [target-vid fvid]
                           [target-did did]
                           [target-version version]
-                          [anchor-line (engine-view-point-line engine fvid)]
-                          [anchor-col (engine-view-point-column engine fvid)])]))
+                          [anchor-line (editor-view-point-line ed fvid)]
+                          [anchor-col (editor-view-point-column ed fvid)])]))
         (define ps2
           (cond
             [(not (eq? (editor-state-doc-mode state did) 'racket)) ps1]
@@ -289,10 +285,9 @@
     [else (substring s 0 w)]))
 
 (define (popup-geometry ed state c)
-  (define engine (editor-engine ed))
   (define content (editor-focus-content-rect state))
   (define vid (completion-state-target-vid c))
-  (define cur (and content vid (engine-view-cursor-screen-position engine vid)))
+  (define cur (and content vid (editor-view-cursor-screen-position ed vid)))
   (define cands (completion-state-candidates c))
   (cond
     [(or (not content) (not cur) (null? cands)) #f]
@@ -345,10 +340,8 @@
         (define idx (min (completion-state-index ps) (sub1 (length lines))))
         (define faces (for/list ([i (in-range (length lines))])
                         (if (= i idx) 'completion-selected 'completion)))
-        (engine-set-view-content! (editor-engine ed) (completion-state-view-id ps)
-                                 lines faces)
-        (engine-set-view-cursor! (editor-engine ed) (completion-state-view-id ps)
-                                 idx #:column 0)
+        (editor-set-view-content! ed (completion-state-view-id ps) lines faces)
+        (editor-set-view-cursor! ed (completion-state-view-id ps) idx #:column 0)
         (struct-copy completion-state ps
                      [popup-rect r]
                      [inner-width inner-w])])]))
@@ -358,12 +351,11 @@
     [(or (not (completion-state? ps)) (not (completion-state-open? ps)))
      (values state ps)]
     [else
-     (define engine (editor-engine ed))
      (define vid (completion-state-target-vid ps))
      (define did (completion-state-target-did ps))
-     (define version (and did (engine-doc-version engine did)))
-     (define line (and vid (engine-view-point-line engine vid)))
-     (define col (and vid (engine-view-point-column engine vid)))
+     (define version (and did (editor-doc-version ed did)))
+     (define line (and vid (editor-view-point-line ed vid)))
+     (define col (and vid (editor-view-point-column ed vid)))
      (cond
        [(or (not vid) (not version) (not line) (not col))
         (values state (close-completion ps))]

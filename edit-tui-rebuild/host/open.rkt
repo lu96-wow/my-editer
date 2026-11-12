@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/open.rkt —— 打开文件 / 去重 / placement
+;;; edit-tui-rebuild/host/open.rkt —— 打开文件 / 去重 / placement
 ;;;
 ;;; 对齐旧行为：
 ;;;   已打开且 view 挂在 panel 上 -> 聚焦已有 panel

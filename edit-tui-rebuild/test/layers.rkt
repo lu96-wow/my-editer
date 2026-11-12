@@ -71,6 +71,14 @@
 (check-false (regexp-match? #rx"make-resource" api-src)
              "editor/api.rkt")
 
+;; 插件面不整包导出 context / hooks / layout，避免 engine / registry / mouse 泄漏。
+(check-false (regexp-match? #rx"\\(all-from-out \"context\\.rkt\\)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"\\(all-from-out \"hooks\\.rkt\\)" api-src)
+             "editor/api.rkt")
+(check-false (regexp-match? #rx"\\(all-from-out \"layout\\.rkt\\)" api-src)
+             "editor/api.rkt")
+
 ;; host-api 才导出渲染 / 尺寸同步。
 (check-true (requires-any? "editor/host-api.rkt" #rx"panels-sync!")
             "editor/host-api.rkt")
@@ -96,7 +104,10 @@
   (check-false
    (requires-any? f #rx"\\.\\./editor/(open|prompt|input|close|timer|job|layout|resource|mode|overlay|engine|ops|host-api|context|hooks|state)")
    f)
-  (check-false (requires-any? f #rx"editor-state-set-plugin-state") f))
+  (check-false (requires-any? f #rx"editor-state-set-plugin-state") f)
+  (check-false (regexp-match? #rx"editor-engine|edit-context-engine|change-context-engine"
+                              (src f))
+               f))
 
 ;; editor 不能 require host / plugins。
 (define editor-files

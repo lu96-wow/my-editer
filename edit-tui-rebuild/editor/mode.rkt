@@ -7,7 +7,8 @@
 ;;;   无 path 且文本首行是 #lang racket -> racket
 ;;;   其他 -> text
 ;;;
-;;; 这里只决定语言插件（pair / indent / docs）的行为；键表 / 解析环境还没搬。
+;;; 这里只决定语言插件（pair / indent / docs）的行为；resource 的 command-stack
+;;; 由 host 的 mode-command-stack 绑定，解析环境以后再加。
 
 (require racket/path
          racket/string)

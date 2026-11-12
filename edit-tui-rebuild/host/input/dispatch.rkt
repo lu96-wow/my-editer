@@ -10,7 +10,8 @@
 ;;;
 ;;; input / placement 仍是独占模式：它们直接替换整组表，不叠加 global。
 
-(require racket/string
+(require racket/match
+         racket/string
          "../../core/command/api.rkt"
          "../../editor/host-api.rkt"
          "../../features/input/api.rkt"
@@ -19,8 +20,7 @@
          "../keymap.rkt"
          "scope.rkt")
 
-(provide dispatch-key
-         normal-command-tables)
+(provide dispatch-key)
 
 ;;; ════════════════ 表 ════════════════
 
@@ -70,9 +70,8 @@
         (and resource (resource-id resource))
         (and resource (resource-mode resource))))
 
-(define (normal-command-tables ed state view-scopes)
-  (define focus (focus-command-scope state view-scopes))
-  (define owner (active-key-owner ed state))
+(define (normal-command-tables ed state context)
+  (match-define (list owner focus _resource-id _mode) context)
   (define resource (and (eq? focus 'editor) (focus-resource state)))
   (define base
     (if (eq? focus 'editor)
@@ -208,7 +207,7 @@
     (cond
       [(editor-input-active? state1) (list input-command-table*)]
       [(editor-placement-active? state1) (list placement-command-table*)]
-      [else (normal-command-tables ed state1 view-scopes)]))
+      [else (normal-command-tables ed state1 scopes)]))
   (let-values ([(status value owner) (lookup-command tables seq ed state1)])
     (case status
       [(command)

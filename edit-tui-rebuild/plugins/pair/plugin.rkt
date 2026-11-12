@@ -25,16 +25,16 @@
   (and (pair-close-char c) #t))
 
 (define (racket-view? ctx)
-  (define engine (edit-context-engine ctx))
+  (define ed (edit-context-editor ctx))
   (define state (edit-context-state ctx))
   (define vid (edit-context-view-id ctx))
-  (define did (engine-view-doc-id engine vid))
+  (define did (editor-view-doc-id ed vid))
   (eq? (editor-state-doc-mode state did) 'racket))
 
 (define (line-text-at ctx)
-  (define engine (edit-context-engine ctx))
+  (define ed (edit-context-editor ctx))
   (define vid (edit-context-view-id ctx))
-  (define text (engine-view-text engine vid))
+  (define text (editor-view-text ed vid))
   (and text
        (let ([lines (string-split text "\n" #:trim? #f)])
          (define line (point-line (edit-context-point ctx)))

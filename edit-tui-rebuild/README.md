@@ -50,8 +50,7 @@
 - docs 的跨 buffer workspace 本地定义
 - C-x o completion/docs 焦点切换
 - 多进程
-- 插件 services
-- 完整的 keymap 配置 / 插件命令贡献
+- filetree 文件系统自动刷新 / 拖拽
 
 这一阶段先把编辑器最核心的“插入 / 删除”路径跑通，并证明：
 
@@ -115,6 +114,9 @@ edit-tui-rebuild/
     keymap.rkt         命令值 + 分 scope 的 host 内置表
     input/scope.rkt    focus / key-owner -> command scope
     input/dispatch.rkt pending 多键序列 + 命令查找 / 执行
+    open.rkt / close.rkt / prompt.rkt   文件打开 / 关闭 / save quit IO
+    filetree-io.rkt    filetree 创建 / 删除 / 重命名 IO
+    docs.rkt           docs 跨插件 action 适配
     jobs.rkt           worker runtime
     timers.rkt         timer runtime
 

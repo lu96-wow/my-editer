@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/layout/tree.rkt —— split tree + panel 资源 + 可见性 / 固定尺寸
+;;; edit-tui-rebuild/core/layout/tree.rkt —— split tree + panel 资源 + 可见性 / 固定尺寸
 ;;;
 ;;; 状态：
 ;;;   layout = root + panel-map + focus + next-split-id

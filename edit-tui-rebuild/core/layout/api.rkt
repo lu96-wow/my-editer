@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/layout/api.rkt —— 布局 API
+;;; edit-tui-rebuild/core/layout/api.rkt —— 布局 API
 ;;;
 ;;; 聚合实现：config（规则模型）/ tree（结构+查询）/ solve（rect+seam）/
 ;;; ops（结构编辑+拖动）。

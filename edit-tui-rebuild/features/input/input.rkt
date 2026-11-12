@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui-rebuild/editor/input.rkt —— 单行输入栏（状态 / 编辑 / 投影）
+;;; edit-tui-rebuild/features/input/input.rkt —— 单行输入栏（状态 / 编辑 / 投影）
 ;;;
 ;;; 输入栏是 status panel 的第二个 view。
 ;;; prefix 完整写进 buffer，并标记 readonly + input-prompt face；
@@ -139,13 +139,13 @@
      (define cursor (+ (string-length prefix)
                        (max 0 (min (input-state-cursor s)
                                    (string-length (input-state-text s))))))
-     (engine-set-view-content! (editor-engine ed)
+     (editor-set-view-content! ed
                               (input-state-input-view s)
                               (list text)
                               (list 'input)
                               #:readonly-prefix (string-length prefix)
                               #:prefix-face 'input-prompt)
-     (engine-set-view-cursor! (editor-engine ed)
+     (editor-set-view-cursor! ed
                               (input-state-input-view s)
                               0 #:column cursor)
      state]))
