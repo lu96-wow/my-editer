@@ -28,9 +28,9 @@
 ;;; ════════════════ 刷新 ════════════════
 
 (define (invalidate-filetree state [pending-cursor #f])
-  (define ps (editor-state-plugin-state state 'filetree))
+  (define ps (state-plugin-state state 'filetree))
   (if (filetree-state? ps)
-      (editor-state-set-plugin-state
+      (state-set-plugin-state
        state 'filetree
        (struct-copy filetree-state ps
                     [stale? #t]
@@ -93,17 +93,17 @@
   (define name (string-trim text))
   (cond
     [(not (valid-new-name? name))
-     (values (editor-state-with-flash state "filetree: invalid name") '())]
+     (values (state-with-flash state "filetree: invalid name") '())]
     [else
      (define target (build-path parent name))
      (cond
        [(create-target! kind target)
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  (invalidate-filetree (editor-input-close state) target)
                  (format "created: ~a" (path->string target)))
                 '())]
        [else
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  state
                  (format "create failed: ~a" (path->string target)))
                 '())])]))
@@ -141,7 +141,7 @@
 (define (close-affected-resources! ed state path kind)
   (define affected
     (filter (λ (r) (affected-resource? path kind r))
-            (resources-list (editor-state-resources state))))
+            (resources-list (state-resources state))))
   (for/fold ([s state] [actions '()])
             ([r (in-list affected)])
     (define-values (s* more)
@@ -187,10 +187,10 @@
 
 (define (rename-resource-paths ed state kind old-path new-path)
   (define rs
-    (for/fold ([rs (editor-state-resources state)])
-              ([r (in-list (resources-list (editor-state-resources state)))])
+    (for/fold ([rs (state-resources state)])
+              ([r (in-list (resources-list (state-resources state)))])
       (rename-resource-entry ed rs kind old-path new-path r)))
-  (editor-state-with-resources state rs))
+  (state-with-resources state rs))
 
 (define (submit-filetree-rename! ed state context text)
   (match-define (list 'filetree-rename old-path) context)
@@ -199,7 +199,7 @@
                      (if n (path->string n) "")))
   (cond
     [(not (valid-new-name? name))
-     (values (editor-state-with-flash state "filetree: invalid name") '())]
+     (values (state-with-flash state "filetree: invalid name") '())]
     [(string=? name old-name)
      (values (editor-input-close state) '())]
     [else
@@ -210,7 +210,7 @@
          #t))
      (cond
        [(not ok?)
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  state
                  (format "rename failed: ~a" (path->string new-path)))
                 '())]
@@ -218,7 +218,7 @@
         (define state1 (editor-input-close state))
         (define state2 (rename-resource-paths ed state1 (if (directory-exists? new-path) 'dir 'file)
                                              old-path new-path))
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  (invalidate-filetree state2 new-path)
                  (format "renamed: ~a -> ~a"
                          (path->string old-path)
@@ -229,14 +229,14 @@
   (define answer (string-downcase (string-trim text)))
   (cond
     [(not (member answer '("y" "n")))
-     (values (editor-state-with-flash state "answer: y / n") '())]
+     (values (state-with-flash state "answer: y / n") '())]
     [(string=? answer "n")
      (values (editor-input-close state) '())]
     [else
      (match-define (list 'filetree-delete kind path) context)
      (cond
        [(not (delete-target! path))
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  state
                  (format "delete failed: ~a" (path->string path)))
                 '())]
@@ -244,7 +244,7 @@
         (define state1 (editor-input-close state))
         (define-values (state2 actions)
           (close-affected-resources! ed state1 path kind))
-        (values (editor-state-with-flash
+        (values (state-with-flash
                  (invalidate-filetree state2)
                  (format "deleted: ~a" (path->string path)))
                 actions)])]))

@@ -44,14 +44,14 @@
 (define toggle-hidden (cmd (list (key 'h 'ctrl))))
 
 (define (ps-of st)
-  (editor-state-plugin-state st 'filetree))
+  (state-plugin-state st 'filetree))
 
 (define (rows-of st)
   (filetree-state-rows (ps-of st)))
 
 (define (run-cmd ed st c)
   (define-values (s ps actions) ((guarded-command-run c) ed st (ps-of st)))
-  (values (editor-state-set-plugin-state s 'filetree ps) actions))
+  (values (state-set-plugin-state s 'filetree ps) actions))
 
 (define (line-of st path)
   (for/first ([row (in-list (rows-of st))] [i (in-naturals)]

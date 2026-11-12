@@ -81,7 +81,7 @@
 
 ;; C-f r：改名 old.txt -> renamed.txt；输入栏预填旧名字。
 (define s-sync3 (run-plugin-syncs ed s-dir-created))
-(define rows (filetree-state-rows (editor-state-plugin-state s-sync3 'filetree)))
+(define rows (filetree-state-rows (state-plugin-state s-sync3 'filetree)))
 (define old-line
   (for/first ([row (in-list rows)] [i (in-naturals)]
               #:when (equal? (car row) (build-path root "old.txt")))
@@ -108,7 +108,7 @@
 (check-true (string-contains? (engine-view-text engine 3) "external.txt"))
 
 ;; C-f d：删除 new.txt。
-(define rows2 (filetree-state-rows (editor-state-plugin-state s-sync5 'filetree)))
+(define rows2 (filetree-state-rows (state-plugin-state s-sync5 'filetree)))
 (define file-line
   (for/first ([row (in-list rows2)] [i (in-naturals)]
               #:when (equal? (car row) (build-path root "new.txt")))

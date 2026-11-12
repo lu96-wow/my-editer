@@ -27,8 +27,8 @@
 
 ;; 优先看 resource mode；没有 resource 的临时测试文档才退回文本判断。
 (define (racket-doc? state did text)
-  (or (eq? (editor-state-doc-mode state did) 'racket)
-      (and (not (editor-state-resource-for-doc state did))
+  (or (eq? (state-doc-mode state did) 'racket)
+      (and (not (state-resource-for-doc state did))
            (racket-text? text))))
 
 ;;; ════════════════ role -> face ════════════════

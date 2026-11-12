@@ -33,6 +33,7 @@
          "input/dispatch.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
+         "../features/mouse/api.rkt"
          "jobs.rkt"
          (only-in "../../core/editor.rkt" make-panel)
          "../../edit-tui/render/core.rkt"
@@ -133,8 +134,8 @@
 (define (run-actions ed state actions)
   (for/fold ([s state]) ([a (in-list actions)])
     (cond
-      [(quit-action? a) (editor-state-with-quit s #t)]
-      [(flash-action? a) (editor-state-with-flash s (flash-action-message a))]
+      [(quit-action? a) (state-with-quit s #t)]
+      [(flash-action? a) (state-with-flash s (flash-action-message a))]
       [(open-file-action? a)
        (define-values (s* more)
          (editor-open-file! ed s (open-file-action-path a)))
@@ -175,17 +176,17 @@
   (define line (add1 (or (and vid (engine-view-point-line engine vid)) 0)))
   (define col (add1 (or (and vid (engine-view-point-column engine vid)) 0)))
   (define panes (length (or (editor-visible-editor-panels state) '())))
-  (define r (editor-state-resource-for-view state vid))
+  (define r (state-resource-for-view state vid))
   (define name
     (if r (or (resource-path r) (resource-name r)) "scratch.rkt"))
   (define dirty?
     (and r (resource-dirty? r (engine-doc-version engine (resource-doc-id r)))))
-  (define pending (editor-state-pending state))
+  (define pending (state-pending state))
   (define pending-text
     (and (pair? pending)
          (format " [~a]" (string-join (map key->string pending) " "))))
   (define placement (and (editor-placement-active? state) "placement"))
-  (define flash (editor-state-flash state))
+  (define flash (state-flash state))
   (string-join
    (filter values
            (list name
@@ -205,7 +206,7 @@
   state)
 
 (define (render-frame ed state cache)
-  (define area (editor-state-area state))
+  (define area (state-area state))
   (define rows (rect-h area))
   (define cols (rect-w area))
   (define panels (or (editor-layout-panels ed state) '()))
@@ -255,10 +256,10 @@
   (define state
     (if (mouse-event? ev)
         state1
-        (editor-state-with-select-drag state1 #f)))
+        (state-with-select-drag state1 #f)))
   (cond
     [(resize-event? ev)
-     (editor-state-with-area
+     (state-with-area
       state (rect 0 0 (resize-event-cols ev) (resize-event-rows ev)))]
     [(paste-event? ev)
      (cond
@@ -268,9 +269,9 @@
        [else
      (define vid (editor-focus-view-id state))
      (cond
-       [(not vid) (editor-state-with-flash state "paste: no focused editor view")]
+       [(not vid) (state-with-flash state "paste: no focused editor view")]
        [(not (editor-focused? state))
-        (editor-state-with-flash state "paste: focus is not editor")]
+        (state-with-flash state "paste: focus is not editor")]
        [else
         (define-values (s2 actions)
           (editor-paste! ed state vid (paste-event-bytes ev)))
@@ -299,7 +300,7 @@
                          (mouse-event-col ev)))
         (run-actions ed s2 actions)])]
     [(quit-event? ev)
-     (editor-state-with-quit state #t)]
+     (state-with-quit state #t)]
     [(key-event? ev)
      (define-values (s2 actions)
        (dispatch-key ed state (key-event-token ev) view-scopes))
@@ -308,10 +309,10 @@
 
 (define (handle-job-result ed state ev)
   (define id (job-result-event-id ev))
-  (define s1 (editor-state-finish-job state id (job-result-event-result ev)))
+  (define s1 (state-finish-job state id (job-result-event-result ev)))
   (define-values (s2 actions) (run-plugin-job-handlers ed s1 ev))
   (define s3 (run-actions ed s2 actions))
-  (editor-state-forget-job s3 id))
+  (state-forget-job s3 id))
 
 (define (run-editor ed state
                     #:read-event [read-event read-app-event]
@@ -319,13 +320,13 @@
                     #:job-runtime [job-runtime #f])
   (let loop ([s state] [cache #f])
     (when job-runtime
-      (dispatch-jobs! job-runtime (editor-state-jobs s)))
+      (dispatch-jobs! job-runtime (state-jobs s)))
     (define-values (s1 cache* bytes)
       (render-frame ed s cache))
     (unless (zero? (bytes-length bytes))
       (write-bytes bytes))
     (when job-runtime
-      (dispatch-jobs! job-runtime (editor-state-jobs s1)))
+      (dispatch-jobs! job-runtime (state-jobs s1)))
     (define ev (read-event))
     (cond
       [(job-result-event? ev)
@@ -335,7 +336,7 @@
        (loop (run-actions ed s2 actions) cache*)]
       [else
        (define s2 (handle-editor-event ed s1 ev))
-       (if (editor-state-quit? s2)
+       (if (state-quit? s2)
            s2
            (loop s2 (if (resize-event? ev) #f cache*)))])))
 
@@ -370,7 +371,7 @@
       void
       (λ ()
         (run-editor ed
-                    (editor-state-with-async (editor-state-with-area state area) #t)
+                    (state-with-async (state-with-area state area) #t)
                     #:read-event (λ () (async-channel-get event-channel))
                     #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
                     #:job-runtime runtime))

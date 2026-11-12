@@ -71,10 +71,13 @@ edit-tui-rebuild/
     focus/             方向焦点导航
 
   editor/
-    engine/            core buffer / view 的唯一拥有者
+    engine/
+      store.rkt        engine 生命周期 / 查询 / 缓存句柄
+      ui-projection.rkt UI view 写回 / face / 文本增量
+      apply.rkt        view-action 解释
     ops/raw.rkt        裸操作：不触发 hook
     ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe
-    layout.rkt         布局操作面：split / close / focus + layout hooks
+    layout.rkt         通用布局操作面：split / close / focus + layout hooks
     resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
     mode.rkt           .rkt / #lang racket -> racket，否则 text
 
@@ -86,7 +89,7 @@ edit-tui-rebuild/
     contributions.rkt  非 hook contribution registry
     plugin.rkt         插件描述 / 字段 -> contribution
     plugin-runtime.rkt contribution registry 执行器 + command registry -> table
-    state.rkt          纯值：editor-core + editor-session + app-state
+    state.rkt          纯值：editor-core + editor-session + app-state；state-* helper
     context.rkt        editor = engine + hook registry + plugins
     api.rkt            插件唯一能 require 的 editor 面
     host-api.rkt       宿主装配面（额外暴露 engine 生命周期 / 渲染）
@@ -106,6 +109,8 @@ edit-tui-rebuild/
   features/
     input/             单行输入栏
     placement/         打开文件后的目标 editor 选择
+    mouse/             鼠标 press/move/release、拖选、seam drag
+    sidebar/           sidebar tab 切换 / 显隐
 
   host/
     final.rkt          可运行 TUI / 事件循环
@@ -328,7 +333,7 @@ command     (ed state ps)     -> (values state' ps' actions)
 ```
 
 `editor/plugin-runtime.rkt` 根据 contribution owner 写回；`editor/api.rkt`
-不导出 `editor-state-set-plugin-state`，也不导出 resource 变更函数。
+不导出 `state-set-plugin-state`，也不导出 resource 变更函数。
 跨插件请求走 action（例如 completion 发 `show-docs-action`，docs owner 更新自己）。
 
 插件初始状态来自：

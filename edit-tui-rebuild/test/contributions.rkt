@@ -30,8 +30,8 @@
 (define ev (job-result-event 1 'job-a 'ok #f))
 (define-values (s1 actions) (run-plugin-job-handlers ed state ev))
 (check-equal? actions '())
-(check-equal? (editor-state-plugin-state s1 'a) 1)
-(check-equal? (editor-state-plugin-state s1 'b) 0)
+(check-equal? (state-plugin-state s1 'a) 1)
+(check-equal? (state-plugin-state s1 'b) 0)
 
 ;; 同名 service 冲突
 (define p1 (make-plugin #:id 'x #:state #f

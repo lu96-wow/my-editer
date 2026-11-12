@@ -37,10 +37,10 @@
          active-key-owner)
 
 (define (plugin-state-of state owner)
-  (editor-state-plugin-state state owner))
+  (state-plugin-state state owner))
 
 (define (write-plugin-state state owner ps)
-  (editor-state-set-plugin-state state owner ps))
+  (state-set-plugin-state state owner ps))
 
 (define (run-plugin-syncs ed state)
   (for/fold ([s state])

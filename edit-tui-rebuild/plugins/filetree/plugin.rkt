@@ -113,7 +113,7 @@
      (define current-tag (projection-tag ps))
      (cond
        [(job-error? result)
-        (values (editor-state-with-flash state "filetree scan failed")
+        (values (state-with-flash state "filetree scan failed")
                 (struct-copy filetree-state ps [pending #f] [stale? #f])
                 '())]
        [(equal? tag current-tag)
@@ -131,7 +131,7 @@
 
 (define (write-filetree! ed state st rows)
   (define vid (filetree-state-view st))
-  (define opened (editor-state-opened-paths state))
+  (define opened (state-opened-paths state))
   (editor-set-view-content! ed vid
                            (map row-text rows)
                            (map (λ (row) (row-face row opened)) rows))
@@ -156,7 +156,7 @@
        (define show-hidden? (filetree-state-show-hidden? ps))
        (define tag (projection-tag ps))
        (cond
-         [(not (editor-state-async? state))
+         [(not (state-async? state))
           (define rows
             (if (filetree-state-stale? ps)
                 (scan-tree root expanded show-hidden? hidden-entry?)
@@ -171,7 +171,7 @@
           (define base-state
             (if scan?
                 (let-values ([(state* _job)
-                              (editor-state-submit-job state 'filetree-scan tag tag)])
+                              (state-submit-job state 'filetree-scan tag tag)])
                   state*)
                 state))
           (define ps1
@@ -220,7 +220,7 @@
   (cond
     [(not (filetree-state? ps)) (values state ps '())]
     [else
-     (values (editor-state-with-flash state "filetree refreshed")
+     (values (state-with-flash state "filetree refreshed")
              (refresh-state ps (and row (row-path row)))
              '())]))
 
@@ -243,7 +243,7 @@
 (define (create-command ed state ps vid kind)
   (define row (current-row ed state ps vid))
   (cond
-    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [(not row) (values (state-with-flash state "filetree: no line") ps '())]
     [else
      (values state ps
              (list (filetree-create-action
@@ -252,20 +252,20 @@
 (define (delete-command ed state ps vid)
   (define row (current-row ed state ps vid))
   (cond
-    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [(not row) (values (state-with-flash state "filetree: no line") ps '())]
     [(memq (row-kind row) '(file dir))
      (values state ps
              (list (filetree-delete-action (row-path row) (row-kind row))))]
-    [else (values (editor-state-with-flash state "filetree: cannot delete root") ps '())]))
+    [else (values (state-with-flash state "filetree: cannot delete root") ps '())]))
 
 (define (rename-command ed state ps vid)
   (define row (current-row ed state ps vid))
   (cond
-    [(not row) (values (editor-state-with-flash state "filetree: no line") ps '())]
+    [(not row) (values (state-with-flash state "filetree: no line") ps '())]
     [(memq (row-kind row) '(file dir))
      (values state ps
              (list (filetree-rename-action (row-path row) (row-kind row))))]
-    [else (values (editor-state-with-flash state "filetree: cannot rename root") ps '())]))
+    [else (values (state-with-flash state "filetree: cannot rename root") ps '())]))
 
 (define (make-filetree-plugin #:view vid #:root root
                               #:hidden-entry? [hidden-entry? default-hidden-entry?])

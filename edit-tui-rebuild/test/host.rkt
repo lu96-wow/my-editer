@@ -10,7 +10,7 @@
 (check-true (> (string-length (engine-view-text (editor-engine ed) 1)) 0))
 (check-equal? (engine-view-point-line (editor-engine ed) 1) 0)
 
-(define s (editor-state-with-area state (rect 0 0 40 10)))
+(define s (state-with-area state (rect 0 0 40 10)))
 (check-equal? (editor-focus-panel-id s) 'editor)
 (check-equal? (length (editor-visible-editor-panels s)) 1)
 
@@ -47,6 +47,6 @@
 (check-equal? (length (editor-visible-editor-panels s-close)) 1)
 ;; 关闭 panel 不再删 view；view / resource 保留，之后可以再 placement。
 (check-not-false (engine-view-object (editor-engine ed) 10))
-(check-not-false (editor-state-resource-for-view s-close 10))
+(check-not-false (state-resource-for-view s-close 10))
 
 (displayln "edit-tui-rebuild/test/host.rkt: ok")

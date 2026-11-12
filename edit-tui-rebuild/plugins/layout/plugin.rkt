@@ -8,7 +8,8 @@
 ;;; host 只负责合并 command-table 并解释返回值；不需要知道 split/focus 的实现。
 
 (require "../../core/command/api.rkt"
-         "../../editor/api.rkt")
+         "../../editor/api.rkt"
+         "../../features/sidebar/api.rkt")
 
 (provide layout-plugin)
 

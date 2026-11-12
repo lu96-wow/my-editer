@@ -13,7 +13,7 @@
          "../host/event.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-area state (rect 0 0 60 15)))
 
 ;; 先渲染一帧，同步 viewport / filetree 内容。
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
@@ -24,17 +24,17 @@
 
 ;; release 正常清理 drag。
 (define s3 (handle-editor-event ed s2 (mouse-event 'release 1 0)))
-(check-false (editor-state-drag s3))
+(check-false (state-drag s3))
 
 ;; sidebar 里打字不应该写进 buffer。
 (define before (engine-view-text (editor-engine ed) 3))
 (define s4 (handle-editor-event ed s3 (key-event (key 'a))))
 (check-equal? (engine-view-text (editor-engine ed) 3) before)
-(check-true (string-contains? (editor-state-flash s4) "not editor"))
+(check-true (string-contains? (state-flash s4) "not editor"))
 
 ;; C-x → 回到 editor。
 (define s5 (handle-editor-event ed s4 (key-event (key 'x 'ctrl))))
-(check-true (pair? (editor-state-pending s5)))
+(check-true (pair? (state-pending s5)))
 (define s6 (handle-editor-event ed s5 (key-event (key 'right))))
 (check-equal? (editor-focus-panel-kind s6) 'editor)
 

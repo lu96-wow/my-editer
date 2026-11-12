@@ -39,7 +39,7 @@
 (define-values (state1* _a1) (editor-split! ed1 state1 'right))
 (check-equal? (length (editor-visible-editor-panels state1*)) 1)
 (check-false (engine-view-object engine1 10))
-(check-equal? (editor-state-plugin-state state1* 'layout-test) 1)
+(check-equal? (state-plugin-state state1* 'layout-test) 1)
 
 ;;; 2. observe：split 成功后观察，plugin-state 前进
 (define (observe ctx ps)
@@ -54,7 +54,7 @@
 (define-values (state2* actions2) (editor-split! ed2 state2 'right))
 (check-equal? (length (editor-visible-editor-panels state2*)) 2)
 (check-not-false (engine-view-object engine2 10))
-(check-equal? (editor-state-plugin-state state2* 'layout-test) 1)
+(check-equal? (state-plugin-state state2* 'layout-test) 1)
 (check-equal? (map flash-action-message actions2) '("split-observed"))
 
 (displayln "edit-tui-rebuild/test/layout.rkt: ok")

@@ -35,20 +35,20 @@
 
 ;; sync 只提交 job；旧 rows 为空。
 (define s1 (run-plugin-syncs ed state))
-(check-equal? (length (editor-state-pending-jobs s1)) 1)
+(check-equal? (length (state-pending-jobs s1)) 1)
 (check-equal? (engine-view-text engine 3) "")
 
 (define event-channel (make-async-channel))
 (define rt (start-job-runtime (editor-services ed)
                               #:event-channel event-channel
                               #:workers 1))
-(dispatch-jobs! rt (editor-state-jobs s1))
+(dispatch-jobs! rt (state-jobs s1))
 (define ev (async-channel-get event-channel))
 (stop-job-runtime rt)
 (check-eq? (job-result-event-kind ev) 'filetree-scan)
 
 (define s2 (handle-job-result ed s1 ev))
-(check-equal? (length (editor-state-pending-jobs s2)) 0)
+(check-equal? (length (state-pending-jobs s2)) 0)
 (define s3 (run-plugin-syncs ed s2))
 (check-true (string-contains? (engine-view-text engine 3) "a.txt"))
 

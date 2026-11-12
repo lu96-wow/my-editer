@@ -36,11 +36,11 @@
 (define (dirty-resources state engine)
   (filter (λ (r)
             (resource-dirty? r (engine-doc-version engine (resource-doc-id r))))
-          (resources-list (editor-state-resources state))))
+          (resources-list (state-resources state))))
 
 (define (focus-resource state)
   (define vid (editor-focus-view-id state))
-  (and vid (editor-state-resource-for-view state vid)))
+  (and vid (state-resource-for-view state vid)))
 
 ;;; ════════════════ 写文件 ════════════════
 
@@ -51,7 +51,7 @@
   (define text (engine-doc-text engine (resource-doc-id r)))
   (cond
     [(not text)
-     (values (editor-state-with-flash state "save: no text") #f)]
+     (values (state-with-flash state "save: no text") #f)]
     [else
      (define ok?
        (with-handlers ([exn:fail? (λ (_) #f)])
@@ -59,20 +59,20 @@
          #t))
      (cond
        [(not ok?)
-        (values (editor-state-with-flash state (format "save failed: ~a" path*)) #f)]
+        (values (state-with-flash state (format "save failed: ~a" path*)) #f)]
        [else
         (define mode (doc-mode-for path* text))
         (define name
           (let ([n (file-name-from-path path*)])
             (if n (path->string n) path*)))
-        (define rs (editor-state-resources state))
+        (define rs (state-resources state))
         (define rs* (resources-set-path rs (resource-id r) path* name mode))
         (define rs** (resources-set-command-stack rs* (resource-id r)
                                                   (mode-command-stack mode)))
         (define version (engine-doc-version engine (resource-doc-id r)))
         (define rs*** (resources-set-saved-version rs** (resource-id r) version))
-        (values (editor-state-with-flash
-                 (editor-state-with-resources state rs***)
+        (values (state-with-flash
+                 (state-with-resources state rs***)
                  (format "saved: ~a" path*))
                 #t)])]))
 
@@ -87,7 +87,7 @@
                      context))
 
 (define (open-quit-confirm state id ids)
-  (define r (editor-state-resource-for-doc state id))
+  (define r (state-resource-for-doc state id))
   (editor-input-open state 'quit-confirm
                      (format "Save ~a? (y/n/all/nall) " (resource-label r))
                      (list 'quit ids 'ask)))
@@ -97,7 +97,7 @@
 (define (editor-save-command ed state)
   (define r (focus-resource state))
   (cond
-    [(not r) (values (editor-state-with-flash state "save: no resource") '())]
+    [(not r) (values (state-with-flash state "save: no resource") '())]
     [(resource-path r)
      (values (open-save-confirm state r (list 'save (resource-id r))) '())]
     [else
@@ -113,7 +113,7 @@
     [(or (null? ids) (eq? mode 'none)) (finish-quit state)]
     [(eq? mode 'all)
      (define id (car ids))
-     (define r (editor-state-resource-for-doc state id))
+     (define r (state-resource-for-doc state id))
      (cond
        [(not r) (continue-quit ed state (cdr ids) 'all)]
        [(resource-path r)
@@ -140,10 +140,10 @@
   (match context
     [(list 'save rid)
      (values (editor-input-close
-              (editor-state-with-flash state
+              (state-with-flash state
                                        (format "saved: ~a"
                                                (resource-label
-                                                (editor-state-resource-for-doc state rid)))))
+                                                (state-resource-for-doc state rid)))))
              '())]
     [(list 'quit-save ids mode rid)
      (continue-quit ed (editor-input-close state) ids mode)]
@@ -154,12 +154,12 @@
 (define (submit-save-path ed state context text)
   (cond
     [(string=? (string-trim text) "")
-     (values (editor-state-with-flash state "path required") '())]
+     (values (state-with-flash state "path required") '())]
     [else
      (define rid (case (car context)
                    [(save close-save) (cadr context)]
                    [else (cadddr context)]))
-     (define r (editor-state-resource-for-doc state rid))
+     (define r (state-resource-for-doc state rid))
      (cond
        [(not r) (values (editor-input-close state) '())]
        [else
@@ -172,11 +172,11 @@
   (define v (string-downcase (string-trim text)))
   (cond
     [(not (member v '("y" "n"))) 
-     (values (editor-state-with-flash state "answer: y / n") '())]
+     (values (state-with-flash state "answer: y / n") '())]
     [(string=? v "n") (values (editor-input-close state) '())]
     [else
      (define rid (cadr context))
-     (define r (editor-state-resource-for-doc state rid))
+     (define r (state-resource-for-doc state rid))
      (cond
        [(not r) (values (editor-input-close state) '())]
        [(not (resource-path r))
@@ -191,10 +191,10 @@
   (define v (string-downcase (string-trim text)))
   (cond
     [(not (member v '("y" "n")))
-     (values (editor-state-with-flash state "answer: y / n") '())]
+     (values (state-with-flash state "answer: y / n") '())]
     [else
      (define rid (cadr context))
-     (define r (editor-state-resource-for-doc state rid))
+     (define r (state-resource-for-doc state rid))
      (cond
        [(not r) (values (editor-input-close state) '())]
        [(string=? v "n") (editor-close-resource! ed (editor-input-close state) rid)]
@@ -209,13 +209,13 @@
   (define v (string-downcase (string-trim text)))
   (cond
     [(not (member v '("y" "n" "all" "nall")))
-     (values (editor-state-with-flash state "answer: y / n / all / nall") '())]
+     (values (state-with-flash state "answer: y / n / all / nall") '())]
     [(string=? v "nall") (finish-quit state)]
     [else
      (define ids (cadr context))
      (define id (car ids))
      (define rest (cdr ids))
-     (define r (editor-state-resource-for-doc state id))
+     (define r (state-resource-for-doc state id))
      (cond
        [(not r) (continue-quit ed state rest (if (string=? v "all") 'all 'ask))]
        [(string=? v "n") (continue-quit ed state rest 'ask)]
@@ -235,7 +235,7 @@
 (define (editor-input-submit! ed state)
   (define kind (editor-input-kind state))
   (define text (or (editor-input-text state) ""))
-  (define s (editor-state-input state))
+  (define s (state-input state))
   (define context (and s (input-state-context s)))
   (case kind
     [(save-path) (submit-save-path ed state context text)]

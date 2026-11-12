@@ -44,7 +44,7 @@
   (editor-insert! ed1 state1 1 "x"))
 
 (check-equal? (engine-view-text engine1 1) "x!")
-(check-equal? (editor-state-plugin-state state1* 'test) 2)
+(check-equal? (state-plugin-state state1* 'test) 2)
 (check-equal? (map flash-action-message actions1) '("after-ran"))
 
 ;;; 2. before 返回 #f：不提交、不跑 after
@@ -66,7 +66,7 @@
   (editor-insert! ed2 state2 1 "x"))
 
 (check-equal? (engine-view-text engine2 1) "")
-(check-equal? (editor-state-plugin-state state2* 'test) 1)
+(check-equal? (state-plugin-state state2* 'test) 1)
 (check-equal? (map flash-action-message actions2) '("vetoed"))
 
 ;;; 3. 顺序：priority 小者先；同 priority 按注册顺序
@@ -106,7 +106,7 @@
 (define-values (state4* actions4)
   (editor-insert! ed4 state4 1 "x"))
 (check-equal? (engine-view-text engine4 1) "x")
-(check-equal? (editor-state-plugin-state state4* 'test) 1)
+(check-equal? (state-plugin-state state4* 'test) 1)
 (check-equal? (map flash-action-message actions4) '("changes-seen"))
 
 ;;; 5. 插入点 / owner 校验

@@ -48,11 +48,11 @@
 (define (current-target ed state)
   (define vid (editor-focus-view-id state))
   (define did (and vid (editor-view-doc-id ed vid)))
-  (and vid did (eq? (editor-state-doc-mode state did) 'racket)
+  (and vid did (eq? (state-doc-mode state did) 'racket)
        (list vid did)))
 
 (define (resource-path-for-state state vid)
-  (define r (and vid (editor-state-resource-for-view state vid)))
+  (define r (and vid (state-resource-for-view state vid)))
   (and r (resource-path r)))
 
 (define (prefix-at ed vid)
@@ -117,7 +117,7 @@
                        [anchor-col (editor-view-point-column ed vid)]
                        [popup-rect #f]))
         (define-values (state2 job)
-          (editor-state-submit-job state 'completion
+          (state-submit-job state 'completion
                                    (list prefix (resource-path-for-state state vid)
                                          (editor-doc-text ed did))
                                    (list 'completion (editor-doc-version ed did))))
@@ -180,7 +180,7 @@
                           [anchor-col (editor-view-point-column ed fvid)])]))
         (define ps2
           (cond
-            [(not (eq? (editor-state-doc-mode state did) 'racket)) ps1]
+            [(not (eq? (state-doc-mode state did) 'racket)) ps1]
             [else
              (editor-cancel-timer! ed (completion-state-timer-id ps1))
              (define tid (editor-schedule-timer! ed 180))
@@ -270,7 +270,7 @@
   (define target (current-target ed state))
   (cond
     [(not target)
-     (values (editor-state-with-flash state "completion: focus is not Racket editor")
+     (values (state-with-flash state "completion: focus is not Racket editor")
              ps '())]
     [else
      (match-define (list vid did) target)

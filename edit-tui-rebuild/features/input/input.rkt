@@ -50,10 +50,10 @@
   (input-state #f panel-id status-view input-view #f "" "" 0 #f #f))
 
 (define (input-state-of state)
-  (editor-state-input state))
+  (state-input state))
 
 (define (set-input-state state s)
-  (editor-state-with-input state s))
+  (state-with-input state s))
 
 (define (editor-input-active? state)
   (define s (input-state-of state))
@@ -74,10 +74,10 @@
 (define (switch-view state view-id)
   (define s (input-state-of state))
   (define-values (l ok?)
-    (layout-panel-set-active-view (editor-state-layout state)
+    (layout-panel-set-active-view (state-layout state)
                                   (input-state-panel-id s)
                                   view-id))
-  (if ok? (editor-state-with-layout state l) state))
+  (if ok? (state-with-layout state l) state))
 
 (define (editor-input-open state kind prompt context
                            #:text [text ""])
@@ -96,9 +96,9 @@
                              [prev-focus prev]
                              [context context]))
      (define state1 (set-input-state (switch-view state (input-state-input-view s*)) s*))
-     (editor-state-with-layout
-      (editor-state-with-pending state1 '())
-      (layout-set-focus (editor-state-layout state1)
+     (state-with-layout
+      (state-with-pending state1 '())
+      (layout-set-focus (state-layout state1)
                         (input-state-panel-id s*)))]))
 
 (define (editor-input-close state)
@@ -117,13 +117,13 @@
                              [context #f]))
      (define state1 (set-input-state (switch-view state (input-state-status-view s*)) s*))
      (cond
-       [prev (editor-state-with-layout
+       [prev (state-with-layout
               state1
-              (layout-set-focus (editor-state-layout state1) prev))]
+              (layout-set-focus (state-layout state1) prev))]
        [else state1])]))
 
 (define (editor-input-cancel state)
-  (values (editor-state-with-flash (editor-input-close state) "input cancelled")
+  (values (state-with-flash (editor-input-close state) "input cancelled")
           '()))
 
 (define (prefix-length state)

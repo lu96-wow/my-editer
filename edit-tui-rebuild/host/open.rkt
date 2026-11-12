@@ -26,35 +26,35 @@
          editor-focus-view!)
 
 (define (focus-existing-resource state r)
-  (define l (editor-state-layout state))
+  (define l (state-layout state))
   (define vid (and (pair? (resource-views r)) (car (resource-views r))))
   (define pid (and l vid (layout-panel-for-view l vid)))
   (cond
     [(not vid)
-     (values (editor-state-with-flash state "open: resource has no view") '())]
+     (values (state-with-flash state "open: resource has no view") '())]
     [pid
      (define-values (l* ok?)
        (layout-panel-set-active-view l pid vid))
      (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (editor-state-with-layout state l**) '())]
+     (values (state-with-layout state l**) '())]
     [else
      (values (editor-placement-start state vid) '())]))
 
 ;; 聚焦一个已经存在的 view：挂在 panel 上就切 active + 聚焦；detached 就 placement。
 (define (editor-focus-view! ed state vid)
-  (define l (editor-state-layout state))
+  (define l (state-layout state))
   (define pid (and l vid (layout-panel-for-view l vid)))
   (cond
-    [(not vid) (values (editor-state-with-flash state "focus-view: no view") '())]
+    [(not vid) (values (state-with-flash state "focus-view: no view") '())]
     [pid
      (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
      (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (editor-state-with-layout state l**) '())]
+     (values (state-with-layout state l**) '())]
     [else (values (editor-placement-start state vid) '())]))
 
 (define (editor-open-file! ed state path)
   (define path* (resource-normalize-path path))
-  (define existing (resources-find-path (editor-state-resources state) path*))
+  (define existing (resources-find-path (state-resources state) path*))
   (cond
     [existing (focus-existing-resource state existing)]
     [else
@@ -63,10 +63,10 @@
          (file->string path*)))
      (cond
        [(not text)
-        (values (editor-state-with-flash state (format "open failed: ~a" path*)) '())]
+        (values (state-with-flash state (format "open failed: ~a" path*)) '())]
        [else
         (define engine (editor-engine ed))
-        (define id (editor-state-next-view-id state))
+        (define id (state-next-view-id state))
         (define mode (doc-mode-for path* text))
         (define name
           (let ([n (file-name-from-path path*)])
@@ -77,8 +77,8 @@
         (define r (make-resource id id path* name (list id) mode version
                                  #:command-stack (mode-command-stack mode)))
         (define state*
-          (editor-state-with-next-view-id
-           (editor-state-with-resources
-            state (resources-add (editor-state-resources state) r))
+          (state-with-next-view-id
+           (state-with-resources
+            state (resources-add (state-resources state) r))
            (add1 id)))
         (values (editor-placement-start state* id) '())])]))

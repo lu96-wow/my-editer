@@ -22,11 +22,11 @@
   p)
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-area state (rect 0 0 60 15)))
 
 ;; split 出的新 view 也登记到同一个 resource。
 (define-values (s-split _a1) (editor-split! ed s0 'right))
-(define scratch-r (editor-state-resource-for-doc s-split 1))
+(define scratch-r (state-resource-for-doc s-split 1))
 (check-equal? (length (resource-views scratch-r)) 2)
 
 ;; 打开文件并放入当前 editor panel -> 同一 panel 有两个 view。
@@ -36,7 +36,7 @@
 (define-values (s2 _a3) (editor-placement-commit ed s1))
 (check-equal? (editor-focus-view-id s2) vid1)
 (define panel-id (editor-focus-panel-id s2))
-(define panel (layout-panel (editor-state-layout s2) panel-id))
+(define panel (layout-panel (state-layout s2) panel-id))
 (check-equal? (length (p:panel-views panel)) 2)
 
 ;; C-x p / C-x n 切 tab。
@@ -47,7 +47,7 @@
 
 ;; close buffer（clean）：删 resource / view，panel active 回到另一个 view。
 (define-values (s5 _a6) (editor-close-buffer-command ed s4))
-(check-false (editor-state-resource-for-view s5 vid1))
+(check-false (state-resource-for-view s5 vid1))
 (check-false (engine-view-object (editor-engine ed) vid1))
 (check-equal? (editor-focus-view-id s5) 10)
 
@@ -63,7 +63,7 @@
 (define-values (s9a _a11) (editor-input-insert s9 "n"))
 (define-values (s10 _a12) (editor-input-submit! ed s9a))
 (check-false (editor-input-active? s10))
-(check-false (editor-state-resource-for-view s10 vid2))
+(check-false (state-resource-for-view s10 vid2))
 (check-equal? (file->string f2) "two")
 
 ;; dirty close + y：保存后关闭。
@@ -75,7 +75,7 @@
 (define-values (s14 _a16) (editor-close-buffer-command ed s13))
 (define-values (s14a _a17) (editor-input-insert s14 "y"))
 (define-values (s15 _a18) (editor-input-submit! ed s14a))
-(check-false (editor-state-resource-for-view s15 vid3))
+(check-false (state-resource-for-view s15 vid3))
 (check-true (string-contains? (file->string f3) "!"))
 
 (delete-directory/files root)

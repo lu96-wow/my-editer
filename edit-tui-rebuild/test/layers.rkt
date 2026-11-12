@@ -60,9 +60,9 @@
 (check-false (regexp-match? #rx"panels-sync!" api-src) "editor/api.rkt")
 
 ;; 插件面不导出 plugin-state 写入口 / state constructor / resource 变更入口。
-(check-false (regexp-match? #rx"editor-state-set-plugin-state" api-src)
+(check-false (regexp-match? #rx"state-set-plugin-state" api-src)
              "editor/api.rkt")
-(check-false (regexp-match? #rx"editor-state-plugin-states" api-src)
+(check-false (regexp-match? #rx"state-plugin-states" api-src)
              "editor/api.rkt")
 (check-false (regexp-match? #rx"make-app-state" api-src)
              "editor/api.rkt")
@@ -104,7 +104,7 @@
   (check-false
    (requires-any? f #rx"\\.\\./editor/(open|prompt|input|close|timer|job|layout|resource|mode|overlay|engine|ops|host-api|context|hooks|state)")
    f)
-  (check-false (requires-any? f #rx"editor-state-set-plugin-state") f)
+  (check-false (requires-any? f #rx"state-set-plugin-state") f)
   (check-false (regexp-match? #rx"editor-engine|edit-context-engine|change-context-engine"
                               (src f))
                f))

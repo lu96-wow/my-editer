@@ -43,7 +43,7 @@
 
 (define (focus-resource state)
   (and (eq? (editor-focus-panel-kind state) 'editor)
-       (editor-state-resource-for-view state (editor-focus-view-id state))))
+       (state-resource-for-view state (editor-focus-view-id state))))
 
 (define (panel-tables ed scope)
   (list (editor-command-table ed scope)
@@ -96,13 +96,13 @@
   (eq? (editor-focus-panel-kind state) 'editor))
 
 (define (flash state text)
-  (values (editor-state-with-flash state text) '()))
+  (values (state-with-flash state text) '()))
 
 (define (plugin-ps state owner)
-  (and owner (editor-state-plugin-state state owner)))
+  (and owner (state-plugin-state state owner)))
 
 (define (write-command-ps state owner ps)
-  (if owner (editor-state-set-plugin-state state owner ps) state))
+  (if owner (state-set-plugin-state state owner ps) state))
 
 (define (run-command ed state vid owner value)
   (define ps (plugin-ps state owner))
@@ -159,7 +159,7 @@
     [(quit-command? value)
      (editor-request-quit ed state)]
     [else
-     (values (editor-state-with-flash state (format "not a command: ~a" value))
+     (values (state-with-flash state (format "not a command: ~a" value))
              '())]))
 
 ;;; ════════════════ lookup ════════════════
@@ -191,17 +191,17 @@
 ;;; ════════════════ step ════════════════
 
 (define (dispatch-key ed state tok view-scopes)
-  (define state0 (editor-state-clear-flash state))
+  (define state0 (state-clear-flash state))
   (define scopes (command-context ed state0 view-scopes))
-  (define pending0 (editor-state-pending state0))
-  (define pending-scope0 (editor-state-pending-scope state0))
+  (define pending0 (state-pending state0))
+  (define pending-scope0 (state-pending-scope state0))
   ;; focus / mode 改变的瞬间，前缀不再属于当前 scope：直接丢弃。
   (define state1
     (if (and (pair? pending0)
              (not (equal? pending-scope0 scopes)))
-        (editor-state-clear-pending state0)
+        (state-clear-pending state0)
         state0))
-  (define pending (editor-state-pending state1))
+  (define pending (state-pending state1))
   (define seq (append pending (list tok)))
   (define tables
     (cond
@@ -211,14 +211,14 @@
   (let-values ([(status value owner) (lookup-command tables seq ed state1)])
     (case status
       [(command)
-       (run-command ed (editor-state-clear-pending state1)
+       (run-command ed (state-clear-pending state1)
                     (need-view state1) owner value)]
       [(prefix)
-       (values (editor-state-with-pending-scope
-                (editor-state-with-pending state1 seq) scopes)
+       (values (state-with-pending-scope
+                (state-with-pending state1 seq) scopes)
                '())]
       [else
-       (define s1 (editor-state-clear-pending state1))
+       (define s1 (state-clear-pending state1))
        (define text (key-text tok))
        (define vid (need-view s1))
        (cond
@@ -227,11 +227,11 @@
          [(and text (null? pending) vid (editor-focused? s1))
           (editor-insert! ed s1 vid text)]
          [(and text (null? pending) (not vid))
-          (values (editor-state-with-flash s1 "insert: no focused editor view") '())]
+          (values (state-with-flash s1 "insert: no focused editor view") '())]
          [(and text (null? pending) (not (editor-focused? s1)))
-          (values (editor-state-with-flash s1 "insert: focus is not editor") '())]
+          (values (state-with-flash s1 "insert: focus is not editor") '())]
          [else
-          (values (editor-state-with-flash
+          (values (state-with-flash
                    s1
                    (format "unbound: ~a"
                            (string-join (map key->string seq) " ")))

@@ -22,7 +22,7 @@
      (define did (editor-view-doc-id ed vid))
      (define whole (or (editor-view-text ed vid) ""))
      (cond
-       [(not (eq? (editor-state-doc-mode state did) 'racket))
+       [(not (eq? (state-doc-mode state did) 'racket))
         (values ctx ps '() #t)]
        [else
         (define pt (edit-context-point ctx))

@@ -33,12 +33,12 @@
 (define (resource-label state r)
   (define path (resource-path r))
   (if path
-      (resource-display-path (editor-state-workspace-root state) path)
+      (resource-display-path (state-workspace-root state) path)
       (resource-name r)))
 
 (define (resource-rows ed state)
   (append*
-   (for/list ([r (in-list (resources-list (editor-state-resources state)))])
+   (for/list ([r (in-list (resources-list (state-resources state)))])
      (define version (editor-doc-version ed (resource-doc-id r)))
      (define dirty? (resource-dirty? r version))
      (define label (string-append (resource-label state r)
@@ -74,7 +74,7 @@
   (define row (current-row ed ps vid))
   (cond
     [(not row)
-     (values (editor-state-with-flash state "resources: no line") ps '())]
+     (values (state-with-flash state "resources: no line") ps '())]
     [(eq? (row-kind row) 'view)
      (define-values (s1 a1 attached?)
        (editor-focus-view-if-attached! ed state (row-view-id row)))
@@ -82,7 +82,7 @@
          (values s1 ps a1)
          (values (editor-placement-start state (row-view-id row)) ps '()))]
     [else
-     (define r (editor-state-resource-for-doc state (row-resource-id row)))
+     (define r (state-resource-for-doc state (row-resource-id row)))
      (define views (and r (resource-views r)))
      (cond
        [(pair? views)
@@ -92,10 +92,10 @@
             (values s1 ps a1)
             (values (editor-placement-start state (car views)) ps '()))]
        [else
-        (values (editor-state-with-flash state "resources: no view") ps '())])]))
+        (values (state-with-flash state "resources: no view") ps '())])]))
 
 (define (refresh-command ed state ps)
-  (values (editor-state-with-flash state "resources refreshed") ps '()))
+  (values (state-with-flash state "resources refreshed") ps '()))
 
 (define (close-buffer-command ed state ps)
   (values state ps (list (close-buffer-action))))

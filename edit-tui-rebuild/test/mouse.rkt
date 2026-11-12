@@ -7,16 +7,17 @@
          "../core/api.rkt"
          "../core/layout/api.rkt"
          "../core/projection/api.rkt"
+         "../features/mouse/api.rkt"
          "../host/final.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s (editor-state-with-area state (rect 0 0 40 10)))
+(define s (state-with-area state (rect 0 0 40 10)))
 
 (define-values (s-split _a1) (editor-split! ed s 'right))
 
 ;; 找一条 lr seam（editor <-> 新 panel）。
-(define seams (layout-seams (editor-state-layout s-split)
-                            (editor-state-area s-split)))
+(define seams (layout-seams (state-layout s-split)
+                            (state-area s-split)))
 (define seam
   (for/first ([seam (in-list seams)]
               #:when (eq? (seam-axis seam) 'lr))
@@ -27,31 +28,31 @@
 (define row (+ (rect-y r) (quotient (rect-h r) 2)))
 (define col (+ (rect-x r) (quotient (rect-w r) 2)))
 
-(define before (layout-panel-rects (editor-state-layout s-split)
-                                  (editor-state-area s-split)))
+(define before (layout-panel-rects (state-layout s-split)
+                                  (state-area s-split)))
 (define editor-w-before (rect-w (hash-ref before 'editor)))
 
 (define-values (s-press _a2)
   (editor-mouse! ed s-split 'press row col))
-(check-not-false (editor-state-drag s-press))
+(check-not-false (state-drag s-press))
 
 (define-values (s-move _a3)
   (editor-mouse! ed s-press 'move row (+ col 2)))
-(check-not-false (editor-state-drag s-move))
+(check-not-false (state-drag s-move))
 
-(define after (layout-panel-rects (editor-state-layout s-move)
-                                  (editor-state-area s-move)))
+(define after (layout-panel-rects (state-layout s-move)
+                                  (state-area s-move)))
 (check-not-equal? (rect-w (hash-ref after 'editor)) editor-w-before)
 
 (define-values (s-release _a4)
   (editor-mouse! ed s-move 'release row col))
-(check-false (editor-state-drag s-release))
+(check-false (state-drag s-release))
 
 ;; 点 editor 内容区：聚焦 + 光标落点。
 ;; 先渲染一帧，把 viewport 尺寸写回 view（真实 host 在 read-event 前已经渲染过）。
 (define-values (s-rendered _c0 _b0) (render-frame ed s-release #f))
-(define rects (layout-panel-rects (editor-state-layout s-rendered)
-                                  (editor-state-area s-rendered)))
+(define rects (layout-panel-rects (state-layout s-rendered)
+                                  (state-area s-rendered)))
 (define er (hash-ref rects 'editor))
 (define click-row (+ (rect-y er) 1))
 (define click-col (+ (rect-x er) 1))
@@ -66,19 +67,19 @@
               1)
 
 ;; 拖选：press 落 caret，move 扩展 head，release 结束。
-(define content (layout-content-rect (editor-state-layout s-click)
-                                    (editor-state-area s-click)
+(define content (layout-content-rect (state-layout s-click)
+                                    (state-area s-click)
                                     'editor))
 (define cr (+ (rect-y content) 0))
 (define cc (+ (rect-x content) 2))
 (define-values (s-drag-down _ad)
   (editor-mouse! ed s-click 'press cr cc))
-(check-not-false (editor-state-select-drag s-drag-down))
+(check-not-false (state-select-drag s-drag-down))
 (define-values (s-drag-move _am)
   (editor-mouse! ed s-drag-down 'move cr (+ cc 3)))
 (define-values (s-drag-up _au)
   (editor-mouse! ed s-drag-move 'release cr (+ cc 3)))
-(check-false (editor-state-select-drag s-drag-up))
+(check-false (state-select-drag s-drag-up))
 (check-equal? (view-copy-text (engine-view-object (editor-engine ed)
                                                   (editor-focus-view-id s-drag-up)))
               "ang")

@@ -160,10 +160,10 @@
       [else
        (define h (car hs))
        (define owner (hook-owner h))
-       (define ps (editor-state-plugin-state st owner))
+       (define ps (state-plugin-state st owner))
        (define-values (ctx* ps* acts* ok?*)
          ((hook-fn h) ctx ps))
-       (define st* (editor-state-set-plugin-state st owner ps*))
+       (define st* (state-set-plugin-state st owner ps*))
        ;; ctx 可以是 edit-context 或 layout-context；runner 不假设具体类型。
        ;; 插件状态以 ps* 为准，ctx.state 只保留操作开始时的快照。
        (loop (cdr hs) ctx* st*

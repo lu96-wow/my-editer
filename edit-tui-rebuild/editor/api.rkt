@@ -50,23 +50,28 @@
 
  ;; State 查询 / 有限 UI 会话更新：不导出 constructor / plugin-states /
  ;; resource 变更入口。helper 同时接受 app-state 和 editor-core。
- editor-state-with-flash
- editor-state-workspace-root
- editor-state-with-layout
- editor-state-with-pending
- editor-state-with-input
- editor-state-with-placement
- editor-state-resource-for-view
- editor-state-resource-for-doc
- editor-state-doc-mode
- editor-state-opened-paths
- editor-state-resources
- editor-state-layout
- editor-state-layout-config
- editor-state-area
- editor-state-input
- editor-state-placement
- editor-state-async?
+ state-with-flash
+ state-workspace-root
+ (struct-out select-drag)
+ state-drag
+ state-select-drag
+ state-with-drag
+ state-with-select-drag
+ state-with-layout
+ state-with-pending
+ state-with-input
+ state-with-placement
+ state-resource-for-view
+ state-resource-for-doc
+ state-doc-mode
+ state-opened-paths
+ state-resources
+ state-layout
+ state-layout-config
+ state-area
+ state-input
+ state-placement
+ state-async?
 
  ;; resource 只读查询：变更入口只在 host-api。
  resource? resource-id resource-doc-id resource-path resource-name
@@ -129,15 +134,13 @@
  editor-split!
  editor-close!
  editor-focus!
- editor-cycle-sidebar-view!
  editor-cycle-editor-view!
- editor-toggle-sidebar!
  editor-toggle-panel!
 
  ;; async job：插件只提交 job、读结果；账本写回只在 host runtime。
  job-result-event? job-result-event-id job-result-event-kind
  job-result-event-result job-result-event-tag
- editor-state-submit-job
+ state-submit-job
 
  ;; timer：插件只 schedule / cancel / 读 event-id；service 安装属于 host。
  timer-event? timer-event-id

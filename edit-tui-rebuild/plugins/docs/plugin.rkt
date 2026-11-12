@@ -78,7 +78,7 @@
   (define name (and text line col (identifier-at text line col)))
   (cond
     [name (docs-show-name! ed state ps name)]
-    [else (values (editor-state-with-flash state "docs: no identifier") ps '())]))
+    [else (values (state-with-flash state "docs: no identifier") ps '())]))
 
 (define (make-docs-plugin #:view vid #:panel-id [panel-id 'docs])
   (make-plugin

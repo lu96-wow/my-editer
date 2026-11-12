@@ -7,6 +7,7 @@
          racket/path
          racket/string
          "../editor/host-api.rkt"
+         "../features/sidebar/api.rkt"
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
          "../host/final.rkt"
@@ -18,8 +19,8 @@
 (display-to-file "#lang racket\n(define x 1)\n" file #:exists 'replace)
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-workspace-root
-            (editor-state-with-area state (rect 0 0 60 15))
+(define s0 (state-with-workspace-root
+            (state-with-area state (rect 0 0 60 15))
             (resource-normalize-path root)))
 
 ;; 打开文件并提交 placement。
@@ -54,7 +55,7 @@
 (check-eq? status 'command)
 (check-true (guarded-command? enter-cmd))
 (check-true ((guarded-command-when-fn enter-cmd) ed s5
-                                                (editor-state-plugin-state s5 'resources)))
+                                                (state-plugin-state s5 'resources)))
 
 (define lines (string-split (engine-view-text (editor-engine ed) 4) "\n" #:trim? #f))
 (define view-line
@@ -65,7 +66,7 @@
 (engine-set-view-cursor! (editor-engine ed) 4 view-line #:column 0)
 (define-values (s6 _ps6 _a6)
   ((guarded-command-run enter-cmd) ed s5
-   (editor-state-plugin-state s5 'resources)))
+   (state-plugin-state s5 'resources)))
 (check-equal? (editor-focus-panel-kind s6) 'editor)
 (check-equal? (editor-focus-view-id s6) vid)
 

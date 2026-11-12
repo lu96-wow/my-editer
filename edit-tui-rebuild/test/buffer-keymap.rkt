@@ -38,7 +38,7 @@
    #:commands (keys
                [(key 'l 'ctrl)
                 (λ (ed state ps)
-                  (values (editor-state-with-flash state "racket-key") ps '()))])))
+                  (values (state-with-flash state "racket-key") ps '()))])))
 
 (define layout0 (make-editor-layout #:editor-view 1))
 (define-values (layout0b _ok0b?)
@@ -64,21 +64,21 @@
 
 ;; text resource 没有 racket mode scope。
 (define s-text-l (handle-editor-event ed s-a (key-event (key 'l 'ctrl))))
-(check-not-equal? (editor-state-flash s-text-l) "racket-key")
+(check-not-equal? (state-flash s-text-l) "racket-key")
 
 ;; 同一个 panel 切到 active view 2 -> resource 2 的键表生效。
 (define-values (l2 _ok2?) (layout-panel-set-active-view
-                           (editor-state-layout s-a) 'editor 2))
-(define state2 (editor-state-with-layout s-a l2))
+                           (state-layout s-a) 'editor 2))
+(define state2 (state-with-layout s-a l2))
 (define s-b (handle-editor-event ed state2 (key-event (key 't 'ctrl))))
 (check-equal? (engine-view-text engine 2) "B")
 (check-equal? (engine-view-text engine 1) "A")
 
 ;; racket resource 使用 mode scope；同一个 panel 换 view 后立即生效。
 (define-values (l3 _ok3?) (layout-panel-set-active-view
-                           (editor-state-layout s-b) 'editor 6))
-(define state3 (editor-state-with-layout s-b l3))
+                           (state-layout s-b) 'editor 6))
+(define state3 (state-with-layout s-b l3))
 (define s-racket (handle-editor-event ed state3 (key-event (key 'l 'ctrl))))
-(check-equal? (editor-state-flash s-racket) "racket-key")
+(check-equal? (state-flash s-racket) "racket-key")
 
 (displayln "edit-tui-rebuild/test/buffer-keymap.rkt: ok")

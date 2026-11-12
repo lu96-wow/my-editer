@@ -6,7 +6,11 @@
 ;;; 插件只能通过 editor/api.rkt 的操作面和查询面访问。
 
 (require "action.rkt"
-         "store.rkt")
+         "store.rkt"
+         "ui-projection.rkt"
+         "apply.rkt")
 
 (provide (all-from-out "action.rkt"
-                       "store.rkt"))
+                       "store.rkt"
+                       "ui-projection.rkt"
+                       "apply.rkt"))

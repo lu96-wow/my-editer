@@ -16,7 +16,7 @@
 ;;; 1. layout 插件贡献 split 命令；C-w Right 走 host 事件路径。
 (define-values (ed state) (make-demo-editor))
 (define s1 (handle-editor-event ed state (key-event (key 'w 'ctrl))))
-(check-equal? (editor-state-pending s1) (list (key 'w 'ctrl)))
+(check-equal? (state-pending s1) (list (key 'w 'ctrl)))
 (define s-split (handle-editor-event ed s1 (key-event (key 'right))))
 (check-equal? (length (editor-visible-editor-panels s-split)) 2)
 
@@ -104,7 +104,7 @@
 (void (engine-create-view! engine3 3 3))
 (define (mark-command text)
   (λ (ed state ps)
-    (values (editor-state-with-flash state text) ps '())))
+    (values (state-with-flash state text) ps '())))
 (define scoped-plugin
   (make-plugin
    #:id 'filetree-scope-test
@@ -131,36 +131,36 @@
 (define s-editor-cf
   (handle-editor-event scoped-ed scoped-state (key-event (key 'f 'ctrl))))
 (check-equal? (engine-view-point-column engine3 1) 1)
-(check-equal? (editor-state-pending s-editor-cf) '())
+(check-equal? (state-pending s-editor-cf) '())
 
 ;; filetree 聚焦：C-f 进入局部前缀；C-f d 执行 filetree 命令。
 (define-values (s-side _a-side) (editor-focus! scoped-ed scoped-state 'left))
 (check-equal? (editor-focus-view-id s-side) 3)
 (define s-ft-cf
   (handle-editor-event scoped-ed s-side (key-event (key 'f 'ctrl))))
-(check-equal? (editor-state-pending s-ft-cf) (list (key 'f 'ctrl)))
+(check-equal? (state-pending s-ft-cf) (list (key 'f 'ctrl)))
 (define s-ft-d
   (handle-editor-event scoped-ed s-ft-cf (key-event (key 'd))))
-(check-equal? (editor-state-flash s-ft-d) "ft-delete")
-(check-equal? (editor-state-pending s-ft-d) '())
+(check-equal? (state-flash s-ft-d) "ft-delete")
+(check-equal? (state-pending s-ft-d) '())
 
 ;; C-f C-f n 是更深一层前缀。
 (define s-ft-cf2
   (handle-editor-event scoped-ed s-side (key-event (key 'f 'ctrl))))
 (define s-ft-cf3
   (handle-editor-event scoped-ed s-ft-cf2 (key-event (key 'f 'ctrl))))
-(check-equal? (editor-state-pending s-ft-cf3)
+(check-equal? (state-pending s-ft-cf3)
               (list (key 'f 'ctrl) (key 'f 'ctrl)))
 (define s-ft-dir
   (handle-editor-event scoped-ed s-ft-cf3 (key-event (key 'n))))
-(check-equal? (editor-state-flash s-ft-dir) "ft-new-dir")
+(check-equal? (state-flash s-ft-dir) "ft-new-dir")
 
 ;; pending 绑定 scope：C-f 后切回 editor，n 不应命中 filetree 的 C-f n。
 (define-values (s-back _a-back) (editor-focus! scoped-ed s-ft-cf2 'right))
 (check-equal? (editor-focus-view-id s-back) 1)
 (define s-back-n
   (handle-editor-event scoped-ed s-back (key-event (key 'n))))
-(check-equal? (editor-state-pending s-back-n) '())
-(check-not-equal? (editor-state-flash s-back-n) "ft-new")
+(check-equal? (state-pending s-back-n) '())
+(check-not-equal? (state-flash s-back-n) "ft-new")
 
 (displayln "edit-tui-rebuild/test/commands.rkt: ok")

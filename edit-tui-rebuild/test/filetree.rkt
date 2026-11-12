@@ -17,8 +17,8 @@
          "../host/open.rkt")
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-area state (rect 0 0 60 15)))
-(define (ft-ps st) (editor-state-plugin-state st 'filetree))
+(define s0 (state-with-area state (rect 0 0 60 15)))
+(define (ft-ps st) (state-plugin-state st 'filetree))
 
 ;; 第一帧渲染触发 filetree sync。
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
@@ -48,7 +48,7 @@
 (check-true ((guarded-command-when-fn enter-cmd) ed s2 (ft-ps s2)))
 
 ;; 把 filetree 光标移到第一个文件行。
-(define fstate (editor-state-plugin-state s2 'filetree))
+(define fstate (state-plugin-state s2 'filetree))
 (check-true (filetree-state? fstate))
 (define rows (filetree-state-rows fstate))
 (define file-row
@@ -87,10 +87,10 @@
               'filetree-open)
 
 ;; 再次打开同一路径：聚焦已有 view，不新建 resource / doc。
-(define n-before (length (resources-list (editor-state-resources s6))))
+(define n-before (length (resources-list (state-resources s6))))
 (define-values (s7 _more3) (editor-open-file! ed s6 path))
 (check-false (editor-placement-active? s7))
 (check-equal? (editor-focus-view-id s7) vid)
-(check-equal? (length (resources-list (editor-state-resources s7))) n-before)
+(check-equal? (length (resources-list (state-resources s7))) n-before)
 
 (displayln "edit-tui-rebuild/test/filetree.rkt: ok")

@@ -12,7 +12,7 @@
 (void (engine-create-view! engine 1 1))
 
 (define (handle-timer ed state ps ev)
-  (values (editor-state-with-flash state "timer fired")
+  (values (state-with-flash state "timer fired")
           (add1 ps)
           '()))
 
@@ -35,8 +35,8 @@
 
 (define-values (state* actions*) (run-plugin-timer-handlers ed state ev))
 (check-equal? actions* '())
-(check-equal? (editor-state-plugin-state state* 'timer-test) 1)
-(check-equal? (editor-state-flash state*) "timer fired")
+(check-equal? (state-plugin-state state* 'timer-test) 1)
+(check-equal? (state-flash state*) "timer fired")
 
 (stop-timer-runtime rt)
 (displayln "edit-tui-rebuild/test/timer.rkt: ok")

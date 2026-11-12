@@ -11,6 +11,6 @@
 (provide editor-show-docs!)
 
 (define (editor-show-docs! ed state name)
-  (define ps (editor-state-plugin-state state 'docs))
+  (define ps (state-plugin-state state 'docs))
   (define-values (state* ps* actions) (docs-show-name! ed state ps name))
-  (values (editor-state-set-plugin-state state* 'docs ps*) actions))
+  (values (state-set-plugin-state state* 'docs ps*) actions))

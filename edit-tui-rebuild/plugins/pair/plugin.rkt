@@ -29,7 +29,7 @@
   (define state (edit-context-state ctx))
   (define vid (edit-context-view-id ctx))
   (define did (editor-view-doc-id ed vid))
-  (eq? (editor-state-doc-mode state did) 'racket))
+  (eq? (state-doc-mode state did) 'racket))
 
 (define (line-text-at ctx)
   (define ed (edit-context-editor ctx))

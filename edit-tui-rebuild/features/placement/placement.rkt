@@ -30,10 +30,10 @@
          placement-command-table)
 
 (define (editor-placement-active? state)
-  (and (editor-state-placement state) #t))
+  (and (state-placement state) #t))
 
 (define (editor-placement-view-id state)
-  (editor-state-placement state))
+  (state-placement state))
 
 (define (first-editor-panel state)
   (for/first ([pid (in-list (or (editor-visible-editor-panels state) '()))])
@@ -44,36 +44,36 @@
   (cond
     [(not pid) state]
     [else
-     (editor-state-with-layout
-      state (layout-set-focus (editor-state-layout state) pid))]))
+     (state-with-layout
+      state (layout-set-focus (state-layout state) pid))]))
 
 ;; 开始 placement：view-id 已经在 engine 里，但还没挂到 panel。
 (define (editor-placement-start state vid)
   (define state1
-    (editor-state-with-pending
-     (editor-state-with-placement state vid) '()))
+    (state-with-pending
+     (state-with-placement state vid) '()))
   (if (eq? (editor-focus-panel-kind state1) 'editor)
       state1
       (focus-first-editor state1)))
 
 (define (editor-placement-cancel ed state)
-  (values (editor-state-with-flash
-           (editor-state-with-placement state #f)
+  (values (state-with-flash
+           (state-with-placement state #f)
            "placement cancelled")
           '()))
 
 ;; 把 view 加入目标 panel，并让该 view 成为 active。
 (define (editor-place-into-panel! ed state pid vid)
-  (define l (editor-state-layout state))
+  (define l (state-layout state))
   (define-values (l* ok?) (layout-panel-add-view l pid vid))
   (cond
     [(not ok?)
-     (values (editor-state-with-flash state "place: target panel missing") #f)]
+     (values (state-with-flash state "place: target panel missing") #f)]
     [else
      (define l** (layout-set-focus l* pid))
-     (values (editor-state-with-flash
-              (editor-state-with-placement
-               (editor-state-with-layout state l**) #f)
+     (values (state-with-flash
+              (state-with-placement
+               (state-with-layout state l**) #f)
               "view placed")
              #t)]))
 
@@ -88,17 +88,17 @@
   (define pid (target-editor-panel state))
   (cond
     [(not vid) (values state '())]
-    [(not pid) (values (editor-state-with-flash state "place: no editor panel") '())]
+    [(not pid) (values (state-with-flash state "place: no editor panel") '())]
     [else
      (define-values (state* ok?) (editor-place-into-panel! ed state pid vid))
      (values state* '())]))
 
 (define (next-editor-in-direction state from dir)
-  (define l (editor-state-layout state))
-  (define area (editor-state-area state))
+  (define l (state-layout state))
+  (define area (state-area state))
   (let loop ([at from] [seen '()])
     (define next (and l area
-                      (layout-focus-neighbor l area (editor-state-layout-config state) at dir)))
+                      (layout-focus-neighbor l area (state-layout-config state) at dir)))
     (cond
       [(not next) #f]
       [(memv next seen) #f]
@@ -109,17 +109,17 @@
   (define from (editor-focus-panel-id state))
   (define to (next-editor-in-direction state from dir))
   (cond
-    [to (values (editor-state-with-layout
+    [to (values (state-with-layout
                  state
-                 (layout-set-focus (editor-state-layout state) to))
+                 (layout-set-focus (state-layout state) to))
                 '())]
-    [else (values (editor-state-with-flash state (format "place: no editor to the ~a" dir))
+    [else (values (state-with-flash state (format "place: no editor to the ~a" dir))
                   '())]))
 
 ;; 鼠标：placement 中点到 editor panel 就放入；返回 handled?。
 (define (editor-placement-mouse! ed state row col)
-  (define l (editor-state-layout state))
-  (define area (editor-state-area state))
+  (define l (state-layout state))
+  (define area (state-area state))
   (cond
     [(or (not l) (not area)) (values state '() #f)]
     [else

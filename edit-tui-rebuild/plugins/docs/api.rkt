@@ -15,7 +15,7 @@
   (define vid (editor-focus-view-id state))
   (define did (and vid (editor-view-doc-id ed vid)))
   (define text (and did (editor-doc-text ed did)))
-  (define r (and vid (editor-state-resource-for-view state vid)))
+  (define r (and vid (state-resource-for-view state vid)))
   (values did text (and r (resource-path r))))
 
 (define (local-preview-lines text name)
@@ -42,7 +42,7 @@
        [(not text) (values state ps1 '())]
        [else
         (define-values (state2 job)
-          (editor-state-submit-job state 'docs
+          (state-submit-job state 'docs
                                    (list name path text)
                                    (list 'docs name)))
         (values state2

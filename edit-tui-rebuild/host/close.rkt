@@ -37,28 +37,28 @@
         l)))
 
 (define (editor-close-resource! ed state rid)
-  (define r (resources-find-doc (editor-state-resources state) rid))
+  (define r (resources-find-doc (state-resources state) rid))
   (cond
     [(not r) (values state '())]
     [else
      (define views (resource-views r))
-     (define l (for/fold ([l (editor-state-layout state)]) ([vid (in-list views)])
+     (define l (for/fold ([l (state-layout state)]) ([vid (in-list views)])
                  (detach-view-from-layout l vid)))
      (engine-remove-doc! (editor-engine ed) (resource-doc-id r))
      (define state*
-       (editor-state-with-flash
-        (editor-state-with-resources
-         (editor-state-with-layout state l)
-         (resources-remove (editor-state-resources state) rid))
+       (state-with-flash
+        (state-with-resources
+         (state-with-layout state l)
+         (resources-remove (state-resources state) rid))
         (format "closed: ~a" (or (resource-path r) (resource-name r)))))
      (values state* '())]))
 
 ;; 关闭当前 focus resource：dirty -> close-confirm；clean -> 直接关闭。
 (define (editor-close-buffer-command ed state)
   (define r (and (editor-focus-view-id state)
-                 (editor-state-resource-for-view state (editor-focus-view-id state))))
+                 (state-resource-for-view state (editor-focus-view-id state))))
   (cond
-    [(not r) (values (editor-state-with-flash state "close: no resource") '())]
+    [(not r) (values (state-with-flash state "close: no resource") '())]
     [(resource-dirty? r (engine-doc-version (editor-engine ed) (resource-doc-id r)))
      (values (editor-input-open state 'close-confirm
                                 (format "Close ~a? (y/n) "

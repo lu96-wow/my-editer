@@ -19,7 +19,7 @@
 (define target (build-path root "saved.rkt"))
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-area state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 
 (define vid (editor-focus-view-id s1))
@@ -37,7 +37,7 @@
 (define-values (s2b actions2b) (editor-input-submit! ed s2a))
 (check-false (editor-input-active? s2b))
 (check-equal? (file->string target) (engine-view-text (editor-engine ed) vid))
-(define r (editor-state-resource-for-view s2b vid))
+(define r (state-resource-for-view s2b vid))
 (check-equal? (resource-path r) (resource-normalize-path target))
 
 ;; 编辑 -> dirty -> C-s 走 save-confirm
@@ -48,7 +48,7 @@
 (define-values (s4b _a4b) (editor-input-submit! ed s4a))
 (check-false (editor-input-active? s4b))
 (check-true (string-contains? (file->string target) "x"))
-(define r2 (editor-state-resource-for-view s4b vid))
+(define r2 (state-resource-for-view s4b vid))
 (check-false (resource-dirty? r2 (engine-doc-version (editor-engine ed)
                                                      (resource-doc-id r2))))
 
@@ -72,7 +72,7 @@
 
 ;; 不 dirty -> C-q 直接 quit
 (define s9 (handle-editor-event ed s8b (key-event (key 'q 'ctrl))))
-(check-true (editor-state-quit? s9))
+(check-true (state-quit? s9))
 
 (delete-directory/files root)
 (displayln "edit-tui-rebuild/test/save-quit.rkt: ok")
