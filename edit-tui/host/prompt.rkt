@@ -249,6 +249,8 @@
      (submit-filetree-delete! ed state context text)]
     [(filetree-rename)
      (submit-filetree-rename! ed state context text)]
+    [(filetree-find)
+     (submit-filetree-find! ed state context text)]
     [(find)
      (find-submit! ed state context text)]
     [else (values state '())]))

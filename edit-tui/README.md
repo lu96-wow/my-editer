@@ -34,7 +34,7 @@
 - `plugins/indent/`：Enter 换行缩进（最小版）。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
-- `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h；生产路径异步扫描。
+- `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
@@ -394,12 +394,14 @@ C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
 C-x f          查找当前 buffer
-C-left         上一个匹配项
-C-right        下一个匹配项
+C-left         上一个匹配项（filetree 查找也适用）
+C-right        下一个匹配项（filetree 查找也适用）
 C-x ←          聚焦 sidebar
 Enter          文件树：打开文件；编辑器：换行
-C-r            文件树刷新
+C-r            文件树刷新（不重跑上次查找）
 C-h            文件树：显 / 隐 dotfile
+C-f s          文件树：一次性递归查找；展开匹配路径并在树中定位
+               C-left / C-right 在匹配项间移动；Esc 只清除查找会话
 C-f n          文件树：新建文件
 C-f C-f n      文件树：新建目录
 C-f r          文件树：重命名
@@ -494,6 +496,8 @@ racket edit-tui/test/ownership.rkt
 - UI view 增量：selection 只改 face 行；文本变化做最小区间替换；
 - sidebar fixed 边界可拖；C-b hide/show 恢复尺寸并 clamp 到 min（sidebar min-w 8）；
 - filetree C-f n / C-f C-f n / C-f d / C-f r：输入名字 / 确认删除 / 重命名，host 执行文件 IO；
+- filetree C-f s：一次性递归查找；不覆盖文件树，而是展开匹配路径的祖先目录并把光标移到对应行；
+- filetree C-left / C-right：在本次查找的匹配项间移动并展开定位；之后的展开 / 折叠 / 刷新不会被查找重跑覆盖；
 - filetree C-f l 显式刷新；C-r 兼容保留；
 - resource 持有自己的 command-stack：同一 panel 切 active view 会切换键表；
 - find：C-x f 输入 query，C-left / C-right 前后移动并选中当前匹配；

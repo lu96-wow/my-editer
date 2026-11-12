@@ -1,9 +1,9 @@
 #lang racket
 
-;;; edit-tui/host/filetree-io.rkt —— filetree 创建 / 删除的 host 侧
+;;; edit-tui/host/filetree-io.rkt —— filetree 创建 / 删除 / 查找的 host 侧
 ;;;
-;;; 插件只发 create / delete action；这里负责：
-;;;   · 打开输入栏（名字 / y-n 确认）
+;;; 插件只发 create / delete / find action；这里负责：
+;;;   · 打开输入栏（名字 / y-n 确认 / 查找 query）
 ;;;   · 真正写文件系统
 ;;;   · 关闭被删除路径下已打开的 resource
 ;;;   · invalidate filetree，让下一次 sync 重扫
@@ -21,9 +21,11 @@
 (provide open-filetree-create-prompt!
          open-filetree-delete-prompt!
          open-filetree-rename-prompt!
+         open-filetree-find-prompt!
          submit-filetree-create!
          submit-filetree-delete!
-         submit-filetree-rename!)
+         submit-filetree-rename!
+         submit-filetree-find!)
 
 ;;; ════════════════ 刷新 ════════════════
 
@@ -34,7 +36,9 @@
        state 'filetree
        (struct-copy filetree-state ps
                     [stale? #t]
-                    [pending-cursor pending-cursor]))
+                    [pending-cursor pending-cursor]
+                    [find-stale? (and (filetree-state-find-query ps) #t)]
+                    [find-pending #f]))
       state))
 
 ;;; ════════════════ prompt ════════════════
@@ -71,6 +75,27 @@
                       (list 'filetree-rename path)
                       #:text name)
    '()))
+
+(define (open-filetree-find-prompt! state query)
+  (values
+   (editor-input-open state
+                      'filetree-find
+                      "Find file: "
+                      (list 'filetree-find)
+                      #:text (or query ""))
+   '()))
+
+;;; ════════════════ find ════════════════
+
+(define (submit-filetree-find! ed state context text)
+  (define ps (state-plugin-state state 'filetree))
+  (cond
+    [(not (filetree-state? ps))
+     (values (editor-input-close state) '())]
+    [else
+     (define ps* (filetree-find-submit! ps text))
+     (values (state-set-plugin-state (editor-input-close state) 'filetree ps*)
+             '())]))
 
 ;;; ════════════════ create ════════════════
 

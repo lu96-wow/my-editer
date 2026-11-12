@@ -12,7 +12,8 @@
          (struct-out show-docs-action)
          (struct-out filetree-create-action)
          (struct-out filetree-delete-action)
-         (struct-out filetree-rename-action))
+         (struct-out filetree-rename-action)
+         (struct-out filetree-find-action))
 
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
@@ -24,3 +25,5 @@
 (struct filetree-create-action (parent kind) #:transparent) ; kind = 'file | 'dir
 (struct filetree-delete-action (path kind) #:transparent)   ; kind = 'file | 'dir
 (struct filetree-rename-action (path kind) #:transparent)   ; kind = 'file | 'dir
+;; filetree 查找：host 打开输入栏；提交后由 host 调 filetree 的查询入口。
+(struct filetree-find-action (query) #:transparent)
