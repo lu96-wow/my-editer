@@ -122,6 +122,8 @@ edit-tui-rebuild/
     plugins.rkt
     ownership.rkt      插件状态 owner 写回
     state-split.rkt    core / session 更新互不污染
+    resource-path.rkt  workspace root 内相对 / root 外绝对
+    ui-incremental.rkt UI view face-only / 文本最小 diff
     host.rkt
     layers.rkt
     run.sh
@@ -413,6 +415,8 @@ racket edit-tui-rebuild/test/host.rkt
 racket edit-tui-rebuild/test/host-event.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 racket edit-tui-rebuild/test/state-split.rkt
+racket edit-tui-rebuild/test/resource-path.rkt
+racket edit-tui-rebuild/test/ui-incremental.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 ```
@@ -443,9 +447,10 @@ racket edit-tui-rebuild/test/ownership.rkt
 - 打开文件去重 / 已打开 panel 聚焦 / detached 进 placement；
 - placement：方向键换目标、Enter 放入、Esc 取消、鼠标点 editor 放入；
 - pair / indent 按 buffer mode 生效（.rkt / #lang racket）；
-- resources 面板（buffer / view 行、dirty、Enter 聚焦）；
+- resources 面板（buffer / view 行、dirty、Enter 聚焦；workspace root 内显示相对路径）；
 - C-s / C-q 的 save-path / save-confirm / quit-confirm 输入栏；
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
+- UI view 增量：selection 只改 face 行；文本变化做最小区间替换；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；

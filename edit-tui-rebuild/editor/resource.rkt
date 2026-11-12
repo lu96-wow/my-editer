@@ -26,6 +26,7 @@
          resources-set-path
          resources-opened-paths
          resource-normalize-path
+         resource-display-path
          resource-dirty?)
 
 (struct resource
@@ -108,6 +109,26 @@
 
 (define (resource-normalize-path p)
   (path->string (simplify-path (path->complete-path p))))
+
+;; 只用于显示：root 内 -> 相对路径；root 外 -> 绝对路径。
+;; 路径数据本身仍然用绝对路径。
+(define (resource-display-path root path)
+  (define path* (resource-normalize-path path))
+  (cond
+    [(or (not root) (equal? root "")) path*]
+    [else
+     (define root* (resource-normalize-path root))
+     (cond
+       [(equal? root* path*) "."]
+       [else
+        (define rel (find-relative-path (string->path root*)
+                                        (string->path path*)))
+        (define rel-str (path->string rel))
+        ;; find-relative-path 对根外路径也返回 ../...；这里按显示规则回退到绝对路径。
+        (if (or (absolute-path? rel)
+                (regexp-match? #rx"^\\.\\.[/\\\\]" rel-str))
+            path*
+            rel-str)])]))
 
 (define (resource-dirty? r version)
   (and version (not (eq? version (resource-saved-version r)))))

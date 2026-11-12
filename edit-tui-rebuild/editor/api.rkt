@@ -51,6 +51,7 @@
  ;; State 只读查询：插件拿不到 constructor / plugin-states / 写入口。
  ;; helper 同时接受 app-state（host / contribution 回调）和 editor-core。
  editor-state-with-flash
+ editor-state-workspace-root
  editor-state-with-layout
  editor-state-with-pending
  editor-state-with-input
@@ -72,7 +73,7 @@
  resource-views resource-mode resource-saved-version
  resources? resources-list resources-find-path
  resources-find-doc resources-find-view resources-opened-paths
- resource-dirty? resource-normalize-path
+ resource-dirty? resource-normalize-path resource-display-path
 
  (all-from-out "mode.rkt")
  (all-from-out "context.rkt")

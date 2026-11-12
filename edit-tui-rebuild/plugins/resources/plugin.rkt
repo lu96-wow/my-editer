@@ -30,15 +30,19 @@
 (define (row-text row) (cadddr row))
 (define (row-face row) (list-ref row 4))
 
-(define (resource-label r)
-  (or (resource-path r) (resource-name r)))
+(define (resource-label state r)
+  (define path (resource-path r))
+  (if path
+      (resource-display-path (editor-state-workspace-root state) path)
+      (resource-name r)))
 
 (define (resource-rows state engine)
   (append*
    (for/list ([r (in-list (resources-list (editor-state-resources state)))])
      (define version (engine-doc-version engine (resource-doc-id r)))
      (define dirty? (resource-dirty? r version))
-     (define label (string-append (resource-label r) (if dirty? " *" "")))
+     (define label (string-append (resource-label state r)
+                                  (if dirty? " *" "")))
      (cons (list 'buffer (resource-id r) #f label
                  (if dirty? 'resource-pending 'resource-document))
            (for/list ([vid (in-list (resource-views r))])

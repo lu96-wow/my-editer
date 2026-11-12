@@ -82,11 +82,12 @@
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
+  (define workspace-root (resource-normalize-path (current-directory)))
   (define plugins (list pair-plugin
                         indent-plugin
                         (make-filetree-plugin
                          #:view filetree-vid
-                         #:root (current-directory))
+                         #:root workspace-root)
                         (make-resources-plugin #:view resources-vid)
                         racket-color-plugin
                         layout-plugin
@@ -109,6 +110,7 @@
                    (engine-doc-version engine editor-vid)))
   (define state
     (make-app-state #:plugin-states (plugins->states plugins)
+                       #:workspace-root workspace-root
                        #:area (rect 0 0 80 24)
                        #:layout layout
                        #:layout-config rebuild-layout-config

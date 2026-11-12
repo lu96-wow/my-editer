@@ -40,8 +40,17 @@
 ;; docs 已更新到选中候选。
 (check-true (string-contains? (engine-view-text (editor-engine ed) 7) "map"))
 
+;; 菜单内移动选中项只改 face，不重写 popup 文本。
+(define popup-version (engine-doc-version (editor-engine ed) 6))
+(define s-down (handle-editor-event ed s2r (key-event (key 'down))))
+(define-values (s-down-r _c-down _b-down) (render-frame ed s-down #f))
+(check-eq? (engine-doc-version (editor-engine ed) 6) popup-version)
+(define s-back (handle-editor-event ed s-down-r (key-event (key 'up))))
+(define-values (s-back-r _c-back _b-back) (render-frame ed s-back #f))
+(check-eq? (engine-doc-version (editor-engine ed) 6) popup-version)
+
 ;; Enter 接受候选：插入 "p"，菜单关闭。
-(define s4 (handle-editor-event ed s2r (key-event (key 'enter))))
+(define s4 (handle-editor-event ed s-back-r (key-event (key 'enter))))
 (check-false (completion-state-open?
               (editor-state-plugin-state s4 'completion)))
 (check-equal? (list-ref (string-split (engine-view-text (editor-engine ed) 1) "\n" #:trim? #f) 3)

@@ -29,6 +29,7 @@
 
          ;; core accessor / update
          editor-state-plugin-states
+         editor-state-workspace-root
          editor-state-resources
          editor-state-layout
          editor-state-layout-config
@@ -36,6 +37,7 @@
          editor-state-next-view-id
          editor-state-next-panel-id
          editor-state-with-plugin-states
+         editor-state-with-workspace-root
          editor-state-with-resources
          editor-state-with-layout
          editor-state-with-layout-config
@@ -78,6 +80,7 @@
 ;; editor 核心：只由 editor 操作面解释。
 (struct editor-core
   (plugin-states   ; hash: plugin-id -> opaque pure value
+   workspace-root  ; normalized absolute path | #f：resources 相对路径的基准
    resources       ; resources：已打开文档
    layout          ; layout | #f（core/layout 的纯值）
    layout-config   ; layout-config：具体 kind 规则（宿主选择）
@@ -104,6 +107,7 @@
 
 (define (make-app-state
          #:plugin-states [plugin-states (hash)]
+         #:workspace-root [workspace-root #f]
          #:pending [pending '()]
          #:quit? [quit? #f]
          #:flash [flash ""]
@@ -120,7 +124,7 @@
          #:jobs [jobs empty-job-ledger]
          #:async? [async? #f])
   (app-state
-   (editor-core plugin-states resources layout layout-config area
+   (editor-core plugin-states workspace-root resources layout layout-config area
                 next-view-id next-panel-id)
    (editor-session pending quit? flash drag select-drag placement
                    input jobs async?)))
@@ -163,6 +167,8 @@
 
 (define (editor-state-plugin-states state)
   (editor-core-plugin-states (editor-state-core state)))
+(define (editor-state-workspace-root state)
+  (editor-core-workspace-root (editor-state-core state)))
 (define (editor-state-resources state)
   (editor-core-resources (editor-state-core state)))
 (define (editor-state-layout state)
@@ -181,6 +187,11 @@
    state
    (struct-copy editor-core (editor-state-core state)
                 [plugin-states plugin-states])))
+(define (editor-state-with-workspace-root state workspace-root)
+  (state-with-core
+   state
+   (struct-copy editor-core (editor-state-core state)
+                [workspace-root workspace-root])))
 (define (editor-state-with-resources state resources)
   (state-with-core
    state

@@ -18,7 +18,9 @@
 (display-to-file "#lang racket\n(define x 1)\n" file #:exists 'replace)
 
 (define-values (ed state) (make-demo-editor))
-(define s0 (editor-state-with-area state (rect 0 0 60 15)))
+(define s0 (editor-state-with-workspace-root
+            (editor-state-with-area state (rect 0 0 60 15))
+            (resource-normalize-path root)))
 
 ;; 打开文件并提交 placement。
 (define-values (s1 _a1) (editor-open-file! ed s0 file))
@@ -29,7 +31,9 @@
 (define-values (s3 _c3 _b3) (render-frame ed s2 #f))
 (define text1 (engine-view-text (editor-engine ed) 4))
 (check-true (string-contains? text1 "scratch.rkt"))
-(check-true (string-contains? text1 (path->string file)))
+;; workspace root 内：显示相对路径，不显示绝对路径。
+(check-true (string-contains? text1 "one.rkt"))
+(check-false (string-contains? text1 (path->string file)))
 (check-true (string-contains? text1 (format "  view ~a" vid)))
 
 ;; 焦点到 sidebar，再切到 resources tab。
