@@ -101,7 +101,7 @@
          did)))
 
 (define (engine-doc-kind e did)
-  (hash-ref (engine-doc-kinds e) did 'user))
+  (hash-ref (engine-doc-kinds e) did #f))
 
 (define (engine-doc-ids e)
   (hash-keys (engine-docs e)))

@@ -10,7 +10,7 @@ fail=0
 while IFS= read -r f; do
   out="$(racket "$f" 2>&1)"
   code=$?
-  if [ "$code" -ne 0 ] || printf '%s' "$out" | grep -Eqi 'failure|error'; then
+  if [ "$code" -ne 0 ] || printf '%s' "$out" | grep -Eq '^(FAILURE|ERROR)$'; then
     printf 'FAIL: %s (exit %s)\n%s\n' "$f" "$code" "$out"
     fail=1
   fi

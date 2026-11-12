@@ -13,6 +13,8 @@
 
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
 - `editor/engine/`：core buffer / view 的唯一可变拥有者。
+- `engine-doc-kind`：用户文档 `'user` 与 UI 投影文档 `'ui` 分开；插件默认查询 `editor-user-doc-ids`。
+- 插件 sync / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
 - `editor/layout.rkt`：布局操作面（split / close / focus / mouse）+ layout 扩展点。
@@ -483,7 +485,9 @@ racket edit-tui/test/ownership.rkt
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
 4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt`；不 require editor 内部 / host。
 5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
-5b. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
+5b. engine 的 document 分 `'user` / `'ui`；语法着色等用户文档流程只看 user doc。
+5c. 插件回调异常不允许打断事件循环：runtime 捕获、flash，并保留该插件旧状态。
+5d. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

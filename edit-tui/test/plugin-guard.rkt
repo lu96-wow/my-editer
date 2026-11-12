@@ -97,4 +97,4 @@
 (check-true (string-contains? (state-flash s4*) "command"))
 (check-equal? actions4 '())
 
-(displayln "edit-tui/test/plugin-errors.rkt: ok")
+(displayln "edit-tui/test/plugin-guard.rkt: ok")
