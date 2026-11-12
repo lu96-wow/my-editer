@@ -219,7 +219,7 @@
        (write-full-track! ed did version vids entry suppress)
        (hash-set cache did entry)]))
   (define new-cache
-    (for/fold ([cache (hash)]) ([did (in-list (editor-doc-ids ed))])
+    (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])
       (sync-doc cache did)))
   (values state new-cache))
 

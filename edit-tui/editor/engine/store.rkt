@@ -16,21 +16,24 @@
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version engine-view-doc-id
-         engine-doc-ids engine-view-ids-for-doc
+         engine-doc-kind engine-doc-ids engine-user-doc-ids engine-ui-doc-ids
+         engine-view-ids-for-doc
          engine-view-point-line engine-view-point-column
          engine-view-cursor-screen-position
          engine-view-face-at
 )
 
-(struct engine (docs views ui face-track-cache) #:mutable)
-;; ui      : vid -> (cons lines faces)：上次写进 core view 的内容。
+(struct engine (docs doc-kinds views ui face-track-cache) #:mutable)
+;; docs      : did -> buffer
+;; doc-kinds : did -> 'user | 'ui
+;; ui        : vid -> (cons lines faces)：上次写进 core view 的内容。
 ;; face-track-cache : vid -> (cons key face-track)：上次写进 editor view 的逐字符 face。
 ;;
 ;; 两者都是「写回幂等」缓存——内容 / face 没变就不碰 document（否则每帧都换
 ;; document revision、让 render cache 失效，filetree 上千行时一帧几十毫秒）。
 
 (define (make-engine)
-  (engine (hash) (hash) (hash) (hash)))
+  (engine (hash) (hash) (hash) (hash) (hash)))
 
 (define (engine-doc-buffer e did)
   (hash-ref (engine-docs e) did #f))
@@ -38,9 +41,12 @@
 (define (engine-view-object e vid)
   (hash-ref (engine-views e) vid #f))
 
-(define (engine-create-buffer! e did name text)
+(define (engine-create-buffer! e did name text #:kind [kind 'user])
+  (unless (memq kind '(user ui))
+    (raise-argument-error 'engine-create-buffer! "(or/c 'user 'ui)" kind))
   (define b (make-buffer text name))
   (set-engine-docs! e (hash-set (engine-docs e) did b))
+  (set-engine-doc-kinds! e (hash-set (engine-doc-kinds e) did kind))
   b)
 
 (define (engine-create-view! e vid did)
@@ -78,7 +84,8 @@
         vid))
     (for ([vid (in-list vids)]) (engine-remove-view! e vid))
     (buffer-close! b)
-    (set-engine-docs! e (hash-remove (engine-docs e) did)))
+    (set-engine-docs! e (hash-remove (engine-docs e) did))
+    (set-engine-doc-kinds! e (hash-remove (engine-doc-kinds e) did)))
   (void))
 
 (define (engine-view-text e vid)
@@ -93,8 +100,21 @@
                    #:when (eq? (engine-doc-buffer e did) (view-buffer v)))
          did)))
 
+(define (engine-doc-kind e did)
+  (hash-ref (engine-doc-kinds e) did 'user))
+
 (define (engine-doc-ids e)
   (hash-keys (engine-docs e)))
+
+(define (engine-user-doc-ids e)
+  (for/list ([(did _b) (in-hash (engine-docs e))]
+             #:when (eq? (engine-doc-kind e did) 'user))
+    did))
+
+(define (engine-ui-doc-ids e)
+  (for/list ([(did _b) (in-hash (engine-docs e))]
+             #:when (eq? (engine-doc-kind e did) 'ui))
+    did))
 
 (define (engine-view-ids-for-doc e did)
   (define b (engine-doc-buffer e did))

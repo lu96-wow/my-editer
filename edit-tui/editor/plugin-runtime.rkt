@@ -42,28 +42,44 @@
 (define (write-plugin-state state owner ps)
   (state-set-plugin-state state owner ps))
 
+(define (plugin-failure-message owner callback e)
+  (format "plugin ~a ~a failed: ~a" owner callback (exn-message e)))
+
+(define (plugin-failure state owner callback e)
+  (state-with-flash state (plugin-failure-message owner callback e)))
+
 (define (run-plugin-syncs ed state)
   (for/fold ([s state])
             ([c (in-list (registry-contributions
                           (editor-contributions ed) point/frame-sync))])
     (define owner (contribution-owner c))
+    (define ps (plugin-state-of s owner))
     (define-values (s* ps*)
-      ((contribution-fn c) ed s (plugin-state-of s owner)))
+      (with-handlers ([exn:fail?
+                       (λ (e)
+                         (values (plugin-failure s owner 'sync e) ps))])
+        ((contribution-fn c) ed s ps)))
     (write-plugin-state s* owner ps*)))
 
 (define (run-plugin-overlays ed state)
   (append*
    (for/list ([c (in-list (registry-contributions
                            (editor-contributions ed) point/frame-overlay))])
-     ((contribution-fn c) ed state (plugin-state-of state (contribution-owner c))))))
+     (define owner (contribution-owner c))
+     (with-handlers ([exn:fail? (λ (_e) '())])
+       ((contribution-fn c) ed state (plugin-state-of state owner))))))
 
 (define (run-plugin-timer-handlers ed state ev)
   (for/fold ([s state] [actions '()])
             ([c (in-list (registry-contributions
                           (editor-contributions ed) point/timer))])
     (define owner (contribution-owner c))
+    (define ps (plugin-state-of s owner))
     (define-values (s* ps* actions*)
-      ((contribution-fn c) ed s (plugin-state-of s owner) ev))
+      (with-handlers ([exn:fail?
+                       (λ (e)
+                         (values (plugin-failure s owner 'timer e) ps '()))])
+        ((contribution-fn c) ed s ps ev)))
     (values (write-plugin-state s* owner ps*)
             (append actions actions*))))
 
@@ -73,8 +89,12 @@
             ([c (in-list (registry-contributions
                           (editor-contributions ed) point/job-result kind))])
     (define owner (contribution-owner c))
+    (define ps (plugin-state-of s owner))
     (define-values (s* ps* actions*)
-      ((contribution-fn c) ed s (plugin-state-of s owner) ev))
+      (with-handlers ([exn:fail?
+                       (λ (e)
+                         (values (plugin-failure s owner 'job e) ps '()))])
+        ((contribution-fn c) ed s ps ev)))
     (values (write-plugin-state s* owner ps*)
             (append actions actions*))))
 
@@ -86,7 +106,8 @@
   (for/or ([c (in-list (registry-contributions
                         (editor-contributions ed) point/key-owner))])
     (define owner (contribution-owner c))
-    ((contribution-fn c) ed state (plugin-state-of state owner))))
+    (with-handlers ([exn:fail? (λ (_e) #f)])
+      ((contribution-fn c) ed state (plugin-state-of state owner)))))
 
 ;;; ════════════════ command registry -> command-table ════════════════
 

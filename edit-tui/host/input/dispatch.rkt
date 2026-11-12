@@ -105,6 +105,10 @@
 (define (write-command-ps state owner ps)
   (if owner (state-set-plugin-state state owner ps) state))
 
+(define (plugin-command-failure state owner e)
+  (state-with-flash
+   state (format "plugin ~a command failed: ~a" owner (exn-message e))))
+
 (define (run-command ed state vid owner value)
   (define ps (plugin-ps state owner))
   (cond
@@ -113,13 +117,22 @@
     [(procedure? value)
      (cond
        [owner
-        (define-values (state* ps* actions*) (value ed state ps))
-        (values (write-command-ps state* owner ps*) actions*)]
+        (with-handlers ([exn:fail?
+                         (λ (e)
+                           (values (plugin-command-failure state owner e) '()))])
+          (define-values (state* ps* actions*) (value ed state ps))
+          (values (write-command-ps state* owner ps*) actions*))]
        [else (value ed state)])]
     [(guarded-command? value)
-     (define-values (state* ps* actions*)
-       ((guarded-command-run value) ed state ps))
-     (values (write-command-ps state* owner ps*) actions*)]
+     (with-handlers ([exn:fail?
+                      (λ (e)
+                        (values (state-with-flash
+                                 state
+                                 (format "command failed: ~a" (exn-message e)))
+                                '()))])
+       (define-values (state* ps* actions*)
+         ((guarded-command-run value) ed state ps))
+       (values (write-command-ps state* owner ps*) actions*))]
     [(insert-command? value)
      (cond
        [(not vid) (flash state "insert: no focused editor view")]
@@ -172,7 +185,8 @@
   (define owner (car entry))
   (define value (cdr entry))
   (or (not (guarded-command? value))
-      ((guarded-command-when-fn value) ed state (plugin-ps state owner))))
+      (with-handlers ([exn:fail? (λ (_e) #f)])
+        ((guarded-command-when-fn value) ed state (plugin-ps state owner)))))
 
 (define (lookup-command tables seq ed state)
   (let loop ([ts tables])
