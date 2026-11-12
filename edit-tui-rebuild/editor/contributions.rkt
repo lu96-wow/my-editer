@@ -9,6 +9,7 @@
 ;;;   job-service      kind -> handler payload -> result
 ;;;   job-result       kind -> (ed state ps job-result-event -> state' ps' actions)
 ;;;   command          scope -> command-binding（host 建 key -> ordered command 表）
+;;;   key-owner        (ed state ps) -> scope | #f（completion 等 overlay 键盘层）
 ;;;
 ;;; 每条 contribution 都带 owner；job-service 同名冲突直接报错。
 
@@ -27,7 +28,8 @@
          point/timer
          point/job-service
          point/job-result
-         point/command)
+         point/command
+         point/key-owner)
 
 (define point/frame-sync 'frame/sync)
 (define point/frame-overlay 'frame/overlay)
@@ -35,6 +37,7 @@
 (define point/job-service 'job-service)
 (define point/job-result 'job-result)
 (define point/command 'command)
+(define point/key-owner 'key-owner)
 
 (struct contribution
   (point

@@ -112,7 +112,9 @@ edit-tui-rebuild/
     final.rkt          可运行 TUI / 事件循环
     docs.rkt           completion -> docs 的跨插件 action 解释
     event.rkt          tui raw -> host 事件
-    keymap.rkt         命令值 + 默认键位
+    keymap.rkt         命令值 + 分 scope 的 host 内置表
+    input/scope.rkt    focus / key-owner -> command scope
+    input/dispatch.rkt pending 多键序列 + 命令查找 / 执行
     jobs.rkt           worker runtime
     timers.rkt         timer runtime
 
@@ -257,19 +259,21 @@ hook 没有 plugin discovery / 依赖解析；非 hook 面统一走 contribution
 command/<scope> -> ordered (owner, command-binding)
 ```
 
-host 从 registry 建纯 `command-table`，leaf 保存 ordered `(owner . command)`
-列表；执行后按 owner 写回 `ps'`，插件不能写别的 owner。
-
-查找顺序：
+host 按当前 focus / key-owner 得到有序 scope，例如：
 
 ```text
-command/global 贡献（priority / 注册顺序）
-  > host default-command-table
+editor:     (completion?) editor global
+filetree:   filetree global
+resources:  resources global
 ```
 
+每个 scope 先查插件 contribution，再查该 scope 的 host 内置表；unbound 才落到
+下一个 scope。leaf 保存 ordered `(owner . command)`，执行后按 owner 写回 `ps'`。
+
 同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
-`plugins/layout` 已经用这个机制贡献了 `C-w` / `C-x` / `C-d`，
-host 不再知道 split/focus 的实现。
+`plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`；filetree / resources 命令放在
+自己的局部 scope。completion 打开时通过 `#:key-owner` 把 completion scope 叠在
+focus scope 上面。
 
 如果插件命令只想在某个焦点下生效，用 `guarded-command`：
 
@@ -495,7 +499,8 @@ racket edit-tui-rebuild/test/ownership.rkt
 
 ## 下一步
 
-1. completion 接 workspace / analysis，补全跨 buffer 候选。
-2. docs 接 workspace 本地定义与 C-x o 焦点切换。
-3. 文件系统变化自动刷新。
-4. 固定尺寸 / hide-show 的剩余布局细节。
+1. resource 自己的 command-stack + mode scope：真正 per-buffer 键位。
+2. filetree `C-f ...` 创建 / 删除文件、目录。
+3. completion 接 workspace / analysis，补全跨 buffer 候选。
+4. docs 接 workspace 本地定义与 C-x o 焦点切换。
+5. 文件系统变化自动刷新。

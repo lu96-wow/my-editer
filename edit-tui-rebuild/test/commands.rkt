@@ -94,4 +94,73 @@
   (handle-editor-event fallback-ed fallback-state (key-event (key 't 'ctrl))))
 (check-equal? (engine-view-text engine2 1) "Y")
 
+
+;;; 4. 同一物理 C-f，在 editor / filetree scope 下是不同含义。
+;;;    editor: C-f = 右移；filetree: C-f 是局部前缀。
+(define engine3 (make-engine))
+(void (engine-create-buffer! engine3 1 "editor" "abc"))
+(void (engine-create-view! engine3 1 1))
+(void (engine-create-buffer! engine3 3 "*filetree*" ""))
+(void (engine-create-view! engine3 3 3))
+(define (mark-command text)
+  (λ (ed state ps)
+    (values (editor-state-with-flash state text) ps '())))
+(define scoped-plugin
+  (make-plugin
+   #:id 'filetree-scope-test
+   #:state #t
+   #:command-scope 'filetree
+   #:commands (keys
+               [(key 'f 'ctrl) (key 'd) (mark-command "ft-delete")]
+               [(key 'f 'ctrl) (key 'n) (mark-command "ft-new")]
+               [(key 'f 'ctrl) (key 'f 'ctrl) (key 'n)
+                (mark-command "ft-new-dir")])))
+(define scoped-ed
+  (make-editor #:engine engine3
+               #:registry (make-hook-registry '())
+               #:plugins (list scoped-plugin)))
+(define scoped-layout
+  (make-editor-layout #:editor-view 1 #:sidebar-view 3))
+(define scoped-state
+  (make-app-state #:plugin-states (plugins->states (list scoped-plugin))
+                  #:area (rect 0 0 50 12)
+                  #:layout scoped-layout))
+
+;; editor 聚焦：C-f 仍然右移。
+(engine-set-view-cursor! engine3 1 0 #:column 0)
+(define s-editor-cf
+  (handle-editor-event scoped-ed scoped-state (key-event (key 'f 'ctrl))))
+(check-equal? (engine-view-point-column engine3 1) 1)
+(check-equal? (editor-state-pending s-editor-cf) '())
+
+;; filetree 聚焦：C-f 进入局部前缀；C-f d 执行 filetree 命令。
+(define-values (s-side _a-side) (editor-focus! scoped-ed scoped-state 'left))
+(check-equal? (editor-focus-view-id s-side) 3)
+(define s-ft-cf
+  (handle-editor-event scoped-ed s-side (key-event (key 'f 'ctrl))))
+(check-equal? (editor-state-pending s-ft-cf) (list (key 'f 'ctrl)))
+(define s-ft-d
+  (handle-editor-event scoped-ed s-ft-cf (key-event (key 'd))))
+(check-equal? (editor-state-flash s-ft-d) "ft-delete")
+(check-equal? (editor-state-pending s-ft-d) '())
+
+;; C-f C-f n 是更深一层前缀。
+(define s-ft-cf2
+  (handle-editor-event scoped-ed s-side (key-event (key 'f 'ctrl))))
+(define s-ft-cf3
+  (handle-editor-event scoped-ed s-ft-cf2 (key-event (key 'f 'ctrl))))
+(check-equal? (editor-state-pending s-ft-cf3)
+              (list (key 'f 'ctrl) (key 'f 'ctrl)))
+(define s-ft-dir
+  (handle-editor-event scoped-ed s-ft-cf3 (key-event (key 'n))))
+(check-equal? (editor-state-flash s-ft-dir) "ft-new-dir")
+
+;; pending 绑定 scope：C-f 后切回 editor，n 不应命中 filetree 的 C-f n。
+(define-values (s-back _a-back) (editor-focus! scoped-ed s-ft-cf2 'right))
+(check-equal? (editor-focus-view-id s-back) 1)
+(define s-back-n
+  (handle-editor-event scoped-ed s-back (key-event (key 'n))))
+(check-equal? (editor-state-pending s-back-n) '())
+(check-not-equal? (editor-state-flash s-back-n) "ft-new")
+
 (displayln "edit-tui-rebuild/test/commands.rkt: ok")

@@ -15,7 +15,7 @@
          racket/async-channel
          (prefix-in tui: tui)
          "../editor/host-api.rkt"
-         "../core/command/api.rkt"
+         (only-in "../core/command/api.rkt" key->string)
          "../plugins/pair/plugin.rkt"
          "../plugins/indent/plugin.rkt"
          "../plugins/racket-color/plugin.rkt"
@@ -29,9 +29,9 @@
          "layout.rkt"
          "timers.rkt"
          "open.rkt"
-         "prompt.rkt"
          "close.rkt"
          "docs.rkt"
+         "input/dispatch.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "jobs.rkt"
@@ -56,6 +56,12 @@
 (define input-vid 5)
 (define completion-vid 6)
 (define docs-vid 7)
+
+;; host 装配知道具体 view id：把 panel/view 映射到命令 scope。
+(define view-scopes
+  (hash filetree-vid 'filetree
+        resources-vid 'resources
+        docs-vid 'docs))
 
 (define initial-text
   (string-append "#lang racket\n"
@@ -143,145 +149,8 @@
 
 ;;; ════════════════ 命令 ════════════════
 
-(define (need-view state)
-  (editor-focus-view-id state))
-
 (define (editor-focused? state)
   (eq? (editor-focus-panel-kind state) 'editor))
-
-(define (flash state text)
-  (values (editor-state-with-flash state text) '()))
-
-(define (plugin-ps state owner)
-  (and owner (editor-state-plugin-state state owner)))
-
-(define (write-command-ps state owner ps)
-  (if owner (editor-state-set-plugin-state state owner ps) state))
-
-;; host 自己维护的命令表也用统一 leaf 形状：((owner . command) ...)。
-;; owner #f 表示 host 命令；插件命令的 owner 来自 command contribution。
-(define (tag-host-command-table table)
-  (command-table-from-bindings
-   (for/list ([b (in-list (command-table-bindings table))])
-     (list (car b) (list (cons #f (cadr b)))))))
-
-(define default-command-table* (tag-host-command-table default-command-table))
-(define input-command-table* (tag-host-command-table editor-input-command-table))
-(define placement-command-table* (tag-host-command-table placement-command-table))
-
-(define (run-command ed state vid owner value)
-  (define ps (plugin-ps state owner))
-  (cond
-    ;; 插件 commands 是普通过程：(ed state ps -> values state' ps' actions)
-    ;; host 旧命令（input / placement）仍是 (ed state)；它们 owner = #f。
-    [(procedure? value)
-     (cond
-       [owner
-        (define-values (state* ps* actions*) (value ed state ps))
-        (values (write-command-ps state* owner ps*) actions*)]
-       [else (value ed state)])]
-    [(guarded-command? value)
-     (define-values (state* ps* actions*)
-       ((guarded-command-run value) ed state ps))
-     (values (write-command-ps state* owner ps*) actions*)]
-    [(insert-command? value)
-     (cond
-       [(not vid) (flash state "insert: no focused editor view")]
-       [(not (editor-focused? state)) (flash state "insert: focus is not editor")]
-       [else (editor-insert! ed state vid (insert-command-text value))])]
-    [(delete-command? value)
-     (cond
-       [(not vid) (flash state "delete: no focused editor view")]
-       [(not (editor-focused? state)) (flash state "delete: focus is not editor")]
-       [else (editor-delete! ed state vid (delete-command-kind value))])]
-    [(move-command? value)
-     (if vid
-         (editor-move! ed state vid
-                       (move-command-dir value)
-                       (move-command-extend? value))
-         (flash state "move: no focused editor view"))]
-    [(scroll-command? value)
-     (if vid
-         (editor-scroll! ed state vid (scroll-command-which value))
-         (flash state "scroll: no focused editor view"))]
-    [(undo-command? value)
-     (cond
-       [(or (not vid) (not (editor-focused? state)))
-        (flash state "undo: focus is not editor")]
-       [else (editor-undo! ed state vid)])]
-    [(redo-command? value)
-     (cond
-       [(or (not vid) (not (editor-focused? state)))
-        (flash state "redo: focus is not editor")]
-       [else (editor-redo! ed state vid)])]
-    [(kill-line-command? value)
-     (cond
-       [(or (not vid) (not (editor-focused? state)))
-        (flash state "kill-line: focus is not editor")]
-       [else (editor-kill-line! ed state vid)])]
-    [(save-command? value)
-     (editor-save-command ed state)]
-    [(quit-command? value)
-     (editor-request-quit ed state)]
-    [else
-     (values (editor-state-with-flash state (format "not a command: ~a" value))
-             '())]))
-
-;;; ════════════════ 键盘 step ════════════════
-
-(define (command-entry-allowed? entry ed state)
-  (define owner (car entry))
-  (define value (cdr entry))
-  (or (not (guarded-command? value))
-      ((guarded-command-when-fn value) ed state (plugin-ps state owner))))
-
-(define (lookup-command tables seq ed state)
-  (let loop ([ts tables])
-    (cond
-      [(null? ts) (values 'unbound #f #f)]
-      [else
-       (define-values (status entries) (command-table-lookup (car ts) seq))
-       (case status
-         [(command)
-          (define hit
-            (for/first ([e (in-list entries)]
-                        #:when (command-entry-allowed? e ed state))
-              e))
-          (if hit
-              (values 'command (cdr hit) (car hit))
-              (loop (cdr ts)))]
-         [(prefix) (values 'prefix #f #f)]
-         [else (loop (cdr ts))])])))
-
-(define (step ed state tok tables)
-  (define s0 (editor-state-clear-flash state))
-  (define pending (editor-state-pending s0))
-  (define seq (append pending (list tok)))
-  (let-values ([(status value owner) (lookup-command tables seq ed s0)])
-    (case status
-      [(command)
-       (run-command ed (editor-state-clear-pending s0) (need-view s0) owner value)]
-      [(prefix)
-       (values (editor-state-with-pending s0 seq) '())]
-      [else
-       (define s1 (editor-state-clear-pending s0))
-       (define text (key-text tok))
-       (define vid (need-view s1))
-       (cond
-         [(and text (null? pending) (editor-input-active? s1))
-          (editor-input-self-insert s1 tok)]
-         [(and text (null? pending) vid (editor-focused? s1))
-          (editor-insert! ed s1 vid text)]
-         [(and text (null? pending) (not vid))
-          (values (editor-state-with-flash s1 "insert: no focused editor view") '())]
-         [(and text (null? pending) (not (editor-focused? s1)))
-          (values (editor-state-with-flash s1 "insert: focus is not editor") '())]
-         [else
-          (values (editor-state-with-flash
-                   s1
-                   (format "unbound: ~a"
-                           (string-join (map key->string seq) " ")))
-                  '())])])))
 
 ;;; ════════════════ 渲染 ════════════════
 
@@ -358,11 +227,6 @@
     (define e (tui-event->app type data mods))
     (if e e (loop))))
 
-(define (editor-command-tables ed)
-  ;; 插件命令来自 contribution registry；guard 不成立时继续 host 默认表。
-  (list (editor-command-table ed 'global)
-        default-command-table*))
-
 ;; 单事件处理；返回 state'。host 循环和 headless 测试共用这一条路径。
 (define (handle-editor-event ed state0 ev)
   ;; 输入栏是抢占式的：非 key / paste 事件先取消本次输入，再处理事件。
@@ -376,7 +240,6 @@
     (if (mouse-event? ev)
         state1
         (editor-state-with-select-drag state1 #f)))
-  (define command-tables (editor-command-tables ed))
   (cond
     [(resize-event? ev)
      (editor-state-with-area
@@ -422,13 +285,8 @@
     [(quit-event? ev)
      (editor-state-with-quit state #t)]
     [(key-event? ev)
-     (define tables
-       (cond
-         [(editor-input-active? state) (list input-command-table*)]
-         [(editor-placement-active? state) (list placement-command-table*)]
-         [else command-tables]))
      (define-values (s2 actions)
-       (step ed state (key-event-token ev) tables))
+       (dispatch-key ed state (key-event-token ev) view-scopes))
      (run-actions ed s2 actions)]
     [else state]))
 

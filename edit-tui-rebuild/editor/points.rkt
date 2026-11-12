@@ -32,7 +32,8 @@
    'timer        (point-spec 'timer 'contribution '(timer) 'timer)
    'job-service  (point-spec 'job-service 'contribution '(service) 'job)
    'job-result   (point-spec 'job-result 'contribution '(result) 'job)
-   'command      (point-spec 'command 'contribution '(command) 'command)))
+   'command      (point-spec 'command 'contribution '(command) 'command)
+   'key-owner    (point-spec 'key-owner 'contribution '(owner) 'command)))
 
 (define (known-point? name)
   (hash-has-key? table name))

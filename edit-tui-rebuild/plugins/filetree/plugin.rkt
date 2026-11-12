@@ -239,6 +239,7 @@
   (make-plugin
    #:id 'filetree
    #:state (filetree-state root* vid (hash root* #t) #f '() #t #f #f)
+   #:command-scope 'filetree
    #:commands
    (keys
     [(key 'enter)

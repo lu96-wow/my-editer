@@ -6,8 +6,8 @@
 ;;;   id       插件命名空间（plugin-states 的 key）
 ;;;   state    插件自己的初始纯状态
 ;;;   hooks    注册到扩展点的 handler 列表
-;;;   commands 可选：key-sequence -> command 的命令表；命令只拿自己的 plugin-state
-;;;   command-scope 命令作用域（默认 'global；输入栏 / placement 以后可独立）
+;;;   commands 可选：一张 command-table，或 listof command-group（多 scope）
+;;;   command-scope 单张 command-table 的 scope（默认 'global）
 ;;;
 ;;; 插件只 require editor/api.rkt；不直接 require engine / hooks 实现。
 ;;; 这里为了让插件定义 hook，允许 require editor/hooks.rkt 的公开构造器。
@@ -22,13 +22,14 @@
          (struct-out guarded-command)
          make-guarded-command
          (struct-out command-binding)
+         (struct-out command-group)
          plugins->hooks
          plugins->states
          plugins->contributions)
 
 (struct plugin
   (id state hooks commands command-scope
-      sync services handle-job handle-timer overlays)
+      sync services handle-job handle-timer key-owner overlays)
   #:transparent)
 
 ;; 条件命令：when-fn 不成立时，host 继续查下一张命令表。
@@ -44,6 +45,22 @@
   (keys value)
   #:transparent)
 
+;; 同一插件需要多个 scope 时使用；单表插件仍可直接给 #:commands。
+(struct command-group
+  (scope table)
+  #:transparent)
+
+(define (command-table-or-groups? x)
+  (or (command-table? x)
+      (and (list? x) (andmap command-group? x))))
+
+(define (plugin-command-groups p)
+  (define c (plugin-commands p))
+  (cond
+    [(command-table? c) (list (command-group (plugin-command-scope p) c))]
+    [(list? c) c]
+    [else '()]))
+
 (define (make-guarded-command #:when when-fn #:run run)
   (guarded-command when-fn run))
 
@@ -56,17 +73,24 @@
                      #:services [services '()]
                      #:handle-job [handle-job #f]
                      #:handle-timer [handle-timer #f]
+                     #:key-owner [key-owner #f]
                      #:overlays [overlays #f])
   (unless (symbol? id)
     (raise-argument-error 'make-plugin "symbol?" id))
   (unless (symbol? command-scope)
     (raise-argument-error 'make-plugin "symbol?" command-scope))
+  (when (and commands (not (command-table-or-groups? commands)))
+    (raise-argument-error 'make-plugin
+                          "(or/c #f command-table? (listof command-group?))"
+                          commands))
   (when (and sync (not (procedure? sync)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" sync))
   (when (and handle-job (not (procedure? handle-job)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-job))
   (when (and handle-timer (not (procedure? handle-timer)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" handle-timer))
+  (when (and key-owner (not (procedure? key-owner)))
+    (raise-argument-error 'make-plugin "(or/c #f procedure?)" key-owner))
   (when (and overlays (not (procedure? overlays)))
     (raise-argument-error 'make-plugin "(or/c #f procedure?)" overlays))
   ;; hook owner 必须等于插件 id，插件不能借别人的 plugin-state 注册 hook。
@@ -75,7 +99,7 @@
       (error 'make-plugin "hook owner ~a 必须等于 plugin id ~a"
              (hook-owner h) id)))
   (plugin id state hooks commands command-scope
-          sync services handle-job handle-timer overlays))
+          sync services handle-job handle-timer key-owner overlays))
 
 ;; 汇总所有插件的 hooks；宿主用 make-hook-registry 建 registry。
 (define (plugins->hooks plugins)
@@ -101,11 +125,14 @@
       (if (plugin-handle-timer p)
           (list (contribution point/timer #f id 0 0 (plugin-handle-timer p)))
           '())
-      (if (command-table? (plugin-commands p))
-          (for/list ([b (in-list (command-table-bindings (plugin-commands p)))])
-            (contribution point/command (plugin-command-scope p) id 0 0
-                          (command-binding (car b) (cadr b))))
+      (if (plugin-key-owner p)
+          (list (contribution point/key-owner #f id 0 0 (plugin-key-owner p)))
           '())
+      (append*
+       (for/list ([g (in-list (plugin-command-groups p))])
+         (for/list ([b (in-list (command-table-bindings (command-group-table g)))])
+           (contribution point/command (command-group-scope g) id 0 0
+                         (command-binding (car b) (cadr b))))))
       (append*
        (for/list ([svc (in-list (plugin-services p))])
          (define kind (service-name svc))

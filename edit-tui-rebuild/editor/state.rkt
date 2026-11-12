@@ -47,6 +47,7 @@
 
          ;; session accessor / update
          editor-state-pending
+         editor-state-pending-scope
          editor-state-quit?
          editor-state-flash
          editor-state-drag
@@ -56,6 +57,7 @@
          editor-state-jobs
          editor-state-async?
          editor-state-with-pending
+         editor-state-with-pending-scope
          editor-state-clear-pending
          editor-state-with-quit
          editor-state-with-flash
@@ -92,6 +94,7 @@
 ;; host 会话：输入 / placement / 鼠标 / job / quit / flash。
 (struct editor-session
   (pending         ; (listof key-token)
+   pending-scope   ; pending 对应的 scope key
    quit?
    flash           ; string，一次性；下一次 step 入口清空
    drag            ; layout seam drag | #f
@@ -109,6 +112,7 @@
          #:plugin-states [plugin-states (hash)]
          #:workspace-root [workspace-root #f]
          #:pending [pending '()]
+         #:pending-scope [pending-scope #f]
          #:quit? [quit? #f]
          #:flash [flash ""]
          #:area [area #f]
@@ -126,7 +130,7 @@
   (app-state
    (editor-core plugin-states workspace-root resources layout layout-config area
                 next-view-id next-panel-id)
-   (editor-session pending quit? flash drag select-drag placement
+   (editor-session pending pending-scope quit? flash drag select-drag placement
                    input jobs async?)))
 
 ;;; ════════════════ state dispatch ════════════════
@@ -146,7 +150,7 @@
      (raise-argument-error 'editor-state-session "app-state? or editor-core?" state)]))
 
 (define empty-session
-  (editor-session '() #f "" #f #f #f #f empty-job-ledger #f))
+  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger #f))
 
 (define (session-of state)
   (or (editor-state-session state) empty-session))
@@ -227,6 +231,8 @@
 
 (define (editor-state-pending state)
   (editor-session-pending (session-of state)))
+(define (editor-state-pending-scope state)
+  (editor-session-pending-scope (session-of state)))
 (define (editor-state-quit? state)
   (editor-session-quit? (session-of state)))
 (define (editor-state-flash state)
@@ -249,10 +255,14 @@
 
 (define (editor-state-with-pending state pending)
   (update-session state (λ (s) (struct-copy editor-session s [pending pending]))))
+(define (editor-state-with-pending-scope state pending-scope)
+  (update-session state (λ (s) (struct-copy editor-session s [pending-scope pending-scope]))))
 (define (editor-state-clear-pending state)
-  (if (null? (editor-state-pending state))
+  (if (and (null? (editor-state-pending state))
+           (not (editor-state-pending-scope state)))
       state
-      (editor-state-with-pending state '())))
+      (editor-state-with-pending-scope
+       (editor-state-with-pending state '()) #f)))
 (define (editor-state-with-quit state quit?)
   (update-session state (λ (s) (struct-copy editor-session s [quit? quit?]))))
 (define (editor-state-with-flash state text)

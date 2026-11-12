@@ -33,7 +33,8 @@
          run-plugin-timer-handlers
          run-plugin-job-handlers
          editor-services
-         editor-command-table)
+         editor-command-table
+         active-key-owner)
 
 (define (plugin-state-of state owner)
   (editor-state-plugin-state state owner))
@@ -79,6 +80,13 @@
 
 (define (editor-services ed)
   (registry-services (editor-contributions ed)))
+
+;; completion 等 overlay 声明当前键盘 owner；返回第一个非 #f 的 scope。
+(define (active-key-owner ed state)
+  (for/or ([c (in-list (registry-contributions
+                        (editor-contributions ed) point/key-owner))])
+    (define owner (contribution-owner c))
+    ((contribution-fn c) ed state (plugin-state-of state owner))))
 
 ;;; ════════════════ command registry -> command-table ════════════════
 

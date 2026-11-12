@@ -82,6 +82,7 @@
 
  ;; 插件构造面：不导出 host 编排函数
  plugin? make-plugin
+ (struct-out command-group)
  guarded-command? make-guarded-command
 
  ;; 只读查询

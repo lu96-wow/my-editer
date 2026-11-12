@@ -391,10 +391,39 @@
   (define ctx (and text (make-completion-context path text)))
   (and ctx (completion-candidates ctx prefix)))
 
+(define completion-global-command-table
+  (keys
+   [(key 'o 'ctrl) manual-open-command]))
+
+(define completion-command-table
+  (keys
+   [(key 'up) (make-guarded-command
+               #:when (λ (ed state ps) (completion-focused? state ps))
+               #:run prev-command)]
+   [(key 'down) (make-guarded-command
+                 #:when (λ (ed state ps) (completion-focused? state ps))
+                 #:run next-command)]
+   [(key 'tab) (make-guarded-command
+                #:when (λ (ed state ps) (completion-focused? state ps))
+                #:run next-command)]
+   [(key 'enter) (make-guarded-command
+                  #:when (λ (ed state ps) (completion-focused? state ps))
+                  #:run accept-command)]
+   [(key 'escape) (make-guarded-command
+                   #:when (λ (ed state ps) (completion-focused? state ps))
+                   #:run cancel-command)]
+   [(key 'g 'ctrl) (make-guarded-command
+                    #:when (λ (ed state ps) (completion-focused? state ps))
+                    #:run cancel-command)]))
+
 (define (make-completion-plugin #:view vid)
   (make-plugin
    #:id 'completion
    #:state (empty-completion-state vid)
+   #:key-owner (λ (ed state ps)
+                (and (completion-state? ps)
+                     (completion-state-open? ps)
+                     'completion))
    #:hooks
    (list
     (make-hook #:owner 'completion
@@ -408,23 +437,5 @@
    #:handle-timer handle-timer
    #:overlays completion-overlays
    #:commands
-   (keys
-    [(key 'o 'ctrl) manual-open-command]
-    [(key 'up) (make-guarded-command
-                #:when (λ (ed state ps) (completion-focused? state ps))
-                #:run prev-command)]
-    [(key 'down) (make-guarded-command
-                  #:when (λ (ed state ps) (completion-focused? state ps))
-                  #:run next-command)]
-    [(key 'tab) (make-guarded-command
-                 #:when (λ (ed state ps) (completion-focused? state ps))
-                 #:run next-command)]
-    [(key 'enter) (make-guarded-command
-                   #:when (λ (ed state ps) (completion-focused? state ps))
-                   #:run accept-command)]
-    [(key 'escape) (make-guarded-command
-                    #:when (λ (ed state ps) (completion-focused? state ps))
-                    #:run cancel-command)]
-    [(key 'g 'ctrl) (make-guarded-command
-                     #:when (λ (ed state ps) (completion-focused? state ps))
-                     #:run cancel-command)])))
+   (list (command-group 'global completion-global-command-table)
+         (command-group 'completion completion-command-table))))

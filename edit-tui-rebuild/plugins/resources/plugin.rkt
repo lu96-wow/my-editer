@@ -105,6 +105,7 @@
   (make-plugin
    #:id 'resources
    #:state (resources-panel-state vid '())
+   #:command-scope 'resources
    #:commands
    (keys
     [(key 'enter)
