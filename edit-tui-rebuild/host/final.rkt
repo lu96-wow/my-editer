@@ -178,7 +178,13 @@
   (define panes (length (or (editor-visible-editor-panels state) '())))
   (define r (state-resource-for-view state vid))
   (define name
-    (if r (or (resource-path r) (resource-name r)) "scratch.rkt"))
+    (cond
+      [(not r) "scratch.rkt"]
+      [else
+       (define path (resource-path r))
+       (if path
+           (resource-display-path (state-workspace-root state) path)
+           (resource-name r))]))
   (define dirty?
     (and r (resource-dirty? r (engine-doc-version engine (resource-doc-id r)))))
   (define pending (state-pending state))

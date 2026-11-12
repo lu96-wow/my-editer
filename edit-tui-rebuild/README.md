@@ -468,6 +468,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 已经恢复的旧行为：
 
 - filetree 行文本：根显示绝对路径，子项只显示名字；**2 空格缩进**区分层次；
+- status bar / resources 的路径：workspace root 内显示相对路径，root 外显示绝对路径；
 - 打开文件去重 / 已打开 panel 聚焦 / detached 进 placement；
 - placement：方向键换目标、Enter 放入、Esc 取消、鼠标点 editor 放入；
 - pair / indent 按 buffer mode 生效（.rkt / #lang racket）；

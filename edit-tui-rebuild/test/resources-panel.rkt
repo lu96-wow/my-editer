@@ -32,6 +32,10 @@
 (define-values (s3 _c3 _b3) (render-frame ed s2 #f))
 (define text1 (engine-view-text (editor-engine ed) 4))
 (check-true (string-contains? text1 "scratch.rkt"))
+;; status bar 也显示 workspace root 内的相对路径。
+(define status-text (engine-view-text (editor-engine ed) 2))
+(check-true (string-contains? status-text "one.rkt"))
+(check-false (string-contains? status-text (path->string file)))
 ;; workspace root 内：显示相对路径，不显示绝对路径。
 (check-true (string-contains? text1 "one.rkt"))
 (check-false (string-contains? text1 (path->string file)))
