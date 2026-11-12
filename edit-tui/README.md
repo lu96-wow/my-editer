@@ -487,7 +487,8 @@ racket edit-tui/test/ownership.rkt
 5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
 5b. engine 的 document 分 `'user` / `'ui`；语法着色等用户文档流程只看 user doc。
 5c. 插件回调异常不允许打断事件循环：runtime 捕获、flash，并保留该插件旧状态。
-5d. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
+5d. 插件命令在 command-table 里是显式 `plugin-command`；host 遗留 raw procedure 只属于 input / placement。
+5e. app-state = editor-core + editor-session；editor 操作只改 core，host 会话只改 session。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

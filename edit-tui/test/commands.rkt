@@ -56,6 +56,8 @@
                         (list (key 't 'ctrl))))
 (check-eq? status 'command)
 (check-equal? (map car entries) '(custom-command))
+;; 插件命令在 contribution 表里是显式的 plugin-command，不是裸 procedure。
+(check-true (plugin-command? (cdr (car entries))))
 
 (define custom-state*
   (handle-editor-event custom-ed custom-state (key-event (key 't 'ctrl))))

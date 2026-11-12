@@ -114,15 +114,20 @@
   (cond
     ;; 插件 commands 是普通过程：(ed state ps -> values state' ps' actions)
     ;; host 旧命令（input / placement）仍是 (ed state)；它们 owner = #f。
+    [(plugin-command? value)
+     (unless owner
+       (error 'run-command "plugin-command 缺少 owner：~a" value))
+     (with-handlers ([exn:fail?
+                      (λ (e)
+                        (values (plugin-command-failure state owner e) '()))])
+       (define-values (state* ps* actions*)
+         ((plugin-command-fn value) ed state ps))
+       (values (write-command-ps state* owner ps*) actions*))]
     [(procedure? value)
-     (cond
-       [owner
-        (with-handlers ([exn:fail?
-                         (λ (e)
-                           (values (plugin-command-failure state owner e) '()))])
-          (define-values (state* ps* actions*) (value ed state ps))
-          (values (write-command-ps state* owner ps*) actions*))]
-       [else (value ed state)])]
+     ;; 宿主遗留命令（input / placement）仍然是 raw procedure，owner = #f。
+     (if owner
+         (error 'run-command "raw plugin command 未包装：~a" value)
+         (value ed state))]
     [(guarded-command? value)
      (with-handlers ([exn:fail?
                       (λ (e)

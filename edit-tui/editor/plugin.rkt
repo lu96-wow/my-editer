@@ -23,6 +23,7 @@
          make-guarded-command
          (struct-out command-binding)
          (struct-out command-group)
+         (struct-out plugin-command)
          plugins->hooks
          plugins->states
          plugins->contributions)
@@ -44,6 +45,19 @@
 (struct command-binding
   (keys value)
   #:transparent)
+
+;; 插件命令的显式值：dispatch 不再靠 “owner + procedure?” 猜测。
+(struct plugin-command
+  (fn)  ; (ed state ps) -> (values state' ps' actions)
+  #:transparent)
+
+(define (normalize-plugin-command value)
+  (cond
+    [(guarded-command? value) value]
+    [(procedure? value) (plugin-command value)]
+    [else
+     (raise-argument-error 'normalize-plugin-command
+                           "(or/c procedure? guarded-command?)" value)]))
 
 ;; 同一插件需要多个 scope 时使用；单表插件仍可直接给 #:commands。
 (struct command-group
@@ -132,7 +146,9 @@
        (for/list ([g (in-list (plugin-command-groups p))])
          (for/list ([b (in-list (command-table-bindings (command-group-table g)))])
            (contribution point/command (command-group-scope g) id 0 0
-                         (command-binding (car b) (cadr b))))))
+                         (command-binding
+                          (car b)
+                          (normalize-plugin-command (cadr b)))))))
       (append*
        (for/list ([svc (in-list (plugin-services p))])
          (define kind (service-name svc))
