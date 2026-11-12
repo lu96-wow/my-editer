@@ -1,6 +1,6 @@
 #lang racket
 
-;;; edit-tui/host/final.rkt —— TUI 装配 + 事件循环
+;;; edit-tui/edit.rkt —— TUI 装配 + 事件循环
 ;;;
 ;;; 这里负责：
 ;;;   · 创建 engine / 初始 buffer / 初始 layout
@@ -12,32 +12,32 @@
 (require racket/string
          racket/async-channel
          (prefix-in tui: tui)
-         "../editor/host-api.rkt"
-         (only-in "../core/command/api.rkt" key->string)
-         "../plugins/pair/plugin.rkt"
-         "../plugins/indent/plugin.rkt"
-         "../plugins/racket-color/plugin.rkt"
-         "../plugins/layout/plugin.rkt"
-         "../plugins/filetree/plugin.rkt"
-         "../plugins/resources/plugin.rkt"
-         "../plugins/completion/plugin.rkt"
-         "../plugins/docs/plugin.rkt"
-         "event.rkt"
-         "keymap.rkt"
-         "layout.rkt"
-         "timers.rkt"
-         "open.rkt"
-         "close.rkt"
-         "docs.rkt"
-         "filetree-io.rkt"
-         "input/dispatch.rkt"
-         "../features/input/api.rkt"
-         "../features/placement/api.rkt"
-         "../features/mouse/api.rkt"
-         "jobs.rkt"
-         (only-in "../../core/editor.rkt" make-panel)
-         "../../edit-tui/render/core.rkt"
-         "../../edit-tui/config/theme/default.rkt")
+         "editor/host-api.rkt"
+         (only-in "core/command/api.rkt" key->string)
+         "plugins/pair/plugin.rkt"
+         "plugins/indent/plugin.rkt"
+         "plugins/racket-color/plugin.rkt"
+         "plugins/layout/plugin.rkt"
+         "plugins/filetree/plugin.rkt"
+         "plugins/resources/plugin.rkt"
+         "plugins/completion/plugin.rkt"
+         "plugins/docs/plugin.rkt"
+         "host/event.rkt"
+         "host/keymap.rkt"
+         "host/app-layout.rkt"
+         "host/timers.rkt"
+         "host/open.rkt"
+         "host/close.rkt"
+         "host/docs.rkt"
+         "host/filetree-io.rkt"
+         "host/input/dispatch.rkt"
+         "features/input/api.rkt"
+         "features/placement/api.rkt"
+         "features/mouse/api.rkt"
+         "host/jobs.rkt"
+         (only-in "../core/editor.rkt" make-panel)
+         "render/core.rkt"
+         "config/theme/default.rkt")
 
 (provide run-editor
          make-editor-app
@@ -123,7 +123,7 @@
                        #:workspace-root workspace-root
                        #:area (rect 0 0 80 24)
                        #:layout layout
-                       #:layout-config rebuild-layout-config
+                       #:layout-config default-layout-config
                        #:next-view-id 10
                        #:next-panel-id 100
                        #:resources resources*

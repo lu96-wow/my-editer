@@ -17,9 +17,9 @@
          "../core/command/api.rkt"
          "../core/job/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "../host/jobs.rkt"
-         "../host/layout.rkt"
+         "../host/app-layout.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "../plugins/filetree/plugin.rkt")

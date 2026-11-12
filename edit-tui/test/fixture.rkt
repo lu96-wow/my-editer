@@ -3,7 +3,7 @@
 ;;; 测试用 editor fixture：一个无 path、名为 test.rkt 的 Racket buffer。
 ;;; 生产入口 make-editor-app 不再创建默认初始 resource。
 
-(require "../host/final.rkt")
+(require "../edit.rkt")
 
 (provide make-test-editor)
 

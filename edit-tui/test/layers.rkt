@@ -84,16 +84,16 @@
             "editor/host-api.rkt")
 
 ;; host 走 host-api，不直接 require engine/store / ops/raw。
-(check-true (requires-any? "host/final.rkt" #rx"editor/host-api\\.rkt")
-            "host/final.rkt")
-(check-false (requires-any? "host/final.rkt" #rx"editor/(engine/store|ops/raw)")
-             "host/final.rkt")
+(check-true (requires-any? "edit.rkt" #rx"editor/host-api\\.rkt")
+            "edit.rkt")
+(check-false (requires-any? "edit.rkt" #rx"editor/(engine/store|ops/raw)")
+             "edit.rkt")
 
 ;; command 从 contribution registry 来；host 不再拼插件 command-table。
-(check-false (requires-any? "host/final.rkt" #rx"plugins->command-table")
-             "host/final.rkt")
-(check-false (requires-any? "host/final.rkt" #rx"owned-command-table")
-             "host/final.rkt")
+(check-false (requires-any? "edit.rkt" #rx"plugins->command-table")
+             "edit.rkt")
+(check-false (requires-any? "edit.rkt" #rx"owned-command-table")
+             "edit.rkt")
 (check-true (requires-any? "editor/plugin.rkt" #rx"point/command")
             "editor/plugin.rkt")
 

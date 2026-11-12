@@ -41,7 +41,7 @@
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
-- `host/final.rkt`：sidebar + 多 editor panel + status 的可运行 TUI。
+- `edit.rkt`：sidebar + 多 editor panel + status 的可运行 TUI。
 - 启动时只创建空 editor buffer，不自动创建默认 scratch resource。
 - `test/`：hooks / ops / plugins / layout / mouse / commands / host 回归。
 
@@ -63,6 +63,7 @@
 
 ```text
 edit-tui/
+  edit.rkt            可运行 TUI / 事件循环（宿主入口）
   core/
     api.rkt            纯值 / 纯算法面（当前复用 repo core）
     command/           key token + command table（纯）
@@ -122,15 +123,13 @@ edit-tui/
     find/              当前 buffer 查找 / 前后匹配项
 
   host/
-    final.rkt          可运行 TUI / 事件循环
     docs.rkt           completion -> docs 的跨插件 action 解释
     event.rkt          tui raw -> host 事件
     keymap.rkt         命令值 + 分 scope 的 host 内置表
     input/scope.rkt    focus / key-owner -> command scope
     input/dispatch.rkt pending 多键序列 + 命令查找 / 执行
     open.rkt / close.rkt / prompt.rkt   文件打开 / 关闭 / save quit IO
-    filetree-io.rkt    filetree 创建 / 删除 / 重命名 IO
-    docs.rkt           docs 跨插件 action 适配
+    filetree-io.rkt    filetree 创建 / 删除 / 重命名 / 查找 IO
     jobs.rkt           worker runtime
     timers.rkt         timer runtime
 
@@ -357,7 +356,7 @@ command     (ed state ps)     -> (values state' ps' actions)
 ## 运行
 
 ```sh
-racket edit-tui/host/final.rkt
+racket edit-tui/edit.rkt
 ```
 
 键：
@@ -468,7 +467,7 @@ racket edit-tui/test/ownership.rkt
 ## 设计规则
 
 1. `core/` 不放 hook、不放插件、不放 IO。
-1b. `editor/layout.rkt` 只做通用布局操作；具体 editor/status/sidebar/docs 装配在 `host/layout.rkt`。
+1b. `editor/layout.rkt` 只做通用布局操作；具体 editor/status/sidebar/docs 装配在 `host/app-layout.rkt`。
 1c. 插件 API 不导出 host 编排函数；host-api 才导出 plugin runner / open / prompt。
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。

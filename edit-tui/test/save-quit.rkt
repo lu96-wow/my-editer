@@ -10,7 +10,7 @@
          racket/path
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../features/input/api.rkt"
          "../host/prompt.rkt"

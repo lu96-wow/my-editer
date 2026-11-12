@@ -8,7 +8,7 @@
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"

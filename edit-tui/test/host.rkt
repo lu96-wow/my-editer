@@ -4,7 +4,7 @@
 
 (require rackunit
          "../editor/host-api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt")
 
 ;; 生产入口默认没有初始 resource；editor 只是一个空 buffer。

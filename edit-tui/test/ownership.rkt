@@ -10,7 +10,7 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt")
+         "../edit.rkt")
 
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))

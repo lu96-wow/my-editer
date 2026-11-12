@@ -4,7 +4,7 @@
 
 (require rackunit
          "../editor/host-api.rkt"
-         "../host/layout.rkt")
+         "../host/app-layout.rkt")
 
 (define (make-test-editor hooks)
   (define engine (make-engine))
@@ -21,7 +21,7 @@
     (make-app-state #:plugin-states (plugins->states (list p))
                        #:area (rect 0 0 40 10)
                        #:layout layout
-                       #:layout-config rebuild-layout-config
+                       #:layout-config default-layout-config
                        #:next-view-id 10
                        #:next-panel-id 100))
   (values engine ed state))

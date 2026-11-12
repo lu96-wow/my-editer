@@ -10,8 +10,8 @@
          "../editor/host-api.rkt"
          "../plugins/filetree/plugin.rkt"
          "../host/jobs.rkt"
-         "../host/final.rkt"
-         "../host/layout.rkt")
+         "../edit.rkt"
+         "../host/app-layout.rkt")
 
 (define root (make-temporary-directory))
 (display-to-file "a" (build-path root "a.txt") #:exists 'replace)

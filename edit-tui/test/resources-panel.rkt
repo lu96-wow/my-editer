@@ -10,7 +10,7 @@
          "../features/sidebar/api.rkt"
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../features/placement/api.rkt"
          "../host/open.rkt")

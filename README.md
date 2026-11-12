@@ -17,7 +17,7 @@
 - `edit-tui/README.md`：TUI 目录、分层、数据流、API、键位
 - `edit-tui/editor/state.rkt`：`app-state = editor-core + editor-session`
 - `edit-tui/editor/host-api.rkt`：宿主装配面（插件只应 require `editor/api.rkt`）
-- `edit-tui/host/final.rkt`：TUI 装配 + 事件循环
+- `edit-tui/edit.rkt`：TUI 装配 + 事件循环
 - `edit-tui/test/layers.rkt`：分层约束的可执行版本
 
 ## 测试
@@ -38,7 +38,7 @@ racket edit-tui/test/filetree.rkt
 ## 运行
 
 ```sh
-racket edit-tui/host/final.rkt
+racket edit-tui/edit.rkt
 ```
 
 ## 约定
@@ -46,7 +46,7 @@ racket edit-tui/host/final.rkt
 - `core/` 的 buffer / view 只由 `edit-tui/editor/engine/store.rkt` 持有；
 - 用户文档文本编辑只经 `editor/ops/raw.rkt` / `editor/ops/surface.rkt`；
 - State 不存 core 句柄、线程、cache 或 inbox；
-- 命令只返回 `(values state actions)`，action 由 `edit-tui/host/final.rkt` 解释；
+- 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
 - 插件只 require `edit-tui/editor/api.rkt` 与 feature 的 `api.rkt`，跨插件只经 action 或对方 `api.rkt`。

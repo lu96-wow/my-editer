@@ -12,7 +12,7 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../plugins/filetree/plugin.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../features/placement/api.rkt"
          "../host/open.rkt")

@@ -6,7 +6,7 @@
          "../editor/host-api.rkt"
          "../features/sidebar/api.rkt"
          "../core/layout/api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt")
 
 (define-values (ed state) (make-test-editor))

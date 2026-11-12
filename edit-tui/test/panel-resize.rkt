@@ -5,10 +5,10 @@
 (require rackunit
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
-         "../host/layout.rkt")
+         "../host/app-layout.rkt")
 
 (define area (rect 0 0 60 15))
-(define config rebuild-layout-config)
+(define config default-layout-config)
 (define layout (make-editor-layout #:editor-view 1
                                    #:status-view 2
                                    #:sidebar-view 3))

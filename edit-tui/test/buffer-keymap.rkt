@@ -8,9 +8,9 @@
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "../host/keymap.rkt"
-         "../host/layout.rkt")
+         "../host/app-layout.rkt")
 
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "a.txt" ""))

@@ -10,9 +10,9 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
-         "../host/layout.rkt")
+         "../host/app-layout.rkt")
 
 ;;; 1. layout 插件贡献 split 命令；C-w Right 走 host 事件路径。
 (define-values (ed state) (make-test-editor))

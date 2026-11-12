@@ -7,7 +7,7 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "../features/input/api.rkt"
          "../features/find/model.rkt"
          "fixture.rkt")

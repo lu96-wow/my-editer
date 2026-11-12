@@ -1,15 +1,15 @@
 #lang racket
 
-;;; edit-tui/config/layout/rebuild.rkt —— rebuild 各 kind 的布局规则
+;;; edit-tui/config/layout/default.rkt —— 默认各 kind 的布局规则
 ;;;
 ;;; 这是 configuration，不是 editor 骨架。宿主选择它，并把值放进
 ;;; editor-state.layout-config；editor 的布局操作只读 state 里的 config。
 
 (require "../../core/layout/config.rkt")
 
-(provide rebuild-layout-config)
+(provide default-layout-config)
 
-(define rebuild-layout-config
+(define default-layout-config
   (make-layout-config
    #:rules
    (hash

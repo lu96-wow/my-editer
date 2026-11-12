@@ -9,8 +9,8 @@
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
          "../host/event.rkt"
-         "../host/final.rkt"
-         "../host/layout.rkt"
+         "../edit.rkt"
+         "../host/app-layout.rkt"
          "../plugins/filetree/plugin.rkt"
          "../features/input/api.rkt")
 
@@ -39,7 +39,7 @@
                   #:workspace-root (resource-normalize-path root)
                   #:area (rect 0 0 60 15)
                   #:layout layout
-                  #:layout-config rebuild-layout-config
+                  #:layout-config default-layout-config
                   #:input (make-input-state #:panel-id 'status
                                             #:status-view 2
                                             #:input-view 5)))

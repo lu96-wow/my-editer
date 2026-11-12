@@ -8,7 +8,7 @@
          "../core/layout/api.rkt"
          "../core/projection/api.rkt"
          "../features/mouse/api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt")
 
 (define-values (ed state) (make-test-editor))

@@ -4,7 +4,7 @@
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
-raco make "$root/host/final.rkt"
+raco make "$root/edit.rkt"
 raco make "$here"/*.rkt
 fail=0
 while IFS= read -r f; do

@@ -1,16 +1,16 @@
 #lang racket
 
-;;; edit-tui/host/layout.rkt —— rebuild 初始布局装配
+;;; edit-tui/host/app-layout.rkt —— app 初始布局装配
 ;;;
 ;;; 这是 host assembly：知道 editor / status / sidebar / docs 这些具体 kind。
 ;;; editor/layout.rkt 只保留通用布局操作，不再知道这些具体面板。
 
 (require "../core/layout/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
-         "../config/layout/rebuild.rkt")
+         "../config/layout/default.rkt")
 
 (provide make-editor-layout
-         rebuild-layout-config)
+         default-layout-config)
 
 (define (make-editor-layout #:editor-view editor-vid
                             #:editor-panel-id [editor-pid 'editor]

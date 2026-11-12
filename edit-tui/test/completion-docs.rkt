@@ -10,7 +10,7 @@
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
          "../plugins/completion/plugin.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../host/event.rkt"
          "../host/timers.rkt")

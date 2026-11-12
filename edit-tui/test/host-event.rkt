@@ -9,7 +9,7 @@
 (require rackunit
          "../editor/host-api.rkt"
          "../core/command/api.rkt"
-         "../host/final.rkt"
+         "../edit.rkt"
          "fixture.rkt"
          "../host/event.rkt")
 
