@@ -32,7 +32,7 @@
                      #:hideable? #t
                      #:deletable? #f
                      #:focusable? #t
-                     #:min-w 1 #:max-w #f
+                     #:min-w 8 #:max-w #f
                      #:min-h 1 #:max-h #f)
     'docs
     (make-panel-rule #:splittable? #f

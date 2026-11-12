@@ -377,7 +377,7 @@
      (define-values (l* ok?)
        (if visible?
            (layout-panel-hide l area pid #:config (editor-state-layout-config state))
-           (layout-panel-show l area pid)))
+           (layout-panel-show l area pid #:config (editor-state-layout-config state))))
      (if ok?
          (values (editor-state-with-layout state l*) '())
          (flash state "panel toggle failed"))]))
@@ -407,7 +407,7 @@
      (define-values (l* ok?)
        (if visible?
            (layout-panel-hide l area pid #:config (editor-state-layout-config state))
-           (layout-panel-show l area pid)))
+           (layout-panel-show l area pid #:config (editor-state-layout-config state))))
      (if ok?
          (values (editor-state-with-layout state l*) '())
          (flash state "sidebar toggle failed"))]))

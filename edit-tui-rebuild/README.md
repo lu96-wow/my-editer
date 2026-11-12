@@ -124,6 +124,7 @@ edit-tui-rebuild/
     state-split.rkt    core / session 更新互不污染
     resource-path.rkt  workspace root 内相对 / root 外绝对
     ui-incremental.rkt UI view face-only / 文本最小 diff
+    panel-resize.rkt   fixed seam 拖动 / hide-show min clamp
     host.rkt
     layers.rkt
     run.sh
@@ -417,6 +418,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 racket edit-tui-rebuild/test/state-split.rkt
 racket edit-tui-rebuild/test/resource-path.rkt
 racket edit-tui-rebuild/test/ui-incremental.rkt
+racket edit-tui-rebuild/test/panel-resize.rkt
 racket edit-tui-rebuild/test/layers.rkt
 racket edit-tui-rebuild/test/ownership.rkt
 ```
@@ -451,6 +453,7 @@ racket edit-tui-rebuild/test/ownership.rkt
 - C-s / C-q 的 save-path / save-confirm / quit-confirm 输入栏；
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - UI view 增量：selection 只改 face 行；文本变化做最小区间替换；
+- sidebar fixed 边界可拖；C-b hide/show 恢复尺寸并 clamp 到 min（sidebar min-w 8）；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行，undo/首次打开才全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；

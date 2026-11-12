@@ -60,6 +60,7 @@
  seam? seam-split-id seam-axis seam-rect
  layout-seam-resize
  drag? drag-split-id drag-axis drag-start-row drag-start-col drag-start-ratio
+ drag-start-left drag-fixed-side
  layout-seam-drag-start layout-seam-drag-move
 
  ;; 校验

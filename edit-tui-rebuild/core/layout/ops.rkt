@@ -254,7 +254,12 @@
                        (λ (p) (panel-set-views p '() #f))))
 
 (define (layout-panel-set-fixed l id axis value)
-  (layout-panel-update l id (λ (p) (panel-set-fixed p axis value))))
+  (define panel-axis (case axis
+                       [(lr) 'w]
+                       [(tb) 'h]
+                       [else (error 'layout-panel-set-fixed
+                                    "axis 要是 'lr 或 'tb：~a" axis)]))
+  (layout-panel-update l id (λ (p) (panel-set-fixed p panel-axis value))))
 
 ;;; ════════════════ 尺寸限制 ════════════════
 
@@ -319,6 +324,33 @@
   (define upper (min (if max-l (min E max-l) E) (- E min-r)))
   (and (<= lower upper) (cons lower upper)))
 
+;; 接缝哪一侧是 fixed。leaf 才有 fixed size；两边都 fixed 时优先左边。
+(define (seam-fixed-side l s axis)
+  (cond
+    [(node-fixed-size l (split-left s) axis) 'left]
+    [(node-fixed-size l (split-right s) axis) 'right]
+    [else #f]))
+
+;; 接缝左侧当前宽度（fixed 侧或 flex ratio）。
+(define (seam-start-left l s E fixed-side)
+  (define axis (split-axis s))
+  (case fixed-side
+    [(left) (node-fixed-size l (split-left s) axis)]
+    [(right) (- E (node-fixed-size l (split-right s) axis))]
+    [else (round-ratio E (split-ratio s))]))
+
+;; 把“左侧宽度”写回 layout：fixed 侧改 fixed size，flex/flex 改 ratio。
+(define (seam-apply-left l s E new-left fixed-side)
+  (define axis (split-axis s))
+  (case fixed-side
+    [(left)
+     (layout-panel-set-fixed l (leaf-panel-id (split-left s)) axis new-left)]
+    [(right)
+     (layout-panel-set-fixed l (leaf-panel-id (split-right s))
+                             axis (- E new-left))]
+    [else
+     (layout-split-set-ratio l (split-id s) (/ new-left E))]))
+
 ;;; ════════════════ ratio / seam resize ════════════════
 
 (define (layout-split-set-ratio l sid ratio)
@@ -330,7 +362,7 @@
   (values (if changed? (struct-copy layout l [root root*]) l)
           changed?))
 
-;; delta 是沿 split 轴的格数；只有两边都 flex 时才能拖。
+;; delta 是沿 split 轴的格数。flex/flex 改 ratio；一侧 fixed 时改 fixed size。
 (define (layout-seam-resize l area sid delta #:config config)
   (define s (find-split (layout-root l) sid))
   (cond
@@ -338,33 +370,34 @@
     [(not (and (layout-subtree-visible? l (split-left s))
                (layout-subtree-visible? l (split-right s))))
      (values l #f)]
-    [(or (node-fixed-size l (split-left s) (split-axis s))
-         (node-fixed-size l (split-right s) (split-axis s)))
-     (values l #f)]
     [else
+     (define axis (split-axis s))
      (define r (hash-ref (layout-split-rects l area) sid #f))
      (cond
        [(not r) (values l #f)]
        [else
-        (define E (axis-extent r (split-axis s)))
+        (define E (axis-extent r axis))
         (cond
           [(zero? E) (values l #f)]
           [else
+           (define fixed-side (seam-fixed-side l s axis))
            (define b (seam-bounds l config s E))
            (cond
              [(not b) (values l #f)]
              [else
               (define lower (car b))
               (define upper (cdr b))
-              (define cur (round-ratio E (split-ratio s)))
+              (define cur (seam-start-left l s E fixed-side))
               (define new-left (max lower (min upper (+ cur delta))))
-              (layout-split-set-ratio l sid (/ new-left E))])])])]))
+              (seam-apply-left l s E new-left fixed-side)])])])]))
 
 ;;; ════════════════ 拖动状态 ════════════════
 
-;; 拖动只记录：哪条 split、从哪个指针位置开始、开始时 ratio。
+;; 拖动只记录：哪条 split、从哪个指针位置开始、开始时 ratio / 左侧宽度 / fixed 侧。
 ;; move 用“从起点到当前的绝对 delta”，所以重复 move 不会累积错。
-(struct drag (split-id axis start-row start-col start-ratio) #:transparent)
+(struct drag
+  (split-id axis start-row start-col start-ratio start-left fixed-side)
+  #:transparent)
 
 ;; seam / solution 可由 layout-hit 传入，避免 press 路径重复 solve。
 (define (layout-seam-drag-start l area row col
@@ -378,24 +411,23 @@
      (define s (find-split (layout-root l) (seam-split-id s*)))
      (cond
        [(not s) #f]
-       [(or (node-fixed-size l (split-left s) (split-axis s))
-            (node-fixed-size l (split-right s) (split-axis s)))
-        #f]
        [else
         (define solution* (or solution (layout-solve l area)))
         (define r (hash-ref (layout-solution-split-rects solution*)
                             (split-id s) #f))
         (and r
-             (seam-bounds l config s (axis-extent r (split-axis s)))
-             (drag (split-id s) (split-axis s) row col (split-ratio s)))])]))
+             (let* ([axis (split-axis s)]
+                    [E (axis-extent r axis)]
+                    [fixed-side (seam-fixed-side l s axis)])
+               (and (seam-bounds l config s E)
+                    (drag (split-id s) axis row col (split-ratio s)
+                          (seam-start-left l s E fixed-side)
+                          fixed-side))))])]))
 
 (define (layout-seam-drag-move l area d row col #:config config)
   (define s (find-split (layout-root l) (drag-split-id d)))
   (cond
     [(not s) (values l #f)]
-    [(or (node-fixed-size l (split-left s) (drag-axis d))
-         (node-fixed-size l (split-right s) (drag-axis d)))
-     (values l #f)]
     [else
      (define axis (drag-axis d))
      (define r (hash-ref (layout-split-rects l area) (drag-split-id d) #f))
@@ -406,6 +438,7 @@
         (cond
           [(zero? E) (values l #f)]
           [else
+           (define fixed-side (drag-fixed-side d))
            (define b (seam-bounds l config s E))
            (cond
              [(not b) (values l #f)]
@@ -415,9 +448,12 @@
               (define delta (if (eq? axis 'lr)
                                 (- col (drag-start-col d))
                                 (- row (drag-start-row d))))
-              (define start-left (round-ratio E (drag-start-ratio d)))
+              (define start-left
+                (if fixed-side
+                    (drag-start-left d)
+                    (round-ratio E (drag-start-ratio d))))
               (define new-left (max lower (min upper (+ start-left delta))))
-              (layout-split-set-ratio l (drag-split-id d) (/ new-left E))])])])]))
+              (seam-apply-left l s E new-left fixed-side)])])])]))
 
 ;;; ════════════════ 隐藏 / 显示 ════════════════
 
@@ -465,7 +501,7 @@
          (/ old-S old-E)
          1/2)]))
 
-(define (layout-panel-show l area id)
+(define (layout-panel-show l area id #:config [config empty-layout-config])
   (define p (layout-panel l id))
   (cond
     [(or (not p) (not (panel-hidden? p))) (values l #f)]
@@ -478,14 +514,33 @@
        [(not parent) (values l1 #t)]
        [else
         (define axis (split-axis parent))
-        (define fixed (layout-panel-fixed-size l1 id axis))
+        (define solution (layout-solve l1 area))
+        (define pr (hash-ref (layout-solution-split-rects solution)
+                             (split-id parent) #f))
+        (define E (and pr (axis-extent pr axis)))
         (cond
-          [fixed (values l1 #t)]         ; 固定轴：比例不重要
+          [(or (not E) (zero? E)) (values l1 #t)]
           [else
-           (define r (restore-ratio p axis))
-           (define r* (if (eq? side 'left) r (- 1 r)))
-           (define-values (l2 _) (layout-split-set-ratio l1 (split-id parent) r*))
-           (values l2 #t)])])]))
+           (define b (seam-bounds l1 config parent E))
+           (cond
+             [(not b) (values l #f)]     ; 没有合法尺寸：保持隐藏
+             [else
+              (define lower (car b))
+              (define upper (cdr b))
+              (define fixed (layout-panel-fixed-size l1 id axis))
+              (define desired-left
+                (if fixed
+                    (if (eq? side 'left) fixed (- E fixed))
+                    (let* ([r (restore-ratio p axis)]
+                           [s (round-ratio E r)])
+                      (if (eq? side 'left) s (- E s)))))
+              (define new-left (max lower (min upper desired-left)))
+              (cond
+                [fixed
+                 (define new-fixed (if (eq? side 'left) new-left (- E new-left)))
+                 (layout-panel-set-fixed l1 id axis new-fixed)]
+                [else
+                 (layout-split-set-ratio l1 (split-id parent) (/ new-left E))])])])])]))
 
 ;;; ════════════════ 校验 ════════════════
 
