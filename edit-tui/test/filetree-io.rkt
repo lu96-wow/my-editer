@@ -10,7 +10,7 @@
          "../core/command/api.rkt"
          "../host/event.rkt"
          "../edit.rkt"
-         "../host/app-layout.rkt"
+         "../app/layout.rkt"
          "../plugins/filetree/plugin.rkt"
          "../features/input/api.rkt")
 

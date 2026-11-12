@@ -89,6 +89,19 @@
 (check-false (requires-any? "edit.rkt" #rx"editor/(engine/store|ops/raw)")
              "edit.rkt")
 
+;; app 是宿主装配层，也只经 host-api 接触 editor 内部。
+(define app-files
+  '("app/bootstrap.rkt"
+    "app/layout.rkt"
+    "app/actions.rkt"
+    "app/frame.rkt"
+    "app/event.rkt"))
+
+(for ([f (in-list app-files)])
+  (check-false (requires-any? f #rx"editor/(engine/store|ops/raw)") f)
+  (check-false (requires-any? f #rx"plugins->command-table") f)
+  (check-false (requires-any? f #rx"owned-command-table") f))
+
 ;; command 从 contribution registry 来；host 不再拼插件 command-table。
 (check-false (requires-any? "edit.rkt" #rx"plugins->command-table")
              "edit.rkt")

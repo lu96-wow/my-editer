@@ -7,7 +7,7 @@
          racket/path
          racket/string
          "../editor/host-api.rkt"
-         "../host/app-layout.rkt"
+         "../app/layout.rkt"
          "../core/command/api.rkt"
          "../plugins/filetree/plugin.rkt")
 

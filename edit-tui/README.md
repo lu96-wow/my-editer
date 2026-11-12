@@ -41,7 +41,7 @@
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
-- `edit.rkt`：sidebar + 多 editor panel + status 的可运行 TUI。
+- `edit.rkt`：可运行入口；装配在 `app/`，事件 / 渲染 / action 已拆开。
 - 启动时只创建空 editor buffer，不自动创建默认 scratch resource。
 - `test/`：hooks / ops / plugins / layout / mouse / commands / host 回归。
 
@@ -63,7 +63,13 @@
 
 ```text
 edit-tui/
-  edit.rkt            可运行 TUI / 事件循环（宿主入口）
+  edit.rkt            可运行入口 / 终端生命周期
+  app/
+    bootstrap.rkt     engine / 初始文档 / 初始布局 / 插件装配
+    layout.rkt        具体 panel kind 的初始布局
+    actions.rkt       action 解释
+    frame.rkt         status / 插件 sync / overlay / render
+    event.rkt         tui event -> state / 主循环
   core/
     api.rkt            纯值 / 纯算法面（当前复用 repo core）
     command/           key token + command table（纯）
@@ -71,13 +77,17 @@ edit-tui/
     panel/             layout panel 资源
     projection/        layout -> core panel / 命中
     focus/             方向焦点导航
-    base/              迁回的 core 值词汇（给旧 render / lang 用）
-    face/              face 值 + 分层合成
 
-  lang/racket/         Racket 语言能力：lex / color / completion / docs / indent
-  source/              源码扫描 / 解析来源
-  render/              core piece -> tui bytes / theme 安装
-  config/theme/        默认主题
+  compat/
+    README.md          迁移期兼容层说明
+    lang/racket/       Racket 词法 / 着色 / 补全 / 文档 / 缩进
+    source/            源码扫描 / 解析来源
+    face/              face 值 + 分层合成
+    render/            core piece -> tui bytes / theme 安装
+    theme/             默认主题
+
+  config/
+    layout/default.rkt 各 kind 的默认布局规则
 
   editor/
     engine/
@@ -467,7 +477,7 @@ racket edit-tui/test/ownership.rkt
 ## 设计规则
 
 1. `core/` 不放 hook、不放插件、不放 IO。
-1b. `editor/layout.rkt` 只做通用布局操作；具体 editor/status/sidebar/docs 装配在 `host/app-layout.rkt`。
+1b. `editor/layout.rkt` 只做通用布局操作；具体 editor/status/sidebar/docs 装配在 `app/layout.rkt`。
 1c. 插件 API 不导出 host 编排函数；host-api 才导出 plugin runner / open / prompt。
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
@@ -530,16 +540,16 @@ racket edit-tui/test/ownership.rkt
 
 ## 迁移期依赖
 
-`edit-tui` 已经替换旧实现，但仍有少量支撑模块来自旧树：
+`edit-tui` 已经替换旧实现，旧支撑模块集中到 `compat/`：
 
-- `lang/racket/`：Racket 词法 / 着色 / 补全 / 文档 / 缩进；
-- `source/`：源码扫描；
-- `core/face/`、`core/base/`：face 与旧 render 使用的基础值；
-- `render/`：`core piece -> tui bytes`；
-- `config/theme/`：默认主题。
+- `compat/lang/racket/`：Racket 词法 / 着色 / 补全 / 文档 / 缩进；
+- `compat/source/`：源码扫描；
+- `compat/face/`：face 值；
+- `compat/render/`：`core piece -> tui bytes`；
+- `compat/theme/`：默认主题。
 
-宿主目前只使用 `render/core.rkt` 与 `config/theme/default.rkt`；
-后续可以把这些模块继续收进新树的正式分层，并去掉 `render/layout.rkt` 这类旧装配入口。
+宿主入口只使用 `compat/render/core.rkt` 与 `compat/theme/default.rkt`。
+后续可以逐步把这些模块迁进新树，再删除 `compat/`。
 
 ---
 

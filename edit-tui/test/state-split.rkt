@@ -5,7 +5,7 @@
 
 (require rackunit
          "../editor/host-api.rkt"
-         "../host/app-layout.rkt")
+         "../app/layout.rkt")
 
 (define state (make-app-state))
 (define core (state-core state))

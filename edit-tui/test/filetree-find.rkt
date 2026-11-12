@@ -19,7 +19,7 @@
          "../host/event.rkt"
          "../edit.rkt"
          "../host/jobs.rkt"
-         "../host/app-layout.rkt"
+         "../app/layout.rkt"
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "../plugins/filetree/plugin.rkt")

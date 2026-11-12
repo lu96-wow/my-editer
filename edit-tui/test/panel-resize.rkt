@@ -5,7 +5,7 @@
 (require rackunit
          "../editor/host-api.rkt"
          "../core/layout/api.rkt"
-         "../host/app-layout.rkt")
+         "../app/layout.rkt")
 
 (define area (rect 0 0 60 15))
 (define config default-layout-config)

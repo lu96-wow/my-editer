@@ -53,12 +53,12 @@ racket edit-tui/edit.rkt
 
 ## 迁移期依赖
 
-`edit-tui` 仍保留少量从旧实现迁回的支撑模块：
+`edit-tui` 仍保留少量从旧实现迁回的支撑模块，集中放在 `edit-tui/compat/`：
 
-- `edit-tui/lang/racket/`：Racket 语言能力（着色 / 补全 / 文档 / 缩进）；
-- `edit-tui/source/`：源码扫描；
-- `edit-tui/core/face/`：face 值；
-- `edit-tui/render/`：core piece -> tui bytes；
-- `edit-tui/config/theme/`：默认主题。
+- `edit-tui/compat/lang/racket/`：Racket 语言能力（着色 / 补全 / 文档 / 缩进）；
+- `edit-tui/compat/source/`：源码扫描；
+- `edit-tui/compat/face/`：face 值；
+- `edit-tui/compat/render/`：core piece -> tui bytes；
+- `edit-tui/compat/theme/`：默认主题。
 
-宿主目前只使用 `render/core.rkt` 和 `config/theme/default.rkt`；后续可以把这些模块继续收进新树的正式分层。
+宿主入口只使用 `compat/render/core.rkt` 和 `compat/theme/default.rkt`；后续可以逐步迁进新树并删除 `compat/`。

@@ -4,7 +4,7 @@
 
 (require rackunit
          "../editor/host-api.rkt"
-         "../host/app-layout.rkt")
+         "../app/layout.rkt")
 
 (define (make-test-editor hooks)
   (define engine (make-engine))

@@ -11,7 +11,7 @@
          "../plugins/filetree/plugin.rkt"
          "../host/jobs.rkt"
          "../edit.rkt"
-         "../host/app-layout.rkt")
+         "../app/layout.rkt")
 
 (define root (make-temporary-directory))
 (display-to-file "a" (build-path root "a.txt") #:exists 'replace)

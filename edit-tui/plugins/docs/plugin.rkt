@@ -6,7 +6,7 @@
          racket/string
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
-         "../../../edit-tui/lang/racket/api.rkt"
+         "../../compat/lang/racket/api.rkt"
          "model.rkt"
          "api.rkt")
 

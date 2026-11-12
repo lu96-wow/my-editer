@@ -6,7 +6,7 @@
 ;;; 不传整份 editor-state，也不写别的插件状态。
 
 (require "../../editor/api.rkt"
-         "../../../edit-tui/lang/racket/api.rkt"
+         "../../compat/lang/racket/api.rkt"
          "model.rkt")
 
 (provide docs-show-name!)

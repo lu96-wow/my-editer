@@ -5,9 +5,9 @@
 (require rackunit
          racket/string
          "../editor/host-api.rkt"
-         "../host/app-layout.rkt"
+         "../app/layout.rkt"
          "../plugins/racket-color/plugin.rkt"
-         "../../edit-tui/core/face/api.rkt")
+         "../compat/face/api.rkt")
 
 (define text "(define foo foo)\n")
 (define engine (make-engine))

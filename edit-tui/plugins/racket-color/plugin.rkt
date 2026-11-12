@@ -11,8 +11,8 @@
 
 (require racket/string
          "../../editor/api.rkt"
-         "../../../edit-tui/lang/racket/api.rkt"
-         "../../../edit-tui/core/face/api.rkt")
+         "../../compat/lang/racket/api.rkt"
+         "../../compat/face/api.rkt")
 
 (provide racket-color-plugin
          (struct-out color-entry))

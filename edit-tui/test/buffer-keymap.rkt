@@ -10,7 +10,7 @@
          "../host/event.rkt"
          "../edit.rkt"
          "../host/keymap.rkt"
-         "../host/app-layout.rkt")
+         "../app/layout.rkt")
 
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "a.txt" ""))
