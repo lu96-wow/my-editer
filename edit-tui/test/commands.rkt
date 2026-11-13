@@ -25,7 +25,7 @@
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))
 (void (engine-create-view! engine 1 1))
-(void (engine-create-buffer! engine 2 "*status*" ""))
+(void (engine-create-buffer! engine 2 "*status*" "" #:kind 'ui))
 (void (engine-create-view! engine 2 2))
 
 (define insert-bang-command
@@ -136,7 +136,7 @@
 (define engine3 (make-engine))
 (void (engine-create-buffer! engine3 1 "editor" "abc"))
 (void (engine-create-view! engine3 1 1))
-(void (engine-create-buffer! engine3 3 "*filetree*" ""))
+(void (engine-create-buffer! engine3 3 "*filetree*" "" #:kind 'ui))
 (void (engine-create-view! engine3 3 3))
 (define (mark-command text)
   (λ (ed state ps)

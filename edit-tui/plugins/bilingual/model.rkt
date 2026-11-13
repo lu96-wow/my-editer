@@ -1,0 +1,104 @@
+#lang racket
+
+;;; edit-tui/plugins/bilingual/model.rkt —— 双语插件纯值模型
+;;;
+;;; translator : 纯行翻译器（1:1 行映射）
+;;; pair       : source user doc 与 mirror derived doc 的关联
+;;; state      : 插件状态；只有 plugin runtime 按 owner 写回
+
+(require racket/string)
+
+(provide (struct-out translator)
+         (struct-out pair)
+         (struct-out bilingual-state)
+         make-bilingual-state
+         pair-for-source
+         pair-for-mirror
+         state-translator
+         state-set-pair
+         state-remove-pair
+         split-lines
+         line-diff)
+
+;; translate-line / inverse-line : string -> string
+;; 第一版不做“反译失败”；无法识别的 token 原样保留。
+(struct translator
+  (id
+   version
+   translate-line
+   inverse-line)
+  #:transparent)
+
+(struct pair
+  (source-doc-id
+   mirror-doc-id
+   mirror-view-id
+   translator-id
+   translator-version
+   source-version
+   mirror-version
+   source-lines
+   mirror-lines)
+  #:transparent)
+
+(struct bilingual-state
+  (pairs               ; hash source-doc-id -> pair
+   translators         ; hash translator-id -> translator
+   default-translator-id)
+  #:transparent)
+
+(define (make-bilingual-state translators default-id)
+  (bilingual-state (hash) translators default-id))
+
+(define (pair-for-source ps did)
+  (and (bilingual-state? ps)
+       (hash-ref (bilingual-state-pairs ps) did #f)))
+
+(define (pair-for-mirror ps did)
+  (and (bilingual-state? ps)
+       (for/first ([p (in-hash-values (bilingual-state-pairs ps))]
+                   #:when (equal? (pair-mirror-doc-id p) did))
+         p)))
+
+(define (state-translator ps id)
+  (and (bilingual-state? ps)
+       (hash-ref (bilingual-state-translators ps) id #f)))
+
+(define (state-set-pair ps p)
+  (struct-copy bilingual-state ps
+               [pairs (hash-set (bilingual-state-pairs ps)
+                                (pair-source-doc-id p)
+                                p)]))
+
+(define (state-remove-pair ps source-did)
+  (struct-copy bilingual-state ps
+               [pairs (hash-remove (bilingual-state-pairs ps) source-did)]))
+
+(define (split-lines text)
+  (if text
+      (string-split text "\n" #:trim? #f)
+      '()))
+
+;; old / new : (listof string)
+;; → (values old-start old-end new-start new-end)
+;; 用 common line prefix / suffix 找变化块；空变化块表示没有行级差异。
+(define (line-diff old new)
+  (define on (length old))
+  (define nn (length new))
+  (define max-prefix (min on nn))
+  (define p
+    (let loop ([i 0])
+      (cond
+        [(>= i max-prefix) i]
+        [(equal? (list-ref old i) (list-ref new i)) (loop (add1 i))]
+        [else i])))
+  (define max-suffix (- (min on nn) p))
+  (define s
+    (let loop ([i 0])
+      (cond
+        [(>= i max-suffix) i]
+        [(equal? (list-ref old (- on 1 i))
+                 (list-ref new (- nn 1 i)))
+         (loop (add1 i))]
+        [else i])))
+  (values p (- on s) p (- nn s)))

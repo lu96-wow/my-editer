@@ -1,0 +1,58 @@
+#lang racket
+
+;;; edit-tui/host/layout.rkt —— host 侧 view / panel 挂载
+;;;
+;;; editor/layout.rkt 是通用布局操作面；这里补 host 装配需要的能力：
+;;;   · 从 layout 摘掉一个 view（不删 engine view）
+;;;   · 把已有 view 作为 tab 加进某个 panel
+;;;
+;;; 纯布局仍是 core/layout 的值；这里只负责 state 写回。
+
+(require "../core/layout/api.rkt"
+         (prefix-in p: "../core/panel/api.rkt")
+         "../editor/host-api.rkt")
+
+(provide editor-detach-view!
+         editor-attach-view-as-tab!)
+
+(define (panel-without-view p vid)
+  (define views (for/list ([v (in-list (p:panel-views p))]
+                           #:unless (memv v (list vid)))
+                 v))
+  (define active
+    (cond
+      [(not (equal? (p:panel-active p) vid)) (p:panel-active p)]
+      [(pair? views) (car views)]
+      [else #f]))
+  (p:panel-set-views p views active))
+
+(define (editor-detach-view! state vid)
+  (define l (state-layout state))
+  (cond
+    [(not l) state]
+    [else
+     (define l*
+       (for/fold ([l l]) ([pid (in-list (layout-panel-ids l))])
+         (define p (layout-panel l pid))
+         (if (and p (memv vid (p:panel-views p)))
+             (let-values ([(l* _ok?) (layout-panel-update l pid
+                                                          (lambda (p)
+                                                            (panel-without-view p vid)))])
+               l*)
+             l)))
+     (state-with-layout state l*)]))
+
+;; anchor-vid 所在 panel 加 new-vid，并设为 active / focus。
+(define (editor-attach-view-as-tab! state anchor-vid new-vid)
+  (define l (state-layout state))
+  (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
+  (cond
+    [(not pid) (values state #f)]
+    [else
+     (define-values (l* ok?) (layout-panel-add-view l pid new-vid))
+     (cond
+       [(not ok?) (values state #f)]
+       [else
+        (define-values (l** active?) (layout-panel-set-active-view l* pid new-vid))
+        (define l*** (layout-set-focus (if active? l** l*) pid))
+        (values (state-with-layout state l***) #t)])]))

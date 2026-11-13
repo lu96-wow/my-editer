@@ -30,7 +30,8 @@
     "plugins/filetree/plugin.rkt"
     "plugins/resources/plugin.rkt"
     "plugins/completion/plugin.rkt"
-    "plugins/docs/plugin.rkt"))
+    "plugins/docs/plugin.rkt"
+    "plugins/bilingual/plugin.rkt"))
 
 (for ([f (in-list plugin-files)])
   ;; 插件只能经 editor/api.rkt 接触 editor；feature / lang api 是额外入口。

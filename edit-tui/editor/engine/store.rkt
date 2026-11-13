@@ -5,46 +5,90 @@
 ;;; 纯 State 只存 id；engine 存真正可变句柄。
 ;;; 命令 / step 不碰 engine，只产生 action；runtime 解释 action 时写 engine。
 ;;;
-;;; user / ui 分开存储：
-;;;   user-docs / user-views : 用户打开的文件
-;;;   ui-docs   / ui-views   : status / filetree / input / completion / docs
+;;; 文档分三类：
+;;;   user-docs / user-views       : 用户打开的文件
+;;;   ui-docs / ui-views           : status / filetree / input / completion / docs
+;;;   derived-docs / derived-views : 插件拥有的派生文本（无 resource / 无 history）
 ;;;
-;;; store 只负责 engine 生命周期和查询；UI 写回在 ui-projection.rkt，
-;;; view-action 解释在 apply.rkt。插件通过 editor/api.rkt 的 ed 级查询访问。
+;;; derived 文档带 derived-meta：owner / source-doc-id / edit-policy。
+;;; 它不进入 user-doc 查询；用户编辑是否允许由 edit-policy 决定。
+;;;
+;;; store 只负责 engine 生命周期和查询；UI / derived 投影写回在
+;;; projection-write.rkt，view-action 解释在 apply.rkt。
 
 (require "../../../core/editor.rkt")
 
 (provide (struct-out engine)
+         (struct-out derived-meta)
          make-engine
          engine-view-object
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version engine-view-doc-id
          engine-doc-kind engine-view-kind
-         engine-doc-ids engine-user-doc-ids engine-ui-doc-ids
-         engine-user-view-ids engine-ui-view-ids
+         engine-doc-ids engine-user-doc-ids engine-ui-doc-ids engine-derived-doc-ids
+         engine-user-view-ids engine-ui-view-ids engine-derived-view-ids
          engine-view-ids-for-doc
+         engine-derived-doc-owner engine-derived-doc-source
+         engine-derived-doc-edit-policy
          engine-view-point-line engine-view-point-column
          engine-view-cursor-screen-position
-         engine-view-face-at
-)
+         engine-view-face-at)
+
+;; owner          : plugin-id
+;; source-doc-id  : doc-id | #f
+;; edit-policy    : 'intent | 'read-only
+(struct derived-meta (owner source-doc-id edit-policy) #:transparent)
 
 (struct engine
-  (user-docs   ; did -> buffer
-   ui-docs     ; did -> buffer
-   user-views  ; vid -> view
-   ui-views    ; vid -> view
-   ui          ; vid -> (cons lines faces)：上次写进 core view 的内容
+  (user-docs     ; did -> buffer
+   ui-docs       ; did -> buffer
+   derived-docs  ; did -> buffer
+   user-views    ; vid -> view
+   ui-views      ; vid -> view
+   derived-views ; vid -> view
+   derived-meta  ; did -> derived-meta
+   projection-cache ; vid -> (cons lines faces)：上次投影内容
    face-track-cache) ; vid -> (cons key face-track)
   #:mutable)
-;; ui / face-track-cache 都是「写回幂等」缓存——内容 / face 没变就不碰 document
-;; （否则每帧都换 document revision、让 render cache 失效，filetree 上千行时
-;; 一帧几十毫秒）。
+;; projection-cache / face-track-cache 都是「写回幂等」缓存——内容 / face 没变
+;; 就不碰 document（否则每帧都换 document revision、让 render cache 失效）。
+;; 缓存键是 view-id，UI / derived / user view 共用；语义区分在写入口。
 
 (define (make-engine)
-  (engine (hash) (hash) (hash) (hash) (hash) (hash)))
+  (engine (hash) (hash) (hash)
+          (hash) (hash) (hash)
+          (hash) (hash) (hash)))
 
 ;;; ════════════════ 内部查找 ════════════════
+
+(define (docs-of e kind)
+  (case kind
+    [(user) (engine-user-docs e)]
+    [(ui) (engine-ui-docs e)]
+    [(derived) (engine-derived-docs e)]
+    [else #f]))
+
+(define (views-of e kind)
+  (case kind
+    [(user) (engine-user-views e)]
+    [(ui) (engine-ui-views e)]
+    [(derived) (engine-derived-views e)]
+    [else #f]))
+
+(define (set-docs-of! e kind h)
+  (case kind
+    [(user) (set-engine-user-docs! e h)]
+    [(ui) (set-engine-ui-docs! e h)]
+    [(derived) (set-engine-derived-docs! e h)]
+    [else (error 'set-docs-of! "未知 doc kind：~a" kind)]))
+
+(define (set-views-of! e kind h)
+  (case kind
+    [(user) (set-engine-user-views! e h)]
+    [(ui) (set-engine-ui-views! e h)]
+    [(derived) (set-engine-derived-views! e h)]
+    [else (error 'set-views-of! "未知 view kind：~a" kind)]))
 
 ;; → (values buffer kind) | (values #f #f)
 (define (doc-entry e did)
@@ -53,6 +97,8 @@
      (values (hash-ref (engine-user-docs e) did) 'user)]
     [(hash-ref (engine-ui-docs e) did #f)
      (values (hash-ref (engine-ui-docs e) did) 'ui)]
+    [(hash-ref (engine-derived-docs e) did #f)
+     (values (hash-ref (engine-derived-docs e) did) 'derived)]
     [else (values #f #f)]))
 
 ;; → (values view kind) | (values #f #f)
@@ -62,6 +108,8 @@
      (values (hash-ref (engine-user-views e) vid) 'user)]
     [(hash-ref (engine-ui-views e) vid #f)
      (values (hash-ref (engine-ui-views e) vid) 'ui)]
+    [(hash-ref (engine-derived-views e) vid #f)
+     (values (hash-ref (engine-derived-views e) vid) 'derived)]
     [else (values #f #f)]))
 
 (define (doc-buffer e did)
@@ -74,32 +122,55 @@
         did)
       (for/first ([(did buf) (in-hash (engine-ui-docs e))]
                   #:when (eq? buf b))
+        did)
+      (for/first ([(did buf) (in-hash (engine-derived-docs e))]
+                  #:when (eq? buf b))
         did)))
 
 (define (set-view! e vid v kind)
-  (case kind
-    [(user) (set-engine-user-views! e (hash-set (engine-user-views e) vid v))]
-    [(ui) (set-engine-ui-views! e (hash-set (engine-ui-views e) vid v))]
-    [else (error 'set-view! "未知 doc kind：~a" kind)]))
+  (set-views-of! e kind (hash-set (views-of e kind) vid v)))
 
 (define (remove-view-entry! e vid kind)
-  (case kind
-    [(user) (set-engine-user-views! e (hash-remove (engine-user-views e) vid))]
-    [(ui) (set-engine-ui-views! e (hash-remove (engine-ui-views e) vid))]
-    [else (void)])
-  (set-engine-ui! e (hash-remove (engine-ui e) vid))
-  (set-engine-face-track-cache! e (hash-remove (engine-face-track-cache e) vid)))
+  (set-views-of! e kind (hash-remove (views-of e kind) vid))
+  (set-engine-projection-cache! e
+                                (hash-remove (engine-projection-cache e) vid))
+  (set-engine-face-track-cache! e
+                                (hash-remove (engine-face-track-cache e) vid)))
 
 ;;; ════════════════ 创建 ════════════════
 
-(define (engine-create-buffer! e did name text #:kind [kind 'user])
-  (unless (memq kind '(user ui))
-    (raise-argument-error 'engine-create-buffer! "(or/c 'user 'ui)" kind))
+(define (check-kind who kind)
+  (unless (memq kind '(user ui derived))
+    (raise-argument-error who "(or/c 'user 'ui 'derived)" kind)))
+
+(define (engine-create-buffer! e did name text
+                              #:kind [kind 'user]
+                              #:owner [owner #f]
+                              #:source-doc-id [source-doc-id #f]
+                              #:edit-policy [edit-policy 'intent])
+  (check-kind 'engine-create-buffer! kind)
+  (when (eq? kind 'derived)
+    (unless (symbol? owner)
+      (raise-argument-error 'engine-create-buffer!
+                            "derived buffer 需要 symbol? owner"
+                            owner))
+    (unless (memq edit-policy '(intent read-only))
+      (raise-argument-error 'engine-create-buffer!
+                            "(or/c 'intent 'read-only)"
+                            edit-policy)))
+  (when (and (not (eq? kind 'derived))
+             (or owner source-doc-id))
+    (error 'engine-create-buffer!
+           "owner / source-doc-id 只属于 derived buffer"))
   (define b (make-buffer text name))
-  (case kind
-    [(user) (set-engine-user-docs! e (hash-set (engine-user-docs e) did b))]
-    [(ui) (set-engine-ui-docs! e (hash-set (engine-ui-docs e) did b))]
-    [else (void)])
+  (set-docs-of! e kind (hash-set (docs-of e kind) did b))
+  (when (eq? kind 'derived)
+    ;; derived 不是权威文档：用户编辑不记 history。
+    (buffer-reset-history! b #f)
+    (set-engine-derived-meta!
+     e
+     (hash-set (engine-derived-meta e) did
+               (derived-meta owner source-doc-id edit-policy))))
   b)
 
 (define (engine-create-view! e vid did)
@@ -135,20 +206,17 @@
 (define (engine-remove-doc! e did)
   (define-values (b kind) (doc-entry e did))
   (when b
-    (define views (case kind
-                    [(user) (engine-user-views e)]
-                    [(ui) (engine-ui-views e)]
-                    [else (hash)]))
+    (define views (views-of e kind))
     (define vids
       (for/list ([(vid v) (in-hash views)]
                  #:when (eq? (view-buffer v) b))
         vid))
     (for ([vid (in-list vids)]) (engine-remove-view! e vid))
     (buffer-close! b)
-    (case kind
-      [(user) (set-engine-user-docs! e (hash-remove (engine-user-docs e) did))]
-      [(ui) (set-engine-ui-docs! e (hash-remove (engine-ui-docs e) did))]
-      [else (void)]))
+    (set-docs-of! e kind (hash-remove (docs-of e kind) did))
+    (when (eq? kind 'derived)
+      (set-engine-derived-meta! e
+                                (hash-remove (engine-derived-meta e) did))))
   (void))
 
 ;;; ════════════════ 查询 / 读 ════════════════
@@ -172,7 +240,8 @@
 
 (define (engine-doc-ids e)
   (append (hash-keys (engine-user-docs e))
-          (hash-keys (engine-ui-docs e))))
+          (hash-keys (engine-ui-docs e))
+          (hash-keys (engine-derived-docs e))))
 
 (define (engine-user-doc-ids e)
   (hash-keys (engine-user-docs e)))
@@ -180,24 +249,39 @@
 (define (engine-ui-doc-ids e)
   (hash-keys (engine-ui-docs e)))
 
+(define (engine-derived-doc-ids e)
+  (hash-keys (engine-derived-docs e)))
+
 (define (engine-user-view-ids e)
   (hash-keys (engine-user-views e)))
 
 (define (engine-ui-view-ids e)
   (hash-keys (engine-ui-views e)))
 
+(define (engine-derived-view-ids e)
+  (hash-keys (engine-derived-views e)))
+
 (define (engine-view-ids-for-doc e did)
   (define-values (b kind) (doc-entry e did))
   (cond
     [(not b) #f]
     [else
-     (define views (case kind
-                     [(user) (engine-user-views e)]
-                     [(ui) (engine-ui-views e)]
-                     [else (hash)]))
+     (define views (views-of e kind))
      (for/list ([(vid v) (in-hash views)]
                 #:when (eq? (view-buffer v) b))
        vid)]))
+
+(define (engine-derived-doc-owner e did)
+  (define m (hash-ref (engine-derived-meta e) did #f))
+  (and m (derived-meta-owner m)))
+
+(define (engine-derived-doc-source e did)
+  (define m (hash-ref (engine-derived-meta e) did #f))
+  (and m (derived-meta-source-doc-id m)))
+
+(define (engine-derived-doc-edit-policy e did)
+  (define m (hash-ref (engine-derived-meta e) did #f))
+  (and m (derived-meta-edit-policy m)))
 
 (define (engine-doc-text e did)
   (define b (doc-buffer e did))

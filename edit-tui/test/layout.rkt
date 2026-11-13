@@ -10,7 +10,7 @@
   (define engine (make-engine))
   (void (engine-create-buffer! engine 1 "test" "hello"))
   (void (engine-create-view! engine 1 1))
-  (void (engine-create-buffer! engine 2 "*status*" ""))
+  (void (engine-create-buffer! engine 2 "*status*" "" #:kind 'ui))
   (void (engine-create-view! engine 2 2))
   (define p (make-plugin #:id 'layout-test #:state 0 #:hooks hooks))
   (define ed (make-editor #:engine engine

@@ -9,7 +9,9 @@
          "../host/open.rkt"
          "../host/close.rkt"
          "../host/docs.rkt"
-         "../host/filetree-io.rkt")
+         "../host/filetree-io.rkt"
+         "../host/bilingual.rkt"
+         "../plugins/bilingual/action.rkt")
 
 (provide run-actions)
 
@@ -47,5 +49,29 @@
       [(filetree-find-action? a)
        (define-values (s* more)
          (open-filetree-find-prompt! s (filetree-find-action-query a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(bilingual-open-action? a)
+       (define-values (s* more)
+         (bilingual-open-pair! ed s
+                               (bilingual-open-action-source-doc-id a)
+                               (bilingual-open-action-translator-id a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(bilingual-close-action? a)
+       (define-values (s* more)
+         (bilingual-close-pair! ed s
+                                (bilingual-close-action-source-doc-id a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(bilingual-focus-action? a)
+       (define-values (s* more)
+         (bilingual-focus-mirror! ed s
+                                  (bilingual-focus-action-mirror-view-id a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(bilingual-replace-source-action? a)
+       (define-values (s* more)
+         (bilingual-replace-source-lines! ed s
+                                          (bilingual-replace-source-action-source-doc-id a)
+                                          (bilingual-replace-source-action-start-line a)
+                                          (bilingual-replace-source-action-end-line a)
+                                          (bilingual-replace-source-action-lines a)))
        (if (null? more) s* (run-actions ed s* more))]
       [else s])))

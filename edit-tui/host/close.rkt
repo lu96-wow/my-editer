@@ -5,8 +5,8 @@
 ;;; 关闭 buffer = 从所有 layout panel 摘掉它的 views，删 engine doc，删 resource。
 ;;; 关闭 panel（C-d）仍然只摘 panel，view / resource 保留，之后可 placement。
 
-(require "../core/layout/api.rkt"
-         (prefix-in p: "../core/panel/api.rkt")
+(require "layout.rkt"
+         "bilingual.rkt"
          "../editor/engine/read.rkt"
          "../editor/engine/lifecycle.rkt"
          "../editor/context.rkt"
@@ -18,41 +18,22 @@
 (provide editor-close-buffer-command
          editor-close-resource!)
 
-(define (panel-without-view p vid)
-  (define views (for/list ([v (in-list (p:panel-views p))]
-                           #:unless (memv v (list vid)))
-                 v))
-  (define active
-    (cond
-      [(not (equal? (p:panel-active p) vid)) (p:panel-active p)]
-      [(pair? views) (car views)]
-      [else #f]))
-  (p:panel-set-views p views active))
-
-(define (detach-view-from-layout layout vid)
-  (for/fold ([l layout]) ([pid (in-list (layout-panel-ids layout))])
-    (define p (layout-panel l pid))
-    (if (and p (memv vid (p:panel-views p)))
-        (let-values ([(l* _ok?) (layout-panel-update l pid (λ (p) (panel-without-view p vid)))])
-          l*)
-        l)))
-
 (define (editor-close-resource! ed state rid)
   (define r (resources-find-doc (state-resources state) rid))
   (cond
     [(not r) (values state '())]
     [else
      (define views (resource-views r))
-     (define l (for/fold ([l (state-layout state)]) ([vid (in-list views)])
-                 (detach-view-from-layout l vid)))
+     (define state0
+       (for/fold ([s state]) ([vid (in-list views)])
+         (editor-detach-view! s vid)))
      (engine-remove-doc! (editor-engine ed) (resource-doc-id r))
      (define state*
        (state-with-flash
-        (state-with-resources
-         (state-with-layout state l)
-         (resources-remove (state-resources state) rid))
+        (state-with-resources state0
+                              (resources-remove (state-resources state0) rid))
         (format "closed: ~a" (or (resource-path r) (resource-name r)))))
-     (values state* '())]))
+     (bilingual-close-pair-for-source! ed state* (resource-doc-id r))]))
 
 ;; 关闭当前 focus resource：dirty -> close-confirm；clean -> 直接关闭。
 (define (editor-close-buffer-command ed state)

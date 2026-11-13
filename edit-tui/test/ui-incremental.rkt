@@ -9,7 +9,7 @@
          "../editor/host-api.rkt")
 
 (define e (make-engine))
-(void (engine-create-buffer! e 1 "test" "aa\nbb\ncc"))
+(void (engine-create-buffer! e 1 "test" "aa\nbb\ncc" #:kind 'ui))
 (void (engine-create-view! e 1 1))
 
 (check-true (engine-set-view-content! e 1

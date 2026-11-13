@@ -16,6 +16,7 @@
          "../plugins/resources/plugin.rkt"
          "../plugins/completion/plugin.rkt"
          "../plugins/docs/plugin.rkt"
+         "../plugins/bilingual/plugin.rkt"
          "../host/keymap.rkt"
          "../host/source.rkt"
          "../host/workspace.rkt"
@@ -101,7 +102,8 @@
                         layout-plugin
                         (make-completion-plugin #:view completion-vid)
                         (make-docs-plugin #:view docs-vid #:panel-id 'docs)
-                        workspace-plugin))
+                        workspace-plugin
+                        bilingual-plugin))
   (define registry (make-hook-registry (plugins->hooks plugins)))
   (define ed (make-editor #:engine engine
                           #:registry registry

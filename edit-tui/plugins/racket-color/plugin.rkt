@@ -173,7 +173,9 @@
   (define changes (change-context-changes ctx))
   (define text (editor-doc-text ed did))
   (cond
-    [(or (not text) (not (racket-doc? (change-context-state ctx) did text)))
+    [(or (not text)
+         (not (eq? (editor-doc-kind ed did) 'user))
+         (not (racket-doc? (change-context-state ctx) did text)))
      (values ctx ps '() #t)]
     [else
      (define old (hash-ref ps did #f))

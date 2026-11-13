@@ -12,8 +12,8 @@
 已经完成：
 
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
-- `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui 文档与 view 分开存储；按 read / user-write / ui-write / lifecycle 拆分能力。
-- `engine-doc-kind`：用户文档 `'user` 与 UI 投影文档 `'ui` 分开；插件默认查询 `editor-user-doc-ids`。
+- `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui / derived 文档与 view 分开存储；按 read / user-write / ui-write / derived-write / lifecycle 拆分能力。
+- `engine-doc-kind`：用户文档 `'user`、UI 投影文档 `'ui`、插件派生文档 `'derived` 分开；插件默认查询 `editor-user-doc-ids`，derived 用 `editor-derived-*`。
 - 插件 sync / overlay / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
@@ -38,6 +38,7 @@
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；源变化投影镜像，镜像编辑反译回源；M-l 打开 / 聚焦 / 关闭 pair；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -92,16 +93,18 @@ edit-tui/
 
   editor/
     engine/
-      store.rkt        engine 内部实现：user/ui doc + view + cache
+      store.rkt        engine 内部实现：user/ui/derived doc + view + cache + derived-meta
       read.rkt         只读能力：document / view / point / face
-      user-write.rkt   用户文档写能力：view-action 解释
-      ui-write.rkt     UI view 写回 / face / cursor
-      lifecycle.rkt    engine / buffer / view 创建与删除
-      ui-projection.rkt UI 投影内部实现
+      user-write.rkt   用户文档写能力：view-action 解释（kind-aware）
+      ui-write.rkt     UI 内容写 + 通用 face / cursor
+      derived-write.rkt derived 内容投影写 + CAS
+      lifecycle.rkt    engine / buffer / view / derived buffer 创建与删除
+      projection-write.rkt UI / derived 共享投影内核
       apply.rkt        view-action 内部解释器
       api.rkt          宿主用的全量兼容聚合面
-    ops/raw.rkt        裸操作：不触发 hook
-    ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe
+    ops/raw.rkt        裸操作：不触发 hook；含程序化区间替换
+    ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe；replace-lines 只写 user doc
+    derived.rkt        derived view 投影写 / 查询
     layout.rkt         通用布局操作面：split / close / focus + layout hooks
     resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
     mode.rkt           .rkt / #lang racket -> racket，否则 text
@@ -127,6 +130,11 @@ edit-tui/
     layout/plugin.rkt
     filetree/plugin.rkt
     resources/plugin.rkt
+    bilingual/model.rkt
+    bilingual/translate.rkt
+    bilingual/action.rkt
+    bilingual/api.rkt
+    bilingual/plugin.rkt
     completion/plugin.rkt
     docs/api.rkt
     docs/plugin.rkt
@@ -140,6 +148,9 @@ edit-tui/
 
   host/
     docs.rkt           completion -> docs 的跨插件 action 解释
+    bilingual.rkt      双语 pair：derived mirror 创建 / bind / 清理 / 源行替换
+    derived-buffer.rkt 动态 derived doc + view 生命周期
+    layout.rkt         host 侧 detach / attach-as-tab
     event.rkt          tui raw -> host 事件
     render/core.rkt    core piece -> tui bytes
     render/theme.rkt   style -> tui 样式安装
@@ -415,6 +426,7 @@ Tab            下一个候选
 Enter          接受候选（菜单关闭时仍是普通换行）
 Esc / C-g      关闭补全
 M-d            查看光标处标识符文档
+M-l            双语：打开 / 聚焦 / 关闭当前 buffer 的 mirror
 C-x d          显 / 隐 docs panel
 C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
@@ -458,6 +470,9 @@ bash edit-tui/test/run.sh
 单独跑：
 
 ```sh
+racket edit-tui/test/engine-kinds.rkt
+racket edit-tui/test/replace-lines.rkt
+racket edit-tui/test/bilingual.rkt
 racket edit-tui/test/hooks.rkt
 racket edit-tui/test/ops.rkt
 racket edit-tui/test/plugins.rkt
@@ -502,7 +517,8 @@ racket edit-tui/test/layers.rkt
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
 4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt` + `core/command` 的纯键表构造器 + `core/face/api.rkt` + `lang/racket/api.rkt`。不 require editor 内部 / host / repo core 实现。
 5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
-5b. engine 的 document 分 `'user` / `'ui`；语法着色等用户文档流程只看 user doc。
+5b. engine 的 document 分 `'user` / `'ui` / `'derived`；用户文档流程只看 user doc，derived 由 owner 插件投影 / 协调。
+     user doc 有 history/resource；ui 是 host 投影；derived 是 plugin-owned、无 resource / 无 history 的派生文本。
 5c. 插件回调异常不允许打断事件循环：runtime 捕获、flash，并保留该插件旧状态。
 5d. 插件命令在 command-table 里是显式 `plugin-command`；host 遗留 raw procedure 只属于 input / placement。
 5e. view-id -> command scope 由插件 `#:view-scopes` 声明，随 editor-core 保存。
@@ -511,11 +527,12 @@ racket edit-tui/test/layers.rkt
 5h. Session 分正交轴：modal = input/placement；pointer = drag/select-drag；
     轴内互斥，轴间独立（find / pending / jobs 可同时存在）。
     input-state 是持久 seed：modal 退出后保留，下一次 open 复用。
-5i. Engine 按能力分模块：read / user-write / ui-write / lifecycle；
-    raw 只用 user-write，surface 只用 read，ui-projection 只用 ui-write，
+5i. Engine 按能力分模块：read / user-write / ui-write / derived-write / lifecycle；
+    raw 只用 user-write，surface 只用 read，投影内核只由 ui-write / derived-write 使用，
     layout / host open / close 只用 read + lifecycle。
-5j. Engine 分开存储 user-docs / user-views 与 ui-docs / ui-views；
-    split view 跟随 source view 的 kind；不为插件增加运行时权限守卫。
+5j. Engine 分开存储 user-docs / ui-docs / derived-docs 与对应 views；
+    derived 带 owner / source-doc-id / edit-policy；split view 跟随 source view 的 kind；
+    不为插件增加运行时权限守卫。
 5k. source-store 是 host 维护的打开 buffer override 索引：同一 path 上 buffer > disk；
     未打开/关闭文件按需读磁盘，不缓存 disk snapshot；不进 State，也不暴露给插件。
 5l. workspace 是 host 维护的语言分析纯值缓存：不进 State、不属于 engine；
@@ -562,6 +579,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
@@ -598,3 +616,4 @@ racket edit-tui/test/layers.rkt
 
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
+3. bilingual side-by-side split / 多翻译表 / 结构化数据源。

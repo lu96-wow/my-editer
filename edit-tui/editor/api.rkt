@@ -3,9 +3,9 @@
 ;;; edit-tui/editor/api.rkt —— 插件唯一能 require 的 editor 面
 ;;;
 ;;; 只导出：
-;;;   · 操作面（surface）：insert! / delete! / move! / ...
+;;;   · 操作面（surface）：insert! / delete! / move! / replace-lines! / ...
 ;;;   · 扩展点构造器：make-hook / plugin
-;;;   · 只读 State 查询 + UI view 写回
+;;;   · 只读 State 查询 + UI view 写回 + derived view 投影写
 ;;;   · core 的值词汇（point / range / selection / change / rect / face）
 ;;;
 ;;; 不导出：
@@ -31,7 +31,8 @@
          "layout.rkt"
          "job.rkt"
          "timer.rkt"
-         "overlay.rkt")
+         "overlay.rkt"
+         "derived.rkt")
 
 (provide
  ;; job / service 纯值
@@ -114,6 +115,9 @@
  editor-view-cursor-screen-position
  editor-view-face-at
 
+ ;; derived view：plugin-owned 投影写 / 查询
+ (all-from-out "derived.rkt")
+
  ;; UI view 写回（status / docs / completion 等普通 view）
  editor-set-view-content!
  editor-set-view-cursor!
@@ -133,6 +137,8 @@
  editor-redo!
  editor-kill-line!
  editor-ensure!
+ editor-replace-range!
+ editor-replace-lines!
 
  ;; layout 操作面 + 查询（不导出 layout-context / mouse / engine）
  editor-focus-panel-id
@@ -258,3 +264,9 @@
 
 (define (editor-ensure! ed state vid)
   (surface-ensure! ed state vid))
+
+(define (editor-replace-range! ed state vid r text)
+  (surface-replace-range! ed state vid r text))
+
+(define (editor-replace-lines! ed state vid start-line end-line lines)
+  (surface-replace-lines! ed state vid start-line end-line lines))

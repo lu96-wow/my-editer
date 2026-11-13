@@ -11,7 +11,9 @@
 ;;;
 ;;; 插件不直接调用 raw.rkt；它们注册 hook，或者通过 editor/api.rkt 调操作面。
 
-(require "../../core/api.rkt"
+(require (only-in racket/list take drop)
+         (only-in racket/string string-split string-join)
+         "../../core/api.rkt"
          "../engine/read.rkt"
          "../context.rkt"
          "../state.rkt"
@@ -26,6 +28,8 @@
          surface-set-point!
          surface-select!
          surface-scroll!
+         surface-replace-range!
+         surface-replace-lines!
          surface-undo!
          surface-redo!
          surface-kill-line!
@@ -206,3 +210,98 @@
 (define (surface-ensure! ed state vid)
   (raw-ensure! (editor-engine ed) vid)
   (values state '()))
+
+
+;;; ════════════════ 程序化替换（只写 user doc） ════════════════
+
+;; 程序化替换不跑 insert/delete 的 before hooks（pair/indent 不应改写
+;; 翻译器写入的文本），但必须进入 'changes 流。
+(define (surface-replace-range! ed state vid r text)
+  (define engine (editor-engine ed))
+  (cond
+    [(not (eq? (engine-view-kind engine vid) 'user))
+     (values (state-with-flash state "replace-range: view is not a user document")
+             '())]
+    [else
+     (define base-version (base-version-for-view engine vid))
+     (define changes
+       (with-view-undo-step
+        engine vid
+        (lambda () (raw-replace-range! engine vid r text))))
+     (run-text-changes ed state vid base-version changes)]))
+
+;; start-line inclusive / end-line exclusive；lines 不含换行。
+;; 旧文本和构造出的新文本做字符级 diff，再发最小区间替换。
+(define (surface-replace-lines! ed state vid start-line end-line lines)
+  (define engine (editor-engine ed))
+  (cond
+    [(not (eq? (engine-view-kind engine vid) 'user))
+     (values (state-with-flash state "replace-lines: view is not a user document")
+             '())]
+    [else
+     (define old-text (engine-view-text engine vid))
+     (define old-lines (and old-text (string-split old-text "\n" #:trim? #f)))
+     (define n (and old-lines (length old-lines)))
+     (cond
+       [(or (not n)
+            (not (exact-nonnegative-integer? start-line))
+            (not (exact-nonnegative-integer? end-line))
+            (> start-line end-line)
+            (> end-line n))
+        (values (state-with-flash state "replace-lines: bad line range")
+                '())]
+       [else
+        (define new-lines
+          (append (take old-lines start-line)
+                  lines
+                  (drop old-lines end-line)))
+        (surface-replace-text! ed state vid (string-join new-lines "\n"))])]))
+
+(define (common-prefix-length a b)
+  (define n (min (string-length a) (string-length b)))
+  (let loop ([i 0])
+    (cond
+      [(>= i n) i]
+      [(char=? (string-ref a i) (string-ref b i)) (loop (add1 i))]
+      [else i])))
+
+(define (common-suffix-length a b limit)
+  (let loop ([i 0])
+    (cond
+      [(>= i limit) i]
+      [(char=? (string-ref a (- (string-length a) 1 i))
+               (string-ref b (- (string-length b) 1 i)))
+       (loop (add1 i))]
+      [else i])))
+
+(define (offset->point text offset)
+  (define n (min (max 0 offset) (string-length text)))
+  (let loop ([i 0] [line 0] [col 0])
+    (cond
+      [(>= i n) (point line col)]
+      [(char=? (string-ref text i) #\newline)
+       (loop (add1 i) (add1 line) 0)]
+      [else (loop (add1 i) line (add1 col))])))
+
+(define (surface-replace-text! ed state vid new-text)
+  (define engine (editor-engine ed))
+  (define old-text (engine-view-text engine vid))
+  (cond
+    [(not old-text)
+     (values (state-with-flash state "replace-text: no view text") '())]
+    [else
+     (define cp (common-prefix-length old-text new-text))
+     (define max-suffix (- (min (string-length old-text)
+                                (string-length new-text))
+                           cp))
+     (define cs (common-suffix-length old-text new-text max-suffix))
+     (define old-end (- (string-length old-text) cs))
+     (define new-end (- (string-length new-text) cs))
+     (cond
+       [(and (= cp old-end) (= cp new-end))
+        (values state '())]
+       [else
+        (define r (range (offset->point old-text cp)
+                         (offset->point old-text old-end)))
+        (define inserted (substring new-text cp new-end))
+        (surface-replace-range! ed state vid r inserted)])]))

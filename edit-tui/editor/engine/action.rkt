@@ -12,10 +12,12 @@
 (struct view-action (kind view-id data) #:transparent)
 ;; kind : 'insert | 'paste | 'backspace | 'delete | 'kill-line
 ;;      | 'nav | 'point | 'select | 'scroll | 'ensure | 'undo | 'redo
+;;      | 'replace-range
 ;;
 
 ;; data :
 ;;   insert/paste      原始 UTF-8 bytes（engine 写 buffer 时解码一次）
+;;   replace-range     (list range text)；程序化区间替换，只允许 user doc
 ;;   nav               dir | (list dir extend?)
 ;;   point             (list row col) | (list row col extend?)
 ;;                     （相对内容区，0 基；越界夹到最近有效位置）

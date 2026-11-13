@@ -135,19 +135,38 @@
   (define vid (view-action-view-id action))
   (define v (engine-view-object e vid))
   (unless v (error 'engine-apply-view-action! "view 不存在：~a" vid))
+  (define kind (engine-view-kind e vid))
+  (define did (engine-view-doc-id e vid))
+  (define text-editable?
+    (case kind
+      [(user) #t]
+      [(derived)
+       (eq? (engine-derived-doc-edit-policy e did) 'intent)]
+      [else #f]))
+  (define history-editable? (eq? kind 'user))
   (define b (view-buffer v))
   (case (view-action-kind action)
     [(insert)
-     ;; action 里是原始 UTF-8 bytes；document 是字符串，这里解一次
-     (buffer-edit! b v (op-type (bytes->string/utf-8 (view-action-data action))))]
+     (if text-editable?
+         ;; action 里是原始 UTF-8 bytes；document 是字符串，这里解一次
+         (buffer-edit! b v (op-type (bytes->string/utf-8 (view-action-data action))))
+         '())]
     [(paste)
-     (buffer-edit! b v (op-paste (bytes->string/utf-8 (view-action-data action))))]
+     (if text-editable?
+         (buffer-edit! b v (op-paste (bytes->string/utf-8 (view-action-data action))))
+         '())]
     [(backspace)
-     (buffer-edit! b v (op-backspace))]
+     (if text-editable? (buffer-edit! b v (op-backspace)) '())]
     [(delete)
-     (buffer-edit! b v (op-delete))]
+     (if text-editable? (buffer-edit! b v (op-delete)) '())]
     [(kill-line)
-     (kill-line! v)]
+     (if text-editable? (kill-line! v) '())]
+    [(replace-range)
+     (cond
+       [(eq? kind 'user)
+        (match-define (list r text) (view-action-data action))
+        (buffer-replace-range! b r text)]
+       [else '()])]
     [(nav)
      (apply-nav! v (view-action-data action))
      '()]
@@ -177,13 +196,19 @@
     ;; undo/redo 恢复旧 document；文本变化也要进入 'changes 流。
     ;; face / document slot 随 document 一起恢复，不是一次新的编辑提交。
     [(undo)
-     (define before (view-string v))
-     (cond
-       [(not (buffer-undo! b)) '()]
-       [else (text-change before (view-string v))])]
+     (if history-editable?
+         (let ()
+           (define before (view-string v))
+           (cond
+             [(not (buffer-undo! b)) '()]
+             [else (text-change before (view-string v))]))
+         '())]
     [(redo)
-     (define before (view-string v))
-     (cond
-       [(not (buffer-redo! b)) '()]
-       [else (text-change before (view-string v))])]
+     (if history-editable?
+         (let ()
+           (define before (view-string v))
+           (cond
+             [(not (buffer-redo! b)) '()]
+             [else (text-change before (view-string v))]))
+         '())]
     [else (error 'engine-apply-view-action! "未知 view action：~a" action)]))

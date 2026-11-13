@@ -5,7 +5,7 @@
 | 目录 | 内容 |
 |---|---|
 | `core/` | 文本引擎 + 渲染值：buffer / view / document / history；track / change / slot / face port；screen / panel / piece |
-| `edit-tui/` | TUI 应用：纯 State + action、editor 操作面与扩展点、布局 / 资源 / 命令 / 投影、插件与 host |
+| `edit-tui/` | TUI 应用：纯 State + action、editor 操作面与扩展点、布局 / 资源 / 命令 / 投影、插件与 host；文档分 `user` / `ui` / `derived` |
 | `history/` | 历史实现（`edit` / `edit4` …），只作参考，运行时不依赖 |
 | `core-test/`、`edit-tui/test/` | 回归测试 |
 
@@ -19,6 +19,8 @@
 - `edit-tui/editor/host-api.rkt`：宿主装配面（插件只应 require `editor/api.rkt`）
 - `edit-tui/host/source.rkt`：buffer / disk 来源权威同步
 - `edit-tui/host/workspace.rkt`：权威 snapshot -> 语言分析 workspace
+- `edit-tui/host/bilingual.rkt`：源 user doc ↔ derived mirror 的宿主生命周期
+- `edit-tui/plugins/bilingual/plugin.rkt`：双语行映射插件
 - `edit-tui/edit.rkt`：TUI 装配 + 事件循环
 - `edit-tui/test/layers.rkt`：分层约束的可执行版本
 
@@ -51,6 +53,7 @@ racket edit-tui/edit.rkt
 - 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
+- `derived` 文档是 plugin-owned 派生文本：无 resource / 无 history，内容投影只走 derived-write；
 - source-store 是 host 维护的打开 buffer override 索引：同一 path 上 buffer > disk；未打开/关闭文件按需读磁盘，不缓存 disk snapshot；
 - workspace 是 host 维护的语言分析纯值缓存，存在 editor 实例；不进 State、不属于 engine；
 - 插件只 require `edit-tui/editor/api.rkt`、feature 的 `api.rkt`、`core/command` 的纯键表构造器、`core/face/api.rkt`、`lang/racket/api.rkt`；跨插件只经 action 或对方 `api.rkt`。

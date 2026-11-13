@@ -20,7 +20,7 @@
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))
 (void (engine-create-view! engine 1 1))
-(void (engine-create-buffer! engine 3 "*filetree*" ""))
+(void (engine-create-buffer! engine 3 "*filetree*" "" #:kind 'ui))
 (void (engine-create-view! engine 3 3))
 
 (define plugin (make-filetree-plugin #:view 3 #:root root))
@@ -119,7 +119,7 @@
 (define engine2 (make-engine))
 (void (engine-create-buffer! engine2 1 "test" ""))
 (void (engine-create-view! engine2 1 1))
-(void (engine-create-buffer! engine2 3 "*filetree*" ""))
+(void (engine-create-buffer! engine2 3 "*filetree*" "" #:kind 'ui))
 (void (engine-create-view! engine2 3 3))
 (define plugin2
   (make-filetree-plugin #:view 3 #:root root2

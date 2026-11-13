@@ -79,7 +79,11 @@
   (define ws (editor-workspace ed))
   (define r (state-resource-for-doc state did))
   (cond
-    [(or (not ws) (not r) (not (eq? (resource-mode r) 'racket))) (void)]
+    [(or (not ws)
+         (not r)
+         (not (eq? (engine-doc-kind (editor-engine ed) did) 'user))
+         (not (eq? (resource-mode r) 'racket)))
+     (void)]
     [else
      (define entry (workspace-doc ws did))
      (define path (workspace-normalize-path (resource-path r)))

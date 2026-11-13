@@ -17,9 +17,14 @@
          engine-doc-ids
          engine-user-doc-ids
          engine-ui-doc-ids
+         engine-derived-doc-ids
          engine-user-view-ids
          engine-ui-view-ids
+         engine-derived-view-ids
          engine-view-ids-for-doc
+         engine-derived-doc-owner
+         engine-derived-doc-source
+         engine-derived-doc-edit-policy
          engine-view-point-line
          engine-view-point-column
          engine-view-cursor-screen-position

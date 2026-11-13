@@ -18,6 +18,7 @@
          raw-backspace!
          raw-delete!
          raw-kill-line!
+         raw-replace-range!
          raw-undo!
          raw-redo!
          raw-move!
@@ -46,6 +47,12 @@
 (define (raw-kill-line! engine vid)
   (engine-apply-user-action! engine
                              (view-action 'kill-line vid #f)))
+
+;; 程序化区间替换：只由 surface 的 replace 操作使用；不跑 hook。
+;; r : core range；text : string
+(define (raw-replace-range! engine vid r text)
+  (engine-apply-user-action! engine
+                             (view-action 'replace-range vid (list r text))))
 
 (define (raw-undo! engine vid)
   (engine-apply-user-action! engine

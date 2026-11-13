@@ -8,9 +8,11 @@
 (require "read.rkt"
          "user-write.rkt"
          "ui-write.rkt"
+         "derived-write.rkt"
          "lifecycle.rkt")
 
 (provide (all-from-out "read.rkt"
                        "user-write.rkt"
                        "ui-write.rkt"
+                       "derived-write.rkt"
                        "lifecycle.rkt"))
