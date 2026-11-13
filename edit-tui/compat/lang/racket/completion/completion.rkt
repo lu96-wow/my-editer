@@ -82,7 +82,8 @@
 (define (make-completion-context path text
                                  #:open [open (hash)]
                                  #:workspace [ws #f]
-                                 #:id [id #f])
+                                 #:id [id #f]
+                                 #:line [line #f])
   (cond
     [(and (not (racket-file? path))
           (not (racket-text? text)))
@@ -109,14 +110,24 @@
                   (local-binding-names text)
                   open)]))
      (define specs* (if (pair? specs) specs (list 'racket/base)))
+     ;; 局部绑定 / 本地词只取当前顶层表单；模块级 define / require 仍由
+     ;; locals / specs 提供。
+     (define scope
+       (if line
+           (with-handlers ([exn:fail? (λ (_) #f)])
+             (let-values ([(b t) (local-scope-at text line)])
+               (list b t)))
+           #f))
+     (define bindings* (if scope (car scope) bindings))
+     (define scope-text (if scope (cadr scope) text))
      (completion-context (path-string path)
                          (base-dir-of path)
                          lang
                          specs*
                          open*
                          locals
-                         bindings
-                         text
+                         bindings*
+                         scope-text
                          forms
                          ws
                          id)]))
@@ -174,11 +185,9 @@
        (append (completion-context-locals ctx)
                (completion-context-bindings ctx)
                (local-words (completion-context-text ctx))))
-     (define from-open
-       (append* (for/list ([text (in-list (hash-values (completion-context-open ctx)))])
-                  (local-words text))))
+     ;; 其它打开 buffer 的单词不再进入本地词池；它们的导出名由 require 路径提供。
      (distinct-strings
-      (append from-current from-open
+      (append from-current
               (hash-keys keyword-categories)))]))
 
 ;; 慢：require / #lang 引入的模块导出名。
@@ -403,7 +412,8 @@
      (define ctx (make-completion-context path text
                                          #:open open
                                          #:workspace ws
-                                         #:id id))
+                                         #:id id
+                                         #:line line))
      (if ctx
          (let ([prefix (completion-prefix text line col)])
            (if local-only?

@@ -25,7 +25,7 @@
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
-- `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受；候选包含 prefix 本身，但只有存在其他候选时才显示 popup。
+- `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受；候选包含 prefix 本身，但只有存在其他候选时才显示 popup；候选按当前 buffer 的模块定义、当前顶层表单局部绑定和 require 规格计算。
 - `plugins/docs/`：docs 面板 / 本地预览 / 异步库文档 / C-x d；面板隐藏时 M-d 与 docs sync 走统一开关，不提交解析 job。
 - `editor/points.rkt`：插入点表（name / kind / phases / context），make-hook 校验 operation/phase。
 - `editor/hooks.rkt`：typed hook 扩展点 + 有序 pipeline。

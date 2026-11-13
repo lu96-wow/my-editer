@@ -17,6 +17,8 @@
          analyze-source
          analysis-edit
          local-binding-names
+         local-binding-names-at
+         local-scope-at
          binding-names-of-forms)
 
 (require racket/list
@@ -446,6 +448,34 @@
 (define (local-binding-names text)
   (define-values (_lang forms) (module-context text))
   (binding-names-of-forms forms))
+
+;; 当前行所在顶层表单的局部绑定 + 该表单文本。
+;; 顶层之间不共享局部绑定；模块级 define / require 仍由上层另行加入。
+(define (local-scope-at text line)
+  (define entries (with-handlers ([exn:fail? (λ (_) '())])
+                    (analyze-source #f text)))
+  (define es (module-analysis-entries entries))
+  (define e
+    (and es
+         (for/first ([e (in-list es)]
+                     #:when (and (<= (form-entry-start-line e) line)
+                                 (< line (form-entry-end-line e))))
+           e)))
+  (define lines (string-split text "\n" #:trim? #f))
+  (cond
+    [(not e)
+     (values '() (if (< line (length lines)) (list-ref lines line) ""))]
+    [else
+     (define start (form-entry-start-line e))
+     (define end (form-entry-end-line e))
+     (define scope-lines
+       (take (drop lines start) (max 0 (- end start))))
+     (values (binding-names-of-forms (list (form-entry-form e)))
+             (string-join scope-lines "\n"))]))
+
+(define (local-binding-names-at text line)
+  (define-values (bindings _scope-text) (local-scope-at text line))
+  bindings)
 
 ;;; ════════════════ 聚合 ════════════════
 

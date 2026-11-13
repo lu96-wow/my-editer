@@ -13,11 +13,11 @@
 (define root (make-temporary-directory))
 (define main-path (build-path root "main.rkt"))
 (define dep-path (build-path root "dep.rkt"))
-(display-to-file "(provide disk-name)\n" dep-path #:exists 'replace)
+(display-to-file "#lang racket\n(provide disk-name)\n" dep-path #:exists 'replace)
 
 (define dep-key (path->string (simplify-path dep-path)))
 (define open
-  (hash dep-key "(provide buffer-name)\n(define x 1)\n"))
+  (hash dep-key "#lang racket\n(provide buffer-name)\n(define x 1)\n"))
 
 ;;; ════════════════ require 绑定：buffer 优先 ════════════════
 
@@ -48,9 +48,9 @@
 
 ;; 有打开的 buffer 命中时，不再扫磁盘。
 (define dep2-path (build-path root "dep2.rkt"))
-(display-to-file "(provide dep2)\n" dep2-path #:exists 'replace)
+(display-to-file "#lang racket\n(provide dep2)\n" dep2-path #:exists 'replace)
 (define open2
-  (hash (path->string (simplify-path dep2-path)) "(provide dep2)\n"))
+  (hash (path->string (simplify-path dep2-path)) "#lang racket\n(provide dep2)\n"))
 (define open-hit-cands
   (completion-at (path->string main-path) req-text 0 req-col #:open open2))
 (check-true (and (member "dep2" open-hit-cands) #t))
