@@ -73,6 +73,11 @@
      (take local (min 50 (length local)))]
     [else (completion-candidates ctx prefix)]))
 
+;; 补全列表可以包含 prefix 本身，但只有存在“更长/其他候选”时才显示 popup。
+(define (has-other-candidates? candidates prefix)
+  (for/or ([c (in-list candidates)])
+    (not (string=? c prefix))))
+
 (define (completion-focused? state c)
   (and (completion-state? c)
        (completion-state-open? c)
@@ -102,6 +107,7 @@
         (values state (close-completion ps) '())]
        [else
         (define local (all-candidates ed state vid did prefix #t))
+        (define open? (has-other-candidates? local prefix))
         (define c1
           (struct-copy completion-state ps
                        [target-vid vid]
@@ -110,7 +116,7 @@
                        [prefix prefix]
                        [candidates local]
                        [index 0]
-                       [open? (pair? local)]
+                       [open? open?]
                        [request-id #f]
                        [timer-id #f]
                        [anchor-line (editor-view-point-line ed vid)]
@@ -123,7 +129,7 @@
                                    (list 'completion (editor-doc-version ed did))))
         (values state2
                 (struct-copy completion-state c1 [request-id (job-id job)])
-                (if (pair? local)
+                (if (and open? (pair? local))
                     (list (show-docs-action (car local)))
                     '()))])]))
 
@@ -208,14 +214,18 @@
                    '())]
           [else
            (define idx (min (completion-state-index ps) (sub1 (length result))))
+           (define open? (has-other-candidates? result
+                                                (completion-state-prefix ps)))
            (define ps*
              (struct-copy completion-state ps
                           [candidates result]
                           [index idx]
-                          [open? #t]
+                          [open? open?]
                           [request-id #f]))
            (values state ps*
-                   (list (show-docs-action (list-ref result idx))))])]
+                   (if open?
+                       (list (show-docs-action (list-ref result idx)))
+                       '()))])]
        [else (values state (struct-copy completion-state ps [request-id #f]) '())])]))
 
 ;;; ════════════════ 命令 ════════════════

@@ -74,15 +74,19 @@
 (engine-set-view-cursor! (editor-engine edx) 1 3 #:column 6)
 (define x2 (handle-editor-event edx x1 (key-event (key 'o 'ctrl))))
 (define cx2 (state-plugin-state x2 'completion))
-(check-true (completion-state-open? cx2))
+;; prefix 本身保留在候选列表里，但没有其他候选时不显示 popup。
 (check-not-false (member "map" (completion-state-candidates cx2)))
+(check-false (completion-state-open? cx2))
+(define-values (x2r _cx2r _bx2r) (render-frame edx x2 #f))
+(check-equal? (run-plugin-overlays edx x2r) '())
 
-;; 接受 exact match：菜单关闭，文本不变。
-(define x3 (handle-editor-event edx x2 (key-event (key 'enter))))
+;; 没有打开菜单时 Enter 是普通换行，不会被补全吞掉。
+(define before-enter (engine-view-text (editor-engine edx) 1))
+(define x3 (handle-editor-event edx x2r (key-event (key 'enter))))
+(check-not-equal? (engine-view-text (editor-engine edx) 1)
+                  before-enter)
 (check-false (completion-state-open?
               (state-plugin-state x3 'completion)))
-(check-equal? (list-ref (string-split (engine-view-text (editor-engine edx) 1) "\n" #:trim? #f) 3)
-              "  (map add1 xs))")
 
 ;;; ════════════════ changes -> timer -> 自动打开 ════════════════
 
