@@ -1,6 +1,6 @@
 #lang racket
 
-;;; color 增量路径：change hook 更新 color-entry；undo 后 sync 回退全量重算。
+;;; color 增量路径：change hook 更新 color-entry；undo 也走 changes 流。
 
 (require rackunit
          "../editor/host-api.rkt"
@@ -30,11 +30,13 @@
 (define s3 (run-plugin-syncs ed s2))
 (check-not-false (engine-view-face-at engine 1 1 2))
 
-;; undo 不产生 change；sync 走全量 color-open 回退。
+;; undo 也产生 change；changes hook 立即更新 color-entry。
 (define-values (s4 _a4) (editor-undo! ed s3 1))
-(define s5 (run-plugin-syncs ed s4))
-(define entry3 (hash-ref (state-plugin-state s5 'racket-color) 1))
+(define entry3 (hash-ref (state-plugin-state s4 'racket-color) 1))
 (check-equal? (color-entry-version entry3) (engine-doc-version engine 1))
+(define s5 (run-plugin-syncs ed s4))
+(define entry4 (hash-ref (state-plugin-state s5 'racket-color) 1))
+(check-equal? (color-entry-version entry4) (engine-doc-version engine 1))
 (check-not-false (engine-view-face-at engine 1 1 1))
 
 (displayln "edit-tui/test/color-incremental.rkt: ok")

@@ -128,3 +128,33 @@
                                                      #:fn (λ (ctx ps) (values ctx ps '() #t)))))))
 
 (displayln "edit-tui/test/hooks.rkt: ok")
+
+;;; 6. paste / kill-line / undo / redo 也进入 'changes 流
+
+(define change-batches (box '()))
+(define (record-change ctx ps)
+  (set-box! change-batches
+            (append (unbox change-batches)
+                    (list (change-context-changes ctx))))
+  (values ctx (add1 ps) '() #t))
+
+(define-values (engine5 ed5 state5)
+  (make-test-editor
+   (list (make-hook #:owner 'test #:id 'changes-any
+                    #:operation 'changes #:phase 'observe
+                    #:fn record-change))))
+
+(define-values (s5a _a5a) (editor-insert! ed5 state5 1 "abc\ndef"))
+;; 这个 test editor 的 view 只有 1x1，用 engine 光标定位而不是屏幕坐标。
+(engine-set-view-cursor! engine5 1 0 #:column 1)
+(define-values (s5c _a5c) (editor-kill-line! ed5 s5a 1))
+(define-values (s5d _a5d) (editor-undo! ed5 s5c 1))
+(define-values (s5e _a5e) (editor-redo! ed5 s5d 1))
+(engine-set-view-cursor! engine5 1 1 #:column 3)
+(define-values (_s5f _a5f)
+  (editor-paste! ed5 s5e 1 (string->bytes/utf-8 "!")))
+
+(check-equal? (length (unbox change-batches)) 5)
+(for ([batch (in-list (unbox change-batches))])
+  (check-true (pair? batch)))
+(check-equal? (engine-view-text engine5 1) "a\ndef!")

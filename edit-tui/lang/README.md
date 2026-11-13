@@ -113,8 +113,10 @@ lang/python/
 - **解析**：按顶层 `form-entry` 缓存。`analysis-edit` 只重读受脏行影响的
   form；尾部遇到未变化的旧 form 就收敛，剩余 entry 只平移行号。
 - **workspace**：`workspace-apply-changes` 更新单个文档的 analysis；依赖它的
-  buffer 不重新 parse，导出查询读取新的接口结果。host 在 insert / delete 的
-  changes hook 调用它；paste / undo / redo 等在 async 模式下走 workspace-analysis job。
+  buffer 不重新 parse，导出查询读取新的接口结果。host 在用户文本变更的
+  changes hook 调用它；所有用户文本变更（insert / delete / paste / kill-line /
+  undo / redo）都产生 changes。新打开文件 / save-as / 没有 changes 的整篇写回
+  在 async 模式下走 workspace-analysis job。
 
 参考 `racket-langserver` 的取舍：
 
@@ -124,5 +126,5 @@ lang/python/
 
 语言层只产出 role / 候选 / 文档数据，不决定 face、菜单、弹窗或异步 worker。
 编辑器侧的显式着色阶段在 `plugins/racket-color`：把 role 映射成逐字符 face，
-普通编辑用 `pending-doc-changes` + `color-edit` 增量；首次打开 / undo / 批量修改
-提交后台 `color-open` job，结果按 `(doc-id, version)` 校验后再写回。
+普通编辑用 changes + `color-edit` 增量；首次打开 / 外部整篇写回走 `color-open`，
+结果按 `(doc-id, version)` 校验后再写回。

@@ -11,9 +11,10 @@
 ;;;
 ;;; 未打开 / 已关闭文件不缓存 disk snapshot；语言层需要时按需读磁盘。
 ;;;
-;;; insert / delete 由 changes hook 调 workspace-note-changes! 做 analysis-edit；
-;;; 其他没有 changes hook 的全量路径（open / paste / undo / save-as）在 async
-;;; 模式下提交 workspace-analysis job，结果按 (doc-id, version) 校验后安装。
+;;; 所有用户文本变更（insert / delete / paste / kill-line / undo / redo）都由
+;;; changes hook 调 workspace-note-changes! 做 analysis-edit；
+;;; 没有 changes 的路径（新打开文件 / save-as / 外部整篇写回）在 async 模式下
+;;; 提交 workspace-analysis job，结果按 (doc-id, version) 校验后安装。
 ;;;
 ;;; 同步模式（state-async? = #f）仍然直接全量分析，便于测试 / headless。
 
@@ -71,7 +72,7 @@
                (point-line (range-start after))
                (point-line (range-end after)))))
 
-;; insert / delete 的 changes hook 入口。
+;; 用户文本变更的 changes hook 入口。
 ;; 只有 workspace entry 正好对应本次编辑前的版本时才走 analysis-edit；
 ;; 否则留给 workspace-sync! 做全量兜底。
 (define (workspace-note-changes! ed state did base-version version changes)

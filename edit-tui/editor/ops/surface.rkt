@@ -154,11 +154,20 @@
        (run-change-hooks ed state3 vid base-version changes))
      (values state4 (append actions1 actions3 actions4))]))
 
-;;; ════════════════ 其他操作（暂时不带 hook） ════════════════
+;;; ════════════════ 其他文本操作（不跑 edit hook，但统一进 changes 流） ════════════════
+
+(define (base-version-for-view engine vid)
+  (define did (engine-view-doc-id engine vid))
+  (and did (engine-doc-version engine did)))
+
+(define (run-text-changes ed state vid base-version changes)
+  (run-change-hooks ed state vid base-version changes))
 
 (define (surface-paste! ed state vid bytes)
-  (raw-paste! (editor-engine ed) vid bytes)
-  (values state '()))
+  (define engine (editor-engine ed))
+  (define base-version (base-version-for-view engine vid))
+  (define changes (raw-paste! engine vid bytes))
+  (run-text-changes ed state vid base-version changes))
 
 (define (surface-move! ed state vid dir [extend? #f])
   (raw-move! (editor-engine ed) vid dir extend?)
@@ -177,16 +186,22 @@
   (values state '()))
 
 (define (surface-undo! ed state vid)
-  (raw-undo! (editor-engine ed) vid)
-  (values state '()))
+  (define engine (editor-engine ed))
+  (define base-version (base-version-for-view engine vid))
+  (define changes (raw-undo! engine vid))
+  (run-text-changes ed state vid base-version changes))
 
 (define (surface-redo! ed state vid)
-  (raw-redo! (editor-engine ed) vid)
-  (values state '()))
+  (define engine (editor-engine ed))
+  (define base-version (base-version-for-view engine vid))
+  (define changes (raw-redo! engine vid))
+  (run-text-changes ed state vid base-version changes))
 
 (define (surface-kill-line! ed state vid)
-  (raw-kill-line! (editor-engine ed) vid)
-  (values state '()))
+  (define engine (editor-engine ed))
+  (define base-version (base-version-for-view engine vid))
+  (define changes (raw-kill-line! engine vid))
+  (run-text-changes ed state vid base-version changes))
 
 (define (surface-ensure! ed state vid)
   (raw-ensure! (editor-engine ed) vid)

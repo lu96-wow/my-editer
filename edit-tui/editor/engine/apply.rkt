@@ -15,6 +15,50 @@
 
 (provide engine-apply-view-action!)
 
+;; 撤销 / 重做恢复的是旧文档；core 历史层没有保存 change 差分。
+;; 这里用公共前后缀求一个最小替换区间，作为一个 change 批次交给下游。
+;; 一个 undo 事务如果包含多个不相邻编辑，会被合并成一个覆盖区间；
+;; 但正常单点 undo 仍然只标脏实际变化的行。
+(define (common-prefix-length a b)
+  (define n (min (string-length a) (string-length b)))
+  (let loop ([i 0])
+    (cond
+      [(>= i n) i]
+      [(char=? (string-ref a i) (string-ref b i)) (loop (add1 i))]
+      [else i])))
+
+(define (common-suffix-length a b limit)
+  (let loop ([i 0])
+    (cond
+      [(>= i limit) i]
+      [(char=? (string-ref a (- (string-length a) 1 i))
+               (string-ref b (- (string-length b) 1 i)))
+       (loop (add1 i))]
+      [else i])))
+
+(define (offset->point text offset)
+  (define n (min (max 0 offset) (string-length text)))
+  (let loop ([i 0] [line 0] [col 0])
+    (cond
+      [(>= i n) (point line col)]
+      [(char=? (string-ref text i) #\newline)
+       (loop (add1 i) (add1 line) 0)]
+      [else (loop (add1 i) line (add1 col))])))
+
+(define (text-change before after)
+  (define cp (common-prefix-length before after))
+  (define max-suffix (- (min (string-length before) (string-length after)) cp))
+  (define cs (common-suffix-length before after max-suffix))
+  (define old-end (- (string-length before) cs))
+  (define new-end (- (string-length after) cs))
+  (cond
+    [(and (= cp old-end) (= cp new-end)) '()]
+    [else
+     (list (change (range (offset->point before cp)
+                          (offset->point before old-end))
+                   (range (offset->point after cp)
+                          (offset->point after new-end))))]))
+
 (define (nav-fn dir)
   (case dir
     [(left) view-left!]
@@ -130,8 +174,16 @@
     [(ensure)
      (view-ensure! v)
      '()]
-    ;; undo/redo 恢复的是旧 document：face / document slot / 分析缓存随 document
-    ;; 一起回来，不是一次新的文本提交，因此不产生 change，也不触发解析。
-    [(undo) (buffer-undo! b) '()]
-    [(redo) (buffer-redo! b) '()]
+    ;; undo/redo 恢复旧 document；文本变化也要进入 'changes 流。
+    ;; face / document slot 随 document 一起恢复，不是一次新的编辑提交。
+    [(undo)
+     (define before (view-string v))
+     (cond
+       [(not (buffer-undo! b)) '()]
+       [else (text-change before (view-string v))])]
+    [(redo)
+     (define before (view-string v))
+     (cond
+       [(not (buffer-redo! b)) '()]
+       [else (text-change before (view-string v))])]
     [else (error 'engine-apply-view-action! "未知 view action：~a" action)]))
