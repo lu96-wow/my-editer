@@ -43,19 +43,26 @@
 (define-values (_s2* _a3) (editor-delete! ed2 s2 1 'delete))
 (check-equal? (engine-view-text e2 1) "")
 
-;;; indent：Racket 文本使用 racket-indent-for-newline
+;;; indent：Racket 文本复制当前行前导空白
 (define-values (e3 ed3 s3)
   (make-test-editor "#lang racket\n  (" 1 3))
 (define-values (_s3* _a4) (editor-insert! ed3 s3 1 "\n"))
-(check-equal? (engine-view-text e3 1) "#lang racket\n  (\n    ")
+(check-equal? (engine-view-text e3 1) "#lang racket\n  (\n  ")
 (check-equal? (engine-view-point-line e3 1) 2)
-(check-equal? (engine-view-point-column e3 1) 4)
+(check-equal? (engine-view-point-column e3 1) 2)
 
-;;; indent：普通行不额外缩进
+;;; indent：普通行也按当前行对齐
 (define-values (e4 ed4 s4)
   (make-test-editor "#lang racket\n  foo" 1 5))
 (define-values (_s4* _a5) (editor-insert! ed4 s4 1 "\n"))
-(check-equal? (engine-view-text e4 1) "#lang racket\n  foo\n")
+(check-equal? (engine-view-text e4 1) "#lang racket\n  foo\n  ")
+
+;;; indent：同层并列项不额外缩进
+(define-values (e4b ed4b s4b)
+  (make-test-editor "#lang racket\n(foo\n (bar)\n (baz))" 2 6))
+(define-values (_s4b* _a4b) (editor-insert! ed4b s4b 1 "\n"))
+(check-equal? (engine-view-text e4b 1)
+              "#lang racket\n(foo\n (bar)\n \n (baz))")
 
 ;;; 非 Racket 文本：只插入普通换行
 (define-values (e5 ed5 s5) (make-test-editor "  (" 0 3 "test.txt"))

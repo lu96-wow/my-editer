@@ -1,8 +1,8 @@
 #lang racket
 
-;;; edit-tui/plugins/indent/plugin.rkt —— Enter 换行缩进
+;;; edit-tui/plugins/indent/plugin.rkt —— Enter 换行行对齐
 ;;;
-;;; 对齐旧实现：使用 lang/racket 的 racket-indent-for-newline。
+;;; Racket 文本复制当前行前导空白，不做语法级额外缩进。
 ;;; 非 Racket 文本只插入普通换行。
 
 (require "../../editor/api.rkt"

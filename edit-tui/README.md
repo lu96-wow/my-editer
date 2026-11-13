@@ -33,7 +33,7 @@
 - `editor/plugin.rkt`：插件描述 + 字段聚合；`editor/plugin-runtime.rkt`：registry 执行器。
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
-- `plugins/indent/`：Enter 换行缩进（最小版）。
+- `plugins/indent/`：Enter 换行按当前行前导空白对齐。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
@@ -390,7 +390,7 @@ racket edit-tui/edit.rkt
 
 ```text
 直接打字       插入
-Enter          换行 + 缩进
+Enter          换行 + 当前行对齐
 Tab            插入两个空格
 Backspace      删前
 Delete         删后
@@ -565,7 +565,7 @@ racket edit-tui/test/layers.rkt
 - 打开过的文件用 `filetree-open` face；
 - C-h 显示 / 隐藏 dotfile；
 - C-r 重扫；
-- Racket 换行缩进使用旧 `racket-indent-for-newline`，非 Racket 文本只插普通换行。
+- Racket Enter 只复制当前行前导空白，不做语法级额外缩进；非 Racket 文本只插普通换行。
 
 还没有恢复的旧行为：
 
