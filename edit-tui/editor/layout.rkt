@@ -39,7 +39,8 @@
          editor-close!
          editor-focus!
          editor-cycle-editor-view!
-         editor-toggle-panel!)
+         editor-toggle-panel!
+         editor-panel-visible?)
 
 ;;; ════════════════ 配置 ════════════════
 
@@ -233,6 +234,10 @@
 
 ;; 侧栏 tab：filetree <-> resources。
 ;; 通用 panel 显隐（docs 等）。
+(define (editor-panel-visible? state pid)
+  (define l (state-layout state))
+  (and l pid (layout-panel-visible? l pid)))
+
 (define (editor-toggle-panel! ed state pid)
   (define l (state-layout state))
   (define area (state-area state))

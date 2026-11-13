@@ -146,6 +146,7 @@
  editor-focus!
  editor-cycle-editor-view!
  editor-toggle-panel!
+ editor-panel-visible?
 
  ;; async job：插件只提交 job、读结果；账本写回只在 host runtime。
  job-result-event? job-result-event-id job-result-event-kind

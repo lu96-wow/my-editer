@@ -9,7 +9,12 @@
          "../../compat/lang/racket/api.rkt"
          "model.rkt")
 
-(provide docs-show-name!)
+(provide docs-show-name!
+         docs-visible?)
+
+(define (docs-visible? state ps)
+  (and (docs-state? ps)
+       (editor-panel-visible? state (docs-state-panel-id ps))))
 
 (define (focus-doc-info ed state)
   (define vid (editor-focus-view-id state))
@@ -35,6 +40,7 @@
 (define (docs-show-name! ed state ps name)
   (cond
     [(not (docs-state? ps)) (values state ps '())]
+    [(not (docs-visible? state ps)) (values state ps '())]
     [else
      (define-values (_did text path) (focus-doc-info ed state))
      (define ps1 (set-docs-lines ps (local-preview-lines text name)))

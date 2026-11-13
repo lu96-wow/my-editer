@@ -65,6 +65,36 @@
 (define s8 (handle-editor-event ed s7 (key-event (key 'd))))
 (check-true (layout-panel-visible? (state-layout s8) 'docs))
 
+;;; ════════════════ docs 隐藏时不做解析 job ════════════════
+
+(define (docs-jobs st)
+  (filter (λ (j) (eq? (job-kind j) 'docs)) (state-pending-jobs st)))
+
+;; 上一节结束时 docs 重新显示；新开一个 app 测隐藏路径。
+(define-values (edz statez) (make-test-editor))
+(define z0 (state-with-area statez (rect 0 0 60 15)))
+(define-values (z1 _cz _bz) (render-frame edz z0 #f))
+(check-true (editor-panel-visible? z1 'docs))
+(engine-set-view-cursor! (editor-engine edz) 1 3 #:column 5)
+
+;; C-x d 隐藏 docs。
+(define z2 (handle-editor-event edz z1 (key-event (key 'x 'ctrl))))
+(define z3 (handle-editor-event edz z2 (key-event (key 'd))))
+(check-false (editor-panel-visible? z3 'docs))
+(define docs-before (state-plugin-state z3 'docs))
+
+;; 隐藏时 M-d 应该 no-op：不改 docs 内容，也不提交 docs job。
+(define z4 (handle-editor-event edz z3 (key-event (key 'd 'alt))))
+(check-equal? (state-plugin-state z4 'docs) docs-before)
+(check-equal? (docs-jobs z4) '())
+
+;; 重新显示后 M-d 才恢复解析路径。
+(define z5 (handle-editor-event edz z4 (key-event (key 'x 'ctrl))))
+(define z6 (handle-editor-event edz z5 (key-event (key 'd))))
+(check-true (editor-panel-visible? z6 'docs))
+(define z7 (handle-editor-event edz z6 (key-event (key 'd 'alt))))
+(check-true (pair? (docs-jobs z7)))
+
 ;;; ════════════════ 完全等于 prefix 的候选也保留 ════════════════
 
 (define-values (edx statex) (make-test-editor))

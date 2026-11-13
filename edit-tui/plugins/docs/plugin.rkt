@@ -59,6 +59,7 @@
 (define (sync-docs! ed state ps)
   (cond
     [(not (docs-state? ps)) (values state ps)]
+    [(not (docs-visible? state ps)) (values state ps)]
     [else
      (editor-set-view-content! ed
                               (docs-state-view ps)
