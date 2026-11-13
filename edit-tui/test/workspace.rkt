@@ -58,6 +58,18 @@
 (define ws (editor-workspace ed))
 (check-not-false (workspace-doc ws 1))
 (check-not-false (workspace-doc ws dep-did))
+;; 没有文档变化时，重复 sync 不应重建 workspace。
+(define-values (_s5b _c5b _b5b) (render-frame ed s5 #f))
+(check-eq? (editor-workspace ed) ws)
+
+;;; ════════════════ workspace 缺当前 doc：回退当前文本 ════════════════
+
+(define fallback-text "#lang racket\n(define (foo) 1)\n(fo")
+(define fallback-cands
+  (completion-at #f fallback-text 2 3
+                 #:workspace workspace-empty
+                 #:id 999))
+(check-not-false (member "foo" fallback-cands))
 
 ;;; ════════════════ completion：跨 buffer provide ════════════════
 
@@ -75,13 +87,22 @@
              (string-join (docs-state-lines d1) "\n")
              "dep-name"))
 
+;;; ════════════════ 编辑 main：workspace 跟着 version 更新 ════════════════
+
+(define-values (e1 _e-a1) (editor-insert! ed s6 1 " "))
+(define-values (e2 _e-c2 _e-b2) (render-frame ed e1 #f))
+(define ws2 (editor-workspace ed))
+(check-not-eq? ws2 ws)
+(check-equal? (document-entry-version (workspace-doc ws2 1))
+              (editor-doc-version ed 1))
+
 ;;; ════════════════ 关闭 dep：从 workspace 删除 ════════════════
 
-(define-values (s8 _a8) (editor-close-resource! ed s6 dep-did))
+(define-values (s8 _a8) (editor-close-resource! ed e2 dep-did))
 (define-values (s9 _c9 _b9) (render-frame ed s8 #f))
-(define ws2 (editor-workspace ed))
-(check-false (workspace-doc ws2 dep-did))
-(check-not-false (workspace-doc ws2 1))
+(define ws3 (editor-workspace ed))
+(check-false (workspace-doc ws3 dep-did))
+(check-not-false (workspace-doc ws3 1))
 
 (delete-directory/files root)
 (displayln "edit-tui/test/workspace.rkt: ok")

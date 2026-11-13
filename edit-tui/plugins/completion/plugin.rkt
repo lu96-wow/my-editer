@@ -115,8 +115,12 @@
        [(or (not prefix) (zero? (string-length prefix)))
         (values state (close-completion ps) '())]
        [else
-        (define open (editor-open-texts ed state))
         (define ws (editor-workspace ed))
+        ;; workspace 已有当前文档时，open 映射会被 workspace 替代，不必重复构建。
+        (define open
+          (if (and ws (workspace-doc ws did))
+              (hash)
+              (editor-open-texts ed state)))
         (define local (all-candidates ed state vid did open #t))
         (define open? (has-other-candidates? local prefix))
         (define c1

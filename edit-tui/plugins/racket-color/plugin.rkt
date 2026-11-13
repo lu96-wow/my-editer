@@ -203,11 +203,11 @@
   (define (sync-doc cache did)
     (define text (editor-doc-text ed did))
     (define version (editor-doc-version ed did))
+    (define vids (or (editor-view-ids-for-doc ed did) '()))
     (cond
-      [(or (not text) (not version)) cache]
+      [(or (not text) (not version) (null? vids)) cache]
       [(not (racket-doc? state did text)) cache]
       [else
-       (define vids (editor-view-ids-for-doc ed did))
        (define cached (hash-ref old-cache did #f))
        (define entry
          (if (and cached (equal? (color-entry-version cached) version))

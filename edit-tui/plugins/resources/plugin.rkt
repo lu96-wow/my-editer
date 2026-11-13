@@ -55,11 +55,15 @@
     [(not (resources-panel-state? ps)) (values state ps)]
     [else
      (define rows (resource-rows ed state))
-     (editor-set-view-content! ed
-                              (resources-panel-state-view ps)
-                              (map row-text rows)
-                              (map row-face rows))
-     (values state (struct-copy resources-panel-state ps [rows rows]))]))
+     (cond
+       ;; 行文本 / face 都没变：不碰 view，也不更新插件状态。
+       [(equal? rows (resources-panel-state-rows ps)) (values state ps)]
+       [else
+        (editor-set-view-content! ed
+                                 (resources-panel-state-view ps)
+                                 (map row-text rows)
+                                 (map row-face rows))
+        (values state (struct-copy resources-panel-state ps [rows rows]))])]))
 
 (define (resources-focused? state vid)
   (eq? (editor-focus-view-id state) vid))

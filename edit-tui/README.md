@@ -472,6 +472,7 @@ racket edit-tui/test/job-async.rkt
 racket edit-tui/test/color-word.rkt
 racket edit-tui/test/timer.rkt
 racket edit-tui/test/completion-docs.rkt
+racket edit-tui/test/workspace.rkt
 racket edit-tui/test/sidebar.rkt
 racket edit-tui/test/host.rkt
 racket edit-tui/test/host-event.rkt
@@ -484,7 +485,6 @@ racket edit-tui/test/filetree-io.rkt
 racket edit-tui/test/buffer-keymap.rkt
 racket edit-tui/test/find.rkt
 racket edit-tui/test/layers.rkt
-racket edit-tui/test/ownership.rkt
 ```
 
 ---

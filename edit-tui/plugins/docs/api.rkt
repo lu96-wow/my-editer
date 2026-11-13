@@ -53,15 +53,18 @@
     [else
      (define-values (did text path) (focus-doc-info ed state))
      (define ws (editor-workspace ed))
+     ;; workspace 已有当前文档时，open 映射会被 workspace 替代，不必重复构建。
+     (define open
+       (if (and ws did (workspace-doc ws did))
+           (hash)
+           (editor-open-texts ed state)))
      (define ps1 (set-docs-lines ps (local-preview-lines text name ws did)))
      (cond
        [(not text) (values state ps1 '())]
        [else
         (define-values (state2 job)
           (state-submit-job state 'docs
-                                   (list name path text
-                                         (editor-open-texts ed state)
-                                         ws did)
+                                   (list name path text open ws did)
                                    (list 'docs name)))
         (values state2
                 (struct-copy docs-state ps1 [request-id (job-id job)])
