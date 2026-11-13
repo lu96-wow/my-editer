@@ -59,8 +59,8 @@
        (define p (local-module-path s base-dir))
        (cond
          [(not p) '()]
-         [(and open (hash-ref open (path->string p) #f)) => provides-of-forms]
-         [else (module-exports p)])]
+         [(and open (open-text-for-path open p)) => provides-of-forms]
+         [else (module-exports (or (disk-module-path p) p))])]
       [(pair? s)
        (define h (and (symbol? (car s)) (car s)))
        (cond
@@ -91,6 +91,22 @@
       #f
       (let ([p (string->path s)])
         (path->complete-path (if (absolute-path? p) p (build-path base-dir p))))))
+
+(define module-exts '(".rkt" ".ss" ".rktl" ".rktd"))
+
+;; (require "dep") 这种省略扩展名的路径，优先找同名的已打开 buffer，
+;; 再找磁盘上的 .rkt/.ss/... 文件。
+(define (open-text-for-path open p)
+  (define base (path->string (simplify-path p)))
+  (or (hash-ref open base #f)
+      (for/or ([ext (in-list module-exts)])
+        (hash-ref open (string-append base ext) #f))))
+
+(define (disk-module-path p)
+  (or (and (file-exists? p) p)
+      (for/or ([ext (in-list module-exts)])
+        (define q (string->path (string-append (path->string p) ext)))
+        (and (file-exists? q) q))))
 
 ;; spec 里引用的本地文件（字符串 spec，含包装内）→ (listof 绝对路径字符串)。
 (define (spec-local-paths s base-dir)

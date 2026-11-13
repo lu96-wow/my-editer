@@ -13,9 +13,9 @@
 (provide make-docs-plugin)
 
 (define (docs-service payload)
-  (match-define (list name path text) payload)
+  (match-define (list name path text open) payload)
   (define local (and text (local-def text name)))
-  (define ctx (and text (make-completion-context path text)))
+  (define ctx (and text (make-completion-context path text #:open open)))
   (define binding
     (and ctx
          (with-handlers ([exn:fail? (λ (_) #f)])

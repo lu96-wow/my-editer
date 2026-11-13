@@ -7,6 +7,7 @@
 
 (require "../../editor/api.rkt"
          "../../compat/lang/racket/api.rkt"
+         "../../features/open-buffers/api.rkt"
          "model.rkt")
 
 (provide docs-show-name!
@@ -49,7 +50,8 @@
        [else
         (define-values (state2 job)
           (state-submit-job state 'docs
-                                   (list name path text)
+                                   (list name path text
+                                         (editor-open-texts ed state))
                                    (list 'docs name)))
         (values state2
                 (struct-copy docs-state ps1 [request-id (job-id job)])

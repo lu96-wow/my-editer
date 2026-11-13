@@ -18,7 +18,8 @@
          "../../editor/api.rkt"
          "../../compat/lang/racket/api.rkt"
          "../../features/input/api.rkt"
-         "../../features/placement/api.rkt")
+         "../../features/placement/api.rkt"
+         "../../features/open-buffers/api.rkt")
 
 (provide make-completion-plugin
          (struct-out completion-state))
@@ -61,17 +62,22 @@
   (define col (editor-view-point-column ed vid))
   (and text line col (completion-prefix text line col)))
 
-(define (all-candidates ed state vid did prefix local-only?)
+(define (all-candidates ed state vid did open local-only?)
   (define text (editor-doc-text ed did))
   (define path (resource-path-for-state state vid))
-  (define ctx (and text (with-handlers ([exn:fail? (λ (_) #f)])
-                          (make-completion-context path text))))
+  (define line (editor-view-point-line ed vid))
+  (define col (editor-view-point-column ed vid))
   (cond
-    [(not ctx) '()]
-    [local-only?
-     (define local (completion-candidates/local ctx prefix))
-     (take local (min 50 (length local)))]
-    [else (completion-candidates ctx prefix)]))
+    [(or (not text) (not line) (not col)) '()]
+    [else
+     (define cands
+       (with-handlers ([exn:fail? (λ (_) '())])
+         (completion-at path text line col
+                        #:open open
+                        #:local-only? local-only?)))
+     (if local-only?
+         (take cands (min 50 (length cands)))
+         cands)]))
 
 ;; 补全列表可以包含 prefix 本身，但只有存在“更长/其他候选”时才显示 popup。
 (define (has-other-candidates? candidates prefix)
@@ -106,7 +112,8 @@
        [(or (not prefix) (zero? (string-length prefix)))
         (values state (close-completion ps) '())]
        [else
-        (define local (all-candidates ed state vid did prefix #t))
+        (define open (editor-open-texts ed state))
+        (define local (all-candidates ed state vid did open #t))
         (define open? (has-other-candidates? local prefix))
         (define c1
           (struct-copy completion-state ps
@@ -124,8 +131,12 @@
                        [popup-rect #f]))
         (define-values (state2 job)
           (state-submit-job state 'completion
-                                   (list prefix (resource-path-for-state state vid)
-                                         (editor-doc-text ed did))
+                                   (list prefix
+                                         (resource-path-for-state state vid)
+                                         (editor-doc-text ed did)
+                                         (editor-view-point-line ed vid)
+                                         (editor-view-point-column ed vid)
+                                         open)
                                    (list 'completion (editor-doc-version ed did))))
         (values state2
                 (struct-copy completion-state c1 [request-id (job-id job)])
@@ -389,9 +400,8 @@
     [else '()]))
 
 (define (service-completion payload)
-  (match-define (list prefix path text) payload)
-  (define ctx (and text (make-completion-context path text)))
-  (and ctx (completion-candidates ctx prefix)))
+  (match-define (list _prefix path text line col open) payload)
+  (completion-at path text line col #:open open))
 
 (define completion-global-command-table
   (keys

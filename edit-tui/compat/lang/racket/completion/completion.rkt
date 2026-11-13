@@ -31,7 +31,8 @@
          module-path-context?
          module-path-pool)
 
-(require racket/list
+(require racket/file
+         racket/list
          racket/path
          racket/string
          "../base/lex.rkt"
@@ -320,21 +321,92 @@
 (define (module-path-pool)
   (force module-paths))
 
+;;; ---------- require 字符串里的本地模块路径 ----------
+
+(define module-file-exts '(#".rkt" #".ss" #".rktl" #".rktd"))
+
+(define (module-file? p)
+  (and (file-exists? p)
+       (member (path-get-extension p) module-file-exts)))
+
+(define (module-name-of-rel rel)
+  (define noext (regexp-replace #rx"[.](rkt|ss|rktl|rktd)$" rel ""))
+  (regexp-replace #rx"(^|/)main$" noext ""))
+
+;; base-dir 下的本地文件 -> 模块路径字符串；base-dir 外 -> #f。
+(define (module-name-from-path base-dir p)
+  (define rel (with-handlers ([exn:fail? (λ (_) #f)])
+                (find-relative-path base-dir p)))
+  (and rel
+       (not (absolute-path? rel))
+       (let ([s (path->string rel)])
+         (and (not (regexp-match? #rx"^\\.\\.[/\\\\]" s))
+              (module-name-of-rel s)))))
+
+(define (open-module-names base-dir open)
+  (for/list ([(p _text) (in-hash open)]
+             #:when (module-file? (string->path p)))
+    (define name (module-name-from-path base-dir (string->path p)))
+    name))
+
+;; 只扫 base-dir 直接子文件：避免在 UI 线程递归扫描整个项目。
+;; 更深层目录里的模块，打开成 buffer 后由 open-module-names 覆盖。
+(define (disk-module-names base-dir)
+  (with-handlers ([exn:fail? (λ (_) '())])
+    (for/list ([name (in-list (directory-list base-dir))])
+      (define p (build-path base-dir name))
+      (cond
+        [(module-file? p) (module-name-from-path base-dir p)]
+        [else #f]))))
+
+;; 优先匹配已打开 buffer 的路径；没有命中才扫磁盘。
+(define (local-module-candidates base-dir open prefix)
+  (define open-hits
+    (completion-filter (distinct-strings
+                        (filter values (open-module-names base-dir open)))
+                       prefix))
+  (cond
+    [(pair? open-hits) open-hits]
+    [else
+     (completion-filter (distinct-strings
+                         (filter values (disk-module-names base-dir)))
+                        prefix)]))
+
+;; 光标是否在 require 的字符串参数里，例如 (require "foo
+(define (require-string-context? text line col)
+  (and (require-context? text line col)
+       (let* ([before (text-before text line col)]
+              [open (last-open-paren before)]
+              [prefix (completion-prefix text line col)])
+         (and open
+              (let* ([inside (substring before (add1 open))]
+                     [idx (- (string-length inside) (string-length prefix))])
+                (and (>= idx 1)
+                     (char=? (string-ref inside (sub1 idx)) #\")))))))
+
 ;; 高层入口：按光标上下文自动选择模块路径池或普通候选池。
 ;; #:workspace / #:id 传入时，补全使用跨 buffer 缓存与本地绑定。
 (define (completion-at path text line col
                        #:open [open (hash)]
                        #:workspace [ws #f]
-                       #:id [id #f])
+                       #:id [id #f]
+                       #:local-only? [local-only? #f])
   (cond
     [(module-path-context? text line col)
-     (completion-filter (module-path-pool)
-                        (completion-prefix text line col))]
+     (define prefix (completion-prefix text line col))
+     (cond
+       [(require-string-context? text line col)
+        (local-module-candidates (base-dir-of path) open prefix)]
+       [else
+        (completion-filter (module-path-pool) prefix)])]
     [else
      (define ctx (make-completion-context path text
                                          #:open open
                                          #:workspace ws
                                          #:id id))
      (if ctx
-         (completion-candidates ctx (completion-prefix text line col))
+         (let ([prefix (completion-prefix text line col)])
+           (if local-only?
+               (completion-candidates/local ctx prefix)
+               (completion-candidates ctx prefix)))
          '())]))
