@@ -17,6 +17,7 @@
          "../plugins/completion/plugin.rkt"
          "../plugins/docs/plugin.rkt"
          "../host/keymap.rkt"
+         "../host/source.rkt"
          "../host/workspace.rkt"
          "layout.rkt")
 
@@ -108,6 +109,7 @@
                     #:input (make-input-state #:panel-id 'status
                                               #:status-view status-vid
                                               #:input-view input-vid)))
-  ;; 初始 workspace：打开文档的分析快照。之后由 frame 每帧同步。
+  ;; 初始来源 / workspace：之后由 frame 每帧同步。
+  (source-sync! ed state)
   (workspace-sync! ed state)
   (values ed state))

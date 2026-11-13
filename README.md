@@ -17,7 +17,8 @@
 - `edit-tui/README.md`：TUI 目录、分层、数据流、API、键位
 - `edit-tui/editor/state.rkt`：`app-state = editor-core + editor-session`
 - `edit-tui/editor/host-api.rkt`：宿主装配面（插件只应 require `editor/api.rkt`）
-- `edit-tui/host/workspace.rkt`：打开文档 -> 语言分析 workspace 的宿主同步
+- `edit-tui/host/source.rkt`：buffer / disk 来源权威同步
+- `edit-tui/host/workspace.rkt`：权威 snapshot -> 语言分析 workspace
 - `edit-tui/edit.rkt`：TUI 装配 + 事件循环
 - `edit-tui/test/layers.rkt`：分层约束的可执行版本
 
@@ -50,6 +51,7 @@ racket edit-tui/edit.rkt
 - 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
+- source-store 是 host 维护的来源权威索引：同一 path 上 buffer > disk，关闭后回退 disk；
 - workspace 是 host 维护的语言分析纯值缓存，存在 editor 实例；不进 State、不属于 engine；
 - 插件只 require `edit-tui/editor/api.rkt`、feature 的 `api.rkt`、`core/command` 的纯键表构造器、`core/face/api.rkt`、`lang/racket/api.rkt`；跨插件只经 action 或对方 `api.rkt`。
 

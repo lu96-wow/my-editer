@@ -108,7 +108,7 @@ by-path 的权威快照
 ```text
 source/model  纯值 + 规范化
 source/store  纯索引 + buffer/disk 优先级
-host/source-sync（未来）
+host/source.rkt
   读磁盘、stat / version、把 editor resource 转成 snapshot
 lang/racket/parse/workspace
   消费 source snapshot，维护 analysis / 跨 buffer 依赖

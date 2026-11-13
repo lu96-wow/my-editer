@@ -40,7 +40,8 @@
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
-- `host/workspace.rkt`：把已打开 Racket user doc 同步进语言 workspace；workspace 是 editor 实例上的纯值缓存，不进 State。
+- `host/source.rkt`：把 editor resource + 磁盘同步进 source-store；同一 path 上 buffer > disk，关闭后回退 disk。
+- `host/workspace.rkt`：消费 source-store 的权威 snapshot，派生语言 workspace；workspace 是 editor 实例上的纯值缓存，不进 State。
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
@@ -149,7 +150,8 @@ edit-tui/
     filetree-io.rkt    filetree 创建 / 删除 / 重命名 / 查找 IO
     jobs.rkt           worker runtime
     timers.rkt         timer runtime
-    workspace.rkt      已打开 Racket 文档 -> 语言 workspace 同步
+    source.rkt         buffer / disk 来源权威索引同步
+    workspace.rkt      权威 snapshot -> 语言 workspace 同步
 
   test/
     hooks.rkt
@@ -512,8 +514,10 @@ racket edit-tui/test/layers.rkt
     layout / host open / close 只用 read + lifecycle。
 5j. Engine 分开存储 user-docs / user-views 与 ui-docs / ui-views；
     split view 跟随 source view 的 kind；不为插件增加运行时权限守卫。
-5k. workspace 是 host 维护的语言分析纯值缓存：不进 State、不属于 engine；
-    host 每帧按 engine version 同步，插件只读 `editor-workspace`。
+5k. source-store 是 host 维护的来源权威索引：同一 path 上 buffer > disk，
+    关闭 buffer 后回退 disk；不进 State，也不暴露给插件。
+5l. workspace 是 host 维护的语言分析纯值缓存：不进 State、不属于 engine；
+    它消费 source-store 的权威 snapshot，插件只读 `editor-workspace`。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
@@ -588,4 +592,4 @@ racket edit-tui/test/layers.rkt
 
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
-3. workspace 接 `lang/source`：磁盘文件变化 / 外部修改后的来源优先级。
+3. source-store 接文件系统变化通知：外部修改 / 删除后的磁盘快照刷新。

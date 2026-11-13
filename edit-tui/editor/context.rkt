@@ -13,6 +13,9 @@
 ;;;
 ;;; workspace 是 host 维护的语言分析快照（纯值）。它不进 State，也不属于
 ;;; engine；插件只读，同步由 host/workspace.rkt 负责。
+;;;
+;;; sources 是 host 维护的来源权威索引（buffer > disk）。它同样不进 State，
+;;; 也不暴露给插件；host/source.rkt 负责同步。
 
 (provide (struct-out editor)
          make-editor
@@ -28,7 +31,8 @@
    plugins
    timer-service
    command-table-cache   ; scope -> command-table（内部缓存，不进入 State）
-   workspace)            ; 语言分析快照（纯值，host 同步）
+   workspace             ; 语言分析快照（纯值，host 同步）
+   sources)              ; source-store：buffer / disk 权威索引（host 同步）
   #:mutable
   #:transparent)
 
@@ -39,6 +43,7 @@
                                      (make-contribution-registry
                                       (plugins->contributions plugins))]
                      #:timer-service [timer-service #f]
-                     #:workspace [workspace #f])
+                     #:workspace [workspace #f]
+                     #:sources [sources #f])
   (editor engine registry contributions plugins timer-service
-          (make-hash) workspace))
+          (make-hash) workspace sources))

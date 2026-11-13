@@ -87,22 +87,40 @@
              (string-join (docs-state-lines d1) "\n")
              "dep-name"))
 
+;;; ════════════════ buffer > disk：dep 的 buffer 增加导出 ════════════════
+
+(define-values (b1 _ba1) (editor-set-point! ed s6 dep-vid 3 0))
+(define-values (b2 _ba2)
+  (editor-insert! ed b1 dep-vid
+                  "(provide buffer-only)\n(define (buffer-only) 7)\n"))
+(define-values (b3 _bc3 _bb3) (render-frame ed b2 #f))
+(define ws-buffer (editor-workspace ed))
+(check-not-false (member "buffer-only"
+                         (workspace-export-names ws-buffer dep-did)))
+
 ;;; ════════════════ 编辑 main：workspace 跟着 version 更新 ════════════════
 
-(define-values (e1 _e-a1) (editor-insert! ed s6 1 " "))
+(define-values (e1 _e-a1) (editor-insert! ed b3 1 " "))
 (define-values (e2 _e-c2 _e-b2) (render-frame ed e1 #f))
 (define ws2 (editor-workspace ed))
 (check-not-eq? ws2 ws)
 (check-equal? (document-entry-version (workspace-doc ws2 1))
               (editor-doc-version ed 1))
 
-;;; ════════════════ 关闭 dep：从 workspace 删除 ════════════════
+;;; ════════════════ 关闭 dep：buffer 退场，磁盘快照接管 ════════════════
 
 (define-values (s8 _a8) (editor-close-resource! ed e2 dep-did))
 (define-values (s9 _c9 _b9) (render-frame ed s8 #f))
 (define ws3 (editor-workspace ed))
 (check-false (workspace-doc ws3 dep-did))
 (check-not-false (workspace-doc ws3 1))
+(define dep-disk-entry
+  (workspace-doc-by-path ws3 (resource-normalize-path dep-path)))
+(check-not-false dep-disk-entry)
+;; 磁盘版本只有 dep-name，没有 buffer 里加的 buffer-only。
+(define dep-disk-id (document-entry-id dep-disk-entry))
+(check-not-false (member "dep-name" (workspace-export-names ws3 dep-disk-id)))
+(check-false (member "buffer-only" (workspace-export-names ws3 dep-disk-id)))
 
 (delete-directory/files root)
 (displayln "edit-tui/test/workspace.rkt: ok")
