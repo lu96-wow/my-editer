@@ -118,31 +118,36 @@
 
 (define empty-hook-registry (hook-registry (hash) 0))
 
+(define (hook-entry<? a b)
+  (define ha (cdr a))
+  (define hb (cdr b))
+  (cond
+    [(< (hook-priority ha) (hook-priority hb)) #t]
+    [(> (hook-priority ha) (hook-priority hb)) #f]
+    [else (< (car a) (car b))]))
+
+(define (insert-sorted before? x xs)
+  (cond
+    [(null? xs) (list x)]
+    [(before? x (car xs)) (cons x xs)]
+    [else (cons (car xs) (insert-sorted before? x (cdr xs)))]))
+
 (define (add-hook registry h)
   (define key (cons (hook-operation h) (hook-phase h)))
   (define order (hook-registry-next-order registry))
   (define old (hash-ref (hook-registry-table registry) key '()))
+  (define entry (cons order h))
   (hook-registry (hash-set (hook-registry-table registry) key
-                           (append old (list (cons order h))))
+                           (insert-sorted hook-entry<? entry old))
                  (add1 order)))
 
 (define (make-hook-registry hooks)
   (for/fold ([r empty-hook-registry]) ([h (in-list hooks)])
     (add-hook r h)))
 
-;; 按 priority、再按注册顺序。
+;; 表在注册时已按 priority、再按注册顺序排好。
 (define (registry-hooks registry operation phase)
-  (define entries
-    (hash-ref (hook-registry-table registry) (cons operation phase) '()))
-  (map cdr
-       (sort entries
-             (λ (a b)
-               (define ha (cdr a))
-               (define hb (cdr b))
-               (cond
-                 [(< (hook-priority ha) (hook-priority hb)) #t]
-                 [(> (hook-priority ha) (hook-priority hb)) #f]
-                 [else (< (car a) (car b))])))))
+  (map cdr (hash-ref (hook-registry-table registry) (cons operation phase) '())))
 
 ;;; ════════════════ 执行 ════════════════
 

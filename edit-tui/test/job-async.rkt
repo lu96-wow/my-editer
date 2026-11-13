@@ -43,12 +43,16 @@
                               #:event-channel event-channel
                               #:workers 1))
 (dispatch-jobs! rt (state-jobs s1))
+(check-equal? (hash-count (job-runtime-dispatched rt)) 1)
 (define ev (async-channel-get event-channel))
-(stop-job-runtime rt)
 (check-eq? (job-result-event-kind ev) 'filetree-scan)
 
 (define s2 (handle-job-result ed s1 ev))
 (check-equal? (length (state-pending-jobs s2)) 0)
+;; 已完成的 job 不在 pending 里，下一次 dispatch 会把它从 dispatched 清掉。
+(dispatch-jobs! rt (state-jobs s2))
+(check-equal? (hash-count (job-runtime-dispatched rt)) 0)
+(stop-job-runtime rt)
 (define s3 (run-plugin-syncs ed s2))
 (check-true (string-contains? (engine-view-text engine 3) "a.txt"))
 

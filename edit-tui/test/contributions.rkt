@@ -5,7 +5,8 @@
 ;;;   · 同名 job-service 直接报错
 
 (require rackunit
-         "../editor/host-api.rkt")
+         "../editor/host-api.rkt"
+         "../editor/contributions.rkt")
 
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))
@@ -44,3 +45,15 @@
                               #:plugins (list p1 p2))))
 
 (displayln "edit-tui/test/contributions.rkt: ok")
+
+;;; contribution 顺序：priority 小者先；同 priority 按注册顺序。
+(define ordered
+  (add-contribution
+   (add-contribution
+    (add-contribution empty-contribution-registry
+                      point/frame-sync #f 'late #:priority 10 #:fn void)
+    point/frame-sync #f 'early-a #:priority 5 #:fn void)
+   point/frame-sync #f 'early-b #:priority 5 #:fn void))
+(check-equal? (map contribution-owner
+                  (registry-contributions ordered point/frame-sync))
+              '(early-a early-b late))

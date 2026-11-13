@@ -21,24 +21,23 @@
 (define (buffer-source-id did)
   (source-id 'buffer did))
 
-(define (same-snapshot? s path text version)
-  (and s
-       (equal? (source-snapshot-path s) path)
-       (equal? (source-snapshot-version s) version)
-       (equal? (source-snapshot-text s) text)))
-
 (define (sync-resource store ed r)
   (define did (resource-doc-id r))
   (define path (resource-path r))
-  (define text (editor-doc-text ed did))
   (define version (editor-doc-version ed did))
+  (define old (source-store-ref store (buffer-source-id did)))
+  ;; 版本是 document 身份：path / version 都没变时文本必然没变。
+  ;; 先比较这两个字段，避免每帧为每个打开文件 materialize 整篇字符串。
   (cond
-    [(not text) store]
+    [(and old
+          (equal? (source-snapshot-path old) path)
+          (eq? (source-snapshot-version old) version))
+     store]
     [else
-     (define old (source-store-ref store (buffer-source-id did)))
-     (if (same-snapshot? old path text version)
-         store
-         (source-store-set-buffer store did path text #:version version))]))
+     (define text (editor-doc-text ed did))
+     (cond
+       [(not text) store]
+       [else (source-store-set-buffer store did path text #:version version)])]))
 
 (define (active-buffer-ids state)
   (for/list ([r (in-list (resources-list (state-resources state)))])

@@ -56,9 +56,18 @@
   (void))
 
 (define (dispatch-jobs! runtime ledger)
-  (for ([j (in-list (job-pending ledger))])
-    (unless (hash-has-key? (job-runtime-dispatched runtime) (job-id j))
-      (hash-set! (job-runtime-dispatched runtime) (job-id j) #t)
+  (define pending (job-pending ledger))
+  (define pending-ids
+    (for/hash ([j (in-list pending)]) (values (job-id j) #t)))
+  (define dispatched (job-runtime-dispatched runtime))
+  ;; 已经完成 / 被忘记的 job 不再留在 dispatched 里，避免长会话中无界增长。
+  (for ([id (in-list (hash-keys dispatched))])
+    (unless (hash-has-key? pending-ids id)
+      (hash-remove! dispatched id)))
+  (for ([j (in-list pending)])
+    (define id (job-id j))
+    (unless (hash-has-key? dispatched id)
+      (hash-set! dispatched id #t)
       (async-channel-put (job-runtime-request-channel runtime) j)))
   (void))
 

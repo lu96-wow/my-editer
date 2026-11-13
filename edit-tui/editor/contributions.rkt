@@ -63,6 +63,18 @@
   (unless (eq? (point-spec-kind spec) 'contribution)
     (error who "point ~a 不是 contribution point" point)))
 
+(define (contribution-entry<? a b)
+  (cond
+    [(< (contribution-priority a) (contribution-priority b)) #t]
+    [(> (contribution-priority a) (contribution-priority b)) #f]
+    [else (< (contribution-order a) (contribution-order b))]))
+
+(define (insert-sorted before? x xs)
+  (cond
+    [(null? xs) (list x)]
+    [(before? x (car xs)) (cons x xs)]
+    [else (cons (car xs) (insert-sorted before? x (cdr xs)))]))
+
 (define (add-contribution registry point key owner
                           #:priority [priority 0]
                           #:fn fn)
@@ -74,7 +86,7 @@
   (define c (contribution point key owner priority order fn))
   (contribution-registry
    (hash-update (contribution-registry-table registry) k
-                (λ (old) (append old (list c)))
+                (λ (old) (insert-sorted contribution-entry<? c old))
                 '())
    (add1 order)))
 
@@ -93,13 +105,9 @@
              (cadr k) (map contribution-owner cs))))
   r)
 
+;; 表在注册时已按 priority、再按注册顺序排好。
 (define (registry-contributions registry point [key #f])
-  (map (λ (c) c)
-       (sort (hash-ref (contribution-registry-table registry) (list point key) '())
-             (λ (a b)
-               (cond [(< (contribution-priority a) (contribution-priority b)) #t]
-                     [(> (contribution-priority a) (contribution-priority b)) #f]
-                     [else (< (contribution-order a) (contribution-order b))])))))
+  (hash-ref (contribution-registry-table registry) (list point key) '()))
 
 ;; job-service kind 必须唯一；冲突报错。
 (define (registry-services registry)
