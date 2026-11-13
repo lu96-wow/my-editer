@@ -51,7 +51,7 @@ racket edit-tui/edit.rkt
 - 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
-- source-store 是 host 维护的来源权威索引：同一 path 上 buffer > disk，关闭后回退 disk；
+- source-store 是 host 维护的打开 buffer override 索引：同一 path 上 buffer > disk；未打开/关闭文件按需读磁盘，不缓存 disk snapshot；
 - workspace 是 host 维护的语言分析纯值缓存，存在 editor 实例；不进 State、不属于 engine；
 - 插件只 require `edit-tui/editor/api.rkt`、feature 的 `api.rkt`、`core/command` 的纯键表构造器、`core/face/api.rkt`、`lang/racket/api.rkt`；跨插件只经 action 或对方 `api.rkt`。
 

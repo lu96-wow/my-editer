@@ -103,8 +103,8 @@ lang/python/
 (docs-local ws doc-id name)
 ```
 
-宿主由 `host/source.rkt` 维护 buffer / disk 权威快照，再由 `host/workspace.rkt`
-把权威 snapshot 同步进 workspace；插件通过 `editor-workspace` 只读这个快照。
+宿主由 `host/source.rkt` 维护打开 buffer 的权威 override，再由 `host/workspace.rkt`
+把权威 snapshot 同步进 workspace；未打开文件按需读磁盘。插件通过 `editor-workspace` 只读这个快照。
 
 ## 增量策略
 

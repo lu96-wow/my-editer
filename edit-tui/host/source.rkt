@@ -1,22 +1,16 @@
 #lang racket
 
-;;; edit-tui/host/source.rkt —— 来源权威索引同步（buffer > disk）
+;;; edit-tui/host/source.rkt —— 打开 buffer 的来源权威索引（buffer override）
 ;;;
-;;; source-store 决定同一个 path 上哪份文本是真：
-;;;   · 打开中的 buffer > 磁盘；
-;;;   · buffer 关闭后回退到已加载的 disk snapshot；
-;;;   · buffer 保存后把 disk snapshot 更新为保存后的文本；
-;;;   · buffer 仍在编辑时，disk snapshot 保留为备用。
+;;; source-store 在这里只记录“打开中的 buffer”：
+;;;   · 同一 path 有 buffer -> buffer 是权威；
+;;;   · buffer 关闭 -> 移除 override，不在 source-store 里保留磁盘副本；
+;;;   · 未打开 / 已关闭文件 -> 由语言层按需读磁盘。
 ;;;
-;;; 这里只做 host 侧的 IO / 同步；source-store 本身是纯值。
-;;; workspace 消费 source-store-authoritative-snapshots，而不是直接读 engine。
-;;;
-;;; 不做外部文件变化监听：disk snapshot 在首次看到 resource 时加载，
-;;; 之后由 buffer 保存时更新，不自动轮询 / watch 磁盘。
+;;; 这样避免 disk snapshot 在“不自动刷新”前提下变成陈旧缓存。
+;;; source-store 本身仍是纯值；workspace 消费它的 authoritative snapshots。
 
-(require racket/file
-         racket/path
-         "../lang/source/api.rkt"
+(require "../lang/source/api.rkt"
          "../editor/api.rkt"
          "../editor/context.rkt"
          "../editor/state.rkt"
@@ -24,43 +18,14 @@
 
 (provide source-sync!)
 
-(define source-store-empty* source-store-empty)
-
 (define (buffer-source-id did)
   (source-id 'buffer did))
-
-(define (disk-source-id path)
-  (disk-source-id-for-path path))
 
 (define (same-snapshot? s path text version)
   (and s
        (equal? (source-snapshot-path s) path)
        (equal? (source-snapshot-version s) version)
        (equal? (source-snapshot-text s) text)))
-
-(define (read-disk path)
-  (with-handlers ([exn:fail? (λ (_) (values #f #f))])
-    (if (file-exists? path)
-        (values (file->string path)
-                (file-or-directory-modify-seconds path))
-        (values #f #f))))
-
-(define (ensure-disk store path)
-  (define id (disk-source-id path))
-  (cond
-    [(source-store-ref store id) store]
-    [else
-     (define-values (text version) (read-disk path))
-     (if text
-         (source-store-set-disk store path text #:version version)
-         store)]))
-
-(define (sync-disk-clean! store path text version)
-  (define id (disk-source-id path))
-  (define old (source-store-ref store id))
-  (cond
-    [(same-snapshot? old path text version) store]
-    [else (source-store-set-disk store path text #:version version)]))
 
 (define (sync-resource store ed r)
   (define did (resource-doc-id r))
@@ -70,19 +35,10 @@
   (cond
     [(not text) store]
     [else
-     (define store1
-       (if path (ensure-disk store path) store))
-     (define bid (buffer-source-id did))
-     (define old (source-store-ref store1 bid))
-     (define store2
-       (if (same-snapshot? old path text version)
-           store1
-           (source-store-set-buffer store1 did path text #:version version)))
-     ;; 保存后 buffer 干净：磁盘快照与 buffer 同步。
-     (cond
-       [(and path (not (resource-dirty? r version)))
-        (sync-disk-clean! store2 path text version)]
-       [else store2])]))
+     (define old (source-store-ref store (buffer-source-id did)))
+     (if (same-snapshot? old path text version)
+         store
+         (source-store-set-buffer store did path text #:version version))]))
 
 (define (active-buffer-ids state)
   (for/list ([r (in-list (resources-list (state-resources state)))])
@@ -99,7 +55,7 @@
 
 ;; → source-store'（同时写回 editor 实例）
 (define (source-sync! ed state)
-  (define old (or (editor-sources ed) source-store-empty*))
+  (define old (or (editor-sources ed) source-store-empty))
   (define store1
     (for/fold ([store old])
               ([r (in-list (resources-list (state-resources state)))])

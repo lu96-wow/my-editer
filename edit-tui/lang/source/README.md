@@ -44,13 +44,16 @@ buffer 关闭：by-path 回退到 disk（如果 by-id 里存在）
 virtual：没有 path，只按 id 存在
 ```
 
-`source-store-authoritative-snapshots` 返回 workspace 应该看到的“当前真相”：
+`source-store-authoritative-snapshots` 返回当前权威快照：
 
 ```text
 by-path 的权威快照
 + 没有 path 的 buffer / virtual
 - 被 buffer 覆盖的 disk
 ```
+
+当前 host 只写入 buffer snapshot，不创建 disk snapshot；未打开 / 已关闭文件由
+语言层按需读磁盘。disk API 仍保留为通用能力，供以后需要显式磁盘快照时使用。
 
 ## API
 
@@ -109,7 +112,7 @@ by-path 的权威快照
 source/model  纯值 + 规范化
 source/store  纯索引 + buffer/disk 优先级
 host/source.rkt
-  读磁盘、stat / version、把 editor resource 转成 snapshot
+  把打开中的 editor resource 转成 buffer snapshot（不缓存 disk）
 lang/racket/parse/workspace
   消费 source snapshot，维护 analysis / 跨 buffer 依赖
 ```

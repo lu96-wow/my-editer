@@ -3,11 +3,13 @@
 ;;; edit-tui/host/workspace.rkt —— 来源权威快照 -> 语言 workspace
 ;;;
 ;;; 数据流：
-;;;   editor resources + disk（host/source.rkt）
-;;;     -> source-store
+;;;   editor 打开中的 buffer（host/source.rkt）
+;;;     -> source-store（buffer override）
 ;;;     -> source-store-authoritative-snapshots
 ;;;     -> 这里
 ;;;     -> workspace-set-doc
+;;;
+;;; 未打开 / 已关闭文件不缓存 disk snapshot；语言层需要时按需读磁盘。
 ;;;
 ;;; workspace 是纯值，不属于 State、也不属于 engine：
 ;;;   · State 不存 cache；
