@@ -129,12 +129,14 @@
 (editor-set-timer-service! ed2 (timer-runtime-service trt))
 (engine-set-view-cursor! (editor-engine ed2) 1 3 #:column 3)
 (define-values (t2 _a) (editor-insert! ed2 t1 1 "m"))
-(define ct2 (state-plugin-state t2 'completion))
+;; host 会在下一帧把编辑后的文档同步进 workspace，再处理 timer。
+(define-values (t2r _ct2r _bt2r) (render-frame ed2 t2 #f))
+(define ct2 (state-plugin-state t2r 'completion))
 (check-true (exact-nonnegative-integer? (completion-state-timer-id ct2)))
 
 (define tev (async-channel-get ch))
 (check-true (timer-event? tev))
-(define-values (t3 _timer-actions) (run-plugin-timer-handlers ed2 t2 tev))
+(define-values (t3 _timer-actions) (run-plugin-timer-handlers ed2 t2r tev))
 (define ct3 (state-plugin-state t3 'completion))
 (check-true (completion-state-open? ct3))
 (check-true (and (pair? (completion-state-candidates ct3))

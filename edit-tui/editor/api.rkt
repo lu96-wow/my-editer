@@ -53,6 +53,7 @@
  ;; resource 变更入口。helper 同时接受 app-state 和 editor-core。
  state-with-flash
  state-workspace-root
+ editor-workspace
  (struct-out select-drag)
  state-drag
  state-select-drag

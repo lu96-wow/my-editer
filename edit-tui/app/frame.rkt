@@ -13,6 +13,7 @@
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
          "../host/render/core.rkt"
+         "../host/workspace.rkt"
          "bootstrap.rkt")
 
 (provide sync-status!
@@ -72,6 +73,8 @@
   (panels-sync! panels)
   (void (sync-status! state (editor-engine ed)))
   (void (editor-input-sync! ed state))
+  ;; 语言分析快照必须先于插件 sync：completion / docs 在 sync 里读 workspace。
+  (workspace-sync! ed state)
   (define state* (run-plugin-syncs ed state))
   (define engine (editor-engine ed))
   (define-values (state** overlays) (run-plugin-overlays ed state*))

@@ -25,8 +25,8 @@
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
-- `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受；候选包含 prefix 本身，但只有存在其他候选时才显示 popup；候选按当前 buffer 的模块定义、当前顶层表单局部绑定和 require 规格计算。
-- `plugins/docs/`：docs 面板 / 本地预览 / 异步库文档 / C-x d；面板隐藏时 M-d 与 docs sync 走统一开关，不提交解析 job。
+- `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受；候选包含 prefix 本身，但只有存在其他候选时才显示 popup；workspace 提供跨 buffer 的 analysis / require 导出，缺省时退回当前 buffer + open-text 解析。
+- `plugins/docs/`：docs 面板 / 本地预览 / 异步库文档 / C-x d；本地定义优先查 workspace，面板隐藏时 M-d 与 docs sync 走统一开关，不提交解析 job。
 - `editor/points.rkt`：插入点表（name / kind / phases / context），make-hook 校验 operation/phase。
 - `editor/hooks.rkt`：typed hook 扩展点 + 有序 pipeline。
 - `editor/contributions.rkt`：非 hook 扩展点的统一 registry（sync / overlay / timer / job-service / job-result）。
@@ -40,6 +40,7 @@
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
+- `host/workspace.rkt`：把已打开 Racket user doc 同步进语言 workspace；workspace 是 editor 实例上的纯值缓存，不进 State。
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
@@ -49,9 +50,7 @@
 
 还没有：
 
-- completion 的 workspace / analysis 完整候选
-- docs 的跨 buffer workspace 本地定义
-- C-x o completion/docs 焦点切换
+- C-x o completion / docs 焦点切换
 - 多进程
 - filetree 文件系统自动刷新 / 拖拽
 
@@ -150,6 +149,7 @@ edit-tui/
     filetree-io.rkt    filetree 创建 / 删除 / 重命名 / 查找 IO
     jobs.rkt           worker runtime
     timers.rkt         timer runtime
+    workspace.rkt      已打开 Racket 文档 -> 语言 workspace 同步
 
   test/
     hooks.rkt
@@ -163,6 +163,7 @@ edit-tui/
     filetree-io.rkt    C-f 创建 / 删除文件、目录
     find.rkt           find 命令 / 前后移动
     buffer-keymap.rkt  键表跟随 resource / active view
+    workspace.rkt      跨 buffer completion / docs
     host.rkt
     layers.rkt
     run.sh
@@ -511,6 +512,8 @@ racket edit-tui/test/ownership.rkt
     layout / host open / close 只用 read + lifecycle。
 5j. Engine 分开存储 user-docs / user-views 与 ui-docs / ui-views；
     split view 跟随 source view 的 kind；不为插件增加运行时权限守卫。
+5k. workspace 是 host 维护的语言分析纯值缓存：不进 State、不属于 engine；
+    host 每帧按 engine version 同步，插件只读 `editor-workspace`。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
@@ -584,5 +587,5 @@ racket edit-tui/test/ownership.rkt
 ## 下一步
 
 1. filetree 拖拽 / 文件系统自动刷新。
-2. completion 接 workspace / analysis，补全跨 buffer 候选。
-3. docs 接 workspace 本地定义与 C-x o 焦点切换。
+2. C-x o completion / docs 焦点切换。
+3. workspace 接 `lang/source`：磁盘文件变化 / 外部修改后的来源优先级。

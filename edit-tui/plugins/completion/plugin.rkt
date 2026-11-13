@@ -8,7 +8,7 @@
 ;;;   job     -> 校验 request-id，更新候选
 ;;;   菜单    -> overlay 显示候选；Up/Down/Tab/Enter/Esc
 ;;;
-;;; 候选来源先只做当前 buffer（completion-candidates/local）；workspace 后续接。
+;;; 本地候选先开菜单；完整候选由 workspace 的跨 buffer analysis 提供。
 ;;; 跨插件请求只发 action（show-docs-action），不直接写 docs 的 plugin-state。
 
 (require racket/match
@@ -67,6 +67,7 @@
   (define path (resource-path-for-state state vid))
   (define line (editor-view-point-line ed vid))
   (define col (editor-view-point-column ed vid))
+  (define ws (editor-workspace ed))
   (cond
     [(or (not text) (not line) (not col)) '()]
     [else
@@ -74,6 +75,8 @@
        (with-handlers ([exn:fail? (λ (_) '())])
          (completion-at path text line col
                         #:open open
+                        #:workspace ws
+                        #:id did
                         #:local-only? local-only?)))
      (if local-only?
          (take cands (min 50 (length cands)))

@@ -13,9 +13,13 @@
 (provide make-docs-plugin)
 
 (define (docs-service payload)
-  (match-define (list name path text open) payload)
-  (define local (and text (local-def text name)))
-  (define ctx (and text (make-completion-context path text #:open open)))
+  (match-define (list name path text open ws id) payload)
+  (define local (docs-local-snippet text name ws id))
+  (define ctx (and text
+                   (make-completion-context path text
+                                            #:open open
+                                            #:workspace ws
+                                            #:id id)))
   (define binding
     (and ctx
          (with-handlers ([exn:fail? (λ (_) #f)])

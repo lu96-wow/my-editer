@@ -10,6 +10,9 @@
 ;;;
 ;;; command-table-cache 是 editor 实例内部的派生缓存：contributions registry
 ;;; 在 editor 生命周期内不可变，同一 scope 的 command-table 只建一次。
+;;;
+;;; workspace 是 host 维护的语言分析快照（纯值）。它不进 State，也不属于
+;;; engine；插件只读，同步由 host/workspace.rkt 负责。
 
 (provide (struct-out editor)
          make-editor
@@ -24,7 +27,8 @@
    contributions
    plugins
    timer-service
-   command-table-cache)  ; scope -> command-table（内部缓存，不进入 State）
+   command-table-cache   ; scope -> command-table（内部缓存，不进入 State）
+   workspace)            ; 语言分析快照（纯值，host 同步）
   #:mutable
   #:transparent)
 
@@ -34,5 +38,7 @@
                      #:contributions [contributions
                                      (make-contribution-registry
                                       (plugins->contributions plugins))]
-                     #:timer-service [timer-service #f])
-  (editor engine registry contributions plugins timer-service (make-hash)))
+                     #:timer-service [timer-service #f]
+                     #:workspace [workspace #f])
+  (editor engine registry contributions plugins timer-service
+          (make-hash) workspace))
