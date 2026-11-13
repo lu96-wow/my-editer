@@ -6,7 +6,7 @@
 ;;; 非 Racket 文本只插入普通换行。
 
 (require "../../editor/api.rkt"
-         (only-in "../../compat/lang/racket/api.rkt"
+         (only-in "../../lang/racket/api.rkt"
                   racket-indent-for-newline))
 
 (provide indent-plugin)

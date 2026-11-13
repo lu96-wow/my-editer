@@ -49,16 +49,14 @@ racket edit-tui/edit.rkt
 - 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
-- 插件只 require `edit-tui/editor/api.rkt` 与 feature 的 `api.rkt`，跨插件只经 action 或对方 `api.rkt`。
+- 插件只 require `edit-tui/editor/api.rkt`、feature 的 `api.rkt`、`core/command` 的纯键表构造器、`core/face/api.rkt`、`lang/racket/api.rkt`；跨插件只经 action 或对方 `api.rkt`。
 
-## 迁移期依赖
+## 语言 / 渲染 / 主题层
 
-`edit-tui` 仍保留少量从旧实现迁回的支撑模块，集中放在 `edit-tui/compat/`：
+`compat/` 已删除，原先的支撑模块按职责进入新树：
 
-- `edit-tui/compat/lang/racket/`：Racket 语言能力（着色 / 补全 / 文档 / 缩进）；
-- `edit-tui/compat/source/`：源码扫描；
-- `edit-tui/compat/face/`：face 值；
-- `edit-tui/compat/render/`：core piece -> tui bytes；
-- `edit-tui/compat/theme/`：默认主题。
-
-宿主入口只使用 `compat/render/core.rkt` 和 `compat/theme/default.rkt`；后续可以逐步迁进新树并删除 `compat/`。
+- `edit-tui/lang/racket/`：Racket 语言能力（着色 / 补全 / 文档 / 缩进）；
+- `edit-tui/lang/source/`：解析来源快照（语言层共用）；
+- `edit-tui/core/face/`：face / style 纯值；
+- `edit-tui/host/render/`：core piece -> tui bytes、style -> tui 样式安装；
+- `edit-tui/config/theme/default.rkt`：默认主题数据（纯，require 时不安装）。

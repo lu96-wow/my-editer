@@ -8,7 +8,7 @@
          racket/file
          racket/path
          racket/string
-         "../compat/lang/racket/api.rkt")
+         "../lang/racket/api.rkt")
 
 (define root (make-temporary-directory))
 (define main-path (build-path root "main.rkt"))

@@ -10,6 +10,7 @@
 ;;; 回调约定：
 ;;;   sync       (ed state ps)       -> (values state' ps')
 ;;;   overlay    (ed state ps)       -> (listof editor-overlay)
+;;;              overlay 失败不会中断整帧：与其他回调一样 flash，并返回空列表。
 ;;;   timer      (ed state ps ev)    -> (values state' ps' actions)
 ;;;   job-result (ed state ps ev)    -> (values state' ps' actions)
 ;;;   command    (ed state ps)       -> (values state' ps' actions)
@@ -62,12 +63,19 @@
     (write-plugin-state s* owner ps*)))
 
 (define (run-plugin-overlays ed state)
-  (append*
-   (for/list ([c (in-list (registry-contributions
-                           (editor-contributions ed) point/frame-overlay))])
-     (define owner (contribution-owner c))
-     (with-handlers ([exn:fail? (λ (_e) '())])
-       ((contribution-fn c) ed state (plugin-state-of state owner))))))
+  ;; → (values state' (listof editor-overlay))
+  ;; overlay 本身是纯的；这里只把失败信息变成 flash，不写 plugin-state。
+  (for/fold ([s state] [overlays '()])
+            ([c (in-list (registry-contributions
+                          (editor-contributions ed) point/frame-overlay))])
+    (define owner (contribution-owner c))
+    (define-values (s* ovs*)
+      (with-handlers ([exn:fail?
+                       (λ (e)
+                         (values (plugin-failure s owner 'overlay e) '()))])
+        (values s
+                ((contribution-fn c) ed s (plugin-state-of s owner)))))
+    (values s* (append overlays ovs*))))
 
 (define (run-plugin-timer-handlers ed state ev)
   (for/fold ([s state] [actions '()])
@@ -134,4 +142,7 @@
           (command-binding-value b))))
 
 (define (editor-command-table ed [scope 'global])
-  (command-bindings->table (editor-command-bindings ed scope)))
+  ;; registry 在 editor 生命周期内不变，按 scope 缓存派生表。
+  (hash-ref! (editor-command-table-cache ed) scope
+             (λ ()
+               (command-bindings->table (editor-command-bindings ed scope)))))

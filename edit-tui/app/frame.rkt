@@ -12,7 +12,7 @@
          (only-in "../../core/editor.rkt" make-panel)
          "../features/input/api.rkt"
          "../features/placement/api.rkt"
-         "../compat/render/core.rkt"
+         "../host/render/core.rkt"
          "bootstrap.rkt")
 
 (provide sync-status!
@@ -74,8 +74,9 @@
   (void (editor-input-sync! ed state))
   (define state* (run-plugin-syncs ed state))
   (define engine (editor-engine ed))
+  (define-values (state** overlays) (run-plugin-overlays ed state*))
   (define overlay-panels
-    (for/list ([ov (in-list (run-plugin-overlays ed state*))])
+    (for/list ([ov (in-list overlays)])
       (make-panel (engine-view-object engine (editor-overlay-view-id ov))
                   (editor-overlay-rect ov)
                   (editor-overlay-borders ov)
@@ -85,10 +86,10 @@
   (unless (null? overlay-panels)
     (panels-sync! overlay-panels))
   (define all-panels (append panels overlay-panels))
-  (define focus-view (editor-focus-view ed state*))
+  (define focus-view (editor-focus-view ed state**))
   (define-values (cache* rows* sels*)
     (render-display-patch all-panels focus-view cols rows cache))
   (define out
     (bytes-append (if cache (bytes) (render-clear))
                   (render-pieces (append rows* sels*))))
-  (values state* cache* out))
+  (values state** cache* out))

@@ -38,6 +38,23 @@
 (check-true (string-contains? (state-flash s1) "bad-sync"))
 (check-true (string-contains? (state-flash s1) "sync"))
 
+;;; ════════════════ overlay ════════════════
+
+(define bad-overlay
+  (make-plugin
+   #:id 'bad-overlay
+   #:state 'overlay-state
+   #:overlays (λ (ed state ps) (error 'overlay-boom))))
+
+(define engine5 (make-engine-with-user-doc))
+(define ed5 (editor-for engine5 (list bad-overlay)))
+(define-values (s5 overlays5)
+  (run-plugin-overlays ed5 (state-for (list bad-overlay))))
+(check-equal? overlays5 '())
+(check-eq? (state-plugin-state s5 'bad-overlay) 'overlay-state)
+(check-true (string-contains? (state-flash s5) "bad-overlay"))
+(check-true (string-contains? (state-flash s5) "overlay"))
+
 ;;; ════════════════ hook ════════════════
 
 (define bad-hook

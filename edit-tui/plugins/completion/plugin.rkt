@@ -16,7 +16,7 @@
          racket/string
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
-         "../../compat/lang/racket/api.rkt"
+         "../../lang/racket/api.rkt"
          "../../features/input/api.rkt"
          "../../features/placement/api.rkt"
          "../../features/open-buffers/api.rkt")

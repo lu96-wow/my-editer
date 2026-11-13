@@ -14,7 +14,11 @@
          "app/frame.rkt"
          "host/jobs.rkt"
          "host/timers.rkt"
-         "compat/theme/default.rkt")
+         "host/render/theme.rkt"
+         "config/theme/default.rkt")
+
+;; 主题是配置数据；安装是 host 副作用。
+(install-theme! default-theme)
 
 (provide run-editor
          make-editor-app

@@ -33,9 +33,12 @@
     "plugins/docs/plugin.rkt"))
 
 (for ([f (in-list plugin-files)])
-  ;; 插件只能经 editor/api.rkt 接触 editor；feature api 是唯一额外入口。
+  ;; 插件只能经 editor/api.rkt 接触 editor；feature / lang api 是额外入口。
   (check-true (regexp-match? #rx"editor/api\\.rkt" (src f)) f)
   (check-false (requires-any? f #rx"\\.\\./editor/(engine|ops|host-api|context|hooks|state)") f)
+  ;; 不允许绕过 editor/api 直接 require core 聚合面或 repo core 实现。
+  (check-false (requires-any? f #rx"\\.\\./core/api\\.rkt") f)
+  (check-false (requires-any? f #rx"\\.\\./\\.\\./\\.\\./core/") f)
   ;; 允许纯语言库 / face；不允许旧 edit-tui 的 editor / boot / host。
   (check-false
    (requires-any? f #rx"\\.\\./\\.\\./edit-tui/(app|boot|host|render|edit|filetree|chrome|resources|core/(base|command|engine|focus|layout|panel|projection|resource))")
@@ -172,7 +175,22 @@
      (list (path->string (find-relative-path root p))))))
 (for ([f (in-list (features-rkt-files (build-path root "features")))])
   (check-false (requires-any? f #rx"(^|/)(host|plugins)/") f)
-  (check-false (requires-any? f #rx"editor/(engine|ops|host-api|state)") f))
+  (check-false (requires-any? f #rx"editor/(engine|ops|host-api|state)") f)
+  ;; features 只碰 edit-tui/core 的纯值面，不直接 require repo core 实现。
+  (check-false (requires-any? f #rx"\\.\\./\\.\\./\\.\\./core/") f))
+
+;;; ════════════════════════════════════════════════════════════════
+;;; lang 是共享能力层：不 require app / host / editor / plugins / features / repo core。
+
+(define (rkt-files dir)
+  (append*
+   (for/list ([p (in-directory dir)]
+              #:when (regexp-match? #rx"\\.rkt$" (path->string p)))
+     (list (path->string (find-relative-path root p))))))
+
+(for ([f (in-list (rkt-files (build-path root "lang")))] )
+  (check-false (requires-any? f #rx"\"\\.\\./(\\.\\./)*(app|host|editor|plugins|features)/") f)
+  (check-false (requires-any? f #rx"\"\\.\\./(\\.\\./)*core/") f))
 
 ;; 具体 app 布局装配不在 editor/layout.rkt。
 (check-false (requires-any? "editor/layout.rkt" #rx"make-editor-layout")

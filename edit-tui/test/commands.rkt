@@ -58,6 +58,9 @@
 (check-equal? (map car entries) '(custom-command))
 ;; 插件命令在 contribution 表里是显式的 plugin-command，不是裸 procedure。
 (check-true (plugin-command? (cdr (car entries))))
+;; registry 不可变：同一 scope 的派生表缓存复用，不按键重建。
+(check-eq? (editor-command-table custom-ed 'global)
+           (editor-command-table custom-ed 'global))
 
 (define custom-state*
   (handle-editor-event custom-ed custom-state (key-event (key 't 'ctrl))))

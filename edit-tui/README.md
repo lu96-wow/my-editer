@@ -14,7 +14,7 @@
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
 - `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui 文档与 view 分开存储；按 read / user-write / ui-write / lifecycle 拆分能力。
 - `engine-doc-kind`：用户文档 `'user` 与 UI 投影文档 `'ui` 分开；插件默认查询 `editor-user-doc-ids`。
-- 插件 sync / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
+- 插件 sync / overlay / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
 - `editor/layout.rkt`：布局操作面（split / close / focus / mouse）+ layout 扩展点。
@@ -79,17 +79,16 @@ edit-tui/
     panel/             layout panel 资源
     projection/        layout -> core panel / 命中
     focus/             方向焦点导航
+    face/              face / style 纯值 + 分层合成
 
-  compat/
-    README.md          迁移期兼容层说明
-    lang/racket/       Racket 词法 / 着色 / 补全 / 文档 / 缩进
-    source/            源码扫描 / 解析来源
-    face/              face 值 + 分层合成
-    render/            core piece -> tui bytes / theme 安装
-    theme/             默认主题
+  lang/
+    README.md          多语言能力层说明
+    racket/            Racket 词法 / 着色 / 补全 / 文档 / 缩进
+    source/            解析来源快照 / 缓冲区与磁盘优先级
 
   config/
     layout/default.rkt 各 kind 的默认布局规则
+    theme/default.rkt  默认主题数据（纯，不安装）
 
   editor/
     engine/
@@ -142,6 +141,8 @@ edit-tui/
   host/
     docs.rkt           completion -> docs 的跨插件 action 解释
     event.rkt          tui raw -> host 事件
+    render/core.rkt    core piece -> tui bytes
+    render/theme.rkt   style -> tui 样式安装
     keymap.rkt         命令值 + 分 scope 的 host 内置表
     input/scope.rkt    focus / key-owner -> command scope
     input/dispatch.rkt pending 多键序列 + 命令查找 / 执行
@@ -494,7 +495,7 @@ racket edit-tui/test/ownership.rkt
 1c. 插件 API 不导出 host 编排函数；host-api 才导出 plugin runner / open / prompt。
 2. 只有 `editor/ops/raw.rkt` 能写 engine。
 3. 所有用户可见编辑走 `editor/ops/surface.rkt`。
-4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt`；不 require editor 内部 / host。
+4. 插件只 require `editor/api.rkt` + feature 的 `api.rkt` + `core/command` 的纯键表构造器 + `core/face/api.rkt` + `lang/racket/api.rkt`。不 require editor 内部 / host / repo core 实现。
 5. 插件状态是纯值，按 plugin id 命名空间存在 editor-core；只有 plugin runtime 按 owner 写回。
 5b. engine 的 document 分 `'user` / `'ui`；语法着色等用户文档流程只看 user doc。
 5c. 插件回调异常不允许打断事件循环：runtime 捕获、flash，并保留该插件旧状态。
@@ -564,18 +565,19 @@ racket edit-tui/test/ownership.rkt
 
 ---
 
-## 迁移期依赖
+## 语言 / 渲染 / 主题层
 
-`edit-tui` 已经替换旧实现，旧支撑模块集中到 `compat/`：
+`compat/` 已删除，支撑模块按职责进入新树：
 
-- `compat/lang/racket/`：Racket 词法 / 着色 / 补全 / 文档 / 缩进；
-- `compat/source/`：源码扫描；
-- `compat/face/`：face 值；
-- `compat/render/`：`core piece -> tui bytes`；
-- `compat/theme/`：默认主题。
+- `lang/racket/`：Racket 词法 / 着色 / 补全 / 文档 / 缩进；
+- `lang/source/`：解析来源快照；
+- `core/face/`：face / style 纯值；
+- `host/render/core.rkt`：`core piece -> tui bytes`；
+- `host/render/theme.rkt`：`style -> tui` 样式安装；
+- `config/theme/default.rkt`：默认主题数据（纯）。
 
-宿主入口只使用 `compat/render/core.rkt` 与 `compat/theme/default.rkt`。
-后续可以逐步把这些模块迁进新树，再删除 `compat/`。
+宿主入口 `edit.rkt` 只 require `host/render/theme.rkt` 与 `config/theme/default.rkt`，
+并显式调用 `install-theme!`。
 
 ---
 

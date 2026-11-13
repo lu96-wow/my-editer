@@ -31,9 +31,9 @@
 (define-values (s2r _c2r _b2r) (render-frame ed s2 #f))
 
 ;; overlay 存在且在 editor 内容区内。
-(define ovs (run-plugin-overlays ed s2r))
+(define-values (s2o ovs) (run-plugin-overlays ed s2r))
 (check-equal? (length ovs) 1)
-(define content (editor-focus-content-rect s2r))
+(define content (editor-focus-content-rect s2o))
 (define ov-rect (editor-overlay-rect (car ovs)))
 (check-true (>= (rect-x ov-rect) (rect-x content)))
 (check-true (<= (rect-right ov-rect) (rect-right content)))
@@ -108,7 +108,8 @@
 (check-not-false (member "map" (completion-state-candidates cx2)))
 (check-false (completion-state-open? cx2))
 (define-values (x2r _cx2r _bx2r) (render-frame edx x2 #f))
-(check-equal? (run-plugin-overlays edx x2r) '())
+(define-values (_x2o x2-overlays) (run-plugin-overlays edx x2r))
+(check-equal? x2-overlays '())
 
 ;; 没有打开菜单时 Enter 是普通换行，不会被补全吞掉。
 (define before-enter (engine-view-text (editor-engine edx) 1))

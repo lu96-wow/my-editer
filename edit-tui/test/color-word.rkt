@@ -7,7 +7,7 @@
          "../editor/host-api.rkt"
          "../app/layout.rkt"
          "../plugins/racket-color/plugin.rkt"
-         "../compat/face/api.rkt")
+         "../core/face/api.rkt")
 
 (define text "(define foo foo)\n")
 (define engine (make-engine))

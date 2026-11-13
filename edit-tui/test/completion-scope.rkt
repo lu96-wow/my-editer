@@ -9,7 +9,7 @@
          racket/file
          racket/path
          racket/string
-         "../compat/lang/racket/api.rkt")
+         "../lang/racket/api.rkt")
 
 (define text
   (string-append

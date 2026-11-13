@@ -6,7 +6,7 @@
 ;;; 不传整份 editor-state，也不写别的插件状态。
 
 (require "../../editor/api.rkt"
-         "../../compat/lang/racket/api.rkt"
+         "../../lang/racket/api.rkt"
          "../../features/open-buffers/api.rkt"
          "model.rkt")
 

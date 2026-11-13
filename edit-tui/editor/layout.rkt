@@ -21,8 +21,7 @@
          "context.rkt"
          "state.rkt"
          "resource.rkt"
-         "hooks.rkt"
-         "ops/surface.rkt")
+         "hooks.rkt")
 
 (provide (struct-out layout-context)
          make-layout-context
