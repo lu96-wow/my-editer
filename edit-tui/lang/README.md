@@ -113,7 +113,8 @@ lang/python/
 - **解析**：按顶层 `form-entry` 缓存。`analysis-edit` 只重读受脏行影响的
   form；尾部遇到未变化的旧 form 就收敛，剩余 entry 只平移行号。
 - **workspace**：`workspace-apply-changes` 更新单个文档的 analysis；依赖它的
-  buffer 不重新 parse，导出查询读取新的接口结果。
+  buffer 不重新 parse，导出查询读取新的接口结果。host 在 insert / delete 的
+  changes hook 调用它；paste / undo / redo 等由 frame sync 全量兜底。
 
 参考 `racket-langserver` 的取舍：
 

@@ -41,7 +41,7 @@
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
-- `host/workspace.rkt`：消费 source-store 的权威 snapshot，派生语言 workspace；workspace 是 editor 实例上的纯值缓存，不进 State。
+- `host/workspace.rkt`：消费 source-store 的权威 snapshot，派生语言 workspace；insert / delete 的 changes hook 走 `workspace-apply-changes` 增量，paste / undo / redo / save-as 由 frame sync 全量兜底。
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
 - `core/layout/` / `core/panel/` / `core/projection/` / `core/focus/`：纯布局 / panel / 投影 / 焦点。
@@ -518,6 +518,8 @@ racket edit-tui/test/layers.rkt
     未打开/关闭文件按需读磁盘，不缓存 disk snapshot；不进 State，也不暴露给插件。
 5l. workspace 是 host 维护的语言分析纯值缓存：不进 State、不属于 engine；
     它消费 source-store 的权威 snapshot，插件只读 `editor-workspace`。
+    insert / delete 走 changes hook + workspace-apply-changes；
+    其他编辑操作由 frame sync 全量兜底。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

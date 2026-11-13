@@ -64,6 +64,30 @@
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
+  ;; host-owned workspace 增量 hook：insert / delete 的 changes 直接更新 analysis。
+  ;; 其他操作（paste / undo / redo / save-as）由 frame 的 workspace-sync! 全量兜底。
+  (define workspace-plugin
+    (make-plugin
+     #:id 'workspace
+     #:state #f
+     #:hooks
+     (list
+      (make-hook #:owner 'workspace
+                 #:id 'incremental-analysis
+                 #:operation 'changes
+                 #:phase 'derive
+                 #:priority -100
+                 #:fn
+                 (λ (ctx ps)
+                   (workspace-note-changes!
+                    (change-context-editor ctx)
+                    (change-context-state ctx)
+                    (change-context-doc-id ctx)
+                    (change-context-base-version ctx)
+                    (change-context-version ctx)
+                    (change-context-changes ctx))
+                   (values ctx ps '() #t))))))
+
   (define plugins (list pair-plugin
                         indent-plugin
                         (make-filetree-plugin
@@ -73,7 +97,8 @@
                         racket-color-plugin
                         layout-plugin
                         (make-completion-plugin #:view completion-vid)
-                        (make-docs-plugin #:view docs-vid #:panel-id 'docs)))
+                        (make-docs-plugin #:view docs-vid #:panel-id 'docs)
+                        workspace-plugin))
   (define registry (make-hook-registry (plugins->hooks plugins)))
   (define ed (make-editor #:engine engine
                           #:registry registry

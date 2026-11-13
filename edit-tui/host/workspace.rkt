@@ -18,15 +18,55 @@
 ;;;   · workspace 由本模块从权威 snapshot 派生。
 ;;;
 ;;; 这里不做 IO；只消费 source-store 和 engine 的 fallback 查询。
+;;; insert / delete 由 changes hook 调 workspace-note-changes! 做 analysis-edit；
+;;; paste / undo / redo / save-as 等没有 changes hook 的路径由 workspace-sync! 全量兜底。
 
-(require "../lang/source/api.rkt"
+(require "../core/api.rkt"
+         "../lang/source/api.rkt"
          "../lang/racket/api.rkt"
          "../editor/context.rkt"
          "../editor/state.rkt"
          "../editor/engine/read.rkt"
          "../editor/resource.rkt")
 
-(provide workspace-sync!)
+(provide workspace-sync!
+         workspace-note-changes!)
+
+;;; ════════════════ changes -> 增量 analysis ════════════════
+
+(define (changes->line-edits changes)
+  (for/list ([ch (in-list changes)])
+    (define before (change-before ch))
+    (define after (change-after ch))
+    (line-edit (point-line (range-start before))
+               (point-line (range-end before))
+               (point-line (range-start after))
+               (point-line (range-end after)))))
+
+;; insert / delete 的 changes hook 入口。
+;; 只有 workspace entry 正好对应本次编辑前的版本时才走 analysis-edit；
+;; 否则留给 workspace-sync! 做全量兜底。
+(define (workspace-note-changes! ed state did base-version version changes)
+  (define ws (editor-workspace ed))
+  (define r (state-resource-for-doc state did))
+  (cond
+    [(or (not ws) (not r) (not (eq? (resource-mode r) 'racket))) (void)]
+    [else
+     (define entry (workspace-doc ws did))
+     (define path (workspace-normalize-path (resource-path r)))
+     (define text (engine-doc-text (editor-engine ed) did))
+     (cond
+       [(or (not entry)
+            (not text)
+            (not (equal? (document-entry-path entry) path))
+            (not (equal? (document-entry-version entry) base-version)))
+        (void)]
+       [else
+        (set-editor-workspace!
+         ed
+         (workspace-apply-changes ws did path text
+                                  #:version version
+                                  #:edits (changes->line-edits changes)))])]))
 
 ;;; ════════════════ source snapshot -> workspace ════════════════
 

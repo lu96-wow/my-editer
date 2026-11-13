@@ -89,12 +89,32 @@
 
 ;;; ════════════════ buffer > disk：dep 的 buffer 增加导出 ════════════════
 
+(define ws-before-edit (editor-workspace ed))
 (define-values (b1 _ba1) (editor-set-point! ed s6 dep-vid 3 0))
 (define-values (b2 _ba2)
   (editor-insert! ed b1 dep-vid
                   "(provide buffer-only)\n(define (buffer-only) 7)\n"))
+
+;; changes hook 已经就地更新 workspace，不等 render。
+(define ws-incremental (editor-workspace ed))
+(check-not-eq? ws-incremental ws-before-edit)
+(check-equal? (document-entry-version (workspace-doc ws-incremental dep-did))
+              (editor-doc-version ed dep-did))
+(define inc-analysis (workspace-analysis ws-incremental dep-did))
+(define full-analysis
+  (analyze-source (resource-path dep-r) (editor-doc-text ed dep-did)))
+(check-equal? (module-analysis-definitions inc-analysis)
+              (module-analysis-definitions full-analysis))
+(check-equal? (module-analysis-provides inc-analysis)
+              (module-analysis-provides full-analysis))
+(check-equal? (module-analysis-requires inc-analysis)
+              (module-analysis-requires full-analysis))
+(check-equal? (module-analysis-bindings inc-analysis)
+              (module-analysis-bindings full-analysis))
+
 (define-values (b3 _bc3 _bb3) (render-frame ed b2 #f))
 (define ws-buffer (editor-workspace ed))
+(check-eq? ws-buffer ws-incremental)
 (check-not-false (member "buffer-only"
                          (workspace-export-names ws-buffer dep-did)))
 
@@ -122,6 +142,39 @@
                  "(require \"dep.rkt\")\n(define x dep-"
                  1 13))
 (check-not-false (member "dep-name" disk-cands))
+
+;;; ════════════════ 删除也走增量 analysis ════════════════
+
+(define-values (edx statex)
+  (make-editor-app #:initial-text
+                   "#lang racket\n(define (foo) 1)\n(define (bar) 2)\n"
+                   #:initial-name "incremental.rkt"))
+(define-values (x0 _xa0) (editor-set-point! edx statex 1 1 10))
+(define-values (x1 _xa1) (editor-delete! edx x0 1 'backspace))
+(define wsx (editor-workspace edx))
+(define incx (workspace-analysis wsx 1))
+(define fullx (analyze-source #f (editor-doc-text edx 1)))
+(check-equal? (module-analysis-definitions incx)
+              (module-analysis-definitions fullx))
+(check-equal? (module-analysis-provides incx)
+              (module-analysis-provides fullx))
+(check-equal? (module-analysis-bindings incx)
+              (module-analysis-bindings fullx))
+
+;;; ════════════════ pair 删除（一个操作产生两个 change） ════════════════
+
+(define-values (edy statey)
+  (make-editor-app #:initial-text "#lang racket\n(define x ())\n"
+                   #:initial-name "pair-delete.rkt"))
+(define-values (y0 _ya0) (editor-set-point! edy statey 1 1 11))
+(define-values (y1 _ya1) (editor-delete! edy y0 1 'backspace))
+(define wsy (editor-workspace edy))
+(define incy (workspace-analysis wsy 1))
+(define fully (analyze-source #f (editor-doc-text edy 1)))
+(check-equal? (module-analysis-definitions incy)
+              (module-analysis-definitions fully))
+(check-equal? (module-analysis-bindings incy)
+              (module-analysis-bindings fully))
 
 (delete-directory/files root)
 (displayln "edit-tui/test/workspace.rkt: ok")
