@@ -22,6 +22,7 @@
          (struct-out workspace)
          workspace-empty
          workspace-set-doc
+         workspace-set-analysis
          workspace-apply-changes
          workspace-set-source
          workspace-apply-source-changes
@@ -93,6 +94,16 @@
 
 ;; workspace-set-doc : ws id path text [#:version v] -> workspace
 ;;
+;; 安装 worker 已经算好的 analysis；不重新 parse。
+(define (workspace-set-analysis ws id path text version analysis)
+  (workspace
+   (hash-set (workspace-docs ws) id
+             (document-entry id
+                             (workspace-normalize-path path)
+                             text
+                             (or version text)
+                             analysis))))
+
 ;; 同一 id / path / version（或 text 相等）时复用旧 analysis。
 ;; 这是跨 buffer 缓存的第一层：每个文档每版本只解析一次。
 (define (workspace-set-doc ws id path text

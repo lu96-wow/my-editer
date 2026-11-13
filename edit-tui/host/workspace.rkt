@@ -7,30 +7,58 @@
 ;;;     -> source-store（buffer override）
 ;;;     -> source-store-authoritative-snapshots
 ;;;     -> 这里
-;;;     -> workspace-set-doc
+;;;     -> workspace
 ;;;
 ;;; 未打开 / 已关闭文件不缓存 disk snapshot；语言层需要时按需读磁盘。
 ;;;
-;;; workspace 是纯值，不属于 State、也不属于 engine：
-;;;   · State 不存 cache；
-;;;   · engine 只存 buffer / view；
-;;;   · source-store 由 host/source.rkt 同步；
-;;;   · workspace 由本模块从权威 snapshot 派生。
-;;;
-;;; 这里不做 IO；只消费 source-store 和 engine 的 fallback 查询。
 ;;; insert / delete 由 changes hook 调 workspace-note-changes! 做 analysis-edit；
-;;; paste / undo / redo / save-as 等没有 changes hook 的路径由 workspace-sync! 全量兜底。
+;;; 其他没有 changes hook 的全量路径（open / paste / undo / save-as）在 async
+;;; 模式下提交 workspace-analysis job，结果按 (doc-id, version) 校验后安装。
+;;;
+;;; 同步模式（state-async? = #f）仍然直接全量分析，便于测试 / headless。
 
-(require "../core/api.rkt"
+(require racket/match
+         "../core/api.rkt"
+         "../core/job/api.rkt"
          "../lang/source/api.rkt"
          "../lang/racket/api.rkt"
          "../editor/context.rkt"
          "../editor/state.rkt"
          "../editor/engine/read.rkt"
+         "../editor/job.rkt"
          "../editor/resource.rkt")
 
 (provide workspace-sync!
-         workspace-note-changes!)
+         workspace-note-changes!
+         workspace-pending-analyses
+         workspace-install-analysis!
+         (struct-out workspace-plugin-state)
+         empty-workspace-plugin-state
+         workspace-schedule!
+         workspace-analysis-service
+         workspace-handle-job)
+
+;;; ════════════════ 异步 workspace 分析状态 ════════════════
+
+;; pending : hash doc-id -> version
+(struct workspace-plugin-state (pending) #:transparent)
+
+(define empty-workspace-plugin-state
+  (workspace-plugin-state (hash)))
+
+(define (workspace-state-pending ps)
+  (if (workspace-plugin-state? ps)
+      (workspace-plugin-state-pending ps)
+      (hash)))
+
+(define (workspace-state-remove-pending ps did version)
+  (cond
+    [(not (workspace-plugin-state? ps)) ps]
+    [else
+     (define pending (workspace-plugin-state-pending ps))
+     (if (equal? (hash-ref pending did #f) version)
+         (workspace-plugin-state (hash-remove pending did))
+         ps)]))
 
 ;;; ════════════════ changes -> 增量 analysis ════════════════
 
@@ -71,7 +99,6 @@
 ;;; ════════════════ source snapshot -> workspace ════════════════
 
 ;; buffer snapshot 的 id 是 doc-id；disk snapshot 的 id 是 source-id。
-;; workspace 里当前 buffer 必须继续用 doc-id，completion / docs 才能按 did 查询。
 (define (source->workspace-id s)
   (case (source-snapshot-authority s)
     [(buffer) (source-id-value (source-snapshot-id s))]
@@ -81,7 +108,7 @@
   (or (racket-file? (source-snapshot-path s))
       (racket-text? (source-snapshot-text s))))
 
-(define (sync-source ws s)
+(define (sync-source ws s analyze?)
   (define id (source->workspace-id s))
   (define path (source-snapshot-path s))
   (define text (source-snapshot-text s))
@@ -92,9 +119,12 @@
           (equal? (document-entry-path entry) path)
           (equal? (document-entry-version entry) version))
      (values ws #f)]
-    [else
+    [analyze?
      (values (workspace-set-doc ws id path text #:version version)
-             #t)]))
+             #t)]
+    [else
+     ;; async 模式：保留旧 entry，由 workspace-schedule! 提交 job。
+     (values ws #f)]))
 
 (define (drop-stale ws active)
   (for/fold ([ws ws] [changed? #f])
@@ -103,16 +133,19 @@
         (values ws changed?)
         (values (workspace-remove-doc ws id) #t))))
 
-(define (sync-from-sources ed state)
+(define (racket-sources ed)
   (define store (editor-sources ed))
-  (define snaps
-    (filter racket-source?
-            (source-store-authoritative-snapshots store)))
+  (and store
+       (filter racket-source?
+               (source-store-authoritative-snapshots store))))
+
+(define (sync-from-sources ed state analyze?)
+  (define snaps (or (racket-sources ed) '()))
   (define active (map source->workspace-id snaps))
   (define old (or (editor-workspace ed) workspace-empty))
   (define-values (ws1 changed1?)
     (for/fold ([ws old] [changed? #f]) ([s (in-list snaps)])
-      (define-values (ws* changed*) (sync-source ws s))
+      (define-values (ws* changed*) (sync-source ws s analyze?))
       (values ws* (or changed? changed*))))
   (define-values (ws2 changed2?) (drop-stale ws1 active))
   (values ws2 (or changed1? changed2?)))
@@ -131,7 +164,7 @@
              #:when (and r (eq? (resource-mode r) 'racket)))
     did))
 
-(define (sync-engine-doc ws ed resources did)
+(define (sync-engine-doc ws ed resources did analyze?)
   (define engine (editor-engine ed))
   (define text (engine-doc-text engine did))
   (cond
@@ -146,29 +179,139 @@
              (equal? (document-entry-path entry) path)
              (equal? (document-entry-version entry) version))
         (values ws #f)]
-       [else
+       [analyze?
         (values (workspace-set-doc ws did path text #:version version)
-                #t)])]))
+                #t)]
+       [else (values ws #f)])]))
 
-(define (sync-from-engine ed state)
+(define (sync-from-engine ed state analyze?)
   (define resources (doc->resource state))
   (define active (active-racket-doc-ids ed resources))
   (define old (or (editor-workspace ed) workspace-empty))
   (define-values (ws1 changed1?)
     (for/fold ([ws old] [changed? #f]) ([did (in-list active)])
-      (define-values (ws* changed*) (sync-engine-doc ws ed resources did))
+      (define-values (ws* changed*)
+        (sync-engine-doc ws ed resources did analyze?))
       (values ws* (or changed? changed*))))
   (define-values (ws2 changed2?) (drop-stale ws1 active))
   (values ws2 (or changed1? changed2?)))
 
+;;; ════════════════ 待分析文档 ════════════════
+
+(define (pending-source ws s)
+  (define id (source->workspace-id s))
+  (define path (source-snapshot-path s))
+  (define text (source-snapshot-text s))
+  (define version (source-snapshot-version s))
+  (define entry (workspace-doc ws id))
+  (if (and entry
+           (equal? (document-entry-path entry) path)
+           (equal? (document-entry-version entry) version))
+      '()
+      (list (list id path text version))))
+
+(define (pending-engine ws ed resources did)
+  (define engine (editor-engine ed))
+  (define text (engine-doc-text engine did))
+  (cond
+    [(not text) '()]
+    [else
+     (define r (hash-ref resources did #f))
+     (define path (workspace-normalize-path (and r (resource-path r))))
+     (define version (engine-doc-version engine did))
+     (define entry (workspace-doc ws did))
+     (if (and entry
+              (equal? (document-entry-path entry) path)
+              (equal? (document-entry-version entry) version))
+         '()
+         (list (list did path text version)))]))
+
+;; → (listof (list doc-id path text version))
+(define (workspace-pending-analyses ed state)
+  (define ws (or (editor-workspace ed) workspace-empty))
+  (cond
+    [(editor-sources ed)
+     (append* (for/list ([s (in-list (or (racket-sources ed) '()))])
+                (pending-source ws s)))]
+    [else
+     (define resources (doc->resource state))
+     (append* (for/list ([did (in-list (active-racket-doc-ids ed resources))])
+                (pending-engine ws ed resources did)))]))
+
+;;; ════════════════ async job ════════════════
+
+(define (workspace-schedule! ed state ps)
+  (cond
+    [(not (state-async? state)) (values state ps)]
+    [else
+     (define old-pending (workspace-state-pending ps))
+     (define needed (workspace-pending-analyses ed state))
+     (define-values (state* pending*)
+       (for/fold ([state state] [pending (hash)]) ([d (in-list needed)])
+         (match-define (list did path text version) d)
+         (if (equal? (hash-ref old-pending did #f) version)
+             (values state (hash-set pending did version))
+             (let-values ([(state* job)
+                           (state-submit-job state 'workspace-analysis
+                                             d (list did version))])
+               (values state* (hash-set pending did version))))))
+     (values state* (workspace-plugin-state pending*))]))
+
+(define (workspace-analysis-service payload)
+  (match-define (list _did path text _version) payload)
+  (analyze-source path text))
+
+(define (workspace-install-analysis! ed did path text version analysis)
+  (define ws (or (editor-workspace ed) workspace-empty))
+  (set-editor-workspace!
+   ed
+   (workspace-set-analysis ws did path text version analysis)))
+
+(define (workspace-handle-job ed state ps ev)
+  (cond
+    [(not (eq? (job-result-event-kind ev) 'workspace-analysis))
+     (values state ps '())]
+    [else
+     (define tag (job-result-event-tag ev))
+     (define did (car tag))
+     (define version (cadr tag))
+     (define result (job-result-event-result ev))
+     (define ps* (workspace-state-remove-pending ps did version))
+     (define current-version (engine-doc-version (editor-engine ed) did))
+     (cond
+       [(job-error? result)
+        ;; 保留 pending，避免同一版本每帧重试；等下一次编辑再试。
+        (values (state-with-flash
+                 state
+                 (format "workspace analysis failed: ~a"
+                         (job-error-message result)))
+                ps
+                '())]
+       [(not (equal? current-version version))
+        (values state ps* '())]
+       [else
+        (define r (state-resource-for-doc state did))
+        (define text (engine-doc-text (editor-engine ed) did))
+        (cond
+          [(or (not r)
+               (not text)
+               (not (eq? (resource-mode r) 'racket)))
+           (values state ps* '())]
+          [else
+           (define path (workspace-normalize-path (resource-path r)))
+           (workspace-install-analysis! ed did path text version result)
+           (values state ps* '())])])]))
+
 ;;; ════════════════ 入口 ════════════════
 
-;; → workspace'（仅在变化时写回 editor 实例）
+;; async 模式下只同步 entry / 删除 stale；全量 analysis 由
+;; workspace-schedule! 提交。同步模式保持原来的行为。
 (define (workspace-sync! ed state)
+  (define analyze? (not (state-async? state)))
   (define-values (ws changed?)
     (if (editor-sources ed)
-        (sync-from-sources ed state)
-        (sync-from-engine ed state)))
+        (sync-from-sources ed state analyze?)
+        (sync-from-engine ed state analyze?)))
   (when changed?
     (set-editor-workspace! ed ws))
   ws)

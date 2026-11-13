@@ -64,12 +64,12 @@
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
-  ;; host-owned workspace 增量 hook：insert / delete 的 changes 直接更新 analysis。
-  ;; 其他操作（paste / undo / redo / save-as）由 frame 的 workspace-sync! 全量兜底。
+  ;; host-owned workspace：insert / delete 走同步增量 hook；
+  ;; 其他全量路径由 workspace-schedule! 提交 workspace-analysis job。
   (define workspace-plugin
     (make-plugin
      #:id 'workspace
-     #:state #f
+     #:state empty-workspace-plugin-state
      #:hooks
      (list
       (make-hook #:owner 'workspace
@@ -86,7 +86,10 @@
                     (change-context-base-version ctx)
                     (change-context-version ctx)
                     (change-context-changes ctx))
-                   (values ctx ps '() #t))))))
+                   (values ctx ps '() #t))))
+     #:sync workspace-schedule!
+     #:services (list (service 'workspace-analysis workspace-analysis-service))
+     #:handle-job workspace-handle-job))
 
   (define plugins (list pair-plugin
                         indent-plugin
