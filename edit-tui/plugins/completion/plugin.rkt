@@ -116,6 +116,7 @@
         (values state (close-completion ps) '())]
        [else
         (define open (editor-open-texts ed state))
+        (define ws (editor-workspace ed))
         (define local (all-candidates ed state vid did open #t))
         (define open? (has-other-candidates? local prefix))
         (define c1
@@ -139,7 +140,9 @@
                                          (editor-doc-text ed did)
                                          (editor-view-point-line ed vid)
                                          (editor-view-point-column ed vid)
-                                         open)
+                                         open
+                                         ws
+                                         did)
                                    (list 'completion (editor-doc-version ed did))))
         (values state2
                 (struct-copy completion-state c1 [request-id (job-id job)])
@@ -403,8 +406,11 @@
     [else '()]))
 
 (define (service-completion payload)
-  (match-define (list _prefix path text line col open) payload)
-  (completion-at path text line col #:open open))
+  (match-define (list _prefix path text line col open ws did) payload)
+  (completion-at path text line col
+                 #:open open
+                 #:workspace ws
+                 #:id did))
 
 (define completion-global-command-table
   (keys
