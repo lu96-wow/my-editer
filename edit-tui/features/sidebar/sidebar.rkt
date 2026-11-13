@@ -36,18 +36,8 @@
        [else (values (state-with-flash state "sidebar: only one view") '())])]))
 
 (define (editor-toggle-sidebar! ed state)
-  (define l (state-layout state))
-  (define area (state-area state))
   (define pid (sidebar-panel-id state))
   (cond
-    [(or (not l) (not area) (not pid))
-     (values (state-with-flash state "sidebar: no panel") '())]
-    [else
-     (define visible? (layout-panel-visible? l pid))
-     (define-values (l* ok?)
-       (if visible?
-           (layout-panel-hide l area pid #:config (state-layout-config state))
-           (layout-panel-show l area pid #:config (state-layout-config state))))
-     (if ok?
-         (values (state-with-layout state l*) '())
-         (values (state-with-flash state "sidebar toggle failed") '()))]))
+    [(not pid) (values (state-with-flash state "sidebar: no panel") '())]
+    ;; 显隐逻辑统一在 editor/layout.rkt 的 editor-toggle-panel!。
+    [else (editor-toggle-panel! ed state pid)]))
