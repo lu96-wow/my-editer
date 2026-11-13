@@ -65,6 +65,25 @@
 (define s8 (handle-editor-event ed s7 (key-event (key 'd))))
 (check-true (layout-panel-visible? (state-layout s8) 'docs))
 
+;;; ════════════════ 完全等于 prefix 的候选也保留 ════════════════
+
+(define-values (edx statex) (make-test-editor))
+(define x0 (state-with-area statex (rect 0 0 60 15)))
+(define-values (x1 _cx _bx) (render-frame edx x0 #f))
+;; 光标在 "map" 之后，prefix = "map"。
+(engine-set-view-cursor! (editor-engine edx) 1 3 #:column 6)
+(define x2 (handle-editor-event edx x1 (key-event (key 'o 'ctrl))))
+(define cx2 (state-plugin-state x2 'completion))
+(check-true (completion-state-open? cx2))
+(check-not-false (member "map" (completion-state-candidates cx2)))
+
+;; 接受 exact match：菜单关闭，文本不变。
+(define x3 (handle-editor-event edx x2 (key-event (key 'enter))))
+(check-false (completion-state-open?
+              (state-plugin-state x3 'completion)))
+(check-equal? (list-ref (string-split (engine-view-text (editor-engine edx) 1) "\n" #:trim? #f) 3)
+              "  (map add1 xs))")
+
 ;;; ════════════════ changes -> timer -> 自动打开 ════════════════
 
 (define-values (ed2 state2) (make-test-editor))

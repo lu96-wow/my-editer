@@ -204,9 +204,9 @@
 
 (define (completion-filter pool prefix)
   (define plen (string-length prefix))
-  ;; 和 prefix 完全相同的候选没有补全意义（接受也是 no-op），排除。
+  ;; 候选包含 prefix 本身：完全相同的候选也保留，方便用户确认当前输入。
   (for/list ([x (in-list pool)]
-             #:when (and (> (string-length x) plen)
+             #:when (and (>= (string-length x) plen)
                          (string=? prefix (substring x 0 plen))))
     x))
 
