@@ -103,6 +103,9 @@ lang/python/
 (docs-local ws doc-id name)
 ```
 
+宿主由 `host/workspace.rkt` 每帧把已打开 Racket user doc 按 version 同步进 workspace；
+插件通过 `editor-workspace` 只读这个快照。
+
 ## 增量策略
 
 - **着色**：按行缓存词法状态 / 括号栈 / 语法 role / 同词 role / 括号 role，

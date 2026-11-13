@@ -120,6 +120,9 @@
            #f))
      (define bindings* (if scope (car scope) bindings))
      (define scope-text (if scope (cadr scope) text))
+     ;; workspace 里没有当前文档时退回 open / 当前文本，避免 local pool 为空。
+     (define ws* (and a ws))
+     (define id* (and a id))
      (completion-context (path-string path)
                          (base-dir-of path)
                          lang
@@ -129,8 +132,8 @@
                          bindings*
                          scope-text
                          forms
-                         ws
-                         id)]))
+                         ws*
+                         id*)]))
 
 ;;; ════════════════ 前缀 ════════════════
 
