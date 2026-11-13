@@ -10,6 +10,9 @@
 ;;;
 ;;; 这里只做 host 侧的 IO / 同步；source-store 本身是纯值。
 ;;; workspace 消费 source-store-authoritative-snapshots，而不是直接读 engine。
+;;;
+;;; 不做外部文件变化监听：disk snapshot 在首次看到 resource 时加载，
+;;; 之后由 buffer 保存时更新，不自动轮询 / watch 磁盘。
 
 (require racket/file
          racket/path

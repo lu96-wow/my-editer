@@ -592,4 +592,3 @@ racket edit-tui/test/layers.rkt
 
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
-3. source-store 接文件系统变化通知：外部修改 / 删除后的磁盘快照刷新。
