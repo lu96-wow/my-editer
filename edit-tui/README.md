@@ -150,7 +150,7 @@ edit-tui/
     docs.rkt           completion -> docs 的跨插件 action 解释
     bilingual.rkt      双语 pair：derived mirror 创建 / bind / 清理 / 源行替换
     derived-buffer.rkt 动态 derived doc + view 生命周期
-    layout.rkt         host 侧 detach / attach-as-tab
+    layout.rkt         host 侧 detach / attach-as-tab / attach-in-new-split
     event.rkt          tui raw -> host 事件
     render/core.rkt    core piece -> tui bytes
     render/theme.rkt   style -> tui 样式安装
@@ -579,7 +579,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
-- bilingual：源 user doc ↔ derived mirror，行级双向映射；镜像无 resource / history，源为权威；
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；单翻译表；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
@@ -616,4 +616,4 @@ racket edit-tui/test/layers.rkt
 
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
-3. bilingual side-by-side split / 多翻译表 / 结构化数据源。
+3. bilingual 结构化数据源 / 异步翻译 / 多 mirror / 多翻译表。

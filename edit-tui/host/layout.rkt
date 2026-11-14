@@ -13,7 +13,8 @@
          "../editor/host-api.rkt")
 
 (provide editor-detach-view!
-         editor-attach-view-as-tab!)
+         editor-attach-view-as-tab!
+         editor-attach-view-in-new-split!)
 
 (define (panel-without-view p vid)
   (define views (for/list ([v (in-list (p:panel-views p))]
@@ -56,3 +57,29 @@
         (define-values (l** active?) (layout-panel-set-active-view l* pid new-vid))
         (define l*** (layout-set-focus (if active? l** l*) pid))
         (values (state-with-layout state l***) #t)])]))
+
+;; 在 anchor-vid 所在 panel 旁边新建同 kind panel，把 new-vid 放进去。
+;; 返回 ok? = #f 时调用方可以退回 attach-as-tab。
+(define (editor-attach-view-in-new-split! state anchor-vid new-vid dir)
+  (define l (state-layout state))
+  (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
+  (cond
+    [(not pid) (values state #f)]
+    [else
+     (define new-pid (state-next-panel-id state))
+     (define-values (l1 ok?)
+       (layout-split l pid dir new-pid #:config (state-layout-config state)))
+     (cond
+       [(not ok?) (values state #f)]
+       [else
+        (define-values (l2 added?) (layout-panel-add-view l1 new-pid new-vid))
+        (cond
+          [(not added?) (values state #f)]
+          [else
+           (define-values (l3 active?)
+             (layout-panel-set-active-view l2 new-pid new-vid))
+           (define l4 (layout-set-focus (if active? l3 l2) new-pid))
+           (values (state-with-next-panel-id
+                    (state-with-layout state l4)
+                    (add1 new-pid))
+                   #t)])])]))

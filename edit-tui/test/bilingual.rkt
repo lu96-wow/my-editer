@@ -47,7 +47,9 @@
 (check-not-false (memv mirror-did (editor-derived-doc-ids ed)))
 (check-false (memv mirror-did (editor-user-doc-ids ed)))
 (check-true (string-contains? (editor-doc-text ed mirror-did) "定义"))
+(check-true (string-contains? (editor-doc-text ed mirror-did) "映射"))
 (check-true (string-contains? (editor-doc-text ed mirror-did) "(main xs)"))
+(check-equal? (length (editor-visible-editor-panels state2)) 2)
 
 ;; 源编辑：替换源第 3 行（0 基），mirror 对应行更新。
 (define-values (state3 _actions3)
@@ -79,5 +81,6 @@
 (check-false (engine-doc-kind (editor-engine ed) mirror-did))
 (check-false (bilingual-pair-for-source (state-plugin-state state8 'bilingual)
                                         source-did))
+(check-equal? (length (editor-visible-editor-panels state8)) 1)
 
 (displayln "edit-tui/test/bilingual.rkt: ok")

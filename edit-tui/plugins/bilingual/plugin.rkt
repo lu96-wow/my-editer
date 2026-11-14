@@ -146,8 +146,9 @@
           (define source-changed?
             (not (equal? source-lines (pair-source-lines p))))
           (define translator-changed?
-            (not (equal? (translator-version tr)
-                         (pair-translator-version p))))
+            (or (not (equal? (translator-id tr) (pair-translator-id p)))
+                (not (equal? (translator-version tr)
+                             (pair-translator-version p)))))
           (define mirror-diverged?
             (and (not source-changed?)
                  (not (equal? mirror-lines (pair-mirror-lines p)))))

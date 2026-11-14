@@ -76,7 +76,12 @@
                                      #:owner 'bilingual
                                      #:source-doc-id source-doc-id))
            (define-values (state2 attached?)
-             (editor-attach-view-as-tab! state1 source-vid vid))
+             (let-values ([(s ok?)
+                           (editor-attach-view-in-new-split!
+                            state1 source-vid vid 'right)])
+               (if ok?
+                   (values s #t)
+                   (editor-attach-view-as-tab! state1 source-vid vid))))
            (cond
              [(not attached?)
               (define-values (state3 _actions)

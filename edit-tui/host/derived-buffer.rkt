@@ -9,7 +9,9 @@
 ;;;
 ;;; 这里只做 host 生命周期，不写内容。
 
-(require "../editor/host-api.rkt"
+(require "../core/layout/api.rkt"
+         (prefix-in p: "../core/panel/api.rkt")
+         "../editor/host-api.rkt"
          "layout.rkt")
 
 (provide create-derived-buffer!
@@ -38,8 +40,23 @@
      (values state '())]
     [else
      (define vids (or (engine-view-ids-for-doc engine did) '()))
+     (define pids
+       (for/list ([vid (in-list vids)])
+         (define l (state-layout state))
+         (and l (layout-panel-for-view l vid))))
      (define state*
        (for/fold ([s state]) ([vid (in-list vids)])
          (editor-detach-view! s vid)))
      (engine-remove-doc! engine did)
-     (values state* '())]))
+     ;; split 出来的 mirror panel 只含 mirror view；摘掉后若为空就删 panel。
+     (define state**
+       (for/fold ([s state*]) ([pid (in-list pids)])
+         (define l (state-layout s))
+         (define panel (and l pid (layout-panel l pid)))
+         (cond
+           [(and panel (null? (p:panel-views panel)))
+            (define-values (l* ok?)
+              (layout-panel-remove l pid #:config (state-layout-config s)))
+            (if ok? (state-with-layout s l*) s)]
+           [else s])))
+     (values state** '())]))
