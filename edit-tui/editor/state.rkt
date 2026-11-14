@@ -60,6 +60,7 @@
          state-pending
          state-pending-scope
          state-quit?
+         state-save-session?
          state-flash
          state-drag
          state-select-drag
@@ -74,6 +75,7 @@
          state-with-pending-scope
          state-clear-pending
          state-with-quit
+         state-with-save-session
          state-with-flash
          state-clear-flash
          state-with-drag
@@ -132,7 +134,8 @@
    find            ; find-state | #f：当前查找会话
    jobs            ; job-ledger
    errors          ; (listof editor-error)，最新在前
-   async?)         ; bool：sync 阶段是否走异步 job
+   async?          ; bool：sync 阶段是否走异步 job
+   save-session?)  ; bool：退出时是否写 .editdata
   #:transparent)
 
 ;; host 顶层状态：editor 只操作 editor，session 只由 host/base feature 改。
@@ -144,6 +147,7 @@
          #:pending [pending '()]
          #:pending-scope [pending-scope #f]
          #:quit? [quit? #f]
+         #:save-session? [save-session? #t]
          #:flash [flash ""]
          #:screen [screen #f]
          #:layout-config [layout-config empty-layout-config]
@@ -177,7 +181,7 @@
    (editor-core plugin-states workspace-root resources layout areas current-area area-slot
                 layout-config view-scopes screen next-view-id next-panel-id)
    (editor-session pending pending-scope quit? flash modal input pointer find
-                   jobs errors async?)))
+                   jobs errors async? save-session?)))
 
 ;;; ════════════════ state dispatch ════════════════
 
@@ -196,7 +200,7 @@
      (raise-argument-error 'state-session "app-state? or editor-core?" state)]))
 
 (define empty-session
-  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger '() #f))
+  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger '() #f #t))
 
 (define (session-of state)
   (or (state-session state) empty-session))
@@ -309,6 +313,8 @@
   (editor-session-pending-scope (session-of state)))
 (define (state-quit? state)
   (editor-session-quit? (session-of state)))
+(define (state-save-session? state)
+  (editor-session-save-session? (session-of state)))
 (define (state-flash state)
   (editor-session-flash (session-of state)))
 (define (state-drag state)
@@ -350,6 +356,11 @@
        (state-with-pending state '()) #f)))
 (define (state-with-quit state quit?)
   (update-session state (λ (s) (struct-copy editor-session s [quit? quit?]))))
+(define (state-with-save-session state save-session?)
+  (update-session state
+                  (λ (s)
+                    (struct-copy editor-session s
+                                 [save-session? (and save-session? #t)]))))
 (define (state-with-flash state text)
   (update-session state (λ (s) (struct-copy editor-session s [flash text]))))
 (define (state-clear-flash state)

@@ -89,7 +89,8 @@
                          (mouse-event-col ev)))
         (run-actions ed s2 actions)])]
     [(quit-event? ev)
-     (state-with-quit state #t)]
+     ;; 窗口关闭按“保存会话”处理；不受之前取消的 C-q q 影响。
+     (state-with-quit (state-with-save-session state #t) #t)]
     [(key-event? ev)
      (define-values (s2 actions)
        (dispatch-key ed state (key-event-token ev)))

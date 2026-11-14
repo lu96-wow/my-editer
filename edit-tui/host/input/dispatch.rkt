@@ -184,7 +184,8 @@
     [(save-command? value)
      (editor-save-command ed state)]
     [(quit-command? value)
-     (editor-request-quit ed state)]
+     (editor-request-quit
+      ed (state-with-save-session state (quit-command-save-session? value)))]
     [(toggle-errors-command? value)
      (editor-toggle-panel! ed state 'errors)]
     [(clear-errors-command? value)

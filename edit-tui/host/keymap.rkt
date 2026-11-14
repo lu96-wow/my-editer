@@ -43,7 +43,7 @@
 (struct find-next-command () #:transparent)
 (struct find-prev-command () #:transparent)
 (struct save-command () #:transparent)
-(struct quit-command () #:transparent)
+(struct quit-command (save-session?) #:transparent)
 (struct toggle-errors-command () #:transparent)
 (struct clear-errors-command () #:transparent)
 (struct switch-area-command (area-id) #:transparent)
@@ -103,7 +103,8 @@
   (command-table-merge
    (keys
     [(key 's 'ctrl)   (save-command)]
-    [(key 'q 'ctrl)   (quit-command)]
+    [(key 'q 'ctrl) (key 'q) (quit-command #f)]
+    [(key 'q 'ctrl) (key 's) (quit-command #t)]
     [(key 'e 'ctrl)   (toggle-errors-command)]
     [(key 'E 'alt)    (clear-errors-command)])
    switch-area-command-table))

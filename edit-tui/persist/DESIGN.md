@@ -422,7 +422,8 @@ workspace-root
 
 ### 6.1 触发点
 
-1. **正常退出**：`run-editor` 返回 `state-quit? = #t` 后，在 `run-demo-editor` 里保存。
+1. **`C-q s`**：保存会话状态并退出；`C-q q`：退出，不写会话状态。
+   窗口关闭 / quit-event 默认按“保存”处理。
 2. **自动保存**（建议第二版）：事件循环每帧检查时间；距上次保存超过 N 秒且状态有变化时保存。
 3. **崩溃**：只能依赖上一次自动保存；`.editdata` 不是事务日志。
 4. **显式命令**（可选）：以后可加 `C-x C-s` 之外的 session save 命令，或环境变量关闭。
@@ -1086,7 +1087,7 @@ edit-tui/persist/io.rkt        ;; 单文件原子读写 / 路径相对化
 修改：
 
 - `app/bootstrap.rkt`：允许“先建骨架，再 restore”，并允许跳过初始 user doc；
-- `edit.rkt`：`run-demo-editor` 启动时 load，退出时 save；
+- `edit.rkt`：`run-demo-editor` 启动时 load；`C-q s` 退出时 save，`C-q q` 退出不 save；
 - 可能给 `core/editor/query.rkt` / `ops.rkt` 加一个小的 `view-state` 读写函数
   （如果不想依赖 `view-set-anchor!` 的非公开导出）；
 - 测试：`test/persist-minimal.rkt`。
@@ -1105,7 +1106,7 @@ edit-tui/persist/io.rkt        ;; 单文件原子读写 / 路径相对化
 
 - 关闭时如果有 bilingual mirror split，重启后镜像 panel 消失；layout 会过滤掉不存在的 view。
 - filetree 展开状态、docs 内容、错误日志、find query、补全菜单都不恢复。
-- 只保存正常退出；直接 kill / 终端崩溃不保证有 session。
+- 只保存 `C-q s` 正常退出；`C-q q` 不保存，直接 kill / 终端崩溃也不保证有 session。
 - 不保存 undo / redo。
 - 不处理“关闭期间磁盘文件被修改”；恢复的是关闭时的文本。
 - 两个实例同时打开同一 workspace 时，最后退出的覆盖前一个。
@@ -1113,5 +1114,5 @@ edit-tui/persist/io.rkt        ;; 单文件原子读写 / 路径相对化
 ### 16.6 一句话
 
 > 最小版本只做四件事：存 user buffer 文本 + resources、存 layout/areas/focus、
-> 存 user view 光标/选区/视口、退出时原子写一个 `session.rktd`。
+> 存 user view 光标/选区/视口；`C-q s` 退出时原子写一个 `session.rktd`，`C-q q` 直接退出不写。
 > 插件、derived、history、session、UI 缓存全部不碰，启动后重算。

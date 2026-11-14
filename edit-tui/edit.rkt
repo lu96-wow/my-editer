@@ -67,7 +67,7 @@
                       #:read-event (λ () (async-channel-get event-channel))
                       #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
                       #:job-runtime runtime))
-        (when (state-quit? final)
+        (when (and (state-quit? final) (state-save-session? final))
           (void (save-editor-session! ed final #:workspace-root root)))
         final)
       (λ ()
