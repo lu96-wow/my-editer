@@ -16,8 +16,11 @@
 (define (engine-set-derived-content! e vid lines faces
                                      #:base-version [base-version #f])
   (and (eq? (engine-view-kind e vid) 'derived)
-       (projection-set-content! e vid lines faces
-                                #:base-version base-version)))
+       (begin
+         ;; derived 是整篇投影；强制 full write 避免大 face track 的增量 rebase。
+         (projection-forget-content! e vid)
+         (projection-set-content! e vid lines faces
+                                  #:base-version base-version))))
 
 (define (engine-set-derived-cursor! e vid line #:column [column 0])
   (and (eq? (engine-view-kind e vid) 'derived)

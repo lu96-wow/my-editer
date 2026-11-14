@@ -16,6 +16,7 @@
          "store.rkt")
 
 (provide projection-set-content!
+         projection-forget-content!
          projection-set-face-track!
          projection-set-face-lines!
          projection-set-cursor!
@@ -194,6 +195,13 @@
               (set-engine-face-track-cache!
                e (hash-remove (engine-face-track-cache e) vid))
               #t])])])]))
+
+;; 让下一次内容写走 full-projection-write!。
+;; derived mirror 的文本/face 基线可能很大；对它做最小 diff 会让 face rebase
+;; 变成大对象上的昂贵操作，直接整篇替换反而更稳定。
+(define (projection-forget-content! e vid)
+  (set-engine-projection-cache! e (hash-remove (engine-projection-cache e) vid))
+  (set-engine-face-track-cache! e (hash-remove (engine-face-track-cache e) vid)))
 
 (define (full-projection-write! e vid b cache lines faces readonly-prefix prefix-face)
   ;; 投影 view（filetree / status / input）不是用户可撤销的文档；

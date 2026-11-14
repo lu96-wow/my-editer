@@ -92,22 +92,24 @@
 ;; → (values old-start old-end new-start new-end)
 ;; 用 common line prefix / suffix 找变化块；空变化块表示没有行级差异。
 (define (line-diff old new)
-  (define on (length old))
-  (define nn (length new))
+  (define ov (list->vector old))
+  (define nv (list->vector new))
+  (define on (vector-length ov))
+  (define nn (vector-length nv))
   (define max-prefix (min on nn))
   (define p
     (let loop ([i 0])
       (cond
         [(>= i max-prefix) i]
-        [(equal? (list-ref old i) (list-ref new i)) (loop (add1 i))]
+        [(equal? (vector-ref ov i) (vector-ref nv i)) (loop (add1 i))]
         [else i])))
   (define max-suffix (- (min on nn) p))
   (define s
     (let loop ([i 0])
       (cond
         [(>= i max-suffix) i]
-        [(equal? (list-ref old (- on 1 i))
-                 (list-ref new (- nn 1 i)))
+        [(equal? (vector-ref ov (- on 1 i))
+                 (vector-ref nv (- nn 1 i)))
          (loop (add1 i))]
         [else i])))
   (values p (- on s) p (- nn s)))
