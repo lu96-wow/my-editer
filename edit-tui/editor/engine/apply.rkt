@@ -145,7 +145,8 @@
       [else #f]))
   (define history-editable? (eq? kind 'user))
   (define b (view-buffer v))
-  (case (view-action-kind action)
+  (define result
+    (case (view-action-kind action)
     [(insert)
      (if text-editable?
          ;; action 里是原始 UTF-8 bytes；document 是字符串，这里解一次
@@ -211,4 +212,9 @@
              [(not (buffer-redo! b)) '()]
              [else (text-change before (view-string v))]))
          '())]
-    [else (error 'engine-apply-view-action! "未知 view action：~a" action)]))
+      [else (error 'engine-apply-view-action! "未知 view action：~a" action)]))
+  ;; mirror 可能被用户编辑（intent）。文本一旦变化，旧的 derived 投影基线
+  ;; 就不再对应 buffer；下一次插件投影必须 full 重建。
+  (when (and (eq? kind 'derived) (pair? result))
+    (engine-forget-derived-projection! e did))
+  result)

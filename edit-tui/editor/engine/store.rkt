@@ -20,7 +20,9 @@
 
 (provide (struct-out engine)
          (struct-out derived-meta)
+         (struct-out derived-projection)
          make-engine
+         engine-forget-derived-projection!
          engine-view-object
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
@@ -40,6 +42,12 @@
 ;; edit-policy    : 'intent | 'read-only
 (struct derived-meta (owner source-doc-id edit-policy) #:transparent)
 
+;; derived 投影按 doc 缓存：文本 / face 属性都是 buffer 级的，split 后的多个
+;; view 必须看到同一份投影基线。
+;; lines : (listof string)
+;; faces : (listof (vectorof (or/c #f face?)))
+(struct derived-projection (lines faces) #:transparent)
+
 (struct engine
   (user-docs     ; did -> buffer
    ui-docs       ; did -> buffer
@@ -48,17 +56,22 @@
    ui-views      ; vid -> view
    derived-views ; vid -> view
    derived-meta  ; did -> derived-meta
-   projection-cache ; vid -> (cons lines faces)：上次投影内容
+   derived-projection-cache ; did -> derived-projection
+   projection-cache ; vid -> (cons lines faces)：上次 UI 投影内容
    face-track-cache) ; vid -> (cons key face-track)
   #:mutable)
-;; projection-cache / face-track-cache 都是「写回幂等」缓存——内容 / face 没变
-;; 就不碰 document（否则每帧都换 document revision、让 render cache 失效）。
-;; 缓存键是 view-id，UI / derived / user view 共用；语义区分在写入口。
+;; projection-cache / face-track-cache 是 UI / user view 的「写回幂等」缓存。
+;; derived 的投影基线更接近“文档属性”，单独按 did 存在 derived-projection-cache，
+;; 避免 split 出来的兄弟 view 各自持有一份会分叉的 cache。
 
 (define (make-engine)
   (engine (hash) (hash) (hash)
           (hash) (hash) (hash)
-          (hash) (hash) (hash)))
+          (hash) (hash) (hash) (hash)))
+
+(define (engine-forget-derived-projection! e did)
+  (set-engine-derived-projection-cache!
+   e (hash-remove (engine-derived-projection-cache e) did)))
 
 ;;; ════════════════ 内部查找 ════════════════
 
@@ -167,6 +180,7 @@
   (when (eq? kind 'derived)
     ;; derived 不是权威文档：用户编辑不记 history。
     (buffer-reset-history! b #f)
+    (engine-forget-derived-projection! e did)
     (set-engine-derived-meta!
      e
      (hash-set (engine-derived-meta e) did
@@ -215,6 +229,7 @@
     (buffer-close! b)
     (set-docs-of! e kind (hash-remove (docs-of e kind) did))
     (when (eq? kind 'derived)
+      (engine-forget-derived-projection! e did)
       (set-engine-derived-meta! e
                                 (hash-remove (engine-derived-meta e) did))))
   (void))

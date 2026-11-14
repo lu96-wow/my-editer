@@ -42,15 +42,9 @@
   (define-values (text spans) ((translator-translate-line+faces tr) line))
   (cons text (spans->face-vector text spans)))
 
-(define (write-mirror! ed mirror-did lines faces)
-  (void (editor-set-derived-view-content!
-         ed mirror-did lines (make-list (length lines) #f)))
-  (define version (editor-doc-version ed mirror-did))
-  (when version
-    (void (editor-set-view-face-track!
-           ed mirror-did faces
-           #:key (list mirror-did version 'bilingual)
-           #:base-version version))))
+(define (write-mirror! ed mirror-vid lines faces)
+  ;; engine 根据 derived doc 级基线自动选择按行增量或 full fallback。
+  (void (editor-set-derived-view-projection! ed mirror-vid lines faces)))
 
 (define (flash-message state text)
   (values state (list (flash-action text))))

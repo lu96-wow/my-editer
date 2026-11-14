@@ -20,7 +20,11 @@
          projection-set-face-track!
          projection-set-face-lines!
          projection-set-cursor!
-         projection-set-lines!)
+         projection-set-lines!
+         projection-set-document-full!
+         projection-replace-line-block!
+         projection-set-face-track-raw!
+         projection-set-face-lines-raw!)
 
 ;;; 写 投影 view 的内容（文本 + 每行 face），不碰光标。
 ;;;
@@ -197,8 +201,8 @@
               #t])])])]))
 
 ;; 让下一次内容写走 full-projection-write!。
-;; derived mirror 的文本/face 基线可能很大；对它做最小 diff 会让 face rebase
-;; 变成大对象上的昂贵操作，直接整篇替换反而更稳定。
+;; 兼容旧 derived 整篇入口 / 需要强制 full 的调用；正常 derived 投影使用
+;; derived-write 的 doc 级基线 + 按行增量，不走这里。
 (define (projection-forget-content! e vid)
   (set-engine-projection-cache! e (hash-remove (engine-projection-cache e) vid))
   (set-engine-face-track-cache! e (hash-remove (engine-face-track-cache e) vid)))
@@ -235,6 +239,98 @@
                           j)))
           (loop j (cons (list (range (point line-no i) (point line-no j)) f)
                         acc))])])))
+
+;;; ---------- derived 投影的底层写（不带 cache / 不判断策略） ----------
+
+;; 整篇安装投影文本。调用方负责随后写 face / 更新自己的 cache。
+(define (projection-set-document-full! b lines)
+  (buffer-reset-history! b #f)
+  (buffer-set-document! b (string-join lines "\n"))
+  (void))
+
+;; 把旧文本的 [start,end) 行换成 new-lines。
+;; 行列表语义与 string-split #:trim? #f 一致；这里负责把“行”映射成
+;; core 的 range，包括末尾行的换行边界。
+(define (projection-replace-line-block! b old-lines start end new-lines)
+  (define n (length old-lines))
+  (define s (max 0 (min start n)))
+  (define e (max s (min end n)))
+  (define-values (r text)
+    (cond
+      [(zero? n)
+       (values (range (point 0 0) (point 0 0))
+               (string-join new-lines "\n"))]
+      ;; 在最后一行之后追加。
+      [(= s n)
+       (define last (list-ref old-lines (sub1 n)))
+       (values (range (point (sub1 n) (string-length last))
+                      (point (sub1 n) (string-length last)))
+               (if (null? new-lines)
+                   ""
+                   (string-append "\n" (string-join new-lines "\n"))))]
+      ;; 替换到文本末尾：起点要包含 s 前面的换行，否则会留下空行。
+      [(= e n)
+       (define last (list-ref old-lines (sub1 n)))
+       (define r-start
+         (if (zero? s)
+             (point 0 0)
+             (point (sub1 s)
+                    (string-length (list-ref old-lines (sub1 s))))))
+       (values (range r-start (point (sub1 n) (string-length last)))
+               (if (null? new-lines)
+                   ""
+                   (string-append (if (zero? s) "" "\n")
+                                  (string-join new-lines "\n"))))]
+      [else
+       (values (range (point s 0) (point e 0))
+               (if (null? new-lines)
+                   ""
+                   (string-append (string-join new-lines "\n") "\n")))]))
+  (void (buffer-replace-range! b r text))
+  (buffer-reset-history! b #f)
+  (void))
+
+;; 整条 face track：先清空，再按逐字符 run 写回。
+(define (projection-set-face-track-raw! b text-lines face-track)
+  (buffer-face-all! b #f)
+  (define runs
+    (append*
+     (for/list ([line (in-list text-lines)]
+                [i (in-naturals)]
+                [faces (in-list face-track)])
+       (if (vector? faces)
+           (face-line->runs i line faces)
+           '()))))
+  (when (pair? runs) (buffer-face-range-batch! b runs))
+  (void))
+
+;; 只重写给定行的 face：整行先清成 #f，再写新 run。
+;; entries : (listof (cons line-no (vectorof (or/c #f face?)) | #f))
+(define (projection-set-face-lines-raw! b text-lines entries)
+  (define textv (list->vector text-lines))
+  (define n (vector-length textv))
+  (define fills
+    (append*
+     (for/list ([entry (in-list entries)])
+       (define line-no (car entry))
+       (define faces (cdr entry))
+       (cond
+         [(or (not (exact-nonnegative-integer? line-no))
+              (>= line-no n))
+          '()]
+         [else
+          (define line (vector-ref textv line-no))
+          (define len (string-length line))
+          (define clear
+            (if (positive? len)
+                (list (list (range (point line-no 0) (point line-no len)) #f))
+                '()))
+          (append clear
+                  (if (vector? faces)
+                      (face-line->runs line-no line faces)
+                      '()))]))))
+  (when (pair? fills) (buffer-face-range-batch! b fills))
+  (void))
 
 ;; 写一个 view 的逐字符 attribute / face track，不动文本 / 光标 / 历史。
 ;; face-track : (listof (vectorof (or/c #f symbol? face?)))，与文本行对齐。

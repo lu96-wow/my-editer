@@ -24,6 +24,7 @@
          workspace-set-doc
          workspace-set-analysis
          workspace-apply-changes
+         workspace-reanalyze-entry
          workspace-set-source
          workspace-apply-source-changes
          workspace-remove-source
@@ -45,6 +46,7 @@
          racket/path
          racket/string
          "../../source/api.rkt"
+         "../base/edit.rkt"
          "../base/lex.rkt"
          "analysis.rkt"
          "local-docs.rkt"
@@ -142,6 +144,61 @@
                                    (or version text)
                                    analysis))
      (workspace (hash-set (workspace-docs ws) id entry))]))
+
+;;; ════════════════ 合并后的文本变化 -> entry ════════════════
+
+;; old-text / new-text -> (listof line-edit)
+;; 连续输入被 debounce 合并后，不需要保留每次 change 的行编辑；直接比较
+;; “上次已分析文本”和“当前文本”，得到一个粗粒度行变化块即可。
+(define (text->line-edits old-text new-text)
+  (define ov (list->vector (string-split old-text "\n" #:trim? #f)))
+  (define nv (list->vector (string-split new-text "\n" #:trim? #f)))
+  (define on (vector-length ov))
+  (define nn (vector-length nv))
+  (define max-prefix (min on nn))
+  (define p
+    (let loop ([i 0])
+      (cond
+        [(>= i max-prefix) i]
+        [(equal? (vector-ref ov i) (vector-ref nv i)) (loop (add1 i))]
+        [else i])))
+  (define max-suffix (- (min on nn) p))
+  (define s
+    (let loop ([i 0])
+      (cond
+        [(>= i max-suffix) i]
+        [(equal? (vector-ref ov (- on 1 i))
+                 (vector-ref nv (- nn 1 i)))
+         (loop (add1 i))]
+        [else i])))
+  (define os p)
+  (define oe (- on s))
+  (define ns p)
+  (define ne (- nn s))
+  (cond
+    [(and (= os oe) (= ns ne)) '()]
+    [else (list (line-edit os oe ns ne))]))
+
+;; 纯增量：旧 entry + 新文本 -> 新 entry。
+;; worker 只拿旧 entry / path / 新文本 / 新版本，不依赖 workspace 全局状态。
+(define (workspace-reanalyze-entry old path text #:version [version #f])
+  (define path* (workspace-normalize-path path))
+  (define id (and old (document-entry-id old)))
+  (cond
+    [(or (not old)
+         (not (equal? (document-entry-path old) path*)))
+     (document-entry id path* text
+                     (or version text)
+                     (analyze-source path* text))]
+    [else
+     (define edits (text->line-edits (document-entry-text old) text))
+     (define analysis
+       (cond
+         [(null? edits) (document-entry-analysis old)]
+         [else (analysis-edit (document-entry-analysis old) path* text edits)]))
+     (document-entry id path* text
+                     (or version text)
+                     analysis)]))
 
 ;;; ════════════════ source snapshot 入口 ════════════════
 

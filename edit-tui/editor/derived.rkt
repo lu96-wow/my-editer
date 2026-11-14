@@ -12,6 +12,7 @@
 (provide editor-derived-doc-ids
          editor-derived-view-ids
          editor-set-derived-view-content!
+         editor-set-derived-view-projection!
          editor-set-derived-view-cursor!)
 
 (define (editor-derived-doc-ids ed)
@@ -24,6 +25,13 @@
                                           #:base-version [base-version #f])
   (engine-set-derived-content! (editor-engine ed) vid lines faces
                                #:base-version base-version))
+
+;; 正常投影入口：lines + 逐字符 face track 一起安装。
+;; engine 根据 derived doc 级基线选择按行增量或 full fallback。
+(define (editor-set-derived-view-projection! ed vid lines face-track
+                                             #:base-version [base-version #f])
+  (engine-set-derived-projection! (editor-engine ed) vid lines face-track
+                                  #:base-version base-version))
 
 (define (editor-set-derived-view-cursor! ed vid line #:column [column 0])
   (engine-set-derived-cursor! (editor-engine ed) vid line #:column column))

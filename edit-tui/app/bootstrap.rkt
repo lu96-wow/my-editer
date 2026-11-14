@@ -65,8 +65,9 @@
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
-  ;; host-owned workspace：insert / delete 走同步增量 hook；
-  ;; 其他全量路径由 workspace-schedule! 提交 workspace-analysis job。
+  ;; host-owned workspace：changes hook 在同步模式直接 analysis-edit，
+  ;; async 模式只做 debounce；timer 提交 workspace-analysis-edit，
+  ;; 没有 changes 的全量路径由 workspace-schedule! 提交 workspace-analysis。
   (define workspace-plugin
     (make-plugin
      #:id 'workspace
@@ -80,16 +81,21 @@
                  #:priority -100
                  #:fn
                  (λ (ctx ps)
-                   (workspace-note-changes!
-                    (change-context-editor ctx)
-                    (change-context-state ctx)
-                    (change-context-doc-id ctx)
-                    (change-context-base-version ctx)
-                    (change-context-version ctx)
-                    (change-context-changes ctx))
-                   (values ctx ps '() #t))))
+                   (define ps*
+                     (workspace-note-changes!
+                      (change-context-editor ctx)
+                      (change-context-state ctx)
+                      ps
+                      (change-context-doc-id ctx)
+                      (change-context-base-version ctx)
+                      (change-context-version ctx)
+                      (change-context-changes ctx)))
+                   (values ctx ps* '() #t))))
      #:sync workspace-schedule!
-     #:services (list (service 'workspace-analysis workspace-analysis-service))
+     #:services (list (service 'workspace-analysis workspace-analysis-service)
+                      (service 'workspace-analysis-edit
+                               workspace-analysis-edit-service))
+     #:handle-timer workspace-handle-timer
      #:handle-job workspace-handle-job))
 
   (define plugins (list pair-plugin
