@@ -21,11 +21,14 @@
          line-diff)
 
 ;; translate-line / inverse-line : string -> string
+;; translate-line+faces : string -> (values string spans)
+;;   spans = (listof (list start end face))，位置基于 mirror 行自身字符索引。
 ;; 第一版不做“反译失败”；无法识别的 token 原样保留。
 (struct translator
   (id
    version
    translate-line
+   translate-line+faces
    inverse-line)
   #:transparent)
 
@@ -39,6 +42,7 @@
    mirror-version
    source-lines
    mirror-lines
+   mirror-faces          ; (listof vector)：每行逐字符 face
    source-anchor         ; (cons line col) | #f：viewport 左上锚点
    mirror-anchor)        ; 同上
   #:transparent)

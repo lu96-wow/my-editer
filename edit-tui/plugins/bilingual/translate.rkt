@@ -57,38 +57,73 @@
    (rule 'cdr "cdr" "尾")
    (rule 'list "list" "列表")))
 
+(define (rule-face id)
+  (case id
+    [(define define-values lambda let let* letrec struct match cond)
+     'bilingual-keyword]
+    [(if else begin and or not)
+     'bilingual-control]
+    [(require provide)
+     'bilingual-module]
+    [(set!)
+     'bilingual-binding]
+    [(map filter foldl foldr null? cons car cdr list)
+     'bilingual-function]
+    [else #f]))
+
+;; mapping : hash token -> (cons replacement (or/c face #f))
+;; → (values text spans)
+;;   spans 位置基于输出 text 的字符索引，不依赖 source 列。
 (define (replace-symbols line mapping)
   (define-values (_state tokens) (tokenize-line empty-lex-state line))
   (define out '())
+  (define out-len 0)
+  (define spans '())
+  (define (emit! s)
+    (set! out (cons s out))
+    (set! out-len (+ out-len (string-length s))))
   (define pos 0)
   (for ([tok (in-list tokens)])
     (define s (token-start tok))
     (define e (token-end tok))
     (when (> s pos)
-      (set! out (cons (substring line pos s) out)))
+      (emit! (substring line pos s)))
     (define text (substring line s e))
-    (define replacement
-      (if (eq? (token-kind tok) 'symbol)
-          (hash-ref mapping text text)
-          text))
-    (set! out (cons replacement out))
+    (define mapped
+      (and (eq? (token-kind tok) 'symbol)
+           (hash-ref mapping text #f)))
+    (define replacement (if mapped (car mapped) text))
+    (define face (and mapped (cdr mapped)))
+    (when face
+      (set! spans
+            (cons (list out-len
+                        (+ out-len (string-length replacement))
+                        face)
+                  spans)))
+    (emit! replacement)
     (set! pos e))
   (when (< pos (string-length line))
-    (set! out (cons (substring line pos) out)))
-  (apply string-append (reverse out)))
+    (emit! (substring line pos)))
+  (values (apply string-append (reverse out)) (reverse spans)))
+
+(define (text-only mapping line)
+  (define-values (text _spans) (replace-symbols line mapping))
+  text)
 
 (define (rules->maps rules)
   (values
    (for/fold ([h (hash)]) ([r (in-list rules)])
-     (hash-set h (rule-source r) (rule-target r)))
+     (hash-set h (rule-source r)
+               (cons (rule-target r) (rule-face (rule-id r)))))
    (for/fold ([h (hash)]) ([r (in-list rules)])
-     (hash-set h (rule-target r) (rule-source r)))))
+     (hash-set h (rule-target r) (cons (rule-source r) #f)))))
 
 (define (translator-rules->translator id version rules)
   (define-values (forward inverse) (rules->maps rules))
   (translator id version
+              (lambda (line) (text-only forward line))
               (lambda (line) (replace-symbols line forward))
-              (lambda (line) (replace-symbols line inverse))))
+              (lambda (line) (text-only inverse line))))
 
 (define (make-translator #:id id #:version [version 'v1] #:rules rules)
   (translator-rules->translator id version rules))

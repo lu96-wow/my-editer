@@ -37,7 +37,7 @@
    ;; 焦点面板的边框（projection 用空 panel + 更高 weight 叠在边框格上）
    (list 'focused-border (style (rgb 120 180 240) #f '()))
    (list 'float-border   (style (rgb 190 150 240) #f '()))
-   ;; bilingual：source / mirror panel 边框 + mirror 文本底色
+   ;; bilingual：source / mirror panel 边框
    (list 'bilingual-source-border (style (rgb 120 200 200) #f '()))
    (list 'bilingual-mirror-border (style (rgb 190 150 240) #f '()))
    (list 'bilingual-pair-border   (style (rgb 160 180 230) #f '()))))
@@ -68,8 +68,12 @@
    (list 'docs-title (style (rgb 120 210 130) #f '(bold)))
    (list 'docs-dim   (style (rgb 140 150 165) #f '()))
    (list 'docs-body  (style (rgb 200 200 200) #f '()))
-   ;; bilingual mirror 文本（derived view 的整行 face）
-   (list 'bilingual-mirror-line (style (rgb 225 220 240) (rgb 34 30 44) '()))))
+   ;; bilingual mirror token face：位置基于 mirror 行自身字符索引，不复制 source 列。
+   (list 'bilingual-keyword  (style (rgb 120 180 240) #f '()))
+   (list 'bilingual-control  (style (rgb 230 150 180) #f '()))
+   (list 'bilingual-module   (style (rgb 120 200 200) #f '()))
+   (list 'bilingual-function (style (rgb 190 220 140) #f '()))
+   (list 'bilingual-binding  (style (rgb 235 190 110) #f '()))))
 
 ;; 语法高亮：role 名由 lang/racket/color 产出。
 (define syntax-theme

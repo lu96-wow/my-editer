@@ -26,6 +26,31 @@
 (define (slice xs start end)
   (take (drop xs start) (- end start)))
 
+(define (spans->face-vector text spans)
+  (define n (string-length text))
+  (define v (make-vector n #f))
+  (for ([span (in-list spans)])
+    (define start (max 0 (car span)))
+    (define end (min n (cadr span)))
+    (define f (caddr span))
+    (for ([i (in-range start end)])
+      (vector-set! v i f)))
+  v)
+
+(define (translate-line+face tr line)
+  (define-values (text spans) ((translator-translate-line+faces tr) line))
+  (cons text (spans->face-vector text spans)))
+
+(define (write-mirror! ed mirror-did lines faces)
+  (void (editor-set-derived-view-content!
+         ed mirror-did lines (make-list (length lines) #f)))
+  (define version (editor-doc-version ed mirror-did))
+  (when version
+    (void (editor-set-view-face-track!
+           ed mirror-did faces
+           #:key (list mirror-did version 'bilingual)
+           #:base-version version))))
+
 (define (flash-message state text)
   (values state (list (flash-action text))))
 
@@ -51,24 +76,32 @@
           (split-lines (editor-doc-text ed did)))
         (define old-source-lines (pair-source-lines p))
         (define old-mirror-lines (pair-mirror-lines p))
+        (define old-mirror-faces (pair-mirror-faces p))
         (define-values (os0 oe0 ns0 ne0)
           (line-diff old-source-lines new-source-lines))
-        ;; 1:1 行映射不变式被破坏时，退回整篇重投影，避免错位替换。
+        ;; 1:1 行映射不变式 / face 基线不一致时，退回整篇重投影。
+        (define same-shape?
+          (and (= (length old-mirror-lines) (length old-source-lines))
+               (= (length old-mirror-faces) (length old-mirror-lines))))
         (define-values (os oe ns ne)
-          (if (= (length old-mirror-lines) (length old-source-lines))
+          (if same-shape?
               (values os0 oe0 ns0 ne0)
-              (values 0 (length old-mirror-lines) 0 (length new-source-lines))))
-        (define translated
+              (values 0 0 0 (length new-source-lines))))
+        (define base-faces (if same-shape? old-mirror-faces '()))
+        (define translated-pairs
           (for/list ([line (in-list (slice new-source-lines ns ne))])
-            ((translator-translate-line tr) line)))
+            (translate-line+face tr line)))
+        (define translated (map car translated-pairs))
+        (define translated-faces (map cdr translated-pairs))
         (define new-mirror-lines
           (append (take old-mirror-lines os)
                   translated
                   (drop old-mirror-lines oe)))
-        (void (editor-set-derived-view-content!
-               ed (pair-mirror-view-id p)
-               new-mirror-lines
-               (make-list (length new-mirror-lines) 'bilingual-mirror-line)))
+        (define new-mirror-faces
+          (append (take base-faces os)
+                  translated-faces
+                  (drop base-faces oe)))
+        (write-mirror! ed (pair-mirror-view-id p) new-mirror-lines new-mirror-faces)
         (define p*
           (struct-copy pair p
                        [translator-version (translator-version tr)]
@@ -76,7 +109,8 @@
                        [mirror-version (editor-doc-version ed
                                                           (pair-mirror-doc-id p))]
                        [source-lines new-source-lines]
-                       [mirror-lines new-mirror-lines]))
+                       [mirror-lines new-mirror-lines]
+                       [mirror-faces new-mirror-faces]))
         (values ctx (state-set-pair ps p*) '() #t)])]))
 
 ;;; ════════════════ 镜像 -> 源反译 ════════════════
@@ -229,13 +263,12 @@
             (not (equal? mirror-lines (pair-mirror-lines p)))))
      (cond
        [(or source-changed? translator-changed? mirror-diverged?)
-        (define new-mirror-lines
+        (define translated-pairs
           (for/list ([line (in-list source-lines)])
-            ((translator-translate-line tr) line)))
-        (void (editor-set-derived-view-content!
-               ed (pair-mirror-view-id p)
-               new-mirror-lines
-               (make-list (length new-mirror-lines) 'bilingual-mirror-line)))
+            (translate-line+face tr line)))
+        (define new-mirror-lines (map car translated-pairs))
+        (define new-mirror-faces (map cdr translated-pairs))
+        (write-mirror! ed (pair-mirror-view-id p) new-mirror-lines new-mirror-faces)
         (define p*
           (struct-copy pair p
                        [translator-version (translator-version tr)]
@@ -244,7 +277,8 @@
                        [mirror-version (editor-doc-version ed
                                                           (pair-mirror-doc-id p))]
                        [source-lines source-lines]
-                       [mirror-lines new-mirror-lines]))
+                       [mirror-lines new-mirror-lines]
+                       [mirror-faces new-mirror-faces]))
         (state-set-pair ps p*)]
        [else ps])]))
 
