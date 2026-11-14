@@ -40,23 +40,31 @@
      (values state '())]
     [else
      (define vids (or (engine-view-ids-for-doc engine did) '()))
-     (define pids
+     (define locs
        (for/list ([vid (in-list vids)])
-         (define l (state-layout state))
-         (and l (layout-panel-for-view l vid))))
+         (editor-view-location state vid)))
      (define state*
        (for/fold ([s state]) ([vid (in-list vids)])
          (editor-detach-view! s vid)))
      (engine-remove-doc! engine did)
      ;; split 出来的 mirror panel 只含 mirror view；摘掉后若为空就删 panel。
      (define state**
-       (for/fold ([s state*]) ([pid (in-list pids)])
-         (define l (state-layout s))
+       (for/fold ([s state*]) ([loc (in-list locs)] #:when loc)
+         (define aid (view-location-area-id loc))
+         (define pid (view-location-panel-id loc))
+         (define l (editor-area-layout-for s aid))
          (define panel (and l pid (layout-panel l pid)))
          (cond
+           ;; 最后一个 editor panel 不能从 area 里删掉：它同时是 slot 的边界 leaf。
+           ;; 内容已经 detach，保留空 panel 即可。没有启用 area 的旧 state 保持
+           ;; 原来的“空 panel 就删”行为。
+           [(and (or (state-area-slot s)
+                     (not (equal? aid (state-current-area s))))
+                 (<= (editor-area-panel-count s aid) 1))
+            s]
            [(and panel (null? (p:panel-views panel)))
             (define-values (l* ok?)
               (layout-panel-remove l pid #:config (state-layout-config s)))
-            (if ok? (state-with-layout s l*) s)]
+            (if ok? (editor-with-area-layout s aid l*) s)]
            [else s])))
      (values state** '())]))

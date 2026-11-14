@@ -5,7 +5,7 @@
 ;;; 这里只定义 host 自己解释的命令值，以及各 scope 的 host 内置表：
 ;;;   navigation  编辑器 / panel 共用的光标移动
 ;;;   editor      编辑器专用：navigation + 插入 / 删除 / 历史
-;;;   global      全局 fallback：save / quit
+;;;   global      全局 fallback：save / quit / M-0..9 编辑区切换
 ;;;
 ;;; 插件命令仍由 command/<scope> contribution 提供；host 按当前 focus
 ;;; 把这些表组合成 command-table-stack。
@@ -26,6 +26,7 @@
          (struct-out quit-command)
          (struct-out toggle-errors-command)
          (struct-out clear-errors-command)
+         (struct-out switch-area-command)
          navigation-command-table
          editor-base-command-table
          global-base-command-table
@@ -45,6 +46,7 @@
 (struct quit-command () #:transparent)
 (struct toggle-errors-command () #:transparent)
 (struct clear-errors-command () #:transparent)
+(struct switch-area-command (area-id) #:transparent)
 
 (define (nav dir) (move-command dir #f))
 (define (nav-shift dir) (move-command dir #t))
@@ -86,13 +88,25 @@
     [(key 'z 'ctrl)   (undo-command)]
     [(key 'y 'ctrl)   (redo-command)])))
 
-;; 全局 fallback：不属于某个 buffer / panel 的应用命令。
+;; 编辑区切换：M-0..M-9 -> area 0..9。
+(define (area-digit-key n)
+  (key (string->symbol (number->string n)) 'alt))
+
+(define switch-area-command-table
+  (command-table-from-bindings
+   (for/list ([area-id (in-range 0 10)])
+     (list (list (area-digit-key area-id))
+           (switch-area-command area-id)))))
+
+;; 全局 fallback：不属于某个 buffer / panel 的应用命令 + 编辑区切换。
 (define global-base-command-table
-  (keys
-   [(key 's 'ctrl)   (save-command)]
-   [(key 'q 'ctrl)   (quit-command)]
-   [(key 'e 'ctrl)   (toggle-errors-command)]
-   [(key 'E 'alt)    (clear-errors-command)]))
+  (command-table-merge
+   (keys
+    [(key 's 'ctrl)   (save-command)]
+    [(key 'q 'ctrl)   (quit-command)]
+    [(key 'e 'ctrl)   (toggle-errors-command)]
+    [(key 'E 'alt)    (clear-errors-command)])
+   switch-area-command-table))
 
 ;; 每个 opened buffer 的默认键表；现在 racket / text 共用 editor 表。
 ;; 以后可以在前面插 mode 专属 overlay，仍是“resource 持有 stack”。

@@ -99,7 +99,7 @@
                   #:resources (resources-add empty-resources r)
                   #:layout layout
                   #:layout-config default-layout-config
-                  #:area (rect 0 0 80 24)
+                  #:screen (rect 0 0 80 24)
                   #:async? #f))
 
 (define-values (state2 _actions2)

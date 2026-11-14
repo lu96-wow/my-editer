@@ -19,6 +19,7 @@
          "context.rkt"
          "hooks.rkt"
          "layout.rkt"
+         "area.rkt"
          "timer.rkt"
          "plugin.rkt"
          "plugin-runtime.rkt")
@@ -35,10 +36,11 @@
          (all-from-out "plugin.rkt")
          (all-from-out "plugin-runtime.rkt")
 
-         ;; editor 实例 / hook registry / 完整 layout / timer service：host 使用。
+         ;; editor 实例 / hook registry / 完整 layout / area / timer service：host 使用。
          (all-from-out "context.rkt")
          (all-from-out "hooks.rkt")
          (all-from-out "layout.rkt")
+         (all-from-out "area.rkt")
          (all-from-out "timer.rkt")
 
          ;; 渲染 / 尺寸同步：只有 host 使用

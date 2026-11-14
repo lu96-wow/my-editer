@@ -12,13 +12,13 @@
          "fixture.rkt")
 
 (define-values (ed state) (make-test-editor))
-(define s (state-with-area state (rect 0 0 40 10)))
+(define s (state-with-screen state (rect 0 0 40 10)))
 
 (define-values (s-split _a1) (editor-split! ed s 'right))
 
 ;; 找一条 lr seam（editor <-> 新 panel）。
 (define seams (layout-seams (state-layout s-split)
-                            (state-area s-split)))
+                            (state-screen s-split)))
 (define seam
   (for/first ([seam (in-list seams)]
               #:when (eq? (seam-axis seam) 'lr))
@@ -30,7 +30,7 @@
 (define col (+ (rect-x r) (quotient (rect-w r) 2)))
 
 (define before (layout-panel-rects (state-layout s-split)
-                                  (state-area s-split)))
+                                  (state-screen s-split)))
 (define editor-w-before (rect-w (hash-ref before 'editor)))
 
 (define-values (s-press _a2)
@@ -42,7 +42,7 @@
 (check-not-false (state-drag s-move))
 
 (define after (layout-panel-rects (state-layout s-move)
-                                  (state-area s-move)))
+                                  (state-screen s-move)))
 (check-not-equal? (rect-w (hash-ref after 'editor)) editor-w-before)
 
 (define-values (s-release _a4)
@@ -53,7 +53,7 @@
 ;; 先渲染一帧，把 viewport 尺寸写回 view（真实 host 在 read-event 前已经渲染过）。
 (define-values (s-rendered _c0 _b0) (render-frame ed s-release #f))
 (define rects (layout-panel-rects (state-layout s-rendered)
-                                  (state-area s-rendered)))
+                                  (state-screen s-rendered)))
 (define er (hash-ref rects 'editor))
 (define click-row (+ (rect-y er) 1))
 (define click-col (+ (rect-x er) 1))
@@ -69,7 +69,7 @@
 
 ;; 拖选：press 落 caret，move 扩展 head，release 结束。
 (define content (layout-content-rect (state-layout s-click)
-                                    (state-area s-click)
+                                    (state-screen s-click)
                                     'editor))
 (define cr (+ (rect-y content) 0))
 (define cc (+ (rect-x content) 2))

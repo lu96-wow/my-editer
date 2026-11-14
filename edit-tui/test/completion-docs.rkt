@@ -18,7 +18,7 @@
 ;;; ════════════════ 手动打开 / 接受 / docs ════════════════
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 (engine-set-view-cursor! (editor-engine ed) 1 3 #:column 5)
 
@@ -37,6 +37,14 @@
 (define ov-rect (editor-overlay-rect (car ovs)))
 (check-true (>= (rect-x ov-rect) (rect-x content)))
 (check-true (<= (rect-right ov-rect) (rect-right content)))
+
+;; overlay 锚在编辑区 view 上：切到别的编辑区时不再渲染，切回来恢复。
+(define s2-area (editor-switch-area s2r 2))
+(define-values (_s2-area-state ovs-hidden) (run-plugin-overlays ed s2-area))
+(check-equal? ovs-hidden '())
+(define s2-area-back (editor-switch-area s2-area 1))
+(define-values (_s2-area-back-state ovs-back) (run-plugin-overlays ed s2-area-back))
+(check-equal? (length ovs-back) 1)
 
 ;; docs 已更新到选中候选。
 (check-true (string-contains? (engine-view-text (editor-engine ed) 7) "map"))
@@ -72,7 +80,7 @@
 
 ;; 上一节结束时 docs 重新显示；新开一个 app 测隐藏路径。
 (define-values (edz statez) (make-test-editor))
-(define z0 (state-with-area statez (rect 0 0 60 15)))
+(define z0 (state-with-screen statez (rect 0 0 60 15)))
 (define-values (z1 _cz _bz) (render-frame edz z0 #f))
 (check-true (editor-panel-visible? z1 'docs))
 (engine-set-view-cursor! (editor-engine edz) 1 3 #:column 5)
@@ -98,7 +106,7 @@
 ;;; ════════════════ 完全等于 prefix 的候选也保留 ════════════════
 
 (define-values (edx statex) (make-test-editor))
-(define x0 (state-with-area statex (rect 0 0 60 15)))
+(define x0 (state-with-screen statex (rect 0 0 60 15)))
 (define-values (x1 _cx _bx) (render-frame edx x0 #f))
 ;; 光标在 "map" 之后，prefix = "map"。
 (engine-set-view-cursor! (editor-engine edx) 1 3 #:column 6)
@@ -122,7 +130,7 @@
 ;;; ════════════════ changes -> timer -> 自动打开 ════════════════
 
 (define-values (ed2 state2) (make-test-editor))
-(define t0 (state-with-area state2 (rect 0 0 60 15)))
+(define t0 (state-with-screen state2 (rect 0 0 60 15)))
 (define-values (t1 _c _b) (render-frame ed2 t0 #f))
 (define ch (make-async-channel))
 (define trt (start-timer-runtime #:event-channel ch))

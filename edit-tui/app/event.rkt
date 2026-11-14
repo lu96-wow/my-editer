@@ -48,7 +48,7 @@
         (state-with-select-drag state1 #f)))
   (cond
     [(resize-event? ev)
-     (state-with-area
+     (state-with-screen
       state (rect 0 0 (resize-event-cols ev) (resize-event-rows ev)))]
     [(paste-event? ev)
      (cond

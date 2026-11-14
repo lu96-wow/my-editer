@@ -19,7 +19,7 @@
   (define layout (make-editor-layout #:editor-view 1 #:status-view 2))
   (define state
     (make-app-state #:plugin-states (plugins->states (list p))
-                       #:area (rect 0 0 40 10)
+                       #:screen (rect 0 0 40 10)
                        #:layout layout
                        #:layout-config default-layout-config
                        #:next-view-id 10

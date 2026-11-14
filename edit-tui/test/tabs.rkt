@@ -23,7 +23,7 @@
   p)
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 
 ;; split 出的新 view 也登记到同一个 resource。
 (define-values (s-split _a1) (editor-split! ed s0 'right))

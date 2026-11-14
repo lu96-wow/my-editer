@@ -18,6 +18,7 @@
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
 - `editor/layout.rkt`：布局操作面（split / close / focus / mouse）+ layout 扩展点。
+- `editor/area.rkt`：多编辑区 checkout / checkin；当前 layout = chrome frame + current editor area，`areas` 只保存非当前 editor-only 布局。
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
 - `features/placement/`：打开文件后的目标 editor 选择。
 - `features/input/`：输入栏状态 / 编辑接口。
@@ -107,6 +108,7 @@ edit-tui/
     ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe；replace-lines 只写 user doc
     derived.rkt        derived view 投影写 / 查询
     layout.rkt         通用布局操作面：split / close / focus + layout hooks
+    area.rkt           编辑区：checkout / checkin、area-slot、跨 area view-location
     resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
     mode.rkt           .rkt / #lang racket -> racket，否则 text
 
@@ -438,6 +440,7 @@ Esc / C-g      关闭补全
 M-d            查看光标处标识符文档
 M-l            双语：打开 / 聚焦 / 关闭当前 Racket buffer 的 mirror
 C-x d          显 / 隐 docs panel
+M-0..M-9       切到编辑区 0..9（输入栏 / placement 中不生效）
 C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
@@ -519,6 +522,7 @@ racket edit-tui/test/ui-incremental.rkt
 racket edit-tui/test/panel-resize.rkt
 racket edit-tui/test/filetree-io.rkt
 racket edit-tui/test/buffer-keymap.rkt
+racket edit-tui/test/areas.rkt
 racket edit-tui/test/find.rkt
 racket edit-tui/test/layers.rkt
 ```
@@ -602,6 +606,11 @@ racket edit-tui/test/layers.rkt
     在 mirror 上按 `M-l` 关闭 pair 后，焦点会回到 source；再次 `M-l` 会重新创建
     derived mirror / pair。只有关闭 source resource 或镜像上的 `M-l` 才真正删除
     mirror / pair。
+5u. 多编辑区：`layout` 是当前合成 frame（chrome + current editor area）；
+    `areas` 只保存非当前编辑区的 editor-only layout；chrome / resources / workspace / plugin-state 全局。
+    编辑区切换只换 frame 里的 editor 子树；跨 area view 查询只走 `editor/area.rkt` 的
+    `editor-view-location`，不能拿当前 layout 的 `layout-panel-for-view` 猜别处。
+    和编辑区绑定的 overlay 必须声明 `anchor-view-id`；非当前 area 的 overlay 不渲染。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

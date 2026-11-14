@@ -75,7 +75,7 @@
  state-resources
  state-layout
  state-layout-config
- state-area
+ state-screen
  state-input
  state-placement
  state-async?

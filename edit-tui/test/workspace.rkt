@@ -40,7 +40,7 @@
                    #:initial-text main-text
                    #:initial-name "main.rkt"
                    #:initial-path main-path))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 
 ;;; ════════════════ 打开 dep，再切回 main ════════════════

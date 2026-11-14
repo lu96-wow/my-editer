@@ -48,7 +48,7 @@
 (define-values (layout1 _ok1?)
   (layout-panel-set-active-view layout1* 'editor 1))
 (define state0
-  (make-app-state #:area (rect 0 0 40 10)
+  (make-app-state #:screen (rect 0 0 40 10)
                   #:layout layout1
                   #:plugin-states (plugins->states (list mode-plugin))
                   #:resources (resources-add

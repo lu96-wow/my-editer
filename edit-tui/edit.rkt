@@ -59,7 +59,7 @@
       void
       (λ ()
         (run-editor ed
-                    (state-with-async (state-with-area state area) #t)
+                    (state-with-async (state-with-screen state area) #t)
                     #:read-event (λ () (async-channel-get event-channel))
                     #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
                     #:job-runtime runtime))

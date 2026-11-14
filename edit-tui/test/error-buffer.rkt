@@ -18,7 +18,7 @@
          "fixture.rkt")
 
 (define-values (ed state0) (make-test-editor))
-(define s0 (state-with-area state0 (rect 0 0 80 24)))
+(define s0 (state-with-screen state0 (rect 0 0 80 24)))
 
 ;; error panel 默认隐藏。
 (check-false (editor-panel-visible? s0 'errors))

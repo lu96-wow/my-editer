@@ -33,8 +33,11 @@
 (define (source-view-id state source-doc-id)
   (define r (state-resource-for-doc state source-doc-id))
   (and r
-       (pair? (resource-views r))
-       (car (resource-views r))))
+       (let ([views (resource-views r)])
+         (or (for/first ([vid (in-list views)]
+                         #:when (editor-view-location state vid))
+               vid)
+             (and (pair? views) (car views))))))
 
 ;; 重新挂 mirror 需要 source view 真正在 layout 里；resource-views 里可能还有
 ;; 被 C-w d detach 的 view。
@@ -58,7 +61,7 @@
                  state source-vid mirror-vid 'right)])
     (if ok?
         (values s #t)
-        (editor-attach-view-as-tab! state source-vid mirror-vid))))
+        (editor-attach-view-as-tab! s source-vid mirror-vid))))
 
 ;; C-w d 只 detach mirror panel；M-l / focus 时把已有 mirror 重新挂回去。
 (define (bilingual-focus-mirror! ed state mirror-vid)

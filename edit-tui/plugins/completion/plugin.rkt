@@ -404,6 +404,7 @@
           (completion-state-popup-rect ps))
      (list (make-editor-overlay (completion-state-view-id ps)
                                 (completion-state-popup-rect ps)
+                                #:anchor-view-id (completion-state-target-vid ps)
                                 #:face 'float-border
                                 #:deep 100
                                 #:weight 100))]

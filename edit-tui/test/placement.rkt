@@ -19,7 +19,7 @@
   p)
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (define-values (s1 _a1) (editor-split! ed s0 'right))
 (check-equal? (length (editor-visible-editor-panels s1)) 2)
 
@@ -50,7 +50,7 @@
 (define f3 (make-file "three.txt" "three"))
 (define-values (s7 _a7) (editor-open-file! ed s6 f3))
 (define vid3 (editor-placement-view-id s7))
-(define rects (layout-panel-rects (state-layout s7) (state-area s7)))
+(define rects (layout-panel-rects (state-layout s7) (state-screen s7)))
 (define rr (hash-ref rects 100))
 (define-values (s8 _a8 handled?)
   (editor-placement-mouse! ed s7 (+ (rect-y rr) 1) (+ (rect-x rr) 1)))

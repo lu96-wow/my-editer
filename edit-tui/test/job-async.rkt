@@ -29,7 +29,7 @@
 (define layout (make-editor-layout #:editor-view 1 #:sidebar-view 3))
 (define state
   (make-app-state #:plugin-states (plugins->states (list plugin))
-                     #:area (rect 0 0 60 15)
+                     #:screen (rect 0 0 60 15)
                      #:layout layout
                      #:async? #t))
 

@@ -44,7 +44,7 @@
                      #:initial-name "test.rkt"
                      #:initial-text "#lang racket\n"
                      #:initial-resource? #t))
-  (values ed (run-plugin-syncs ed (state-with-area state (rect 0 0 80 24)))))
+  (values ed (run-plugin-syncs ed (state-with-screen state (rect 0 0 80 24)))))
 
 (define (key-event* name . mods)
   (key-event (apply key name mods)))
@@ -239,7 +239,7 @@
 (define layout (make-editor-layout #:editor-view 1 #:sidebar-view 3))
 (define state4
   (make-app-state #:plugin-states (plugins->states (list plugin))
-                  #:area (rect 0 0 60 15)
+                  #:screen (rect 0 0 60 15)
                   #:layout layout
                   #:async? #t))
 

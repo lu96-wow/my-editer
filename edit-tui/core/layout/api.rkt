@@ -14,14 +14,14 @@
  (all-from-out "config.rkt")
 
  ;; 节点 / layout 状态
- make-leaf
- leaf? leaf-panel-id
- split? split-id split-axis split-left split-right split-ratio
- layout? layout-empty? layout-node? layout-tree? layout-root
+ make-leaf leaf? leaf-panel-id
+ (struct-out split)
+ (struct-out layout)
+ layout-empty? layout-node? layout-tree?
  make-layout empty-layout
 
  ;; 焦点
- layout-focus layout-set-focus
+ layout-set-focus
  layout-solve-key
 
  ;; panel 资源
@@ -37,6 +37,9 @@
  layout-panel-cycle-active-view
 
  ;; 结构
+ find-parent-split
+ find-split
+ update-split
  layout-split
  layout-panel-attach
  layout-panel-remove

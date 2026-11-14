@@ -50,7 +50,7 @@
                         #:plugins '()))
 (define app (make-app-state
              #:layout (make-editor-layout #:editor-view 1)
-             #:area (rect 0 0 40 10)))
+             #:screen (rect 0 0 40 10)))
 (define app-session (app-state-session app))
 (define-values (app* _actions) (editor-insert! ed app 1 "x"))
 (check-eq? (app-state-session app*) app-session)

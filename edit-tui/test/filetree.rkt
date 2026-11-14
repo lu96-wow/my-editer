@@ -18,7 +18,7 @@
          "../host/open.rkt")
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (define (ft-ps st) (state-plugin-state st 'filetree))
 
 ;; 第一帧渲染触发 filetree sync。

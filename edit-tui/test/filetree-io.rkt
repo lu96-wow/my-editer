@@ -37,7 +37,7 @@
 (define state
   (make-app-state #:plugin-states (plugins->states (list filetree-plugin))
                   #:workspace-root (resource-normalize-path root)
-                  #:area (rect 0 0 60 15)
+                  #:screen (rect 0 0 60 15)
                   #:layout layout
                   #:layout-config default-layout-config
                   #:view-scopes (plugins->view-scopes (list filetree-plugin))

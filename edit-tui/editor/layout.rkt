@@ -21,6 +21,7 @@
          "context.rkt"
          "state.rkt"
          "resource.rkt"
+         "area.rkt"
          "hooks.rkt")
 
 (provide (struct-out layout-context)
@@ -66,15 +67,26 @@
   (and p (p:panel-active p)))
 
 ;; focus 一个已经挂在 panel 上的 view；detached -> attached? = #f，由调用方 placement。
+;; view 在别的编辑区时先切过去，再聚焦；这样 resources / bilingual / open
+;; 不会把“已挂载但在别处”的 view 误判成 detached。
 (define (editor-focus-view-if-attached! ed state vid)
-  (define l (state-layout state))
-  (define pid (and l vid (layout-panel-for-view l vid)))
+  (define loc (editor-view-location state vid))
   (cond
-    [(not pid) (values state '() #f)]
+    [(not loc) (values state '() #f)]
     [else
-     (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
-     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (state-with-layout state l**) '() #t)]))
+     (define area-id (view-location-area-id loc))
+     (define state0
+       (if (equal? area-id (state-current-area state))
+           state
+           (editor-switch-area state area-id)))
+     (define l (state-layout state0))
+     (define pid (and l vid (layout-panel-for-view l vid)))
+     (cond
+       [(not pid) (values state0 '() #f)]
+       [else
+        (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
+        (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
+        (values (state-with-layout state0 l**) '() #t)])]))
 
 (define (editor-focus-view ed state)
   (define vid (editor-focus-view-id state))
@@ -83,7 +95,7 @@
 ;; focus panel 的内容区 rect（给 completion popup 定位）。
 (define (editor-focus-content-rect state)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (define pid (editor-focus-panel-id state))
   (and l area pid (layout-content-rect l area pid)))
 
@@ -98,7 +110,7 @@
 ;; layout -> repo core panels（给 host 渲染 / 命中用）。
 (define (editor-layout-panels ed state)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (and l area
        (layout->render-panels l area
                               #:view-object
@@ -239,7 +251,7 @@
 
 (define (editor-toggle-panel! ed state pid)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (cond
     [(or (not l) (not area) (not pid)) (flash state "panel: no target")]
     [else
@@ -268,7 +280,7 @@
 
 (define (editor-focus! ed state dir)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (define from (and l (layout-focus l)))
   (cond
     [(or (not l) (not area)) (flash state "focus: no layout / area")]

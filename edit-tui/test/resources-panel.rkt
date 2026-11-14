@@ -21,7 +21,7 @@
 
 (define-values (ed state) (make-test-editor))
 (define s0 (state-with-workspace-root
-            (state-with-area state (rect 0 0 60 15))
+            (state-with-screen state (rect 0 0 60 15))
             (resource-normalize-path root)))
 
 ;; 打开文件并提交 placement。

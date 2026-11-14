@@ -20,7 +20,7 @@
 (define target (build-path root "saved.rkt"))
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (define-values (s1 _c1 _b1) (render-frame ed s0 #f))
 
 (define vid (editor-focus-view-id s1))

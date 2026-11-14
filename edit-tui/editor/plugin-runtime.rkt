@@ -26,6 +26,8 @@
          "context.rkt"
          "contributions.rkt"
          "state.rkt"
+         "area.rkt"
+         "overlay.rkt"
          "error.rkt"
          "job.rkt"
          "plugin.rkt")
@@ -68,6 +70,7 @@
 (define (run-plugin-overlays ed state)
   ;; → (values state' (listof editor-overlay))
   ;; overlay 本身是纯的；这里只把失败信息变成 flash，不写 plugin-state。
+  ;; anchor-view-id 不在当前编辑区时丢弃该 overlay。
   (for/fold ([s state] [overlays '()])
             ([c (in-list (registry-contributions
                           (editor-contributions ed) point/frame-overlay))])
@@ -78,7 +81,13 @@
                          (values (plugin-failure s owner 'overlay e) '()))])
         (values s
                 ((contribution-fn c) ed s (plugin-state-of s owner)))))
-    (values s* (append overlays ovs*))))
+    (values s*
+            (append overlays
+                    (filter (λ (ov)
+                              (define anchor (editor-overlay-anchor-view-id ov))
+                              (or (not anchor)
+                                  (editor-view-in-current-area? s* anchor)))
+                            ovs*)))))
 
 (define (run-plugin-timer-handlers ed state ev)
   (for/fold ([s state] [actions '()])

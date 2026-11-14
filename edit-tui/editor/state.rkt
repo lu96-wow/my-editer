@@ -32,18 +32,24 @@
          state-workspace-root
          state-resources
          state-layout
+         state-areas
+         state-current-area
+         state-area-slot
          state-layout-config
          state-view-scopes
-         state-area
+         state-screen
          state-next-view-id
          state-next-panel-id
          state-with-plugin-states
          state-with-workspace-root
          state-with-resources
          state-with-layout
+         state-with-areas
+         state-with-current-area
+         state-with-area-slot
          state-with-layout-config
          state-with-view-scopes
-         state-with-area
+         state-with-screen
          state-with-next-view-id
          state-with-next-panel-id
 
@@ -91,10 +97,13 @@
   (plugin-states   ; hash: plugin-id -> opaque pure value
    workspace-root  ; normalized absolute path | #f：resources 相对路径的基准
    resources       ; resources：已打开文档
-   layout          ; layout | #f（core/layout 的纯值）
+   layout          ; layout | #f：当前合成 frame（chrome + current area）
+   areas           ; hash area-id -> editor-area：只保存非当前编辑区
+   current-area    ; area-id | #f
+   area-slot       ; area-slot | #f：frame 中 current area 子树的位置
    layout-config   ; layout-config：具体 kind 规则（宿主选择）
    view-scopes     ; hash view-id/panel-id -> command scope
-   area            ; rect | #f
+   screen          ; rect | #f
    next-view-id    ; 新 split 使用的 view id
    next-panel-id)  ; 新 split 使用的 panel id
   #:transparent)
@@ -133,9 +142,12 @@
          #:pending-scope [pending-scope #f]
          #:quit? [quit? #f]
          #:flash [flash ""]
-         #:area [area #f]
+         #:screen [screen #f]
          #:layout-config [layout-config empty-layout-config]
          #:layout [layout #f]
+         #:areas [areas (hash)]
+         #:current-area [current-area #f]
+         #:area-slot [area-slot #f]
          #:view-scopes [view-scopes (hash)]
          #:drag [drag #f]
          #:find [find #f]
@@ -159,8 +171,8 @@
       [select-drag (pointer-select select-drag)]
       [else #f]))
   (app-state
-   (editor-core plugin-states workspace-root resources layout layout-config view-scopes area
-                next-view-id next-panel-id)
+   (editor-core plugin-states workspace-root resources layout areas current-area area-slot
+                layout-config view-scopes screen next-view-id next-panel-id)
    (editor-session pending pending-scope quit? flash modal input pointer find
                    jobs errors async?)))
 
@@ -208,12 +220,18 @@
   (editor-core-resources (state-core state)))
 (define (state-layout state)
   (editor-core-layout (state-core state)))
+(define (state-areas state)
+  (editor-core-areas (state-core state)))
+(define (state-current-area state)
+  (editor-core-current-area (state-core state)))
+(define (state-area-slot state)
+  (editor-core-area-slot (state-core state)))
 (define (state-layout-config state)
   (editor-core-layout-config (state-core state)))
 (define (state-view-scopes state)
   (editor-core-view-scopes (state-core state)))
-(define (state-area state)
-  (editor-core-area (state-core state)))
+(define (state-screen state)
+  (editor-core-screen (state-core state)))
 (define (state-next-view-id state)
   (editor-core-next-view-id (state-core state)))
 (define (state-next-panel-id state)
@@ -239,6 +257,21 @@
    state
    (struct-copy editor-core (state-core state)
                 [layout layout])))
+(define (state-with-areas state areas)
+  (state-with-core
+   state
+   (struct-copy editor-core (state-core state)
+                [areas areas])))
+(define (state-with-current-area state current-area)
+  (state-with-core
+   state
+   (struct-copy editor-core (state-core state)
+                [current-area current-area])))
+(define (state-with-area-slot state area-slot)
+  (state-with-core
+   state
+   (struct-copy editor-core (state-core state)
+                [area-slot area-slot])))
 (define (state-with-layout-config state layout-config)
   (state-with-core
    state
@@ -249,11 +282,11 @@
    state
    (struct-copy editor-core (state-core state)
                 [view-scopes view-scopes])))
-(define (state-with-area state area)
+(define (state-with-screen state screen)
   (state-with-core
    state
    (struct-copy editor-core (state-core state)
-                [area area])))
+                [screen screen])))
 (define (state-with-next-view-id state next-view-id)
   (state-with-core
    state

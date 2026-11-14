@@ -42,7 +42,7 @@
 ;; 拖选：选择留在按下的 panel 里，指针移到别的 panel 也不换目标。
 (define (drag-select! ed state sd row col)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (define content (and l area (layout-content-rect l area (select-drag-panel-id sd))))
   (cond
     [(not content) (values state '())]
@@ -61,7 +61,7 @@
 
 (define (editor-mouse! ed state token row col)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (cond
     [(or (not l) (not area)) (values state '())]
     [else

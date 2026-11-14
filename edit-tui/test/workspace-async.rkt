@@ -26,7 +26,7 @@
 (define text "#lang racket\n(define (foo) 1)\n")
 (define-values (ed state) (make-editor-app #:initial-text text
                                            #:initial-name "async.rkt"))
-(define s0 (state-with-area (state-with-async state #t) (rect 0 0 60 15)))
+(define s0 (state-with-screen (state-with-async state #t) (rect 0 0 60 15)))
 (define-values (s0r _c0 _b0) (render-frame ed s0 #f))
 (define initial-version (editor-doc-version ed 1))
 (check-eq? (document-entry-version (workspace-doc (editor-workspace ed) 1))

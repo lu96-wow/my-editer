@@ -19,8 +19,8 @@
          editor-set-panel-face!)
 
 (define (editor-view-panel-id state vid)
-  (define l (state-layout state))
-  (and l vid (layout-panel-for-view l vid)))
+  (define loc (editor-view-location state vid))
+  (and loc (view-location-panel-id loc)))
 
 (define (editor-set-panel-face! state pid face)
   (define l (state-layout state))
@@ -42,59 +42,88 @@
       [else #f]))
   (p:panel-set-views p views active))
 
+(define (layout-without-view l vid)
+  (for/fold ([l l]) ([pid (in-list (layout-panel-ids l))])
+    (define p (layout-panel l pid))
+    (if (and p (memv vid (p:panel-views p)))
+        (let-values ([(l* _ok?) (layout-panel-update l pid
+                                                     (lambda (p)
+                                                       (panel-without-view p vid)))])
+          l*)
+        l)))
+
+;; 从当前 frame 和所有 inactive area 摘掉 view。
 (define (editor-detach-view! state vid)
-  (define l (state-layout state))
-  (cond
-    [(not l) state]
-    [else
-     (define l*
-       (for/fold ([l l]) ([pid (in-list (layout-panel-ids l))])
-         (define p (layout-panel l pid))
-         (if (and p (memv vid (p:panel-views p)))
-             (let-values ([(l* _ok?) (layout-panel-update l pid
-                                                          (lambda (p)
-                                                            (panel-without-view p vid)))])
-               l*)
-             l)))
-     (state-with-layout state l*)]))
+  (define state1
+    (if (editor-view-in-current-area? state vid)
+        (state-with-layout state (layout-without-view (state-layout state) vid))
+        state))
+  (for/fold ([s state1])
+            ([aid (in-list (hash-keys (state-areas state1)))])
+    (cond
+      [(editor-view-panel-id-in-area s aid vid)
+       (define l (editor-area-layout-for s aid))
+       (editor-with-area-layout s aid (layout-without-view l vid))]
+      [else s])))
 
 ;; anchor-vid 所在 panel 加 new-vid，并设为 active / focus。
 (define (editor-attach-view-as-tab! state anchor-vid new-vid)
-  (define l (state-layout state))
-  (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
+  (define anchor-loc (editor-view-location state anchor-vid))
   (cond
-    [(not pid) (values state #f)]
+    [(not anchor-loc) (values state #f)]
     [else
-     (define-values (l* ok?) (layout-panel-add-view l pid new-vid))
+     (define anchor-area (view-location-area-id anchor-loc))
+     (define state0
+       (if (equal? anchor-area (state-current-area state))
+           state
+           (editor-switch-area state anchor-area)))
+     ;; new-vid 必须从原位置摘掉，保证一个 view 只挂一个 panel。
+     (define state1 (editor-detach-view! state0 new-vid))
+     (define l (state-layout state1))
+     (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
      (cond
-       [(not ok?) (values state #f)]
+       [(not pid) (values state1 #f)]
        [else
-        (define-values (l** active?) (layout-panel-set-active-view l* pid new-vid))
-        (define l*** (layout-set-focus (if active? l** l*) pid))
-        (values (state-with-layout state l***) #t)])]))
+        (define-values (l* ok?) (layout-panel-add-view l pid new-vid))
+        (cond
+          [(not ok?) (values state1 #f)]
+          [else
+           (define-values (l** active?) (layout-panel-set-active-view l* pid new-vid))
+           (define l*** (layout-set-focus (if active? l** l*) pid))
+           (values (state-with-layout state1 l***) #t)])])]))
 
 ;; 在 anchor-vid 所在 panel 旁边新建同 kind panel，把 new-vid 放进去。
 ;; 返回 ok? = #f 时调用方可以退回 attach-as-tab。
 (define (editor-attach-view-in-new-split! state anchor-vid new-vid dir)
-  (define l (state-layout state))
-  (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
+  (define anchor-loc (editor-view-location state anchor-vid))
   (cond
-    [(not pid) (values state #f)]
+    [(not anchor-loc) (values state #f)]
     [else
-     (define new-pid (state-next-panel-id state))
-     (define-values (l1 ok?)
-       (layout-split l pid dir new-pid #:config (state-layout-config state)))
+     (define anchor-area (view-location-area-id anchor-loc))
+     (define state0
+       (if (equal? anchor-area (state-current-area state))
+           state
+           (editor-switch-area state anchor-area)))
+     (define state1 (editor-detach-view! state0 new-vid))
+     (define l (state-layout state1))
+     (define pid (and l anchor-vid (layout-panel-for-view l anchor-vid)))
      (cond
-       [(not ok?) (values state #f)]
+       [(not pid) (values state1 #f)]
        [else
-        (define-values (l2 added?) (layout-panel-add-view l1 new-pid new-vid))
+        (define new-pid (state-next-panel-id state1))
+        (define-values (l1 ok?)
+          (layout-split l pid dir new-pid #:config (state-layout-config state1)))
         (cond
-          [(not added?) (values state #f)]
+          [(not ok?) (values state1 #f)]
           [else
-           (define-values (l3 active?)
-             (layout-panel-set-active-view l2 new-pid new-vid))
-           (define l4 (layout-set-focus (if active? l3 l2) new-pid))
-           (values (state-with-next-panel-id
-                    (state-with-layout state l4)
-                    (add1 new-pid))
-                   #t)])])]))
+           (define-values (l2 added?) (layout-panel-add-view l1 new-pid new-vid))
+           (cond
+             [(not added?) (values state1 #f)]
+             [else
+              (define-values (l3 active?)
+                (layout-panel-set-active-view l2 new-pid new-vid))
+              (define l4 (layout-set-focus (if active? l3 l2) new-pid))
+              (values (state-with-next-panel-id
+                       (state-with-layout state1 l4)
+                       (add1 new-pid))
+                      #t)])])])]))

@@ -47,7 +47,7 @@
 (define custom-layout (make-editor-layout #:editor-view 1 #:status-view 2))
 (define custom-state
   (make-app-state #:plugin-states (plugins->states (list custom-plugin))
-                     #:area (rect 0 0 40 10)
+                     #:screen (rect 0 0 40 10)
                      #:layout custom-layout))
 
 ;; registry -> table 的 leaf 带 owner。
@@ -94,7 +94,7 @@
                #:plugins (list blocked-plugin fallback-plugin)))
 (define fallback-state
   (make-app-state #:plugin-states (plugins->states (list blocked-plugin fallback-plugin))
-                     #:area (rect 0 0 40 10)
+                     #:screen (rect 0 0 40 10)
                      #:layout (make-editor-layout #:editor-view 1)))
 (define fallback-state*
   (handle-editor-event fallback-ed fallback-state (key-event (key 't 'ctrl))))
@@ -122,7 +122,7 @@
                #:plugins (list blocked-prefix-plugin)))
 (define blocked-prefix-state
   (make-app-state #:plugin-states (plugins->states (list blocked-prefix-plugin))
-                  #:area (rect 0 0 40 10)
+                  #:screen (rect 0 0 40 10)
                   #:layout (make-editor-layout #:editor-view 1)))
 (engine-set-view-cursor! engine4 1 0 #:column 0)
 (define blocked-prefix-state*
@@ -160,7 +160,7 @@
   (make-editor-layout #:editor-view 1 #:sidebar-view 3))
 (define scoped-state
   (make-app-state #:plugin-states (plugins->states (list scoped-plugin))
-                  #:area (rect 0 0 50 12)
+                  #:screen (rect 0 0 50 12)
                   #:layout scoped-layout
                   #:view-scopes (plugins->view-scopes (list scoped-plugin))))
 

@@ -189,6 +189,9 @@
      (editor-toggle-panel! ed state 'errors)]
     [(clear-errors-command? value)
      (values (state-clear-errors state) '())]
+    [(switch-area-command? value)
+     (values (editor-switch-area state (switch-area-command-area-id value))
+             '())]
     [else
      (values (state-with-flash state (format "not a command: ~a" value))
              '())]))

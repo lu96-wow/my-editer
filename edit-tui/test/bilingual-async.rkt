@@ -41,7 +41,7 @@
                   #:resources (resources-add empty-resources r)
                   #:layout layout
                   #:layout-config default-layout-config
-                  #:area (rect 0 0 80 24)
+                  #:screen (rect 0 0 80 24)
                   #:async? #t))
 
 (define ch (make-async-channel))

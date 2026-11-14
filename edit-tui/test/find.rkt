@@ -13,7 +13,7 @@
          "fixture.rkt")
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (engine-set-view-cursor! (editor-engine ed) 1 0 #:column 0)
 
 (define (key-event* name . mods)

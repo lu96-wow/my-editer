@@ -16,6 +16,7 @@
 - `core/README.md`：core 的设计决策、分层、写入口
 - `edit-tui/README.md`：TUI 目录、分层、数据流、API、键位
 - `edit-tui/editor/state.rkt`：`app-state = editor-core + editor-session`
+- `edit-tui/editor/area.rkt`：多编辑区 checkout / checkin、`area-slot`、跨 area `view-location`
 - `edit-tui/editor/host-api.rkt`：宿主装配面（插件只应 require `editor/api.rkt`）
 - `edit-tui/host/source.rkt`：buffer / disk 来源权威同步
 - `edit-tui/host/workspace.rkt`：权威 snapshot -> 语言分析 workspace
@@ -52,6 +53,7 @@ racket edit-tui/edit.rkt
 - State 不存 core 句柄、线程、cache 或 inbox；
 - 命令只返回 `(values state actions)`，action 由 `edit-tui/edit.rkt` 解释；
 - 渲染是纯投影：`layout -> core panel -> bytes`，尺寸写回只经 `panels-sync!`；
+- 多编辑区：`layout` 是当前 chrome frame + current editor area；`editor-core.areas` 只保存非当前 editor-only 布局；切换只替换 frame 里的 editor 子树，chrome / resources / workspace / plugin-state 全局；
 - 插件状态是纯值，按 plugin id 命名空间存在 `editor-core`，只有 plugin runtime 按 owner 写回；
 - `derived` 文档是 plugin-owned 派生文本：无 resource / 无 history，内容投影只走 derived-write；
 - source-store 是 host 维护的打开 buffer override 索引：同一 path 上 buffer > disk；未打开/关闭文件按需读磁盘，不缓存 disk snapshot；

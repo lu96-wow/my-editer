@@ -17,7 +17,7 @@
 (check-true (> (string-length (engine-view-text (editor-engine ed) 1)) 0))
 (check-equal? (engine-view-point-line (editor-engine ed) 1) 0)
 
-(define s (state-with-area state (rect 0 0 40 10)))
+(define s (state-with-screen state (rect 0 0 40 10)))
 (check-equal? (editor-focus-panel-id s) 'editor)
 (check-equal? (length (editor-visible-editor-panels s)) 1)
 

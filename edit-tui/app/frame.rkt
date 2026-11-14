@@ -28,6 +28,7 @@
   (define line (add1 (or (and vid (engine-view-point-line engine vid)) 0)))
   (define col (add1 (or (and vid (engine-view-point-column engine vid)) 0)))
   (define panes (length (or (editor-visible-editor-panels state) '())))
+  (define area-id (state-current-area state))
   (define r (state-resource-for-view state vid))
   (define name
     (cond
@@ -51,6 +52,7 @@
                  (and dirty? "*")
                  (format "~a:~a" line col)
                  (format "panes:~a" panes)
+                 (and area-id (format "area:~a" area-id))
                  "pair+indent"
                  placement
                  pending-text
@@ -72,7 +74,7 @@
 ;;; ════════════════ frame ════════════════
 
 (define (render-frame ed state cache)
-  (define area (state-area state))
+  (define area (state-screen state))
   (define rows (rect-h area))
   (define cols (rect-w area))
   (define panels (or (editor-layout-panels ed state) '()))

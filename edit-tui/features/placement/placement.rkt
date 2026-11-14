@@ -95,7 +95,7 @@
 
 (define (next-editor-in-direction state from dir)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (let loop ([at from] [seen '()])
     (define next (and l area
                       (layout-focus-neighbor l area (state-layout-config state) at dir)))
@@ -119,7 +119,7 @@
 ;; 鼠标：placement 中点到 editor panel 就放入；返回 handled?。
 (define (editor-placement-mouse! ed state row col)
   (define l (state-layout state))
-  (define area (state-area state))
+  (define area (state-screen state))
   (cond
     [(or (not l) (not area)) (values state '() #f)]
     [else

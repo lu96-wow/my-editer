@@ -30,7 +30,7 @@
 (define layout (make-editor-layout #:editor-view 1 #:sidebar-view 3))
 (define state
   (make-app-state #:plugin-states (plugins->states (list plugin))
-                     #:area (rect 0 0 60 15)
+                     #:screen (rect 0 0 60 15)
                      #:layout layout))
 
 (define table (plugin-commands plugin))
@@ -130,7 +130,7 @@
                          #:plugins (list plugin2)))
 (define layout2 (make-editor-layout #:editor-view 1 #:sidebar-view 3))
 (define state2 (make-app-state #:plugin-states (plugins->states (list plugin2))
-                                  #:area (rect 0 0 60 15)
+                                  #:screen (rect 0 0 60 15)
                                   #:layout layout2))
 (define s2b (run-plugin-syncs ed2 state2))
 (define text2 (engine-view-text engine2 3))

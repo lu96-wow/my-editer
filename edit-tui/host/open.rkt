@@ -11,8 +11,6 @@
 
 (require racket/file
          racket/path
-         "../core/layout/api.rkt"
-         (prefix-in p: "../core/panel/api.rkt")
          "../editor/engine/read.rkt"
          "../editor/engine/lifecycle.rkt"
          "../editor/error.rkt"
@@ -21,44 +19,54 @@
          "../editor/resource.rkt"
          "../editor/mode.rkt"
          "../editor/layout.rkt"
+         "../editor/area.rkt"
          "../features/placement/api.rkt"
          "keymap.rkt")
 
 (provide editor-open-file!
          editor-focus-view!)
 
-(define (focus-existing-resource state r)
-  (define l (state-layout state))
-  (define vid (and (pair? (resource-views r)) (car (resource-views r))))
-  (define pid (and l vid (layout-panel-for-view l vid)))
+;; 优先当前 area 的 view；否则任意 area 里已附着的 view；都没有返回 #f。
+(define (resource-attached-view state r)
+  (define views (resource-views r))
+  (or (for/first ([vid (in-list views)]
+                  #:when (editor-view-in-current-area? state vid))
+        vid)
+      (for/first ([vid (in-list views)]
+                  #:when (editor-view-location state vid))
+        vid)))
+
+(define (focus-existing-resource ed state r)
+  (define vid (resource-attached-view state r))
   (cond
     [(not vid)
-     (values (state-with-flash state "open: resource has no view") '())]
-    [pid
-     (define-values (l* ok?)
-       (layout-panel-set-active-view l pid vid))
-     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (state-with-layout state l**) '())]
+     (define fallback (and (pair? (resource-views r)) (car (resource-views r))))
+     (if fallback
+         (values (editor-placement-start state fallback) '())
+         (values (state-with-flash state "open: resource has no view") '()))]
     [else
-     (values (editor-placement-start state vid) '())]))
+     (define-values (state* actions attached?)
+       (editor-focus-view-if-attached! ed state vid))
+     (if attached?
+         (values state* actions)
+         (values (editor-placement-start state* vid) actions))]))
 
 ;; 聚焦一个已经存在的 view：挂在 panel 上就切 active + 聚焦；detached 就 placement。
 (define (editor-focus-view! ed state vid)
-  (define l (state-layout state))
-  (define pid (and l vid (layout-panel-for-view l vid)))
   (cond
     [(not vid) (values (state-with-flash state "focus-view: no view") '())]
-    [pid
-     (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
-     (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-     (values (state-with-layout state l**) '())]
-    [else (values (editor-placement-start state vid) '())]))
+    [else
+     (define-values (state* actions attached?)
+       (editor-focus-view-if-attached! ed state vid))
+     (if attached?
+         (values state* actions)
+         (values (editor-placement-start state* vid) actions))]))
 
 (define (editor-open-file! ed state path)
   (define path* (resource-normalize-path path))
   (define existing (resources-find-path (state-resources state) path*))
   (cond
-    [existing (focus-existing-resource state existing)]
+    [existing (focus-existing-resource ed state existing)]
     [else
      (define-values (text err)
        (with-handlers ([exn:fail? (λ (e) (values #f e))])

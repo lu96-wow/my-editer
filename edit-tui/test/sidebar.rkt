@@ -10,7 +10,7 @@
          "fixture.rkt")
 
 (define-values (ed state) (make-test-editor))
-(define s0 (state-with-area state (rect 0 0 60 15)))
+(define s0 (state-with-screen state (rect 0 0 60 15)))
 (check-true (layout-panel-visible? (state-layout s0) 'filetree))
 
 (define-values (s1 _a1) (editor-toggle-sidebar! ed s0))

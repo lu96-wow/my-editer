@@ -17,7 +17,7 @@
 
 (define (state-for plugins)
   (make-app-state #:plugin-states (plugins->states plugins)
-                  #:area (rect 0 0 40 10)))
+                  #:screen (rect 0 0 40 10)))
 
 (define (editor-for engine plugins)
   (make-editor #:engine engine

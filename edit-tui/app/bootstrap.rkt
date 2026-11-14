@@ -138,11 +138,23 @@
                         (engine-doc-version engine editor-vid)
                         #:command-stack (mode-command-stack initial-mode)))
         empty-resources))
+  ;; 编辑区：当前 frame = chrome + 当前 area（默认 1）。
+  ;; 其他 area 预建成一个空 editor panel，切换时再 checkout / checkin。
+  (define area-slot (area-slot-for-editor layout 'editor))
+  (define area-split-base (area-base-split-id layout))
+  (define area-ids (for/list ([i (in-range 0 10)] #:unless (= i 1)) i))
+  (define areas
+    (for/hash ([aid (in-list area-ids)])
+      (values aid (make-empty-editor-area aid area-split-base
+                                          (area-editor-panel-id aid)))))
   (define state
     (make-app-state #:plugin-states (plugins->states plugins)
                     #:workspace-root workspace-root
-                    #:area (rect 0 0 80 24)
+                    #:screen (rect 0 0 80 24)
                     #:layout layout
+                    #:areas areas
+                    #:current-area 1
+                    #:area-slot area-slot
                     #:layout-config default-layout-config
                     #:view-scopes view-scopes
                     #:next-view-id 10
