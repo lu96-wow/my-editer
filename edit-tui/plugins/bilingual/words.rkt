@@ -13,7 +13,8 @@
          "../../features/open-buffers/api.rkt"
          "../../lang/racket/api.rkt")
 
-(provide bilingual-word-candidates)
+(provide bilingual-word-candidates
+         bilingual-lines-with-words)
 
 (define (valid-word? s)
   (and (string? s)
@@ -29,6 +30,19 @@
      (cond
        [(hash-ref seen s #f) acc]
        [else (hash-set! seen s #t) (cons s acc)]))))
+
+(define (bilingual-lines-with-words lines words)
+  (define word-set
+    (for/hash ([w (in-list words)]) (values w #t)))
+  (define (line-has-word? line)
+    (define-values (_state tokens) (tokenize-line empty-lex-state line))
+    (for/or ([tok (in-list tokens)]
+             #:when (eq? (token-kind tok) 'symbol))
+      (hash-has-key? word-set
+                     (substring line (token-start tok) (token-end tok)))))
+  (for/list ([line (in-list lines)] [i (in-naturals)]
+             #:when (line-has-word? line))
+    i))
 
 (define (bilingual-word-candidates ed state did)
   (define text (editor-doc-text ed did))

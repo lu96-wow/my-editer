@@ -55,6 +55,46 @@
   ;; engine 根据 derived doc 级基线自动选择按行增量或 full fallback。
   (void (editor-set-derived-view-projection! ed mirror-vid lines faces)))
 
+;; 用同一行号的新翻译替换 mirror 行；失败返回 #f。
+(define (apply-retranslated-lines! ed p source-lines dirty-lines
+                                  translated-lines translated-faces
+                                  source-version tr-version)
+  (define old-mirror-lines (pair-mirror-lines p))
+  (define old-mirror-faces (pair-mirror-faces p))
+  (define n (length old-mirror-lines))
+  (cond
+    [(or (not (= (length old-mirror-faces) n))
+         (not (= (length source-lines) n))
+         (not (= (length dirty-lines) (length translated-lines)))
+         (not (= (length dirty-lines) (length translated-faces)))
+         (for/or ([i (in-list dirty-lines)])
+           (or (not (exact-nonnegative-integer? i))
+               (>= i n))))
+     #f]
+    [else
+     (define linesv (list->vector old-mirror-lines))
+     (define facesv (list->vector old-mirror-faces))
+     (for ([i (in-list dirty-lines)]
+           [line (in-list translated-lines)]
+           [face (in-list translated-faces)])
+       (vector-set! linesv i line)
+       (vector-set! facesv i face))
+     (define new-mirror-lines (vector->list linesv))
+     (define new-mirror-faces (vector->list facesv))
+     (write-mirror! ed (pair-mirror-view-id p)
+                    new-mirror-lines new-mirror-faces)
+     (struct-copy pair p
+                  [translator-version tr-version]
+                  [source-version source-version]
+                  [mirror-version (editor-doc-version
+                                   ed (pair-mirror-doc-id p))]
+                  [pending-version #f]
+                  [pending-job-id #f]
+                  [timer-id #f]
+                  [source-lines source-lines]
+                  [mirror-lines new-mirror-lines]
+                  [mirror-faces new-mirror-faces])]))
+
 (define (flash-message state text)
   (values state (list (flash-action text))))
 
@@ -65,7 +105,9 @@
 
 (define debounce-ms 80)
 (define translation-kind 'bilingual-translate)
+(define edit-translation-kind 'bilingual-translate-edit)
 (define word-translation-kind 'bilingual-word-translate)
+(define retranslate-kind 'bilingual-retranslate-lines)
 (define word-batch-limit 200)
 
 ;; 同步路径：headless / state-async? = #f 时使用。
@@ -285,7 +327,7 @@
                 [pending-version #f]
                 [pending-job-id #f])))
 
-(define (submit-projection-job! ed state ps p)
+(define (submit-projection-job! ed state ps p #:force-full? [force-full? #f])
   (define source-doc-id (pair-source-doc-id p))
   (define version (editor-doc-version ed source-doc-id))
   (define text (editor-doc-text ed source-doc-id))
@@ -293,19 +335,33 @@
   (cond
     [(or (not version) (not text) (not tr))
      (values state (clear-pending ps (struct-copy pair p [timer-id #f])))]
-    [(equal? version (pair-source-version p))
+    [(and (not force-full?)
+          (equal? version (pair-source-version p)))
      ;; 源已回到上次安装的版本：不需要 job。
      (values state (clear-pending ps (struct-copy pair p [timer-id #f])))]
     [else
      (define tr-id (translator-id tr))
      (define tr-version (translator-version tr))
+     (define source-lines (split-lines text))
+     (define edit?
+       (and (not force-full?)
+            (not (null? (pair-source-lines p)))
+            (= (length (pair-source-lines p))
+               (length (pair-mirror-lines p)))
+            (= (length (pair-mirror-faces p))
+               (length (pair-mirror-lines p)))))
+     (define kind (if edit? edit-translation-kind translation-kind))
+     (define payload
+       (if edit?
+           (list source-doc-id version tr-id tr-version
+                 (pair-source-lines p) source-lines tr)
+           (list source-doc-id version tr-id tr-version text tr)))
      (define tag (list source-doc-id version tr-id tr-version))
      (define-values (state* job)
-       (state-submit-job state translation-kind
-                         (list source-doc-id version tr-id tr-version text tr)
-                         tag))
+       (state-submit-job state kind payload tag))
      (define p*
        (struct-copy pair p
+                    [translator-version tr-version]
                     [timer-id #f]
                     [pending-version version]
                     [pending-job-id (job-id job)]))
@@ -325,9 +381,19 @@
   (define mirror-doc-id (pair-mirror-doc-id p))
   (define source-version (editor-doc-version ed source-doc-id))
   (define mirror-version (editor-doc-version ed mirror-doc-id))
+  (define tr (pair-translator ps p))
+  (define current-tr-version (and tr (translator-version tr)))
   (cond
     [(or (not source-version) (not mirror-version))
      (values state ps)]
+    [(and current-tr-version
+          (not (equal? current-tr-version (pair-translator-version p))))
+     (cond
+       [(or (pair-timer-id p) (pair-pending-job-id p))
+        (values state ps)]
+       [else
+        ;; 词典变了但之前没机会做 dirty-line patch：保守 full 重投影。
+        (submit-projection-job! ed state ps p #:force-full? #t)])]
     [(not (equal? source-version (pair-source-version p)))
      (cond
        [(or (pair-timer-id p) (pair-pending-job-id p))
@@ -375,8 +441,13 @@
   (define mirror-doc-id (pair-mirror-doc-id p))
   (define source-version (editor-doc-version ed source-doc-id))
   (define mirror-version (editor-doc-version ed mirror-doc-id))
+  (define tr (pair-translator ps p))
   (cond
     [(or (not source-version) (not mirror-version)) ps]
+    [(and tr
+          (not (equal? (translator-version tr)
+                       (pair-translator-version p))))
+     (full-project-pair-sync ed ps p)]
     [(and (equal? source-version (pair-source-version p))
           (equal? mirror-version (pair-mirror-version p)))
      ps]
@@ -386,6 +457,21 @@
     [else (full-project-pair-sync ed ps p)]))
 
 ;;; ════════════════ job / timer handler ════════════════
+
+(define (bilingual-translate-edit-service payload)
+  (match-define (list source-doc-id version tr-id tr-version
+                      old-lines new-lines tr)
+    payload)
+  (define-values (os oe ns ne) (line-diff old-lines new-lines))
+  (define changed (slice new-lines ns ne))
+  (define translated-pairs
+    (for/list ([line (in-list changed)])
+      (translate-line+face tr line)))
+  (list source-doc-id version tr-id tr-version
+        os oe ns ne
+        new-lines
+        (map car translated-pairs)
+        (map cdr translated-pairs)))
 
 (define (bilingual-translate-service payload)
   (define source-doc-id (list-ref payload 0))
@@ -436,18 +522,94 @@
    #:version (list (translator-version default-translator)
                    (lexicon-generation lex))))
 
-(define (force-pairs-translator! ps version)
-  (for/fold ([ps ps])
+(define (bilingual-retranslate-lines-service payload)
+  (match-define (list source-doc-id version tr-id tr-version
+                      source-lines dirty-lines tr)
+    payload)
+  (define translated-pairs
+    (for/list ([i (in-list dirty-lines)])
+      (translate-line+face tr (list-ref source-lines i))))
+  (list source-doc-id version tr-id tr-version
+        source-lines dirty-lines
+        (map car translated-pairs)
+        (map cdr translated-pairs)))
+
+(define (submit-retranslate-lines-job! ed state ps p dirty-lines tr)
+  (define source-doc-id (pair-source-doc-id p))
+  (define version (editor-doc-version ed source-doc-id))
+  (cond
+    [(or (not version) (not tr) (null? dirty-lines))
+     (values state ps)]
+    [else
+     (define tr-id (translator-id tr))
+     (define tr-version (translator-version tr))
+     (define source-lines (pair-source-lines p))
+     (define payload
+       (list source-doc-id version tr-id tr-version
+             source-lines dirty-lines tr))
+     (define-values (state* job)
+       (state-submit-job state retranslate-kind
+                         payload (list source-doc-id version)))
+     (define p*
+       (struct-copy pair p
+                    [timer-id #f]
+                    [pending-version version]
+                    [pending-job-id (job-id job)]))
+     (values state* (state-set-pair ps p*))]))
+
+;; 词典加入新词后，只重译包含这些新词的 source 行。
+(define (update-pairs-after-lexicon! ed state ps added new-tr)
+  (define added-words
+    (for/list ([entry (in-list added)]) (car entry)))
+  (define new-version (translator-version new-tr))
+  (for/fold ([state state] [ps ps])
             ([p (in-list (hash-values (bilingual-state-pairs ps)))])
-    (if (equal? (pair-translator-id p) default-translator-id)
-        (state-set-pair
-         ps
-         (struct-copy pair p
-                      [translator-version version]
-                      [source-version #f]
-                      [pending-version #f]
-                      [pending-job-id #f]))
-        ps)))
+    (cond
+      [(not (equal? (pair-translator-id p) default-translator-id))
+       (values state ps)]
+      [else
+       (define source-lines (pair-source-lines p))
+       (define mirror-lines (pair-mirror-lines p))
+       (define mirror-faces (pair-mirror-faces p))
+       (define shape-ok?
+         (and (not (null? source-lines))
+              (= (length source-lines) (length mirror-lines))
+              (= (length mirror-faces) (length mirror-lines))))
+       (define dirty-lines
+         (if shape-ok?
+             (bilingual-lines-with-words source-lines added-words)
+             '()))
+       (cond
+         ;; 已有 source/mirror job 在跑：先不动；之后由 translator-version
+         ;; mismatch 走 full fallback。
+         [(or (pair-timer-id p) (pair-pending-job-id p))
+          (values state ps)]
+         [(not shape-ok?)
+          (values state ps)]
+         [(null? dirty-lines)
+          (values state
+                  (state-set-pair
+                   ps (struct-copy pair p [translator-version new-version])))]
+         [(state-async? state)
+          (submit-retranslate-lines-job! ed state ps p dirty-lines new-tr)]
+         [else
+          (define source-version
+            (editor-doc-version ed (pair-source-doc-id p)))
+          (define translated-pairs
+            (for/list ([i (in-list dirty-lines)])
+              (translate-line+face new-tr (list-ref source-lines i))))
+          (define p*
+            (apply-retranslated-lines!
+             ed p source-lines dirty-lines
+             (map car translated-pairs)
+             (map cdr translated-pairs)
+             source-version new-version))
+          (values state
+                  (state-set-pair
+                   ps
+                   (or p*
+                       (struct-copy pair p
+                                    [translator-version new-version]))))])])))
 
 ;; 先只提供显式请求入口；自动触发 / 命令键位后面再加。
 ;; → (values state' ps' actions)
@@ -554,11 +716,11 @@
               (define tr (lexicon->translator lex*))
               (define ps2
                 (state-set-translator ps1 default-translator-id tr))
-              (define ps3
-                (force-pairs-translator! ps2 (translator-version tr)))
+              (define-values (state* ps3)
+                (update-pairs-after-lexicon! ed state ps2 added tr))
               (values
                (state-with-flash
-                state
+                state*
                 (format "bilingual: added ~a words~a"
                         (length added)
                         (if (null? conflicts)
@@ -568,12 +730,137 @@
                ps3
                '())])])])]))
 
+(define (handle-bilingual-edit-job ed state ps ev)
+  (define result (job-result-event-result ev))
+  (define tag (job-result-event-tag ev))
+  (define source-doc-id (and (list? tag) (not (null? tag)) (car tag)))
+  (define p (and source-doc-id (pair-for-source ps source-doc-id)))
+  (cond
+    [(not p) (values state ps '())]
+    [(not (equal? (pair-pending-job-id p) (job-result-event-id ev)))
+     (values state ps '())]
+    [(job-error? result)
+     (values (state-with-flash
+              state
+              (format "bilingual: translation failed: ~a"
+                      (job-error-message result)))
+             (clear-pending ps p)
+             '())]
+    [(not (and (list? result) (= 11 (length result))))
+     (values state (clear-pending ps p) '())]
+    [else
+     (define r-source-doc-id (list-ref result 0))
+     (define r-version (list-ref result 1))
+     (define r-translator-id (list-ref result 2))
+     (define r-translator-version (list-ref result 3))
+     (define os (list-ref result 4))
+     (define oe (list-ref result 5))
+     (define ns (list-ref result 6))
+     (define ne (list-ref result 7))
+     (define r-source-lines (list-ref result 8))
+     (define translated-lines (list-ref result 9))
+     (define translated-faces (list-ref result 10))
+     (define current-version (editor-doc-version ed source-doc-id))
+     (define old-source-lines (pair-source-lines p))
+     (define old-mirror-lines (pair-mirror-lines p))
+     (define old-mirror-faces (pair-mirror-faces p))
+     (cond
+       [(or (not (equal? r-source-doc-id source-doc-id))
+            (not (equal? r-version current-version))
+            (not (equal? r-translator-id (pair-translator-id p)))
+            (not (equal? r-translator-version (pair-translator-version p)))
+            (not (= (length old-source-lines) (length old-mirror-lines)))
+            (not (= (length old-mirror-faces) (length old-mirror-lines)))
+            (not (<= 0 os oe (length old-source-lines)))
+            (not (<= 0 ns ne (length r-source-lines)))
+            (not (= (length translated-lines) (length translated-faces)))
+            (not (= (length translated-lines) (- ne ns))))
+        ;; 旧结果 / 形状不一致：丢弃；下一次 sync 会重新选 full 或 edit。
+        (values state (clear-pending ps p) '())]
+       [else
+        (define new-mirror-lines
+          (append (take old-mirror-lines os)
+                  translated-lines
+                  (drop old-mirror-lines oe)))
+        (define new-mirror-faces
+          (append (take old-mirror-faces os)
+                  translated-faces
+                  (drop old-mirror-faces oe)))
+        (write-mirror! ed (pair-mirror-view-id p)
+                       new-mirror-lines new-mirror-faces)
+        (define p*
+          (struct-copy pair p
+                       [translator-version r-translator-version]
+                       [source-version r-version]
+                       [mirror-version (editor-doc-version
+                                        ed (pair-mirror-doc-id p))]
+                       [pending-version #f]
+                       [pending-job-id #f]
+                       [timer-id #f]
+                       [source-lines r-source-lines]
+                       [mirror-lines new-mirror-lines]
+                       [mirror-faces new-mirror-faces]))
+        (values state (state-set-pair ps p*) '())])]))
+
+(define (handle-bilingual-retranslate-job ed state ps ev)
+  (define result (job-result-event-result ev))
+  (define tag (job-result-event-tag ev))
+  (define source-doc-id (and (list? tag) (not (null? tag)) (car tag)))
+  (define p (and source-doc-id (pair-for-source ps source-doc-id)))
+  (cond
+    [(not p) (values state ps '())]
+    [(not (equal? (pair-pending-job-id p) (job-result-event-id ev)))
+     (values state ps '())]
+    [(job-error? result)
+     (values (state-with-flash
+              state
+              (format "bilingual: line retranslate failed: ~a"
+                      (job-error-message result)))
+             (clear-pending ps p)
+             '())]
+    [(not (and (list? result) (= 8 (length result))))
+     (values state (clear-pending ps p) '())]
+    [else
+     (define r-did (list-ref result 0))
+     (define r-version (list-ref result 1))
+     (define r-tr-id (list-ref result 2))
+     (define r-tr-version (list-ref result 3))
+     (define r-source-lines (list-ref result 4))
+     (define dirty-lines (list-ref result 5))
+     (define translated-lines (list-ref result 6))
+     (define translated-faces (list-ref result 7))
+     (define current-version (editor-doc-version ed source-doc-id))
+     (cond
+       [(or (not (equal? r-did source-doc-id))
+            (not (equal? r-version current-version))
+            (not (equal? r-tr-id (pair-translator-id p))))
+        (values state (clear-pending ps p) '())]
+       [else
+        (define p*
+          (apply-retranslated-lines!
+           ed p r-source-lines dirty-lines
+           translated-lines translated-faces
+           r-version r-tr-version))
+        (values state
+                (if p*
+                    (state-set-pair ps p*)
+                    (clear-pending ps p))
+                '())])]))
+
 (define (handle-bilingual-job ed state ps ev)
   (define kind (job-result-event-kind ev))
   (cond
     [(eq? kind word-translation-kind)
      (if (bilingual-state? ps)
          (handle-bilingual-word-job ed state ps ev)
+         (values state ps '()))]
+    [(eq? kind edit-translation-kind)
+     (if (bilingual-state? ps)
+         (handle-bilingual-edit-job ed state ps ev)
+         (values state ps '()))]
+    [(eq? kind retranslate-kind)
+     (if (bilingual-state? ps)
+         (handle-bilingual-retranslate-job ed state ps ev)
          (values state ps '()))]
     [(not (eq? kind translation-kind))
      (values state ps '())]
@@ -710,6 +997,8 @@
                #:fn capture-mirror-changes))
    #:sync sync-bilingual!
    #:services (list (service 'bilingual-translate bilingual-translate-service)
+                    (service 'bilingual-translate-edit bilingual-translate-edit-service)
+                    (service 'bilingual-retranslate-lines bilingual-retranslate-lines-service)
                     (service 'bilingual-word-translate word-service))
    #:handle-job handle-bilingual-job
    #:handle-timer handle-bilingual-timer

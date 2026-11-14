@@ -485,6 +485,7 @@ racket edit-tui/test/bilingual.rkt
 racket edit-tui/test/bilingual-async.rkt
 racket edit-tui/test/bilingual-translate.rkt
 racket edit-tui/test/bilingual-lexicon.rkt
+racket edit-tui/test/bilingual-lexicon-async.rkt
 racket edit-tui/test/error-buffer.rkt
 racket edit-tui/test/hooks.rkt
 racket edit-tui/test/ops.rkt
@@ -558,9 +559,10 @@ racket edit-tui/test/layers.rkt
     结果按 job-id + (doc-id, version) 校验；旧结果不能清掉新 request。
 5m. panel 删除时，焦点 fallback 必须从删除前的 layout 计算；删除后 id 已不在树里，
     sibling 查找会失败并错误落到第一个 panel。
-5n. bilingual 的源 -> mirror 投影异步：changes hook 只 schedule timer；
-    timer 提交 `bilingual-translate` job；job-result 按 source version / translator
-    / job-id 校验后安装 mirror；旧结果丢弃。mirror -> source 反译仍同步。
+5n. bilingual 的源 -> mirror 投影异步且增量：changes hook 只 schedule timer；
+    首次安装 / 形状失效走 full `bilingual-translate`；正常编辑走
+    `bilingual-translate-edit`，只翻译 line-diff 变化块。job-result 按 source version /
+    translator-version / job-id 校验后安装 mirror；旧结果丢弃。mirror -> source 反译仍同步。
 5o. bilingual 的关联状态由 pair 状态 + mirror token face 表达；焦点始终只有一个，
     由 core 的 `focused-border` 画在焦点 panel 上，不再给 source / mirror panel
     设置常驻的 pair 边框色，避免非焦点 panel 看起来也像被 focus。
@@ -586,8 +588,9 @@ racket edit-tui/test/layers.rkt
     冲突检查和 generation；`words.rkt` 从 completion 的完整 pool 收集候选词；
     plugin 通过 `bilingual-word-translate` job 与外部 provider 交互，默认 provider 返回空。
     provider 结果按 job-id + generation 校验后合并；动态词典不写回 vendored 数据文件。
-    translator 用 `translator-with-overrides` 叠加动态 map；更新后强制已有 pair 用新
-    translator 重新投影。自动 / 手动触发策略暂不绑定。
+    translator 用 `translator-with-overrides` 叠加动态 map；更新后只重译包含新增词的
+    source 行（`bilingual-retranslate-lines` job），async / sync 都走行 patch；只有
+    pair 形状失效或已有 job 在途时才 full fallback。自动 / 手动触发策略暂不绑定。
 5t. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
     bilingual mirror panel 被关掉后，pair 与 derived mirror 仍保留；回到 source 按
     `M-l` 时会优先在新 split / tab 中重新挂回已有 mirror view。
