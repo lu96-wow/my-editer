@@ -13,14 +13,23 @@
 ;;; 镜像没有 history；undo 只在源 buffer 生效。
 
 (require (only-in racket/list take drop)
+         racket/match
+         racket/string
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
          "action.rkt"
          "api.rkt"
+         "lexicon.rkt"
          "model.rkt"
-         (only-in "translate.rkt" default-translator default-translator-id))
+         "words.rkt"
+         (only-in "translate.rkt"
+                  default-translator
+                  default-translator-id
+                  translator-with-overrides))
 
-(provide bilingual-plugin)
+(provide bilingual-plugin
+         make-bilingual-plugin
+         bilingual-request-word-translations!)
 
 ;;; ════════════════ 行操作 ════════════════
 
@@ -56,6 +65,8 @@
 
 (define debounce-ms 80)
 (define translation-kind 'bilingual-translate)
+(define word-translation-kind 'bilingual-word-translate)
+(define word-batch-limit 200)
 
 ;; 同步路径：headless / state-async? = #f 时使用。
 (define (project-source-changes-sync ctx ps)
@@ -287,10 +298,11 @@
      (values state (clear-pending ps (struct-copy pair p [timer-id #f])))]
     [else
      (define tr-id (translator-id tr))
-     (define tag (list source-doc-id version tr-id))
+     (define tr-version (translator-version tr))
+     (define tag (list source-doc-id version tr-id tr-version))
      (define-values (state* job)
        (state-submit-job state translation-kind
-                         (list source-doc-id version tr-id text)
+                         (list source-doc-id version tr-id tr-version text tr)
                          tag))
      (define p*
        (struct-copy pair p
@@ -379,18 +391,18 @@
   (define source-doc-id (list-ref payload 0))
   (define version (list-ref payload 1))
   (define tr-id (list-ref payload 2))
-  (define text (list-ref payload 3))
-  (define tr
-    (and (eq? tr-id default-translator-id) default-translator))
+  (define tr-version (list-ref payload 3))
+  (define text (list-ref payload 4))
+  (define tr (list-ref payload 5))
   (cond
-    [(not tr)
+    [(not (translator? tr))
      (job-error (format "bilingual: unknown translator ~a" tr-id))]
     [else
      (define source-lines (split-lines text))
      (define translated-pairs
        (for/list ([line (in-list source-lines)])
          (translate-line+face tr line)))
-     (list source-doc-id version tr-id
+     (list source-doc-id version tr-id tr-version
            source-lines
            (map car translated-pairs)
            (map cdr translated-pairs))]))
@@ -411,9 +423,159 @@
      (define-values (state* ps*) (submit-projection-job! ed state ps1 p1))
      (values state* ps* '())]))
 
-(define (handle-bilingual-job ed state ps ev)
+;;; ════════════════ 动态词翻译 ════════════════
+
+(define (lexicon->translator lex)
+  (define dynamic-inverse
+    (for/hash ([(cn en) (in-hash (lexicon-inverse lex))])
+      (values cn (cons en #f))))
+  (translator-with-overrides
+   default-translator
+   (lexicon-forward lex)
+   dynamic-inverse
+   #:version (list (translator-version default-translator)
+                   (lexicon-generation lex))))
+
+(define (force-pairs-translator! ps version)
+  (for/fold ([ps ps])
+            ([p (in-list (hash-values (bilingual-state-pairs ps)))])
+    (if (equal? (pair-translator-id p) default-translator-id)
+        (state-set-pair
+         ps
+         (struct-copy pair p
+                      [translator-version version]
+                      [source-version #f]
+                      [pending-version #f]
+                      [pending-job-id #f]))
+        ps)))
+
+;; 先只提供显式请求入口；自动触发 / 命令键位后面再加。
+;; → (values state' ps' actions)
+(define (bilingual-request-word-translations! ed state ps)
   (cond
-    [(not (eq? (job-result-event-kind ev) translation-kind))
+    [(not (bilingual-state? ps))
+     (flash-message state "bilingual: plugin state missing")]
+    [else
+     (define lex (state-lexicon ps))
+     (cond
+       [(lexicon-job-id lex)
+        (flash-message state "bilingual: word translation already running")]
+       [else
+        (define vid (editor-focus-view-id state))
+        (define did (and vid (editor-view-doc-id ed vid)))
+        (cond
+          [(not did)
+           (flash-message state "bilingual: no focused view")]
+          [(not (eq? (editor-doc-kind ed did) 'user))
+           (flash-message state "bilingual: focus is not a user document")]
+          [else
+           (define words (bilingual-word-candidates ed state did))
+           (define known (translator-forward default-translator))
+           (define unknown
+             (for/list ([w (in-list words)]
+                        #:unless (hash-has-key? known w)
+                        #:unless (lexicon-known? lex w)
+                        #:unless (lexicon-pending? lex w))
+               w))
+           (define batch
+             (take unknown (min word-batch-limit (length unknown))))
+           (cond
+             [(null? batch)
+              (flash-message state "bilingual: no new words")]
+             [else
+              (define lex1 (lexicon-add-pending lex batch))
+              (define generation (lexicon-generation lex1))
+              (define r (state-resource-for-doc state did))
+              (define context
+                (hash 'path (and r (resource-path r))
+                      'lang 'racket))
+              (define payload
+                (list (translator-id default-translator)
+                      generation batch context))
+              (define-values (state* job)
+                (state-submit-job state word-translation-kind
+                                  payload
+                                  (list (translator-id default-translator)
+                                        generation)))
+              (define lex2 (lexicon-set-job-id lex1 (job-id job)))
+              (values
+               (state-with-flash
+                state*
+                (format "bilingual: translating ~a words" (length batch)))
+               (state-set-lexicon ps lex2)
+               '())])])])]))
+
+(define (handle-bilingual-word-job ed state ps ev)
+  (define lex (state-lexicon ps))
+  (cond
+    [(not (equal? (lexicon-job-id lex) (job-result-event-id ev)))
+     (values state ps '())]
+    [else
+     (define result (job-result-event-result ev))
+     (define lex0
+       (lexicon-set-job-id (lexicon-clear-all-pending lex) #f))
+     (define ps0 (state-set-lexicon ps lex0))
+     (cond
+       [(job-error? result)
+        (values
+         (state-with-flash
+          state
+          (format "bilingual: word translation failed: ~a"
+                  (job-error-message result)))
+         ps0
+         '())]
+       [(not (and (list? result) (= 2 (length result))))
+        (values state ps0 '())]
+       [else
+        (define result-generation (list-ref result 0))
+        (define entries (list-ref result 1))
+        (cond
+          [(not (equal? result-generation
+                        (lexicon-generation lex)))
+           (values state ps0 '())]
+          [else
+           (define-values (lex* added conflicts)
+             (lexicon-merge lex0 entries
+                            (translator-forward default-translator)
+                            (translator-inverse default-translator)))
+           (define ps1 (state-set-lexicon ps lex*))
+           (cond
+             [(null? added)
+              (values
+               (state-with-flash
+                state
+                (if (null? conflicts)
+                    "bilingual: no word translations added"
+                    (format "bilingual: ~a word translation conflict(s)"
+                            (length conflicts))))
+               ps1
+               '())]
+             [else
+              (define tr (lexicon->translator lex*))
+              (define ps2
+                (state-set-translator ps1 default-translator-id tr))
+              (define ps3
+                (force-pairs-translator! ps2 (translator-version tr)))
+              (values
+               (state-with-flash
+                state
+                (format "bilingual: added ~a words~a"
+                        (length added)
+                        (if (null? conflicts)
+                            ""
+                            (format " (~a conflicts)"
+                                    (length conflicts)))))
+               ps3
+               '())])])])]))
+
+(define (handle-bilingual-job ed state ps ev)
+  (define kind (job-result-event-kind ev))
+  (cond
+    [(eq? kind word-translation-kind)
+     (if (bilingual-state? ps)
+         (handle-bilingual-word-job ed state ps ev)
+         (values state ps '()))]
+    [(not (eq? kind translation-kind))
      (values state ps '())]
     [(not (bilingual-state? ps))
      (values state ps '())]
@@ -434,21 +596,24 @@
                          (job-error-message result)))
                 (clear-pending ps p)
                 '())]
-       [(not (and (list? result) (= 6 (length result))))
+       [(not (and (list? result) (= 7 (length result))))
         (values state (clear-pending ps p) '())]
        [else
         (define r-source-doc-id (list-ref result 0))
         (define r-version (list-ref result 1))
         (define r-translator-id (list-ref result 2))
-        (define r-source-lines (list-ref result 3))
-        (define r-mirror-lines (list-ref result 4))
-        (define r-mirror-faces (list-ref result 5))
+        (define r-translator-version (list-ref result 3))
+        (define r-source-lines (list-ref result 4))
+        (define r-mirror-lines (list-ref result 5))
+        (define r-mirror-faces (list-ref result 6))
         (define current-version (editor-doc-version ed source-doc-id))
         (cond
           [(or (not (equal? r-source-doc-id source-doc-id))
                (not (equal? r-version current-version))
-               (not (equal? r-translator-id (pair-translator-id p))))
-           ;; 旧结果：丢掉，下一次 sync 会按当前版本重新提交。
+               (not (equal? r-translator-id (pair-translator-id p)))
+               (not (equal? r-translator-version
+                            (pair-translator-version p))))
+           ;; 旧结果：丢掉，下一次 sync 会按当前版本 / translator 重新提交。
            (values state (clear-pending ps p) '())]
           [else
            (write-mirror! ed (pair-mirror-view-id p)
@@ -518,7 +683,14 @@
           [else (flash-message state "bilingual: mirror is not paired")])]
        [else (flash-message state "bilingual: not a text buffer")])]))
 
-(define bilingual-plugin
+(define (make-bilingual-plugin #:word-translator [word-translator #f])
+  (define (word-service payload)
+    (define generation (list-ref payload 1))
+    (define entries
+      (if word-translator
+          (word-translator payload)
+          '()))
+    (list generation (if (list? entries) entries '())))
   (make-plugin
    #:id 'bilingual
    #:state (empty-bilingual-state)
@@ -537,9 +709,12 @@
                #:priority 0
                #:fn capture-mirror-changes))
    #:sync sync-bilingual!
-   #:services (list (service 'bilingual-translate bilingual-translate-service))
+   #:services (list (service 'bilingual-translate bilingual-translate-service)
+                    (service 'bilingual-word-translate word-service))
    #:handle-job handle-bilingual-job
    #:handle-timer handle-bilingual-timer
    #:commands
    (keys
     [(key 'l 'alt) toggle-bilingual-command])))
+
+(define bilingual-plugin (make-bilingual-plugin))

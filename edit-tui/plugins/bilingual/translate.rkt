@@ -29,7 +29,8 @@
 (provide default-translator
          default-translator-id
          make-translator
-         translator-rules->translator)
+         translator-rules->translator
+         translator-with-overrides)
 
 (struct rule (id source target) #:transparent)
 
@@ -155,9 +156,26 @@
 
 (define (translator-maps->translator id version forward inverse)
   (translator id version
+              forward inverse
               (lambda (line) (text-only forward line))
               (lambda (line) (replace-symbols line forward))
               (lambda (line) (text-only inverse line))))
+
+;; 在静态 translator 上叠加动态词典。动态 map 形状与 translator 内部 map 一致：
+;;   forward : EN string -> (cons CN string face)
+;;   inverse : CN string -> (cons EN string #f)
+(define (hash-overlay base over)
+  (for/fold ([h (make-immutable-hash (hash->list base))])
+            ([(k v) (in-hash over)])
+    (hash-set h k v)))
+
+(define (translator-with-overrides base dynamic-forward dynamic-inverse
+                                  #:version [version (translator-version base)])
+  (translator-maps->translator
+   (translator-id base)
+   version
+   (hash-overlay (translator-forward base) dynamic-forward)
+   (hash-overlay (translator-inverse base) dynamic-inverse)))
 
 (define (rules->maps rules)
   (values

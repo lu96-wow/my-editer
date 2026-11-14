@@ -6,7 +6,8 @@
 ;;; pair       : source user doc 与 mirror derived doc 的关联
 ;;; state      : 插件状态；只有 plugin runtime 按 owner 写回
 
-(require racket/string)
+(require racket/string
+         "lexicon.rkt")
 
 (provide (struct-out translator)
          (struct-out pair)
@@ -15,6 +16,9 @@
          pair-for-source
          pair-for-mirror
          state-translator
+         state-set-translator
+         state-lexicon
+         state-set-lexicon
          state-set-pair
          state-remove-pair
          split-lines
@@ -27,6 +31,8 @@
 (struct translator
   (id
    version
+   forward      ; EN string -> (cons CN string face)
+   inverse      ; CN string -> (cons EN string #f)
    translate-line
    translate-line+faces
    inverse-line)
@@ -53,11 +59,12 @@
 (struct bilingual-state
   (pairs               ; hash source-doc-id -> pair
    translators         ; hash translator-id -> translator
-   default-translator-id)
+   default-translator-id
+   lexicon)            ; 动态词翻译
   #:transparent)
 
-(define (make-bilingual-state translators default-id)
-  (bilingual-state (hash) translators default-id))
+(define (make-bilingual-state translators default-id [lexicon empty-lexicon])
+  (bilingual-state (hash) translators default-id lexicon))
 
 (define (pair-for-source ps did)
   (and (bilingual-state? ps)
@@ -72,6 +79,19 @@
 (define (state-translator ps id)
   (and (bilingual-state? ps)
        (hash-ref (bilingual-state-translators ps) id #f)))
+
+(define (state-set-translator ps id tr)
+  (struct-copy bilingual-state ps
+               [translators
+                (hash-set (bilingual-state-translators ps) id tr)]))
+
+(define (state-lexicon ps)
+  (if (bilingual-state? ps)
+      (bilingual-state-lexicon ps)
+      empty-lexicon))
+
+(define (state-set-lexicon ps lex)
+  (struct-copy bilingual-state ps [lexicon lex]))
 
 (define (state-set-pair ps p)
   (struct-copy bilingual-state ps

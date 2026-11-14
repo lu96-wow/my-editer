@@ -136,6 +136,8 @@ edit-tui/
     bilingual/translate.rkt
     bilingual/action.rkt
     bilingual/api.rkt
+    bilingual/lexicon.rkt
+    bilingual/words.rkt
     bilingual/plugin.rkt
     bilingual/data/racket-zh.rktd
     bilingual/scripts/import-tables.rkt
@@ -482,6 +484,7 @@ racket edit-tui/test/replace-lines.rkt
 racket edit-tui/test/bilingual.rkt
 racket edit-tui/test/bilingual-async.rkt
 racket edit-tui/test/bilingual-translate.rkt
+racket edit-tui/test/bilingual-lexicon.rkt
 racket edit-tui/test/error-buffer.rkt
 racket edit-tui/test/hooks.rkt
 racket edit-tui/test/ops.rkt
@@ -579,7 +582,13 @@ racket edit-tui/test/layers.rkt
     plugin runtime、hook、command、job-error、open/save IO 失败统一记录，同时保留 flash。
     `*errors*` 是 host-owned `'ui` projection view，默认隐藏；`C-e` 开关 panel，
     `M-E` 清空。UI view / panel 由 `app/frame.rkt` 从 State 同步，不新增 engine doc kind。
-5s. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
+5s. bilingual 动态词翻译基础：`lexicon.rkt` 保存运行时 EN->CN / CN->EN 补充词、
+    冲突检查和 generation；`words.rkt` 从 completion 的完整 pool 收集候选词；
+    plugin 通过 `bilingual-word-translate` job 与外部 provider 交互，默认 provider 返回空。
+    provider 结果按 job-id + generation 校验后合并；动态词典不写回 vendored 数据文件。
+    translator 用 `translator-with-overrides` 叠加动态 map；更新后强制已有 pair 用新
+    translator 重新投影。自动 / 手动触发策略暂不绑定。
+5t. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
     bilingual mirror panel 被关掉后，pair 与 derived mirror 仍保留；回到 source 按
     `M-l` 时会优先在新 split / tab 中重新挂回已有 mirror view。
     在 mirror 上按 `M-l` 关闭 pair 后，焦点会回到 source；再次 `M-l` 会重新创建
