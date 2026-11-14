@@ -50,6 +50,10 @@
    (list 'status-mode       (style (rgb 120 210 130) #f '(bold)))
    (list 'status-dirty      (style (rgb 230 160 90) #f '(bold)))
    (list 'message           (style (rgb 230 160 90) #f '()))
+   ;; core error buffer
+   (list 'error-error       (style (rgb 235 110 110) #f '()))
+   (list 'error-warning     (style (rgb 230 190 100) #f '()))
+   (list 'error-empty       (style (rgb 140 150 165) #f '(italic)))
    (list 'input             (style #f #f '()))
    ;; 输入栏 prompt 前缀（buffer 里同时标 readonly）
    (list 'input-prompt      (style (rgb 140 160 190) #f '()))

@@ -5,6 +5,7 @@
 (require rackunit
          racket/string
          "../editor/host-api.rkt"
+         "../editor/error.rkt"
          "../core/command/api.rkt"
          "../host/input/dispatch.rkt")
 
@@ -37,6 +38,9 @@
 (check-eq? (state-plugin-state s1 'bad-sync) 'ok)
 (check-true (string-contains? (state-flash s1) "bad-sync"))
 (check-true (string-contains? (state-flash s1) "sync"))
+(check-equal? (length (state-errors s1)) 1)
+(check-eq? (editor-error-source (car (state-errors s1))) 'plugin)
+(check-eq? (editor-error-owner (car (state-errors s1))) 'bad-sync)
 
 ;;; ════════════════ overlay ════════════════
 
@@ -54,6 +58,7 @@
 (check-eq? (state-plugin-state s5 'bad-overlay) 'overlay-state)
 (check-true (string-contains? (state-flash s5) "bad-overlay"))
 (check-true (string-contains? (state-flash s5) "overlay"))
+(check-equal? (length (state-errors s5)) 1)
 
 ;;; ════════════════ hook ════════════════
 
@@ -77,6 +82,8 @@
 (check-eq? (state-plugin-state s2* 'bad-hook) 'hook-state)
 (check-true (string-contains? (state-flash s2*) "bad-hook"))
 (check-true (string-contains? (state-flash s2*) "hook"))
+(check-equal? (length (state-errors s2*)) 1)
+(check-eq? (editor-error-source (car (state-errors s2*))) 'hook)
 (check-equal? actions2 '())
 
 ;;; ════════════════ timer ════════════════
@@ -93,6 +100,7 @@
   (run-plugin-timer-handlers ed3 (state-for (list bad-timer)) (timer-event 0)))
 (check-eq? (state-plugin-state s3 'bad-timer) 'timer-state)
 (check-true (string-contains? (state-flash s3) "bad-timer"))
+(check-equal? (length (state-errors s3)) 1)
 (check-equal? actions3 '())
 
 ;;; ════════════════ command ════════════════
@@ -112,6 +120,8 @@
 (check-eq? (state-plugin-state s4* 'bad-command) 'cmd-state)
 (check-true (string-contains? (state-flash s4*) "bad-command"))
 (check-true (string-contains? (state-flash s4*) "command"))
+(check-equal? (length (state-errors s4*)) 1)
+(check-eq? (editor-error-source (car (state-errors s4*))) 'command)
 (check-equal? actions4 '())
 
 (displayln "edit-tui/test/plugin-guard.rkt: ok")

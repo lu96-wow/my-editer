@@ -26,6 +26,7 @@
          "context.rkt"
          "contributions.rkt"
          "state.rkt"
+         "error.rkt"
          "job.rkt"
          "plugin.rkt")
 
@@ -47,7 +48,9 @@
   (format "plugin ~a ~a failed: ~a" owner callback (exn-message e)))
 
 (define (plugin-failure state owner callback e)
-  (state-with-flash state (plugin-failure-message owner callback e)))
+  (state-record-exception
+   (state-with-flash state (plugin-failure-message owner callback e))
+   'error 'plugin owner callback e))
 
 (define (run-plugin-syncs ed state)
   (for/fold ([s state])

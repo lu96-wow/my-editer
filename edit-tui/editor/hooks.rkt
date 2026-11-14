@@ -20,7 +20,8 @@
 
 (require "../core/api.rkt"
          "points.rkt"
-         "state.rkt")
+         "state.rkt"
+         "error.rkt")
 
 (provide (struct-out edit-context)
          make-edit-context
@@ -175,9 +176,11 @@
            (values c p a o #f)))
        (define st0
          (if failed?
-             (state-with-flash
-              st (format "plugin ~a hook ~a failed: ~a"
-                         owner (hook-id h) failed?))
+             (state-record-error
+              (state-with-flash
+               st (format "plugin ~a hook ~a failed: ~a"
+                          owner (hook-id h) failed?))
+              'error 'hook owner (hook-id h) failed?)
              st))
        (define st* (state-set-plugin-state st0 owner ps*))
        ;; ctx 可以是 edit-context 或 layout-context；runner 不假设具体类型。

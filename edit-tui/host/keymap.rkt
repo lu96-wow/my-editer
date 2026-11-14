@@ -24,6 +24,8 @@
          (struct-out find-prev-command)
          (struct-out save-command)
          (struct-out quit-command)
+         (struct-out toggle-errors-command)
+         (struct-out clear-errors-command)
          navigation-command-table
          editor-base-command-table
          global-base-command-table
@@ -41,6 +43,8 @@
 (struct find-prev-command () #:transparent)
 (struct save-command () #:transparent)
 (struct quit-command () #:transparent)
+(struct toggle-errors-command () #:transparent)
+(struct clear-errors-command () #:transparent)
 
 (define (nav dir) (move-command dir #f))
 (define (nav-shift dir) (move-command dir #t))
@@ -61,7 +65,6 @@
    [(key 'home 'shift)  (nav-shift 'home)]
    [(key 'end 'shift)   (nav-shift 'end)]
    [(key 'a 'ctrl)   (nav 'home)]
-   [(key 'e 'ctrl)   (nav 'end)]
    [(key 'f 'ctrl)   (nav 'right)]
    [(key 'pageup)    (scroll-command 'page-up)]
    [(key 'pagedown)  (scroll-command 'page-down)]))
@@ -87,7 +90,9 @@
 (define global-base-command-table
   (keys
    [(key 's 'ctrl)   (save-command)]
-   [(key 'q 'ctrl)   (quit-command)]))
+   [(key 'q 'ctrl)   (quit-command)]
+   [(key 'e 'ctrl)   (toggle-errors-command)]
+   [(key 'E 'alt)    (clear-errors-command)]))
 
 ;; 每个 opened buffer 的默认键表；现在 racket / text 共用 editor 表。
 ;; 以后可以在前面插 mode 专属 overlay，仍是“resource 持有 stack”。

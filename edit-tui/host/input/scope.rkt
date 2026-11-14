@@ -31,5 +31,5 @@
   (case scope
     [(global) global-base-command-table]
     [(editor) editor-base-command-table]
-    [(filetree resources docs) navigation-command-table]
+    [(filetree resources docs errors) navigation-command-table]
     [else command-table-empty]))

@@ -111,6 +111,7 @@ edit-tui/
     mode.rkt           .rkt / #lang racket -> racket，否则 text
 
     job.rkt            job-result-event / job 账本 State
+    error.rkt          core error log（纯 State）+ error buffer lines / faces
     timer.rkt          timer-event / schedule / cancel / editor timer runtime
     overlay.rkt        插件浮层描述
     points.rkt         插入点表 / kind / phase / context 校验
@@ -413,7 +414,8 @@ Delete         删后
 ←→↑↓ Home End  移动
 Shift+方向     扩选
 PageUp/Down    翻页
-C-a / C-e      行首 / 行尾
+C-a           行首
+C-e            开关 error panel
 C-f            右移
 C-k            删到行尾
 C-z / C-y      撤销 / 重做
@@ -480,6 +482,7 @@ racket edit-tui/test/replace-lines.rkt
 racket edit-tui/test/bilingual.rkt
 racket edit-tui/test/bilingual-async.rkt
 racket edit-tui/test/bilingual-translate.rkt
+racket edit-tui/test/error-buffer.rkt
 racket edit-tui/test/hooks.rkt
 racket edit-tui/test/ops.rkt
 racket edit-tui/test/plugins.rkt
@@ -571,7 +574,12 @@ racket edit-tui/test/layers.rkt
     `plugins/bilingual/data/racket-zh.rktd`（CN symbol / CN keyword -> EN）。
     插件只依赖内置数据文件，不依赖外部 build 项目；运行时反转 EN -> CN 做正向翻译，
     CN -> EN 直接做反译。数据缺失 / 损坏时退回内置小规则表。
-5r. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
+5r. core error buffer：`editor/error.rkt` 在 editor-session 保存纯 `editor-error` 列表
+    （时间 / severity / source / owner / context / message，最多 500 条）；
+    plugin runtime、hook、command、job-error、open/save IO 失败统一记录，同时保留 flash。
+    `*errors*` 是 host-owned `'ui` projection view，默认隐藏；`C-e` 开关 panel，
+    `M-E` 清空。UI view / panel 由 `app/frame.rkt` 从 State 同步，不新增 engine doc kind。
+5s. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
     bilingual mirror panel 被关掉后，pair 与 derived mirror 仍保留；回到 source 按
     `M-l` 时会优先在新 split / tab 中重新挂回已有 mirror view。
     在 mirror 上按 `M-l` 关闭 pair 后，焦点会回到 source；再次 `M-l` 会重新创建

@@ -8,6 +8,8 @@
 (require racket/async-channel
          (prefix-in tui: tui)
          "../editor/host-api.rkt"
+         "../editor/error.rkt"
+         "../core/job/api.rkt"
          "../host/event.rkt"
          "../host/input/dispatch.rkt"
          "../host/jobs.rkt"
@@ -96,8 +98,18 @@
 
 (define (handle-job-result ed state ev)
   (define id (job-result-event-id ev))
-  (define s1 (state-finish-job state id (job-result-event-result ev)))
-  (define-values (s2 actions) (run-plugin-job-handlers ed s1 ev))
+  (define result (job-result-event-result ev))
+  (define s1 (state-finish-job state id result))
+  ;; worker service 抛出的异常统一进 error buffer；插件 handler 仍然收到
+  ;; job-error 事件，可以决定自己的提示 / 状态清理。
+  (define s1*
+    (if (job-error? result)
+        (state-record-error
+         s1 'error 'job #f
+         (list (job-result-event-kind ev) (job-result-event-tag ev))
+         (job-error-message result))
+        s1))
+  (define-values (s2 actions) (run-plugin-job-handlers ed s1* ev))
   (define s3 (run-actions ed s2 actions))
   (state-forget-job s3 id))
 

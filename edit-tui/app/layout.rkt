@@ -25,7 +25,10 @@
                             #:sidebar-w [sidebar-w 24]
                             #:docs-view [docs-vid #f]
                             #:docs-panel-id [docs-pid 'docs]
-                            #:docs-ratio [docs-ratio 20/23])
+                            #:docs-ratio [docs-ratio 20/23]
+                            #:errors-view [errors-vid #f]
+                            #:errors-panel-id [errors-pid 'errors]
+                            #:errors-ratio [errors-ratio 15/23])
   (define editor-panel
     (p:make-panel editor-pid 'editor
                   #:views (list editor-vid)
@@ -64,16 +67,30 @@
        (unless ok?
          (error 'make-editor-layout "status attach failed"))
        l*]))
+  (define l3
+    (cond
+      [(not docs-vid) l2]
+      [else
+       (define docs-panel
+         (p:make-panel docs-pid 'docs
+                       #:views (list docs-vid)
+                       #:active docs-vid
+                       #:borders '(up down left right)))
+       (define-values (l* ok?)
+         (layout-panel-attach l2 editor-pid 'down docs-panel #:ratio docs-ratio))
+       (unless ok?
+         (error 'make-editor-layout "docs attach failed"))
+       l*]))
   (cond
-    [(not docs-vid) l2]
+    [(not errors-vid) l3]
     [else
-     (define docs-panel
-       (p:make-panel docs-pid 'docs
-                     #:views (list docs-vid)
-                     #:active docs-vid
+     (define errors-panel
+       (p:make-panel errors-pid 'errors
+                     #:views (list errors-vid)
+                     #:active errors-vid
                      #:borders '(up down left right)))
      (define-values (l* ok?)
-       (layout-panel-attach l2 editor-pid 'down docs-panel #:ratio docs-ratio))
+       (layout-panel-attach l3 editor-pid 'down errors-panel #:ratio errors-ratio))
      (unless ok?
-       (error 'make-editor-layout "docs attach failed"))
+       (error 'make-editor-layout "errors attach failed"))
      l*]))

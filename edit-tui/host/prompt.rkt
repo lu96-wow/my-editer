@@ -18,6 +18,7 @@
          "../editor/resource.rkt"
          "../editor/mode.rkt"
          "../editor/engine/read.rkt"
+         "../editor/error.rkt"
          "../editor/action.rkt"
          "../editor/layout.rkt"
          "../features/input/api.rkt"
@@ -54,13 +55,17 @@
     [(not text)
      (values (state-with-flash state "save: no text") #f)]
     [else
-     (define ok?
-       (with-handlers ([exn:fail? (λ (_) #f)])
+     (define err
+       (with-handlers ([exn:fail? (λ (e) e)])
          (display-to-file text path* #:exists 'truncate)
-         #t))
+         #f))
      (cond
-       [(not ok?)
-        (values (state-with-flash state (format "save failed: ~a" path*)) #f)]
+       [err
+        (values
+         (state-record-exception
+          (state-with-flash state (format "save failed: ~a" path*))
+          'error 'io #f (list 'save path*) err)
+         #f)]
        [else
         (define mode (doc-mode-for path* text))
         (define name

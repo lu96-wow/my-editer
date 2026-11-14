@@ -59,6 +59,7 @@
          state-input
          state-input-seed
          state-jobs
+         state-errors
          state-async?
          state-with-pending
          state-with-pending-scope
@@ -72,6 +73,7 @@
          state-with-placement
          state-with-input
          state-with-jobs
+         state-with-errors
          state-with-async
 
          state-plugin-state
@@ -117,6 +119,7 @@
    pointer         ; #f | pointer-drag | pointer-select
    find            ; find-state | #f：当前查找会话
    jobs            ; job-ledger
+   errors          ; (listof editor-error)，最新在前
    async?)         ; bool：sync 阶段是否走异步 job
   #:transparent)
 
@@ -143,6 +146,7 @@
          #:input [input #f]
          #:select-drag [select-drag #f]
          #:jobs [jobs empty-job-ledger]
+         #:errors [errors '()]
          #:async? [async? #f])
   (define modal
     (cond
@@ -158,7 +162,7 @@
    (editor-core plugin-states workspace-root resources layout layout-config view-scopes area
                 next-view-id next-panel-id)
    (editor-session pending pending-scope quit? flash modal input pointer find
-                   jobs async?)))
+                   jobs errors async?)))
 
 ;;; ════════════════ state dispatch ════════════════
 
@@ -177,7 +181,7 @@
      (raise-argument-error 'state-session "app-state? or editor-core?" state)]))
 
 (define empty-session
-  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger #f))
+  (editor-session '() #f #f "" #f #f #f #f empty-job-ledger '() #f))
 
 (define (session-of state)
   (or (state-session state) empty-session))
@@ -290,6 +294,8 @@
   (editor-session-input (session-of state)))
 (define (state-jobs state)
   (editor-session-jobs (session-of state)))
+(define (state-errors state)
+  (editor-session-errors (session-of state)))
 (define (state-async? state)
   (editor-session-async? (session-of state)))
 
@@ -362,6 +368,8 @@
      (struct-copy editor-session s [modal m*] [input input]))))
 (define (state-with-jobs state jobs)
   (update-session state (λ (s) (struct-copy editor-session s [jobs jobs]))))
+(define (state-with-errors state errors)
+  (update-session state (λ (s) (struct-copy editor-session s [errors errors]))))
 (define (state-with-async state async?)
   (update-session state (λ (s) (struct-copy editor-session s [async? async?]))))
 

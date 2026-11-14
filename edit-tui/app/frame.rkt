@@ -8,6 +8,7 @@
 
 (require racket/string
          "../editor/host-api.rkt"
+         "../editor/error.rkt"
          (only-in "../core/command/api.rkt" key->string)
          (only-in "../../core/editor.rkt" make-panel)
          "../features/input/api.rkt"
@@ -62,6 +63,12 @@
   (engine-set-view-cursor! engine status-vid 0 #:column 0)
   state)
 
+(define (sync-errors! state engine)
+  (define-values (lines faces) (errors->lines+faces (state-errors state)))
+  (engine-set-view-content! engine errors-vid lines faces)
+  (engine-set-view-cursor! engine errors-vid 0 #:column 0)
+  state)
+
 ;;; ════════════════ frame ════════════════
 
 (define (render-frame ed state cache)
@@ -73,6 +80,7 @@
   ;; status 是 host 投影，先写好，避免派生插件在下一帧才发现它的 version 变了。
   (panels-sync! panels)
   (void (sync-status! state (editor-engine ed)))
+  (void (sync-errors! state (editor-engine ed)))
   (void (editor-input-sync! ed state))
   ;; 来源权威必须先于 workspace：completion / docs 在 sync 里读 workspace。
   (source-sync! ed state)

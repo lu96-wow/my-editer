@@ -15,6 +15,7 @@
          (prefix-in p: "../core/panel/api.rkt")
          "../editor/engine/read.rkt"
          "../editor/engine/lifecycle.rkt"
+         "../editor/error.rkt"
          "../editor/context.rkt"
          "../editor/state.rkt"
          "../editor/resource.rkt"
@@ -59,12 +60,16 @@
   (cond
     [existing (focus-existing-resource state existing)]
     [else
-     (define text
-       (with-handlers ([exn:fail? (λ (_) #f)])
-         (file->string path*)))
+     (define-values (text err)
+       (with-handlers ([exn:fail? (λ (e) (values #f e))])
+         (values (file->string path*) #f)))
      (cond
-       [(not text)
-        (values (state-with-flash state (format "open failed: ~a" path*)) '())]
+       [err
+        (values
+         (state-record-exception
+          (state-with-flash state (format "open failed: ~a" path*))
+          'error 'io #f (list 'open path*) err)
+         '())]
        [else
         (define engine (editor-engine ed))
         (define id (state-next-view-id state))

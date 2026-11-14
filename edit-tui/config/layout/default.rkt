@@ -40,4 +40,11 @@
                      #:deletable? #f
                      #:focusable? #t
                      #:min-w 1 #:max-w #f
+                     #:min-h 3 #:max-h #f)
+    'errors
+    (make-panel-rule #:splittable? #f
+                     #:hideable? #t
+                     #:deletable? #f
+                     #:focusable? #t
+                     #:min-w 1 #:max-w #f
                      #:min-h 3 #:max-h #f))))

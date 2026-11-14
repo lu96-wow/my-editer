@@ -29,6 +29,7 @@
          input-vid
          completion-vid
          docs-vid
+         errors-vid
          make-editor-app)
 
 ;;; ════════════════ 初始文档 ════════════════
@@ -40,6 +41,7 @@
 (define input-vid 5)
 (define completion-vid 6)
 (define docs-vid 7)
+(define errors-vid 8)
 
 (define (make-editor-app
          #:workspace-root [workspace-root (resource-normalize-path (current-directory))]
@@ -62,6 +64,8 @@
   (void (engine-create-view! engine completion-vid completion-vid))
   (void (engine-create-buffer! engine docs-vid "*docs*" "" #:kind 'ui))
   (void (engine-create-view! engine docs-vid docs-vid))
+  (void (engine-create-buffer! engine errors-vid "*errors*" "" #:kind 'ui))
+  (void (engine-create-view! engine errors-vid errors-vid))
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 
@@ -114,12 +118,14 @@
   (define ed (make-editor #:engine engine
                           #:registry registry
                           #:plugins plugins))
-  (define view-scopes (plugins->view-scopes plugins))
+  (define view-scopes
+    (hash-set (plugins->view-scopes plugins) errors-vid 'errors))
 
   (define layout (make-editor-layout #:editor-view editor-vid
                                      #:status-views (list status-vid input-vid)
                                      #:sidebar-views (list filetree-vid resources-vid)
-                                     #:docs-view docs-vid))
+                                     #:docs-view docs-vid
+                                     #:errors-view errors-vid))
   ;; 没有 initial-name 时只建一个空 editor buffer，不登记 resource。
   ;; 打开文件后由 host/open 创建真正的 resource。
   (define initial-mode (doc-mode-for initial-path initial-text))
@@ -145,7 +151,11 @@
                     #:input (make-input-state #:panel-id 'status
                                               #:status-view status-vid
                                               #:input-view input-vid)))
+  ;; error panel 默认隐藏；C-e 打开。
+  (define state1
+    (let-values ([(s _actions) (editor-toggle-panel! ed state 'errors)])
+      s))
   ;; 初始来源 / workspace：之后由 frame 每帧同步。
-  (source-sync! ed state)
-  (workspace-sync! ed state)
-  (values ed state))
+  (source-sync! ed state1)
+  (workspace-sync! ed state1)
+  (values ed state1))

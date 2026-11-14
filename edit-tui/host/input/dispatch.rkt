@@ -14,6 +14,7 @@
          racket/string
          "../../core/command/api.rkt"
          "../../editor/host-api.rkt"
+         "../../editor/error.rkt"
          "../../features/input/api.rkt"
          "../../features/placement/api.rkt"
          "../../features/find/api.rkt"
@@ -106,8 +107,10 @@
   (if owner (state-set-plugin-state state owner ps) state))
 
 (define (plugin-command-failure state owner e)
-  (state-with-flash
-   state (format "plugin ~a command failed: ~a" owner (exn-message e))))
+  (state-record-exception
+   (state-with-flash
+    state (format "plugin ~a command failed: ~a" owner (exn-message e)))
+   'error 'command owner 'plugin-command e))
 
 (define (run-command ed state vid owner value)
   (define ps (plugin-ps state owner))
@@ -131,9 +134,11 @@
     [(guarded-command? value)
      (with-handlers ([exn:fail?
                       (λ (e)
-                        (values (state-with-flash
-                                 state
-                                 (format "command failed: ~a" (exn-message e)))
+                        (values (state-record-exception
+                                 (state-with-flash
+                                  state
+                                  (format "command failed: ~a" (exn-message e)))
+                                 'error 'command owner 'guarded-command e)
                                 '()))])
        (define-values (state* ps* actions*)
          ((guarded-command-run value) ed state ps))
@@ -180,6 +185,10 @@
      (editor-save-command ed state)]
     [(quit-command? value)
      (editor-request-quit ed state)]
+    [(toggle-errors-command? value)
+     (editor-toggle-panel! ed state 'errors)]
+    [(clear-errors-command? value)
+     (values (state-clear-errors state) '())]
     [else
      (values (state-with-flash state (format "not a command: ~a" value))
              '())]))

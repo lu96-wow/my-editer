@@ -13,6 +13,7 @@
          racket/path
          racket/string
          "../editor/host-api.rkt"
+         "../editor/error.rkt"
          "../features/input/api.rkt"
          "../plugins/filetree/plugin.rkt"
          "close.rkt"
@@ -106,12 +107,12 @@
        (not (regexp-match? #rx"[/\\\\]" name))))
 
 (define (create-target! kind target)
-  (with-handlers ([exn:fail? (λ (_) #f)])
+  (with-handlers ([exn:fail? (λ (e) (values #f e))])
     (case kind
       [(file) (display-to-file "" target #:exists 'error)]
       [(dir) (make-directory target)]
       [else (error 'create-target! "未知 kind：~a" kind)])
-    #t))
+    (values #t #f)))
 
 (define (submit-filetree-create! ed state context text)
   (match-define (list 'filetree-create kind parent) context)
@@ -121,17 +122,21 @@
      (values (state-with-flash state "filetree: invalid name") '())]
     [else
      (define target (build-path parent name))
+     (define-values (ok? err) (create-target! kind target))
      (cond
-       [(create-target! kind target)
+       [ok?
         (values (state-with-flash
                  (invalidate-filetree (editor-input-close state) target)
                  (format "created: ~a" (path->string target)))
                 '())]
        [else
-        (values (state-with-flash
-                 state
-                 (format "create failed: ~a" (path->string target)))
-                '())])]))
+        (values
+         (state-record-exception
+          (state-with-flash
+           state
+           (format "create failed: ~a" (path->string target)))
+          'error 'io #f (list 'filetree-create (path->string target)) err)
+         '())])]))
 
 ;;; ════════════════ delete ════════════════
 
@@ -156,12 +161,12 @@
          [else #f])))
 
 (define (delete-target! path)
-  (with-handlers ([exn:fail? (λ (_) #f)])
+  (with-handlers ([exn:fail? (λ (e) (values #f e))])
     (cond
       [(directory-exists? path) (delete-directory/files path)]
       [(file-exists? path) (delete-file path)]
       [else (void)])
-    #t))
+    (values #t #f)))
 
 (define (close-affected-resources! ed state path kind)
   (define affected
@@ -229,16 +234,19 @@
      (values (editor-input-close state) '())]
     [else
      (define new-path (rename-target old-path name))
-     (define ok?
-       (with-handlers ([exn:fail? (λ (_) #f)])
+     (define err
+       (with-handlers ([exn:fail? (λ (e) e)])
          (rename-file-or-directory old-path new-path #f)
-         #t))
+         #f))
      (cond
-       [(not ok?)
-        (values (state-with-flash
-                 state
-                 (format "rename failed: ~a" (path->string new-path)))
-                '())]
+       [err
+        (values
+         (state-record-exception
+          (state-with-flash
+           state
+           (format "rename failed: ~a" (path->string new-path)))
+          'error 'io #f (list 'filetree-rename (path->string new-path)) err)
+         '())]
        [else
         (define state1 (editor-input-close state))
         (define state2 (rename-resource-paths ed state1 (if (directory-exists? new-path) 'dir 'file)
@@ -259,12 +267,16 @@
      (values (editor-input-close state) '())]
     [else
      (match-define (list 'filetree-delete kind path) context)
+     (define-values (delete-ok? delete-err) (delete-target! path))
      (cond
-       [(not (delete-target! path))
-        (values (state-with-flash
-                 state
-                 (format "delete failed: ~a" (path->string path)))
-                '())]
+       [(not delete-ok?)
+        (values
+         (state-record-exception
+          (state-with-flash
+           state
+           (format "delete failed: ~a" (path->string path)))
+          'error 'io #f (list 'filetree-delete (path->string path)) delete-err)
+         '())]
        [else
         (define state1 (editor-input-close state))
         (define-values (state2 actions)
