@@ -2,20 +2,28 @@
 
 ;;; edit-tui/plugins/bilingual/translate.rkt —— 默认双语翻译器
 ;;;
-;;; 第一版是 token 级 1:1 行映射：
-;;;   · 只替换 symbol token，不碰字符串 / 注释 / 空白；
+;;; token 级 1:1 行映射：
+;;;   · 只替换 symbol / keyword token，不碰字符串 / 注释 / 空白；
 ;;;   · 每行独立翻译，行号一一对应；
 ;;;   · 未知 token 原样保留，双向都成立。
 ;;;
-;;; 以后接结构化数据源时，保持 translator 的 translate-line / inverse-line
-;;; 协议即可，不需要改 pair / plugin / host。
+;;; 数据来源：
+;;;   data/racket-zh.rktd
+;;;     第一行：CN symbol -> EN symbol
+;;;     第二行：CN keyword -> EN keyword
+;;;   由 scripts/import-tables.rkt 从 racket-translate-lang-build 生成。
+;;;
+;;; 运行时反转成 EN -> CN 做正向翻译；CN -> EN 直接用于反译。
 
-(require (only-in "../../lang/racket/api.rkt"
+(require racket/file
+         racket/runtime-path
+         (only-in "../../lang/racket/api.rkt"
                   tokenize-line
                   empty-lex-state
                   token-kind
                   token-start
-                  token-end)
+                  token-end
+                  keyword-category)
          "model.rkt")
 
 (provide default-translator
@@ -27,6 +35,7 @@
 
 (define default-translator-id 'zh-racket)
 
+;; 兜底用：数据文件缺失 / 损坏时仍然有基本翻译。
 (define default-rules
   (list
    (rule 'define "define" "定义")
@@ -57,21 +66,53 @@
    (rule 'cdr "cdr" "尾")
    (rule 'list "list" "列表")))
 
-(define (rule-face id)
-  (case id
-    [(define define-values lambda let let* letrec struct match cond)
-     'bilingual-keyword]
-    [(if else begin and or not)
-     'bilingual-control]
-    [(require provide)
-     'bilingual-module]
-    [(set!)
-     'bilingual-binding]
-    [(map filter foldl foldr null? cons car cdr list)
-     'bilingual-function]
-    [else #f]))
+;;; ════════════════ face ════════════════
 
-;; mapping : hash token -> (cons replacement (or/c face #f))
+(define explicit-faces
+  (hash "define" 'bilingual-keyword
+        "define-values" 'bilingual-keyword
+        "lambda" 'bilingual-keyword
+        "let" 'bilingual-keyword
+        "let*" 'bilingual-keyword
+        "letrec" 'bilingual-keyword
+        "struct" 'bilingual-keyword
+        "match" 'bilingual-keyword
+        "cond" 'bilingual-keyword
+        "if" 'bilingual-control
+        "else" 'bilingual-control
+        "begin" 'bilingual-control
+        "and" 'bilingual-control
+        "or" 'bilingual-control
+        "not" 'bilingual-control
+        "require" 'bilingual-module
+        "provide" 'bilingual-module
+        "set!" 'bilingual-binding
+        "map" 'bilingual-function
+        "filter" 'bilingual-function
+        "foldl" 'bilingual-function
+        "foldr" 'bilingual-function
+        "null?" 'bilingual-function
+        "cons" 'bilingual-function
+        "car" 'bilingual-function
+        "cdr" 'bilingual-function
+        "list" 'bilingual-function))
+
+(define (en-face en)
+  (define s (symbol->string en))
+  (or (hash-ref explicit-faces s #f)
+      (case (keyword-category s)
+        [(def macro) 'bilingual-keyword]
+        [(control) 'bilingual-control]
+        [(binding) 'bilingual-binding]
+        [(module) 'bilingual-module]
+        [else #f])))
+
+(define (rule-face id)
+  (en-face id))
+
+;;; ════════════════ 行内替换 ════════════════
+
+;; mapping : hash token-string -> (cons replacement (or/c face #f))
 ;; → (values text spans)
 ;;   spans 位置基于输出 text 的字符索引，不依赖 source 列。
 (define (replace-symbols line mapping)
@@ -110,6 +151,14 @@
   (define-values (text _spans) (replace-symbols line mapping))
   text)
 
+;;; ════════════════ translator 构造 ════════════════
+
+(define (translator-maps->translator id version forward inverse)
+  (translator id version
+              (lambda (line) (text-only forward line))
+              (lambda (line) (replace-symbols line forward))
+              (lambda (line) (text-only inverse line))))
+
 (define (rules->maps rules)
   (values
    (for/fold ([h (hash)]) ([r (in-list rules)])
@@ -120,13 +169,59 @@
 
 (define (translator-rules->translator id version rules)
   (define-values (forward inverse) (rules->maps rules))
-  (translator id version
-              (lambda (line) (text-only forward line))
-              (lambda (line) (replace-symbols line forward))
-              (lambda (line) (text-only inverse line))))
+  (translator-maps->translator id version forward inverse))
 
 (define (make-translator #:id id #:version [version 'v1] #:rules rules)
   (translator-rules->translator id version rules))
 
-(define default-translator
-  (translator-rules->translator default-translator-id 'v1 default-rules))
+;;; ════════════════ 数据表 ════════════════
+
+(define-runtime-path translation-data "data/racket-zh.rktd")
+
+(define (read-translation-data path)
+  (call-with-input-file path
+    (lambda (in)
+      (define id-table (read in))
+      (define kw-table (read in))
+      (values (if (hash? id-table) id-table (hash))
+              (if (hash? kw-table) kw-table (hash))))))
+
+;; id-table : CN symbol -> EN symbol
+;; kw-table : CN keyword -> EN keyword
+(define (tables->maps id-table kw-table)
+  (define forward (make-hash))
+  (define inverse (make-hash))
+
+  ;; 按 CN key 排序，保证同一 EN 有多个 CN 时选择稳定。
+  (for ([entry (in-list (sort (hash->list id-table) symbol<? #:key car))])
+    (define cn (symbol->string (car entry)))
+    (define en (cdr entry))
+    (define en-s (symbol->string en))
+    (hash-set! inverse cn (cons en-s #f))
+    (hash-set! forward en-s (cons cn (en-face en))))
+
+  (for ([entry (in-list (sort (hash->list kw-table) keyword<? #:key car))])
+    (define cn (string-append "#:" (keyword->string (car entry))))
+    (define en (string-append "#:" (keyword->string (cdr entry))))
+    (hash-set! inverse cn (cons en #f))
+    (hash-set! forward en (cons cn #f)))
+
+  (values forward inverse))
+
+(define (load-default-translator)
+  (cond
+    [(file-exists? translation-data)
+     (with-handlers ([exn:fail?
+                      (lambda (_)
+                        (translator-rules->translator
+                         default-translator-id 'v1 default-rules))])
+       (define-values (id-table kw-table)
+         (read-translation-data translation-data))
+       (define-values (forward inverse)
+         (tables->maps id-table kw-table))
+       (translator-maps->translator
+        default-translator-id 'v2 forward inverse))]
+    [else
+     (translator-rules->translator default-translator-id 'v1 default-rules)]))
+
+(define default-translator (load-default-translator))
