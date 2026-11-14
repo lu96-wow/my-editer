@@ -996,7 +996,8 @@
     [else
      (define kind (editor-doc-kind ed did))
      (cond
-       [(eq? kind 'user)
+       [(and (eq? kind 'user)
+             (eq? (state-doc-mode state did) 'racket))
         (define p (pair-for-source ps did))
         (cond
           [p (values state ps
@@ -1006,6 +1007,8 @@
                    (list (bilingual-open-action
                           did
                           (bilingual-default-translator-id ps))))])]
+       [(eq? kind 'user)
+        (flash-message state "bilingual: focus is not a Racket buffer")]
        [(eq? kind 'derived)
         (define p (pair-for-mirror ps did))
         (cond

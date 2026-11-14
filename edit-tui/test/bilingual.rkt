@@ -183,4 +183,17 @@
 (check-equal? (panel-face (layout-panel (state-layout state8) 'editor))
               'window-border)
 
+;;; ════════════════ M-l 只对 Racket buffer 生效 ════════════════
+
+(define-values (ed-text state-text0)
+  (make-editor-app #:initial-text "plain text\n"
+                   #:initial-name "note.txt"
+                   #:initial-resource? #t))
+(define state-text1
+  (handle-editor-event ed-text state-text0 (key-event (key 'l 'alt))))
+(check-false (bilingual-pair-for-source
+              (state-plugin-state state-text1 'bilingual)
+              1))
+(check-true (string-contains? (state-flash state-text1) "Racket"))
+
 (displayln "edit-tui/test/bilingual.rkt: ok")

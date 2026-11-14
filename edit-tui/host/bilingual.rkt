@@ -102,6 +102,8 @@
      (flash state "bilingual: source is not an open resource")]
     [(not (eq? (editor-doc-kind ed source-doc-id) 'user))
      (flash state "bilingual: source is not a user document")]
+    [(not (eq? (resource-mode r) 'racket))
+     (flash state "bilingual: source is not a Racket buffer")]
     [else
      (define existing (bilingual-pair-for-source ps source-doc-id))
      (cond

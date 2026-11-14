@@ -38,7 +38,7 @@
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
-- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -436,7 +436,7 @@ Tab            下一个候选
 Enter          接受候选（菜单关闭时仍是普通换行）
 Esc / C-g      关闭补全
 M-d            查看光标处标识符文档
-M-l            双语：打开 / 聚焦 / 关闭当前 buffer 的 mirror
+M-l            双语：打开 / 聚焦 / 关闭当前 Racket buffer 的 mirror
 C-x d          显 / 隐 docs panel
 C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
