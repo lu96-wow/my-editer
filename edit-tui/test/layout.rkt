@@ -57,4 +57,12 @@
 (check-equal? (state-plugin-state state2* 'layout-test) 1)
 (check-equal? (map flash-action-message actions2) '("split-observed"))
 
+;;; 3. 关闭焦点 panel 后，焦点落到兄弟 panel，而不是第一个 panel。
+(define-values (state-focus _a-focus) (editor-focus! ed2 state2* 'left))
+(check-equal? (editor-focus-panel-id state-focus) 'editor)
+(define-values (state-closed _a-closed) (editor-close! ed2 state-focus))
+(check-equal? (length (editor-visible-editor-panels state-closed)) 1)
+(check-equal? (editor-focus-panel-id state-closed) 100)
+(check-equal? (editor-focus-view-id state-closed) 10)
+
 (displayln "edit-tui/test/layout.rkt: ok")

@@ -236,6 +236,11 @@
     [(not p) (values l #f)]
     [(not (config-panel-deletable? config (panel-kind p))) (values l #f)]
     [else
+     ;; fallback 必须在删除前从旧树算：删除后 id 已不在树里，
+     ;; sibling-path 找不到它的兄弟，焦点会错误地落到第一个 panel。
+     (define fallback
+       (and (equal? (layout-focus l) id)
+            (layout-focus-fallback l config id)))
      (define-values (root* _direct? found?) (remove-leaf (layout-root l) id))
      (cond
        [(not found?) (values l #f)]
@@ -243,9 +248,10 @@
         (define l1 (struct-copy layout l
                                 [root root*]
                                 [panel-map (hash-remove (layout-panel-map l) id)]))
-        (define l2 (if (equal? (layout-focus l1) id)
-                       (layout-set-focus l1 (layout-focus-fallback l1 config id))
-                       l1))
+        (define l2
+          (if fallback
+              (layout-set-focus l1 fallback)
+              l1))
         (values l2 #t)])]))
 
 ;; 只清内容，不删 panel / split 关系。用于“最后一个 editor 关掉”。

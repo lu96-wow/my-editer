@@ -68,7 +68,7 @@
         (void (editor-set-derived-view-content!
                ed (pair-mirror-view-id p)
                new-mirror-lines
-               (make-list (length new-mirror-lines) #f)))
+               (make-list (length new-mirror-lines) 'bilingual-mirror-line)))
         (define p*
           (struct-copy pair p
                        [translator-version (translator-version tr)]
@@ -235,7 +235,7 @@
         (void (editor-set-derived-view-content!
                ed (pair-mirror-view-id p)
                new-mirror-lines
-               (make-list (length new-mirror-lines) #f)))
+               (make-list (length new-mirror-lines) 'bilingual-mirror-line)))
         (define p*
           (struct-copy pair p
                        [translator-version (translator-version tr)]

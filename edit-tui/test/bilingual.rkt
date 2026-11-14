@@ -14,6 +14,9 @@
          "../host/event.rkt"
          "../edit.rkt"
          "../host/close.rkt"
+         "../host/layout.rkt"
+         "../core/layout/api.rkt"
+         (only-in "../core/panel/api.rkt" panel-face)
          "../plugins/bilingual/api.rkt"
          "fixture.rkt")
 
@@ -50,6 +53,15 @@
 (check-true (string-contains? (editor-doc-text ed mirror-did) "映射"))
 (check-true (string-contains? (editor-doc-text ed mirror-did) "(main xs)"))
 (check-equal? (length (editor-visible-editor-panels state2)) 2)
+(check-equal? (engine-view-face-at (editor-engine ed) mirror-did 2 0)
+              'bilingual-mirror-line)
+(define source-pid (editor-view-panel-id state2 source-vid))
+(define mirror-pid (editor-view-panel-id state2 mirror-vid))
+(check-not-equal? source-pid mirror-pid)
+(check-equal? (panel-face (layout-panel (state-layout state2) source-pid))
+              'bilingual-source-border)
+(check-equal? (panel-face (layout-panel (state-layout state2) mirror-pid))
+              'bilingual-mirror-border)
 
 ;; viewport 同步：mirror 作为 leader 时源行跟随；source 作为 leader 时列按比例。
 (editor-set-view-anchor-point! ed mirror-vid (point 3 0))
@@ -106,5 +118,7 @@
 (check-false (bilingual-pair-for-source (state-plugin-state state8 'bilingual)
                                         source-did))
 (check-equal? (length (editor-visible-editor-panels state8)) 1)
+(check-equal? (panel-face (layout-panel (state-layout state8) 'editor))
+              'window-border)
 
 (displayln "edit-tui/test/bilingual.rkt: ok")

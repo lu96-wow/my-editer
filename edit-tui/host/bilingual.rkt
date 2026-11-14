@@ -92,8 +92,26 @@
               (define-values (_state3 ps3)
                 (bilingual-bind! state2 ps2 source-doc-id did vid tr-id))
               (define state4 (set-plugin-state state2 ps3))
+              ;; 面板颜色反映 pair 关联：source / mirror / 同一 panel tab fallback。
+              (define source-pid (editor-view-panel-id state4 source-vid))
+              (define mirror-pid (editor-view-panel-id state4 vid))
+              (define state5
+                (cond
+                  [(and source-pid mirror-pid (equal? source-pid mirror-pid))
+                   (editor-set-panel-face! state4 source-pid
+                                           'bilingual-pair-border)]
+                  [else
+                   (define s1
+                     (if source-pid
+                         (editor-set-panel-face! state4 source-pid
+                                                 'bilingual-source-border)
+                         state4))
+                   (if mirror-pid
+                       (editor-set-panel-face! s1 mirror-pid
+                                               'bilingual-mirror-border)
+                       s1)]))
               (values (state-with-flash
-                       state4
+                       state5
                        (format "bilingual: opened ~a" (resource-name r)))
                       '())])])])]))
 
@@ -113,9 +131,18 @@
      (define-values (_state2 ps2)
        (bilingual-unbind! state1 ps1 source-doc-id))
      (define state3 (set-plugin-state state1 ps2))
+     ;; 取消关联后，源 panel 恢复普通边框；源已关闭时没有可恢复的 view。
+     (define state4
+       (let ([source-vid (source-view-id state3 source-doc-id)])
+         (if source-vid
+             (let ([pid (editor-view-panel-id state3 source-vid)])
+               (if pid
+                   (editor-set-panel-face! state3 pid 'window-border)
+                   state3))
+             state3)))
      (values (if flash?
-                 (state-with-flash state3 "bilingual: closed")
-                 state3)
+                 (state-with-flash state4 "bilingual: closed")
+                 state4)
              '())]))
 
 (define (bilingual-close-pair-for-source! ed state source-doc-id)

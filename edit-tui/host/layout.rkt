@@ -14,7 +14,22 @@
 
 (provide editor-detach-view!
          editor-attach-view-as-tab!
-         editor-attach-view-in-new-split!)
+         editor-attach-view-in-new-split!
+         editor-view-panel-id
+         editor-set-panel-face!)
+
+(define (editor-view-panel-id state vid)
+  (define l (state-layout state))
+  (and l vid (layout-panel-for-view l vid)))
+
+(define (editor-set-panel-face! state pid face)
+  (define l (state-layout state))
+  (cond
+    [(or (not l) (not pid)) state]
+    [else
+     (define-values (l* ok?)
+       (layout-panel-update l pid (lambda (p) (p:panel-set-face p face))))
+     (if ok? (state-with-layout state l*) state)]))
 
 (define (panel-without-view p vid)
   (define views (for/list ([v (in-list (p:panel-views p))]

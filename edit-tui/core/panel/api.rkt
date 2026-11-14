@@ -36,5 +36,6 @@
  panel-set-views
  panel-set-active
  panel-set-fixed
+ panel-set-face
  panel-set-hidden
  panel-set-restore)

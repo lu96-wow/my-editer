@@ -23,9 +23,12 @@
   (cond
     [(not r) (values state '())]
     [else
+     ;; 源 view 还在时先清理 pair：这样 source panel face 能恢复。
+     (define-values (state-pair actions-pair)
+       (bilingual-close-pair-for-source! ed state (resource-doc-id r)))
      (define views (resource-views r))
      (define state0
-       (for/fold ([s state]) ([vid (in-list views)])
+       (for/fold ([s state-pair]) ([vid (in-list views)])
          (editor-detach-view! s vid)))
      (engine-remove-doc! (editor-engine ed) (resource-doc-id r))
      (define state*
@@ -33,7 +36,7 @@
         (state-with-resources state0
                               (resources-remove (state-resources state0) rid))
         (format "closed: ~a" (or (resource-path r) (resource-name r)))))
-     (bilingual-close-pair-for-source! ed state* (resource-doc-id r))]))
+     (values state* actions-pair)]))
 
 ;; 关闭当前 focus resource：dirty -> close-confirm；clean -> 直接关闭。
 (define (editor-close-buffer-command ed state)

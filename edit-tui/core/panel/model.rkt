@@ -23,6 +23,7 @@
          panel-set-views
          panel-set-active
          panel-set-fixed
+         panel-set-face
          panel-set-hidden
          panel-set-restore)
 
@@ -100,6 +101,9 @@
     [(w) (struct-copy panel p [fixed-w value])]
     [(h) (struct-copy panel p [fixed-h value])]
     [else (error 'panel-set-fixed "axis 要是 'w 或 'h：~a" axis)]))
+
+(define (panel-set-face p face)
+  (struct-copy panel p [face face]))
 
 (define (panel-set-hidden p hidden? [restore-value #f])
   (unless (boolean? hidden?)
