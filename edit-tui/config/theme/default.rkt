@@ -36,11 +36,7 @@
    (list 'window-border  (style (rgb 105 112 128) #f '()))
    ;; 焦点面板的边框（projection 用空 panel + 更高 weight 叠在边框格上）
    (list 'focused-border (style (rgb 120 180 240) #f '()))
-   (list 'float-border   (style (rgb 190 150 240) #f '()))
-   ;; bilingual：source / mirror panel 边框
-   (list 'bilingual-source-border (style (rgb 120 200 200) #f '()))
-   (list 'bilingual-mirror-border (style (rgb 190 150 240) #f '()))
-   (list 'bilingual-pair-border   (style (rgb 160 180 230) #f '()))))
+   (list 'float-border   (style (rgb 190 150 240) #f '()))))
 
 ;; chrome / 资源面板
 (define chrome-theme

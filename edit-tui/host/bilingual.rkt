@@ -60,22 +60,6 @@
         (values s #t)
         (editor-attach-view-as-tab! state source-vid mirror-vid))))
 
-;; source / mirror 是否同 panel，决定 pair-border 还是两侧边框。
-(define (apply-pair-faces state source-vid mirror-vid)
-  (define source-pid (editor-view-panel-id state source-vid))
-  (define mirror-pid (editor-view-panel-id state mirror-vid))
-  (cond
-    [(and source-pid mirror-pid (equal? source-pid mirror-pid))
-     (editor-set-panel-face! state source-pid 'bilingual-pair-border)]
-    [else
-     (define s1
-       (if source-pid
-           (editor-set-panel-face! state source-pid 'bilingual-source-border)
-           state))
-     (if mirror-pid
-         (editor-set-panel-face! s1 mirror-pid 'bilingual-mirror-border)
-         s1)]))
-
 ;; C-w d 只 detach mirror panel；M-l / focus 时把已有 mirror 重新挂回去。
 (define (bilingual-focus-mirror! ed state mirror-vid)
   (cond
@@ -102,9 +86,8 @@
              [(not attached?)
               (flash state1 "bilingual: cannot reattach mirror view")]
              [else
-              (define state2 (apply-pair-faces state1 source-vid mirror-vid))
               (define-values (state3 actions)
-                (focus-view! ed state2 mirror-vid))
+                (focus-view! ed state1 mirror-vid))
               (values (state-with-flash state3
                                        "bilingual: mirror reattached")
                       actions)])])])]))
@@ -150,10 +133,11 @@
               (define-values (_state3 ps3)
                 (bilingual-bind! state2 ps2 source-doc-id did vid tr-id))
               (define state4 (set-plugin-state state2 ps3))
-              ;; 面板颜色反映 pair 关联：source / mirror / 同一 panel tab fallback。
-              (define state5 (apply-pair-faces state4 source-vid vid))
+              ;; 焦点始终只有一个，由 core 的 focused-border 表达；不再给
+              ;; source / mirror panel 设置常驻的 pair 边框色，避免非焦点 panel
+              ;; 看起来也像被 focus。
               (values (state-with-flash
-                       state5
+                       state4
                        (format "bilingual: opened ~a" (resource-name r)))
                       '())])])])]))
 
@@ -175,29 +159,21 @@
        (bilingual-unbind! state1 ps1 source-doc-id))
      (define state3 (set-plugin-state state1 ps2))
      (define source-vid (source-view-id state3 source-doc-id))
-     ;; 取消关联后，源 panel 恢复普通边框；源已关闭时没有可恢复的 view。
-     (define state4
-       (if source-vid
-           (let ([pid (editor-view-panel-id state3 source-vid)])
-             (if pid
-                 (editor-set-panel-face! state3 pid 'window-border)
-                 state3))
-           state3))
      ;; 从 mirror 上 M-l 关闭时，把焦点还给 source。否则焦点可能落到
      ;; sidebar / filetree，下一次 M-l 不会按 source buffer 的语义重新打开。
-     (define-values (state5 actions5)
+     (define-values (state4 actions4)
        (cond
          [(and focus-source? source-vid)
           (let-values ([(s acts ok?)
-                        (editor-focus-view-if-attached! ed state4 source-vid)])
+                        (editor-focus-view-if-attached! ed state3 source-vid)])
             (if ok?
                 (values s acts)
-                (values state4 '())))]
-         [else (values state4 '())]))
+                (values state3 '())))]
+         [else (values state3 '())]))
      (values (if flash?
-                 (state-with-flash state5 "bilingual: closed")
-                 state5)
-             actions5)]))
+                 (state-with-flash state4 "bilingual: closed")
+                 state4)
+             actions4)]))
 
 (define (bilingual-close-pair-for-source! ed state source-doc-id)
   (bilingual-close-pair! ed state source-doc-id

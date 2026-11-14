@@ -60,10 +60,11 @@
 (define source-pid (editor-view-panel-id state2 source-vid))
 (define mirror-pid (editor-view-panel-id state2 mirror-vid))
 (check-not-equal? source-pid mirror-pid)
+;; 焦点框由 core 画；bilingual 不再给 source / mirror panel 设置常驻边框色。
 (check-equal? (panel-face (layout-panel (state-layout state2) source-pid))
-              'bilingual-source-border)
+              'window-border)
 (check-equal? (panel-face (layout-panel (state-layout state2) mirror-pid))
-              'bilingual-mirror-border)
+              'window-border)
 
 ;; viewport 同步：mirror 作为 leader 时源行跟随；source 作为 leader 时列按比例。
 (editor-set-view-anchor-point! ed mirror-vid (point 3 0))
@@ -142,7 +143,7 @@
                   (editor-view-panel-id state-reattach-sync source-vid))
 (check-equal? (panel-face (layout-panel (state-layout state-reattach-sync)
                                        mirror-pid-2))
-              'bilingual-mirror-border)
+              'window-border)
 (check-equal? (editor-doc-text ed mirror-did) mirror-text7)
 
 ;;; ════════════════ M-l 关闭 pair 后，仍能从 source 重新创建 ════════════════
