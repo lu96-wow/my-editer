@@ -6,6 +6,9 @@
 ;;; editor-session 输入栏 / placement / 鼠标 / job / quit / flash：host 会话状态。
 ;;; app-state      host 顶层状态：editor-core + editor-session。
 ;;;
+;;; 多编辑区：layout 是当前合成 frame（chrome + current area）；
+;;; areas 只保存非当前编辑区的 editor-only layout。
+;;;
 ;;; accessor / update helper 同时接受 app-state 和 editor-core：
 ;;;   · 读 core 字段：从 app-state 取 editor，或直接读 core。
 ;;;   · 写 core 字段：app-state 保留 session，core 直接返回新 core。

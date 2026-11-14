@@ -33,6 +33,12 @@
   (engine-create-view! engine vid did)
   (values (state-with-next-view-id state (add1 did)) did vid))
 
+;; 多编辑区启用后，最后一个 editor panel 是 frame 里 area slot 的边界 leaf，
+;; 不能因为它的内容被 detach 就从 area 里删掉。
+(define (area-protects-last-panel? state area-id)
+  (or (state-area-slot state)
+      (not (equal? area-id (state-current-area state)))))
+
 (define (remove-derived-buffer! ed state did)
   (define engine (editor-engine ed))
   (cond
@@ -40,7 +46,7 @@
      (values state '())]
     [else
      (define vids (or (engine-view-ids-for-doc engine did) '()))
-     (define locs
+     (define locations
        (for/list ([vid (in-list vids)])
          (editor-view-location state vid)))
      (define state*
@@ -49,22 +55,21 @@
      (engine-remove-doc! engine did)
      ;; split 出来的 mirror panel 只含 mirror view；摘掉后若为空就删 panel。
      (define state**
-       (for/fold ([s state*]) ([loc (in-list locs)] #:when loc)
-         (define aid (view-location-area-id loc))
-         (define pid (view-location-panel-id loc))
-         (define l (editor-area-layout-for s aid))
-         (define panel (and l pid (layout-panel l pid)))
+       (for/fold ([s state*]) ([loc (in-list locations)] #:when loc)
+         (define area-id (view-location-area-id loc))
+         (define panel-id (view-location-panel-id loc))
+         (define l (editor-layout-for-area s area-id))
+         (define panel (and l panel-id (layout-panel l panel-id)))
          (cond
            ;; 最后一个 editor panel 不能从 area 里删掉：它同时是 slot 的边界 leaf。
            ;; 内容已经 detach，保留空 panel 即可。没有启用 area 的旧 state 保持
            ;; 原来的“空 panel 就删”行为。
-           [(and (or (state-area-slot s)
-                     (not (equal? aid (state-current-area s))))
-                 (<= (editor-area-panel-count s aid) 1))
+           [(and (area-protects-last-panel? s area-id)
+                 (<= (editor-area-panel-count s area-id) 1))
             s]
            [(and panel (null? (p:panel-views panel)))
             (define-values (l* ok?)
-              (layout-panel-remove l pid #:config (state-layout-config s)))
-            (if ok? (editor-with-area-layout s aid l*) s)]
+              (layout-panel-remove l panel-id #:config (state-layout-config s)))
+            (if ok? (editor-with-area-layout s area-id l*) s)]
            [else s])))
      (values state** '())]))

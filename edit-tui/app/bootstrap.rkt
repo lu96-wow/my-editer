@@ -43,6 +43,10 @@
 (define docs-vid 7)
 (define errors-vid 8)
 
+;; 编辑区：0..9，默认从 1 开始。
+(define default-area-id 1)
+(define area-count 10)
+
 (define (make-editor-app
          #:workspace-root [workspace-root (resource-normalize-path (current-directory))]
          #:initial-text [initial-text ""]
@@ -142,18 +146,19 @@
   ;; 其他 area 预建成一个空 editor panel，切换时再 checkout / checkin。
   (define area-slot (area-slot-for-editor layout 'editor))
   (define area-split-base (area-base-split-id layout))
-  (define area-ids (for/list ([i (in-range 0 10)] #:unless (= i 1)) i))
+  (define area-ids (for/list ([i (in-range area-count)]
+                              #:unless (= i default-area-id))
+                     i))
   (define areas
     (for/hash ([aid (in-list area-ids)])
-      (values aid (make-empty-editor-area aid area-split-base
-                                          (area-editor-panel-id aid)))))
+      (values aid (make-empty-editor-area aid area-split-base))))
   (define state
     (make-app-state #:plugin-states (plugins->states plugins)
                     #:workspace-root workspace-root
                     #:screen (rect 0 0 80 24)
                     #:layout layout
                     #:areas areas
-                    #:current-area 1
+                    #:current-area default-area-id
                     #:area-slot area-slot
                     #:layout-config default-layout-config
                     #:view-scopes view-scopes

@@ -440,7 +440,7 @@ Esc / C-g      关闭补全
 M-d            查看光标处标识符文档
 M-l            双语：打开 / 聚焦 / 关闭当前 Racket buffer 的 mirror
 C-x d          显 / 隐 docs panel
-M-0..M-9       切到编辑区 0..9（输入栏 / placement 中不生效）
+M-0..M-9       切到编辑区 0..9（默认 1；输入栏 / placement 中不生效）
 C-b            显 / 隐 sidebar
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab

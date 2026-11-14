@@ -30,15 +30,6 @@
 (define (flash state text)
   (values (state-with-flash state text) '()))
 
-(define (source-view-id state source-doc-id)
-  (define r (state-resource-for-doc state source-doc-id))
-  (and r
-       (let ([views (resource-views r)])
-         (or (for/first ([vid (in-list views)]
-                         #:when (editor-view-location state vid))
-               vid)
-             (and (pair? views) (car views))))))
-
 ;; 重新挂 mirror 需要 source view 真正在 layout 里；resource-views 里可能还有
 ;; 被 C-w d detach 的 view。
 (define (attached-source-view-id state source-doc-id)
@@ -47,6 +38,13 @@
        (for/first ([vid (in-list (resource-views r))]
                    #:when (editor-view-panel-id state vid))
          vid)))
+
+(define (source-view-id state source-doc-id)
+  (define r (state-resource-for-doc state source-doc-id))
+  (or (attached-source-view-id state source-doc-id)
+      (and r
+           (pair? (resource-views r))
+           (car (resource-views r)))))
 
 (define (focus-view! ed state vid)
   (define-values (state* actions attached?)

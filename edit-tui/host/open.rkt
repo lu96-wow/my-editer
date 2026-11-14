@@ -2,8 +2,8 @@
 
 ;;; edit-tui/host/open.rkt —— 打开文件 / 去重 / placement
 ;;;
-;;; 对齐旧行为：
-;;;   已打开且 view 挂在 panel 上 -> 聚焦已有 panel
+;;; 对齐旧行为，并支持多编辑区：
+;;;   已打开且 view 挂在任意 area -> 切到该 area 并聚焦已有 panel
 ;;;   已打开但 detached          -> placement（不新建 doc）
 ;;;   未打开                     -> 读文件 / 新建 doc+view / 加 resource / placement
 ;;;
@@ -40,9 +40,9 @@
   (define vid (resource-attached-view state r))
   (cond
     [(not vid)
-     (define fallback (and (pair? (resource-views r)) (car (resource-views r))))
-     (if fallback
-         (values (editor-placement-start state fallback) '())
+     (define first-vid (and (pair? (resource-views r)) (car (resource-views r))))
+     (if first-vid
+         (values (editor-placement-start state first-vid) '())
          (values (state-with-flash state "open: resource has no view") '()))]
     [else
      (define-values (state* actions attached?)

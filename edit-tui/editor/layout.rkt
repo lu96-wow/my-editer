@@ -75,18 +75,15 @@
     [(not loc) (values state '() #f)]
     [else
      (define area-id (view-location-area-id loc))
-     (define state0
-       (if (equal? area-id (state-current-area state))
-           state
-           (editor-switch-area state area-id)))
-     (define l (state-layout state0))
+     (define state-switched (editor-switch-area state area-id))
+     (define l (state-layout state-switched))
      (define pid (and l vid (layout-panel-for-view l vid)))
      (cond
-       [(not pid) (values state0 '() #f)]
+       [(not pid) (values state-switched '() #f)]
        [else
         (define-values (l* ok?) (layout-panel-set-active-view l pid vid))
         (define l** (if ok? (layout-set-focus l* pid) (layout-set-focus l pid)))
-        (values (state-with-layout state0 l**) '() #t)])]))
+        (values (state-with-layout state-switched l**) '() #t)])]))
 
 (define (editor-focus-view ed state)
   (define vid (editor-focus-view-id state))

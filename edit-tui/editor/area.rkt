@@ -25,24 +25,17 @@
          (struct-out view-location)
 
          area-slot-for-editor
-         area-slot-child
-         area-slot-set-child
 
          make-empty-editor-area
-         editor-area-from-frame
-         editor-area-panel-ids
          editor-area-panel-count
-         editor-area-first-panel-id
-         area-editor-panel-id
          area-base-split-id
 
-         editor-area-layout-for
+         editor-layout-for-area
          editor-with-area-layout
          editor-switch-area
 
          editor-view-location
          editor-view-in-current-area?
-         editor-view-area
          editor-view-panel-id-in-area)
 
 ;;; ════════════════ 类型 ════════════════
@@ -92,37 +85,26 @@
                "area slot side 要是 left / right / root：~a"
                (area-slot-side slot))])]))
 
-;; → (values layout' ok?)
-(define (area-slot-set-child l slot child)
+;; 把 slot 下的 editor 子树换成 child。
+;; → (values new-root ok?)
+(define (area-slot-replace-child frame slot child)
   (cond
-    [(not slot) (values l #f)]
-    [(not (area-slot-parent-id slot))
-     (values (layout-with-root l child) #t)]
+    [(not slot) (values #f #f)]
+    [(not (area-slot-parent-id slot)) (values child #t)]
     [else
      (define parent-id (area-slot-parent-id slot))
      (define side (area-slot-side slot))
      (define-values (root* changed?)
-       (update-split (layout-root l) parent-id
+       (update-split (layout-root frame) parent-id
                      (λ (s)
                        (case side
                          [(left) (struct-copy split s [left child])]
                          [(right) (struct-copy split s [right child])]
                          [else
-                          (error 'area-slot-set-child
+                          (error 'area-slot-replace-child
                                  "area slot side 要是 left / right / root：~a"
                                  side)]))))
-     (values (if changed?
-                 (struct-copy layout l [root root*])
-                 l)
-             changed?)]))
-
-;; 替换 root，保留 panel-map / focus / next-split-id。
-(define (layout-with-root l root)
-  (make-layout #:root root
-               #:panels (layout-panel-map l)
-               #:focus (layout-focus l)
-               #:next-split-id (layout-next-split-id l)))
-
+     (values root* changed?)]))
 
 ;;; ════════════════ 节点遍历 / 空 area ════════════════
 
@@ -133,21 +115,18 @@
     [else (append (node-panel-ids (split-left n))
                   (node-panel-ids (split-right n)))]))
 
-(define (editor-panel-id-for-area area-id)
-  (string->symbol (format "area-~a-editor" area-id)))
-
 ;; 默认第一个 area 使用 'editor，和 app/layout 的默认 editor panel 保持一致；
 ;; 其他 area 使用唯一 symbol，便于调试和跨 area 操作。
 (define (area-editor-panel-id area-id)
   (if (equal? area-id 1)
       'editor
-      (editor-panel-id-for-area area-id)))
+      (string->symbol (format "area-~a-editor" area-id))))
 
 ;; 新 area 的 split-id 起点：必须避开 chrome 已用的 split-id。
 (define (area-base-split-id layout)
   (layout-next-split-id layout))
 
-(define (make-empty-editor-area area-id next-split-id [focus #f])
+(define (make-empty-editor-area area-id next-split-id)
   (define pid (area-editor-panel-id area-id))
   (define panel
     (p:make-empty-editor-panel pid
@@ -157,7 +136,7 @@
                 #:panels (hash pid panel)
                 #:focus pid
                 #:next-split-id next-split-id)
-   (or focus pid)))
+   pid))
 
 ;; 从当前合成 frame 中抽出当前 area 的 editor 子树。
 (define (editor-area-from-frame layout slot focus)
@@ -212,20 +191,20 @@
        ;; 没有启用多 area（测试 / 旧 state）：按整个 layout 计数。
        [else (length (layout-panel-ids frame))])]
     [else
-     (define a (hash-ref (state-areas state) area-id #f))
-     (if a
-         (node-panel-count (layout-root (editor-area-layout a)))
+     (define area (hash-ref (state-areas state) area-id #f))
+     (if area
+         (node-panel-count (layout-root (editor-area-layout area)))
          0)]))
 
 ;;; ════════════════ area layout 写回 ════════════════
 
 ;; 当前 area 返回完整 frame（panel 就在 frame 里）；inactive 返回 editor-only layout。
-(define (editor-area-layout-for state area-id)
+(define (editor-layout-for-area state area-id)
   (cond
     [(equal? area-id (state-current-area state)) (state-layout state)]
     [else
-     (define a (hash-ref (state-areas state) area-id #f))
-     (and a (editor-area-layout a))]))
+     (define area (hash-ref (state-areas state) area-id #f))
+     (and area (editor-area-layout area))]))
 
 (define (editor-with-area-layout state area-id layout)
   (cond
@@ -233,14 +212,14 @@
      (state-with-layout state layout)]
     [else
      (define areas (state-areas state))
-     (define a (hash-ref areas area-id #f))
+     (define area (hash-ref areas area-id #f))
      (cond
-       [(not a) state]
+       [(not area) state]
        [else
         (state-with-areas
          state
          (hash-set areas area-id
-                   (struct-copy editor-area a [layout layout])))])]))
+                   (struct-copy editor-area area [layout layout])))])]))
 
 ;;; ════════════════ focus 校验 ════════════════
 
@@ -255,10 +234,9 @@
   (cond
     [(focus-valid? state layout saved-focus) saved-focus]
     [else
+     (define pids (layout-panel-ids layout))
      (or (editor-area-first-panel-id area)
-         (and (layout-panel-ids layout)
-              (car (layout-panel-ids layout)))
-         #f)]))
+         (and (pair? pids) (car pids)))]))
 
 ;;; ════════════════ view 位置 ════════════════
 
@@ -270,26 +248,31 @@
   (cond
     [pid (view-location current-id pid)]
     [else
-     (for*/first ([area-id (in-list (hash-keys (state-areas state)))]
-                  [area (in-value (hash-ref (state-areas state) area-id #f))]
-                  #:when area
-                  [pid (in-value (layout-panel-for-view (editor-area-layout area) vid))]
-                  #:when pid)
-       (view-location area-id pid))]))
+     (for/or ([(area-id area) (in-hash (state-areas state))])
+       (define area-pid (layout-panel-for-view (editor-area-layout area) vid))
+       (and area-pid (view-location area-id area-pid)))]))
 
 (define (editor-view-in-current-area? state vid)
   (define frame (state-layout state))
   (and frame vid (layout-panel-for-view frame vid) #t))
 
-(define (editor-view-area state vid)
-  (define loc (editor-view-location state vid))
-  (and loc (view-location-area-id loc)))
-
 (define (editor-view-panel-id-in-area state area-id vid)
-  (define l (editor-area-layout-for state area-id))
+  (define l (editor-layout-for-area state area-id))
   (and l vid (layout-panel-for-view l vid)))
 
 ;;; ════════════════ 切换 ════════════════
+
+;; 跨 area 的瞬时状态属于旧 frame：切换时清掉。
+;; app-state 才有 session；editor-core 直接返回。
+(define (clear-area-transients state)
+  (cond
+    [(not (app-state? state)) state]
+    [else
+     (state-with-select-drag
+      (state-with-drag
+       (state-clear-pending state)
+       #f)
+      #f)]))
 
 ;; 切换当前编辑区。纯 state 更新；不会创建 / 删除 engine view。
 ;; → state'
@@ -302,66 +285,60 @@
     [(equal? current-id target-id) state]
     [else
      (define current-area (editor-area-from-frame frame slot (layout-focus frame)))
-     (define current-pids (editor-area-panel-ids current-area))
-     (define areas0 (state-areas state))
+     (define current-area-pids (editor-area-panel-ids current-area))
+     (define old-areas (state-areas state))
      (define target-area
-       (or (hash-ref areas0 target-id #f)
+       (or (hash-ref old-areas target-id #f)
            (make-empty-editor-area target-id
-                                   (layout-next-split-id frame)
-                                   (area-editor-panel-id target-id))))
+                                   (layout-next-split-id frame))))
      (define target-layout (editor-area-layout target-area))
      (define target-root (layout-root target-layout))
      (unless target-root
        (error 'editor-switch-area "目标 area 没有 editor panel：~a" target-id))
 
      ;; 1. 替换 slot 子树。
-     (define-values (frame1 ok?)
-       (area-slot-set-child frame slot target-root))
+     (define-values (new-root ok?)
+       (area-slot-replace-child frame slot target-root))
      (unless ok?
        (error 'editor-switch-area "无法替换当前 frame 的 editor slot"))
 
      ;; 2. panel-map：去掉 current area，加入 target area。
      (define chrome-panels
        (for/hash ([pid (in-list (layout-panel-ids frame))]
-                  #:unless (memv pid current-pids))
+                  #:unless (memv pid current-area-pids))
          (values pid (layout-panel frame pid))))
      (for ([pid (in-list (layout-panel-ids target-layout))])
        (when (hash-has-key? chrome-panels pid)
          (error 'editor-switch-area
                 "area panel id 与 frame 中的 panel 冲突：~a" pid)))
-     (define panels*
+     (define new-panels
        (for/fold ([h chrome-panels]) ([pid (in-list (layout-panel-ids target-layout))])
          (hash-set h pid (layout-panel target-layout pid))))
 
-     ;; focus 校验必须使用“新 panel-map”的 frame；frame1 还是旧 panel-map。
-     (define frame0
-       (make-layout #:root (layout-root frame1)
-                    #:panels panels*
+     ;; focus 校验必须使用“新 panel-map”的 frame。
+     (define frame-new
+       (make-layout #:root new-root
+                    #:panels new-panels
                     #:focus (layout-focus frame)
                     #:next-split-id (layout-next-split-id target-layout)))
-     (define focus* (restore-focus state frame0 (editor-area-focus target-area) target-area))
-     (define frame* (struct-copy layout frame0 [focus focus*]))
+     (define new-focus
+       (restore-focus state frame-new (editor-area-focus target-area) target-area))
+     (define frame-final (struct-copy layout frame-new [focus new-focus]))
 
      ;; 3. current -> areas；target 从 areas 移除。
-     (define areas*
-       (hash-set (if (hash-has-key? areas0 target-id)
-                     (hash-remove areas0 target-id)
-                     areas0)
+     (define new-areas
+       (hash-set (if (hash-has-key? old-areas target-id)
+                     (hash-remove old-areas target-id)
+                     old-areas)
                  current-id
                  current-area))
 
-     (define state*
+     (define state-switched
        (state-with-current-area
         (state-with-areas
-         (state-with-layout state frame*)
-         areas*)
+         (state-with-layout state frame-final)
+         new-areas)
         target-id))
 
-     ;; 4. 清理跨 area 的瞬时状态。app-state 才有 session。
-     (if (app-state? state*)
-         (state-with-select-drag
-          (state-with-drag
-           (state-clear-pending state*)
-           #f)
-          #f)
-         state*)]))
+     ;; 4. 清理跨 area 的瞬时状态。
+     (clear-area-transients state-switched)]))

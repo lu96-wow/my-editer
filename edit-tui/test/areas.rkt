@@ -20,7 +20,7 @@
 
 ;;; ════════════════ helpers ════════════════
 
-(define (active-layouts state)
+(define (all-layouts state)
   (cons (state-layout state)
         (for/list ([a (in-hash-values (state-areas state))])
           (editor-area-layout a))))
@@ -31,7 +31,7 @@
      (p:panel-views (layout-panel l pid)))))
 
 (define (all-view-ids state)
-  (append* (for/list ([l (in-list (active-layouts state))])
+  (append* (for/list ([l (in-list (all-layouts state))])
              (layout-view-ids l))))
 
 (define (check-unique-views! state)
@@ -106,19 +106,19 @@
 
 ;;; ════════════════ M-0..M-9 键 ════════════════
 
-(define-values (s-c3 _a2) (dispatch-key ed0 s-split-back (key #\3 'alt)))
-(check-equal? (state-current-area s-c3) 3)
-(check-equal? (state-pending s-c3) '())
+(define-values (s-area3 _a2) (dispatch-key ed0 s-split-back (key #\3 'alt)))
+(check-equal? (state-current-area s-area3) 3)
+(check-equal? (state-pending s-area3) '())
 
-(define-values (s-c0 _a4) (dispatch-key ed0 s-c3 (key #\0 'alt)))
-(check-equal? (state-current-area s-c0) 0)
-(check-area-shape! s-c0)
-(check-unique-views! s-c0)
+(define-values (s-area0 _a4) (dispatch-key ed0 s-area3 (key #\0 'alt)))
+(check-equal? (state-current-area s-area0) 0)
+(check-area-shape! s-area0)
+(check-unique-views! s-area0)
 
 ;; 切换清掉 pending / drag / select-drag。
 (define s-transient
   (state-with-select-drag
-   (state-with-drag s-c3 'drag)
+   (state-with-drag s-area3 'drag)
    (select-drag 'editor 1)))
 (define s-transient-switch (editor-switch-area s-transient 5))
 (check-false (state-drag s-transient-switch))
@@ -127,12 +127,12 @@
 
 ;; 切到空 area 后也能正常渲染一帧。
 (define-values (_s-rendered cache-rendered rendered-bytes)
-  (render-frame ed0 s-c3 #f))
+  (render-frame ed0 s-area3 #f))
 (check-true (bytes? rendered-bytes))
 (check-true (positive? (bytes-length rendered-bytes)))
 ;; 用同一 render cache 切到另一个空 area，增量 patch 路径也要正常。
 (define-values (_s-rendered2 _cache-rendered2 rendered-bytes2)
-  (render-frame ed0 s-c0 cache-rendered))
+  (render-frame ed0 s-area0 cache-rendered))
 (check-true (bytes? rendered-bytes2))
 
 ;;; ════════════════ 打开已打开文件：跨 area 聚焦 ════════════════
@@ -141,7 +141,7 @@
 (dynamic-wind
  void
  (λ ()
-   (define s-open (open-and-place! ed0 (editor-switch-area s-c0 1) (path->string p)))
+   (define s-open (open-and-place! ed0 (editor-switch-area s-area0 1) (path->string p)))
    (define vid (editor-focus-view-id s-open))
    (check-true (number? vid))
    (define s-other (editor-switch-area s-open 4))
@@ -171,7 +171,18 @@
    (check-false (editor-view-panel-id s-closed vid))
    (check-false (resources-find-view (state-resources s-closed) vid))
    (check-unique-views! s-closed)
-   (check-area-shape! s-closed))
+   (check-area-shape! s-closed)
+
+   ;; 在非默认（空）编辑区打开文件：placement 落在该 area 自己的 editor panel。
+   (define s-area5 (editor-switch-area s-closed 5))
+   (define s-open5 (open-and-place! ed0 s-area5 (path->string p)))
+   (define vid5 (editor-focus-view-id s-open5))
+   (check-equal? (state-current-area s-open5) 5)
+   (check-true (number? vid5))
+   (check-true (editor-view-in-current-area? s-open5 vid5))
+   (check-true (eq? (editor-focus-panel-kind s-open5) 'editor))
+   (check-unique-views! s-open5)
+   (check-area-shape! s-open5))
  (λ ()
    (when (file-exists? p) (delete-file p))))
 

@@ -67,6 +67,11 @@
         ((contribution-fn c) ed s ps)))
     (write-plugin-state s* owner ps*)))
 
+(define (overlay-visible? state ov)
+  (define anchor (editor-overlay-anchor-view-id ov))
+  (or (not anchor)
+      (editor-view-in-current-area? state anchor)))
+
 (define (run-plugin-overlays ed state)
   ;; → (values state' (listof editor-overlay))
   ;; overlay 本身是纯的；这里只把失败信息变成 flash，不写 plugin-state。
@@ -83,11 +88,7 @@
                 ((contribution-fn c) ed s (plugin-state-of s owner)))))
     (values s*
             (append overlays
-                    (filter (λ (ov)
-                              (define anchor (editor-overlay-anchor-view-id ov))
-                              (or (not anchor)
-                                  (editor-view-in-current-area? s* anchor)))
-                            ovs*)))))
+                    (filter (λ (ov) (overlay-visible? s* ov)) ovs*)))))
 
 (define (run-plugin-timer-handlers ed state ev)
   (for/fold ([s state] [actions '()])

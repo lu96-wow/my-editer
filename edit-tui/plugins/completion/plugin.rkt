@@ -401,7 +401,9 @@
   (cond
     [(and (completion-state? ps)
           (completion-state-open? ps)
-          (completion-state-popup-rect ps))
+          (completion-state-popup-rect ps)
+          (eq? (editor-focus-view-id state)
+               (completion-state-target-vid ps)))
      (list (make-editor-overlay (completion-state-view-id ps)
                                 (completion-state-popup-rect ps)
                                 #:anchor-view-id (completion-state-target-vid ps)
