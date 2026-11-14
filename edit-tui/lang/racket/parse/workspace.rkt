@@ -359,7 +359,12 @@
   (define ordered
     (append (if e (list e) '()) required others))
   (for/or ([d (in-list ordered)])
-    (define snippet (local-def-of-forms (module-analysis-forms (document-entry-analysis d)) sym))
+    (define a (document-entry-analysis d))
+    (define entries (module-analysis-entries a))
+    (define snippet
+      (if entries
+          (local-def-of-entries (document-entry-text d) entries sym)
+          (local-def-of-forms (module-analysis-forms a) sym)))
     (and snippet (cons (document-entry-id d) snippet))))
 
 (define (workspace-local-defs ws id)

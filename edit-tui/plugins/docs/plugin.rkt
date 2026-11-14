@@ -33,7 +33,10 @@
            (docs-for name #:modules (list (car binding))))))
   (append
    (list (format "~a" name))
-   (if local (list "── 本地定义 ──" local) '())
+   (if local
+       (cons "── 本地定义 ──"
+             (string-split local "\n" #:trim? #f))
+       '())
    (if d
        (cons "── 文档 ──"
              (string-split (string-trim (doc->text d)) "\n"))

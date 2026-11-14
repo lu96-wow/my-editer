@@ -183,6 +183,7 @@ edit-tui/
     find.rkt           find 命令 / 前后移动
     buffer-keymap.rkt  键表跟随 resource / active view
     derived-incremental.rkt derived 投影按行增量 / face / 兄弟 view
+    docs-local-lines.rkt docs 本地定义保留原始换行 / 缩进
     workspace.rkt      跨 buffer completion / docs
     workspace-async.rkt workspace analysis debounce / 增量 job / 全量 job
     host.rkt
@@ -505,6 +506,7 @@ racket edit-tui/test/color-word.rkt
 racket edit-tui/test/timer.rkt
 racket edit-tui/test/completion-docs.rkt
 racket edit-tui/test/workspace.rkt
+racket edit-tui/test/docs-local-lines.rkt
 racket edit-tui/test/workspace-async.rkt
 racket edit-tui/test/sidebar.rkt
 racket edit-tui/test/host.rkt

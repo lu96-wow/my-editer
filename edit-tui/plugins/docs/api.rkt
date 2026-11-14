@@ -5,7 +5,8 @@
 ;;; docs state 只由 docs owner 更新。调用方传入当前 docs ps，拿回新的 ps；
 ;;; 不传整份 editor-state，也不写别的插件状态。
 
-(require "../../editor/api.rkt"
+(require racket/string
+         "../../editor/api.rkt"
          "../../lang/racket/api.rkt"
          "../../features/open-buffers/api.rkt"
          "model.rkt")
@@ -32,10 +33,17 @@
   (or (and hit (cdr hit))
       (and text (local-def text name))))
 
+(define (snippet->lines snippet)
+  (if snippet
+      (string-split snippet "\n" #:trim? #f)
+      '()))
+
 (define (local-preview-lines text name [ws #f] [id #f])
   (define snippet (docs-local-snippet text name ws id))
   (cond
-    [snippet (list (format "~a" name) "── 本地定义 ──" snippet)]
+    [snippet
+     (append (list (format "~a" name) "── 本地定义 ──")
+             (snippet->lines snippet))]
     [else (list (format "~a" name) "── 文档 ──" "(loading…)")]))
 
 (define (set-docs-lines ps lines)
