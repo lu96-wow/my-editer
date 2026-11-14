@@ -38,7 +38,7 @@
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
-- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；源变化投影镜像，镜像编辑反译回源；M-l 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；source / mirror panel 边框与 mirror token face 反映关联状态；token face 位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；source / mirror panel 边框与 mirror token face 反映关联状态；token face 位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -474,6 +474,7 @@ bash edit-tui/test/run.sh
 racket edit-tui/test/engine-kinds.rkt
 racket edit-tui/test/replace-lines.rkt
 racket edit-tui/test/bilingual.rkt
+racket edit-tui/test/bilingual-async.rkt
 racket edit-tui/test/hooks.rkt
 racket edit-tui/test/ops.rkt
 racket edit-tui/test/plugins.rkt
@@ -544,7 +545,10 @@ racket edit-tui/test/layers.rkt
     workspace-analysis job。
 5m. panel 删除时，焦点 fallback 必须从删除前的 layout 计算；删除后 id 已不在树里，
     sibling 查找会失败并错误落到第一个 panel。
-5n. bilingual 的关联状态由 panel face + mirror token face 表达：
+5n. bilingual 的源 -> mirror 投影异步：changes hook 只 schedule timer；
+    timer 提交 `bilingual-translate` job；job-result 按 source version / translator
+    / job-id 校验后安装 mirror；旧结果丢弃。mirror -> source 反译仍同步。
+5o. bilingual 的关联状态由 panel face + mirror token face 表达：
     source 用 `bilingual-source-border`，mirror 用 `bilingual-mirror-border`，
     tab fallback 用 `bilingual-pair-border`；
     mirror token face 在翻译时按 mirror 行自身字符索引生成（`bilingual-keyword` /
@@ -588,7 +592,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
-- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；单翻译表；两个 view 的 viewport 行同步、列按行长度比例同步；panel 边框 / mirror token face 反映关联状态；镜像无 resource / history，源为权威；
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；源 -> mirror 走 timer debounce + job 异步投影，反译回源同步；单翻译表；两个 view 的 viewport 行同步、列按行长度比例同步；panel 边框 / mirror token face 反映关联状态；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
@@ -625,4 +629,4 @@ racket edit-tui/test/layers.rkt
 
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
-3. bilingual 结构化数据源 / 异步翻译 / 多 mirror / 多翻译表。
+3. bilingual 结构化数据源 / 多 mirror / 多翻译表。

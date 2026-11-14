@@ -40,6 +40,9 @@
    translator-version
    source-version
    mirror-version
+   pending-version       ; 已调度 / 已提交的 source version
+   pending-job-id
+   timer-id
    source-lines
    mirror-lines
    mirror-faces          ; (listof vector)：每行逐字符 face

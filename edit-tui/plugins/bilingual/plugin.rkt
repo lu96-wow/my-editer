@@ -17,7 +17,8 @@
          "../../editor/api.rkt"
          "action.rkt"
          "api.rkt"
-         "model.rkt")
+         "model.rkt"
+         (only-in "translate.rkt" default-translator default-translator-id))
 
 (provide bilingual-plugin)
 
@@ -59,14 +60,16 @@
 
 ;;; ════════════════ 源 -> 镜像投影 ════════════════
 
-(define (project-source-changes ctx ps)
+(define debounce-ms 80)
+(define translation-kind 'bilingual-translate)
+
+;; 同步路径：headless / state-async? = #f 时使用。
+(define (project-source-changes-sync ctx ps)
   (define ed (change-context-editor ctx))
-  (define state (change-context-state ctx))
   (define did (change-context-doc-id ctx))
   (define p (pair-for-source ps did))
   (cond
-    [(or (not p) (not (eq? (editor-doc-kind ed did) 'user)))
-     (values ctx ps '() #t)]
+    [(not p) (values ctx ps '() #t)]
     [else
      (define tr (pair-translator ps p))
      (cond
@@ -108,10 +111,39 @@
                        [source-version (editor-doc-version ed did)]
                        [mirror-version (editor-doc-version ed
                                                           (pair-mirror-doc-id p))]
+                       [pending-version #f]
+                       [pending-job-id #f]
+                       [timer-id #f]
                        [source-lines new-source-lines]
                        [mirror-lines new-mirror-lines]
                        [mirror-faces new-mirror-faces]))
         (values ctx (state-set-pair ps p*) '() #t)])]))
+
+(define (schedule-projection-timer! ed p)
+  (when (pair-timer-id p)
+    (editor-cancel-timer! ed (pair-timer-id p)))
+  (define tid (editor-schedule-timer! ed debounce-ms))
+  (and tid
+       (struct-copy pair p
+                    [timer-id tid]
+                    [pending-version (editor-doc-version
+                                      ed (pair-source-doc-id p))])))
+
+(define (project-source-changes ctx ps)
+  (define ed (change-context-editor ctx))
+  (define state (change-context-state ctx))
+  (define did (change-context-doc-id ctx))
+  (define p (pair-for-source ps did))
+  (cond
+    [(or (not p) (not (eq? (editor-doc-kind ed did) 'user)))
+     (values ctx ps '() #t)]
+    [(state-async? state)
+     (define p* (schedule-projection-timer! ed p))
+     (cond
+       [p* (values ctx (state-set-pair ps p*) '() #t)]
+       ;; 没有 timer service：退回同步，保证 headless 可用。
+       [else (project-source-changes-sync ctx ps)])]
+    [else (project-source-changes-sync ctx ps)]))
 
 ;;; ════════════════ 镜像 -> 源反译 ════════════════
 
@@ -239,57 +271,225 @@
                        [source-anchor sa*]
                        [mirror-anchor ma*])))]))
 
-;;; ════════════════ 每帧兜底 ════════════════
+;;; ════════════════ 异步翻译 ════════════════
 
-(define (project-pair ed ps p)
-  (define source-text
-    (editor-doc-text ed (pair-source-doc-id p)))
-  (define mirror-text
-    (editor-doc-text ed (pair-mirror-doc-id p)))
+(define (clear-pending ps p)
+  (state-set-pair
+   ps
+   (struct-copy pair p
+                [pending-version #f]
+                [pending-job-id #f])))
+
+(define (submit-projection-job! ed state ps p)
+  (define source-doc-id (pair-source-doc-id p))
+  (define version (editor-doc-version ed source-doc-id))
+  (define text (editor-doc-text ed source-doc-id))
   (define tr (pair-translator ps p))
   (cond
-    [(or (not source-text) (not mirror-text) (not tr)) ps]
+    [(or (not version) (not text) (not tr))
+     (values state (clear-pending ps (struct-copy pair p [timer-id #f])))]
+    [(equal? version (pair-source-version p))
+     ;; 源已回到上次安装的版本：不需要 job。
+     (values state (clear-pending ps (struct-copy pair p [timer-id #f])))]
+    [else
+     (define tr-id (translator-id tr))
+     (define tag (list source-doc-id version tr-id))
+     (define-values (state* job)
+       (state-submit-job state translation-kind
+                         (list source-doc-id version tr-id text)
+                         tag))
+     (define p*
+       (struct-copy pair p
+                    [timer-id #f]
+                    [pending-version version]
+                    [pending-job-id (job-id job)]))
+     (values state* (state-set-pair ps p*))]))
+
+(define (repair-mirror! ed ps p)
+  (write-mirror! ed (pair-mirror-view-id p)
+                 (pair-mirror-lines p) (pair-mirror-faces p))
+  (state-set-pair
+   ps
+   (struct-copy pair p
+                [mirror-version (editor-doc-version
+                                 ed (pair-mirror-doc-id p))])))
+
+(define (ensure-pair-async! ed state ps p)
+  (define source-doc-id (pair-source-doc-id p))
+  (define mirror-doc-id (pair-mirror-doc-id p))
+  (define source-version (editor-doc-version ed source-doc-id))
+  (define mirror-version (editor-doc-version ed mirror-doc-id))
+  (cond
+    [(or (not source-version) (not mirror-version))
+     (values state ps)]
+    [(not (equal? source-version (pair-source-version p)))
+     (cond
+       [(or (pair-timer-id p) (pair-pending-job-id p))
+        (values state ps)]
+       [else (submit-projection-job! ed state ps p)])]
+    [(equal? mirror-version (pair-mirror-version p))
+     (values state ps)]
+    [else
+     ;; 源没变、mirror 变了：反译失败或用户编辑未回源，按源权威恢复投影。
+     (values state (repair-mirror! ed ps p))]))
+
+;;; ════════════════ 同步兜底 ════════════════
+
+(define (full-project-pair-sync ed ps p)
+  (define source-text (editor-doc-text ed (pair-source-doc-id p)))
+  (define tr (pair-translator ps p))
+  (cond
+    [(or (not source-text) (not tr)) ps]
     [else
      (define source-lines (split-lines source-text))
-     (define mirror-lines (split-lines mirror-text))
-     (define source-changed?
-       (not (equal? source-lines (pair-source-lines p))))
-     (define translator-changed?
-       (or (not (equal? (translator-id tr) (pair-translator-id p)))
-           (not (equal? (translator-version tr)
-                        (pair-translator-version p)))))
-     (define mirror-diverged?
-       (and (not source-changed?)
-            (not (equal? mirror-lines (pair-mirror-lines p)))))
+     (define translated-pairs
+       (for/list ([line (in-list source-lines)])
+         (translate-line+face tr line)))
+     (define new-mirror-lines (map car translated-pairs))
+     (define new-mirror-faces (map cdr translated-pairs))
+     (write-mirror! ed (pair-mirror-view-id p)
+                    new-mirror-lines new-mirror-faces)
+     (state-set-pair
+      ps
+      (struct-copy pair p
+                   [translator-version (translator-version tr)]
+                   [source-version (editor-doc-version ed
+                                                      (pair-source-doc-id p))]
+                   [mirror-version (editor-doc-version ed
+                                                      (pair-mirror-doc-id p))]
+                   [pending-version #f]
+                   [pending-job-id #f]
+                   [timer-id #f]
+                   [source-lines source-lines]
+                   [mirror-lines new-mirror-lines]
+                   [mirror-faces new-mirror-faces]))]))
+
+(define (project-pair-sync ed ps p)
+  (define source-doc-id (pair-source-doc-id p))
+  (define mirror-doc-id (pair-mirror-doc-id p))
+  (define source-version (editor-doc-version ed source-doc-id))
+  (define mirror-version (editor-doc-version ed mirror-doc-id))
+  (cond
+    [(or (not source-version) (not mirror-version)) ps]
+    [(and (equal? source-version (pair-source-version p))
+          (equal? mirror-version (pair-mirror-version p)))
+     ps]
+    [(and (equal? source-version (pair-source-version p))
+          (not (equal? mirror-version (pair-mirror-version p))))
+     (repair-mirror! ed ps p)]
+    [else (full-project-pair-sync ed ps p)]))
+
+;;; ════════════════ job / timer handler ════════════════
+
+(define (bilingual-translate-service payload)
+  (define source-doc-id (list-ref payload 0))
+  (define version (list-ref payload 1))
+  (define tr-id (list-ref payload 2))
+  (define text (list-ref payload 3))
+  (define tr
+    (and (eq? tr-id default-translator-id) default-translator))
+  (cond
+    [(not tr)
+     (job-error (format "bilingual: unknown translator ~a" tr-id))]
+    [else
+     (define source-lines (split-lines text))
+     (define translated-pairs
+       (for/list ([line (in-list source-lines)])
+         (translate-line+face tr line)))
+     (list source-doc-id version tr-id
+           source-lines
+           (map car translated-pairs)
+           (map cdr translated-pairs))]))
+
+(define (pair-by-timer ps tid)
+  (and (bilingual-state? ps)
+       (for/first ([p (in-hash-values (bilingual-state-pairs ps))]
+                   #:when (equal? (pair-timer-id p) tid))
+         p)))
+
+(define (handle-bilingual-timer ed state ps ev)
+  (define p (pair-by-timer ps (timer-event-id ev)))
+  (cond
+    [(not p) (values state ps '())]
+    [else
+     (define p1 (struct-copy pair p [timer-id #f]))
+     (define ps1 (state-set-pair ps p1))
+     (define-values (state* ps*) (submit-projection-job! ed state ps1 p1))
+     (values state* ps* '())]))
+
+(define (handle-bilingual-job ed state ps ev)
+  (cond
+    [(not (eq? (job-result-event-kind ev) translation-kind))
+     (values state ps '())]
+    [(not (bilingual-state? ps))
+     (values state ps '())]
+    [else
+     (define result (job-result-event-result ev))
+     (define tag (job-result-event-tag ev))
+     (define source-doc-id
+       (and (list? tag) (not (null? tag)) (car tag)))
+     (define p (and source-doc-id (pair-for-source ps source-doc-id)))
      (cond
-       [(or source-changed? translator-changed? mirror-diverged?)
-        (define translated-pairs
-          (for/list ([line (in-list source-lines)])
-            (translate-line+face tr line)))
-        (define new-mirror-lines (map car translated-pairs))
-        (define new-mirror-faces (map cdr translated-pairs))
-        (write-mirror! ed (pair-mirror-view-id p) new-mirror-lines new-mirror-faces)
-        (define p*
-          (struct-copy pair p
-                       [translator-version (translator-version tr)]
-                       [source-version (editor-doc-version ed
-                                                          (pair-source-doc-id p))]
-                       [mirror-version (editor-doc-version ed
-                                                          (pair-mirror-doc-id p))]
-                       [source-lines source-lines]
-                       [mirror-lines new-mirror-lines]
-                       [mirror-faces new-mirror-faces]))
-        (state-set-pair ps p*)]
-       [else ps])]))
+       [(not p) (values state ps '())]
+       [(not (equal? (pair-pending-job-id p) (job-result-event-id ev)))
+        (values state ps '())]
+       [(job-error? result)
+        (values (state-with-flash
+                 state
+                 (format "bilingual: translation failed: ~a"
+                         (job-error-message result)))
+                (clear-pending ps p)
+                '())]
+       [(not (and (list? result) (= 6 (length result))))
+        (values state (clear-pending ps p) '())]
+       [else
+        (define r-source-doc-id (list-ref result 0))
+        (define r-version (list-ref result 1))
+        (define r-translator-id (list-ref result 2))
+        (define r-source-lines (list-ref result 3))
+        (define r-mirror-lines (list-ref result 4))
+        (define r-mirror-faces (list-ref result 5))
+        (define current-version (editor-doc-version ed source-doc-id))
+        (cond
+          [(or (not (equal? r-source-doc-id source-doc-id))
+               (not (equal? r-version current-version))
+               (not (equal? r-translator-id (pair-translator-id p))))
+           ;; 旧结果：丢掉，下一次 sync 会按当前版本重新提交。
+           (values state (clear-pending ps p) '())]
+          [else
+           (write-mirror! ed (pair-mirror-view-id p)
+                          r-mirror-lines r-mirror-faces)
+           (define p*
+             (struct-copy pair p
+                          [source-version r-version]
+                          [mirror-version (editor-doc-version
+                                           ed (pair-mirror-doc-id p))]
+                          [pending-version #f]
+                          [pending-job-id #f]
+                          [timer-id #f]
+                          [source-lines r-source-lines]
+                          [mirror-lines r-mirror-lines]
+                          [mirror-faces r-mirror-faces]))
+           (values state (state-set-pair ps p*) '())])])]))
 
 (define (sync-bilingual! ed state ps)
   (cond
     [(not (bilingual-state? ps)) (values state ps)]
+    [(state-async? state)
+     (define-values (state1 ps1)
+       (for/fold ([state state] [ps ps])
+                 ([p (in-list (hash-values (bilingual-state-pairs ps)))])
+         (ensure-pair-async! ed state ps p)))
+     (define ps2
+       (for/fold ([ps ps1])
+                 ([p (in-list (hash-values (bilingual-state-pairs ps1)))])
+         (sync-pair-viewport! ed state1 p ps)))
+     (values state1 ps2)]
     [else
      (define ps1
        (for/fold ([ps ps])
                  ([p (in-list (hash-values (bilingual-state-pairs ps)))])
-         (project-pair ed ps p)))
+         (project-pair-sync ed ps p)))
      (define ps2
        (for/fold ([ps ps1])
                  ([p (in-list (hash-values (bilingual-state-pairs ps1)))])
@@ -343,6 +543,9 @@
                #:priority 0
                #:fn capture-mirror-changes))
    #:sync sync-bilingual!
+   #:services (list (service 'bilingual-translate bilingual-translate-service))
+   #:handle-job handle-bilingual-job
+   #:handle-timer handle-bilingual-timer
    #:commands
    (keys
     [(key 'l 'alt) toggle-bilingual-command])))

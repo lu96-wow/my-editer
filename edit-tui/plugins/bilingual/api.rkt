@@ -55,7 +55,7 @@
      (define p
        (pair source-doc-id mirror-doc-id mirror-view-id
              (translator-id tr) (translator-version tr)
-             #f #f '() '() '() #f #f))
+             #f #f #f #f #f '() '() '() #f #f))
      (values state (state-set-pair ps p))]))
 
 (define (bilingual-unbind! state ps source-doc-id)
