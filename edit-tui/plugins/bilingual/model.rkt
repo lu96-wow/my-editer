@@ -53,7 +53,8 @@
    mirror-lines
    mirror-faces          ; (listof vector)：每行逐字符 face
    source-anchor         ; (cons line col) | #f：viewport 左上锚点
-   mirror-anchor)        ; 同上
+   mirror-anchor         ; 同上
+   force-full?)          ; 需要下一次投影强制 full
   #:transparent)
 
 (struct bilingual-state

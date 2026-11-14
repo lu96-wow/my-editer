@@ -424,6 +424,7 @@ C-k            删到行尾
 C-z / C-y      撤销 / 重做
 C-w ←→↑↓       拆分当前 editor
 C-x ←→↑↓       焦点在 editor panel 间移动
+C-x t          手动全量翻译当前 bilingual pair
 C-w d          关闭当前 editor panel
 C-d            同上（兼容）
                最后一个 editor 只清空 views，保留 panel slot
@@ -591,8 +592,10 @@ racket edit-tui/test/layers.rkt
     plugin 通过 `bilingual-word-translate` job 与外部 provider 交互，默认 provider 返回空。
     provider 结果按 job-id + generation 校验后合并；动态词典不写回 vendored 数据文件。
     translator 用 `translator-with-overrides` 叠加动态 map；更新后只重译包含新增词的
-    source 行（`bilingual-retranslate-lines` job），async / sync 都走行 patch；只有
-    pair 形状失效或已有 job 在途时才 full fallback。自动 / 手动触发策略暂不绑定。
+    source 行（`bilingual-retranslate-lines` job），async / sync 都走行 patch。
+    pair 增加 `force-full?`：词典更新时若已有 job / timer 在途，只 mark force-full，
+    等旧 job 完成后再 full，避免“行已被旧表标记翻译完成”而漏更新。
+    `C-x t` 可手动强制当前 pair 全量翻译，清掉旧 pending job / timer 后重新提交 full。
 5t. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
     bilingual mirror panel 被关掉后，pair 与 derived mirror 仍保留；回到 source 按
     `M-l` 时会优先在新 split / tab 中重新挂回已有 mirror view。

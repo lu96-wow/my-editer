@@ -6,6 +6,8 @@
          racket/string
          racket/async-channel
          "../editor/host-api.rkt"
+         "../core/command/api.rkt"
+         "../host/event.rkt"
          "../edit.rkt"
          "../host/bilingual.rkt"
          "../host/jobs.rkt"
@@ -83,6 +85,24 @@
 (define ev2 (async-channel-get ch))
 (check-true (job-result-event? ev2))
 (define state7 (handle-job-result ed state6 ev2))
+(check-true (string-contains? (editor-doc-text ed mirror-did)
+                              "(定义 (add a b)"))
+
+;;; ════════════════ C-x t：手动 full 翻译 ════════════════
+
+(define-values (state8 _a8 attached-source?)
+  (editor-focus-view-if-attached! ed state7 1))
+(check-true attached-source?)
+(define state9 (handle-editor-event ed state8 (key-event (key 'x 'ctrl))))
+(define state10 (handle-editor-event ed state9 (key-event (key 't))))
+(define pending10 (state-pending-jobs state10))
+(check-equal? (length pending10) 1)
+(check-eq? (job-kind (car pending10)) 'bilingual-translate)
+
+(dispatch-jobs! job-rt (state-jobs state10))
+(define ev3 (async-channel-get ch))
+(check-true (job-result-event? ev3))
+(define state11 (handle-job-result ed state10 ev3))
 (check-true (string-contains? (editor-doc-text ed mirror-did)
                               "(定义 (add a b)"))
 

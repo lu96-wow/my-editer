@@ -362,6 +362,7 @@
      (define p*
        (struct-copy pair p
                     [translator-version tr-version]
+                    [force-full? #f]
                     [timer-id #f]
                     [pending-version version]
                     [pending-job-id (job-id job)]))
@@ -386,13 +387,14 @@
   (cond
     [(or (not source-version) (not mirror-version))
      (values state ps)]
-    [(and current-tr-version
-          (not (equal? current-tr-version (pair-translator-version p))))
+    [(or (pair-force-full? p)
+         (and current-tr-version
+              (not (equal? current-tr-version (pair-translator-version p)))))
      (cond
        [(or (pair-timer-id p) (pair-pending-job-id p))
         (values state ps)]
        [else
-        ;; 词典变了但之前没机会做 dirty-line patch：保守 full 重投影。
+        ;; 词典变了 / 手动要求 full，但之前没机会 patch：保守 full 重投影。
         (submit-projection-job! ed state ps p #:force-full? #t)])]
     [(not (equal? source-version (pair-source-version p)))
      (cond
@@ -425,6 +427,7 @@
       ps
       (struct-copy pair p
                    [translator-version (translator-version tr)]
+                   [force-full? #f]
                    [source-version (editor-doc-version ed
                                                       (pair-source-doc-id p))]
                    [mirror-version (editor-doc-version ed
@@ -444,9 +447,10 @@
   (define tr (pair-translator ps p))
   (cond
     [(or (not source-version) (not mirror-version)) ps]
-    [(and tr
-          (not (equal? (translator-version tr)
-                       (pair-translator-version p))))
+    [(or (pair-force-full? p)
+         (and tr
+              (not (equal? (translator-version tr)
+                           (pair-translator-version p)))))
      (full-project-pair-sync ed ps p)]
     [(and (equal? source-version (pair-source-version p))
           (equal? mirror-version (pair-mirror-version p)))
@@ -506,7 +510,9 @@
     [else
      (define p1 (struct-copy pair p [timer-id #f]))
      (define ps1 (state-set-pair ps p1))
-     (define-values (state* ps*) (submit-projection-job! ed state ps1 p1))
+     (define-values (state* ps*)
+       (submit-projection-job! ed state ps1 p1
+                               #:force-full? (pair-force-full? p1)))
      (values state* ps* '())]))
 
 ;;; ════════════════ 动态词翻译 ════════════════
@@ -583,9 +589,13 @@
          ;; 已有 source/mirror job 在跑：先不动；之后由 translator-version
          ;; mismatch 走 full fallback。
          [(or (pair-timer-id p) (pair-pending-job-id p))
-          (values state ps)]
+          (values state
+                  (state-set-pair
+                   ps (struct-copy pair p [force-full? #t])))]
          [(not shape-ok?)
-          (values state ps)]
+          (values state
+                  (state-set-pair
+                   ps (struct-copy pair p [force-full? #t])))]
          [(null? dirty-lines)
           (values state
                   (state-set-pair
@@ -944,6 +954,40 @@
 
 ;;; ════════════════ 命令 ════════════════
 
+(define (full-translate-command ed state ps)
+  (define vid (editor-focus-view-id state))
+  (define did (and vid (editor-view-doc-id ed vid)))
+  (define p
+    (and did
+         (case (editor-doc-kind ed did)
+           [(user) (pair-for-source ps did)]
+           [(derived) (pair-for-mirror ps did)]
+           [else #f])))
+  (cond
+    [(not p)
+     (flash-message state "bilingual: no pair for this buffer")]
+    [else
+     (when (pair-timer-id p)
+       (editor-cancel-timer! ed (pair-timer-id p)))
+     (define p1
+       (struct-copy pair p
+                    [force-full? #t]
+                    [timer-id #f]
+                    [pending-version #f]
+                    [pending-job-id #f]))
+     (define ps1 (state-set-pair ps p1))
+     (cond
+       [(state-async? state)
+        (define-values (state* ps2)
+          (submit-projection-job! ed state ps1 p1 #:force-full? #t))
+        (values (state-with-flash state* "bilingual: full translation started")
+                ps2
+                '())]
+       [else
+        (values (state-with-flash state "bilingual: full translation done")
+                (full-project-pair-sync ed ps1 p1)
+                '())])]))
+
 (define (toggle-bilingual-command ed state ps)
   (define vid (editor-focus-view-id state))
   (define did (and vid (editor-view-doc-id ed vid)))
@@ -1004,6 +1048,7 @@
    #:handle-timer handle-bilingual-timer
    #:commands
    (keys
-    [(key 'l 'alt) toggle-bilingual-command])))
+    [(key 'l 'alt) toggle-bilingual-command]
+    [(key 'x 'ctrl) (key 't) full-translate-command])))
 
 (define bilingual-plugin (make-bilingual-plugin))
