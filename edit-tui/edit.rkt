@@ -14,6 +14,7 @@
          "app/frame.rkt"
          "host/jobs.rkt"
          "host/timers.rkt"
+         "host/persist.rkt"
          "host/render/theme.rkt"
          "config/theme/default.rkt")
 
@@ -31,7 +32,9 @@
 ;;; ════════════════ 终端入口 ════════════════
 
 (define (run-demo-editor)
-  (define-values (ed state) (make-editor-app))
+  (define root (resource-normalize-path (current-directory)))
+  (define-values (ed state0) (make-editor-app #:workspace-root root))
+  (define state (load-editor-session! ed state0 #:workspace-root root))
   (tui:with-tui
    (lambda ()
      (tui:cursor-hide)
@@ -58,11 +61,15 @@
      (dynamic-wind
       void
       (λ ()
-        (run-editor ed
-                    (state-with-async (state-with-screen state area) #t)
-                    #:read-event (λ () (async-channel-get event-channel))
-                    #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
-                    #:job-runtime runtime))
+        (define final
+          (run-editor ed
+                      (state-with-async (state-with-screen state area) #t)
+                      #:read-event (λ () (async-channel-get event-channel))
+                      #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
+                      #:job-runtime runtime))
+        (when (state-quit? final)
+          (void (save-editor-session! ed final #:workspace-root root)))
+        final)
       (λ ()
         (kill-thread input-thread)
         (stop-job-runtime runtime)

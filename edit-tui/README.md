@@ -43,6 +43,7 @@
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
+- `persist/` / `host/persist.rkt`：最小会话缓存；正常退出写 `.editdata/session.rktd`，恢复 layout / focus / resources / user buffer / view 状态；插件状态、history、UI 内容不缓存。
 - `host/workspace.rkt`：消费 source-store 的权威 snapshot，派生语言 workspace；同步模式下 insert / delete / paste / kill-line / undo / redo 的 changes hook 直接 `analysis-edit`；async 模式下 changes hook 只调度 debounce timer，timer 提交 `workspace-analysis-edit` job；新打开文件 / save-as / 没有 changes 的整篇写回提交 `workspace-analysis` job。两类结果都按 job-id + `(doc-id, version)` 校验安装，连续编辑合并到最新版本。
 - `editor/plugin.rkt` 的 `run-plugin-syncs`：按插件顺序执行每帧同步。
 - `guarded-command`：插件命令不适用时自动回落到下一张表。
@@ -687,3 +688,4 @@ racket edit-tui/test/layers.rkt
 1. filetree 拖拽 / 文件系统自动刷新。
 2. C-x o completion / docs 焦点切换。
 3. bilingual 结构化数据源 / 多 mirror / 多翻译表。
+4. 会话缓存增强（插件状态 / history / 自动保存）：完整设计见 `persist/DESIGN.md`。
