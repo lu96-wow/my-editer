@@ -12,7 +12,7 @@
 已经完成：
 
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
-- `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui / derived 文档与 view 分开存储；按 read / user-write / ui-write / derived-write / lifecycle 拆分能力。
+- `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui / derived 文档与 view 分开存储；按 read / user-write / ui-write / derived-write / viewport-write / lifecycle 拆分能力。
 - `engine-doc-kind`：用户文档 `'user`、UI 投影文档 `'ui`、插件派生文档 `'derived` 分开；插件默认查询 `editor-user-doc-ids`，derived 用 `editor-derived-*`。
 - 插件 sync / overlay / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
@@ -38,7 +38,7 @@
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
-- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；源变化投影镜像，镜像编辑反译回源；M-l 打开 / 聚焦 / 关闭 pair；镜像无 resource / history。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；源变化投影镜像，镜像编辑反译回源；M-l 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -94,10 +94,11 @@ edit-tui/
   editor/
     engine/
       store.rkt        engine 内部实现：user/ui/derived doc + view + cache + derived-meta
-      read.rkt         只读能力：document / view / point / face
+      read.rkt         只读能力：document / view / point / viewport / face
       user-write.rkt   用户文档写能力：view-action 解释（kind-aware）
       ui-write.rkt     UI 内容写 + 通用 face / cursor
       derived-write.rkt derived 内容投影写 + CAS
+      viewport-write.rkt 通用 viewport 锚点写（行列同步）
       lifecycle.rkt    engine / buffer / view / derived buffer 创建与删除
       projection-write.rkt UI / derived 共享投影内核
       apply.rkt        view-action 内部解释器
@@ -579,7 +580,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
-- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；单翻译表；镜像无 resource / history，源为权威；
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；单翻译表；两个 view 的 viewport 行同步、列按行长度比例同步；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；

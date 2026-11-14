@@ -51,9 +51,33 @@
 (check-true (string-contains? (editor-doc-text ed mirror-did) "(main xs)"))
 (check-equal? (length (editor-visible-editor-panels state2)) 2)
 
+;; viewport 同步：mirror 作为 leader 时源行跟随；source 作为 leader 时列按比例。
+(editor-set-view-anchor-point! ed mirror-vid (point 3 0))
+(define state2-vp1 (run-plugin-syncs ed state2))
+(check-equal? (point-line (editor-view-anchor-point ed source-vid)) 3)
+(check-equal? (point-column (editor-view-anchor-point ed source-vid)) 0)
+
+(define-values (state2-focus _a2-focus attached?)
+  (editor-focus-view-if-attached! ed state2-vp1 source-vid))
+(check-true attached?)
+(define source-lines (string-split (editor-doc-text ed source-did) "\n" #:trim? #f))
+(define mirror-lines (string-split (editor-doc-text ed mirror-did) "\n" #:trim? #f))
+(define vp-line 3)
+(define src-line (list-ref source-lines vp-line))
+(define mir-line (list-ref mirror-lines vp-line))
+(define src-col (quotient (string-length src-line) 2))
+(define expected-col
+  (round (* (/ src-col (string-length src-line))
+            (string-length mir-line))))
+(editor-set-view-anchor-point! ed source-vid (point vp-line src-col))
+(define state2-vp2 (run-plugin-syncs ed state2-focus))
+(check-equal? (point-line (editor-view-anchor-point ed mirror-vid)) vp-line)
+(check-equal? (point-column (editor-view-anchor-point ed mirror-vid))
+              expected-col)
+
 ;; 源编辑：替换源第 3 行（0 基），mirror 对应行更新。
 (define-values (state3 _actions3)
-  (editor-replace-lines! ed state2 source-vid 3 4
+  (editor-replace-lines! ed state2-vp2 source-vid 3 4
                          (list "(define (add a b)")))
 (define mirror-text3 (editor-doc-text ed mirror-did))
 (check-true (string-contains? mirror-text3 "(定义 (add a b)"))

@@ -38,7 +38,9 @@
    source-version
    mirror-version
    source-lines
-   mirror-lines)
+   mirror-lines
+   source-anchor         ; (cons line col) | #f：viewport 左上锚点
+   mirror-anchor)        ; 同上
   #:transparent)
 
 (struct bilingual-state

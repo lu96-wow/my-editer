@@ -20,6 +20,7 @@
          "../core/job/api.rkt"
          "engine/read.rkt"
          "engine/ui-write.rkt"
+         "engine/viewport-write.rkt"
          "state.rkt"
          "resource.rkt"
          "mode.rkt"
@@ -112,11 +113,17 @@
  editor-view-ids-for-doc
  editor-view-point-line
  editor-view-point-column
+ editor-view-anchor-point
+ editor-view-width
+ editor-view-height
  editor-view-cursor-screen-position
  editor-view-face-at
 
  ;; derived view：plugin-owned 投影写 / 查询
  (all-from-out "derived.rkt")
+
+ ;; 通用 viewport 写
+ editor-set-view-anchor-point!
 
  ;; UI view 写回（status / docs / completion 等普通 view）
  editor-set-view-content!
@@ -196,6 +203,12 @@
   (engine-view-point-line (editor-engine ed) vid))
 (define (editor-view-point-column ed vid)
   (engine-view-point-column (editor-engine ed) vid))
+(define (editor-view-anchor-point ed vid)
+  (engine-view-anchor-point (editor-engine ed) vid))
+(define (editor-view-width ed vid)
+  (engine-view-width (editor-engine ed) vid))
+(define (editor-view-height ed vid)
+  (engine-view-height (editor-engine ed) vid))
 (define (editor-view-cursor-screen-position ed vid)
   (engine-view-cursor-screen-position (editor-engine ed) vid))
 (define (editor-view-face-at ed vid line col)
@@ -209,6 +222,9 @@
                             #:prefix-face prefix-face))
 (define (editor-set-view-cursor! ed vid line #:column [column 0])
   (engine-set-view-cursor! (editor-engine ed) vid line #:column column))
+
+(define (editor-set-view-anchor-point! ed vid p)
+  (engine-set-view-anchor-point! (editor-engine ed) vid p))
 (define (editor-set-view-face-track! ed vid face-track
                                      #:key [key #f]
                                      #:base-version [base-version #f])
