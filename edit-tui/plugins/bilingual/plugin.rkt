@@ -242,34 +242,47 @@
   (define p (editor-view-anchor-point ed vid))
   (and p (cons (point-line p) (point-column p))))
 
-(define (view-line-text ed vid line)
-  (define text (editor-view-text ed vid))
-  (and text
-       (let ([lines (split-lines text)])
-         (and (< line (length lines))
-              (list-ref lines line)))))
+(define (view-cursor ed vid)
+  (define line (editor-view-point-line ed vid))
+  (define col (editor-view-point-column ed vid))
+  (and line col (cons line col)))
+
+(define (line-at lines line)
+  (and (< line (length lines))
+       (list-ref lines line)))
 
 ;; 行同步：leader 的 anchor line 原样给 follower。
-;; 列同步：按 leader 当前行长度比例映射到 follower 行长度。
+;; 列同步：按 leader **光标行** 的长度比例映射到 follower 同一行长度。
+;; 不使用 viewport 顶部行做比例；顶部行可能为空行或与光标行长度差异很大。
 (define (sync-viewport! ed leader-vid follower-vid)
   (define la (view-anchor ed leader-vid))
-  (define leader-line-text
-    (and la (view-line-text ed leader-vid (car la))))
+  (define lc (view-cursor ed leader-vid))
+  (define leader-text (editor-view-text ed leader-vid))
   (define follower-text (editor-view-text ed follower-vid))
   (cond
-    [(or (not la) (not leader-line-text) (not follower-text)) (void)]
+    [(or (not la) (not leader-text) (not follower-text)) (void)]
     [else
+     (define leader-lines (split-lines leader-text))
      (define follower-lines (split-lines follower-text))
      (define line (min (car la) (sub1 (max 1 (length follower-lines)))))
-     (define target-line-text (list-ref follower-lines line))
-     (define leader-len (string-length leader-line-text))
-     (define target-len (string-length target-line-text))
-     (define col
-       (if (zero? leader-len)
-           0
-           (min target-len
-                (round (* (/ (cdr la) leader-len) target-len)))))
-     (editor-set-view-anchor-point! ed follower-vid (point line col))]))
+     (define ratio-line
+       (min (if lc (car lc) (car la))
+            (sub1 (max 1 (length leader-lines)))
+            (sub1 (max 1 (length follower-lines)))))
+     (define leader-line-text (line-at leader-lines ratio-line))
+     (define target-line-text (line-at follower-lines ratio-line))
+     (cond
+       [(or (not leader-line-text) (not target-line-text)) (void)]
+       [else
+        (define leader-len (string-length leader-line-text))
+        (define target-len (string-length target-line-text))
+        (define col
+          (if (zero? leader-len)
+              0
+              (min target-len
+                   (round (* (/ (min (cdr la) leader-len) leader-len)
+                             target-len)))))
+        (editor-set-view-anchor-point! ed follower-vid (point line col))])]))
 
 (define (source-view-id ed state p)
   (define source-doc-id (pair-source-doc-id p))
@@ -282,7 +295,7 @@
                  #:when (equal? (editor-view-doc-id ed vid) source-doc-id))
        vid)]))
 
-;; 哪一边的 anchor 变了，哪一边就是 leader；两边同时变时用 focus 决定。
+;; 哪一边的 viewport anchor 变了，哪一边就是 leader；两边同时变时用 focus 决定。
 (define (sync-pair-viewport! ed state p ps)
   (define source-vid (source-view-id ed state p))
   (define mirror-vid (pair-mirror-view-id p))

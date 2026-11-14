@@ -66,14 +66,14 @@
 (check-equal? (panel-face (layout-panel (state-layout state2) mirror-pid))
               'window-border)
 
-;; viewport 同步：mirror 作为 leader 时源行跟随；source 作为 leader 时列按比例。
+;; viewport 同步：mirror 作为 leader 时源行跟随。
 (editor-set-view-anchor-point! ed mirror-vid (point 3 0))
-(define state2-vp1 (run-plugin-syncs ed state2))
+(define state2-anchor1 (run-plugin-syncs ed state2))
 (check-equal? (point-line (editor-view-anchor-point ed source-vid)) 3)
 (check-equal? (point-column (editor-view-anchor-point ed source-vid)) 0)
 
 (define-values (state2-focus _a2-focus attached?)
-  (editor-focus-view-if-attached! ed state2-vp1 source-vid))
+  (editor-focus-view-if-attached! ed state2-anchor1 source-vid))
 (check-true attached?)
 (define source-lines (string-split (editor-doc-text ed source-did) "\n" #:trim? #f))
 (define mirror-lines (string-split (editor-doc-text ed mirror-did) "\n" #:trim? #f))
@@ -84,15 +84,18 @@
 (define expected-col
   (round (* (/ src-col (string-length src-line))
             (string-length mir-line))))
-(editor-set-view-anchor-point! ed source-vid (point vp-line src-col))
-(define state2-vp2 (run-plugin-syncs ed state2-focus))
-(check-equal? (point-line (editor-view-anchor-point ed mirror-vid)) vp-line)
-(check-equal? (point-column (editor-view-anchor-point ed mirror-vid))
-              expected-col)
+
+;; 顶部行放在 vp-line 之外，列比例仍按光标行 vp-line 计算。
+(define anchor-line 2)
+(editor-set-view-cursor! ed source-vid vp-line #:column src-col)
+(editor-set-view-anchor-point! ed source-vid (point anchor-line src-col))
+(define state2-scroll3 (run-plugin-syncs ed state2-focus))
+(check-equal? (point-line (editor-view-anchor-point ed mirror-vid)) anchor-line)
+(check-equal? (point-column (editor-view-anchor-point ed mirror-vid)) expected-col)
 
 ;; 源编辑：替换源第 3 行（0 基），mirror 对应行更新。
 (define-values (state3 _actions3)
-  (editor-replace-lines! ed state2-vp2 source-vid 3 4
+  (editor-replace-lines! ed state2-scroll3 source-vid 3 4
                          (list "(define (add a b)")))
 (define mirror-text3 (editor-doc-text ed mirror-did))
 (check-true (string-contains? mirror-text3 "(定义 (add a b)"))

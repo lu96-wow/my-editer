@@ -39,7 +39,7 @@
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
-- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按比例同步；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -649,7 +649,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
-- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；源 -> mirror 走 timer debounce + job 异步投影，反译回源同步；单翻译表；两个 view 的 viewport 行同步、列按行长度比例同步；焦点由 core 的 focused-border 表达，mirror token face 反映关联状态；镜像无 resource / history，源为权威；
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；源 -> mirror 走 timer debounce + job 异步投影，反译回源同步；单翻译表；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，mirror token face 反映关联状态；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；
