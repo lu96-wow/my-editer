@@ -563,6 +563,12 @@ racket edit-tui/test/layers.rkt
     `engine-set-derived-projection!`：文本按行 diff、face 只重写变化行；首次安装 /
     cache 缺失 / 用户编辑 mirror 使基线失效时 full fallback。
     旧的 `engine-set-derived-content!` 只作为兼容整篇入口。
+5q. `C-w d` / `editor-close!` 只关闭 layout panel，不删 engine view / doc / resource。
+    bilingual mirror panel 被关掉后，pair 与 derived mirror 仍保留；回到 source 按
+    `M-l` 时会优先在新 split / tab 中重新挂回已有 mirror view，并恢复 panel face。
+    在 mirror 上按 `M-l` 关闭 pair 后，焦点会回到 source；再次 `M-l` 会重新创建
+    derived mirror / pair。只有关闭 source resource 或镜像上的 `M-l` 才真正删除
+    mirror / pair。
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。

@@ -113,9 +113,68 @@
 (define state7 (run-plugin-syncs ed state6))
 (check-equal? (editor-doc-text ed source-did) source-text6)
 
+;;; ════════════════ C-w d 只 detach mirror panel，M-l 重新挂回 ════════════════
+
+(define mirror-text7 (editor-doc-text ed mirror-did))
+(define-values (state-mirror-focus _a-mirror-focus attached-mirror?)
+  (editor-focus-view-if-attached! ed state7 mirror-vid))
+(check-true attached-mirror?)
+(define-values (state-detached _a-detached)
+  (editor-close! ed state-mirror-focus))
+(check-false (editor-view-panel-id state-detached mirror-vid))
+;; panel 关了，但 mirror doc / pair 都还在。
+(check-not-false (engine-doc-kind (editor-engine ed) mirror-did))
+(check-not-false (bilingual-pair-for-source
+                  (state-plugin-state state-detached 'bilingual)
+                  source-did))
+(check-equal? (editor-doc-text ed mirror-did) mirror-text7)
+
+;; 回到 source 按 M-l：已有 pair 且 mirror detached -> host 重新 attach。
+(define-values (state-source _a-source attached-source?)
+  (editor-focus-view-if-attached! ed state-detached source-vid))
+(check-true attached-source?)
+(define state-reattach
+  (handle-editor-event ed state-source (key-event (key 'l 'alt))))
+(define state-reattach-sync (run-plugin-syncs ed state-reattach))
+(define mirror-pid-2 (editor-view-panel-id state-reattach-sync mirror-vid))
+(check-not-false mirror-pid-2)
+(check-not-equal? mirror-pid-2
+                  (editor-view-panel-id state-reattach-sync source-vid))
+(check-equal? (panel-face (layout-panel (state-layout state-reattach-sync)
+                                       mirror-pid-2))
+              'bilingual-mirror-border)
+(check-equal? (editor-doc-text ed mirror-did) mirror-text7)
+
+;;; ════════════════ M-l 关闭 pair 后，仍能从 source 重新创建 ════════════════
+
+;; reattach 后 mirror 是 focused view；M-l 关闭 pair。
+(define state-closed
+  (handle-editor-event ed state-reattach-sync (key-event (key 'l 'alt))))
+(check-false (bilingual-pair-for-source
+              (state-plugin-state state-closed 'bilingual)
+              source-did))
+(check-false (engine-doc-kind (editor-engine ed) mirror-did))
+;; 关闭 pair 后焦点回到 source，而不是 sidebar / filetree。
+(check-equal? (editor-focus-view-id state-closed) source-vid)
+(check-true (string-contains? (state-flash state-closed) "closed"))
+
+;; 同一个 source 再按 M-l：重新创建 pair / derived mirror。
+(define state-reopened
+  (handle-editor-event ed state-closed (key-event (key 'l 'alt))))
+(define state-reopened-sync (run-plugin-syncs ed state-reopened))
+(define p-reopened
+  (bilingual-pair-for-source
+   (state-plugin-state state-reopened-sync 'bilingual)
+   source-did))
+(check-not-false p-reopened)
+(check-not-equal? (pair-mirror-doc-id p-reopened) mirror-did)
+(check-true (string-contains?
+             (editor-doc-text ed (pair-mirror-doc-id p-reopened))
+             "定义"))
+
 ;; 关闭源：mirror doc / pair 都清理。
 (define-values (state8 _a8)
-  (editor-close-resource! ed state7 source-did))
+  (editor-close-resource! ed state-reopened-sync source-did))
 (check-false (engine-doc-kind (editor-engine ed) mirror-did))
 (check-false (bilingual-pair-for-source (state-plugin-state state8 'bilingual)
                                         source-did))
