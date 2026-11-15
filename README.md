@@ -40,11 +40,19 @@ racket edit-tui/test/hooks.rkt
 racket edit-tui/test/filetree.rkt
 ```
 
-## 运行
+## 安装 / 卸载
 
 ```sh
-racket edit-tui/edit.rkt
+scripts/install.sh              # 开发安装（--link）：wrapper 写到 ~/.local/bin/edit-tui
+scripts/install.sh --copy       # 快照安装：复制进 Racket 包目录
+scripts/uninstall.sh            # 删除程序；保留配置 / 会话
+scripts/uninstall.sh --purge    # 连配置 / 状态 / 缓存一起删
 ```
+
+- 命令名是 `edit-tui`，不是 `edit`：Debian 的 `/usr/bin/edit` 已指向 `run-mailcap`。
+- wrapper 生成在 `${XDG_BIN_HOME:-~/.local/bin}`；该目录已在 `PATH` 时不改任何 shell 配置，否则才往 rc 追加带标记的块，卸载时只移除这个块。
+- 安装记录在 `~/.local/state/edit/install.conf`，卸载按它精确回滚；`raco pkg remove edit` 只移除程序，不管 wrapper / PATH。
+- 源码直接运行仍然是 `racket edit-tui/edit.rkt`。
 
 ## 约定
 

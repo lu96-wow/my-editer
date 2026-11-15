@@ -4,11 +4,13 @@
 ;;;
 ;;; core/ 与 edit-tui/ 各自是 collection；包级依赖与元数据只放在这里。
 ;;;
-;;; 开发安装（源码原地，改完直接生效；路径须是绝对路径）：
+;;; 推荐用脚本安装（会同时处理 wrapper / PATH / 卸载记录）：
+;;;   scripts/install.sh
+;;;   scripts/install.sh --copy
+;;; 手动安装（不生成 wrapper）：
 ;;;   raco pkg install --link --auto "$PWD"
-;;; 快照安装（复制进用户 scope）：
-;;;   raco pkg install --copy --auto "$PWD"
 ;;; 卸载：
+;;;   scripts/uninstall.sh
 ;;;   raco pkg remove edit
 
 (define collection 'multi)
