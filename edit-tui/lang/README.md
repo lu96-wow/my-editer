@@ -86,7 +86,10 @@ C 文档优先使用系统 `man`（`man -P cat`）的完整页面；没有 man �
 `data/lib.rkt` 的签名 / 摘要。`EDIT_MAN` 环境变量可以指定 man 可执行文件。
 `man printf` 是 `printf(1)` shell 命令，不是 C 的 `printf(3)`；插件不会显示
 section 1，也不会把它冒充 C 文档。没有 C man 页时显示内置声明，并提示安装
-`man-pages` / `manpages-dev`。补全池 = 内置 lib 符号 + C 关键字 / 类型 /
+`man-db` + `man-pages` / `manpages-dev`。
+中文页面可用发行版的 `manpages-zh` / `man-pages-zh`（覆盖不完整，且版本可能较旧）；
+`man` 默认跟随 `LANG/LC_ALL`，也可以设 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文，
+`EDIT_MAN=/path/to/man` 指定 man 可执行文件。补全池 = 内置 lib 符号 + C 关键字 / 类型 /
 常量 + 当前 buffer 代码标识符；在 `#include <...>` / `#include "..."` 内
 补全头文件名。
 

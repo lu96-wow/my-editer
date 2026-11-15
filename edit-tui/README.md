@@ -36,7 +36,7 @@
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行按当前行前导空白对齐。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
-- `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`）；C 括号配对 / Enter 保持当前行缩进。
+- `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。

@@ -56,14 +56,25 @@
 (define (looks-like-missing? text)
   (or (regexp-match? #rx"No manual entry" text)
       (regexp-match? #rx"no manual entry" text)
-      (regexp-match? #rx"没有.*手册页" text)
-      (regexp-match? #rx"没有关于.*手册页" text)))
+      ;; 只匹配 man 的错误句式；不要用“没有.*手册页”，中文页面正文里
+      ;; 可能同时出现“没有”和“手册页”，那会误杀。
+      (regexp-match? #rx"没有关于.*手册页" text)
+      (regexp-match? #rx"没有.*节.*手册页条目" text)))
+
+(define (man-locale)
+  ;; 例如 EDIT_C_MAN_LOCALE=zh_CN 强制中文页；不设则跟随进程 LANG/LC_ALL。
+  (let ([v (or (getenv "EDIT_C_MAN_LOCALE")
+               (getenv "EDIT_MAN_LOCALE"))])
+    (and (string? v) (not (string=? v "")) v)))
 
 (define (run-command args)
   (and man-exe
        (with-handlers ([exn:fail? (λ (_e) #f)])
+         (define locale (man-locale))
+         (define args*
+           (if locale (append (list "-L" locale) args) args))
          (define-values (proc out in err)
-           (apply subprocess #f #f #f man-exe args))
+           (apply subprocess #f #f #f man-exe args*))
          (close-output-port in)
          (define text (port->string out))
          (define _err (port->string err))
