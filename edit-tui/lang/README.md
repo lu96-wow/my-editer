@@ -89,7 +89,9 @@ section 1，也不会把它冒充 C 文档。没有 C man 页时显示内置声�
 `man-db` + `man-pages` / `manpages-dev`。
 中文页面可用发行版的 `manpages-zh` / `man-pages-zh`（覆盖不完整，且版本可能较旧）；
 `man` 默认跟随 `LANG/LC_ALL`，也可以设 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文，
-`EDIT_MAN=/path/to/man` 指定 man 可执行文件。补全池 = 内置 lib 符号 + C 关键字 / 类型 /
+`EDIT_MAN=/path/to/man` 指定 man 可执行文件。
+没有独立中文页时，会用同一头文件的中文汇总页作为参考（例如 `printf` -> `stdio(3)`），
+并明确标注“相关头文件页”；不会把英文汇总页或 shell 页拿来冒充。补全池 = 内置 lib 符号 + C 关键字 / 类型 /
 常量 + 当前 buffer 代码标识符；在 `#include <...>` / `#include "..."` 内
 补全头文件名。
 

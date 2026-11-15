@@ -127,7 +127,7 @@
      (call-with-semaphore
       man-lock
       (λ ()
-        (define key (list section name))
+        (define key (list section name (man-locale)))
         (cond
           [(hash-has-key? man-cache key) (hash-ref man-cache key)]
           [else
@@ -136,7 +136,9 @@
              (for/or ([s (in-list sections)])
                (define text (run-man s name))
                (and text (clean-page text s))))
-           (hash-set! man-cache key found)
+           ;; 只缓存命中。不要把 #f 永久缓存：用户可能刚安装 manpages-zh /
+           ;; manpages-dev，下一次 M-d 应该能立即看到新页面。
+           (when found (hash-set! man-cache key found))
            found])))]))
 
 
