@@ -10,6 +10,10 @@
 ;;;   buffer 行 -> 第一个 view
 ;;;   view 行   -> 该 view
 ;;; 已挂 panel：聚焦并切 active；detached：placement。
+;;;
+;;; C-v n：给当前行所属 buffer 新建 view
+;;; C-v d：删除当前 view 行对应的 view
+;;; 创建 / 删除由 host/views.rkt 解释 action。
 
 (require racket/string
          "../../core/command/api.rkt"
@@ -103,6 +107,23 @@
 
 (define (close-buffer-command ed state ps)
   (values state ps (list (close-buffer-action))))
+(define (new-view-command ed state ps vid)
+  (define row (current-row ed ps vid))
+  (cond
+    [(not row)
+     (values (state-with-flash state "resources: no line") ps '())]
+    [else
+     (values state ps (list (create-view-action (row-resource-id row))))]))
+
+(define (delete-view-command ed state ps vid)
+  (define row (current-row ed ps vid))
+  (cond
+    [(not row)
+     (values (state-with-flash state "resources: no line") ps '())]
+    [(not (eq? (row-kind row) 'view))
+     (values (state-with-flash state "resources: select a view row") ps '())]
+    [else
+     (values state ps (list (delete-view-action (row-view-id row))))]))
 
 (define (make-resources-plugin #:view vid)
   (make-plugin
@@ -119,5 +140,13 @@
     [(key 'r 'ctrl)
      (make-guarded-command
       #:when (λ (ed state ps) (resources-focused? state vid))
-      #:run refresh-command)])
+      #:run refresh-command)]
+    [(key 'v 'ctrl) (key 'n)
+     (make-guarded-command
+      #:when (λ (ed state ps) (resources-focused? state vid))
+      #:run (λ (ed state ps) (new-view-command ed state ps vid)))]
+    [(key 'v 'ctrl) (key 'd)
+     (make-guarded-command
+      #:when (λ (ed state ps) (resources-focused? state vid))
+      #:run (λ (ed state ps) (delete-view-command ed state ps vid)))])
    #:sync sync-resources))

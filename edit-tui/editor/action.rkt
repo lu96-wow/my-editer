@@ -13,7 +13,9 @@
          (struct-out filetree-create-action)
          (struct-out filetree-delete-action)
          (struct-out filetree-rename-action)
-         (struct-out filetree-find-action))
+         (struct-out filetree-find-action)
+         (struct-out create-view-action)
+         (struct-out delete-view-action))
 
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
@@ -27,3 +29,6 @@
 (struct filetree-rename-action (path kind) #:transparent)   ; kind = 'file | 'dir
 ;; filetree 查找：host 打开输入栏；提交后由 host 调 filetree 的查询入口。
 (struct filetree-find-action (query) #:transparent)
+;; view 管理：host 负责 engine view 创建 / 删除与 layout 挂载。
+(struct create-view-action (resource-id) #:transparent)
+(struct delete-view-action (view-id) #:transparent)

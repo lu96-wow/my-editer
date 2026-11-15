@@ -11,6 +11,7 @@
          "../core/command/api.rkt"
          "../core/layout/api.rkt"
          "../edit.rkt"
+         "../host/event.rkt"
          "fixture.rkt"
          "../features/placement/api.rkt"
          "../host/open.rkt")
@@ -79,6 +80,53 @@
 (define-values (s7 _a7) (editor-insert! ed s6 vid "!"))
 (define-values (s8 _c8 _b8) (render-frame ed s7 #f))
 (check-true (string-contains? (engine-view-text (editor-engine ed) 4) "*"))
+
+;; C-v n / C-v d：resources 面板内创建 / 删除 view。
+(define-values (s9 _a9) (editor-focus! ed s8 'left))
+(check-equal? (editor-focus-view-id s9) 4)
+(define-values (s10 _c10 _b10) (render-frame ed s9 #f))
+(define r0 (state-resource-for-view s10 vid))
+(define views0 (resource-views r0))
+(engine-set-view-cursor! (editor-engine ed) 4 view-line #:column 0)
+(define s11 (handle-editor-event ed s10 (key-event (key 'v 'ctrl))))
+(define s12 (handle-editor-event ed s11 (key-event (key 'n))))
+(check-equal? (editor-focus-view-id s12) 4)
+(define r1 (state-resource-for-view s12 vid))
+(define views1 (resource-views r1))
+(check-equal? (length views1) (add1 (length views0)))
+(define new-vid (for/first ([v (in-list views1)] #:unless (memv v views0)) v))
+(check-not-false new-vid)
+(check-not-false (engine-view-object (editor-engine ed) new-vid))
+
+(define-values (s13 _c13 _b13) (render-frame ed s12 #f))
+(define lines2 (string-split (engine-view-text (editor-engine ed) 4) "\n" #:trim? #f))
+(define new-view-line
+  (for/first ([line (in-list lines2)] [i (in-naturals)]
+              #:when (string-contains? line (format "view ~a" new-vid)))
+    i))
+(check-not-false new-view-line)
+(engine-set-view-cursor! (editor-engine ed) 4 new-view-line #:column 0)
+(define s14 (handle-editor-event ed s13 (key-event (key 'v 'ctrl))))
+(define s15 (handle-editor-event ed s14 (key-event (key 'd))))
+(check-equal? (editor-focus-view-id s15) 4)
+(check-false (engine-view-object (editor-engine ed) new-vid))
+(check-equal? (resource-views (state-resource-for-view s15 vid)) views0)
+
+;; buffer 行 C-v d 不删 view。
+(define-values (s16 _c16 _b16) (render-frame ed s15 #f))
+(define buffer-line
+  (for/first ([line (in-list (string-split (engine-view-text (editor-engine ed) 4)
+                                          "\n" #:trim? #f))]
+              [i (in-naturals)]
+              #:when (and (string-contains? line "one.rkt")
+                          (not (string-contains? line "view"))))
+    i))
+(check-not-false buffer-line)
+(engine-set-view-cursor! (editor-engine ed) 4 buffer-line #:column 0)
+(define s17 (handle-editor-event ed s16 (key-event (key 'v 'ctrl))))
+(define s18 (handle-editor-event ed s17 (key-event (key 'd))))
+(check-true (string-contains? (state-flash s18) "select a view"))
+(check-equal? (resource-views (state-resource-for-view s18 vid)) views0)
 
 (delete-directory/files root)
 (displayln "edit-tui/test/resources-panel.rkt: ok")

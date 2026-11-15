@@ -43,7 +43,7 @@
 - `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / resize 模式 / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
-- `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
+- `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦；`C-v n` 新建 view，`C-v d` 删除选中 view。
 - `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q q / C-q s：save-path / save-confirm / quit-confirm 输入栏流程。
@@ -167,6 +167,7 @@ edit-tui/
 
   host/
     docs.rkt           completion -> docs 的跨插件 action 解释
+    views.rkt          resource view 创建 / 删除 / 挂载操作
     help.rkt           默认帮助 buffer 打开 / 聚焦
     bilingual.rkt      双语 pair：derived mirror 创建 / bind / 清理 / 源行替换
     derived-buffer.rkt 动态 derived doc + view 生命周期
@@ -465,6 +466,8 @@ C-x d          显 / 隐 docs panel
 M-0..M-9       切到编辑区 0..9（默认 1；输入栏 / placement 中不生效）
 C-b            显 / 隐 sidebar（resize 模式外）
 C-x b          切换 sidebar tab（filetree / resources）
+C-v n          resources 面板：为当前 buffer 创建 view
+C-v d          resources 面板：删除选中的 view
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
 C-x f          查找当前 buffer
@@ -650,7 +653,7 @@ racket edit-tui/test/layers.rkt
 - 打开文件去重 / 已打开 panel 聚焦 / detached 进 placement；
 - placement：方向键换目标、Enter 放入、Esc 取消、鼠标点 editor 放入；
 - pair / indent 按 buffer mode 生效（.rkt / #lang racket）；
-- resources 面板（buffer / view 行、dirty、Enter 聚焦；workspace root 内显示相对路径）；
+- resources 面板（buffer / view 行、dirty、Enter 聚焦、C-v n / C-v d 创建 / 删除 view；workspace root 内显示相对路径）；
 - C-s / C-q q / C-q s 的 save-path / save-confirm / quit-confirm 输入栏；
 - 鼠标文本拖选（press 落 caret，move 扩展，release 结束）；
 - UI view 增量：selection 只改 face 行；文本变化做最小区间替换；

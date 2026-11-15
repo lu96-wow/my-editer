@@ -11,6 +11,7 @@
          "../host/docs.rkt"
          "../host/filetree-io.rkt"
          "../host/bilingual.rkt"
+         "../host/views.rkt"
          "../plugins/bilingual/action.rkt")
 
 (provide run-actions)
@@ -49,6 +50,14 @@
       [(filetree-find-action? a)
        (define-values (s* more)
          (open-filetree-find-prompt! s (filetree-find-action-query a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(create-view-action? a)
+       (define-values (s* more)
+         (editor-create-view-for-resource! ed s (create-view-action-resource-id a)))
+       (if (null? more) s* (run-actions ed s* more))]
+      [(delete-view-action? a)
+       (define-values (s* more)
+         (editor-delete-view! ed s (delete-view-action-view-id a)))
        (if (null? more) s* (run-actions ed s* more))]
       [(bilingual-open-action? a)
        (define-values (s* more)
