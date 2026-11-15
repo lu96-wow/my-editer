@@ -61,11 +61,11 @@
 (check-false (requires-any? "editor/ops/surface.rkt" #rx"engine/(api|store|user-write|ui-write|lifecycle)\\.rkt")
              "editor/ops/surface.rkt")
 
-;; layout 只读 + 生命周期。
+;; layout 只读；split 只建空 panel，不创建 view。
 (check-true (requires-any? "editor/layout.rkt" #rx"engine/read\\.rkt")
             "editor/layout.rkt")
-(check-true (requires-any? "editor/layout.rkt" #rx"engine/lifecycle\\.rkt")
-            "editor/layout.rkt")
+(check-false (requires-any? "editor/layout.rkt" #rx"engine/lifecycle\\.rkt")
+             "editor/layout.rkt")
 (check-false (requires-any? "editor/layout.rkt" #rx"engine/(api|store)\\.rkt")
              "editor/layout.rkt")
 

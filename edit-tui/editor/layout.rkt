@@ -4,8 +4,8 @@
 ;;;
 ;;; 布局本身是纯值（core/layout），这里只负责：
 ;;;   · 把 layout 放进 core state
-;;;   · split / close / focus 时创建 / 删除 engine view
-;;;   · resize 只改布局尺寸，不动 view / engine
+;;;   · split 只创建空 panel，不创建 / 复用 view
+;;;   · focus / close / resize 只改布局与焦点
 ;;;   · 跑 layout 扩展点
 ;;;
 ;;; 插件通过 editor/api.rkt 拿到 editor-split! / editor-close! / editor-focus! /
@@ -19,10 +19,8 @@
          "../core/focus/api.rkt"
          (prefix-in p: "../core/panel/api.rkt")
          "engine/read.rkt"
-         "engine/lifecycle.rkt"
          "context.rkt"
          "state.rkt"
-         "resource.rkt"
          "area.rkt"
          "hooks.rkt")
 
@@ -153,12 +151,10 @@
   (define l (state-layout state))
   (define from (and l (layout-focus l)))
   (define p (and from (layout-panel l from)))
-  (define src-vid (and p (p:panel-active p)))
   (cond
     [(not l) (flash state "split: no layout")]
     [(not p) (flash state "split: no focused panel")]
     [(not (eq? (p:panel-kind p) 'editor)) (flash state "split: focus is not editor")]
-    [(not src-vid) (flash state "split: focused panel has no view")]
     [else
      (define ctx0 (make-layout-context engine state 'split #:from-panel from #:dir dir))
      (define-values (ctx1 state1 actions1 allow?)
@@ -168,37 +164,22 @@
        [else
         (define l1 (state-layout state1))
         (define new-pid (state-next-panel-id state1))
-        (define new-vid (state-next-view-id state1))
         (define-values (l2 ok?)
           (layout-split l1 from dir new-pid #:config (state-layout-config state)))
         (cond
           [(not ok?) (flash state1 "split failed")]
           [else
-           ;; 新 panel 需要自己的 view；不能把一个 view 同时挂在两个 panel。
-           (void (engine-create-view-from-view! engine new-vid src-vid))
-           (define-values (l3 added?)
-             (layout-panel-add-view l2 new-pid new-vid))
-           (define l4 (layout-set-focus l3 new-pid))
-           ;; split 出来的 view 也属于同一个 resource。
-           (define src-r (state-resource-for-view state1 src-vid))
-           (define resources*
-             (if src-r
-                 (resources-add-view (state-resources state1)
-                                     (resource-id src-r) new-vid)
-                 (state-resources state1)))
+           ;; 新 panel 是空面板：views / active 都是 #f，不创建也不复用 view。
+           (define l3 (layout-set-focus l2 new-pid))
            (define state2
              (state-with-next-panel-id
-              (state-with-next-view-id
-               (state-with-resources
-                (state-with-layout state1 l4)
-                resources*)
-               (add1 new-vid))
+              (state-with-layout state1 l3)
               (add1 new-pid)))
            (define ctx2
              (struct-copy layout-context ctx1
                           [state state2]
                           [to-panel new-pid]
-                          [result l4]))
+                          [result l3]))
            (define-values (_ctx3 state3 actions3)
              (run-after (editor-registry ed) 'layout-split ctx2 state2))
            (values state3 (append actions1 actions3))])])]))

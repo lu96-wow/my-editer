@@ -19,6 +19,7 @@
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
 - `editor/layout.rkt`：布局操作面（split / close / focus / resize / mouse）+ layout 扩展点。
+- `C-w ←→↑↓` split 只创建空 panel：不创建新 view，也不复用源 panel 的 view。
 - `editor/area.rkt`：多编辑区 checkout / checkin；当前 layout = chrome frame + current editor area，`areas` 只保存非当前 editor-only 布局。
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
 - `features/placement/`：打开文件后的目标 editor 选择。
@@ -441,7 +442,7 @@ C-e            开关 error panel
 C-f            右移
 C-k            删到行尾
 C-z / C-y      撤销 / 重做
-C-w ←→↑↓       拆分当前 editor
+C-w ←→↑↓       拆分当前 editor，新 panel 为空
 C-w c          进入 resize 模式
   ←→↑↓         调整焦点 panel：← 变窄 / → 变宽 / ↑ 变高 / ↓ 变矮
   C-b / Esc    退出 resize 模式

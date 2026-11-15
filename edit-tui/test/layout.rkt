@@ -26,7 +26,7 @@
                        #:next-panel-id 100))
   (values engine ed state))
 
-;;; 1. validate 否决：不创建 panel / view
+;;; 1. validate 否决：不创建 panel
 (define (veto ctx ps)
   (values ctx (add1 ps) '() #f))
 
@@ -41,7 +41,7 @@
 (check-false (engine-view-object engine1 10))
 (check-equal? (state-plugin-state state1* 'layout-test) 1)
 
-;;; 2. observe：split 成功后观察，plugin-state 前进
+;;; 2. observe：split 成功后观察，plugin-state 前进；新 panel 是空面板。
 (define (observe ctx ps)
   (values ctx (add1 ps) (list (flash-action "split-observed")) #t))
 
@@ -53,7 +53,8 @@
 
 (define-values (state2* actions2) (editor-split! ed2 state2 'right))
 (check-equal? (length (editor-visible-editor-panels state2*)) 2)
-(check-not-false (engine-view-object engine2 10))
+(check-false (editor-focus-view-id state2*))
+(check-false (engine-view-object engine2 10))
 (check-equal? (state-plugin-state state2* 'layout-test) 1)
 (check-equal? (map flash-action-message actions2) '("split-observed"))
 
@@ -63,6 +64,6 @@
 (define-values (state-closed _a-closed) (editor-close! ed2 state-focus))
 (check-equal? (length (editor-visible-editor-panels state-closed)) 1)
 (check-equal? (editor-focus-panel-id state-closed) 100)
-(check-equal? (editor-focus-view-id state-closed) 10)
+(check-false (editor-focus-view-id state-closed))
 
 (displayln "edit-tui/test/layout.rkt: ok")
