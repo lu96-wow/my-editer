@@ -43,13 +43,21 @@ racket edit-tui/test/filetree.rkt
 ## 安装 / 卸载
 
 ```sh
-./install.sh        # 程序 -> ~/.local/share/edit，启动器 -> ~/.local/bin/edit-tui
-./uninstall.sh      # 删除上面两处 + install.sh 写入的 PATH 块
+./install.sh        # 自动识别 Linux / Termux
+./uninstall.sh
 ```
 
-- `install.sh` 复制 `core/` 和 `edit-tui/`，用 `raco make` 编译，然后生成启动器。
-- 如果 `~/.bashrc` 里还没有 `~/.local/bin`，会自动追加一个带标记的 PATH 块；`uninstall.sh` 只删这一块。
+默认路径：
+
+| 平台 | 程序 | 启动器 | PATH |
+|---|---|---|---|
+| Linux | `~/.local/share/edit` | `~/.local/bin/edit-tui` | 缺失时自动写入 `~/.bashrc` 标记块 |
+| Termux | `~/.local/share/edit` | `$PREFIX/bin/edit-tui` | `$PREFIX/bin` 已在 PATH，不改 rc |
+
+- 平台识别依据：`TERMUX_VERSION`、`$PREFIX` 路径、`uname`；也可用 `--bin-dir` / `--prefix` 覆盖。
+- `install.sh` 复制 `core/` 和 `edit-tui/`，用 `raco make` 编译，然后生成启动器；不注册 Racket 包。
 - 外部依赖：`racket-tui`、`html-parsing`（脚本会检查并提示 `raco pkg install racket-tui html-parsing`）。
+- Termux 需要先 `pkg install racket`；C 文档的 `man` 是可选的（Termux `pkg install man`，Debian `man-db manpages-dev`）。
 - 源码直接运行仍然是 `racket edit-tui/edit.rkt`。
 
 ## 约定

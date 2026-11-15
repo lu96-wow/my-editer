@@ -29,9 +29,16 @@
            (and (file-exists? configured) configured)
            #f)))
 
+;; Termux 的 man 在 $PREFIX/bin；正常 PATH 下 find-executable-path 也能找到，
+;; 这里作为 PATH 被裁剪时的兜底。
+(define (termux-man)
+  (define p (getenv "PREFIX"))
+  (and p (find-executable-path (build-path p "bin" "man"))))
+
 (define man-exe
   (or (resolve-man)
       (find-executable-path "man")
+      (termux-man)
       (find-executable-path "/usr/bin/man")
       (find-executable-path "/bin/man")
       (find-executable-path "/usr/local/bin/man")))

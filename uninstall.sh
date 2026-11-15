@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # edit-tui 用户卸载
 #
-# 删除：~/.local/share/edit、~/.local/bin/edit-tui、install.sh 写入的 PATH 块。
+# 自动识别 Linux / Termux，默认路径与 install.sh 一致。
+# 删除：安装目录、启动器、install.sh 写入的 PATH 块。
 # 不删除任何 workspace/.editdata。
 #
 # 用法：
@@ -12,10 +13,28 @@
 
 set -euo pipefail
 
-BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
-PREFIX="${EDIT_PREFIX:-$HOME/.local/share/edit}"
+detect_platform() {
+  if [ -n "${TERMUX_VERSION:-}" ]; then echo termux; return; fi
+  case "${PREFIX:-}" in
+    */com.termux/*) echo termux; return ;;
+  esac
+  if [ "$(uname -o 2>/dev/null || true)" = Android ]; then echo termux; return; fi
+  if [ "$(uname -s 2>/dev/null || true)" = Linux ]; then echo linux; return; fi
+  echo unix
+}
+
+PLATFORM="$(detect_platform)"
+TERMUX_HOST_PREFIX="${PREFIX:-}"
+
+if [ "$PLATFORM" = termux ] && [ -n "$TERMUX_HOST_PREFIX" ]; then
+  DEFAULT_BIN="${TERMUX_HOST_PREFIX%/}/bin"
+else
+  DEFAULT_BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
+fi
+
+BIN_DIR="$DEFAULT_BIN"
+INSTALL_DIR="${EDIT_HOME:-$HOME/.local/share/edit}"
 RC="${EDIT_BASHRC:-$HOME/.bashrc}"
-LAUNCHER="$BIN_DIR/edit-tui"
 DRY_RUN=0
 
 usage() {
@@ -23,7 +42,7 @@ usage() {
 用法: ./uninstall.sh [选项]
 
   --prefix DIR     程序目录（默认 ~/.local/share/edit）
-  --bin-dir DIR    启动器目录（默认 ~/.local/bin）
+  --bin-dir DIR    启动器目录（默认 Linux: ~/.local/bin，Termux: $PREFIX/bin）
   --dry-run        只打印将要执行的操作
   -h, --help       显示本帮助
 EOF
@@ -32,7 +51,7 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --prefix)   PREFIX="$2"; shift ;;
+    --prefix)   INSTALL_DIR="$2"; shift ;;
     --bin-dir)  BIN_DIR="$2"; shift ;;
     --dry-run)  DRY_RUN=1 ;;
     -h|--help)  usage 0 ;;
@@ -62,24 +81,28 @@ if [ -e "$LAUNCHER" ] || [ -L "$LAUNCHER" ]; then
   fi
 fi
 
-if [ -e "$PREFIX" ] || [ -L "$PREFIX" ]; then
-  if grep -q '^EDIT_INSTALL=' "$PREFIX/.edit-install" 2>/dev/null; then
-    say "删除程序目录: $PREFIX"
-    run rm -rf "$PREFIX"
+if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then
+  if grep -q '^EDIT_INSTALL=' "$INSTALL_DIR/.edit-install" 2>/dev/null; then
+    say "删除程序目录: $INSTALL_DIR"
+    run rm -rf "$INSTALL_DIR"
   else
-    say "跳过：$PREFIX 没有安装标记"
+    say "跳过：$INSTALL_DIR 没有安装标记"
   fi
 fi
 
+# 只用 bash 内建/常见命令移除标记块，不依赖 awk。
 if [ -f "$RC" ] && grep -qF '# >>> edit-tui >>>' "$RC"; then
   say "从 $RC 移除 PATH 块"
   if [ "$DRY_RUN" != 1 ]; then
     tmp="$(mktemp)"
-    awk '
-      $0 == "# >>> edit-tui >>>" { skip = 1; next }
-      $0 == "# <<< edit-tui <<<" { skip = 0; next }
-      !skip
-    ' "$RC" > "$tmp"
+    skip=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        '# >>> edit-tui >>>') skip=1; continue ;;
+        '# <<< edit-tui <<<') skip=0; continue ;;
+      esac
+      [ "$skip" = 1 ] || printf '%s\n' "$line" >> "$tmp"
+    done < "$RC"
     cat "$tmp" > "$RC"
     rm -f "$tmp"
   fi
