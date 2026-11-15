@@ -2,7 +2,10 @@
 
 ;;; edit-tui/features/replace/replace.rkt —— 选中文本驱动的全局替换
 ;;;
-;;; C-x c：
+;;; C-x c f：完整匹配（选中文本必须是独立标识符 / token）
+;;; C-x c s：子字符串匹配
+;;;
+;;; 流程：
 ;;;   1. 取当前 view 的主选区文本作为源字符串；
 ;;;   2. 打开输入栏输入目标字符串；
 ;;;   3. 提交后替换当前 buffer 内所有非重叠出现。
@@ -25,23 +28,41 @@
       [(string=? (substring text i (+ i m)) query) i]
       [else (loop (add1 i))])))
 
+;; 完整匹配的边界字符：标识符字符。
+;; define 不会命中 define-value / define? / define/contract。
+(define (identifier-char? c)
+  (or (char-alphabetic? c)
+      (char-numeric? c)
+      (memv c '(#\_ #\- #\? #\! #\* #\+ #\/ #\< #\> #\= #\% #\&))))
+
+(define (full-match-at? text source pos)
+  (define end (+ pos (string-length source)))
+  (and (or (zero? pos)
+           (not (identifier-char? (string-ref text (sub1 pos)))))
+       (or (= end (string-length text))
+           (not (identifier-char? (string-ref text end))))))
+
 ;; 在原始文本上扫描；target 里再次出现 source 不会被继续替换。
-(define (string-replace-all text source target)
+;; mode : 'full | 'substring
+(define (string-replace-all text source target mode)
   (define m (string-length source))
   (cond
     [(zero? m) (values text 0)]
     [else
      (define out (open-output-string))
-     (let loop ([start 0] [count 0])
-       (define pos (string-find text source start))
+     (let loop ([search-start 0] [copy-start 0] [count 0])
+       (define pos (string-find text source search-start))
        (cond
          [(not pos)
-          (write-string (substring text start) out)
+          (write-string (substring text copy-start) out)
           (values (get-output-string out) count)]
-         [else
-          (write-string (substring text start pos) out)
+         [(or (eq? mode 'substring)
+              (full-match-at? text source pos))
+          (write-string (substring text copy-start pos) out)
           (write-string target out)
-          (loop (+ pos m) (add1 count))]))]))
+          (loop (+ pos m) (+ pos m) (add1 count))]
+         [else
+          (loop (add1 pos) copy-start count)]))]))
 
 (define (prompt-label s)
   (define one-line (string-replace s "\n" "\\n"))
@@ -50,7 +71,13 @@
       (string-append (substring one-line 0 max-len) "...")
       one-line))
 
-(define (replace-open-prompt! ed state)
+(define (mode-label mode)
+  (case mode
+    [(full) "word"]
+    [(substring) "substring"]
+    [else (error 'replace-open-prompt! "未知 replace mode：~a" mode)]))
+
+(define (replace-open-prompt! ed state mode)
   (define vid (editor-focus-view-id state))
   (cond
     [(not vid)
@@ -68,12 +95,12 @@
          (editor-input-open
           state
           'replace-global
-          (format "Replace ~s with: " (prompt-label source))
-          (list 'replace-global vid source))
+          (format "Replace ~a ~s with: " (mode-label mode) (prompt-label source))
+          (list 'replace-global mode vid source))
          '())])]))
 
 (define (replace-submit! ed state context text)
-  (match-define (list 'replace-global vid source) context)
+  (match-define (list 'replace-global mode vid source) context)
   (define old-text (editor-view-text ed vid))
   (define state* (editor-input-close state))
   (cond
@@ -83,7 +110,7 @@
      (values (state-with-flash state* "replace: source and target are the same")
              '())]
     [else
-     (define-values (new-text count) (string-replace-all old-text source text))
+     (define-values (new-text count) (string-replace-all old-text source text mode))
      (cond
        [(zero? count)
         (values (state-with-flash state*

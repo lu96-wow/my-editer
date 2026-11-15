@@ -190,7 +190,8 @@
     [(find-command? value) (find-open-prompt! state)]
     [(find-next-command? value) (find-next! ed state)]
     [(find-prev-command? value) (find-prev! ed state)]
-    [(replace-selection-command? value) (replace-open-prompt! ed state)]
+    [(replace-selection-command? value)
+     (replace-open-prompt! ed state (replace-selection-command-mode value))]
     [(save-command? value)
      (editor-save-command ed state)]
     [(quit-command? value)

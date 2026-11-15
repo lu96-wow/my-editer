@@ -22,7 +22,7 @@
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
 - `features/placement/`：打开文件后的目标 editor 选择。
 - `features/input/`：输入栏状态 / 编辑接口。
-- `features/replace/`：`C-x c` 取主选区文本作为源，当前 buffer 内全局替换。
+- `features/replace/`：`C-x c f` / `C-x c s` 取主选区文本作为源，当前 buffer 内全局完整 / 子字符串替换。
 - `host/open.rkt` / `host/prompt.rkt` / `host/close.rkt`：打开 / 保存退出 / 关闭 buffer。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
@@ -190,7 +190,7 @@ edit-tui/
     panel-resize.rkt   fixed seam 拖动 / hide-show min clamp
     filetree-io.rkt    C-f 创建 / 删除文件、目录
     find.rkt           find 命令 / 前后移动
-    replace.rkt        C-x c 选中文本全局替换
+    replace.rkt        C-x c f / C-x c s 选中文本全局替换
     buffer-keymap.rkt  键表跟随 resource / active view
     derived-incremental.rkt derived 投影按行增量 / face / 兄弟 view
     docs-local-lines.rkt docs 本地定义保留原始换行 / 缩进
@@ -461,7 +461,8 @@ C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
 C-x f          查找当前 buffer
-C-x c          选中文本作为源，当前 buffer 全局替换
+C-x c f        选中文本作为源，完整匹配全局替换
+C-x c s        选中文本作为源，子字符串全局替换
 C-left         上一个匹配项（filetree 查找也适用）
 C-right        下一个匹配项（filetree 查找也适用）
 C-x ←          聚焦 sidebar
@@ -653,7 +654,7 @@ racket edit-tui/test/layers.rkt
 - filetree C-f l 显式刷新；C-r 兼容保留；
 - resource 持有自己的 command-stack：同一 panel 切 active view 会切换键表；
 - find：C-x f 输入 query，C-left / C-right 前后移动并选中当前匹配；
-- replace：C-x c 用主选区文本作为源，输入目标后替换当前 buffer 内所有匹配；空目标 = 删除匹配；
+- replace：`C-x c f` 完整匹配 / `C-x c s` 子字符串匹配；用主选区文本作为源，输入目标后替换当前 buffer 内所有匹配；空目标 = 删除匹配；完整匹配下 `define` 不会命中 `define-value`；
 - editor tab 切换 / close buffer；
 - color 增量：`'changes` + `color-edit*` 只重扫脏行；所有用户文本操作（含 undo / redo）都产生 changes，只有首次打开 / 外部整篇写回走 sync 全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；
