@@ -4,14 +4,14 @@
 ;;;
 ;;; core/ 与 edit-tui/ 各自是 collection；包级依赖与元数据只放在这里。
 ;;;
-;;; 推荐用脚本安装（会同时处理 wrapper / PATH / 卸载记录）：
-;;;   scripts/install.sh
-;;;   scripts/install.sh --copy
-;;; 手动安装（不生成 wrapper）：
-;;;   raco pkg install --link --auto "$PWD"
+;;; 安装（不经过 Racket 包管理）：
+;;;   scripts/install.sh          # copy 到 /usr/local/lib/edit 并编译
+;;;   scripts/install.sh --link   # 原地编译源码树
 ;;; 卸载：
 ;;;   scripts/uninstall.sh
-;;;   raco pkg remove edit
+;;;
+;;; 本文件及子目录 info.rkt 只作为可选的 raco pkg 元数据保留；
+;;; 安装脚本不会执行 raco pkg install / raco setup。
 
 (define collection 'multi)
 

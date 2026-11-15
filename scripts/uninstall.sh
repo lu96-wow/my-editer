@@ -1,29 +1,63 @@
 #!/usr/bin/env bash
-# edit-tui 卸载脚本
+# edit-tui 卸载脚本（不使用 Racket 包管理）
 #
-# 默认只移除“程序”：rapper、PATH 块、Racket 包。
+# 移除：wrapper、PATH 块、copy 模式的安装目录、可选的旧 Racket 包。
 # 用户数据（配置 / 会话 / 缓存）默认保留；--purge 才删除。
-# 永远不删除任何 <workspace>/.editdata。
+# 永远不删除任何 <workspace>/.editdata，也不会删除 link 模式的源码树。
 #
 # 用法：
-#   scripts/uninstall.sh             # 移除程序
-#   scripts/uninstall.sh --purge     # 同时删除配置 / 状态 / 缓存
+#   sudo scripts/uninstall.sh          # 装到 /usr/local 时需要 sudo
+#   scripts/uninstall.sh --purge       # 连配置 / 状态 / 缓存一起删
 #   scripts/uninstall.sh --dry-run
-#   scripts/uninstall.sh --yes       # --purge 时不需要确认
 #   scripts/uninstall.sh --manifest FILE
 
 set -euo pipefail
 
-MANIFEST="${XDG_STATE_HOME:-$HOME/.local/state}/edit/install.conf"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SELF="$REPO/scripts/uninstall.sh"
+ORIG_ARGS=("$@")
+
+usage() {
+  cat <<'EOF'
+用法: scripts/uninstall.sh [选项]
+
+  --purge          同时删除配置 / 状态 / 缓存
+  --yes, -y        --purge 时不再确认
+  --manifest FILE  指定安装记录
+  --dry-run        只打印将要执行的操作
+  -h, --help       显示本帮助
+EOF
+  exit "${1:-0}"
+}
+
+# ── 运行身份 ─────────────────────────────────────────────────
+if [ "${EUID:-$(id -u)}" -eq 0 ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+  RUN_USER="$SUDO_USER"
+  RUN_HOME="$(getent passwd "$RUN_USER" | cut -d: -f6 || true)"
+  IS_SUDO=1
+else
+  RUN_USER="$(id -un)"
+  RUN_HOME="$HOME"
+  IS_SUDO=0
+fi
+[ -n "${RUN_HOME:-}" ] || { echo "无法确定 $RUN_USER 的 home 目录" >&2; exit 1; }
+
+if [ "$IS_SUDO" = 1 ]; then
+  CONFIG_BASE="$RUN_HOME/.config"
+  STATE_BASE="$RUN_HOME/.local/state"
+  CACHE_BASE="$RUN_HOME/.cache"
+  DATA_BASE="$RUN_HOME/.local/share"
+else
+  CONFIG_BASE="${XDG_CONFIG_HOME:-$HOME/.config}"
+  STATE_BASE="${XDG_STATE_HOME:-$HOME/.local/state}"
+  CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}"
+  DATA_BASE="${XDG_DATA_HOME:-$HOME/.local/share}"
+fi
+MANIFEST="$STATE_BASE/edit/install.conf"
+
 DRY_RUN=0
 PURGE=0
 YES=0
-PKG=edit
-
-usage() {
-  sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-  exit "${1:-0}"
-}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -48,18 +82,52 @@ run() {
   fi
 }
 
+as_user() {
+  if [ "$IS_SUDO" = 1 ]; then
+    sudo -H -u "$RUN_USER" -- "$@"
+  else
+    "$@"
+  fi
+}
+
+need_sudo() {
+  {
+    echo "移除 $1 需要写权限。请用 sudo 重新运行："
+    printf '  sudo %q' "$SELF"
+    if [ "${#ORIG_ARGS[@]}" -gt 0 ]; then printf ' %q' "${ORIG_ARGS[@]}"; fi
+    echo
+  } >&2
+  exit 1
+}
+
 if [ ! -f "$MANIFEST" ]; then
   echo "找不到安装记录: $MANIFEST" >&2
-  echo "如果包还在，可以手动执行: raco pkg remove $PKG" >&2
   exit 1
 fi
 
 # shellcheck disable=SC1090
 . "$MANIFEST"
+
+KIND="${KIND:-link}"
+SOURCE="${SOURCE:-$REPO}"
+PREFIX="${PREFIX:-$SOURCE}"
+PREFIX_OWNED="${PREFIX_OWNED:-0}"
 LAUNCHER="${LAUNCHER:-}"
-BIN_DIR="${BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
 RC_FILE="${RC_FILE:-}"
 RC_BLOCK="${RC_BLOCK:-0}"
+
+# ── 0. 权限检查（先检查，避免删一半） ───────────────────────
+if [ -n "$LAUNCHER" ] && { [ -e "$LAUNCHER" ] || [ -L "$LAUNCHER" ]; }; then
+  if [ ! -w "$(dirname "$LAUNCHER")" ] && [ "$IS_SUDO" != 1 ] && [ "$DRY_RUN" != 1 ]; then
+    need_sudo "$LAUNCHER"
+  fi
+fi
+
+if [ "$KIND" = copy ] && [ "$PREFIX_OWNED" = 1 ] && [ -e "$PREFIX" ]; then
+  if [ ! -w "$PREFIX" ] && [ ! -w "$(dirname "$PREFIX")" ] && [ "$IS_SUDO" != 1 ] && [ "$DRY_RUN" != 1 ]; then
+    need_sudo "$PREFIX"
+  fi
+fi
 
 # ── 1. wrapper ───────────────────────────────────────────────
 if [ -n "$LAUNCHER" ] && { [ -e "$LAUNCHER" ] || [ -L "$LAUNCHER" ]; }; then
@@ -73,7 +141,7 @@ if [ -n "$LAUNCHER" ] && { [ -e "$LAUNCHER" ] || [ -L "$LAUNCHER" ]; }; then
   fi
 fi
 
-# ── 2. PATH 块 ───────────────────────────────────────────────
+# ── 2. PATH 块（只删自己写的那段） ──────────────────────────
 if [ "$RC_BLOCK" = 1 ] && [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
   say "从 $RC_FILE 移除 edit-tui PATH 块"
   if [ "$DRY_RUN" != 1 ]; then
@@ -83,28 +151,54 @@ if [ "$RC_BLOCK" = 1 ] && [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
       $0 == "# <<< edit-tui <<<" { skip = 0; next }
       !skip
     ' "$RC_FILE" > "$tmp"
-    cat "$tmp" > "$RC_FILE"
+    as_user sh -c 'cat > "$1"' sh "$RC_FILE" < "$tmp"
     rm -f "$tmp"
   fi
 fi
 
-# ── 3. Racket 包 ─────────────────────────────────────────────
-pkg_installed() {
-  raco pkg show --dir "$PKG" 2>/dev/null \
-    | awk -v p="$PKG" '$1 == p { found = 1 } END { exit !found }'
-}
-
-if command -v raco >/dev/null && pkg_installed; then
-  say "移除 Racket 包: $PKG"
-  # --no-setup：避免移除过程中被其它失效 link 挡住；需要时手动 raco setup
-  run raco pkg remove --no-setup "$PKG"
+# ── 3. copy 安装目录（link 模式不删源码树） ─────────────────
+if [ "$KIND" = copy ] && [ "$PREFIX_OWNED" = 1 ] && [ -n "$PREFIX" ] && [ -e "$PREFIX" ]; then
+  if [ -f "$PREFIX/.edit-install" ] && grep -q '^EDIT_INSTALL=' "$PREFIX/.edit-install"; then
+    say "删除安装目录: $PREFIX"
+    run rm -rf "$PREFIX"
+  else
+    say "跳过：$PREFIX 没有安装标记"
+  fi
 fi
 
-# ── 4. 用户数据 ──────────────────────────────────────────────
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/edit"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/edit"
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/edit"
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/edit"
+# ── 4. 旧 Racket 包（仅清理同一来源） ───────────────────────
+RACO_BIN="$(as_user sh -c 'command -v raco' 2>/dev/null || true)"
+RACKET_BIN="$(as_user sh -c 'command -v racket' 2>/dev/null || true)"
+if [ -n "$RACO_BIN" ]; then
+  legacy_dir="$(as_user "$RACO_BIN" pkg show --dir edit 2>/dev/null \
+                | awk '$1 == "edit" { print $NF }' || true)"
+  case "$legacy_dir" in
+    "" ) ;;
+    "$SOURCE"|"$RUN_HOME"/.local/share/racket/*)
+      say "移除旧 Racket 包: edit ($legacy_dir)"
+      run as_user "$RACO_BIN" pkg remove --no-setup edit
+      ;;
+    *)
+      say "跳过无关的 Racket 包 edit: $legacy_dir"
+      ;;
+  esac
+fi
+
+# 旧包生成的 racket launcher（不是本脚本的 wrapper）
+if [ -n "$RACKET_BIN" ]; then
+  old_launcher="$(as_user "$RACKET_BIN" -e '(require setup/dirs) (displayln (find-user-console-bin-dir))' 2>/dev/null || true)/edit-tui"
+  if [ -f "$old_launcher" ] && [ "$old_launcher" != "$LAUNCHER" ] \
+     && grep -q "edit-tui/edit.rkt" "$old_launcher" 2>/dev/null; then
+    say "删除旧 launcher: $old_launcher"
+    run rm -f "$old_launcher"
+  fi
+fi
+
+# ── 5. 用户数据 ──────────────────────────────────────────────
+CONFIG_DIR="$CONFIG_BASE/edit"
+STATE_DIR="$STATE_BASE/edit"
+CACHE_DIR="$CACHE_BASE/edit"
+DATA_DIR="$DATA_BASE/edit"
 
 if [ "$PURGE" = 1 ]; then
   say ""
@@ -138,13 +232,13 @@ else
   say "（需要一起删除时重跑: scripts/uninstall.sh --purge）"
 fi
 
-# ── 5. manifest ──────────────────────────────────────────────
+# ── 6. manifest ──────────────────────────────────────────────
 if [ "$DRY_RUN" != 1 ]; then
-  rm -f "$MANIFEST"
-  rmdir "$(dirname "$MANIFEST")" 2>/dev/null || true
+  as_user rm -f "$MANIFEST"
+  as_user rmdir "$(dirname "$MANIFEST")" 2>/dev/null || true
 fi
 
 say "卸载完成。"
-if [ "$PURGE" != 1 ]; then
-  say "注意：已打开终端里的 PATH 可能仍指向 $BIN_DIR，重开终端即可。"
+if [ "$PURGE" != 1 ] && [ -n "$LAUNCHER" ]; then
+  say "注意：已打开终端里的 PATH 可能仍指向 $(dirname "$LAUNCHER")，重开终端即可。"
 fi

@@ -40,18 +40,25 @@ racket edit-tui/test/hooks.rkt
 racket edit-tui/test/filetree.rkt
 ```
 
-## 安装 / 卸载
+## 安装 / 卸载（不注册 Racket 包）
 
 ```sh
-scripts/install.sh              # 开发安装（--link）：wrapper 写到 ~/.local/bin/edit-tui
-scripts/install.sh --copy       # 快照安装：复制进 Racket 包目录
-scripts/uninstall.sh            # 删除程序；保留配置 / 会话
-scripts/uninstall.sh --purge    # 连配置 / 状态 / 缓存一起删
+sudo scripts/install.sh            # copy: 复制 core/ + edit-tui/ 到 /usr/local/lib/edit，在目标目录编译
+sudo scripts/install.sh --link     # link: 在仓库里 raco make，启动器指向仓库（开发用）
+scripts/install.sh --user          # 用户模式：~/.local/share/edit + ~/.local/bin
+scripts/install.sh --copy --user   # 用户目录的独立安装
+sudo scripts/uninstall.sh          # 删除程序；保留配置 / 会话
+sudo scripts/uninstall.sh --purge  # 连配置 / 状态 / 缓存一起删
 ```
 
-- 命令名是 `edit-tui`，不是 `edit`：Debian 的 `/usr/bin/edit` 已指向 `run-mailcap`。
-- wrapper 生成在 `${XDG_BIN_HOME:-~/.local/bin}`；该目录已在 `PATH` 时不改任何 shell 配置，否则才往 rc 追加带标记的块，卸载时只移除这个块。
-- 安装记录在 `~/.local/state/edit/install.conf`，卸载按它精确回滚；`raco pkg remove edit` 只移除程序，不管 wrapper / PATH。
+- 不执行 `raco pkg install` / `raco setup`，不注册 collection；只用 `raco make` 编译入口模块，启动器直接 `racket <prefix>/edit-tui/edit.rkt`。
+- 外部依赖仍需存在（一次性）：`raco pkg install racket-tui html-parsing`；脚本会检查并提示。
+- copy 模式可以独立于源码树；link 模式适合开发，改完源码重跑 `scripts/install.sh` 增量编译。
+- 启动器 `edit-tui` 默认在 `/usr/local/bin`；不叫 `edit` 是因为 Debian 的 `/usr/bin/edit` 已指向 `run-mailcap`。
+- `sudo` 时脚本用 `$SUDO_USER` 降权执行编译，避免 root 的 user scope 影响 `tui` / `html-parsing` 解析。
+- copy 模式有 `.edit-install` 标记才会被卸载删除；link 模式永不删除源码树。
+- Racket 大版本升级后重跑一次 install 即可重新编译。
+- 安装记录在 `~/.local/state/edit/install.conf`；`raco pkg remove edit` 只移除包，不管启动器 / PATH。
 - 源码直接运行仍然是 `racket edit-tui/edit.rkt`。
 
 ## 约定
