@@ -30,6 +30,7 @@
          surface-scroll!
          surface-replace-range!
          surface-replace-lines!
+         surface-replace-text!
          surface-undo!
          surface-redo!
          surface-kill-line!

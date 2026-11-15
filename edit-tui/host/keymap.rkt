@@ -22,6 +22,7 @@
          (struct-out find-command)
          (struct-out find-next-command)
          (struct-out find-prev-command)
+         (struct-out replace-selection-command)
          (struct-out save-command)
          (struct-out quit-command)
          (struct-out toggle-errors-command)
@@ -42,6 +43,7 @@
 (struct find-command () #:transparent)
 (struct find-next-command () #:transparent)
 (struct find-prev-command () #:transparent)
+(struct replace-selection-command () #:transparent)
 (struct save-command () #:transparent)
 (struct quit-command (save-session?) #:transparent)
 (struct toggle-errors-command () #:transparent)
@@ -83,6 +85,7 @@
     [(key 'tab)       (insert-command "  ")]
     [(key 'k 'ctrl)   (kill-line-command)]
     [(key 'x 'ctrl) (key 'f) (find-command)]
+    [(key 'x 'ctrl) (key 'c) (replace-selection-command)]
     [(key 'left 'ctrl)  (find-prev-command)]
     [(key 'right 'ctrl) (find-next-command)]
     [(key 'z 'ctrl)   (undo-command)]

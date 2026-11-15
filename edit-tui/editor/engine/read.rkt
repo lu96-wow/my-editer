@@ -28,6 +28,8 @@
          engine-derived-doc-edit-policy
          engine-view-point-line
          engine-view-point-column
+         engine-view-primary-range
+         engine-view-range-text
          engine-view-anchor-point
          engine-view-width
          engine-view-height
@@ -35,6 +37,14 @@
          engine-view-face-at)
 
 ;;; ════════════════ viewport 读（行列同步用） ════════════════
+
+(define (engine-view-primary-range e vid)
+  (define v (engine-view-object e vid))
+  (and v (view-primary-range v)))
+
+(define (engine-view-range-text e vid r)
+  (define v (engine-view-object e vid))
+  (and v (view-range-text v r)))
 
 (define (engine-view-anchor-point e vid)
   (define v (engine-view-object e vid))

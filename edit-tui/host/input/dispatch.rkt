@@ -18,6 +18,7 @@
          "../../features/input/api.rkt"
          "../../features/placement/api.rkt"
          "../../features/find/api.rkt"
+         "../../features/replace/api.rkt"
          "../prompt.rkt"
          "../keymap.rkt"
          "scope.rkt")
@@ -189,6 +190,7 @@
     [(find-command? value) (find-open-prompt! state)]
     [(find-next-command? value) (find-next! ed state)]
     [(find-prev-command? value) (find-prev! ed state)]
+    [(replace-selection-command? value) (replace-open-prompt! ed state)]
     [(save-command? value)
      (editor-save-command ed state)]
     [(quit-command? value)

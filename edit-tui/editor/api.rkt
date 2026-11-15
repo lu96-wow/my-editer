@@ -113,6 +113,8 @@
  editor-view-ids-for-doc
  editor-view-point-line
  editor-view-point-column
+ editor-view-primary-range
+ editor-view-range-text
  editor-view-anchor-point
  editor-view-width
  editor-view-height
@@ -146,6 +148,7 @@
  editor-ensure!
  editor-replace-range!
  editor-replace-lines!
+ editor-replace-text!
 
  ;; layout 操作面 + 查询（不导出 layout-context / mouse / engine）
  editor-focus-panel-id
@@ -204,6 +207,10 @@
   (engine-view-point-line (editor-engine ed) vid))
 (define (editor-view-point-column ed vid)
   (engine-view-point-column (editor-engine ed) vid))
+(define (editor-view-primary-range ed vid)
+  (engine-view-primary-range (editor-engine ed) vid))
+(define (editor-view-range-text ed vid r)
+  (engine-view-range-text (editor-engine ed) vid r))
 (define (editor-view-anchor-point ed vid)
   (engine-view-anchor-point (editor-engine ed) vid))
 (define (editor-view-width ed vid)
@@ -287,3 +294,6 @@
 
 (define (editor-replace-lines! ed state vid start-line end-line lines)
   (surface-replace-lines! ed state vid start-line end-line lines))
+
+(define (editor-replace-text! ed state vid text)
+  (surface-replace-text! ed state vid text))
