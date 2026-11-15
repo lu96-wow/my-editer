@@ -32,6 +32,24 @@
 (check-equal? (length (buffer-edit! b v (op-type-ignore-readonly "Z"))) 1)
 (check-equal? (buffer-string b) "ZXabc\ndef")
 
+;; ---------- 整 buffer 只读标志 ----------
+;; 标志是 buffer 级 O(1) guard，不物化 readonly 属性轨。
+(define br (make-buffer "abc"))
+(define vr (buffer-add-view! br 10 4))
+(buffer-set-readonly-flag! br #t)
+(check-true (buffer-readonly-flag br))
+(check-false (buffer-edit! br vr (op-type "X")))
+(check-equal? (buffer-string br) "abc")
+;; 导航不受影响。
+(view-right! vr)
+(check-equal? (view-point vr) (point 0 1))
+;; 显式程序化区间写仍可绕过（与 -ignore-readonly 同一层语义）。
+(check-equal? (length (buffer-replace-range! br (range (point 0 0) (point 0 1)) "Z")) 1)
+(check-equal? (buffer-string br) "Zbc")
+(buffer-set-readonly-flag! br #f)
+(check-equal? (length (buffer-edit! br vr (op-type "Y"))) 1)
+(check-equal? (buffer-string br) "ZYbc")
+
 ;;; ---------- undo / redo ----------
 (check-true (buffer-undo! b))                     ; 撤销 Z
 (check-equal? (buffer-string b) "Xabc\ndef")

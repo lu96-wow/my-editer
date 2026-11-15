@@ -21,8 +21,9 @@
 
 (provide
  ;; ---------- 类型（访问器 / 谓词 / 构造器；不含 setter） ----------
- (except-out (struct-out buffer)  ; name / history / views
-             set-buffer-name! set-buffer-history! set-buffer-views!)
+ (except-out (struct-out buffer)  ; name / history / views / readonly-flag
+             set-buffer-name! set-buffer-history! set-buffer-views!
+             set-buffer-readonly-flag!)
  (except-out (struct-out view)    ; buffer / viewport / selections
              set-view-buffer! set-view-viewport! set-view-selections!)
 
@@ -35,6 +36,7 @@
  ;; ---------- buffer 读 / 写 ----------
  buffer-document                   ; buffer → 当前 document
  buffer-set-name!                  ; buffer name → void
+ buffer-set-readonly-flag!        ; buffer flag → void（整缓冲区只读）
 
  ;; ---------- view 读 / 写 ----------
  view-document                     ; view → 当前 document（buffer→history→current）
@@ -60,7 +62,8 @@
                      #:history? [history? #t])
   (buffer name
           (history-open (->document text chunk-lines) history-limit history?)
-          '()))
+          '()
+          #f))
 
 ;; 建一个视图挂到 buffer 上；返回新 view。
 ;; 尺寸是可选的：panel 才是尺寸真相（panel.rect → panels-sync!），这里只是初始占位。
@@ -85,6 +88,8 @@
 
 (define (buffer-document b) (history-document (buffer-history b)))
 (define (buffer-set-name! b n) (set-buffer-name! b n))
+(define (buffer-set-readonly-flag! b flag)
+  (set-buffer-readonly-flag! b (and flag #t)))
 
 ;;; ---------- view 读 / 写 ----------
 

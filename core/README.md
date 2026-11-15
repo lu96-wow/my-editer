@@ -15,6 +15,7 @@
 9. **合并完全显式**：编辑本身不含合并策略；一组操作合成一步用事务（程序）或会话（交互）。
 10. **写回只有一条路径**：`buffer` / `view` 的裸 setter 不外露，改状态一律走提交壳。
 11. **三个面分别有操作词汇**：buffer 面 = `buffer-*`（文本 / 历史）；view 面 = `view-*`（选区 / 视口）；panel 面 = `editor/panel-ops.rkt` 的 `panel-with-*` / `panel-shift` / `panel-resize`（值变换，因为 panel 无身份、不可变）+ `panel-set-point!`。空面板的 view 槽是 `#f`：几何 / 命中 / 导航 / 边框照常，内容 / 光标路径跳过。
+12. **整 buffer 只读是 buffer 标志位**：`buffer-readonly-flag` 是 O(1) 用户编辑 guard，不 materialize 每字符 readonly 属性轨；显式程序化写（`buffer-replace-range!` / UI 投影）仍可绕过。
 
 ## 分层
 

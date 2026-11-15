@@ -54,6 +54,17 @@
 (check-equal? (engine-apply-user-action! e (view-action 'undo 10 #f)) '())
 (check-equal? (engine-view-text e 10) "xd")
 
+;; user buffer 的整 buffer 只读标志。
+(void (engine-create-buffer! e 3 "readonly-user" "ro" #:readonly? #t))
+(void (engine-create-view! e 3 3))
+(check-true (engine-doc-readonly-flag e 3))
+(check-equal? (engine-apply-user-action! e (view-action 'insert 3 (bytes "x"))) '())
+(check-equal? (engine-view-text e 3) "ro")
+(void (engine-set-doc-readonly-flag! e 3 #f))
+(check-false (engine-doc-readonly-flag e 3))
+(check-true (pair? (engine-apply-user-action! e (view-action 'insert 3 (bytes "x")))))
+(check-equal? (engine-view-text e 3) "xro")
+
 ;; 内容投影写：user / ui / derived 各自只走自己的入口。
 (check-false (engine-set-view-content! e 1 '("x") '(#f)))
 (check-true (engine-set-view-content! e 2 '("ui") '(#f)))

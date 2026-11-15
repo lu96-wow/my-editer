@@ -21,6 +21,7 @@
          "../host/keymap.rkt"
          "../host/source.rkt"
          "../host/workspace.rkt"
+         "../config/help/default.rkt"
          "layout.rkt")
 
 (provide editor-vid
@@ -71,6 +72,10 @@
   (void (engine-create-view! engine docs-vid docs-vid))
   (void (engine-create-buffer! engine errors-vid "*errors*" "" #:kind 'ui))
   (void (engine-create-view! engine errors-vid errors-vid))
+  ;; 默认帮助 buffer：UI 文档 + 整 buffer 只读标志；不在 resources 里，C-x h 打开。
+  (void (engine-create-buffer! engine help-doc-id help-buffer-name help-text
+                              #:kind 'ui #:readonly? #t))
+  (void (engine-create-view! engine help-view-id help-doc-id))
   ;; 从文档开头启动；避免 viewport 还没 sync 时把 top-line 锚在末尾。
   (engine-set-view-cursor! engine editor-vid 0 #:column 0)
 

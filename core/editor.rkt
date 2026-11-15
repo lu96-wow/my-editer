@@ -45,6 +45,9 @@
  buffer-set-name!                 ; buffer name → void
  buffer-name
  buffer-views
+ ;; 整缓冲区只读标志：不物化 readonly 属性轨。
+ buffer-readonly-flag
+ buffer-set-readonly-flag!
  view-buffer
  view-selections
  buffer? view?

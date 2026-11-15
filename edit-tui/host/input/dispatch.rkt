@@ -21,6 +21,7 @@
          "../../features/replace/api.rkt"
          "../prompt.rkt"
          "../keymap.rkt"
+         "../help.rkt"
          "scope.rkt")
 
 (provide dispatch-key)
@@ -201,6 +202,7 @@
      (editor-toggle-panel! ed state 'errors)]
     [(clear-errors-command? value)
      (values (state-clear-errors state) '())]
+    [(help-command? value) (editor-open-help! ed state)]
     [(switch-area-command? value)
      (values (editor-switch-area state (switch-area-command-area-id value))
              '())]

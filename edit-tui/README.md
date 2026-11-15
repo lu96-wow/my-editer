@@ -14,6 +14,7 @@
 - `core/`：复用 repo 的纯 core（document / view / panel / rect / render 值）。
 - `editor/engine/`：core buffer / view 的唯一可变拥有者；user / ui / derived 文档与 view 分开存储；按 read / user-write / ui-write / derived-write / viewport-write / lifecycle 拆分能力。
 - `engine-doc-kind`：用户文档 `'user`、UI 投影文档 `'ui`、插件派生文档 `'derived` 分开；插件默认查询 `editor-user-doc-ids`，derived 用 `editor-derived-*`。
+- 整 buffer 只读：`buffer-readonly-flag` / `editor-doc-readonly?`；O(1) 用户编辑 guard，不 materialize 每字符 readonly 属性轨；默认帮助 buffer 使用它。
 - 插件 sync / overlay / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
@@ -24,6 +25,7 @@
 - `features/input/`：输入栏状态 / 编辑接口。
 - `features/replace/`：`C-x c f` / `C-x c s` 取主选区文本作为源，当前 buffer 内全局完整 / 子字符串替换。
 - `host/open.rkt` / `host/prompt.rkt` / `host/close.rkt`：打开 / 保存退出 / 关闭 buffer。
+- `host/help.rkt` + `config/help/default.rkt`：默认帮助 buffer（整 buffer 只读，C-x h 打开 / 聚焦）。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
@@ -96,6 +98,7 @@ edit-tui/
   config/
     layout/default.rkt 各 kind 的默认布局规则
     theme/default.rkt  默认主题数据（纯，不安装）
+    help/default.rkt   默认帮助 buffer 文本 / id
 
   editor/
     engine/
@@ -163,6 +166,7 @@ edit-tui/
 
   host/
     docs.rkt           completion -> docs 的跨插件 action 解释
+    help.rkt           默认帮助 buffer 打开 / 聚焦
     bilingual.rkt      双语 pair：derived mirror 创建 / bind / 清理 / 源行替换
     derived-buffer.rkt 动态 derived doc + view 生命周期
     layout.rkt         host 侧 detach / attach-as-tab / attach-in-new-split
@@ -191,6 +195,7 @@ edit-tui/
     filetree-io.rkt    C-f 创建 / 删除文件、目录
     find.rkt           find 命令 / 前后移动
     replace.rkt        C-x c f / C-x c s 选中文本全局替换
+    help.rkt           帮助 buffer / 整 buffer 只读 / C-x h
     buffer-keymap.rkt  键表跟随 resource / active view
     derived-incremental.rkt derived 投影按行增量 / face / 兄弟 view
     docs-local-lines.rkt docs 本地定义保留原始换行 / 缩进
@@ -422,6 +427,7 @@ racket edit-tui/edit.rkt
 键：
 
 ```text
+C-x h          打开 / 聚焦默认帮助 buffer
 直接打字       插入
 Enter          换行 + 当前行对齐
 Tab            插入两个空格

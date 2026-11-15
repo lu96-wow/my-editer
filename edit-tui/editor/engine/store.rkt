@@ -27,7 +27,8 @@
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version engine-view-doc-id
-         engine-doc-kind engine-view-kind
+         engine-doc-kind engine-view-kind engine-doc-readonly-flag
+         engine-set-doc-readonly-flag!
          engine-doc-ids engine-user-doc-ids engine-ui-doc-ids engine-derived-doc-ids
          engine-user-view-ids engine-ui-view-ids engine-derived-view-ids
          engine-view-ids-for-doc
@@ -160,7 +161,8 @@
                               #:kind [kind 'user]
                               #:owner [owner #f]
                               #:source-doc-id [source-doc-id #f]
-                              #:edit-policy [edit-policy 'intent])
+                              #:edit-policy [edit-policy 'intent]
+                              #:readonly? [readonly? #f])
   (check-kind 'engine-create-buffer! kind)
   (when (eq? kind 'derived)
     (unless (symbol? owner)
@@ -176,6 +178,7 @@
     (error 'engine-create-buffer!
            "owner / source-doc-id 只属于 derived buffer"))
   (define b (make-buffer text name))
+  (buffer-set-readonly-flag! b readonly?)
   (set-docs-of! e kind (hash-set (docs-of e kind) did b))
   (when (eq? kind 'derived)
     ;; derived 不是权威文档：用户编辑不记 history。
@@ -248,6 +251,16 @@
 (define (engine-doc-kind e did)
   (define-values (_b kind) (doc-entry e did))
   kind)
+
+(define (engine-doc-readonly-flag e did)
+  (define b (doc-buffer e did))
+  (and b (buffer-readonly-flag b)))
+
+(define (engine-set-doc-readonly-flag! e did flag)
+  (define b (doc-buffer e did))
+  (cond
+    [(not b) #f]
+    [else (buffer-set-readonly-flag! b flag) #t]))
 
 (define (engine-view-kind e vid)
   (define-values (_v kind) (view-entry e vid))

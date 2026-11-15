@@ -16,14 +16,17 @@
          engine-create-view!
          engine-create-view-from-view!
          engine-remove-view!
-         engine-remove-doc!)
+         engine-remove-doc!
+         engine-set-doc-readonly-flag!)
 
 (define (engine-create-derived-buffer! e did name text
                                       #:owner owner
                                       #:source-doc-id [source-doc-id #f]
-                                      #:edit-policy [edit-policy 'intent])
+                                      #:edit-policy [edit-policy 'intent]
+                                      #:readonly? [readonly? #f])
   (engine-create-buffer! e did name text
                         #:kind 'derived
                         #:owner owner
                         #:source-doc-id source-doc-id
-                        #:edit-policy edit-policy))
+                        #:edit-policy edit-policy
+                        #:readonly? readonly?))

@@ -102,6 +102,7 @@
  editor-view-text
  editor-doc-text
  editor-doc-version
+ editor-doc-readonly?
  editor-view-doc-id
  editor-doc-kind
  editor-view-kind
@@ -185,6 +186,8 @@
   (engine-doc-text (editor-engine ed) did))
 (define (editor-doc-version ed did)
   (engine-doc-version (editor-engine ed) did))
+(define (editor-doc-readonly? ed did)
+  (engine-doc-readonly-flag (editor-engine ed) did))
 (define (editor-view-doc-id ed vid)
   (engine-view-doc-id (editor-engine ed) vid))
 (define (editor-doc-kind ed did)

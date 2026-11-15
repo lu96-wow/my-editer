@@ -14,6 +14,7 @@
          engine-doc-version
          engine-view-doc-id
          engine-doc-kind
+         engine-doc-readonly-flag
          engine-view-kind
          engine-doc-ids
          engine-user-doc-ids

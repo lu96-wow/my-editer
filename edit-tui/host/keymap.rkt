@@ -28,6 +28,7 @@
          (struct-out toggle-errors-command)
          (struct-out clear-errors-command)
          (struct-out switch-area-command)
+         (struct-out help-command)
          navigation-command-table
          editor-base-command-table
          global-base-command-table
@@ -49,6 +50,7 @@
 (struct toggle-errors-command () #:transparent)
 (struct clear-errors-command () #:transparent)
 (struct switch-area-command (area-id) #:transparent)
+(struct help-command () #:transparent)
 
 (define (nav dir) (move-command dir #f))
 (define (nav-shift dir) (move-command dir #t))
@@ -110,7 +112,8 @@
     [(key 'q 'ctrl) (key 'q) (quit-command #f)]
     [(key 'q 'ctrl) (key 's) (quit-command #t)]
     [(key 'e 'ctrl)   (toggle-errors-command)]
-    [(key 'E 'alt)    (clear-errors-command)])
+    [(key 'E 'alt)    (clear-errors-command)]
+    [(key 'x 'ctrl) (key 'h) (help-command)])
    switch-area-command-table))
 
 ;; 每个 opened buffer 的默认键表；现在 racket / text 共用 editor 表。

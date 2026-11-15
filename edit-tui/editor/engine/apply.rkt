@@ -137,13 +137,15 @@
   (unless v (error 'engine-apply-view-action! "view 不存在：~a" vid))
   (define kind (engine-view-kind e vid))
   (define did (engine-view-doc-id e vid))
+  (define readonly? (engine-doc-readonly-flag e did))
   (define text-editable?
-    (case kind
-      [(user) #t]
-      [(derived)
-       (eq? (engine-derived-doc-edit-policy e did) 'intent)]
-      [else #f]))
-  (define history-editable? (eq? kind 'user))
+    (and (not readonly?)
+         (case kind
+           [(user) #t]
+           [(derived)
+            (eq? (engine-derived-doc-edit-policy e did) 'intent)]
+           [else #f])))
+  (define history-editable? (and (not readonly?) (eq? kind 'user)))
   (define b (view-buffer v))
   (define result
     (case (view-action-kind action)
@@ -164,7 +166,7 @@
      (if text-editable? (kill-line! v) '())]
     [(replace-range)
      (cond
-       [(eq? kind 'user)
+       [(and (eq? kind 'user) (not readonly?))
         (match-define (list r text) (view-action-data action))
         (buffer-replace-range! b r text)]
        [else '()])]

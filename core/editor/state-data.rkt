@@ -15,10 +15,11 @@
          (struct-out view))
 
 ;; 共享单元：一份内容 + 历史 + 它的所有 view。身份 = 对象本身。
-(struct buffer (name history views) #:mutable)
-;; name    : string
-;; history : history        （current 就是当前 document 真身）
-;; views   : (listof view)  共享这份内容的视图
+(struct buffer (name history views readonly-flag) #:mutable)
+;; name          : string
+;; history       : history        （current 就是当前 document 真身）
+;; views         : (listof view)  共享这份内容的视图
+;; readonly-flag : bool：整缓冲区只读（用户编辑守；程序写仍可显式绕过）
 
 ;; 视图：显示状态，指回 buffer。身份 = 对象本身。
 (struct view (buffer viewport selections) #:mutable)

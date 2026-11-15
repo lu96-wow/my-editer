@@ -175,23 +175,26 @@
 ;;   '()         提交成功但无变更
 ;;   (list change) 提交成功，含本次所有变更
 ;; 真值 = 已提交（含无变更），#f = 拒绝。
-(define (buffer-edit! b v op #:ensure? [ensure? #t])
-  (define h (buffer-history b))
-  (define doc (history-document h))
-  (define pre-sels (view-selections v))
-  (define-values (doc* sels* changes ok?) ((edit-op-run op) doc pre-sels))
+ (define (buffer-edit! b v op #:ensure? [ensure? #t])
   (cond
-    [(not ok?) #f]                                  ; 只读挡
-    [(null? changes) '()]                           ; 无变更
-    [else
-     (if (in-undo-scope? b)
-         (scope-commit! b doc*)                            ; 事务内：首次 record，之后 merge
-         (set-buffer-history! b (history-record h doc doc*)))
-     (set-view-selections! v sels*)                ; 发起视图：前进
-     (for ([x (in-list (buffer-views b))] #:unless (eq? x v))   ; 兄弟视图：rebase
-       (set-view-selections! x (selections-rebase changes (view-selections x))))
-     (when ensure? (view-ensure! v))
-     changes]))
+   [(buffer-readonly-flag b) #f]
+   [else
+    (define h (buffer-history b))
+    (define doc (history-document h))
+    (define pre-sels (view-selections v))
+    (define-values (doc* sels* changes ok?) ((edit-op-run op) doc pre-sels))
+    (cond
+      [(not ok?) #f]                                  ; 只读挡
+      [(null? changes) '()]                           ; 无变更
+      [else
+       (if (in-undo-scope? b)
+           (scope-commit! b doc*)                            ; 事务内：首次 record，之后 merge
+           (set-buffer-history! b (history-record h doc doc*)))
+       (set-view-selections! v sels*)                ; 发起视图：前进
+       (for ([x (in-list (buffer-views b))] #:unless (eq? x v))   ; 兄弟视图：rebase
+         (set-view-selections! x (selections-rebase changes (view-selections x))))
+       (when ensure? (view-ensure! v))
+       changes])]))
 
 ;; 整篇设置当前文档：不记步（在事务内则作为该步）、所有视图重定位。
 ;; value = string | document。返回整篇替换的变更描述（'() = 无变更）。
