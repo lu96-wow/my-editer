@@ -85,7 +85,13 @@
    (list 'syntax-keyword-module  (style (rgb 120 200 200) #f '()))
    (list 'syntax-string          (style (rgb 190 220 140) #f '()))
    (list 'syntax-comment         (style (rgb 120 120 130) #f '(italic)))
-   (list 'syntax-number          (style (rgb 200 170 240) #f '()))))
+   (list 'syntax-number          (style (rgb 200 170 240) #f '()))
+   ;; C / 其它语言的通用语义角色
+   (list 'syntax-keyword         (style (rgb 230 150 180) #f '()))
+   (list 'syntax-type            (style (rgb 120 180 240) #f '()))
+   (list 'syntax-preprocessor    (style (rgb 190 150 240) #f '()))
+   (list 'syntax-function        (style (rgb 190 220 140) #f '()))
+   (list 'syntax-constant        (style (rgb 235 190 110) #f '()))))
 
 ;; 同词着色：12 色粉彩，同词同色。
 (define word-color-theme

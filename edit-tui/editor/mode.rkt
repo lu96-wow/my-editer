@@ -11,7 +11,8 @@
 ;;; 由 host 的 mode-command-stack 绑定，解析环境以后再加。
 
 (require racket/path
-         racket/string)
+         racket/string
+         "../lang/c/base/file.rkt")
 
 (provide doc-mode-for)
 
@@ -30,5 +31,7 @@
 (define (doc-mode-for path text)
   (cond
     [(racket-file? path) 'racket]
+    [(c-file? path) 'c]
     [(and (not path) (racket-text? text)) 'racket]
+    [(and (not path) (c-text? text)) 'c]
     [else 'text]))

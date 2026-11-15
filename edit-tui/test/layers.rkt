@@ -26,6 +26,7 @@
   '("plugins/pair/plugin.rkt"
     "plugins/indent/plugin.rkt"
     "plugins/racket-color/plugin.rkt"
+    "plugins/c-color/plugin.rkt"
     "plugins/layout/plugin.rkt"
     "plugins/filetree/plugin.rkt"
     "plugins/resources/plugin.rkt"

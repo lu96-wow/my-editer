@@ -4,6 +4,25 @@
 
 ```text
 lang/
+  shared/
+    edit.rkt              语言无关的 line-edit / 增量 splice
+  c/
+    api.rkt               唯一对外面
+    base/
+      file.rkt            .c / .h / #include 识别
+      keywords.rkt        关键字 / 类型 / 常量
+      lex.rkt             C 行内词法 + 跨行块注释 / 字符串
+      indent.rkt          Enter 轻量缩进
+    color/
+      highlight.rkt       role 映射
+      color.rkt           行级增量 color-state
+    completion/
+      completion.rkt      lib + 本地标识符候选
+    docs/
+      docs.rkt            本地声明 + 内置声明 + man
+      man.rkt             调用系统 man
+    data/
+      lib.rkt             C / POSIX / Unix / Linux 常见符号索引
   racket/
     api.rkt              唯一对外面（只聚合）
     base/                语言基础值 / 词法
@@ -48,6 +67,28 @@ lang/python/
 
 `api.rkt` 是该语言唯一对外面；编辑器侧不要直接 require 语言内部实现。
 语言层不 require `app` / `host` / `editor` / `plugins` / `edit-tui/core`，保持纯、可单独测试。
+
+## C 基础能力
+
+```racket
+(require "edit-tui/lang/c/api.rkt")
+
+(doc-mode-for "a.c" "")        ; 'c
+(c-identifier-at text line col)
+(c-highlight-text text)
+(c-color-open text)
+(c-completion-at path text line col)
+(c-docs-lines "printf")
+(c-indent-for-newline text line col)
+```
+
+C 文档优先使用系统 `man`（`man -P cat`）的完整页面；没有 man 页面时退回
+`data/lib.rkt` 的签名 / 摘要。`EDIT_MAN` 环境变量可以指定 man 可执行文件。
+`man printf` 是 `printf(1)` shell 命令，不是 C 的 `printf(3)`；插件不会显示
+section 1，也不会把它冒充 C 文档。没有 C man 页时显示内置声明，并提示安装
+`man-pages` / `manpages-dev`。补全池 = 内置 lib 符号 + C 关键字 / 类型 /
+常量 + 当前 buffer 代码标识符；在 `#include <...>` / `#include "..."` 内
+补全头文件名。
 
 ## Racket 基础能力
 

@@ -8,6 +8,7 @@
 (require racket/string
          "../../editor/api.rkt"
          "../../lang/racket/api.rkt"
+         (only-in "../../lang/c/api.rkt" c-local-def)
          "../../features/open-buffers/api.rkt"
          "model.rkt")
 
@@ -24,22 +25,26 @@
   (define did (and vid (editor-view-doc-id ed vid)))
   (define text (and did (editor-doc-text ed did)))
   (define r (and vid (state-resource-for-view state vid)))
-  (values did text (and r (resource-path r))))
+  (values did text (and r (resource-path r))
+          (and did (state-doc-mode state did))))
 
 ;; 本地定义优先查 workspace（当前 buffer + require 的本地 buffer + 其它打开 buffer）；
 ;; workspace 不可用时退回当前 buffer。
-(define (docs-local-snippet text name [ws #f] [id #f])
-  (define hit (and ws id (workspace-local-def ws id name)))
-  (or (and hit (cdr hit))
-      (and text (local-def text name))))
+(define (docs-local-snippet text name [ws #f] [id #f] [mode 'racket])
+  (case mode
+    [(c) (and text (c-local-def text name))]
+    [else
+     (define hit (and ws id (workspace-local-def ws id name)))
+     (or (and hit (cdr hit))
+         (and text (local-def text name)))]))
 
 (define (snippet->lines snippet)
   (if snippet
       (string-split snippet "\n" #:trim? #f)
       '()))
 
-(define (local-preview-lines text name [ws #f] [id #f])
-  (define snippet (docs-local-snippet text name ws id))
+(define (local-preview-lines text name [ws #f] [id #f] [mode 'racket])
+  (define snippet (docs-local-snippet text name ws id mode))
   (cond
     [snippet
      (append (list (format "~a" name) "── 本地定义 ──")
@@ -59,20 +64,23 @@
     [(not (docs-state? ps)) (values state ps '())]
     [(not (docs-visible? state ps)) (values state ps '())]
     [else
-     (define-values (did text path) (focus-doc-info ed state))
+     (define-values (did text path mode) (focus-doc-info ed state))
      (define ws (editor-workspace ed))
      ;; workspace 已有当前文档时，open 映射会被 workspace 替代，不必重复构建。
      (define open
        (if (and ws did (workspace-doc ws did))
            (hash)
            (editor-open-texts ed state)))
-     (define ps1 (set-docs-lines ps (local-preview-lines text name ws did)))
+     (define ps1 (set-docs-lines ps (local-preview-lines text name ws did mode)))
+     ;; 新内容从第一条开始显示；用户之后仍可自己滚 docs 面板。
+     (editor-set-view-cursor! ed (docs-state-view ps1) 0 #:column 0)
+     (editor-ensure! ed state (docs-state-view ps1))
      (cond
        [(not text) (values state ps1 '())]
        [else
         (define-values (state2 job)
           (state-submit-job state 'docs
-                                   (list name path text open ws did)
+                                   (list name path text open ws did mode)
                                    (list 'docs name)))
         (values state2
                 (struct-copy docs-state ps1 [request-id (job-id job)])

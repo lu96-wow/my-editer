@@ -113,7 +113,7 @@
 ;; 以后可以在前面插 mode 专属 overlay，仍是“resource 持有 stack”。
 (define (mode-command-stack mode)
   (case mode
-    [(racket text) (command-table-stack-from-tables
-                    (list editor-base-command-table))]
+    [(racket c text) (command-table-stack-from-tables
+                      (list editor-base-command-table))]
     [else (command-table-stack-from-tables
            (list editor-base-command-table))]))

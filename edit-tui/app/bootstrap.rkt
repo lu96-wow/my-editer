@@ -11,6 +11,7 @@
          "../plugins/pair/plugin.rkt"
          "../plugins/indent/plugin.rkt"
          "../plugins/racket-color/plugin.rkt"
+         "../plugins/c-color/plugin.rkt"
          "../plugins/layout/plugin.rkt"
          "../plugins/filetree/plugin.rkt"
          "../plugins/resources/plugin.rkt"
@@ -113,6 +114,7 @@
                          #:root workspace-root)
                         (make-resources-plugin #:view resources-vid)
                         racket-color-plugin
+                        c-color-plugin
                         layout-plugin
                         (make-completion-plugin #:view completion-vid)
                         (make-docs-plugin #:view docs-vid #:panel-id 'docs)

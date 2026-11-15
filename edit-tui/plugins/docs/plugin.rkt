@@ -7,40 +7,43 @@
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
          "../../lang/racket/api.rkt"
+         (only-in "../../lang/c/api.rkt"
+                  c-docs-lines c-identifier-at)
          "model.rkt"
          "api.rkt")
 
 (provide make-docs-plugin)
 
 (define (docs-service payload)
-  (match-define (list name path text open ws id) payload)
-  (define local (docs-local-snippet text name ws id))
-  (define ctx (and text
-                   (make-completion-context path text
-                                            #:open open
-                                            #:workspace ws
-                                            #:id id)))
-  (define binding
-    (and ctx
-         (with-handlers ([exn:fail? (λ (_) #f)])
-           (spec-binding-of name
-                            (completion-context-specs ctx)
-                            (completion-context-base-dir ctx)
-                            (completion-context-open ctx)))))
-  (define d
-    (and binding
-         (with-handlers ([exn:fail? (λ (_) #f)])
-           (docs-for name #:modules (list (car binding))))))
-  (append
-   (list (format "~a" name))
-   (if local
-       (cons "── 本地定义 ──"
-             (string-split local "\n" #:trim? #f))
-       '())
-   (if d
-       (cons "── 文档 ──"
-             (string-split (string-trim (doc->text d)) "\n"))
-       '())))
+  (match-define (list name path text open ws id mode) payload)
+  (if (eq? mode 'c)
+      (c-docs-lines name #:text text)
+      (let* ([local (docs-local-snippet text name ws id mode)]
+             [ctx (and text
+                       (make-completion-context path text
+                                                #:open open
+                                                #:workspace ws
+                                                #:id id))]
+             [binding
+              (and ctx
+                   (with-handlers ([exn:fail? (λ (_) #f)])
+                     (spec-binding-of name
+                                      (completion-context-specs ctx)
+                                      (completion-context-base-dir ctx)
+                                      (completion-context-open ctx))))]
+             [d (and binding
+                     (with-handlers ([exn:fail? (λ (_) #f)])
+                       (docs-for name #:modules (list (car binding)))))])
+        (append
+         (list (format "~a" name))
+         (if local
+             (cons "── 本地定义 ──"
+                   (string-split local "\n" #:trim? #f))
+             '())
+         (if d
+             (cons "── 文档 ──"
+                   (string-split (string-trim (doc->text d)) "\n"))
+             '())))))
 
 (define (handle-docs-job ed state ps ev)
   (cond
@@ -54,12 +57,14 @@
        [(job-error? result)
         (values state (struct-copy docs-state ps [request-id #f]) '())]
        [(and (list? result) (andmap string? result))
-        (values state
-                (struct-copy docs-state ps
-                             [lines result]
-                             [faces (docs-faces result)]
-                             [request-id #f])
-                '())]
+        (define ps*
+          (struct-copy docs-state ps
+                       [lines result]
+                       [faces (docs-faces result)]
+                       [request-id #f]))
+        (editor-set-view-cursor! ed (docs-state-view ps*) 0 #:column 0)
+        (editor-ensure! ed state (docs-state-view ps*))
+        (values state ps* '())]
        [else
         (values state (struct-copy docs-state ps [request-id #f]) '())])]))
 
@@ -83,7 +88,13 @@
   (define text (and vid (editor-view-text ed vid)))
   (define line (and vid (editor-view-point-line ed vid)))
   (define col (and vid (editor-view-point-column ed vid)))
-  (define name (and text line col (identifier-at text line col)))
+  (define did (and vid (editor-view-doc-id ed vid)))
+  (define mode (and did (state-doc-mode state did)))
+  (define name
+    (and text line col
+         (case mode
+           [(c) (c-identifier-at text line col)]
+           [else (identifier-at text line col)])))
   (cond
     [name (docs-show-name! ed state ps name)]
     [else (values (state-with-flash state "docs: no identifier") ps '())]))

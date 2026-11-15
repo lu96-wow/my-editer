@@ -17,6 +17,8 @@
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
          "../../lang/racket/api.rkt"
+         (only-in "../../lang/c/api.rkt"
+                  c-completion-at c-completion-prefix c-include-context?)
          "../../features/input/api.rkt"
          "../../features/placement/api.rkt"
          "../../features/open-buffers/api.rkt")
@@ -45,24 +47,28 @@
 (define (empty-completion-state view-id)
   (completion-state view-id #f #f #f "" '() 0 #f #f #f 0 0 #f #f 1))
 
-;; → (list vid did) | #f
+;; → (list vid did mode) | #f
 (define (current-target ed state)
   (define vid (editor-focus-view-id state))
   (define did (and vid (editor-view-doc-id ed vid)))
-  (and vid did (eq? (state-doc-mode state did) 'racket)
-       (list vid did)))
+  (define mode (and did (state-doc-mode state did)))
+  (and vid did (memq mode '(racket c))
+       (list vid did mode)))
 
 (define (resource-path-for-state state vid)
   (define r (and vid (state-resource-for-view state vid)))
   (and r (resource-path r)))
 
-(define (prefix-at ed vid)
+(define (prefix-at ed vid mode)
   (define text (editor-view-text ed vid))
   (define line (editor-view-point-line ed vid))
   (define col (editor-view-point-column ed vid))
-  (and text line col (completion-prefix text line col)))
+  (and text line col
+       (case mode
+         [(c) (c-completion-prefix text line col)]
+         [else (completion-prefix text line col)])))
 
-(define (all-candidates ed state vid did open local-only?)
+(define (all-candidates ed state vid did open local-only? mode)
   (define text (editor-doc-text ed did))
   (define path (resource-path-for-state state vid))
   (define line (editor-view-point-line ed vid))
@@ -73,11 +79,16 @@
     [else
      (define cands
        (with-handlers ([exn:fail? (λ (_) '())])
-         (completion-at path text line col
-                        #:open open
-                        #:workspace ws
-                        #:id did
-                        #:local-only? local-only?)))
+         (case mode
+           [(c)
+            (c-completion-at path text line col
+                             #:local-only? local-only?)]
+           [else
+            (completion-at path text line col
+                           #:open open
+                           #:workspace ws
+                           #:id did
+                           #:local-only? local-only?)])))
      (if local-only?
          (take cands (min 50 (length cands)))
          cands)]))
@@ -106,13 +117,22 @@
 ;;; ════════════════ 打开 / refine ════════════════
 
 ;; → (values state' ps' actions)
-(define (open-completion! ed state ps vid did)
+(define (open-completion! ed state ps vid did mode)
   (cond
     [(not (completion-state? ps)) (values state ps '())]
     [else
-     (define prefix (prefix-at ed vid))
+     (define prefix (prefix-at ed vid mode))
+     (define empty-prefix-ok?
+       (and (eq? mode 'c)
+            (let ([text (editor-view-text ed vid)]
+                  [line (editor-view-point-line ed vid)]
+                  [col (editor-view-point-column ed vid)])
+              (and text line col
+                   (c-include-context? text line col)))))
      (cond
-       [(or (not prefix) (zero? (string-length prefix)))
+       [(or (not prefix)
+            (and (zero? (string-length prefix))
+                 (not empty-prefix-ok?)))
         (values state (close-completion ps) '())]
        [else
         (define ws (editor-workspace ed))
@@ -121,7 +141,7 @@
           (if (and ws (workspace-doc ws did))
               (hash)
               (editor-open-texts ed state)))
-        (define local (all-candidates ed state vid did open #t))
+        (define local (all-candidates ed state vid did open #t mode))
         (define open? (has-other-candidates? local prefix))
         (define c1
           (struct-copy completion-state ps
@@ -146,7 +166,8 @@
                                          (editor-view-point-column ed vid)
                                          open
                                          ws
-                                         did)
+                                         did
+                                         mode)
                                    (list 'completion (editor-doc-version ed did))))
         (values state2
                 (struct-copy completion-state c1 [request-id (job-id job)])
@@ -169,8 +190,8 @@
         (cond
           [(not target) (values state (close-completion ps1) '())]
           [else
-           (match-define (list vid did) target)
-           (open-completion! ed state ps1 vid did)])])]))
+           (match-define (list vid did mode) target)
+           (open-completion! ed state ps1 vid did mode)])])]))
 
 ;;; ════════════════ changes hook ════════════════
 
@@ -207,7 +228,7 @@
                           [anchor-col (editor-view-point-column ed fvid)])]))
         (define ps2
           (cond
-            [(not (eq? (state-doc-mode state did) 'racket)) ps1]
+            [(not (memq (state-doc-mode state did) '(racket c))) ps1]
             [else
              (editor-cancel-timer! ed (completion-state-timer-id ps1))
              (define tid (editor-schedule-timer! ed 180))
@@ -301,11 +322,11 @@
   (define target (current-target ed state))
   (cond
     [(not target)
-     (values (state-with-flash state "completion: focus is not Racket editor")
+     (values (state-with-flash state "completion: focus is not Racket/C editor")
              ps '())]
     [else
-     (match-define (list vid did) target)
-     (open-completion! ed state ps vid did)]))
+     (match-define (list vid did mode) target)
+     (open-completion! ed state ps vid did mode)]))
 
 ;;; ════════════════ overlay / sync ════════════════
 
@@ -413,11 +434,14 @@
     [else '()]))
 
 (define (service-completion payload)
-  (match-define (list _prefix path text line col open ws did) payload)
-  (completion-at path text line col
-                 #:open open
-                 #:workspace ws
-                 #:id did))
+  (match-define (list _prefix path text line col open ws did mode) payload)
+  (case mode
+    [(c) (c-completion-at path text line col)]
+    [else
+     (completion-at path text line col
+                    #:open open
+                    #:workspace ws
+                    #:id did)]))
 
 (define completion-global-command-table
   (keys

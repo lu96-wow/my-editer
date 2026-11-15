@@ -24,12 +24,12 @@
 (define (pair-open-char? c)
   (and (pair-close-char c) #t))
 
-(define (racket-view? ctx)
+(define (code-view? ctx)
   (define ed (edit-context-editor ctx))
   (define state (edit-context-state ctx))
   (define vid (edit-context-view-id ctx))
   (define did (editor-view-doc-id ed vid))
-  (eq? (state-doc-mode state did) 'racket))
+  (memq (state-doc-mode state did) '(racket c)))
 
 (define (line-text-at ctx)
   (define ed (edit-context-editor ctx))
@@ -43,7 +43,7 @@
 (define (before-insert ctx ps)
   (define text (edit-context-text ctx))
   (cond
-    [(not (racket-view? ctx)) (values ctx ps '() #t)]
+    [(not (code-view? ctx)) (values ctx ps '() #t)]
     [(and text (= 1 (string-length text))
           (pair-open-char? (string-ref text 0)))
      (define open (string-ref text 0))
@@ -57,7 +57,7 @@
 (define (before-delete ctx ps)
   (define kind (edit-context-kind ctx))
   (define pt (edit-context-point ctx))
-  (define line (and (racket-view? ctx) (line-text-at ctx)))
+  (define line (and (code-view? ctx) (line-text-at ctx)))
   (define col (point-column pt))
   (cond
     [(not line) (values ctx ps '() #t)]

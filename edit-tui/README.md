@@ -36,6 +36,7 @@
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行按当前行前导空白对齐。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
+- `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`）；C 括号配对 / Enter 保持当前行缩进。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
@@ -86,7 +87,9 @@ edit-tui/
 
   lang/
     README.md          多语言能力层说明
+    shared/edit.rkt    语言无关的 line-edit / 增量 splice
     racket/            Racket 词法 / 着色 / 补全 / 文档 / 缩进
+    c/                 C 词法 / 着色 / 补全 / man 文档 / 缩进
     source/            解析来源快照 / 缓冲区与磁盘优先级
 
   config/
@@ -111,7 +114,7 @@ edit-tui/
     layout.rkt         通用布局操作面：split / close / focus + layout hooks
     area.rkt           编辑区：checkout / checkin、area-slot、跨 area view-location
     resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
-    mode.rkt           .rkt / #lang racket -> racket，否则 text
+    mode.rkt           .rkt / #lang racket -> racket，.c / .h -> c，否则 text
 
     job.rkt            job-result-event / job 账本 State
     error.rkt          core error log（纯 State）+ error buffer lines / faces
@@ -132,6 +135,7 @@ edit-tui/
     pair/plugin.rkt
     indent/plugin.rkt
     racket-color/plugin.rkt
+    c-color/plugin.rkt
     layout/plugin.rkt
     filetree/plugin.rkt
     resources/plugin.rkt
@@ -511,6 +515,7 @@ racket edit-tui/test/color-word.rkt
 racket edit-tui/test/timer.rkt
 racket edit-tui/test/completion-docs.rkt
 racket edit-tui/test/workspace.rkt
+racket edit-tui/test/c-language.rkt
 racket edit-tui/test/docs-local-lines.rkt
 racket edit-tui/test/workspace-async.rkt
 racket edit-tui/test/sidebar.rkt
@@ -689,3 +694,4 @@ racket edit-tui/test/layers.rkt
 2. C-x o completion / docs 焦点切换。
 3. bilingual 结构化数据源 / 多 mirror / 多翻译表。
 4. 会话缓存增强（插件状态 / history / 自动保存）：完整设计见 `persist/DESIGN.md`。
+5. C 增强：`#include` / 头文件符号、clangd / compile_commands / 更完整的 man 兜底。
