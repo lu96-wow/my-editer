@@ -1,12 +1,13 @@
 #lang racket
 
 ;;; Session 正交轴：
-;;;   modal   : #f | 'input | modal-placement
+;;;   modal   : #f | 'input | modal-placement | modal-command
 ;;;   pointer : #f | pointer-drag | pointer-select
 ;;; 每个轴内部互斥；不同轴可以同时存在。
 
 (require rackunit
          "../editor/host-api.rkt"
+         "../core/command/api.rkt"
          "../features/input/api.rkt")
 
 (define input-seed
@@ -26,6 +27,17 @@
 (define s-input2 (state-with-input s-place (state-input-seed s-place)))
 (check-equal? (state-placement s-input2) #f)
 (check-true (input-state? (state-input s-input2)))
+
+;; command mode 与 input / placement 共用 modal 轴。
+(define mode (make-mode-command 'resize command-table-empty))
+(define s-mode (state-with-command-mode base mode))
+(check-equal? (state-command-mode s-mode) mode)
+(check-false (state-input s-mode))
+(check-false (state-placement s-mode))
+(define s-mode-place (state-with-placement s-mode 7))
+(check-false (state-command-mode s-mode-place))
+(check-equal? (state-placement s-mode-place) 7)
+(check-false (state-command-mode (state-clear-command-mode s-mode)))
 
 ;; drag 与 select-drag 互斥；清掉一个不会误清另一个轴。
 (define s-drag (state-with-drag base 'seam))

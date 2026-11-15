@@ -36,6 +36,7 @@
  layout-panel-remove
  layout-panel-clear-content
  layout-panel-set-fixed
+ layout-panel-resize
  visible-children
  panel-min-size
  panel-max-size
@@ -358,6 +359,56 @@
      (layout-split-set-ratio l (split-id s) (/ new-left E))]))
 
 ;;; ════════════════ ratio / seam resize ════════════════
+
+;; 离目标 panel 最近的、同轴且两侧都可见的祖先 split。
+;; 隐藏 panel 所在的 split 不能调尺寸，要继续往上层找。
+;; 返回 (cons split side)，side = 'left | 'right；没有则 #f。
+(define (find-ancestor-split l n id axis)
+  (cond
+    [(not n) #f]
+    [(leaf? n) #f]
+    [else
+     (define left (split-left n))
+     (define right (split-right n))
+     (define side
+       (cond
+         [(tree-has-leaf? left id) 'left]
+         [(tree-has-leaf? right id) 'right]
+         [else #f]))
+     (cond
+       [(not side) #f]
+       [else
+        (define child (if (eq? side 'left) left right))
+        (or (find-ancestor-split l child id axis)
+            (and (eq? (split-axis n) axis)
+                 (layout-subtree-visible? l left)
+                 (layout-subtree-visible? l right)
+                 (cons n side)))])]))
+
+;; 调整焦点 panel 自己的尺寸：
+;;   left  -> 变窄    right -> 变宽
+;;   up    -> 变高    down  -> 变矮
+;; 当前面板在 split 左侧时，接缝右移会增大它；在右侧时符号相反。
+(define (layout-panel-resize l area id dir #:config config #:step [step 1])
+  (unless (and (exact? step) (integer? step) (positive? step))
+    (error 'layout-panel-resize "step 要是正整数：~a" step))
+  (define-values (axis amount)
+    (case dir
+      [(left)  (values 'lr (- step))]
+      [(right) (values 'lr step)]
+      [(up)    (values 'tb step)]
+      [(down)  (values 'tb (- step))]
+      [else
+       (error 'layout-panel-resize
+              "dir 要是 left/right/up/down：~a" dir)]))
+  (define hit (find-ancestor-split l (layout-root l) id axis))
+  (cond
+    [(not hit) (values l #f)]
+    [else
+     (define s (car hit))
+     (define side (cdr hit))
+     (define delta (if (eq? side 'left) amount (- amount)))
+     (layout-seam-resize l area (split-id s) delta #:config config)]))
 
 (define (layout-split-set-ratio l sid ratio)
   (unless (and (real? ratio) (<= 0 ratio 1))

@@ -66,6 +66,7 @@
          state-select-drag
          state-find
          state-placement
+         state-command-mode
          state-input
          state-input-seed
          state-jobs
@@ -82,6 +83,8 @@
          state-with-select-drag
          state-with-find
          state-with-placement
+         state-with-command-mode
+         state-clear-command-mode
          state-with-input
          state-with-jobs
          state-with-errors
@@ -114,11 +117,12 @@
   #:transparent)
 
 ;; host 会话按正交轴分组：
-;;   modal   : #f | 'input | modal-placement
+;;   modal   : #f | 'input | modal-placement | modal-command
 ;;   pointer : #f | pointer-drag | pointer-select
 ;; input 是 input-state 的持久 seed：modal 退出后仍保留，下一次 open 直接复用。
 ;; 每个轴内部互斥；不同轴可以同时存在（例如 find + select-drag）。
 (struct modal-placement (value) #:transparent)
+(struct modal-command (value) #:transparent)
 (struct pointer-drag (value) #:transparent)
 (struct pointer-select (value) #:transparent)
 
@@ -128,7 +132,7 @@
    pending-scope   ; pending 对应的 scope key
    quit?
    flash           ; string，一次性；下一次 step 入口清空
-   modal           ; #f | 'input | modal-placement
+   modal           ; #f | 'input | modal-placement | modal-command
    input           ; input-state | #f：输入栏 seed（不随 modal 退出而丢弃）
    pointer         ; #f | pointer-drag | pointer-select
    find            ; find-state | #f：当前查找会话
@@ -328,6 +332,9 @@
 (define (state-placement state)
   (define m (editor-session-modal (session-of state)))
   (and (modal-placement? m) (modal-placement-value m)))
+(define (state-command-mode state)
+  (define m (editor-session-modal (session-of state)))
+  (and (modal-command? m) (modal-command-value m)))
 (define (state-input state)
   (define s (session-of state))
   (and (eq? (editor-session-modal s) 'input)
@@ -402,6 +409,19 @@
          [(modal-placement? m) #f]
          [else m]))
      (struct-copy editor-session s [modal m*]))))
+(define (state-with-command-mode state command-mode)
+  (update-session
+   state
+   (λ (s)
+     (define m (editor-session-modal s))
+     (define m*
+       (cond
+         [command-mode (modal-command command-mode)]
+         [(modal-command? m) #f]
+         [else m]))
+     (struct-copy editor-session s [modal m*]))))
+(define (state-clear-command-mode state)
+  (state-clear-pending (state-with-command-mode state #f)))
 (define (state-with-input state input)
   (update-session
    state

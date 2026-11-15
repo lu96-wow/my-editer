@@ -45,6 +45,7 @@
  layout-panel-remove
  layout-panel-clear-content
  layout-panel-set-fixed
+ layout-panel-resize
  layout-split-set-ratio
 
  ;; 隐藏 / 显示 / 焦点回退

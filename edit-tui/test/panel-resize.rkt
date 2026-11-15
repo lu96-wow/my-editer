@@ -50,6 +50,44 @@
 (check-true shown-ok?)
 (check-equal? (rect-w (hash-ref (layout-panel-rects shown area) 'filetree)) 30)
 
+;; 焦点 panel 自己的尺寸：left 变窄，right 变宽。
+(define editor-w0 (rect-w (hash-ref (layout-panel-rects layout area) 'editor)))
+(define-values (narrow narrow?)
+  (layout-panel-resize layout area 'editor 'left #:config config))
+(check-true narrow?)
+(check-equal? (rect-w (hash-ref (layout-panel-rects narrow area) 'editor))
+              (sub1 editor-w0))
+(define-values (wide wide?)
+  (layout-panel-resize layout area 'editor 'right #:config config))
+(check-true wide?)
+(check-equal? (rect-w (hash-ref (layout-panel-rects wide area) 'editor))
+              (add1 editor-w0))
+
+;; 缩到 min-w 时被 clamp。
+(define-values (min-sidebar min-ok?)
+  (layout-panel-resize layout area 'filetree 'left #:config config #:step 100))
+(check-true min-ok?)
+(check-equal? (rect-w (hash-ref (layout-panel-rects min-sidebar area) 'filetree)) 8)
+
+;; 纵向：up 变高，down 变矮；docs 提供可见的 flex 兄弟。
+(define tall-area (rect 0 0 60 30))
+(define tall-layout
+  (make-editor-layout #:editor-view 1
+                      #:status-view 2
+                      #:sidebar-view 3
+                      #:docs-view 4))
+(define editor-h0 (rect-h (hash-ref (layout-panel-rects tall-layout tall-area) 'editor)))
+(define-values (taller taller?)
+  (layout-panel-resize tall-layout tall-area 'editor 'up #:config config))
+(check-true taller?)
+(check-equal? (rect-h (hash-ref (layout-panel-rects taller tall-area) 'editor))
+              (add1 editor-h0))
+(define-values (shorter shorter?)
+  (layout-panel-resize taller tall-area 'editor 'down #:config config))
+(check-true shorter?)
+(check-equal? (rect-h (hash-ref (layout-panel-rects shorter tall-area) 'editor))
+              editor-h0)
+
 ;; 窗口缩小后 show：恢复尺寸被 clamp 到 min，不能消失。
 (define small-area (rect 0 0 9 10))
 (define-values (shown-small show-small-ok?)

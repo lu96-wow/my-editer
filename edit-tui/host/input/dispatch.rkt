@@ -143,6 +143,14 @@
        (define-values (state* ps* actions*)
          ((guarded-command-run value) ed state ps))
        (values (write-command-ps state* owner ps*) actions*))]
+    [(mode-command? value)
+     (values (state-with-flash
+              (state-with-command-mode state value)
+              (format "~a mode: C-b exits" (mode-command-id value)))
+             '())]
+    [(mode-exit-command? value)
+     (values (state-with-flash (state-clear-command-mode state) "mode exited")
+             '())]
     [(insert-command? value)
      (cond
        [(not vid) (flash state "insert: no focused editor view")]
@@ -259,10 +267,12 @@
         state0))
   (define pending (state-pending state1))
   (define seq (append pending (list tok)))
+  (define mode (state-command-mode state1))
   (define tables
     (cond
       [(editor-input-active? state1) (list input-command-table*)]
       [(editor-placement-active? state1) (list placement-command-table*)]
+      [mode (list (mode-command-table mode))]
       [else (normal-command-tables ed state1 scopes)]))
   (let-values ([(status value owner) (lookup-command tables seq ed state1)])
     (case status
@@ -278,6 +288,11 @@
        (define text (key-text tok))
        (define vid (need-view s1))
        (cond
+         [mode
+          (values (state-with-flash
+                   s1
+                   (format "~a mode: C-b exits" (mode-command-id mode)))
+                  '())]
          [(and text (null? pending) (editor-input-active? s1))
           (editor-input-self-insert s1 tok)]
          [(and text (null? pending) vid (editor-focused? s1))

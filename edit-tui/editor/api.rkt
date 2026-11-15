@@ -158,6 +158,7 @@
  editor-split!
  editor-close!
  editor-focus!
+ editor-resize!
  editor-cycle-editor-view!
  editor-toggle-panel!
  editor-panel-visible?

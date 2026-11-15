@@ -17,7 +17,7 @@
 - 插件 sync / overlay / hook / timer / job / command 抛异常时由 runtime 捕获并 flash，不打断整帧。
 - `editor/ops/raw.rkt`：裸操作，不跑扩展点。
 - `editor/ops/surface.rkt`：编辑操作面，负责 before / after hooks、plugin-state 线程化。
-- `editor/layout.rkt`：布局操作面（split / close / focus / mouse）+ layout 扩展点。
+- `editor/layout.rkt`：布局操作面（split / close / focus / resize / mouse）+ layout 扩展点。
 - `editor/area.rkt`：多编辑区 checkout / checkin；当前 layout = chrome frame + current editor area，`areas` 只保存非当前 editor-only 布局。
 - `editor/resource.rkt` / `editor/mode.rkt`：已打开文档 / path / mode / opened 集合。
 - `features/placement/`：打开文件后的目标 editor 选择。
@@ -37,7 +37,7 @@
 - `plugins/indent/`：Enter 换行按当前行前导空白对齐。
 - `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
 - `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
-- `plugins/layout/`：通过 `commands` 贡献 split / focus / close 键位。
+- `plugins/layout/`：通过 `commands` 贡献 split / focus / resize 模式 / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦。
 - `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
@@ -111,7 +111,7 @@ edit-tui/
     ops/raw.rkt        裸操作：不触发 hook；含程序化区间替换
     ops/surface.rkt    编辑操作面：validate -> transform -> raw -> derive -> observe；replace-lines 只写 user doc
     derived.rkt        derived view 投影写 / 查询
-    layout.rkt         通用布局操作面：split / close / focus + layout hooks
+    layout.rkt         通用布局操作面：split / close / focus / resize + layout hooks
     area.rkt           编辑区：checkout / checkin、area-slot、跨 area view-location
     resource.rkt       已打开文档：path / view / mode / command-stack / saved-version
     mode.rkt           .rkt / #lang racket -> racket，.c / .h -> c，否则 text
@@ -341,6 +341,9 @@ editor 的 `resource-stack` 存在 resource 上；同一个 panel 换 active vie
 同一 key 有多条命令时，guard 不成立会继续试下一条 / 下一张表。
 前缀只有在“至少一个后续命令当前可执行”时才遮蔽后面的表；否则继续回落，
 避免所有 guard 都失败的前缀永久挡住 host 的同键命令。
+持久模式用 `mode-command`：值里带一张独占 `command-table`，执行后方向键
+可以单键连续执行，直到 `mode-exit-command`。模式表仍走同一套 owner /
+guard / 异常处理，插件状态按原 owner 写回。
 `plugins/layout` 贡献全局 `C-w` / `C-x` / `C-d`（`C-w d` close panel）；filetree / resources 命令放在
 自己的局部 scope。completion 打开时通过 `#:key-owner` 把 completion scope 叠在
 focus scope 上面。
@@ -430,6 +433,9 @@ C-f            右移
 C-k            删到行尾
 C-z / C-y      撤销 / 重做
 C-w ←→↑↓       拆分当前 editor
+C-w c          进入 resize 模式
+  ←→↑↓         调整焦点 panel：← 变窄 / → 变宽 / ↑ 变高 / ↓ 变矮
+  C-b / Esc    退出 resize 模式
 C-x ←→↑↓       焦点在 editor panel 间移动
 C-x t          手动全量翻译当前 bilingual pair
 C-w d          关闭当前 editor panel
@@ -447,7 +453,7 @@ M-d            查看光标处标识符文档
 M-l            双语：打开 / 聚焦 / 关闭当前 Racket buffer 的 mirror
 C-x d          显 / 隐 docs panel
 M-0..M-9       切到编辑区 0..9（默认 1；输入栏 / placement 中不生效）
-C-b            显 / 隐 sidebar
+C-b            显 / 隐 sidebar（resize 模式外）
 C-x b          切换 sidebar tab（filetree / resources）
 C-x n / C-x p  下一个 / 上一个 editor tab
 C-x k          关闭当前 buffer（dirty -> 确认）
@@ -647,7 +653,7 @@ racket edit-tui/test/layers.rkt
 - color 增量：`'changes` + `color-edit*` 只重扫脏行；所有用户文本操作（含 undo / redo）都产生 changes，只有首次打开 / 外部整篇写回走 sync 全量；
 - color 按 resource mode 判断 Racket；word-color 光标 token 抑制；
 - filetree 异步目录扫描：sync 提交 job，worker 返回后按 projection tag 校验；
-- C-b 显 / 隐 sidebar；
+- C-b 显 / 隐 sidebar；resize 模式内 C-b 退出模式；
 - filetree 支持自定义 `hidden-entry?` 过滤规则；
 - timer runtime + 插件 `#:handle-timer`；
 - 插入点表 + hook owner / phase 校验；

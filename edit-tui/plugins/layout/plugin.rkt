@@ -25,6 +25,9 @@
 (define (focus-command dir)
   (with-ps (λ (ed state) (editor-focus! ed state dir))))
 
+(define (resize-command dir)
+  (with-ps (λ (ed state) (editor-resize! ed state dir))))
+
 (define close-command (with-ps editor-close!))
 (define cycle-sidebar-command (with-ps editor-cycle-sidebar-view!))
 
@@ -38,12 +41,23 @@
 
 (define toggle-sidebar-command (with-ps editor-toggle-sidebar!))
 
+;; C-w c 进入 resize 模式。模式表独占键盘，方向键可以连续调整；C-b / Esc 退出。
+(define resize-mode-table
+  (keys
+   [(key 'left)  (resize-command 'left)]
+   [(key 'right) (resize-command 'right)]
+   [(key 'up)    (resize-command 'up)]
+   [(key 'down)  (resize-command 'down)]
+   [(key 'b 'ctrl) (mode-exit-command)]
+   [(key 'escape)  (mode-exit-command)]))
+
 (define layout-command-table
   (keys
    [(key 'w 'ctrl) (key 'left)  (split-command 'left)]
    [(key 'w 'ctrl) (key 'right) (split-command 'right)]
    [(key 'w 'ctrl) (key 'up)    (split-command 'up)]
    [(key 'w 'ctrl) (key 'down)  (split-command 'down)]
+   [(key 'w 'ctrl) (key 'c)     (make-mode-command 'resize resize-mode-table)]
    [(key 'w 'ctrl) (key 'd)     close-command]
    [(key 'x 'ctrl) (key 'left)  (focus-command 'left)]
    [(key 'x 'ctrl) (key 'right) (focus-command 'right)]

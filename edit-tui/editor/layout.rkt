@@ -5,9 +5,11 @@
 ;;; 布局本身是纯值（core/layout），这里只负责：
 ;;;   · 把 layout 放进 core state
 ;;;   · split / close / focus 时创建 / 删除 engine view
+;;;   · resize 只改布局尺寸，不动 view / engine
 ;;;   · 跑 layout 扩展点
 ;;;
-;;; 插件通过 editor/api.rkt 拿到 editor-split! / editor-close! / editor-focus!；
+;;; 插件通过 editor/api.rkt 拿到 editor-split! / editor-close! / editor-focus! /
+;;; editor-resize!；
 ;;; layout-context 只在 editor/host 内部使用。鼠标与 sidebar chrome 分别在
 ;;; features/mouse 与 features/sidebar。
 
@@ -38,6 +40,7 @@
          editor-split!
          editor-close!
          editor-focus!
+         editor-resize!
          editor-cycle-editor-view!
          editor-toggle-panel!
          editor-panel-visible?)
@@ -237,6 +240,25 @@
            (define-values (_ctx3 state3 actions3)
              (run-after (editor-registry ed) 'layout-close ctx2 state2))
            (values state3 (append actions1 actions3))])])]))
+
+;;; ════════════════ resize ════════════════
+
+;; 调焦点 panel 自己的尺寸：left/right 改宽，up/down 改高。
+;; 真正的 split 定位与 seam 换算在 core/layout/ops.rkt。
+(define (editor-resize! ed state dir)
+  (define l (state-layout state))
+  (define area (state-screen state))
+  (define pid (and l (layout-focus l)))
+  (cond
+    [(or (not l) (not area) (not pid))
+     (flash state "resize: no focused panel")]
+    [else
+     (define-values (l* ok?)
+       (layout-panel-resize l area pid dir
+                            #:config (state-layout-config state)))
+     (if ok?
+         (values (state-with-layout state l*) '())
+         (flash state "resize: no adjustable split"))]))
 
 ;;; ════════════════ focus ════════════════
 

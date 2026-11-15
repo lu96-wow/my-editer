@@ -52,13 +52,35 @@
   (fn)  ; (ed state ps) -> (values state' ps' actions)
   #:transparent)
 
-(define (normalize-plugin-command value)
+(define (normalize-mode-command-entry owner value)
   (cond
+    [(mode-exit-command? value) (list (cons #f value))]
+    [(mode-command? value)
+     (list (cons owner (normalize-plugin-command owner value)))]
+    [(guarded-command? value) (list (cons owner value))]
+    [(procedure? value) (list (cons owner (plugin-command value)))]
+    [else (list (cons owner value))]))
+
+(define (normalize-mode-command-table owner table)
+  (command-table-from-bindings
+   (for/list ([b (in-list (command-table-bindings table))])
+     (list (car b)
+           (normalize-mode-command-entry owner (cadr b))))))
+
+(define (normalize-plugin-command owner value)
+  (cond
+    [(mode-command? value)
+     (struct-copy mode-command value
+                  [table
+                   (normalize-mode-command-table owner
+                                                 (mode-command-table value))])]
+    [(mode-exit-command? value) value]
     [(guarded-command? value) value]
     [(procedure? value) (plugin-command value)]
     [else
      (raise-argument-error 'normalize-plugin-command
-                           "(or/c procedure? guarded-command?)" value)]))
+                           "(or/c procedure? guarded-command? mode-command? mode-exit-command?)"
+                           value)]))
 
 ;; 同一插件需要多个 scope 时使用；单表插件仍可直接给 #:commands。
 (struct command-group
@@ -158,7 +180,7 @@
            (contribution point/command (command-group-scope g) id 0 0
                          (command-binding
                           (car b)
-                          (normalize-plugin-command (cadr b)))))))
+                          (normalize-plugin-command id (cadr b)))))))
       (append*
        (for/list ([svc (in-list (plugin-services p))])
          (define kind (service-name svc))

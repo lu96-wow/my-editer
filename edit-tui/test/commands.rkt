@@ -21,6 +21,81 @@
 (define s-split (handle-editor-event ed s1 (key-event (key 'right))))
 (check-equal? (length (editor-visible-editor-panels s-split)) 2)
 
+;; C-w c 进入持久 resize 模式；方向键单键连续调整，C-b 退出。
+(define s-cw-c
+  (handle-editor-event ed s-split (key-event (key 'w 'ctrl))))
+(define s-resize-mode
+  (handle-editor-event ed s-cw-c (key-event (key 'c))))
+(check-equal? (state-pending s-resize-mode) '())
+(check-equal? (mode-command-id (state-command-mode s-resize-mode)) 'resize)
+
+(define focus-rect0 (editor-focus-content-rect s-resize-mode))
+(define s-wider
+  (handle-editor-event ed s-resize-mode (key-event (key 'right))))
+(check-equal? (rect-w (editor-focus-content-rect s-wider))
+              (add1 (rect-w focus-rect0)))
+(check-equal? (mode-command-id (state-command-mode s-wider)) 'resize)
+
+(define s-narrower
+  (handle-editor-event ed s-wider (key-event (key 'left))))
+(check-equal? (rect-w (editor-focus-content-rect s-narrower))
+              (rect-w focus-rect0))
+(check-equal? (mode-command-id (state-command-mode s-narrower)) 'resize)
+
+;; 模式内未绑定键不插入文本，也不退出。
+(define s-mode-unbound
+  (handle-editor-event ed s-narrower (key-event (key 'x))))
+(check-equal? (mode-command-id (state-command-mode s-mode-unbound)) 'resize)
+(check-equal? (state-flash s-mode-unbound) "resize mode: C-b exits")
+
+(define s-mode-exit
+  (handle-editor-event ed s-mode-unbound (key-event (key 'b 'ctrl))))
+(check-false (state-command-mode s-mode-exit))
+(check-equal? (state-flash s-mode-exit) "mode exited")
+
+;; 模式外 C-b 仍然是 sidebar 开关。
+(define sidebar-visible0 (editor-panel-visible? s-mode-exit 'filetree))
+(define s-cb-global
+  (handle-editor-event ed s-mode-exit (key-event (key 'b 'ctrl))))
+(check-equal? (editor-panel-visible? s-cb-global 'filetree)
+              (not sidebar-visible0))
+
+;;; 1b. mode 表里的插件命令仍按 owner 写回 plugin-state。
+(define mode-engine (make-engine))
+(void (engine-create-buffer! mode-engine 1 "mode" ""))
+(void (engine-create-view! mode-engine 1 1))
+(define counter-mode-table
+  (keys
+   [(key 'a) (λ (ed state ps)
+               (values (state-with-flash state "tick") (add1 ps) '()))]
+   [(key 'b 'ctrl) (mode-exit-command)]))
+(define mode-plugin
+  (make-plugin
+   #:id 'mode-test
+   #:state 0
+   #:commands (keys [(key 't 'ctrl)
+                     (make-mode-command 'counter counter-mode-table)])))
+(define mode-ed
+  (make-editor #:engine mode-engine
+               #:registry (make-hook-registry '())
+               #:plugins (list mode-plugin)))
+(define mode-state
+  (make-app-state #:plugin-states (plugins->states (list mode-plugin))
+                  #:screen (rect 0 0 40 10)
+                  #:layout (make-editor-layout #:editor-view 1)))
+(define s-counter-mode
+  (handle-editor-event mode-ed mode-state (key-event (key 't 'ctrl))))
+(check-equal? (mode-command-id (state-command-mode s-counter-mode)) 'counter)
+(define s-counter1
+  (handle-editor-event mode-ed s-counter-mode (key-event (key 'a))))
+(define s-counter2
+  (handle-editor-event mode-ed s-counter1 (key-event (key 'a))))
+(check-equal? (state-plugin-state s-counter2 'mode-test) 2)
+(check-equal? (mode-command-id (state-command-mode s-counter2)) 'counter)
+(define s-counter-exit
+  (handle-editor-event mode-ed s-counter2 (key-event (key 'b 'ctrl))))
+(check-false (state-command-mode s-counter-exit))
+
 ;;; 2. 自定义插件命令：C-t 插入 "!"
 (define engine (make-engine))
 (void (engine-create-buffer! engine 1 "test" ""))
