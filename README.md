@@ -34,21 +34,21 @@
 | 依赖 | 用途 | 安装方式 |
 |---|---|---|
 | **Racket**（含 `racket` / `raco`） | 运行时与包管理 | 见下方各平台安装命令 |
-| **racket-tui** | 终端 UI | `raco pkg install --auto racket-tui` |
-| **html-parsing** | 解析 Racket HTML 文档 | `raco pkg install --auto html-parsing` |
+| **racket-tui** | 终端 UI | `raco pkg install racket-tui` |
+| **html-parsing** | 解析 Racket HTML 文档 | `raco pkg install html-parsing` |
 | **bash**、**tar** | 安装脚本 | 系统自带 |
 | UTF-8 终端 | 正确显示中文 / 边框 | 任意现代终端 |
 
 一次性安装两个 Racket 包：
 
 ```sh
-raco pkg install --auto racket-tui html-parsing
+raco pkg install racket-tui html-parsing
 ```
 
 如果提示权限不足，使用用户级安装：
 
 ```sh
-raco pkg install --user --auto racket-tui html-parsing
+raco pkg install --user racket-tui html-parsing
 ```
 
 ### 可选
@@ -171,7 +171,7 @@ source ~/.bashrc
 先安装依赖：
 
 ```sh
-raco pkg install --auto racket-tui html-parsing
+raco pkg install racket-tui html-parsing
 ```
 
 然后在仓库根目录运行：
@@ -311,7 +311,7 @@ pkg install racket
 ### `缺少运行时依赖: tui html-parsing`
 
 ```sh
-raco pkg install --auto racket-tui html-parsing
+raco pkg install racket-tui html-parsing
 ```
 
 ### 安装成功但 `edit-tui: command not found`
