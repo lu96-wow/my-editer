@@ -31,6 +31,31 @@
 (check-equal? (engine-view-text e1 1) "()")
 (check-equal? (engine-view-point-column e1 1) 1)
 
+;;; pair：外层还有未闭合括号时，输入开括号要补成嵌套对，而不是借用外层的闭括号。
+;;; 这正是 Racket 里写 (define ()) 的场景。
+(define-values (e7 ed7 s7) (make-test-editor "(define )" 0 8))
+(define-values (s7* _np1) (editor-insert! ed7 s7 1 "("))
+(check-equal? (engine-view-text e7 1) "(define ())")
+(check-equal? (engine-view-point-column e7 1) 9)
+;; 两次 ) 都是跳过已有闭符号，文本不变。
+(define-values (s7** _np2) (editor-insert! ed7 s7* 1 ")"))
+(check-equal? (engine-view-text e7 1) "(define ())")
+(check-equal? (engine-view-point-column e7 1) 10)
+(define-values (s7*** _np3) (editor-insert! ed7 s7** 1 ")"))
+(check-equal? (engine-view-text e7 1) "(define ())")
+(check-equal? (engine-view-point-column e7 1) 11)
+
+;;; pair：光标前没有未闭合括号时，右侧孤立的闭括号仍然复用。
+(define-values (e8 ed8 s8) (make-test-editor ")" 0 0))
+(define-values (_s8* _np4) (editor-insert! ed8 s8 1 "("))
+(check-equal? (engine-view-text e8 1) "()")
+(check-equal? (engine-view-point-column e8 1) 1)
+
+;;; pair：字符串里的括号不参与配对判断。
+(define-values (e9 ed9 s9) (make-test-editor "(display \")\")" 0 12))
+(define-values (_s9* _np5) (editor-insert! ed9 s9 1 "("))
+(check-equal? (engine-view-text e9 1) "(display \")\"())")
+
 ;;; pair：空配对中间 backspace 删一对
 (define-values (s1** _a2) (editor-delete! ed1 s1* 1 'backspace))
 (check-equal? (engine-view-text e1 1) "")

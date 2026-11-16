@@ -12,7 +12,9 @@
 ;;; 注意：C 的 < > 是运算符，只在 #include 指令里自动配对。
 
 (require racket/string
-         "../../editor/api.rkt")
+         "../../editor/api.rkt"
+         "../../lang/racket/api.rkt"
+         "../../lang/c/api.rkt")
 
 (provide pair-plugin)
 
@@ -84,6 +86,83 @@
   (define col (point-column (edit-context-point ctx)))
   (and line (< col (string-length line)) (string-ref line col)))
 
+;;; ════════════════ 右侧闭括号是否已有“主人” ════════════════
+;;;
+;;; 输入 ( 时如果右边正好是 )，不能一律复用这个 )：
+;;;   (|)        光标在空配对里，再输入 ( 应该得到 (())，不是 (()
+;;;   (define |) 右边的 ) 属于外层 (，输入 ( 应该补成 (define ())
+;;;   ) 光标前没有未配对的 (，右边这个 ) 是孤儿，输入 ( 才复用它。
+;;;
+;;; 所以先扫描光标前的代码，得到未闭合括号栈；只有栈顶正好是新的开
+;;; 括号时，右侧闭括号才属于外层括号，需要再补一个闭括号。扫描复用语言
+;;; 词法，字符串 / 注释里的括号不参与配对。
+
+(define bracket-pairs '((#\( . #\)) (#\[ . #\]) (#\{ . #\})))
+(define close->open (map (lambda (p) (cons (cdr p) (car p))) bracket-pairs))
+
+(define (bracket-open? c) (and (assv c bracket-pairs) #t))
+(define (bracket-close? c) (and (assv c close->open) #t))
+(define (matching-open c) (cdr (assv c close->open)))
+
+(define (text-before-caret ctx)
+  (define ed (edit-context-editor ctx))
+  (define vid (edit-context-view-id ctx))
+  (define text (editor-view-text ed vid))
+  (define pt (edit-context-point ctx))
+  (define line (point-line pt))
+  (define col (point-column pt))
+  (and text
+       (let ([lines (string-split text "\n" #:trim? #f)])
+         (and (< line (length lines))
+              (let* ([head (take lines line)]
+                     [cur (list-ref lines line)])
+                (string-append
+                 (if (null? head) "" (string-append (string-join head "\n") "\n"))
+                 (substring cur 0 (min col (string-length cur)))))))))
+
+(define (racket-bracket-chars text)
+  (define lines (string-split text "\n" #:trim? #f))
+  (define token-lines (tokenize text))
+  (apply string-append
+         (for/list ([line (in-list lines)]
+                    [tokens (in-list token-lines)])
+           (apply string-append
+                  (for/list ([t (in-list tokens)]
+                             #:when (eq? (token-kind t) 'paren))
+                    (substring line (token-start t)
+                               (min (token-end t) (string-length line))))))))
+
+(define (c-bracket-chars text)
+  (define lines (string-split text "\n" #:trim? #f))
+  (define token-lines (c-tokenize text))
+  (apply string-append
+         (for/list ([line (in-list lines)]
+                    [tokens (in-list token-lines)])
+           (apply string-append
+                  (for/list ([t (in-list tokens)]
+                             #:when (eq? (c-token-kind t) 'punct))
+                    (substring line (c-token-start t)
+                               (min (c-token-end t) (string-length line))))))))
+
+(define (bracket-stack-before-caret ctx mode)
+  (define prefix (text-before-caret ctx))
+  (and prefix
+       (let ([chars (if (eq? mode 'racket)
+                        (racket-bracket-chars prefix)
+                        (c-bracket-chars prefix))])
+         (for/fold ([stack '()]) ([ch (in-string chars)])
+           (cond
+             [(bracket-open? ch) (cons ch stack)]
+             [(bracket-close? ch)
+              (if (and (pair? stack) (eqv? (car stack) (matching-open ch)))
+                  (cdr stack)
+                  stack)]
+             [else stack])))))
+
+(define (closer-owned? ctx mode open)
+  (define stack (bracket-stack-before-caret ctx mode))
+  (and (pair? stack) (eqv? (car stack) open)))
+
 ;; 光标在两个空配对中间：backspace 删左+右，delete 删右+右。
 (define (empty-pair-at-caret? ctx at-left at-right)
   (and at-left at-right
@@ -128,8 +207,13 @@
                 ps '() #t)]
        [(pair-open-char? mode c)
         (define close (pair-close-char mode c))
-        ;; 右边已经是配对的闭符号时不再补一个，避免 ( 在 ) 前变成 ())。
-        (if (eqv? (char-after-caret ctx) close)
+        ;; 右边是闭符号时：只有它确实没有主人（光标前没有未闭合的外层括号）
+        ;; 才复用它；否则补一整对，避免把外层的闭括号“借”给内层。
+        (define reuse?
+          (and (eqv? (char-after-caret ctx) close)
+               (or (eqv? c close)
+                   (not (closer-owned? ctx mode c)))))
+        (if reuse?
             (values (struct-copy edit-context ctx [text text] [caret-delta 0])
                     ps '() #t)
             (values (struct-copy edit-context ctx
