@@ -16,6 +16,7 @@
          "../features/input/api.rkt")
 
 (provide editor-close-buffer-command
+         editor-close-buffer-resource-command
          editor-close-resource!)
 
 (define (editor-close-resource! ed state rid)
@@ -38,16 +39,23 @@
         (format "closed: ~a" (or (resource-path r) (resource-name r)))))
      (values state* actions-pair)]))
 
-;; 关闭当前 focus resource：dirty -> close-confirm；clean -> 直接关闭。
-(define (editor-close-buffer-command ed state)
-  (define r (and (editor-focus-view-id state)
-                 (state-resource-for-view state (editor-focus-view-id state))))
+;; 按 resource id 关闭：dirty -> close-confirm；clean -> 直接关闭。
+(define (editor-close-buffer-resource-command ed state rid)
+  (define r (resources-find-doc (state-resources state) rid))
   (cond
     [(not r) (values (state-with-flash state "close: no resource") '())]
     [(resource-dirty? r (engine-doc-version (editor-engine ed) (resource-doc-id r)))
      (values (editor-input-open state 'close-confirm
                                 (format "Close ~a? (y/n) "
                                         (or (resource-path r) (resource-name r)))
-                                (list 'close (resource-id r)))
+                                (list 'close rid))
              '())]
-    [else (editor-close-resource! ed state (resource-id r))]))
+    [else (editor-close-resource! ed state rid)]))
+
+;; 关闭当前 focus resource。
+(define (editor-close-buffer-command ed state)
+  (define r (and (editor-focus-view-id state)
+                 (state-resource-for-view state (editor-focus-view-id state))))
+  (cond
+    [(not r) (values (state-with-flash state "close: no resource") '())]
+    [else (editor-close-buffer-resource-command ed state (resource-id r))]))

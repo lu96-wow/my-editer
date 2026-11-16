@@ -26,7 +26,9 @@
          (editor-open-file! ed s (open-file-action-path a)))
        (if (null? more) s* (run-actions ed s* more))]
       [(close-buffer-action? a)
-       (define-values (s* more) (editor-close-buffer-command ed s))
+       (define-values (s* more)
+         (editor-close-buffer-resource-command
+          ed s (close-buffer-action-resource-id a)))
        (if (null? more) s* (run-actions ed s* more))]
       [(show-docs-action? a)
        (define-values (s* more) (editor-show-docs! ed s (show-docs-action-name a)))

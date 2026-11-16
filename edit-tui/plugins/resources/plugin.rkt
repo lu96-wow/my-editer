@@ -13,7 +13,8 @@
 ;;;
 ;;; C-v n：给当前行所属 buffer 新建 view
 ;;; C-v d：删除当前 view 行对应的 view
-;;; 创建 / 删除由 host/views.rkt 解释 action。
+;;; C-f d：关闭当前行所属文件 / resource
+;;; 创建 / 删除 / 关闭由 host action 解释。
 
 (require racket/string
          "../../core/command/api.rkt"
@@ -105,8 +106,13 @@
 (define (refresh-command ed state ps)
   (values (state-with-flash state "resources refreshed") ps '()))
 
-(define (close-buffer-command ed state ps)
-  (values state ps (list (close-buffer-action))))
+(define (close-file-command ed state ps vid)
+  (define row (current-row ed ps vid))
+  (cond
+    [(not row)
+     (values (state-with-flash state "resources: no line") ps '())]
+    [else
+     (values state ps (list (close-buffer-action (row-resource-id row))))]))
 (define (new-view-command ed state ps vid)
   (define row (current-row ed ps vid))
   (cond
@@ -148,5 +154,9 @@
     [(key 'v 'ctrl) (key 'd)
      (make-guarded-command
       #:when (λ (ed state ps) (resources-focused? state vid))
-      #:run (λ (ed state ps) (delete-view-command ed state ps vid)))])
+      #:run (λ (ed state ps) (delete-view-command ed state ps vid)))]
+    [(key 'f 'ctrl) (key 'd)
+     (make-guarded-command
+      #:when (λ (ed state ps) (resources-focused? state vid))
+      #:run (λ (ed state ps) (close-file-command ed state ps vid)))])
    #:sync sync-resources))

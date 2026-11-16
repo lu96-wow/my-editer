@@ -52,6 +52,8 @@ edit 快捷键
   C-x b            切换 sidebar tab（filetree / resources）
   C-v n            resources 面板：为当前 buffer 创建 view
   C-v d            resources 面板：删除选中的 view
+  C-f d            resources 面板：关闭当前行所属文件
+                   文件树：删除文件 / 目录
   C-x n / C-x p    下一个 / 上一个 editor tab
 
 文件 / 会话
@@ -82,7 +84,7 @@ filetree
   C-f n            新建文件
   C-f C-f n        新建目录
   C-f r            重命名
-  C-f d            删除
+  C-f d            删除（resources 面板里是关闭文件）
 
 鼠标
   点 panel         聚焦 + 光标落点

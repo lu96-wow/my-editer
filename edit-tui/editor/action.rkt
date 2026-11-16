@@ -20,7 +20,7 @@
 (struct quit-action () #:transparent)
 (struct flash-action (message) #:transparent)
 (struct open-file-action (path) #:transparent)
-(struct close-buffer-action () #:transparent)
+(struct close-buffer-action (resource-id) #:transparent)
 ;; 跨插件请求：completion 只发 action，docs owner 自己更新 docs state。
 (struct show-docs-action (name) #:transparent)
 ;; filetree 只发 action；host 负责 prompt / 文件 IO / 刷新。

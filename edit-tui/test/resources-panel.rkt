@@ -14,6 +14,7 @@
          "../host/event.rkt"
          "fixture.rkt"
          "../features/placement/api.rkt"
+         "../features/input/api.rkt"
          "../host/open.rkt")
 
 (define root (make-temporary-directory))
@@ -127,6 +128,20 @@
 (define s18 (handle-editor-event ed s17 (key-event (key 'd))))
 (check-true (string-contains? (state-flash s18) "select a view"))
 (check-equal? (resource-views (state-resource-for-view s18 vid)) views0)
+(check-true (string-contains? (state-flash s18) "select a view"))
+(check-equal? (resource-views (state-resource-for-view s18 vid)) views0)
+
+;; C-f d：关闭当前行所属文件；dirty -> close-confirm。
+(engine-set-view-cursor! (editor-engine ed) 4 buffer-line #:column 0)
+(define s19 (handle-editor-event ed s18 (key-event (key 'f 'ctrl))))
+(define s20 (handle-editor-event ed s19 (key-event (key 'd))))
+(check-true (editor-input-active? s20))
+(check-eq? (editor-input-kind s20) 'close-confirm)
+(define s20a (handle-editor-event ed s20 (key-event (key 'n))))
+(define s21 (handle-editor-event ed s20a (key-event (key 'enter))))
+(check-false (editor-input-active? s21))
+(check-false (state-resource-for-view s21 vid))
+(check-false (engine-view-object (editor-engine ed) vid))
 
 (delete-directory/files root)
 (displayln "edit-tui/test/resources-panel.rkt: ok")
