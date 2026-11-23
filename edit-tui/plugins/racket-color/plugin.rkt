@@ -20,7 +20,9 @@
 (struct color-entry
   (version
    color-state
-   face-track)
+   face-track
+   bracket-pairs-version
+   bracket-pairs)
   #:transparent)
 
 (define empty-color-cache (hash))
@@ -37,10 +39,19 @@
   (and role
        (string-prefix? (symbol->string role) "bracket-depth-")))
 
+;; 括号字符 / 配对标记：前景用同层提亮色，背景仍用该层深度背景。
+(define (bracket-glyph-role? role)
+  (and (bracket-role? role)
+       (let ([s (symbol->string role)])
+         (or (string-suffix? s "-bracket")
+             (string-suffix? s "-match")))))
+
 (define (role->face-layer role)
-  (if (bracket-role? role)
-      (face #f role '())
-      (face role #f '())))
+  (cond
+    [(bracket-glyph-role? role)
+     (face role (bracket-glyph-bg-role role) '())]
+    [(bracket-role? role) (face #f role '())]
+    [else (face role #f '())]))
 
 (define (role-at roles i)
   (and roles
@@ -48,11 +59,16 @@
        (vector-ref roles i)))
 
 (define (line->faces syntax word bracket
-                     [suppress-start #f] [suppress-end #f])
+                     [suppress-start #f] [suppress-end #f]
+                     [match-roles #f] [line-no #f])
   (define n (vector-length syntax))
   (for/vector ([i (in-range n)])
     (define f #f)
-    (define br (role-at bracket i))
+    (define br0 (role-at bracket i))
+    ;; 匹配括号用同层更亮的 match role 覆盖普通括号字符 role。
+    (define br (or (and match-roles line-no
+                        (hash-ref match-roles (cons line-no i) #f))
+                   br0))
     (when br (set! f (compose-face f (role->face-layer br))))
     (define suppressed?
       (and suppress-start suppress-end
@@ -64,7 +80,8 @@
     f))
 
 ;; suppress = (cons line (cons start end)) | #f
-(define (color-state->face-track cs suppress)
+;; match-roles = hash (line . col) -> bracket-depth-N-match | #f
+(define (color-state->face-track cs suppress [match-roles #f])
   (define sl (and suppress (car suppress)))
   (define sr (and suppress (cdr suppress)))
   (for/list ([syntax (in-vector (color-state-syntax-roles cs))]
@@ -72,10 +89,12 @@
              [bracket (in-vector (color-state-bracket-roles cs))]
              [ln (in-naturals)])
     (if (and sl (= ln sl))
-        (line->faces syntax word bracket (car sr) (cdr sr))
-        (line->faces syntax word bracket))))
+        (line->faces syntax word bracket (car sr) (cdr sr)
+                     match-roles ln)
+        (line->faces syntax word bracket #f #f match-roles ln))))
 
-(define (color-state->dirty-face-lines cs dirty-lines suppress)
+(define (color-state->dirty-face-lines cs dirty-lines suppress
+                                       [match-roles #f])
   (define syntax (color-state-syntax-roles cs))
   (define word (color-state-word-roles cs))
   (define bracket (color-state-bracket-roles cs))
@@ -84,9 +103,11 @@
   (for/list ([ln (in-list dirty-lines)])
     (cons ln (if (and sl (= ln sl))
                  (line->faces (vector-ref syntax ln) (vector-ref word ln)
-                              (vector-ref bracket ln) (car sr) (cdr sr))
+                              (vector-ref bracket ln) (car sr) (cdr sr)
+                              match-roles ln)
                  (line->faces (vector-ref syntax ln) (vector-ref word ln)
-                              (vector-ref bracket ln))))))
+                              (vector-ref bracket ln) #f #f
+                              match-roles ln)))))
 
 ;; 光标所在 symbol token 的 [start,end)。
 (define (active-word-range cs line col)
@@ -131,6 +152,61 @@
      (define range (and line col (active-word-range cs line col)))
      (and range (cons line range))]))
 
+;;; ════════════════ 光标括号配对 ════════════════
+
+(define (bracket-role-at cs line col)
+  (define role-vectors (color-state-bracket-roles cs))
+  (cond
+    [(or (not (exact-nonnegative-integer? line))
+         (>= line (vector-length role-vectors)))
+     #f]
+    [else
+     (define roles (vector-ref role-vectors line))
+     (and (exact-nonnegative-integer? col)
+          (< col (vector-length roles))
+          (vector-ref roles col))]))
+
+;; 光标在括号上（或紧跟括号之后）时返回该括号位置 (line . col)。
+;; 用 bracket role 判断，字符串 / 注释里的括号不会被误认。
+(define (focus-bracket-position ed state did cs)
+  (define vid (editor-focus-view-id state))
+  (define fdid (and vid (editor-view-doc-id ed vid)))
+  (cond
+    [(not (equal? fdid did)) #f]
+    [else
+     (define line (editor-view-point-line ed vid))
+     (define col (editor-view-point-column ed vid))
+     (cond
+       [(or (not line) (not col)) #f]
+       [(bracket-char-role? (bracket-role-at cs line col)) (cons line col)]
+       [(and (> col 0)
+             (bracket-char-role? (bracket-role-at cs line (sub1 col))))
+        (cons line (sub1 col))]
+       [else #f])]))
+
+;; 按 (doc-id, version) 缓存整篇配对表；只有光标落到括号上才需要计算。
+(define (ensure-bracket-pairs entry text version)
+  (cond
+    [(equal? (color-entry-bracket-pairs-version entry) version)
+     entry]
+    [else
+     (color-entry version
+                  (color-entry-color-state entry)
+                  (color-entry-face-track entry)
+                  version
+                  (bracket-pair-map text))]))
+
+;; 配对两端 -> role hash；找不到匹配就返回 #f（未匹配括号保持普通括号色）。
+(define (match-positions->roles cs positions)
+  (and positions
+       (for/fold ([h (hash)]) ([pos (in-list positions)])
+         (define role (bracket-role-at cs (car pos) (cdr pos)))
+         (define match-role (and (bracket-char-role? role)
+                                 (bracket-match-role-of role)))
+         (if match-role
+             (hash-set h pos match-role)
+             h))))
+
 ;;; ════════════════ changes -> line-edit ════════════════
 
 (define (changes->line-edits changes)
@@ -144,20 +220,22 @@
 
 ;;; ════════════════ 写回 ════════════════
 
-(define (write-full-track! ed did version vids entry suppress)
-  (define key (list did version 'racket-color suppress))
+(define (write-full-track! ed did version vids entry suppress match-roles)
+  (define key (list did version 'racket-color suppress match-roles))
   (define track
-    (if suppress
-        (color-state->face-track (color-entry-color-state entry) suppress)
+    (if (or suppress match-roles)
+        (color-state->face-track (color-entry-color-state entry)
+                                 suppress match-roles)
         (color-entry-face-track entry)))
   (for ([vid (in-list vids)])
     (editor-set-view-face-track! ed vid track
                                  #:base-version version
                                  #:key key)))
 
-(define (write-dirty-lines! ed did version vids cs dirty suppress)
-  (define key (list did version 'racket-color suppress))
-  (define lines (color-state->dirty-face-lines cs dirty suppress))
+(define (write-dirty-lines! ed did version vids cs dirty suppress
+                            [match-roles #f])
+  (define key (list did version 'racket-color suppress match-roles))
+  (define lines (color-state->dirty-face-lines cs dirty suppress match-roles))
   (for ([vid (in-list vids)])
     (editor-set-view-face-lines! ed vid lines
                                  #:base-version version
@@ -187,12 +265,12 @@
                        (changes->line-edits changes))]
          [else
           (values (color-open text) 'all)]))
-     (define entry (color-entry version cs (color-state->face-track cs #f)))
+     (define entry (color-entry version cs (color-state->face-track cs #f) #f #f))
      (define suppress (focus-suppress ed (change-context-state ctx) did cs))
      (define vids (editor-view-ids-for-doc ed did))
      (cond
        [(eq? dirty 'all)
-        (write-full-track! ed did version vids entry suppress)]
+        (write-full-track! ed did version vids entry suppress #f)]
        [else
         (when (pair? dirty)
           (write-dirty-lines! ed did version vids cs dirty suppress))])
@@ -211,14 +289,25 @@
       [(not (racket-doc? state did text)) cache]
       [else
        (define cached (hash-ref old-cache did #f))
-       (define entry
+       (define entry0
          (if (and cached (equal? (color-entry-version cached) version))
              cached
              (let ([cs (color-open text)])
-               (color-entry version cs (color-state->face-track cs #f)))))
-       (define suppress (focus-suppress ed state did
-                                       (color-entry-color-state entry)))
-       (write-full-track! ed did version vids entry suppress)
+               (color-entry version cs (color-state->face-track cs #f) #f #f))))
+       (define cs (color-entry-color-state entry0))
+       ;; 只有光标真的落在括号上，才需要整篇配对表。
+       (define bracket-pos (focus-bracket-position ed state did cs))
+       (define entry (if bracket-pos
+                         (ensure-bracket-pairs entry0 text version)
+                         entry0))
+       (define match
+         (and bracket-pos
+              (let ([other (hash-ref (color-entry-bracket-pairs entry)
+                                     bracket-pos #f)])
+                (and other (list bracket-pos other)))))
+       (define match-roles (match-positions->roles cs match))
+       (define suppress (focus-suppress ed state did cs))
+       (write-full-track! ed did version vids entry suppress match-roles)
        (hash-set cache did entry)]))
   (define new-cache
     (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])

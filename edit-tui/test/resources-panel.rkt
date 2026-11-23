@@ -39,6 +39,8 @@
 (define status-text (engine-view-text (editor-engine ed) 2))
 (check-true (string-contains? status-text "one.rkt"))
 (check-false (string-contains? status-text (path->string file)))
+;; status bar 不显示已加载的插件。
+(check-false (string-contains? status-text "pair+indent"))
 ;; workspace root 内：显示相对路径，不显示绝对路径。
 (check-true (string-contains? text1 "one.rkt"))
 (check-false (string-contains? text1 (path->string file)))

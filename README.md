@@ -177,8 +177,10 @@ raco pkg install racket-tui html-parsing
 然后在仓库根目录运行：
 
 ```sh
-racket edit-tui/edit.rkt
+racket edit-tui/edit.rkt [工作目录]
 ```
+
+工作目录可省略，默认当前目录；相对路径会先转换为绝对路径，并作为文件树 / workspace 的根。
 
 这种方式不需要安装脚本，适合开发和调试。
 

@@ -3,7 +3,9 @@
 ;;; edit-tui/lang/racket/color/bracket.rkt —— 括号嵌套深度背景（纯）
 ;;;
 ;;; 只产出语义 role，不决定实际颜色：
-;;;   bracket-depth-0 .. bracket-depth-7
+;;;   bracket-depth-N          普通内容（括号对内部）
+;;;   bracket-depth-N-bracket  括号字符本身：背景仍是 N，前景由 N 的背景色提亮
+;;;   bracket-depth-N-match    光标所在括号 + 它的配对括号：同背景，前景更亮
 ;;;
 ;;; 深度定义与 edit4 一致：
 ;;;   · 最外层括号对及其内容用 depth 0，往内依次 +1；
@@ -13,11 +15,19 @@
 ;;;
 ;;; 跨行状态只是一个括号栈。栈元素是左括号字符；token 流由 lex.rkt 提供，
 ;;; 所以这里不再重复处理字符串 / 块注释的跨行状态。
+;;;
+;;; bracket-pair-map 用同一个 token 流做严格配对：只有栈顶且类型相同的左右括号
+;;; 才算一对；字符串 / 注释里的括号不参与，未匹配括号不会产生配对。
 
 (provide bracket-color-count
          bracket-depth-role
+         bracket-bracket-role
+         bracket-char-role?
+         bracket-match-role-of
+         bracket-glyph-bg-role
          bracket-scan-line
-         bracket-depth-text)
+         bracket-depth-text
+         bracket-pair-map)
 
 (require racket/string
          "../base/lex.rkt")
@@ -28,6 +38,27 @@
   (string->symbol
    (format "bracket-depth-~a"
            (modulo (max 0 level) bracket-color-count))))
+
+(define (bracket-bracket-role level)
+  (string->symbol
+   (format "bracket-depth-~a-bracket"
+           (modulo (max 0 level) bracket-color-count))))
+
+(define (bracket-match-role-of role)
+  (define s (and role (symbol? role) (symbol->string role)))
+  (define m (and s (regexp-match #rx"^bracket-depth-([0-9]+)-bracket$" s)))
+  (and m
+       (string->symbol (format "bracket-depth-~a-match" (cadr m)))))
+
+(define (bracket-char-role? role)
+  (and role (bracket-match-role-of role) #t))
+
+;; 括号字符 / 配对标记 role -> 同层内容背景 role。
+(define (bracket-glyph-bg-role role)
+  (define s (and role (symbol? role) (symbol->string role)))
+  (define m (and s (regexp-match #rx"^bracket-depth-([0-9]+)-(bracket|match)$" s)))
+  (and m
+       (string->symbol (format "bracket-depth-~a" (cadr m)))))
 
 (define (open-bracket? ch)
   (and (char? ch) (memv ch '(#\( #\[ #\{)) #t))
@@ -50,6 +81,10 @@
     (define role (bracket-depth-role level))
     (for ([i (in-range start (min end (vector-length vec)))])
       (vector-set! vec i role))))
+
+(define (paint-bracket! vec i level)
+  (when (and (>= level 0) (< i (vector-length vec)))
+    (vector-set! vec i (bracket-bracket-role level))))
 
 ;; token 流 + 行文本 + 入栈 -> (values 出栈 行 role 向量)
 (define (bracket-scan-line tokens line stack)
@@ -81,14 +116,14 @@
                (cond
                  [(open-bracket? ch)
                   ;; 左括号本身属于外层深度；内容从下一层开始。
-                  (paint! roles i (add1 i) (length st))
+                  (paint-bracket! roles i (length st))
                   (loop-chars (add1 i) (cons ch st))]
                  [(close-bracket? ch)
                   (define st* (if (and (pair? st) (matches? (car st) ch))
                                    (cdr st)
                                    st))
                   ;; 右括号与它匹配的左括号同层。
-                  (paint! roles i (add1 i) (length st*))
+                  (paint-bracket! roles i (length st*))
                   (loop-chars (add1 i) st*)]
                  [else
                   (paint! roles i (add1 i) (code-level st))
@@ -108,3 +143,32 @@
        (define-values (stack* roles)
          (bracket-scan-line (car tokens) (car lines) stack))
        (loop (cdr lines) (cdr tokens) stack* (cons roles acc))])))
+
+;; 整篇 -> hash：括号位置 (line . col) -> 配对位置 (line . col)。
+;; 只有严格匹配（栈顶 + 类型相同）的括号才会进入结果；不匹配的括号不产生键。
+;; 位置只来自 lex.rkt 的 paren token，所以字符串 / 注释 / 字符字面量里的括号会被忽略。
+(define (bracket-pair-map text)
+  (define lines (string-split text "\n" #:trim? #f))
+  (define token-lines (tokenize text))
+  (define pairs (make-hash))
+  (define stack '())        ; (listof (cons position open-char))
+  (for ([line (in-list lines)]
+        [tokens (in-list token-lines)]
+        [ln (in-naturals)])
+    (define n (string-length line))
+    (for ([t (in-list tokens)] #:when (eq? (token-kind t) 'paren))
+      (for ([col (in-range (token-start t) (min (token-end t) n))])
+        (define ch (string-ref line col))
+        (cond
+          [(open-bracket? ch)
+           (set! stack (cons (cons (cons ln col) ch) stack))]
+          [(close-bracket? ch)
+           (cond
+             [(and (pair? stack) (matches? (cdar stack) ch))
+              (define open-pos (caar stack))
+              (define close-pos (cons ln col))
+              (set! stack (cdr stack))
+              (hash-set! pairs open-pos close-pos)
+              (hash-set! pairs close-pos open-pos)]
+             [else (void)])]))))
+  pairs)

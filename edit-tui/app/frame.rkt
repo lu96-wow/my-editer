@@ -53,7 +53,6 @@
                  (format "~a:~a" line col)
                  (format "panes:~a" panes)
                  (and area-id (format "area:~a" area-id))
-                 "pair+indent"
                  placement
                  pending-text
                  (and (positive? (string-length flash)) flash)))

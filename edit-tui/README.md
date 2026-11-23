@@ -39,7 +39,7 @@
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行按当前行前导空白对齐。
-- `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）。
+- `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）；括号深度背景（括号字符从同层背景色提亮），光标在括号上时高亮严格配对的括号，未匹配 / 字符串 / 注释里的括号不参与。
 - `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / resize 模式 / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
@@ -423,8 +423,10 @@ command     (ed state ps)     -> (values state' ps' actions)
 ## 运行
 
 ```sh
-racket edit-tui/edit.rkt
+racket edit-tui/edit.rkt [工作目录]
 ```
+
+工作目录可省略，默认当前目录；相对路径会先转换为绝对路径，并作为文件树 / workspace 的根。
 
 键：
 

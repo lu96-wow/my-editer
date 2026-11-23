@@ -92,6 +92,20 @@
 (check-equal? (text ed-n vid-n) "()")
 (check-equal? (col ed-n vid-n) 1)
 
+;; 外层还有未闭合括号时，输入开符号补成嵌套对，而不是借用外层的闭符号。
+(define-values (ed-nest s-nest0 vid-nest) (fresh-c "nested-paren.c"))
+(define-values (s-nest1 _nest1) (editor-insert! ed-nest s-nest0 vid-nest "("))
+(define-values (s-nest2 _nest2) (editor-insert! ed-nest s-nest1 vid-nest "define "))
+(define-values (s-nest3 _nest3) (editor-insert! ed-nest s-nest2 vid-nest "("))
+(check-equal? (text ed-nest vid-nest) "(define ())")
+(check-equal? (col ed-nest vid-nest) 9)
+(define-values (s-nest4 _nest4) (editor-insert! ed-nest s-nest3 vid-nest ")"))
+(check-equal? (text ed-nest vid-nest) "(define ())")
+(check-equal? (col ed-nest vid-nest) 10)
+(define-values (s-nest5 _nest5) (editor-insert! ed-nest s-nest4 vid-nest ")"))
+(check-equal? (text ed-nest vid-nest) "(define ())")
+(check-equal? (col ed-nest vid-nest) 11)
+
 ;; 空配对中间 Backspace / Delete 一次删一对。
 (define-values (ed-b s-b0 vid-b) (fresh-c "backspace.c"))
 (define-values (s-b1 _ba) (editor-insert! ed-b s-b0 vid-b "("))

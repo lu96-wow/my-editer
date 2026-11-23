@@ -103,12 +103,36 @@
           (style (apply rgb c) #f '()))))
 
 ;; 括号深度背景：8 层循环使用，颜色来自 edit4 的低饱和底色。
+;; 括号字符的背景保持和该层内容完全一致；只用**前景亮度**让括号显出来：
+;;   bracket-depth-N          内容背景
+;;   bracket-depth-N-bracket  括号字符：背景 = 该层背景，前景 = 背景提亮 55%
+;;   bracket-depth-N-match    当前括号 + 配对括号：同背景，前景提亮 90% + 加粗
+(define (rgb-lighten c amount)
+  (define (lift v)
+    (inexact->exact
+     (round (max 0 (min 255 (+ v (* (- 255 v) amount)))))))
+  (rgb (lift (rgb-r c)) (lift (rgb-g c)) (lift (rgb-b c))))
+
+(define bracket-base-colors
+  '((36 40 58) (28 47 49) (48 46 30) (30 49 40)
+    (42 34 58) (34 44 58) (38 48 34) (44 38 54)))
+
 (define bracket-theme
-  (for/list ([i (in-range 8)]
-             [c (in-list '((36 40 58) (28 47 49) (48 46 30) (30 49 40)
-                           (42 34 58) (34 44 58) (38 48 34) (44 38 54)))])
-    (list (string->symbol (format "bracket-depth-~a" i))
-          (style #f (apply rgb c) '()))))
+  (append
+   (for/list ([i (in-range 8)]
+              [c (in-list bracket-base-colors)])
+     (list (string->symbol (format "bracket-depth-~a" i))
+           (style #f (apply rgb c) '())))
+   (for/list ([i (in-range 8)]
+              [c (in-list bracket-base-colors)])
+     (define bg (apply rgb c))
+     (list (string->symbol (format "bracket-depth-~a-bracket" i))
+           (style (rgb-lighten bg 0.55) bg '())))
+   (for/list ([i (in-range 8)]
+              [c (in-list bracket-base-colors)])
+     (define bg (apply rgb c))
+     (list (string->symbol (format "bracket-depth-~a-match" i))
+           (style (rgb-lighten bg 0.90) bg '(bold))))))
 
 ;; overlay（光标 / 选区）
 (define overlay-theme
