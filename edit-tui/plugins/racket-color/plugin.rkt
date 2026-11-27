@@ -3,9 +3,10 @@
 ;;; edit-tui/plugins/racket-color/plugin.rkt —— Racket 语法着色
 ;;;
 ;;; 两条路径：
-;;;   · changes derive：有 change 批次时用 color-edit* 只重扫脏行，写 dirty face lines；
-;;;   · sync：版本变化但没有 changes（首次打开 / undo / 批量写回）时整篇 color-open，
-;;;           并给新 view 写完整 face track。
+;;;   · sync（headless / 测试）：changes 用 color-edit* 增量写 dirty face lines；
+;;;     sync 在版本变化时整篇 color-open，并给新 view 写完整 face track。
+;;;   · async（TUI）：主线程只提交「版本 + 焦点」请求；face worker 内合成
+;;;     syntax / word / bracket，一次 swap 写完整 face track，再发 paint signal。
 ;;;
 ;;; 非 Racket 文档完全不碰 face track，避免清掉 filetree / status 自己的 face。
 
@@ -25,13 +26,33 @@
    bracket-pairs)
   #:transparent)
 
+;; async 路径只需要记住「已提交到哪个版本 / 光标签名」，不保存 color-state。
+;; 真正的 color-state / face-track 在 face worker 内按 buffer 缓存。
+(struct color-request (version focus) #:transparent)
+(struct color-worker-entry
+  (version color-state bracket-pairs-version bracket-pairs)
+  #:transparent)
+
 (define empty-color-cache (hash))
+
+;; face worker 只在单线程执行；同步兜底也只会由同一时刻的主线程进入。
+;; key = buffer（eq?）；ephemeron 避免已关闭 buffer 的缓存阻止回收。
+(define color-worker-cache (make-ephemeron-hasheq))
 
 ;; 优先看 resource mode；没有 resource 的临时测试文档才退回文本判断。
 (define (racket-doc? state did text)
   (or (eq? (state-doc-mode state did) 'racket)
       (and (not (state-resource-for-doc state did))
            (racket-text? text))))
+
+;; 焦点在 doc 内时返回 (cons line col)，否则 #f。
+(define (doc-focus-info ed state did)
+  (define vid (editor-focus-view-id state))
+  (define fdid (and vid (editor-view-doc-id ed vid)))
+  (and (equal? fdid did)
+       (let ([line (editor-view-point-line ed vid)]
+             [col (editor-view-point-column ed vid)])
+         (and line col (cons line col)))))
 
 ;;; ════════════════ role -> face ════════════════
 
@@ -140,17 +161,15 @@
                 i)))
         (cons start end)])]))
 
+;; focus = (cons line col) | #f。纯函数：主线程和 face worker 共用。
+(define (suppress-at-focus cs focus)
+  (and focus
+       (let ([range (active-word-range cs (car focus) (cdr focus))])
+         (and range (cons (car focus) range)))))
+
 ;; 焦点 view 是否属于 doc；属于才抑制该行的 word-color。
 (define (focus-suppress ed state did cs)
-  (define vid (editor-focus-view-id state))
-  (define fdid (and vid (editor-view-doc-id ed vid)))
-  (cond
-    [(not (equal? fdid did)) #f]
-    [else
-     (define line (editor-view-point-line ed vid))
-     (define col (editor-view-point-column ed vid))
-     (define range (and line col (active-word-range cs line col)))
-     (and range (cons line range))]))
+  (suppress-at-focus cs (doc-focus-info ed state did)))
 
 ;;; ════════════════ 光标括号配对 ════════════════
 
@@ -166,23 +185,21 @@
           (< col (vector-length roles))
           (vector-ref roles col))]))
 
+;; focus = (cons line col) | #f。纯函数：主线程和 face worker 共用。
+(define (bracket-position-at-focus cs focus)
+  (and focus
+       (let ([line (car focus)] [col (cdr focus)])
+         (cond
+           [(bracket-char-role? (bracket-role-at cs line col)) (cons line col)]
+           [(and (> col 0)
+                 (bracket-char-role? (bracket-role-at cs line (sub1 col))))
+            (cons line (sub1 col))]
+           [else #f]))))
+
 ;; 光标在括号上（或紧跟括号之后）时返回该括号位置 (line . col)。
 ;; 用 bracket role 判断，字符串 / 注释里的括号不会被误认。
 (define (focus-bracket-position ed state did cs)
-  (define vid (editor-focus-view-id state))
-  (define fdid (and vid (editor-view-doc-id ed vid)))
-  (cond
-    [(not (equal? fdid did)) #f]
-    [else
-     (define line (editor-view-point-line ed vid))
-     (define col (editor-view-point-column ed vid))
-     (cond
-       [(or (not line) (not col)) #f]
-       [(bracket-char-role? (bracket-role-at cs line col)) (cons line col)]
-       [(and (> col 0)
-             (bracket-char-role? (bracket-role-at cs line (sub1 col))))
-        (cons line (sub1 col))]
-       [else #f])]))
+  (bracket-position-at-focus cs (doc-focus-info ed state did)))
 
 ;; 按 (doc-id, version) 缓存整篇配对表；只有光标落到括号上才需要计算。
 (define (ensure-bracket-pairs entry text version)
@@ -241,10 +258,59 @@
                                  #:base-version version
                                  #:key key)))
 
+;;; ════════════════ 后台 face worker ════════════════
+
+;; 在 worker 内维护 color-state 缓存。同一 buffer 的旧任务会被 face runtime
+;; 合并掉，所以这里拿到的 text/version 总是该 buffer 最新一次提交的内容。
+(define (worker-color-state old text version base-version changes kind)
+  (cond
+    [(and old (equal? (color-worker-entry-version old) version))
+     (values (color-worker-entry-color-state old) old)]
+    [(and (eq? kind 'edit)
+          old
+          (equal? (color-worker-entry-version old) base-version))
+     (define-values (cs _dirty)
+       (color-edit* (color-worker-entry-color-state old)
+                    text
+                    (changes->line-edits changes)))
+     (values cs old)]
+    [else
+     (values (color-open text) #f)]))
+
+;; 语法 / 同词 / 括号在同一个函数里按 line->faces 固定顺序合成，一次写出
+;; 整条 face track。写完由 face runtime 发 paint signal。
+(define (color-worker-job! target text version base-version changes focus kind)
+  (define buffer (face-target-buffer target))
+  (define old (hash-ref color-worker-cache buffer #f))
+  (define-values (cs old-entry)
+    (worker-color-state old text version base-version changes kind))
+  (define bracket-pos (bracket-position-at-focus cs focus))
+  (define bracket-pairs
+    (cond
+      [(not bracket-pos) #f]
+      [(and old-entry
+            (equal? (color-worker-entry-bracket-pairs-version old-entry)
+                    version))
+       (color-worker-entry-bracket-pairs old-entry)]
+      [else (bracket-pair-map text)]))
+  (define match
+    (and bracket-pos
+         (let ([other (hash-ref bracket-pairs bracket-pos #f)])
+           (and other (list bracket-pos other)))))
+  (define match-roles (match-positions->roles cs match))
+  (define suppress (suppress-at-focus cs focus))
+  (define face-track (color-state->face-track cs suppress match-roles))
+  (face-target-set-face-lines! target face-track)
+  (hash-set! color-worker-cache buffer
+             (color-worker-entry version cs
+                                (and bracket-pos version)
+                                bracket-pairs)))
+
 ;;; ════════════════ changes hook ════════════════
 
 (define (changes-color ctx ps)
   (define ed (change-context-editor ctx))
+  (define state (change-context-state ctx))
   (define did (change-context-doc-id ctx))
   (define base-version (change-context-base-version ctx))
   (define version (change-context-version ctx))
@@ -253,8 +319,22 @@
   (cond
     [(or (not text)
          (not (eq? (editor-doc-kind ed did) 'user))
-         (not (racket-doc? (change-context-state ctx) did text)))
+         (not (racket-doc? state did text)))
      (values ctx ps '() #t)]
+    [(state-async? state)
+     (define target (editor-doc-face-target ed did))
+     (cond
+       [(not target)
+        ;; 没有可见 view 时不做 face 工作；下一次 sync 会重新判断。
+        (values ctx (hash-remove ps did) '() #t)]
+       [else
+        (define focus (doc-focus-info ed state did))
+        (define buffer (face-target-buffer target))
+        (face-submit! buffer
+                      (λ ()
+                        (color-worker-job! target text version base-version
+                                           changes focus 'edit)))
+        (values ctx (hash-set ps did (color-request version focus)) '() #t)])]
     [else
      (define old (hash-ref ps did #f))
      (define-values (cs dirty)
@@ -266,7 +346,7 @@
          [else
           (values (color-open text) 'all)]))
      (define entry (color-entry version cs (color-state->face-track cs #f) #f #f))
-     (define suppress (focus-suppress ed (change-context-state ctx) did cs))
+     (define suppress (focus-suppress ed state did cs))
      (define vids (editor-view-ids-for-doc ed did))
      (cond
        [(eq? dirty 'all)
@@ -279,40 +359,72 @@
 ;;; ════════════════ sync ════════════════
 
 (define (sync-colors ed state ps)
-  (define old-cache (if (hash? ps) ps empty-color-cache))
-  (define (sync-doc cache did)
-    (define text (editor-doc-text ed did))
-    (define version (editor-doc-version ed did))
-    (define vids (or (editor-view-ids-for-doc ed did) '()))
-    (cond
-      [(or (not text) (not version) (null? vids)) cache]
-      [(not (racket-doc? state did text)) cache]
-      [else
-       (define cached (hash-ref old-cache did #f))
-       (define entry0
-         (if (and cached (equal? (color-entry-version cached) version))
-             cached
-             (let ([cs (color-open text)])
-               (color-entry version cs (color-state->face-track cs #f) #f #f))))
-       (define cs (color-entry-color-state entry0))
-       ;; 只有光标真的落在括号上，才需要整篇配对表。
-       (define bracket-pos (focus-bracket-position ed state did cs))
-       (define entry (if bracket-pos
-                         (ensure-bracket-pairs entry0 text version)
-                         entry0))
-       (define match
-         (and bracket-pos
-              (let ([other (hash-ref (color-entry-bracket-pairs entry)
-                                     bracket-pos #f)])
-                (and other (list bracket-pos other)))))
-       (define match-roles (match-positions->roles cs match))
-       (define suppress (focus-suppress ed state did cs))
-       (write-full-track! ed did version vids entry suppress match-roles)
-       (hash-set cache did entry)]))
-  (define new-cache
-    (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])
-      (sync-doc cache did)))
-  (values state new-cache))
+  (cond
+    [(state-async? state)
+     ;; async：主线程只判断「是否需要提交新请求」。color-state / face track
+     ;; 在 worker 内；这里不碰 face。
+     (define ps*
+       (for/fold ([ps ps]) ([did (in-list (editor-user-doc-ids ed))])
+         (define text (editor-doc-text ed did))
+         (define version (editor-doc-version ed did))
+         (define target (and text version (editor-doc-face-target ed did)))
+         (cond
+           [(or (not text)
+                (not version)
+                (not target)
+                (not (racket-doc? state did text)))
+            (hash-remove ps did)]
+           [else
+            (define focus (doc-focus-info ed state did))
+            (define req (hash-ref ps did #f))
+            (cond
+              [(and (color-request? req)
+                    (equal? (color-request-version req) version)
+                    (equal? (color-request-focus req) focus))
+               ps]
+              [else
+               (define buffer (face-target-buffer target))
+               (face-submit! buffer
+                             (λ ()
+                               (color-worker-job! target text version #f
+                                                  '() focus 'sync)))
+               (hash-set ps did (color-request version focus))])])))
+     (values state ps*)]
+    [else
+     (define old-cache (if (hash? ps) ps empty-color-cache))
+     (define (sync-doc cache did)
+       (define text (editor-doc-text ed did))
+       (define version (editor-doc-version ed did))
+       (define vids (or (editor-view-ids-for-doc ed did) '()))
+       (cond
+         [(or (not text) (not version) (null? vids)) cache]
+         [(not (racket-doc? state did text)) cache]
+         [else
+          (define cached (hash-ref old-cache did #f))
+          (define entry0
+            (if (and cached (equal? (color-entry-version cached) version))
+                cached
+                (let ([cs (color-open text)])
+                  (color-entry version cs (color-state->face-track cs #f) #f #f))))
+          (define cs (color-entry-color-state entry0))
+          ;; 只有光标真的落在括号上，才需要整篇配对表。
+          (define bracket-pos (focus-bracket-position ed state did cs))
+          (define entry (if bracket-pos
+                            (ensure-bracket-pairs entry0 text version)
+                            entry0))
+          (define match
+            (and bracket-pos
+                 (let ([other (hash-ref (color-entry-bracket-pairs entry)
+                                        bracket-pos #f)])
+                   (and other (list bracket-pos other)))))
+          (define match-roles (match-positions->roles cs match))
+          (define suppress (focus-suppress ed state did cs))
+          (write-full-track! ed did version vids entry suppress match-roles)
+          (hash-set cache did entry)]))
+     (define new-cache
+       (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])
+         (sync-doc cache did)))
+     (values state new-cache)]))
 
 (define racket-color-plugin
   (make-plugin

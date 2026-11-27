@@ -24,7 +24,8 @@
   (string-append "#lang racket\n"
                  "\n"
                  "(define (main xs)\n"
-                 "  (map add1 xs))\n"))
+                 "  (map add1 xs))\n"
+                 "  ;; comment define\n"))
 
 (define-values (ed state0)
   (make-editor-app #:initial-text sample
@@ -53,10 +54,14 @@
 (check-true (string-contains? (editor-doc-text ed mirror-did) "映射"))
 (check-true (string-contains? (editor-doc-text ed mirror-did) "(main xs)"))
 (check-equal? (length (editor-visible-editor-panels state2)) 2)
+;; mirror 逐词沿用源的语法 / 同词 / 括号 face，而不是另一套 bilingual-* 颜色。
 (check-equal? (engine-view-face-at (editor-engine ed) mirror-did 2 1)
-              'bilingual-keyword)
+              (engine-view-face-at (editor-engine ed) source-vid 2 1))
 (check-equal? (engine-view-face-at (editor-engine ed) mirror-did 3 3)
-              'bilingual-function)
+              (engine-view-face-at (editor-engine ed) source-vid 3 3))
+;; 注释 / 普通 token 也复制源 face，避免 mirror 里注释变成普通文字色。
+(check-equal? (engine-view-face-at (editor-engine ed) mirror-did 4 4)
+              (engine-view-face-at (editor-engine ed) source-vid 4 4))
 (define source-pid (editor-view-panel-id state2 source-vid))
 (define mirror-pid (editor-view-panel-id state2 mirror-vid))
 (check-not-equal? source-pid mirror-pid)

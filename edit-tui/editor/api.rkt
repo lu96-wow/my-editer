@@ -33,7 +33,9 @@
          "job.rkt"
          "timer.rkt"
          "overlay.rkt"
-         "derived.rkt")
+         "derived.rkt"
+         "face-target.rkt"
+         "face-submit.rkt")
 
 (provide
  ;; job / service 纯值
@@ -121,6 +123,12 @@
  editor-view-height
  editor-view-cursor-screen-position
  editor-view-face-at
+
+ ;; 后台 face 写：目标捕获 document 版本；整轨一次 swap。
+ (struct-out face-target)
+ editor-doc-face-target
+ face-target-set-face-lines!
+ face-submit!
 
  ;; derived view：plugin-owned 投影写 / 查询
  (all-from-out "derived.rkt")

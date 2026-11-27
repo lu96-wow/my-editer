@@ -25,7 +25,9 @@
          line-diff)
 
 ;; translate-line / inverse-line : string -> string
-;; translate-line+faces : string -> (values string spans)
+;; translate-line+faces : string [source-faces] -> (values string spans)
+;;   source-faces = (vectorof (or/c #f symbol? face?)) | #f，与 source 行等长；
+;;   提供时按源 token 复制语法 / 词色 / 注释等属性。
 ;;   spans = (listof (list start end face))，位置基于 mirror 行自身字符索引。
 ;; 第一版不做“反译失败”；无法识别的 token 原样保留。
 (struct translator

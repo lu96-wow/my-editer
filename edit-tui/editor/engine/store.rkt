@@ -27,6 +27,7 @@
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
          engine-view-text engine-doc-text engine-doc-version engine-view-doc-id
+         engine-doc-buffer
          engine-doc-kind engine-view-kind engine-doc-readonly-flag
          engine-set-doc-readonly-flag!
          engine-doc-ids engine-user-doc-ids engine-ui-doc-ids engine-derived-doc-ids
@@ -314,6 +315,9 @@
 (define (engine-doc-text e did)
   (define b (doc-buffer e did))
   (and b (buffer-string b)))
+
+(define (engine-doc-buffer e did)
+  (doc-buffer e did))
 
 (define (engine-doc-version e did)
   (define b (doc-buffer e did))

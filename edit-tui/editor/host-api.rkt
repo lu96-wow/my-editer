@@ -22,7 +22,8 @@
          "area.rkt"
          "timer.rkt"
          "plugin.rkt"
-         "plugin-runtime.rkt")
+         "plugin-runtime.rkt"
+         "face-submit.rkt")
 
 (provide (all-from-out "api.rkt")
          ;; State / resource 的完整内部面：constructor、plugin-states、写入口。
@@ -42,6 +43,9 @@
          (all-from-out "layout.rkt")
          (all-from-out "area.rkt")
          (all-from-out "timer.rkt")
+
+         ;; host 用 face-submit 参数接入 host/face-jobs 的 worker。
+         (all-from-out "face-submit.rkt")
 
          ;; 渲染 / 尺寸同步：只有 host 使用
          panels-sync!

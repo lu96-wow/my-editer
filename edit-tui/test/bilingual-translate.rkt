@@ -38,4 +38,18 @@
 (check-equal? ((translator-translate-line tr) "(my-user-name x)")
               "(my-user-name x)")
 
+;; 传入 source-faces 时，翻译后的 token 和未翻译区间都沿用源 face。
+(define source-line "(define x) ; note")
+(define source-faces
+  (let ([v (make-vector (string-length source-line) 'syntax-comment)])
+    (for ([i (in-range 1 7)]) (vector-set! v i 'syntax-keyword-def))
+    v))
+(define-values (text2 spans2)
+  ((translator-translate-line+faces tr) source-line source-faces))
+(check-equal? text2 "(定义 x) ; note")
+(check-true (ormap (lambda (span) (eq? (caddr span) 'syntax-keyword-def))
+                   spans2))
+(check-true (ormap (lambda (span) (eq? (caddr span) 'syntax-comment))
+                   spans2))
+
 (displayln "edit-tui/test/bilingual-translate.rkt: ok")

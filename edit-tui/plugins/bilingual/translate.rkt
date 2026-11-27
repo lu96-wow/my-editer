@@ -113,39 +113,78 @@
 
 ;;; ════════════════ 行内替换 ════════════════
 
-;; mapping : hash token-string -> (cons replacement (or/c face #f))
+;; mapping      : hash token-string -> (cons replacement (or/c face #f))
+;; source-faces : (vectorof (or/c #f symbol? face?)) | #f
+;;                源行逐字符 face；提供时 mirror 按词沿用源的语法 / 同词 /
+;;                注释 / 字符串 / 括号等属性。
 ;; → (values text spans)
 ;;   spans 位置基于输出 text 的字符索引，不依赖 source 列。
-(define (replace-symbols line mapping)
+(define (replace-symbols line mapping [source-faces #f])
   (define-values (_state tokens) (tokenize-line empty-lex-state line))
   (define out '())
   (define out-len 0)
   (define spans '())
+  ;; 整行完全没着色时，保持旧的 translator 显式 face 兜底；只要源行有
+  ;; 任何非 #f face，就以源属性为准，包括某个 token 自己就是 #f 的情况。
+  (define line-colored?
+    (and source-faces
+         (for/or ([face (in-vector source-faces)]) face)))
   (define (emit! s)
     (set! out (cons s out))
     (set! out-len (+ out-len (string-length s))))
+  (define (source-face i)
+    (and source-faces
+         (< i (vector-length source-faces))
+         (vector-ref source-faces i)))
+  (define (add-span! start end face)
+    (when (and face (> end start))
+      (set! spans (cons (list start end face) spans))))
+  ;; 未翻译的源区间逐字符复制源 face；相邻同 face 合并成一个 span。
+  (define (emit-source! start end)
+    (cond
+      [(>= start end) (void)]
+      [(not source-faces) (emit! (substring line start end))]
+      [else
+       (let loop ([i start] [run-start start] [run-face (source-face start)])
+         (cond
+           [(= i end)
+            (add-span! out-len (+ out-len (- end run-start)) run-face)
+            (emit! (substring line run-start end))]
+           [(equal? (source-face i) run-face)
+            (loop (add1 i) run-start run-face)]
+           [else
+            (add-span! out-len (+ out-len (- i run-start)) run-face)
+            (emit! (substring line run-start i))
+            (loop i i (source-face i))]))]))
   (define pos 0)
   (for ([tok (in-list tokens)])
     (define s (token-start tok))
     (define e (token-end tok))
     (when (> s pos)
-      (emit! (substring line pos s)))
+      (emit-source! pos s))
     (define text (substring line s e))
     (define mapped
       (and (eq? (token-kind tok) 'symbol)
            (hash-ref mapping text #f)))
     (define replacement (if mapped (car mapped) text))
-    (define face (and mapped (cdr mapped)))
-    (when face
-      (set! spans
-            (cons (list out-len
-                        (+ out-len (string-length replacement))
-                        face)
-                  spans)))
-    (emit! replacement)
+    (cond
+      [mapped
+       ;; 翻译后的词沿用源 token 的 face（取 token 内第一个非 #f 值）。
+       ;; 源行有颜色但该 token 无颜色时也保持无颜色，不再强行加
+       ;; bilingual-*，这样 mirror 与源逐词一致。
+       (define face
+         (cond
+           [line-colored?
+            (let loop ([i s])
+              (and (< i e)
+                   (or (source-face i) (loop (add1 i)))))]
+           [else (cdr mapped)]))
+       (add-span! out-len (+ out-len (string-length replacement)) face)
+       (emit! replacement)]
+      [else (emit-source! s e)])
     (set! pos e))
   (when (< pos (string-length line))
-    (emit! (substring line pos)))
+    (emit-source! pos (string-length line)))
   (values (apply string-append (reverse out)) (reverse spans)))
 
 (define (text-only mapping line)
@@ -158,7 +197,8 @@
   (translator id version
               forward inverse
               (lambda (line) (text-only forward line))
-              (lambda (line) (replace-symbols line forward))
+              (lambda (line [source-faces #f])
+                (replace-symbols line forward source-faces))
               (lambda (line) (text-only inverse line))))
 
 ;; 在静态 translator 上叠加动态词典。动态 map 形状与 translator 内部 map 一致：

@@ -28,6 +28,7 @@
 - `host/open.rkt` / `host/prompt.rkt` / `host/close.rkt`：打开 / 保存退出 / 关闭 buffer。
 - `host/help.rkt` + `config/help/default.rkt`：默认帮助 buffer（整 buffer 只读，C-x h 打开 / 聚焦）。
 - `editor/job.rkt` / `host/jobs.rkt`：异步 job 账本 + worker runtime。
+- `editor/face-target.rkt` / `editor/face-submit.rkt` / `host/face-jobs.rkt`：后台 face 写入 target + 单 worker + paint signal；属性不经过 State / job-result。
 - `editor/timer.rkt`：timer runtime + `timer-event` + 插件 `#:handle-timer`。
 - `editor/overlay.rkt`：插件浮层描述，host 转 core panel。
 - `plugins/completion/`：本地候选 / debounce / overlay 菜单 / 接受；候选包含 prefix 本身，但只有存在其他候选时才显示 popup；workspace 提供跨 buffer 的 analysis / require 导出，缺省时退回当前 buffer + open-text 解析。
@@ -39,12 +40,12 @@
 - `editor/plugin.rkt`：最小插件值（id / state / hooks / commands）。
 - `plugins/pair/`：括号自动配对。
 - `plugins/indent/`：Enter 换行按当前行前导空白对齐。
-- `plugins/racket-color/`：Racket 基础语法着色（每帧 sync + version 缓存）；括号深度背景（括号字符从同层背景色提亮），光标在括号上时高亮严格配对的括号，未匹配 / 字符串 / 注释里的括号不参与。
-- `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
+- `plugins/racket-color/`：Racket 语法 / 同词 / 括号着色。async 下由 face worker 合成完整 face track 并直接写 document face，写完整轨一次 swap；主线程只提交「版本 + 焦点」请求，paint signal 后重绘一次。sync 模式保留原来的主线程增量写回。括号深度背景（括号字符从同层背景色提亮），光标在括号上时高亮严格配对的括号，未匹配 / 字符串 / 注释里的括号不参与。
+- `lang/c/` + `plugins/c-color/`：`.c` / `.h` C 模式；C / POSIX / Linux lib 与 `#include` 头文件补全；语法着色（async 走同一个 face worker，sync 走主线程增量写回）；`M-d` 文档（只查 C 的 man 3/2/3p/7，不使用 shell 的 `man printf`；内置索引兜底；完整 libc 文档需安装 `man-pages` / `manpages-dev`；中文页可选 `manpages-zh` / `man-pages-zh`，可用 `EDIT_C_MAN_LOCALE=zh_CN` 强制中文）；C 括号配对 / Enter 保持当前行缩进。
 - `plugins/layout/`：通过 `commands` 贡献 split / focus / resize 模式 / close 键位。
 - `plugins/filetree/`：sidebar 文件树、目录展开 / 折叠、隐藏文件切换、guarded Enter / C-r / C-h、C-f s 递归查找；生产路径异步扫描。
 - `plugins/resources/`：resources 面板、buffer / view 行、dirty 标记、Enter 聚焦；`C-v n` 新建 view，`C-v d` 删除选中 view，`C-f d` 关闭当前行所属文件。
-- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror token face 反映关联状态，位置基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
+- `plugins/bilingual/`：源 user doc ↔ derived mirror；行级 token 双语映射；默认翻译表来自 `data/racket-zh.rktd`（由外部 `racket-translate-lang-build` 生成，`scripts/import-tables.rkt` 导入）；源变化走 timer debounce + `bilingual-translate` job 异步投影，镜像编辑反译回源仍同步；M-l 只对 Racket buffer 打开 / 聚焦 / 关闭 pair；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，不额外给 panel 设置常驻 pair 边框色；mirror 翻译时按 token 复制源 buffer 的 face（语法 / 同词 / 注释 / 字符串 / 括号等），位置仍基于 mirror 行自身字符索引，不复制 source 列；镜像无 resource / history。
 - 打开文件：resource 去重 + placement（方向键 / Enter / Esc / 鼠标）。
 - C-s / C-q q / C-q s：save-path / save-confirm / quit-confirm 输入栏流程。
 - `host/source.rkt`：把打开中的 editor resource 同步进 source-store；同一 path 上 buffer > disk；未打开/关闭文件由语言层按需读磁盘。
@@ -180,7 +181,8 @@ edit-tui/
     input/dispatch.rkt pending 多键序列 + 命令查找 / 执行
     open.rkt / close.rkt / prompt.rkt   文件打开 / 关闭 / save quit IO
     filetree-io.rkt    filetree 创建 / 删除 / 重命名 / 查找 IO
-    jobs.rkt           worker runtime
+    jobs.rkt           job worker runtime
+    face-jobs.rkt      face writer worker / paint signal
     timers.rkt         timer runtime
     source.rkt         buffer / disk 来源权威索引同步
     workspace.rkt      权威 snapshot -> 语言 workspace 同步
@@ -388,11 +390,39 @@ host 在每帧按插件安装顺序执行：
 panel 尺寸同步 -> status 内容 -> 插件 sync -> 渲染
 ```
 
-`racket-color` 是第一个真实用户：按 `(doc-id, version)` 缓存 color-state，
-版本没变时只把已有 face track 写给新 view（split 出来的 view 也能拿到颜色）。
+async 模式下，color 插件在 sync 里只提交「版本 + 焦点」请求；真正的
+color-state / face track 计算在 face worker 内。sync 模式保留原来的按行增量写回，
+供 headless / 测试使用。
 
 sync 顺序 = 插件安装顺序。`filetree` 放在 `racket-color` 前面，保证 UI 内容先写、
 派生 face 后写，避免多等一帧。
+
+---
+
+## 后台 face worker
+
+纯属性（face）不是 State 的一部分，也不需要 job-result 回主线程。
+
+```text
+主线程 changes / sync
+  -> face-submit!（key = buffer，只保留最新任务）
+  -> host/face-jobs.rkt 单 worker
+  -> 语法 / 同词 / 括号按固定顺序合成完整 face track
+  -> face-target-set-face-lines!：一次 document-set-face! swap
+  -> paint channel
+  -> TUI read-event 的 on-source 回调在主线程重绘一次
+```
+
+约束：
+
+- `face-target` 捕获 document 版本；文本编辑生成新 document，旧目标上的写入不会污染新版本。
+- 同一 buffer 只有一个 face writer；有冲突的 layer（syntax / word / bracket）必须在同一次
+  合成里完成，不能拆成多个线程各写一半。
+- 占位 / 光标相关 layer 用固定顺序 `bracket -> word -> syntax`，与同步路径一致。
+- worker 不通过 vid/did 反查 engine；它只持有 target / text / version 等纯值。
+- async 模式下 `racket-color` / `c-color` 不在主线程计算 color-state；主线程只保存
+  「已提交版本 + 光标签名」，用于避免重复提交。
+- 没有 face runtime 时（headless / 测试）`face-submit!` 同步执行，保留可预测的回归路径。
 
 ---
 
@@ -602,12 +632,12 @@ racket edit-tui/test/layers.rkt
     首次安装 / 形状失效走 full `bilingual-translate`；正常编辑走
     `bilingual-translate-edit`，只翻译 line-diff 变化块。job-result 按 source version /
     translator-version / job-id 校验后安装 mirror；旧结果丢弃。mirror -> source 反译仍同步。
-5o. bilingual 的关联状态由 pair 状态 + mirror token face 表达；焦点始终只有一个，
+5o. bilingual 的关联状态由 pair 状态 + mirror face 表达；焦点始终只有一个，
     由 core 的 `focused-border` 画在焦点 panel 上，不再给 source / mirror panel
     设置常驻的 pair 边框色，避免非焦点 panel 看起来也像被 focus。
-    mirror token face 在翻译时按 mirror 行自身字符索引生成（`bilingual-keyword` /
-    `bilingual-control` / `bilingual-module` / `bilingual-function` /
-    `bilingual-binding`），不复制 source 的列位置。
+    mirror face 取源 buffer 逐字符 face：未翻译区间逐字符复制，翻译后的 token 继承
+    源 token 的 face；位置基于 mirror 行自身字符索引，不复制 source 列。只有源行完全
+    没有着色时才回退到 translator 的 `bilingual-*` face。
 5p. derived 投影基线按 doc-id 存，不按 view-id 存：文本 / face 属性是 buffer 级的，
     split 出来的兄弟 view 必须共享同一基线。正常投影写走
     `engine-set-derived-projection!`：文本按行 diff、face 只重写变化行；首次安装 /
@@ -646,6 +676,8 @@ racket edit-tui/test/layers.rkt
 6. hook 不放进 state，hook 属于 editor 实例的不可变 registry。
 7. layout / render 保持纯；它们以后接 provider，而不是任意 hook。
 8. 异步 / 多进程只通过 job request/result + 版本校验，不跨进程传 lambda。
+8b. 纯属性写不进入 State：face worker 直接写捕获的 document 版本，完成后通过 TUI
+    `on-source` paint signal 唤醒主线程重绘；同 buffer 单 writer，冲突 layer 同一合成函数。
 
 ---
 
@@ -682,7 +714,7 @@ racket edit-tui/test/layers.rkt
 - job-result 按 kind 派发；同名 job-service 构建时报错；
 - 通用 layout ops 与 host 布局装配分离；
 - plugin-api / host-api 分层（runner / open / prompt 只在 host-api）。
-- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；源 -> mirror 走 timer debounce + job 异步投影，反译回源同步；单翻译表；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，mirror token face 反映关联状态；镜像无 resource / history，源为权威；
+- bilingual：源 user doc ↔ derived mirror，行级双向映射；默认 side-by-side split，split 失败退回 tab；源 -> mirror 走 timer debounce + job 异步投影，反译回源同步；单翻译表；两个 view 的 viewport 行同步、列按光标行长度比例（不按顶部行）；焦点由 core 的 focused-border 表达，mirror face 逐词同步源属性；镜像无 resource / history，源为权威；
 - completion：debounce / 本地候选 / overlay / 接受 / docs 联动；
 - docs：本地预览 + 异步库文档 + C-x d / M-d；
 - 关闭 panel 只摘 panel，view / resource 保留；

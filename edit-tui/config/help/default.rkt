@@ -42,32 +42,30 @@ edit 快捷键
   C-x c s          选中文本作为源，子字符串全局替换
 
 布局
-  C-w ←→↑↓         拆分当前 editor
+  C-w ←→↑↓         拆分当前 editor（新 panel 为空）
   C-x ←→↑↓         焦点在 editor panel 间移动
   C-w d            关闭当前 editor panel
+  C-d              同 C-w d（兼容键位）
   C-w c            进入 resize 模式
     ←→↑↓           变窄 / 变宽 / 变高 / 变矮
     C-b / Esc      退出 resize 模式
   C-b              显 / 隐 sidebar（resize 模式外）
   C-x b            切换 sidebar tab（filetree / resources）
-  C-v n            resources 面板：为当前 buffer 创建 view
-  C-v d            resources 面板：删除选中的 view
-  C-f d            resources 面板：关闭当前行所属文件
-                   文件树：删除文件 / 目录
   C-x n / C-x p    下一个 / 上一个 editor tab
 
 文件 / 会话
   C-s              保存 / save-as / 确认
   C-q q            退出，不保存会话状态
   C-q s            保存会话状态并退出
-  C-x k            关闭当前 buffer
   M-0..M-9         切到编辑区 0..9
 
-面板 / 文档
+面板 / 文档 / 双语
   C-e              开关 error panel
+  M-E              清空 error panel
   C-x d            显 / 隐 docs panel
   M-d              查看光标处标识符文档
   M-l              双语：打开 / 聚焦 / 关闭当前 Racket buffer 的 mirror
+  C-x t            手动全量翻译当前 bilingual pair
 
 补全
   C-o              手动打开补全
@@ -77,14 +75,40 @@ edit 快捷键
   Esc / C-g        关闭补全
 
 filetree
-  Enter            打开文件
+  Enter            打开文件 / 展开目录
   C-r              刷新
+  C-f l            显式刷新（C-r 兼容保留）
   C-h              显 / 隐 dotfile
   C-f s            递归查找
+  Esc              清除查找会话
+  C-left / C-right 上一个 / 下一个查找结果
   C-f n            新建文件
   C-f C-f n        新建目录
   C-f r            重命名
-  C-f d            删除（resources 面板里是关闭文件）
+  C-f d            删除文件 / 目录
+
+resources
+  Enter            打开 / 聚焦选中的 buffer 或 view
+  C-r              刷新
+  C-v n            为当前 buffer 创建 view
+  C-v d            删除选中的 view
+  C-f d            关闭当前行所属文件
+
+输入栏
+  Enter            确认 / 提交
+  Esc / C-g        取消
+  ←→ Home End      移动
+  C-a / C-h        行首
+  C-e / C-t        行尾
+  C-b / C-f        左移 / 右移
+  Backspace        删前
+  Delete           删后
+
+placement
+  ←→↑↓             换目标 editor
+  Enter            放入
+  Esc              取消
+  点 editor        放入
 
 鼠标
   点 panel         聚焦 + 光标落点

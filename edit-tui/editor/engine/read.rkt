@@ -12,6 +12,7 @@
          engine-view-text
          engine-doc-text
          engine-doc-version
+         engine-doc-buffer
          engine-view-doc-id
          engine-doc-kind
          engine-doc-readonly-flag

@@ -3,8 +3,9 @@
 ;;; edit-tui/plugins/c-color/plugin.rkt —— C 语法着色
 ;;;
 ;;; 两条路径：
-;;;   · changes derive：按行增量重扫脏行；
-;;;   · sync：版本变化但没有 changes（首次打开 / undo / 整篇写回）时全量重扫。
+;;;   · sync（headless / 测试）：changes 按行增量重扫脏行，sync 全量重扫。
+;;;   · async（TUI）：face worker 内计算 color-state，一次 swap 写完整 face track，
+;;;     再发 paint signal；主线程只记已提交版本。
 ;;;
 ;;; 只处理 mode = 'c 的 user doc；其它文档完全不碰 face track。
 
@@ -20,7 +21,12 @@
    color-state)
   #:transparent)
 
+;; async 路径只记已提交版本；color-state 在 face worker 内按 buffer 缓存。
+(struct c-color-request (version) #:transparent)
+(struct c-color-worker-entry (version color-state) #:transparent)
+
 (define empty-c-color-cache (hash))
+(define c-color-worker-cache (make-ephemeron-hasheq))
 
 (define (c-doc? state did text)
   (and text
@@ -74,10 +80,36 @@
                                  #:base-version version
                                  #:key key)))
 
+;;; ════════════════ 后台 face worker ════════════════
+
+(define (c-worker-color-state old text version base-version changes kind)
+  (cond
+    [(and old (equal? (c-color-worker-entry-version old) version))
+     (c-color-worker-entry-color-state old)]
+    [(and (eq? kind 'edit)
+          old
+          (equal? (c-color-worker-entry-version old) base-version))
+     (define-values (cs _dirty)
+       (c-color-edit* (c-color-worker-entry-color-state old)
+                      text
+                      (changes->line-edits changes)))
+     cs]
+    [else (c-color-open text)]))
+
+(define (c-color-worker-job! target text version base-version changes kind)
+  (define buffer (face-target-buffer target))
+  (define old (hash-ref c-color-worker-cache buffer #f))
+  (define cs (c-worker-color-state old text version base-version
+                                  changes kind))
+  (face-target-set-face-lines! target (color-state->face-track cs))
+  (hash-set! c-color-worker-cache buffer
+             (c-color-worker-entry version cs)))
+
 ;;; ════════════════ changes hook ════════════════
 
 (define (changes-color ctx ps)
   (define ed (change-context-editor ctx))
+  (define state (change-context-state ctx))
   (define did (change-context-doc-id ctx))
   (define base-version (change-context-base-version ctx))
   (define version (change-context-version ctx))
@@ -85,8 +117,19 @@
   (define text (editor-doc-text ed did))
   (cond
     [(or (not (eq? (editor-doc-kind ed did) 'user))
-         (not (c-doc? (change-context-state ctx) did text)))
+         (not (c-doc? state did text)))
      (values ctx ps '() #t)]
+    [(state-async? state)
+     (define target (editor-doc-face-target ed did))
+     (cond
+       [(not target) (values ctx (hash-remove ps did) '() #t)]
+       [else
+        (define buffer (face-target-buffer target))
+        (face-submit! buffer
+                      (λ ()
+                        (c-color-worker-job! target text version base-version
+                                             changes 'edit)))
+        (values ctx (hash-set ps did (c-color-request version)) '() #t)])]
     [else
      (define old (hash-ref ps did #f))
      (define-values (cs dirty)
@@ -110,27 +153,55 @@
 ;;; ════════════════ sync ════════════════
 
 (define (sync-colors ed state ps)
-  (define old-cache (if (hash? ps) ps empty-c-color-cache))
-  (define (sync-doc cache did)
-    (define text (editor-doc-text ed did))
-    (define version (editor-doc-version ed did))
-    (define vids (or (editor-view-ids-for-doc ed did) '()))
-    (cond
-      [(or (not text) (not version) (null? vids)) cache]
-      [(not (c-doc? state did text)) cache]
-      [else
-       (define cached (hash-ref old-cache did #f))
-       (define entry
-         (if (and cached (equal? (c-color-entry-version cached) version))
-             cached
-             (c-color-entry version (c-color-open text))))
-       (write-full-track! ed did version vids
-                          (c-color-entry-color-state entry))
-       (hash-set cache did entry)]))
-  (define new-cache
-    (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])
-      (sync-doc cache did)))
-  (values state new-cache))
+  (cond
+    [(state-async? state)
+     (define ps*
+       (for/fold ([ps ps]) ([did (in-list (editor-user-doc-ids ed))])
+         (define text (editor-doc-text ed did))
+         (define version (editor-doc-version ed did))
+         (define target (and text version (editor-doc-face-target ed did)))
+         (cond
+           [(or (not text)
+                (not version)
+                (not target)
+                (not (c-doc? state did text)))
+            (hash-remove ps did)]
+           [else
+            (define req (hash-ref ps did #f))
+            (cond
+              [(and (c-color-request? req)
+                    (equal? (c-color-request-version req) version))
+               ps]
+              [else
+               (define buffer (face-target-buffer target))
+               (face-submit! buffer
+                             (λ ()
+                               (c-color-worker-job! target text version #f
+                                                    '() 'sync)))
+               (hash-set ps did (c-color-request version))])])))
+     (values state ps*)]
+    [else
+     (define old-cache (if (hash? ps) ps empty-c-color-cache))
+     (define (sync-doc cache did)
+       (define text (editor-doc-text ed did))
+       (define version (editor-doc-version ed did))
+       (define vids (or (editor-view-ids-for-doc ed did) '()))
+       (cond
+         [(or (not text) (not version) (null? vids)) cache]
+         [(not (c-doc? state did text)) cache]
+         [else
+          (define cached (hash-ref old-cache did #f))
+          (define entry
+            (if (and cached (equal? (c-color-entry-version cached) version))
+                cached
+                (c-color-entry version (c-color-open text))))
+          (write-full-track! ed did version vids
+                             (c-color-entry-color-state entry))
+          (hash-set cache did entry)]))
+     (define new-cache
+       (for/fold ([cache (hash)]) ([did (in-list (editor-user-doc-ids ed))])
+         (sync-doc cache did)))
+     (values state new-cache)]))
 
 (define c-color-plugin
   (make-plugin

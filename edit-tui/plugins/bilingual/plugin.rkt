@@ -47,9 +47,31 @@
       (vector-set! v i f)))
   v)
 
-(define (translate-line+face tr line)
-  (define-values (text spans) ((translator-translate-line+faces tr) line))
+(define (translate-line+face tr line [source-faces #f])
+  (define-values (text spans)
+    ((translator-translate-line+faces tr) line source-faces))
   (cons text (spans->face-vector text spans)))
+
+(define (translate-lines+faces tr lines face-lines)
+  (for/list ([line (in-list lines)]
+             [faces (in-list (or face-lines (make-list (length lines) #f)))])
+    (translate-line+face tr line faces)))
+
+;; 翻译结果要带源 buffer 的属性，而不是只带 translator 的 bilingual-* face。
+;; 任意一个源 view 都能读 buffer 级 face；优先用调用者传入的 view。
+(define (view-id-for-doc ed did)
+  (for/first ([vid (in-list (or (editor-view-ids-for-doc ed did) '()))])
+    vid))
+
+;; lines : (listof string)
+;; → (listof (vectorof (or/c #f symbol? face?))) | #f
+(define (source-face-lines ed did lines [vid #f])
+  (define source-vid (or vid (view-id-for-doc ed did)))
+  (and source-vid
+       (for/list ([line (in-list lines)]
+                  [ln (in-naturals)])
+         (for/vector ([col (in-range (string-length line))])
+           (editor-view-face-at ed source-vid ln col)))))
 
 (define (write-mirror! ed mirror-vid lines faces)
   ;; engine 根据 derived doc 级基线自动选择按行增量或 full fallback。
@@ -138,9 +160,11 @@
               (values os0 oe0 ns0 ne0)
               (values 0 0 0 (length new-source-lines))))
         (define base-faces (if same-shape? old-mirror-faces '()))
+        (define changed-lines (slice new-source-lines ns ne))
+        (define changed-faces
+          (source-face-lines ed did changed-lines))
         (define translated-pairs
-          (for/list ([line (in-list (slice new-source-lines ns ne))])
-            (translate-line+face tr line)))
+          (translate-lines+faces tr changed-lines changed-faces))
         (define translated (map car translated-pairs))
         (define translated-faces (map cdr translated-pairs))
         (define new-mirror-lines
@@ -364,11 +388,13 @@
             (= (length (pair-mirror-faces p))
                (length (pair-mirror-lines p)))))
      (define kind (if edit? edit-translation-kind translation-kind))
+     (define source-faces
+       (source-face-lines ed source-doc-id source-lines))
      (define payload
        (if edit?
            (list source-doc-id version tr-id tr-version
-                 (pair-source-lines p) source-lines tr)
-           (list source-doc-id version tr-id tr-version text tr)))
+                 (pair-source-lines p) source-lines source-faces tr)
+           (list source-doc-id version tr-id tr-version text source-faces tr)))
      (define tag (list source-doc-id version tr-id tr-version))
      (define-values (state* job)
        (state-submit-job state kind payload tag))
@@ -429,9 +455,10 @@
     [(or (not source-text) (not tr)) ps]
     [else
      (define source-lines (split-lines source-text))
+     (define source-faces
+       (source-face-lines ed (pair-source-doc-id p) source-lines))
      (define translated-pairs
-       (for/list ([line (in-list source-lines)])
-         (translate-line+face tr line)))
+       (translate-lines+faces tr source-lines source-faces))
      (define new-mirror-lines (map car translated-pairs))
      (define new-mirror-faces (map cdr translated-pairs))
      (write-mirror! ed (pair-mirror-view-id p)
@@ -477,13 +504,14 @@
 
 (define (bilingual-translate-edit-service payload)
   (match-define (list source-doc-id version tr-id tr-version
-                      old-lines new-lines tr)
+                      old-lines new-lines source-faces tr)
     payload)
   (define-values (os oe ns ne) (line-diff old-lines new-lines))
   (define changed (slice new-lines ns ne))
+  (define changed-faces
+    (and source-faces (slice source-faces ns ne)))
   (define translated-pairs
-    (for/list ([line (in-list changed)])
-      (translate-line+face tr line)))
+    (translate-lines+faces tr changed changed-faces))
   (list source-doc-id version tr-id tr-version
         os oe ns ne
         new-lines
@@ -496,15 +524,15 @@
   (define tr-id (list-ref payload 2))
   (define tr-version (list-ref payload 3))
   (define text (list-ref payload 4))
-  (define tr (list-ref payload 5))
+  (define source-faces (list-ref payload 5))
+  (define tr (list-ref payload 6))
   (cond
     [(not (translator? tr))
      (job-error (format "bilingual: unknown translator ~a" tr-id))]
     [else
      (define source-lines (split-lines text))
      (define translated-pairs
-       (for/list ([line (in-list source-lines)])
-         (translate-line+face tr line)))
+       (translate-lines+faces tr source-lines source-faces))
      (list source-doc-id version tr-id tr-version
            source-lines
            (map car translated-pairs)
@@ -543,11 +571,12 @@
 
 (define (bilingual-retranslate-lines-service payload)
   (match-define (list source-doc-id version tr-id tr-version
-                      source-lines dirty-lines tr)
+                      source-lines dirty-lines source-faces tr)
     payload)
   (define translated-pairs
     (for/list ([i (in-list dirty-lines)])
-      (translate-line+face tr (list-ref source-lines i))))
+      (translate-line+face tr (list-ref source-lines i)
+                           (and source-faces (list-ref source-faces i)))))
   (list source-doc-id version tr-id tr-version
         source-lines dirty-lines
         (map car translated-pairs)
@@ -563,9 +592,11 @@
      (define tr-id (translator-id tr))
      (define tr-version (translator-version tr))
      (define source-lines (pair-source-lines p))
+     (define source-faces
+       (source-face-lines ed source-doc-id source-lines))
      (define payload
        (list source-doc-id version tr-id tr-version
-             source-lines dirty-lines tr))
+             source-lines dirty-lines source-faces tr))
      (define-values (state* job)
        (state-submit-job state retranslate-kind
                          payload (list source-doc-id version)))
@@ -618,9 +649,13 @@
          [else
           (define source-version
             (editor-doc-version ed (pair-source-doc-id p)))
+          (define source-faces
+            (source-face-lines ed (pair-source-doc-id p) source-lines))
           (define translated-pairs
             (for/list ([i (in-list dirty-lines)])
-              (translate-line+face new-tr (list-ref source-lines i))))
+              (translate-line+face new-tr (list-ref source-lines i)
+                                   (and source-faces
+                                        (list-ref source-faces i)))))
           (define p*
             (apply-retranslated-lines!
              ed p source-lines dirty-lines

@@ -6,8 +6,7 @@
 ;;; action 解释在 app/actions.rkt。这里只负责终端生命周期和对外 re-export，
 ;;; 让测试 / headless 入口继续 require edit-tui/edit.rkt。
 
-(require racket/async-channel
-         racket/cmdline
+(require racket/cmdline
          racket/string
          (prefix-in tui: tui)
          "editor/host-api.rkt"
@@ -16,6 +15,7 @@
          "app/frame.rkt"
          "host/jobs.rkt"
          "host/timers.rkt"
+         "host/face-jobs.rkt"
          "host/persist.rkt"
          "host/render/theme.rkt"
          "config/theme/default.rkt")
@@ -48,33 +48,31 @@
        (if (and rows cols (positive? rows) (positive? cols))
            (rect 0 0 cols rows)
            (rect 0 0 80 24)))
-     (define event-channel (make-async-channel))
-     (define input-thread
-       (thread (λ ()
-                 (let loop ()
-                   (async-channel-put event-channel (read-app-event))
-                   (loop)))))
      (define runtime
        (start-job-runtime (editor-services ed)
-                          #:event-channel event-channel
                           #:workers 2))
      (define timer-runtime
-       (start-timer-runtime #:event-channel event-channel))
+       (start-timer-runtime))
+     (define face-runtime
+       (start-face-runtime))
      (editor-set-timer-service! ed (timer-runtime-service timer-runtime))
      (dynamic-wind
       void
       (λ ()
         (define final
-          (run-editor ed
-                      (state-with-async (state-with-screen state area) #t)
-                      #:read-event (λ () (async-channel-get event-channel))
-                      #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
-                      #:job-runtime runtime))
+          (parameterize ([current-face-submit (face-runtime-submit face-runtime)])
+            (run-editor ed
+                        (state-with-async (state-with-screen state area) #t)
+                        #:write-bytes (λ (b) (tui:put-bytes b) (tui:flush!))
+                        #:job-runtime runtime
+                        #:timer-runtime timer-runtime
+                        #:face-runtime face-runtime
+                        #:register-source tui:on-source)))
         (when (and (state-quit? final) (state-save-session? final))
           (void (save-editor-session! ed final #:workspace-root root*)))
         final)
       (λ ()
-        (kill-thread input-thread)
+        (stop-face-runtime face-runtime)
         (stop-job-runtime runtime)
         (stop-timer-runtime timer-runtime))))))
 
