@@ -87,12 +87,32 @@ filetree
   C-f r            重命名
   C-f d            删除文件 / 目录
 
-resources
-  Enter            打开 / 聚焦选中的 buffer 或 view
-  C-r              刷新
-  C-v n            为当前 buffer 创建 view
-  C-v d            删除选中的 view
-  C-f d            关闭当前行所属文件
+sidebar / 资源管理
+  sidebar 和 filetree 不同：filetree 浏览磁盘，资源管理只列已打开
+  buffer / resource 以及它们的 view。
+
+  进入
+    C-b              显示 / 隐藏 sidebar
+    C-x b            切换 sidebar tab：filetree ↔ resources
+    C-x ← / →        焦点在相邻 panel 间移动；sidebar 在左侧时用 C-x ←
+    鼠标点 sidebar   直接聚焦
+    ↑↓ Home End PgUp/PgDn
+                     在资源面板内移动选中行
+
+  行含义
+    buffer 行        path / name；未保存时显示 *
+    view 行          缩进的 "view N"，属于上面的 buffer
+
+  功能
+    Enter            打开 / 聚焦：
+                       buffer 行 -> 第一个 view
+                       view 行   -> 该 view
+                     已挂载的直接聚焦；detached 的进入 placement，
+                     选目标 editor 后按 Enter 放入
+    C-v n            为当前行所属 buffer 新建 view
+    C-v d            删除选中的 view 行（buffer 行上会提示先选 view）
+    C-f d            关闭当前行所属文件 / resource；dirty 会进入确认
+    C-r              刷新提示；资源列表本身随编辑自动同步
 
 输入栏
   Enter            确认 / 提交
