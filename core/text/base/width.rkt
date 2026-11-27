@@ -61,7 +61,12 @@
   (memq (char-general-category c) '(mn me cf)))
 
 (define (char-display-width c)
-  (cond [(wide-char? c) 2]
+  (define cp (char->integer c))
+  ;; ASCII 占了源码 / 日志 / 终端输出里的绝大多数字符；直接返回 1，
+  ;; 避免对每个字符做 wide-char 二分 + char-general-category。
+  ;; ASCII 里没有 wide / Mn / Me / Cf，语义与下面完全一致。
+  (cond [(< cp 128) 1]
+        [(wide-char? c) 2]
         [(zero-width-char? c) 0]
         [else 1]))
 

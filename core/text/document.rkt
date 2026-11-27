@@ -45,6 +45,7 @@
  document-readonly                ; document → readonly 轨
  document-revision                ; document → 渲染相关书写后的新 token（缓存失效用）
  document->string                 ; document → 全文
+ document-lines                   ; document → (listof string)（track 行表，不做 join）
  document-range-text              ; document range → 区间文本
  document-change-text             ; document change → 变更插入文本
  document-slot-ref                ; document slot → 值
@@ -158,6 +159,10 @@
                   (box #f) (box #f) (make-slots) (box (gensym))))
 
 (define (document->string bd) (lines->string (track->list (document-text bd))))
+
+;; 行表：不 join 成整串。大文档下比 document->string 快一个量级，
+;; 给已经按行消费的调用方（高亮 / 语言分析）用。
+(define (document-lines bd) (track->list (document-text bd)))
 
 ;;; ---------- 文本编辑 ----------
 

@@ -15,8 +15,10 @@
 
 (provide (struct-out c-color-state)
          c-color-open
+         c-color-open-lines
          c-color-edit
          c-color-edit*
+         c-color-edit*/lines
          c-color-syntax-roles
          c-color-line-count)
 
@@ -26,7 +28,9 @@
   #:transparent)
 
 (define (c-color-open text)
-  (define lines (c-text-lines text))
+  (c-color-open-lines (c-text-lines text)))
+
+(define (c-color-open-lines lines)
   (let loop ([lines lines]
              [state c-empty-lex-state]
              [states '()]
@@ -55,10 +59,13 @@
 ;; → (values c-color-state' dirty-lines)
 ;; dirty-lines : (listof line-no) | 'all
 (define (c-color-edit* cache text edits)
+  (c-color-edit*/lines cache (c-text-lines text) edits))
+
+(define (c-color-edit*/lines cache lines edits)
   (if (null? edits)
       (values cache '())
-      (let* ([lines (c-text-lines text)]
-             [n (length lines)]
+      (let* ([linev (if (vector? lines) lines (list->vector lines))]
+             [n (vector-length linev)]
              [old-states (c-color-state-lex-out-states cache)]
              [old-syntax (c-color-state-syntax-roles cache)]
              [states0
@@ -73,17 +80,15 @@
                                         (max 0 (- (cadddr sp) (caddr sp)))))])
         (if (or (not (= (vector-length states0) n))
                 (not (= (vector-length syntax0) n)))
-            (values (c-color-open text) 'all)
+            (values (c-color-open-lines (if (vector? lines) (vector->list lines) lines)) 'all)
             (let ([dirty (edits->dirty-lines edits n)])
               (if (null? dirty)
                   (values (c-color-state states0 syntax0) '())
-                  (c-color-edit-dirty lines n states0 syntax0 dirty)))))))
+                  (c-color-edit-dirty linev n states0 syntax0 dirty)))))))
 
-(define (c-color-edit-dirty lines n states0 syntax0 dirty)
+(define (c-color-edit-dirty lines n states* syntax* dirty)
   (define start (car dirty))
-  (define last-dirty (car (reverse dirty)))
-  (define states* (vector-copy states0))
-  (define syntax* (vector-copy syntax0))
+  (define last-dirty (last dirty))
   (let loop ([ln start]
              [incoming (if (and (> start 0)
                                 (< (sub1 start) (vector-length states*)))
@@ -94,14 +99,13 @@
       [(>= ln n)
        (values (c-color-state states* syntax*) (reverse touched))]
       [else
-       (define line (list-ref lines ln))
+       (define line (vector-ref lines ln))
        (define-values (state* tokens) (c-tokenize-line incoming line))
-       (define old-state (if (< ln (vector-length states0))
-                             (vector-ref states0 ln)
-                             #f))
+       ;; splice 出来的向量已是最新副本，直接改写；改写前取旧值判断收敛。
+       (define old-state (vector-ref states* ln))
+       (define changed? (not (equal? state* old-state)))
        (vector-set! states* ln state*)
        (vector-set! syntax* ln (c-highlight-line tokens line))
-       (define changed? (not (equal? state* old-state)))
        (if (and (>= ln last-dirty) (not changed?))
            (values (c-color-state states* syntax*) (reverse (cons ln touched)))
            (loop (add1 ln) state* (cons ln touched)))])))

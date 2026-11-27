@@ -25,8 +25,13 @@
 (define (word-color-index word)
   (modulo (word-hash word) (max 1 word-color-count)))
 
+;; 只有 12 种 role：预先建表，避免每个 token 都 format + string->symbol。
+(define word-color-roles
+  (for/vector ([i (in-range word-color-count)])
+    (string->symbol (format "word-color-~a" i))))
+
 (define (word-color-role word)
-  (string->symbol (format "word-color-~a" (word-color-index word))))
+  (vector-ref word-color-roles (word-color-index word)))
 
 ;; 一行 token + 行文本 -> (vector role|#f)
 (define (word-color-line line-tokens line)
@@ -42,7 +47,7 @@
 
 ;; 整篇 -> (listof (vectorof role|#f))
 (define (word-color-text text)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (define token-lines (tokenize text))
   (for/list ([line (in-list lines)] [tokens (in-list token-lines)])
     (word-color-line tokens line)))

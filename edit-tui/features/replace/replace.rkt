@@ -19,15 +19,6 @@
 (provide replace-open-prompt!
          replace-submit!)
 
-(define (string-find text query start)
-  (define n (string-length text))
-  (define m (string-length query))
-  (let loop ([i start])
-    (cond
-      [(> (+ i m) n) #f]
-      [(string=? (substring text i (+ i m)) query) i]
-      [else (loop (add1 i))])))
-
 ;; 完整匹配的边界字符：标识符字符。
 ;; define 不会命中 define-value / define? / define/contract。
 (define (identifier-char? c)
@@ -50,8 +41,10 @@
     [(zero? m) (values text 0)]
     [else
      (define out (open-output-string))
+     (define rx (regexp (regexp-quote source)))
      (let loop ([search-start 0] [copy-start 0] [count 0])
-       (define pos (string-find text source search-start))
+       (define mr (regexp-match-positions rx text search-start))
+       (define pos (and mr (caar mr)))
        (cond
          [(not pos)
           (write-string (substring text copy-start) out)

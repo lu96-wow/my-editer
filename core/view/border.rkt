@@ -23,20 +23,21 @@
          border-cells->runs        ; cells -> (listof (row col text face deep))
          panels->border-runs)      ; panels -> runs
 
-;;; ---------- 字形：方向集 → 制表符 ----------
+;;; ---------- 字形：方向位掩码 → 制表符 ----------
+;;;
+;;; 方向位：l=1 r=2 u=4 d=8。用 16 格向量代替「排序 direction 列表 + hash-ref」，
+;;; 边框每帧要为每个边格算一次字形，避免每格 sort / cons。
 
 (define glyph-table
-  (hash '()        #\space
-        '(l)       #\─ '(r)       #\─ '(l r)     #\─
-        '(u)       #\│ '(d)       #\│ '(d u)     #\│
-        '(d r)     #\┌ '(d l)     #\┐ '(r u)     #\└ '(l u)   #\┘
-        '(d r u)   #\├ '(d l u)   #\┤ '(d l r)   #\┬ '(l r u) #\┴
-        '(d l r u) #\┼))
+  (vector
+   #\space                                      ; 0
+   #\─ #\─ #\─                                   ; l, r, l r
+   #\│ #\┘ #\└ #\┴                              ; u, l u, r u, l r u
+   #\│ #\┐ #\┌ #\┬                              ; d, l d, r d, l r d
+   #\│ #\┤ #\├ #\┼))                            ; d u, l d u, r d u, all
 
-(define (dir<? a b) (string<? (symbol->string a) (symbol->string b)))
-
-(define (border-glyph dirs)
-  (hash-ref glyph-table (sort (remove-duplicates dirs) dir<?) #\space))
+(define (border-glyph mask)
+  (vector-ref glyph-table mask))
 
 ;;; ---------- 分层与可见边格 ----------
 ;;
@@ -80,22 +81,55 @@
       (define best (for/fold ([b #f]) ([e (in-list layer)])
                      (if (or (not b) (higher-face? e b)) e b)))
       (hash-set! info cell (list (panel-face (cadr best)) maxd hs vs))))
+  ;; 按行建索引：row -> (cons 最小列 列向量)。相邻行的查找变成 vector-ref，
+  ;; 避免每个边格 4 次 cons + hash-ref。
+  (define by-row (make-hash))
+  (for ([(cell dv) (in-hash info)])
+    (hash-update! by-row (car cell)
+                 (lambda (l) (cons (cons (cdr cell) dv) l))
+                 '()))
+  (define rowvecs (make-hash))
+  (for ([(r entries) (in-hash by-row)])
+    (define lo (for/fold ([m #f]) ([e (in-list entries)])
+                 (define c (car e))
+                 (if (or (not m) (< c m)) c m)))
+    (define hi (for/fold ([m lo]) ([e (in-list entries)])
+                 (define c (car e))
+                 (if (> c m) c m)))
+    (define vec (make-vector (add1 (- hi lo)) #f))
+    (for ([e (in-list entries)])
+      (vector-set! vec (- (car e) lo) (cdr e)))
+    (hash-set! rowvecs r (cons lo vec)))
+
+  (define (row-at rv c)
+    (and rv
+         (let* ([lo (car rv)] [v (cdr rv)] [i (- c lo)])
+           (and (>= i 0) (< i (vector-length v)) (vector-ref v i)))))
+  (define (cell-h? cell) (and cell (caddr cell)))
+  (define (cell-v? cell) (and cell (cadddr cell)))
+
   ;; 字形：同向延续出的臂
-  (define (at r c) (hash-ref info (cons r c) #f))
-  (define (h? r c) (and (at r c) (caddr (at r c))))
-  (define (v? r c) (and (at r c) (cadddr (at r c))))
-  (define (glyph-at r c)
-    (define cur (at r c))
-    (define hh (caddr cur)) (define vv (cadddr cur))
-    (border-glyph
-     (filter values
-             (list (and hh (h? r      (sub1 c)) 'l)
-                   (and hh (h? r      (add1 c)) 'r)
-                   (and vv (v? (sub1 r) c)      'u)
-                   (and vv (v? (add1 r) c)      'd)))))
-  (for/hash ([(cell _) (in-hash info)])
-    (define dv (hash-ref info cell))
-    (values cell (list (glyph-at (car cell) (cdr cell)) (car dv) (cadr dv)))))
+  (define out (make-hash))
+  (for ([(r rv) (in-hash rowvecs)])
+    (define lo (car rv))
+    (define v (cdr rv))
+    (define rv-up (hash-ref rowvecs (sub1 r) #f))
+    (define rv-down (hash-ref rowvecs (add1 r) #f))
+    (for ([i (in-range (vector-length v))])
+      (define cur (vector-ref v i))
+      (when cur
+        (define c (+ lo i))
+        (define hh (cell-h? cur))
+        (define vv (cell-v? cur))
+        (define mask
+          (bitwise-ior
+           (if (and hh (cell-h? (row-at rv (sub1 c)))) 1 0)
+           (if (and hh (cell-h? (row-at rv (add1 c)))) 2 0)
+           (if (and vv (cell-v? (row-at rv-up c))) 4 0)
+           (if (and vv (cell-v? (row-at rv-down c))) 8 0)))
+        (hash-set! out (cons r c)
+                   (list (border-glyph mask) (car cur) (cadr cur))))))
+  out)
 
 ;;; ---------- 格 map → run（按行、同 deep / 同 face、连续合并） ----------
 

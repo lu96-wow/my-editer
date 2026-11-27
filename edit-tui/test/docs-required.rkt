@@ -43,6 +43,13 @@
   (docs-lines "#lang racket\n(require (only-in racket/list first))\n" "first"))
 (check-true (has-section? only "── 文档 ──"))
 
+;;; ════════════════ 查不到库文档：给出诊断信息 ════════════════
+
+(define missing
+  (docs-lines "#lang racket\n(require racket/list)\n" "definitely-no-such-name-xyz"))
+(check-true (has-section? missing "── 文档 ──"))
+(check-true (and (member "没有找到这个标识符的库文档。" missing) #t))
+
 ;;; ════════════════ 本地文件：prefix-in 名字 → 原名 → 定义 ════════════════
 
 (define dir (make-temporary-directory))

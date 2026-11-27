@@ -28,8 +28,8 @@
 (define empty-c-color-cache (hash))
 (define c-color-worker-cache (make-ephemeron-hasheq))
 
-(define (c-doc? state did text)
-  (and text
+(define (c-doc? state did lines)
+  (and lines
        (eq? (state-doc-mode state did) 'c)))
 
 ;;; ════════════════ role -> face ════════════════
@@ -82,7 +82,7 @@
 
 ;;; ════════════════ 后台 face worker ════════════════
 
-(define (c-worker-color-state old text version base-version changes kind)
+(define (c-worker-color-state old lines version base-version changes kind)
   (cond
     [(and old (equal? (c-color-worker-entry-version old) version))
      (c-color-worker-entry-color-state old)]
@@ -90,16 +90,16 @@
           old
           (equal? (c-color-worker-entry-version old) base-version))
      (define-values (cs _dirty)
-       (c-color-edit* (c-color-worker-entry-color-state old)
-                      text
-                      (changes->line-edits changes)))
+       (c-color-edit*/lines (c-color-worker-entry-color-state old)
+                            lines
+                            (changes->line-edits changes)))
      cs]
-    [else (c-color-open text)]))
+    [else (c-color-open-lines lines)]))
 
-(define (c-color-worker-job! target text version base-version changes kind)
+(define (c-color-worker-job! target lines version base-version changes kind)
   (define buffer (face-target-buffer target))
   (define old (hash-ref c-color-worker-cache buffer #f))
-  (define cs (c-worker-color-state old text version base-version
+  (define cs (c-worker-color-state old lines version base-version
                                   changes kind))
   (face-target-set-face-lines! target (color-state->face-track cs))
   (hash-set! c-color-worker-cache buffer
@@ -114,10 +114,10 @@
   (define base-version (change-context-base-version ctx))
   (define version (change-context-version ctx))
   (define changes (change-context-changes ctx))
-  (define text (editor-doc-text ed did))
+  (define lines (editor-doc-lines ed did))
   (cond
     [(or (not (eq? (editor-doc-kind ed did) 'user))
-         (not (c-doc? state did text)))
+         (not (c-doc? state did lines)))
      (values ctx ps '() #t)]
     [(state-async? state)
      (define target (editor-doc-face-target ed did))
@@ -127,7 +127,7 @@
         (define buffer (face-target-buffer target))
         (face-submit! buffer
                       (λ ()
-                        (c-color-worker-job! target text version base-version
+                        (c-color-worker-job! target lines version base-version
                                              changes 'edit)))
         (values ctx (hash-set ps did (c-color-request version)) '() #t)])]
     [else
@@ -135,11 +135,11 @@
      (define-values (cs dirty)
        (cond
          [(and old (equal? (c-color-entry-version old) base-version))
-          (c-color-edit* (c-color-entry-color-state old)
-                         text
-                         (changes->line-edits changes))]
+          (c-color-edit*/lines (c-color-entry-color-state old)
+                               lines
+                               (changes->line-edits changes))]
          [else
-          (values (c-color-open text) 'all)]))
+          (values (c-color-open-lines lines) 'all)]))
      (define entry (c-color-entry version cs))
      (define vids (or (editor-view-ids-for-doc ed did) '()))
      (cond
@@ -157,14 +157,14 @@
     [(state-async? state)
      (define ps*
        (for/fold ([ps ps]) ([did (in-list (editor-user-doc-ids ed))])
-         (define text (editor-doc-text ed did))
+         (define lines (editor-doc-lines ed did))
          (define version (editor-doc-version ed did))
-         (define target (and text version (editor-doc-face-target ed did)))
+         (define target (and lines version (editor-doc-face-target ed did)))
          (cond
-           [(or (not text)
+           [(or (not lines)
                 (not version)
                 (not target)
-                (not (c-doc? state did text)))
+                (not (c-doc? state did lines)))
             (hash-remove ps did)]
            [else
             (define req (hash-ref ps did #f))
@@ -176,25 +176,25 @@
                (define buffer (face-target-buffer target))
                (face-submit! buffer
                              (λ ()
-                               (c-color-worker-job! target text version #f
+                               (c-color-worker-job! target lines version #f
                                                     '() 'sync)))
                (hash-set ps did (c-color-request version))])])))
      (values state ps*)]
     [else
      (define old-cache (if (hash? ps) ps empty-c-color-cache))
      (define (sync-doc cache did)
-       (define text (editor-doc-text ed did))
+       (define lines (editor-doc-lines ed did))
        (define version (editor-doc-version ed did))
        (define vids (or (editor-view-ids-for-doc ed did) '()))
        (cond
-         [(or (not text) (not version) (null? vids)) cache]
-         [(not (c-doc? state did text)) cache]
+         [(or (not lines) (not version) (null? vids)) cache]
+         [(not (c-doc? state did lines)) cache]
          [else
           (define cached (hash-ref old-cache did #f))
           (define entry
             (if (and cached (equal? (c-color-entry-version cached) version))
                 cached
-                (c-color-entry version (c-color-open text))))
+                (c-color-entry version (c-color-open-lines lines))))
           (write-full-track! ed did version vids
                              (c-color-entry-color-state entry))
           (hash-set cache did entry)]))

@@ -16,6 +16,8 @@
  ;; ---------- 文本 / 名称 ----------
  buffer-string                    ; buffer → 全文
  view-string                      ; view → 全文
+ buffer-lines                     ; buffer → (listof string)（行表）
+ view-lines                       ; view → (listof string)
  buffer-range-text                ; buffer range → 区间文本
  view-range-text                  ; view range → 区间文本
  buffer-char-at                   ; buffer line col → char | #f
@@ -76,6 +78,8 @@
 
 (define (buffer-string b) (document->string (buffer-document b)))
 (define (view-string v) (buffer-string (view-buffer v)))
+(define (buffer-lines b) (document-lines (buffer-document b)))
+(define (view-lines v) (buffer-lines (view-buffer v)))
 
 (define (buffer-range-text b r) (document-range-text (buffer-document b) r))
 (define (view-range-text v r) (buffer-range-text (view-buffer v) r))

@@ -40,10 +40,14 @@
 (define color-worker-cache (make-ephemeron-hasheq))
 
 ;; 优先看 resource mode；没有 resource 的临时测试文档才退回文本判断。
-(define (racket-doc? state did text)
+;; #lang 只在第一行，按行表检查首行即可，不必为了判断 join 全文。
+(define (racket-lines? lines)
+  (and (pair? lines) (racket-text? (car lines))))
+
+(define (racket-doc? state did lines)
   (or (eq? (state-doc-mode state did) 'racket)
       (and (not (state-resource-for-doc state did))
-           (racket-text? text))))
+           (racket-lines? lines))))
 
 ;; 焦点在 doc 内时返回 (cons line col)，否则 #f。
 (define (doc-focus-info ed state did)
@@ -262,7 +266,7 @@
 
 ;; 在 worker 内维护 color-state 缓存。同一 buffer 的旧任务会被 face runtime
 ;; 合并掉，所以这里拿到的 text/version 总是该 buffer 最新一次提交的内容。
-(define (worker-color-state old text version base-version changes kind)
+(define (worker-color-state old lines version base-version changes kind)
   (cond
     [(and old (equal? (color-worker-entry-version old) version))
      (values (color-worker-entry-color-state old) old)]
@@ -270,20 +274,20 @@
           old
           (equal? (color-worker-entry-version old) base-version))
      (define-values (cs _dirty)
-       (color-edit* (color-worker-entry-color-state old)
-                    text
-                    (changes->line-edits changes)))
+       (color-edit*/lines (color-worker-entry-color-state old)
+                          lines
+                          (changes->line-edits changes)))
      (values cs old)]
     [else
-     (values (color-open text) #f)]))
+     (values (color-open-lines lines) #f)]))
 
 ;; 语法 / 同词 / 括号在同一个函数里按 line->faces 固定顺序合成，一次写出
 ;; 整条 face track。写完由 face runtime 发 paint signal。
-(define (color-worker-job! target text version base-version changes focus kind)
+(define (color-worker-job! target lines version base-version changes focus kind)
   (define buffer (face-target-buffer target))
   (define old (hash-ref color-worker-cache buffer #f))
   (define-values (cs old-entry)
-    (worker-color-state old text version base-version changes kind))
+    (worker-color-state old lines version base-version changes kind))
   (define bracket-pos (bracket-position-at-focus cs focus))
   (define bracket-pairs
     (cond
@@ -292,7 +296,7 @@
             (equal? (color-worker-entry-bracket-pairs-version old-entry)
                     version))
        (color-worker-entry-bracket-pairs old-entry)]
-      [else (bracket-pair-map text)]))
+      [else (bracket-pair-map (string-join lines "\n"))]))
   (define match
     (and bracket-pos
          (let ([other (hash-ref bracket-pairs bracket-pos #f)])
@@ -315,11 +319,11 @@
   (define base-version (change-context-base-version ctx))
   (define version (change-context-version ctx))
   (define changes (change-context-changes ctx))
-  (define text (editor-doc-text ed did))
+  (define lines (editor-doc-lines ed did))
   (cond
-    [(or (not text)
+    [(or (not lines)
          (not (eq? (editor-doc-kind ed did) 'user))
-         (not (racket-doc? state did text)))
+         (not (racket-doc? state did lines)))
      (values ctx ps '() #t)]
     [(state-async? state)
      (define target (editor-doc-face-target ed did))
@@ -332,7 +336,7 @@
         (define buffer (face-target-buffer target))
         (face-submit! buffer
                       (λ ()
-                        (color-worker-job! target text version base-version
+                        (color-worker-job! target lines version base-version
                                            changes focus 'edit)))
         (values ctx (hash-set ps did (color-request version focus)) '() #t)])]
     [else
@@ -340,11 +344,11 @@
      (define-values (cs dirty)
        (cond
          [(and old (equal? (color-entry-version old) base-version))
-          (color-edit* (color-entry-color-state old)
-                       text
-                       (changes->line-edits changes))]
+          (color-edit*/lines (color-entry-color-state old)
+                             lines
+                             (changes->line-edits changes))]
          [else
-          (values (color-open text) 'all)]))
+          (values (color-open-lines lines) 'all)]))
      (define entry (color-entry version cs (color-state->face-track cs #f) #f #f))
      (define suppress (focus-suppress ed state did cs))
      (define vids (editor-view-ids-for-doc ed did))
@@ -365,14 +369,14 @@
      ;; 在 worker 内；这里不碰 face。
      (define ps*
        (for/fold ([ps ps]) ([did (in-list (editor-user-doc-ids ed))])
-         (define text (editor-doc-text ed did))
+         (define lines (editor-doc-lines ed did))
          (define version (editor-doc-version ed did))
-         (define target (and text version (editor-doc-face-target ed did)))
+         (define target (and lines version (editor-doc-face-target ed did)))
          (cond
-           [(or (not text)
+           [(or (not lines)
                 (not version)
                 (not target)
-                (not (racket-doc? state did text)))
+                (not (racket-doc? state did lines)))
             (hash-remove ps did)]
            [else
             (define focus (doc-focus-info ed state did))
@@ -386,31 +390,31 @@
                (define buffer (face-target-buffer target))
                (face-submit! buffer
                              (λ ()
-                               (color-worker-job! target text version #f
+                               (color-worker-job! target lines version #f
                                                   '() focus 'sync)))
                (hash-set ps did (color-request version focus))])])))
      (values state ps*)]
     [else
      (define old-cache (if (hash? ps) ps empty-color-cache))
      (define (sync-doc cache did)
-       (define text (editor-doc-text ed did))
+       (define lines (editor-doc-lines ed did))
        (define version (editor-doc-version ed did))
        (define vids (or (editor-view-ids-for-doc ed did) '()))
        (cond
-         [(or (not text) (not version) (null? vids)) cache]
-         [(not (racket-doc? state did text)) cache]
+         [(or (not lines) (not version) (null? vids)) cache]
+         [(not (racket-doc? state did lines)) cache]
          [else
           (define cached (hash-ref old-cache did #f))
           (define entry0
             (if (and cached (equal? (color-entry-version cached) version))
                 cached
-                (let ([cs (color-open text)])
+                (let ([cs (color-open-lines lines)])
                   (color-entry version cs (color-state->face-track cs #f) #f #f))))
           (define cs (color-entry-color-state entry0))
           ;; 只有光标真的落在括号上，才需要整篇配对表。
           (define bracket-pos (focus-bracket-position ed state did cs))
           (define entry (if bracket-pos
-                            (ensure-bracket-pairs entry0 text version)
+                            (ensure-bracket-pairs entry0 (string-join lines "\n") version)
                             entry0))
           (define match
             (and bracket-pos

@@ -26,7 +26,8 @@
          engine-view-object
          engine-create-buffer! engine-create-view! engine-create-view-from-view!
          engine-remove-view! engine-remove-doc!
-         engine-view-text engine-doc-text engine-doc-version engine-view-doc-id
+         engine-view-text engine-doc-text engine-doc-lines
+         engine-doc-version engine-view-doc-id
          engine-doc-buffer
          engine-doc-kind engine-view-kind engine-doc-readonly-flag
          engine-set-doc-readonly-flag!
@@ -60,7 +61,9 @@
    derived-meta  ; did -> derived-meta
    derived-projection-cache ; did -> derived-projection
    projection-cache ; vid -> (cons lines faces)：上次 UI 投影内容
-   face-track-cache) ; vid -> (cons key face-track)
+   face-track-cache ; vid -> (cons key face-track)
+   text-cache      ; (cons document string) | #f：整篇文本 materialize 缓存
+   lines-cache)    ; (cons document (listof string)) | #f：行表缓存
   #:mutable)
 ;; projection-cache / face-track-cache 是 UI / user view 的「写回幂等」缓存。
 ;; derived 的投影基线更接近“文档属性”，单独按 did 存在 derived-projection-cache，
@@ -69,7 +72,37 @@
 (define (make-engine)
   (engine (hash) (hash) (hash)
           (hash) (hash) (hash)
-          (hash) (hash) (hash) (hash)))
+          (hash) (hash) (hash) (hash) #f #f))
+
+;; 整篇文本缓存：document 不可变，buffer-version（当前 document）不变时
+;; buffer-string 必然相同。一次编辑里 color / workspace / pair / indent /
+;; source 往往各要一次全文，缓存把多次 O(文件大小) 的 join 合成一次。
+;; 单条缓存即可：同一事件里消费的是同一份最新 document。
+(define (engine-doc-text e did)
+  (define b (doc-buffer e did))
+  (and b
+       (let ([doc (buffer-version b)]
+             [c (engine-text-cache e)])
+         (cond
+           [(and c (eq? (car c) doc)) (cdr c)]
+           [else
+            (define text (buffer-string b))
+            (set-engine-text-cache! e (cons doc text))
+            text]))))
+
+;; 行表：直接走 track->list，不做全文 join / split。高亮按行消费，用这个。
+;; racket-color / c-color 等多个插件可能在同一帧要同一份行表，缓存一次。
+(define (engine-doc-lines e did)
+  (define b (doc-buffer e did))
+  (and b
+       (let ([doc (buffer-version b)]
+             [c (engine-lines-cache e)])
+         (cond
+           [(and c (eq? (car c) doc)) (cdr c)]
+           [else
+            (define lines (buffer-lines b))
+            (set-engine-lines-cache! e (cons doc lines))
+            lines]))))
 
 (define (engine-forget-derived-projection! e did)
   (set-engine-derived-projection-cache!
@@ -231,6 +264,8 @@
         vid))
     (for ([vid (in-list vids)]) (engine-remove-view! e vid))
     (buffer-close! b)
+    (set-engine-text-cache! e #f)
+    (set-engine-lines-cache! e #f)
     (set-docs-of! e kind (hash-remove (docs-of e kind) did))
     (when (eq? kind 'derived)
       (engine-forget-derived-projection! e did)
@@ -242,7 +277,7 @@
 
 (define (engine-view-text e vid)
   (define v (engine-view-object e vid))
-  (and v (view-string v)))
+  (and v (engine-doc-text e (engine-view-doc-id e vid))))
 
 ;; view 所属的 doc-id；无 view -> #f。
 (define (engine-view-doc-id e vid)
@@ -312,9 +347,6 @@
   (define m (hash-ref (engine-derived-meta e) did #f))
   (and m (derived-meta-edit-policy m)))
 
-(define (engine-doc-text e did)
-  (define b (doc-buffer e did))
-  (and b (buffer-string b)))
 
 (define (engine-doc-buffer e did)
   (doc-buffer e did))

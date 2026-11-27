@@ -19,37 +19,38 @@
 
 ;;; ════════════════ 文本 / point ════════════════
 
-(define (offset->point text offset)
-  (define n (min (max 0 offset) (string-length text)))
-  (let loop ([i 0] [line 0] [col 0])
+;; 从字符索引 i 前进到 end，同时维护 (line, col)。查找时边扫边维护，
+;; 避免每命中一次就用 offset->point 从文件头重数行号（O(n·命中数)）。
+(define (advance-position text i line col end)
+  (let loop ([j i] [line line] [col col])
     (cond
-      [(>= i n) (point line col)]
-      [(char=? (string-ref text i) #\newline)
-       (loop (add1 i) (add1 line) 0)]
-      [else (loop (add1 i) line (add1 col))])))
-
-(define (string-find text query start)
-  (define n (string-length text))
-  (define m (string-length query))
-  (let loop ([i start])
-    (cond
-      [(> (+ i m) n) #f]
-      [(string=? (substring text i (+ i m)) query) i]
-      [else (loop (add1 i))])))
+      [(>= j end) (values line col)]
+      [(char=? (string-ref text j) #\newline)
+       (loop (add1 j) (add1 line) 0)]
+      [else (loop (add1 j) line (add1 col))])))
 
 (define (text->matches text query)
   (define qlen (string-length query))
   (cond
     [(zero? qlen) '()]
     [else
-     (let loop ([start 0] [acc '()])
-       (define pos (string-find text query start))
+     ;; 字面量查询用一次编译的 regexp，并带上 start 位置：
+     ;; 比每次 substring 再 string=? 少一次 O(剩余长度) 的分配。
+     (define rx (regexp (regexp-quote query)))
+     (let loop ([start 0] [line 0] [col 0] [acc '()])
+       (define m (regexp-match-positions rx text start))
        (cond
-         [(not pos) (reverse acc)]
+         [(not m) (reverse acc)]
          [else
-          (loop (+ pos qlen)
-                (cons (range (offset->point text pos)
-                             (offset->point text (+ pos qlen)))
+          (define pos (caar m))
+          (define-values (start-line start-col)
+            (advance-position text start line col pos))
+          (define end (+ pos qlen))
+          (define-values (end-line end-col)
+            (advance-position text pos start-line start-col end))
+          (loop end end-line end-col
+                (cons (range (point start-line start-col)
+                             (point end-line end-col))
                       acc))]))]))
 
 (define (point< a b)

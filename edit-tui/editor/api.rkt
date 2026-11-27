@@ -103,6 +103,8 @@
  ;; 只读查询：ed + id，不把 engine 句柄交给插件
  editor-view-text
  editor-doc-text
+ editor-doc-lines
+ editor-view-lines
  editor-doc-version
  editor-doc-readonly?
  editor-view-doc-id
@@ -192,6 +194,14 @@
   (engine-view-text (editor-engine ed) vid))
 (define (editor-doc-text ed did)
   (engine-doc-text (editor-engine ed) did))
+
+(define (editor-doc-lines ed did)
+  (engine-doc-lines (editor-engine ed) did))
+
+(define (editor-view-lines ed vid)
+  (define engine (editor-engine ed))
+  (define did (engine-view-doc-id engine vid))
+  (and did (engine-doc-lines engine did)))
 (define (editor-doc-version ed did)
   (engine-doc-version (editor-engine ed) did))
 (define (editor-doc-readonly? ed did)

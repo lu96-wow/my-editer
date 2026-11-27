@@ -15,7 +15,8 @@
          edits->dirty-lines
          edit-spans
          splice-vector
-         splice-vector-preserve)
+         splice-vector-preserve
+         split-lines)
 
 (struct line-edit
   (old-start old-end new-start new-end)
@@ -66,11 +67,27 @@
   (define lo (max 0 (min old-start n)))
   (define hi (max lo (min old-end n)))
   (define old-count (- hi lo))
-  (define replacement
-    (if (= old-count new-count)
-        (vector-copy v lo hi)
-        (make-vector (max 0 new-count) #f)))
-  (vector-append
-   (vector-copy v 0 lo)
-   replacement
-   (vector-copy v hi n)))
+  (define k (max 0 new-count))
+  ;; 一次分配 + 两次 copy，避免 vector-append 的临时向量；
+  ;; 行数不变时保留旧值作为收敛参考。
+  (define out (make-vector (+ lo k (- n hi)) #f))
+  (vector-copy! out 0 v 0 lo)
+  (when (= old-count k)
+    (vector-copy! out lo v lo hi))
+  (vector-copy! out (+ lo k) v hi n)
+  out)
+
+;; 按 \n 切行，语义与 (string-split text "\n" #:trim? #f) 一致：
+;; 空串 → '()；保留空行和行尾空段。
+;; 手写 O(n) 扫描，避免 regexp-split 在大文件上的开销。
+(define (split-lines text)
+  (define n (string-length text))
+  (cond
+    [(zero? n) '()]
+    [else
+     (let loop ([i 0] [start 0] [acc '()])
+       (cond
+         [(= i n) (reverse (cons (substring text start i) acc))]
+         [(char=? (string-ref text i) #\newline)
+          (loop (add1 i) (add1 i) (cons (substring text start i) acc))]
+         [else (loop (add1 i) start acc)]))]))

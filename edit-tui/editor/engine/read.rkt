@@ -11,6 +11,7 @@
 (provide engine-view-object
          engine-view-text
          engine-doc-text
+         engine-doc-lines
          engine-doc-version
          engine-doc-buffer
          engine-view-doc-id

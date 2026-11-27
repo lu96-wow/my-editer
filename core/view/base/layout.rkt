@@ -99,10 +99,12 @@
           (list->vector (append (reverse acc)
                                 (for/list ([x (in-range r height)]) (vrow line 0 0))))]
          [else
-          (define ss (or segs (wrap-segments (track-ref t line) width)))
+          ;; 一条长行可能折出很多段：先转 vector，后续按段号 O(1) 取，
+          ;; 避免 list-ref 从段头重走（长行 + 多屏时是 O(height²)）。
+          (define ss (or segs (list->vector (wrap-segments (track-ref t line) width))))
           (cond
-            [(< seg (length ss))
-             (define s (list-ref ss seg))
+            [(< seg (vector-length ss))
+             (define s (vector-ref ss seg))
              (loop line ss (add1 seg) (add1 r) (cons (vrow line (car s) (cdr s)) acc))]
             [else
              (define next (add1 line))

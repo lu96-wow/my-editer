@@ -13,6 +13,7 @@
 
 (require racket/list
          racket/string
+         "../../shared/edit.rkt"
          "keywords.rkt")
 
 (provide (struct-out c-token)
@@ -182,7 +183,7 @@
 ;;; ════════════════ 全文 ════════════════
 
 (define (c-text-lines text)
-  (string-split text "\n" #:trim? #f))
+  (split-lines text))
 
 (define (c-tokenize text)
   (let loop ([lines (c-text-lines text)]

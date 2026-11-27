@@ -19,10 +19,15 @@
          "../base/lex.rkt"
          "../base/keywords.rkt")
 
+;; 关键字类别只有固定几个：预建 category -> role 表，避免每个关键字
+;; 每次出现都 format + string->symbol。
+(define keyword-roles
+  (for/hash ([cat (in-list keyword-category-order)])
+    (values cat (string->symbol (format "syntax-keyword-~a" cat)))))
+
 (define (keyword-role word)
   (define cat (keyword-category word))
-  (and cat
-       (string->symbol (format "syntax-keyword-~a" cat))))
+  (and cat (hash-ref keyword-roles cat #f)))
 
 (define (lexical-role kind)
   (case kind
@@ -50,14 +55,14 @@
 
 ;; 整篇 -> (listof (vectorof role|#f))，每行一个向量。
 (define (highlight-text text)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (define token-lines (tokenize text))
   (for/list ([line (in-list lines)] [tokens (in-list token-lines)])
     (highlight-line tokens line)))
 
 ;; 供单测 / 增量阶段使用的便捷查询。
 (define (highlight-role text line col)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (cond
     [(or (not (exact-nonnegative-integer? line))
          (>= line (length lines)))

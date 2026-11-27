@@ -14,9 +14,12 @@
 ;;;
 ;;; 本模块不 require app / boot / core，保持可单独测试。
 
+(require "../../shared/edit.rkt")
+
 (provide (struct-out token)
          token-kind token-start token-end
          empty-lex-state
+         split-lines
          tokenize-line
          tokenize
          line-token-at
@@ -47,13 +50,6 @@
 
 (define (whitespace-char? c) (char-whitespace? c))
 
-;;; ════════════════ 行扫描 ════════════════
-
-;; → (values state' (listof token))
-;; state = (cons block-depth in-string?)
-;;
-;; 说明：字符串 / 块注释跨行时，每一行都产出一个对应类别的 token。
-;; 同一行里相邻的同类 token 会合并，避免 1000 个单字符 token。
 (define (tokenize-line state line)
   (define n (string-length line))
   (define out '())
@@ -199,7 +195,7 @@
 
 ;; → (listof (listof token))，每个元素对应一行（保留空行）。
 (define (tokenize text)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (let loop ([lines lines] [state empty-lex-state] [acc '()])
     (cond
       [(null? lines) (reverse acc)]
@@ -221,7 +217,7 @@
 
 ;; 只取 symbol token，跳过注释 / 字符串 / 数字；用于“本地词”候选。
 (define (symbols-in-text text)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (define token-lines (tokenize text))
   (append*
    (for/list ([line (in-list lines)] [tokens (in-list token-lines)])
@@ -234,7 +230,7 @@
 ;; text / line / col（0-based） -> string | #f
 ;; 只看 symbol token；光标在词尾也算命中。
 (define (identifier-at text line col)
-  (define lines (string-split text "\n" #:trim? #f))
+  (define lines (split-lines text))
   (cond
     [(or (not (exact-nonnegative-integer? line))
          (>= line (length lines)))

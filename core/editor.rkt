@@ -98,6 +98,7 @@
 
  ;; ==================== 查询 ====================
  buffer-string view-string
+ buffer-lines view-lines
  buffer-range-text view-range-text
  buffer-char-at view-char-at
  buffer-line view-line

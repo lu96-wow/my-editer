@@ -4,6 +4,7 @@
 
 (require racket/match
          racket/string
+         (only-in setup/dirs get-doc-search-dirs)
          "../../core/command/api.rkt"
          "../../editor/api.rkt"
          "../../lang/racket/api.rkt"
@@ -19,6 +20,51 @@
 (define (local-binding? binding)
   (and binding
        (let ([m (car binding)]) (or (path? m) (string? m)))))
+
+;; Termux 的 PREFIX 明确带 com.termux；Linux 上不会触发 Termux 提示。
+(define (termux?)
+  (define p (getenv "PREFIX"))
+  (and p (string-contains? p "com.termux")))
+
+;; 只在这个标识符确实查不到文档时拼诊断，避免正常 Linux 环境多出提示。
+(define (doc-env-diagnostic-lines)
+  (define dirs
+    (with-handlers ([exn:fail? (λ (_) '())])
+      (get-doc-search-dirs)))
+  (define (has-blueboxes? d)
+    (with-handlers ([exn:fail? (λ (_) #f)])
+      (file-exists? (build-path d "blueboxes.rktd"))))
+  (append
+   (list "Racket 文档目录：")
+   (if (null? dirs)
+       (list "  （空）")
+       (for/list ([d (in-list dirs)])
+         (format "  ~a ~a" d (if (directory-exists? d) "存在" "缺失"))))
+   (list (format "blueboxes.rktd：~a"
+                 (if (for/or ([d (in-list dirs)]) (has-blueboxes? d))
+                     "存在"
+                     "缺失")))
+   (if (termux?)
+       (list "Termux：确认 Racket 包装了文档；C 文档需要 man + man-pages。")
+       '())
+   (list "若文档目录存在但索引缺失：raco setup --doc-index --pkgs <pkg>")))
+
+(define (missing-docs-lines ctx binding mods)
+  (cond
+    [(and binding (local-binding? binding))
+     (list "── 文档 ──"
+           "这是本地文件里的定义；没有可查询的库文档。")]
+    [(not ctx)
+     (list "── 文档 ──"
+           "无法解析当前文件的 #lang / require 上下文。")]
+    [(null? mods)
+     (list "── 文档 ──"
+           "没有找到可查询的模块（缺少 #lang / require）。")]
+    [else
+     (append
+      (list "── 文档 ──"
+            "没有找到这个标识符的库文档。")
+      (doc-env-diagnostic-lines))]))
 
 ;; 查文档用的候选模块：binding 指出的模块排最前，其余来自 #lang + require。
 ;; 启发式反查可能漏判（binding = #f），此时让 docs-for 逐个模块试，
@@ -73,7 +119,7 @@
          (if d
              (cons "── 文档 ──"
                    (string-split (string-trim (doc->text d)) "\n"))
-             '())))))
+             (missing-docs-lines ctx binding mods))))))
 
 (define (handle-docs-job ed state ps ev)
   (cond
