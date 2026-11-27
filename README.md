@@ -192,7 +192,7 @@ racket edit-tui/edit.rkt [工作目录]
 C-x h          打开帮助
 C-x f          在当前 buffer 中查找
 C-s            保存 / 另存为
-C-q q          退出（不保存会话）
+C-q q          退出并删除已保存会话
 C-q s          保存会话并退出
 C-x b          切换侧边栏：文件树 / 资源
 C-b            显示 / 隐藏侧边栏
@@ -229,8 +229,8 @@ C-e            显示 / 隐藏错误面板
 .editdata/session.rktd
 ```
 
-- `C-q s` 退出时写入
-- `C-q q` 退出时不写
+- `C-q s` 退出时写入，可反复保存覆盖
+- `C-q q` 退出时删除已保存会话；下次启动使用默认布局
 - 缓存 layout / focus / resources / user buffer / view 状态
 - 不缓存插件状态、history、UI 内容
 

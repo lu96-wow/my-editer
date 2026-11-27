@@ -68,8 +68,13 @@
                         #:timer-runtime timer-runtime
                         #:face-runtime face-runtime
                         #:register-source tui:on-source)))
-        (when (and (state-quit? final) (state-save-session? final))
-          (void (save-editor-session! ed final #:workspace-root root*)))
+        (when (state-quit? final)
+          (cond
+            [(state-save-session? final)
+             (void (save-editor-session! ed final #:workspace-root root*))]
+            [else
+             ;; C-q q：明确删除已保存布局，下次启动回到默认布局。
+             (void (clear-editor-session! #:workspace-root root*))]))
         final)
       (λ ()
         (stop-face-runtime face-runtime)

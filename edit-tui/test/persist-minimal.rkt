@@ -68,12 +68,11 @@
 (define saved-a-line (engine-view-point-line (editor-engine ed) va))
 (define saved-a-col (engine-view-point-column (editor-engine ed) va))
 
-;; 保存（写两次，确认 .bak）。
+;; 保存（连写两次，确认可以反复覆盖）。
 (check-true (save-editor-session! ed s8 #:workspace-root root))
 (check-true (save-editor-session! ed s8 #:workspace-root root))
 (define dir (default-session-dir root))
 (check-true (file-exists? (session-file-path dir)))
-(check-true (file-exists? (session-backup-path dir)))
 
 ;; 磁盘格式：resource 在 workspace 内时存相对路径。
 (define data (read-session-data (session-file-path dir)))
@@ -138,12 +137,15 @@
 (check-true (and rc #t))
 (check-equal? (engine-doc-text (editor-engine ed3) (resource-doc-id rc)) "sea\n")
 
-;; 当前 session 损坏时回退到 .bak（上一代：area 1）。
+;; 当前 session 损坏时不做任何恢复，保持默认 state。
 (display-to-file "not a session" (session-file-path dir) #:exists 'truncate)
 (define-values (ed4 s16) (make-editor-app #:workspace-root root))
 (define s17 (load-editor-session! ed4 s16 #:workspace-root root))
-(check-equal? (state-current-area s17) 1)
-(check-true (pair? (resources-list (state-resources s17))))
+(check-eq? s17 s16)
+
+;; C-q q 的清理：直接删掉 session 文件；没有备份可回退。
+(check-true (clear-editor-session! #:workspace-root root))
+(check-false (file-exists? (session-file-path dir)))
 
 (delete-directory/files root)
 (displayln "edit-tui/test/persist-minimal.rkt: ok")

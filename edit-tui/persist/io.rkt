@@ -12,14 +12,12 @@
 
 (provide default-session-dir
          session-file-path
-         session-backup-path
          read-session-data
          write-session-data!
          path->session
          session->path)
 
 (define session-file-name "session.rktd")
-(define session-backup-name "session.rktd.bak")
 
 (define (default-session-dir root)
   (build-path (resource-normalize-path (or root (current-directory)))
@@ -28,17 +26,9 @@
 (define (session-file-path dir)
   (build-path dir session-file-name))
 
-(define (session-backup-path file-or-dir)
-  (define name (file-name-from-path file-or-dir))
-  (define dir
-    (if (and name (equal? (path->string name) session-file-name))
-        (path-only file-or-dir)
-        file-or-dir))
-  (build-path dir session-backup-name))
-
 ;;; ════════════════ 读 ════════════════
 
-;; 失败返回 #f（空文件 / read 失败 / 尾随数据）。调用方决定是否试 .bak。
+;; 失败返回 #f（空文件 / read 失败 / 尾随数据）。
 (define (read-session-data file)
   (and (file-exists? file)
        (with-handlers ([exn:fail? (λ (_e) #f)])
@@ -72,7 +62,6 @@
 (define (write-session-data! dir data)
   (make-directory* dir)
   (define file (session-file-path dir))
-  (define bak (session-backup-path dir))
   (define tmp (build-path dir "session.rktd.tmp"))
   (call-with-output-file
    tmp
@@ -80,8 +69,7 @@
    (λ (out)
      (write data out)
      (newline out)))
-  (when (file-exists? file)
-    (rename-file-or-directory file bak #t))
+  ;; 直接原子替换，不保留 .bak：C-q s 可以反复保存。
   (rename-file-or-directory tmp file #t)
   (ensure-gitignore! dir)
   (with-handlers ([exn:fail? void])

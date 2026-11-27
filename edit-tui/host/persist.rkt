@@ -12,6 +12,7 @@
 
 (provide load-editor-session!
          save-editor-session!
+         clear-editor-session!
          (all-from-out "../persist/io.rkt"))
 
 (define (schema-ok? data)
@@ -24,10 +25,7 @@
   (and (schema-ok? data) data))
 
 (define (read-session dir)
-  (define file (session-file-path dir))
-  (define bak (session-backup-path dir))
-  (or (read-valid-session file)
-      (read-valid-session bak)))
+  (read-valid-session (session-file-path dir)))
 
 ;; 读失败 / schema 不匹配 -> 原 state。restore 内部会做结构校验与 fallback。
 (define (load-editor-session! ed state
@@ -44,6 +42,20 @@
                                 (exn-message e))
                         state)])
        (restore-session! ed state data))]))
+
+;; C-q q 是明确的“删除布局”：删掉已保存的 session 文件。
+;; 只删 session 文件，保留 .editdata 目录。
+(define (clear-editor-session! #:workspace-root [root (current-directory)]
+                               #:session-dir [dir (default-session-dir root)])
+  (with-handlers ([exn:fail?
+                   (λ (e)
+                     (eprintf "edit: session clear failed: ~a\n"
+                             (exn-message e))
+                     #f)])
+    (define file (session-file-path dir))
+    (when (file-exists? file)
+      (delete-file file))
+    #t))
 
 (define (save-editor-session! ed state
                               #:workspace-root [root (state-workspace-root state)]
