@@ -329,6 +329,19 @@ ls ~/.local/bin/edit-tui
 echo "$PATH"
 ```
 
+### 第三方 Racket 包文档不显示（如 `tui` 的 `put-at`）
+
+编辑器的库文档来自 `setup/xref` + blueboxes。如果包只安装了代码、没有构建
+Scribble 文档，`M-d` 只能看到本地定义，看不到库文档。
+
+先确认包有 `scribblings` / `index.scrbl`，然后为它构建文档并更新索引：
+
+```sh
+raco setup --doc-index --pkgs racket-tui
+```
+
+把 `racket-tui` 换成实际包名。完成后重启编辑器（xref 缓存是进程级的）。
+
 ### C 文档不完整 / 没有 man 页面
 
 安装 C 手册页：

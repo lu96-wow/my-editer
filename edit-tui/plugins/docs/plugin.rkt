@@ -14,12 +14,34 @@
 
 (provide make-docs-plugin)
 
+;; binding 的 car 是路径时表示名字来自本地文件；此时没有 xref 文档可查，
+;; 本地定义由 workspace / 当前 buffer 提供。
+(define (local-binding? binding)
+  (and binding
+       (let ([m (car binding)]) (or (path? m) (string? m)))))
+
+;; 查文档用的候选模块：binding 指出的模块排最前，其余来自 #lang + require。
+;; 启发式反查可能漏判（binding = #f），此时让 docs-for 逐个模块试，
+;; 不能直接放弃库文档。
+(define (doc-modules ctx binding)
+  (define base-dir (completion-context-base-dir ctx))
+  (define parsed
+    (with-handlers ([exn:fail? (λ (_) '())])
+      (requires-of-forms (completion-context-lang ctx)
+                         (completion-context-forms ctx)
+                         #:base-dir base-dir)))
+  (define mods (if (null? parsed) '(racket/base) parsed))
+  (cond
+    [(not binding) mods]
+    [else
+     (define bm (car binding))
+     (cons bm (remove bm mods))]))
+
 (define (docs-service payload)
   (match-define (list name path text open ws id mode) payload)
   (if (eq? mode 'c)
       (c-docs-lines name #:text text)
-      (let* ([local (docs-local-snippet text name ws id mode)]
-             [ctx (and text
+      (let* ([ctx (and text
                        (make-completion-context path text
                                                 #:open open
                                                 #:workspace ws
@@ -31,9 +53,17 @@
                                       (completion-context-specs ctx)
                                       (completion-context-base-dir ctx)
                                       (completion-context-open ctx))))]
-             [d (and binding
+             ;; prefix-in / rename-in 后文档要用**原名**查；本地定义也是按原名
+             ;; 写在源文件里的。
+             [lookup-name (if binding (format "~a" (cadr binding)) name)]
+             [local (docs-local-snippet text lookup-name ws id mode)]
+             [mods (cond
+                     [(not ctx) '()]
+                     [(local-binding? binding) '()]
+                     [else (doc-modules ctx binding)])]
+             [d (and (pair? mods)
                      (with-handlers ([exn:fail? (λ (_) #f)])
-                       (docs-for name #:modules (list (car binding)))))])
+                       (docs-for lookup-name #:modules mods)))])
         (append
          (list (format "~a" name))
          (if local
