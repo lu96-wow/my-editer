@@ -39,6 +39,7 @@
    stale?        ; #t = 需要重扫普通树
    pending       ; #f | 正在后台扫描的 projection tag
    pending-cursor ; #f | path：sync 后把光标放到该 path 的行
+   pending-column ; #f | nat：sync 后光标列；#f = 0（查找定位用）
    find-query    ; #f | string：最近一次查找 query（只用于 C-f s 预填）
    find-stale?   ; #t = 需要重跑查找
    find-pending  ; #f | 正在后台查找的 tag
@@ -252,7 +253,8 @@
              (struct-copy filetree-state base
                           [expanded expanded]
                           [stale? #t]
-                          [pending-cursor first-path])
+                          [pending-cursor first-path]
+                          [pending-column #f])
              '())]))
 
 (define (handle-scan-result state ps ev)
@@ -321,8 +323,13 @@
      (define line (find-line rows pending))
      (cond
        [line
-        (editor-set-view-cursor! ed vid line #:column 0)
-        (struct-copy filetree-state st [rows rows] [pending-cursor #f])]
+        (editor-set-view-cursor!
+         ed vid line
+         #:column (or (filetree-state-pending-column st) 0))
+        (struct-copy filetree-state st
+                     [rows rows]
+                     [pending-cursor #f]
+                     [pending-column #f])]
        [else (struct-copy filetree-state st [rows rows])])]))
 
 ;;; ════════════════ sync ════════════════
@@ -409,10 +416,11 @@
   (define line (editor-view-point-line ed vid))
   (and rows line (< line (length rows)) (list-ref rows line)))
 
-(define (refresh-state st path)
+(define (refresh-state st path [column #f])
   (struct-copy filetree-state st
                [stale? #t]
-               [pending-cursor path]))
+               [pending-cursor path]
+               [pending-column (and path column)]))
 
 (define (open-row-action row)
   (list (open-file-action (row-path row))))
@@ -426,12 +434,14 @@
      (values state ps (open-row-action row))]
     [(memq (row-kind row) '(root dir))
      (define path (row-path row))
+     (define column (editor-view-point-column ed vid))
      (define expanded
        (if (hash-ref (filetree-state-expanded ps) path #f)
            (hash-remove (filetree-state-expanded ps) path)
            (hash-set (filetree-state-expanded ps) path #t)))
      (values state
-             (refresh-state (struct-copy filetree-state ps [expanded expanded]) path)
+             (refresh-state (struct-copy filetree-state ps [expanded expanded])
+                            path column)
              '())]
     [else (values state ps '())]))
 
@@ -471,7 +481,8 @@
                                                     (filetree-state-root ps)
                                                     path)]
                           [stale? #t]
-                          [pending-cursor path])
+                          [pending-cursor path]
+                          [pending-column #f])
              '())]))
 
 (define (refresh-command ed state ps vid)
@@ -480,7 +491,8 @@
     [(not (filetree-state? ps)) (values state ps '())]
     [else
      (values (state-with-flash state "filetree refreshed")
-             (refresh-state ps (and row (row-path row)))
+             (refresh-state ps (and row (row-path row))
+                            (editor-view-point-column ed vid))
              '())]))
 
 (define (toggle-hidden-command ed state ps vid)
@@ -490,7 +502,10 @@
     [else
      (define ps* (struct-copy filetree-state ps
                               [show-hidden? (not (filetree-state-show-hidden? ps))]))
-     (values state (refresh-state ps* (and row (row-path row))) '())]))
+     (values state
+             (refresh-state ps* (and row (row-path row))
+                            (editor-view-point-column ed vid))
+             '())]))
 
 (define (row-parent-directory ps row)
   (define p (row-path row))
@@ -533,7 +548,7 @@
   (define root* (simplify-path (path->complete-path root)))
   (make-plugin
    #:id 'filetree
-   #:state (filetree-state root* vid (hash root* #t) #f '() #t #f #f #f #f #f '() 0 #f)
+   #:state (filetree-state root* vid (hash root* #t) #f '() #t #f #f #f #f #f #f '() 0 #f)
    #:command-scope 'filetree
    #:view-scopes (hash vid 'filetree)
    #:commands

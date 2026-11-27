@@ -92,20 +92,23 @@
 ;; 展开 dir
 (define dir-line (line-of s-root2-sync (build-path root "dir")))
 (check-not-false dir-line)
-(engine-set-view-cursor! engine 3 dir-line #:column 0)
+(engine-set-view-cursor! engine 3 dir-line #:column 3)
 (define-values (s3 _a3) (run-cmd ed s-root2-sync enter))
 (define s4 (run-plugin-syncs ed s3))
 (check-true (string-contains? (engine-view-text engine 3) "b.txt"))
+;; 展开 / 折叠不把光标打回行首。
+(check-equal? (engine-view-point-column engine 3) 3)
 ;; 子文件再缩进两格。
 (check-true (string-contains? (engine-view-text engine 3) "    b.txt"))
 
 ;; 折叠 dir
 (define dir-line2 (line-of s4 (build-path root "dir")))
 (check-not-false dir-line2)
-(engine-set-view-cursor! engine 3 dir-line2 #:column 0)
+(engine-set-view-cursor! engine 3 dir-line2 #:column 2)
 (define-values (s5 _a5) (run-cmd ed s4 enter))
 (define s6 (run-plugin-syncs ed s5))
 (check-false (string-contains? (engine-view-text engine 3) "b.txt"))
+(check-equal? (engine-view-point-column engine 3) 2)
 
 ;; 显示 .hidden
 (define-values (s7 _a7) (run-cmd ed s6 toggle-hidden))
